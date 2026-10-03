@@ -1,93 +1,209 @@
 ########################################################################
-# xtop-replay.tcl -- M5's deterministic replay of one batch's ordered
-# steps. Every step's command text is already fully determined by
-# `atcs.integration.xtop_tcl(op)` (documented XTop commands only) before
-# this file ever runs; this template performs no AI-driven choice, only
-# mechanical apply-dump-log per step, so a lost receipt can always be
-# recovered by re-reading the dumps rather than re-inserting an edit
-# (architecture Sec.8.4).
+# xtop-replay.tcl -- one arm of a generation's single XTop replay (Issue #64
+# Task 6). `atcs.adapters.compile_recipe_replay_task` renders it twice, below
+# the worker session's own `xtop-operator.tcl` (same workspace setup, legality,
+# timing data and ECO parameters, and the same `atcs_*` toolkit procedures),
+# and the replay job runs the two XTop processes from the same base together:
 #
-# I3 (final review, XTop replay source): builds its own fresh XTop workspace
-# from the batch's own base-state LEF/netlist/DEF -- the same shape a worker
-# session's own `xtop-operator.tcl` startup uses -- never `open_workspace`
-# on an Innovus `.enc` restore script (that command opens a previously
-# *saved XTop* workspace, not an Innovus checkpoint; it could never have
-# opened anything real against a `.enc` path).
+#   ::ATCS_ARM merged   000.dump; per ranked session (RECIPE_TCL): its kept
+#                       commands through the toolkit procedures, confined to
+#                       the domain its Contribution sealed (effectiveDomain,
+#                       #66 D6; its admitted package when it sealed none), its
+#                       name prefix and plan hash, then NNN.dump;
+#                       set_dont_touch on every instance the applied commands
+#                       changed; auto-finish (AUTO_FIX_TCL: the control arm's
+#                       plain auto-fix; empty when autoFinish is off);
+#                       auto.dump; the final summaries and fail reasons; one
+#                       Innovus ECO pair into eco/.
+#   ::ATCS_ARM control  000.dump; the old flow's qualified plain auto-fix
+#                       (AUTO_FIX_TCL); auto.dump; the final summaries and fail
+#                       reasons; one Innovus ECO pair into eco-control/.
 #
-# Required env vars: DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL
-#                     DUMP_DIR RECEIPTS_LOG
+# Best effort (replay is an aggregator): a recipe command the composition
+# marked skip is never sent; every other command is attempted under its own
+# catch, and one that errors or that the toolkit refuses is recorded as skipped
+# with its reason while the replay continues with the next. Each auto-fix line
+# is attempted once and its code recorded. The Pack chooses the arm afterwards
+# (`atcs.integration.reconcile_recipe`); this file never judges.
+#
+# Outputs (cwd is RUN_ROOT, set by xtop-operator.tcl):
+#   RECEIPTS_LOG  one JSON line per recipe command:
+#                 {"stepId","slot","status":"applied"|"skipped","attempted",
+#                  ["reason"],["seq"]} (seq = this run's ops.jsonl line)
+#   DUMP_DIR      000.dump, 001.dump .. (one per session), auto.dump
+#   PREDICT_DIR   setup.rpt, hold.rpt: summarize_gba_violations -exclude_path;
+#                 <check>-fail-reasons.rpt: the same with -with_top_n
+#                 FAIL_REASON_TOP_N -with_fail_reason, after auto-fix, for the
+#                 last fix flow's check only (XTop keeps no other)
+#   ARM_RESULT    {"arm","complete":true,"tainted","appliedCommands","skippedCommands","protected","protectedCount",
+#                  "protectMissing","protectCode","protectResult","autoFix":[{command,code,result}],
+#                  "predict":{"setup","hold"},"failReasons":{"setup","hold"},
+#                  "exportCode","exportResult"},
+#                 written last: its absence means the run never finished.
+#
+# Required env vars: RECIPE_TCL AUTO_FIX_TCL AUTO_PREFIX RECEIPTS_LOG DUMP_DIR
+#                    PREDICT_DIR ARM_RESULT FAIL_REASON_TOP_N (plus xtop-operator.tcl's own)
 ########################################################################
-foreach required {DESIGN TECH_LEF CELL_LEF_GLOB NETLIST DEF STEPS_TCL DUMP_DIR RECEIPTS_LOG LIBRARY_TCL STA_DATA ECO_CELL_CLASSIFY_RULE ECO_CELL_MATCH_ATTRIBUTE ECO_CELL_NOMINAL_SIZING_PATTERN ECO_GAIN_THRESHOLD} {
+foreach required {RECIPE_TCL AUTO_FIX_TCL AUTO_PREFIX RECEIPTS_LOG DUMP_DIR PREDICT_DIR ARM_RESULT FAIL_REASON_TOP_N} {
     if {![info exists env($required)]} { error "$required is required" }
 }
-set design $env(DESIGN)
-set cell_lefs [lsort [glob -nocomplain $env(CELL_LEF_GLOB)]]
-set lef_files [linsert $cell_lefs 0 $env(TECH_LEF)]
-foreach file [concat [list $env(NETLIST) $env(DEF) $env(LIBRARY_TCL)] $lef_files] {
-    if {![file readable $file]} { error "required XTop input is not readable: $file" }
+atcs_int FAIL_REASON_TOP_N $env(FAIL_REASON_TOP_N) 1 100
+if {![info exists ::ATCS_ARM] || [lsearch -exact {merged control} $::ATCS_ARM] < 0} {
+    error "ATCS_ARM must be merged or control"
 }
-if {![file readable $env(STEPS_TCL)]} { error "STEPS_TCL is not readable: $env(STEPS_TCL)" }
-if {![file isdirectory $env(STA_DATA)]} { error "PrimeTime timing-data directory is missing" }
+foreach file [list $env(RECIPE_TCL) $env(AUTO_FIX_TCL)] {
+    if {![file readable $file]} { error "replay input is not readable: $file" }
+}
 file mkdir $env(DUMP_DIR)
+file mkdir $env(PREDICT_DIR)
+set ::atcs_replay_slot ""
+set ::atcs_replay_applied 0
+set ::atcs_replay_skipped 0
 
-set_parameter max_thread_number 8
-create_workspace ${design}_replay -overwrite
-link_reference_library -format lef $lef_files
-create_design_definition -verilogs $env(NETLIST) -def $env(DEF)
-set_site_map $::XTOP_SITE_MAP
-set_removable_fillers $::XTOP_REMOVABLE_FILLERS
-import_designs
-check_placement_readiness
-source $env(LIBRARY_TCL)
-read_timing_data -data_dir $env(STA_DATA)
-check_inst_reference_library
-check_inst_timing_library
-set_parameter eco_new_object_prefix atcs_replay_eco
-set_parameter eco_buffer_list_for_hold $::XTOP_ECO_BUFFER_LIST_FOR_HOLD
-set_parameter eco_buffer_list_for_setup $::XTOP_ECO_BUFFER_LIST_FOR_SETUP
-set_parameter eco_cell_classify_rule $env(ECO_CELL_CLASSIFY_RULE)
-set_parameter eco_cell_match_attribute $env(ECO_CELL_MATCH_ATTRIBUTE)
-set_parameter eco_cell_nominal_swap_keywords $::XTOP_ECO_CELL_NOMINAL_SWAP_KEYWORDS
-set_parameter eco_cell_nominal_sizing_pattern $env(ECO_CELL_NOMINAL_SIZING_PATTERN)
-set_parameter eco_gain_threshold $env(ECO_GAIN_THRESHOLD)
-
-proc atcs_dump_cells {path} {
-    # Same documented get_cells/foreach_in_collection/get_attribute pattern
-    # as xtop-operator.tcl's own atcs_dump_cells -- see
-    # knowledge/xtop-capabilities.md. No documented get_object_name exists.
-    set fh [open $path w]
-    foreach_in_collection i [get_cells -hierarchical] {
-        set inst [get_attribute [get_cells $i] full_name]
-        set master [get_attribute [get_cells $i] ref_name]
-        puts $fh "$inst $master"
+proc atcs_replay_receipt {fields} {
+    atcs_append $::env(RECEIPTS_LOG) [atcs_jobj $fields]
+}
+# Enter one ranked session: the domain its Contribution sealed (the worker
+# session's domain.json, #66 D6), its new-object prefix and plan hash. The
+# sealed domain is entered as recorded, never derived or widened here: a
+# remove_buffer whose input net the record lacks is refused, not admitted. The
+# toolkit pins one plan hash per session and treats objects a session created
+# as its own domain, so both are reset: a session never edits another
+# session's objects.
+proc atcs_replay_session {slot prefix instances nets pins regions} {
+    if {[llength $regions] % 4 != 0} { error "session $slot regions must hold x1 y1 x2 y2 boxes" }
+    foreach value $regions {
+        if {![string is double -strict $value]} { error "session $slot regions hold a non-number '$value'" }
     }
-    close $fh
+    set ::atcs_replay_slot $slot
+    set ::EDIT_DOMAIN_LOCAL 0
+    set ::EDIT_DOMAIN_INSTANCES $instances
+    set ::EDIT_DOMAIN_NETS $nets
+    set ::EDIT_DOMAIN_PINS $pins
+    set ::EDIT_DOMAIN_REGIONS $regions
+    set ::atcs_session_instances {}
+    set ::atcs_session_nets {}
+    set ::env(NAME_PREFIX) $prefix
+    set ::atcs_plan_sha256 ""
+    set_parameter eco_new_object_prefix "${prefix}eco"
+    puts "ATCS:replay-domain:$slot:[llength $instances] instances, [llength $nets] nets"
 }
-proc atcs_receipt {json_line} {
-    set fh [open $::env(RECEIPTS_LOG) a]
-    puts $fh $json_line
-    close $fh
-}
-proc atcs_json_escape {s} {
-    return [string map {"\\" "\\\\" "\"" "\\\"" "\n" "\\n"} $s]
-}
-
-atcs_dump_cells $env(DUMP_DIR)/000.dump
-
-# `STEPS_TCL` is generated per run by `atcs.adapters.compile_xtop_replay_task`;
-# it calls `atcs_replay_step {stepId opTcl dumpIndex}` once per ordered step,
-# stopping the batch (steps after a failure stay receipt-less, i.e. pending)
-# the first time one op's command raises.
-proc atcs_replay_step {stepId opTcl dumpIndex} {
-    set before [format "%s/%03d.dump" $::env(DUMP_DIR) [expr {$dumpIndex - 1}]]
-    set after [format "%s/%03d.dump" $::env(DUMP_DIR) $dumpIndex]
-    if {[catch {uplevel #0 $opTcl} err]} {
-        atcs_receipt "{\"stepId\":\"[atcs_json_escape $stepId]\",\"status\":\"error\",\"error\":\"[atcs_json_escape $err]\"}"
-        error "replay stopped at step $stepId: $err"
+proc atcs_replay_step {step_id skip call} {
+    set fields [list stepId [atcs_js $step_id] slot [atcs_js $::atcs_replay_slot]]
+    if {$skip} {
+        incr ::atcs_replay_skipped
+        atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted false reason [atcs_js recipe]]]
+        return
     }
-    atcs_dump_cells $after
-    atcs_receipt "{\"stepId\":\"[atcs_json_escape $stepId]\",\"status\":\"ok\",\"beforeDump\":\"[atcs_json_escape $before]\",\"afterDump\":\"[atcs_json_escape $after]\"}"
+    set kept [llength $::atcs_kept]
+    set code [catch {uplevel #0 $call} message]
+    if {$code == 0 && [llength $::atcs_kept] > $kept} {
+        incr ::atcs_replay_applied
+        atcs_replay_receipt [concat $fields [list status [atcs_js applied] attempted true seq [lindex $::atcs_kept end]]]
+    } else {
+        incr ::atcs_replay_skipped
+        set reason [expr {$code == 0 ? "no-change" : [atcs_clip $message 2000]}]
+        atcs_replay_receipt [concat $fields [list status [atcs_js skipped] attempted true reason [atcs_js $reason]]]
+    }
+}
+proc atcs_replay_session_end {index} {
+    atcs_write_cell_dump [format "%s/%03d.dump" $::env(DUMP_DIR) $index]
+}
+# Every instance an applied command changed and that still exists: the masters
+# the kept toolkit lines recorded on their `after` side.
+proc atcs_replay_protected {} {
+    set names {}
+    foreach seq $::atcs_kept {
+        dict for {name master} [dict get $::atcs_op($seq) after] {
+            if {$master ne "" && [lsearch -exact $names $name] < 0} { lappend names $name }
+        }
+    }
+    return [lsort $names]
+}
+proc atcs_replay_read_lines {path} {
+    set fh [open $path r]
+    set text [read $fh]
+    close $fh
+    set lines {}
+    foreach line [split $text "\n"] {
+        if {[string trim $line] ne ""} { lappend lines $line }
+    }
+    return $lines
 }
 
-source $env(STEPS_TCL)
+atcs_write_cell_dump [file join $env(DUMP_DIR) 000.dump]
+source $env(RECIPE_TCL)
+
+# Only instances that still exist are protected (a later command may have removed
+# one); a missing name is recorded rather than failing the whole protection.
+set protected {}
+set protect_missing {}
+set protect_code 0
+set protect_result ""
+if {$::ATCS_ARM eq "merged"} {
+    foreach name [atcs_replay_protected] {
+        if {[sizeof_collection [get_cells -quiet -exact $name]] == 1} {
+            lappend protected $name
+        } else {
+            lappend protect_missing $name
+        }
+    }
+    if {[llength $protected] > 0} {
+        set protect_code [catch {set_dont_touch [get_cells -exact $protected] true} protect_result]
+    }
+}
+
+# Auto-fix objects carry the batch's own prefix, never a worker's.
+set ::env(NAME_PREFIX) $env(AUTO_PREFIX)
+set_parameter eco_new_object_prefix "$env(AUTO_PREFIX)eco"
+set auto_fix {}
+foreach line [atcs_replay_read_lines $env(AUTO_FIX_TCL)] {
+    set code [catch {uplevel #0 $line} result]
+    lappend auto_fix [atcs_jobj [list command [atcs_js $line] code $code result [atcs_js [atcs_clip $result 2000]]]]
+}
+atcs_write_cell_dump [file join $env(DUMP_DIR) auto.dump]
+
+set predict_setup [catch {redirect -file [file join $env(PREDICT_DIR) setup.rpt] {summarize_gba_violations -exclude_path -setup}}]
+set predict_hold [catch {redirect -file [file join $env(PREDICT_DIR) hold.rpt] {summarize_gba_violations -exclude_path -hold}}]
+# What auto-fix left unfixed, and why (the atcs_gain probe's fail-reason reading, without a reference).
+# D-Q1-6 (#64 Q1, both arms' xtop-replay.log): XTop keeps fail reasons for the last fix flow's check only;
+# reading the other one printed "Error: Last flow is 'hold_gba', mismatched with current summary." and
+# "Error: Errors detected during redirection.", which marked each arm's run `tool log reports an error`
+# while it was only that check's reasons going unread. The other check is not read; its code says why
+# (a code that is not 0, so the arm's failReasonsUnread names it, as before).
+set last_flow $::atcs_fix_ran
+foreach line [atcs_replay_read_lines $env(AUTO_FIX_TCL)] {
+    switch -- [lindex [split [string trim $line]] 0] {
+        fix_hold_gba_violations { set last_flow hold }
+        fix_setup_gba_violations { set last_flow setup }
+    }
+}
+set fail_reason_codes {}
+foreach check {setup hold} {
+    if {$check ne $last_flow} {
+        set why [expr {$last_flow eq "" ? "no fix flow ran" : "${last_flow}_gba"}]
+        lappend fail_reason_codes $check [atcs_js "not read: XTop keeps fail reasons for the last fix flow's check only ($why)"]
+        continue
+    }
+    lappend fail_reason_codes $check [catch {redirect -file [file join $env(PREDICT_DIR) $check-fail-reasons.rpt] \
+        [list summarize_gba_violations -exclude_path -with_top_n $env(FAIL_REASON_TOP_N) -with_fail_reason -$check]}]
+}
+
+if {$::ATCS_ARM eq "merged"} {
+    file mkdir eco
+    set export_code [catch {write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco -keep_route} export_result]
+} else {
+    file mkdir eco-control
+    set export_code [catch {write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco-control -keep_route} export_result]
+}
+
+set fh [open $env(ARM_RESULT) w]
+fconfigure $fh -encoding utf-8
+puts $fh [atcs_jobj [list arm [atcs_js $::ATCS_ARM] complete true tainted [atcs_js $::atcs_tainted] \
+    appliedCommands $::atcs_replay_applied skippedCommands $::atcs_replay_skipped protected [atcs_jarr $protected] protectedCount [llength $protected] \
+    protectMissing [atcs_jarr $protect_missing] protectCode $protect_code protectResult [atcs_js [atcs_clip $protect_result 2000]] \
+    autoFix "\[[join $auto_fix ,]\]" predict [atcs_jobj [list setup $predict_setup hold $predict_hold]] \
+    failReasons [atcs_jobj $fail_reason_codes] \
+    exportCode $export_code exportResult [atcs_js [atcs_clip $export_result 2000]]]]
+close $fh
 exit 0

@@ -1,0 +1,23 @@
+id: atcs-engineering-result
+version: "3"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', engineering-result, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-engineering-result/1
+emits:
+  - tc_engineering_result_error_count
+  - tc_engineering_setup_wns_ns
+  - tc_engineering_hold_wns_ns
+  - tc_engineering_setup_tns_ns
+  - tc_engineering_hold_tns_ns
+  - tc_engineering_remaining_violation_count
+  - tc_engineering_regression_count
+  - tc_engineering_collateral_unknown_count
+  - tc_engineering_timing_remaining_violation_count
+  - tc_engineering_setup_violation_count
+  - tc_engineering_hold_violation_count
+  - tc_engineering_before_setup_violation_count
+  - tc_engineering_before_setup_wns_ns
+  - tc_engineering_before_setup_tns_ns
+  - tc_engineering_before_hold_violation_count
+  - tc_engineering_before_hold_wns_ns
+  - tc_engineering_before_hold_tns_ns

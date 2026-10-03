@@ -163,6 +163,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         }),
       });
       assert.equal(first.status, 200, await first.text());
+      const richWrappers = ['make', ...Array.from({ length: 32 }, (_, index) => `/opt/eda/wrappers/tool-${index + 1}`)];
       const richReadRoots = Array.from({ length: 9 }, (_, index) => `/work/reference-${String(index + 1)}`);
       const savedSiteFile = path.join(f.site.sitesDir, 'lab-a.yml');
       await writeFile(savedSiteFile, (await readFile(savedSiteFile, 'utf8')).replace(
@@ -171,9 +172,12 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       await writeFile(path.join(f.site.sitesDir, 'lab-a.permit.yml'), [
         'allowedReadRoots:', ...richReadRoots.map((root) => `  - ${root}`),
         'allowedWriteRoots:', '  - /work/hima',
-        'allowedWrappers:', '  - make',
+        'allowedWrappers:', ...richWrappers.map(wrapper => `  - ${wrapper}`),
         'forbidden:', '  - deletions', '',
       ].join('\n'));
+
+      const permitFile = path.join(f.site.sitesDir, 'lab-a.permit.yml');
+      const permitBefore = await readFile(permitFile, 'utf8');
 
       // A rediscover of that same saved Site (Configuration page's "Rediscover" button): the body
       // names only `name`, and the route must reuse the Site's own destination and permitted roots
@@ -194,9 +198,10 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.deepEqual(previewBody.result.site.bindings,
         { designRoot: '/work/reference-1/design', workspaceRoot: '/work/hima' },
         'rediscovery retains the saved Site bindings instead of replacing them with an empty map');
-      assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
+      assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, richWrappers, 'all 33 reviewed wrappers survive rediscovery and the duplicate Pack hint is deduplicated');
       assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 0 }, 'a Pack request cannot increase the administrator licence reservation during rediscovery');
       assert.ok((previewBody.result as { site: { discovery?: { facts: { probe: string[]; code: number }[] } } }).site.discovery?.facts.some((fact) => fact.code === 0 && fact.probe.join(' ') === 'which make'), 'the selected Pack command is actually probed');
+      assert.equal(await readFile(permitFile, 'utf8'), permitBefore, 'preview cannot change the reviewed Permit');
       const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
 
       // Make any second discovery fail. Save must persist the Host-held preview above, not rerun
@@ -213,6 +218,8 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.deepEqual(loadSite(f.site.sitesDir, 'lab-a').bindings,
         { designRoot: '/work/reference-1/design', workspaceRoot: '/work/hima' });
       assert.ok((await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs >= beforeSaveMtime, 'the reviewed rediscovery actually replaced the saved Site file');
+
+      assert.equal(await readFile(permitFile, 'utf8'), permitBefore, 'saving discovery facts preserves exact Permit bytes');
 
       const replay = await api(f.host, f.cookie, '/hima/api/sites/discover', {
         method: 'POST', headers: { 'content-type': 'application/json' },

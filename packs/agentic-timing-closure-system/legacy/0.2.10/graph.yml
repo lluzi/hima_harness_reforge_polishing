@@ -1,0 +1,433 @@
+# Common native XTop analysis -> initial AutoFix -> residual strategy -> six private trials.
+# Campaign Owner directs one persistent integration Operator, then exports directly to the referee.
+# No dual-arm arbitration, PreSTA or final global AutoFinish in this route.
+id: agentic-timing-closure-system
+version: "0.2.10"
+entry: bind-inputs
+autopilot:
+  # Inputs and baseline, and every generation's refresh-cap gate and slot binding, up to the plan.
+  - { from: [bind-inputs], until: [plan, wait-for-person] }
+  # The admitted plan prepares the six slots; a refused plan is the owner's decision.
+  - { from: [read-campaign-plan], until: [decide] }
+  # Six self-driving expert branches: each branch's child Agent authors its research Workshop (revised
+  # from the Reader's itemized problems when it refuses), the Operator works from the request itself.
+  # #66 D7: an author turn is a reasoning model's thinking plus one Workshop entry, so 48000 tokens.
+  - { fork: prepare-workers, revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } }
+  # The join collects every slot and computes the composition facts for the merge Workshop.
+  - { from: [check-worker-results], until: [compose] }
+  # Stop at the Owner-directed persistent lead. Its final ECO then drives the existing full referee.
+  - { from: [prepare-lead], until: [timing-lead] }
+  - { from: [finalize-lead], until: [decide] }
+nodes:
+  # 1. Bind and verify inputs; strict scope.
+  - id: bind-inputs
+    kind: act
+    parameters:
+      tool: bind-inputs
+      arguments:
+        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: read-readiness
+    kind: act
+    parameters: { observes: inputReadiness }
+  - id: check-inputs
+    kind: judge
+    parameters: { rules: [inputs-ready] }
+
+  # 2. Common baseline, initial observation, and the stamped acceptance policy (Goal bound here).
+  - id: baseline
+    kind: act
+    parameters:
+      tool: baseline
+      arguments:
+        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
+  - id: observe-baseline
+    kind: act
+    parameters:
+      tool: observe-baseline
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        MAX_PATHS: { from: strategy, name: maxPaths }
+  - id: policy
+    kind: act
+    parameters:
+      tool: policy
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        TARGET_SETUP_NS: { from: goal, name: target_setup_wns_ns }
+        TARGET_HOLD_NS: { from: goal, name: target_hold_wns_ns }
+  - id: physical-baseline
+    kind: act
+    parameters:
+      tool: physical-baseline
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: risk-baseline
+    kind: act
+    parameters:
+      tool: risk
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: residual-baseline
+    kind: act
+    parameters:
+      tool: residual
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+
+  # 3. Every generation starts here: the physical-refresh budget (Issue #64 Track B, from #63). Every
+  #    revisit consumes a Harness generation, so generationLimit bounds generations; this gate holds
+  #    tc_refreshes_completed below the Run's Goal value max_physical_refreshes, fixed when the Run is
+  #    created. Spent (FAIL), or an unverifiable ledger (UNDETERMINED), is the honest end.
+  - id: read-refresh-budget
+    kind: act
+    parameters: { observes: workingState }
+  - id: check-refresh-budget
+    kind: judge
+    parameters:
+      rules: [refresh-budget]
+      bind: { max_physical_refreshes: { from: goal, name: max_physical_refreshes } }
+
+  # 4. Plan six bounded slots, blockers first, and run them as six self-driving fork branches. The
+  #    Run's workerSlots knob is bound on the one way into the plan; the campaign-plan Reader refuses
+  #    only what breaks identity or merge integrity (a stale base, overlapping slots, an active slot
+  #    above the knob, a package prepare-workers cannot prepare); the rest is advice.
+  - id: bind-worker-slots
+    kind: act
+    parameters:
+      tool: worker-slots
+      arguments:
+        WORKER_SLOTS: { from: strategy, name: workerSlots }
+  - id: plan
+    kind: act
+    parameters: { workshop: plan-campaign }
+  - id: read-campaign-plan
+    kind: act
+    parameters: { observes: campaignPlan }
+  - id: check-campaign-plan
+    kind: judge
+    parameters: { rules: [request-admissible, request-checked] }
+  - id: prepare-workers
+    kind: act
+    parameters:
+      tool: prepare-workers
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+
+  # Each branch is one slot's pure act chain and holds one Site Job at a time: its research Workshop
+  # (authored by the branch's own child Agent, or its retained code), its Reader, its operate node (the
+  # worker Team Operator's interactive XTop session working from the request itself, or for a parked
+  # or refused slot the batch operate-parked no-op), its capture and its result Reader.
+  - id: research-worker-01
+    kind: act
+    parameters: { workshop: research-worker-01 }
+  - id: read-worker-request-01
+    kind: act
+    parameters: { observes: workerRequest01 }
+  - id: operate-worker-01
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w01 } }
+  - id: capture-worker-01
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w01 } }
+  - id: read-worker-result-01
+    kind: act
+    parameters: { observes: workerResult01 }
+
+  - id: research-worker-02
+    kind: act
+    parameters: { workshop: research-worker-02 }
+  - id: read-worker-request-02
+    kind: act
+    parameters: { observes: workerRequest02 }
+  - id: operate-worker-02
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w02 } }
+  - id: capture-worker-02
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w02 } }
+  - id: read-worker-result-02
+    kind: act
+    parameters: { observes: workerResult02 }
+
+  - id: research-worker-03
+    kind: act
+    parameters: { workshop: research-worker-03 }
+  - id: read-worker-request-03
+    kind: act
+    parameters: { observes: workerRequest03 }
+  - id: operate-worker-03
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w03 } }
+  - id: capture-worker-03
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w03 } }
+  - id: read-worker-result-03
+    kind: act
+    parameters: { observes: workerResult03 }
+
+  - id: research-worker-04
+    kind: act
+    parameters: { workshop: research-worker-04 }
+  - id: read-worker-request-04
+    kind: act
+    parameters: { observes: workerRequest04 }
+  - id: operate-worker-04
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w04 } }
+  - id: capture-worker-04
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w04 } }
+  - id: read-worker-result-04
+    kind: act
+    parameters: { observes: workerResult04 }
+
+  - id: research-worker-05
+    kind: act
+    parameters: { workshop: research-worker-05 }
+  - id: read-worker-request-05
+    kind: act
+    parameters: { observes: workerRequest05 }
+  - id: operate-worker-05
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w05 } }
+  - id: capture-worker-05
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w05 } }
+  - id: read-worker-result-05
+    kind: act
+    parameters: { observes: workerResult05 }
+
+  - id: research-worker-06
+    kind: act
+    parameters: { workshop: research-worker-06 }
+  - id: read-worker-request-06
+    kind: act
+    parameters: { observes: workerRequest06 }
+  - id: operate-worker-06
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: w06 } }
+  - id: capture-worker-06
+    kind: act
+    parameters: { tool: capture-contribution, arguments: { SLOT: w06 } }
+  - id: read-worker-result-06
+    kind: act
+    parameters: { observes: workerResult06 }
+
+  # The join: every branch's sealed result, judged on its own reading. Every outcome collects; a
+  # refused slot is excluded from the ranked recipe by composition, not by the route.
+  - id: check-worker-results
+    kind: judge
+    parameters: { rules: [worker-result-admissible] }
+
+  # 5. Join once; the Owner briefs and directs the retained Timing Lead session.
+  - id: collect
+    kind: act
+    parameters: { tool: collect }
+  - id: read-contribution-index
+    kind: act
+    parameters: { observes: contributionIndex }
+  - id: compose-facts
+    kind: act
+    parameters: { tool: compose-facts }
+  - id: read-composition-facts
+    kind: act
+    parameters: { observes: compositionFacts }
+  - id: compose
+    kind: act
+    parameters: { workshop: compose-contributions }
+  - id: implement
+    kind: act
+    parameters:
+      tool: implement
+      arguments:
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: extract
+    kind: act
+    parameters:
+      tool: extract
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: sta
+    kind: act
+    parameters:
+      tool: sta
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        MAX_PATHS: { from: strategy, name: maxPaths }
+  - id: physical-candidate
+    kind: act
+    parameters: { tool: physical-candidate }
+  - id: evaluate
+    kind: act
+    parameters:
+      tool: evaluate
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: read-final-evaluation
+    kind: act
+    parameters: { observes: finalEvaluation }
+  - id: adopt
+    kind: act
+    parameters:
+      tool: adopt
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: read-acceptance
+    kind: act
+    parameters: { observes: acceptanceRecord }
+  - id: observe-working
+    kind: act
+    parameters:
+      tool: observe-baseline
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+        MAX_PATHS: { from: strategy, name: maxPaths }
+  - id: risk-working
+    kind: act
+    parameters:
+      tool: risk
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+  - id: residual
+    kind: act
+    parameters:
+      tool: residual
+      arguments:
+        ANALYSIS_CONTRACT: { from: input, name: analysisContract }
+        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
+  - id: record-experience
+    kind: act
+    parameters: { tool: record-experience }
+  - id: reread-final-evaluation
+    kind: act
+    parameters: { observes: finalEvaluation }
+  - id: check-generation
+    kind: judge
+    parameters:
+      rules: [final-evidence-ready-identity, setup-goal, hold-goal]
+      bind:
+        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
+        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+
+  # 8. The owner's one decision: next-strategy continues with the next generation from the working
+  #    state, stop ends the Campaign honestly, goal-met needs every required verdict PASS.
+  - id: decide
+    kind: explore
+    parameters: { chooser: atcs-goal-met, bind: { paths: 1000 } }
+
+  # The honest end: missing minimum inputs, or the refresh cap spent. No edge out.
+  - id: wait-for-person
+    kind: wait
+    parameters: { blocker: scope-or-input-required }
+
+  - id: common-autofix
+    kind: act
+    parameters: { tool: common-autofix, arguments: { SITE_CAPABILITIES: { from: input, name: siteCapabilities } } }
+  - id: prepare-lead
+    kind: act
+    parameters: { tool: prepare-lead, arguments: { SITE_CAPABILITIES: { from: input, name: siteCapabilities } } }
+  - id: timing-lead
+    kind: act
+    parameters: { tool: xtop-operator, arguments: { SLOT: lead } }
+  - id: finalize-lead
+    kind: act
+    parameters: { tool: finalize-lead }
+
+edges:
+  - { from: bind-inputs, to: read-readiness }
+  - { from: read-readiness, to: check-inputs }
+  - { from: check-inputs, to: baseline, outcome: PASS }
+  - { from: check-inputs, to: wait-for-person, outcome: FAIL }
+  - { from: check-inputs, to: wait-for-person, outcome: UNDETERMINED }
+  - { from: baseline, to: observe-baseline }
+  - { from: observe-baseline, to: policy }
+  - { from: policy, to: physical-baseline }
+  - { from: physical-baseline, to: risk-baseline }
+  - { from: risk-baseline, to: residual-baseline }
+  - { from: residual-baseline, to: common-autofix }
+  - { from: common-autofix, to: read-refresh-budget }
+
+  - { from: read-refresh-budget, to: check-refresh-budget }
+  - { from: check-refresh-budget, to: bind-worker-slots, outcome: PASS }
+  - { from: check-refresh-budget, to: wait-for-person, outcome: FAIL }
+  - { from: check-refresh-budget, to: wait-for-person, outcome: UNDETERMINED }
+  - { from: bind-worker-slots, to: plan }
+  - { from: plan, to: read-campaign-plan }
+  - { from: read-campaign-plan, to: check-campaign-plan }
+  - { from: check-campaign-plan, to: prepare-workers, outcome: PASS }
+  - { from: check-campaign-plan, to: decide, outcome: FAIL }
+  - { from: check-campaign-plan, to: decide, outcome: UNDETERMINED }
+  - { from: prepare-workers, to: research-worker-01 }
+  - { from: prepare-workers, to: research-worker-02 }
+  - { from: prepare-workers, to: research-worker-03 }
+  - { from: prepare-workers, to: research-worker-04 }
+  - { from: prepare-workers, to: research-worker-05 }
+  - { from: prepare-workers, to: research-worker-06 }
+
+  - { from: research-worker-01, to: read-worker-request-01 }
+  - { from: read-worker-request-01, to: operate-worker-01 }
+  - { from: operate-worker-01, to: capture-worker-01 }
+  - { from: capture-worker-01, to: read-worker-result-01 }
+  - { from: read-worker-result-01, to: check-worker-results }
+  - { from: research-worker-02, to: read-worker-request-02 }
+  - { from: read-worker-request-02, to: operate-worker-02 }
+  - { from: operate-worker-02, to: capture-worker-02 }
+  - { from: capture-worker-02, to: read-worker-result-02 }
+  - { from: read-worker-result-02, to: check-worker-results }
+  - { from: research-worker-03, to: read-worker-request-03 }
+  - { from: read-worker-request-03, to: operate-worker-03 }
+  - { from: operate-worker-03, to: capture-worker-03 }
+  - { from: capture-worker-03, to: read-worker-result-03 }
+  - { from: read-worker-result-03, to: check-worker-results }
+  - { from: research-worker-04, to: read-worker-request-04 }
+  - { from: read-worker-request-04, to: operate-worker-04 }
+  - { from: operate-worker-04, to: capture-worker-04 }
+  - { from: capture-worker-04, to: read-worker-result-04 }
+  - { from: read-worker-result-04, to: check-worker-results }
+  - { from: research-worker-05, to: read-worker-request-05 }
+  - { from: read-worker-request-05, to: operate-worker-05 }
+  - { from: operate-worker-05, to: capture-worker-05 }
+  - { from: capture-worker-05, to: read-worker-result-05 }
+  - { from: read-worker-result-05, to: check-worker-results }
+  - { from: research-worker-06, to: read-worker-request-06 }
+  - { from: read-worker-request-06, to: operate-worker-06 }
+  - { from: operate-worker-06, to: capture-worker-06 }
+  - { from: capture-worker-06, to: read-worker-result-06 }
+  - { from: read-worker-result-06, to: check-worker-results }
+  - { from: check-worker-results, to: collect, outcome: PASS }
+  - { from: check-worker-results, to: collect, outcome: FAIL }
+  - { from: check-worker-results, to: collect, outcome: UNDETERMINED }
+
+  - { from: collect, to: read-contribution-index }
+  - { from: read-contribution-index, to: compose-facts }
+  - { from: compose-facts, to: read-composition-facts }
+  - { from: read-composition-facts, to: compose }
+  - { from: compose, to: prepare-lead }
+  - { from: prepare-lead, to: timing-lead }
+  - { from: timing-lead, to: finalize-lead }
+  - { from: finalize-lead, to: implement }
+
+  - { from: implement, to: extract }
+  - { from: extract, to: sta }
+  - { from: sta, to: physical-candidate }
+  - { from: physical-candidate, to: evaluate }
+  - { from: evaluate, to: read-final-evaluation }
+  - { from: read-final-evaluation, to: adopt }
+  - { from: adopt, to: read-acceptance }
+  - { from: read-acceptance, to: observe-working }
+  - { from: observe-working, to: risk-working }
+  - { from: risk-working, to: residual }
+  - { from: residual, to: record-experience }
+  - { from: record-experience, to: reread-final-evaluation }
+  - { from: reread-final-evaluation, to: check-generation }
+  - { from: check-generation, to: decide, outcome: PASS }
+  - { from: check-generation, to: decide, outcome: FAIL }
+  - { from: check-generation, to: decide, outcome: UNDETERMINED }
+
+  - { from: decide, to: read-refresh-budget, revisit: true }

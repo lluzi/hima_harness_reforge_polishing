@@ -1,6 +1,6 @@
 // @hima-seam llm-replay direct
 // L3 acceptance (#41 task 9): the seven Campaign workspace states, light and dark, on Catsights,
-// plus state 8 (#63): a 106-node reference graph drawn in lanes.
+// plus state 8 (#63): a 132-node reference graph drawn in lanes.
 // Screenshots are the acceptance artefacts; this file also proves each state's own marker contract
 // so a broken render fails loud rather than only looking wrong in a picture nobody re-checks.
 import { test, type TestContext } from 'node:test';
@@ -752,7 +752,7 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
 
 
 // ---------------------------------------------------------------------------------------------
-// State 8 (#63): the 106-node agentic-timing-closure-system reference graph, in lanes.
+// State 8 (#63, #64): the 132-node agentic-timing-closure-system reference graph, in lanes.
 // ---------------------------------------------------------------------------------------------
 
 /** The shipped ATCS Pack, copied to a local variant whose only changes are the Site-facing ones the
@@ -782,7 +782,7 @@ async function bootAtcsGraph(t: TestContext, theme: 'light' | 'dark', remoteDebu
   ] });
   await writeFile(replayOverride, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
   await writeLocalSite(h, { allowedReadRoots: [packSource, inputsRoot, h.workspace], allowedWriteRoots: [h.workspace],
-    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 1, innovus: 1, primetime: 1, starrc: 1 },
+    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 2, innovus: 1, primetime: 1, starrc: 1 },
     bindings: { designStateManifest: path.join(inputsRoot, 'manifest.json'), analysisContract: path.join(inputsRoot, 'analysis'),
       siteCapabilities: path.join(inputsRoot, 'caps.json'), workspaceRoot: h.workspace } });
   await writeReplayOverlay(h.home, { file: replayFile, overrideFile: replayOverride });
@@ -793,7 +793,7 @@ async function bootAtcsGraph(t: TestContext, theme: 'light' | 'dark', remoteDebu
   return { d, h, packSource };
 }
 
-test('state 8: the 106-node ATCS reference graph opens in lanes with no overlapping nodes or labels', async (t) => {
+test('state 8: the 132-node ATCS reference graph opens in lanes with no overlapping nodes or labels', async (t) => {
   if (windowUnavailable(t)) return;
   await bothThemes(t, async (theme) => {
     const port = await freePort();
@@ -804,13 +804,13 @@ test('state 8: the 106-node ATCS reference graph opens in lanes with no overlapp
     try {
       browser = await inspectWindow(port);
       await openConfiguredGraph(d, h, browser, { packId: 'agentic-timing-closure-system', packSource: booted.packSource, reviewedFile: 'graph.yml',
-        goal: { target_setup_wns_ns: '0', target_hold_wns_ns: '0' }, minNodes: 106 });
+        goal: { target_setup_wns_ns: '0', target_hold_wns_ns: '0' }, minNodes: 132 });
       const width = await widenDockPane(browser);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
       await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale') !== '1.00'`, 20_000).catch(() => undefined);
       await browser.evaluate('new Promise((resolve) => setTimeout(resolve, 400))');
       // Measured on screen as the canvas opens (labels visible): every node's own square hit area and
-      // every id label, in client pixels, across all 106 nodes (off-screen ones included).
+      // every id label, in client pixels, across all 132 nodes (off-screen ones included).
       const measured = await browser.evaluate<{ scale: number; nodes: number; rows: number; glyphOverlaps: string[]; labelOverlaps: string[] }>(`(() => {
         const graph = document.querySelector('[data-hima-region="campaign-graph"]');
         const nodes = [...graph.querySelectorAll('[data-hima-region^="campaign-node-"]')];
@@ -832,7 +832,7 @@ test('state 8: the 106-node ATCS reference graph opens in lanes with no overlapp
       await browser.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
       await capture(d, browser, `atcs-graph-fit-${theme}`);
 
-      assert.equal(measured.nodes, 106);
+      assert.equal(measured.nodes, 132);
       assert.ok(measured.scale >= 0.6, `the canvas opens at a readable scale: ${String(measured.scale)}`);
       assert.deepEqual(measured.glyphOverlaps, [], 'no two node glyphs overlap on screen');
       assert.deepEqual(measured.labelOverlaps, [], 'no node label runs into another label or glyph on screen');

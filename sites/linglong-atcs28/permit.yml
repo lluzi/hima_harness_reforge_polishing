@@ -1,5 +1,24 @@
 allowedReadRoots:
-  - /data/eda/project/hima_harness/operator-admin/atcs-v9
+  - /data/eda/env
+  - /data/eda/software/eda_tools/empyrean
+  - /data/eda/project/hima_harness/operator-admin/atcs-v31
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
+  - /data/eda/project/hima_harness/operator-admin/atcs-v30
+  - /data/eda/project/hima_harness/operator-admin/atcs-v29
+  - /data/eda/project/hima_harness/operator-admin/atcs-v28
+  - /data/eda/project/hima_harness/operator-admin/atcs-v27
+  - /data/eda/project/hima_harness/operator-admin/atcs-v26
+  - /data/eda/project/hima_harness/operator-admin/atcs-v25
+  - /data/eda/project/hima_harness/operator-admin/atcs-v24
+  - /data/eda/project/hima_harness/operator-admin/atcs-v14
+  - /data/eda/project/hima_harness/operator-admin/atcs-v15
+  - /data/eda/project/hima_harness/operator-admin/atcs-v16
+  - /data/eda/project/hima_harness/operator-admin/atcs-v17
+  - /data/eda/project/hima_harness/operator-admin/atcs-v18
+  - /data/eda/project/hima_harness/operator-admin/atcs-v19
+  - /data/eda/project/hima_harness/operator-admin/atcs-v20
+  - /data/eda/project/hima_harness/operator-admin/atcs-v21
+  - /data/eda/project/hima_harness/operator-admin/atcs-v23
   - /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation
   # Final review: the real tech LEF and cell LEF glob for this design (`prepare-workers`'
   # eda-profile.json / this Site's own siteCapabilities.json `techLef`/`cellLefGlob`) live
@@ -16,6 +35,15 @@ allowedReadRoots:
 allowedWriteRoots:
   - /data/eda/project/hima_harness/atcs-runs
 allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py
+  - /data/eda/project/hima_harness/operator-admin/atcs-v31/atcs-xtop-operator-v31.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v30/atcs-xtop-operator-v30.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v29/atcs-xtop-operator-v29.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v28/atcs-xtop-operator-v28.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v27/atcs-xtop-operator-v27.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v26/atcs-xtop-operator-v26.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v25/atcs-xtop-operator-v25.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v24/atcs-xtop-operator-v24.sh
   - python3
   - /usr/bin/python3
   - /data/eda/project/hima_harness/operator-admin/atcs-v1/atcs-xtop-operator.sh
@@ -27,6 +55,19 @@ allowedWrappers:
   - /data/eda/project/hima_harness/operator-admin/atcs-v7/atcs-xtop-operator-v7.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v8/atcs-xtop-operator-v8.sh
   - /data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v10/atcs-xtop-operator-v10.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v11/atcs-xtop-operator-v11.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v12/atcs-xtop-operator-v12.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v13/atcs-xtop-operator-v13.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v14/atcs-xtop-operator-v14.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v15/atcs-xtop-operator-v15.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v16/atcs-xtop-operator-v16.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v17/atcs-xtop-operator-v17.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v18/atcs-xtop-operator-v18.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v19/atcs-xtop-operator-v19.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v20/atcs-xtop-operator-v20.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v21/atcs-xtop-operator-v21.sh
+  - /data/eda/project/hima_harness/operator-admin/atcs-v23/atcs-xtop-operator-v23.sh
 forbidden:
   - services
   - licence-servers

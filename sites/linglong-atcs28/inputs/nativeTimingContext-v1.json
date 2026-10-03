@@ -1,0 +1,43 @@
+{
+  "schema": "atcs.native-timing-context/1",
+  "designStateManifestSha256": "b3b9893ee3506f5fd2ee41445f7e1980cc820a4a07d25f9e8d2f95a4803e3fdc",
+  "requiredScenarios": [
+    "func_ssg_rcworst_m40",
+    "func_ssg_rcworst_125",
+    "func_ffg_cbest_m40",
+    "func_ffg_cbest_125"
+  ],
+  "staData": {
+    "path": "/data/eda/project/hima_harness/atcs-runs/qual-v31-20261002T051947Z/native/research/observe/g1/sta_data",
+    "digest": "5cf7fc4cc0ded370ec34f88c38ed2aeaf7aa96355f9bbe096f6cd7d91c68ef0e"
+  },
+  "sourceReports": [
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_m40/global_timing.rpt", "sha256": "fcf5fc0fa0824d7ba537aaca8f7bfd501233563891be66c7b7d30a3b530f1f2d"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_m40/setup.rpt", "sha256": "818bc92f303a4b493ec6280f33d1881463ab1bac7f7276c480d222db50d74c3f"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_m40/hold.rpt", "sha256": "517c10f6dadd386e0ecc59d2f2e60e142852ff3a29d647cf0c099f290e762190"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_m40/check_timing.rpt", "sha256": "f27e149b8a57296d2374ebb1a3da934491dd250af4b75a3a2ae61bb9eeef2351"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_125/global_timing.rpt", "sha256": "4d22b0f31b2aff6a9a2443b7f304675c9ba1196b2c6aac8bb47750bf2023f920"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_125/setup.rpt", "sha256": "6c0bf056f766ab12e965e2cb7ae4e487cc27ac02ac1879fd9e4fd1d92dc040ea"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_125/hold.rpt", "sha256": "3cd81f05f37fc0eaf13df462e7adff11522b721e957dc48aaa246e5112b40357"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ssg_rcworst_125/check_timing.rpt", "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_m40/global_timing.rpt", "sha256": "10542de1859e0b8ea6265108e14fcc80132750b5469d5ae03b27cee936184d63"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_m40/setup.rpt", "sha256": "10cb02ccb5b805d627cff0380affeaefc4871e6de14970fccae6b5071afcdd34"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_m40/hold.rpt", "sha256": "6152dca4b0323a9626b5595cba0a1e179f1e49f3553e1bb8f01d4d141318e09a"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_m40/check_timing.rpt", "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_125/global_timing.rpt", "sha256": "a78fe7b111222fe2350024f6c1352fb7a79502e8ca286d531e2b13ce295f174e"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_125/setup.rpt", "sha256": "a99a2b215a17c0e03a98acd617296bc0c494880b238cc917ba039d95d965827b"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_125/hold.rpt", "sha256": "32a3b19f3dc477a9625c273b13e97699385d0183abce02cf2b9a3dbf9ff54935"},
+    {"path": "/data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/research/observe/g1/func_ffg_cbest_125/check_timing.rpt", "sha256": "eabafdaf6e7cf26039ef1c706c5b10a62059ead33f266f36df79e63490d9df09"}
+  ],
+  "constraints": [
+    {
+      "path": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/EXPORT/swerv_wrapper.input.sdc",
+      "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+    }
+  ],
+  "producer": {
+    "tool": "PrimeTime",
+    "version": "X-2025.06",
+    "command": "python3 /data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z/flow/atcs_cli.py observe /data/eda/project/hima_harness/atcs-runs/qual-v28-20261002T003728Z /data/eda/project/hima_harness/atcs-inputs/analysisContract-timing-only/query-spec.json /data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v5.json /data/eda/project/hima_harness/atcs-inputs/analysisContract-timing-only/scenarios.json 1000"
+  }
+}

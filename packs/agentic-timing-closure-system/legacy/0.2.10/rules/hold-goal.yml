@@ -1,0 +1,10 @@
+id: hold-goal
+version: "1"
+title: The final worst hold slack over every required check meets the Run's hold target
+parameter: { name: target_hold_wns_ns, unit: ns }
+requires: [{ type: tc_final_hold_wns_ns, mode: hold }]
+subject: { type: tc_final_hold_wns_ns, mode: hold }
+predicate:
+  op: gte
+  threshold: { parameter: target_hold_wns_ns }
+  unit: ns

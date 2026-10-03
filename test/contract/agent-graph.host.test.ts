@@ -239,6 +239,8 @@ test('explore rejects invented success and invalid strategy, then follows the ow
     });
     assert.equal(owner.context().run.status, 'ended-goal-met');
     assert.deepEqual(owner.context().available, []);
+    const completedView = remote.runView(host.ctx.hima.ledger, host.ctx.hima.ledger.run(runId)!) as RunView;
+    assert.deepEqual(completedView.decision?.requiredVerdictIds, host.ctx.hima.ledger.records({ runId, type: 'verdict' }).filter(record => record.generation === 2).map(record => record.id), 'completion retains the actual required Judge scope for later reports');
     assert.equal(owner.launched().length, 2);
     assert.deepEqual(owner.launched().map((job) => job.generation), [1, 2]);
   });

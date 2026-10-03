@@ -1,5 +1,7 @@
 """C22 (failure catalogue): PT endpoints resolve to netlist instances deterministically.
 
+Ported to Pack 0.2.0 for Issue #64 from main 45257f24 and e00d06cb (the check-key endpoint part).
+
 Fresh03, PR02 and PR03 each rewrote an endpoint-to-instance resolver in model-authored
 Workshop code and lost 2-4 attempts plus revisions to the same shapes. The endpoint
 shapes that code got wrong were: flattened versus hierarchical names, bus spellings,
@@ -203,8 +205,8 @@ class ResolverReachesTheWorkshopTest(_Fixture):
 
     def test_the_documented_command_path_is_the_runs_first_reader(self):
         import re
-        graph = (self.PACK_DIR / "graph.yml").read_text(encoding="utf-8")
-        contract = (self.PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        graph = (self.PACK_DIR / "legacy/0.2.10/graph.yml").read_text(encoding="utf-8")
+        contract = (self.PACK_DIR / "legacy/0.2.10/contract.yml").read_text(encoding="utf-8")
         reader = (self.PACK_DIR / "readers" / "atcs-readiness.yml").read_text(encoding="utf-8")
         knowledge = (self.PACK_DIR / "knowledge" / "endpoint-resolution.md").read_text(encoding="utf-8")
         self.assertRegex(graph, r"(?m)^entry: bind-inputs$")
@@ -216,12 +218,21 @@ class ResolverReachesTheWorkshopTest(_Fixture):
         self.assertIn('"resolve-instances"', knowledge)
 
     def test_the_plan_and_worker_purposes_point_at_the_resolver(self):
-        contract = (self.PACK_DIR / "contract.yml").read_text(encoding="utf-8")
-        for workshop in ("plan-campaign", "research-worker-01", "research-worker-02", "research-worker-03"):
+        """Issue #64 (ported to the six-slot 0.2.0 Workshops): the plan and every worker Workshop
+        read the knowledge, and the plan purpose says to pass the endpoint, not the check key."""
+        import re
+        contract = (self.PACK_DIR / "legacy/0.2.10/contract.yml").read_text(encoding="utf-8")
+        declared = contract.split("\nknowledge:\n", 1)[1].split("\nagentTeams:\n", 1)[0]
+        self.assertIn("  - file: endpoint-resolution.md\n", declared)
+        workshops = ["plan-campaign"] + [f"research-worker-{slot}" for slot in ("01", "02", "03", "04", "05", "06")]
+        for workshop in workshops:
             body = contract.split(f"  - id: {workshop}\n", 1)[1].split("\n  - id: ", 1)[0]
             with self.subTest(workshop=workshop):
                 self.assertIn("knowledge endpoint-resolution.md", " ".join(body.split()))
-                self.assertIn("endpoint-resolution.md]", body)
+                listed = re.search(r"^    knowledge: \[(.*)\]$", body, re.M).group(1).split(", ")
+                self.assertIn("endpoint-resolution.md", listed)
+        plan = " ".join(contract.split("  - id: plan-campaign\n", 1)[1].split("\n  - id: ", 1)[0].split())
+        self.assertIn("pass the endpoint, not the check key", plan)
 
 
 class LargeNetlistTest(_Fixture):

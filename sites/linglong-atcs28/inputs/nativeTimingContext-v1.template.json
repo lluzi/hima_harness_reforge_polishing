@@ -1,0 +1,26 @@
+{
+  "schema": "atcs.native-timing-context/1",
+  "designStateManifestSha256": "<REPLACE-WITH-BOUND-MANIFEST-SHA256>",
+  "requiredScenarios": ["<REPLACE-WITH-ORDERED-MANIFEST-SCENARIO>"],
+  "staData": {
+    "path": "<REPLACE-WITH-ABSOLUTE-RETAINED-STA-DATA-DIRECTORY>",
+    "digest": "<REPLACE-WITH-ATCS-TREE-DIGEST>"
+  },
+  "sourceReports": [
+    {
+      "path": "<REPLACE-WITH-ABSOLUTE-SOURCE-REPORT>",
+      "sha256": "<REPLACE-WITH-SOURCE-REPORT-SHA256>"
+    }
+  ],
+  "constraints": [
+    {
+      "path": "<REPLACE-WITH-ABSOLUTE-CONSTRAINT-FILE>",
+      "sha256": "<REPLACE-WITH-CONSTRAINT-SHA256>"
+    }
+  ],
+  "producer": {
+    "tool": "<REPLACE-WITH-PRODUCER-TOOL>",
+    "version": "<REPLACE-WITH-PRODUCER-VERSION>",
+    "command": "<REPLACE-WITH-PRODUCER-COMMAND>"
+  }
+}

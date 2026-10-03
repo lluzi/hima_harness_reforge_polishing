@@ -1,0 +1,168 @@
+Pack merge review: main 0626bba3 + resident eb38cb7d
+
+Ownership: packs/agentic-timing-closure-system/**, sites/linglong-atcs28/README.md,
+and explicitly extended historical wrapper-pins archive. No index, commit or push operation.
+Model allocation: assigned Codex gpt-6.1-sol/high worker; no nested delegation.
+Minimum verification: Python Reader/flow seams; zero product model calls, SSH or commercial EDA.
+
+Production baseline and conflict decisions
+
+The current contract/graph/SPEC/FABRIC/semantics use resident 0.3.3: one fix-timing outsourced
+engineering task, narrow actual Timing Goal, separate collateral/no-regression/unknown facts,
+complete artifact delivery, explicit honest ending. Old worker/physical-refresh/revisit graph
+behavior is not reintroduced into production. The 0.2.10 six-seat method remains explicit legacy.
+
+Resolved 19 originally conflicted files:
+FABRIC.md, SPEC.md, contract.yml, graph.yml, semantics.yml;
+flow/tests/test_cli_state.py, test_endpoint_resolution.py, test_readers.py, test_records.py,
+test_refresh_budget.py, test_workshop_examples.py;
+knowledge/endpoint-resolution.md, example-campaign-plan.md, example-integration-plan.md,
+example-worker-request.md, method-and-benchmark.md;
+readers/atcs-worker-request-01.yml, tools/read-atcs.py;
+sites/linglong-atcs28/README.md.
+
+Main-specific intentions traced to commit sources
+
+- 45257f24/e00d06cb C22: deterministic netlist endpoint resolver and check-key endpoint extraction
+  already ported to the newer Reader; retain it and test the current Reader. Do not restore whole-key
+  or empty-domain behavior. 0.2.10 uses native seat-clusters/common R1 rather than the old plan prompt.
+- 5e95d542 C23 and 4ed569ba C13: leaf-domain/library/function evidence already ported, but deliberate
+  newer exploratory Operator policy makes these advice rather than pre-emptive hard refusals. The
+  verified identity, prepared-package scope and actual toolkit checks retain authority. The old
+  actions/toMaster schema is replaced by sessionPlan/operator scope and is preserved historically.
+- 09a4a13d/c606c3c7: noSafeAction is retained in the newer sessionPlan form with an admitted honest
+  no-move path, plus parked seats. Do not reinsert old route-worker-action-01 into resident production.
+- 3b669e85/35149d00/18829968/e4266f19/799d841a/16b0e58c: bounded reviewer/worker prompt and admitted
+  examples were ported and then evolved. Current resident outsourcing supersedes internal Hima teams;
+  old examples/recipe declarations remain available in explicit legacy rather than production tools.
+- 2d3678a1/4b3af279: malformed request defects become counted itemized problems with recovery;
+  newer Reader keeps this and also non-counted advice. Identity tampering remains fail-closed.
+- d1471985: stale-context observe-first guard retained by newer Reader and current CLI regression.
+- 93cc7db6/09a4a13d: exact next-decision target keys were absent from newer shared Reader. Restore
+  only this 29-line check, including admitted exact observed async-default keys. New current seam
+  test_merged_target_keys covers positive, unobserved, wildcard/prose and no-observation cases.
+- 8c936c2c/46b083a0: physical-refresh count/immutable Goal cap retained in legacy flow and Reader;
+  resident XTop-only route has no physical refresh and gains no obsolete cap prerequisite.
+- ea3993f3/9737b28f/ec932970: current first-pass composition/no-fix resolution/slot negatives retained
+  in shared flow; dormant legacy graph no longer has the early compose-facts-admitted chain.
+- 2629df94/082498d0: old installed v9 pins and released 0.1.10 seal are historical identities.
+  Move old pins to sites/linglong-atcs28/archive/atcs-v9/wrapper-pins.json unchanged. The complete
+  tracked released Pack is retained at legacy/0.1.10, so stale VERSION.yml cannot falsely seal 0.3.3.
+
+Historical archive integrity
+
+0.1.10: 132 original tracked files, 2,036,119 bytes, all original bytes and tracked executable
+modes checked against main 0626bba3. All 131 file SHA-256 values in its original VERSION.yml match.
+Archive contains tracked source/existing fixtures and original TEST/VERSION only; no Run workspace,
+new customer material or generated engineering artifact was added. The adjacent legacy/0.1.10-README.md clearly marks historical status and adds no file inside
+the original sealed directory. Original probe regressions 11 PASS and success-path regressions 11 PASS.
+
+0.2.10: existing six root method records match pre-resident b20ef44a; restored the missing historical
+knowledge/readers/rules/choosers from that exact commit under legacy/0.2.10. Tests that exercise the
+six-seat declarations now name that snapshot, while executing current root flow/Reader. Node test
+owner was notified to copy those directories when installing the explicit legacy method.
+Current method-and-benchmark.md now clearly labels its previous 0.2.3 method as retained history.
+
+Validation and honest limitations
+
+Current applicable seam group: 158 PASS in 2.482s:
+  new exact-target regression 3; current resident engineering-result 16; native-context 3;
+  current shared Reader 117; retained physical-refresh Reader/Goal tests 19.
+Historical main original regressions: 22 PASS (11 probe + 11 success-path), separately executed
+against the complete original snapshot. Historical PASS is not current resident acceptance.
+Owned diff whitespace check PASS; no conflict markers remain in owned working files.
+
+The merged full Python discovery log recorded 1540 tests in 129.560s, with 56 failure assertions,
+3 errors, 14 skips and 1 expected failure. The extra SemanticsCoverage failure was fixed by making
+its Reader directory agree with its explicit legacy semantics; that class passed in the current
+seam group. A full discovery after that path-only test fix was not repeated. The remaining scoped
+replay is 55 failure assertions and 3 errors, all existing stale historical test expectations.
+
+To distinguish merge regressions from frozen-latest defects, preserved an untouched eb38cb7d Pack
+in branch-audit/latest-pack and replayed exactly the full-run failed test methods. Untouched latest
+production declarations prevent some early six-seat classes from setting up; it yields 54 failure
+assertions and 9 errors in that subset. Then projected the exact frozen b20ef44a legacy records
+onto a copy of the same frozen latest Reader/flow to give both executions equivalent six-seat
+method context. Frozen legacy projection and merged subset have the SAME failures/errors:
+36 tests, 55 failure assertions, 3 errors. New merge failure test IDs: zero. No production behavior
+was changed to make outdated assertions pass, and no baseline failure was marked PASS or skipped.
+
+Residual categories: obsolete early compose/read-admit chain; old prompt/checklist/expert-catalog
+wording/counts; 20-versus-600 example/prepared scope drift; old control-selection assertions despite
+accepted replay being retained for physical referee; old CLI path/arity table missing common/lead
+outputs; legacy Knowledge strict heading shape. Each same-test mapping follows below. Baseline
+limitations do not establish current product failure or current full-suite PASS.
+
+Logs under /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/branch-audit/:
+pack-python-initial.log (exploratory first merge run, before declaration migration);
+pack-python-merged.log (full discovery with explicit legacy declaration reads);
+pack-current-seams.log; pack-legacy-probe.log; pack-legacy-success.log;
+pack-frozen-comparison.log/json (untouched eb38cb7d);
+pack-frozen-legacy-projection.log/json (same frozen code, historical declaration projection);
+pack-merged-comparison.log/json (final failing subset, same method context);
+pack-reader-sides.patch; pack-main-reader.patch.
+
+No fresh model, commercial tool, native Site installation, release or GUI acceptance was run.
+No historical release digest, native qualification or timing benefit was asserted for merged bytes.
+
+Exact shared residual test IDs (failure assertions, including subtests):
+test_adapters.RecipeReplayTclshTest.test_control_is_chosen_when_it_predicts_better_and_sealed_with_both_predictions
+test_cli_state.ComposeFactsSecondPassTest.test_a_refused_plan_with_malformed_resolutions_is_not_applied
+test_endpoint_resolution.ResolverReachesTheWorkshopTest.test_the_plan_and_worker_purposes_point_at_the_resolver
+test_endpoint_resolution.ResolverReachesTheWorkshopTest.test_the_plan_and_worker_purposes_point_at_the_resolver (workshop='plan-campaign')
+test_expert_operator_readiness.ExpertOperatorReadinessTest.test_every_text_carries_the_expert_loop_ladders_and_fail_reason_moves
+test_expert_operator_readiness.ExpertOperatorReadinessTest.test_knowledge_names_every_command_while_the_task_uses_the_host_catalog
+test_expert_operator_readiness.ExpertOperatorReadinessTest.test_the_contract_classes_are_read
+test_integration_recovery.SealRecipeBatchTests.test_a_control_choice_credits_no_contribution
+test_knowledge.KnowledgeFileTest_method_and_benchmark_md.test_required_headings_present_and_ordered
+test_knowledge.KnowledgeFileTest_xtop_capabilities_md.test_required_headings_present_and_ordered
+test_records.CompiledMethodCrossCheckTest.test_compound_rule_chains_run_in_spec_order
+test_records.CompiledMethodCrossCheckTest.test_every_tool_argv_arity_matches_the_cli_table
+test_records.CompiledMethodCrossCheckTest.test_tool_written_outputs_match_the_cli_path_table
+test_request_problems.ProblemsWiringTest.test_every_request_output_has_its_problems_output_beside_it [campaignPlan]
+test_request_problems.ProblemsWiringTest.test_every_request_output_has_its_problems_output_beside_it [integrationPlan]
+test_request_problems.ProblemsWiringTest.test_the_owner_decides_on_a_refused_plan_and_no_decision_workshop_remains
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='01')
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='02')
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='03')
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='04')
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='05')
+test_t01_regressions.SizeMoveGuidanceTest.test_each_operator_types_one_library_cell_name (slot='06')
+test_workshop_examples.ComposeZeroContributionGuidanceTest.test_an_empty_compose_is_a_valid_required_step
+test_workshop_examples.ComposeZeroContributionGuidanceTest.test_the_owner_never_asks_the_person_inside_a_generation
+test_workshop_examples.KnowledgeDeliveryTest.test_each_example_is_declared_listed_and_named_by_its_workshop [compose-contributions]
+test_workshop_examples.KnowledgeDeliveryTest.test_each_example_is_declared_listed_and_named_by_its_workshop [plan-campaign]
+test_workshop_examples.NoSafeMoveExampleTest.test_a_no_safe_move_request_that_still_plans_or_states_no_reason_is_counted
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w01')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w02')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w03')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w04')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w05')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w06')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w01')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w02')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w03')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w04')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w05')
+test_workshop_examples.NoSafeMoveExampleTest.test_each_no_safe_move_example_reads_with_zero_problems (slot='w06')
+test_workshop_examples.NoSafeMoveExampleTest.test_t06_the_brief_points_the_operator_at_the_derived_domain_nets
+test_workshop_examples.NoSafeMoveExampleTest.test_t06_the_brief_step_takes_the_request_among_extra_arguments
+test_workshop_examples.NoSafeMoveExampleTest.test_the_active_example_is_the_plan_examples_package
+test_workshop_examples.NoSafeMoveExampleTest.test_the_brief_step_writes_the_summary_the_reader_admits
+test_workshop_examples.NoSafeMoveExampleTest.test_the_team_reviews_no_move_for_a_no_safe_move_request
+test_workshop_examples.PlanCampaignExampleTest.test_the_checklist_names_the_validators_own_sets
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w01')
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w02')
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w03')
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w04')
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w05')
+test_workshop_examples.WorkerRequestExampleTest.test_each_active_example_reads_with_zero_problems_against_its_prepared_package (slot='w06')
+test_workshop_examples.WorkerRequestExampleTest.test_t06_the_brief_points_the_operator_at_the_derived_domain_nets
+test_workshop_examples.WorkerRequestExampleTest.test_t06_the_brief_step_takes_the_request_among_extra_arguments
+test_workshop_examples.WorkerRequestExampleTest.test_the_active_example_is_the_plan_examples_package
+test_workshop_examples.WorkerRequestExampleTest.test_the_brief_step_writes_the_summary_the_reader_admits
+
+Exact shared residual error IDs:
+test_workshop_examples.PlanCampaignExampleTest.test_parking_a_seat_while_checks_are_uncovered_is_advice_not_a_refusal
+test_workshop_examples.PlanCampaignExampleTest.test_the_self_check_snippet_admits_the_example
+test_workshop_examples.PlanCampaignExampleTest.test_the_self_check_snippet_refuses_an_uncovered_blocker

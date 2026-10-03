@@ -1,5 +1,6 @@
 {
   "local": [
+    "test/contract/delegation-followup-tools.host.test.ts",
     "test/contract/aes-analysis.test.ts",
     "test/contract/aes-domain-stages.test.ts",
     "test/contract/aes-full-graph.host.test.ts",
@@ -14,8 +15,10 @@
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/agent-workshop.host.test.ts",
     "test/contract/agentic-timing-closure-system.test.ts",
+    "test/contract/atcs-expert-operator.host.test.ts",
     "test/contract/boot.test.ts",
     "test/contract/boundary.test.ts",
+    "test/contract/branch-autopilot.host.test.ts",
     "test/contract/campaign-file.host.test.ts",
     "test/contract/canvas-layout.test.ts",
     "test/contract/checkpoint-resume.host.test.ts",
@@ -24,11 +27,12 @@
     "test/contract/conversation-execution.host.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/dc-reader.test.ts",
-    "test/contract/delegation-run.host.test.ts",
-    "test/contract/delegation.host.test.ts",
     "test/contract/delegation-input-native.host.test.ts",
     "test/contract/delegation-prompt.test.ts",
+    "test/contract/delegation-recipe-budget.host.test.ts",
+    "test/contract/delegation-run.host.test.ts",
     "test/contract/delegation-team-settlement.host.test.ts",
+    "test/contract/delegation.host.test.ts",
     "test/contract/dtco-feedback-ab-live-check.test.ts",
     "test/contract/experience-files.test.ts",
     "test/contract/experience-report.test.ts",
@@ -37,6 +41,7 @@
     "test/contract/fabric-restart.test.ts",
     "test/contract/fabric-retry.test.ts",
     "test/contract/fabric.test.ts",
+    "test/contract/fork-interactive-team.host.test.ts",
     "test/contract/generic-workspace.host.test.ts",
     "test/contract/growth.host.test.ts",
     "test/contract/growth.test.ts",
@@ -56,13 +61,13 @@
     "test/contract/knowledge-documents.test.ts",
     "test/contract/knowledge-reuse.host.test.ts",
     "test/contract/ledger-import.test.ts",
-    "test/contract/library-intelligence-pack.test.ts",
-    "test/contract/library-insight.test.ts",
-    "test/contract/live-check-continuation.test.ts",
     "test/contract/lfr-cumulative-library.test.ts",
     "test/contract/lfr-proxy-mapping.test.ts",
     "test/contract/lfr-proxy-sta.test.ts",
     "test/contract/lfr-round-interface.test.ts",
+    "test/contract/library-insight.test.ts",
+    "test/contract/library-intelligence-pack.test.ts",
+    "test/contract/live-check-continuation.test.ts",
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",
     "test/contract/node-jobs.host.test.ts",
@@ -72,8 +77,8 @@
     "test/contract/observe-readers.test.ts",
     "test/contract/observe.test.ts",
     "test/contract/pack-method-assets.test.ts",
-    "test/contract/pack-test-admission.host.test.ts",
     "test/contract/pack-readers.host.test.ts",
+    "test/contract/pack-test-admission.host.test.ts",
     "test/contract/pack.test.ts",
     "test/contract/pipeline-checkpoint.test.ts",
     "test/contract/pipeline-finalize.test.ts",
@@ -83,6 +88,7 @@
     "test/contract/product-context.host.test.ts",
     "test/contract/profile-overlay.test.ts",
     "test/contract/research-analysis.host.test.ts",
+    "test/contract/resident-engineering.host.test.ts",
     "test/contract/revision.host.test.ts",
     "test/contract/revision.test.ts",
     "test/contract/run-controls.test.ts",
@@ -103,9 +109,10 @@
     "test/contract/view-run.test.ts",
     "test/contract/view.test.ts",
     "test/contract/workbench-address.test.ts",
-    "test/contract/workshop.host.test.ts",
     "test/contract/workshop-recovery.host.test.ts",
-    "test/contract/xtop-timing-closure.test.ts"
+    "test/contract/workshop.host.test.ts",
+    "test/contract/xtop-timing-closure.test.ts",
+    "test/contract/delegation-input-bounded.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",
@@ -138,11 +145,17 @@
     "test/contract/campaign-workspace.desktop.test.ts"
   ],
   "live-site": [
+    "test/contract/resident-engineering-release.live.test.ts",
+    "test/contract/resident-engineering.live.test.ts",
     "test/contract/jobs.live.test.ts",
     "test/contract/pack.live.test.ts",
-    "test/contract/ssh.live.test.ts"
+    "test/contract/ssh.live.test.ts",
+    "test/contract/atcs-operator-qualification.live.test.ts"
   ],
   "atcs-dry": [
     "test/contract/atcs-dry-path.host.test.ts"
+  ],
+  "live-model": [
+    "test/contract/child-compaction.live.test.ts"
   ]
 }

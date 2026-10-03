@@ -1,0 +1,87 @@
+# Issue #83 — Fix Timing 修复效果与正常产品路径
+
+用户最新要求（2026-10-02）：“我不关心时间，就看修复效果就行。”先前效率目标由此撤回。
+Issue: https://github.com/lluzi/hima_harness_reforge_polishing/issues/83
+
+## 现状、归属与最小切片
+
+基线 `0d641449` / ATCS 0.3.1 已实现完整节点外包、直接原生认证/当前 session 权限、完整
+成果树接回；历史修复 Hold0/Setup18 和原 frozen live FAIL 各自保留。当前产品代码未证明
+正常 GUI 全过程。审计未发现必须改源码的正常入口缺口，不为本次验收改方法或 Host。
+
+现有 `index.ts:startPreparation` / `remote.ts:startChoices` 读取同一 Pack/Site。
+`graph.yml` 正常入口 `bind-inputs` → readiness/baseline/native context → common R1 →
+`fix-timing` → Reader/Goal/明确结束。新 0.3.3 不经过外部对照节点。不得 overlay 入口或预创建 Run。
+外部评估可使用保留的串行 AutoFix 材料及历史测试 helper；它不成为产品输入或 Agent 任务。
+`hima_execute engineering` 使用当前 owner、Job/Channel/ACP 与原 Reader；实际 OpenCode
+收到完整 goal/playbook/tools/native 权限，在单一 persistent XTop 自主工作。
+
+DL 只准备 App、分开的原样 ATCS Pack、Site/Permit 和输入身份；FL 独占 GUI/现场操作。
+开发模型为用户指定 GPT-6 Astra/High，FL Opus5.5/High，产品 DeepSeek4.1Flash。
+
+## 冻结与操作
+
+候选 manifest 固定源码/远端 SHA、App 校验清单、Harness、Pack/flow、Site/Permit、远端
+wrapper/capability/native 输入和库/场景绑定身份。App 通过现有 `package-trial.mjs` 构建，
+ATCS 单独按原样提供。专用空 Home 仅可准备已有模型认证及一次站点 Site/Permit 配置；
+不复制旧 Ledger、Campaign 或成功产物。预配置须明确记入 manifest，不算 FL 的 GUI 操作。
+
+FL 使用候选指定 launcher/Home/Workspace，在 Catsights 打开唯一 HimaHarness 窗口。
+通过正常 Pack 安装入口选择冻结 ATCS 文件夹，选择 `linglong-atcs28` 并检查绑定输入；
+在 GUI/Guide 提出完整 Fix Timing 目标并确认启动，使用默认正常图。观察 owning Agent
+自行委派，普通用户决策只通过产品对话；不补内部 schema 或手动唤醒来挽救交付。旧人工案例已进入版本化 playbook，不现场注入
+已知实例/ECO 答案。工程结果、残余和 Goal 分开解释，实际打开保留的脚本、原始报告、
+checkpoint/ECO、复现材料，再正常停止/release/退出并核实 owned quiescence。
+
+现场 Run 外层上限六小时（21600000 ms），包含准备、共同 R1、工程研究与交付；
+至少保留原 Pack 的 15 分钟 closing reserve。在正常配置中设定，实际开始记录绝对截止。
+不增加调用/步骤/round 配额，不静默续期。FL 开跑前核对无冲突 XTop/QuaLib/原生写者。
+达到目标、无合理新假设、实际 blocker 或预算边界即可诚实结束；无需用完时间。
+
+## 判断与反证
+
+- 外部质量评估：独立评估者以同输入/R1/SDC/libs/scenarios 的原始 setup/hold count、WNS/TNS 判断相对强对照的效果；产品只修复 Timing。
+  必要质量不回归；保留 collateral/legality 已测范围与 unknown。残余不伪装清零，XTop
+  不冒充最终物理签核。达到更好修复效果可以 Goal false/best-effort。
+- 产品路径：实际独立 Agent 操作员从正常入口到交付/结束，保留关键 GUI、Run/Job/native
+  transcript、checkpoint/ECO/scripts/raw reports。启动成功或后台资格不能代替全程。
+- 两项分别给 PASS/FAIL/NEGATIVE/INCONCLUSIVE/BLOCKED；效率不作为胜负标准。
+- 反例：改约束/缺场景、弱化对照、缺 checkpoint、只口述效果、开发者预建 Run/手写答案、
+  无法从产品访问产物、未释放 owned 进程，均不能称对应验收通过。
+
+最低验证复用基线原 Host/Reader 与 Site release qualification；正常 prefix 的本地
+Python native-context/common-R1/结果 Reader 测试先于产品现场；强对照仅属于外部评估。App packaging 校验和无 GUI Host
+smoke 是新 App 的 L0/L2；L3/真实模型与 EDA 完整业务由同一次 FL 正常操作完成。无源码
+变化不重复全量测试或已合格商业工作。出现真实缺口先在最低 seam 复现，再改原所属模块。
+
+回滚：保留 `0d641449`、旧 deployed archive 和全部历史 Run。候选字节在 Run 中不变。
+失败先保留成果，核实实际执行后在最近安全边界恢复；不因 schema/传输问题重做工程。
+若必须换候选，先正常收束 owned Run/process，保留旧证据，新身份新任务不改写旧结果。
+
+
+## 现场后的范围与一致性修正
+
+当前验收重心是实证 Timing 改进和正常可用交付。原始 Field Run 的四场景 setup/hold 0/0、
+相对强 AutoFix 24/82 的 Timing 收益保留；broader collateral UNKNOWN、原 ended-goal-not-met
+和先前 journey FAIL 不变。r3 先用于原成果的 GUI 查看/下载，后续源码修复不修改活动候选。
+
+历史 ATCS 0.3.2 曾将 Timing 清零/对照 Goal 与 broader remaining/regression 分别判定；
+下述 0.3.3 职责纠正撤回生产 Goal 的对照要求。
+已知回归、未知 collateral 和采用/签核范围必须显示，不把未知变成零。旧图缺少 Explore
+结束决定也是原结束标签的原因；新图通过既有接口记录明确且有引用的 goal-met 或 stop。
+报告按同一试验的各个真实来源展示每项检查；新的回执保留实际所需判据范围，额外引用的
+未知检查不抹去已知 Timing，但也不获得 PASS。旧保存报告仍按原字节读取；当前投影明确标注。
+所有新行为用具体 Reader/Host 反例及保留材料验证，不重跑昂贵 Timing 来制造更漂亮的历史。
+
+## 当前切片：撤回生产任务中的基准比较职责
+
+当前源码基线 d0a66377/0.3.2 强制先做串行对照，并由 Reader 读取其目标、数据再决定 beats-AutoFix。用户已明确撤回这一职责。现有 Pack 的 graph/contract/Reader/playbook 负责最小纠正为 0.3.3；Harness 无改动。保留固定 0 ns Timing 目标、common R1 工程起点、身份与原始报告/产物校验、已知回归、UNKNOWN、no-op/best-effort 和 owner 明确结束。外部比较函数移入既有测试材料，分别读取验证产品结果与独立对照，不能写回产品 Goal。
+
+反证：没有对照文件也能读取/交付/判定结束；残余拒绝 goal-met；缺失或伪造 Timing 仍拒绝；已知回归不能被空模型列表隐藏；外部对照身份/原始 hash 不符则外部比较拒绝。旧已录方法仍按自己的 digest 使用原 Reader/Goal，不重写历史。最低测试为 Python Reader/外部比较、本地 Pack load 与公共 Host 交付/结束 seam；一次独立 Sol/high 审查，DL 沿用用户指定 Astra/high。此切片不启动模型/EDA、不部署或打断 r5。提交后立即 push 并核对 SHA；回滚新提交恢复原方法，冻结 r5 始终保留。
+
+后续用户进一步要求认知与上下文隔离。现有 FL 已接触内部实现、基准目标和补救信息，其
+真实测量与操作证据保留，但标为“开发者知情操作验证”，不宣称认知隔离的独立无辅助验收。
+未来操作交接仅含普通用户任务、正常入口、已声明环境/输入/权限及可见预期结果；全局基准、
+预期数字、旧修复答案、源码地图、私有 schema 和排障历史留给 DRI/DL。客户本来能通过产品
+读取的 Pack 文档和工具仍可用，工程 Agent 仍获得完整专业方法。可见缺陷交给 DL，修复后
+返回候选和用户可读发布说明，不向操作员注入答案。此要求不触发新的会话、Run 或框架。

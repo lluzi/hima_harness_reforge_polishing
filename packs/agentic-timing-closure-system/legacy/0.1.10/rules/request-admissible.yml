@@ -1,0 +1,6 @@
+id: request-admissible
+version: "1"
+title: The typed request has no structural, reference or scope failure
+requires: [{ type: tc_request_invalid_count }]
+subject: { type: tc_request_invalid_count }
+predicate: { op: eq, threshold: 0, unit: count }

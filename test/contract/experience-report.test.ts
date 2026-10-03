@@ -28,6 +28,26 @@ function fixture(): RunView {
 
 function projected(view: RunView) { return experienceReport(view, at).json.research; }
 
+test('report shows Reader comparison inputs omitted by the judging rule without promoting stale evidence', () => {
+  const view = fixture();
+  const values = [
+    { type: 'before_setup_violation_count', value: 28, unit: 'count' },
+    { type: 'reference_setup_violation_count', value: 24, unit: 'count' },
+    { type: 'selected_setup_violation_count', value: 0, unit: 'count' },
+    { type: 'collateral', value: null, unit: 'count', unknownReason: 'not measured' },
+  ];
+  const observation = { ...view.observations[0]!, values: [...view.observations[0]!.values, ...values] };
+  const current = { ...view, observations: [observation] };
+  const report = experienceReport(current, at);
+  assert.match(report.markdown, /before_setup_violation_count \| 28 \| count/);
+  assert.match(report.markdown, /reference_setup_violation_count \| 24 \| count/);
+  assert.match(report.markdown, /selected_setup_violation_count \| 0 \| count/);
+  assert.match(report.markdown, /collateral \| UNKNOWN \(not measured\)/);
+  const stale = experienceReport({ ...current, observations: [{ ...observation, contentSha256: 'b'.repeat(64) }] }, at);
+  assert.doesNotMatch(stale.markdown, /reference_setup_violation_count \| 24/);
+  assert.equal(stale.json.research.conclusion, 'insufficient-evidence');
+});
+
 test('model interpretation cannot turn missing citations or contradictory numbers into report facts', () => {
   const view = fixture();
   const analysis = { recordId: 'analysis-1', at, sessionId: 'owner', nodeId: 'explore', question: 'Can the measured period support this next experiment?',
@@ -144,4 +164,57 @@ test('fork branches retain separate observations and partial branches do not inh
   assert.equal(research.trials[1]?.observation, undefined);
   const unsupportedGoal = projected({ ...view, generations: [generation] });
   assert.notEqual(unsupportedGoal.conclusion, 'goal-supported', 'one completed branch cannot certify a goal while a required peer is incomplete');
+});
+
+
+function mixedSourceChecks(extra: 'FAIL' | 'UNDETERMINED' = 'UNDETERMINED'): RunView {
+  const input: ObservationView = { ...observed('input-reading'), generation: 1, path: '/campaign/inputs.json',
+    reader: { id: 'inputs', version: '1', reportKind: 'inputs', emits: ['input_ready'] },
+    values: [{ type: 'input_ready', value: 0, unit: 'count' }] };
+  const collateral = extra === 'FAIL' ? { type: 'collateral_count', value: 2, unit: 'count' }
+    : { type: 'collateral_count', value: null, unit: 'count', unknownReason: 'Global collateral is unmeasured' };
+  const after: ObservationView = { ...observed('result-reading'), generation: 1, path: '/campaign/result.json', contentSha256: 'b'.repeat(64),
+    reader: { id: 'result', version: '1', reportKind: 'result', emits: ['native_margin', 'collateral_count'] },
+    values: [{ type: 'native_margin', value: 0, unit: 'ns' }, collateral] };
+  const verdicts: VerdictView[] = [
+    { recordId: 'input', at, ruleId: 'input-ready', ruleVersion: '1', outcome: 'PASS', valuesAsRead: input.values, cites: [{ recordId: input.recordId, observation: input }] },
+    { recordId: 'goal', at, ruleId: 'native-goal', ruleVersion: '1', outcome: 'PASS', valuesAsRead: [after.values[0]!], cites: [{ recordId: after.recordId, observation: after }] },
+    { recordId: 'collateral', at, ruleId: 'collateral-check', ruleVersion: '1', outcome: extra, reason: extra === 'FAIL' ? 'Known collateral regression' : 'Global collateral is unmeasured', valuesAsRead: [collateral], cites: [{ recordId: after.recordId, observation: after }] },
+  ];
+  const view = fixture();
+  const nodes = [node('inputs', 'act'), node('input-judge', 'judge'), node('result', 'act'), node('result-judge', 'judge')];
+  return { ...view, run: { ...view.run, siteId: 'declared-site', goal: { target_native_margin: 0 }, status: 'ended-goal-not-met' },
+    observations: [input, after], verdicts, nodes, decision: null,
+    generations: [{ generation: 1, strategy: {}, observation: after, nodes, verdicts: verdicts.map(v => ({ ruleId: v.ruleId, outcome: v.outcome, recordId: v.recordId, cites: v.cites.map(c => c.recordId) })), wallMs: 10, state: 'done' }] };
+}
+
+test('same-trial multiple sources retain known checks beside UNKNOWN without unrelated demo claims', () => {
+  const view = mixedSourceChecks();
+  const report = experienceReport(view, at);
+  assert.equal(report.json.research.conclusion, 'goal-not-established');
+  assert.equal(report.json.research.trials[0]?.status, 'undetermined');
+  assert.equal(report.json.ending.status, 'ended-goal-not-met', 'projection preserves the historical ending');
+  assert.match(report.markdown, /native-goal.*PASS/);
+  assert.match(report.markdown, /collateral-check.*UNDETERMINED/);
+  assert.match(report.markdown, /Global collateral is unmeasured/);
+  assert.doesNotMatch(report.markdown, /simulated synthesis|Reported clock periods|measured Fmax/);
+  const stale = { ...view, observations: [view.observations[0]!, { ...view.observations[1]!, contentSha256: 'c'.repeat(64) }] };
+  assert.equal(projected(stale).conclusion, 'insufficient-evidence', 'changed source bytes cannot borrow a previous verdict');
+});
+
+test('recorded required decision scope can establish a narrow goal without erasing broader failures or unknowns', () => {
+  for (const extra of ['FAIL', 'UNDETERMINED'] as const) {
+    const view = mixedSourceChecks(extra);
+    const scoped: RunView = { ...view, run: { ...view.run, status: 'ended-goal-met' }, decision: {
+      recordId: 'scoped-decision', at, nodeId: 'finish', chooser: 'fixture', chooserOrigin: 'pack', chosen: { goalMet: true }, rationale: {},
+      requiredVerdictIds: ['input', 'goal'], cites: ['input', 'goal', 'collateral', 'input-reading', 'result-reading'],
+    } };
+    const report = experienceReport(scoped, at);
+    assert.equal(report.json.research.conclusion, 'goal-supported');
+    assert.match(report.json.research.summary, /Other.*checks/);
+    assert.match(report.markdown, new RegExp(`collateral-check.*${extra}`));
+    assert.notEqual(projected({ ...scoped, decision: { ...scoped.decision!, requiredVerdictIds: ['invented'] } }).conclusion, 'goal-supported');
+    const { requiredVerdictIds: _scope, ...legacy } = scoped.decision!;
+    assert.notEqual(projected({ ...scoped, decision: legacy }).conclusion, 'goal-supported', 'older reports do not acquire an invented narrow scope');
+  }
 });

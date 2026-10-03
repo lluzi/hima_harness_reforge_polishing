@@ -424,7 +424,10 @@ def plan_checks(merge_commit, policy):
     operations = merge_commit.get("operations", [])
     op_kinds = {operation.get("op") for operation in operations}
 
-    functional = ["connectivity"] if op_kinds & set(_TOPOLOGY_OPS) else []
+    # A recipe batch (Issue #64 Task 6) carries an ECO pair whose auto-fix may insert or
+    # remove buffers anywhere, so its connectivity is always a functional check.
+    topology = bool(op_kinds & set(_TOPOLOGY_OPS)) or merge_commit.get("eco") is not None
+    functional = ["connectivity"] if topology else []
     pg = ["pg"] if "pg_local_adjust" in op_kinds else []
     # `assemble` always evaluates the fixed drc/connectivity pair the `evaluation`
     # schema declares; `plan.physical` is what the implementation step (T11/T12)
@@ -442,11 +445,17 @@ def plan_checks(merge_commit, policy):
         "candidateId": merge_commit.get("id"),
         "parentStateId": merge_commit.get("parentStateId"),
     }
+    if isinstance(merge_commit.get("guarantee"), dict):
+        # A recipe batch's sealed never-worse-than-auto-fix guarantee (Issue #64), reported with
+        # the evaluation as `batchGuarantee`.
+        body["batchGuarantee"] = merge_commit["guarantee"]
     return core.stamp("check-plan", body)
 
 
 def presta_qualification(new_nets, spef_net_names):
     """Which of `new_nets` lack a qualifying SPEF entry (see module docstring)."""
+    if new_nets is None:
+        return {"unqualified": None, "count": core.unknown("the batch's new nets are unknown")}
     new_nets = list(new_nets)
     if not new_nets:
         return {"unqualified": [], "count": core.known(0)}
@@ -457,20 +466,34 @@ def presta_qualification(new_nets, spef_net_names):
     return {"unqualified": unqualified, "count": core.known(len(unqualified))}
 
 
-def precheck_evidence(merge_commit, spef_net_names_path):
+def precheck_evidence(merge_commit, spef_net_names_path, predictive=None):
     """Stamp a ``precheck-evidence`` artifact binding `merge_commit`'s
     `newNets` to the SPEF net-name source's identity (see module docstring).
 
     Never parses or embeds `spef_net_names_path`'s content, and never calls
     `presta_qualification` itself — that recomputation is the Reader's job,
     against a source it re-hashes on its own.
+
+    A recipe batch (Issue #64 Task 6: the merge commit names an ``eco`` pair) adds
+    ``batchKind: "recipe"`` and ``predictive`` (the caller's statement that every new net is
+    known and qualified; required), and may carry ``newNets: null`` with ``newNetsUnknown``
+    when auto-fix named nets this Pack does not read back. Its pre-check never gates the batch:
+    refreshed PrimeTime is the judge, and the Reader re-derives and checks ``predictive``. A
+    legacy batch's evidence is unchanged.
     """
     merge_commit_id = merge_commit.get("id") if isinstance(merge_commit, dict) else None
     if not merge_commit_id:
         raise core.AtcsError("missing-input", "merge_commit.id")
+    recipe = isinstance(merge_commit, dict) and merge_commit.get("eco") is not None
     new_nets = merge_commit.get("newNets") if isinstance(merge_commit, dict) else None
-    if not isinstance(new_nets, list) or not all(isinstance(net, str) and net for net in new_nets):
+    unknown_reason = merge_commit.get("newNetsUnknown") if recipe else None
+    if recipe and new_nets is None:
+        if not isinstance(unknown_reason, str) or not unknown_reason:
+            raise core.AtcsError("missing-input", "merge_commit.newNets is null without newNetsUnknown")
+    elif not isinstance(new_nets, list) or not all(isinstance(net, str) and net for net in new_nets):
         raise core.AtcsError("missing-input", "merge_commit.newNets must be a list of non-empty strings")
+    if recipe and not isinstance(predictive, bool):
+        raise core.AtcsError("missing-input", "a recipe batch's pre-check must state whether it is predictive")
     try:
         source_sha256 = core.file_sha256(spef_net_names_path)
     except OSError as exc:
@@ -478,9 +501,14 @@ def precheck_evidence(merge_commit, spef_net_names_path):
 
     body = {
         "mergeCommitId": merge_commit_id,
-        "newNets": sorted(new_nets),
+        "newNets": sorted(new_nets) if new_nets is not None else None,
         "spefNetNames": {"path": str(spef_net_names_path), "sha256": source_sha256},
     }
+    if recipe:
+        body["batchKind"] = "recipe"
+        body["predictive"] = predictive
+        if new_nets is None:
+            body["newNetsUnknown"] = unknown_reason
     return core.stamp("precheck-evidence", body)
 
 
@@ -823,4 +851,6 @@ def assemble(plan, receipts, prior_observation, baseline_physical, baseline_unco
         "comparison": comparison,
         "physical": physical_out,
     }
+    if isinstance(plan.get("batchGuarantee"), dict):
+        body["batchGuarantee"] = plan["batchGuarantee"]
     return core.stamp("evaluation", body)

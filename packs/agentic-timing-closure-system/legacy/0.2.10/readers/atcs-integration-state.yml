@@ -1,0 +1,8 @@
+id: atcs-integration-state
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'integration-state', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-integration-state/1
+emits:
+  - tc_replay_mismatch_count
+  - tc_out_of_scope_edit_count

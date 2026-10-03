@@ -1,0 +1,6 @@
+id: engineering-timing-clear
+version: "1"
+title: No target setup or hold violation remains in the selected native XTop state
+requires: [{ type: tc_engineering_timing_remaining_violation_count }]
+subject: { type: tc_engineering_timing_remaining_violation_count }
+predicate: { op: eq, threshold: 0, unit: count }

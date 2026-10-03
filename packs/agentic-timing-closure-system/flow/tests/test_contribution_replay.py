@@ -1006,5 +1006,498 @@ class SealTests(unittest.TestCase):
             self.assertEqual(contribution["touches"]["instances"], ["U1"])
 
 
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4: `xtop-session` Contributions from the Task 3 toolkit logs.
+# ---------------------------------------------------------------------------
+
+import session_fixtures as sf  # noqa: E402
+
+BEFORE = {"U1": "BUFX1", "U2": "BUFX1", "U3": "INVX1", "X9": "BUFX1", "FILL1": "FILLER4"}
+IMPROVES = ((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.050, -0.900))
+
+
+def _seal_session(log, after, before=None, evidence=None, base_ref=None, filler_patterns=None,
+                  gain_text=None):
+    with tempfile.TemporaryDirectory() as tmp:
+        before_path = write_dump(tmp, "before.dump", before if before is not None else BEFORE)
+        after_path = write_dump(tmp, "after.dump", after)
+        clean = {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True}
+        clean.update(evidence or {})
+        result_refs = {"beforeDump": before_path, "afterDump": after_path, "evidence": clean,
+                       "fillerPatterns": list(filler_patterns or [])}
+        return contributions.seal_session(
+            base_ref or sf.make_base_ref(), result_refs, log.ops_text(),
+            log.gain_text() if gain_text is None else gain_text)
+
+
+def _codes(contribution):
+    return sorted({refusal["code"] for refusal in contribution["refusals"]})
+
+
+def _advisories(contribution):
+    """The seal's advisory codes (replay is an aggregator: a value finding never refuses)."""
+    return sorted({advisory["code"] for advisory in contribution["advisories"]})
+
+
+class XtopSessionNetLogTests(unittest.TestCase):
+    def test_an_undone_insert_is_excluded_from_the_net_command_log(self):
+        log = sf.SessionLog()
+        inserted = log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"],
+                              gain=IMPROVES)
+        log.undo(inserted, gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["kind"], "xtop-session")
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [sized])
+        command = contribution["commands"][0]
+        self.assertEqual(command["proc"], "atcs_size_cell")
+        self.assertEqual(command["args"], {"instance": "U1", "toMaster": "BUFX2", "planSha256": sf.PLAN})
+        self.assertEqual(command["instances"], ["U1"])
+        self.assertEqual(contribution["session"]["undone"], [inserted])
+        self.assertNotIn("atcs_w01_r1_b1", json.dumps(contribution["commands"]))
+        self.assertEqual(contribution["delta"]["mastersChanged"], {"U1": ["BUFX1", "BUFX2"]})
+        self.assertEqual(contribution["operations"], [])
+
+    def test_an_undo_that_discards_empty_checkpoints_leaves_a_no_fix(self):
+        log = sf.SessionLog()
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        checkpoint = log.no_change(checkpoint=True)
+        log.undo(sized, discards=[checkpoint],
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+
+        contribution = _seal_session(log, dict(BEFORE))
+
+        self.assertEqual(contribution["kind"], "no-fix")
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["commands"], [])
+        self.assertEqual(contribution["session"]["discarded"], [checkpoint])
+        self.assertIn("kept no command", contribution["diagnosis"])
+
+    def test_fix_split_move_and_eco_action_lines_are_accepted_from_the_dump_delta(self):
+        log = sf.SessionLog()
+        log.fix_hold(["U1/D"], {"U2": "BUFX1", "atcs_w01_r1_eco_1": None},
+                     {"U2": "BUFX2", "atcs_w01_r1_eco_1": "DELAY2"}, gain=IMPROVES)
+        log.move("U3", "INVX1", 10.0, 20.0, gain=IMPROVES)
+        log.fix_hold(["U1/D"], {"U1": "BUFX1"}, {"U1": "BUFX1"}, eco_cells=["U1"], gain=IMPROVES)
+
+        contribution = _seal_session(log, {**BEFORE, "U2": "BUFX2", "atcs_w01_r1_eco_1": "DELAY2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([c["proc"] for c in contribution["commands"]],
+                         ["atcs_fix_hold_pins", "atcs_move_cell", "atcs_fix_hold_pins"])
+        self.assertEqual(contribution["commands"][1]["verified"], "eco-actions")
+        self.assertEqual(contribution["commands"][2]["ecoCells"], ["U1"])
+        self.assertEqual(contribution["commands"][2]["instances"], ["U1"])
+
+    def test_a_malformed_line_is_unusable_input(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.ops[0]["status"] = "maybe"
+        with self.assertRaises(core.AtcsError) as ctx:
+            _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(ctx.exception.code, "malformed-ops-log")
+
+    def test_the_legacy_typed_procedure_log_still_seals_through_seal(self):
+        self.assertFalse(contributions.is_session_log(
+            ops_text({"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"})))
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        self.assertTrue(contributions.is_session_log(log.ops_text()))
+
+
+class XtopSessionAdmissionTests(unittest.TestCase):
+    def test_a_negative_predicted_gain_is_advised_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.090, -1.500))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        # Its only scenario got worse on the target check: no gain, and the target check breaks.
+        self.assertEqual(_advisories(contribution), ["breaks-target-check", "no-predicted-gain"])
+
+    def test_no_gain_at_all_is_advised_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.020, -0.100), (-0.020, -0.100)), ((-0.070, -1.200), (-0.070, -1.200))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])
+        self.assertEqual(_advisories(contribution), ["no-predicted-gain"])
+
+    def test_an_unreadable_gain_summary_is_advised_no_predicted_gain(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        for check in ("setup", "hold"):
+            log.gains[-1]["checks"][check]["text"] = "summary unavailable\n"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])
+        self.assertEqual(_advisories(contribution), ["breaks-opposite-check", "no-predicted-gain"])
+        self.assertIn("unknown", contribution["predicted"]["xtopHoldWns"])
+
+    def test_predicted_measures_value_and_fail_reasons_come_from_the_last_gain_lines(self):
+        log = sf.SessionLog()
+        sized = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.gain(sized, "probe", ((-0.020, -0.100), (-0.021, -0.110)), ((-0.070, -1.200), (-0.050, -0.900)),
+                 fail_reasons={"setup": {}, "hold": {"break_setup": 3, "legal_fail_no_space_on_row": 2}}, top_n=5)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        predicted = contribution["predicted"]
+        self.assertAlmostEqual(core.value_of(predicted["xtopHoldWns"]), -0.050)
+        # The probe (-with_top_n -with_fail_reason) feeds failReasons only; predicted is the mutation reading.
+        self.assertAlmostEqual(core.value_of(predicted["xtopSetupWns"]), -0.020)
+        self.assertEqual(contribution["session"]["predictedFromSeq"], sized)
+        self.assertEqual(contribution["session"]["failReasonsFromSeq"], sized)
+        self.assertAlmostEqual(core.value_of(predicted["xtopHoldTns"]), -0.900)
+        self.assertAlmostEqual(core.value_of(contribution["reference"]["xtopHoldWns"]), -0.070)
+        self.assertEqual(contribution["validationLevel"], "xtop")
+        # Targets are hold checks: value is the hold WNS gain; setup is not a target here.
+        self.assertAlmostEqual(contribution["value"], 0.020)
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.300)
+        self.assertEqual(contribution["valueDetail"]["oppositeChecks"], ["setup"])
+        self.assertEqual(contribution["valueDetail"]["targetChecks"], ["hold"])
+        self.assertEqual(contribution["failReasons"],
+                         {"hold": {"break_setup": 3, "legal_fail_no_space_on_row": 2}, "setup": {}})
+        self.assertEqual(contribution["targetPins"], ["U1/D"])
+
+    def test_an_out_of_domain_change_in_the_dump_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "X9": "BUFX4"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(contribution["outOfScope"], ["X9"])
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("out-of-scope", _advisories(contribution))
+
+    def test_an_unprefixed_new_instance_in_the_dump_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "rogue_buf": "BUFX1"})
+        self.assertEqual(contribution["outOfScope"], ["rogue_buf"])
+
+    def test_an_untraced_in_domain_change_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX4"})
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("trace-mismatch", _advisories(contribution))
+        self.assertEqual(contribution["outOfScope"], [])
+
+    def test_a_logged_change_missing_from_the_dump_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, dict(BEFORE))
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("trace-mismatch", _advisories(contribution))
+
+    def test_a_kept_request_whose_delta_misses_its_named_instances_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES,
+                   matches=False)
+        contribution = _seal_session(log, {**BEFORE, "atcs_w01_r1_b1": "DELAY1"})
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("trace-mismatch", _advisories(contribution))
+
+    def test_a_kept_insert_placed_in_its_loads_module_matches_its_request(self):
+        # Real XTop (Task 7, w01): the new cell is created in the load pin's module,
+        # swerv_dbg/atcs_w01_r1_chain_d0, under the requested leaf name.
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["u_core/U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1": "DELAY1"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+    def test_a_kept_insert_in_another_module_than_its_loads_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1": "DELAY1"})
+        self.assertIn("trace-mismatch", _advisories(contribution))  # D-T06-7: never a refusal
+
+    def test_a_kept_insert_with_another_leaf_name_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        seq = log.insert("N1", ["u_core/U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        line = log.ops[seq - 1]
+        line["before"]["instances"] = {"u_core/atcs_w01_r1_b1x": None}
+        line["after"]["instances"] = {"u_core/atcs_w01_r1_b1x": "DELAY1"}
+        contribution = _seal_session(log, {**BEFORE, "u_core/atcs_w01_r1_b1x": "DELAY1"})
+        self.assertIn("trace-mismatch", _advisories(contribution))  # D-T06-7: never a refusal
+
+    def test_a_kept_size_whose_logged_master_differs_from_the_request_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.ops[0]["args"]["toMaster"] = "BUFX8"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("trace-mismatch", _advisories(contribution))
+
+    def test_filler_changes_are_exempt_only_under_the_site_filler_patterns(self):
+        log = sf.SessionLog()
+        log.insert("N1", ["U3/A"], ["DELAY1"], ["atcs_w01_r1_b1"], ["atcs_w01_r1_n1"], gain=IMPROVES)
+        after = {name: master for name, master in BEFORE.items() if name != "FILL1"}
+        after["atcs_w01_r1_b1"] = "DELAY1"
+
+        exempt = _seal_session(log, after, filler_patterns=["FILLER*"])
+        self.assertTrue(exempt["admissible"], exempt["refusals"])
+        self.assertEqual(exempt["fillerChanges"], ["FILL1"])
+
+        strict = _seal_session(log, after)
+        self.assertEqual(strict["outOfScope"], ["FILL1"])
+
+    def test_a_tainted_slot_is_refused(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        after = {**BEFORE, "U1": "BUFX2"}
+        for evidence in ({"taintedJson": {"reason": "gain write failed", "seq": 1}},
+                         {"transcriptTaint": "tainted:undo did not restore"},
+                         {"transcriptTaint": None}):
+            with self.subTest(evidence=evidence):
+                contribution = _seal_session(log, after, evidence=evidence)
+                self.assertFalse(contribution["admissible"])
+                self.assertEqual(_codes(contribution), ["tainted"])
+
+    def test_an_uncertain_line_taints_the_slot(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain()
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX2"})
+        self.assertIn("tainted", _codes(contribution))
+
+    def test_a_kept_line_without_its_gain_line_is_advised(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2")  # no gain line written
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])
+        self.assertIn("missing-gain-line", _advisories(contribution))
+
+    def test_kept_commands_without_an_eco_export_are_advised(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"}, evidence={"ecoOutput": False})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(_advisories(contribution), ["missing-export"])
+
+
+
+import xtop_summary_samples as real  # noqa: E402
+
+SCENARIOS = ["func_ffg_cbest_125", "func_ffg_cbest_m40", "func_ssg_rcworst_125", "func_ssg_rcworst_m40"]
+
+
+class RealSummarizeOutputTests(unittest.TestCase):
+    """`parse_gain_summary` pinned to verbatim XTop output (old flow run g002)."""
+
+    def test_the_reference_form_reads_total_and_every_scenario(self):
+        parsed = contributions.parse_gain_summary(real.PRE_OPT_SETUP)
+        self.assertEqual(sorted(parsed), ["setup"])
+        self.assertEqual(parsed["setup"]["total"], {"count": 12, "worst": -0.0387, "tns": -0.1160})
+        self.assertEqual(sorted(parsed["setup"]["scenarios"]), SCENARIOS)
+        self.assertEqual(parsed["setup"]["scenarios"]["func_ffg_cbest_125"], {"count": 0, "worst": 0.0, "tns": 0.0})
+        hold = contributions.parse_gain_summary(real.PRE_OPT_HOLD)["hold"]
+        self.assertEqual(hold["total"], {"count": 70, "worst": -0.1542, "tns": -3.9661})
+        self.assertEqual(hold["scenarios"]["func_ssg_rcworst_125"], {"count": 49, "worst": -0.1398, "tns": -2.9593})
+
+    def test_the_delta_form_reads_current_reference_and_delta_columns(self):
+        hold = contributions.parse_gain_summary(real.POST_OPT_HOLD)["hold"]
+        self.assertEqual(hold["total"], {
+            "count": 66, "count0": 70, "dCount": -4, "worst": -0.1542, "worst0": -0.1542, "dWorst": 0.0,
+            "tns": -3.7707, "tns0": -3.9661, "dTns": 0.1954})
+        self.assertEqual(hold["scenarios"]["func_ffg_cbest_m40"], {
+            "count": 52, "count0": 55, "dCount": -3, "worst": -0.0704, "worst0": -0.0704, "dWorst": 0.0,
+            "tns": -0.6551, "tns0": -0.7199, "dTns": 0.0649})
+        self.assertEqual(sorted(hold["scenarios"]), SCENARIOS)
+        setup = contributions.parse_gain_summary(real.POST_OPT_SETUP)["setup"]
+        self.assertEqual(setup["total"]["dTns"], 0.0)
+        self.assertEqual(setup["scenarios"]["func_ssg_rcworst_m40"]["worst"], -0.0387)
+
+    def test_a_whole_report_file_reads_both_sections_and_ignores_the_eco_action_table(self):
+        parsed = contributions.parse_gain_summary(real.POST_OPT_FULL)
+        self.assertEqual(sorted(parsed), ["hold", "setup"])
+        self.assertEqual(parsed["setup"]["total"]["count"], 12)
+        self.assertEqual(parsed["hold"]["total"]["tns"], -3.7707)
+        both = contributions.parse_gain_summary(real.PRE_OPT_FULL)
+        self.assertEqual(both["hold"]["total"]["worst"], -0.1542)
+
+    def test_a_section_that_does_not_add_up_or_does_not_fit_its_header_is_dropped(self):
+        corrupt = real.POST_OPT_HOLD.replace("+0.1954", "+0.2954")
+        self.assertNotIn("hold", contributions.parse_gain_summary(corrupt))
+        short = real.POST_OPT_HOLD.replace("-3.7707    -3.9661    +0.1954", "-3.7707    -3.9661")
+        self.assertNotIn("hold", contributions.parse_gain_summary(short))
+        doubled = real.PRE_OPT_SETUP + real.PRE_OPT_SETUP.replace("-0.1160", "-0.2160")
+        self.assertNotIn("setup", contributions.parse_gain_summary(doubled))
+        for text in ("", 'WNS "delta"\t-0.010 for -setup', "WNS    -0.0700\nTNS    -1.2000\n"):
+            self.assertEqual(contributions.parse_gain_summary(text), {})
+
+    def _real_session(self, targets):
+        log = sf.SessionLog()
+        log.gains[0]["checks"] = {
+            "setup": sf.summary_entry("setup", real.PRE_OPT_SETUP, as_reference=True),
+            "hold": sf.summary_entry("hold", real.PRE_OPT_HOLD, as_reference=True),
+        }
+        seq = log.size("U1", "BUFX1", "BUFX2")
+        log.gains.append({"seq": seq, "kind": "mutation", "checks": {
+            "setup": sf.summary_entry("setup", real.POST_OPT_SETUP),
+            "hold": sf.summary_entry("hold", real.POST_OPT_HOLD),
+        }})
+        return _seal_session(log, {**BEFORE, "U1": "BUFX2"}, base_ref=sf.make_base_ref(targets=targets))
+
+    def test_real_readings_give_predicted_reference_value_and_per_scenario_summaries(self):
+        contribution = self._real_session(["func_ssg_rcworst_m40|hold|U1/D"])
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        predicted, reference = contribution["predicted"], contribution["reference"]
+        self.assertEqual(core.value_of(predicted["xtopHoldWns"]), -0.1542)
+        self.assertEqual(core.value_of(predicted["xtopHoldTns"]), -3.7707)
+        self.assertEqual(core.value_of(predicted["xtopSetupWns"]), -0.0387)
+        self.assertEqual(core.value_of(predicted["xtopSetupTns"]), -0.1160)
+        self.assertEqual(core.value_of(reference["xtopHoldTns"]), -3.9661)
+        self.assertEqual(core.value_of(reference["xtopHoldWns"]), -0.1542)
+        self.assertEqual(contribution["value"], 0.0)
+        self.assertEqual(contribution["valueDetail"]["wnsGain"], {"setup": 0.0, "hold": 0.0})
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.1954)
+        self.assertEqual(contribution["valueDetail"]["tnsGain"], {"setup": 0.0, "hold": 0.1954})
+        summary = contribution["gainSummary"]
+        self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["tns"], -3.7009)
+        self.assertEqual(summary["predicted"]["hold"]["scenarios"]["func_ssg_rcworst_m40"]["dTns"], 0.1953)
+        self.assertEqual(summary["reference"]["hold"]["scenarios"]["func_ffg_cbest_125"]["tns"], -0.7568)
+        self.assertEqual(summary["predicted"]["setup"]["total"]["dWorst"], 0.0)
+
+    def test_real_readings_with_no_setup_change_advise_a_setup_target(self):
+        contribution = self._real_session(["func_ssg_rcworst_m40|setup|U1/D"])
+        self.assertEqual(_codes(contribution), [])
+        self.assertEqual(_advisories(contribution), ["no-predicted-gain"])
+
+
+
+REAL_REF = {"setup": (-0.0387, -0.1160, 12), "hold": (-0.1500, -3.9000, 70)}
+
+
+class XtopSessionFixRound1Tests(unittest.TestCase):
+    """Review of 2281b6da: uncertain lines in their real shape, the opposite check, fillers, undo rules."""
+
+    def test_a_real_uncertain_mutation_line_is_sealed_as_a_tainted_refusal(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain(error="can't read \"post\": no such variable")
+        self.assertNotIn("before", log.ops[-1])
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertFalse(contribution["admissible"])
+        self.assertEqual(_codes(contribution), ["tainted"])
+
+    def test_a_real_uncertain_undo_line_is_sealed_as_a_tainted_refusal(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.uncertain(cmd="undo", proc="atcs_undo", args={})
+        self.assertNotIn("undoes", log.ops[-1])
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), ["tainted"])
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [1])
+
+    def test_hold_improves_but_setup_breaks_is_advised(self):
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.116), (-0.300, -0.900)), ((-0.150, -3.900), (-0.100, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual(_advisories(contribution), ["breaks-opposite-check"])
+        self.assertAlmostEqual(contribution["valueDetail"]["wnsGain"]["setup"], -0.2613)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["setup"], -0.784)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["hold"], 0.900)
+
+    def test_an_opposite_tns_loss_is_admitted_and_charged_to_the_rank_tns_gain(self):
+        # Controller decision: only an opposite WNS loss refuses; an opposite TNS loss is charged to rank.
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.116), (-0.0387, -0.500)), ((-0.150, -3.900), (-0.150, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertAlmostEqual(contribution["valueDetail"]["targetTnsGain"], 0.900)
+        self.assertAlmostEqual(contribution["valueDetail"]["tnsGain"]["setup"], -0.384)
+        self.assertAlmostEqual(contribution["valueDetail"]["rankTnsGain"], 0.516)
+
+    def test_an_opposite_check_within_rounding_is_not_broken(self):
+        log = sf.SessionLog(reference=REAL_REF)
+        log.size("U1", "BUFX1", "BUFX2",
+                 gain=(((-0.0387, -0.1160), (-0.0388, -0.1161)), ((-0.150, -3.900), (-0.100, -3.000))))
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+    def test_an_unreadable_opposite_check_is_advised(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.gains[-1]["checks"]["setup"]["text"] = "garbled\n"
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])
+        self.assertEqual(_advisories(contribution), ["breaks-opposite-check"])
+
+    def test_a_filler_cell_resized_to_a_non_filler_is_out_of_scope(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "FILL1": "BUFX4"},
+                                     filler_patterns=["FILLER*"])
+        self.assertEqual(contribution["outOfScope"], ["FILL1"])
+        self.assertEqual(contribution["fillerChanges"], [])
+
+    def test_an_undo_that_is_not_the_top_of_the_kept_stack_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(first, gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U2": "BUFX2"})
+        self.assertIn("trace-mismatch", _advisories(contribution))  # D-T06-7: never a refusal
+
+    def test_repeated_stacked_undos_unwind_in_order(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        third = log.size("U3", "INVX1", "INVX2", gain=IMPROVES)
+        log.undo(third, gain=IMPROVES)
+        log.undo(second, gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertTrue(contribution["admissible"], contribution["refusals"])
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [first])
+        self.assertEqual(contribution["session"]["undone"], [second, third])
+
+    def test_discards_naming_a_kept_line_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(second, discards=[first], gain=IMPROVES)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertIn("trace-mismatch", _advisories(contribution))  # D-T06-7: never a refusal
+
+    def test_a_seq_gap_is_a_trace_mismatch(self):
+        log = sf.SessionLog()
+        log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.seq += 1  # a line that reached XTop but was never logged
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        self.assertEqual(second, 3)
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2", "U2": "BUFX2"})
+        self.assertEqual(_codes(contribution), [])  # D-T06-7: an advisory since #64 T06
+        self.assertIn("trace-mismatch", _advisories(contribution))
+
+    def test_a_kept_undo_without_its_undo_gain_line_is_advised(self):
+        log = sf.SessionLog()
+        first = log.size("U1", "BUFX1", "BUFX2", gain=IMPROVES)
+        second = log.size("U2", "BUFX1", "BUFX2", gain=IMPROVES)
+        log.undo(second)  # no undo gain line
+        contribution = _seal_session(log, {**BEFORE, "U1": "BUFX2"})
+        self.assertIn("missing-gain-line", _advisories(contribution))
+        self.assertEqual([command["seq"] for command in contribution["commands"]], [first])
+
+    def test_a_non_numeric_row_inside_a_summary_table_drops_the_section(self):
+        broken = real.POST_OPT_HOLD.replace(
+            "  func_ffg_cbest_m40         52        55         -3    |    -0.0704    -0.0704    +0.0000    |"
+            "    -0.6551    -0.7199    +0.0649", "  func_ffg_cbest_m40         n/a")
+        self.assertNotEqual(broken, real.POST_OPT_HOLD)
+        self.assertNotIn("hold", contributions.parse_gain_summary(broken))
+
+
 if __name__ == "__main__":
     unittest.main()

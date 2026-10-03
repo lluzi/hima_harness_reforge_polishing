@@ -12,6 +12,7 @@
 // `decideLaunch` will use when one does, so a check that says a pack fits cannot disagree with the
 // decision that later refuses it.
 import { campaignRelativePath } from './paths.js';
+import { REVIEWED_SCOPE_MAX_MUTATIONS } from './delegation.js';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -247,6 +248,26 @@ const interactiveCommandClasses = z.strictObject({
   if (seen.size === 0) ctx.addIssue({ code: 'custom', message: 'an interactive tool must classify at least one command as read, mutate or save' });
 });
 
+/**
+ * One ordinary Pack tool may be handed to the Site's generic engineering executor instead of being
+ * launched as the tool's batch argv.  The declaration deliberately points only at things the Pack
+ * already owns: outputs, knowledge and the Reader-backed output that comes back.  The goal and the
+ * actual task text stay on the controlled execution request, while the Site chooses the executor.
+ */
+export const engineeringOutsourcing = z.strictObject({
+  role: z.literal('resident-engineering-agent'),
+  reads: z.array(declaredName).min(1).max(128).refine((items) => new Set(items).size === items.length, {
+    error: 'outsourcing reads must be unique',
+  }),
+  knowledge: z.array(knowledgeFileName).min(1).max(128).refine((items) => new Set(items).size === items.length, {
+    error: 'outsourcing knowledge files must be unique',
+  }),
+  artifactPrefix: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/,
+    'outsourcing artifactPrefix must be a normalized workspace-relative directory').optional(),
+  produces: declaredName,
+});
+export type EngineeringOutsourcing = z.infer<typeof engineeringOutsourcing>;
+
 export const packTool = z.strictObject({
   id: packId,
   /** The executable a Pack author recommends for this tool. It is advice for review, not a lock. */
@@ -266,12 +287,27 @@ export const packTool = z.strictObject({
    */
   licences: z.record(licenceName, z.number().int().positive()).default({}),
   argv: z.array(z.string().min(1)).min(1),
+  /** Optional complete engineering-task handoff. Omission preserves the ordinary batch tool. */
+  outsourcing: engineeringOutsourcing.optional(),
   /** Optional typed line-oriented interactive adapter. Omission preserves the batch tool. */
   interactive: z.strictObject({
     mode: z.enum(['interactive-only', 'hybrid']),
     adapter: z.literal('hima-tcl-line-v1'),
     /** Optional PTY startup command. Omission preserves the historical same-argv behavior. */
     argv: z.array(z.string().min(1)).min(1).optional(),
+    /**
+     * What the interactive session holds of the Site, when that differs from the batch path's
+     * `licences`: a hybrid tool whose batch path is a no-op that runs none of the licensed tool
+     * declares its seats here and none on the tool, so the no-op holds no seat while every session
+     * holds its own. Omission keeps the tool's `licences` for both paths, as before.
+     */
+    licences: z.record(licenceName, z.number().int().positive()).optional(),
+    /**
+     * How long a close gives the session's whole process group to be gone after its hangup, TERM
+     * included, before it is recorded `process-survived`. Declared here because it is a fact about
+     * the tool and its wrapper (a container stop takes its own time); 60 s when omitted.
+     */
+    closeGraceMs: z.number().int().min(2_000).max(30 * 60_000).optional(),
     commands: interactiveCommandClasses,
     /** Optional named argument contract in Tcl positional order. Older Packs retain positional arrays. */
     arguments: z.record(interactiveCommandName, z.array(interactiveArgumentDeclaration).max(32)
@@ -399,6 +435,13 @@ export const packWorkshop = z.strictObject({
   licences: z.record(licenceName, z.number().int().positive()).default({}),
   /** The command line, `argv[0]` a literal wrapper the contract declares and the Permit allows. */
   argv: z.array(z.string().min(1)).min(1),
+  /**
+   * When the Reader of `produces` refuses what this workshop wrote, and where it says why (2026-09-29,
+   * ADR-0016). `refusedWhen` is the value that Reader emits whose count above zero is a refusal;
+   * `problems` is the declared output (one of `reads`) the Reader writes its itemized refusal to.
+   * An autopilot fork branch revises the workshop from that file, up to its declared revisions.
+   */
+  revision: z.strictObject({ refusedWhen: semanticSlug, problems: declaredName }).optional(),
 })
   .superRefine((workshop, ctx) => {
     // **The six names are the harness's, and a workshop may not declare one as its own.** `inputs`
@@ -512,7 +555,18 @@ const teamMember = z.strictObject({
   cancellation: z.literal('request-stop-preserve-unknown'),
   terminal: z.array(z.enum(['completed', 'cancelled', 'expired', 'uncertain', 'refused'])).min(1),
   refusalConditions: z.array(z.string().trim().min(1).max(240)).min(1).max(32),
-  reviewedAction: z.strictObject({
+  /** An advisory member (2026-09-29, ADR-0016): never required for the Operator, never waited for by
+   *  an autopilot branch, and its absence never strands the execution. */
+  optional: z.literal(true).optional(),
+  /**
+   * Inputs whose exact Reader-backed bytes the Host embeds in the member's task (#64 M-T03-1): the
+   * member works from the request itself, never from a record id it may be unable to read. `fields`
+   * picks top-level keys of a JSON reading; absent, the whole reading is embedded.
+   */
+  taskInputs: z.array(z.strictObject({ input: declaredName, fields: z.array(z.string().min(1)).min(1).max(16).optional() })).max(4).default([]),
+  reviewedAction: z.union([z.strictObject({
+    // Absent means "action": the Reviewer approves exactly one typed action from the plan.
+    mode: z.literal('action').optional(),
     fromRole: packId,
     planInput: declaredName,
     actionListField: declaredName,
@@ -521,12 +575,46 @@ const teamMember = z.strictObject({
     planHashField: declaredName,
     commandField: declaredName,
     argumentsField: declaredName,
-  }).optional(),
+  }), z.strictObject({
+    // The Reviewer approves a scope: a subset of `commands` and a mutation budget up to `maxMutations`.
+    mode: z.literal('scope'),
+    fromRole: packId,
+    planInput: declaredName,
+    commands: z.array(z.string().min(1)).min(1).max(32),
+    maxMutations: z.number().int().min(1).max(REVIEWED_SCOPE_MAX_MUTATIONS),
+    hostPlanHashArgument: declaredName,
+    planHashField: declaredName,
+    scopeField: declaredName,
+  }), z.strictObject({
+    // The admitted plan itself carries the Operator's scope (2026-09-29, ADR-0016): the Host reads
+    // `scopePath` out of the exact Reader-backed `planInput` bytes, holds it to `commands` and
+    // `maxMutations`, and binds every mutation to that reading's content SHA-256. No Reviewer gates it.
+    mode: z.literal('request-scope'),
+    planInput: declaredName,
+    scopePath: z.array(z.string().min(1)).min(1).max(8),
+    commands: z.array(z.string().min(1)).min(1).max(32),
+    maxMutations: z.number().int().min(1).max(REVIEWED_SCOPE_MAX_MUTATIONS),
+    hostPlanHashArgument: declaredName,
+  })]).optional(),
 });
+/** One condition over a current Reader value of a Team input: `equals` or `above`, exactly one. */
+const teamBatchCondition = z.strictObject({
+  input: declaredName,
+  value: semanticSlug,
+  equals: z.number().optional(),
+  above: z.number().optional(),
+}).refine((condition) => (condition.equals === undefined) !== (condition.above === undefined),
+  { error: 'a batchWhen condition states exactly one of equals and above' });
 export const packAgentTeam = z.strictObject({
   id: packId,
   version: z.string().min(1),
   triggerNode: packId,
+  /**
+   * When the trigger node runs its tool's batch path instead of materializing the Team (2026-09-29,
+   * ADR-0016): any one condition over the latest current reading of one of the members' inputs. An
+   * autopilot branch asks it; an owner-driven Run decides for itself.
+   */
+  batchWhen: z.array(teamBatchCondition).max(8).default([]),
   members: z.array(teamMember).min(1).max(16),
 });
 export type PackAgentTeam = z.infer<typeof packAgentTeam>;
@@ -744,7 +832,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.1.2';
+export const harnessVersion = '0.2.2';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 
@@ -927,6 +1015,34 @@ export const packLoop = z.strictObject({
 });
 export type PackLoop = z.infer<typeof packLoop>;
 
+/**
+ * **Where the Harness drives the graph itself** (2026-09-29, ADR-0016): a fork whose branches drive
+ * themselves, or a plain path segment. Inside either, the Harness takes the node turns the owner
+ * would take — begin, work, complete, a Team's members and their schema-valid adoption, a branch
+ * Workshop's authoring by the branch's own child Agent — with the same records, and tells the owner
+ * once when the Run leaves it. Pause, cancel, Run stop and every Budget still hold.
+ */
+export const forkAutopilot = z.strictObject({
+  /** The act node whose unlabelled edges draw the fork; every branch of it drives itself. */
+  fork: packId,
+  /** How many times a branch Workshop is revised after its Reader refuses (`revision` on it). */
+  revisions: z.number().int().min(0).max(8).default(2),
+  /** The branch child Agent's share when it authors or revises a branch Workshop's entry. */
+  author: z.strictObject({
+    maxElapsedMs: z.number().int().positive().max(60 * 60_000),
+    maxFollowups: z.number().int().min(1).max(16),
+    maxTokensPerTurn: z.number().int().positive().optional(),
+  }).default({ maxElapsedMs: 600_000, maxFollowups: 4, maxTokensPerTurn: 16_000 }),
+});
+export const segmentAutopilot = z.strictObject({
+  /** Where the segment starts: every node reachable from these, not crossing `until`, is in it. */
+  from: z.array(packId).min(1).max(16),
+  /** Where it stops: the owner's decision points and the Run's honest ending. */
+  until: z.array(packId).min(1).max(16),
+});
+export type ForkAutopilot = z.infer<typeof forkAutopilot>;
+export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
+
 export const packGraph = z.strictObject({
   id: packId,
   version: z.string(),
@@ -935,6 +1051,8 @@ export const packGraph = z.strictObject({
   edges: z.array(packEdge).default([]),
   /** The Loops this pack's Explore nodes may open, by name. A pack that drills nowhere declares none. */
   loops: z.record(packId, packLoop).default({}),
+  /** Where the Harness drives the graph itself (ADR-0016). Absent: every node is the owner's. */
+  autopilot: z.array(z.union([forkAutopilot, segmentAutopilot])).max(16).default([]),
 });
 export type PackGraph = z.infer<typeof packGraph>;
 
@@ -1923,6 +2041,20 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
       }
     }
     wrappers.add(tool.argv[0]!);
+    if (tool.outsourcing !== undefined) {
+      if (tool.interactive !== undefined) broken(packFiles.contract, `tool "${tool.id}" declares both outsourcing and interactive protocols`);
+      const outputs = new Map(contract.outputs.map((output) => [output.name, output]));
+      for (const name of tool.outsourcing.reads) {
+        if (!outputs.has(name)) broken(packFiles.contract, `tool "${tool.id}" outsourcing reads unknown output "${name}"`);
+      }
+      const knowledge = new Set(contract.knowledge.map((item) => item.file));
+      for (const file of tool.outsourcing.knowledge) {
+        if (!knowledge.has(file)) broken(packFiles.contract, `tool "${tool.id}" outsourcing references undeclared knowledge file "${file}"`);
+      }
+      const produced = outputs.get(tool.outsourcing.produces)
+        ?? broken(packFiles.contract, `tool "${tool.id}" outsourcing produces unknown output "${tool.outsourcing.produces}"`);
+      if (produced.reader === undefined) broken(packFiles.contract, `tool "${tool.id}" outsourcing produces "${produced.name}", which declares no reader`);
+    }
     const interactiveArgv = tool.interactive?.argv;
     if (interactiveArgv !== undefined) {
       try { literalArgument(interactiveArgv[0]!, `interactive tool "${tool.id}" wrapper`); } catch (error) { broken(packFiles.contract, (error as Error).message); }
@@ -2053,6 +2185,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
     validateForkShape(part, loop, broken);
   }
   validateGenerationLimit(graph, broken);
+  validateAutopilot(pack, broken);
 }
 
 /** Cross-check the static recipe only. Dispatch and dependency settlement stay explicit owner acts. */
@@ -2078,9 +2211,13 @@ function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>,
         broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" depends on unknown member "${dependency}"`);
       }
       if (member.role === 'operator') {
-        if (member.scopePolicy !== 'site-qualified-interactive-only' || member.allowedTools.length !== 1
-            || member.allowedTools[0] !== 'hima_interactive') {
-          broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must request only hima_interactive with site-qualified-interactive-only scope`);
+        // #64 T05 w03: besides its interactive session, an Operator may read its exact recorded inputs
+        // (hima_delegation_input, in bounded windows), and nothing else.
+        const operatorTools = new Set(member.allowedTools);
+        if (member.scopePolicy !== 'site-qualified-interactive-only' || !operatorTools.has('hima_interactive')
+            || operatorTools.size !== member.allowedTools.length
+            || [...operatorTools].some((tool) => tool !== 'hima_interactive' && tool !== 'hima_delegation_input')) {
+          broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" must request hima_interactive, and optionally hima_delegation_input for its exact recorded inputs, with site-qualified-interactive-only scope`);
         }
         const node = nodes.get(member.node);
         const tool = node?.kind === 'act' && node.parameters.tool !== undefined
@@ -2107,7 +2244,36 @@ function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>,
       visiting.delete(id); visited.add(id);
     };
     for (const id of members.keys()) visit(id);
+    for (const member of team.members) {
+      if (member.optional === true && member.role === 'operator') broken(packFiles.contract, `Agent Team "${team.id}" Operator "${member.id}" cannot be optional: the Team's execution finishes only through it`);
+      for (const dependency of member.dependencyRoles) {
+        if (members.get(dependency)?.optional === true && member.optional !== true) {
+          broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" depends on optional member "${dependency}": an optional member's absence never blocks another`);
+        }
+      }
+    }
+    const teamInputs = new Set(team.members.flatMap((member) => member.inputs));
+    for (const member of team.members) for (const embedded of member.taskInputs) {
+      if (!member.inputs.includes(embedded.input)) broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" embeds "${embedded.input}", which is not one of its inputs`);
+    }
+    for (const condition of team.batchWhen) {
+      if (!teamInputs.has(condition.input)) broken(packFiles.contract, `Agent Team "${team.id}" batchWhen reads "${condition.input}", which is none of its members' inputs`);
+    }
     for (const member of team.members) if (member.reviewedAction) {
+      if (member.reviewedAction.mode === 'request-scope') {
+        const reviewed = member.reviewedAction;
+        if (member.role !== 'operator') broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" declares a request scope, which only an Operator takes`);
+        if (!member.inputs.includes(reviewed.planInput)) broken(packFiles.contract, `Agent Team "${team.id}" request scope planInput must be one of Operator "${member.id}" inputs`);
+        const targetNode = nodes.get(member.node); const targetTool = targetNode?.kind === 'act' && targetNode.parameters.tool
+          ? pack.contract.tools.find(candidate => candidate.id === targetNode.parameters.tool) : undefined;
+        if (new Set(reviewed.commands).size !== reviewed.commands.length) broken(packFiles.contract, `Agent Team "${team.id}" request scope names a command more than once`);
+        for (const command of reviewed.commands) {
+          if (!targetTool?.interactive?.commands.mutate.includes(command)) broken(packFiles.contract, `Agent Team "${team.id}" request scope command "${command}" is not a mutation of Operator "${member.id}" tool`);
+          const hashArg = (targetTool.interactive.arguments[command] ?? []).find(argument => argument.name === reviewed.hostPlanHashArgument);
+          if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" request scope hostPlanHashArgument must name a string argument of mutation command "${command}"`);
+        }
+        continue;
+      }
       if (!member.dependencyRoles.includes(member.reviewedAction.fromRole)) {
         broken(packFiles.contract, `Agent Team "${team.id}" member "${member.id}" reviewedAction source must be one of its dependencyRoles`);
       }
@@ -2115,11 +2281,25 @@ function validateAgentTeams(pack: Pack, declaredIn: ReadonlyMap<string, string>,
       if (!member.inputs.includes(member.reviewedAction.planInput)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action planInput must be one of Operator "${member.id}" inputs`);
       const targetNode = nodes.get(member.node); const targetTool = targetNode?.kind === 'act' && targetNode.parameters.tool
         ? pack.contract.tools.find(candidate => candidate.id === targetNode.parameters.tool) : undefined;
-      if (!targetTool?.interactive?.commands.mutate.includes(member.reviewedAction.command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action command is not a mutation of Operator "${member.id}" tool`);
-      const commandArgs = targetTool?.interactive?.arguments[member.reviewedAction.command] ?? [];
-      const hashArg = commandArgs.find(argument => argument.name === member.reviewedAction!.hostPlanHashArgument);
+      const reviewed = member.reviewedAction;
+      if (reviewed.mode === 'scope') {
+        if (new Set(reviewed.commands).size !== reviewed.commands.length) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope names a command more than once`);
+        for (const command of reviewed.commands) {
+          if (!targetTool?.interactive?.commands.mutate.includes(command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope command "${command}" is not a mutation of Operator "${member.id}" tool`);
+          const hashArg = (targetTool.interactive.arguments[command] ?? []).find(argument => argument.name === reviewed.hostPlanHashArgument);
+          if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope hostPlanHashArgument must name a string argument of mutation command "${command}"`);
+        }
+        for (const field of [reviewed.planHashField, reviewed.scopeField]) {
+          if (!source.resultSchema.required.includes(field)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope field "${field}" is not required by member "${source.id}" result schema`);
+        }
+        if (source.ownerAdoption !== 'required') broken(packFiles.contract, `Agent Team "${team.id}" reviewed scope source "${source.id}" must require owner adoption`);
+        continue;
+      }
+      if (!targetTool?.interactive?.commands.mutate.includes(reviewed.command)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action command is not a mutation of Operator "${member.id}" tool`);
+      const commandArgs = targetTool?.interactive?.arguments[reviewed.command] ?? [];
+      const hashArg = commandArgs.find(argument => argument.name === reviewed.hostPlanHashArgument);
       if (hashArg?.type !== 'string') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action hostPlanHashArgument must name a string argument of its mutation command`);
-      for (const field of [member.reviewedAction.planHashField, member.reviewedAction.commandField, member.reviewedAction.argumentsField]) {
+      for (const field of [reviewed.planHashField, reviewed.commandField, reviewed.argumentsField]) {
         if (!source.resultSchema.required.includes(field)) broken(packFiles.contract, `Agent Team "${team.id}" reviewed action field "${field}" is not required by member "${source.id}" result schema`);
       }
       if (source.ownerAdoption !== 'required') broken(packFiles.contract, `Agent Team "${team.id}" reviewed action source "${source.id}" must require owner adoption`);
@@ -2177,6 +2357,9 @@ function validateWorkshops(pack: Pack, broken: (file: string, why: string) => ne
     }
     for (const file of workshop.knowledge) {
       if (!knowledgeFiles.has(file)) broken(packFiles.contract, `${named} names the knowledge file "${file}", which this contract's knowledge: does not declare`);
+    }
+    if (workshop.revision !== undefined && !workshop.reads.includes(workshop.revision.problems)) {
+      broken(packFiles.contract, `${named} revises from "${workshop.revision.problems}", which is not one of its reads: the revision input is a file the workshop may read`);
     }
 
     // The command line, held exactly as a tool's is: every `${NAME}` in it is one of the arguments
@@ -2547,6 +2730,121 @@ function validateForkShape(part: RunGraph, loop: string | undefined, broken: (fi
   }
 }
 
+/** The Harness-driven parts of a pack's own graph (ADR-0016), resolved once from its declaration. */
+export interface AutopilotPlan {
+  /** Every fork whose branches drive themselves, by the node that draws it. */
+  readonly forks: ReadonlyMap<string, ForkAutopilot & { readonly branches: readonly ForkBranch[]; readonly join: string }>;
+  /** Every plain path segment: its nodes, and where it stops. */
+  readonly segments: readonly { readonly nodes: ReadonlySet<string>; readonly until: readonly string[] }[];
+}
+
+const autopilotPlans = new WeakMap<PackGraph, AutopilotPlan>();
+
+/**
+ * The nodes of one declared segment: every node reachable from `from` along ordinary edges, never
+ * crossing an `until` node, never entering a fork's branches (a fork node is the segment's last node
+ * on that path, and a fork's own declaration drives its branches).
+ */
+function segmentNodes(graph: RunGraph, declared: SegmentAutopilot): string[] {
+  const until = new Set(declared.until);
+  const nodes: string[] = [];
+  const seen = new Set<string>();
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const walk: string[] = [...declared.from];
+  for (let at = walk.shift(); at !== undefined; at = walk.shift()) {
+    if (seen.has(at) || until.has(at)) continue;
+    seen.add(at);
+    nodes.push(at);
+    const node = byId.get(at);
+    if (node === undefined || forkFrom(graph, node) !== undefined) continue;
+    for (const edge of graph.edges) if (edge.from === at && edge.revisit !== true) walk.push(edge.to);
+  }
+  return nodes;
+}
+
+/** The pack's autopilot, as the driver and the fences read it. Empty for a pack that declares none. */
+export function autopilotOf(pack: Pick<Pack, 'graph'>): AutopilotPlan {
+  const cached = autopilotPlans.get(pack.graph);
+  if (cached !== undefined) return cached;
+  const forks = new Map<string, ForkAutopilot & { readonly branches: readonly ForkBranch[]; readonly join: string }>();
+  const segments: { readonly nodes: ReadonlySet<string>; readonly until: readonly string[] }[] = [];
+  for (const declared of pack.graph.autopilot) {
+    if ('fork' in declared) {
+      const node = pack.graph.nodes.find((candidate) => candidate.id === declared.fork);
+      const fork = node === undefined ? undefined : forkFrom(pack.graph, node);
+      if (fork?.ok) forks.set(declared.fork, { ...declared, branches: fork.branches, join: fork.join });
+    } else segments.push({ nodes: new Set(segmentNodes(pack.graph, declared)), until: declared.until });
+  }
+  const plan: AutopilotPlan = { forks, segments };
+  autopilotPlans.set(pack.graph, plan);
+  return plan;
+}
+
+/** Which declared segment this node belongs to, if any. */
+export const autopilotSegmentOf = (pack: Pick<Pack, 'graph'>, nodeId: string | undefined): AutopilotPlan['segments'][number] | undefined =>
+  nodeId === undefined ? undefined : autopilotOf(pack).segments.find((segment) => segment.nodes.has(nodeId));
+
+/** The self-driving fork a branch node belongs to, if any. */
+export function autopilotForkOfNode(pack: Pick<Pack, 'graph'>, nodeId: string): (ForkAutopilot & { readonly branches: readonly ForkBranch[]; readonly join: string }) | undefined {
+  for (const fork of autopilotOf(pack).forks.values()) if (fork.branches.some((branch) => branch.nodes.includes(nodeId))) return fork;
+  return undefined;
+}
+
+/** Whether the Harness, not the owner, drives this node (ADR-0016). */
+export const autopilotDrives = (pack: Pick<Pack, 'graph'>, nodeId: string): boolean =>
+  autopilotSegmentOf(pack, nodeId) !== undefined || autopilotForkOfNode(pack, nodeId) !== undefined;
+
+/**
+ * What an autopilot declaration may say (ADR-0016), held at load. A fork is one the graph draws. A
+ * segment holds only tool, reader and judge nodes: a Workshop needs a model author and the segment
+ * has none, and an Explore or a wait node is a person's or the owner's, so it may only be where the
+ * segment stops. **No person inside the loop**: a judge in a segment labels its UNDETERMINED, since
+ * an unlabelled one waits for a person. Segments overlap neither each other nor a fork's branches.
+ */
+function validateAutopilot(pack: Pack, broken: (file: string, why: string) => never): void {
+  const graph = pack.graph;
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const branchNodes = new Map<string, string>();
+  for (const node of graph.nodes) {
+    const fork = forkFrom(graph, node);
+    if (fork?.ok) for (const branch of fork.branches) for (const id of branch.nodes) branchNodes.set(id, node.id);
+  }
+  const forks = new Set<string>();
+  const covered = new Map<string, number>();
+  graph.autopilot.forEach((declared, index) => {
+    const said = `autopilot entry ${String(index + 1)}`;
+    if ('fork' in declared) {
+      const node = byId.get(declared.fork);
+      if (node === undefined) broken(packFiles.graph, `${said} names fork "${declared.fork}", which is not a node of its graph`);
+      const fork = forkFrom(graph, node);
+      if (fork === undefined || !fork.ok) broken(packFiles.graph, `${said} names "${declared.fork}", which draws no fork: a self-driving fork is one the graph draws`);
+      if (forks.has(declared.fork)) broken(packFiles.graph, `${said} declares fork "${declared.fork}" a second time`);
+      forks.add(declared.fork);
+      for (const branch of fork.branches) for (const id of branch.nodes) {
+        const at = byId.get(id)!;
+        if (at.kind === 'wait') broken(packFiles.graph, `${said}: branch ${branch.id} holds wait node "${id}"; a self-driving branch has no person inside it`);
+      }
+      return;
+    }
+    for (const id of [...declared.from, ...declared.until]) if (!byId.has(id)) broken(packFiles.graph, `${said} names "${id}", which is not a node of its graph`);
+    const nodes = segmentNodes(graph, declared);
+    if (nodes.length === 0) broken(packFiles.graph, `${said} holds no node: every node it starts from is where it stops`);
+    for (const id of nodes) {
+      const node = byId.get(id)!;
+      if (branchNodes.has(id)) broken(packFiles.graph, `${said} reaches "${id}", a branch node of the fork at "${branchNodes.get(id)!}": a fork's branches drive themselves only by the fork's own declaration`);
+      if (node.kind === 'wait') broken(packFiles.graph, `${said} reaches wait node "${id}" without stopping there: a wait inside a self-driving segment pulls a person into the loop; name it in until`);
+      if (node.kind === 'explore') broken(packFiles.graph, `${said} reaches explore node "${id}" without stopping there: a decision is the owner's; name it in until`);
+      if (node.kind === 'act' && node.parameters.workshop !== undefined) broken(packFiles.graph, `${said} reaches workshop node "${id}" without stopping there: a segment has no model to author it; name it in until`);
+      if (node.kind === 'judge' && !graph.edges.some((edge) => edge.from === id && edge.outcome === 'UNDETERMINED')) {
+        broken(packFiles.graph, `${said} holds judge "${id}" with no UNDETERMINED edge: an unlabelled UNDETERMINED waits for a person, and a self-driving segment has none inside it`);
+      }
+      const other = covered.get(id);
+      if (other !== undefined) broken(packFiles.graph, `${said} and autopilot entry ${String(other + 1)} both hold "${id}": segments do not overlap`);
+      covered.set(id, index);
+    }
+  });
+}
+
 /**
  * Reject an Explore reachable after a join without a fresh unbranched observation and Judge.
  * A join leaves branch readings and verdicts; those cannot stand for an aggregate conclusion.
@@ -2829,6 +3127,10 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
     const interactiveWrapper = tool.interactive?.argv?.[0];
     if (interactiveWrapper !== undefined && !permitsWrapper(site, interactiveWrapper)) {
       const reason = `interactive tool "${tool.id}": ${refusedWrapper(site, interactiveWrapper)}`;
+      return fail({ ...head, error: reason }, reason);
+    }
+    if (tool.outsourcing !== undefined && site.bindings.engineeringCapabilities === undefined) {
+      const reason = `tool "${tool.id}" delegates to a resident engineering agent, but site ${site.name} has no engineeringCapabilities binding`;
       return fail({ ...head, error: reason }, reason);
     }
     return { ...head, error: undefined };
@@ -3163,6 +3465,9 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   // its time box ran out. What each entry names is the declaration to go and edit.
   const holders: readonly { readonly id: string; readonly holder: 'tool' | 'workshop'; readonly licences: Readonly<Record<string, number>> }[] = [
     ...pack.contract.tools.map((tool) => ({ id: tool.id, holder: 'tool' as const, licences: tool.licences })),
+    // An interactive session's own seats, when it declares them, are held against the Site the same way.
+    ...pack.contract.tools.flatMap((tool) => tool.interactive?.licences === undefined ? []
+      : [{ id: `${tool.id} (interactive)`, holder: 'tool' as const, licences: tool.interactive.licences }]),
     ...pack.contract.workshops.map((workshop) => ({ id: workshop.id, holder: 'workshop' as const, licences: workshop.licences })),
   ];
   const licences: LicenceCheck[] = holders.flatMap(({ id, holder, licences: held_ }) =>
@@ -3279,6 +3584,26 @@ export function boundInputs(pack: Pack, site: Site): Record<string, string> {
     const bound = site.bindings[input.name];
     if (bound === undefined || bound === '') throw new Error(`site ${site.name} binds no "${input.name}" for pack ${pack.id}`);
     bindings[input.name] = bound;
+  }
+  return bindings;
+}
+
+/**
+ * The Run's input bindings as its preparation recorded them (#64 D-C01-1): the workspace record's
+ * `bindings`, which already carry a Campaign file's input overrides merged over the Site's own. Every
+ * Job of a prepared Run takes its inputs from here, never from the Site file read again at launch
+ * time, which knows nothing of those overrides. A workspace recorded before `bindings` existed has
+ * nothing recorded, and only then are the Site's own bindings read, as they always were.
+ *
+ * @throws when the record names bindings but not one of the contract's inputs.
+ */
+export function recordedInputs(pack: Pack, site: Site, recorded: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  if (recorded === undefined) return boundInputs(pack, site);
+  const bindings: Record<string, string> = {};
+  for (const input of pack.contract.inputs) {
+    const value = recorded[input.name];
+    if (value === undefined || value === '') throw new Error(`the prepared workspace recorded no "${input.name}" input for pack ${pack.id}`);
+    bindings[input.name] = value;
   }
   return bindings;
 }

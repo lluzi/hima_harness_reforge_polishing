@@ -1,0 +1,6 @@
+id: engineering-delivery-ready
+version: "1"
+title: The resident engineer delivered a complete identity-verified XTop result
+requires: [{ type: tc_engineering_result_error_count }]
+subject: { type: tc_engineering_result_error_count }
+predicate: { op: eq, threshold: 0, unit: count }

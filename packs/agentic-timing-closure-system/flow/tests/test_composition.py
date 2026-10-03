@@ -799,5 +799,424 @@ class SealedContributionIntegrationTest(unittest.TestCase):
             self.assertEqual(facts["schema"], "atcs.composition-facts/1")
 
 
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4 (user amendment 2026-09-28): a ranked recipe over admitted
+# `xtop-session` Contributions -- rank, mark `skip: shared-instance`, never refuse.
+# ---------------------------------------------------------------------------
+
+import session_fixtures as sf  # noqa: E402
+
+SESSION_BEFORE = {"U1": "BUFX1", "U2": "BUFX1", "U3": "INVX1", "U4": "BUFX1"}
+NO_GAIN = ((-0.020, -0.100), (-0.020, -0.100))
+
+
+def _hold_gain(delta_wns, delta_tns=0.1):
+    return NO_GAIN, ((-0.070, -1.200), (-0.070 + delta_wns, -1.200 + delta_tns))
+
+
+def _session(slot, sizes, gain, targets=None, target_pins=None, extra=None, before=None, domain=None,
+             evidence=None):
+    """Seal one session in `slot` that sizes each `(instance, to)` in `sizes`; `domain` is the
+    session's ``domain.json`` record (#66 D2), absent by default; `evidence` overrides the clean
+    close evidence (e.g. a tainted transcript)."""
+    before = dict(before or SESSION_BEFORE)
+    base_ref = sf.make_base_ref(slot=slot, instances=tuple(sorted(before)), targets=targets,
+                                target_pins=target_pins)
+    log = sf.SessionLog()
+    after = dict(before)
+    for instance, to_master in sizes:
+        log.size(instance, after[instance], to_master, gain=gain)
+        after[instance] = to_master
+    if extra is not None:
+        extra(log, after)
+    with tempfile.TemporaryDirectory() as tmp:
+        before_path = Path(tmp) / "before.dump"
+        after_path = Path(tmp) / "after.dump"
+        before_path.write_text(sf.dump_text(before), encoding="utf-8")
+        after_path.write_text(sf.dump_text(after), encoding="utf-8")
+        contribution = contributions.seal_session(
+            base_ref,
+            {"beforeDump": str(before_path), "afterDump": str(after_path),
+             "evidence": {"taintedJson": None, "transcriptTaint": "clean", "ecoOutput": True, **(evidence or {})},
+             "domainText": json.dumps(domain) if domain is not None else None},
+            log.ops_text(), log.gain_text())
+    return contribution
+
+
+class XtopSessionRecipeTests(unittest.TestCase):
+    def test_a_shared_instance_is_skipped_in_the_lower_ranked_session_and_the_batch_still_composes(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010))
+        self.assertTrue(high["admissible"], high["refusals"])
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        facts = composition.analyze(BASE_STATE_ID, [low, high], [])
+
+        self.assertEqual(facts["conflicts"], [])
+        self.assertEqual(facts["unresolvedCount"], 0)
+        self.assertEqual(sorted(facts["considered"]), sorted([high["id"], low["id"]]))
+        recipe = facts["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [high["id"], low["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2])
+        high_commands, low_commands = (entry["commands"] for entry in recipe["sessions"])
+        self.assertEqual([command["skip"] for command in high_commands], [None, None])
+        self.assertEqual([command["args"]["instance"] for command in low_commands], ["U3", "U1"])
+        self.assertIsNone(low_commands[0]["skip"])
+        self.assertEqual(low_commands[1]["skip"], "shared-instance")
+        self.assertEqual(low_commands[1]["sharedWith"], [{"instance": "U1", "contribution": high["id"], "rank": 1}])
+        self.assertEqual(recipe["commandCount"], 4)
+        self.assertEqual(recipe["skipCount"], 1)
+        self.assertEqual(facts["order"], [high["id"], low["id"]])
+
+    def test_blocker_coverage_ranks_before_predicted_value(self):
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005),
+                          targets=["func_ss|hold|U1/D"], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040),
+                        targets=["func_ss|hold|U2/D"], target_pins=["U2/D"])
+        worst = ["func_ss|hold|U1/D"]
+
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=worst)["recipe"]
+        self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
+        self.assertEqual(ranked["sessions"][0]["blockerCoverage"], 1)
+        self.assertEqual(ranked["sessions"][0]["coveredChecks"], worst)
+        self.assertEqual(ranked["worstChecks"], worst)
+
+        by_value = composition.analyze(BASE_STATE_ID, [covers, bulk], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in by_value["sessions"]], [bulk["id"], covers["id"]])
+
+    def test_a_skipped_creation_cascades_to_commands_on_the_instance_it_created(self):
+        def fix_then_size(log, after):
+            log.fix_hold(["U1/D"], {"U1": "BUFX2", "atcs_w02_r1_eco_1": None},
+                         {"U1": "BUFX4", "atcs_w02_r1_eco_1": "DELAY2"}, gain=_hold_gain(0.010))
+            log.size("atcs_w02_r1_eco_1", "DELAY2", "DELAY4", gain=_hold_gain(0.012))
+            after.update({"U1": "BUFX4", "atcs_w02_r1_eco_1": "DELAY4"})
+
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        low = _session("w02", [("U1", "BUFX2")], _hold_gain(0.001), extra=fix_then_size)
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+        skips = [command["skip"] for command in recipe["sessions"][1]["commands"]]
+        self.assertEqual(skips, ["shared-instance", "shared-instance", "depends-on-skipped"])
+
+    def test_an_inadmissible_session_is_listed_as_excluded_and_never_ranked(self):
+        """Only corrupt data refuses: a session that did not close cleanly (tainted) is excluded."""
+        good = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        tainted = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020),
+                           evidence={"transcriptTaint": "tainted:size_cell left an unknown state"})
+        self.assertEqual([refusal["code"] for refusal in tainted["refusals"]], ["tainted"])
+
+        facts = composition.analyze(BASE_STATE_ID, [good, tainted], [])
+        self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [good["id"]])
+        self.assertEqual(facts["recipe"]["excluded"],
+                         [{"contribution": tainted["id"], "taskId": "w02", "codes": ["tainted"]}])
+        self.assertNotIn(tainted["id"], facts["considered"])
+
+    def test_a_session_with_quality_advisories_is_ranked_with_them_never_excluded(self):
+        """Replay is an aggregator: a batch XTop measured as no gain and as breaking its target check
+        is sealed admissible with those advisories and enters the recipe (ranked last here)."""
+        good = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        worse = _session("w02", [("U2", "BUFX2")], _hold_gain(-0.010))
+        self.assertTrue(worse["admissible"], worse["refusals"])
+        self.assertEqual(sorted(a["code"] for a in worse["advisories"]), ["breaks-target-check", "no-predicted-gain"])
+
+        facts = composition.analyze(BASE_STATE_ID, [good, worse], [])
+        recipe = facts["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [good["id"], worse["id"]])
+        self.assertEqual([entry["advisories"] for entry in recipe["sessions"]],
+                         [[], ["breaks-target-check", "no-predicted-gain"]])
+        self.assertEqual(recipe["excluded"], [])
+        self.assertIn(worse["id"], facts["considered"])
+
+    def test_the_recipe_does_not_depend_on_input_order(self):
+        first = _session("w01", [("U1", "BUFX2")], _hold_gain(0.020))
+        second = _session("w02", [("U1", "BUFX4")], _hold_gain(0.020))
+        one = composition.analyze(BASE_STATE_ID, [first, second], [])
+        two = composition.analyze(BASE_STATE_ID, [second, first], [])
+        self.assertEqual(one["id"], two["id"])
+        self.assertEqual(one["recipe"]["sessions"][0]["contribution"], min(first["id"], second["id"]))
+
+    def test_legacy_kinds_keep_their_conflicts_and_an_empty_recipe(self):
+        c1 = make_contribution(task_id="w01", delta={"mastersChanged": {"U1": ["BUFX1", "BUFX2"]},
+                                                     "added": {}, "removed": {}})
+        c2 = make_contribution(task_id="w02", delta={"mastersChanged": {"U1": ["BUFX1", "BUFX4"]},
+                                                     "added": {}, "removed": {}})
+        facts = composition.analyze(BASE_STATE_ID, [c1, c2], [])
+        self.assertEqual([conflict["kind"] for conflict in facts["conflicts"]], ["same-instance-different-master"])
+        self.assertEqual(facts["recipe"]["sessions"], [])
+
+    def test_a_session_whose_base_dump_disagrees_is_excluded_from_the_recipe_not_a_conflict(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030))
+        two = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020))
+        odd = _session("w03", [("U3", "INVX2")], _hold_gain(0.050), before={**SESSION_BEFORE, "U9": "BUFX1"})
+        self.assertNotEqual(odd["beforeDumpSha256"], one["beforeDumpSha256"])
+
+        facts = composition.analyze(BASE_STATE_ID, [odd, one, two], [])
+        self.assertEqual(facts["conflicts"], [])
+        self.assertEqual([entry["contribution"] for entry in facts["recipe"]["sessions"]], [one["id"], two["id"]])
+        self.assertEqual(facts["recipe"]["excluded"],
+                         [{"contribution": odd["id"], "taskId": "w03", "codes": ["base-dump-mismatch"]}])
+        self.assertNotIn(odd["id"], facts["considered"])
+        self.assertNotIn(odd["id"], facts["order"])
+
+    def test_the_tns_tie_break_uses_the_target_checks_only(self):
+        a = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        b = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.30))
+        recipe = composition.analyze(BASE_STATE_ID, [a, b], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [b["id"], a["id"]])
+        self.assertAlmostEqual(recipe["sessions"][0]["tnsGain"], 0.30)
+
+    def test_an_opposite_tns_loss_is_admitted_but_ranks_below_an_equal_session_without_it(self):
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        setup_loss = ((-0.020, -0.100), (-0.020, -0.150))  # setup WNS unchanged, setup TNS 0.05 worse
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_loss, _hold_gain(0.010, 0.10)[1]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+        self.assertAlmostEqual(lossy["valueDetail"]["targetTnsGain"], clean["valueDetail"]["targetTnsGain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [lossy, clean], [])["recipe"]
+        self.assertEqual([entry["contribution"] for entry in recipe["sessions"]], [clean["id"], lossy["id"]])
+        self.assertAlmostEqual(recipe["sessions"][1]["tnsGain"], 0.05)
+        self.assertEqual(recipe["rankedBy"],
+                         ["blockerCoverage desc", "aggregateRankGain desc", "value desc", "id asc"])
+
+    def test_a_reserved_group_blocker_is_covered_by_its_raw_endpoint(self):
+        """Issue #64 Task 5 fix round 1: a check in a reserved PT path group is keyed `<pin>@<group>`;
+        the recipe covers it by PT's raw endpoint, exactly as the campaign-plan Reader does."""
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005), targets=[], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040), targets=[], target_pins=["U2/D"])
+        key = "func_ss|hold|U1/D@**async_default**"
+        ranked = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=[key],
+                                     worst_endpoints={key: "U1/D"})["recipe"]
+        self.assertEqual([entry["contribution"] for entry in ranked["sessions"]], [covers["id"], bulk["id"]])
+        self.assertEqual(ranked["sessions"][0]["coveredChecks"], [key])
+
+    def test_one_coverage_rule_for_the_plan_and_the_recipe(self):
+        covered = composition.covers
+        self.assertTrue(covered("s|setup|out_port", "out_port", ["s|setup|out_port"], []),
+                        "a top-level port endpoint is covered by the check key in targets")
+        self.assertTrue(covered("s|setup|U1/D", "U1/D", [], ["U1/D"]))
+        self.assertTrue(covered("s|hold|U1/D@**async_default**", "U1/D", [], ["U1/D"]))
+        self.assertFalse(covered("s|hold|U1/D@**async_default**", None, [], ["U1/D"]))
+        self.assertFalse(covered("s|setup|U1/D", "U1/D", ["s|hold|U1/D"], ["U1/Q"]))
+
+    def test_worst_check_endpoints_name_each_worst_checks_raw_pt_endpoint(self):
+        observation = {"checks": {
+            "a|setup|P1@**default**": {"slack": core.known(-0.05), "endpoint": "P1"},
+            "a|setup|P2": {"slack": core.known(-0.01), "endpoint": "P2"},
+            "a|hold|P3": {"slack": core.known(-0.02)},
+        }}
+        self.assertEqual(composition.worst_check_endpoints(observation),
+                         {"a|setup|P1@**default**": "P1", "a|hold|P3": None})
+
+    def test_worst_checks_are_the_worst_failing_check_per_scenario_and_mode(self):
+        observation = {"checks": {
+            "a|setup|P1": {"slack": core.known(-0.01)}, "a|setup|P2": {"slack": core.known(-0.05)},
+            "a|hold|P3": {"slack": core.known(-0.02)}, "b|hold|P4": {"slack": core.known(0.01)},
+            "b|setup|P5": {"slack": core.unknown("not reported")},
+        }}
+        self.assertEqual(composition.worst_checks(observation), ["a|hold|P3", "a|setup|P2"])
+
+
+# ---------------------------------------------------------------------------
+# #66 D5: whole batches rank by aggregate gain. Replay is an aggregator (#64 decision): an
+# overlapping batch is never excluded; its conflicting commands are skipped one by one.
+# ---------------------------------------------------------------------------
+
+RANKED_BY = ["blockerCoverage desc", "aggregateRankGain desc", "value desc", "id asc"]
+
+
+def _domain(instances, nets=()):
+    return sf.domain_record(plan_instances=instances, instances=instances, nets=nets, target_pins=["U1/D"])
+
+
+def _ids(recipe):
+    return [entry["contribution"] for entry in recipe["sessions"]]
+
+
+class BatchAggregateRankingTests(unittest.TestCase):
+    def test_a_batch_with_more_aggregate_gain_ranks_above_a_batch_with_more_value(self):
+        sharp = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.10))
+        batch = _session("w02", [("U2", "BUFX2"), ("U3", "INVX2")], _hold_gain(0.010, 0.60))
+        self.assertGreater(sharp["value"], batch["value"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [sharp, batch], [])["recipe"]
+
+        self.assertEqual(recipe["rankedBy"], RANKED_BY)
+        self.assertEqual(_ids(recipe), [batch["id"], sharp["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2])
+        self.assertAlmostEqual(recipe["sessions"][0]["aggregateRankGain"], 0.60)
+        self.assertAlmostEqual(recipe["sessions"][1]["aggregateRankGain"], 0.10)
+        self.assertEqual({entry["gainSource"] for entry in recipe["sessions"]}, {"aggregate"})
+
+    def test_blocker_coverage_still_ranks_before_aggregate_gain(self):
+        covers = _session("w01", [("U1", "BUFX2")], _hold_gain(0.005, 0.05),
+                          targets=["func_ss|hold|U1/D"], target_pins=["U1/D"])
+        bulk = _session("w02", [("U2", "BUFX2")], _hold_gain(0.040, 0.90),
+                        targets=["func_ss|hold|U2/D"], target_pins=["U2/D"])
+        recipe = composition.analyze(BASE_STATE_ID, [bulk, covers], [], worst_keys=["func_ss|hold|U1/D"])["recipe"]
+        self.assertEqual(_ids(recipe), [covers["id"], bulk["id"]])
+
+    def test_value_breaks_an_aggregate_gain_tie(self):
+        low = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.20))
+        high = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20))
+        recipe = composition.analyze(BASE_STATE_ID, [low, high], [])["recipe"]
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+
+    def test_an_opposite_checks_signed_tns_loss_is_charged_to_the_aggregate_gain(self):
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10))
+        setup_loss = ((-0.020, -0.100), (-0.020, -0.550))  # setup WNS flat, setup TNS 0.45 worse
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_loss, _hold_gain(0.010, 0.50)[1]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [lossy, clean], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [clean["id"], lossy["id"]])
+        self.assertAlmostEqual(recipe["sessions"][1]["aggregateRankGain"], 0.05)
+
+    def test_the_aggregate_gain_sums_every_scenario_of_the_sealed_aggregate_and_opposite_effects(self):
+        """Read from the sealed `aggregateGain`/`oppositeEffects` (per required scenario), not from the
+        total-row `rankTnsGain`; an unreadable scenario counts 0."""
+        summed = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.05))
+        summed["aggregateGain"] = {"hold": {
+            "func_ss": {"wnsGain": 0.01, "tnsGain": 0.2, "referenceWns": -0.07},
+            "func_ff": {"wnsGain": 0.02, "tnsGain": 0.3, "referenceWns": -0.05},
+            "func_tt": None}}
+        summed["oppositeEffects"] = {"setup": {
+            "func_ss": {"wnsGain": 0.0, "tnsGain": -0.1, "referenceWns": -0.02},
+            "func_ff": {"wnsGain": 0.0, "tnsGain": 0.0, "referenceWns": 0.01}}}
+        total_row = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.35))
+        self.assertGreater(total_row["valueDetail"]["rankTnsGain"], summed["valueDetail"]["rankTnsGain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [total_row, summed], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [summed["id"], total_row["id"]])
+        self.assertAlmostEqual(recipe["sessions"][0]["aggregateRankGain"], 0.4)
+
+    def test_a_contribution_without_the_aggregate_fields_ranks_by_its_rank_tns_gain(self):
+        legacy = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.30))
+        del legacy["aggregateGain"], legacy["oppositeEffects"]
+        batch = _session("w02", [("U2", "BUFX2")], _hold_gain(0.010, 0.20))
+
+        recipe = composition.analyze(BASE_STATE_ID, [batch, legacy], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [legacy["id"], batch["id"]])
+        first = recipe["sessions"][0]
+        self.assertEqual(first["gainSource"], "rankTnsGain")
+        self.assertAlmostEqual(first["aggregateRankGain"], legacy["valueDetail"]["rankTnsGain"])
+
+
+class OverlappingBatchesTests(unittest.TestCase):
+    """No `domain-collision` exclusion: every admitted batch enters the recipe in rank order, and a
+    lower batch's command on an instance a higher batch changed is skipped by itself, with its reason."""
+
+    def test_two_overlapping_batches_both_enter_and_only_the_later_conflicting_command_is_skipped(self):
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"], ["N1"]))
+        planted = _session("w02", [("U2", "BUFX2"), ("U1", "BUFX4")], _hold_gain(0.020, 0.20),
+                           domain=_domain(["U1", "U2", "U3"]))
+        other = _session("w03", [("U4", "BUFX2")], _hold_gain(0.010, 0.10), domain=_domain(["U4"]))
+        for contribution in (high, planted, other):
+            self.assertTrue(contribution["admissible"], contribution["refusals"])
+
+        facts = composition.analyze(BASE_STATE_ID, [other, planted, high], [])
+
+        recipe = facts["recipe"]
+        self.assertEqual(_ids(recipe), [high["id"], planted["id"], other["id"]])
+        self.assertEqual([entry["rank"] for entry in recipe["sessions"]], [1, 2, 3])
+        self.assertEqual(recipe["excluded"], [])
+        planted_commands = recipe["sessions"][1]["commands"]
+        self.assertEqual([(c["args"]["instance"], c["skip"]) for c in planted_commands],
+                         [("U2", None), ("U1", "shared-instance")])
+        self.assertEqual(planted_commands[1]["sharedWith"], [{"instance": "U1", "contribution": high["id"], "rank": 1}])
+        self.assertEqual((recipe["commandCount"], recipe["skipCount"]), (4, 1))
+        self.assertEqual(recipe["sessions"][1]["executedCount"], 1)
+        self.assertEqual(facts["conflicts"], [])
+        self.assertIn(planted["id"], facts["considered"])
+        self.assertEqual(facts["order"], [high["id"], planted["id"], other["id"]])
+
+    def test_a_higher_ranked_edit_inside_the_lower_ranked_domain_excludes_nothing(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U3", "INVX2")], _hold_gain(0.030, 0.30),
+                        domain=_domain(["U1"]))
+        low = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2", "U3"]))
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+        self.assertEqual(recipe["excluded"], [])
+        self.assertEqual([command["skip"] for command in recipe["sessions"][1]["commands"]], [None])
+
+    def test_a_buffer_on_a_net_of_a_higher_ranked_domain_is_attempted_at_replay(self):
+        """Nets are not pre-judged: the toolkit refuses the insert at replay if it no longer applies."""
+        def buffer_n1(log, after):
+            log.insert("N1", ["U2/D"], ["DELAY1"], ["atcs_w02_r1_b1"], ["atcs_w02_r1_n1"],
+                       gain=_hold_gain(0.020, 0.20))
+            after["atcs_w02_r1_b1"] = "DELAY1"
+
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1"], ["N1"]))
+        low = _session("w02", [], _hold_gain(0.020, 0.20), extra=buffer_n1, domain=_domain(["U2"], ["N2"]))
+        self.assertTrue(low["admissible"], low["refusals"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [high, low], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+        self.assertEqual([command["skip"] for command in recipe["sessions"][1]["commands"]], [None])
+
+    def test_a_net_opposite_check_regression_is_sealed_as_an_advisory_and_enters_the_recipe(self):
+        """A batch whose net setup WNS got worse (a hold repair) is admitted with
+        `breaks-opposite-check` and ranked like any other batch."""
+        setup_broken = ((-0.020, -0.100), (-0.0205, -0.100))
+        clean = _session("w01", [("U1", "BUFX2")], _hold_gain(0.010, 0.10), domain=_domain(["U1"]))
+        lossy = _session("w02", [("U2", "BUFX2")], (setup_broken, _hold_gain(0.030, 0.40)[1]),
+                         domain=_domain(["U2"]))
+        self.assertTrue(lossy["admissible"], lossy["refusals"])
+        self.assertEqual([a["code"] for a in lossy["advisories"]], ["breaks-opposite-check"])
+        self.assertAlmostEqual(lossy["oppositeEffects"]["setup"]["func_ss"]["wnsGain"], -0.0005)
+
+        recipe = composition.analyze(BASE_STATE_ID, [clean, lossy], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [lossy["id"], clean["id"]])
+        self.assertEqual(recipe["sessions"][0]["advisories"], ["breaks-opposite-check"])
+        self.assertEqual(recipe["excluded"], [])
+
+    def test_the_module_no_longer_names_a_domain_collision(self):
+        self.assertNotIn("domain-collision", Path(composition.__file__).read_text(encoding="utf-8"))
+
+    def test_disjoint_domains_keep_every_batch(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1"], ["N1"]))
+        two = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2"], ["N2"]))
+        recipe = composition.analyze(BASE_STATE_ID, [two, one], [])["recipe"]
+        self.assertEqual(_ids(recipe), [one["id"], two["id"]])
+        self.assertEqual(recipe["excluded"], [])
+
+    def test_without_an_effective_domain_the_per_instance_skip_is_unchanged(self):
+        high = _session("w01", [("U1", "BUFX2"), ("U2", "BUFX2")], _hold_gain(0.030, 0.30))
+        low = _session("w02", [("U3", "INVX2"), ("U1", "BUFX4")], _hold_gain(0.010, 0.10))
+        self.assertIsNone(high["effectiveDomain"])
+
+        recipe = composition.analyze(BASE_STATE_ID, [low, high], [])["recipe"]
+
+        self.assertEqual(_ids(recipe), [high["id"], low["id"]])
+        self.assertEqual(recipe["excluded"], [])
+        self.assertEqual([command["skip"] for command in recipe["sessions"][1]["commands"]],
+                         [None, "shared-instance"])
+
+    def test_overlapping_batches_do_not_depend_on_input_order(self):
+        high = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"]))
+        planted = _session("w02", [("U2", "BUFX2")], _hold_gain(0.020, 0.20), domain=_domain(["U2"]))
+        one = composition.analyze(BASE_STATE_ID, [high, planted], [])
+        two = composition.analyze(BASE_STATE_ID, [planted, high], [])
+        self.assertEqual(one["id"], two["id"])
+
+    def test_base_dump_mismatch_still_excludes_the_corrupt_batch_only(self):
+        one = _session("w01", [("U1", "BUFX2")], _hold_gain(0.030, 0.30), domain=_domain(["U1", "U2"]))
+        two = _session("w02", [("U3", "INVX2")], _hold_gain(0.020, 0.20), domain=_domain(["U3"]))
+        odd = _session("w03", [("U2", "BUFX2")], _hold_gain(0.050, 0.50), domain=_domain(["U2"]),
+                       before={**SESSION_BEFORE, "U9": "BUFX1"})
+        recipe = composition.analyze(BASE_STATE_ID, [odd, one, two], [])["recipe"]
+        self.assertEqual(_ids(recipe), [one["id"], two["id"]])
+        self.assertEqual(recipe["excluded"],
+                         [{"contribution": odd["id"], "taskId": "w03", "codes": ["base-dump-mismatch"]}])
+
+
 if __name__ == "__main__":
     unittest.main()

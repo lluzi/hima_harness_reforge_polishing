@@ -48,7 +48,9 @@ const openReleasedRecord = z.strictObject({ ...common, event: z.literal('open-re
 const inputIntentRecord = z.strictObject({ ...common, event: z.literal('input-intent'), commandId: plainId, inputDigest: sha256,
   requestDigest: sha256, protocolToken,
   inputBytes: z.number().int().nonnegative(), submit: z.boolean(), effect: z.enum(['read', 'mutation', 'reply', 'close']),
-  replyToCommandId: plainId.optional(), cursorBefore: z.number().int().nonnegative(), commandDeadlineAt: z.string() });
+  replyToCommandId: plainId.optional(), cursorBefore: z.number().int().nonnegative(), commandDeadlineAt: z.string(),
+  // Present only on a mutation admitted against an Operator's owner-adopted reviewed scope budget.
+  scopeMutation: z.literal(true).optional() });
 const inputOutcomeRecord = z.strictObject({ ...common, event: z.enum(['input-sent', 'input-uncertain', 'command-completed', 'command-failed']), commandId: plainId,
   inputDigest: sha256, cursorAfter: z.number().int().nonnegative().optional(), reason: z.string().optional(),
   /** For a command-failed outcome, the last lines the adapter printed before its FAIL marker (bounded),
@@ -57,7 +59,10 @@ const inputOutcomeRecord = z.strictObject({ ...common, event: z.enum(['input-sen
   errorTail: z.string().optional() });
 const signalRecord = z.strictObject({ ...common, event: z.enum(['signal-intent', 'signal-delivered', 'signal-uncertain']),
   signal: z.literal('interrupt'), reason: z.string().optional() });
-const closeRecord = z.strictObject({ ...common, event: z.enum(['close-intent', 'closed', 'close-uncertain']), reason: z.string().optional() });
+const closeRecord = z.strictObject({ ...common, event: z.enum(['close-intent', 'closed', 'close-uncertain', 'process-survived']),
+  reason: z.string().optional(),
+  /** `process-survived` only: the Job's process group that outlived hangup and TERM (#64 D-T01-3). */
+  pid: z.number().int().positive().optional() });
 
 /** Payload stored under one narrow Ledger interactive record. Existing Job records own process state. */
 export const interactiveRecord = z.union([openIntentRecord, openOutcomeRecord, openReleasedRecord, inputIntentRecord, inputOutcomeRecord, signalRecord, closeRecord]);
@@ -103,6 +108,19 @@ export interface InteractiveAddress {
   readonly authorityOwner?: string;
   /** Host-only pin from the Operator delegation receipt. */
   readonly expectedBindingDigest?: string;
+  /**
+   * Host-only: this close or interrupt is the Host's own stop — a deadline it reached, or a session
+   * whose Operator did not survive a Host restart — not a typed takeover by the Run owner. It is
+   * never accepted from model or HTTP input (the request schema is strict and does not name it).
+   */
+  readonly hostStop?: 'deadline' | 'recovery';
+  /**
+   * Host-only: the Operator's owner-adopted reviewed scope. Admission holds every mutation the
+   * retained Pack classifies as `mutate` to these commands and plan hash, and counts the scope
+   * mutations already recorded for this execution and actor, across tool sessions, against `maxMutations`.
+   */
+  readonly reviewedScope?: { readonly commands: readonly string[]; readonly maxMutations: number;
+    readonly planHashArgument: string; readonly planSha256: string };
 }
 
 export interface InteractiveSession {
@@ -123,6 +141,8 @@ export interface OpenInteractiveRequest extends InteractiveAddress {
   readonly callerDigest: string;
   readonly siteName: string; readonly workspace: string; readonly argv: readonly string[];
   readonly name: string; readonly sessionDeadlineAt: string; readonly startupWaitMs: number;
+  /** How long a failed open's cleanup waits for the Job's process group; the default when absent. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -182,9 +202,26 @@ async function paste(on: InteractiveChannel, session: string, commandId: string,
   if (submit) { await authorize(); await mustRun(on, ['tmux', 'send-keys', '-t', jobPane(session), 'Enter'], `submit input to interactive session ${session}`); }
 }
 
+/**
+ * An open whose tool has been started: the transport is attached and the startup line pasted, and
+ * what is left is waiting for the tool's ready line and recording `opened`. That wait can take as
+ * long as a real tool's startup (tens of seconds for XTop), so a caller holding a Site's slot claim
+ * or a Run's admission queue releases them first and then calls `finish` (#64 D-T02-3).
+ */
+export type InteractiveOpenStart =
+  | { readonly kind: 'answered'; readonly result: InteractiveOpenResult }
+  | { readonly kind: 'started'; readonly finish: () => Promise<InteractiveOpenResult> };
+
 export async function openInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenResult> {
-  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return { status: 'refused', reason: 'interactive Job argv must contain non-NUL words' };
-  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return { status: 'refused', reason: 'startupWaitMs must be 0..60000' };
+  const started = await startInteractiveJob(on, request, authority);
+  return started.kind === 'answered' ? started.result : started.finish();
+}
+
+/** The open up to its tool's startup line; see `InteractiveOpenStart` for the rest. */
+export async function startInteractiveJob(on: InteractiveChannel, request: OpenInteractiveRequest, authority: InteractiveAuthority): Promise<InteractiveOpenStart> {
+  const answered = (result: InteractiveOpenResult): InteractiveOpenStart => ({ kind: 'answered', result });
+  if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return answered({ status: 'refused', reason: 'interactive Job argv must contain non-NUL words' });
+  if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return answered({ status: 'refused', reason: 'startupWaitMs must be 0..60000' });
   const allocated = await allocateInteractiveJobSession(on, request.runId, request.name);
   const transcriptPath = jobLogPath({ workspace: request.workspace, session: allocated.session });
   const exitPath = jobExitPath({ workspace: request.workspace, session: allocated.session });
@@ -197,13 +234,43 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
   const openIntent = parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest), event: 'open-intent',
     jobSession: allocated.session, transcriptPath, exitPath, sessionDeadlineAt: request.sessionDeadlineAt }) as OpenIntentRecord;
   const admitted = await authority.admit({ action: 'open', record: openIntent });
-  if (admitted.kind === 'refused') return { status: 'refused', reason: admitted.reason };
-  if (admitted.kind === 'duplicate') return admitted.receipt as InteractiveOpenResult;
+  if (admitted.kind === 'refused') return answered({ status: 'refused', reason: admitted.reason });
+  if (admitted.kind === 'duplicate') return answered(admitted.receipt as InteractiveOpenResult);
   const authorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
-  if (authorized.kind === 'refused') return { status: 'refused', reason: authorized.reason };
+  if (authorized.kind === 'refused') return answered({ status: 'refused', reason: authorized.reason });
   try { assertQualificationStable(admitted.qualification, authorized.qualification); }
-  catch (error) { return { status: 'refused', reason: (error as Error).message }; }
+  catch (error) { return answered({ status: 'refused', reason: (error as Error).message }); }
   let job: InteractiveJobIdentity | undefined;
+  /** Any fault after the launch: stop what was started through the process-group stop and record the open uncertain. */
+  const uncertain = async (error: unknown): Promise<InteractiveOpenResult> => {
+    let reason = error instanceof Error ? error.message : String(error);
+    let sessionStillAlive = false;
+    if (job !== undefined) {
+      try {
+        const wasRunning = await interactiveSessionThere(on, job.session, true);
+        if (wasRunning) {
+          // The same process-group stop as a close (#64 review I2): never a bare kill-session.
+          const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`,
+            request.closeGrace ?? defaultInteractiveCloseGrace);
+          if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
+          else if (await interactiveSessionThere(on, job.session, true)) {
+            const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
+            if (leftover.code !== 0 && leftover.code !== 1) reason += `; cleanup kill exited ${String(leftover.code)}${leftover.stderr.trim() ? `: ${leftover.stderr.trim()}` : ''}`;
+          }
+        }
+        sessionStillAlive = await interactiveSessionThere(on, job.session, true);
+        await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
+      } catch (cleanupError) {
+        sessionStillAlive = true;
+        reason += `; cleanup outcome is uncertain: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+      }
+    }
+    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
+      event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
+    return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
+      transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
+  };
+  let session: InteractiveSession;
   try {
     const printed = await mustRun(on, ['tmux', 'new-session', '-d', '-P', '-F', '#{pane_pid}', '-s', allocated.session,
       '-c', request.workspace, '/bin/sh'], `open interactive job ${allocated.name} in ${request.workspace}`);
@@ -223,42 +290,30 @@ export async function openInteractiveJob(on: InteractiveChannel, request: OpenIn
       assertQualificationStable(admitted.qualification, latest.qualification);
     };
     await paste(on, allocated.session, `open-${request.requestId}`, Buffer.from(startup, 'utf8'), true, authorizeStart);
-    const session: InteractiveSession = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
+    session = { job, toolSessionId: allocated.session, transcriptPath, exitPath,
       qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt };
-    const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
-    const readyDeadline = Date.now() + request.startupWaitMs;
-    let readiness: 'starting' | 'ready' = 'starting';
-    do {
-      const transcript = await readInteractiveTranscript(on, session);
-      if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
-      if (Date.now() >= readyDeadline) break;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
-    } while (readiness === 'starting');
-    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
-      event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
-    return { status: 'opened', session, readiness };
   } catch (error) {
-    let reason = error instanceof Error ? error.message : String(error);
-    let sessionStillAlive = false;
-    if (job !== undefined) {
-      try {
-        const wasRunning = await interactiveSessionThere(on, job.session, true);
-        if (wasRunning) {
-          const stopped = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
-          if (stopped.code !== 0) reason += `; cleanup kill exited ${String(stopped.code)}${stopped.stderr.trim() ? `: ${stopped.stderr.trim()}` : ''}`;
-        }
-        sessionStillAlive = await interactiveSessionThere(on, job.session, true);
-        await authority.recordJobStop(job, { wasRunning, observedGone: !sessionStillAlive });
-      } catch (cleanupError) {
-        sessionStillAlive = true;
-        reason += `; cleanup outcome is uncertain: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
-      }
-    }
-    await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
-      event: 'open-uncertain', jobSession: allocated.session, qualification: admitted.qualification, reason }));
-    return { status: 'uncertain', ...(job === undefined || !sessionStillAlive ? {} : { session: { job, toolSessionId: allocated.session,
-      transcriptPath, exitPath, qualification: admitted.qualification, sessionDeadlineAt: request.sessionDeadlineAt } }), reason };
+    return answered(await uncertain(error));
   }
+  const finish = async (): Promise<InteractiveOpenResult> => {
+    try {
+      const readyMarker = `HIMA:${admitted.qualification.adapter.id}:${admitted.qualification.adapter.version}:READY`;
+      const readyDeadline = Date.now() + request.startupWaitMs;
+      let readiness: 'starting' | 'ready' = 'starting';
+      do {
+        const transcript = await readInteractiveTranscript(on, session);
+        if (hasMarker(transcript.text, readyMarker)) { readiness = 'ready'; break; }
+        if (Date.now() >= readyDeadline) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, readyDeadline - Date.now()))));
+      } while (readiness === 'starting');
+      await authority.record(parseInteractiveRecord({ ...recordBase(request, allocated.session, operationDigest),
+        event: 'opened', jobSession: allocated.session, qualification: admitted.qualification, readiness }));
+      return { status: 'opened', session, readiness };
+    } catch (error) {
+      return uncertain(error);
+    }
+  };
+  return { kind: 'started', finish };
 }
 
 export interface TranscriptRead {
@@ -481,10 +536,132 @@ export async function signalInteractiveJob(on: InteractiveChannel, request: Inte
 export type InteractiveCloseResult =
   | { readonly status: 'closed' | 'duplicate'; readonly process: 'exited' }
   | { readonly status: 'refused'; readonly reason: string }
-  | { readonly status: 'uncertain'; readonly reason: string };
+  | { readonly status: 'uncertain'; readonly reason: string }
+  | { readonly status: 'process-survived'; readonly pid: number; readonly reason: string };
 
-/** Force-close transport only. Adapter save/exit is a separately recorded typed input. */
-export async function closeInteractiveJob(on: InteractiveChannel, request: InteractiveAddress & { readonly callerDigest: string; readonly session: InteractiveSession }, authority: InteractiveAuthority): Promise<InteractiveCloseResult> {
+/** How long a close waits for the Job's process group after the hangup, and again after TERM. */
+export interface InteractiveCloseGrace { readonly hangupMs: number; readonly terminateMs: number }
+
+/**
+ * The whole time a close gives a Job's process group to be gone, split into the hangup part and the
+ * TERM part: up to 15 s for the tool's own hangup path, the rest after TERM. A declared value
+ * (`tools[].interactive.closeGraceMs`) replaces the default; 60 s by default because a qualified
+ * wrapper that stops its container on hangup or TERM (`podman stop -t 20`, XTop ignoring TERM)
+ * takes about 21 s every time, and a 25 s grace turned ordinary closes into `process-survived`.
+ */
+export const defaultInteractiveCloseGraceMs = 60_000;
+export function interactiveCloseGrace(totalMs: number = defaultInteractiveCloseGraceMs): InteractiveCloseGrace {
+  const total = Number.isSafeInteger(totalMs) && totalMs >= 2_000 ? totalMs : defaultInteractiveCloseGraceMs;
+  const hangupMs = Math.min(15_000, Math.floor(total / 2));
+  return { hangupMs, terminateMs: total - hangupMs };
+}
+export const defaultInteractiveCloseGrace: InteractiveCloseGrace = interactiveCloseGrace();
+
+/**
+ * The close watcher, run by tmux in the Job's own pane in place of the tool (`respawn-pane -k`).
+ * Replacing the pane hangs up the tool's terminal exactly as `kill-session` did, so the wrapper's
+ * own hangup path (its traps, its container cleanup) runs; the watcher then waits for the whole
+ * process group the Job started ($1, the recorded pane pid) to be gone, sends TERM to that group
+ * once after the hangup grace, and writes one receipt line: `gone` or `survived <pgid>`. A group
+ * that survives both keeps the Job's tmux session alive (the watcher keeps watching), so the Job
+ * stays running in every existing sense — its Site slot, its licence and `has-session` — until the
+ * group really ends. Signals go to the Job's own group only, from the Job's own pane; the channel
+ * gains no verb and nothing on the Site is removed.
+ */
+const closeWatcher = [
+  'g=$1; r=$2; hangup=$3; term=$4',
+  'alive() { kill -s 0 -- "-$g" 2>/dev/null; }',
+  'gone_within() { end=$(( $(date +%s) + $1 )); while alive; do [ "$(date +%s)" -ge "$end" ] && return 1; sleep 0.2 2>/dev/null || sleep 1; done; }',
+  'if gone_within "$hangup"; then printf \'gone hangup\\n\' > "$r"; exit 0; fi',
+  'kill -s TERM -- "-$g" 2>/dev/null',
+  'if gone_within "$term"; then printf \'gone terminate\\n\' > "$r"; exit 0; fi',
+  'printf \'survived %s\\n\' "$g" > "$r"',
+  'while alive; do sleep 1; done',
+  'printf \'gone later\\n\' > "$r"',
+].join('\n');
+const graceSeconds = (ms: number): number => Math.max(1, Math.ceil(ms / 1000));
+
+/** Ask the pane itself which process it runs, for a Job whose launch recorded no pid. */
+async function panePid(on: InteractiveChannel, session: string): Promise<number> {
+  const printed = await mustRun(on, ['tmux', 'display-message', '-p', '-t', jobPane(session), '#{pane_pid}'], `read the process of interactive session ${session}`);
+  const pid = Number(printed.trim());
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`tmux reported ${JSON.stringify(printed.trim())} instead of a pane pid`);
+  return pid;
+}
+
+/** The Job a process-group stop acts on: its tmux session, its recorded pane pid (the group), and
+ *  the directory its launch writes its exit file in, where the stop's receipt is written too. */
+export interface JobProcessTarget { readonly session: string; readonly pid?: number; readonly dir: string }
+export type JobProcessGroupStop = { readonly kind: 'absent' | 'gone' } | { readonly kind: 'survived'; readonly pid: number };
+
+/**
+ * Hang up a Job and wait, bounded, for its whole process group to be gone (#64 D-T01-3, review I2).
+ * The one stop every path uses — an interactive close, an open's cleanup, and `jobKill` for a cancel,
+ * a time-box end, a node stop or an App quit — so no path records a Job stopped while its tool runs.
+ * `absent` is a session that was not there to stop; `gone` is a group the watcher saw end;
+ * `survived` names the group that outlived hangup and TERM, whose session the watcher keeps.
+ */
+export async function endJobProcessGroup(on: InteractiveChannel, target: JobProcessTarget, key: string,
+  grace: InteractiveCloseGrace = defaultInteractiveCloseGrace): Promise<JobProcessGroupStop> {
+  let group = target.pid;
+  if (group === undefined) {
+    if (!await interactiveSessionThere(on, target.session, true)) return { kind: 'absent' };
+    group = await panePid(on, target.session);
+  }
+  const receipt = path.posix.join(target.dir, `${target.session}.close-${createHash('sha256').update(key).digest('hex').slice(0, 16)}`);
+  const hangup = graceSeconds(grace.hangupMs); const term = graceSeconds(grace.terminateMs);
+  const watcher = `exec /bin/sh -c ${quote(closeWatcher)} hima-close ${String(group)} ${quote(receipt)} ${String(hangup)} ${String(term)}`;
+  const respawned = await on.exec(['tmux', 'respawn-pane', '-k', '-t', jobPane(target.session), watcher]);
+  if (respawned.code !== 0) {
+    // The session ended between the caller's look and this stop: nothing is left to hang up.
+    if (!await interactiveSessionThere(on, target.session, true)) return { kind: 'absent' };
+    throw new Error(`cannot hang up job session ${target.session}: tmux exited ${String(respawned.code)}${respawned.stderr.trim() ? `: ${respawned.stderr.trim()}` : ''}`);
+  }
+  const deadline = Date.now() + (hangup + term + 10) * 1000;
+  for (;;) {
+    const read = await on.exec(['cat', '--', receipt]);
+    const said = read.code === 0 ? Buffer.from(read.stdout).toString('utf8').trim() : '';
+    if (said.startsWith('gone')) {
+      // The watcher leaves right after its receipt; the session ends with it.
+      while (await interactiveSessionThere(on, target.session, true) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+      return { kind: 'gone' };
+    }
+    if (said.startsWith('survived')) return { kind: 'survived', pid: group };
+    if (Date.now() >= deadline) throw new Error(`job stop watcher wrote no receipt for process group ${String(group)} within ${String(hangup + term + 10)} s`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * Whether a Job's recorded process group still has a live process, asked of the process group
+ * itself rather than of its tmux session (#64 review I2), and asked through the Site channel as the
+ * one plain command `kill -s 0 -- -<pgid>` (#64 D-T02-4). It no longer goes through `tmux
+ * run-shell`: on the Site's tmux 3.4 run-shell prints nothing, so every answer read through it was
+ * "" and a slot whose survivor had long ended stayed refused for the rest of the Run.
+ *
+ * Exit 0 is a group with a live process. A refusal to signal it ("not permitted") is a live process
+ * too, one this login may not signal. Exit 1 saying "no such process" is the group gone. Everything
+ * else — an exit 1 with other text or none (a login shell whose `kill` rejects `-s 0 --`, as tcsh
+ * does), a missing `kill`, an ssh that could not connect — is a question that was not answered, and
+ * throws: nothing is concluded from it, and above all no slot is admitted on it (review m2).
+ */
+export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
+  const asked = await on.exec(['kill', '-s', '0', '--', `-${String(pid)}`]);
+  if (asked.code === 0) return true;
+  const said = asked.stderr.trim();
+  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
+  if (asked.code === 1 && /no such process/i.test(said)) return false;
+  throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
+}
+
+/**
+ * Force-close transport. Adapter save/exit is a separately recorded typed input. The close hangs the
+ * Job up and returns `closed` only after its whole process group is observed gone; a group that
+ * outlives hangup and TERM is recorded `process-survived` with its pid and the Job stays open.
+ */
+export async function closeInteractiveJob(on: InteractiveChannel, request: InteractiveAddress & { readonly callerDigest: string; readonly session: InteractiveSession;
+  readonly grace?: InteractiveCloseGrace }, authority: InteractiveAuthority): Promise<InteractiveCloseResult> {
   const operationDigest = digest({ session: request.session.toolSessionId, close: true });
   const record = parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'close-intent' }) as CloseRecord;
   const admitted = await authority.admit({ action: 'close', record });
@@ -496,9 +673,21 @@ export async function closeInteractiveJob(on: InteractiveChannel, request: Inter
     assertQualificationStable(request.session.qualification, admitted.qualification);
     assertQualificationStable(admitted.qualification, authorized.qualification);
     const wasRunning = await interactiveSessionThere(on, request.session.toolSessionId);
-    const killed = wasRunning ? await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]) : undefined;
-    if (killed !== undefined && killed.code !== 0 && killed.code !== 1) throw new Error(`tmux kill-session exited ${String(killed.code)}: ${killed.stderr}`);
-    const observedGone = !await interactiveSessionThere(on, request.session.toolSessionId);
+    if (wasRunning) {
+      const ended = await endJobProcessGroup(on, { session: request.session.toolSessionId, pid: request.session.job.pid,
+        dir: path.posix.dirname(request.session.exitPath) }, request.requestId, request.grace ?? defaultInteractiveCloseGrace);
+      if (ended.kind === 'survived') {
+        const reason = `process-survived: process group ${String(ended.pid)} of interactive Job ${request.session.toolSessionId} outlived hangup and TERM;`
+          + ' the Job stays open and holds its Site slot until that group ends';
+        await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest),
+          event: 'process-survived', pid: ended.pid, reason }));
+        return { status: 'process-survived', pid: ended.pid, reason };
+      }
+      const leftover = await interactiveSessionThere(on, request.session.toolSessionId, true)
+        ? await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]) : undefined;
+      if (leftover !== undefined && leftover.code !== 0 && leftover.code !== 1) throw new Error(`tmux kill-session exited ${String(leftover.code)}: ${leftover.stderr}`);
+    }
+    const observedGone = !await interactiveSessionThere(on, request.session.toolSessionId, true);
     if (!observedGone) throw new Error('interactive tmux session remained after close request');
     await authority.recordJobStop(request.session.job, { wasRunning, observedGone });
     await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'closed' }));

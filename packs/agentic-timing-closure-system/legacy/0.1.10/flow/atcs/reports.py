@@ -1,0 +1,393 @@
+"""PrimeTime (PT) report parsers.
+
+Grammar ported and adapted (read-only reference, not imported) from
+``packs/xtop-timing-closure/flow/closure.py``'s ``parse_global`` and
+``parse_endpoints``, and cross-checked against the synthesized fixtures at
+``packs/xtop-timing-closure/flow/tests/test_closure.py:26-58``
+(``global_report``, ``path_report``). This module never imports from the old
+Pack; it re-implements the same report grammar under the new fail-closed
+Measure contract (`atcs.core.known`/`unknown`) required for this Pack.
+
+Three report kinds are parsed:
+
+- ``global_timing.rpt`` — via `parse_global_timing`. Two blocks
+  (``Setup violations`` / ``Hold violations``), each either a
+  ``No <mode> violations found.`` line (explicit zero) or a
+  ``WNS``/``TNS``/``NUM`` table. Returns
+  ``{"setup": {"wns": Measure, "tns": Measure, "violations": Measure},
+  "hold": {...}}``. A block that is neither an explicit-zero line nor a
+  parseable table (e.g. the ``Hold violations`` section is entirely absent
+  from the text) yields `unknown` Measures for all three fields of that
+  mode, never a silently-assumed zero. A field whose text is non-finite
+  (``inf``/``nan``, in any case) also yields `unknown` rather than a
+  numeric value — Python's ``float()`` happily parses those strings, so
+  this is checked explicitly.
+
+  C1 (final review): a table's own `wns` reading is never trusted at face
+  value against that same mode's own `violations` count. When `violations`
+  itself could not be parsed, `wns` is downgraded to `unknown` too (an
+  unresolved violation count leaves nothing to cross-check `wns` against).
+  When `violations` is a known count `> 0` but `wns` is a known value
+  `>= 0.0`, `wns` is downgraded to `unknown` — most commonly PT's own
+  negative-zero display (`WNS -0.00`, where `float("-0.00") == -0.0` and
+  Python's `-0.0 >= 0.0` is `True`), but the same rule applies to any other
+  displayed non-negative WNS a positive violation count contradicts. A
+  "-0.00"-style negative-zero reading can therefore never be mistaken for a
+  known, goal-passing `>= 0.0` WNS while that mode has any known violation
+  at all (see `parse_global_timing`'s own docstring for the exact rule).
+
+- ``setup.rpt`` / ``hold.rpt`` (worst-path reports) — via
+  `parse_path_report`. Splits the text on ``Startpoint:`` markers (each
+  block then holds one path's ``Startpoint``, ``Endpoint``, ``Path Group``,
+  ``Path Type`` and ``slack (VIOLATED...) <value>`` lines). Returns
+  ``{"paths": [{"endpoint", "startpoint", "pathGroup", "slack" (Measure),
+  "violated" (bool, always `True`)}, ...], "complete": bool}``.
+
+  The slack line's parenthetical is matched as ``VIOLATED`` plus *any*
+  trailing annotation PT appends (confirmed against the real Foundation/
+  B_lazy corpus: ``slack (VIOLATED: increase significant digits)``, which
+  PT emits whenever a violation's magnitude rounds to a displayed ``-0.00``
+  — a real, common occurrence near timing closure, and one this Pack's own
+  `pt-scenario.tcl` will genuinely produce, even after it raised
+  `-significant_digits` to 4 — see `knowledge/observation-strategy.md`).
+  PT's own classification (this row was ``VIOLATED``, never ``MET``) is
+  recorded as the boolean fact `violated` on every row this function
+  returns — always `True` here, since a `slack (MET)` row never reaches
+  this point (see below) — *independently* of whether the row's own
+  displayed slack number is trustworthy. When the annotation is present
+  (the "increase significant digits" case), the row's own slack `Measure`
+  is `unknown("precision-limited: re-query with more significant digits")`
+  rather than the displayed number: `float("-0.00") < 0` is `False` in
+  Python, so a consumer that inferred violation from the numeric sign alone
+  would silently treat a violation PT itself confirmed as clean. `violated`
+  and `slack` are two different facts (verdict vs. magnitude) and must
+  never be collapsed into one; `atcs.state.compare_checks` reads `violated`
+  first, precisely so a precision-limited row is still counted as
+  violating even though its own slack Measure is `unknown` (confirmed
+  empirically: every one of the real Foundation/B_lazy corpus's 73
+  annotated rows displays exactly ``-0.00``, and zero *unannotated*
+  ``(VIOLATED)`` rows anywhere in that corpus display ``-0.00``/``0.00`` —
+  PT itself never leaves this ambiguity unannotated).
+
+  A block whose slack line reads ``slack (MET)`` instead (a *non*-violating
+  path) is not a violated-path row at all and is treated as missing its
+  required slack field — this Pack's own `report_timing` invocation always
+  requests ``-slack_lesser_than 0.0``, so a real `setup.rpt`/`hold.rpt`
+  this Pack generates never contains a ``(MET)`` row in the first place
+  (confirmed against the real B_lazy corpus, generated with that same
+  flag: zero ``(MET)`` rows). Only the *historical* Foundation corpus —
+  generated by the old, frozen flow's own script with a more permissive
+  ``-slack_lesser_than 1000.00`` — legitimately mixes ``(MET)`` rows in,
+  and correctly still refuses there
+  (``docs/assessment/2026-09-26/atcs-qualification/corpus-preflight.md``
+  records this as an intentional, documented outcome for that historical
+  reference material, not a defect in this Pack's own report contract).
+
+  ``complete`` is `False` when either:
+  (a) the report's own *raw* path count (every `Startpoint:` block, before
+      the same-endpoint collapsing described below) reaches `max_paths`
+      (the tool's own cap was hit, so more paths may exist beyond what was
+      reported) — this is checked against the raw block count, not the
+      deduplicated `paths` list, since `-max_paths` bounds how many paths
+      PT itself emits, not how many distinct endpoints they land on, or
+  (b) the report's last block is missing required fields (the report file
+      was truncated mid-path, e.g. the tool was killed while writing).
+  A non-trailing block missing required fields is not a truncation — it is
+  a malformed report — and raises `AtcsError("malformed-report", ...)`.
+
+  This Pack's check key (`atcs.core.check_key`) is
+  ``"<scenario>|<mode>|<endpoint>"``, where the ``<endpoint>`` component is
+  this function's own returned ``"endpoint"`` field, not necessarily PT's
+  literal endpoint pin name (see below). A check is identified by
+  *(endpoint, path group)*, not endpoint alone: PT legitimately reports two
+  different checks on the same physical register when it carries two
+  different check types on it (e.g. a removal/recovery check in
+  ``**async_default**`` and a data setup/hold check in a real clock group,
+  confirmed against the real Foundation/B_lazy corpus — see
+  ``docs/assessment/2026-09-26/atcs-qualification/corpus-preflight.md``).
+  This Pack's own default query breadth (`atcs.adapters.DEFAULT_NWORST =
+  20`) also means a real `setup.rpt`/`hold.rpt` routinely reports several of
+  an endpoint's worst-`N` paths *within one path group* — confirmed
+  against the same corpus: every duplicated endpoint/group pair's repeats
+  shared exactly one path group, zero exceptions. `parse_path_report`
+  keeps the *worst* (most negative) slack among same-endpoint/same-path-
+  group repeats (as before), and now keeps *both* checks, as two separate
+  rows, when the same endpoint recurs under a genuinely different path
+  group.
+
+  The returned ``"endpoint"`` depends only on the row's own (endpoint, path
+  group), never on report order or on which other rows are present, so a
+  check keeps one key across the baseline and every candidate report: a row
+  in a real clock group keeps PT's literal endpoint name (byte-identical to
+  the single-group output), and a row in one of PT's reserved ``**...**``
+  groups (``**async_default**`` removal/recovery, ``**clock_gating_default**``,
+  ``**default**``) is always ``"<literal endpoint>@<path group>"``. The
+  literal PT endpoint name, which a targeted `report_timing -to <endpoint>`
+  re-query needs, is always carried unsuffixed as ``"rawEndpoint"``.
+
+  A repeated endpoint is still refused outright as
+  `AtcsError("duplicate-check", <endpoint>)` when two different rows would
+  land on one key (the same endpoint under two different real clock groups,
+  not seen in the real corpus) or when at least one colliding row has no
+  parseable `Path Group:` line (recorded as ``"unknown"``): neither can be
+  keyed without guessing which check is which.
+  `mode` must be `"setup"` or `"hold"`; a row's `Path Type` (`max` for
+  setup, `min` for hold) is cross-checked against `mode` and a mismatch
+  raises `AtcsError("identity-mismatch", ...)` — a real PT report never
+  mixes these, so a mismatch means the wrong file was fed to the wrong
+  `mode`.
+
+- ``check_timing.rpt`` — via `parse_check_timing`, looking for
+  ``There are <N> endpoints which are not constrained`` with `N` a
+  non-negative integer literal (no leading `-`; a negative count is not a
+  real PT output and is treated the same as no line at all). Returns
+  ``{"unconstrainedEndpoints": Measure}``. Per the fail-closed rule, `0` is
+  only produced when the report explicitly states a count of 0 for that
+  line; a report with no such line at all (never generated, or a different
+  tool output entirely) yields `unknown`, unlike the old Pack's parser
+  (`packs/xtop-timing-closure/flow/closure.py:unconstrained`) which
+  defaulted a missing line to `0`.
+"""
+from __future__ import annotations
+
+import math
+import re
+
+from . import core
+
+
+_ZERO_VIOLATIONS_RE = {
+    "setup": re.compile(r"(?mi)^\s*No setup violations found\.\s*$"),
+    "hold": re.compile(r"(?mi)^\s*No hold violations found\.\s*$"),
+}
+
+_GLOBAL_BLOCK_RE = {
+    "setup": re.compile(r"Setup violations\s*\n-+\n.*?\n-+\n(.*?)\n-+", re.S),
+    "hold": re.compile(r"Hold violations\s*\n-+\n.*?\n-+\n(.*?)\n-+", re.S),
+}
+
+_STARTPOINT_SPLIT_RE = re.compile(r"(?m)^\s*Startpoint:\s*")
+_STARTPOINT_VALUE_RE = re.compile(r"^\s*(\S+)")
+_ENDPOINT_RE = re.compile(r"(?m)^\s*Endpoint:\s*(\S+)")
+_PATH_GROUP_RE = re.compile(r"(?m)^\s*Path Group:\s*(\S+)")
+_PATH_TYPE_RE = re.compile(r"(?m)^\s*Path Type:\s*(\S+)")
+_SLACK_RE = re.compile(r"(?m)^\s*slack\s*\(VIOLATED(?P<annotation>[^)]*)\)\s+(?P<value>-?[0-9.eE+]+)")
+_UNCONSTRAINED_RE = re.compile(r"There are\s+(\d+)\s+endpoints which are not constrained")
+
+_EXPECTED_PATH_TYPE = {"setup": "max", "hold": "min"}
+
+
+def _finite_float_measure(raw):
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return core.unknown(f"unparsable-value: {raw!r}")
+    if math.isnan(value) or math.isinf(value):
+        return core.unknown(f"non-finite-value: {raw!r}")
+    return core.known(value)
+
+
+def _finite_int_measure(raw):
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return core.unknown(f"unparsable-value: {raw!r}")
+    return core.known(value)
+
+
+def parse_global_timing(text):
+    """Parse a ``global_timing.rpt`` into `{"setup": {...}, "hold": {...}}` Measures.
+
+    C1 (final review, evidence identity): a `WNS` row's own *displayed*
+    value can never be trusted, on its own, to prove "no violation" once
+    that mode's own `NUM` (violation count) says otherwise. Two additional
+    checks run after the table itself is parsed, each capable of turning an
+    otherwise-known `wns` into `unknown`:
+
+    - **`violations` itself unknown -> `wns` unknown too.** A `NUM` row
+      this function could not parse (`missing-num-row`/non-finite) leaves
+      no basis for cross-checking `wns` against it, so `wns` cannot be
+      trusted either -- an unresolved violation count and a "known,
+      non-negative" WNS reading side by side would let a genuinely
+      violating mode read as clean.
+    - **`violations` known and `> 0`, but `wns` is known and `>= 0.0` ->
+      `wns` unknown.** A positive violation count is direct proof that mode
+      has at least one violating path, so a displayed WNS of `0.0` or
+      higher is never trustworthy in that case -- most commonly PT's own
+      negative-zero display (`WNS -0.00 NUM 3`, where `float("-0.00") ==
+      -0.0` and `-0.0 >= 0.0` is `True` in Python), but the same rule
+      catches any other displayed non-negative WNS paired with `NUM > 0`
+      (e.g. a malformed/inconsistent report). A "-0.00"-style negative-zero
+      reading is therefore *never* a known, goal-passing `>= 0.0` value
+      when that mode has any known violation at all.
+
+    Neither check ever turns a *negative*, `NUM > 0`-consistent WNS
+    unknown, and neither ever manufactures a value where none was parsed;
+    they only ever downgrade an already-parsed `known` `wns` to `unknown`,
+    each time naming a machine-readable reason.
+
+    Minor (final fix batch C): a THIRD check catches the opposite-direction
+    contradiction -- `violations` known `== 0` (no violating paths at all)
+    but `wns`'s own DISPLAYED text is negative (`WNS -0.00`, or any other
+    negative value) -> `wns` unknown. `float("-0.00") == -0.0` and
+    `-0.0 >= 0.0` is `True`, so the `violations > 0` check above cannot catch
+    this direction (`violations` here is `0`, not `> 0`); this checks the
+    raw regex-matched text's own leading `-`, never the converted float
+    (which cannot distinguish `-0.00` from `0.00`). A true, non-negative
+    `WNS 0.00`/`NUM 0` pairing is never downgraded by this check.
+    """
+    result = {}
+    for mode in ("setup", "hold"):
+        if _ZERO_VIOLATIONS_RE[mode].search(text):
+            result[mode] = {
+                "wns": core.known(0.0),
+                "tns": core.known(0.0),
+                "violations": core.known(0),
+            }
+            continue
+        block_match = _GLOBAL_BLOCK_RE[mode].search(text)
+        if not block_match:
+            reason = f"missing-{mode}-section"
+            result[mode] = {
+                "wns": core.unknown(reason),
+                "tns": core.unknown(reason),
+                "violations": core.unknown(reason),
+            }
+            continue
+        body = block_match.group(1)
+        wns_match = re.search(r"(?m)^WNS\s+(\S+)", body)
+        tns_match = re.search(r"(?m)^TNS\s+(\S+)", body)
+        num_match = re.search(r"(?m)^NUM\s+(\S+)", body)
+        wns_raw = wns_match.group(1) if wns_match else None
+        wns = _finite_float_measure(wns_raw) if wns_match else core.unknown("missing-wns-row")
+        tns = _finite_float_measure(tns_match.group(1)) if tns_match else core.unknown("missing-tns-row")
+        violations = _finite_int_measure(num_match.group(1)) if num_match else core.unknown("missing-num-row")
+
+        if not core.is_known(violations):
+            wns = core.unknown(
+                "precision-limited: violation count is itself unknown, so a non-negative WNS cannot be trusted"
+            )
+        elif core.is_known(wns) and core.value_of(violations) > 0 and core.value_of(wns) >= 0.0:
+            wns = core.unknown("precision-limited: NUM>0 but WNS displays non-negative")
+        elif (core.is_known(wns) and core.value_of(violations) == 0
+                and wns_raw is not None and wns_raw.strip().startswith("-")):
+            # Minor (final review, final fix batch C): the OTHER contradictory
+            # sign -- `NUM 0` (no violating paths at all) paired with a
+            # DISPLAYED negative `WNS` (including `-0.00`, since
+            # `float("-0.00") == -0.0` and `-0.0 >= 0.0` is `True` in Python,
+            # which the `violations > 0` check above cannot catch when
+            # `violations` is itself `0`). A confirmed-clean violation count
+            # can never coexist with a genuinely negative worst slack; this
+            # checks the raw displayed text's own sign (never the converted
+            # float, which loses the "-0.00" distinction), so it never
+            # downgrades a true, non-negative `WNS 0.00`/`NUM 0` pairing.
+            wns = core.unknown("precision-limited: NUM=0 but WNS displays a negative value")
+
+        result[mode] = {"wns": wns, "tns": tns, "violations": violations}
+    return result
+
+
+def parse_path_report(text, mode, max_paths):
+    """Parse a worst-path report (``setup.rpt``/``hold.rpt``) into path rows + completeness."""
+    if mode not in _EXPECTED_PATH_TYPE:
+        raise core.AtcsError("invalid-mode", mode)
+    if max_paths < 1:
+        raise core.AtcsError("invalid-max-paths", str(max_paths))
+
+    blocks = _STARTPOINT_SPLIT_RE.split(text)[1:]
+    total_blocks = len(blocks)
+    truncated = False
+    order = []
+    kept = {}
+    # endpoint_groups[<literal endpoint>] = the path groups already kept for it
+    endpoint_groups = {}
+
+    for index, block in enumerate(blocks):
+        is_last = index == total_blocks - 1
+        startpoint_match = _STARTPOINT_VALUE_RE.search(block)
+        endpoint_match = _ENDPOINT_RE.search(block)
+        slack_match = _SLACK_RE.search(block)
+        if not (startpoint_match and endpoint_match and slack_match):
+            if is_last:
+                truncated = True
+                continue
+            raise core.AtcsError("malformed-report", f"incomplete path block at index {index}")
+
+        type_match = _PATH_TYPE_RE.search(block)
+        if type_match and type_match.group(1) != _EXPECTED_PATH_TYPE[mode]:
+            raise core.AtcsError(
+                "identity-mismatch",
+                f"path type {type_match.group(1)!r} does not match mode {mode!r}",
+            )
+
+        endpoint = endpoint_match.group(1)
+        try:
+            raw_slack = float(slack_match.group("value"))
+        except ValueError:
+            raise core.AtcsError("malformed-report", f"unparsable slack {slack_match.group('value')!r}")
+        if math.isnan(raw_slack) or math.isinf(raw_slack):
+            raise core.AtcsError("malformed-report", f"non-finite slack {slack_match.group('value')!r}")
+        precision_limited = bool(slack_match.group("annotation"))
+
+        group_match = _PATH_GROUP_RE.search(block)
+        path_group = group_match.group(1) if group_match else "unknown"
+
+        reserved_group = path_group.startswith("**") and path_group.endswith("**")
+        key = f"{endpoint}@{path_group}" if reserved_group else endpoint
+        groups_for_endpoint = endpoint_groups.setdefault(endpoint, set())
+        if path_group in groups_for_endpoint:
+            if raw_slack >= kept[key]["_rawSlack"]:
+                # a less-critical repeat from the tool's own -nworst>1
+                # listing of this endpoint's worst paths in this same path
+                # group -- the one already kept is at least as bad, so this
+                # row contributes nothing.
+                continue
+        else:
+            if groups_for_endpoint and (
+                path_group == "unknown" or "unknown" in groups_for_endpoint or key in kept
+            ):
+                # Two different checks that would share one key (two real
+                # clock groups on one endpoint), or a repeat whose path
+                # group is unresolved: neither can be keyed without guessing.
+                raise core.AtcsError("duplicate-check", endpoint)
+            groups_for_endpoint.add(path_group)
+            order.append(key)
+
+        # `violated` is PT's own classification fact for this row (every row
+        # here is one PT itself labeled VIOLATED -- a `slack (MET)` row never
+        # reaches this point, see the module docstring) and is always
+        # recorded even when the displayed number itself is precision-
+        # limited: a real violation that happens to round to a displayed
+        # "-0.00" is still `slack (VIOLATED: increase significant digits)`
+        # by PT's own verdict, and `float("-0.00") < 0` is `False` in Python
+        # -- a consumer that trusted the numeric sign alone would silently
+        # treat a confirmed violation as clean. The slack Measure for such a
+        # row is `unknown` (the *value* is not trustworthy at this display
+        # precision) while `violated` stays a known `True` (the *verdict*
+        # is) -- these are never the same fact and must never be collapsed
+        # into one.
+        slack_measure = (
+            core.unknown("precision-limited: re-query with more significant digits")
+            if precision_limited else core.known(raw_slack)
+        )
+        kept[key] = {
+            "endpoint": key,
+            "rawEndpoint": endpoint,
+            "startpoint": startpoint_match.group(1),
+            "pathGroup": path_group,
+            "slack": slack_measure,
+            "violated": True,
+            "_rawSlack": raw_slack,
+        }
+
+    paths = [{k: v for k, v in kept[key].items() if k != "_rawSlack"} for key in order]
+    complete = (not truncated) and total_blocks < max_paths
+    return {"paths": paths, "complete": complete}
+
+
+def parse_check_timing(text):
+    """Parse a ``check_timing.rpt`` into ``{"unconstrainedEndpoints": Measure}``."""
+    match = _UNCONSTRAINED_RE.search(text)
+    if not match:
+        return {"unconstrainedEndpoints": core.unknown("missing-unconstrained-line")}
+    return {"unconstrainedEndpoints": _finite_int_measure(match.group(1))}

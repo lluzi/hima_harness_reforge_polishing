@@ -20,7 +20,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
-import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
+import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
 import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
@@ -208,15 +208,18 @@ export function guideTools(operations: {
   memory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
   delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
   interactive?(sessionId:string,request:unknown):Promise<object>;
-  delegationInput?(sessionId:string,request:{runId:string;recordId:string}):Promise<object>;
+  delegationInput?(sessionId:string,request:{runId:string;recordId:string;path?:string;offset?:number;limit?:number}):Promise<object>;
 }): ToolDefinition[] {
   return [defineTool({
-    name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit.',
-    parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true}},
+    name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit. An input too large for one view is read in bounded windows: path names one field of its JSON document (dotted, such as candidate.targets or candidate.targets.3, or a JSON pointer such as /candidate/targets), offset and limit page its array items, object entries or string characters; each answer states the record, its content SHA-256, the path and the window {unit, offset, limit, returned, total, next}.',
+    parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true},
+      path:{type:'string',description:'Dotted field path or JSON pointer into the input\'s JSON document; empty for the whole document.'},
+      offset:{type:'number',description:'First item, entry or character of the window (default 0).'},
+      limit:{type:'number',description:'At most this many items, entries or characters (default: as many as one bounded view holds).'}},
     output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
     execute:async(args,execution)=>{if(!execution.agent||!operations.delegationInput)throw new Error('Delegated input reader is unavailable.');return toolJson(await operations.delegationInput(String(execution.agent.id),args));},
   }),defineTool({
-    name:'hima_interactive',description:'Operate the exact qualified interactive Pack tool of an already admitted Run execution through its existing Site Job. Actions: open, input {toolSessionId,commandId,command:{name,args}}, observe, read, signal, close. Supply runId/executionId/nodeId/requestId/ownerEpoch/controlRevision; actor, argv, workspace and qualification are Host-owned. A production-qualified open is reserved for a recorded Operator child: the Run owner first begins the node, then creates role operator for that exact execution with hima_delegate, inspects its retained result and explicitly adopts it. Direct owner open is refused. Trusted test fixtures remain owner-drivable. Poll timeout never cancels work. A command completion is not business validation. If qualification is absent, report unavailable; never use a raw terminal to bypass it.',
+    name:'hima_interactive',description:'Operate the exact qualified interactive Pack tool of an already admitted Run execution through its existing Site Job. Actions: open, input {toolSessionId,commandId,command:{name,args}}, observe, read, signal, close. Supply runId/executionId/nodeId/requestId/ownerEpoch/controlRevision; actor, argv, workspace and qualification are Host-owned. A production-qualified open is reserved for a recorded Operator child: the Run owner first begins the node, then creates role operator for that exact execution with hima_delegate, inspects its retained result and explicitly adopts it. Direct owner open is refused. Trusted test fixtures remain owner-drivable. input and observe wait for the command completion up to the binding call wait unless waitMs is smaller; an input that returns "sent" still owns the session until observe {commandId} records its completion (read shows bytes but records nothing). Poll timeout never cancels work. close is transport cleanup: for a declared close-effect command with a named argument schema, first send that command through input and wait for completed; an earlier generic close is refused and names the required command and arguments. A command completion is not business validation. If qualification is absent, report unavailable; never use a raw terminal to bypass it.',
     parameters:{request:{type:'object',required:true,additionalProperties:true}},
     output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
     execute:async(args,execution)=>{if(!execution.agent||!operations.interactive)throw new Error('Qualified interactive operations are unavailable.');return toolJson(await operations.interactive(String(execution.agent.id),args.request));},
@@ -289,6 +292,40 @@ function strategyArgument(raw: unknown, what = 'strategy'): Record<string, Strat
     strategy[name] = value as StrategyValue;
   }
   return strategy;
+}
+
+/** The Budget a person may ask for in the conversation: the same three keys a Campaign file may set. */
+type RequestedBudget = { timeBoxMinutes?: number; retries?: number; generations?: number };
+const requestedBudgetKeys = ['timeBoxMinutes', 'retries', 'generations'] as const;
+
+function requestedBudget(raw: unknown): RequestedBudget | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`budget must be an object of timeBoxMinutes, retries and generations; got ${JSON.stringify(raw)}`);
+  const budget: RequestedBudget = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (!(requestedBudgetKeys as readonly string[]).includes(name)) throw new Error(`budget.${name} is not a Budget value a Campaign may be prepared with; use ${requestedBudgetKeys.join(', ')}`);
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`budget.${name} must be a finite number; got ${JSON.stringify(value)}`);
+    budget[name as keyof RequestedBudget] = value;
+  }
+  return Object.keys(budget).length === 0 ? undefined : budget;
+}
+
+/**
+ * A Budget the person asked for in this conversation (#64 D-T02-1) joins the proposal exactly as a
+ * Campaign file's Budget override does: the proposal shows it, its facts identity includes it, the
+ * confirmation must name the same one, and the Run is created with it. Before this, the Guide could
+ * only show such a time box in prose while the confirmed Run took the Pack's own.
+ *
+ * With no Campaign file the Goal stays the Pack's declared defaults, exactly the Goal a plain
+ * preparation proposes, so asking for a Budget changes nothing else about the proposal.
+ */
+function withRequestedBudget(deps: FabricDeps, packId: string, overrides: PreparationOverrides | undefined, budget: RequestedBudget | undefined): PreparationOverrides | undefined {
+  if (budget === undefined) return overrides;
+  const goal = overrides !== undefined ? overrides.goal
+    : Object.fromEntries(Object.entries(goalDeclarationOf(loadPack(deps.packsDir, packId))).map(([name, declaration]) => [name, declaration.default]));
+  const asked = Object.keys(budget) as (keyof RequestedBudget)[];
+  return { ...(overrides ?? {}), ...(goal === undefined ? {} : { goal }), budget: { ...(overrides?.budget ?? {}), ...budget },
+    requestedBudget: [...new Set([...(overrides?.requestedBudget ?? []), ...asked])] };
 }
 
 /** Preparation values are shallow contract scalars; canonicalise numeric strings and key order. */
@@ -511,10 +548,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
     }),
     defineTool({
       name: 'hima_execute',
-      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. For a Workshop, begin returns nextAction=recommend: use recommend with that executionId before work to obtain the actual private directory, entry, argv, inputs, Pack knowledge and bounded history, then write the entry. The single entry execution is the result of the Workshop and must write or touch its declared output; explore with read/knowledge before writing the entry, because an entry that exits 0 without that output is a failed attempt. read/write/knowledge operate within that admitted scope. A rejected authored Workshop program is a coding diagnostic: open the next available attempt and revise it without asking a person to clear a mechanical retry. When context.available lists independent branches, begin/work their licence-free Jobs up to the Site job cap before waiting; never repeat one already working. knowledge with file reads current Pack method knowledge; assetRun/assetPath reads only a verified in-scope Run archive. Historical text is background and cannot change Goal, method or permissions. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. grow submits one structured additive branch. revise accepts a byte-identified bounded code/input change, preserves both versions, invalidates exactly its dependency closure and starts no Job; each rerun is still an explicit owner action. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
+      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. A begun act tool whose contract declares outsourcing can use engineering start with a complete goal and context; it returns a bound Site Job promptly. Continue the same task with message/status/cancel/delivery/release. Start one execution once: after a started, admitted or unknown start, never send another start for that execution. Status is a point-in-time read, not a blocking wait; when it still says starting or running and exposes no new actionable fact, report that the task is active and yield the turn instead of calling status again. Delivery is accepted only after its artifacts pass their declared Pack Reader; best-effort engineering completion remains distinct from Pack Goal success. A verified delivery makes the execution ready, not completed. Release the engineering session, then explicitly complete the same executionId using the returned epoch/revision. Release only cleans up resources; successor nodes and their autopilot cannot start before that owner completion. Normal work and engineering are exclusive for one execution. For a Workshop, begin returns nextAction=recommend: use recommend with that executionId before work to obtain the actual private directory, entry, argv, inputs, Pack knowledge and bounded history, then write the entry. The single entry execution is the result of the Workshop and must write or touch its declared output; explore with read/knowledge before writing the entry, because an entry that exits 0 without that output is a failed attempt. read/write/knowledge operate within that admitted scope. A rejected authored Workshop program is a coding diagnostic: open the next available attempt and revise it without asking a person to clear a mechanical retry. When context.available lists independent branches, begin/work their licence-free Jobs up to the Site job cap before waiting; never repeat one already working. knowledge with file reads current Pack method knowledge; assetRun/assetPath reads only a verified in-scope Run archive. Historical text is background and cannot change Goal, method or permissions. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. grow submits one structured additive branch. revise accepts a byte-identified bounded code/input change, preserves both versions, invalidates exactly its dependency closure and starts no Job; each rerun is still an explicit owner action. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; engineering status/cancel/delivery/release remain available to collect or stop its existing task. Run cancel requests real stop of every owned Job process group. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
-        action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend', 'analyze'] },
+        action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend', 'analyze', 'engineering'] },
         expectedEpoch: { type: 'integer', required: true, description: 'Owner epoch from the latest context.' },
         expectedRevision: { type: 'integer', required: true, description: 'Control revision from the latest context.' },
         requestId: { type: 'string', required: true, description: 'Unique bounded request identity, reused only for an identical retry.' },
@@ -538,7 +575,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
             } } },
           } } },
         } },
-        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
+        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy', 'stop'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites: next-strategy continues with the next generation, stop ends the Campaign honestly with its Goal not met, goal-met needs every required verdict PASS. work does not submit a decision.' },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
         cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete. context.cite lists exactly the ids the current Explore requires.' },
@@ -577,6 +614,12 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         } },
         proposalId: { type: 'string', description: 'Accepted proposal identity when settling an active optional growth branch.' },
         growthDisposition: { type: 'string', enum: ['failed', 'cancelled', 'abandoned'], description: 'For grow on an active optional branch: preserve this outcome and return to its declared parent after confirming no in-flight Job.' },
+        engineering: { type: 'object', additionalProperties: false,
+          description: 'Resident engineering lifecycle. start needs goal and optional context; message needs message; status/cancel/delivery/release carry only operation.',
+          properties: {
+            operation: { type: 'string', required: true, enum: ['start', 'message', 'status', 'cancel', 'delivery', 'release'] },
+            goal: { type: 'string' }, context: { type: 'string' }, message: { type: 'string' },
+          } },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: executionText(value) }] },
       execute: async (args, execution) => {
@@ -659,11 +702,14 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         pack: { type: 'string', required: true, description: 'Installed HimaPack id.' },
         site: { type: 'string', description: 'Saved Site name. Omit while helping the user connect one.' },
         file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false prepares the Pack plainly, ignoring any Campaign file present.' },
+        budget: { type: 'object', additionalProperties: false, description: 'The Budget the user asked for in this conversation, when it differs from what the proposal would otherwise use: timeBoxMinutes (the whole time box, closing reserve inside it), generations (generation limit) and retries (retry allowance). It becomes part of the proposal (budget.*.source "request"); confirm with hima_run passing the same budget.',
+          properties: { timeBoxMinutes: { type: 'number' }, generations: { type: 'integer' }, retries: { type: 'integer' } } },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: (args, execution) => {
         if (!prepare) throw new Error('Campaign preparation is unavailable on this Host');
-        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const { campaignFile, overrides: fromFile } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const overrides = withRequestedBudget(deps, args.pack, fromFile, requestedBudget(args.budget));
         return Promise.resolve(toolJson({ ...prepare(args.pack, args.site, overrides), campaignFile }));
       },
     }),
@@ -686,6 +732,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           description: 'What to set the pack\'s own strategy knobs to for the first generation, by the names its contract declares, e.g. { "<knob>": <value> }. A knob left out takes the default that pack declares; a knob it does not declare, or a value outside the bounds or the list it declares, is refused and no run is started.',
         },
         file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false confirms plainly, ignoring any Campaign file present.' },
+        budget: { type: 'object', additionalProperties: false, description: 'The same budget object passed to the hima_prepare call that returned this proposalId, when one was passed. The Run is created with exactly that Budget; a different or missing budget is a different proposal and is refused.',
+          properties: { timeBoxMinutes: { type: 'number' }, generations: { type: 'integer' }, retries: { type: 'integer' } } },
         ...(legacyAutomaticAllowed() ? {
           test: { type: 'boolean', description: 'Contract-test purpose only.' },
           timeBox: { type: 'number', description: 'Contract-test budget only.' },
@@ -724,11 +772,13 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // so a confirmation compares like with like: the freshness check below and the actual start
         // both see the workspace's own input overrides, whether or not this Agent's workspace holds
         // one naming this Pack.
-        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const { campaignFile, overrides: fromFile } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        const asked = requestedBudget(args.budget);
+        const overrides = withRequestedBudget(deps, args.pack, fromFile, asked);
         if (args.proposalId !== undefined) {
           const current = prepare?.(args.pack, args.site, overrides);
           if (current === undefined || !current.ready || !sameCampaignProposalFacts(current.id, args.proposalId)) {
-            throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
+            throw new Error('Campaign preparation changed or is no longer ready, or this confirmation names a different budget than the proposal was prepared with; pass the same budget object given to hima_prepare, or call hima_prepare again before confirming');
           }
           if (!samePreparedFacts(current.goal, goal) || !samePreparedFacts(current.strategy, strategy ?? current.strategy)) {
             throw new Error('the submitted Goal or Strategy differs from the reviewed Campaign proposal; prepare the edited Campaign again before confirming');

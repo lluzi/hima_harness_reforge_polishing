@@ -47,6 +47,26 @@ test('discovery executes exactly the fixed safe probe list and keeps missing com
   assert.ok(seen.every(([verb]) => !['rm', 'mkdir', 'tee', 'cp', 'sh', 'bash', 'sudo'].includes(verb!)), 'discovery contains neither writes nor an unbounded shell');
 });
 
+test('discovery wrapper transport preserves 33 and 64 reviewed entries, rejects excessive or invalid hints before probing', async () => {
+  let channels = 0;
+  const channel: Channel = {
+    siteName: 'lab-a', realpath: async p => p, absent: async () => true, readFile: async () => new Uint8Array(),
+    exec: async () => ({ code: 0, stdout: Buffer.from(''), stderr: '' }),
+  };
+  const channelFor = () => { channels++; return channel; };
+  for (const count of [33, 64]) {
+    const wrappers = Array.from({ length: count }, (_, index) => `/opt/eda/wrappers/tool-${index + 1}`);
+    const discovered = await discoverSshSite({ ...request, hints: { ...request.hints, allowedWrappers: wrappers } }, channelFor);
+    assert.deepEqual(discovered.permit.allowedWrappers, wrappers, 'transport must not truncate or rewrite reviewed values');
+  }
+  const beforeRejected = channels;
+  for (const wrappers of [Array.from({ length: 65 }, (_, i) => `tool-${i}`), ['']]) {
+    await assert.rejects(discoverSshSite({ ...request, hints: { ...request.hints, allowedWrappers: wrappers } }, channelFor),
+      error => error instanceof Error && /allowedWrappers/.test(error.message));
+  }
+  assert.equal(channels, beforeRejected, 'invalid wrapper hints must not reach the discovery Channel');
+});
+
 test('discovery derives real capacity while bounding free parallel work to five Jobs', async () => {
   const channel: Channel = {
     siteName: 'lab-a', realpath: async (p) => p, absent: async () => true, readFile: async () => new Uint8Array(),

@@ -246,9 +246,11 @@ precondition), but the contribution is inadmissible.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 from . import core
@@ -815,6 +817,25 @@ def _campaign_relative_path(path, manifest):
     )
 
 
+def _check_base(manifest, work_package, state_id):
+    """`AtcsError("base-mismatch", ...)` unless the manifest, work package and state id agree."""
+    if manifest.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if work_package.get("baseStateId") != state_id:
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
+        )
+    if manifest.get("workPackageId") != work_package.get("id"):
+        raise core.AtcsError(
+            "base-mismatch",
+            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
+        )
+
+
 def seal(base_ref, result_refs, operation_trace):
     """Seal a worker's real tool work into a ``contribution`` artifact.
 
@@ -833,21 +854,7 @@ def seal(base_ref, result_refs, operation_trace):
     work_package = core.require(base_ref, "workPackage", "base_ref")
     state_id = core.require(base_ref, "stateId", "base_ref")
 
-    if manifest.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.baseStateId {manifest.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if work_package.get("baseStateId") != state_id:
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workPackage.baseStateId {work_package.get('baseStateId')!r} != stateId {state_id!r}",
-        )
-    if manifest.get("workPackageId") != work_package.get("id"):
-        raise core.AtcsError(
-            "base-mismatch",
-            f"workspaceManifest.workPackageId {manifest.get('workPackageId')!r} != workPackage.id {work_package.get('id')!r}",
-        )
+    _check_base(manifest, work_package, state_id)
 
     task_id = core.require(manifest, "taskId", "workspaceManifest")
     revision = core.require(manifest, "revision", "workspaceManifest")
@@ -922,8 +929,1269 @@ def seal(base_ref, result_refs, operation_trace):
     return core.stamp("contribution", body)
 
 
+def seal_parked(base_ref, reason, refusal=None):
+    """Seal the `no-fix` of a slot that ran no session at all (Issue #64 Task 5).
+
+    A slot the plan parked, or an active slot whose worker request was
+    inadmissible, still runs its branch, as a no-op: its operate node opened
+    no XTop session, so there are no dumps, trace or readings to seal. The
+    Contribution is an admissible `no-fix` carrying `parked: true`, no
+    operations and no `beforeDumpSha256`; its diagnosis is `reason` (for a
+    parked slot, the plan's own reason, the package's `problem`). The same
+    identity checks as `seal` bind it to the slot's prepared workspace.
+    `refusal` (a ``{"code", "detail"}``), given for an active slot that was
+    skipped, makes the no-fix inadmissible so the skip shows at the join.
+    """
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
+    _check_base(manifest, work_package, state_id)
+    if not isinstance(reason, str) or not reason.strip():
+        raise core.AtcsError("missing-input", "a slot that ran no session needs the reason it ran none")
+    predicted, validation_level = _predicted_measures({})
+    body = {
+        "taskId": core.require(manifest, "taskId", "workspaceManifest"),
+        "revision": core.require(manifest, "revision", "workspaceManifest"),
+        "baseStateId": state_id,
+        "kind": "no-fix",
+        "parked": True,
+        "operations": [],
+        "script": None,
+        "beforeDumpSha256": None,
+        "delta": actual_delta({}, {}),
+        "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
+        "preconditions": [],
+        "dependencies": [],
+        "atomicGroups": [],
+        "predicted": predicted,
+        "validationLevel": validation_level,
+        "diagnosis": f"parked: {reason.strip()}",
+        "admissible": refusal is None,
+        "refusals": [] if refusal is None else [dict(refusal)],
+        "outOfScope": [],
+    }
+    return core.stamp("contribution", body)
+
+
 def _script_sha256(path):
     try:
         return core.file_sha256(path)
     except (OSError, core.AtcsError) as exc:
         raise core.AtcsError("missing-input", f"cannot read script at {path}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 4: `xtop-session` Contributions (the Task 3 expert toolkit)
+# ---------------------------------------------------------------------------
+#
+# A worker's interactive XTop session (``templates/xtop-operator.tcl``) writes
+# ``ops.jsonl`` (one line per mutation that reached XTop), ``gain.jsonl``
+# (``summarize_gba_violations`` readings) and, once tainted, ``tainted.json``.
+# `seal_session` turns those plus the before/after cell dumps into one sealed
+# Contribution. Its shape adds these fields to the legacy one:
+#
+# - ``commands``: the net kept command log -- every ``status == "kept"``
+#   non-undo line, minus every seq a kept undo line names in ``undoes``, in
+#   log order. ``discards`` seqs (empty checkpoints) were never kept. Each
+#   entry is ``{"seq","proc","cmd","args","before","after","instances"
+#   [,"newNets"][,"verified"][,"ecoCells"][,"fillers"]}``: a replay calls
+#   ``proc`` with ``args`` (``planSha256`` included, as the Host sent it);
+#   ``instances`` is every instance the line observed, which composition
+#   uses for `skip: shared-instance`.
+# - ``delta``: `actual_delta` of the two dumps (authoritative); removable
+#   filler cells it exempts are named in ``fillerChanges``.
+# - ``predicted`` / ``reference``: Measures read from the ``total`` rows of the
+#   last mutation/undo gain line and the seq-0 reference line
+#   (``xtop{Setup,Hold}{Wns,Tns}``); ``gainSummary`` holds both readings'
+#   full per-scenario `parse_gain_summary` sections.
+# - ``failReasons``: ``{check: {reason: count}}`` from the last
+#   ``-with_fail_reason`` reading that reflects the final state, else ``{}``.
+# - ``value`` (ns) and ``valueDetail``: the ranking value, read per required scenario (the best
+#   violating scenario's WNS gain of the best target check), see `_session_value`.
+# - ``targets`` / ``targetPins``: the work package's own, for blocker coverage.
+# - ``operations: []``, ``preconditions: []``, ``atomicGroups: []``: the
+#   legacy replay has nothing to do for a session.
+#
+# ``kind`` is ``"xtop-session"`` when ``commands`` is non-empty, else
+# ``"no-fix"`` with a deterministic diagnosis. A session is refused only when
+# its design state is unknown (#64 T06, D-T06-7: replay is an aggregator, so a
+# log that does not explain its dumps and an edit outside the domain are
+# advisories, and the Contribution enters the recipe). Refusal code (the
+# Contribution is still sealed and returned, never raised away):
+#
+# - ``tainted``: ``tainted.json`` exists, an ``uncertain`` line exists, or the
+#   XTop transcript's ``ATCS:taint:`` line is missing or not ``clean`` (the
+#   session did not complete, or its design state is unknown).
+#
+# Trace advisory codes (``advisories``; before T06 these refused):
+#
+# - ``trace-mismatch``: the log does not explain the dump delta (a logged
+#   change the dump lacks, an untraced in-domain change, a precondition the
+#   running state does not hold, a kept typed request whose logged effect
+#   is not what it asked for, an undo that is not the top of the kept
+#   stack, or a seq gap);
+# - ``out-of-scope``: a changed object outside the domain, collected into
+#   ``outOfScope``. The domain is ``editDomain.instances`` plus instances
+#   this session created whose leaf name starts with ``namePrefix``.
+#
+# Advisory codes (``advisories: [{"code", "detail"}]``; replay is an
+# aggregator, so these never refuse: the refreshed Innovus/StarRC/PrimeTime
+# result is the quality judge, and the ranking already reads the gains):
+#
+# - ``no-predicted-gain``: kept commands with which no violating required
+#   scenario improves on a target check (WNS first, then TNS), or none can
+#   be read;
+# - ``breaks-target-check``: kept commands with which a required scenario's
+#   target check got worse in WNS by more than one rounding step, whatever
+#   another scenario gained;
+# - ``breaks-opposite-check``: kept commands with which a required
+#   scenario's non-target check (setup for a hold repair, and so on) got
+#   worse in WNS by more than one rounding step, or cannot be read. A TNS
+#   loss there is charged to the rank (``valueDetail.rankTnsGain``) as well;
+# - ``missing-gain-line``: a kept line has no gain line of its kind and seq,
+#   or the last gain line predates the last kept line (the value is then
+#   read from what the gain log holds);
+# - ``missing-export``: kept commands but no ``eco_output/`` files (replay
+#   runs the kept commands, never the worker's own export).
+#
+# Typed requests (size/exchange/insert/remove) must show exactly their
+# requested effect in their own logged delta; fixes, splits, moves and
+# ``verified: "eco-actions"`` lines are accepted from their observed delta.
+# Either way the whole net log, replayed over the before dump, must equal
+# the after dump except for exempt fillers.
+
+SESSION_COMMANDS = (
+    "size_cell", "exchange_cell", "insert_buffer", "insert_dummy_cell", "split_load", "split_net",
+    "move_cell", "remove_buffer", "fix_hold_gba_violations", "fix_setup_gba_violations", "undo",
+)
+SESSION_STATUSES = ("kept", "no-change", "error", "reverted", "uncertain")
+GAIN_KINDS = ("reference", "mutation", "undo", "probe")
+SESSION_CHECKS = ("setup", "hold")
+_OPTIONAL_NAME_LISTS = ("newNets", "fillers", "ecoCells")
+_NUMBER = re.compile(r"^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$")
+_SUMMARY_COLUMNS = {"Count": "count", "Count0": "count0", "D_Count": "dCount", "Worst": "worst",
+                    "Worst0": "worst0", "D_Worst": "dWorst", "TNS": "tns", "TNS0": "tns0", "D_TNS": "dTns"}
+_SUMMARY_SECTION = re.compile(r"^###\s+(setup|hold)\s+summary\s+###\s*$")
+_INT_COLUMNS = ("count", "count0", "dCount")
+# Rows print 4 decimals; a delta column may differ from its own difference by one rounding step each side.
+_DELTA_TOLERANCE = 1.5e-4
+# XTop's probe (`summarize_gba_violations ... -with_top_n N -with_fail_reason`) appends, per check, a
+# `### <check> top N endpoints ###` table whose last column is `Fail Reason`, one `<reason>:<percent>%`
+# per endpoint row (real XTop, Issue #64 Task 7: `not_only_pin:100%`).
+_TOP_N_HEADING = re.compile(r"^### (?:setup|hold) top \d+ endpoints ###\s*$")
+_FAIL_REASON_CELL = re.compile(r"^([a-z][a-z0-9_]*):\d+(?:\.\d+)?%$")
+
+
+def is_session_log(text):
+    """True when the first non-blank line of `text` is a Task 3 toolkit line (``seq``/``proc``, no ``op``)."""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            return False
+        return isinstance(record, dict) and "op" not in record and "proc" in record and "seq" in record
+    return False
+
+
+def _malformed(line_number, detail, code="malformed-ops-log"):
+    return core.AtcsError(code, f"line {line_number}: {detail}")
+
+
+def _instance_map(value, line_number, label):
+    if not isinstance(value, dict) or not isinstance(value.get("instances"), dict):
+        raise _malformed(line_number, f"{label} must be {{\"instances\": {{name: master|null}}}}")
+    instances = value["instances"]
+    for name, master in instances.items():
+        if not _is_nonempty_string(name) or not (master is None or _is_nonempty_string(master)):
+            raise _malformed(line_number, f"{label}.instances[{name!r}] must map a name to a master or null")
+    return dict(instances)
+
+
+def parse_session_log(text):
+    """Parse a Task 3 ``ops.jsonl`` into its line dicts, fail-closed on shape.
+
+    Raises `AtcsError("malformed-ops-log", ...)` for a line that is not a
+    JSON object, a ``seq`` that is not a positive int strictly above the
+    previous line's, an unknown ``cmd``/``status``, a ``proc`` that is not an
+    ``atcs_*`` name, non-object ``args``, a malformed ``before``/``after``,
+    a non-``uncertain`` undo line without an int ``undoes`` and an int-list ``discards``, or
+    a malformed optional field (``newNets``/``fillers``/``ecoCells`` string
+    lists, ``matchesRequest`` bool, ``verified`` string). An ``uncertain``
+    line may omit ``before``/``after`` (read as empty) and, for an undo,
+    ``undoes``/``discards``: `atcs_fail_uncertain` writes it without them,
+    and it taints the slot anyway. A gap in ``seq`` is content, not shape:
+    `seal_session` records it as a refusal.
+    """
+    lines = []
+    previous_seq = 0
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}") from exc
+        if not isinstance(record, dict):
+            raise _malformed(line_number, "not a JSON object")
+        seq = record.get("seq")
+        if not _is_plain_int(seq) or seq <= previous_seq:
+            raise _malformed(line_number, f"seq must be an int above {previous_seq}, got {seq!r}")
+        previous_seq = seq
+        if record.get("cmd") not in SESSION_COMMANDS:
+            raise _malformed(line_number, f"unknown cmd {record.get('cmd')!r}")
+        proc = record.get("proc")
+        if not _is_nonempty_string(proc) or not proc.startswith("atcs_"):
+            raise _malformed(line_number, f"proc must be an atcs_* procedure, got {proc!r}")
+        if not isinstance(record.get("args"), dict):
+            raise _malformed(line_number, "args must be an object")
+        if record.get("status") not in SESSION_STATUSES:
+            raise _malformed(line_number, f"unknown status {record.get('status')!r}")
+        uncertain = record["status"] == "uncertain"
+        # `atcs_fail_uncertain` logs {seq,cmd,proc,args,status,observe,error} only: an uncertain line
+        # may lack before/after (and, for an undo, undoes/discards). It taints the slot either way.
+        for side in ("before", "after"):
+            if uncertain and side not in record:
+                record[side] = {"instances": {}}
+            else:
+                record[side] = {"instances": _instance_map(record.get(side), line_number, side)}
+        if record["cmd"] == "undo" and not uncertain:
+            discards = record.get("discards")
+            if not _is_plain_int(record.get("undoes")) or not isinstance(discards, list) \
+                    or not all(_is_plain_int(item) for item in discards):
+                raise _malformed(line_number, "an undo line needs an int undoes and an int-list discards")
+        for key in _OPTIONAL_NAME_LISTS:
+            if key in record and (not isinstance(record[key], list)
+                                  or not all(_is_nonempty_string(item) for item in record[key])):
+                raise _malformed(line_number, f"{key} must be a list of names")
+        if "matchesRequest" in record and not isinstance(record["matchesRequest"], bool):
+            raise _malformed(line_number, "matchesRequest must be a bool")
+        if "verified" in record and not _is_nonempty_string(record["verified"]):
+            raise _malformed(line_number, "verified must be a string")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_log(text):
+    """Parse ``gain.jsonl`` into its line dicts; `AtcsError("malformed-gain-log", ...)` on shape.
+
+    Each line is ``{"seq": int >= 0, "kind": reference|mutation|undo|probe,
+    "checks": {"setup"|"hold": {"command": str, "code": int, "text": str}}}``.
+    """
+    lines = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError as exc:
+            raise _malformed(line_number, f"invalid JSON: {exc}", "malformed-gain-log") from exc
+        if not isinstance(record, dict) or not _is_plain_int(record.get("seq")) or record["seq"] < 0:
+            raise _malformed(line_number, "a gain line needs an int seq >= 0", "malformed-gain-log")
+        if record.get("kind") not in GAIN_KINDS:
+            raise _malformed(line_number, f"unknown gain kind {record.get('kind')!r}", "malformed-gain-log")
+        checks = record.get("checks")
+        if not isinstance(checks, dict) or not set(checks) <= set(SESSION_CHECKS):
+            raise _malformed(line_number, "checks must map setup/hold to readings", "malformed-gain-log")
+        for check, entry in checks.items():
+            if (not isinstance(entry, dict) or not isinstance(entry.get("command"), str)
+                    or not _is_plain_int(entry.get("code")) or not isinstance(entry.get("text"), str)):
+                raise _malformed(line_number, f"checks.{check} needs command, int code and text", "malformed-gain-log")
+        lines.append(record)
+    return lines
+
+
+def parse_gain_summary(text):
+    """Parse ``summarize_gba_violations`` output into ``{check: {"total": row, "scenarios": {name: row}}}``.
+
+    Pinned to real XTop 2025.09 output (the old flow's server run; verbatim in
+    ``tests/xtop_summary_samples.py``). Each check prints one section::
+
+        ### hold summary ###
+        Scenario                  Count      Worst        TNS            (-as_reference)
+        Scenario  Count Count0 D_Count | Worst Worst0 D_Worst | TNS TNS0 D_TNS   (-with_reference -with_delta)
+        ------...
+        total                        70    -0.1542    -3.9661
+          func_ffg_cbest_125         44    -0.0764    -0.7568
+
+    Columns map to ``count``/``count0``/``dCount`` (ints), ``worst``/``worst0``/
+    ``dWorst`` and ``tns``/``tns0``/``dTns`` (ns): the plain column is the
+    current design, ``...0`` is the session reference, ``D_...`` their
+    difference. ``Worst`` is the worst slack (``0.0000`` when nothing
+    violates) and ``TNS`` is negative when violating. ``|`` separators are
+    ignored; a blank line or the next ``###`` line ends the table, and text
+    outside a table (the ``summarize_eco_actions`` table) is skipped.
+
+    Fail closed: a section is dropped (absent from the result) when any
+    line of its table (after the header, before the table ends) does not
+    have exactly one number per header column, a row name
+    repeats, it has no ``total`` row, a ``D_`` column disagrees with its
+    current minus reference by more than one rounding step, or the same
+    check prints two sections. Text with no recognizable section returns
+    ``{}``; callers turn that into `unknown` Measures.
+    """
+    sections = {}
+    broken = set()
+    check = header = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = _SUMMARY_SECTION.match(line)
+        if match:
+            check, header = match.group(1), None
+            if check in sections or check in broken:
+                broken.add(check)
+            sections.setdefault(check, {"total": None, "scenarios": {}})
+            continue
+        if check is None or check in broken:
+            continue
+        tokens = [token for token in line.split() if token != "|"]
+        if not tokens:
+            header = None  # a blank line ends the table
+            continue
+        if set(line) <= set("-"):
+            continue
+        if tokens[0] == "Scenario":
+            columns = [_SUMMARY_COLUMNS.get(token) for token in tokens[1:]]
+            if header is not None or None in columns or len(set(columns)) != len(columns) \
+                    or not {"worst", "tns"} <= set(columns):
+                broken.add(check)
+            header = columns
+            continue
+        if line.startswith("###"):
+            check = header = None
+            continue
+        if header is None:
+            continue
+        name, values = tokens[0], tokens[1:]
+        if len(values) != len(header) or not all(_NUMBER.match(value) for value in values):
+            broken.add(check)
+            continue
+        row = {column: (int(float(value)) if column in _INT_COLUMNS else float(value))
+               for column, value in zip(header, values)}
+        for current, reference, delta in (("worst", "worst0", "dWorst"), ("tns", "tns0", "dTns"),
+                                          ("count", "count0", "dCount")):
+            if delta in row and current in row and reference in row \
+                    and abs(row[current] - row[reference] - row[delta]) > _DELTA_TOLERANCE:
+                broken.add(check)
+        target = sections[check]
+        if name == "total":
+            if target["total"] is not None:
+                broken.add(check)
+            target["total"] = row
+        elif name in target["scenarios"]:
+            broken.add(check)
+        else:
+            target["scenarios"][name] = row
+    return {name: section for name, section in sorted(sections.items())
+            if name not in broken and section["total"] is not None}
+
+
+def _measure(value, reason):
+    return core.known(value) if value is not None else core.unknown(reason)
+
+
+def _gain_reading(gain_line):
+    """``(parsed, reasons)``: `parse_gain_summary` per check of one gain line, and why a check is missing."""
+    parsed, reasons = {}, {}
+    for check in SESSION_CHECKS:
+        entry = (gain_line or {}).get("checks", {}).get(check)
+        if gain_line is None or entry is None:
+            reasons[check] = "no gain reading"
+        elif entry["code"] != 0:
+            reasons[check] = f"summarize_gba_violations failed (code {entry['code']})"
+        else:
+            section = parse_gain_summary(entry["text"]).get(check)
+            if section is None:
+                reasons[check] = f"no readable '### {check} summary ###' section in the gain text"
+            else:
+                parsed[check] = section
+    return parsed, reasons
+
+
+def _gain_measures(gain_line, column="current"):
+    """``{"xtop<Check><Wns|Tns>": Measure}`` from one gain line's ``total`` rows.
+
+    ``column="current"`` reads ``Worst``/``TNS``; ``"reference"`` reads
+    ``Worst0``/``TNS0`` (present only in ``-with_reference`` readings).
+    """
+    parsed, reasons = _gain_reading(gain_line)
+    suffix = "" if column == "current" else "0"
+    measures = {}
+    for check in SESSION_CHECKS:
+        label = check.capitalize()
+        total = (parsed.get(check) or {}).get("total") or {}
+        reason = reasons.get(check) or f"no {column} column in the {check} summary"
+        measures[f"xtop{label}Wns"] = _measure(total.get("worst" + suffix), reason)
+        measures[f"xtop{label}Tns"] = _measure(total.get("tns" + suffix), reason)
+    return measures
+
+
+def parse_fail_reasons(text):
+    """``{reason: endpoints}``: how many rows of the probe's top-N endpoint tables name each fail reason.
+
+    Only a ``### <check> top N endpoints ###`` table whose header has a ``Fail Reason`` column is
+    read; its rows end in ``<reason>:<percent>%`` cells, several of them space-separated.
+    Returns ``None`` (unread, never ``{}``) when the text holds no such table: a reply without one
+    says nothing about why endpoints fail. A table with the column and no rows is ``{}``.
+    Informational only.
+    """
+    counts = {}
+    in_table = with_reasons = found = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if _TOP_N_HEADING.match(line):
+            in_table, with_reasons = True, False
+            continue
+        if not in_table:
+            continue
+        if not line or line.startswith("###"):
+            in_table = False
+            continue
+        if line.startswith("Slack"):
+            with_reasons = line.endswith("Fail Reason")
+            found = found or with_reasons
+            continue
+        if not with_reasons or set(line) == {"-"}:
+            continue
+        # Several reasons share the cell, space-separated (`break_setup:66% port_net:16%`, Task 7 run 3).
+        reasons = set()
+        for token in line.split():
+            for cell in token.split(","):
+                match = _FAIL_REASON_CELL.match(cell)
+                if match:
+                    reasons.add(match.group(1))
+        for reason in reasons:
+            counts[reason] = counts.get(reason, 0) + 1
+    return counts if found else None
+
+
+def _target_checks(work_package):
+    kinds = set()
+    for target in work_package.get("targets") or []:
+        parts = target.split("|") if isinstance(target, str) else []
+        if len(parts) >= 3 and parts[1] in SESSION_CHECKS:
+            kinds.add(parts[1])
+    return sorted(kinds) or sorted(SESSION_CHECKS)
+
+
+# A check reading prints 4 decimals: a move within one rounding step is not a change.
+_OPPOSITE_TOLERANCE = 1e-4
+
+
+def _scenario_gains(gain_summary, required_scenarios):
+    """``{check: {scenario: {"wnsGain", "tnsGain", "referenceWns"} | None}}`` from the readings' rows.
+
+    Each required scenario's row of the last reading against the same row of the session reference
+    (the reading's own ``Worst0``/``TNS0`` columns when the reference line lacks it); ``None`` when
+    either side cannot be read. With no required scenarios named, every scenario either reading has.
+    """
+    gain_summary = gain_summary if isinstance(gain_summary, dict) else {}
+
+    def rows(reading, check):
+        section = (reading or {}).get(check) if isinstance(reading, dict) else None
+        return (section or {}).get("scenarios") or {}
+
+    gains = {}
+    for check in SESSION_CHECKS:
+        ref_rows, cur_rows = rows(gain_summary.get("reference"), check), rows(gain_summary.get("predicted"), check)
+        names = list(required_scenarios) if required_scenarios else sorted(set(ref_rows) | set(cur_rows))
+        gains[check] = {}
+        for name in names:
+            ref, cur = ref_rows.get(name) or {}, cur_rows.get(name) or {}
+            ref_wns = ref.get("worst", cur.get("worst0"))
+            ref_tns = ref.get("tns", cur.get("tns0"))
+            values = (ref_wns, ref_tns, cur.get("worst"), cur.get("tns"))
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+                gains[check][name] = None
+                continue
+            gains[check][name] = {"wnsGain": round(cur["worst"] - ref_wns, 9),
+                                  "tnsGain": round(cur["tns"] - ref_tns, 9), "referenceWns": ref_wns}
+    return gains
+
+
+def _improves(gain):
+    """A scenario reading improves on WNS first, then TNS (rows print 4 decimals, so any WNS change is a step)."""
+    return gain["wnsGain"] > 1e-9 or (gain["wnsGain"] > -1e-9 and gain["tnsGain"] > 1e-9)
+
+
+def _session_value(target_checks, reference, predicted, gain_summary=None, required_scenarios=None):
+    """The ranking value and the gain gates, per required scenario (Issue #64 Task 7 fix round 1).
+
+    A reading's ``total`` row is the worst endpoint over all scenarios, so a repair in one scenario
+    hides behind another scenario's unchanged worst endpoint (real w03: ssg_125 setup -0.0851 ->
+    -0.0828 while the total stayed at ssg_m40's -0.1567). So the gates read the per-scenario rows of
+    the required scenarios (`_scenario_gains`); target checks are the ``mode`` parts of the work
+    package's ``targets`` (both when none is named), the others are opposite checks.
+
+    - A target check's gain is its best scenario, among the required scenarios where that check is
+      violating in the reference (``referenceWns`` < 0): the largest WNS improvement, then the
+      largest TNS improvement, then the scenario name ascending. ``value`` is the WNS gain of the
+      best target check by the same order (ties: hold before setup); 0.0 when none can be read.
+    The three codes below are advisories (#64 replay-aggregator decision): recorded on the
+    Contribution, never a refusal.
+
+    - ``no-predicted-gain``: no violating required scenario improves on any target check (WNS
+      first, then TNS), including when none can be read.
+    - ``breaks-target-check``: a required scenario's target-check WNS got worse by more than
+      `_OPPOSITE_TOLERANCE`, even though another scenario improved (fix round 2).
+    - ``breaks-opposite-check``: a required scenario's opposite-check row cannot be read, or its WNS
+      got worse by more than `_OPPOSITE_TOLERANCE` (one rounding step).
+    - ``wnsGain``/``tnsGain``/``targetTnsGain``/``rankTnsGain`` keep the ``total``-row reading:
+      ``rankTnsGain`` = target TNS gain plus every opposite check's signed TNS gain, the rank's
+      tie-break, so an opposite TNS loss lowers the rank without refusing.
+
+    Returns ``(value, detail, advisories)``, ``advisories`` a list of ``(code, detail)``.
+    """
+    wns_gain, tns_gain = {}, {}
+    for check in SESSION_CHECKS:
+        label = check.capitalize()
+        for metric, gains in (("Wns", wns_gain), ("Tns", tns_gain)):
+            ref, cur = reference[f"xtop{label}{metric}"], predicted[f"xtop{label}{metric}"]
+            if core.is_known(ref) and core.is_known(cur):
+                gains[check] = round(core.value_of(cur) - core.value_of(ref), 9)
+    opposite = [check for check in SESSION_CHECKS if check not in target_checks]
+    target_tns = [tns_gain[check] for check in target_checks if check in tns_gain]
+    target_tns_gain = round(sum(target_tns), 9) if len(target_tns) == len(target_checks) else None
+    opposite_tns = [tns_gain[check] for check in opposite if check in tns_gain]
+    rank_tns_gain = (round(target_tns_gain + sum(opposite_tns), 9)
+                     if target_tns_gain is not None and len(opposite_tns) == len(opposite) else None)
+
+    scenario_gains = _scenario_gains(gain_summary, required_scenarios)
+    best = {}
+    for check in target_checks:
+        violating = sorted(((-gain["wnsGain"], -gain["tnsGain"], name), name)
+                           for name, gain in scenario_gains[check].items()
+                           if gain is not None and gain["referenceWns"] < 0)
+        if violating:
+            best[check] = violating[0][1]
+    order = sorted(((-scenario_gains[check][name]["wnsGain"], -scenario_gains[check][name]["tnsGain"],
+                     0 if check == "hold" else 1), check) for check, name in best.items())
+    value_check = order[0][1] if order else None
+    value = scenario_gains[value_check][best[value_check]]["wnsGain"] if value_check else 0.0
+    detail = {"targetChecks": list(target_checks), "oppositeChecks": opposite, "worstCheck": value_check,
+              "bestScenario": best, "scenarioGain": scenario_gains, "requiredScenarios": list(required_scenarios or []),
+              "wnsGain": wns_gain, "tnsGain": tns_gain, "targetTnsGain": target_tns_gain,
+              "rankTnsGain": rank_tns_gain}
+
+    advisories = []
+    improving = {check: sorted(name for name, gain in scenario_gains[check].items()
+                               if gain is not None and gain["referenceWns"] < 0 and _improves(gain))
+                 for check in target_checks}
+    if not any(improving.values()):
+        if not best:
+            advisories.append(("no-predicted-gain", f"no violating required scenario of target {list(target_checks)} "
+                                                  "can be read"))
+        else:
+            advisories.append(("no-predicted-gain", "no violating required scenario improves on target "
+                                                  f"{list(target_checks)}: {scenario_gains}"))
+    detail["improvingScenarios"] = improving
+    # A repair is not admitted on its best scenario alone: its own check must not get worse elsewhere.
+    for check in target_checks:
+        worse = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
+                 if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
+        if worse:
+            advisories.append(("breaks-target-check", f"target {check} WNS got worse in {worse}"))
+
+    for check in opposite:
+        unknown = sorted(name for name, gain in scenario_gains[check].items() if gain is None)
+        broken = {name: gain["wnsGain"] for name, gain in sorted(scenario_gains[check].items())
+                  if gain is not None and gain["wnsGain"] < -_OPPOSITE_TOLERANCE}
+        if unknown or not scenario_gains[check]:
+            advisories.append(("breaks-opposite-check", f"opposite {check} cannot be read for {unknown or 'any scenario'}"))
+        elif broken:
+            advisories.append(("breaks-opposite-check", f"opposite {check} WNS got worse in {broken}"))
+    return value, detail, advisories
+
+
+def leaf_name(name):
+    """The last `/`-separated segment of a hierarchical instance or net name."""
+    return name.rsplit("/", 1)[-1]
+
+
+def is_filler(master, patterns):
+    """Whether `master` matches one of the Site's removable filler `patterns` (an absent master never does)."""
+    return bool(master) and any(fnmatch.fnmatchcase(master, pattern) for pattern in patterns)
+
+
+def _command_entry(line):
+    before = line["before"]["instances"]
+    after = line["after"]["instances"]
+    entry = {
+        "seq": line["seq"], "proc": line["proc"], "cmd": line["cmd"], "args": line["args"],
+        "before": before, "after": after,
+        "instances": sorted(set(before) | set(after) | set(line.get("ecoCells") or [])),
+    }
+    for key in ("newNets", "verified", "ecoCells", "fillers"):
+        if key in line:
+            entry[key] = line[key]
+    return entry
+
+
+def _net_log(lines):
+    """``(kept_lines, undone, discarded, problems)``: the net kept log after undo, per the Task 3 rule."""
+    stack = []
+    undone = []
+    discarded = []
+    problems = []
+    seqs = {line["seq"]: line for line in lines}
+    for line in lines:
+        if line["status"] != "kept":
+            continue
+        if line["cmd"] != "undo":
+            stack.append(line["seq"])
+            continue
+        target = line["undoes"]
+        if not stack or stack[-1] != target:
+            problems.append(f"undo seq {line['seq']} names seq {target}, not the last kept edit {stack[-1:] or None}")
+        if target in stack:
+            stack.remove(target)
+            undone.append(target)
+        for seq in line["discards"]:
+            checkpoint = seqs.get(seq)
+            if checkpoint is None or checkpoint["status"] == "kept" or seq > line["seq"]:
+                problems.append(f"undo seq {line['seq']} discards seq {seq}, which is not an empty checkpoint")
+            discarded.append(seq)
+    kept = [seqs[seq] for seq in stack]
+    return kept, sorted(undone), sorted(set(discarded)), problems
+
+
+def _pin_module(pin):
+    """The module path that owns a ``<instance path>/<pin>``'s cell ("" at the top level)."""
+    owner = pin.rsplit("/", 1)[0] if isinstance(pin, str) and "/" in pin else ""
+    return owner.rsplit("/", 1)[0] if "/" in owner else ""
+
+
+def _requested_instance(state, name, modules):
+    """The instance a request named: ``name`` itself, or ``<module>/name`` for one of ``modules``.
+
+    ``modules`` are the modules owning the request's load pins: real XTop creates a new cell in its
+    load pins' module under the requested leaf name (Issue #64 Task 7: ``swerv_dbg/atcs_w01_r1_chain_d0``).
+    ``None`` when none matches.
+    """
+    if name in state:
+        return name
+    found = sorted({f"{module}/{name}" for module in modules if module and f"{module}/{name}" in state})
+    return found[0] if len(found) == 1 else None
+
+
+def _request_problem(line):
+    """Why a kept typed request's own logged effect is not what it asked for, or ``None``."""
+    cmd, args = line["cmd"], line["args"]
+    before, after = line["before"]["instances"], line["after"]["instances"]
+    if cmd == "size_cell":
+        instance, to_master = args.get("instance"), args.get("toMaster")
+        if set(after) != {instance} or after.get(instance) != to_master or before.get(instance) is None:
+            return f"size_cell asked {instance!r} -> {to_master!r}, logged {before} -> {after}"
+    elif cmd == "exchange_cell":
+        allowed = {args.get("instance")} | set(args.get("cells") or [])
+        stray = sorted((set(before) | set(after)) - allowed)
+        if stray:
+            return f"exchange_cell changed {stray} outside {sorted(n for n in allowed if n)}"
+    elif cmd in ("insert_buffer", "insert_dummy_cell", "split_load"):
+        names = args.get("newInstances") if cmd != "insert_dummy_cell" else [args.get("newInstance")]
+        if cmd == "insert_buffer":
+            loads = args.get("loadPins") or []
+        elif cmd == "insert_dummy_cell":
+            loads = [args.get("pin")]
+        else:
+            loads = [pin for group in args.get("pinGroups") or [] if isinstance(group, list) for pin in group]
+        modules = {_pin_module(pin) for pin in loads if isinstance(pin, str)}
+        missing = []
+        for name in names or [None]:
+            placed = _requested_instance(after, name, modules) if _is_nonempty_string(name) else None
+            if placed is None or after.get(placed) is None or before.get(placed) is not None:
+                missing.append(name)
+        if line.get("matchesRequest") is not True or missing:
+            return f"{cmd} did not create its named instances {missing or names}"
+    elif cmd == "remove_buffer":
+        instance = args.get("instance")
+        if line.get("matchesRequest") is not True or before.get(instance) is None \
+                or instance not in after or after[instance] is not None:
+            return f"remove_buffer did not remove {instance!r}"
+    return None
+
+
+def _latest_fail_reasons(gain_lines, last_kept_seq):
+    for gain_line in reversed(gain_lines):
+        if gain_line["seq"] < last_kept_seq:
+            break
+        checks = gain_line["checks"]
+        if any("-with_fail_reason" in entry["command"] for entry in checks.values()):
+            parsed = {check: parse_fail_reasons(entry["text"]) for check, entry in sorted(checks.items())
+                      if entry["code"] == 0 and "-with_fail_reason" in entry["command"]}
+            return ({check: reasons for check, reasons in parsed.items() if reasons is not None}, gain_line["seq"])
+    return {}, None
+
+
+# ---------------------------------------------------------------------------
+# #66 D4: the batch record -- per-command and aggregate evidence of one session
+# ---------------------------------------------------------------------------
+#
+# A seat works point to point through its cluster and hands over one batch. Beside the fields
+# above, `seal_session` seals, from the files the toolkit writes beside ``ops.jsonl``:
+#
+# - ``effectiveDomain``: the session's ``domain.json`` record (schema ``atcs-local-domain/1``:
+#   ``fanoutMax, planInstances, planNets, targetPins, instances, nets, regions, globalNets,
+#   unresolved[, error]``) as written, or ``null`` when the file is absent or unreadable. The
+#   seal's domain check reads its ``instances`` (plus the plan's and the session-created ones);
+#   ``session.domainSource`` says which domain was checked (``domain.json`` or ``plan``).
+# - ``commands[].gain``: the command's own ``gain.jsonl`` reading, per check and scenario (the
+#   required ones, else every scenario the readings name): ``{"seq", "fromSeq", "target": {check:
+#   {scenario: {"wns","tns","wnsGain","tnsGain"} | null}}, "opposite": {...}}``; the gains are
+#   against the reading of the design state the command started from (``fromSeq``: the latest
+#   reference/mutation/undo reading of that state), so a command after an undo is measured against
+#   the state the undo restored.
+# - ``commands[].blockers``: the target checks (``scenario|check|endpoint``) whose slack, read by
+#   ``atcs_point`` (``reads.jsonl``) or an ``atcs_gain`` probe's top-N table (``gain.jsonl``),
+#   improved from the last reading of the state the command started from to the first reading of
+#   the state it left. A point row with no scenario reads every target of its check and endpoint.
+# - ``attempted``: the target checks read at least once (named by an ``atcs_point`` or
+#   ``atcs_paths`` read of their check, by an ``atcs_fail_reasons`` read's pins, or listed by a
+#   probe's top-N table).
+# - ``aggregateGain`` / ``oppositeEffects``: per required scenario, the WNS and TNS delta of the
+#   target checks / the opposite checks between the session reference and the last reading
+#   (``{check: {scenario: {"wnsGain","tnsGain","referenceWns"} | null}}``, `_scenario_gains`).
+# - ``physicalRisk``: ``{"legalFailures"`` (``legal_fail_*`` endpoints in ``failReasons``),
+#   ``"newCells"`` (instances the kept log created), ``"newNets"``, ``"moves"`` (kept
+#   ``move_cell``), ``"tainted"}``.
+# - ``undone``: ``{"count", "commands": [{"seq","proc","cmd","args","gain"}]}``, the undone trials.
+# - ``reads``: the ``reads.jsonl`` summary ``{"present", "lines", "afterMutation", "byProc",
+#   "entries": [{"seq","proc","args","rowsDigest","rows"}], "malformed"}`` (``rows`` a count;
+#   ``malformed`` the line numbers skipped). The read log never refuses.
+# - ``limitations``: the Operator's own (``summary.json`` ``limitations``, ``operator: `` first),
+#   then the seal's (``seal: ``: no or an unreadable domain record, a failed derivation, target
+#   checks never read, no or malformed read lines).
+
+DOMAIN_SCHEMA = "atcs-local-domain/1"
+_DOMAIN_NAME_LISTS = ("planInstances", "planNets", "targetPins", "instances", "nets", "unresolved")
+READ_PROCS = ("atcs_paths", "atcs_fail_reasons", "atcs_point", "atcs_path_pin_rank", "atcs_legalization_range")
+_LIMITATION_CHARS = 500
+_OPERATOR_LIMITATIONS_MAX = 20
+_NEVER_READ_SHOWN = 10
+
+
+def parse_domain_record(text):
+    """``(record, problem)`` for a session's ``domain.json`` text; ``(None, None)`` when absent.
+
+    ``problem`` names why a present record is unusable (not JSON, another schema, a name list that
+    is not a list of names, regions/globalNets not lists, a non-string error); the seal then checks
+    the plan's domain, which is never wider.
+    """
+    if text is None:
+        return None, None
+    try:
+        record = json.loads(text)
+    except ValueError as exc:
+        return None, f"invalid JSON: {exc}"
+    if not isinstance(record, dict) or record.get("schema") != DOMAIN_SCHEMA:
+        return None, f"schema is not {DOMAIN_SCHEMA}"
+    for key in _DOMAIN_NAME_LISTS:
+        value = record.get(key)
+        if not isinstance(value, list) or not all(_is_nonempty_string(item) for item in value):
+            return None, f"{key} must be a list of names"
+    for key in ("regions", "globalNets"):
+        if not isinstance(record.get(key), list):
+            return None, f"{key} must be a list"
+    if "error" in record and not isinstance(record["error"], str):
+        return None, "error must be a string"
+    return record, None
+
+
+def parse_read_log(text):
+    """``(lines, malformed)``: the ``reads.jsonl`` lines in the toolkit's shape and the line numbers skipped.
+
+    A line is ``{"seq": int >= 0, "proc": atcs_paths|atcs_fail_reasons|atcs_point, "args": object,
+    "rowsDigest": str, "rows": list}``. Reads are evidence the seal cites, never a gate: a line of
+    another shape is skipped and named, not raised.
+    """
+    lines, malformed = [], []
+    for line_number, raw_line in enumerate((text or "").splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError:
+            malformed.append(line_number)
+            continue
+        if (not isinstance(record, dict) or not _is_plain_int(record.get("seq")) or record["seq"] < 0
+                or record.get("proc") not in READ_PROCS or not isinstance(record.get("args"), dict)
+                or not isinstance(record.get("rowsDigest"), str) or not isinstance(record.get("rows"), list)):
+            malformed.append(line_number)
+            continue
+        lines.append(record)
+    return lines, malformed
+
+
+def _target_key(target):
+    """``(scenario, check, endpoint)`` of a ``scenario|check|endpoint`` check id, else ``None``."""
+    parts = target.split("|", 2) if isinstance(target, str) else []
+    if len(parts) == 3 and parts[1] in SESSION_CHECKS and parts[0] and parts[2]:
+        return tuple(parts)
+    return None
+
+
+def _same_endpoint(left, right):
+    return left == right or left.replace("\\", "") == right.replace("\\", "")
+
+
+def _top_n_rows(text):
+    """``{check: [(scenario, endpoint, slack)]}`` from a probe's ``### <check> top N endpoints ###`` tables."""
+    tables = {}
+    check = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^### (setup|hold) top \d+ endpoints ###$", line)
+        if match:
+            check = match.group(1)
+            tables.setdefault(check, [])
+            continue
+        if check is None:
+            continue
+        if not line or line.startswith("###"):
+            check = None
+            continue
+        tokens = line.split()
+        if len(tokens) >= 3 and _NUMBER.match(tokens[0]):
+            tables[check].append((tokens[1], tokens[2], float(tokens[0])))
+    return tables
+
+
+def _point_readings(reads, gain_lines):
+    """Every endpoint-slack reading, in seq order: ``[(seq, check, [(scenario|None, endpoint, slack|None)])]``."""
+    readings = []
+    for read in reads:
+        check = read["args"].get("check")
+        if read["proc"] != "atcs_point" or check not in SESSION_CHECKS:
+            continue
+        rows = []
+        for row in read["rows"]:
+            if isinstance(row, dict) and _is_nonempty_string(row.get("endpoint")):
+                scenario = row.get("scenario") if _is_nonempty_string(row.get("scenario")) else None
+                slack = row.get("slack") if _is_finite_number(row.get("slack")) else None
+                rows.append((scenario, row["endpoint"], slack))
+        readings.append((read["seq"], check, rows))
+    for gain_line in gain_lines:
+        if gain_line["kind"] != "probe":
+            continue
+        for check, entry in sorted(gain_line["checks"].items()):
+            if entry["code"] == 0:
+                for table_check, rows in sorted(_top_n_rows(entry["text"]).items()):
+                    if table_check == check:
+                        readings.append((gain_line["seq"], check, rows))
+    readings.sort(key=lambda reading: reading[0])
+    return readings
+
+
+def _reading_slack(rows, scenario, endpoint):
+    """The target's slack in one reading: its scenario's row, else a row naming no scenario; ``None`` if unread."""
+    for wanted in (scenario, None):
+        known = [slack for row_scenario, row_endpoint, slack in rows
+                 if row_scenario == wanted and _same_endpoint(row_endpoint, endpoint) and slack is not None]
+        if known:
+            return min(known)
+    return None
+
+
+def _state_keys(lines):
+    """``{seq: kept-edit stack after that ops line}`` (seq 0: the session start), per the undo rule."""
+    stack, keys = [], {0: ()}
+    for line in lines:
+        if line["status"] == "kept":
+            if line["cmd"] == "undo":
+                if line.get("undoes") in stack:
+                    stack.remove(line["undoes"])
+            else:
+                stack.append(line["seq"])
+        keys[line["seq"]] = tuple(stack)
+    return keys
+
+
+def _state_at(keys, seq):
+    """The design state a reading at ``seq`` saw: the stack after the last ops line at or before it."""
+    if seq in keys:
+        return keys[seq]
+    earlier = [known for known in keys if known <= seq]
+    return keys[max(earlier)] if earlier else ()
+
+
+def _blockers(seq, keys, series):
+    """The target checks whose read slack improved across the kept command at ``seq``."""
+    before, after = _state_at(keys, seq - 1), _state_at(keys, seq)
+    improved = []
+    for target, readings in sorted(series.items()):
+        prior = [slack for at, slack in readings if at < seq and _state_at(keys, at) == before]
+        post = [slack for at, slack in readings if at >= seq and _state_at(keys, at) == after]
+        if prior and post and post[0] > prior[-1] + 1e-9:
+            improved.append(target)
+    return improved
+
+
+def _attempted(targets, reads, readings):
+    attempted = set()
+    for target in targets:
+        key = _target_key(target)
+        if key is None:
+            continue
+        scenario, check, endpoint = key
+        for read in reads:
+            args = read["args"]
+            names = args.get("pins") if read["proc"] == "atcs_fail_reasons" else args.get("endPoints")
+            if read["proc"] != "atcs_fail_reasons" and args.get("check") != check:
+                continue
+            if isinstance(names, list) and any(isinstance(name, str) and _same_endpoint(name, endpoint)
+                                               for name in names):
+                attempted.add(target)
+        for _, reading_check, rows in readings:
+            if reading_check == check and any(row_scenario in (scenario, None) and _same_endpoint(row_endpoint, endpoint)
+                                              for row_scenario, row_endpoint, _ in rows):
+                attempted.add(target)
+    return sorted(attempted)
+
+
+def _step_gain(line, gain_lines, keys, target_checks, required_scenarios):
+    """One command's own reading and its gain over the reading of the state it started from."""
+    seq = line["seq"]
+    kind = "undo" if line["cmd"] == "undo" else "mutation"
+    reading = next((g for g in gain_lines if g["seq"] == seq and g["kind"] == kind), None)
+    before = _state_at(keys, seq - 1)
+    priors = [g for g in gain_lines if g["seq"] < seq and g["kind"] in ("reference", "mutation", "undo")
+              and _state_at(keys, g["seq"]) == before]
+    prior = priors[-1] if priors else None
+    current_rows, prior_rows = _gain_reading(reading)[0], _gain_reading(prior)[0]
+    result = {"seq": seq, "fromSeq": prior["seq"] if prior is not None else None, "target": {}, "opposite": {}}
+    for check in SESSION_CHECKS:
+        current = ((current_rows.get(check) or {}).get("scenarios")) or {}
+        earlier = ((prior_rows.get(check) or {}).get("scenarios")) or {}
+        names = list(required_scenarios) if required_scenarios else sorted(set(current) | set(earlier))
+        entries = {}
+        for name in names:
+            cur, ref = current.get(name) or {}, dict(earlier.get(name) or {})
+            if prior is not None and prior["kind"] == "reference" and not ref:
+                ref = {"worst": cur.get("worst0"), "tns": cur.get("tns0")}
+            if not all(_is_finite_number(cur.get(key)) for key in ("worst", "tns")):
+                entries[name] = None
+                continue
+            known = all(_is_finite_number(ref.get(key)) for key in ("worst", "tns"))
+            entries[name] = {"wns": cur["worst"], "tns": cur["tns"],
+                             "wnsGain": round(cur["worst"] - ref["worst"], 9) if known else None,
+                             "tnsGain": round(cur["tns"] - ref["tns"], 9) if known else None}
+        result["target" if check in target_checks else "opposite"][check] = entries
+    return result
+
+
+def _reads_summary(reads, malformed, present):
+    by_proc = {}
+    for read in reads:
+        by_proc[read["proc"]] = by_proc.get(read["proc"], 0) + 1
+    return {"present": present, "lines": len(reads), "afterMutation": sum(1 for read in reads if read["seq"] > 0),
+            "byProc": dict(sorted(by_proc.items())),
+            "entries": [{"seq": read["seq"], "proc": read["proc"], "args": read["args"],
+                         "rowsDigest": read["rowsDigest"], "rows": len(read["rows"])} for read in reads],
+            "malformed": list(malformed)}
+
+
+def _operator_limitations(value):
+    items = [item.strip() for item in (value if isinstance(value, list) else []) if _is_nonempty_string(item)
+             and item.strip()]
+    return [f"operator: {item[:_LIMITATION_CHARS]}" for item in items[:_OPERATOR_LIMITATIONS_MAX]]
+
+
+def seal_session(base_ref, result_refs, ops_text, gain_text, reads_text=None):
+    """Seal one worker's Task 3 XTop session into an ``xtop-session`` (or ``no-fix``) Contribution.
+
+    `result_refs`: ``{"beforeDump", "afterDump"`` (paths), ``"evidence":
+    {"taintedJson": obj|None, "transcriptTaint": "clean"|"tainted:<why>"|None,
+    "ecoOutput": bool}, "fillerPatterns": [glob, ...], "requiredScenarios": [name, ...] (optional;
+    the scenarios whose rows the gain gates read, all of the readings' when absent), "diagnosis":
+    str|None, "domainText": str|None`` (the session's ``domain.json`` text, #66 D2; absent = the
+    plan's domain), ``"operatorLimitations": [str, ...]}`` (optional). `ops_text`/`gain_text`/
+    `reads_text` are the raw ``ops.jsonl`` / ``gain.jsonl`` / ``reads.jsonl`` texts (``reads_text``
+    ``None`` = no read log). Raises `AtcsError` only for unusable input (a
+    ``base_ref`` whose parts disagree, an unreadable dump, a malformed ops or gain log).
+    A session is refused (``admissible: false``, ``refusals``) only when its design state is
+    unknown (a tainted or unclosed session). A log that does not explain the dumps
+    (``trace-mismatch``) and an edit outside its admitted domain (``out-of-scope``) are advisories
+    since #64 T06 (D-T06-7: replay is an aggregator), like every quality finding: they never
+    refuse -- see the block comments above for the codes and the shape.
+
+    The seal is of one batch (#66 D4). The domain check reads the session's effective domain (its
+    ``domain.json`` ``instances``, plus the plan's ``editDomain.instances`` and the instances the
+    session created under its ``namePrefix``); without a usable record it reads the plan's domain.
+    The value advisories are batch-net: ``no-predicted-gain``, ``breaks-target-check`` and
+    ``breaks-opposite-check`` compare the batch's last reading with the session reference, the net
+    effect of every kept command, never a single step. A batch whose net opposite-check WNS is
+    worse by more than one rounding step (1e-4 ns) in a required scenario is sealed admissible
+    with a ``breaks-opposite-check`` advisory and enters the recipe like any other batch: replay
+    is an aggregator, and the refreshed PrimeTime result is the judge.
+    """
+    manifest = core.require(base_ref, "workspaceManifest", "base_ref")
+    work_package = core.require(base_ref, "workPackage", "base_ref")
+    state_id = core.require(base_ref, "stateId", "base_ref")
+    _check_base(manifest, work_package, state_id)
+    name_prefix = core.require(manifest, "namePrefix", "workspaceManifest")
+
+    lines = parse_session_log(ops_text)
+    gain_lines = parse_gain_log(gain_text)
+    reads, malformed_reads = parse_read_log(reads_text)
+    domain_record, domain_problem = parse_domain_record(result_refs.get("domainText"))
+
+    before_path = core.require(result_refs, "beforeDump", "result_refs")
+    after_path = core.require(result_refs, "afterDump", "result_refs")
+    before_bytes = _read_dump_bytes(before_path, "beforeDump")
+    before = parse_cell_dump(_decode_utf8(before_bytes, before_path, "beforeDump"))
+    after = parse_cell_dump(_decode_utf8(_read_dump_bytes(after_path, "afterDump"), after_path, "afterDump"))
+    evidence = result_refs.get("evidence") if isinstance(result_refs.get("evidence"), dict) else {}
+    filler_patterns = [p for p in (result_refs.get("fillerPatterns") or []) if _is_nonempty_string(p)]
+    required_scenarios = [name for name in (result_refs.get("requiredScenarios") or []) if _is_nonempty_string(name)]
+
+    refusals = []
+    advisories = []
+
+    def refuse(code, detail):
+        refusals.append({"code": code, "detail": detail})
+
+    def advise(code, detail):
+        advisories.append({"code": code, "detail": detail})
+
+    # Taint: tainted.json, an uncertain line, or a missing or unclean ATCS:taint: line refuses the slot.
+    if evidence.get("taintedJson") is not None:
+        refuse("tainted", f"tainted.json: {core.canonical(evidence['taintedJson']).decode('utf-8')}")
+    for line in lines:
+        if line["status"] == "uncertain":
+            refuse("tainted", f"ops.jsonl seq {line['seq']} ({line['cmd']}) is uncertain: {line.get('error', '')}")
+    transcript_taint = evidence.get("transcriptTaint")
+    if transcript_taint is None:
+        refuse("tainted", "the XTop transcript has no ATCS:taint: line (the session did not close through atcs_close)")
+    elif transcript_taint != "clean":
+        refuse("tainted", f"the XTop transcript says ATCS:taint:{transcript_taint}")
+
+    if [line["seq"] for line in lines] != list(range(1, len(lines) + 1)):
+        advise("trace-mismatch", f"ops.jsonl seqs {[line['seq'] for line in lines]} are not 1..{len(lines)}")
+
+    kept_lines, undone, discarded, undo_problems = _net_log(lines)
+    for problem in undo_problems:
+        advise("trace-mismatch", problem)
+    commands = [_command_entry(line) for line in kept_lines]
+
+    # Gain lines: every kept line has its own; the reading used as `predicted` is the latest state.
+    gain_keys = {(gain_line["seq"], gain_line["kind"]) for gain_line in gain_lines}
+    kept_all = [line for line in lines if line["status"] == "kept"]
+    for line in kept_all:
+        kind = "undo" if line["cmd"] == "undo" else "mutation"
+        if (line["seq"], kind) not in gain_keys:
+            advise("missing-gain-line", f"kept seq {line['seq']} has no {kind} gain line")
+    last_kept_seq = max((line["seq"] for line in kept_all), default=0)
+    references = [gain_line for gain_line in gain_lines if gain_line["kind"] == "reference"]
+    # `predicted` comes from the last mutation/undo reading: every kept line has one (checked
+    # above), no other line changes the design, and its form (`-with_delta -with_reference`) is
+    # the one pinned to real output. `atcs_gain` probes (`-with_top_n -with_fail_reason`) only
+    # feed `failReasons`.
+    readings = [gain_line for gain_line in gain_lines if gain_line["kind"] in ("mutation", "undo")]
+    reference_line = references[0] if references else None
+    last_reading = readings[-1] if readings else reference_line
+    if kept_all and (last_reading is None or last_reading["seq"] < last_kept_seq):
+        advise("missing-gain-line", f"no gain reading at or after the last kept seq {last_kept_seq}")
+
+    reference = _gain_measures(reference_line)
+    if last_reading is not None and last_reading is not reference_line:
+        fallback = _gain_measures(last_reading, column="reference")
+        reference = {key: measure if core.is_known(measure) else fallback[key] for key, measure in reference.items()}
+    predicted = _gain_measures(last_reading)
+    gain_summary = {"reference": _gain_reading(reference_line)[0], "predicted": _gain_reading(last_reading)[0]}
+    predicted.update({"prestaSetupWns": core.unknown("not predicted by an xtop-session"),
+                      "prestaHoldWns": core.unknown("not predicted by an xtop-session")})
+    fail_reasons, fail_reasons_seq = _latest_fail_reasons(gain_lines, last_kept_seq)
+
+    # Domain: the effective (derived) domain's instances when domain.json is usable, plus the
+    # plan's editDomain instances, plus instances created under this workspace's prefix.
+    edit_domain = work_package.get("editDomain") or {}
+    domain = set(edit_domain.get("instances") or [])
+    if domain_record is not None:
+        domain |= set(domain_record["instances"])
+
+    def out_of_domain(name):
+        if name in before:
+            return name not in domain
+        return not leaf_name(name).startswith(name_prefix)
+
+    out_of_scope = set()
+    running = dict(before)
+    for line, command in zip(kept_lines, commands):
+        problem = _request_problem(line)
+        if problem is not None:
+            advise("trace-mismatch", f"seq {command['seq']}: {problem}")
+        for name in command["instances"]:
+            if out_of_domain(name):
+                out_of_scope.add(name)
+        for name, master in command["before"].items():
+            if running.get(name) != master:
+                advise("trace-mismatch", f"seq {command['seq']}: {name!r} logged as {master!r} before the "
+                                         f"{command['cmd']}, the replayed state has {running.get(name)!r}")
+        for name, master in command["after"].items():
+            if master is None:
+                running.pop(name, None)
+            else:
+                running[name] = master
+
+    touched = {name for command in commands for name in command["instances"]}
+    names = set(before) | set(after) | set(running)
+    filler_changes = []
+    untraced = []
+    for name in sorted(names):
+        actual, implied = (before.get(name), after.get(name)), (before.get(name), running.get(name))
+        if actual == implied:
+            continue
+        actual_changed = actual[0] != actual[1]
+        implied_changed = implied[0] != implied[1]
+        if actual_changed and not implied_changed:
+            if name not in touched and name not in domain and all(
+                    master is None or is_filler(master, filler_patterns) for master in actual):
+                filler_changes.append(name)
+            elif out_of_domain(name):
+                out_of_scope.add(name)
+            else:
+                untraced.append(name)
+        else:
+            untraced.append(name)
+    if untraced:
+        advise("trace-mismatch", "the net command log does not explain the dump delta for "
+                                 f"{untraced}: logged {[(n, before.get(n), running.get(n)) for n in untraced]}, "
+                                 f"dumped {[(n, before.get(n), after.get(n)) for n in untraced]}")
+    if out_of_scope:
+        advise("out-of-scope", f"changes outside the edit domain: {sorted(out_of_scope)}")
+
+    kind = "xtop-session" if commands else "no-fix"
+    target_checks = _target_checks(work_package)
+    if commands:
+        if not evidence.get("ecoOutput"):
+            advise("missing-export", "kept commands but eco_output/ holds no exported change files")
+        value, value_detail, gain_advisories = _session_value(target_checks, reference, predicted, gain_summary,
+                                                              required_scenarios)
+        for code, detail in gain_advisories:
+            advise(code, detail)
+    else:
+        value, value_detail = 0.0, {"targetChecks": target_checks,
+                                    "oppositeChecks": [c for c in SESSION_CHECKS if c not in target_checks],
+                                    "worstCheck": None, "wnsGain": {}, "tnsGain": {}, "targetTnsGain": None,
+                                    "rankTnsGain": None}
+
+    diagnosis = result_refs.get("diagnosis")
+    if not (isinstance(diagnosis, str) and diagnosis.strip()) and not commands:
+        statuses = {}
+        for line in lines:
+            statuses[line["status"]] = statuses.get(line["status"], 0) + 1
+        diagnosis = (f"XTop session kept no command: {len(lines)} ops.jsonl line(s) {statuses}, "
+                     f"undone seqs {undone}, discarded checkpoints {discarded}")
+
+    nets = set()
+    for command in commands:
+        nets.update(command.get("newNets") or [])
+        if _is_nonempty_string(command["args"].get("net")):
+            nets.add(command["args"]["net"])
+    checks = set(work_package.get("targets") or []) | set(work_package.get("mayAffect") or [])
+    has_prediction = any(core.is_known(predicted[key]) for key in ("xtopSetupWns", "xtopHoldWns"))
+
+    # #66 D4: the batch record (see the block comment above `parse_domain_record`).
+    targets = sorted(work_package.get("targets") or [])
+    keys = _state_keys(lines)
+    readings = _point_readings(reads, gain_lines)
+    series = {}
+    for target in targets:
+        key = _target_key(target)
+        if key is None:
+            continue
+        scenario, check, endpoint = key
+        for at, reading_check, rows in readings:
+            slack = _reading_slack(rows, scenario, endpoint) if reading_check == check else None
+            if slack is not None:
+                series.setdefault(target, []).append((at, slack))
+    for line, command in zip(kept_lines, commands):
+        command["gain"] = _step_gain(line, gain_lines, keys, target_checks, required_scenarios)
+        command["blockers"] = _blockers(line["seq"], keys, series)
+    attempted = _attempted(targets, reads, readings)
+    net_gains = _scenario_gains(gain_summary, required_scenarios)
+    by_seq = {line["seq"]: line for line in lines}
+    undone_commands = [{"seq": seq, "proc": by_seq[seq]["proc"], "cmd": by_seq[seq]["cmd"],
+                        "args": by_seq[seq]["args"],
+                        "gain": _step_gain(by_seq[seq], gain_lines, keys, target_checks, required_scenarios)}
+                       for seq in undone if seq in by_seq]
+    physical_risk = {
+        "legalFailures": sum(count for reasons in fail_reasons.values() for reason, count in reasons.items()
+                             if reason.startswith("legal_fail")),
+        "newCells": sum(1 for name, master in running.items() if master is not None and before.get(name) is None),
+        "newNets": len({net for command in commands for net in command.get("newNets") or []}),
+        "moves": sum(1 for command in commands if command["cmd"] == "move_cell"),
+        "tainted": any(refusal["code"] == "tainted" for refusal in refusals),
+    }
+    limitations = _operator_limitations(result_refs.get("operatorLimitations"))
+    if domain_record is None and domain_problem is None:
+        limitations.append("seal: domain.json absent: the seal checked the plan's editDomain.instances")
+    elif domain_record is None:
+        limitations.append(f"seal: domain.json unreadable ({domain_problem}): the seal checked the plan's "
+                           "editDomain.instances")
+    elif domain_record.get("error"):
+        limitations.append(f"seal: the session's domain derivation failed "
+                           f"({domain_record['error'][:_LIMITATION_CHARS]}); the plan's domain held")
+    never_read = [target for target in targets if target not in attempted]
+    if never_read:
+        shown = never_read[:_NEVER_READ_SHOWN]
+        more = f" (+{len(never_read) - len(shown)} more)" if len(never_read) > len(shown) else ""
+        limitations.append(f"seal: {len(never_read)} of {len(targets)} target checks never read: {shown}{more}")
+    if reads_text is None:
+        limitations.append("seal: reads.jsonl absent: no read to cite")
+    if malformed_reads:
+        limitations.append(f"seal: reads.jsonl lines {malformed_reads} malformed and skipped")
+
+    body = {
+        "taskId": core.require(manifest, "taskId", "workspaceManifest"),
+        "revision": core.require(manifest, "revision", "workspaceManifest"),
+        "baseStateId": state_id,
+        "kind": kind,
+        "commands": commands,
+        "operations": [],
+        "script": None,
+        "beforeDumpSha256": hashlib.sha256(before_bytes).hexdigest(),
+        "delta": actual_delta(before, after),
+        "fillerChanges": filler_changes,
+        "touches": {"instances": sorted(touched), "nets": sorted(nets), "regions": [], "checks": sorted(checks),
+                    "cones": []},
+        "preconditions": [],
+        "dependencies": [],
+        "atomicGroups": [],
+        "predicted": predicted,
+        "reference": reference,
+        "gainSummary": gain_summary,
+        "failReasons": fail_reasons,
+        "value": value,
+        "valueDetail": value_detail,
+        "targets": targets,
+        "targetPins": sorted(work_package.get("targetPins") or []),
+        "effectiveDomain": domain_record,
+        "attempted": attempted,
+        "aggregateGain": {check: gains for check, gains in net_gains.items() if check in target_checks},
+        "oppositeEffects": {check: gains for check, gains in net_gains.items() if check not in target_checks},
+        "physicalRisk": physical_risk,
+        "undone": {"count": len(undone), "commands": undone_commands},
+        "reads": _reads_summary(reads, malformed_reads, reads_text is not None),
+        "limitations": limitations,
+        "validationLevel": "xtop" if has_prediction else "none",
+        "diagnosis": diagnosis,
+        "session": {
+            "lines": len(lines), "kept": [command["seq"] for command in commands], "undone": undone,
+            "discarded": discarded, "observe": sorted({line.get("observe") for line in lines
+                                                        if isinstance(line.get("observe"), str)}),
+            "predictedFromSeq": last_reading["seq"] if last_reading is not None else None,
+            "failReasonsFromSeq": fail_reasons_seq, "fillerPatterns": filler_patterns,
+            "domainSource": "domain.json" if domain_record is not None else "plan",
+        },
+        "admissible": not refusals,
+        "refusals": refusals,
+        "advisories": advisories,
+        "outOfScope": sorted(out_of_scope),
+    }
+    return core.stamp("contribution", body)

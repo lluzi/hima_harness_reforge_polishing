@@ -1,15 +1,400 @@
+# Issue #82 current resident release (Pack 0.3.1)
+
+Current deployed resident identities:
+
+- wrapper `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py`,
+  SHA-256 `5c24d5d5651bfe0e0645111f254df9e51d46fefc055c62afc61f89ac2bf3d7b7`, mode 0555;
+- capability `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-v1.json`,
+  SHA-256 `82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000`, mode 0444;
+- unchanged native context SHA-256
+  `ff620f4d7aa64482a91f65a5f49bc78a6b1ab5ebbedf5f9eb04a851980e09a0c`.
+
+Rollback bytes are under
+`operator-admin/resident-engineering-v1/archive/20261002T171900Z-2d2e9dc5/`. Pack 0.3.1 digest is
+`4bc248ff1aa8a2a636c1cfbc42ce5dc03d73d9f50d6a5c5f9356b4ac8a833e73`; its resident playbook adds
+evidence-led persistent-session, branch-margin, reset/IO regeneration and coupled Hold/Setup methods.
+
+Release qualification Run `run-76c3cb7c-b790-4e9c-85a5-0d5d943734d3` passed real native-auth OpenCode,
+same-task follow-up, current Host staging, original ATCS Reader and release/quiescence using the retained
+actual checkpoint/ECO/reports. It ran no XTop/QuaLib and leaves the original Setup 18 / Hold 0
+best-effort result unchanged. Evidence entry:
+`.hima-tmp/issue82-release-evidence/issue82-release-20261002T174344Z/evidence.json` in the Issue #82
+polishing worktree.
+
+# Path Rank compatibility repair (v31 / Pack 0.2.10)
+
+Development candidate, not yet native-qualified. The existing typed rank command now admits
+only hold/input (min-delay paths, setup margin on input pins) and setup/output (max-delay
+paths, hold margin on output pins). Cross pairs are refused before native lookup/marking or
+mutation commit; no silent path-type mapping. Plan/hash/domain/budget and post-setting taint
+protections stay in place. Qualification must prove invalid-pair recovery followed by valid
+native ranks/export, strict bounded legalization, then one short actual Flash expert loop.
+
+Install v31 additively with the unchanged verifier/fresh-slot/image/Reader/CLI and newly pinned
+flow. Frozen v30 remains retained. Contract/graph version metadata changes together for the
+existing loader; graph behavior, Harness and schema shapes are unchanged.
+
+# Derived lead domain repair (v26 / Pack0.2.5)
+
+Real v25 R1 recovery and cumulative ECO qualification passed. prepare-lead then refused brace-quoted
+native bus nets from a sealed Contribution's effectiveDomain. v26 keeps the proven TZ parity and
+repins only the changed CLI/flow. Pack0.2.5's existing prepare-lead now uses recipe replay's own
+literal-name filter on derived instance/net entries before the union. Raw Contributions are unchanged;
+unsupported derived targets are recorded in derivedDomainDropped for the active Timing Lead. Strict
+validation still applies to declared work packages and every supported target. No authority broadening,
+name guessing, topology or Toolkit change. The real counter is in the existing lead replay/own-mutation
+cheap check (RED invalid-work-package -> GREEN plus preserved final ECO hash into Innovus).
+
+## Previous candidate
+
+# Common R1 recovery timezone repair (v25 / Pack0.2.4)
+
+Current v24 lead L4 proved the batch runner saves library mtimes in America/Los_Angeles while the
+isolated interactive image defaults to UTC. All21 saved library times match the former; file hashes,
+stat/mount identity and image are unchanged. Private copies fail native open under UTC and succeed
+under America/Los_Angeles. v25 adds only `-e TZ=America/Los_Angeles` to the existing interactive
+container invocation and changes additive wrapper/pin paths. Flow, toolkit, confinement and batch
+Sitev5 remain unchanged; no recovery-check bypass or shared-container mutation. Pack0.2.4 names v25.
+The current graph/contract cheap check also compares the wrapper's environment timezone with the
+retained real saved library timestamp. v24 source/installed wrapper and failure remain immutable.
+
+Reuse the freshly produced current-L4 R1 for this source-identical-flow continuation; do not regenerate
+rough state or reuse an unrelated historical Run. Requalify the changed wrapper/lead behavior from
+native results before generating any passed environment or production binding.
+
+## Previous candidate
+
+# Issue #66 common-R1 / Owner Timing Lead candidate (v24)
+
+Source candidate: Pack 0.2.3, `atcs-xtop-operator-v24.sh` and
+`xtop-operator-environment-v24.template.json`. Install v24 additively beside v23 after filling
+flow/CLI/verifier/fresh-slot/source-template pins with the candidate bytes. Preserve the qualified
+image, library context, Site v5 batch reaper and confinement. Permit includes the v24 admin root.
+The reserved `lead` slot is accepted by the same wrapper/verifier; `TASK_IDS` and joins stay six.
+A lead retry retires only prior outputs and preserves its hash-bound recipe inputs. Worker/lead
+manifests carry the same R1 semantic state/worklist and raw seed digest; verifier checks them.
+
+The three cheap checks are `flow/tests/test_owner_timing_lead.py` in the ATCS Pack: common native
+R1 plus six manifests, one Tcl lead replay plus its own mutation whose final ECO hash reaches
+Innovus, and real Pack graph/contract loading plus repeated default control. These use synthetic
+XTop/Innovus and prove wiring only. Before any fresh matched C0/T6, freeze/install identities and
+perform one bounded real lead L4: common save/open with retained ECO actions, private clone,
+contribution replay, Owner-directed own mutation, close/export and normal teardown with exact
+zombie delta. That L4 and the fresh matched experiment are not yet performed for this source.
+
+The App/Harness surface is unchanged and its retained qualification may be reused. C0/T6 must
+use fresh external postroute_final R0s, matching common R1 state/worklist, 120 min including the
+common stage, one refresh and the same closing reserve. No historical control reuse and no
+final global AutoFinish after the active Owner Timing Lead.
+
+## Retained earlier wrapper records
+
+The historical installed v9 pins are retained byte-for-byte in `archive/atcs-v9/wrapper-pins.json`.
+They describe the former v9 wrapper, not the current resident deployment. The released ATCS 0.1.10
+seal and acceptance originals are retained in `../../packs/agentic-timing-closure-system/legacy/0.1.10/`
+as `VERSION.yml` and `TEST.md`; the current 0.3.x Pack is a development method, not that release.
+
 # linglong-atcs28 Site administration
 
-Current candidate (Issue 63, Pack 0.1.8): `atcs-xtop-operator-v9.sh` under `operator-admin/atcs-v9/`, installed
-sha `259c67b3...`. Like every wrapper file here it is a template: install it by editing the *installed* previous
-wrapper (paths, `adapter_sha256`, `flow_digest`), never by copying this file, and check that no `<REPLACE-...>`
-value remains outside comments. Retired: `atcs-v8` was installed from this template with its placeholders
+## Task-local resident engineering executor (Issue #82)
+
+`engineering-capabilities-v1.json` and `templates/resident-engineering-wrapper.py` are additive Site
+deployment materials. Install them unchanged and administrator-owned under
+`/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/` (wrapper mode 0555). The
+`engineeringCapabilities` binding names the JSON file. The Host uses its fixed `wrapper.argv` and appends
+only `--task-dir <execution task directory>`; prompts, credentials and caller-selected cwd do not enter
+argv or environment.
+
+The capability pins the installed `/home/luzi/.opencode/bin/opencode` 1.18.34, ACP v1 over stdio,
+`deepseek/deepseek-flash`, and image ID
+`7d651dc8f1ab7d423b9d61be83fc3f5d608996ed7b91fa6588c3ed16daccfd54`
+(`localhost/edarunner:alma8`, observed digest
+`sha256:8467102dbae851e4136e998661ae3a01ad9b65d49711c82f2b0883ab8d1bbb8c`). Version and ACP identity
+mismatches fail before task acceptance. This supersedes the design-time 1.18.31 inventory; no install or
+downgrade was performed.
+
+Each task gets a new rootless Podman container with a read-only root, no added capabilities,
+`no-new-privileges`, no host home or container socket, declared design/library/input roots plus the exact
+Host-generated Campaign workspace read-only, and only its private task workspace/home writable. Other
+Run workspaces are not mounted. `/data/eda/env/eda_tools_2025_env.sh` supplies the normal
+Bash/Python/Tcl/XTop environment. A no-model/no-EDA probe ran the exact OpenCode binary in the pinned
+image, wrote its private tmp, refused an append to the protected ATCS manifest, and preserved that file's
+digest. Bubblewrap was rejected because this host denies its uid-map setup.
+
+The EDA initialization also needs the narrowly mounted
+`/data/eda/software/eda_tools/empyrean` vendor root. Without it, sourcing the init failed at the missing
+local licence metadata and `xtop` could not resolve. With that root read-only, the exact new namespace
+resolved the XTop 2025.09 wrapper and executable, all 80 loader dependencies and bundled docs; a write
+probe was refused. This was metadata-only: XTop was not started and no licence was checked out.
+
+`environment.credentialReadPaths` names the Site's existing OpenCode config directory and `auth.json`.
+They are mounted read-only at their native `/home/luzi` paths after the private task home mount. There
+is no Hima provider broker, task route token or sanitized provider profile. ACP explicitly selects
+`deepseek/deepseek-flash`; provider discovery/authentication otherwise remains OpenCode-native. The
+native OpenCode process and its normal shell tools can read these native files, so this configuration
+does not claim to isolate the account key from the trusted executor. Hima does not copy literal
+credentials into task prompts, Host request frames, ACP traces or delivery documents.
+
+Every ACP permission request bound to the exact current native session receives `allow_once`, without
+Hima classifying read/execute/other kinds; foreign-session requests reject. The external boundary is
+the rootless Podman namespace, Site Permit, exact Campaign/task identity, read-only shared sources and
+task-private write mounts. Expanding those boundaries remains an administrator change.
+
+The Campaign remains a read-only source for declared business outputs, but the container masks its
+shared `.hima-engineering` subtree and rebinds only the current task directory read-only, followed by
+that task's private workspace read-write. A sibling task's home, native trace and delivery
+metadata are absent from this task's namespace. Native OpenCode config/auth is Site-level executor
+state, not task-level business material.
+
+The wrapper retains canonical request/receipt digests, native ACP trace, permission decisions, state,
+immutable request-scoped artifact snapshots/manifests and an atomic latest delivery manifest under
+`.hima-engineering/<taskId>/`; it contains no timing algorithm. Each artifact is opened from the
+private-workspace directory FD with `O_NOFOLLOW` on every parent and leaf;
+symlink parents, linked foreign files and path escapes are rejected before hashing or retention. An
+unreceipted operation found after restart becomes `unknown` and is not replayed. Cancel completes only
+after the ACP process and owned descendants are gone; release preserves task files. Before a real
+model/EDA run, deploy and hash the candidate bytes, reload the Site, and run the deterministic protocol
+tests. The frozen broker-based candidate was deployed and ran one real XTop task; current direct-auth
+repository bytes have not been deployed or live-qualified.
+
+A same-task message receipt means durable queue admission: the wrapper writes a request-bound queued
+record, then returns immutable `accepted` immediately. It records native prompt completion separately in
+an `input` event and the latest state. Callers must not interpret `accepted` as completed, and must not
+replay a message merely because the native turn is still running.
+
+If the wrapper Job dies, the Host may launch the same fixed wrapper with `--task-dir <existing>
+--reconcile`. This one-shot mode verifies signed task/runtime/owned identities, stops only the retained
+PID-start/PGID/container CID, writes signed `owned.quiescent=true` and `state.phase=stopped`, and exits 0.
+It never starts ACP and never scans or replays business request frames. Missing,
+changed or still-live ownership exits nonzero and remains fenced as unknown.
+
+The new Pack also binds `nativeTimingContext` to
+`/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json`. The remote file was later
+published for the frozen field candidate and verified byte-exact before its Run.
+`inputs/nativeTimingContext-v1.json` is the versioned source;
+`inputs/nativeTimingContext-v1.template.json` records the shape for later refreshes. The
+object records the exact bound design-manifest SHA-256, its ordered scenarios, an absolute retained
+`staData` directory plus ATCS tree digest, nonempty source reports, constraints in manifest SDC order,
+and the producing tool/version/command. Do not select an old run by name alone.
+
+The cheapest inventory found a promising but **not admitted** candidate at
+`atcs-runs/qual-v31-20261002T051947Z/native`. Its context/observation/working-state IDs agree; all four
+ordered scenarios match the current manifest; the 48-file STA tree recomputed to
+`5cf7fc4cc0ded370ec34f88c38ed2aeaf7aa96355f9bbe096f6cd7d91c68ef0e`; the current and retained SDC
+both hash to `47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565`; and all 16 observation
+source reports remain plain files with their recorded hashes. Their original v28 observe command and
+PrimeTime X-2025.06 identity are in the candidate. Re-run these same cheap checks immediately before
+publication because remote retained bytes can drift. This is read-only reuse; it must not launch fresh
+PrimeTime or Innovus.
+
+Development successor (Issue #66 export/close repair, Pack 0.2.2): `atcs-xtop-operator-v23.sh`
+under `operator-admin/atcs-v23/`. It is **not installed or qualified**. Its flow removes unused worker
+saved-DB dependencies, refreshes ECO scripts after later admitted mutations and records export limitations.
+The Harness refuses agent transport close before a declared typed close-effect input completed; forced
+Host/recovery/budget/person closure remains. Worker commands/dumps are replayable without a private DB.
+`derive-v23.py` is the count-asserted v22→v23 identity transform. Confinement, verifier, slot hygiene and
+transport cleanup are unchanged; qualification placeholders must be filled from exact successor evidence.
+Flow digest: `f5c141f2aa6759bd333e51b4f09ebc6bd9ff53f52ead695f62af1b6693d91355`.
+
+v22 reached an honest single-seat model L4 **FAIL**: repeat export depended on an unused saved workspace,
+and generic close bypassed `atcs_close`, leaving the only active Contribution inadmissible. The complete
+six-seat effectiveness experiment has not run; the auto-only qualification result supports no method claim.
+
+Development candidate (Issue 64 prompt/context repair, Pack 0.2.1): `atcs-xtop-operator-v22.sh`
+under `operator-admin/atcs-v22/`. It is **not installed or qualified yet**. v22 carries v21's Q1
+repairs, confinement, verifier, slot hygiene and close behavior and changes candidate identity pins
+for the role/context-optimized Pack flow. That flow also returns the bounded XTop path-analysis report
+body through `atcs_paths`, so an Operator receives evidence rather than an unreadable filename notice.
+Candidate flow digest `86c37b9808d8577e...`, adapter `669acfb86175778a...`, template
+`3bece0da5ed11a75...`; verifier `c9dca81c73dd9585...` and slot step `293b2a3f...` are unchanged.
+`derive-v22.py` is the count-asserted v21→v22 transform; the environment template remains a
+placeholder until this changed flow receives its own bounded qualification.
+
+Current candidate (Issue 64 / ATCS-09, after Q1/T07, Pack 0.2.0): `atcs-xtop-operator-v21.sh` under `operator-admin/atcs-v21/`
+(wrapper sha `63d28b332b344611...`, installed 2026-09-30, mode 0555). v21 is v20 with the atcs-v21 paths and the flow pin
+`09781f2eaa78475a...` (adapter `669acfb86175778a...` unchanged): the flow whose `atcs_point` reads the summarize_gba_violations
+endpoint table (XTop has no report_timing), whose `atcs_ref` prints the Site hold-cell list for dummy and delay-chain
+forms, whose `atcs_close` writes a skipped after.dump/export so a kept edit survives a Host close, and whose replay reads
+only the last fix flow's check (Q1 repairs). The verifier (`c9dca81c73dd9585...`, static checks only) and the slot step
+(`293b2a3f...`) are v18's bytes; bootstrap root `operator-admin/atcs-v21/bootstraps/`. The Pack's `xtop-operator` binding
+names v21 and the Permit reads `atcs-v21`. The template `atcs-xtop-operator-v21.sh` with its placeholders filled is
+byte-identical to the installed v21 (`derive-v21.py`, count-asserted hunks).
+
+Previous candidate v20 (`3b447439e01296ce...`): flow `5ec10d9cfbd7...` (T06 repairs; Q1 PASS and T07 ran on it).
+
+Previous candidate v19 (`24fb0447c1803551...`): flow `3e8a24fbfc3c...` (in-session pin resolution, target pins always emitted).
+
+Previous candidate v18 (`67fb15e19cc8a3fe...`): static-only verifier, best-effort-replay flow `2835a2c3d4ce...`.
+
+Previous candidates: v17 (`d9c7414a53670c13...`, adapter pin `98be15132d8c...`, flow pin `476ebdb793ba...`, verifier
+`014fcfa5...` with the regeneration compare that blocked T05) and v16 (`7bd590dda9ecbcd3...`, flow pin only).
+
+Previous candidate (before treatment attempt 4): `atcs-xtop-operator-v15.sh` under `operator-admin/atcs-v15/`
+(wrapper sha `60d951f3a95cdfa4...`, installed 2026-09-30, mode 0555), flow pin `31fbee294260...`.
+
+Previous candidate (before treatment attempt 3): `atcs-xtop-operator-v14.sh` under `operator-admin/atcs-v14/`
+(wrapper sha `2f4ced1aa18d76d3...`, installed 2026-09-29, mode 0555), flow pin `a47368518262...`.
+
+Why: in treatment attempt 2 every Harness close left the podman container and its XTop running (FABRIC G51).
+The Harness closes a Job by hanging it up, then sends TERM to its process group after 15 s. v13 ran
+`podman run` in the foreground, so its HUP/TERM trap could fire only after podman returned. XTop is the
+container's PID 1 and ignores TERM, so podman never returned. w01 and w02 became `process-survived` blockers,
+and a person had to `podman stop` them; SIGKILL came after the 20 s grace.
+
+v14 runs the container in the background (`0<&0 &`) and waits on it (`wait -n`), so a close reaches the wrapper
+at once. HUP, TERM, INT and EOF on stdin all run one close:
+- `podman stop -t 20`, which escalates to SIGKILL itself. It runs under `setsid`, so the Harness's group TERM
+  cannot cut it short.
+- `podman rm` if the container is still there.
+- A check that no process of the container's pid namespace and not the recorded XTop pid remains.
+- Only then exit 0, or exit 5 with the names if something remains.
+
+A stdin watcher polls fd 0 for hang-up without reading it. The container name and XTop pid go to
+`<slot>/session.json`. The next attempt's slot step retires that file with the rest of the slot. A session XTop
+ends itself (`exit`) returns XTop's status, as before.
+
+Derivation (`qual-tools/derive-v14.sh` and `derive-v14.py`): v14 was derived on the server from the
+*installed* v13 bytes (sha `9f54c9cd...`, checked first). The transform makes these changes, each with a
+count assertion:
+- the header comment;
+- the `atcs-v14` paths (4) and the wrapper name (2);
+- v13's `cleanup_container` trap replaced by the close functions and traps, placed before the launch;
+- the foreground launch replaced by the background launch, session record, stdin watcher and wait.
+
+The image, adapter (`2b001eda...`), flow (`a4736851...`), verifier, slot-step and Site-profile pins, and every
+`podman run` option, are v13's byte for byte. `diff` against installed v13 shows exactly those hunks. The same
+transform applied to v13's template here gives `atcs-xtop-operator-v14.sh`. With its six placeholders filled
+from the pins, that template is byte-identical to the installed file. `grep REPLACE` hits one comment line.
+
+Qualification (2026-09-29, on `atcs-runs/qual-atcs13-20260929`, the v13 qualification's workspace on this
+branch's flow; slots w02 and w03, so v13's w01 evidence stays in place):
+- **Own preflight** (`qual-tools/v14-preflight.sh`, the installed wrapper's lines up to the licence check):
+  - OK for w02 and w03.
+  - Refused for parked w04 (exit 3) and for w07 (exit 2).
+  - Refused for the older `e6ccfabc...` flow at the adapter check (exit 3, `qual-atcs13neg-20260929`).
+- **Close by stdin EOF, w02** (`qual-tools/v14-drive.py`: the wrapper leads a fresh pty with SIGHUP ignored,
+  so only its stdin path can act). READY, then `QUAL:identity:INVD12BWP30P140ULVT`. The driver then closed the
+  pty master. The wrapper logged `close (stdin-eof)` and exited 0 20.8 s later. Afterwards there was no XTop
+  process (`ps`, `icexplorer-xtop` included), no `hima-atcs-xtop-operator` container, and the recorded XTop
+  pid was gone.
+- **Close by SIGTERM, w03** (TERM to the wrapper's process group, stdin still open). READY, then the identity
+  query. The wrapper logged `close (terminate)` and exited 0 20.6 s later, again with no process and no
+  container left.
+- **Normal exit, w02** (v13's session command list through v14, under `script`):
+  - READY; one kept `atcs_size_cell` (BUFFD1 to BUFFD2), and the identity query answered BUFFD2.
+  - Source and exec writes were denied.
+  - Export succeeded, with `save_workspace` and no "Directory exists".
+  - `ATCS:taint:clean`, then `exit`: exit 0 in 40 s, with no SyntaxWarning, no process and no container left.
+  - The transcript sha is `5139eaae...`.
+- **Slot hygiene:** each killed XTop left the attempt-1 shape (44 hard-linked `.exclusive.cdslck*` files).
+  The v14 preflight moved each session's leftovers, `session.json` included, to `r1.attempt-<k>/` by rename:
+  the inode/path listings match, and nothing was deleted.
+- **The Harness's own close, zero EDA:** `qual-tools/v14-tmux-close.sh` starts a stand-in the way
+  `interactive-job.ts` starts a Job. The stand-in is v14's own launch-and-close block with `exec xtop` replaced
+  by `exec cat`, which is also PID 1 and also ignores TERM. The script then respawns the pane with the Harness's
+  close watcher, byte for byte (hangup 15 s, TERM 10 s). The receipt read `gone terminate` at 20.6 s, inside the
+  25 s window. The same replay on a stand-in built from v13's bytes read `survived`, which reproduces D-T02-2.
+
+The licence status stayed `selected=old` throughout. v13 is retired for new kits. It stays installed as
+evidence, and the Permit keeps it in `allowedWrappers` for retained Runs.
+
+Previous candidate (Issue 64, before treatment attempt 2, Pack 0.2.0): `atcs-xtop-operator-v13.sh` under
+`operator-admin/atcs-v13/` (wrapper sha `9f54c9cd...`, installed 2026-09-29, mode 0555), with the six-slot
+verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as v10-v12's), the
+slot step `fresh-worker-slot.py` (sha `293b2a3f...`, the bytes in this directory) and bootstrap root
+`operator-admin/atcs-v13/bootstraps/`. The Pack's `xtop-operator` binding names v13 and the Permit reads
+`atcs-v13` until v14.
+
+Why: `prepare-workers` picks a slot's round directory `workspaces/<slot>/r<N>` once per plan, and the Harness
+retries the operate node with the same argv. So every attempt of one plan lands in the same `r<N>`. In
+treatment attempt 1, slot w02's retries met attempt 1's XTop workspaces and 44 hard-linked
+`.exclusive.cdslck*` files. The verifier refused attempts 2 and 5 ("writable slot contains a multiply linked
+file"), and attempt 4's XTop stopped at `save_workspace` ("Directory exists"). Before the verifier, v13 runs
+the pinned slot step. It moves every entry of `r<N>` except `manifest.json`, `operator.tcl` and
+`xtop-analysis-manual.tcl` into `workspaces/<slot>/r<N>.attempt-<k>/`. Nothing is deleted, and a first
+attempt is left alone (`test_verify_worker_startup.RetrySlotTest`). It never ends a process: a close the
+Harness records as `process-survived` still needs a person to end that wrapper's container before the retry.
+This is a v12 and v13 limitation.
+
+Derivation (`qual-tools/derive-v13.sh`): v13 was derived on the server from the *installed* v12 bytes (sha
+`6656badf...`, checked first). Only the template's v12 to v13 change was applied: the `atcs-v13` paths, the
+usage name, the header comment, the `fresh_slot`/`fresh_slot_sha256` pins, and the slot step before the
+verifier. The image, adapter (`2b001eda...`), flow (`a4736851...`), verifier and Site-profile pins are
+v12's, unchanged. Two checks confirm the derivation:
+- `diff` against installed v12 shows exactly those hunks.
+- `atcs-xtop-operator-v13.sh` in this directory, with its six placeholders filled from those pins, is
+  byte-identical to the installed file.
+
+`grep REPLACE` hits one comment line. The kit's `wrapper-pins-pack-flow` check passes against the
+installed v13.
+
+Qualification (2026-09-29, `atcs-runs/qual-atcs13-20260929`: a native baseline, plan and
+`prepare-workers` on this branch's flow, digest `a4736851...`):
+- **Own preflight** (`qual-tools/v13-preflight.sh`, the installed wrapper's lines up to the container
+  launch):
+  - OK for w01..w03.
+  - Refused for parked w04..w06 (exit 3, by the slot step) and for w07 (exit 2).
+  - Refused for the older `e6ccfabc...` flow at the adapter check (exit 3,
+    `qual-atcs13neg-20260929`).
+  - Refused with a slot-step pin changed by one digit (exit 3, "administrator slot step identity
+    changed").
+- **Retry slot, w02:** the retained attempt-1 shape was planted (22 hard-linked lock pairs, the XTop
+  workspace directories, session outputs and a private home).
+  - The verifier alone refused it ("multiply linked file").
+  - v13 moved all of it to `r1.attempt-1/` with the same inodes and paths (nothing deleted or copied),
+    then passed.
+  - A second leftover went to `r1.attempt-2/`.
+- **Real session, w01:** one real wrapper-launched XTop session on a retried slot. The planted attempt-1
+  shape, including an old `swerv_wrapper_operator_candidate/`, moved to `r1.attempt-1/`, and XTop then:
+  - reached READY and answered the identity query;
+  - kept one size mutation;
+  - was denied source and exec writes;
+  - exported, with `save_workspace` succeeding and no "Directory exists";
+  - closed clean with exit 0 and no SyntaxWarning, in 38 s.
+
+  Afterwards no XTop process and no `hima-atcs-xtop-operator` container remained. The licence status
+  stayed `selected=old` throughout. The transcript sha is `3bbd8820...`.
+
+v12 is retired for new kits. It stays installed as evidence, and the Permit keeps it in `allowedWrappers` for
+retained Runs.
+
+Previous candidate (Issue 64 Task 7 fix round 2, Pack 0.2.0): `atcs-xtop-operator-v12.sh` under
+`operator-admin/atcs-v12/` (wrapper sha `6656badf...`, installed mode 0555), with the six-slot
+administrator verifier copied beside it (`verify-worker-startup.py`, sha `014fcfa5...`, the same bytes as
+v10's, v11's and this directory's) and bootstrap root `operator-admin/atcs-v12/bootstraps/`. It was
+derived on the server from the *installed* v11 bytes with only these changes: the `atcs-v12` paths, the
+verifier path, the pinned flow digest (`a4736851...`; `atcs_cli.py` `2b001eda...` is unchanged from v11)
+and the header comment. Qualified by its own preflight (`qual-tools/v12-preflight.sh`, the wrapper's
+lines up to the container launch): OK for w01..w03 on a native `prepare-workers` of the final flow,
+refused for parked w04..w06 and for w07, refused for the v11 flow by the verifier's flow digest ("flow
+bytes differ from the qualified source", since its `atcs_cli.py` is byte-identical) and for the v10 and
+0.1.8 flows at the adapter check; and by a real wrapper-launched XTop session (READY, identity query,
+one kept mutation, source and exec writes denied, export, clean close, no SyntaxWarning). The Permit
+read `atcs-v12` only until v13. Capacity is `parallelJobs: 6` and `xtop: 6` for the six parallel worker branches;
+Innovus, StarRC and PrimeTime stay 1 (the refresh is serial).
+
+Previous candidate (Issue 64 Task 7 fix round 1): `atcs-xtop-operator-v11.sh` under
+`operator-admin/atcs-v11/` (sha `1d99681a...`), derived from the installed v10 with the `atcs-v11` paths
+and the fix-round-1 identities (`atcs_cli.py` `2b001eda...`, flow `ea4556ca...`).
+
+Previous candidate (Issue 64, Pack 0.2.0 before fix round 1): `atcs-xtop-operator-v10.sh` with its own
+verifier under `operator-admin/atcs-v10/` (wrapper sha `3f2979ba...`), derived from the installed v9 with
+the `atcs-v10` paths, slots `w01`..`w06`, the six-slot verifier (the installed v8/v9 verifier refuses
+every 0.2.0 active slot, "generated Tcl differs") and the 0.2.0 identities.
+
+Like every wrapper file here, `atcs-xtop-operator-v12.sh` is a template: it equals the installed v12
+except that its pinned image, adapter, flow, verifier and Site-profile values are `<REPLACE-...>`
+placeholders. Install a new version by editing the *installed* previous wrapper, never by copying a
+template, and check that no `<REPLACE-...>` value remains outside comments.
+
+Previous candidate (Issue 63, Pack 0.1.8): `atcs-xtop-operator-v9.sh` under `operator-admin/atcs-v9/`, installed
+sha `259c67b3...`. Retired: `atcs-v8` was installed from this template with its placeholders
 unfilled, so every operator session refused at the adapter check (Run 789b90d8); it stays on the Site as
 evidence and no Permit or contract names it. Previous candidate (Pack 0.1.4):
 `atcs-xtop-operator-v7.sh` under `operator-admin/atcs-v7/`. Previous candidate (Pack 0.1.3): `atcs-xtop-operator-v6.sh` and
 `xtop-operator-environment-v6.template.json` under `operator-admin/atcs-v6/`. v6 is the qualified v5
 wrapper with only the `atcs-v6` paths and the new pinned `atcs_cli.py`/flow identities (honest no-fix
-capture); the verifier and Site profile bytes are unchanged. The Permit now reads `atcs-v9` only.
+capture); the verifier and Site profile bytes are unchanged.
 
 Previous qualification candidate: `atcs-xtop-operator-v5.sh`, administrator-owned
 `verify-worker-startup.py`, and `xtop-operator-environment-v5.template.json`. v1–v4 remain historical
@@ -106,6 +491,23 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
     document at all — `physical-baseline` now runs this Pack's own Innovus export against the staged
     baseline database, with the same limits a candidate's own `implement`/`apr-run` is held to.
 
+### Timing-only analysis contract (#64 treatment attempt 3, 2026-09-29)
+
+The user decided the ATCS comparison is timing only: DRC/connectivity deltas are recorded but must not
+stop the treatment Run. `inputs/analysisContract-timing-only/` is installed on the server at
+`/data/eda/project/hima_harness/atcs-inputs/analysisContract-timing-only` (files mode 0444). A Campaign
+selects it through its Campaign file (`inputs.analysisContract`); the Site's own binding is unchanged.
+- It is byte-identical to `analysisContract/` except `policy.json` (sha256 `e2b9cd9e...`):
+  `allowDegradedWorking` true and `maxNewConstraintFailures` 1000000 (the `verify_drc -limit` /
+  `verifyConnectivity -error` bound), with `degradeLimitNs` still 0.0.
+- Effect in the Pack, with no Pack byte changed: a refreshed candidate whose only fault is new DRC or
+  connectivity identities moves the `working` pointer, so the next generation builds on it. Any WNS
+  regression against the anchor is still refused. A truncated physical report is still an evidence gap.
+  `best`, `delivery` and the goal-met gate still require zero new physical identities, and the evaluation
+  still records every delta.
+- Proof, with no EDA and no SSH: `python3 sites/linglong-atcs28/test_timing_only_contract.py -v`. The
+  Host side is the dry path's "timing-only contract" test in `test/contract/atcs-dry-path.host.test.ts`.
+
 ## Known gaps (read before using this Site for a real Run)
 
 - **Closed (final review): `techLef`/`cellLefGlob`'s own read root.** The real tech LEF and cell LEF
@@ -168,9 +570,12 @@ real documents into it. `sites/linglong-atcs28/inputs/` holds a template for eac
    write root (`atcs-runs`), mode `0755`.
 5. Run a bounded real XTop qualification session under a fresh child of
    `/data/eda/project/hima_harness/atcs-runs` (never inside `xtop-timing-closure-runs`, the frozen
-   Pack's own root) that exercises `atcs_query_paths`/`atcs_query_cells` (read), `atcs_size_cell`
+   Pack's own root) that exercises the XTop expert toolkit's reads (`atcs_ref`, `atcs_gain`,
+   `atcs_paths`, `atcs_fail_reasons`, `atcs_candidates`), at least `atcs_size_cell` and `atcs_undo`
    (mutate), `atcs_dump_cells`/`atcs_export_changes` (save) and `atcs_close`, confirming source/exec
-   writes stay denied and the session exits normally.
+   writes stay denied and the session exits normally. The #64 upgrade replaced the earlier
+   `atcs_query_paths`/`atcs_query_cells`/`atcs_delete_buffer` procedures; the command classification
+   (and so `commandsDigest`) changed with it.
 6. After ATCS-03 changes the Pack contract to the v2 wrapper path, fill
    `xtop-operator-environment-v2.template.json` from the exact qualification, then use
    `scripts/generate-xtop-operator-binding.mjs` to generate the Host's `interactive-bindings.json`.
@@ -200,15 +605,30 @@ safety property the frozen wrapper has:
   capabilities dropped, `no-new-privileges`, host networking kept only for the local licence service,
   and the container is always removed on exit (`trap ... EXIT HUP INT TERM`).
 
-There is no batch path for this tool (`contract.yml`'s `xtop-operator` tool is `interactive-only`); the
-wrapper always launches one interactive XTop session per call and exits when that session closes.
+This wrapper has no batch path. Since Issue #64 Task 5 the `xtop-operator` tool is `hybrid`, but its
+batch path is the Pack's own `python3 flow/atcs_cli.py operate-parked` no-op for a parked or skipped
+slot, which never calls this wrapper or XTop; the wrapper always launches one interactive XTop session
+per call and exits when that session closes.
 
-## wrapper-pins.json
+## Batch-job descendant cleanup (Issue #66)
 
-`wrapper-pins.json` records what the installed `atcs-v9` wrapper (above) actually pins:
-`adapterSha256` (`sha256(flow/atcs_cli.py)`) and `flowDigest` (`python3 flow/atcs_cli.py
-flow-digest flow`). `test/contract/agentic-timing-closure-system.test.ts` recomputes both
-from this repo's own `flow/` and asserts they still equal this file's values -- a `flow/`
-change without a new installed wrapper fails that contract test; a new wrapper version
-updates this file only after its own server qualification, the same way `atcs-v9` itself
-was qualified.
+`site.yml` selects `inputs/siteCapabilities-v5.json`. Its `edaShell` runs
+`eda-job-reaper.py` inside the existing `edarun` container, before `bash -lc`.
+Install the script at
+`/data/eda/project/hima_harness/operator-admin/atcs-job-reaper-v1/eda-job-reaper.py`
+with mode 0555 and record its SHA-256 in the candidate evidence. This Linux subreaper
+waits only this job's adopted descendants; inherited stdio and the main command's exit
+status are preserved. HUP/INT/TERM are forwarded; descendants still alive two seconds
+after the main command exits are killed and reaped, with a further five-second bound.
+Forced SIGKILL of the reaper itself cannot guarantee cleanup.
+
+The shared `edarun`, persistent container and existing zombie processes are unchanged.
+The frozen v23 interactive wrapper still pins v4 for its identical library/XTop context;
+its isolated worker-container lifecycle already owns that cleanup. v5 changes only
+the batch launch prefix. Rollback selects v4 in the Site binding.
+
+No-licence regression on the Linux Site:
+`edarun python3 /path/to/test_eda_job_reaper.py` beside the script. The test uses an
+outer subreaper to contain the failing plain double-fork case. Actual EDA cleanup is
+validated by the next matched experiment's pre/post zombie identities, not by this
+fixture. Do not recreate the shared container to erase earlier evidence.

@@ -18,6 +18,7 @@
     "test:local": "node scripts/run-contract-tests.mjs local",
     "test:desktop": "node scripts/run-contract-tests.mjs desktop",
     "test:live:site": "node scripts/run-contract-tests.mjs live-site",
+    "test:live:model": "node scripts/run-contract-tests.mjs live-model",
     "test:contract": "pnpm run test:local",
     "check:seams": "node scripts/check-seams.mjs",
     "check:boundary": "node scripts/check-boundary.mjs",

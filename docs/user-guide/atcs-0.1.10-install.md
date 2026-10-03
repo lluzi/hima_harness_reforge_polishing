@@ -1,5 +1,11 @@
 # ATCS 0.1.10: install, cold start, and rollback
 
+> Historical delivery notes. Since the 2026-10-03 main integration, the Pack root follows the
+> resident engineering development line. The original sealed 0.1.10 source is retained at
+> [`legacy/0.1.10`](../../packs/agentic-timing-closure-system/legacy/0.1.10/), with its
+> [snapshot explanation](../../packs/agentic-timing-closure-system/legacy/0.1.10-README.md).
+> The identities and acceptance below apply only to that historical delivery.
+
 These notes cover installing the sealed `agentic-timing-closure-system@0.1.10` Pack from the Issue #63 final
 App, checking that it installed correctly, and rolling it back. The App is an unsigned local trial candidate
 (ad-hoc signed, not notarized) for this station. It is not a public release.

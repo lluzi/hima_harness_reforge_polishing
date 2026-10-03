@@ -1,0 +1,8 @@
+id: atcs-readiness
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'readiness', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-input-readiness/1
+emits:
+  - tc_required_input_missing_count
+  - tc_lifecycle_available

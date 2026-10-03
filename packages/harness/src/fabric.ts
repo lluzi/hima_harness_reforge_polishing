@@ -33,7 +33,7 @@ import { runExitFence } from './host-exit.js';
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, batchToolRefusal, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { autopilotDrives, goalDeclarationOf, batchToolRefusal, boundInputs, recordedInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, workshopProducersOf, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -46,14 +46,16 @@ import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
 import { currentRecordsIn, recordNode, researchAnalysis, revisionRecordsIn, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
 import { analysisProblems } from './experience-report.js';
 import { runView as analysisRunView } from './remote.js';
-import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
+import { jobKill, jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
+import { jobProcessGroupAlive } from './interactive-job.js';
 import { attestLibraryQualificationPrelaunch } from './adapters/library-qualification.js';
 import { humanEffortMeasurement } from './value-measurement.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs, readBack } from './workshop.js';
 import type {
   BlockerRecord,
   DecisionRecord,
+  InteractiveRecord,
   JobRecord,
   Ledger,
   LoopOutcome,
@@ -115,10 +117,12 @@ import {
   workshopNode,
   buildWorkshopScope,
   launchWrittenWorkshop,
+  nodeArguments,
   exploreRecommendation,
   exploreEvidence,
   exploreCitation,
   settleFailedAttempt,
+  requestedCloseOf,
   type ExploreCitation,
   type Driving,
   type FabricDeps,
@@ -126,6 +130,12 @@ import {
 } from './node-turns.js';
 import { adoptHistoricalRun, cancelRun } from './recovery.js';
 import { settleStrandedTeamExecutions } from './delegation-runtime.js';
+import {
+  engineeringRequest, engineeringTaskDirectory, engineeringTaskId, launchEngineeringTask,
+  materializeEngineeringResult, planEngineeringTask, readEngineeringDelivery, readEngineeringOwned, engineeringDeliveriesOf, readRetainedEngineeringAsset, readEngineeringState,
+  reconcileEngineeringTask, waitEngineeringReceipt, writeEngineeringRequest,
+  type EngineeringRequest, type EngineeringTaskIdentity,
+} from './engineering-executor.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -765,7 +775,7 @@ async function admitResume(deps: FabricDeps, req: { readonly runId: string; read
     runId: run.id,
     site,
     pack,
-    bindings: boundInputs(pack, site),
+    bindings: recordedInputs(pack, site, prepared.bindings),
     workspace: prepared.workspace,
     campaignId: run.campaignId,
     // Read after the resume is on record, so the wait this resume just closed is part of it: that is
@@ -964,6 +974,8 @@ const ENDED_BY: Readonly<Record<ChosenKind, RunStatus | undefined>> = {
   'goal-met': 'ended-goal-met',
   converged: 'ended-converged',
   'next-strategy': undefined,
+  // The owner's honest ending (ADR-0016): the Goal not met, stopped on the cited evidence.
+  stopped: 'ended-goal-not-met',
 };
 
 /** The same three, one level down: which outcome a decision closes a drill-down Loop with, and which
@@ -972,6 +984,8 @@ const CLOSED_BY: Readonly<Record<ChosenKind, LoopOutcome | undefined>> = {
   'goal-met': 'goal-met',
   converged: 'converged',
   'next-strategy': undefined,
+  // A Loop the owner stops closes as its generation limit would: the sub-question left unanswered.
+  stopped: 'generation-limit',
 };
 
 /** The Strategy a decision chose, as the row's own patch: nothing at all for a decision that chose
@@ -1316,14 +1330,20 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze' | 'measure-value';
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze' | 'measure-value' | 'engineering';
   readonly analysis?: unknown;
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
   readonly assetRun?: string; readonly assetPath?: string;
-  readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
+  readonly decision?: 'goal-met' | 'converged' | 'next-strategy' | 'stop';
   readonly strategy?: Readonly<Record<string, StrategyValue>>; readonly rationale?: string;
-  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
+  /**
+   * `autopilot` is the Harness itself taking a node turn inside a Pack-declared autopilot region
+   * (ADR-0016), under the owner's identity and epoch. No tool sets it; only the Host's driver does.
+   */
+  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human' | 'autopilot';
+  /** For an autopilot Workshop write: the branch child Agent that authored the bytes (ADR-0016). */
+  readonly onBehalfOf?: string;
   /** Structured PLS-10 proposal for grow, parsed again by Fabric before any acceptance. */
   readonly proposal?: unknown;
   /** Structured PLS-11 change request for revise. */
@@ -1333,6 +1353,8 @@ export interface ExecutionActionRequest {
   readonly proposalId?: string;
   /** Explicit human stopwatch evidence for a value study; accepted only through the human route. */
   readonly measurement?: unknown;
+  /** Typed resident engineering lifecycle request, accepted only on an outsourcing act tool. */
+  readonly engineering?: unknown;
 }
 export interface GrowthView {
   readonly proposalId: string; readonly event: GrowthRecord['event']; readonly recordId: string;
@@ -1964,13 +1986,20 @@ export function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   const reference = loadRunPack(deps.packsDir, run.packId, run.packDigest);
   return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
 }
-function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1): string {
+/**
+ * The evidence an execution was admitted on. A fork branch's execution is admitted on the unbranched
+ * evidence and its own branch's — never a sibling branch's, which it does not read and which moves
+ * under it while the branches run at once (ADR-0016: a sibling's revision, or a sibling's reading
+ * landing inside this admission, is not a change to this execution's inputs).
+ */
+function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1, branchId?: string): string {
   const records = currentRecordsIn(deps.ledger.records({ runId: run.id }));
+  const mine = (record: LedgerRecord): boolean => branchId === undefined || !('branchId' in record) || record.branchId === undefined || record.branchId === branchId;
   return identityOf({
     method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
     generation: run.generation, loop: run.loop,
     workspace: records.findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
-    evidence: records.filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id || record.type === 'growth' || record.type === 'revision')),
+    evidence: records.filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id && mine(record) || record.type === 'growth' || record.type === 'revision')),
   });
 }
 /** Pause follows dependency edges, including Loop entry/return, but never a future revisit. */
@@ -2011,10 +2040,38 @@ function executionHolds(control: RunControl): NonNullable<ExecutionContext['hold
       if (!['pause', 'handoff', 'adopt'].includes(request.receipt.action) || data.scope !== scope) continue;
       // Repeating a pause cannot downgrade an earlier human or unknown hold.
       if (held.source === 'human' || (held.source === 'unknown' && data.newHold !== true && request.origin === 'agent')) continue;
-      held = { scope, source: request.origin ?? 'unknown', actor: request.actor, requestId: request.receipt.requestId };
+      held = { scope, source: request.origin === 'autopilot' ? 'agent' : request.origin ?? 'unknown', actor: request.actor, requestId: request.receipt.requestId };
     }
     return held;
   });
+}
+
+/**
+ * An interactive Job whose close was recorded `process-survived` stays open in the Ledger after its
+ * surviving process group ends: the group was not stopped by the close, and nothing observed its end
+ * as a stop. A person continuing that node is told to establish the Job's actual exit first — and
+ * here it is established, by asking the recorded group itself through the Site channel. Every such
+ * Job whose group is observed gone is recorded stopped (`killed`, in its launch's branch), and the
+ * continue goes on; any other open Job, or a group still running or that cannot be asked, keeps the
+ * refusal (#64 attempt 3 dry path: a survivor whose container ended by itself left its node
+ * un-continuable for the rest of the Run).
+ */
+async function settleEndedSurvivors(deps: FabricDeps, run: RunRecord, open: readonly JobRecord[]): Promise<boolean> {
+  const interactive = deps.ledger.records({ runId: run.id, type: 'interactive' })
+    .filter((record): record is InteractiveRecord => record.type === 'interactive');
+  const survivors = open.map((job) => ({ job, pid: (interactive.findLast((record) => record.toolSessionId === job.job.session
+    && record.event === 'process-survived')?.payload as { pid?: number } | undefined)?.pid }));
+  if (survivors.some((survivor) => survivor.pid === undefined)) return false;
+  const on = channelFor(loadSite(deps.sitesDir, run.siteId));
+  for (const survivor of survivors) {
+    try { if (await jobProcessGroupAlive(on, survivor.pid!)) return false; }
+    catch { return false; }
+  }
+  for (const { job } of survivors) {
+    await deps.ledger.appendJob(run.id, { event: 'killed', job: job.job, ...(job.nodeId === undefined ? {} : { nodeId: job.nodeId }),
+      ...(job.branchId === undefined ? {} : { branchId: job.branchId }) });
+  }
+  return true;
 }
 
 function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefined {
@@ -2069,10 +2126,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       message: 'This control request was already recorded. Hima did not notify the Campaign Agent again; the original delivery outcome is not durable.' };
     let run = existingRun(deps.ledger, req.runId);
     let control = run.control;
+    const engineering = req.action === 'engineering' ? engineeringRequest.safeParse(req.engineering) : undefined;
+    const engineeringMaintenance = engineering?.success === true
+      && ['status', 'cancel', 'delivery', 'release'].includes(engineering.data.operation);
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
-    if (runExitFence(run) && !['read', 'knowledge', 'cancel', 'pause', 'complete'].includes(req.action)) return no('the App is closing; no new business work may start before recovery');
+    if (runExitFence(run) && !['read', 'knowledge', 'cancel', 'pause', 'complete'].includes(req.action) && !engineeringMaintenance) return no('the App is closing; no new business work may start before recovery');
     // A human may urgently pause or stop a Campaign from a Side Talk, but that does not make the
     // Side Talk an execution owner.  Every node action, continuation, revision and handoff remains
     // fenced to the recorded owner and epoch below.
@@ -2080,6 +2140,28 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       || ((req.action === 'continue' || req.action === 'measure-value') && control.guideSessionId === req.actor));
     if ((control.owner !== req.actor && !humanEmergencyControl) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
+    const autopilot = req.origin === 'autopilot';
+    if (autopilot && !['begin', 'work', 'write', 'complete', 'recommend', 'read', 'knowledge'].includes(req.action)) return no('the autopilot takes node turns only');
+    if (req.action === 'engineering' && engineering?.success !== true) return no(`engineering needs one typed start, message, status, cancel, delivery or release operation${engineering === undefined ? '' : `: ${engineering.error.message}`}`);
+    // ADR-0016: inside a Pack-declared autopilot region the Harness takes the node turns; the owner
+    // reads facts there and acts at the region's end. Its own begin/work/write/complete are fenced.
+    if (req.origin !== 'autopilot' && req.origin !== 'human' && ['begin', 'work', 'write', 'complete'].includes(req.action)) {
+      const nodeId = req.action === 'begin' ? req.nodeId : (req.executionId === undefined ? undefined : control.executions[req.executionId]?.nodeId);
+      try {
+        const pack = executionPack(deps, run);
+        if (nodeId !== undefined && autopilotDrives(pack, nodeId)) {
+          const pending = run.status === 'running' && control.stop === undefined && run.currentNode !== undefined
+            && !autopilotDrives(pack, run.currentNode) && executionPauseReason(pack, run, run.currentNode) === undefined
+            ? Object.values(control.executions).find(item => item.nodeId === run.currentNode && item.kind === 'act'
+              && item.phase === 'ready' && item.supersededBy === undefined && item.branchId === undefined
+              && item.generation === run.generation && item.loopId === run.loop?.id
+              && item.loopGeneration === run.loop?.generation) : undefined;
+          return no(`node ${nodeId} is driven by this Pack's autopilot. ` + (pending
+            ? `First complete current node ${pending.nodeId} with action complete and executionId ${pending.id}, after releasing any owned engineering session. Its ready result has not advanced the route; successor autopilot has not started.`
+            : 'The Harness takes those turns when the recorded route reaches that region, and notifies the owner on leaving it. Inspect the current execution; do not begin a future autopilot node.'));
+        }
+      } catch { /* an unreadable method is answered by the ordinary checks below */ }
+    }
     const digest = identityOf(req);
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined && before.receipt.action === 'revise') {
@@ -2087,11 +2169,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       if (before.state === 'uncertain') return no('the admitted revision has inconsistent or incomplete persisted facts; it cannot be treated as applied');
       return { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification };
     }
-    if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
+    if (!autopilot && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
     if (before !== undefined) return before.digest === digest
       ? { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification }
       : no('this request identity was already used with different contents');
-    if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
+    // The autopilot acts on the row as it stands under this admission lock, which is what a revision
+    // check protects a conversational decision against; every precondition below is asked of it.
+    if (!autopilot && req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'measure-value') {
       if (req.origin !== 'human') return no('value-study human effort can be recorded only by an authenticated human control request');
       const parsed = humanEffortMeasurement.safeParse(req.measurement);
@@ -2106,7 +2190,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     }
     if (req.action === 'revise') return revisionAction(deps, run, req, digest);
     if (req.action === 'grow') return growthAction(deps, run, req, digest);
-    const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';
+    const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend' || engineeringMaintenance;
     if (req.action === 'cancel') {
       if (control.stop?.requestId !== undefined && control.requests[control.stop.requestId]?.state === 'admitted') return no('an earlier cancel request is still collecting its actual stop; inspect that receipt');
       if (run.status !== 'running' && run.status !== 'waiting') return no('this Run is not active');
@@ -2178,7 +2262,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         const blocked = unclearedFailure(run, scope);
         if (blocked !== undefined) {
           if (req.origin !== 'human') return no('the failed node needs a human clearance of its blocker; an Agent continue cannot grant another retry allowance');
-          if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id && job.nodeId === blocked.nodeId)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
+          const open = deps.ledger.openJobsOn(run.siteId).filter((job) => job.runId === run.id && job.nodeId === blocked.nodeId);
+          if (open.length > 0 && !await settleEndedSurvivors(deps, run, open)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
           receipt = { ...receipt, executionId: blocked.id, data: { scope, clearedScopes: [...new Set([scope, blocked.nodeId])] } };
           await clearExecutionBlocker(deps, run, req, digest, blocked, scope, receipt);
           return continued(`The user continued node ${blocked.nodeId}: its blocker is cleared and it may be begun again with a new retry allowance.${upstreamProducerNote(pack, blocked.nodeId)} Read current facts before choosing the next action.`);
@@ -2247,7 +2332,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
           : `The user continued ${scope === '*' ? 'this Campaign' : `node ${scope}`}. Read current facts before choosing the next action.`);
       return { ...answer('accepted', { receipt }), ...(notification === undefined ? {} : { notification }) };
     }
-    if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
+    if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || req.action === 'engineering' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
     // The owner's next begin also settles a Team execution an earlier trigger had to leave begun.
     // A settlement fault (a changed Site, say) leaves that execution to its other triggers, not begin itself.
@@ -2285,12 +2370,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const currentFailures = context.executions.filter((execution) => execution.nodeId === node.id && execution.supersededBy === undefined && execution.phase === 'failed').length;
     const workshopAuthoring = node.kind === 'act' && node.parameters.workshop !== undefined;
     if (!workshopAuthoring && ((!revised && retry.spent > retry.allowance) || (revised && currentFailures > retry.allowance))) return no('this node has spent its retry allowance; a human must clear its blocker');
+    const branchId = run.fork === undefined ? undefined : Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0];
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
-      methodDigest: run.packDigest!, inputDigest: inputIdentity(deps, run), phase: 'begun',
+      methodDigest: run.packDigest!, inputDigest: inputIdentity(deps, run, run.nextSeq - 1, branchId), phase: 'begun',
       inputThroughSeq: run.nextSeq - 1,
-      ...(run.fork === undefined ? {} : { branchId: Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0] }),
+      ...(run.fork === undefined ? {} : { branchId }),
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
     const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id,
@@ -2422,6 +2508,104 @@ function executionAnswer(deps: FabricDeps, runId: string, kind: ExecutionActionR
   return { kind, context: executionContext(deps, runId), ...extra };
 }
 
+/** The nodes of the fork branch `branchId` of the Run's open fork, in order. */
+function openBranchNodes(pack: Pack, run: RunRecord, branchId: string): readonly string[] {
+  if (run.fork === undefined) return [];
+  const at = positionOf(pack, run.fork.from);
+  const drawn = at === undefined ? undefined : forkFrom(at.graph, at.node);
+  return drawn?.ok ? drawn.branches.find((branch) => branch.id === branchId)?.nodes ?? [] : [];
+}
+
+/** The records one execution wrote, as a revision or a restart takes them out of current evidence. */
+function recordsOfExecutions(all: readonly LedgerRecord[], executions: readonly NodeExecution[]): string[] {
+  const current = currentRecordsIn(all);
+  const invalidates = new Set<string>();
+  for (const execution of executions) {
+    const terminal = all.filter((record) => record.type === 'node' && record.nodeId === execution.nodeId
+      && record.attempt === execution.attempt && record.generation === execution.generation
+      && record.loopId === execution.loopId && record.branchId === execution.branchId).at(-1)?.seq ?? execution.inputThroughSeq ?? 0;
+    for (const record of current) if (record.seq > (execution.inputThroughSeq ?? 0) && record.seq <= terminal
+      && record.generation === execution.generation && record.loopId === execution.loopId
+      && (!('branchId' in record) || record.branchId === execution.branchId)) invalidates.add(record.id);
+  }
+  return [...invalidates];
+}
+
+/**
+ * ADR-0016: settle one self-driving fork branch as **refused** — the branch's remaining nodes are not
+ * run, and it stands at the join with its refusal on record. Never a person: a node that spent its
+ * allowance, or a Team member whose result failed its schema after the one repair, ends the branch
+ * here. What is written: one `cancelled` node record at the node the branch stopped at, naming why;
+ * the branch's failed executions superseded (so no uncleared Hard blocker holds the time box or the
+ * join); the automatic holds those failures left on the branch's nodes released (a person's or an
+ * Agent's hold is kept, and then nothing settles); and the branch moved to the join as done, closing
+ * the fork when it was the last. Refused while a Job of the branch is still open.
+ */
+export function settleBranchRefused(deps: FabricDeps, runId: string, branchId: string, reason: string): Promise<boolean> {
+  return controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    const control = run.control; const fork = run.fork; const branch = fork?.branches[branchId];
+    if (run.status !== 'running' || control === undefined || fork === undefined || branch === undefined || branch.state === 'done') return false;
+    const pack = executionPack(deps, run);
+    const nodes = openBranchNodes(pack, run, branchId);
+    if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === runId && job.nodeId !== undefined && nodes.includes(job.nodeId))) return false;
+    const holds = executionHolds(control);
+    if (holds.some((hold) => nodes.includes(hold.scope) && hold.source !== 'unknown')) return false;
+    const stoppedAt = positionOf(pack, branch.currentNode)?.node;
+    if (stoppedAt !== undefined) {
+      await recordNode(deps.ledger, runId, stoppedAt, 'cancelled', currentAttemptOf(deps.ledger, runId, stoppedAt.id),
+        { branchId, reason: `hima autopilot: branch ${branchId} settled refused at ${stoppedAt.id}: ${reason}` });
+    }
+    const latest = existingRun(deps.ledger, runId).control!;
+    const supersededBy = `autopilot-refused:${branchId}`;
+    const executions = Object.fromEntries(Object.entries(latest.executions).map(([id, execution]) =>
+      [id, execution.branchId === branchId && execution.supersededBy === undefined && execution.generation === (run.generation ?? 1)
+        && execution.loopId === run.loop?.id && ['failed', 'begun', 'ready', 'uncertain'].includes(execution.phase)
+        ? { ...execution, supersededBy } : execution]));
+    await advance(deps.ledger, runId, {}, { branch: { id: branchId, currentNode: fork.join, state: 'done' },
+      control: { ...latest, revision: latest.revision + 1, executions, paused: latest.paused.filter((scope) => !nodes.includes(scope)
+        || holds.find((hold) => hold.scope === scope)?.source !== 'unknown') } });
+    const after = existingRun(deps.ledger, runId).fork;
+    if (after !== undefined && Object.values(after.branches).every((held) => held.state === 'done')) {
+      await advance(deps.ledger, runId, {}, { fork: null, onlyWhileRunning: true });
+    }
+    return true;
+  });
+}
+
+/**
+ * ADR-0016: start one self-driving branch again at its Workshop `nodeId`, after the Pack's Reader
+ * refused what the Workshop wrote. The branch's executions from that node on are superseded, the
+ * records they wrote leave the current evidence through one executor-written `restart`, and the
+ * branch stands at the Workshop again; the other branches are untouched. Refused while a Job of the
+ * branch is open, or when the node is not upstream of where the branch stands.
+ */
+export function restartBranchAt(deps: FabricDeps, runId: string, branchId: string, nodeId: string, requestId: string): Promise<boolean> {
+  return controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    const control = run.control; const branch = run.fork?.branches[branchId];
+    if (run.status !== 'running' || control === undefined || branch === undefined || branch.state === 'done') return false;
+    const pack = executionPack(deps, run);
+    const nodes = openBranchNodes(pack, run, branchId);
+    const from = nodes.indexOf(nodeId); const to = nodes.indexOf(branch.currentNode);
+    if (from < 0 || to < from) return false;
+    const span = nodes.slice(from, to + 1);
+    if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === runId && job.nodeId !== undefined && nodes.includes(job.nodeId))) return false;
+    const superseded = Object.values(control.executions).filter((execution) => execution.branchId === branchId
+      && execution.supersededBy === undefined && span.includes(execution.nodeId) && execution.generation === (run.generation ?? 1)
+      && execution.loopId === run.loop?.id);
+    if (superseded.some((execution) => execution.phase === 'working' || execution.phase === 'uncertain')) return false;
+    const invalidates = recordsOfExecutions(deps.ledger.records({ runId }), superseded);
+    await deps.ledger.appendAutopilotRestart(runId, { nodeId, requestId, invalidates });
+    const latest = existingRun(deps.ledger, runId).control!;
+    const ids = new Set(superseded.map((execution) => execution.id));
+    await advance(deps.ledger, runId, {}, { branch: { id: branchId, currentNode: nodeId, state: 'running' },
+      control: { ...latest, revision: latest.revision + 1, executions: Object.fromEntries(Object.entries(latest.executions)
+        .map(([id, execution]) => [id, ids.has(id) ? { ...execution, supersededBy: requestId } : execution])) } });
+    return true;
+  });
+}
+
 /** Must be called under the Run's admission queue; it preserves intervening facts. */
 export async function updateExecution(deps: FabricDeps, runId: string, executionId: string, change: Partial<NodeExecution>, requestId?: string, requestState: 'done' | 'uncertain' = 'done'): Promise<void> {
   const run = existingRun(deps.ledger, runId);
@@ -2443,9 +2627,11 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
   const adoption = run.control?.adoption;
   const adoptedWorkspace = prepared !== undefined && adoption?.workspaceSeq === prepared.seq && adoption.methodDigest === run.packDigest;
   if (prepared === undefined || (prepared.packDigest !== run.packDigest && !adoptedWorkspace)) throw new RunStartError('this execution has no verified original workspace/method identity');
+  // The inputs this execution was admitted with are the Run's recorded ones (#64 D-C01-1).
+  const bindings = recordedInputs(pack, site, prepared.bindings);
   return {
     deps: { ...deps, beforeSlotClaim: (siteName) => reconcileExecutionIntents(deps, siteName) },
-    runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+    runId: run.id, site, pack, bindings, workspace: prepared.workspace,
     campaignId: run.campaignId, waitedMs: ownedWaitedMs(run), nonblocking: true, executionId: execution.id,
     ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
     beforeLaunch: async (offered: LaunchIntent) => {
@@ -2457,8 +2643,17 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
       revalidate();
       const intent = launchIntentSchema.parse(offered);
       if (intent.runId !== run.id || intent.siteId !== run.siteId || intent.nodeId !== execution.nodeId || intent.attempt !== execution.attempt || intent.branchId !== execution.branchId) throw new RunStartError('launch identity does not match the admitted node execution');
+      // The Run's inputs as recorded now must still be the ones this Job was built from: a later
+      // workspace record that binds another value means the admitted execution is stale.
+      const latest = deps.ledger.records({ runId: run.id, type: 'workspace' })
+        .findLast((record): record is WorkspaceRecord => record.type === 'workspace' && record.workspace === prepared.workspace);
+      if (latest?.bindings !== undefined) {
+        const differs = pack.contract.inputs.filter((input) => latest.bindings![input.name] !== bindings[input.name]);
+        if (differs.length > 0) throw new RunStartError(`this Job's inputs differ from the Run's recorded input bindings (${differs.map((input) =>
+          `${input.name}: recorded "${latest.bindings![input.name] ?? ''}", this Job "${bindings[input.name] ?? ''}"`).join('; ')}); nothing was launched`);
+      }
       await attestLibraryQualificationPrelaunch({
-        packId: pack.id, site, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+        packId: pack.id, site, bindings, workspace: prepared.workspace,
         intent, channel: channelFor(site),
       });
       revalidate();
@@ -2500,9 +2695,371 @@ export async function settleStrandedExecution(deps:FabricDeps,runId:string,execu
   return true;
 }
 
+export function residentEngineeringStartOf(control: RunControl, executionId: string): ExecutionReceipt | undefined {
+  return Object.values(control.requests).map((request) => request.receipt).find((receipt) => receipt.action === 'engineering'
+    && receipt.executionId === executionId && (receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
+    && !['at-cap', 'refused', 'budget-exhausted', 'stopped'].includes(String((receipt.data as { status?: unknown }).status)));
+}
+
+export function residentEngineeringIdentityFor(deps: FabricDeps, run: RunRecord, execution: NodeExecution): EngineeringTaskIdentity {
+  const pack = executionPack(deps, run);
+  const position = positionOf(pack, execution.nodeId);
+  if (position?.node.kind !== 'act' || position.node.parameters.tool === undefined) {
+    throw new RunStartError('resident engineering is available only on an act node naming one tool');
+  }
+  const toolName = position.node.parameters.tool;
+  const tool = pack.contract.tools.find((item) => item.id === toolName);
+  if (tool?.outsourcing === undefined) throw new RunStartError(`tool "${toolName}" does not declare resident engineering outsourcing`);
+  const site = loadSite(deps.sitesDir, run.siteId);
+  const prepared = deps.ledger.records({ runId: run.id, type: 'workspace' })
+    .findLast((record): record is WorkspaceRecord => record.type === 'workspace' && record.seq <= (execution.inputThroughSeq ?? -1));
+  if (prepared === undefined) throw new RunStartError('the engineering execution has no verified original workspace');
+  const bindings = recordedInputs(pack, site, prepared.bindings);
+  const taken = nodeArguments(position.node, run, bindings);
+  if (!taken.ok) throw new RunStartError(taken.reason);
+  const availableInputs: Record<string, string | undefined> = {
+    ...bindings, ...taken.values, WORKSPACE: prepared.workspace, FLOW_ROOT: bindings.flowRoot,
+    DESIGN: bindings.design, CAMPAIGN: run.campaignId,
+  };
+  const boundInputs = Object.fromEntries(tool.inputs.flatMap((name) => availableInputs[name] === undefined ? [] : [[name, availableInputs[name]!]]));
+  const expectedStartIdentity = Object.values(run.control?.requests ?? {}).map((request) => request.receipt)
+    .findLast((receipt) => receipt.action === 'engineering' && receipt.executionId === execution.id
+      && (receipt.data as { operation?: unknown } | undefined)?.operation === 'start'
+      && typeof (receipt.data as { capabilitySha256?: unknown }).capabilitySha256 === 'string')?.data;
+  return { run, execution, site, pack, workspace: prepared.workspace, bindings,
+    outsourcing: tool.outsourcing, licences: tool.licences, tool, boundInputs,
+    siteIdentityMatches: run.control?.siteDigest === identityOf(site),
+    ...((expectedStartIdentity as { capabilitySha256?: unknown } | undefined)?.capabilitySha256 === undefined ? {}
+      : { expectedCapabilitySha256: String((expectedStartIdentity as { capabilitySha256: unknown }).capabilitySha256) }),
+    ...((expectedStartIdentity as { taskEnvelopeSha256?: unknown } | undefined)?.taskEnvelopeSha256 === undefined ? {}
+      : { expectedTaskEnvelopeSha256: String((expectedStartIdentity as { taskEnvelopeSha256: unknown }).taskEnvelopeSha256) }) };
+}
+
+/** Finish one already-admitted filesystem operation without spending a second control revision. */
+async function finishEngineeringRequest(
+  deps: FabricDeps, runId: string, executionId: string, requestId: string,
+  data: NonNullable<ExecutionReceipt['data']>, state: 'done' | 'uncertain', change: Partial<NodeExecution> = {},
+): Promise<ExecutionReceipt> {
+  const run = existingRun(deps.ledger, runId);
+  const control = run.control!;
+  const execution = control.executions[executionId];
+  const request = control.requests[requestId];
+  if (execution === undefined || request === undefined) throw new RunStartError('the admitted engineering request disappeared');
+  const receipt: ExecutionReceipt = { ...request.receipt, data };
+  await advance(deps.ledger, runId, {}, { control: {
+    ...control,
+    executions: { ...control.executions, [executionId]: { ...execution, ...change } },
+    requests: { ...control.requests, [requestId]: { ...request, state, receipt } },
+  } });
+  return receipt;
+}
+
+/** Project-authorized read surface for retained delivery, including after release/Run end. */
+export async function readEngineeringAsset(deps: FabricDeps, runId: string, executionId: string, requestId: string, artifactId: string, treeId?: string, download = false) {
+  const run = existingRun(deps.ledger, runId);
+  const execution = run.control?.executions[executionId];
+  const delivery = engineeringDeliveriesOf(run).find(item => item.executionId === executionId && item.requestId === requestId);
+  if (!execution || !delivery) throw new RunStartError('Run has no verified engineering delivery for that execution/request');
+  return readRetainedEngineeringAsset(residentEngineeringIdentityFor(deps, run, execution), delivery, artifactId, treeId, download);
+}
+
+const engineeringResult = (operation: EngineeringRequest['operation'], taskId: string, status: string, extra: Record<string, unknown> = {}): NonNullable<ExecutionReceipt['data']> =>
+  ({ operation, taskId, status, ...extra }) as NonNullable<ExecutionReceipt['data']>;
+
+async function engineeringJobStatus(deps: FabricDeps, runId: string, session: string, retryMs = 1_000) {
+  const deadline = Date.now() + retryMs;
+  for (;;) {
+    try { return await jobStatus(deps, { run: runId, session }); }
+    catch (error) {
+      if (!(error instanceof SiteUnreadableError) || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, execution: NodeExecution, digest: string): Promise<ExecutionActionResult> {
+  const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
+  const parsed = engineeringRequest.safeParse(req.engineering);
+  if (!parsed.success) return no(`invalid engineering request: ${parsed.error.message}`);
+  const engineering = parsed.data;
+  let identity: EngineeringTaskIdentity;
+  try { identity = residentEngineeringIdentityFor(deps, run, execution); }
+  catch (error) { return no((error as Error).message); }
+  const taskId = engineeringTaskId(run.id, execution.id);
+  const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+  const current = execution.generation === run.generation && execution.loopId === run.loop?.id
+    && execution.loopGeneration === run.loop?.generation
+    && execution.inputThroughSeq !== undefined && execution.inputDigest === inputIdentity(deps, run, execution.inputThroughSeq, execution.branchId)
+    && run.control?.siteDigest === identityOf(identity.site);
+  const paused = executionPauseReason(identity.pack, run, execution.nodeId);
+  const start = residentEngineeringStartOf(run.control!, execution.id);
+  const completionAllowed = (candidate: NodeExecution): boolean => candidate.phase === 'ready' && current
+    && run.status === 'running' && run.control?.stop === undefined && paused === undefined;
+  const releaseReason = (canComplete: boolean): string =>
+    `Release ends the engineering session and retains its artifacts; it does not complete the node or advance the Run.${canComplete ? ` Call action complete with executionId ${execution.id} and the returned epoch/revision; then the declared route can proceed.` : ' Inspect current execution facts and control holds before further action.'}`;
+
+  if (engineering.operation === 'start') {
+    if (!current) return no('the execution input version or generation is stale; no engineering task was started');
+    if (paused !== undefined) return no(paused);
+    if (start !== undefined) return no('this execution already owns a resident engineering task; use its status or message operation');
+    if (execution.phase !== 'begun' || execution.jobSession !== undefined || unreleasedInteractiveIntents(deps, run.id, execution.id).length > 0) {
+      return no('resident engineering start needs the exact freshly begun execution with no ordinary or interactive Job');
+    }
+    let plan: Awaited<ReturnType<typeof planEngineeringTask>>;
+    try { plan = await planEngineeringTask(identity, engineering); }
+    catch (error) { return no((error as Error).message); }
+    const startIdentity = { protocol: plan.capability.protocol, capabilitySha256: plan.capabilitySha256,
+      taskEnvelopeSha256: plan.envelope.sha256, methodDigest: execution.methodDigest, inputDigest: execution.inputDigest };
+    let receipt: ExecutionReceipt = { requestId: req.requestId, action: 'engineering', executionId: execution.id,
+      data: engineeringResult('start', taskId, 'admitted', startIdentity) };
+    await recordExecutionAction(deps, run, req, digest, {
+      executions: { ...run.control!.executions, [execution.id]: { ...execution, phase: 'working' } },
+    }, receipt, {}, 'admitted');
+    try {
+      const claim = await launchEngineeringTask(deps, identity, plan, req.requestId, engineering, ownedWaitedMs(run), async (intent) => {
+        const latest = existingRun(deps.ledger, run.id);
+        const admitted = latest.control?.executions[execution.id];
+        if (admitted?.phase !== 'working' || admitted.jobSession !== undefined) throw new RunStartError('engineering execution changed before Site dispatch');
+        await updateExecution(deps, run.id, execution.id, { intent });
+      });
+      if (claim.kind === 'claimed' && claim.launched.kind === 'launched') {
+        const session = claim.launched.record.job.session;
+        const data = engineeringResult('start', taskId, 'started', { ...startIdentity, jobSession: session });
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', {
+          phase: 'working', jobSession: session, result: { kind: 'pending', session },
+        });
+        observeResidentEngineering(deps, run.id, execution.id);
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+      }
+      const status = claim.kind === 'at-cap' ? 'at-cap' : claim.kind === 'budget-exhausted' ? 'budget-exhausted'
+        : claim.kind === 'stopped' ? 'stopped' : 'refused';
+      const reason = claim.kind === 'at-cap' ? claim.reason
+        : claim.kind === 'claimed' && claim.launched.kind === 'refused' ? claim.launched.record.reason : undefined;
+      const data = engineeringResult('start', taskId, status, { ...startIdentity, ...(reason === undefined ? {} : { reason }) });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', {
+        phase: status === 'budget-exhausted' || status === 'stopped' ? 'failed' : 'begun',
+        result: status === 'at-cap' ? { kind: 'at-cap', reason } : { kind: 'stopped', reason },
+      });
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data, ...(reason === undefined ? {} : { reason }) });
+    } catch (error) {
+      const reason = `engineering start was admitted but its launch outcome is uncertain; do not replay it: ${(error as Error).message}`;
+      const data = engineeringResult('start', taskId, 'unknown', { ...startIdentity, reason });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId,
+        data, 'uncertain', { phase: 'uncertain', reason });
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
+    }
+  }
+
+  if (start === undefined) return no('this execution has no resident engineering task; start it first');
+
+  // A finished/gone wrapper cannot consume another request file. Re-enter only the fixed cleanup
+  // mode as a separate ordinary Job; it verifies retained PID start identity/process group/container
+  // ownership and never opens ACP or replays a business request.
+  if (['status', 'cancel', 'release'].includes(engineering.operation) && execution.jobSession !== undefined) {
+    const wrapper = await engineeringJobStatus(deps, run.id, execution.jobSession);
+    if (wrapper.state.state !== 'running') {
+      let receipt: ExecutionReceipt = { requestId: req.requestId, action: 'engineering', executionId: execution.id,
+        data: engineeringResult(engineering.operation, taskId, 'reconciling') };
+      await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
+      try {
+        const retainedState = await readEngineeringState(identity.site, taskDir, taskId);
+        const retainedOwned = await readEngineeringOwned(identity.site, taskDir, taskId);
+        let recovered: Awaited<ReturnType<typeof reconcileEngineeringTask>> | undefined;
+        if (retainedOwned?.quiescent !== true || !['stopped', 'released'].includes(retainedState?.phase ?? '')) {
+          recovered = await reconcileEngineeringTask(deps, identity, taskId, async (intent) => {
+            await updateExecution(deps, run.id, execution.id, { intent });
+          });
+        }
+        const stopped = recovered?.status === 'stopped' || retainedOwned?.quiescent === true
+          && ['stopped', 'released'].includes(retainedState?.phase ?? '');
+        if (!stopped) {
+          const reason = recovered !== undefined && recovered.status !== 'stopped'
+            ? recovered.reason : 'retained engineering quiescence is not confirmed';
+          const data = engineeringResult(engineering.operation, taskId, recovered?.status ?? 'unknown', { reason });
+          receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'uncertain', {
+            phase: 'uncertain', reason,
+            ...(recovered?.session === undefined ? {} : { jobSession: recovered.session }),
+          });
+          return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
+        }
+        const previouslyReleased = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) =>
+          request.receipt.action === 'engineering' && request.receipt.executionId === execution.id
+          && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'release'
+          && (request.receipt.data as { status?: unknown }).status === 'released');
+        const phase = engineering.operation === 'release' || engineering.operation === 'status' && previouslyReleased ? 'released' : 'stopped';
+        const latestExecution = existingRun(deps.ledger, run.id).control!.executions[execution.id]!;
+        const hasVerifiedDelivery = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) =>
+          request.receipt.action === 'engineering' && request.receipt.executionId === execution.id
+          && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'delivery'
+          && (request.receipt.data as { status?: unknown }).status === 'verified');
+        const preserveVerifiedReady = latestExecution.phase === 'ready' && hasVerifiedDelivery;
+        const canComplete = engineering.operation === 'release' && hasVerifiedDelivery && completionAllowed(latestExecution);
+        const data = engineeringResult(engineering.operation, taskId, phase, {
+          nativeQuiescence: 'confirmed', recovered: recovered !== undefined,
+          ...((recovered?.status === 'stopped' ? recovered.session : undefined) === undefined ? {} : { recoverySession: recovered!.session }),
+          ...(canComplete ? { nextAction: 'complete', executionId: execution.id } : {}),
+        });
+        const change: Partial<NodeExecution> = {
+          ...(recovered?.status === 'stopped' ? { jobSession: recovered.session } : {}),
+          ...(preserveVerifiedReady ? {}
+            : engineering.operation === 'status' && previouslyReleased ? {}
+            : engineering.operation === 'release' && latestExecution.phase !== 'ready'
+            ? { phase: 'failed', result: { kind: 'stopped', reason: 'lost native session was reconciled and released' } }
+            : engineering.operation === 'release' ? {} : { phase: 'uncertain', reason: 'native session was lost and reconciled stopped; no business continuation is possible' }),
+        };
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', change);
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+          ...(engineering.operation === 'release' ? { reason: releaseReason(canComplete) } : {}) });
+      } catch (error) {
+        const reason = `same-task engineering reconciliation is unknown: ${(error as Error).message}`;
+        const data = engineeringResult(engineering.operation, taskId, 'unknown', { reason });
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'uncertain', { phase: 'uncertain', reason });
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason });
+      }
+    }
+  }
+
+  if (['message', 'delivery'].includes(engineering.operation) && execution.jobSession !== undefined) {
+    const wrapper = await engineeringJobStatus(deps, run.id, execution.jobSession);
+    if (wrapper.state.state !== 'running') {
+      return no('the resident wrapper is gone and its native RPC session cannot be continued; use status, cancel or release to reconcile retained ownership without replaying business work');
+    }
+  }
+
+  if (engineering.operation === 'message') {
+    if (!current) return no('the engineering execution is stale; status, cancel, delivery or release it instead of sending new work');
+    if (paused !== undefined) return no(paused);
+    if (execution.phase !== 'working') return no('the resident engineering task is not accepting new messages');
+  }
+  if (engineering.operation === 'delivery' && !current) return no('a stale engineering execution cannot publish a result into the current Pack output');
+
+  // Start deliberately returns as soon as the ordinary Job is bound. A follow-up that needs the
+  // native session must not race ahead of the wrapper's start frame merely because request ids sort
+  // in another lexical order; wait for the task state to carry that session before publishing it.
+  if (['message', 'cancel', 'delivery'].includes(engineering.operation)) {
+    const readyBy = Date.now() + 5_000;
+    let initial = await readEngineeringState(identity.site, taskDir, taskId);
+    while ((initial === undefined || initial.sessionId === undefined || initial.phase === 'starting') && Date.now() < readyBy) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      initial = await readEngineeringState(identity.site, taskDir, taskId);
+    }
+    if (initial === undefined || initial.sessionId === undefined || initial.phase === 'starting') {
+      return no('the resident wrapper has not established its native session; inspect status before sending a session operation');
+    }
+  }
+
+  let receipt: ExecutionReceipt = { requestId: req.requestId, action: 'engineering', executionId: execution.id,
+    data: engineeringResult(engineering.operation, taskId, 'admitted') };
+  await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
+  try {
+    const deliveryReceipts = Object.values(existingRun(deps.ledger, run.id).control!.requests).map((request) => request.receipt)
+      .filter((candidate) => candidate.action === 'engineering' && candidate.executionId === execution.id
+        && (candidate.data as { operation?: unknown } | undefined)?.operation === 'delivery');
+    const priorDelivery = deliveryReceipts.at(-1)?.data !== undefined
+      && (deliveryReceipts.at(-1)!.data as { status?: unknown }).status === 'verified' ? deliveryReceipts.at(-1) : undefined;
+    const releasePayload = engineering.operation === 'release' && priorDelivery?.data !== undefined
+      ? { deliverySha256: (priorDelivery.data as { manifestSha256?: unknown }).manifestSha256 }
+      : undefined;
+    const sent = await writeEngineeringRequest(identity, taskId, req.requestId, engineering, releasePayload);
+    const wrapperReceipt = await waitEngineeringReceipt(identity.site, sent.taskDir, taskId, req.requestId, sent.frame.sha256,
+      engineering.operation === 'cancel' || engineering.operation === 'release' ? 12_000 : 5_000);
+    const state = await readEngineeringState(identity.site, taskDir, taskId);
+
+    if (engineering.operation === 'status' || engineering.operation === 'message') {
+      const status = wrapperReceipt?.status ?? 'unknown';
+      const job = execution.jobSession === undefined ? undefined : await jobStatus(deps, { run: run.id, session: execution.jobSession });
+      const data = engineeringResult(engineering.operation, taskId, status, {
+        ...(state === undefined ? {} : { state }), ...(job === undefined ? {} : { job: job.state }),
+        ...(wrapperReceipt?.error === undefined ? {} : { reason: wrapperReceipt.error }),
+      });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data,
+        wrapperReceipt === undefined ? 'uncertain' : 'done');
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+    }
+
+    if (engineering.operation === 'cancel') {
+      const stopped = wrapperReceipt?.status === 'completed' && state?.phase === 'stopped';
+      const status = stopped ? 'stopped' : wrapperReceipt?.status === 'rejected' ? 'rejected' : 'unknown';
+      const data = engineeringResult('cancel', taskId, status, {
+        ...(state === undefined ? {} : { state }), ...(wrapperReceipt?.error === undefined ? {} : { reason: wrapperReceipt.error }),
+      });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data,
+        stopped || wrapperReceipt?.status === 'rejected' ? 'done' : 'uncertain');
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+        ...(stopped ? {} : { reason: 'the wrapper has not confirmed that the native session and owned descendants are quiescent' }) });
+    }
+
+    if (engineering.operation === 'delivery') {
+      if (wrapperReceipt?.status !== 'completed') {
+        const data = engineeringResult('delivery', taskId, wrapperReceipt?.status ?? 'unknown',
+          wrapperReceipt?.error === undefined ? {} : { reason: wrapperReceipt.error });
+        receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data,
+          wrapperReceipt === undefined ? 'uncertain' : 'done');
+        return executionAnswer(deps, run.id, 'accepted', { receipt, data });
+      }
+      const delivery = await readEngineeringDelivery(identity.site, taskDir, taskId, execution.id);
+      const materialized = await materializeEngineeringResult(identity, taskDir, delivery);
+      const driving = executionDriving(deps, existingRun(deps.ledger, run.id), execution);
+      const position = positionOf(driving.pack, execution.nodeId)!;
+      if (position.node.kind !== 'act') throw new RunStartError('engineering delivery lost its act node');
+      const readerNode = { ...position.node, parameters: { observes: identity.outsourcing.produces, arguments: {} } };
+      let observed = await observeNode(driving, readerNode, execution.attempt);
+      if (observed.kind === 'pending') observed = await resumeNode(driving, readerNode, execution.attempt, observed.session);
+      const verified = observed.kind === 'settled' || observed.kind === 'moved';
+      const data = engineeringResult('delivery', taskId, verified ? 'verified' : 'reader-rejected', {
+        manifestSha256: delivery.sha256, outcome: delivery.outcome, summary: delivery.summary,
+        output: materialized, artifacts: delivery.artifacts, readerResult: observed.kind,
+      });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', verified
+        ? { phase: 'ready', reason: undefined, result: { kind: 'settled', session: execution.jobSession } }
+        : { phase: 'working', reason: 'the Pack Reader did not accept the engineering result' });
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+        reason: verified
+          ? `The Reader accepted the result; execution ${execution.id} is ready, not completed. Release the engineering session.${completionAllowed({ ...execution, phase: 'ready' }) ? ' Then call action complete with this executionId. Successor autopilot starts only after that owner completion.' : ' Inspect the current control holds and Run state before any business completion.'}`
+          : 'the Pack Reader did not accept the engineering result; repair it in the same task' });
+    }
+
+    const cancelled = Object.values(existingRun(deps.ledger, run.id).control!.requests).some((request) => request.receipt.action === 'engineering'
+      && request.receipt.executionId === execution.id
+      && (request.receipt.data as { operation?: unknown; status?: unknown } | undefined)?.operation === 'cancel'
+      && (request.receipt.data as { status?: unknown }).status === 'stopped');
+    if (priorDelivery === undefined && !cancelled) throw new RunStartError('release needs a verified delivery or a confirmed cancelled task');
+    if (wrapperReceipt?.status === 'rejected') {
+      const data = engineeringResult('release', taskId, 'rejected', { reason: wrapperReceipt.error ?? 'the wrapper refused release' });
+      receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done');
+      return executionAnswer(deps, run.id, 'accepted', { receipt, data, reason: wrapperReceipt.error });
+    }
+    if (wrapperReceipt?.status !== 'completed') throw new RunStartError(wrapperReceipt?.error ?? 'the wrapper did not confirm release');
+    if (execution.jobSession !== undefined) {
+      const deadline = Date.now() + 5_000;
+      let actual = await engineeringJobStatus(deps, run.id, execution.jobSession);
+      while (actual.state.state === 'running' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        actual = await engineeringJobStatus(deps, run.id, execution.jobSession);
+      }
+      if (actual.state.state === 'running') await jobKill(deps, { run: run.id, session: execution.jobSession });
+      const after = await engineeringJobStatus(deps, run.id, execution.jobSession);
+      if (after.state.state === 'running') throw new RunStartError('engineering wrapper and owned process group survived release');
+    }
+    const canComplete = priorDelivery !== undefined && completionAllowed(execution);
+    const data = engineeringResult('release', taskId, 'released', { retained: true,
+      ...(canComplete ? { nextAction: 'complete', executionId: execution.id } : {}) });
+    receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', cancelled && priorDelivery === undefined
+      ? { phase: 'failed', result: { kind: 'stopped', reason: 'resident engineering task cancelled and released' } }
+      : {});
+    return executionAnswer(deps, run.id, 'accepted', { receipt, data,
+      reason: releaseReason(canComplete) });
+  } catch (error) {
+    const reason = `${engineering.operation} outcome is uncertain; do not replay it automatically: ${(error as Error).message}`;
+    receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId,
+      engineeringResult(engineering.operation, taskId, 'unknown', { reason }), 'uncertain');
+    return executionAnswer(deps, run.id, 'accepted', { receipt, reason });
+  }
+}
+
 /** Reuse the exact Fabric input/method/hold checks before resolving an interactive Pack operation. */
 export function interactiveDriving(deps:FabricDeps,run:RunRecord,execution:NodeExecution):Driving {
-  if(execution.inputThroughSeq===undefined||execution.inputDigest!==inputIdentity(deps,run,execution.inputThroughSeq))throw new RunStartError('Interactive input evidence changed; inspect the original execution.');
+  if(execution.inputThroughSeq===undefined||execution.inputDigest!==inputIdentity(deps,run,execution.inputThroughSeq,execution.branchId))throw new RunStartError('Interactive input evidence changed; inspect the original execution.');
   return executionDriving(deps,run,execution);
 }
 
@@ -2633,6 +3190,56 @@ export async function drainExecutionObservers(ledger: Ledger): Promise<void> {
   while (observers !== undefined && observers.size > 0) await Promise.allSettled([...observers.values()]);
   await Promise.allSettled([...(controlsPerRun.get(ledger)?.values() ?? [])]);
 }
+/** Observe the retained native task without driving its business work. The wrapper remains alive
+ * across turns, so ordinary Job completion cannot wake the owner at a native waiting boundary.
+ * Reuse the Host's abortable fact-work tracker and notification seam; a hint never verifies delivery.
+ * On Host recovery the current state may be hinted again, but no request or tool action is replayed. */
+export function observeResidentEngineering(deps: FabricDeps, runId: string, executionId: string): void {
+  trackExecutionTask(deps, `resident:${executionId}`, async () => {
+    const initial = existingRun(deps.ledger, runId);
+    const execution = initial.control?.executions[executionId];
+    if (!execution || !residentEngineeringStartOf(initial.control!, executionId)) return;
+    const identity = residentEngineeringIdentityFor(deps, initial, execution);
+    const taskId = engineeringTaskId(runId, executionId);
+    const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
+    let notified: string | undefined;
+    let readError: string | undefined;
+    for (;;) {
+      const current = existingRun(deps.ledger, runId);
+      const active = current.control?.executions[executionId];
+      if (deps.stopSignal?.aborted || !['running', 'waiting'].includes(current.status ?? '')
+        || current.control?.stop !== undefined || !active || active.phase !== 'working' || active.supersededBy !== undefined) return;
+      try {
+        const state = await readEngineeringState(identity.site, taskDir, taskId);
+        if (deps.stopSignal?.aborted) return;
+        readError = undefined;
+        // Read current authority again after Site I/O: a handoff, stop or settlement can land while
+        // the state file is in flight. Paused owners may hear facts; notifications grant no work.
+        const latest = existingRun(deps.ledger, runId);
+        const stillActive = latest.control?.executions[executionId];
+        if (!['running', 'waiting'].includes(latest.status ?? '') || stillActive?.phase !== 'working'
+          || latest.control?.stop !== undefined || stillActive.supersededBy !== undefined) return;
+        if (state && ['waiting', 'failed'].includes(state.phase)) {
+          const owner = latest.control!.owner;
+          const key = `${owner}:${state.sha256}`;
+          if (key !== notified) {
+            const delivery = deps.notify?.(owner, runId, executionId,
+              `Resident engineering task ${taskId} is ${state.phase}. Read engineering status for this same execution, then decide whether to collect delivery or send a same-task message. Native turn end is not Reader verification or Goal completion; do not start a duplicate task.`);
+            if (delivery?.status === 'queued') notified = key;
+          }
+        }
+        // Native delivery can still fail the Pack Reader and need same-task repair.
+        if (state && ['stopped', 'released'].includes(state.phase)) return;
+      } catch (error) {
+        const reason = (error as Error).message;
+        if (reason !== readError) deps.log?.(`resident ${taskId} state observation unavailable: ${reason}`);
+        readError = reason;
+      }
+      await sleepOrAbort(1_000, deps.stopSignal);
+    }
+  });
+}
+
 export function observeExecution(ctx: Driving, node: PackNode, execution: NodeExecution | undefined, session: string): void {
   const observers = executionObservers.get(ctx.deps.ledger) ?? new Map<string, Promise<void>>();
   executionObservers.set(ctx.deps.ledger, observers);
@@ -2663,7 +3270,9 @@ export async function recordExecutionResult(ctx: Driving, execution: NodeExecuti
     } });
   }
   if (result.kind === 'budget-exhausted') await requestExecutionBudgetStop(ctx.deps, ctx.runId);
-  if (phase === 'ready' || phase === 'failed') {
+  // An autopilot node's settlement is the driver's to act on, not the owner's (ADR-0016): the owner is
+  // told once, when the Run leaves the self-driving region.
+  if ((phase === 'ready' || phase === 'failed') && !autopilotDrives(ctx.pack, execution.nodeId)) {
     const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
     if (owner !== undefined) ctx.deps.notify?.(owner, ctx.runId, execution.id);
   }
@@ -2710,11 +3319,12 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
     const tail = await jobTail(deps, { run: run.id, session: execution.jobSession, lines: 100 });
     return executionAnswer(deps, run.id, 'accepted', { data: { session: execution.jobSession, text: tail.text, diagnostic: true } });
   }
+  if (req.action === 'engineering') return actOnEngineering(deps, run, req, execution, digest);
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
   if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
   if (experimentBudgetSpent(run, ownedWaitedMs(run)) && (req.action === 'write' || req.action === 'work' && (execution.kind === 'act' || timeBoxSpent(run, ownedWaitedMs(run))))) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
-  if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
+  if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq, execution.branchId)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
   const position = positionOf(ctx.pack, execution.nodeId);
@@ -2724,6 +3334,11 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (req.action === 'recommend' && node.kind === 'explore') return executionAnswer(deps, run.id, 'accepted', { data: exploreRecommendation(ctx, node) });
   if (req.action === 'read' || req.action === 'write' || req.action === 'knowledge' || req.action === 'recommend') return actInWorkshop(ctx, req, execution, digest);
   if (req.action === 'work') {
+    if (Object.values(control.requests).some((request) => request.receipt.action === 'engineering'
+      && request.receipt.executionId === execution.id
+      && (request.receipt.data as { operation?: unknown } | undefined)?.operation === 'start')) {
+      return no('this execution already belongs to a resident engineering task; ordinary work cannot launch beside it');
+    }
     if(unreleasedInteractiveIntents(deps,run.id,execution.id).length>0)return no('This execution owns an interactive admission; batch work cannot launch beside or replay it.');
     if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
     // An interactive-only tool has no batch path (#C10). Refuse the batch `work` here — before the
@@ -2742,7 +3357,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
     try {
       let result: Step;
       if (node.kind === 'act') result = node.parameters.workshop !== undefined
-        ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.actor)
+        ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.onBehalfOf ?? req.actor)
         : node.parameters.tool !== undefined ? await toolNode(ctx, run, node, execution.attempt) : await observeNode(ctx, node, execution.attempt);
       else if (node.kind === 'judge') result = await judgeNode(ctx, run, node, execution.attempt);
       else if (node.kind === 'wait') {
@@ -2815,12 +3430,13 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
     return no('the active growth branch must return before completing its reference point');
   }
   const { node, graph } = positionOf(ctx.pack, execution.nodeId)!;
-  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+  let receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (execution.phase !== 'ready' || execution.result === undefined || (execution.result.kind !== 'settled' && execution.result.kind !== 'moved')) return no('completion needs the actual successful operation result; an Agent statement is not evidence');
   if (node.kind === 'wait' && execution.humanClearance === undefined) return no('this node requires an explicit human clearance of its blocker');
   if (execution.jobSession !== undefined) {
     const actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
-    if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) return no('the Job has no confirmed successful exit');
+    // #64 D-T03-1: a session its own Operator closed ended by that close, which is its successful end.
+    if ((actual.state.state !== 'finished' || actual.state.exitCode !== 0) && requestedCloseOf(ctx, execution.jobSession) !== 'closed') return no('the Job has no confirmed successful exit');
   }
   let decision: Parameters<Ledger['appendDecision']>[1] | undefined;
   if (node.kind === 'explore' && !opensALoop(node)) {
@@ -2850,6 +3466,10 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       if (req.strategy !== undefined) return no('a goal-met decision cannot also choose a Strategy');
       if (evidence.verdicts.some((verdict) => verdict.outcome !== 'PASS')) return no('goal-met requires actual PASS verdicts for every required constraint and goal rule');
       chosen = { goalMet: true };
+    } else if (req.decision === 'stop') {
+      // The owner's honest ending (ADR-0016): the Goal not met, on the cited current evidence.
+      if (req.strategy !== undefined) return no('a stop decision cannot also choose a Strategy');
+      chosen = { stopped: true };
     } else if (req.decision === 'converged') {
       if (req.strategy !== undefined) return no('a converged decision cannot also choose a Strategy');
       const advice = exploreRecommendation(ctx, node);
@@ -2857,6 +3477,9 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       chosen = advice.chosen;
       rationale = advice.rationale;
     } else return no('the exploration decision is not one of the supported choices');
+    // Keep the validated scope in the existing receipt data. Optional extra citations may discuss
+    // broader unknown/failed checks; they are not silently promoted to this decision's Goal rules.
+    receipt = { ...receipt, data: { requiredVerdictIds: evidence.verdicts.map(verdict => verdict.id) } };
     decision = { nodeId: node.id, chooser: evidence.chooser.id, chooserOrigin: evidence.chooserOrigin,
       chosen, rationale, cites: [...cites], agent: { sessionId: req.actor, executionId: execution.id, rationale: req.rationale.trim() } };
   }
@@ -2922,7 +3545,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (mutates) await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
   try {
-    const built = await buildWorkshopScope(ctx, node, execution.attempt, req.actor);
+    const built = await buildWorkshopScope(ctx, node, execution.attempt, req.onBehalfOf ?? req.actor);
     if (!built.ok) {
       if (mutates) await updateExecution(deps, runId, execution.id, {}, req.requestId);
       return no(built.reason);
@@ -2938,7 +3561,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
       const unavailableInputs = inputs.unavailable.map(input => input.file);
       const candidates = await listRunKnowledge(deps, runId, resolved.declaration.id, unavailableInputs, projectWorkspace);
       const historical = await readRunKnowledge(deps, {
-        runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
+        runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.onBehalfOf ?? req.actor,
         workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
         summary: true, unavailableInputs, workspaceRef: projectWorkspace,
       });
@@ -2963,7 +3586,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
       else {
         const inputs = await captureWorkshopInputs(scope);
         data = await readRunKnowledge(deps, {
-          runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
+          runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.onBehalfOf ?? req.actor,
           workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
           ...(req.assetRun === undefined ? {} : { sourceRun: req.assetRun }),
           ...(req.assetPath === undefined ? {} : { assetPath: req.assetPath }),

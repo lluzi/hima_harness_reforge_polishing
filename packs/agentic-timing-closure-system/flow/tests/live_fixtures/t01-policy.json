@@ -1,0 +1,26 @@
+{
+  "allowDegradedWorking": false,
+  "baselineMinWns": -0.2016,
+  "baselineStateId": "089c9d07c3338b120fa7",
+  "campaignRoot": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20260929-114513-f8d5",
+  "degradeLimitNs": 0.0,
+  "goal": {
+    "hold": 0.0,
+    "setup": 0.0
+  },
+  "id": "d1b3e58609aa47f0aa1d",
+  "maxNewConstraintFailures": 0,
+  "requiredScenarios": [
+    "func_ssg_rcworst_m40",
+    "func_ssg_rcworst_125",
+    "func_ffg_cbest_m40",
+    "func_ffg_cbest_125"
+  ],
+  "scenarioCorners": {
+    "func_ffg_cbest_125": "cbest",
+    "func_ffg_cbest_m40": "cbest",
+    "func_ssg_rcworst_125": "cworst_T",
+    "func_ssg_rcworst_m40": "cworst_T"
+  },
+  "schema": "atcs.policy/1"
+}

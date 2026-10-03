@@ -15,7 +15,7 @@ import { existingRun, runFor } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
 import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
-import { openInteractiveJob, parseInteractiveRecord, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
+import { endJobProcessGroup, openInteractiveJob, parseInteractiveRecord, startInteractiveJob, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -82,6 +82,8 @@ export type JobState =
 export interface KillOutcome {
   readonly wasRunning: boolean;
   readonly gone: boolean;
+  /** The Job's process group that outlived hangup and TERM (#64 review I2); its session is kept. */
+  readonly survivedPid?: number;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -372,11 +374,19 @@ async function tailLog(on: Channel, job: JobIdentity, lines: number): Promise<st
  * gone: that is an answer, not a fault. A kill that does not take within the bounded wait says so
  * rather than claiming a stop nobody saw.
  */
-async function killSession(on: Channel, job: JobIdentity): Promise<KillOutcome> {
+async function killSession(on: Channel, job: JobIdentity, grace?: InteractiveCloseGrace): Promise<KillOutcome> {
   // Ticket #18: a Site that cannot be asked raises out of here rather than answering. There is no
   // outcome to report — nothing was seen to stop and nothing was seen to be already over — and a
   // `killed` record written on a guess would say a licence was released while the tool still holds it.
   if (!(await sessionThere(on, job.session))) return { wasRunning: false, gone: true };
+  // The one process-group stop every path shares (#64 review I2): the hangup reaches the Job's own
+  // shutdown path, TERM follows once, and the whole group must be seen gone. A tool that outlives
+  // both is not stopped, whatever becomes of its tmux session, so nothing may record it killed.
+  const ended = await endJobProcessGroup(on, { session: job.session, ...(job.pid === undefined ? {} : { pid: job.pid }), dir: job.workspace },
+    `kill-${randomBytes(8).toString('hex')}`, grace);
+  if (ended.kind === 'survived') return { wasRunning: true, gone: false, survivedPid: ended.pid };
+  if (ended.kind === 'absent') return { wasRunning: false, gone: true };
+  if (!(await sessionThere(on, job.session))) return { wasRunning: true, gone: true };
   // Exit 1 is tmux saying the session went away between the question and the kill — the outcome the
   // caller wanted, reached without us. Anything else is a fault.
   const killed = await on.exec(['tmux', 'kill-session', '-t', exactly(job.session)]);
@@ -535,11 +545,19 @@ export interface InteractiveLaunchRequest {
   readonly name?: string;
   readonly sessionDeadlineAt: string;
   readonly startupWaitMs: number;
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveJobLaunchResult {
   readonly run: RunRecord;
   readonly result: InteractiveOpenResult;
+  /**
+   * Present when the launch was asked to stop at the tool's startup (`readiness: 'after-claim'`) and
+   * the tool was started: `result` is then only provisional, and this waits for the ready line and
+   * records `opened`. The caller calls it after releasing the Site claim and the Run's admission
+   * queue, never inside them (#64 D-T02-3).
+   */
+  readonly ready?: () => Promise<InteractiveOpenResult>;
 }
 
 /**
@@ -547,7 +565,8 @@ export interface InteractiveJobLaunchResult {
  * The authority callback appends the ordinary Job launch record returned by the lower layer;
  * this function neither invents a second process identity nor bypasses Fabric ownership.
  */
-export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority): Promise<InteractiveJobLaunchResult> {
+export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority,
+  options: { readonly readiness?: 'inline' | 'after-claim' } = {}): Promise<InteractiveJobLaunchResult> {
   const run = existingRun(deps.ledger, req.run);
   const site = loadSite(deps.sitesDir, req.site);
   if (site.name !== run.siteId) return { run, result: { status: 'refused', reason: `run ${run.id} belongs to site ${run.siteId}, not ${site.name}` } };
@@ -557,12 +576,17 @@ export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunch
     await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason });
     return { run, result: { status: 'refused', reason: decision.reason } };
   }
-  return { run, result: await openInteractiveJob(channel, {
+  const request = {
     siteName: site.name, runId: run.id, executionId: req.executionId, nodeId: req.nodeId,
     requestId: req.requestId, callerDigest: req.callerDigest, actor: req.actor, ownerEpoch: req.ownerEpoch, controlRevision: req.controlRevision,
     workspace: decision.workspace, argv: req.argv,
     name: req.name ?? defaultJobName, sessionDeadlineAt: req.sessionDeadlineAt, startupWaitMs: req.startupWaitMs,
-  }, authority) };
+    ...(req.closeGrace === undefined ? {} : { closeGrace: req.closeGrace }),
+  };
+  if (options.readiness !== 'after-claim') return { run, result: await openInteractiveJob(channel, request, authority) };
+  const started = await startInteractiveJob(channel, request, authority);
+  return started.kind === 'answered' ? { run, result: started.result }
+    : { run, result: { status: 'uncertain', reason: 'the interactive Job is started and its ready line is still awaited' }, ready: started.finish };
 }
 
 export type ReconciledLaunch =
@@ -731,11 +755,11 @@ export interface JobKillResult {
  * found a session and saw it go: a Job that was already gone is answered, not recorded again, and a
  * kill that did not take within the bounded wait records nothing at all.
  */
-export async function jobKill(deps: JobDeps, req: { readonly run: string; readonly session: string }): Promise<JobKillResult> {
+export async function jobKill(deps: JobDeps, req: { readonly run: string; readonly session: string; readonly grace?: InteractiveCloseGrace }): Promise<JobKillResult> {
   const run = existingRun(deps.ledger, req.run);
   const job = mustBeLaunched(deps, run, req.session);
   const site = loadSite(deps.sitesDir, run.siteId);
-  const outcome = await killSession(channelFor(site), job);
+  const outcome = await killSession(channelFor(site), job, req.grace);
   if (!outcome.wasRunning || !outcome.gone) return { run, job, outcome, record: undefined };
   return { run, job, outcome, record: await deps.ledger.appendJob(run.id, { event: 'killed', job, ...belongsTo(deps, run, req.session) }) };
 }

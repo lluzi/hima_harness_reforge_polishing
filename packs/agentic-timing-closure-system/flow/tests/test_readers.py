@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -41,12 +42,27 @@ from atcs import integration  # noqa: E402
 from atcs import verification  # noqa: E402
 from atcs import adoption  # noqa: E402
 from atcs import refresh  # noqa: E402
+import atcs_cli  # noqa: E402
 
 READ_ATCS_PATH = PACK_DIR / "tools" / "read-atcs.py"
+
+# Issue #64 Task 4: every work package carries the expert Operator's scope (the Task 3 toolkit
+# mutations, at the recipe cap) and its target pins.
+EXPERT_SCOPE = {"commands": ["atcs_size_cell", "atcs_insert_buffer", "atcs_fix_hold_pins", "atcs_undo"],
+                "maxMutations": 120}
 
 _spec = importlib.util.spec_from_file_location("read_atcs", READ_ATCS_PATH)
 read_atcs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(read_atcs)
+
+
+def _prepare_slot(workspace, package):
+    """What `prepare-workers` leaves for a slot: `state/workers.json[slot].workPackage`, stamped."""
+    body = {k: v for k, v in package.items() if k not in ("schema", "id")}
+    path = workspace / "state" / "workers.json"
+    workers = json.loads(path.read_text()) if path.exists() else {"workers": {}}
+    workers["workers"][package["taskId"]] = {"workPackage": core.stamp("work-package", body)}
+    _write(path, json.dumps(workers))
 
 
 def _make_workspace(tmp_root):
@@ -105,38 +121,6 @@ def _build_design_state(workspace, name="baseline", netlist_text=None):
     # not something a real producer needs, since a real one builds
     # campaign-relative paths from the start).
     return core.stamp("design-state", {k: v for k, v in design_state.items() if k not in ("schema", "id")})
-
-
-# The Site's XTop sizing rule, as `xtopContext.ecoParameters` declares it on linglong-atcs28
-# (retained PR03 worker requests): drive strength is `D<n>BWP`, VT is a name suffix.
-XTOP_ECO_PARAMETERS = {
-    "bufferListForHold": ["BUFFD2BWP35P140"], "bufferListForSetup": ["BUFFD4BWP35P140"],
-    "cellClassifyRule": "cell_attribute", "cellMatchAttribute": "footprint",
-    "cellNominalSizingPattern": "D([0-9]+)BWP", "cellNominalSwapKeywords": ["ULVT", "LVT", "", "HVT"],
-    "gainThreshold": 0.001,
-}
-
-LIBRARY_CELLS = (
-    "DFQD1BWP35P140", "DFQD2BWP35P140", "DFQD4BWP35P140", "DFQD2BWP35P140LVT",
-    "BUFFD1BWP35P140", "BUFFD2BWP35P140", "BUFFD4BWP35P140",
-    "CKAN2D2BWP35P140HVT", "CKAN2D4BWP35P140HVT",
-)
-
-
-def _write_xtop_context(workspace, design, cells=LIBRARY_CELLS):
-    """`state/xtop-context.json` as `observe` stamps it: the Site's Liberty files for each
-    required scenario, hashed, bound to the design state it was observed on (C13)."""
-    library = _write(Path(workspace) / "libs" / "ssg_m40c" / "cells.lib", "library (fixture) {\n" + "".join(
-        f'  cell ("{name}") {{\n    area : 1.0;\n  }}\n' for name in cells) + "}\n")
-    context = core.stamp("xtop-context", {
-        "designStateId": design["id"], "requiredScenarios": ["func_ssg_rcworst_m40"],
-        "libraryTcl": {"path": "state/xtop-library.tcl", "sha256": "0" * 64},
-        "staData": {"path": "state/xtop-sta", "digest": "0" * 64},
-        "libraryFiles": {"func_ssg_rcworst_m40": [{"path": str(library), "sha256": core.file_sha256(library)}]},
-        "siteMap": ["unit", "core"], "removableFillers": ["FILL*"], "ecoParameters": dict(XTOP_ECO_PARAMETERS),
-    })
-    _write(Path(workspace) / "state" / "xtop-context.json", json.dumps(context))
-    return context
 
 
 class ReadinessReaderTest(unittest.TestCase):
@@ -258,29 +242,6 @@ class SubprocessIdentityTest(unittest.TestCase):
         self.assertEqual({v["type"] for v in document["values"]},
                           {"tc_required_input_missing_count", "tc_lifecycle_available"})
 
-    def test_malformed_worker_request_exits_zero_with_a_count_and_its_problems(self):
-        """Issue #63 gap 2: before, a w01 request without `actions` made the Reader exit 1,
-        the Retry allowance re-read the same bytes and a Hard blocker parked the Run."""
-        design = _build_design_state(self.workspace)
-        candidate = {
-            "taskId": "w1", "baseStateId": design["id"], "problem": "x",
-            "targets": [], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
-            "protected": {"instances": [], "nets": []}, "mayAffect": [],
-            "actions": ["size_cell"], "budget": {"xtopMinutes": 5, "queries": 1, "attempts": 1},
-        }
-        report = self.workspace / "research" / "requests" / "worker-request-w01.json"
-        _write(report, json.dumps({"candidate": candidate, "baseState": design, "siteCapabilities": {}}))
-        out = self.workspace / "out.json"
-        result = self._run("worker-request", report, out, extra=("w01",))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        values = json.loads(out.read_text())["values"]
-        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 3},
-                                  {"type": "tc_worker_action_count", "unit": "count", "value": 0}])
-        sidecar = (self.workspace / "research" / "requests" / "worker-request-w01.problems.txt").read_text()
-        self.assertTrue(sidecar.startswith("3 problems in worker-request-w01.json"), sidecar)
-        for field in ("candidate.taskId (slot w01)", "actions (slot w01)"):
-            self.assertIn(f"- {field}: ", sidecar)
-
     def test_source_file_sha256_changed_exits_nonzero(self):
         design = _build_design_state(self.workspace)
         candidate = {
@@ -288,6 +249,7 @@ class SubprocessIdentityTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 5, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": dict(EXPERT_SCOPE),
         }
         envelope = {"candidate": candidate, "baseState": design, "siteCapabilities": {}}
         report = self.workspace / "flow" / "records" / "work-package.json"
@@ -307,14 +269,14 @@ class WorkPackageReaderTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
-        # U1 is a real library buffer so a w01 sizing action can be checked (C13).
-        self.design = _build_design_state(self.workspace, netlist_text="module top;\n  BUFFD1BWP35P140 U1 (.A(a));\nendmodule\n")
-        _write_xtop_context(self.workspace, self.design)
+        self.design = _build_design_state(self.workspace)
 
-    def _write_envelope(self, candidate, site_capabilities=None):
+    def _write_envelope(self, candidate, site_capabilities=None, prepared=None):
         envelope = {"candidate": candidate, "baseState": self.design, "siteCapabilities": site_capabilities or {}}
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "work-package.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate if prepared is None else prepared)
         return report
 
     def _valid_candidate(self, **overrides):
@@ -328,6 +290,8 @@ class WorkPackageReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": ["U1/A"],
+            "scope": dict(EXPERT_SCOPE),
         }
         candidate.update(overrides)
         return candidate
@@ -354,76 +318,129 @@ class WorkPackageReaderTest(unittest.TestCase):
         values = read_atcs.read("work-package", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
 
-    def _counted(self, report, slot):
-        """Issue #63 gap 2: a malformed worker request is a counted problem the owner can
-        revise, never a Reader crash that parks the Run; the count is len(problems)."""
-        found = read_atcs.problems("worker-request", report, self.workspace, slot)
-        values = read_atcs.read("worker-request", report, self.workspace, extra=[slot])
-        self.assertEqual(values[0]["value"], len(found), found)
-        self.assertGreaterEqual(len(found), 1)
-        return found
-
     def test_wrong_task_id_for_slot_is_counted(self):
+        """#64 Track B: a request for the wrong slot is a counted, named problem the owner revises,
+        never a Reader exception that blocks the reading until the Run is parked."""
         report = self._write_envelope(self._valid_candidate(taskId="w01"))
-        found = self._counted(report, "w02")
-        self.assertEqual(found, ["candidate.taskId (slot w02): must be 'w02' for this slot, got 'w01'"])
+        found = read_atcs.problems("worker-request", report, self.workspace, "w02")
+        self.assertTrue(any(line.startswith("candidate.taskId (slot w02): must be 'w02'") for line in found), found)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w02"])
+        self.assertEqual(values[0]["value"], len(found))
 
-    def test_wrong_task_id_for_w03_slot_is_counted(self):
-        """Issue #63 gap 9: slot w03's own reader binding (extra=["w03"]) had no negative;
-        a w02 package sent to slot w03 is named, not admitted."""
-        report = self._write_envelope(self._valid_candidate(taskId="w02"))
-        found = self._counted(report, "w03")
-        self.assertEqual(found, ["candidate.taskId (slot w03): must be 'w03' for this slot, got 'w02'"])
-
-    def test_invalid_action_kind_in_w03_slot_is_counted(self):
-        report = self._write_envelope(self._valid_candidate(taskId="w03", actions=["resize_cell"]))
-        found = self._counted(report, "w03")
-        self.assertEqual(len(found), 1, found)
-        self.assertTrue(found[0].startswith("candidate.actions (slot w03): action 'resize_cell'"), found)
-
-    def test_envelope_shape_problems_are_counted(self):
-        for mutate, field in ((lambda e: e.update(candidate=[]), "candidate"),
-                              (lambda e: e.update(baseState="state/working-state.json"), "baseState"),
-                              (lambda e: e.pop("siteCapabilities"), "siteCapabilities")):
-            with self.subTest(field=field):
-                report = self._write_envelope(self._valid_candidate())
-                envelope = json.loads(report.read_text())
-                mutate(envelope)
-                report.write_text(json.dumps(envelope))
-                found = self._counted(report, "w01")
-                self.assertTrue(any(t.startswith(f"{field} (slot w01): must be") for t in found), found)
+    def test_an_expert_worker_request_needs_no_pinned_action_list(self):
+        """Issue #64 Task 4: the Team's Reviewer approves a scope, not one of a list of
+        sizing actions, so a request is admitted on its package alone."""
         report = self._write_envelope(self._valid_candidate())
-        report.write_text(json.dumps([json.loads(report.read_text())]))
-        self.assertEqual(self._counted(report, "w01"), [
-            "document (slot w01): must be one JSON object {candidate, baseState, siteCapabilities, actions}"])
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        # ADR-0016: tc_slot_parked tells the worker Team's batchWhen that this slot is active.
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0},
+                                  {"type": "tc_slot_parked", "unit": "count", "value": 0}])
 
-    def test_bounded_worker_admits_only_declared_sizing_candidates(self):
-        report = self._write_envelope(self._valid_candidate())
-        envelope = json.loads(report.read_text())
-        envelope["actions"] = [{"instance": "U1", "toMaster": "BUFFD2BWP35P140"}]
-        report.write_text(json.dumps(envelope))
+    def test_a_scope_command_outside_the_toolkit_mutations_is_invalid(self):
+        for command in ("atcs_ref", "atcs_export_changes", "size_cell", "exec"):
+            with self.subTest(command=command):
+                scope = {"commands": ["atcs_size_cell", command, "atcs_undo"], "maxMutations": 120}
+                report = self._write_envelope(self._valid_candidate(scope=scope))
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_a_request_without_scope_or_target_pins_is_invalid(self):
+        for key in ("scope", "targetPins"):
+            with self.subTest(key=key):
+                candidate = self._valid_candidate()
+                del candidate[key]
+                report = self._write_envelope(candidate)
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_slot_w06_is_accepted_and_w07_is_refused(self):
+        report = self._write_envelope(self._valid_candidate(taskId="w06"))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w06"])
+        self.assertEqual(values[0]["value"], 0)
+        report = self._write_envelope(self._valid_candidate(taskId="w07"))
+        with self.assertRaisesRegex(ValueError, "w07"):
+            read_atcs.read("worker-request", report, self.workspace, extra=["w07"])
+
+    def test_a_request_matching_its_prepared_package_is_admitted(self):
+        report = self._write_envelope(self._valid_candidate(problem="refined wording", observe="fast"),
+                                      prepared=self._valid_candidate())
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], 0)
-        envelope["actions"][0]["instance"] = "OUTSIDE"
-        report.write_text(json.dumps(envelope))
-        found = self._counted(report, "w01")
-        self.assertIn("actions[0].instance (slot w01): 'OUTSIDE' is not in candidate.editDomain.instances", found)
 
-    def test_bounded_worker_without_action_authority_is_counted(self):
-        report = self._write_envelope(self._valid_candidate())
-        found = self._counted(report, "w01")
-        self.assertEqual(len(found), 1, found)
-        self.assertRegex(found[0], r"^actions \(slot w01\): must be a list of one to three \{instance, toMaster\}")
+    def test_regions_are_compared_by_value_not_by_spelling(self):
+        """`0` and `0.0` are the same coordinate: an integer region the Workshop copied from a
+        prepared float region is not drift."""
+        prepared = self._valid_candidate(editDomain={"instances": ["U1"], "nets": [], "regions": [[0.0, 0.0, 10.5, 20.0]]})
+        request = self._valid_candidate(editDomain={"instances": ["U1"], "nets": [], "regions": [[0, 0, 10.5, 20]]})
+        report = self._write_envelope(request, prepared=prepared)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertEqual(values[0]["value"], 0)
 
-    def test_each_bad_action_is_its_own_counted_problem(self):
+    def test_a_request_drifting_from_its_prepared_package_is_invalid(self):
+        """Review fix round 1: the session Tcl is baked from `state/workers.json[slot].workPackage`,
+        so a request whose domain, pins, observation or scope differs would review one scope and run
+        another."""
+        prepared = self._valid_candidate()
+        drifts = {
+            "a wider edit domain": {"editDomain": {"instances": ["U1"], "nets": ["n1"], "regions": []}},
+            "a narrower edit domain": {"editDomain": {"instances": [], "nets": [], "regions": []}},
+            "a new region": {"editDomain": {"instances": ["U1"], "nets": [], "regions": [[0, 0, 1, 1]]}},
+            "other target pins": {"targetPins": ["U1/Z"]},
+            "another observation mode": {"observe": "full"},
+            "a wider scope": {"scope": {"commands": EXPERT_SCOPE["commands"] + ["atcs_move_cell"],
+                                        "maxMutations": 120}},
+        }
+        for label, change in drifts.items():
+            with self.subTest(drift=label):
+                report = self._write_envelope(self._valid_candidate(**change), prepared=prepared)
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+                self.assertGreaterEqual(values[0]["value"], 1, label)
+
+    def test_a_request_for_an_unprepared_slot_is_invalid(self):
         report = self._write_envelope(self._valid_candidate())
-        envelope = json.loads(report.read_text())
-        envelope["actions"] = [{"instance": "U1"}, {"instance": "U1", "toMaster": "BUF*"}, {"instance": 7, "toMaster": "B"}]
-        report.write_text(json.dumps(envelope))
-        found = self._counted(report, "w01")
-        self.assertEqual([t.split(":")[0] for t in found],
-                         ["actions[0] (slot w01)", "actions[1].toMaster (slot w01)", "actions[2].instance (slot w01)",
-                          "actions[2].toMaster (slot w01)"])  # 'B' is no library cell (C13)
+        (self.workspace / "state" / "workers.json").unlink()
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+        _write(self.workspace / "state" / "workers.json", json.dumps({"workers": {"w02": {}}}))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_a_tampered_prepared_package_is_invalid(self):
+        report = self._write_envelope(self._valid_candidate())
+        workers = json.loads((self.workspace / "state" / "workers.json").read_text())
+        workers["workers"]["w01"]["workPackage"]["targetPins"] = ["U1/Z"]
+        _write(self.workspace / "state" / "workers.json", json.dumps(workers))
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
+        self.assertGreaterEqual(values[0]["value"], 1)
+
+    def test_a_parked_request_matching_its_parked_package_is_admitted(self):
+        """Issue #64 Task 5: a parked slot's Workshop writes the parked package as prepared."""
+        parked = {"taskId": "w05", "baseStateId": self.design["id"], "parked": True, "problem": "no cluster left"}
+        report = self._write_envelope(parked)
+        values = read_atcs.read("worker-request", report, self.workspace, extra=["w05"])
+        self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0},
+                                  {"type": "tc_slot_parked", "unit": "count", "value": 1}])
+
+    def test_parking_must_agree_with_the_prepared_package(self):
+        parked = {"taskId": "w05", "baseStateId": self.design["id"], "parked": True, "problem": "no cluster left"}
+        active = self._valid_candidate(taskId="w05")
+        for label, (candidate, prepared) in {
+            "a parked request for an active slot": (parked, active),
+            "an active request for a parked slot": (active, parked),
+        }.items():
+            with self.subTest(label):
+                report = self._write_envelope(candidate, prepared=prepared)
+                values = read_atcs.read("worker-request", report, self.workspace, extra=["w05"])
+                self.assertGreaterEqual(values[0]["value"], 1, label)
+
+    def test_a_target_pin_whose_owner_is_not_in_the_netlist_is_advised(self):
+        """#64 worker/aggregation principle: a name XTop will not find is advice, never counted."""
+        report = self._write_envelope(self._valid_candidate(targetPins=["OUTSIDE/A"]))
+        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
+        self.assertFalse(any("OUTSIDE/A" in line for line in found), found)
+        advice = read_atcs.advice("worker-request", report, self.workspace, "w01")
+        self.assertTrue(any(line.startswith("candidate.targetPins (slot w01): 'OUTSIDE/A' is not a hierarchical pin")
+                            for line in advice), advice)
 
     def test_tampered_base_state_is_refused(self):
         tampered_design = dict(self.design)
@@ -440,7 +457,8 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
     """T63 real failure: w01 admitted actions naming a bare LEAF instance name
     from a hierarchical post-route netlist (`g96219`, declared inside a
     sub-module, not directly under `top`) -- XTop, opened at `top`, could not
-    find it. A worker action `instance` must be a full `/`-separated
+    find it. The expert Operator names edit-domain instances and target pins
+    exactly (Issue #64 Task 4), so every one must be a full `/`-separated
     hierarchical path from the base netlist's own top module."""
 
     HIER_NETLIST = (
@@ -457,9 +475,8 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
         self.design = _build_design_state(self.workspace, netlist_text=self.HIER_NETLIST)
-        _write_xtop_context(self.workspace, self.design)
 
-    def _write_envelope(self, instance, domain):
+    def _write_envelope(self, instance, domain, target_pins=None):
         candidate = {
             "taskId": "w01",
             "baseStateId": self.design["id"],
@@ -470,28 +487,35 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": [instance + "/A1"] if target_pins is None else target_pins,
+            "scope": dict(EXPERT_SCOPE),
         }
         envelope = {
             "candidate": candidate,
             "baseState": self.design,
             "siteCapabilities": {},
-            "actions": [{"instance": instance, "toMaster": "CKAN2D4BWP35P140HVT"}],
         }
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "worker-request.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate)
         return report
+
+    def _counted(self, report, pattern, count):
+        """#64 Track B named each name the base netlist does not hold; the #64 worker/aggregation
+        principle (FABRIC.md, 2026-09-29) makes each one advice: named in the sidecar, never counted."""
+        self.assertEqual(read_atcs.problems("worker-request", report, self.workspace, "w01"), [])
+        advice = read_atcs.advice("worker-request", report, self.workspace, "w01")
+        self.assertEqual(len(advice), count, advice)
+        self.assertTrue(any(re.search(pattern, line) for line in advice), advice)
+        self.assertEqual(read_atcs.read("worker-request", report, self.workspace, extra=["w01"])[0]["value"], 0)
 
     def test_bare_leaf_name_is_refused(self):
         """The real Issue #63 failure: `g96219` alone, admitted by the Reader
-        before this fix, is not resolvable against a hierarchical netlist."""
+        before this fix, is not resolvable against a hierarchical netlist
+        (the instance and its target pin are both bare leaf names)."""
         report = self._write_envelope("g96219", domain=["g96219"])
-        found = read_atcs.problems("worker-request", report, self.workspace, "w01")
-        values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
-        self.assertEqual(values[0]["value"], len(found))
-        # The bare leaf is refused in the edit domain (C23) and as the action's instance.
-        self.assertEqual(len(found), 2, found)
-        self.assertRegex(found[0], r"^candidate\.editDomain\.instances \(slot w01\): 'g96219' is not an instance")
-        self.assertRegex(found[1], r"^actions\[0\]\.instance \(slot w01\): 'g96219' is not a hierarchical instance")
+        self._counted(report, r"^candidate\.editDomain \(slot w01\): instance 'g96219' is not a hierarchical instance", 2)
 
     def test_full_hierarchical_path_is_admitted(self):
         report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"])
@@ -500,9 +524,22 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
 
     def test_wrong_middle_segment_is_refused(self):
         report = self._write_envelope("wrong_sub/g96219", domain=["wrong_sub/g96219"])
+        self._counted(report, r"'wrong_sub/g96219' is not a hierarchical instance", 2)
+
+    def test_a_bare_leaf_target_pin_is_refused(self):
+        report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["g96219/A1"])
+        self._counted(report, r"^candidate\.targetPins \(slot w01\): 'g96219/A1' is not a hierarchical pin", 1)
+
+    def test_a_pin_on_a_module_instance_is_refused(self):
+        """A target pin names a leaf cell's pin; `u_sub` is a module instance, not a cell."""
+        report = self._write_envelope("u_sub/g96219", domain=["u_sub/g96219"], target_pins=["u_sub/X"])
+        self._counted(report, r"'u_sub/X' is not a hierarchical pin", 1)
+
+    def test_a_full_hierarchical_target_pin_outside_the_domain_is_admitted(self):
+        """Target pins are the blockers' endpoints; they need not be edit-domain cells."""
+        report = self._write_envelope("u_sub/g96219", domain=[], target_pins=["u_sub/g96219/A1"])
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
-        self.assertEqual(values[0]["value"], 2)  # edit domain (C23) and action instance
-        self.assertIn("not a hierarchical instance", read_atcs.problems("worker-request", report, self.workspace, "w01")[1])
+        self.assertEqual(values[0]["value"], 0)
 
     def test_escaped_identifier_instance_works(self):
         """`g96219` is declared in the netlist as the Verilog escaped
@@ -518,7 +555,6 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "endmodule\n"
         )
         design = _build_design_state(self.workspace, name="escaped", netlist_text=netlist)
-        _write_xtop_context(self.workspace, design)
         candidate = {
             "taskId": "w01",
             "baseStateId": design["id"],
@@ -529,15 +565,18 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
             "mayAffect": [],
             "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": ["u_sub/g96219/A1"],
+            "scope": dict(EXPERT_SCOPE),
         }
         envelope = {
             "candidate": candidate,
             "baseState": design,
             "siteCapabilities": {},
-            "actions": [{"instance": "u_sub/g96219", "toMaster": "CKAN2D4BWP35P140HVT"}],
         }
+        envelope["operatorBrief"] = read_atcs.operator_brief(envelope)  # the Workshop's `read-atcs.py brief` step
         report = self.workspace / "flow" / "records" / "worker-request-escaped.json"
         _write(report, json.dumps(envelope))
+        _prepare_slot(self.workspace, candidate)
         values = read_atcs.read("worker-request", report, self.workspace, extra=["w01"])
         self.assertEqual(values[0]["value"], 0)
 
@@ -568,28 +607,74 @@ class HierarchicalWorkerInstanceReaderTest(unittest.TestCase):
 
 class CampaignPlanReaderTest(unittest.TestCase):
     """Task 12c item 4a: the `campaign-plan` reader kind counts problems across
-    all three work packages (`workspaces.request_invalid_count`), not just
+    every slot's work package (`workspaces.request_invalid_count`), not just
     slot w01's own package. Fix round 2 item 3: it also counts a top-level
     `workPackages` key (a second, unenforced copy) and a `baseState` whose
-    id disagrees with `state/working-state.json`'s current one."""
+    id disagrees with `state/working-state.json`'s current one.
+
+    Issue #64 Task 5: the six slots run as parallel fork branches, so the plan is
+    also refused when active slots share an instance (edit domain or target-pin
+    owner), when the worst setup or hold check of a required scenario is in no
+    active slot's `targetPins` (blockers first), or when a slot above the Run's
+    `workerSlots` knob is active. Parked slots are admitted."""
+
+    SCENARIO = "func_ssg_rcworst_m40"
+    NETLIST = ("module top;\n" + "".join(f"  SOME_CELL U{n} (.A(a));\n" for n in range(1, 8))
+               + "  SOME_CELL \\u_a/u_b  (.D(d));\nendmodule\n")
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
-        self.design = _build_design_state(self.workspace)
+        # C23 (#64 port): the plan Reader admits only leaf cells of the base netlist.
+        self.design = _build_design_state(self.workspace, netlist_text=self.NETLIST)
         # Fix round 2 item 3's own check needs a real, current state/working-state.json
         # to compare envelope.baseState against; every "zero problems" case in this class
         # keeps it matching self.design, and the dedicated mismatch tests below diverge it.
         core.write_artifact(self.workspace / "state" / "working-state.json", self.design)
+        self._write_policy([self.SCENARIO])
+        # The worst setup check ends at U1/A and the worst hold check at U2/A.
+        self._write_observation({
+            f"{self.SCENARIO}|setup|U1/A": -0.20, f"{self.SCENARIO}|setup|U3/A": -0.05,
+            f"{self.SCENARIO}|hold|U2/A": -0.10, f"{self.SCENARIO}|hold|U4/A": -0.01,
+        })
+        self._write_worker_slots(6)
+
+    def _write_policy(self, required):
+        policy = core.stamp("policy", {"requiredScenarios": list(required), "baselineStateId": self.design["id"]})
+        core.write_artifact(self.workspace / "state" / "policy.json", policy)
+
+    def _write_observation(self, slacks, design_state_id=None):
+        checks = {key: {"slack": core.known(value), "violated": value < 0, "endpoint": key.split("|", 2)[2]}
+                  for key, value in slacks.items()}
+        observation = core.stamp("observation-set", {
+            "designStateId": design_state_id or self.design["id"], "precision": "gba",
+            "scenarios": {}, "checks": checks, "missingScenarios": [],
+            "coverage": {"complete": True, "reasons": []}, "sources": [],
+        })
+        core.write_artifact(self.workspace / "state" / "observation.json", observation)
+
+    def _write_worker_slots(self, count):
+        self.assertEqual(atcs_cli.main(["worker-slots", str(self.workspace), str(count)]), 0)
 
     def _valid_package(self, task_id):
+        """An active package: slot wNN owns instance U<N> and targets its pin U<N>/A (disjoint)."""
+        n = int(task_id[1:])
         return {
             "taskId": task_id, "baseStateId": self.design["id"], "problem": "hold violation",
-            "targets": ["func_ssg_rcworst_m40|hold|X"], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
+            "targets": [f"{self.SCENARIO}|hold|U{n}/A"],
+            "editDomain": {"instances": [f"U{n}"], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
             "budget": {"xtopMinutes": 30, "queries": 5, "attempts": 3},
+            "targetPins": [f"U{n}/A"], "scope": dict(EXPERT_SCOPE),
         }
+
+    def _parked_package(self, task_id, why="no blocker cluster left for this slot"):
+        return {"taskId": task_id, "baseStateId": self.design["id"], "parked": True, "problem": why}
+
+    def _six(self, parked=()):
+        return {task_id: (self._parked_package(task_id) if task_id in parked else self._valid_package(task_id))
+                for task_id in workspaces.TASK_IDS}
 
     def _write_envelope(self, work_packages, reason="close the campaign's targeted checks", site_capabilities=None):
         envelope = {
@@ -600,49 +685,41 @@ class CampaignPlanReaderTest(unittest.TestCase):
         _write(report, json.dumps(envelope))
         return report
 
-    def test_three_valid_packages_have_zero_invalid_count(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        report = self._write_envelope(packages)
+    def _count(self, work_packages, **kwargs):
+        report = self._write_envelope(work_packages, **kwargs)
+        values = read_atcs.read("campaign-plan", report, self.workspace)
+        self.assertEqual([v["type"] for v in values], ["tc_request_invalid_count"])
+        return values[0]["value"]
+
+    def _advised(self, work_packages, **kwargs):
+        """ADR-0016: what the plan Reader writes as advice, never counted."""
+        report = self._write_envelope(work_packages, **kwargs)
+        return read_atcs.advice("campaign-plan", report, self.workspace)
+
+    def test_six_disjoint_blocker_covering_packages_have_zero_invalid_count(self):
+        report = self._write_envelope(self._six())
         values = read_atcs.read("campaign-plan", report, self.workspace)
         self.assertEqual(values, [{"type": "tc_request_invalid_count", "unit": "count", "value": 0}])
 
-    def test_a_problem_in_w03_is_counted(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        packages["w03"]["actions"] = ["not-a-real-action"]
-        report = self._write_envelope(packages)
-        values = read_atcs.read("campaign-plan", report, self.workspace)
-        self.assertGreaterEqual(values[0]["value"], 1)
+    def test_a_problem_in_w06_is_counted(self):
+        packages = self._six()
+        packages["w06"]["actions"] = ["not-a-real-action"]
+        self.assertGreaterEqual(self._count(packages), 1)
 
     def test_missing_slot_is_counted(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02")}  # w03 missing
-        report = self._write_envelope(packages)
-        values = read_atcs.read("campaign-plan", report, self.workspace)
-        self.assertGreaterEqual(values[0]["value"], 1)
+        for slot in ("w03", "w06"):
+            with self.subTest(missing=slot):
+                packages = self._six()
+                del packages[slot]
+                self.assertGreaterEqual(self._count(packages), 1)
 
-    def test_blank_reason_is_counted(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        report = self._write_envelope(packages, reason="   ")
-        values = read_atcs.read("campaign-plan", report, self.workspace)
-        self.assertGreaterEqual(values[0]["value"], 1)
-
-    def test_envelope_shape_problems_are_counted(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        for mutate, field in ((lambda e: e.update(candidate=None), "candidate"),
-                              (lambda e: e.update(baseState=[]), "baseState"),
-                              (lambda e: e.update(siteCapabilities="none"), "siteCapabilities")):
-            with self.subTest(field=field):
-                report = self._write_envelope(packages)
-                envelope = json.loads(report.read_text())
-                mutate(envelope)
-                report.write_text(json.dumps(envelope))
-                found = read_atcs.problems("campaign-plan", report, self.workspace)
-                values = read_atcs.read("campaign-plan", report, self.workspace)
-                self.assertEqual(values[0]["value"], len(found))
-                self.assertTrue(any(t.startswith(f"{field}: must be") for t in found), found)
+    def test_blank_reason_is_advice(self):
+        """ADR-0016: why these clusters is the method's advice, never a refusal of the plan."""
+        self.assertEqual(self._count(self._six(), reason="   "), 0)
+        self.assertTrue(any(line.startswith("candidate.reason") for line in self._advised(self._six(), reason="   ")))
 
     def test_tampered_base_state_is_refused(self):
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        report = self._write_envelope(packages)
+        report = self._write_envelope(self._six())
         envelope = json.loads(report.read_text())
         envelope["baseState"] = dict(self.design, top="not-the-real-top")
         report.write_text(json.dumps(envelope))
@@ -652,7 +729,7 @@ class CampaignPlanReaderTest(unittest.TestCase):
     def test_top_level_workpackages_key_is_counted(self):
         """Fix round 2 item 3: a second, top-level copy is a problem even when it is
         byte-identical to candidate.workPackages -- prepare-workers refuses it outright."""
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
+        packages = self._six()
         report = self._write_envelope(packages)
         envelope = json.loads(report.read_text())
         envelope["workPackages"] = packages  # identical copy -- still a problem
@@ -665,19 +742,144 @@ class CampaignPlanReaderTest(unittest.TestCase):
         CURRENT state/working-state.json is a stale-plan problem."""
         other_design = _build_design_state(self.workspace, name="other")
         core.write_artifact(self.workspace / "state" / "working-state.json", other_design)
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        report = self._write_envelope(packages)  # envelope.baseState is still self.design
-        values = read_atcs.read("campaign-plan", report, self.workspace)
-        self.assertGreaterEqual(values[0]["value"], 1)
+        self.assertGreaterEqual(self._count(self._six()), 1)  # envelope.baseState is still self.design
 
     def test_missing_working_state_is_counted_not_treated_as_a_match(self):
         """Fix round 2 item 3: an unreadable/missing state/working-state.json can never be
         silently treated as "matches" -- it is itself counted as a problem."""
         (self.workspace / "state" / "working-state.json").unlink()
-        packages = {task_id: self._valid_package(task_id) for task_id in ("w01", "w02", "w03")}
-        report = self._write_envelope(packages)
-        values = read_atcs.read("campaign-plan", report, self.workspace)
-        self.assertGreaterEqual(values[0]["value"], 1)
+        self.assertGreaterEqual(self._count(self._six()), 1)
+
+    # ---- Issue #64 Task 5: disjoint domains -------------------------------------------------
+
+    def test_an_edit_domain_instance_shared_by_two_active_slots_is_counted(self):
+        packages = self._six()
+        packages["w05"]["editDomain"]["instances"].append("U2")
+        self.assertGreaterEqual(self._count(packages), 1)
+
+    def test_an_edit_domain_net_shared_by_two_active_slots_is_counted(self):
+        """US8: active slots' edit domains are disjoint in nets as well as instances."""
+        packages = self._six()
+        self.assertEqual(self._count(packages), 0)
+        packages["w02"]["editDomain"]["nets"].append("n_shared")
+        packages["w05"]["editDomain"]["nets"].append("n_shared")
+        self.assertEqual(self._count(packages), 1)
+
+    def test_a_net_named_by_a_parked_slot_is_not_shared(self):
+        packages = self._six(parked=("w06",))
+        packages["w02"]["editDomain"]["nets"].append("n_only")
+        self.assertEqual(self._count(packages), 0)
+
+    def test_a_target_pin_owner_shared_by_two_active_slots_is_counted(self):
+        packages = self._six()
+        packages["w05"]["targetPins"].append("U2/B")  # another pin of w02's instance U2
+        self.assertGreaterEqual(self._count(packages), 1)
+
+    def test_a_target_pin_owner_inside_another_active_slots_domain_is_counted(self):
+        packages = self._six()
+        packages["w05"]["editDomain"]["instances"].append("U7")
+        packages["w06"]["targetPins"].append("U7/Z")
+        self.assertGreaterEqual(self._count(packages), 1)
+
+    def test_escaped_pin_owners_are_compared_as_instances(self):
+        packages = self._six()
+        packages["w05"]["editDomain"]["instances"].append("\\u_a/u_b ")
+        packages["w06"]["targetPins"].append("\\u_a/u_b /D")
+        self.assertGreaterEqual(self._count(packages), 1)
+
+    # ---- blockers first --------------------------------------------------------------------
+
+    # ADR-0016: blockers first is the method's advice; the plan is refused only for identity and merge
+    # integrity, so an uncovered blocker is advised and never counted.
+    def test_the_worst_setup_check_outside_every_active_slots_target_pins_is_advised(self):
+        packages = self._six()
+        packages["w01"]["targetPins"] = ["U1/B"]  # U1/A ends the worst setup check
+        self.assertEqual(self._count(packages), 0)
+        self.assertTrue(any("is covered by no active slot" in line for line in self._advised(packages)))
+
+    def test_the_worst_hold_check_outside_every_active_slots_target_pins_is_advised(self):
+        self.assertEqual(self._count(self._six(parked=("w02",))), 0)  # U2/A ends the worst hold check
+        self.assertTrue(any("U2/A" in line for line in self._advised(self._six(parked=("w02",)))))
+
+    def test_a_less_severe_check_may_wait(self):
+        packages = self._six()
+        packages["w03"]["targetPins"] = ["U3/B"]  # U3/A is a setup check, but not the worst one
+        self.assertEqual(self._count(packages), 0)
+
+    def test_a_worst_check_named_by_its_raw_pt_endpoint_is_covered(self):
+        """A check in a reserved PT path group is keyed `<endpoint>@<group>`; its raw endpoint is the pin."""
+        self._write_observation({f"{self.SCENARIO}|setup|U1/A@**async_default**": -0.30,
+                                 f"{self.SCENARIO}|hold|U2/A": -0.10})
+        checks_path = self.workspace / "state" / "observation.json"
+        observation = json.loads(checks_path.read_text())
+        observation["checks"][f"{self.SCENARIO}|setup|U1/A@**async_default**"]["endpoint"] = "U1/A"
+        core.write_artifact(checks_path, core.stamp("observation-set", {
+            k: v for k, v in observation.items() if k not in ("schema", "id")}))
+        self.assertEqual(self._count(self._six()), 0)
+
+    def test_a_worst_check_at_a_top_level_port_is_covered_by_its_check_key_in_targets(self):
+        """Fix round 1: a port endpoint has no `/`, so no targetPin can name it; the check key in an
+        active slot's `targets` covers it (the same `composition.covers` rule the recipe ranks by)."""
+        self._write_observation({f"{self.SCENARIO}|setup|out_port": -0.20, f"{self.SCENARIO}|hold|U2/A": -0.10})
+        packages = self._six()
+        self.assertTrue(any("out_port" in line for line in self._advised(packages)), "a port blocker named nowhere is advised")
+        packages["w01"]["targets"].append(f"{self.SCENARIO}|setup|out_port")
+        self.assertFalse(any("out_port" in line for line in self._advised(packages)))
+        self.assertEqual(self._count(packages), 0)
+
+    def test_the_worst_check_of_a_scenario_that_is_not_required_may_wait(self):
+        self._write_observation({f"{self.SCENARIO}|setup|U1/A": -0.20, f"{self.SCENARIO}|hold|U2/A": -0.10,
+                                 "func_other|setup|U9/A": -0.50})
+        self.assertEqual(self._count(self._six()), 0)
+
+    def test_no_failing_check_needs_no_blocker_slot(self):
+        self._write_observation({f"{self.SCENARIO}|setup|U1/A": 0.02})
+        self.assertEqual(self._count(self._six(parked=workspaces.TASK_IDS)), 0)
+
+    def test_an_observation_of_another_design_state_is_advised(self):
+        """Blockers are read from the evidence the plan Workshop cites; a stale observation cannot rank them,
+        which the Reader says as advice (the refresh chain observes the working state itself, ADR-0016)."""
+        self._write_observation({f"{self.SCENARIO}|setup|U1/A": -0.20}, design_state_id="f" * 20)
+        self.assertEqual(self._count(self._six()), 0)
+        self.assertTrue(any("observe the working state" in line for line in self._advised(self._six())))
+
+    def test_missing_observation_or_policy_is_advised(self):
+        for name in ("observation.json", "policy.json"):
+            with self.subTest(missing=name):
+                self.setUp()
+                (self.workspace / "state" / name).unlink()
+                self.assertEqual(self._count(self._six()), 0)
+                self.assertTrue(any("blockers cannot be established" in line for line in self._advised(self._six())))
+
+    # ---- parking and the workerSlots knob ---------------------------------------------------
+
+    def test_parked_slots_are_admitted(self):
+        self.assertEqual(self._count(self._six(parked=("w03", "w04", "w05", "w06"))), 0)
+
+    def test_a_malformed_parked_package_is_counted(self):
+        broken = {
+            "a parked slot with work fields": dict(self._parked_package("w06"), targetPins=["U6/A"]),
+            "a parked slot with no reason": dict(self._parked_package("w06"), problem=" "),
+            "parked not true": dict(self._valid_package("w06"), parked="yes"),
+            "a parked slot on another base": dict(self._parked_package("w06"), baseStateId="f" * 20),
+        }
+        for label, package in broken.items():
+            with self.subTest(label):
+                packages = self._six()
+                packages["w06"] = package
+                self.assertGreaterEqual(self._count(packages), 1, label)
+
+    def test_an_active_slot_above_the_worker_slots_knob_is_counted(self):
+        self._write_worker_slots(4)
+        self.assertGreaterEqual(self._count(self._six()), 2)  # w05 and w06 are active
+
+    def test_slots_above_the_knob_parked_are_admitted(self):
+        self._write_worker_slots(4)
+        self.assertEqual(self._count(self._six(parked=("w05", "w06"))), 0)
+
+    def test_a_missing_worker_slots_record_is_counted(self):
+        (self.workspace / "state" / "worker-slots.json").unlink()
+        self.assertGreaterEqual(self._count(self._six()), 1)
 
 
 class WorkerResultReaderTest(unittest.TestCase):
@@ -686,7 +888,7 @@ class WorkerResultReaderTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.workspace = _make_workspace(self.tmp.name)
 
-    def _write_contribution(self, predicted=None, task_id="w01", script=None):
+    def _write_contribution(self, predicted=None, task_id="w01", script=None, admissible=True, refusals=()):
         body = {
             "taskId": task_id, "revision": 1, "baseStateId": "a" * 20, "kind": "fix",
             "operations": [], "script": script,
@@ -694,7 +896,7 @@ class WorkerResultReaderTest(unittest.TestCase):
             "touches": {"instances": [], "nets": [], "regions": [], "checks": [], "cones": []},
             "preconditions": [], "dependencies": [], "atomicGroups": [],
             "predicted": predicted or {}, "validationLevel": "xtop", "diagnosis": None,
-            "admissible": True, "refusals": [], "outOfScope": [], "beforeDumpSha256": "b" * 64,
+            "admissible": admissible, "refusals": list(refusals), "outOfScope": [], "beforeDumpSha256": "b" * 64,
         }
         obj = core.stamp("contribution", body)
         report = self.workspace / "flow" / "records" / "result.json"
@@ -717,8 +919,24 @@ class WorkerResultReaderTest(unittest.TestCase):
         report = self._write_contribution(predicted={})
         values = read_atcs.read("worker-result", report, self.workspace, extra=["w01"])
         for value in values:
+            if value["type"] == "tc_worker_refusal_count":
+                continue
             self.assertIsNone(value["value"])
             self.assertTrue(value.get("unknownReason"))
+
+    def test_refusals_are_counted_and_an_admissible_result_has_none(self):
+        """Issue #64 Task 5: the join `check-worker-results` judges each branch's sealed result."""
+        values = read_atcs.read("worker-result", self._write_contribution(), self.workspace, extra=["w01"])
+        by_type = {v["type"]: v for v in values}
+        self.assertEqual(by_type["tc_worker_refusal_count"], {"type": "tc_worker_refusal_count", "unit": "count",
+                                                              "value": 0})
+        report = self._write_contribution(admissible=False, refusals=[{"code": "tainted", "detail": "x"},
+                                                                      {"code": "missing-export", "detail": "y"}])
+        by_type = {v["type"]: v for v in read_atcs.read("worker-result", report, self.workspace, extra=["w01"])}
+        self.assertEqual(by_type["tc_worker_refusal_count"]["value"], 2)
+        report = self._write_contribution(admissible=False, refusals=[])
+        by_type = {v["type"]: v for v in read_atcs.read("worker-result", report, self.workspace, extra=["w01"])}
+        self.assertEqual(by_type["tc_worker_refusal_count"]["value"], 1, "an inadmissible result always counts")
 
     def test_wrong_slot_is_refused(self):
         report = self._write_contribution(task_id="w01")
@@ -828,24 +1046,6 @@ class IntegrationPlanReaderTest(unittest.TestCase):
         self.assertGreaterEqual(by_type["tc_request_invalid_count"]["value"], 1)
         self.assertEqual(by_type["tc_selected_contribution_count"]["value"], 1)
 
-    def test_envelope_shape_and_select_problems_are_counted(self):
-        facts = core.stamp("composition-facts", {
-            "baseStateId": "a" * 20, "considered": ["c1"], "duplicates": [],
-            "conflicts": [], "interactions": [], "staleBase": [], "order": ["c1"], "unresolvedCount": 0,
-        })
-        plan = {"batchId": "b1", "baseStateId": "a" * 20, "select": "c1", "resolutions": [], "deferred": [], "reason": "x"}
-        report = self.workspace / "flow" / "records" / "plan-review.json"
-        for envelope, field in (({"plan": plan, "facts": facts}, "plan.select"), ({"plan": [], "facts": facts}, "plan"),
-                                ({"plan": dict(plan, select=["c1"]), "facts": "facts"}, "facts")):
-            with self.subTest(field=field):
-                _write(report, json.dumps(envelope))
-                found = read_atcs.problems("integration-plan", report, self.workspace)
-                by_type = {v["type"]: v for v in read_atcs.read("integration-plan", report, self.workspace)}
-                self.assertEqual(by_type["tc_request_invalid_count"]["value"], len(found))
-                self.assertTrue(any(t.startswith(f"{field}: ") for t in found), found)
-                self.assertIsNone(by_type["tc_selected_contribution_count"]["value"])
-                self.assertIn("unknownReason", by_type["tc_selected_contribution_count"])
-
 
 class IntegrationStateReaderTest(unittest.TestCase):
     def setUp(self):
@@ -939,7 +1139,8 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
     def test_all_nets_qualified(self):
         report, _spef = self._write_evidence(["n1", "n2"], ["n1", "n2", "n3"])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
-        self.assertEqual(values, [{"type": "tc_unqualified_rc_net_count", "unit": "count", "value": 0}])
+        self.assertEqual(values, [{"type": "tc_unqualified_rc_net_count", "unit": "count", "value": 0},
+                                  {"type": "tc_presta_gate_net_count", "unit": "count", "value": 0}])
 
     def test_some_nets_unqualified(self):
         report, _spef = self._write_evidence(["n1", "n2"], ["n1"])
@@ -957,6 +1158,68 @@ class PrecheckEvidenceReaderTest(unittest.TestCase):
         report, _spef = self._write_evidence([], [])
         values = read_atcs.read("precheck-evidence", report, self.workspace)
         self.assertEqual(values[0]["value"], 0)
+
+    def test_a_legacy_batch_gates_on_its_unqualified_nets(self):
+        report, _spef = self._write_evidence(["n1", "n2"], ["n1"])
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
+
+    def _write_recipe_evidence(self, new_nets, spef_lines, predictive, unknown_reason=None, provenance=True):
+        if provenance:
+            _write(self.workspace / "state" / "replay-request.json", json.dumps({"mode": "recipe"}))
+        spef_path = self.workspace / "inputs" / "spef-net-names.txt"
+        _write(spef_path, "\n".join(spef_lines) + ("\n" if spef_lines else ""))
+        body = {"parentStateId": "a" * 20, "contributions": [], "operations": [], "innovusEcoTcl": "",
+                "sourceMap": {}, "newNets": new_nets,
+                "eco": {"netlist": {"path": "n", "sha256": "1" * 64}, "physical": {"path": "p", "sha256": "2" * 64}}}
+        if unknown_reason:
+            body["newNetsUnknown"] = unknown_reason
+        evidence = verification.precheck_evidence(core.stamp("merge-commit", body), spef_path, predictive=predictive)
+        evidence = core.stamp("precheck-evidence", {
+            **{k: v for k, v in evidence.items() if k not in ("schema", "id")},
+            "spefNetNames": {"path": str(spef_path.relative_to(self.workspace)),
+                             "sha256": evidence["spefNetNames"]["sha256"]},
+        })
+        report = self.workspace / "flow" / "records" / "precheck.json"
+        core.write_artifact(report, evidence)
+        return report
+
+    def test_a_recipe_batch_with_unknown_new_nets_is_non_predictive_and_does_not_gate(self):
+        report = self._write_recipe_evidence(None, ["n1"], predictive=False, unknown_reason="auto-fix inserted 2")
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertIsNone(values["tc_unqualified_rc_net_count"]["value"])
+        self.assertIn("auto-fix inserted 2", values["tc_unqualified_rc_net_count"]["unknownReason"])
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_batch_with_unqualified_nets_is_non_predictive_and_does_not_gate(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_unqualified_rc_net_count"]["value"], 1)
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_claim_without_recipe_provenance_is_read_as_legacy(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 1)
+        report = self._write_recipe_evidence(None, ["n1"], predictive=False, unknown_reason="auto-fix inserted 2",
+                                             provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertIsNone(values["tc_presta_gate_net_count"]["value"])
+
+    def test_integration_state_with_a_chosen_pair_is_recipe_provenance(self):
+        _write(self.workspace / "state" / "integration-state.json",
+               json.dumps({"chosen": {"arm": "merged", "eco": {"netlist": {}, "physical": {}}}}))
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=False, provenance=False)
+        values = {v["type"]: v for v in read_atcs.read("precheck-evidence", report, self.workspace)}
+        self.assertEqual(values["tc_presta_gate_net_count"]["value"], 0)
+
+    def test_a_recipe_batch_claiming_a_prediction_it_does_not_have_is_refused(self):
+        report = self._write_recipe_evidence(["n1", "n2"], ["n1"], predictive=True)
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
+        report = self._write_recipe_evidence([], [], predictive=False)
+        with self.assertRaises(ValueError):
+            read_atcs.read("precheck-evidence", report, self.workspace)
 
     def test_changed_spef_source_is_a_hard_failure(self):
         report, spef_path = self._write_evidence(["n1"], ["n1"])
@@ -995,6 +1258,22 @@ class EvaluationReaderTest(unittest.TestCase):
         self.assertEqual(by_type["tc_final_setup_wns_ns"]["mode"], "setup")
         self.assertEqual(by_type["tc_final_hold_wns_ns"]["mode"], "hold")
         self.assertEqual(by_type["tc_fixed_check_count"]["value"], 3)
+
+    def _guarantee_value(self, extra):
+        obj = core.stamp("evaluation", dict({"candidateId": "m" * 20, "finalSetupWns": core.known(0.0)}, **extra))
+        report = self.workspace / "flow" / "records" / "evaluation.json"
+        core.write_artifact(report, obj)
+        values = read_atcs.read("evaluation", report, self.workspace)
+        return {v["type"]: v for v in values}["tc_batch_guarantee_unevidenced"]["value"]
+
+    def test_an_unevidenced_batch_guarantee_is_a_reader_value(self):
+        """A recipe batch whose merged arm was chosen only because control was unusable is
+        reported with the final evaluation."""
+        self.assertEqual(self._guarantee_value({"batchGuarantee": {
+            "evidenced": False, "arm": "merged", "reason": "control arm unusable"}}), 1)
+        self.assertEqual(self._guarantee_value({"batchGuarantee": {
+            "evidenced": True, "arm": "merged", "reason": "compared"}}), 0)
+        self.assertEqual(self._guarantee_value({}), 0, "a batch with no recipe guarantee has none unevidenced")
 
     def test_unknown_final_wns_is_never_zero(self):
         obj = core.stamp("evaluation", {
@@ -1213,9 +1492,9 @@ class NextDecisionReaderTest(unittest.TestCase):
         return context
 
     def test_a_batch_decision_on_a_stale_xtop_context_says_observe_first(self):
-        """Dry path (slice 4): after adopt, prepare-workers and replay-prepare exit 3 stale-base
-        because only `observe` rebinds state/xtop-context.json. research, compose and revise all
-        reach one of them, so on a stale context each is counted with the way out."""
+        """#64 Track B (from #63's dry path): after adopt, prepare-workers and replay-prepare exit 3
+        stale-base because only `observe` rebinds state/xtop-context.json. research, compose and
+        revise all reach one of them, so on a stale context each is counted with the way out."""
         old = core.digest({"marker": "the state observe last bound"})
         self._write_context_bound_to(old)
         for action in ("research", "compose", "revise"):
@@ -1511,10 +1790,9 @@ class SemanticsCoverageTest(unittest.TestCase):
         "tc_final_setup_wns_ns", "tc_final_hold_wns_ns", "tc_missing_required_check_count",
         "tc_final_identity_error_count", "tc_applicable_constraint_failure_count",
         "tc_applicable_constraint_unknown_count", "tc_fixed_check_count", "tc_missing_prior_check_count",
-        "tc_refresh_count", "tc_refreshes_completed", "tc_accepted_artifact_ready", "tc_stop_required",
-        "tc_next_action", "tc_selected_contribution_count",
-        # Review 2 (Issue #63, I2): routes an admitted "no safe action" w01 request to decide-next.
-        "tc_worker_action_count",
+        "tc_refresh_count", "tc_accepted_artifact_ready", "tc_slot_parked",
+        "tc_selected_contribution_count", "tc_worker_refusal_count", "tc_presta_gate_net_count",
+        "tc_batch_guarantee_unevidenced", "tc_refreshes_completed",
     }
 
     def _load_yaml_light(self, path):
@@ -1539,12 +1817,12 @@ class SemanticsCoverageTest(unittest.TestCase):
         return result
 
     def test_semantics_yml_declares_every_spec_value(self):
-        semantics_text = (PACK_DIR / "semantics.yml").read_text(encoding="utf-8")
+        semantics_text = (PACK_DIR / "legacy/0.2.10/semantics.yml").read_text(encoding="utf-8")
         for value_type in self.SPEC_VALUE_TYPES:
             self.assertIn(f"\n  {value_type}:\n", "\n" + semantics_text, value_type)
 
     def test_every_spec_value_is_emitted_by_some_reader(self):
-        readers_dir = PACK_DIR / "readers"
+        readers_dir = PACK_DIR / "legacy/0.2.10/readers"
         emitted = set()
         for reader_yml in sorted(readers_dir.glob("*.yml")):
             declared = self._load_yaml_light(reader_yml)
@@ -1555,7 +1833,7 @@ class SemanticsCoverageTest(unittest.TestCase):
         self.assertEqual(extra, set(), f"readers emit undeclared tc_* values: {sorted(extra)}")
 
     def test_every_reader_yml_names_the_shared_script(self):
-        readers_dir = PACK_DIR / "readers"
+        readers_dir = PACK_DIR / "legacy/0.2.10/readers"
         for reader_yml in sorted(readers_dir.glob("*.yml")):
             text = reader_yml.read_text(encoding="utf-8")
             self.assertIn("file: tools/read-atcs.py", text, reader_yml.name)

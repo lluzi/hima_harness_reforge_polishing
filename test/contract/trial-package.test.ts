@@ -50,11 +50,11 @@ test('administrator binding packaging checks exact environment and current metho
   const check = () => spawnSync(process.execPath, [path.join(repoRoot, 'scripts/package-trial.mjs'),
     '--check-interactive-bindings', file], { cwd: repoRoot, encoding: 'utf8', timeout: 10_000 });
   try {
-    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
-    const { loadPackFrom } = await import('../../packages/harness/lib/packs.js');
-    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('../../packages/harness/lib/interactive-binding.js');
+    const { snapshotPackFolder, packDigestExcludes } = await import('@hima/harness');
+    const { loadPack } = await import('@hima/harness');
+    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('@hima/harness');
     const folder = snapshotPackFolder(path.join(repoRoot, 'packs/xtop-timing-closure'));
-    const tool = loadPackFrom(folder).contract.tools.find(tool => tool.id === 'run-xtop-fix')!;
+    const tool = loadPack(path.join(repoRoot, 'packs'), 'xtop-timing-closure').contract.tools.find(tool => tool.id === 'run-xtop-fix')!;
     const digest = folder.digest(packDigestExcludes);
     const commandsDigest = interactiveCommandsDigest(tool);
     const sha = 'a'.repeat(64);
@@ -62,7 +62,7 @@ test('administrator binding packaging checks exact environment and current metho
       schema: 'hima-interactive-environment/1', site: 'fixture-site', toolId: 'run-xtop-fix',
       pack: { id: 'xtop-timing-closure', digest },
       adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST }, commandsDigest,
-      wrapper: { path: tool.interactive!.argv[0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
+      wrapper: { path: tool.interactive!.argv![0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
       sourceTemplate: { path: 'flow/templates/xtop-operator.tcl', sha256: createHash('sha256').update(
         await readFile(path.join(repoRoot, 'packs/xtop-timing-closure/flow/templates/xtop-operator.tcl'))).digest('hex') },
       confinement: { rootFilesystem: 'read-only', dataRoot: '/fixture/data', dataMount: 'read-only',
@@ -182,7 +182,7 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     const missingSeal = check();
     assert.equal(missingSeal.status, 1);
     assert.match(missingSeal.stderr, /timing Pack.*missing VERSION\.yml/);
-    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+    const { snapshotPackFolder, packDigestExcludes } = await import('@hima/harness');
     const writeTimingSeal = async (run = timingRun, methodDigest?: string) => {
       const folder = snapshotPackFolder(timing);
       await writeFile(path.join(timing, 'VERSION.yml'), [
@@ -257,7 +257,7 @@ const identitiesFrom = (stdout: string) => JSON.parse(stdout.slice(stdout.indexO
 const bundledPackIds = ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'opene902-timing-probe', 'agentic-timing-closure-system'];
 
 test('the trial App stages the ATCS Pack at its exact source digest and its verifier refuses a changed byte', async () => {
-  const { packDigestOf } = await import('../../packages/harness/lib/pack-folder.js');
+  const { packDigestOf } = await import('@hima/harness');
   const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-bundle-'));
   const app = path.join(output, 'HimaHarness.app');
   const resource = path.join(app, 'Contents/Resources/app');
@@ -295,7 +295,7 @@ test('the trial App stages the ATCS Pack at its exact source digest and its veri
 });
 
 test('the manifest ATCS stage follows its release seal and the ATCS Site identity is recorded exactly', async () => {
-  const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
+  const { snapshotPackFolder, packDigestExcludes } = await import('@hima/harness');
   const { cp, rm, unlink } = await import('node:fs/promises');
   const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-stage-'));
   const packs = path.join(output, 'packs');
@@ -332,7 +332,7 @@ test('the manifest ATCS stage follows its release seal and the ATCS Site identit
     await writeFile(path.join(atcs, 'VERSION.yml'), [
       'pack: agentic-timing-closure-system', `version: "${version}"`, `methodDigest: ${methodDigest}`,
       'released: "2026-09-28T00:00:00.000Z"', 'test:', '  record: TEST.md', `  run: ${run}`, 'files:',
-      ...folder.sealFiles().map(([file, digest]: [string, string]) => `  '${file}': '${digest}'`), '',
+      ...folder.sealFiles().map(([file, digest]) => `  '${file}': '${digest}'`), '',
     ].join('\n'));
     const sealed = packagerRun('--check-pack-assets', packs, '--site', site);
     assert.equal(sealed.status, 0, sealed.stderr);
@@ -352,24 +352,39 @@ test('the manifest ATCS stage follows its release seal and the ATCS Site identit
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });
 
-test('each interactive binding is checked against its own Pack and an ATCS binding carries the ATCS identity', async () => {
+test('legacy interactive bindings retain their own Pack identities and current resident ATCS refuses them', async () => {
   const output = await mkdtemp(path.join(os.tmpdir(), 'hima-atcs-binding-'));
   try {
-    const { snapshotPackFolder, packDigestExcludes } = await import('../../packages/harness/lib/pack-folder.js');
-    const { loadPackFrom } = await import('../../packages/harness/lib/packs.js');
-    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('../../packages/harness/lib/interactive-binding.js');
+    const { snapshotPackFolder, packDigestExcludes } = await import('@hima/harness');
+    const { loadPack } = await import('@hima/harness');
+    const { BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } = await import('@hima/harness');
+    // Run the unchanged packager in an isolated historical collection. The main-only v9 identity
+    // checks remain meaningful for their complete archived Pack; 0.3 owns outsourced engineering.
+    const { cp, symlink } = await import('node:fs/promises');
+    const historicalRoot = path.join(output, 'historical-root');
+    const sourcePacksDir = path.join(historicalRoot, 'packs');
+    await mkdir(path.join(historicalRoot, 'scripts'), { recursive: true });
+    await cp(packager, path.join(historicalRoot, 'scripts/package-trial.mjs'));
+    await symlink(path.join(repoRoot, 'packages'), path.join(historicalRoot, 'packages'), 'dir');
+    await symlink(path.join(repoRoot, 'node_modules'), path.join(historicalRoot, 'node_modules'), 'dir');
+    await cp(path.join(repoRoot, 'packs/xtop-timing-closure'), path.join(sourcePacksDir, 'xtop-timing-closure'), { recursive: true });
+    await cp(path.join(repoRoot, 'packs/agentic-timing-closure-system/legacy/0.1.10'),
+      path.join(sourcePacksDir, 'agentic-timing-closure-system'), { recursive: true });
+    const legacyPackagerRun = (...args: string[]) => spawnSync(process.execPath,
+      [path.join(historicalRoot, 'scripts/package-trial.mjs'), ...args],
+      { cwd: historicalRoot, encoding: 'utf8', timeout: 60_000 });
     const sha = 'a'.repeat(64);
     const rowFor = async (packId: string, toolId: string, site: string, environmentId: string, id?: string) => {
-      const folder = snapshotPackFolder(path.join(repoRoot, 'packs', packId));
-      const tool = loadPackFrom(folder).contract.tools.find((tool: { id: string }) => tool.id === toolId)!;
+      const folder = snapshotPackFolder(path.join(sourcePacksDir, packId));
+      const tool = loadPack(sourcePacksDir, packId).contract.tools.find((tool: { id: string }) => tool.id === toolId)!;
       const digest = folder.digest(packDigestExcludes);
       const commandsDigest = interactiveCommandsDigest(tool);
       const environment = {
         schema: 'hima-interactive-environment/1', site, toolId, pack: { id: packId, digest },
         adapter: { id: 'hima-tcl-line-v1', digest: BUILTIN_TCL_ADAPTER_DIGEST }, commandsDigest,
-        wrapper: { path: tool.interactive!.argv[0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
+        wrapper: { path: tool.interactive!.argv![0], sha256: sha }, image: { reference: 'fixture', digest: `sha256:${sha}` },
         sourceTemplate: { path: 'flow/templates/xtop-operator.tcl', sha256: createHash('sha256').update(
-          await readFile(path.join(repoRoot, 'packs', packId, 'flow/templates/xtop-operator.tcl'))).digest('hex') },
+          await readFile(path.join(sourcePacksDir, packId, 'flow/templates/xtop-operator.tcl'))).digest('hex') },
         confinement: { rootFilesystem: 'read-only', dataRoot: '/fixture/data', dataMount: 'read-only',
           privateWriteRoot: '/fixture/write', network: 'host-localhost-licence-only', capabilities: 'dropped-all', noNewPrivileges: true },
         qualification: { status: 'passed', transcriptSha256: sha, logicalEcoSha256: sha, physicalEcoSha256: sha,
@@ -389,14 +404,14 @@ test('each interactive binding is checked against its own Pack and an ATCS bindi
     const file = path.join(output, 'bindings.json');
     const write = (at: string, rows: object[]) => writeFile(at, JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: rows }));
     await write(file, [xtop.row, atcs.row]);
-    const both = packagerRun('--check-interactive-bindings', file);
+    const both = legacyPackagerRun('--check-interactive-bindings', file);
     assert.equal(both.status, 0, both.stderr);
     assert.deepEqual(JSON.parse(both.stdout).bindings.map((binding: { id: string; pack: string }) => [binding.id, binding.pack]),
       [['fixture-qualified', 'xtop-timing-closure'], [atcs.row.id, 'agentic-timing-closure-system']]);
 
     const atcsFile = path.join(output, 'atcs-bindings.json');
     await write(atcsFile, [atcs.row]);
-    const atcsOnly = packagerRun('--check-atcs-binding', atcsFile);
+    const atcsOnly = legacyPackagerRun('--check-atcs-binding', atcsFile);
     assert.equal(atcsOnly.status, 0, atcsOnly.stderr);
     assert.equal(JSON.parse(atcsOnly.stdout).bindings[0].packDigest, atcs.digest);
 
@@ -406,18 +421,22 @@ test('each interactive binding is checked against its own Pack and an ATCS bindi
     await writeFile(atcs.environmentFile, foreignBytes);
     await write(atcsFile, [{ ...atcs.row, packDigest: xtop.digest, environment: { ...atcs.row.environment,
       sha256: createHash('sha256').update(foreignBytes).digest('hex') } }]);
-    const wrongPack = packagerRun('--check-atcs-binding', atcsFile);
+    const wrongPack = legacyPackagerRun('--check-atcs-binding', atcsFile);
     assert.equal(wrongPack.status, 1);
     assert.match(wrongPack.stderr, /qualification differs from the agentic-timing-closure-system Pack/);
     await writeFile(atcs.environmentFile, JSON.stringify(atcs.environment));
 
     await write(atcsFile, [{ ...atcs.row, id: 'linglong-atcs28:xtop-operator-v9:0000000000000000' }]);
-    const wrongId = packagerRun('--check-atcs-binding', atcsFile);
+    const wrongId = legacyPackagerRun('--check-atcs-binding', atcsFile);
     assert.equal(wrongId.status, 1);
     assert.match(wrongId.stderr, /ATCS binding .* id is not linglong-atcs28:xtop-operator-v9:[0-9a-f]{16}/);
     await write(atcsFile, [xtop.row]);
-    const notAtcs = packagerRun('--check-atcs-binding', atcsFile);
+    const notAtcs = legacyPackagerRun('--check-atcs-binding', atcsFile);
     assert.equal(notAtcs.status, 1);
     assert.match(notAtcs.stderr, /--atcs-binding carries only agentic-timing-closure-system bindings for Site linglong-atcs28/);
+    await write(atcsFile, [atcs.row]);
+    const obsolete = packagerRun('--check-atcs-binding', atcsFile);
+    assert.equal(obsolete.status, 1, 'the current resident method does not admit an archived Operator binding');
+    assert.match(obsolete.stderr, /qualification differs from the agentic-timing-closure-system Pack/);
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });

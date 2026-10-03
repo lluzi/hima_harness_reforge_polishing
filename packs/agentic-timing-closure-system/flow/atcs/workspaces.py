@@ -27,8 +27,8 @@ once as a single `AtcsError("invalid-work-package", "<problem 1>; <problem
 2>; ...")`; a package with no problems is stamped (`core.stamp`) and
 returned as a ``work-package`` artifact body. Checks performed:
 
-- `taskId` must be one of `TASK_IDS` (`"w01"`, `"w02"`, `"w03"` — the three
-  bounded worker slots).
+- `taskId` must be one of `TASK_IDS` (`"w01"` .. `"w06"` — the six
+  bounded worker slots, Issue #64).
 - `baseStateId` must equal `base_state["id"]`.
 - Every entry of `actions` must be one of `ACTION_KINDS`.
 - `"pg_local_adjust"` in `actions` is only admissible when
@@ -36,10 +36,54 @@ returned as a ``work-package`` artifact body. Checks performed:
 - No `editDomain` instance or net may also appear in `protected` (a worker
   is never allowed to plan edits against something the package itself
   declares off-limits).
-- `problem`, `targets`, `editDomain`, `protected`, `mayAffect`, `actions`
-  and `budget` must all be present (a missing key is `"missing field:
-  <key>"`, not a raw `KeyError`, per this Pack's fail-closed rule for
-  Site/plan-supplied evidence).
+- `problem`, `targets`, `editDomain`, `protected`, `mayAffect`, `actions`,
+  `budget`, `targetPins` and `scope` must all be present (a missing key is
+  `"missing field: <key>"`, not a raw `KeyError`, per this Pack's
+  fail-closed rule for Site/plan-supplied evidence).
+
+Expert Operator fields (Issue #64 Task 4)
+-----------------------------------------
+
+The slot's XTop expert Operator session (`flow/templates/xtop-operator.tcl`)
+is bound by four more fields, all baked into the session Tcl by
+`prepare-workers` (`adapters.compile_xtop_analysis_manual_task`):
+
+- `scope` is exactly ``{"commands": [...], "maxMutations": n}``. `commands`
+  is a non-empty list of distinct names from `MUTATE_COMMANDS` (the Task 3
+  toolkit's mutations, the same list as `contract.yml`
+  `xtop-operator.interactive.commands.mutate`) and must keep `atcs_undo`,
+  because the expert loop undoes every trial XTop's gain does not support.
+  It is the scope the Host binds for the slot's Operator (2026-09-29,
+  ADR-0016: the admitted request's own `candidate.scope`, with the request's
+  plan hash): only these commands mutate. The plan's wide default is every
+  mutation. The worker-request Reader binds the request to this package
+  (`state/workers.json[slot].workPackage`) field by field.
+  `maxMutations` is an integer 1..`SCOPE_MAX_MUTATIONS` (the worker Teams'
+  recipe cap, the wide default): the Host counts it per execution (undo
+  included), and it is also the session's Tcl-side budget
+  (`::ATCS_MAX_MUTATIONS`), which backs the Host.
+- `targetPins` is a list of distinct full hierarchical pin paths
+  (``<instance path>/<pin>``, no wildcard, Tcl-safe): the blockers' endpoint
+  pins, the only pins besides domain-instance pins a targeted fix may name.
+  The worker-request Reader resolves each owner against the base netlist.
+- `observe` is optional, one of `OBSERVE_MODES` (default `fast`).
+- `editDomain.regions` is a list of ``[x1, y1, x2, y2]`` boxes of finite
+  numbers with ``x1 <= x2`` and ``y1 <= y2``: the only targets of
+  `atcs_move_cell`.
+
+Parked slots (Issue #64 Task 5)
+------------------------------
+
+The six slots run as parallel fork branches, and every branch runs whether
+or not its slot has work. A slot the campaign plan parks (or one above the
+Run's `workerSlots` knob) carries a *parked* package instead: exactly
+``{"taskId", "baseStateId", "parked": true, "problem": "<why>"}``, with a
+non-empty reason and no work field at all. `validate_work_package` stamps it
+like any other package; `prepare-workers` prepares its workspace but no XTop
+session, its operate node is the `operate-parked` no-op and its capture seals
+a `parked` no-fix. `parked` present with any value other than ``true`` is a
+problem. `is_parked` names such a package and `slot_number` a slot's index
+(w01 is 1), which the `workerSlots` knob is compared against.
 
 `request_invalid_count(obj, base_state, site_capabilities)` runs the exact
 same checks and returns how many problems were found (`0` only when
@@ -69,7 +113,7 @@ Revision allocation is idempotent and race-safe:
 - `taskId` is restricted to `TASK_IDS` *before* any path is built, so a
   hostile or malformed `taskId` (e.g. containing `".."`) can never make the
   computed root escape `campaign_root` — the only paths ever constructed
-  are `<campaign_root>/workspaces/w0{1,2,3}/r<int>/`.
+  are `<campaign_root>/workspaces/w0{1..6}/r<int>/`.
 - Revisions are allocated by trying `r1`, `r2`, ... in order and creating
   each candidate directory with a bare `Path.mkdir()` (no `exist_ok`),
   which is an atomic, OS-level create: if two threads race for the same
@@ -91,6 +135,7 @@ M3 reconciles them.
 """
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -99,7 +144,41 @@ from . import core
 
 ACTION_KINDS = ("size_cell", "insert_buffer", "delete_buffer", "pg_local_adjust")
 
-TASK_IDS = ("w01", "w02", "w03")
+TASK_IDS = ("w01", "w02", "w03", "w04", "w05", "w06")
+OPERATOR_SLOTS = (*TASK_IDS, "lead")  # reserved integration slot; never a seventh fork branch
+
+MUTATE_COMMANDS = (
+    "atcs_size_cell", "atcs_exchange_cell", "atcs_insert_buffer", "atcs_insert_dummy", "atcs_split_load",
+    "atcs_split_net", "atcs_move_cell", "atcs_remove_buffer", "atcs_fix_hold_pins", "atcs_fix_setup_pins",
+    "atcs_undo", "atcs_path_pin_rank", "atcs_legalization_range",
+)
+"""The Task 3 toolkit's mutation procedures, in `contract.yml` order."""
+
+SCOPE_MAX_MUTATIONS = 600
+"""The worker Teams' recipe cap (`reviewedAction.maxMutations`) and every session's Tcl-side budget.
+
+A seat works a blocker cluster point to point and hands over one batch of
+tens to hundreds of measured edits (#66 D7), and each `atcs_undo` counts, so
+600 leaves room for about 300 trials each followed by its undo. It equals the
+Harness ceiling (`REVIEWED_SCOPE_MAX_MUTATIONS` 600 since #66 H1), which still
+stops a runaway loop.
+"""
+
+OBSERVE_MODES = ("fast", "full")
+
+LOCAL_FANOUT_MAX = 12
+"""Every active worker session's local-topology cap (#66 D2), baked as `ATCS_LOCAL_FANOUT_MAX`.
+
+`prepare-workers` bakes each active slot's session with `EDIT_DOMAIN_LOCAL 1` and this cap: before
+its ready line the session widens the plan's edit domain to the nets of its target pins and of its
+plan instances' pins, and the leaf cells on them, one hop; a net with more leaf pins than this is
+global (clock, reset, scan enable) and stays out, and `atcs_remove_buffer` never admits one as a
+buffer's input net. The replay never derives (its sessions enter their sealed domains). Lower it
+when the per-mutation observation of a cluster-scale domain is too slow on real XTop.
+"""
+
+PARKED_FIELDS = ("taskId", "baseStateId", "parked", "problem")
+"""The whole of a parked package: its identity and why the plan parked the slot."""
 
 _MANIFEST_WAIT_ATTEMPTS = 50
 _MANIFEST_WAIT_INTERVAL_SECONDS = 0.01
@@ -112,13 +191,157 @@ _REQUIRED_WORK_PACKAGE_FIELDS = (
     "mayAffect",
     "actions",
     "budget",
+    "targetPins",
+    "scope",
 )
+
+
+def _is_safe_name(name):
+    return (isinstance(name, str) and bool(name) and not core.is_tcl_unsafe(name, allow_brackets=True)
+            and "*" not in name and "?" not in name)
+
+
+def _expert_problems(obj):
+    """Problems in the expert Operator fields `scope`, `targetPins`, `observe` and `editDomain.regions`."""
+    problems = []
+    if "scope" in obj:
+        scope = obj["scope"]
+        if not isinstance(scope, dict) or set(scope) != {"commands", "maxMutations"}:
+            problems.append("scope must be an object with exactly commands and maxMutations")
+        else:
+            commands = scope["commands"]
+            if not isinstance(commands, list) or not commands:
+                problems.append("scope.commands must be a non-empty list")
+            else:
+                for command in commands:
+                    if command not in MUTATE_COMMANDS:
+                        problems.append(f"scope command {command!r} is not a toolkit mutation {MUTATE_COMMANDS}")
+                if len(set(map(repr, commands))) != len(commands):
+                    problems.append("scope.commands names a command more than once")
+                if "atcs_undo" not in commands:
+                    problems.append("scope.commands must keep atcs_undo: the expert loop undoes every trial without gain")
+            budget = scope["maxMutations"]
+            if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= SCOPE_MAX_MUTATIONS:
+                problems.append(
+                    f"scope.maxMutations must be an integer 1..{SCOPE_MAX_MUTATIONS} (the recipe cap, the wide "
+                    f"default), got {budget!r}"
+                )
+    if "targetPins" in obj:
+        pins = obj["targetPins"]
+        if not isinstance(pins, list):
+            problems.append("targetPins must be a list")
+        else:
+            for pin in pins:
+                if not _is_safe_name(pin) or "/" not in pin or pin.startswith("/") or pin.endswith("/"):
+                    problems.append(f"targetPin {pin!r} is not a safe <instance path>/<pin> name")
+            if len(set(map(repr, pins))) != len(pins):
+                problems.append("targetPins names a pin more than once")
+    if "observe" in obj and obj["observe"] not in OBSERVE_MODES:
+        problems.append(f"observe must be one of {OBSERVE_MODES}, got {obj['observe']!r}")
+    edit_domain = obj.get("editDomain")
+    if isinstance(edit_domain, dict) and "regions" in edit_domain:
+        regions = edit_domain["regions"]
+        if not isinstance(regions, list):
+            problems.append("editDomain.regions must be a list of [x1, y1, x2, y2] boxes")
+        else:
+            for region in regions:
+                if not isinstance(region, list) or core.region_box(region) is None:
+                    problems.append(f"editDomain region {region!r} is not [x1, y1, x2, y2] with x1<=x2, y1<=y2")
+    return problems
+
+
+def is_parked(package):
+    """True for a parked package: `parked` is exactly `true`."""
+    return isinstance(package, dict) and package.get("parked") is True
+
+
+def prepared_slot_parked(entry):
+    """Whether the `state/workers.json` slot entry `entry` is a parked slot.
+
+    `prepare-workers` marks an entry ``parked: true`` exactly when its `workPackage` is parked;
+    an entry where the two disagree is refused (``identity-mismatch``) rather than read either way.
+    """
+    entry = entry if isinstance(entry, dict) else {}
+    marked, package_parked = entry.get("parked") is True, is_parked(entry.get("workPackage"))
+    if marked != package_parked:
+        raise core.AtcsError(
+            "identity-mismatch",
+            f"state/workers.json marks the slot parked={marked} but its prepared package is "
+            f"{'parked' if package_parked else 'active'}",
+        )
+    return marked
+
+
+def slot_number(task_id):
+    """The 1-based index of slot `task_id` in `TASK_IDS` (w01 is 1)."""
+    return TASK_IDS.index(task_id) + 1
+
+
+PREPARED_BINDING_FIELDS = ("parked", "editDomain", "targetPins", "observe", "scope")
+"""The package fields a worker request must copy from the package `prepare-workers` prepared."""
+
+
+def bound_view(package):
+    """`PREPARED_BINDING_FIELDS` of `package`, normalised for comparison (order-insensitive sets).
+
+    A slot's session Tcl is baked from its prepared package, and the worker Team reviews the
+    request; a request whose field differs from the prepared one, in either direction, would have
+    one scope reviewed and another enforced. The worker-request Reader and `operate-parked` both
+    compare through this one view.
+    """
+    package = package if isinstance(package, dict) else {}
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    scope = package.get("scope") if isinstance(package.get("scope"), dict) else {}
+
+    def names(value):
+        return sorted(json.dumps(item, sort_keys=True) for item in value) if isinstance(value, list) else repr(value)
+
+    regions = domain.get("regions") or []
+    if isinstance(regions, list):
+        # By value: `[0, 0, 1, 1]` and `[0.0, 0.0, 1.0, 1.0]` are the same box.
+        regions = [core.region_box(region) or region for region in regions]
+    return {
+        "parked": is_parked(package),
+        "editDomain": {"instances": names(domain.get("instances") or []), "nets": names(domain.get("nets") or []),
+                       "regions": names(regions)},
+        "targetPins": names(package.get("targetPins")),
+        "observe": package.get("observe", "fast"),
+        "scope": {"commands": names(scope.get("commands")), "maxMutations": repr(scope.get("maxMutations"))},
+    }
+
+
+def _base_state_problems(obj, base_state):
+    if "baseStateId" not in obj:
+        return ["missing field: baseStateId"]
+    base_state_id = base_state.get("id") if isinstance(base_state, dict) else None
+    if obj["baseStateId"] != base_state_id:
+        return [f"baseStateId {obj['baseStateId']!r} does not match base state id {base_state_id!r}"]
+    return []
+
+
+def _parked_problems(obj, base_state):
+    """Problems in a parked package: its identity, a stated reason and no work field."""
+    problems = []
+    if obj.get("taskId") not in OPERATOR_SLOTS:
+        problems.append(f"taskId must be one of {TASK_IDS}, got {obj.get('taskId')!r}")
+    problems.extend(_base_state_problems(obj, base_state))
+    reason = obj.get("problem")
+    if not isinstance(reason, str) or not reason.strip():
+        problems.append("a parked package states why the slot is parked in problem")
+    extra = sorted(key for key in obj if key not in PARKED_FIELDS)
+    if extra:
+        problems.append(f"a parked package carries no work fields, got {extra}")
+    return problems
 
 
 def _collect_problems(obj, base_state, site_capabilities):
     """Return every `work-package` validation problem found in `obj` (never raises)."""
     problems = []
     obj = obj if isinstance(obj, dict) else {}
+    if "parked" in obj:
+        if is_parked(obj):
+            return _parked_problems(obj, base_state)
+        problems.append(f"parked must be true when present, got {obj['parked']!r}")
     site_capabilities = site_capabilities if isinstance(site_capabilities, dict) else {}
     pg_verification = bool(site_capabilities.get("pgVerification", False))
 
@@ -127,18 +350,10 @@ def _collect_problems(obj, base_state, site_capabilities):
             problems.append(f"missing field: {key}")
 
     task_id = obj.get("taskId")
-    if task_id not in TASK_IDS:
+    if task_id not in OPERATOR_SLOTS:
         problems.append(f"taskId must be one of {TASK_IDS}, got {task_id!r}")
 
-    if "baseStateId" not in obj:
-        problems.append("missing field: baseStateId")
-    else:
-        base_state_id = base_state.get("id") if isinstance(base_state, dict) else None
-        work_base_state_id = obj["baseStateId"]
-        if work_base_state_id != base_state_id:
-            problems.append(
-                f"baseStateId {work_base_state_id!r} does not match base state id {base_state_id!r}"
-            )
+    problems.extend(_base_state_problems(obj, base_state))
 
     edit_domain = obj.get("editDomain") if isinstance(obj.get("editDomain"), dict) else {}
     protected = obj.get("protected") if isinstance(obj.get("protected"), dict) else {}
@@ -173,6 +388,7 @@ def _collect_problems(obj, base_state, site_capabilities):
     if "pg_local_adjust" in actions and not pg_verification:
         problems.append("action pg_local_adjust requires siteCapabilities.pgVerification")
 
+    problems.extend(_expert_problems(obj))
     return problems
 
 
@@ -249,7 +465,7 @@ def prepare(work_package, campaign_root, base_state):
     work_package_id = core.require(work_package, "id", "work_package")
     base_state_id = core.require(work_package, "baseStateId", "work_package")
 
-    if task_id not in TASK_IDS:
+    if task_id not in OPERATOR_SLOTS:
         # TASK_IDS is checked before any path is built: this is what keeps a
         # hostile taskId (e.g. containing "..") from ever making the
         # computed root escape campaign_root below.
@@ -268,7 +484,7 @@ def prepare(work_package, campaign_root, base_state):
             candidate_root.mkdir()
         except FileExistsError:
             existing = _read_manifest_if_matching(candidate_root / "manifest.json", work_package_id)
-            if existing is not None:
+            if existing is not None and existing.get("xtopSeed") == base_state.get("xtopSeed"):
                 return existing
             revision += 1
             continue
@@ -284,6 +500,8 @@ def prepare(work_package, campaign_root, base_state):
         "recovery": {"checkpoint": None},
         "baseStateId": base_state_id,
     }
+    if base_state.get("xtopSeed"):
+        manifest_body["xtopSeed"] = base_state["xtopSeed"]
     manifest = core.stamp("workspace-manifest", manifest_body)
     core.write_artifact(candidate_root / "manifest.json", manifest)
     return manifest

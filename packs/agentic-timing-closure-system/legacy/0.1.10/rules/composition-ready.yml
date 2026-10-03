@@ -1,0 +1,6 @@
+id: composition-ready
+version: "1"
+title: The selected composition has no unresolved conflict or dependency
+requires: [{ type: tc_unresolved_conflict_count }]
+subject: { type: tc_unresolved_conflict_count }
+predicate: { op: eq, threshold: 0, unit: count }

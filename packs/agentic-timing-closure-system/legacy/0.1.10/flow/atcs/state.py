@@ -1,0 +1,675 @@
+"""M1: design state, input readiness, observation capture, check comparison.
+
+This module owns the four M1 producers named in
+``.superpowers/sdd/global-context.md``'s "Shared data model" table:
+`design_state` (``design-state``), `input_readiness` (``input-readiness``),
+`capture` (``observation-set``) and `compare_checks` (``check-comparison``).
+Each returns a plain dict stamped with `atcs.core.stamp` (so it carries
+`schema`/`id`); writing it to disk is a caller's job via
+`atcs.core.write_artifact`, not this module's.
+
+Manifest shape (binding for `design_state` and `input_readiness`)
+-------------------------------------------------------------------
+
+Both functions take the same ``manifest`` shape::
+
+    {
+        "top": "<module name>",
+        "stage": "postroute" | "route" | "cts" | "place" | "init",
+        "root": "<optional base dir for relative paths>",
+        "database": {"enc": "<path>", "encDat": "<dir path>"},
+        "netlist": "<path>",
+        "def": "<path> | omitted",
+        "spef": {"<corner>": "<path>", ...},
+        "sdc": ["<path>", ...],
+        "libraries": ["<path>", ...],
+        "scenarios": [{"name": "<scenario name>", "corner": "<spef corner>"}, ...],
+        "tools": {"<tool name>": "<version>"},        # optional, default {}
+        "parentId": "<prior design-state id> | omitted",   # optional, default None
+        "lifecycle": {                                  # optional
+            "stages": {
+                "init" | "place" | "cts" | "route" | "postroute": {
+                    "checkpoint": "<path>",
+                    "script": "<path>",
+                },
+                ...
+            },
+            "flowConfig": [...],
+        },
+    }
+
+Path resolution: every path value above is either absolute, or resolved
+relative to ``manifest["root"]`` (via `os.path.join`) when present; when a
+path is relative and no ``root`` is given, it is resolved relative to the
+current working directory (`os.path.join(".", path)`), matching plain
+`open()`/`os.path` semantics — callers that care about determinism should
+always set `root` to an absolute directory (tests do, via
+`tempfile.TemporaryDirectory()`).
+
+`scenarios` entries are `{"name", "corner"}` objects (not bare strings) so
+that `input_readiness` can compute, without any outside knowledge base,
+which SPEF corners the declared scenarios actually need. `design_state`'s
+own `scenarios` output field is the plain list of scenario names.
+
+The manifest is Site-supplied evidence, not an internal contract a caller
+already validated — a missing required key (`top`, `stage`, `database`,
+`database.enc`, `database.encDat`, `netlist`, a scenario's `name`/`corner`)
+therefore raises `AtcsError("missing-input", "<dotted key path>")` from
+`design_state`/`input_readiness`, never a bare `KeyError`, via the shared
+`core.require` helper (final review: hoisted out of this module, which used
+to define its own private copy, into `atcs.core` -- see `core.require`'s own
+docstring).
+
+`design_state(manifest)`
+-------------------------
+
+Builds a ``design-state`` artifact body (`top`, `stage`, `database`,
+`netlist`, `def`, `spef`, `sdc`, `tools`, `scenarios`, `parentId`) by
+hash-binding every referenced file: `database.enc` via `core.file_sha256`,
+`database.encDat` via `core.tree_digest` (raising
+`AtcsError("missing-input", ...)` — left to propagate — when that directory
+is absent, per the task brief), and `netlist`/`def`/each `spef` corner/each
+`sdc` entry via `core.file_sha256`. `def` is `None` in the output when the
+manifest omits it.
+
+`input_readiness(manifest, site_capabilities)`
+------------------------------------------------
+
+Computes ``missing[]``/``missingCount`` (existence-only check, not
+hash-bound) over the post-route minimum input set: `database.enc`,
+`database.encDat` (as a directory), `netlist`, one `spef` entry per corner
+referenced by `scenarios`, every `sdc` entry, every `libraries` entry, and
+`scenarios` itself being non-empty. Each missing item is recorded as a
+short descriptive string (e.g. ``"spef:<corner>"``, ``"sdc:<path>"``).
+`missingCount` is always a known Measure (existence checks never leave this
+ambiguous — a stat failure due to a permission error on a *containing*
+directory is treated the same as non-existence, since we still learned a
+definite fact: this path is not usable).
+
+`site_capabilities` is accepted for interface symmetry with the SPEC's Run
+contract input of the same name (which qualifies tools/operators/budget)
+but is not consulted by the current minimum-input check; a future task may
+extend the minimum-input set based on it.
+
+Lifecycle availability (`lifecycleAvailable`, `lifecycleMissing`, `scope`):
+
+- No ``manifest["lifecycle"]`` at all -> `lifecycleAvailable = known(0)`,
+  `lifecycleMissing = ["lifecycle not provided"]`, `scope =
+  "post-route-only"`.
+- Otherwise, every stage in `REQUIRED_LIFECYCLE_STAGES` (`init`, `place`,
+  `cts`, `route`, `postroute`) must appear in
+  ``manifest["lifecycle"]["stages"]`` with a `checkpoint` and a `script`
+  that both exist and are **hash-bound** (actually read via
+  `core.file_sha256`, not just stat-checked), and ``manifest["lifecycle"]``
+  must also carry a `flowConfig` key. Each absent/non-existent piece adds
+  one string to `lifecycleMissing` (e.g. ``"cts checkpoint missing"``,
+  ``"flowConfig missing"``) and forces `lifecycleAvailable = known(0)` —
+  there is no partial/partial-stage scope; `scope` stays
+  `"post-route-only"` (never a third "resume from stage X" scope, per
+  SPEC's Run contract "Auto 输入判定").
+- If one or more checkpoint/script files exist but cannot be *read* (e.g. a
+  permission error during hashing), that fact makes the whole lifecycle
+  verification inconclusive: `lifecycleAvailable =
+  unknown("<stage> <piece> unreadable: <detail>; ...")` — every unreadable
+  piece is named, not just the last one seen — `lifecycleMissing` records
+  the same reasons, and `scope` still falls back to `"post-route-only"`
+  (an unknown never promotes to `"full-flow"`).
+- Only when every stage's checkpoint+script hash-binds successfully **and**
+  `flowConfig` is present is `lifecycleAvailable = known(1)` and `scope =
+  "full-flow"`.
+
+`capture(source_refs, query_spec)`
+------------------------------------
+
+``source_refs`` shape::
+
+    {
+        "designStateId": "<design-state id this observation is bound to>",
+        "scenarios": {
+            "<scenario name>": {
+                "globalTiming": "<path to global_timing.rpt>",
+                "setupPaths": "<path to setup.rpt>",
+                "holdPaths": "<path to hold.rpt>",
+                "checkTiming": "<path to check_timing.rpt>",
+            },
+            ...
+        },
+    }
+
+``query_spec`` shape::
+
+    {
+        "precision": "gba" | "pba",
+        "requiredScenarios": ["<scenario name>", ...],
+        "maxPaths": <int, forwarded to atcs.reports.parse_path_report>,
+    }
+
+Builds an ``observation-set`` artifact body. For every scenario present in
+``source_refs["scenarios"]``, reads and parses its four report files
+(`atcs.reports.parse_global_timing`, `parse_path_report` x2,
+`parse_check_timing`); a scenario named in `requiredScenarios` but absent
+from `source_refs["scenarios"]` is recorded in `missingScenarios` instead
+of being parsed. Every path row from every parsed setup/hold report becomes
+one `checks[<checkKey>]` entry keyed by `core.check_key(scenario, mode,
+row["endpoint"])`; `atcs.reports.parse_path_report` already collapses
+same-endpoint/same-path-group repeats within a single report to their
+worst slack, and already folds a genuinely different path group on the
+same literal endpoint into a distinguishing `row["endpoint"]` of its own
+(so the two land in two different `checks[...]` entries, never one), so no
+further dedup is needed here. Each entry also carries the row's own
+`row["rawEndpoint"]` (PT's literal endpoint pin name, always unsuffixed)
+as its own `"endpoint"` field — the value a later targeted re-query
+(`atcs.adapters.compile_pt_query_task`) must use, since the check key's own
+third component may itself carry a `"@<path group>"` suffix that PT's own
+`-to` argument would never recognize as a real pin name.
+`coverage.complete` is `True` only when `missingScenarios` is empty and
+every parsed scenario's setup and hold path reports were both `complete`;
+`coverage.reasons` lists every contributing gap. `sources[]` lists every
+report file actually read, each hash-bound via `core.file_sha256`.
+
+C1 (final review): each scenario's own `setup.wns`/`hold.wns` (from
+`atcs.reports.parse_global_timing`) is additionally cross-checked, per
+mode, against that same scenario's own parsed path rows
+(`_wns_consistent_with_violated_paths`) — a known, non-negative `wns`
+(`>= 0.0`, including a displayed "-0.00") that coexists with any path row
+this scenario/mode's own `setup.rpt`/`hold.rpt` marked `violated: True` is
+downgraded to `unknown`: the global summary and the per-path report must
+never be allowed to disagree about whether this scenario/mode has a
+violation at all, and a favorable global reading can never outrank a
+PT-confirmed per-path VIOLATED verdict.
+
+`compare_checks(prior, current, recheck)`
+--------------------------------------------
+
+`prior` and `current` are ``observation-set``-shaped dicts (only their
+`checks` mapping is used). `recheck` is a plain
+``{checkKey: Measure}`` mapping of supplemental, targeted re-observations
+(e.g. a follow-up PT query run specifically to resolve an ambiguous check)
+that take priority over "absent from `current`" when both are available;
+pass `{}` when no supplemental data was gathered.
+
+Whether a check counts as "in violation" is decided by its own `violated`
+fact (`atcs.reports.parse_path_report`'s own PT-classification boolean,
+carried through a check entry) when that entry has one, and only falls
+back to the slack Measure's sign (known, unannotated slacks only) when it
+does not — see `_violation_status`. This is not an equivalent, weaker
+restatement of "slack < 0": a precision-limited row (PT's own
+`(VIOLATED: increase significant digits)` annotation) has a `violated` of
+`True` but a `slack` of `unknown` (the displayed number rounds to a
+misleading `-0.00`), so reading the sign alone would silently call it
+clean. `recheck` carries no `violated` fact of its own (its own contract
+is a plain `{checkKey: Measure}`), so a `recheck` resolution always falls
+back to slack sign.
+
+For every check key known to `prior` (skipping any whose violation status
+cannot be resolved at all — neither a `violated` fact nor a known,
+unannotated slack): if `current` (or, failing that, `recheck`) resolves a
+violation status for the same key, the pair (prior status, current status)
+decides `fixed` (was violating, now not), `remaining` (violating, still
+violating), `regressed` (was not violating, now violating), or no bucket
+at all (not violating in either — not interesting). A check whose current
+status resolves to "violating" — whether from a known negative slack or
+from `violated` alone — can therefore never land in `fixed`.
+
+When neither `current` nor `recheck` can resolve the key (it is simply
+absent from both), what happens depends on the check's *prior* sign and on
+whether `current`'s coverage for that check's scenario/mode was complete
+(via `current["scenarios"][<scenario>]["complete"][<mode>]`, read from the
+check key's own `"<scenario>|<mode>|<endpoint>"` — a scenario absent from
+`current["scenarios"]` entirely counts as incomplete):
+
+- Prior **negative** (it was a violation): always `missingPrior`,
+  regardless of `current`'s coverage — a real violation that can no longer
+  be located is never silently dropped, and is deliberately not the same
+  as `fixed`: disappearing from a truncated report was never a positive
+  re-observation.
+- Prior **non-negative** (it was clean): `missingPrior` only when
+  `current`'s coverage for that scenario/mode was itself incomplete
+  (truncated or the scenario is missing) — the absence might just be
+  under-reporting, not evidence either way. When `current`'s coverage for
+  that scenario/mode was complete, an absent previously-clean check is not
+  listed in *any* category: a complete report that simply stopped
+  reporting a check that was never violating means it did not become a
+  violator, which is not comparison-worthy on its own.
+
+Every key present in `current` but absent from `prior` whose violation
+status resolves to violating (via `violated` or a known negative slack) is
+an `entrant` (newly-observed violation); a new key that resolves to
+not-violating is not reported anywhere, and one whose status cannot be
+resolved at all is likewise not reported (nothing to compare against).
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from . import core
+from . import reports
+
+
+REQUIRED_LIFECYCLE_STAGES = ("init", "place", "cts", "route", "postroute")
+
+
+def _resolve(root, path):
+    if root and not os.path.isabs(path):
+        return str(Path(root) / path)
+    return path
+
+
+def _scenario_name(scenario):
+    return core.require(scenario, "name", "scenario")
+
+
+def _scenario_corner(scenario):
+    return core.require(scenario, "corner", "scenario")
+
+
+def design_state(manifest):
+    root = manifest.get("root")
+
+    top = core.require(manifest, "top", "manifest")
+    stage = core.require(manifest, "stage", "manifest")
+    database = core.require(manifest, "database", "manifest")
+    enc_rel = core.require(database, "enc", "manifest.database")
+    enc_dat_rel = core.require(database, "encDat", "manifest.database")
+    # Final review minor: the Innovus restore templates (`innovus-eco.tcl`/
+    # `innovus-export.tcl`) always call `restoreDesign $env(CURRENT_DB).dat ...`, where
+    # `CURRENT_DB` is this design-state's own recorded `database.path` (`enc_rel`) -- i.e.
+    # they assume `database.encDat`'s own name is EXACTLY `database.enc`'s own name +
+    # ".dat", the same convention this function's own `datDigest` field documents. A
+    # manifest naming a real, existing `encDat` directory that just happens to have some
+    # OTHER name would otherwise be silently hashed and recorded here, even though the
+    # restore templates would never actually read that directory at run time -- refuse it
+    # up front instead of letting a later Innovus run fail against, or worse silently
+    # restore, a mismatched pairing.
+    expected_enc_dat_name = Path(enc_rel).name + ".dat"
+    if Path(enc_dat_rel).name != expected_enc_dat_name:
+        raise core.AtcsError(
+            "missing-input",
+            f"manifest.database.encDat {enc_dat_rel!r} is not paired with manifest.database.enc "
+            f"{enc_rel!r} -- expected an encDat named {expected_enc_dat_name!r}",
+        )
+    netlist_rel = core.require(manifest, "netlist", "manifest")
+
+    enc_path = _resolve(root, enc_rel)
+    enc_dat_path = _resolve(root, enc_dat_rel)
+    database_out = {
+        "path": enc_rel,
+        "sha256": core.file_sha256(enc_path),
+        "datDigest": core.tree_digest(enc_dat_path),
+    }
+
+    netlist_path = _resolve(root, netlist_rel)
+    netlist_out = {"path": netlist_rel, "sha256": core.file_sha256(netlist_path)}
+
+    if manifest.get("def") is not None:
+        def_path = _resolve(root, manifest["def"])
+        def_out = {"path": manifest["def"], "sha256": core.file_sha256(def_path)}
+    else:
+        def_out = None
+
+    spef_out = {}
+    for corner, rel_path in manifest.get("spef", {}).items():
+        resolved = _resolve(root, rel_path)
+        spef_out[corner] = {"path": rel_path, "sha256": core.file_sha256(resolved)}
+
+    sdc_out = []
+    for rel_path in manifest.get("sdc", []):
+        resolved = _resolve(root, rel_path)
+        sdc_out.append({"path": rel_path, "sha256": core.file_sha256(resolved)})
+
+    scenario_names = [_scenario_name(scenario) for scenario in manifest.get("scenarios", [])]
+
+    body = {
+        "top": top,
+        "stage": stage,
+        "database": database_out,
+        "netlist": netlist_out,
+        "def": def_out,
+        "spef": spef_out,
+        "sdc": sdc_out,
+        "tools": dict(manifest.get("tools", {})),
+        "scenarios": scenario_names,
+        "parentId": manifest.get("parentId"),
+    }
+    return core.stamp("design-state", body)
+
+
+def _exists(path):
+    try:
+        return os.path.exists(path)
+    except OSError:
+        return False
+
+
+def _required_corners(manifest):
+    return sorted({_scenario_corner(scenario) for scenario in manifest.get("scenarios", [])})
+
+
+def _check_minimum_inputs(manifest, root):
+    missing = []
+
+    database = manifest.get("database", {})
+    enc = database.get("enc")
+    if not enc or not _exists(_resolve(root, enc)):
+        missing.append("database.enc")
+    enc_dat = database.get("encDat")
+    if not enc_dat or not os.path.isdir(_resolve(root, enc_dat)):
+        missing.append("database.encDat")
+
+    netlist = manifest.get("netlist")
+    if not netlist or not _exists(_resolve(root, netlist)):
+        missing.append("netlist")
+
+    spef = manifest.get("spef", {})
+    for corner in _required_corners(manifest):
+        path = spef.get(corner)
+        if not path or not _exists(_resolve(root, path)):
+            missing.append(f"spef:{corner}")
+
+    sdc_list = manifest.get("sdc", [])
+    if not sdc_list:
+        missing.append("sdc")
+    else:
+        for path in sdc_list:
+            if not _exists(_resolve(root, path)):
+                missing.append(f"sdc:{path}")
+
+    libraries = manifest.get("libraries", [])
+    if not libraries:
+        missing.append("libraries")
+    else:
+        for path in libraries:
+            if not _exists(_resolve(root, path)):
+                missing.append(f"libraries:{path}")
+
+    if not manifest.get("scenarios"):
+        missing.append("scenarios")
+
+    return missing
+
+
+def _check_lifecycle(manifest, root):
+    """Verify the full lifecycle stage set. Only called when `manifest["lifecycle"]` is present —
+    the "lifecycle not provided at all" case is handled directly in `input_readiness`."""
+    lifecycle = manifest["lifecycle"]
+    missing = []
+    unreadable_reasons = []
+    stages = lifecycle.get("stages", {})
+    for stage in REQUIRED_LIFECYCLE_STAGES:
+        stage_entry = stages.get(stage)
+        if not stage_entry:
+            missing.append(f"{stage} stage missing")
+            continue
+        for piece in ("checkpoint", "script"):
+            path = stage_entry.get(piece)
+            if not path:
+                missing.append(f"{stage} {piece} missing")
+                continue
+            resolved = _resolve(root, path)
+            if not _exists(resolved):
+                missing.append(f"{stage} {piece} missing")
+                continue
+            try:
+                core.file_sha256(resolved)
+            except OSError as exc:
+                reason = f"{stage} {piece} unreadable: {exc}"
+                unreadable_reasons.append(reason)
+                missing.append(reason)
+
+    if "flowConfig" not in lifecycle:
+        missing.append("flowConfig missing")
+
+    if unreadable_reasons:
+        return core.unknown("; ".join(unreadable_reasons)), missing, False
+    if missing:
+        return core.known(0), missing, False
+    return core.known(1), [], True
+
+
+def input_readiness(manifest, site_capabilities):
+    root = manifest.get("root")
+
+    missing = _check_minimum_inputs(manifest, root)
+    missing_count = core.known(len(missing))
+
+    if manifest.get("lifecycle") is None:
+        lifecycle_available = core.known(0)
+        lifecycle_missing = ["lifecycle not provided"]
+        scope = "post-route-only"
+    else:
+        lifecycle_available, lifecycle_missing, full_flow = _check_lifecycle(manifest, root)
+        scope = "full-flow" if full_flow else "post-route-only"
+
+    return core.stamp("input-readiness", {
+        "missing": missing,
+        "missingCount": missing_count,
+        "lifecycleAvailable": lifecycle_available,
+        "lifecycleMissing": lifecycle_missing,
+        "scope": scope,
+    })
+
+
+def _read_and_track_source(path, sources):
+    """Read `path` as text, append its `{"path", "sha256"}` to `sources`, return the text."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    sources.append({"path": path, "sha256": core.file_sha256(path)})
+    return text
+
+
+def _wns_consistent_with_violated_paths(wns_measure, path_rows):
+    """`wns_measure`, downgraded to `unknown` when it contradicts this same
+    scenario/mode's own per-path evidence (C1, final review).
+
+    A known, non-negative `wns_measure` (`>= 0.0`, including a "-0.00"-style
+    negative zero) can never coexist with a per-path report row this same
+    scenario/mode's own `atcs.reports.parse_path_report` call marked
+    `violated: True` (PT's own VIOLATED verdict for that path) -- one of the
+    two readings must be wrong, and this Pack never lets the more
+    favorable one (the global summary) silently win. Only ever downgrades
+    an already-known `wns_measure`; an already-`unknown` value, or a known
+    *negative* one (consistent with a violation existing), is returned
+    unchanged.
+    """
+    if core.is_known(wns_measure) and core.value_of(wns_measure) >= 0.0:
+        if any(row.get("violated") for row in path_rows):
+            return core.unknown(
+                "precision-limited: a per-path VIOLATED row exists for this scenario/mode "
+                "while its global WNS displays non-negative"
+            )
+    return wns_measure
+
+
+def capture(source_refs, query_spec):
+    max_paths = query_spec["maxPaths"]
+    required_scenarios = query_spec.get("requiredScenarios", [])
+    available = source_refs.get("scenarios", {})
+
+    missing_scenarios = [name for name in required_scenarios if name not in available]
+
+    scenarios_out = {}
+    checks_out = {}
+    sources = []
+    reasons = []
+    all_complete = True
+
+    for name, refs in available.items():
+        global_text = _read_and_track_source(refs["globalTiming"], sources)
+        setup_text = _read_and_track_source(refs["setupPaths"], sources)
+        hold_text = _read_and_track_source(refs["holdPaths"], sources)
+        check_text = _read_and_track_source(refs["checkTiming"], sources)
+
+        global_timing = reports.parse_global_timing(global_text)
+        check_timing = reports.parse_check_timing(check_text)
+        setup_result = reports.parse_path_report(setup_text, "setup", max_paths)
+        hold_result = reports.parse_path_report(hold_text, "hold", max_paths)
+
+        for row in setup_result["paths"]:
+            key = core.check_key(name, "setup", row["endpoint"])
+            checks_out[key] = {
+                "slack": row["slack"],
+                "startpoint": row["startpoint"],
+                "pathGroup": row["pathGroup"],
+                "violated": row["violated"],
+                "endpoint": row["rawEndpoint"],
+            }
+        for row in hold_result["paths"]:
+            key = core.check_key(name, "hold", row["endpoint"])
+            checks_out[key] = {
+                "slack": row["slack"],
+                "startpoint": row["startpoint"],
+                "pathGroup": row["pathGroup"],
+                "violated": row["violated"],
+                "endpoint": row["rawEndpoint"],
+            }
+
+        setup_summary = dict(global_timing["setup"])
+        setup_summary["wns"] = _wns_consistent_with_violated_paths(setup_summary["wns"], setup_result["paths"])
+        hold_summary = dict(global_timing["hold"])
+        hold_summary["wns"] = _wns_consistent_with_violated_paths(hold_summary["wns"], hold_result["paths"])
+
+        scenarios_out[name] = {
+            "setup": setup_summary,
+            "hold": hold_summary,
+            "unconstrained": check_timing["unconstrainedEndpoints"],
+            "complete": {"setup": setup_result["complete"], "hold": hold_result["complete"]},
+        }
+
+        if not setup_result["complete"]:
+            all_complete = False
+            reasons.append(f"scenario {name} setup paths incomplete")
+        if not hold_result["complete"]:
+            all_complete = False
+            reasons.append(f"scenario {name} hold paths incomplete")
+
+    if missing_scenarios:
+        all_complete = False
+        reasons.extend(f"missing scenario: {name}" for name in missing_scenarios)
+
+    return core.stamp("observation-set", {
+        "designStateId": source_refs["designStateId"],
+        "precision": query_spec["precision"],
+        "scenarios": scenarios_out,
+        "checks": checks_out,
+        "missingScenarios": missing_scenarios,
+        "coverage": {"complete": all_complete, "reasons": reasons},
+        "sources": sources,
+    })
+
+
+def _violation_status(entry):
+    """`True`/`False`/`None` (unresolved) for one check entry.
+
+    PT's own `violated` classification fact (when the entry carries one --
+    `atcs.reports.parse_path_report` always sets it) takes priority over
+    the slack Measure's sign; the sign is used only as a fallback, and only
+    when it is itself known -- an entry with no `violated` fact and an
+    `unknown` slack truly cannot be classified either way. This is the
+    reason `violated` exists at all: a precision-limited row's slack is
+    `unknown`, but its `violated` is still a known `True`, and this
+    function must return `True` for it, not `None`.
+    """
+    violated = entry.get("violated")
+    if violated is not None:
+        return bool(violated)
+    slack_measure = entry.get("slack")
+    if core.is_known(slack_measure):
+        return core.value_of(slack_measure) < 0
+    return None
+
+
+def _resolved_violation_status(key, current_checks, recheck):
+    """`_violation_status` for `key`, preferring `current_checks` (which may
+    carry its own `violated` fact) and falling back to `recheck` (a plain
+    `{checkKey: Measure}` mapping with no `violated` fact of its own, so
+    only its slack sign is ever used)."""
+    if key in current_checks:
+        status = _violation_status(current_checks[key])
+        if status is not None:
+            return status
+    if recheck and key in recheck and core.is_known(recheck[key]):
+        return core.value_of(recheck[key]) < 0
+    return None
+
+
+def _current_coverage_complete(current, scenario, mode):
+    """True only if `current` positively confirms complete coverage for `scenario`/`mode`.
+
+    A scenario absent from `current["scenarios"]` entirely (e.g. it was a
+    `missingScenario`) counts as incomplete, same as an explicit
+    `complete[mode] = False`.
+    """
+    scenario_entry = current.get("scenarios", {}).get(scenario)
+    if scenario_entry is None:
+        return False
+    return bool(scenario_entry.get("complete", {}).get(mode, False))
+
+
+def violating_check_keys(observation):
+    """The sorted check keys of `observation["checks"]` that `_violation_status`
+    classifies as currently violating (I5, final review: fixed count via a bounded
+    parent-violator recheck).
+
+    `atcs_cli._cmd_sta` uses this on the PARENT's own persisted observation to decide
+    which checks are worth re-querying, by worst known slack, on the just-implemented
+    candidate -- the same `violated`-fact-first, slack-sign-fallback rule `compare_
+    checks` itself uses to decide "was this check violating", so the set of checks a
+    recheck targets is never inconsistent with how that same recheck's own results are
+    later interpreted.
+    """
+    checks = observation.get("checks", {}) or {}
+    return sorted(key for key, entry in checks.items() if _violation_status(entry) is True)
+
+
+def compare_checks(prior, current, recheck):
+    recheck = recheck or {}
+    prior_checks = prior.get("checks", {})
+    current_checks = current.get("checks", {})
+
+    fixed, remaining, regressed, missing_prior = [], [], [], []
+
+    for key, prior_entry in prior_checks.items():
+        prior_violating = _violation_status(prior_entry)
+        if prior_violating is None:
+            continue
+
+        resolved = _resolved_violation_status(key, current_checks, recheck)
+        if resolved is None:
+            if prior_violating:
+                # A real violation that can no longer be located is never
+                # silently dropped, whatever current's coverage looks like.
+                missing_prior.append(key)
+            else:
+                # It was clean before; only flag its disappearance as
+                # ambiguous if current's coverage for this scenario/mode was
+                # itself incomplete. A complete report that stopped
+                # reporting a check that was never violating is not
+                # comparison-worthy — it did not become a violator.
+                scenario, mode, _endpoint = key.split("|", 2)
+                if not _current_coverage_complete(current, scenario, mode):
+                    missing_prior.append(key)
+            continue
+
+        current_violating = resolved
+        if prior_violating and not current_violating:
+            fixed.append(key)
+        elif prior_violating and current_violating:
+            remaining.append(key)
+        elif not prior_violating and current_violating:
+            regressed.append(key)
+        # else: not violating in either — not tracked in any bucket.
+
+    entrant = []
+    for key, current_entry in current_checks.items():
+        if key in prior_checks:
+            continue
+        if _violation_status(current_entry):
+            entrant.append(key)
+
+    return {
+        "fixed": sorted(fixed),
+        "remaining": sorted(remaining),
+        "entrant": sorted(entrant),
+        "regressed": sorted(regressed),
+        "missingPrior": sorted(missing_prior),
+    }

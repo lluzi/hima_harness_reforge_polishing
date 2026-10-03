@@ -1,0 +1,7 @@
+id: atcs-worker-request-02
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'worker-request', '${REPORT}', '${OUT}', '${WORKSPACE}', w02]
+reportKind: atcs-worker-request/1
+emits:
+  - tc_request_invalid_count

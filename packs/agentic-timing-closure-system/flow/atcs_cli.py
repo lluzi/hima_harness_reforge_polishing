@@ -100,14 +100,14 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 3 | `policy` | analysisContractDir, targetSetupNs(`{from: goal}`), targetHoldNs(`{from: goal}`) | reads `<analysisContractDir>/policy.json` + `state/baseline.json` + `state/observation.json` | `state/policy.json` (stamped) |
 | 4 | `observe` | querySpec, siteProfile, scenariosContract(Site-fixed `analysisContract/scenarios.json`, per-scenario corner + PT library identity -- C4 final review, was `scenario-corners.json`, see "Task 12c fix round" below), maxPaths(`{from: strategy}`, an upper cap -- see "Fix round 1" below) | `_scenario_pt_inputs` (x4, built from `state/working-state.json`, re-verified by sha256) then `adapters.compile_pt_scenario_tasks` + `run_tool` (x4) then `state.capture` | `state/observation.json` (also `state/observation-prev.json`, `observations/<id>.json` and `research/observe/max-paths.json`) |
 | 5 | `risk` | priorObservation(`state/observation-prev.json`), currentObservation(`state/observation.json`), recheck | `state.compare_checks` (self-compares on the campaign's first observation, when `priorObservation` does not exist yet) | `state/risk.json` |
-| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w02"..,"w03"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (x3) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (x3, materialized into each worker's own root) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`) |
-| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names) | `state/contribution-<slot>.json` (one of 3 literal names) |
+| 6 | `prepare-workers` | baseState(`state/working-state.json`), siteCapabilities, edaProfile, campaignPlan(the ONE admitted envelope `{"candidate":{"workPackages":{"w01"..,"w06"..},"reason"},"baseState":..,"siteCapabilities":..}`; reads `candidate.workPackages`, refuses `ambiguous-plan` if a top-level `workPackages` key is also present -- see "Task 12c fix round" below) | `workspaces.validate_work_package` + `workspaces.prepare` (one per slot in `workspaces.TASK_IDS`, w01..w06) + `adapters.compile_xtop_operator_task`/`compile_xtop_analysis_manual_task` (per active slot, materialized into each worker's own root; a parked slot gets a workspace and no session -- Issue #64 Task 5) | `state/workers.json` (now embeds each slot's full `workPackage`/`workspaceManifest`, `parked: true` for a parked slot, and `requiredSlots` = all six) |
+| 7 | `capture-contribution` | slot | `contributions.seal` (base_ref/result_refs composed from `state/workers.json[slot]` and the slot's own workspace root -- see `_cmd_capture_contribution`'s docstring for the exact `before.dump`/`after.dump`/`ops.jsonl`/`summary.json` file names); `contributions.seal_session` instead when `ops.jsonl` holds Task 3 toolkit lines or `tainted.json` exists (`_seal_xtop_session`: also `gain.jsonl`, the transcript's `ATCS:taint:` line, `eco_output/`, `state/xtop-context.json` filler patterns); `contributions.seal_parked` for a slot that ran no session (parked, or skipped by `operate-parked`) | `state/contribution-<slot>.json` (one of 6 literal names) |
 | 8 | `collect` | (none) | reads whichever `contribution-w0N.json` exist AND still matches `state/workers.json[slot]`'s current revision (`contribution-index` read envelope: `{"contributions","pending":[{"slot","reason"}]}` -- see "Task 12c fix round" below) | `state/contributions-collected.json` |
-| 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass) | `state/composition-facts.json` |
-| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile | `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
-| 11 | `reconcile` | (none -- edit domains come from `state/workers.json`, see "Task 12c fix round" below) | `integration.reconcile` | `state/integration-state.json` |
-| 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` | `state/presta.json` (the stamped `precheckEvidence` artifact) |
-| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
+| 9 | `compose-facts` | plan(the SAME admitted integration-plan envelope row 10 reads; absent on the first pass -- see "Task 12c fix round" below) | `composition.analyze` (`baseStateId` from `state/working-state.json`; `resolutions` from the admitted plan, `[]` on the first pass; `worst_checks` from `state/observation.json` when it observes that state, for the xtop-session recipe's blocker coverage) | `state/composition-facts.json` |
+| 10 | `replay-prepare` | baseState(`state/working-state.json`), plan(the admitted integration-plan envelope `{"plan":...,"facts":...}` -- see "Task 12c fix round" below), siteProfile; baseState, plan, siteProfile, autoFinish(optional knob `0`/`1`, overrides `plan.autoFinish`) | recipe batch (`composition-facts.recipe`, Issue #64 Task 6): `integration.prepare_recipe_replay` then `adapters.compile_recipe_replay_task` + `run_tool` for the merged and control arms at once (`integrations/<batchId>/{merged,control}/`); legacy `fix` selection: `integration.validate_plan` + `integration.prepare_replay` then `adapters.compile_xtop_replay_task` + `run_tool` (best-effort) | `state/replay-request.json` |
+| 11 | `reconcile` | (none -- legacy edit domains come from `state/workers.json`, see "Task 12c fix round" below; a recipe batch's from `state/replay-request.json`, each session's sealed `effectiveDomain` per `_recipe_sessions`) | recipe batch: `adapters.read_replay_arm` (x2) + `integration.reconcile_recipe` (safety, choice, `manualValue`); legacy: `integration.reconcile` | `state/integration-state.json` |
+| 12 | `presta` | baseState(`state/working-state.json`), scenariosContract, siteProfile | `integration.seal_batch` (read-only re-derivation, for `newNets`) + `adapters.compile_pt_presta_task` + `run_tool`, `verification.precheck_evidence` (a recipe batch also seals `batchKind: "recipe"` and whether the pre-check is `predictive`; it never gates) | `state/presta.json` (the stamped `precheckEvidence` artifact) |
+| 13 | `implement` | currentDesignState(`state/working-state.json`), siteProfile | `integration.seal_batch` then `adapters.compile_innovus_eco_task` + `run_tool` (a recipe batch sources the chosen ECO pair, copied under `implementations/<mergeId>/eco/` only if its sha256 still matches the seal; refuses `stale-base` unless the sealed merge commit's own `parentStateId` equals `currentDesignState["id"]`; refuses `write-once` if `implementations/<mergeId>/`'s own outputs already exist -- C2, final review) | `state/implement.json` |
 | 14 | `extract` | corners, siteProfile | `adapters.compile_starrc_task` + `run_tool` (per corner) | `state/extract.json` |
 | 15 | `sta` | querySpec, scenariosContract, baseDesignState(`state/working-state.json`), siteProfile, maxPaths(`{from: strategy}`, an upper cap -- I10, final review, same rule as `observe`'s) | `_verified_state_sdc_path` (SDC from `baseDesignState`'s own recorded `sdc[0]`, sha256-verified -- no separate `sdc` argv any more, see "Fix round 2" below) + `state.design_state` (built FIRST, from the implemented outputs -- C5, final review), `adapters.compile_pt_scenario_task` + `run_tool` (per scenario), `state.capture` (each observation labeled with the candidate's OWN new state id, never `baseDesignState`'s), `refresh.record_refresh` (once, on completion) | `state/sta.json` (also archived verbatim to `implementations/<mergeId>/sta.json`, and appends `state/refresh-ledger.json`) |
 | 16 | `physical` | (candidate) mode only; (baseline) siteProfile, mode (I13: no longer two static rpt paths) | (candidate) I/O packaging only, reads+re-hashes `state/implement.json`'s `drcReport`/`connectivityReport`; (baseline) `adapters.compile_innovus_export_task` + `run_tool` against `state/baseline.json`'s own staged database, same `-limit`/`-error` values `innovus-eco.tcl` uses | `state/baseline-physical.json` or `state/physical.json` |
@@ -117,6 +117,8 @@ read from a fixed `state/*.json` entry file a predecessor subcommand wrote
 | 20 | `apr-prepare` | (none -- see "Fix round 1" below) | reads `research/requests/next-decision.json` then `lifecycle.compile_intervention` + `lifecycle.stage_task` | `state/apr-task.json` (one fixed literal path for every stage; carries `taskId` and `stage`) |
 | 21 | `apr-run` | siteProfile | reads `state/apr-task.json` then `run_tool` (stage batch) + `adapters.compile_innovus_export_task` + `run_tool` (export batch) | `state/implement.json` (same shape `implement` writes) |
 | 22 | `record-experience` | reasonSource(the SAME admitted integration-plan envelope row 10 reads -- only actually read when `_merge_commit_provenance` says `"merge"`; see "Task 12c fix round" below) | `experience.record` (lineage/decision/outcome composed from `state/working-state.json`, `state/implement.json`, `state/evaluation.json`, `state/contributions-collected.json`, `state/merge-commit.json`/`state/apr-task.json` (provenance), `state/sta.json`, `state/policy.json`/`state/pointers.json`) | `state/experience.json` |
+| 23 | `worker-slots` | workerSlots(`{from: strategy}`, an integer 0..6; Issue #64 Task 5, 0 since #66 D8) | validates the knob; slots up to it may be active and every slot above it must be parked | `state/worker-slots.json` (stamped `worker-slots`: `workerSlots`, `activeSlots`, `parkedSlots`) |
+| 24 | `operate-parked` | slot | the `xtop-operator` tool's batch path (Issue #64 Task 5): opens no XTop session for a slot `prepare-workers` parked or an active slot whose worker request is inadmissible (`workspaces.request_invalid_count` + `workspaces.bound_view` against the prepared package, or the Reader's own current `worker-request-<slot>.problems.txt` counting a problem, #64 T06 w06); refuses any other active slot (`slot-active`) | `<slot root>/parked.json` (stamped `parked-operate` receipt, `why` parked or inadmissible-request; an unreadable request or working state refuses; `prepare-workers` removes a stale one) |
 
 Site-admin utility (not a Harness graph subcommand -- no workspace, no declared output)
 -------------------------------------------------------------------------------------------
@@ -269,8 +271,11 @@ Task 12c fix round (Opus review of the compiled graph: CLI/Reader fixes)
       present at all is now `AtcsError("ambiguous-plan", ...)` (exit 3) --
       see `_cmd_prepare_workers`'s own docstring. A new `campaign-plan`
       reader kind in `tools/read-atcs.py` counts problems
-      (`workspaces.request_invalid_count`) across all three packages plus
-      structural problems (missing `workPackages`/a slot/`reason`).
+      (`workspaces.request_invalid_count`) across every slot in
+      `workspaces.TASK_IDS` (Issue #64 Task 5, which also refuses shared
+      instances, uncovered worst checks and active slots above the
+      `workerSlots` knob) plus structural problems (missing
+      `workPackages`/a slot/`reason`).
    b. `replay-prepare`, `compose-facts` (second pass) and
       `record-experience` all read the SAME integration-plan envelope file
       (`{"plan":...,"facts":...}` -- the exact shape
@@ -381,10 +386,15 @@ Known gaps still open (see also `adapters.py`'s own "Gaps")
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import math
+import re
 import os
 import shutil
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 _FLOW_DIR = Path(__file__).resolve().parent
@@ -544,6 +554,7 @@ def _paths(workspace):
         "risk": state_dir / "risk.json",
         "experience": state_dir / "experience.json",
         "workers": state_dir / "workers.json",
+        "worker_slots": state_dir / "worker-slots.json",
         "contributions_collected": state_dir / "contributions-collected.json",
         "composition_facts": state_dir / "composition-facts.json",
         "replay_request": state_dir / "replay-request.json",
@@ -579,6 +590,116 @@ def _cmd_bind_inputs(workspace, args):
     site_capabilities = _read_plain(site_caps_path)
     body = state.input_readiness(manifest, site_capabilities)
     return _paths(workspace)["readiness"], body
+
+
+def _native_timing_input(path, manifest_path=None):
+    """Validate the Site-bound retained native timing input before it is copied or consumed."""
+    obj = _read_plain(path)
+    if not isinstance(obj, dict) or obj.get("schema") != "atcs.native-timing-context/1":
+        raise InputError("invalid-input", "nativeTimingContext must have schema atcs.native-timing-context/1")
+    required = {"schema", "designStateManifestSha256", "requiredScenarios", "staData",
+                "sourceReports", "constraints", "producer"}
+    if set(obj) != required:
+        raise InputError("invalid-input", f"nativeTimingContext must have exactly {sorted(required)}")
+    if manifest_path is not None and obj["designStateManifestSha256"] != core.file_sha256(Path(manifest_path)):
+        raise core.AtcsError("identity-mismatch", "native timing data belongs to another designStateManifest")
+    scenarios = obj["requiredScenarios"]
+    if (not isinstance(scenarios, list) or not scenarios
+            or not all(isinstance(item, str) and item for item in scenarios)
+            or len(set(scenarios)) != len(scenarios)):
+        raise InputError("invalid-input", "nativeTimingContext.requiredScenarios must be unique non-empty names")
+    sta_data = obj["staData"]
+    if not isinstance(sta_data, dict) or set(sta_data) != {"path", "digest"}:
+        raise InputError("invalid-input", "nativeTimingContext.staData must be {path,digest}")
+    sta_path = Path(sta_data["path"])
+    if sta_path.is_symlink() or not sta_path.is_dir() or core.tree_digest(sta_path) != sta_data["digest"]:
+        raise core.AtcsError("identity-mismatch", "retained native STA data is missing, linked or changed")
+    for field in ("sourceReports", "constraints"):
+        refs = obj[field]
+        if not isinstance(refs, list) or not refs:
+            raise InputError("invalid-input", f"nativeTimingContext.{field} must be a non-empty list")
+        for index, ref in enumerate(refs):
+            if not isinstance(ref, dict) or set(ref) != {"path", "sha256"}:
+                raise InputError("invalid-input", f"nativeTimingContext.{field}[{index}] must be {{path,sha256}}")
+            target = Path(ref["path"])
+            if target.is_symlink() or not target.is_file() or core.file_sha256(target) != ref["sha256"]:
+                raise core.AtcsError("identity-mismatch", f"nativeTimingContext.{field}[{index}] is missing, linked or changed")
+    producer = obj["producer"]
+    if (not isinstance(producer, dict) or set(producer) != {"tool", "version", "command"}
+            or not all(isinstance(producer[key], str) and producer[key] for key in producer)):
+        raise InputError("invalid-input", "nativeTimingContext.producer needs non-empty tool/version/command")
+    return obj
+
+
+def _cmd_bind_resident_inputs(workspace, args):
+    manifest_path, site_caps_path, native_context_path = args
+    native = _native_timing_input(native_context_path, manifest_path)
+    manifest = _read_plain(manifest_path)
+    manifest_scenarios = [entry.get("name") for entry in manifest.get("scenarios") or []]
+    if manifest_scenarios != native["requiredScenarios"]:
+        raise core.AtcsError("identity-mismatch", "nativeTimingContext scenarios differ from designStateManifest")
+    root = Path(manifest.get("root") or ".")
+    constraint_hashes = []
+    for value in manifest.get("sdc") or []:
+        target = Path(value)
+        if not target.is_absolute():
+            target = root / target
+        constraint_hashes.append(core.file_sha256(target))
+    if constraint_hashes != [ref["sha256"] for ref in native["constraints"]]:
+        raise core.AtcsError("identity-mismatch", "nativeTimingContext constraints differ from designStateManifest")
+    return _cmd_bind_inputs(workspace, [manifest_path, site_caps_path])
+
+
+def _copy_verified_file(source, destination):
+    source, destination = Path(source), Path(destination)
+    if source.is_symlink() or not source.is_file():
+        raise core.AtcsError("missing-input", f"retained native file is missing or linked: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return {"path": None, "sha256": core.file_sha256(destination)}
+
+
+def _cmd_prepare_native_context(workspace, args):
+    native_context_path, site_caps_path = args
+    workspace = Path(workspace)
+    native = _native_timing_input(native_context_path)
+    base = _read_declared(_paths(workspace)["baseline"], "design-state")
+    if list(base.get("scenarios") or []) != native["requiredScenarios"]:
+        raise core.AtcsError("identity-mismatch", "retained native scenarios differ from staged baseline")
+    if [entry.get("sha256") for entry in base.get("sdc") or []] != [entry["sha256"] for entry in native["constraints"]]:
+        raise core.AtcsError("identity-mismatch", "retained native constraints differ from staged baseline")
+    site = _read_plain(site_caps_path)
+    site_context = adapters.compile_xtop_site_context(site, native["requiredScenarios"])
+    if site_context is None:
+        raise core.AtcsError("missing-input", "the Site declares no XTop context")
+    root = workspace / "research" / "native-input"
+    sta_target = root / "sta-data"
+    if sta_target.exists():
+        raise core.AtcsError("write-once", "native timing context was already prepared")
+    shutil.copytree(native["staData"]["path"], sta_target, symlinks=False)
+    if core.tree_digest(sta_target) != native["staData"]["digest"]:
+        raise core.AtcsError("identity-mismatch", "copied native STA data differs from retained input")
+    library_path = root / "xtop-library.tcl"
+    library_path.parent.mkdir(parents=True, exist_ok=True)
+    library_path.write_text(site_context["libraryTcl"], encoding="utf-8")
+    report_refs = []
+    for index, ref in enumerate(native["sourceReports"]):
+        target = root / "source-reports" / f"{index:03d}-{Path(ref['path']).name}"
+        copied = _copy_verified_file(ref["path"], target)
+        copied["path"] = _relpath(target, workspace)
+        if copied["sha256"] != ref["sha256"]:
+            raise core.AtcsError("identity-mismatch", f"copied native source report {index} changed")
+        report_refs.append(copied)
+    body = {
+        "designStateId": base["id"], "requiredScenarios": list(native["requiredScenarios"]),
+        "libraryTcl": {"path": _relpath(library_path, workspace), "sha256": core.file_sha256(library_path)},
+        "staData": {"path": _relpath(sta_target, workspace), "digest": core.tree_digest(sta_target)},
+        "libraryFiles": site_context["libraryFiles"], "siteMap": site_context["siteMap"],
+        "removableFillers": site_context["removableFillers"], "ecoParameters": site_context["ecoParameters"],
+        "constraints": list(native["constraints"]), "sourceReports": report_refs,
+        "producer": dict(native["producer"]), "sourceInputSha256": core.file_sha256(Path(native_context_path)),
+    }
+    return _paths(workspace)["xtop_context"], core.stamp("xtop-context", body)
 
 
 def _stage_baseline_inputs(workspace, manifest):
@@ -874,6 +995,8 @@ def _workspace_context_path(workspace, value, label):
 def _verified_xtop_context(workspace, design_state_id, site_profile):
     """Load and re-hash the timing/library context immediately before XTop starts."""
     workspace = Path(workspace)
+    if not (workspace / "state/method-clock.json").exists():
+        _canonical_write(workspace / "state/method-clock.json", {"startedAt": time.time()})
     context = _read_declared(_paths(workspace)["xtop_context"], "xtop-context")
     if context.get("designStateId") != design_state_id:
         raise core.AtcsError("stale-base", "XTop context is not bound to the current design state")
@@ -901,7 +1024,19 @@ def _verified_xtop_context(workspace, design_state_id, site_profile):
             path = Path(ref.get("path", ""))
             if not path.is_file() or core.file_sha256(path) != ref.get("sha256"):
                 raise core.AtcsError("identity-mismatch", f"XTop library file is missing or changed: {path}")
+    common_path = workspace / "state/common-stage.json"
+    seed = None
+    if common_path.is_file():
+        common = _read_plain(common_path)
+        if common.get("parentStateId") != design_state_id:
+            raise core.AtcsError("stale-base", "common R1 belongs to another external state")
+        seed = common["seed"]
+        seed_path = _workspace_context_path(workspace, seed["path"], "seed.path")
+        if not seed_path.is_dir() or core.tree_digest(seed_path) != seed["digest"]:
+            raise core.AtcsError("identity-mismatch", "saved common R1 bytes changed")
     verified = dict(context)
+    if seed:
+        verified["seed"] = {**seed, "path": str(seed_path)}
     verified["libraryTcl"] = {**library_ref, "path": str(library_path)}
     verified["staData"] = {**timing_ref, "path": str(timing_path)}
     return verified
@@ -1207,6 +1342,11 @@ def _cmd_prepare_workers(workspace, args):
         def_path = workspace / base_state["def"]["path"]
     xtop_context = _verified_xtop_context(workspace, base_state["id"], eda_profile)
 
+    common_path = workspace / "state/common-stage.json"
+    if common_path.is_file():
+        common = _read_plain(common_path)
+        base_state = {**base_state, "xtopSeed": {"stateId": common["stateId"],
+            "worklistId": common["worklistId"], **common["seed"]}}
     index = {}
     for slot in workspaces.TASK_IDS:
         raw = work_packages.get(slot)
@@ -1214,6 +1354,22 @@ def _cmd_prepare_workers(workspace, args):
             raise InputError("invalid-input", f"campaign plan workPackages is missing slot {slot!r}")
         validated = workspaces.validate_work_package(raw, base_state, site_capabilities)
         manifest = workspaces.prepare(validated, str(workspace), base_state)
+        # Issue #64 Task 5 fix round 1: `prepare` reuses the root of an identical package, so an
+        # earlier generation's `operate-parked` receipt is removed here; this preparation's own
+        # operate node decides afresh whether the slot runs a session.
+        stale_receipt = workspace / manifest["root"] / "parked.json"
+        if stale_receipt.is_file() or stale_receipt.is_symlink():
+            stale_receipt.unlink()
+        if workspaces.is_parked(validated):
+            # Issue #64 Task 5: a parked slot's branch still runs, as a no-op. It gets its private
+            # workspace (so its parked Contribution is bound to this revision) but no XTop session:
+            # `operate-parked` settles its operate node and `capture-contribution` seals a parked no-fix.
+            index[slot] = {
+                "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
+                "namePrefix": manifest["namePrefix"], "parked": True,
+                "workPackage": validated, "workspaceManifest": manifest,
+            }
+            continue
 
         # `manifest["root"]` is workspace-relative (`atcs.workspaces.prepare`'s own
         # convention: "workspaces/<taskId>/r<rev>/"); join it against `workspace`
@@ -1230,8 +1386,19 @@ def _cmd_prepare_workers(workspace, args):
         operator_tcl_path.parent.mkdir(parents=True, exist_ok=True)
         operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
 
+        # #66 D2: the session derives its blockers' local topology in-session (nets and their
+        # drivers and loads, one hop, nets above workspaces.LOCAL_FANOUT_MAX leaf pins left out) and
+        # records it in domain.json; a plan that gives no region gets one box per plan instance from
+        # the base DEF. The admitted package itself is unchanged (the worker request binds to it).
+        session_domain = dict(validated.get("editDomain") or {})
+        derived_regions = []
+        if not session_domain.get("regions") and def_path is not None and def_path.is_file():
+            derived_regions = adapters.def_instance_regions(def_path, list(session_domain.get("instances") or []))
+            session_domain["regions"] = derived_regions
         analysis_task = adapters.compile_xtop_analysis_manual_task(
-            manifest, validated.get("editDomain", {}), operator_tcl_path, ops_log_path,
+            manifest, session_domain, operator_tcl_path, ops_log_path,
+            target_pins=validated.get("targetPins"), max_mutations=validated["scope"]["maxMutations"],
+            observe=validated.get("observe"), local_topology=True, fanout_max=workspaces.LOCAL_FANOUT_MAX,
         )
         analysis_tcl_path = session_dir / "xtop-analysis-manual.tcl"
         analysis_tcl_path.write_text(analysis_task["tcl"], encoding="utf-8")
@@ -1240,12 +1407,154 @@ def _cmd_prepare_workers(workspace, args):
             "workPackageId": validated["id"], "manifestId": manifest["id"], "root": manifest["root"],
             "namePrefix": manifest["namePrefix"], "sessionTcl": str(analysis_tcl_path), "opsLog": str(ops_log_path),
             "sessionTclSha256": core.file_sha256(analysis_tcl_path),
+            "derivedRegions": derived_regions, "localTopology": True, "localFanoutMax": workspaces.LOCAL_FANOUT_MAX,
             # G2: the full stamped artifacts, not just their ids -- `capture-contribution
             # <slot>` composes `base_ref` from these directly, so it needs no argv path
             # of its own beyond the slot name.
             "workPackage": validated, "workspaceManifest": manifest,
         }
-    return _paths(workspace)["workers"], {"workers": index, "requiredSlots": ["w01"]}
+    # Issue #64 Task 5: every slot runs as its own fork branch, so `collect` waits for all six; a
+    # parked slot contributes its parked no-fix.
+    return _paths(workspace)["workers"], {"workers": index, "requiredSlots": list(workspaces.TASK_IDS)}
+
+
+def _cmd_worker_slots(workspace, args):
+    """Bind the Run's `workerSlots` Strategy knob for this generation's campaign plan (Issue #64 Task 5).
+
+    `bind-worker-slots` runs on every way into the plan Workshop, so the campaign-plan
+    Reader reads the knob the Run holds now: slots w01..w0<n> may be active and every
+    slot above <n> must be parked. The value is an integer from 0 to 6; 0 parks every seat,
+    the qualified full-auto control arm (#66 D8): every branch runs its batch no-op and the
+    batch runs the auto-finish alone.
+    """
+    (raw,) = args
+    if not isinstance(raw, str) or not re.fullmatch(r"[0-9]+", raw.strip()):
+        raise InputError("invalid-input", f"workerSlots must be an integer from 0 to {len(workspaces.TASK_IDS)}, got {raw!r}")
+    count = int(raw.strip())
+    if not 0 <= count <= len(workspaces.TASK_IDS):
+        raise InputError("invalid-input", f"workerSlots must be an integer from 0 to {len(workspaces.TASK_IDS)}, got {count}")
+    body = {
+        "workerSlots": count,
+        "activeSlots": list(workspaces.TASK_IDS[:count]),
+        "parkedSlots": list(workspaces.TASK_IDS[count:]),
+    }
+    return _paths(workspace)["worker_slots"], core.stamp("worker-slots", body)
+
+
+def _parked_entry(workspace, slot):
+    """`state/workers.json[slot]` for a slot argument; `(entry, parked)`."""
+    if slot not in workspaces.TASK_IDS:
+        raise InputError("invalid-input", f"slot must be one of {workspaces.TASK_IDS}, got {slot!r}")
+    workers_doc = _read_plain(_paths(workspace)["workers"])
+    entry = workers_doc.get("workers", {}).get(slot)
+    if not entry:
+        raise InputError("missing-input", f"state/workers.json has no entry for slot {slot!r}")
+    return entry, workspaces.prepared_slot_parked(entry)
+
+
+def _worker_request_problem_count(workspace, slot, entry):
+    """How many problems slot `slot`'s current worker request has, by the flow-side half of the Reader's rule.
+
+    `workspaces.request_invalid_count` against the working state, a `taskId` other than
+    the slot, and every `workspaces.PREPARED_BINDING_FIELDS` field that differs from the
+    package `prepare-workers` prepared; an envelope with no candidate object is one problem.
+    An absent or unreadable request, or working state, refuses (exit 2/3) instead: the
+    owner never skips a slot whose request could not be read.
+    It never admits what the worker-request Reader refused: the Reader also resolves the
+    names against the base netlist and refuses the read outright on a miss.
+    """
+    path = Path(workspace) / "research" / "requests" / f"worker-request-{slot}.json"
+    # Unreadable inputs refuse (InputError/AtcsError propagate): only a request that parses
+    # and then fails validation is skipped.
+    envelope = _read_plain(path)
+    working_state = _read_declared(_paths(workspace)["working_state"], "design-state")
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("candidate"), dict):
+        return 1
+    candidate = envelope["candidate"]
+    site_capabilities = envelope.get("siteCapabilities")
+    count = workspaces.request_invalid_count(candidate, working_state,
+                                             site_capabilities if isinstance(site_capabilities, dict) else {})
+    if candidate.get("taskId") != slot:
+        count += 1
+    prepared, requested = workspaces.bound_view(entry.get("workPackage")), workspaces.bound_view(candidate)
+    return count + sum(1 for field in workspaces.PREPARED_BINDING_FIELDS if prepared[field] != requested[field])
+
+
+def _reader_refusal(workspace, slot):
+    """The worker-request Reader's own current refusal of slot `slot`'s request, or ``None``.
+
+    The Reader writes ``<request>.problems.txt`` beside the request on every read: its first line
+    counts the problems (``N problem(s) in ...``, ``0 problems in ...`` when it admits the request,
+    ``... was refused before ...``). Some problems are Reader-only (#64 T06 w06: ``operatorBrief``
+    missing), so the flow-side count can call a request admissible that the Reader refused. A
+    sidecar older than the request is a verdict on earlier bytes and is ignored.
+    """
+    request = Path(workspace) / "research" / "requests" / f"worker-request-{slot}.json"
+    sidecar = request.with_name(f"worker-request-{slot}.problems.txt")
+    try:
+        if sidecar.stat().st_mtime < request.stat().st_mtime:
+            return None
+        text = sidecar.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    match = re.match(r"^(\d+) problems? in ", lines[0])
+    if match and int(match.group(1)) > 0:
+        problems = [line[2:] for line in lines[1:] if line.startswith("- ")][:int(match.group(1))]
+        return f"the Reader refused its worker request: {'; '.join(problems) or lines[0]}"
+    if " was refused before its problems could be counted" in lines[0]:
+        return f"the Reader refused its worker request: {lines[0]}"
+    return None
+
+
+def _cmd_operate_parked(workspace, args):
+    """The operate node of a slot that runs no session (Issue #64 Task 5): the xtop-operator batch path.
+
+    An active slot's operate node is its worker Team Operator's interactive XTop session.
+    This batch path opens no XTop session and writes only a stamped receipt,
+    `<slot root>/parked.json`, so the branch stays a pure act chain and its capture seals
+    a parked no-fix. It admits two slots: one `prepare-workers` parked (`why: parked`), and
+    an active slot whose worker request is inadmissible (`why: inadmissible-request`, the
+    branch holds no Judge to stop it, so the owner skips it here) by the flow-side count or by
+    the Reader's own current verdict (`_reader_refusal`, #64 T06 w06). Any other active slot is
+    refused (`slot-active`, exit 3): this path never stands in for an expert session.
+    """
+    (slot,) = args
+    if slot == "lead":
+        brief = _read_plain(Path(workspace) / "state/lead-brief.json")
+        if brief.get("control") is not True:
+            raise core.AtcsError("interactive-required", "Timing Lead must use one retained Operator session")
+        return Path(workspace) / "state/lead-operated.json", {"control": True, "session": False}
+    workspace = Path(workspace)
+    entry, parked = _parked_entry(workspace, slot)
+    if parked:
+        why, reason = "parked", entry["workPackage"]["problem"]
+    else:
+        problems = _worker_request_problem_count(workspace, slot, entry)
+        refused = _reader_refusal(workspace, slot) if problems == 0 else None
+        if problems == 0 and refused is not None:
+            # D-T06-1(a): the branch settles as an honest no-fix instead of refusing `slot-active`.
+            body = {
+                "taskId": slot, "workPackageId": entry["workPackageId"],
+                "revision": entry["workspaceManifest"]["revision"], "why": "inadmissible-request",
+                "reason": f"slot {slot} was skipped: {refused}, so no session ran",
+            }
+            return workspace / entry["root"] / "parked.json", core.stamp("parked-operate", body)
+        if problems == 0:
+            raise core.AtcsError(
+                "slot-active",
+                f"slot {slot!r} is active and its worker request is admissible: its operate node runs only as "
+                "the worker Team Operator's interactive XTop session",
+            )
+        why = "inadmissible-request"
+        reason = f"slot {slot} was skipped: its worker request has {problems} problem(s), so no session ran"
+    body = {
+        "taskId": slot, "workPackageId": entry["workPackageId"],
+        "revision": entry["workspaceManifest"]["revision"], "why": why, "reason": reason,
+    }
+    return workspace / entry["root"] / "parked.json", core.stamp("parked-operate", body)
 
 
 _NO_FIX_ADAPTER_ERROR_MARKER = "HIMA-ADAPTER-ERROR"
@@ -1289,6 +1598,94 @@ def _no_fix_diagnosis(root, dump_sha256):
     return "; ".join(parts)
 
 
+_TAINT_MARKER = "ATCS:taint:"
+
+
+def _transcript_taint(root):
+    """The slot's taint state from every ``ATCS:taint:<state>`` line in every XTop transcript.
+
+    ``atcs_close`` prints ``ATCS:taint:clean`` or ``ATCS:taint:tainted:<reason>``;
+    echoed ``xtop > `` command lines never start with the marker. Returns
+    ``None`` when no transcript holds such a line, ``"clean"`` only when every
+    such line says ``clean``, and otherwise the first non-clean state found
+    (in sorted transcript order; any non-clean line refuses, so the order
+    only picks which reason is quoted). An unreadable transcript is a
+    non-clean state.
+    """
+    states = []
+    for log_path in sorted(root.glob("xtop_log_*.txt")):
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            states.append(f"unreadable transcript {log_path.name}: {exc}")
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith(_TAINT_MARKER):
+                states.append(line[len(_TAINT_MARKER):])
+    if not states:
+        return None
+    return next((state for state in states if state != "clean"), "clean")
+
+
+def _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path, operation_trace,
+                       tainted_path):
+    """Issue #64 Task 4: seal a Task 3 expert session (`contributions.seal_session`).
+
+    Reads, beside ``ops.jsonl``: ``gain.jsonl`` (absent = no readings) and
+    ``tainted.json`` (any content, even unreadable, taints); in the slot
+    root: the XTop transcripts' ``ATCS:taint:`` line and ``eco_output/``
+    (at least one file). The Site's removable-filler master patterns and
+    the required scenarios whose rows the gain gates read come from the
+    bound ``state/xtop-context.json`` (``removableFillers``,
+    ``requiredScenarios``; none when that file is absent, so every filler
+    change then counts as an out-of-domain change and every scenario row
+    is read).
+
+    #66 D4: also beside ``ops.jsonl``, ``reads.jsonl`` (the read log; absent = none) and
+    ``domain.json`` (the session's effective domain; absent = the plan's), and from
+    ``summary.json`` the Operator's ``limitations`` (a list of strings), all sealed into the batch
+    record (`contributions.seal_session`).
+    """
+    gain_path = ops_log_path.parent / "gain.jsonl"
+    gain_text = _read_text(str(gain_path)) if gain_path.is_file() else ""
+    reads_path = ops_log_path.parent / "reads.jsonl"
+    reads_text = _read_text(str(reads_path)) if reads_path.is_file() else None
+    domain_path = ops_log_path.parent / "domain.json"
+    domain_text = _read_text(str(domain_path)) if domain_path.is_file() else None
+    tainted = None
+    if tainted_path.is_file():
+        try:
+            tainted = json.loads(tainted_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            tainted = {"reason": f"unreadable tainted.json: {exc}"}
+        if tainted is None:
+            tainted = {"reason": "tainted.json holds null"}
+    eco_output = root / "eco_output"
+    filler_patterns, required_scenarios = [], []
+    context_path = _paths(workspace)["xtop_context"]
+    if context_path.is_file():
+        context = _read_declared(context_path, "xtop-context")
+        filler_patterns = list(context.get("removableFillers") or [])
+        required_scenarios = list(context.get("requiredScenarios") or [])
+    summary = _read_json_or_default(root / "summary.json", {})
+    result_refs = {
+        "beforeDump": str(before_dump), "afterDump": str(after_dump),
+        "evidence": {
+            "taintedJson": tainted, "transcriptTaint": _transcript_taint(root),
+            "ecoOutput": eco_output.is_dir() and any(path.is_file() for path in eco_output.rglob("*")),
+        },
+        "fillerPatterns": filler_patterns, "requiredScenarios": required_scenarios,
+        "diagnosis": summary.get("diagnosis"), "domainText": domain_text,
+        "operatorLimitations": summary.get("limitations"),
+    }
+    return contributions.seal_session(base_ref, result_refs, operation_trace, gain_text, reads_text)
+
+
+_PARKED_FORBIDDEN_OUTPUTS = ("before.dump", "after.dump", "ops.jsonl", "gain.jsonl", "tainted.json", "eco_output",
+                             "summary.json")
+
+
 def _cmd_capture_contribution(workspace, args):
     """Compose `base_ref`/`result_refs` from `state/workers.json` and the slot's own workspace (G2).
 
@@ -1324,13 +1721,25 @@ def _cmd_capture_contribution(workspace, args):
       explicit `summary.json` diagnosis always wins over the deterministic
       one computed here.
 
+    Issue #64 Task 4: when ``ops.jsonl`` holds Task 3 toolkit lines (or
+    ``tainted.json`` exists beside it), the slot is sealed by
+    `_seal_xtop_session` / `contributions.seal_session` as an
+    ``xtop-session`` (or session ``no-fix``) Contribution instead; the
+    legacy typed-procedure trace and the empty/absent-trace no-fix path
+    below are unchanged.
+
+    Issue #64 Task 5: a slot that ran no session -- parked by the plan, or
+    skipped by `operate-parked` (its `<root>/parked.json` receipt) -- seals a
+    `parked` no-fix (`contributions.seal_parked`) and reads no dump; any
+    Operator output in its root refuses (`parked-slot-ran`, exit 3).
+
     Both dumps missing, or one dump missing, is `missing-input` (exit 2) as
     before, matching "no subcommand reads files that no subcommand writes":
     every one of them is written by the Operator session `prepare-workers`
     itself set up for this exact slot and root.
     """
     (slot,) = args
-    if slot not in workspaces.TASK_IDS:
+    if slot not in workspaces.OPERATOR_SLOTS:
         raise InputError("invalid-input", f"slot must be one of {workspaces.TASK_IDS}, got {slot!r}")
     workspace = Path(workspace)
     workers_doc = _read_plain(_paths(workspace)["workers"])
@@ -1352,6 +1761,35 @@ def _cmd_capture_contribution(workspace, args):
     root = Path(entry["root"])
     if not root.is_absolute():
         root = workspace / root
+    receipt_path = root / "parked.json"
+    plan_parked = workspaces.prepared_slot_parked(entry)
+    if plan_parked or receipt_path.exists():
+        # Issue #64 Task 5: this slot ran no session -- the plan parked it, or `operate-parked`
+        # skipped its inadmissible request. Any Operator output in its root means something did
+        # run there, and that is refused rather than sealed as a no-fix.
+        ran = sorted(name for name in _PARKED_FORBIDDEN_OUTPUTS if (root / name).exists())
+        ran += sorted(path.name for path in root.glob("xtop_log_*.txt"))
+        if ran:
+            raise core.AtcsError("parked-slot-ran", f"slot {slot!r} ran no session but holds Operator outputs {ran}")
+        refusal = None
+        if plan_parked:
+            reason = work_package.get("problem")
+        else:
+            receipt = _read_declared(receipt_path, "parked-operate")
+            if (receipt.get("taskId") != slot or receipt.get("workPackageId") != entry.get("workPackageId")
+                    or receipt.get("revision") != workspace_manifest.get("revision")):
+                raise core.AtcsError("stale-receipt", f"{receipt_path} belongs to another preparation of slot {slot!r}")
+            reason = receipt.get("reason")
+            # Visible at the join: the skipped active slot's result carries this refusal, so its
+            # branch's `worker-result-admissible` verdict FAILs (both outcomes still collect).
+            refusal = {"code": "inadmissible-request", "detail": reason}
+        body = contributions.seal_parked(base_ref, reason, refusal=refusal)
+        _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        if workspace_manifest.get("xtopSeed"):
+            body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+                "xtopSeed": workspace_manifest["xtopSeed"]})
+            _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        return _contribution_path(workspace, slot), body
     ops_log_path = Path(entry["opsLog"])
     if not ops_log_path.is_absolute():
         ops_log_path = workspace / ops_log_path
@@ -1361,8 +1799,22 @@ def _cmd_capture_contribution(workspace, args):
         if not required_path.is_file():
             raise InputError("missing-input", f"Operator output not found for slot {slot!r}: {label} at {required_path}")
 
+    if workspace_manifest.get("xtopSeed"):
+        common = _read_plain(workspace / "state/common-stage.json")
+        if core.digest(contributions.parse_cell_dump(before_dump.read_text())) != common.get("cellStateDigest"):
+            raise core.AtcsError("identity-mismatch", "session before.dump is not the prepared common R1")
     ops_log_exists = ops_log_path.is_file()
     operation_trace = _read_text(str(ops_log_path)) if ops_log_exists else ""
+    tainted_path = ops_log_path.parent / "tainted.json"
+    if contributions.is_session_log(operation_trace) or tainted_path.is_file():
+        body = _seal_xtop_session(workspace, root, base_ref, before_dump, after_dump, ops_log_path,
+                                  operation_trace, tainted_path)
+        _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        if workspace_manifest.get("xtopSeed"):
+            body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+                "xtopSeed": workspace_manifest["xtopSeed"]})
+            _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
+        return _contribution_path(workspace, slot), body
     ops_trace_empty = not operation_trace.strip()
     no_fix_evidence = (not ops_log_exists) or ops_trace_empty
     dump_sha256 = None
@@ -1394,6 +1846,9 @@ def _cmd_capture_contribution(workspace, args):
         "cones": summary.get("cones", []), "dependencies": summary.get("dependencies", []),
     }
     body = contributions.seal(base_ref, result_refs, operation_trace)
+    if workspace_manifest.get("xtopSeed"):
+        body = core.stamp("contribution", {**{k: v for k, v in body.items() if k not in ("schema", "id")},
+            "xtopSeed": workspace_manifest["xtopSeed"]})
     _canonical_write(workspace / "contributions" / f"{body['id']}.json", body)
     return _contribution_path(workspace, slot), body
 
@@ -1543,7 +1998,15 @@ def _cmd_compose_facts(workspace, args):
                 if existing_request.get("batchId") == plan_raw.get("batchId"):
                     plan_raw = None  # stale: this exact batch has already been prepared/replayed
     resolutions = (plan_raw or {}).get("resolutions") or []
-    body = composition.analyze(working_state["id"], collected["contributions"], resolutions)
+    # Issue #64 Task 4: blocker coverage ranks the recipe's xtop sessions -- the worst
+    # failing check per scenario and mode of the current observation, when it is this
+    # working state's own (an observation of another state names no blocker here).
+    observation = _read_json_or_default(_paths(workspace)["observation"], {})
+    observed_state = observation.get("designStateId") if isinstance(observation, dict) else None
+    endpoints = (composition.worst_check_endpoints(observation)
+                 if observed_state in (None, working_state["id"]) else {})
+    body = composition.analyze(working_state["id"], collected["contributions"], resolutions,
+                               worst_keys=sorted(endpoints), worst_endpoints=endpoints)
     return _paths(workspace)["composition_facts"], body
 
 
@@ -1566,7 +2029,10 @@ def _cmd_replay_prepare(workspace, args):
     `receipts.jsonl`". `reconcile` itself is unaffected: a step with no receipt at all
     still reports as `pending`, exactly as before.
     """
-    base_state_path, plan_path, site_profile_path = args
+    if len(args) not in (3, 4):
+        raise InputError("invalid-input", "usage: replay-prepare <workspace> <baseState> <plan> <site> [autoFinish]")
+    base_state_path, plan_path, site_profile_path = args[:3]
+    auto_finish = _auto_finish_arg(args[3]) if len(args) == 4 else None
     workspace = Path(workspace)
     facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
     collected = _read_plain(_paths(workspace)["contributions_collected"])
@@ -1577,6 +2043,8 @@ def _cmd_replay_prepare(workspace, args):
     base_state = _read_declared(base_state_path, "design-state")
     if _is_stale_base(base_state["id"], facts.get("baseStateId")):
         raise core.AtcsError("stale-base", "base design-state does not match facts.baseStateId")
+    if _is_recipe_batch(facts, plan_raw, collected):
+        return _replay_prepare_recipe(workspace, base_state, facts, collected, plan_raw, site_profile, auto_finish)
 
     validated_plan = integration.validate_plan(plan_raw, facts)
     request = integration.prepare_replay(validated_plan, facts, collected["contributions"])
@@ -1591,7 +2059,7 @@ def _cmd_replay_prepare(workspace, args):
     # authored `batchId` (`plan.batchId`, never invented by this dispatcher) has no
     # freshness guarantee of its own; replaying the same id twice would silently mix
     # one generation's raw XTop evidence into what looks like a second, distinct one.
-    if output_root.exists() and (output_root / "xtop-replay.tcl").is_file():
+    if _replay_already_ran(output_root):
         raise core.AtcsError(
             "batch-id-reused",
             f"integrations/{batch_id}/xtop-replay.tcl already exists -- batch ids must be unique, "
@@ -1617,9 +2085,9 @@ def _cmd_replay_prepare(workspace, args):
     try:
         adapters.run_tool(site_profile, ["xtop", "-f", str(main_tcl_path)], cwd=output_root, log_path=log_path)
     except adapters.AdapterToolError as exc:
-        # A step failure stops the batch (architecture Sec.8.4): later steps
-        # simply stay receipt-less (pending) -- `reconcile` reports that, it
-        # is not a `replay-prepare` refusal in its own right. I3 (final
+        # A failing step is recorded and the replay continues; a run that dies
+        # leaves its later steps receipt-less (pending) -- `reconcile` reports
+        # that, it is not a `replay-prepare` refusal in its own right. I3 (final
         # review): the failure itself is no longer swallowed -- its detail and
         # log path are recorded below, never silently discarded.
         tool_failure = {"detail": exc.detail, "log": str(exc.log_path)}
@@ -1628,6 +2096,142 @@ def _cmd_replay_prepare(workspace, args):
     if tool_failure is not None:
         receipts_body["toolFailure"] = tool_failure
     _canonical_write(_paths(workspace)["replay_receipts"], receipts_body)
+    return _paths(workspace)["replay_request"], request
+
+
+def _auto_finish_arg(value):
+    """The optional `autoFinish` knob argv (`1`/`0`, `true`/`false`); `None` keeps the plan's."""
+    text = str(value).strip().lower()
+    if text in ("1", "1.0", "true"):
+        return True
+    if text in ("0", "0.0", "false"):
+        return False
+    raise InputError("invalid-input", f"autoFinish must be 0 or 1, got {value!r}")
+
+
+def _replay_already_ran(output_root):
+    """Whether `integrations/<batchId>/` already holds a replay: a legacy step replay's
+    `xtop-replay.tcl`, or a recipe replay's merged-arm one. Only `replay-prepare` writes either."""
+    return (output_root / "xtop-replay.tcl").is_file() or (output_root / "merged" / "xtop-replay.tcl").is_file()
+
+
+def _is_recipe_batch(facts, plan_raw, collected):
+    """A batch replays Task 4b's ranked recipe (Issue #64 Task 6) when `composition-facts`
+    carries one and the plan selects no legacy `fix` Contribution (those keep the M5 step
+    replay unchanged)."""
+    if not isinstance(facts.get("recipe"), dict):
+        return False
+    selected = set(plan_raw.get("select") or []) if isinstance(plan_raw.get("select"), list) else set()
+    return not any(contribution.get("kind") == "fix" and contribution.get("id") in selected
+                   for contribution in collected.get("contributions") or [])
+
+
+def _recipe_sessions(workspace, recipe, collected, base_state_id):
+    """`{taskId: identity}` for every ranked recipe session: the slot's name prefix
+    (`state/workers.json`), its sealed Contribution (id, revision, dump delta) and the domain the
+    replay enters (#66 D6). The domain is the Contribution's ``effectiveDomain`` (the worker
+    session's sealed ``domain.json``: instances, nets, regions, targetPins); only a Contribution
+    without one falls back to the slot's admitted work package (``editDomain``, ``targetPins``).
+    ``domainSource`` names which (``effectiveDomain`` or ``workPackage``). A slot missing its
+    worker entry or Contribution is left out, so `integration.prepare_recipe_replay` refuses it
+    (`invalid-recipe`)."""
+    workers = (_read_plain(_paths(workspace)["workers"]).get("workers") or {})
+    by_id = {contribution.get("id"): contribution for contribution in collected.get("contributions") or []}
+    sessions = {}
+    for ranked in recipe.get("sessions") or []:
+        slot = ranked.get("taskId") if isinstance(ranked, dict) else None
+        contribution = by_id.get(ranked.get("contribution")) if isinstance(ranked, dict) else None
+        entry = workers.get(slot) if isinstance(slot, str) else None
+        if contribution is None or not isinstance(entry, dict) or contribution.get("taskId") != slot:
+            continue
+        if _is_stale_base(contribution.get("baseStateId"), base_state_id):
+            raise core.AtcsError("stale-base", f"recipe session {slot!r} was sealed against another base")
+        effective = contribution.get("effectiveDomain")
+        if isinstance(effective, dict):
+            source = "effectiveDomain"
+            edit_domain = {key: effective.get(key) or [] for key in ("instances", "nets", "regions")}
+            target_pins = effective.get("targetPins") or []
+        else:
+            source = "workPackage"
+            work_package = entry.get("workPackage") or {}
+            edit_domain = work_package.get("editDomain") or {}
+            target_pins = work_package.get("targetPins") or []
+        sessions[slot] = {
+            "contributionId": contribution["id"], "revision": contribution.get("revision"),
+            "namePrefix": entry.get("namePrefix"), "editDomain": edit_domain, "targetPins": target_pins,
+            "domainSource": source, "delta": contribution.get("delta"),
+        }
+    return sessions
+
+
+def _run_replay_arms(site_profile, task):
+    """Start both arms' XTop processes together and wait for both; `{arm: toolFailure|None}`.
+
+    One arm failing never stops or fails the other (a failed control arm must not fail the
+    merged arm); `reconcile` reads whatever each arm left behind.
+    """
+    def run(arm_task):
+        try:
+            adapters.run_tool(site_profile, arm_task["argv"], cwd=arm_task["root"], log_path=arm_task["logPath"])
+        except adapters.AdapterToolError as exc:
+            return {"detail": exc.detail, "log": str(exc.log_path)}
+        except Exception as exc:  # noqa: BLE001 -- any failure is this arm's evidence, never the other's
+            return {"detail": f"{type(exc).__name__}: {exc}", "log": str(arm_task["logPath"])}
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(task["arms"])) as pool:
+        futures = {arm: pool.submit(run, arm_task) for arm, arm_task in task["arms"].items()}
+        return {arm: future.result() for arm, future in futures.items()}
+
+
+def _replay_prepare_recipe(workspace, base_state, facts, collected, plan_raw, site_profile, auto_finish):
+    """Issue #64 Task 6: replay the ranked recipe as two concurrent XTop arms (merged, control).
+
+    Writes `integrations/<batchId>/{merged,control}/` (`adapters.compile_recipe_replay_task`),
+    runs both through the Site wrapper at once, and records each arm's root and any tool
+    failure in `state/replay-receipts.json` (`{"mode": "recipe", "arms": {...}}`). A tool
+    failure is evidence, not a refusal: `reconcile` decides which arm, if any, is usable.
+    """
+    plan = dict(plan_raw)
+    if auto_finish is not None:
+        plan["autoFinish"] = auto_finish
+    recipe = facts["recipe"]
+    sessions = _recipe_sessions(workspace, recipe, collected, facts.get("baseStateId"))
+    for key in ("design", "techLef", "cellLefGlob"):
+        if not site_profile.get(key):
+            raise InputError("invalid-input", f"site capabilities is missing {key!r}")
+    xtop_context = _verified_xtop_context(workspace, base_state["id"], site_profile)
+    request = integration.prepare_recipe_replay(
+        plan, facts.get("baseStateId"), recipe, sessions,
+        required_scenarios=xtop_context.get("requiredScenarios") or [],
+        removable_fillers=xtop_context.get("removableFillers") or [],
+    )
+    batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+    output_root = workspace / "integrations" / batch_id
+    if _replay_already_ran(output_root):
+        raise core.AtcsError(
+            "batch-id-reused",
+            f"integrations/{batch_id}/ already holds a replay -- batch ids must be unique, "
+            "this Pack never replays the same batch id a second time",
+        )
+    netlist_path = workspace / base_state["netlist"]["path"]
+    def_path = workspace / base_state["def"]["path"] if base_state.get("def") else None
+    task = adapters.compile_recipe_replay_task(
+        site_profile["design"], site_profile["techLef"], site_profile["cellLefGlob"],
+        str(netlist_path), str(def_path) if def_path else "", request, output_root, xtop_context,
+    )
+    for arm_task in task["arms"].values():
+        Path(arm_task["root"]).mkdir(parents=True, exist_ok=True)
+        Path(arm_task["recipePath"]).write_text(arm_task["recipeText"], encoding="utf-8")
+        Path(arm_task["autoFixPath"]).write_text(arm_task["autoFixText"], encoding="utf-8")
+        Path(arm_task["tclPath"]).write_text(arm_task["tcl"], encoding="utf-8")
+    failures = _run_replay_arms(site_profile, task)
+    arms = {}
+    for arm, arm_task in task["arms"].items():
+        arms[arm] = {"root": _relpath(arm_task["root"], workspace)}
+        if failures.get(arm) is not None:
+            arms[arm]["toolFailure"] = failures[arm]
+    _canonical_write(_paths(workspace)["replay_receipts"], {"mode": "recipe", "arms": arms})
     return _paths(workspace)["replay_request"], request
 
 
@@ -1650,6 +2254,17 @@ def _cmd_reconcile(workspace, args):
     workspace = Path(workspace)
     request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
     receipts_doc = _read_plain(_paths(workspace)["replay_receipts"])
+    if request.get("mode") == "recipe":
+        # Issue #64 Task 6: both arms are read back fresh from disk (dumps, receipts,
+        # summaries, the ECO pair and its bytes) and `reconcile_recipe` chooses.
+        batch_id = adapters.validate_path_segment(request.get("batchId"), "replay-request.batchId")
+        recorded = receipts_doc.get("arms") if isinstance(receipts_doc.get("arms"), dict) else {}
+        arms = {}
+        for arm in adapters.REPLAY_ARMS:
+            evidence = adapters.read_replay_arm(workspace / "integrations" / batch_id / arm, arm, request, workspace)
+            evidence["toolFailure"] = (recorded.get(arm) or {}).get("toolFailure")
+            arms[arm] = evidence
+        return _paths(workspace)["integration_state"], integration.reconcile_recipe(request, arms)
     collected = _read_plain(_paths(workspace)["contributions_collected"])
     workers_doc = _read_plain(_paths(workspace)["workers"])
     workers = workers_doc.get("workers", {}) or {}
@@ -1762,7 +2377,13 @@ def _cmd_presta(workspace, args):
         "predictedBaseNetlistHoldWns": predicted.get("hold", {}).get("wns"),
     })
 
-    body = verification.precheck_evidence(merge_commit, str(spef_net_names_path))
+    predictive = None
+    if merge_commit.get("eco") is not None:
+        # Issue #64 Task 6: a recipe batch's pre-check never gates it; it only states whether
+        # it is predictive -- every new net known and qualified against the base SPEF.
+        qualification = verification.presta_qualification(merge_commit.get("newNets"), spef_net_names)
+        predictive = core.is_known(qualification["count"]) and core.value_of(qualification["count"]) == 0
+    body = verification.precheck_evidence(merge_commit, str(spef_net_names_path), predictive=predictive)
     return _paths(workspace)["presta"], body
 
 
@@ -1856,12 +2477,18 @@ def _cmd_implement(workspace, args):
     workspace = Path(workspace)
     current_state = _read_declared(current_state_path, "design-state")
     site_profile = _read_plain(site_profile_path)
-    integration_state = _read_declared(_paths(workspace)["integration_state"], "integration-state")
-    request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
-    facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
-    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    if (workspace / "state/lead-final.json").is_file():
+        final = _read_plain(workspace / "state/lead-final.json")
+        merge_commit = _read_declared(_paths(workspace)["merge_commit"], "merge-commit")
+        if final.get("mergeCommitId") != merge_commit["id"]:
+            raise core.AtcsError("identity-mismatch", "lead final does not identify this merge commit")
+    else:
+        integration_state = _read_declared(_paths(workspace)["integration_state"], "integration-state")
+        request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
+        facts = _read_declared(_paths(workspace)["composition_facts"], "composition-facts")
+        collected = _read_plain(_paths(workspace)["contributions_collected"])
 
-    merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
+        merge_commit = integration.seal_batch(integration_state, request, facts, collected["contributions"])
 
     if merge_commit.get("parentStateId") != current_state.get("id"):
         raise core.AtcsError(
@@ -1881,7 +2508,8 @@ def _cmd_implement(workspace, args):
         # Crash-window recovery (final review minor, item 2): recompile the same
         # deterministic task (no side effects, never runs the tool) so the exact
         # outputs a genuine prior success would have produced can be re-verified.
-        recovery_task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+        recovery_task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root),
+                                                          eco_root=workspace)
         recovery_outputs = recovery_task["outputs"]
         outputs_verified = all(Path(path).is_file() for path in recovery_outputs.values())
         if outputs_verified:
@@ -1904,17 +2532,34 @@ def _cmd_implement(workspace, args):
     # an adopted one). Preserve that partial evidence, moved aside, rather than
     # overwriting or discarding it in place, then run this attempt into a fresh
     # `output_root`.
-    if (output_root / "eco.tcl").is_file():
+    if (output_root / "eco.tcl").is_file() or (output_root / "innovus-eco.tcl").is_file():
         attempt = 1
         while (output_root.parent / f"{merge_id}-attempt-{attempt}").exists():
             attempt += 1
         output_root.rename(output_root.parent / f"{merge_id}-attempt-{attempt}")
 
-    task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root))
+    task = adapters.compile_innovus_eco_task(merge_commit, str(current_db), design, str(output_root),
+                                             eco_root=workspace)
 
-    eco_path = Path(task["ecoPath"])
-    eco_path.parent.mkdir(parents=True, exist_ok=True)
-    eco_path.write_text(task["ecoText"], encoding="utf-8")
+    if task.get("ecoCopies"):
+        # Issue #64 Task 6: the chosen `write_design_changes -keep_route` pair, copied into
+        # this implementation only if its bytes are still exactly what the batch sealed.
+        for copy in task["ecoCopies"]:
+            source = Path(copy["from"])
+            if source.is_symlink() or not source.is_file() or core.file_sha256(source) != copy["sha256"]:
+                raise core.AtcsError(
+                    "identity-mismatch",
+                    f"ECO {copy['role']} file {source} is missing or differs from the sha256 the batch sealed",
+                )
+            target = Path(copy["to"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            if core.file_sha256(target) != copy["sha256"]:
+                raise core.AtcsError("identity-mismatch", f"ECO {copy['role']} copy {target} differs from its source")
+    else:
+        eco_path = Path(task["ecoPath"])
+        eco_path.parent.mkdir(parents=True, exist_ok=True)
+        eco_path.write_text(task["ecoText"], encoding="utf-8")
     main_tcl_path = output_root / "innovus-eco.tcl"
     main_tcl_path.write_text(task["tcl"], encoding="utf-8")
     log_path = output_root / "innovus-eco.log"
@@ -3075,8 +3720,30 @@ def _cmd_residual(workspace, args):
     observation_for_extract = dict(base_observation)
     observation_for_extract["checkDetails"] = check_details
 
-    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness)
-    return _paths(workspace)["residual_cases"], {"cases": cases, "queryNotes": notes}
+    batch_fail_reasons = _evaluated_batch_fail_reasons(workspace) if evaluation_path.is_file() else None
+    cases = residual_module.extract(evaluation, observation_for_extract, exp, readiness,
+                                    fail_reasons=batch_fail_reasons)
+    body = {"cases": cases, "queryNotes": notes}
+    if batch_fail_reasons is not None:
+        body["batchFailReasons"] = batch_fail_reasons
+    return _paths(workspace)["residual_cases"], body
+
+
+def _evaluated_batch_fail_reasons(workspace):
+    """The evaluated recipe batch's sealed post-auto-finish fail reasons, or None.
+
+    Read from `state/merge-commit.json` only when it is the candidate `state/implement.json`
+    names; ``{mergeCommitId, arm, setup?, hold?}``.
+    """
+    implement = _read_json_or_default(_paths(workspace)["implement"], {})
+    path = _paths(workspace)["merge_commit"]
+    if not implement.get("mergeCommitId") or not path.is_file():
+        return None
+    merge_commit = _read_declared(path, "merge-commit")
+    reasons = merge_commit.get("failReasons")
+    if merge_commit.get("id") != implement["mergeCommitId"] or not isinstance(reasons, dict):
+        return None
+    return {"mergeCommitId": merge_commit["id"], **reasons}
 
 
 def _cmd_apr_prepare(workspace, args):
@@ -3199,6 +3866,16 @@ def _selected_predicted_min_wns(collected, merge_commit):
     decides which pair of predicted keys that one contribution contributes
     from -- this function never re-derives that precedence itself.
     """
+    choice = merge_commit.get("choice") if isinstance(merge_commit.get("choice"), dict) else None
+    if choice is not None:
+        # Issue #64 Task 6: a recipe batch's prediction is its chosen arm's own XTop summary.
+        prediction = ((merge_commit.get("arms") or {}).get(choice.get("arm")) or {}).get("prediction") or {}
+        if "unknown" in prediction:
+            return core.unknown(f"chosen {choice.get('arm')} arm prediction unknown: {prediction['unknown']}"), "unknown"
+        values = [prediction.get(key) for key in ("worstSetupWns", "worstHoldWns")]
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+            return core.known(min(values)), "xtop"
+        return core.unknown(f"chosen {choice.get('arm')} arm has no worst setup/hold prediction"), "unknown"
     selected_ids = {entry.get("id") for entry in (merge_commit.get("contributions") or [])}
     contributions_by_id = {c.get("id"): c for c in collected.get("contributions", [])}
     per_contribution = []
@@ -3681,12 +4358,514 @@ def flow_digest(flow_dir):
     return hashlib.sha256(core.canonical(_flow_digest_entries(flow_dir))).hexdigest()
 
 
+
+# Issue #66: common native R1, six private trials, then one owner-directed integration session.
+# The external physical design-state remains the parent of the exported cumulative ECO.
+def _native_task(workspace, base, site, root, context, body, prefix):
+    root.mkdir(parents=True, exist_ok=True)
+    task = adapters.compile_xtop_operator_task(
+        {"namePrefix": prefix}, site["design"], site["techLef"], site["cellLefGlob"],
+        str(workspace / base["netlist"]["path"]), str(workspace / base["def"]["path"]), root, context)
+    path = root / "native-stage.tcl"
+    path.write_text(task["tcl"] + "\n" + body, encoding="utf-8")
+    adapters.run_tool(site, ["xtop", "-f", str(path)], cwd=root, log_path=root / "native-stage.log")
+
+
+def _native_analysis_tcl(directory, summary_top_n=10000, detail_top_n=1000):
+    return f"""
+file mkdir "{adapters.tcl_quote(str(directory))}"
+foreach check {{setup hold}} {{
+    redirect -file [file join "{adapters.tcl_quote(str(directory))}" "$check.rpt"] [list summarize_gba_violations -exclude_path -$check -with_distribution -with_top_n {int(summary_top_n)}]
+    analyze_${{check}}_path_violations -top {int(detail_top_n)} -detail_info -output_dir "{adapters.tcl_quote(str(directory))}" -prefix $check
+    set endpoints {{}}
+    foreach_in_collection pin [get_${{check}}_gba_violated_pins -exclude_path -endpoint_only] {{
+        lappend endpoints [get_attribute $pin full_name]
+    }}
+    set fh [open [file join "{adapters.tcl_quote(str(directory))}" "$check-endpoints.json"] w]
+    puts $fh [atcs_jarr [lsort -unique $endpoints]]
+    close $fh
+}}
+"""
+
+
+def _eco_pair(workspace, root, prefix):
+    pair = {}
+    for role in ("netlist", "physical"):
+        files = list(root.glob(f"{prefix}_{role}_*.txt"))
+        if len(files) != 1 or not files[0].is_file():
+            raise core.AtcsError("missing-input", f"final ECO needs exactly one {role} script in {root}")
+        pair[role] = {"path": _relpath(files[0], workspace), "sha256": core.file_sha256(files[0])}
+    return pair
+
+
+def _native_measurements(workspace, report_dir):
+    """Actual native summarize reports as fixed setup/hold metrics plus hashed raw refs."""
+    result = {}
+    for mode in ("setup", "hold"):
+        path = Path(report_dir) / f"{mode}.rpt"
+        text = path.read_text(encoding="utf-8")
+        section = contributions.parse_gain_summary(text).get(mode)
+        total = (section or {}).get("total") or {}
+        if not all(key in total for key in ("worst", "tns", "count")):
+            raise core.AtcsError("native-result-unreadable", f"{path} has no readable native {mode} total WNS/TNS/count")
+        result[mode] = {
+            "wnsNs": total["worst"], "tnsNs": total["tns"], "violations": total["count"],
+            "report": {"path": _relpath(path, workspace), "sha256": core.file_sha256(path)},
+        }
+    return result
+
+
+def _resident_input_identity(workspace, common):
+    baseline = _read_declared(_paths(workspace)["baseline"], "design-state")
+    context = _read_declared(_paths(workspace)["xtop_context"], "xtop-context")
+    return {
+        "baselineStateId": baseline["id"], "nativeContextId": context["id"],
+        "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+    }
+
+
+def _cmd_common_autofix(workspace, args):
+    site_path, *rest = args
+    summary_top_n, detail_top_n = 10000, 1000
+    if rest:
+        try:
+            summary_top_n = detail_top_n = int(rest[0])
+        except (TypeError, ValueError) as exc:
+            raise InputError("invalid-input", "native report path breadth must be an integer") from exc
+        if not 1000 <= detail_top_n <= 100000:
+            raise InputError("invalid-input", "native report path breadth must be 1000..100000")
+    workspace = Path(workspace)
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    output = workspace / "state/common-stage.json"
+    if output.exists():
+        _verified_xtop_context(workspace, base["id"], site)
+        return output, _read_plain(output)  # safe retry never runs the initial fix twice
+    root = workspace / "research/observe/common-r1"
+    if root.exists():
+        raise core.AtcsError("incomplete-common-stage", "common R1 started without its completion record; inspect its native log before retry")
+    context = _verified_xtop_context(workspace, base["id"], site)
+    clock_path = workspace / "state/method-clock.json"
+    clock = _read_json_or_default(clock_path, {"startedAt": time.time()})
+    # This Pack's default and matched experiment are 120 min; the Runtime's frozen budget remains
+    # the hard fence. Reserve the same 30 min for implementation/referee in both arms.
+    clock.setdefault("experimentDeadline", clock["startedAt"] + 90 * 60)
+    _canonical_write(clock_path, clock)
+    before, residual = root / "initial-analysis", root / "residual-analysis"
+    fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+    body = (_native_analysis_tcl(before, summary_top_n, detail_top_n) + "\n".join(fixes)
+            + "\n" + _native_analysis_tcl(residual, summary_top_n, detail_top_n))
+    body += f"""
+atcs_write_cell_dump "{adapters.tcl_quote(str(root / 'r1.dump'))}"
+file mkdir "{adapters.tcl_quote(str(root / 'eco'))}"
+write_design_changes -format INNOVUS -eco_file_prefix atcs_common -output_dir "{adapters.tcl_quote(str(root / 'eco'))}" -keep_route
+save_workspace -as "{adapters.tcl_quote(str(root / 'r1-workspace'))}"
+exit 0
+"""
+    _native_task(workspace, base, site, root, context, body, "atcs_common_auto_")
+    eco = _eco_pair(workspace, root / "eco", "atcs_common")
+    summaries = {check: (residual / f"{check}.rpt").read_text() for check in ("setup", "hold")}
+    endpoints = {check: _read_plain(residual / f"{check}-endpoints.json") for check in ("setup", "hold")}
+    prior_checks = _read_json_or_default(_paths(workspace)["observation"], {}).get("checks") or {}
+    native_checks = {}
+    for mode, text in summaries.items():
+        for scenario, endpoint, slack in contributions._top_n_rows(text).get(mode) or []:
+            key = core.check_key(scenario, mode, endpoint)
+            native_checks[key] = {"endpoint": endpoint, "slack": core.known(slack),
+                "startpoint": (prior_checks.get(key) or {}).get("startpoint"),
+                "startpointSource": "external R0 PrimeTime context; verify in native R1 before mutation"}
+
+    # Semantic identities compare independently-produced R1s. Raw saved-workspace hashes remain
+    # arm-specific: XTop metadata can contain paths/times. Include physical ECO, not only cell masters.
+    semantic_eco = {role: [line.strip() for line in (workspace / ref["path"]).read_text()
+        .replace(str(workspace), "${WORKSPACE}").splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        for role, ref in eco.items()}
+    if any(endpoints.values()) and not native_checks:
+        raise core.AtcsError("native-residual-unreadable", "XTop reports violated endpoints but no native endpoint/slack rows could be parsed; retain residual-analysis/*.rpt")
+    state_id = core.digest({"parent": base["id"], "cells": contributions.parse_cell_dump((root / "r1.dump").read_text()), "eco": semantic_eco})
+    worklist_id = core.digest({"checks": {k: {"endpoint": v["endpoint"], "slack": v["slack"]} for k, v in native_checks.items()}, "endpoints": endpoints})
+    seed_path = root / "r1-workspace"
+    if not seed_path.is_dir():
+        raise core.AtcsError("missing-input", "XTop did not save the common R1 workspace")
+    return output, {"parentStateId": base["id"], "stateId": state_id, "worklistId": worklist_id,
+        "seed": {"path": _relpath(seed_path, workspace), "digest": core.tree_digest(seed_path)},
+        "summaries": summaries, "endpoints": endpoints, "nativeChecks": native_checks, "eco": eco,
+        "analysisBoard": _relpath(residual, workspace), "analysisTopPaths": detail_top_n,
+        "cellStateDigest": core.digest(contributions.parse_cell_dump((root / "r1.dump").read_text())),
+        "autoFixCommands": fixes, "startedAt": clock["startedAt"], "completedAt": time.time(),
+        "experimentDeadline": clock["experimentDeadline"], "predictionOnly": True}
+
+
+def _cmd_resident_common_autofix(workspace, args):
+    """The existing native analysis/common R1 without the legacy matched-deadline assumption."""
+    path, body = _cmd_common_autofix(workspace, args)
+    if body.get("schema") == "atcs.common-stage/1":
+        _read_declared(path, "common-stage")
+        return path, body
+    body = dict(body)
+    body.pop("experimentDeadline", None)
+    root = Path(workspace) / "research" / "observe" / "common-r1"
+    body["measurements"] = {
+        "before": _native_measurements(workspace, root / "initial-analysis"),
+        "after": _native_measurements(workspace, root / "residual-analysis"),
+    }
+    body["nativeLog"] = {
+        "path": _relpath(root / "native-stage.log", workspace),
+        "sha256": core.file_sha256(root / "native-stage.log"),
+    }
+    return path, core.stamp("common-stage", body)
+
+
+def _cmd_auto_fix_reference(workspace, args):
+    """Historical/external evaluation helper only; absent from the production Pack graph/tools.
+
+    Preserved for independent serial-reference tests and previously recorded method compatibility.
+    Ordinary AutoFix repair primitives remain available to the resident engineer.
+    """
+    if len(args) != 3:
+        raise InputError("missing-input", "auto-fix-reference needs Site and the Run's setup/hold Goal targets")
+    site_path, setup_target_raw, hold_target_raw = args
+    try:
+        setup_target, hold_target = float(setup_target_raw), float(hold_target_raw)
+    except (TypeError, ValueError) as exc:
+        raise InputError("invalid-input", "auto-fix-reference Goal targets must be numeric") from exc
+    if not all(math.isfinite(value) for value in (setup_target, hold_target)):
+        raise InputError("invalid-input", "auto-fix-reference Goal targets must be finite")
+    workspace = Path(workspace)
+    output = workspace / "state" / "autofix-reference.json"
+    common = _read_declared(workspace / "state" / "common-stage.json", "common-stage")
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    context = _verified_xtop_context(workspace, base["id"], site)
+    seed = context.get("seed") or {}
+    expected_seed = common.get("seed") or {}
+    expected_seed_path = (workspace / expected_seed.get("path", "")).resolve()
+    if (Path(seed.get("path", "")).resolve(), seed.get("digest")) != (
+            expected_seed_path, expected_seed.get("digest")):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix is not bound to the verified common R1 seed")
+    if output.is_file():
+        existing = _read_declared(output, "autofix-reference")
+        if existing.get("inputIdentity") != _resident_input_identity(workspace, common):
+            raise core.AtcsError("stale-base", "ordinary AutoFix reference belongs to another input/R1")
+        return output, existing
+    root = workspace / "research" / "control" / "autofix-reference"
+    if root.exists():
+        raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix started without a sealed result; inspect its native trace")
+    before = root / "before"
+    fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+    top_n = int(common.get("analysisTopPaths", 10000))
+    body = _native_analysis_tcl(before, top_n, top_n)
+    body += f"\nset ::ATCS_REFERENCE_SETUP_TARGET {{{setup_target}}}\n"
+    body += f"set ::ATCS_REFERENCE_HOLD_TARGET {{{hold_target}}}\n"
+    body += "set fixes [list " + " ".join('"' + adapters.tcl_quote(command) + '"' for command in fixes) + "]\n"
+    body += adapters.load_template("xtop-autofix-reference.tcl")
+    body += "\nexit 0\n"
+    _native_task(workspace, base, site, root, context, body, "atcs_autofix_reference_")
+    loaded_dump = root / "loaded-r1.dump"
+    if not loaded_dump.is_file():
+        raise core.AtcsError("missing-input", "ordinary AutoFix did not capture its loaded common R1 state")
+    loaded_cells = contributions.parse_cell_dump(loaded_dump.read_text(encoding="utf-8"))
+    loaded_cell_digest = core.digest(loaded_cells)
+    if loaded_cell_digest != common.get("cellStateDigest"):
+        raise core.AtcsError(
+            "identity-mismatch", "ordinary AutoFix loaded state differs from common R1 cell-state identity")
+    terminal = _read_plain(root / "control-result.json")
+    if terminal.get("complete") is not True or terminal.get("stopped") not in (
+            "goal", "no-improvement", "oscillation", "regression", "mixed-no-improvement"):
+        raise core.AtcsError("incomplete-autofix-reference", "ordinary AutoFix has no honest terminal reason")
+    best = root / "best"
+    eco = _eco_pair(workspace, best / "eco", "atcs_autofix_reference")
+    checkpoint = best / "workspace"
+    if not checkpoint.is_dir():
+        raise core.AtcsError("missing-input", "ordinary AutoFix did not export its selected workspace")
+    before_measurements = _native_measurements(workspace, before)
+    best_measurements = _native_measurements(workspace, best)
+    compact = lambda measured: {mode: {key: measured[mode][key] for key in ("violations", "wnsNs", "tnsNs")}
+                                for mode in ("setup", "hold")}
+    if terminal.get("initialMetrics") != compact(before_measurements):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix initial metrics differ from its same-R1 before reports")
+    if terminal.get("bestMetrics") != compact(best_measurements):
+        raise core.AtcsError("identity-mismatch", "ordinary AutoFix selected metrics differ from its retained best reports")
+    result = {
+        "inputIdentity": _resident_input_identity(workspace, common),
+        "loadedR1": {
+            "cellStateDigest": loaded_cell_digest,
+            "dump": {"path": _relpath(loaded_dump, workspace), "sha256": core.file_sha256(loaded_dump)},
+            "seed": {"path": expected_seed["path"], "digest": expected_seed["digest"]},
+        },
+        "goal": {"setupWnsNs": setup_target, "holdWnsNs": hold_target},
+        "measurements": {"before": before_measurements, "after": best_measurements},
+        "artifacts": {
+            "logicalEco": eco["netlist"], "physicalEco": eco["physical"],
+            "checkpoint": {"path": _relpath(checkpoint, workspace), "digest": core.tree_digest(checkpoint)},
+            "nativeTrace": {"path": _relpath(root / "native-stage.log", workspace),
+                            "sha256": core.file_sha256(root / "native-stage.log")},
+        },
+        "autoFixCommands": fixes, "stopReason": terminal["stopped"], "bestRound": terminal.get("bestRound"),
+        "rounds": terminal.get("rounds") or [],
+        "predictionOnly": True,
+    }
+    return output, core.stamp("autofix-reference", result)
+
+
+def _cmd_engineering_result(workspace, args):
+    """Normal-work fallback: never fabricate the outsourced result; only preserve an existing one."""
+    target_setup, target_hold = args
+    for name, value in (("target setup", target_setup), ("target hold", target_hold)):
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError) as exc:
+            raise InputError("invalid-input", f"{name} must be numeric") from exc
+        if parsed != 0.0:
+            raise InputError("invalid-input", f"{name} must be 0.0 for current native evidence")
+    path = Path(workspace) / "state" / "engineering-result.json"
+    if not path.is_file():
+        raise core.AtcsError("engineering-required", "fix-timing requires resident delivery; no result exists to validate")
+    result = _read_plain(path)
+    if result.get("schema") != "atcs.engineering-result/1":
+        raise core.AtcsError("invalid-input", "engineering result has the wrong schema")
+    return path, result
+
+
+def _lead_native_pins(workspace, targets):
+    """Keep native pin endpoints; resolve ports through the Pack's existing Reader authority."""
+    pins = {target.split("|", 2)[2] for target in targets}
+    ports = sorted(pin for pin in pins if "/" not in pin)
+    if not ports:
+        return pins, []
+    reader_path = _FLOW_DIR.parent / "tools/read-atcs.py"
+    if not reader_path.is_file():
+        reader_path = Path(workspace) / "hima-readers/atcs-readiness/read-atcs.py"
+    if not reader_path.is_file():
+        raise core.AtcsError("missing-input", "prepare-lead needs the installed atcs-readiness Reader to resolve native ports")
+    spec = importlib.util.spec_from_file_location("atcs_lead_reader", reader_path)
+    reader = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reader)
+    answer = reader.resolve_endpoints(workspace, ports)
+    resolved = {row["endpoint"]: row for row in answer["resolved"]}
+    unresolved = {row["endpoint"]: row["unresolved"] for row in answer["unresolved"]}
+    modules = reader._netlist_index_cache[str(reader._safe_join(workspace, answer["netlist"]["path"], "design-state.netlist"))]
+    drivers = []
+    for port in ports:
+        row, reason = resolved.get(port), unresolved.get(port)
+        if row is None and "primary port" in (reason or ""):
+            row, reason = reader._net_driver(modules, answer["top"], reader._endpoint_part(port), [])
+        if row is None or not row.get("pin"):
+            raise core.AtcsError("invalid-work-package", f"native endpoint {port!r} needs a driving cell/output pin: {reason}")
+        pins.remove(port)
+        pins.add(f"{row['instance']}/{row['pin']}")
+        drivers.append(row["instance"])
+    return pins, drivers
+
+
+def _cmd_prepare_lead(workspace, args):
+    (site_path,) = args
+    workspace = Path(workspace)
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    site = _read_plain(site_path)
+    context = _verified_xtop_context(workspace, base["id"], site)
+    common = _read_plain(workspace / "state/common-stage.json")
+    ready = workspace / "state/lead-brief.json"
+    if ready.is_file():
+        brief = _read_plain(ready)
+        if (brief.get("commonStateId"), brief.get("worklistId")) != (common["stateId"], common["worklistId"]):
+            raise core.AtcsError("stale-base", "prepared lead belongs to another R1")
+        return ready, brief
+    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    plan = _read_admitted_plan(workspace / "research/requests/integration-plan.json")
+    if not isinstance(plan, dict) or plan.get("baseStateId") != base["id"]:
+        raise core.AtcsError("stale-base", "Timing Lead briefing belongs to another external state")
+    report = workspace / "research/fix-strategy-risk.md"
+    if not report.is_file() or not report.read_text().strip():
+        raise core.AtcsError("missing-input", "plan must write one concise research/fix-strategy-risk.md")
+    facts = composition.analyze(base["id"], collected["contributions"], resolutions=plan.get("resolutions") or [])
+    recipe = facts.get("recipe") or {"sessions": [], "excluded": []}
+    if isinstance(plan.get("select"), list):
+        order = {cid: index for index, cid in enumerate(plan["select"])}
+        recipe = {**recipe, "sessions": sorted(recipe["sessions"], key=lambda r: order.get(r["contribution"], len(order)))}
+    sessions = _recipe_sessions(workspace, recipe, collected, base["id"])
+    request = integration.prepare_recipe_replay({**plan, "autoFinish": False}, base["id"], recipe, sessions,
+        required_scenarios=context["requiredScenarios"], removable_fillers=context["removableFillers"])
+    _canonical_write(_paths(workspace)["composition_facts"], facts)
+    _canonical_write(_paths(workspace)["replay_request"], request)
+    slot_policy = _read_plain(_paths(workspace)["worker_slots"])
+    control = slot_policy["workerSlots"] == 0
+    brief = {"control": control, "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+        "strategyRisk": {"path": _relpath(report, workspace), "sha256": core.file_sha256(report)},
+        "planSha256": core.file_sha256(workspace / "research/requests/integration-plan.json"),
+        "contributions": [c["id"] for c in collected["contributions"]], "replayRequestId": request["id"],
+        "experimentDeadline": common["experimentDeadline"], "finalAutoFinish": False}
+    if control:
+        root = workspace / "integrations" / adapters.validate_path_segment(plan["batchId"], "batchId") / "control"
+        if root.exists():
+            raise core.AtcsError("write-once", "strong control already started; inspect it rather than repeat effects")
+        commands = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+        body = f"set deadline {int(common['experimentDeadline'])}\nset fixes [list " + " ".join('"' + adapters.tcl_quote(c) + '"' for c in commands) + "]\n"
+        body += adapters.load_template("xtop-repeat-control.tcl")
+        _native_task(workspace, base, site, root, context, body, "atcs_control_auto_")
+        brief["controlRoot"] = _relpath(root, workspace)
+        brief["eco"] = _eco_pair(workspace, root / "eco_output", "atcs_control_auto_eco")
+    else:
+        workers = _read_plain(_paths(workspace)["workers"])
+        active = [e["workPackage"] for e in workers["workers"].values() if not workspaces.is_parked(e["workPackage"])]
+        if not active:
+            raise core.AtcsError("missing-input", "treatment has no active work packages for lead scope")
+        # The retained lead fixes the common residual, including paths no trial
+        # seat covered. These are native R1 checks, not model-supplied scope.
+        native_targets = set(common.get("nativeChecks") or [])
+        native_pins, native_drivers = _lead_native_pins(workspace, native_targets)
+        package = {k: v for k, v in active[0].items() if k not in ("schema", "id")}
+        package.update(taskId="lead", problem="Owner-directed integration and additional residual ECO",
+            targets=sorted(native_targets | {t for p in active for t in p["targets"]}),
+            targetPins=sorted(native_pins | {t for p in active for t in p.get("targetPins") or []}),
+            scope={"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS})
+        domains = [p["editDomain"] for p in active] + [{"instances": native_drivers}]
+        dropped = {"instances": [], "nets": []}
+        for contribution in collected["contributions"]:
+            effective = contribution.get("effectiveDomain")
+            if not isinstance(effective, dict):
+                continue
+            domain = {"regions": effective.get("regions") or []}
+            for key in ("instances", "nets"):
+                # Same literal-name boundary as recipe replay. Keep the raw sealed native
+                # evidence intact; omit unsupported derived targets, never broaden authority.
+                domain[key], omitted = integration._derived_names(effective.get(key) or [], f"lead effectiveDomain.{key}")
+                dropped[key].extend(omitted)
+            domains.append(domain)
+        brief["derivedDomainDropped"] = {key: sorted(set(names)) for key, names in dropped.items()}
+        package["editDomain"] = {key: list(dict.fromkeys(value for d in domains for value in d.get(key) or []))
+                                  for key in ("instances", "nets")}
+        package["editDomain"]["regions"] = [list(box) for box in dict.fromkeys(tuple(box) for d in domains for box in d.get("regions") or [])]
+        package = workspaces.validate_work_package(package, base, site)
+        seeded_base = {**base, "xtopSeed": {"stateId": common["stateId"], "worklistId": common["worklistId"], **common["seed"]}}
+        manifest = workspaces.prepare(package, workspace, seeded_base)
+        root = workspace / manifest["root"]
+        task = adapters.compile_xtop_operator_task(manifest, site["design"], site["techLef"], site["cellLefGlob"],
+            str(workspace / base["netlist"]["path"]), str(workspace / base["def"]["path"]), root, context)
+        operator_path = root / "operator.tcl"
+        operator_path.write_text(task["tcl"])
+        analysis = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"], operator_path,
+            root / "ops.jsonl", target_pins=package["targetPins"], max_mutations=package["scope"]["maxMutations"],
+            observe="fast", local_topology=True)
+        replay = adapters.load_template("xtop-replay.tcl").split('\natcs_write_cell_dump [file join $env(DUMP_DIR) 000.dump]')[0]
+        replay_env = {"RECIPE_TCL": str(root / "recipe.tcl"), "AUTO_FIX_TCL": str(root / "auto-fix.tcl"),
+            "AUTO_PREFIX": manifest["namePrefix"], "RECEIPTS_LOG": str(root / "receipts.jsonl"),
+            "DUMP_DIR": str(root / "dumps"), "PREDICT_DIR": str(root / "predict"),
+            "ARM_RESULT": str(root / "arm-result.json"), "FAIL_REASON_TOP_N": "20"}
+        (root / "recipe.tcl").write_text(adapters._recipe_tcl(request))
+        (root / "auto-fix.tcl").write_text("")
+        startup = analysis["tcl"] + '\natcs_dump_cells before.dump\n' + adapters.env_preamble(replay_env)
+        startup += '\nset ::ATCS_ARM merged\n' + replay
+        replay_budget = sum(1 for step in request["steps"] if step.get("skip") is None and step.get("tcl"))
+        startup += f"\nset ::ATCS_MAX_MUTATIONS {workspaces.SCOPE_MAX_MUTATIONS + replay_budget}\n"
+        # Retain the lead's union domain. Replay temporarily enters each Contribution's domain;
+        # restore it afterwards without opening another XTop process or running AutoFinish.
+        startup += """
+set lead_domain [list $::EDIT_DOMAIN_INSTANCES $::EDIT_DOMAIN_NETS $::EDIT_DOMAIN_PINS $::EDIT_DOMAIN_REGIONS]
+source $env(RECIPE_TCL)
+lassign $lead_domain ::EDIT_DOMAIN_INSTANCES ::EDIT_DOMAIN_NETS ::EDIT_DOMAIN_PINS ::EDIT_DOMAIN_REGIONS
+set ::EDIT_DOMAIN_LOCAL 1
+set ::env(NAME_PREFIX) $env(AUTO_PREFIX)
+set_parameter eco_new_object_prefix "$env(NAME_PREFIX)eco"
+set ::atcs_plan_sha256 ""
+# Bootstrap replay belongs to the sealed Contributions, not the lead child's own mutation allowance.
+# Sequence/undo stack and logs stay intact; Host independently counts the lead's interactive sends.
+set ::atcs_mutations 0
+set ::ATCS_MAX_MUTATIONS 600
+set ::atcs_session_instances [atcs_replay_protected]
+set ::atcs_session_nets {}
+foreach seq $::atcs_kept {
+    if {[dict exists $::atcs_op($seq) nets]} {
+        set ::atcs_session_nets [lsort -unique [concat $::atcs_session_nets [dict get $::atcs_op($seq) nets]]]
+    }
+}
+atcs_ref
+puts "ATCS:lead:replay-complete:$::atcs_replay_applied applied, $::atcs_replay_skipped skipped; owner-directed manual ECO next"
+"""
+        manual_path = root / "xtop-analysis-manual.tcl"
+        manual_path.write_text(startup)
+        workers["workers"]["lead"] = {"workPackageId": package["id"], "manifestId": manifest["id"],
+            "root": manifest["root"], "namePrefix": manifest["namePrefix"], "workPackage": package,
+            "workspaceManifest": manifest, "sessionTcl": str(manual_path), "opsLog": str(root / "ops.jsonl"),
+            "sessionTclSha256": core.file_sha256(manual_path),
+            "preparedReplay": {name: core.file_sha256(root / name) for name in ("recipe.tcl", "auto-fix.tcl")}}
+        _canonical_write(_paths(workspace)["workers"], workers)
+        brief["leadRoot"] = manifest["root"]
+        brief["namePrefix"] = manifest["namePrefix"]
+        brief["scope"] = package["scope"]
+        brief["targetPins"] = package["targetPins"]
+    return workspace / "state/lead-brief.json", brief
+
+
+def _cmd_finalize_lead(workspace, args):
+    del args
+    workspace = Path(workspace)
+    brief = _read_plain(workspace / "state/lead-brief.json")
+    base = _read_declared(_paths(workspace)["working_state"], "design-state")
+    request = _read_declared(_paths(workspace)["replay_request"], "replay-request")
+    common = _read_plain(workspace / "state/common-stage.json")
+    collected = _read_plain(_paths(workspace)["contributions_collected"])
+    credited, replay_results, lead_contribution = [], [], None
+    if brief["control"]:
+        eco = brief["eco"]
+        root = workspace / brief["controlRoot"]
+        terminal = _read_plain(root / "control-result.json")
+        if terminal.get("complete") is not True:
+            raise core.AtcsError("incomplete-control", "strong control did not export a complete final result")
+    else:
+        root = workspace / brief["leadRoot"]
+        path, lead_contribution = _cmd_capture_contribution(workspace, ["lead"])
+        _canonical_write(path, lead_contribution)
+        if not lead_contribution.get("admissible"):
+            raise core.AtcsError("unsafe-lead", str(lead_contribution.get("refusals")))
+        eco = _eco_pair(workspace, root / "eco_output", _read_plain(_paths(workspace)["workers"])["workers"]["lead"]["namePrefix"] + "eco")
+        kept_commands = lead_contribution.get("commands") or []
+        kept = {command["seq"] for command in kept_commands}
+        receipts_path = root / "receipts.jsonl"
+        replay_results = [json.loads(line) for line in receipts_path.read_text().splitlines() if line.strip()] if receipts_path.is_file() else []
+        for receipt in replay_results:
+            command = next((c for c in kept_commands if c["seq"] == receipt.get("seq")), None)
+            overwritten = bool(command and any(set(command.get("instances") or []) & set(c.get("instances") or [])
+                for c in kept_commands if c["seq"] > command["seq"]))
+            receipt["survives"] = receipt.get("status") == "applied" and receipt.get("seq") in kept and not overwritten
+        credited_slots = {r["slot"] for r in replay_results if r["survives"]}
+        credited = [{"id": c["id"], "revision": c.get("revision")} for c in collected["contributions"] if c["taskId"] in credited_slots]
+        credited.append({"id": lead_contribution["id"], "revision": lead_contribution["revision"]})
+    for ref in eco.values():
+        if core.file_sha256(workspace / ref["path"]) != ref["sha256"]:
+            raise core.AtcsError("identity-mismatch", "final Timing Lead ECO changed before sealing")
+    body = {"parentStateId": base["id"], "batchId": request["batchId"], "contributions": credited,
+        "operations": [], "innovusEcoTcl": "", "sourceMap": {}, "newNets": None,
+        "newNetsUnknown": "cumulative native ECO; final Innovus connectivity is authoritative", "eco": eco,
+        "commonStateId": common["stateId"], "worklistId": common["worklistId"],
+        "choice": {"arm": "control" if brief["control"] else "merged", "reason": "Owner final candidate; direct physical referee"},
+        "autoFinish": False, "replayResults": replay_results,
+        "leadContributionId": lead_contribution["id"] if lead_contribution else None,
+        "integratorAuthoredCommands": [c["seq"] for c in (lead_contribution or {}).get("commands") or []
+            if c["seq"] not in {r.get("seq") for r in replay_results}],
+        "manualValue": "unmeasured", "manualValueReason": "compare fresh matched refreshed referees"}
+    merge = core.stamp("merge-commit", body)
+    _canonical_write(_paths(workspace)["merge_commit"], merge)
+    return workspace / "state/lead-final.json", {"mergeCommitId": merge["id"], "eco": eco,
+        "control": brief["control"], "finalAutoFinish": False, "finalizedAt": time.time()}
+
+
 SUBCOMMANDS = {
+    "common-autofix": _cmd_common_autofix,
+    "resident-common-autofix": _cmd_resident_common_autofix,
+    "auto-fix-reference": _cmd_auto_fix_reference,
+    "engineering-result": _cmd_engineering_result,
+    "prepare-lead": _cmd_prepare_lead,
+    "finalize-lead": _cmd_finalize_lead,
     "bind-inputs": _cmd_bind_inputs,
+    "bind-resident-inputs": _cmd_bind_resident_inputs,
+    "prepare-native-context": _cmd_prepare_native_context,
     "baseline": _cmd_baseline,
     "observe": _cmd_observe,
     "risk": _cmd_risk,
     "prepare-workers": _cmd_prepare_workers,
+    "worker-slots": _cmd_worker_slots,
+    "operate-parked": _cmd_operate_parked,
     "capture-contribution": _cmd_capture_contribution,
     "collect": _cmd_collect,
     "compose-facts": _cmd_compose_facts,

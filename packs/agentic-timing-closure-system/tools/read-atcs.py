@@ -11,8 +11,9 @@ reader's own `argv` (see `readers/*.yml`) is::
 so this script's own `sys.argv` is
 ``[read-atcs.py, <kind>, <report path>, <out path>, <workspace path>, <extra...>]``
 — `<kind>` selects which artifact shape below is read; a worker-slot reader
-appends one literal `w01`/`w02`/`w03` as `<extra[0]>` to cross-check the
-artifact's own `taskId` against the slot the reader declaration is bound to.
+appends one literal slot `w01`..`w06` as `<extra[0]>` to cross-check the
+artifact's own `taskId` against the slot the reader declaration is bound to
+(any other slot is refused).
 
 Harness contract (`.superpowers/sdd/pack-mechanics.md` §1.13,
 `packages/harness/src/semantics.ts:319-353` `validateReading`): this script
@@ -49,18 +50,6 @@ mismatch. Any exception raised by any handler aborts `main()` before the
 `<out>` file is ever written — a fail-closed reader never leaves a stale or
 partial reading behind (see `main()`).
 
-Itemized problems (Issue #63): a request-shaped kind (a document a Workshop's
-model wrote: observation request, campaign plan, work package / worker
-request, integration plan, next-decision) is read by one function returning
-`(values, problems)`, and its `tc_request_invalid_count` is `len(problems)`.
-`main()` writes that list beside the document as `<document>.problems.txt`
-(or, when the document is refused outright, the refusal's reason) — the one
-file this script writes besides `<out>`. Each producing Workshop declares it
-as the readable output `<output>Problems` (`contract.yml`), so the owner
-revising a refused document reads every problem, not only a count. This
-script cannot share that list with Workshop code any other way: it is shipped
-alone into `hima-readers/<id>/`, and a Workshop sees only the `flow/` copy.
-
 Cross-artifact references some of this Pack's artifacts carry
 (`work-package.baseStateId`, `integration-plan` against its `composition-
 facts`, `acceptance-record` against its `refresh-ledger`) are not resolved
@@ -79,10 +68,17 @@ companion. `precheck-evidence` needs **no** envelope at all as of this
 task's review round: `atcs.verification.precheck_evidence` now stamps it as
 a real artifact this script reads and identity-checks directly, exactly
 like `evaluation` or `composition-facts`.
+
+Itemized problems (Issue #64 Track B): for a request kind (`observation-request`,
+`campaign-plan`, `worker-request`, `integration-plan`, `next-decision`) `main()` also
+writes `<document>.problems.txt` beside the REPORT -- one line per counted problem, the
+same list `problems()` returns -- before OUT, or the refusal reason when the document is
+refused outright. It is the one file besides OUT this script writes.
 """
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import math
 import os
@@ -112,10 +108,15 @@ from pathlib import Path
 #
 #   work-package           {"candidate": {...unstamped work-package fields...},
 #   worker-request          "baseState": {...a stamped "design-state" artifact...},
-#                            "siteCapabilities": {"pgVerification": bool, ...}}
+#                            "siteCapabilities": {"pgVerification": bool, ...}
+#                            [, "sessionPlan": ...]}
+#                           (Issue #64 Task 4: the candidate carries the expert Operator's
+#                            `scope`, `targetPins`, optional `observe` and `editDomain.regions`;
+#                            the worker Team's Reviewer approves a scope from it, so there is no
+#                            top-level `actions` list any more.)
 #
-#   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, "w02": {...},
-#                             "w03": {...}}, "reason": "<str>"},
+#   campaign-plan           {"candidate": {"workPackages": {"w01": {...}, .., "w06": {...}},
+#                             "reason": "<str>"},
 #                            "baseState": {...a stamped "design-state" artifact...},
 #                            "siteCapabilities": {"pgVerification": bool, ...}}
 #                           (Task 12c item 4a: the plan Workshop's ONE campaign-plan
@@ -141,11 +142,6 @@ from pathlib import Path
 #                           `refreshLedger` may legitimately not exist yet (no physical
 #                           refresh has completed), in which case `tc_refresh_count` is
 #                           `unknown`, never a guessed `0`.
-#
-#   refresh-budget          no envelope: the stamped `design-state` at state/working-state.json
-#                           is the anchor REPORT (it exists from `baseline` on); the count itself
-#                           is read from the fixed workspace path state/refresh-ledger.json, which
-#                           does not exist before the first refresh -- see the handler.
 #
 #   next-decision           no envelope: the raw candidate document itself.
 #                           `stateRef`/`observationRef` are instead resolved by a
@@ -560,79 +556,6 @@ def _split_instance_path(instance_path):
     return segments
 
 
-def _instance_type(hierarchy, top, instance_path):
-    """The declared type of the instance `instance_path` names under `top`, or None.
-
-    The same walk as `_is_hierarchical_instance`: every non-final segment must be a
-    user-module instance, the final one any instance of the module reached.
-    """
-    if not isinstance(instance_path, str) or not instance_path:
-        return None
-    segments = _split_instance_path(instance_path)
-    if segments is None or any(segment == "" for segment in segments):
-        return None
-    current_module = top
-    for index, segment in enumerate(segments):
-        instances = hierarchy.get(current_module)
-        if instances is None or segment not in instances:
-            return None
-        if index == len(segments) - 1:
-            return instances[segment]
-        current_module = instances[segment]
-    return None
-
-
-def _edit_domain_problems(package, base_state, workspace, where):
-    """C23 (failure catalogue): an active slot's editDomain must name something XTop can edit.
-
-    Every 0.1.10 slot is an active worker, so its `editDomain` names at least one instance or
-    net, and every instance is a leaf cell of the sha-verified base netlist written as its full
-    `/`-separated path from `top` -- never empty, a port or net name, a module instance, a bare
-    leaf or a path absent from the netlist. `where` is `(field prefix, slot suffix)`.
-    """
-    prefix, slot = where
-    domain = package.get("editDomain") if isinstance(package, dict) else None
-    if not isinstance(domain, dict):
-        return []  # `workspaces._collect_problems` already names a missing editDomain
-    instances = domain.get("instances") or []
-    nets = domain.get("nets") or []
-    field = f"{prefix}.editDomain"
-    if not instances and not nets:
-        targets = package.get("targets") if isinstance(package.get("targets"), list) else []
-        key = next((t for t in targets if isinstance(t, str) and "|" in t), None)
-        if key is not None:
-            # Probe run 2: the plan Workshop passed whole check keys to the resolver, resolved
-            # nothing and wrote the slot out empty.
-            name = package.get("taskId") if isinstance(package.get("taskId"), str) else prefix.rsplit(".", 1)[-1]
-            return [f"{field}{slot}: edit domain empty for slot {name} (it names no instance or net): if the "
-                    f"resolver got a check key, pass the endpoint ({_endpoint_part(key)!r} of {key!r}) and write "
-                    "only the leaf cells it resolves; when "
-                    "none resolves, choose other endpoints or exit non-zero naming the unresolved endpoints, never "
-                    "an empty edit domain"]
-        return [f"{field}{slot}: names no instance or net; an active slot edits at least one leaf cell, "
-                "written as its full path from top such as u_a/reg0"]
-    if not isinstance(instances, list):
-        return []
-    netlist = base_state.get("netlist") if isinstance(base_state, dict) else None
-    if not isinstance(netlist, dict):
-        return []
-    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "design-state.netlist"))
-    top = base_state.get("top")
-    found = []
-    for name in instances:
-        if not isinstance(name, str) or not name:
-            continue  # `workspaces._collect_problems` names an unsafe or empty name
-        kind = _instance_type(hierarchy, top, name)
-        if kind is None:
-            found.append(f"{field}.instances{slot}: {name!r} is not an instance under top {top!r} in the base "
-                         "netlist; write each leaf cell's full path from top such as u_a/reg0 (never a port, "
-                         "a net or a bare leaf name)")
-        elif kind in hierarchy:
-            found.append(f"{field}.instances{slot}: {name!r} is a module instance (of {kind!r}), not a leaf "
-                         "cell; name the leaf cells inside it by full path")
-    return found
-
-
 def _is_hierarchical_instance(hierarchy, top, instance_path):
     """True when `instance_path` walks real instances from `top` in `hierarchy`.
 
@@ -659,6 +582,56 @@ def _is_hierarchical_instance(hierarchy, top, instance_path):
             return False
         current_module = instance_type
     return True
+
+
+def _is_hierarchical_pin(hierarchy, top, pin_path):
+    """True when `pin_path` is ``<instance path>/<pin>`` on a leaf cell reached from `top`.
+
+    The owner must be a hierarchical instance (`_is_hierarchical_instance`)
+    whose declared type is not itself a user module: a target pin is a
+    cell's pin, never a module port. The pin name itself is not resolved
+    (the netlist does not declare library pins).
+    """
+    if not isinstance(pin_path, str) or not pin_path:
+        return False
+    segments = _split_instance_path(pin_path)
+    if segments is None or len(segments) < 2 or any(segment == "" for segment in segments):
+        return False
+    current_module = top
+    for index, segment in enumerate(segments[:-1]):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return False
+        instance_type = instances[segment]
+        if index == len(segments) - 2:
+            return instance_type not in hierarchy
+        if instance_type not in hierarchy:
+            return False
+        current_module = instance_type
+    return False
+
+
+def _instance_type(hierarchy, top, instance_path):
+    """The declared type of the instance `instance_path` names under `top`, or None.
+
+    The same walk as `_is_hierarchical_instance`: every non-final segment must be a
+    user-module instance, the final one any instance of the module reached. A leaf cell's
+    type is its library master; a type that is itself a key of `hierarchy` is a module.
+    """
+    if not isinstance(instance_path, str) or not instance_path:
+        return None
+    segments = _split_instance_path(instance_path)
+    if segments is None or any(segment == "" for segment in segments):
+        return None
+    current_module = top
+    for index, segment in enumerate(segments):
+        instances = hierarchy.get(current_module)
+        if instances is None or segment not in instances:
+            return None
+        if index == len(segments) - 1:
+            return instances[segment]
+        current_module = instances[segment]
+    return None
 
 
 def _resolve_id_in_workspace(workspace, artifact_id, exclude_dirnames=("hima-readers",)):
@@ -759,31 +732,41 @@ def _read_readiness(report, workspace, extra, mods):
 
 
 # ---------------------------------------------------------------------------
-# Request kinds: one itemized problem list, counted and delivered (Issue #63)
+# Itemized request problems (Issue #64 Track B, from #63 slice 3 gap 1)
 # ---------------------------------------------------------------------------
 #
-# Every request-shaped kind (a document a Workshop's model wrote) is read by one
-# function that returns `(values, problems)`: `problems` is a list of strings,
-# each starting with the JSON path of the field it is about (and `(slot w0N)` for
-# a slot-scoped document), and the kind's `tc_request_invalid_count` is always
-# `len(problems)` -- the count and the text come from one source. `read()`
-# returns the values; `problems()` returns the list; `main()` also writes the
-# list beside the document as `<document>.problems.txt`, which the producing
-# Workshop declares as a readable output (`contract.yml`, `<output>Problems`), so
-# after a refusal the owner reads each problem instead of a bare count.
+# Live02 (Pack 0.2.0): the campaign-plan Reader counted 41 problems and the Judge refused
+# the plan, but the owner saw only the count and re-wrote the plan blind. Each request
+# kind below now returns `(values, problems)`: `tc_request_invalid_count` is
+# `len(problems)`, and `main()` writes the same list beside the document as
+# `<document>.problems.txt`, which the producing Workshop declares as a readable output
+# (`contract.yml`, `<output>Problems`). Each problem starts with the field it is about
+# (and its slot) and, where a format is required, says it.
+#
+# A document of the wrong shape (not an object, a missing companion, a taskId that is not
+# the slot's, an instance or pin the base netlist does not hold) is a counted problem the
+# owner revises -- never a Reader exception that re-reads the same bytes until a Hard
+# blocker parks the Run. Fail-closed identity stays an exception: a `baseState` or `facts`
+# whose id or source files do not verify is a companion that cannot be trusted, and the
+# sidecar then names that refusal.
 
-# What a missing or wrong work-package field must look like (knowledge
-# example-campaign-plan.md holds one admitted document).
 _WORK_PACKAGE_FORMATS = {
-    "taskId": "the slot's own id, w01, w02 or w03",
+    "taskId": "exactly the slot key, w01..w06, never a description such as 'w01-setup+hold' or 'w04-parked'",
     "baseStateId": "the id of baseState, which is state/working-state.json copied unchanged",
-    "problem": "a one-line string naming the timing problem",
+    "problem": "a one-line string naming the blocker cluster (or, for a parked slot, why it is parked)",
     "targets": 'a list of "<scenario>|<setup|hold>|<endpoint>" check keys',
-    "editDomain": '{"instances": [full hierarchical paths such as "u_a/reg0"], "nets": [], "regions": []}',
-    "protected": '{"instances": [...], "nets": [...]}',
+    "editDomain": ('{"instances": [full hierarchical leaf-cell paths such as "u_core/u_lsu/data_reg_3_"], '
+                   '"nets": [], "regions": [[x1, y1, x2, y2]]}'),
+    "protected": '{"instances": [], "nets": []}, required even when both lists are empty',
     "mayAffect": "a list of check keys, [] when none",
-    "actions": "a list drawn from size_cell, insert_buffer, delete_buffer, pg_local_adjust",
-    "budget": '{"xtopMinutes": 30, "queries": 5, "attempts": 3}',
+    "actions": "a list drawn from size_cell, insert_buffer, delete_buffer (pg_local_adjust only with pgVerification)",
+    "budget": 'an object such as {"xtopMinutes": 60, "attempts": 3}',
+    "targetPins": 'a list of "<instance path>/<pin>" pins of leaf cells, full hierarchical paths, never a top-level port',
+    "scope": ('{"commands": [toolkit mutations only, always with atcs_undo; never atcs_ref, atcs_paths, atcs_gain, '
+              'atcs_candidates, atcs_fail_reasons, atcs_dump_cells, atcs_export_changes or atcs_close], '
+              '"maxMutations": 600}'),
+    "observe": '"fast" or "full"',
+    "parked": ('a parked slot is exactly {"taskId", "baseStateId", "parked": true, "problem"} and no other key'),
 }
 
 _WORK_PACKAGE_FIELD_OF = (
@@ -792,11 +775,20 @@ _WORK_PACKAGE_FIELD_OF = (
     (re.compile(r"^baseStateId\b"), "baseStateId"),
     (re.compile(r"^editDomain\b"), "editDomain"),
     (re.compile(r"^action\b"), "actions"),
+    (re.compile(r"^scope\b"), "scope"),
+    (re.compile(r"^targetPin"), "targetPins"),
+    (re.compile(r"^observe\b"), "observe"),
+    (re.compile(r"^parked\b"), "parked"),
+    (re.compile(r"^a parked package states why"), "problem"),
+    (re.compile(r"^a parked package carries"), "parked"),
 )
 
 
-def _work_package_problems(package, base_state, site_capabilities, workspaces_mod, path):
-    """`workspaces._collect_problems` (the one work-package validator), each named by field."""
+def _work_package_problems(package, base_state, site_capabilities, workspaces_mod, where):
+    """`workspaces._collect_problems` (the one work-package validator), each named by field.
+
+    `where` is `(prefix, slot)`, e.g. `("candidate.workPackages.w01", " (slot w01)")`.
+    """
     found = []
     for message in workspaces_mod._collect_problems(package, base_state, site_capabilities):
         field = None
@@ -805,9 +797,9 @@ def _work_package_problems(package, base_state, site_capabilities, workspaces_mo
             if match:
                 field = name or match.group(1)
                 break
-        where = f"{path[0]}.{field}{path[1]}" if field else f"{path[0]}{path[1]}"
+        path = f"{where[0]}.{field}{where[1]}" if field else f"{where[0]}{where[1]}"
         hint = _WORK_PACKAGE_FORMATS.get(field)
-        found.append(f"{where}: {message}" + (f"; required format: {hint}" if hint else ""))
+        found.append(f"{path}: {message}" + (f"; required format: {hint}" if hint else ""))
     return found
 
 
@@ -818,7 +810,17 @@ def _problems_file(report):
     return report.with_name(stem + ".problems.txt")
 
 
-def _write_problems_file(report, found, refused=None):
+class Advice(str):
+    """A Reader finding that is advice, not a problem: written to the sidecar, never counted.
+
+    #64 worker/aggregation principle (FABRIC.md, 2026-09-29): the parallel worker stage is
+    exploratory, so a request is refused only for what breaks identity or merge integrity; what the
+    Operator and XTop will find out for themselves (a master outside the library, a module instance
+    in an edit domain, a parked seat) is advice to the Workshop.
+    """
+
+
+def _write_problems_file(report, found, refused=None, advice=None):
     """Best effort: the count in OUT is the verdict's evidence; this file is its explanation."""
     name = Path(report).name
     if refused is not None:
@@ -832,6 +834,11 @@ def _write_problems_file(report, found, refused=None):
                  "fix every line and write the whole document again:"]
         lines += ["- " + " ".join(str(item).split()) for item in found]
         text = "\n".join(lines) + "\n"
+    if refused is None and advice:
+        lines = [f"Advice ({len(advice)}, not counted: the Reader does not refuse for these; the Operator and "
+                 "XTop would find them out at a cost):"]
+        lines += ["- " + " ".join(str(item).split()) for item in advice]
+        text += "\n".join(lines) + "\n"
     try:
         _problems_file(report).write_text(text, encoding="utf-8")
     except OSError:
@@ -848,21 +855,19 @@ _SHAPE_FORMATS = {
 
 
 def _shape_problems(envelope, keys, slot=""):
-    """Issue #63 gap 2: a document of the wrong shape is a counted problem the owner can
-    revise -- never a Reader exception that re-reads the same bytes until a Hard blocker
-    parks the Run. Empty when every key of `keys` holds an object."""
+    """The envelope keys that are not objects, one problem each; empty when the shape holds."""
     if not isinstance(envelope, dict):
         return [f"document{slot}: must be one JSON object {{{', '.join(keys)}}}"]
     found = []
     for key in keys:
         value = envelope.get(key)
-        if key != "actions" and not isinstance(value, dict):
+        if not isinstance(value, dict):
             state = "missing" if key not in envelope else f"a {type(value).__name__}"
             found.append(f"{key}{slot}: must be {_SHAPE_FORMATS[key]}; it is {state}")
     return found
 
 
-def _observation_request(report, workspace, slot, mods):
+def _read_observation_request(report, workspace, extra, mods):
     """A raw `observationRequest` candidate (diagnose-and-observe Workshop output), self-contained.
 
     No existing `atcs.*` module owns this shape's validation (only
@@ -872,7 +877,7 @@ def _observation_request(report, workspace, slot, mods):
     obj = _load_json(report)
     found = []
     if not isinstance(obj, dict):
-        found.append("document: must be one JSON object {designStateId, precision, requiredScenarios, maxPaths, nworst}")
+        found.append("document: must be one JSON object {designStateId, precision, requiredScenarios, maxPaths}")
         obj = {}
     formats = {
         "designStateId": "the 20-hex-char id of state/working-state.json",
@@ -900,24 +905,8 @@ def _observation_request(report, workspace, slot, mods):
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
-_ABSENT = object()
-
-
-def _action_count(envelope, expected_task_id):
-    """w01 only: `tc_worker_action_count`, the number of size_cell actions the request proposes.
-
-    Review 2 (Issue #63, I2): 0 for an admitted "no safe action" request routes it past the Team
-    (graph.yml `route-worker-action-01`) to decide-next; anything but a list reads as 0 too, and
-    such a request is refused anyway.
-    """
-    if expected_task_id != "w01":
-        return []
-    actions = envelope.get("actions") if isinstance(envelope, dict) else None
-    return [_emit_count("tc_worker_action_count", len(actions) if isinstance(actions, list) else 0)]
-
-
-def _request_envelope(report, workspace, expected_task_id, mods):
-    """Shared handler for `work-package`/`worker-request` kinds.
+def _read_request_envelope(report, workspace, expected_task_id, mods):
+    """Shared handler for `work-package`/`worker-request` kinds: `(values, problems)`.
 
     **Read envelope** (this script's own contract for whichever Tool/Workshop
     T14 binds to this reader's output)::
@@ -931,51 +920,307 @@ def _request_envelope(report, workspace, expected_task_id, mods):
     `baseState` is schema/id- and source-verified in full
     (`_verify_design_state_refs`) before `candidate` is ever validated
     against it, so a tampered or stale companion state can never launder a
-    request's `tc_request_invalid_count` to 0. `workspaces._collect_problems`
-    (never `validate_work_package`, which raises) is the one validator this
-    handler defers to for the candidate's own problems.
+    request's `tc_request_invalid_count` to 0 (that refusal stays an
+    exception). `workspaces._collect_problems` (never `validate_work_package`,
+    which raises) is the one validator the candidate's own problems come from.
+
+    Issue #64 Task 4: that validator covers the expert Operator fields (`scope`
+    commands within the toolkit mutations and keeping `atcs_undo`,
+    `scope.maxMutations` 1..the recipe cap, `targetPins`, `observe`,
+    `editDomain.regions`). A slot argument outside `workspaces.TASK_IDS`
+    (w01..w06) is a declaration error and is refused. Every edit-domain
+    instance and target pin must resolve as a full hierarchical path in the
+    verified base netlist (the pin's owner a leaf cell); each one that does not
+    is a counted problem. There is no top-level `actions` list: the request's own
+    scope is the one the Host binds for the Operator. For a worker slot the candidate is also bound to the
+    package `prepare-workers` prepared for it (`_prepared_package_problems`).
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
+    if expected_task_id is not None and expected_task_id not in workspaces_mod.TASK_IDS:
+        raise ValueError(f"worker slot {expected_task_id!r} is not one of {workspaces_mod.TASK_IDS}")
     slot = f" (slot {expected_task_id})" if expected_task_id else ""
     envelope = _load_json(report)
-    keys = ("candidate", "baseState", "siteCapabilities") + (("actions",) if expected_task_id == "w01" else ())
-    found = _shape_problems(envelope, keys, slot)
+    found = _shape_problems(envelope, ("candidate", "baseState", "siteCapabilities"), slot)
     if found:
-        return [_emit_count("tc_request_invalid_count", len(found))] + _action_count(envelope, expected_task_id), found
+        return [_emit_count("tc_request_invalid_count", len(found))], found
     candidate = envelope["candidate"]
     base_state = envelope["baseState"]
     site_capabilities = envelope["siteCapabilities"]
 
-    # Fail-closed identity stays an exception: a baseState whose id or source files do not
-    # verify is not a request problem to count but a companion that cannot be trusted.
     _verify_identity(base_state, "design-state", core)
     _verify_design_state_refs(base_state, workspace, core)
 
     if expected_task_id is not None and candidate.get("taskId") != expected_task_id:
         found.append(f"candidate.taskId{slot}: must be {expected_task_id!r} for this slot, got {candidate.get('taskId')!r}")
     found += _work_package_problems(candidate, base_state, site_capabilities, workspaces_mod, ("candidate", slot))
-    found += _edit_domain_problems(candidate, base_state, workspace, ("candidate", slot))
-    if expected_task_id == "w01":
-        found += _worker_action_problems(envelope.get("actions"), candidate, base_state, workspace, core, slot,
-                                         envelope.get("noSafeAction", _ABSENT))
-    return [_emit_count("tc_request_invalid_count", len(found))] + _action_count(envelope, expected_task_id), found
+    if expected_task_id is not None:
+        found += _prepared_package_problems(workspace, expected_task_id, candidate, core, workspaces_mod)
+    found += _no_safe_action_problems(envelope, candidate, workspaces_mod, slot)
+    if expected_task_id is not None:
+        found += _operator_brief_problems(envelope, candidate, workspaces_mod, expected_task_id)
+    # T63 real-run failure, then C23 (#63, ported): every edit-domain instance is a leaf cell and
+    # every target pin a leaf cell's pin, each a full path from `top` in the sha-verified base netlist.
+    if not workspaces_mod.is_parked(candidate):
+        found += _edit_domain_problems(candidate, base_state, workspace, ("candidate", slot))
+    if not workspaces_mod.is_parked(candidate):
+        found += _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot)
+    return [_emit_count("tc_request_invalid_count", len(found))], found
 
+
+def _with_slot_parked(read, report, mods):
+    """A worker request's `(values, problems)` with `tc_slot_parked` added (ADR-0016).
+
+    1 when the request's candidate is the parked shape, 0 for an active slot, unknown when the
+    document has no readable candidate: the worker Team's `batchWhen` runs a parked slot's batch
+    no-op on it, without asking anyone.
+    """
+    values, found = read
+    try:
+        envelope = _load_json(report)
+        candidate = envelope.get("candidate") if isinstance(envelope, dict) else None
+    except (ValueError, OSError):
+        candidate = None
+    if isinstance(candidate, dict):
+        parked = _emit_count("tc_slot_parked", 1 if mods["workspaces"].is_parked(candidate) else 0)
+    else:
+        parked = _emit("tc_slot_parked", "count", mods["core"].unknown("the worker request has no readable candidate"))
+    return values + [parked], found
+
+
+# #64 T05 (slot w03): the Host embeds the Operator's request fields in its task and refuses a task above
+# 64 000 characters (the Harness delegation bound). The admitted w03 request was 83 034 bytes (256 targets, the
+# same 256 checks again in its cluster, a 19 450-character noSafeAction), so its Operator was never created.
+# The Operator's task now embeds `operatorBrief`, this bounded projection of the request, and the sessionPlan;
+# the exact request stays the Reader observation the task names.
+OPERATOR_BRIEF_SCHEMA = "atcs-operator-brief/1"
+BRIEF_TARGETS = 64
+BRIEF_PINS = 32
+BRIEF_INSTANCES = 16
+BRIEF_NAME_CHARS = 200
+BRIEF_TEXT_CHARS = 2000
+# #64 T06 (D-T06-4e): `nets` counts only the plan's own nets (0 in every T06 request), and the Operators read
+# that as "no net to insert on". The session derives the sink nets itself (domain.json `nets`).
+BRIEF_SESSION_NETS = ("the session adds each target pin's net and the plan instances' nets, one hop, to this domain "
+                      "(domain.json nets): use them by pin, atcs_insert_dummy <target pin> and atcs_insert_buffer "
+                      "with net \"\" and the target pins as loadPins")
+# #64 Q1 (D-Q1-3): the Operator sent atcs_insert_dummy with master "" and never a delayCellList; nothing it read
+# named a cell. The session's hold buffer list is that source, and atcs_ref prints it.
+BRIEF_HOLD_CELLS = ("atcs_ref prints this session's holdBufferList (the Site's bufferListForHold, XTop's "
+                    "eco_buffer_list_for_hold): atcs_insert_dummy takes one of its cells as master and a new name; a "
+                    "delayCellList takes cells of it and leaves at least one out as the normal cell")
+SESSION_PLAN_MAX_CHARS = 16000
+
+
+def _clip(text, limit):
+    text = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False, sort_keys=True)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+def _listing(value, shown):
+    items = value if isinstance(value, list) else []
+    return {"count": len(items), "first": [_clip(item, BRIEF_NAME_CHARS) for item in items[:shown]]}
+
+
+def operator_brief(envelope):
+    """The bounded summary of a worker request that the Host embeds in the slot Operator's task.
+
+    Deterministic in the request (its own `operatorBrief` is never read): the cluster's cause and key and
+    its check count, the first targets (hardest first, as the plan orders them), target pins and domain
+    instances with their counts, the scope, the observation mode, the sessionPlan length and the head of
+    any noSafeAction. Every name and text is clipped, so the brief stays far inside the task bound.
+    """
+    envelope = envelope if isinstance(envelope, dict) else {}
+    candidate = envelope.get("candidate") if isinstance(envelope.get("candidate"), dict) else {}
+    cluster = candidate.get("cluster") if isinstance(candidate.get("cluster"), dict) else {}
+    domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    scope = candidate.get("scope") if isinstance(candidate.get("scope"), dict) else {}
+    plan = envelope.get("sessionPlan")
+    reason = envelope.get("noSafeAction")
+    return {
+        "schema": OPERATOR_BRIEF_SCHEMA,
+        "taskId": _clip(candidate.get("taskId"), BRIEF_NAME_CHARS),
+        "problem": _clip(candidate.get("problem", ""), BRIEF_TEXT_CHARS),
+        "cluster": {"cause": _clip(cluster.get("cause", ""), BRIEF_NAME_CHARS),
+                    "key": _clip(cluster.get("key", ""), BRIEF_NAME_CHARS),
+                    "checks": len(cluster.get("checks")) if isinstance(cluster.get("checks"), list) else 0},
+        "targets": _listing(candidate.get("targets"), BRIEF_TARGETS),
+        "targetPins": _listing(candidate.get("targetPins"), BRIEF_PINS),
+        "editDomain": {"instances": _listing(domain.get("instances"), BRIEF_INSTANCES),
+                       "nets": len(domain.get("nets")) if isinstance(domain.get("nets"), list) else 0,
+                       "regions": len(domain.get("regions")) if isinstance(domain.get("regions"), list) else 0,
+                       "sessionNets": BRIEF_SESSION_NETS},
+        "scope": {"commands": [_clip(command, BRIEF_NAME_CHARS) for command in (scope.get("commands") or [])[:32]]
+                  if isinstance(scope.get("commands"), list) else [],
+                  "maxMutations": scope.get("maxMutations") if isinstance(scope.get("maxMutations"), int) else None},
+        "observe": _clip(candidate.get("observe", "fast"), BRIEF_NAME_CHARS),
+        "holdCells": BRIEF_HOLD_CELLS,
+        "sessionPlan": {"count": len(plan) if isinstance(plan, list) else 0},
+        "noSafeAction": None if "noSafeAction" not in envelope else
+        {"chars": len(reason) if isinstance(reason, str) else 0, "head": _clip(reason if isinstance(reason, str) else "", BRIEF_TEXT_CHARS)},
+    }
+
+
+def _operator_brief_problems(envelope, candidate, workspaces_mod, task_id):
+    """An active slot's request carries `operatorBrief` equal to `operator_brief` of it, and a sessionPlan within
+    SESSION_PLAN_MAX_CHARS: both reach the Operator's bounded task. A parked slot's Operator never runs."""
+    if workspaces_mod.is_parked(candidate):
+        return []
+    found, slot = [], f" (slot {task_id})"
+    command = (f"run python3 <workspace>/hima-readers/atcs-readiness/read-atcs.py brief "
+               f"<workspace>/research/requests/worker-request-{task_id}.json (brief REQUEST_JSON: that one argument, "
+               "never the workspace too) after writing the request: it writes operatorBrief in place")
+    if "operatorBrief" not in envelope:
+        found.append(f"operatorBrief{slot}: missing; the Host gives the Operator this bounded summary of the request; {command}")
+    elif envelope.get("operatorBrief") != operator_brief(envelope):
+        found.append(f"operatorBrief{slot}: differs from the Pack's summary of this request (the request changed after "
+                     f"the summary was written); {command}")
+    plan = envelope.get("sessionPlan")
+    if plan is not None:
+        size = len(json.dumps(plan, ensure_ascii=False, separators=(",", ":")))
+        if size > SESSION_PLAN_MAX_CHARS:
+            found.append(f"sessionPlan{slot}: {size} characters as JSON, above the {SESSION_PLAN_MAX_CHARS} the Operator's "
+                         "task holds; keep the ordered moves and shorten each hypothesis and falsifier")
+    return found
+
+
+def write_operator_brief(path):
+    """`read-atcs.py brief REQUEST_JSON`: rewrite the request in place with its `operatorBrief`."""
+    target = Path(path)
+    envelope = _load_json(target)
+    if not isinstance(envelope, dict):
+        raise SystemExit(f"{target}: must be one JSON object")
+    workspace = Path(path).parent.parent.parent
+    common_path = workspace / "state/common-stage.json"
+    report_path = workspace / "research/fix-strategy-risk.md"
+    if common_path.is_file():
+        common = _load_json(common_path)
+        if not report_path.is_file():
+            raise ValueError("common R1 request needs the shared research/fix-strategy-risk.md")
+        envelope["strategyRisk"] = {"path": "research/fix-strategy-risk.md",
+            "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(), "text": report_path.read_text()}
+        envelope["commonResidual"] = {key: common[key] for key in
+            ("stateId", "worklistId", "summaries", "endpoints", "analysisBoard")}
+    envelope["operatorBrief"] = operator_brief(envelope)
+    target.write_text(json.dumps(envelope, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _no_safe_action_problems(envelope, candidate, workspaces_mod, slot):
+    """#64 Track B (from #63 review 2, I2): an active slot whose research finds no safe move says so in
+    `noSafeAction` instead of inventing one; its Team then reviews no move (the Reviewer approves only
+    `atcs_undo`, the Operator reads, dumps and closes). Such a request has an empty `sessionPlan`, and a
+    parked slot has no `noSafeAction`. Absent, nothing is checked."""
+    if "noSafeAction" not in envelope:
+        return []
+    found = []
+    reason = envelope.get("noSafeAction")
+    if not isinstance(reason, str) or not reason.strip():
+        found.append(f"noSafeAction{slot}: must be a non-empty string naming the evidence that rules each move out, "
+                     f"got {reason!r}")
+    if envelope.get("sessionPlan") not in (None, []):
+        found.append(f"sessionPlan{slot}: must be empty when noSafeAction states there is no safe move")
+    if workspaces_mod.is_parked(candidate):
+        found.append(f"noSafeAction{slot}: is for an active slot; a parked slot's request carries only the parked candidate")
+    return found
+
+
+def _prepared_package_problems(workspace, slot, candidate, core, workspaces_mod):
+    """Problems tying a worker request's candidate to the package `prepare-workers` prepared for `slot`.
+
+    Review fix round 1: the slot's session Tcl is baked from
+    `state/workers.json[slot].workPackage` (domain, pins, regions, observation
+    mode and Tcl-side budget), and the worker Team reviews the request. A
+    candidate whose `editDomain`, `targetPins`, `observe` or `scope` differs
+    from that package in either direction would have one scope reviewed and
+    another enforced, so each differing field is one problem. An absent,
+    unreadable or identity-failing prepared package is one problem too: a
+    request for a slot that was never prepared is never admissible.
+    """
+    copy = (f"copy state/workers.json workers.{slot}.workPackage unchanged, without its schema and id")
+    try:
+        workers = _load_json(Path(workspace) / "state" / "workers.json")
+        package = ((workers.get("workers") or {}).get(slot) or {}).get("workPackage")
+        if not isinstance(package, dict):
+            raise ValueError(f"state/workers.json has no prepared work package for slot {slot!r}")
+        _verify_identity(package, "work-package", core)
+    except (ValueError, OSError, AttributeError) as error:
+        return [f"candidate (slot {slot}): no verified package prepare-workers prepared for this slot ({error}); "
+                "the request must be written after prepare-workers, from its state/workers.json"]
+    if package.get("taskId") != slot:
+        return [f"candidate (slot {slot}): state/workers.json holds slot {package.get('taskId')!r}'s package "
+                "under this slot"]
+    prepared, requested = workspaces_mod.bound_view(package), workspaces_mod.bound_view(candidate)
+    return [f"candidate.{field} (slot {slot}): differs from the package prepare-workers prepared for this slot; {copy}"
+            for field in workspaces_mod.PREPARED_BINDING_FIELDS if prepared[field] != requested[field]]
+
+
+def _edit_domain_problems(package, base_state, workspace, where):
+    """C23 (#63 failure catalogue, ported as advice): what an active slot names that XTop cannot edit.
+
+    An `editDomain.instances` entry should be a leaf cell of the base netlist written as its full
+    `/`-separated path from `top`, not a port or net name, a bare leaf, an absent path or a module
+    instance (the toolkit's `get_cells -exact` finds none of these); a `targetPins` entry should be
+    `<leaf-cell path>/<pin>`. Each finding is `Advice`, never counted (the #64 worker/aggregation
+    principle, FABRIC.md): the Operator and XTop find a wrong name out inside the slot, and the
+    aggregation and refreshed PrimeTime judge the result. An empty domain gets no advice: target pins
+    are toolkit domain pins. Names the package validation already counts as unsafe are left to that
+    count. `where` is `(prefix, slot suffix)`, e.g. `("candidate.workPackages.w01", "")` or
+    `("candidate", " (slot w01)")`.
+    """
+    prefix, slot = where
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    instances = domain.get("instances") if isinstance(domain.get("instances"), list) else []
+    instances = [name for name in instances if isinstance(name, str) and name]
+    pins = package.get("targetPins") if isinstance(package.get("targetPins"), list) else []
+    pins = [pin for pin in pins if isinstance(pin, str) and "/" in pin]
+    netlist = base_state.get("netlist") if isinstance(base_state, dict) else None
+    if not (instances or pins) or not isinstance(netlist, dict):
+        return []
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "design-state.netlist"))
+    top = base_state.get("top")
+    resolver = ("resolve each PT endpoint with hima-readers/atcs-readiness/read-atcs.py resolve-instances "
+                "(knowledge endpoint-resolution.md); pass the endpoint, not the check key")
+    found = []
+    for name in instances:
+        kind = _instance_type(hierarchy, top, name)
+        if kind is None:
+            found.append(Advice(f"{prefix}.editDomain{slot}: instance {name!r} is not a hierarchical instance under top "
+                         f"{top!r} in the base netlist; required format: a full path of a leaf cell such as "
+                         f"u_core/u_lsu/data_reg_3_, never a bare leaf name, a port or a net; {resolver}"))
+        elif kind in hierarchy:
+            found.append(Advice(f"{prefix}.editDomain{slot}: instance {name!r} is a module instance (of {kind!r}), "
+                                "not a leaf cell; name the leaf cells inside it by full path"))
+    for pin in pins:
+        if not _is_hierarchical_pin(hierarchy, top, pin):
+            found.append(Advice(f"{prefix}.targetPins{slot}: {pin!r} is not a hierarchical pin of a leaf cell under "
+                                f"top {top!r} in the base netlist; required format: <full leaf-cell path>/<pin>, never "
+                                f"a top-level port; {resolver}"))
+    return found
+
+
+# C13 (Issue #63 failure catalogue, ported to the six-slot 0.2.0 request as advice; #64 treatment
+# attempt 1): a size move should name a master of this design's libraries with the cell's own function. Attempt 1's
+# w01 Operator sized to 'SDGCNQOPTMC D12BWP30P140' (two columns of atcs_candidates joined), which
+# XTop refused twice as an invalid library cell; w03 sized SDFCNQARD1BWP35P140 to SDFCNQD2BWP35P140,
+# a flop without the asynchronous reset, and undid it. The library is the Pack-sealed
+# `state/xtop-context.json`: `observe` stamps each scenario's Liberty files (hashed) and the Site's
+# sizing rule (`ecoParameters.cellNominalSizingPattern`, `cellNominalSwapKeywords`); the context holds
+# no cell table itself (#63 live finding #250), the cells are the Liberty files' `cell (NAME)` groups.
 
 _LIBERTY_CELL_RE = re.compile(rb'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)')
 _library_cache = {}
 
 
-def _library_cells(files, core):
+def _library_cells(files):
     """Every `cell (NAME)` of the Liberty `files` ([{path, sha256}]), each re-hashed as read.
 
     One streaming pass per file both hashes it and collects its cell names, so a file that
     changed since `observe` sealed it is refused, not trusted. Memoized per file list.
     """
+    import hashlib
     key = tuple((ref.get("path"), ref.get("sha256")) for ref in files)
     if key in _library_cache:
         return _library_cache[key]
-    import hashlib
     cells = set()
     for path, expected in key:
         digest = hashlib.sha256()
@@ -994,11 +1239,9 @@ def _library_cells(files, core):
 def _library_context(workspace, base_state, core):
     """`(cells, ecoParameters, None)` from the sealed `state/xtop-context.json`, or `(None, None, why)`.
 
-    C13 (failure catalogue): the Site's XTop library context is the one declared, Pack-sealed
-    source of this design's cells. `observe` stamps it from the Site's `xtopContext` (each
-    scenario's Liberty files, hashed) and `prepare-workers`/`replay-prepare` re-verify it before
-    XTop starts (`atcs_cli._verified_xtop_context`). The worker request's own `siteCapabilities`
-    is model-written and is never read for this.
+    The cells are those of the first scenario (sorted) the context names; `prepare-workers`
+    re-verifies the same file before XTop starts. The request's own `siteCapabilities` is
+    model-written and is never read for this.
     """
     try:
         context = _load_json(Path(workspace) / "state" / "xtop-context.json")
@@ -1006,15 +1249,15 @@ def _library_context(workspace, base_state, core):
     except (ValueError, OSError) as error:
         return None, None, f"state/xtop-context.json (the Site's sealed XTop library context) cannot be read: {error}"
     if context.get("designStateId") != base_state.get("id"):
-        return None, None, ("state/xtop-context.json was sealed for another design state "
-                            f"{context.get('designStateId')!r}, not baseState {base_state.get('id')!r}")
+        return None, None, ("state/xtop-context.json was sealed for design state "
+                            f"{context.get('designStateId')!r}, not baseState {base_state.get('id')!r}; observe first")
     library_files = context.get("libraryFiles")
     eco = context.get("ecoParameters")
     if not isinstance(library_files, dict) or not library_files or not isinstance(eco, dict):
         return None, None, "state/xtop-context.json declares no libraryFiles or ecoParameters"
     scenario = sorted(library_files)[0]
     try:
-        cells = _library_cells(library_files[scenario], core)
+        cells = _library_cells(library_files[scenario])
     except (ValueError, OSError, TypeError, AttributeError) as error:
         return None, None, f"the Liberty files of scenario {scenario!r} in state/xtop-context.json cannot be read: {error}"
     if not cells:
@@ -1025,19 +1268,21 @@ def _library_context(workspace, base_state, core):
 def _sizing_family(master, eco):
     """`(function, VT)` of `master` under the Site's sizing rule, or None when it does not apply.
 
-    `cellNominalSizingPattern` (for example `D([0-9]+)BWP`, or `BUF([0-9]+)`) marks the drive
-    strength, its first group being the drive digits: the text before those digits is the cell
-    function (`CKAN2D` of `CKAN2D4BWP35P140HVT`, `BUF` of `BUF4`), the same for every size of one
-    family. A pattern without a group marks the drive by its whole match. Review 2 (Issue #63): a
-    pattern matching at the start of the name used to give no family at all, so a Site whose
-    pattern begins with the function refused every resize. `cellNominalSwapKeywords` lists the VT
-    suffixes (the empty keyword is the standard VT); the longest one the name ends with is its VT.
+    `cellNominalSizingPattern` (the Site's `D([0-9]+)BWP`) marks the drive strength, its first
+    group the drive digits: the text before them is the cell function (`SDFCNQARD` of
+    `SDFCNQARD1BWP35P140`, `SDFCNQD` of `SDFCNQD2BWP35P140`), the same for every size of one family.
+    A pattern without a group marks the drive by its whole match. `cellNominalSwapKeywords` lists
+    the VT suffixes (the empty keyword is the standard VT); the longest one the name ends with is
+    its VT.
     """
+    pattern = eco.get("cellNominalSizingPattern")
+    if not isinstance(pattern, str) or not pattern:
+        return None
     try:
-        match = re.search(eco.get("cellNominalSizingPattern") or "", master)
+        match = re.search(pattern, master)
     except re.error:
         return None
-    if match is None or not eco.get("cellNominalSizingPattern"):
+    if match is None:
         return None
     function = master[:match.start(1) if match.re.groups else match.start()]
     if not function:
@@ -1049,144 +1294,175 @@ def _sizing_family(master, eco):
     return function, vt
 
 
-def _master_problems(actions, hierarchy, top, base_state, workspace, core, slot):
-    """C13: each well-formed action's toMaster resizes its cell within the design's libraries."""
-    checkable = [(i, a) for i, a in enumerate(actions)
-                 if isinstance(a, dict) and set(a) == {"instance", "toMaster"}
-                 and isinstance(a["toMaster"], str) and a["toMaster"]
-                 and not core.is_tcl_unsafe(a["toMaster"]) and "*" not in a["toMaster"] and "?" not in a["toMaster"]]
-    if not checkable:
+def _plain_master(master, core):
+    return (isinstance(master, str) and bool(master) and not core.is_tcl_unsafe(master)
+            and "*" not in master and "?" not in master)
+
+
+def _session_plan_master_problems(envelope, candidate, base_state, workspace, core, slot):
+    """C13 for an active slot's `sessionPlan`, as advice: each `atcs_size_cell` entry's `toMaster`.
+
+    The Operator's `atcs_size_cell` takes the master to size to, and a toolkit refusal of an
+    admitted mutation spends one approved mutation. So a size entry should carry `toMaster`: one
+    plain cell name of this design's libraries (`_library_context`), not the object's current
+    master, with the object's cell function under the Site's sizing rule (drive and VT may change).
+    Under the #64 worker/aggregation principle (FABRIC.md) every master finding is `Advice`: the
+    Operator and XTop find a wrong master out, and the aggregation and refreshed PrimeTime judge
+    the result. #66 D1: an object outside `candidate.editDomain.instances` is `Advice` too: the
+    session derives its local domain in XTop (the target and plan-instance nets, their drivers and
+    loads), so a driver cell the plan does not list may be in it, and the toolkit refuses what is not.
+    Other entries are not read here.
+    """
+    plan = envelope.get("sessionPlan")
+    if not isinstance(plan, list):
         return []
+    entries = [(index, entry) for index, entry in enumerate(plan)
+               if isinstance(entry, dict) and entry.get("command") == "atcs_size_cell"]
+    if not entries:
+        return []
+    domain = candidate.get("editDomain") if isinstance(candidate.get("editDomain"), dict) else {}
+    instances = [name for name in domain.get("instances") or [] if isinstance(name, str)]
+    netlist = base_state.get("netlist") if isinstance(base_state.get("netlist"), dict) else {}
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist.get("path"), "worker-request.netlist"))
+    top = base_state.get("top")
+    source = ("choose it from the cells of the Liberty files state/xtop-context.json names in libraryFiles "
+              "with the object's function under ecoParameters.cellNominalSizingPattern (read-atcs.py masters "
+              "lists them); the context file holds no cell table itself")
+    found, checkable = [], []
+    for index, entry in entries:
+        where = f"sessionPlan[{index}]"
+        target, master = entry.get("object"), entry.get("toMaster")
+        if not isinstance(target, str):
+            found.append(Advice(f"{where}.object{slot}: {target!r} is not one leaf-cell path; atcs_size_cell sizes "
+                                "one edit-domain leaf cell"))
+            continue
+        if target not in instances:
+            found.append(Advice(f"{where}.object{slot}: {target!r} is not in candidate.editDomain.instances; the "
+                                "toolkit sizes it only when the session's derived local domain holds it (a driver or "
+                                "load cell of a target or plan-instance net), and refuses it otherwise"))
+        current = _instance_type(hierarchy, top, target)
+        if current is None or current in hierarchy:
+            continue  # the edit-domain check above already names this instance
+        if "toMaster" not in entry:
+            found.append(Advice(f"{where}.toMaster{slot}: missing; an atcs_size_cell entry names the master it sizes "
+                         f"{target!r} ({current}) to; {source}"))
+        elif not _plain_master(master, core):
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not one plain cell name (no space, Tcl "
+                                f"metacharacter, * or ?); {source}"))
+        elif master == current:
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is already the master of {target!r}; a size "
+                                "move changes the drive strength or the VT"))
+        else:
+            checkable.append((where, target, current, master))
+    if not checkable:
+        return found
     cells, eco, why = _library_context(workspace, base_state, core)
     if why is not None:
-        return [f"actions{slot}: no toMaster can be checked against this design's libraries: {why}"]
-    found = []
-    for index, action in checkable:
-        where = f"actions[{index}].toMaster{slot}"
-        master = action["toMaster"]
+        return found + [Advice(f"sessionPlan{slot}: no toMaster can be checked against this design's libraries: {why}")]
+    for where, target, current, master in checkable:
         if master not in cells:
-            found.append(f"{where}: {master!r} is not a cell of this design's libraries "
-                         "(the Liberty files sealed in state/xtop-context.json)")
-            continue
-        current = _instance_type(hierarchy, top, action["instance"]) if isinstance(action["instance"], str) else None
-        if current is None or current in hierarchy:
-            continue  # the instance itself is already named as a problem
-        if master == current:
-            found.append(f"{where}: {master!r} is already the master of {action['instance']!r}; a size_cell "
-                         "action must change the drive strength")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} is not a cell of this design's libraries; {source}"))
             continue
         want, got = _sizing_family(current, eco), _sizing_family(master, eco)
         if want is None or got is None:
-            found.append(f"{where}: {master!r} or the current master {current!r} does not follow the Site's sizing "
-                         f"pattern {eco.get('cellNominalSizingPattern')!r}, so the resize cannot be shown to keep "
-                         "the cell function")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} or the current master {current!r} of {target!r} "
+                                f"does not follow the Site's sizing pattern {eco.get('cellNominalSizingPattern')!r}, so "
+                                "the move cannot be shown to keep the cell function"))
         elif got[0] != want[0]:
-            found.append(f"{where}: {master!r} changes cell function {want[0]!r} of {action['instance']!r} "
-                         f"({current}) to {got[0]!r}; size_cell keeps the function and changes only the drive "
-                         "strength")
-        elif got[1] != want[1]:
-            found.append(f"{where}: {master!r} changes VT {want[1] or 'standard'!r} of {action['instance']!r} "
-                         f"({current}) to {got[1] or 'standard'!r}; size_cell keeps the VT")
+            found.append(Advice(f"{where}.toMaster{slot}: {master!r} changes the cell function {want[0]!r} of "
+                                f"{target!r} ({current}) to {got[0]!r}; a size move keeps the function and changes "
+                                "only the drive strength or the VT"))
     return found
 
 
-def _worker_action_problems(actions, candidate, base_state, workspace, core, slot, no_safe_action=_ABSENT):
-    """Slot w01's `actions`: one to three `{instance, toMaster}` size_cell candidates.
+def library_masters(workspace, instances):
+    """For each leaf-cell path, its current master and the library cells of the same function.
 
-    T63 real-run failure: a worker action naming a bare LEAF instance name (no
-    hierarchy) is not resolvable against the actual post-route netlist, whose leaf
-    cells live inside deeply nested modules (the real `g96219` example). Every
-    action instance must be a full `/`-separated hierarchical path from
-    `base_state["top"]`, walked directly against the sha-verified base netlist
-    (never trusted from the candidate).
+    `read-atcs.py masters WORKSPACE INSTANCES_JSON OUT`: the source a research Workshop picks a
+    size move's `toMaster` from, the same cells and rule `_session_plan_master_problems` advises by.
+    Read against the working state's sha-verified netlist and the sealed XTop context; writes
+    nothing but OUT.
     """
-    # Review 2 (Issue #63, I2): the honest answer "no safe size_cell action" has one admitted form,
-    # an empty list with its reason; it reaches decide-next, never the Team.
-    if no_safe_action is not _ABSENT:
-        if not isinstance(no_safe_action, str) or not no_safe_action.strip():
-            return [f"noSafeAction{slot}: must be a non-empty string stating why no size_cell action is safe"]
-        if actions != []:
-            return [f"noSafeAction{slot}: only an empty actions list states no safe action; drop noSafeAction "
-                    "or write \"actions\": []"]
-        return []
-    if not isinstance(actions, list) or not 1 <= len(actions) <= 3:
-        got = f"{len(actions)} entries" if isinstance(actions, list) else ("missing" if actions is None else type(actions).__name__)
-        return [f"actions{slot}: must be a list of one to three {{instance, toMaster}} size_cell candidates, "
-                f"each instance in candidate.editDomain.instances; got {got}; when none is safe, write "
-                "\"actions\": [] with a top-level \"noSafeAction\" reason"]
-    editable = candidate.get("editDomain")
-    domain = (editable.get("instances") if isinstance(editable, dict) else None) or []
-    top = base_state.get("top")
-    hierarchy = None
-    found = []
-    for index, action in enumerate(actions):
-        where = f"actions[{index}]"
-        if not isinstance(action, dict) or set(action) != {"instance", "toMaster"}:
-            keys = sorted(action) if isinstance(action, dict) else type(action).__name__
-            found.append(f"{where}{slot}: must be exactly {{instance, toMaster}}, got {keys}")
+    core = _atcs_modules(workspace)["core"]
+    working_state = _load_json(Path(workspace) / "state" / "working-state.json")
+    _verify_identity(working_state, "design-state", core)
+    netlist = working_state.get("netlist")
+    if not _has_keys(netlist, ("path", "sha256")):
+        raise ValueError("design-state.netlist must be {path, sha256}")
+    _require_file(workspace, netlist["path"], netlist["sha256"], core, "design-state.netlist")
+    hierarchy = _netlist_hierarchy(_safe_join(workspace, netlist["path"], "design-state.netlist"))
+    cells, eco, why = _library_context(workspace, working_state, core)
+    if why is not None:
+        raise ValueError(why)
+    top = working_state.get("top")
+    rows, unresolved = [], []
+    for name in instances:
+        current = _instance_type(hierarchy, top, name) if isinstance(name, str) else None
+        if current is None:
+            unresolved.append({"instance": name, "unresolved": f"not an instance under top {top!r}; "
+                               "write the leaf cell's full path from top"})
             continue
-        instance, master = action["instance"], action["toMaster"]
-        if not isinstance(instance, str) or not instance:
-            found.append(f"{where}.instance{slot}: must be a full hierarchical instance path string "
-                         f"such as u_a/reg0, got {instance!r}")
-        else:
-            if instance not in domain:
-                found.append(f"{where}.instance{slot}: {instance!r} is not in candidate.editDomain.instances")
-            if hierarchy is None:
-                netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
-                hierarchy = _netlist_hierarchy(netlist_path)
-            if not _is_hierarchical_instance(hierarchy, top, instance):
-                found.append(f"{where}.instance{slot}: {instance!r} is not a hierarchical instance under top "
-                             f"{top!r} in the base netlist; write the full path from top such as u_a/reg0, "
-                             "never a bare leaf name")
-        if (not isinstance(master, str) or not master or core.is_tcl_unsafe(master)
-                or "*" in master or "?" in master):
-            found.append(f"{where}.toMaster{slot}: {master!r} is not a plain cell name "
-                         "(no Tcl metacharacters, * or ?)")
-    if hierarchy is None:
-        netlist_path = _safe_join(workspace, base_state["netlist"]["path"], "worker-request.netlist")
-        hierarchy = _netlist_hierarchy(netlist_path)
-    return found + _master_problems(actions, hierarchy, top, base_state, workspace, core, slot)
+        if current in hierarchy:
+            unresolved.append({"instance": name, "unresolved": f"a module instance (of {current!r}), not a leaf cell"})
+            continue
+        family = _sizing_family(current, eco)
+        if family is None:
+            unresolved.append({"instance": name, "master": current, "unresolved": (
+                f"{current!r} does not follow the sizing pattern {eco.get('cellNominalSizingPattern')!r}")})
+            continue
+        same = sorted(cell for cell in cells
+                      if cell != current and (_sizing_family(cell, eco) or (None,))[0] == family[0])
+        rows.append({"instance": name, "master": current, "function": family[0], "vt": family[1],
+                     "toMasters": same})
+    return {"designStateId": working_state.get("id"), "sizingPattern": eco.get("cellNominalSizingPattern"),
+            "masters": rows, "unresolved": unresolved}
 
 
-def _campaign_plan(report, workspace, extra, mods):
-    """The plan Workshop's ONE campaign-plan document, holding all three work packages (Task 12c item 4a).
+def _masters_main(argv):
+    if len(argv) != 3:
+        raise SystemExit("usage: read-atcs.py masters WORKSPACE INSTANCES_JSON OUT_JSON")
+    workspace, instances_path, out = argv
+    instances = _load_json(instances_path)
+    if isinstance(instances, dict):
+        instances = instances.get("instances")
+    if not isinstance(instances, list):
+        raise ValueError("INSTANCES_JSON must be a list of leaf-cell paths or {\"instances\": [...]}")
+    answer = library_masters(workspace, instances)
+    Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _read_campaign_plan(report, workspace, extra, mods):
+    """The plan Workshop's ONE campaign-plan document, holding every slot's work package: `(values, problems)`.
 
     Envelope (this script's own contract; see module docstring)::
 
-        {"candidate": {"workPackages": {"w01": {...}, "w02": {...}, "w03": {...}},
+        {"candidate": {"workPackages": {"w01": {...}, .., "w06": {...}},
                         "reason": "<str>"},
          "baseState": {...a stamped "design-state" artifact...},
          "siteCapabilities": {"pgVerification": bool, ...}}
 
     `baseState` is schema/id- and source-verified in full
     (`_verify_design_state_refs`) before any package is validated against
-    it, exactly like `_request_envelope`. The problems are every
-    `workspaces._collect_problems` problem of each of `w01`/`w02`/`w03`,
-    plus one structural problem for each of: a missing/non-dict
-    `workPackages` object, a missing or non-dict entry for any of the three
-    slots, and a missing or blank `reason` string -- so a Reader-visible
-    problem exists for every way the *shape* itself (not just one slot's
-    own content) can be wrong.
+    it, exactly like `_read_request_envelope`. The problems are those of
+    `workspaces._collect_problems` for each slot in `workspaces.TASK_IDS`
+    (w01..w06; a parked slot's package is checked as parked), plus one
+    structural problem for each of: a missing/non-dict `workPackages` object,
+    a missing or non-dict entry for any slot, and a missing or blank `reason`
+    string -- so a Reader-visible problem exists for every way the *shape*
+    itself (not just one slot's own content) can be wrong.
 
-    Fix round 2 item 3 (Minor) adds two more Reader-visible problems, both
-    counted even though `prepare-workers` (`atcs_cli.py`) independently
-    refuses the same conditions outright -- a Judge should see a nonzero
-    `tc_request_invalid_count` for these before that Tool ever runs, not
-    only discover them as a Tool-side exit-3 refusal:
+    Issue #64 Task 5 (the six slots run as parallel fork branches) adds, over
+    the active (unparked) slots: `_worker_slot_problems` (an active slot
+    above the `workerSlots` knob), `_shared_domain_problems` (an instance or
+    net two active slots claim) and `_uncovered_blocker_problems` (a worst setup
+    or hold check of a required scenario no active slot targets).
 
-    - a top-level `workPackages` key on the envelope itself (a second,
-      unenforced copy of the same data `candidate.workPackages` already
-      carries -- `prepare-workers` refuses this as `ambiguous-plan`
-      regardless of whether the two copies happen to agree);
-    - `envelope.baseState`'s own `id` disagreeing with the id currently
-      recorded in `state/working-state.json` (read from `workspace`, the
-      same Campaign root this handler already resolves every other
-      workspace-relative reference against) -- a stale `baseState` snapshot
-      from an earlier round admitted against a base this campaign has since
-      moved on from. When `state/working-state.json` itself cannot be read
-      or identity-verified, that is counted as a problem too (an "unknown"
-      current state can never be treated as "matches").
+    Fix round 2 item 3 (Minor) adds two more problems, both counted even
+    though `prepare-workers` (`atcs_cli.py`) independently refuses the same
+    conditions outright: a top-level `workPackages` key on the envelope itself
+    (`prepare-workers` refuses it as `ambiguous-plan`), and `envelope.baseState`'s
+    own `id` disagreeing with the id currently recorded in
+    `state/working-state.json` (a stale snapshot), or that file not verifying.
     """
     core = mods["core"]
     workspaces_mod = mods["workspaces"]
@@ -1204,7 +1480,8 @@ def _campaign_plan(report, workspace, extra, mods):
     if "workPackages" in envelope:
         # A second, top-level copy -- `prepare-workers` refuses this outright
         # (ambiguous-plan); the Reader must not report zero problems for it.
-        found.append("workPackages: a top-level copy is forbidden; keep exactly one copy, under candidate.workPackages")
+        found.append("workPackages: a second copy at the top level of the document; keep exactly one copy, "
+                     "under candidate.workPackages")
 
     working_state_id = None
     try:
@@ -1214,81 +1491,280 @@ def _campaign_plan(report, workspace, extra, mods):
     except (ValueError, OSError):
         working_state_id = None
     if working_state_id is None:
-        found.append("baseState: state/working-state.json is missing or unreadable, so baseState cannot be shown current")
+        found.append("baseState: state/working-state.json cannot be read or verified, so the plan's base cannot "
+                     "be shown to be the working state")
     elif base_state.get("id") != working_state_id:
-        found.append(f"baseState: id {base_state.get('id')!r} is not the id {working_state_id!r} of "
-                     "state/working-state.json; copy the current state/working-state.json unchanged")
+        found.append(f"baseState: id {base_state.get('id')!r} is not the working state {working_state_id!r}; "
+                     "copy state/working-state.json unchanged")
 
+    observed = _observed_slacks(workspace, working_state_id, core)
     work_packages = candidate.get("workPackages")
     if not isinstance(work_packages, dict):
-        found.append(f"candidate.workPackages: must be an object {{w01, w02, w03}}, got {type(work_packages).__name__}")
+        found.append("candidate.workPackages: must be an object keyed w01..w06, one package per slot")
         work_packages = {}
-    for task_id in ("w01", "w02", "w03"):
+    active = {}
+    for task_id in workspaces_mod.TASK_IDS:
         package = work_packages.get(task_id)
         where = f"candidate.workPackages.{task_id}"
         if not isinstance(package, dict):
-            found.append(f"{where}: missing work package; required format: one object per slot w01, w02 and w03, "
-                         "as in knowledge example-campaign-plan.md")
+            found.append(f"{where}: missing slot; every slot w01..w06 holds an active package or the parked shape "
+                         f"{_WORK_PACKAGE_FORMATS['parked']}")
             continue
         found += _work_package_problems(package, base_state, site_capabilities, workspaces_mod, (where, ""))
-        found += _edit_domain_problems(package, base_state, workspace, (where, ""))
+        if not workspaces_mod.is_parked(package):
+            active[task_id] = package
+            found += _edit_domain_problems(package, base_state, workspace, (where, ""))
+            found += _cluster_advice(package, where, observed)
 
+    # Reshaped 2026-09-29 (ADR-0016): the plan is refused only for what breaks identity or merge
+    # integrity -- a stale base, a second copy, a package prepare-workers cannot prepare, an active slot
+    # above the knob, two slots claiming one instance or net. Why these clusters, and whether the
+    # blockers come first, are the method's advice to the plan Workshop, never a refusal.
     reason = candidate.get("reason")
     if not isinstance(reason, str) or not reason.strip():
-        found.append(f"candidate.reason: must be a non-empty string, got {reason!r}")
+        found.append(Advice("candidate.reason: should be a non-empty string saying why these clusters, in this order"))
 
+    found += _worker_slot_problems(workspace, active, core, workspaces_mod)
+    found += _shared_domain_problems(active)
+    if _worker_slot_count(workspace, core) != 0:
+        # #66 D8: under workerSlots 0 (the full-auto control arm) no seat may cover a blocker.
+        found += [Advice(item) for item in
+                  _uncovered_blocker_problems(workspace, working_state_id, active, core, mods["composition"])]
+    parked = [task_id for task_id in workspaces_mod.TASK_IDS
+              if isinstance(work_packages.get(task_id), dict) and task_id not in active]
+    found += _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod,
+                                   mods["composition"])
     return [_emit_count("tc_request_invalid_count", len(found))], found
 
 
-_PLAN_FIELD_OF = (
-    (re.compile(r"^plan must be"), None),
-    (re.compile(r"^plan\.baseStateId\b"), "baseStateId"),
-    (re.compile(r"^batchId\b"), "batchId"),
-    (re.compile(r"^reason\b"), "reason"),
-    (re.compile(r"^select\b"), "select"),
-    (re.compile(r"^deferred\b"), "deferred"),
-    (re.compile(r"^plan leaves a conflict"), "select"),
-    (re.compile(r"^(resolution|revise|revisedContribution|contribution|conflictKey)\b"), "resolutions"),
-)
+def _observed_slacks(workspace, working_state_id, core):
+    """`{check key: known slack}` of `state/observation.json` of the working state; {} when unreadable."""
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+    except (ValueError, OSError):
+        return {}
+    if working_state_id is None or observation.get("designStateId") != working_state_id:
+        return {}
+    slacks = {}
+    for key, entry in (observation.get("checks") or {}).items():
+        slack = entry.get("slack") if isinstance(entry, dict) else None
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            slacks[key] = value
+    return slacks
 
 
-def _integration_plan(report, workspace, extra, mods):
-    """`integration-plan` reviewed against its `composition-facts`.
+def _cluster_advice(package, where, observed):
+    """#66 D1: what an active package's `cluster` says unlike its shape, as `Advice` (never counted).
 
-    Envelope::
-
-        {"plan": {...unstamped or stamped "integration-plan" fields...},
-         "facts": {...a stamped "composition-facts" artifact...}}
-
-    `integration._collect_plan_problems(plan, facts)` is the one validator
-    (`plan_invalid_count` is its length); `facts` is schema/id-verified first.
+    A seat owns one blocker cluster `{cause, key, checks}`: `cause` one of `CLUSTER_CAUSES`, `key` the
+    shared cause it names, `checks` the check keys hardest first (worst observed slack first), and the
+    package's `targets` exactly those checks. The plan Reader counts only identity and merge integrity,
+    so a cluster of another shape is the method's advice. A package without `cluster` gets none.
     """
-    core = mods["core"]
-    integration_mod = mods["integration"]
-    envelope = _load_json(report)
-    found = _shape_problems(envelope, ("plan", "facts"))
-    if found:
-        return [
-            _emit_count("tc_request_invalid_count", len(found)),
-            _emit("tc_selected_contribution_count", "count", core.unknown("the integration-plan document has no plan object")),
-        ], found
-    plan = envelope["plan"]
-    facts = envelope["facts"]
+    if "cluster" not in package:
+        return []
+    cluster = package["cluster"]
+    proposer = "read-atcs.py seat-clusters proposes one per seat (knowledge example-campaign-plan.md)"
+    if not isinstance(cluster, dict):
+        return [Advice(f"{where}.cluster: should be {{\"cause\", \"key\", \"checks\"}}, got a {type(cluster).__name__}; "
+                       f"{proposer}")]
+    found = []
+    if cluster.get("cause") not in CLUSTER_CAUSES:
+        found.append(Advice(f"{where}.cluster.cause: {cluster.get('cause')!r} is not one of {', '.join(CLUSTER_CAUSES)}"))
+    if not isinstance(cluster.get("key"), str) or not cluster["key"].strip():
+        found.append(Advice(f"{where}.cluster.key: should name the shared cause (a startpoint, a hierarchy prefix, "
+                            f"a fail-reason pattern), got {cluster.get('key')!r}"))
+    checks = cluster.get("checks")
+    if not isinstance(checks, list) or not checks or not all(isinstance(key, str) for key in checks):
+        found.append(Advice(f"{where}.cluster.checks: should be the cluster's check keys, hardest first; {proposer}"))
+        return found
+    slacks = [observed[key] for key in checks if key in observed]
+    if any(later < earlier for earlier, later in zip(slacks, slacks[1:])):
+        found.append(Advice(f"{where}.cluster.checks: not hardest first; order the checks by their slack in "
+                            "state/observation.json, worst first, so the Operator works the hardest endpoint first"))
+    if package.get("targets") != checks:
+        found.append(Advice(f"{where}.targets: should be exactly cluster.checks, in its order"))
+    return found
 
-    _verify_identity(facts, "composition-facts", core)
 
-    select = plan.get("select")
-    for message in integration_mod._collect_plan_problems(plan, facts):
-        field = "plan"
-        for pattern, name in _PLAN_FIELD_OF:
-            if pattern.match(message):
-                field = f"plan.{name}" if name else "plan"
-                break
-        hint = "; copy facts.baseStateId" if field == "plan.baseStateId" else ""
-        found.append(f"{field}: {message}{hint}")
-    selected = (_emit_count("tc_selected_contribution_count", len(select)) if isinstance(select, list)
-                else _emit("tc_selected_contribution_count", "count", core.unknown("plan.select is not a list")))
-    return [_emit_count("tc_request_invalid_count", len(found)), selected], found
+def _worker_slot_count(workspace, core):
+    """The verified `state/worker-slots.json` `workerSlots` count, or None when it cannot be read."""
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+    except (ValueError, OSError):
+        return None
+    count = record.get("workerSlots")
+    return count if isinstance(count, int) and not isinstance(count, bool) else None
+
+
+def _worker_slot_problems(workspace, active, core, workspaces_mod):
+    """One problem per active slot above the Run's `workerSlots` knob (Issue #64 Task 5).
+
+    The knob is the stamped `state/worker-slots.json` that `bind-worker-slots` writes on
+    every way into the plan Workshop; an absent or unverifiable record is one problem. #66 D8:
+    the knob may be 0 (the full-auto control arm), and then every active slot is one problem.
+    """
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+        count = record.get("workerSlots")
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= len(workspaces_mod.TASK_IDS):
+            raise ValueError(f"workerSlots {count!r} is not 0..{len(workspaces_mod.TASK_IDS)}")
+    except (ValueError, OSError) as error:
+        return [f"candidate.workPackages: state/worker-slots.json cannot be verified ({error}), so no slot can be "
+                "shown to be within workerSlots"]
+    return [f"candidate.workPackages.{task_id}: active, but only slots up to workerSlots {count} may be active; "
+            "park it" for task_id in active if workspaces_mod.slot_number(task_id) > count]
+
+
+def _pin_owner(pin):
+    """The instance path a `<instance path>/<pin>` names, compared the way `_split_instance_path` reads it."""
+    segments = _split_instance_path(pin) if isinstance(pin, str) else None
+    if not segments or len(segments) < 2:
+        return None
+    return "/".join(segments[:-1])
+
+
+def _claimed_instances(package):
+    """The instances an active slot claims: its edit domain and the owners of its target pins."""
+    domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+    claimed = set()
+    for name in domain.get("instances") or []:
+        segments = _split_instance_path(name) if isinstance(name, str) else None
+        if segments:
+            claimed.add("/".join(segments))
+    for pin in package.get("targetPins") or []:
+        owner = _pin_owner(pin)
+        if owner:
+            claimed.add(owner)
+    return claimed
+
+
+def _shared_domain_problems(active):
+    """One problem per instance or net two active slots both claim (US8, disjoint edit domains).
+
+    The slots run at once from the same base, so their edit domains must be disjoint: an
+    instance in one active slot's `editDomain.instances`, or owning one of its `targetPins`,
+    may not be claimed by another active slot in either way, and an `editDomain.nets` entry
+    belongs to one active slot only.
+    """
+    owners = {}
+    for task_id, package in active.items():
+        domain = package.get("editDomain") if isinstance(package.get("editDomain"), dict) else {}
+        nets = {("net", name) for name in domain.get("nets") or [] if isinstance(name, str)}
+        for claim in {("instance", name) for name in _claimed_instances(package)} | nets:
+            owners.setdefault(claim, set()).add(task_id)
+    return [f"candidate.workPackages: {kind} {name!r} is claimed by active slots {', '.join(sorted(slots))}; "
+            "active slots share no instance (edit domain or target-pin owner) and no edit-domain net"
+            for (kind, name), slots in sorted(owners.items()) if len(slots) > 1]
+
+
+def _uncovered_blocker_problems(workspace, working_state_id, active, core, composition_mod):
+    """One problem per blocker no active slot targets (Issue #64 Task 5: blockers first).
+
+    The blockers are the worst setup check and the worst hold check of each required
+    scenario (`composition.worst_check_endpoints`), read from `state/observation.json`
+    -- the evidence the plan Workshop cites -- with the required scenarios from the
+    stamped `state/policy.json`. A blocker is covered when some active slot covers it by
+    `composition.covers`, the rule that also ranks the merged recipe: its check key in
+    the slot's `targets` (a top-level port has no pin path), or its key endpoint or PT's
+    raw endpoint in the slot's `targetPins`. An observation of another design-state than the working one, or an
+    absent or unverifiable observation or policy, is one problem: the blockers cannot be
+    established, so the plan cannot be shown to put them first.
+    """
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+        policy = _load_json(Path(workspace) / "state" / "policy.json")
+        _verify_identity(policy, "policy", core)
+    except (ValueError, OSError) as error:
+        return [f"candidate.workPackages: the blockers cannot be established ({error}); state/observation.json "
+                "and state/policy.json must verify"]
+    required = policy.get("requiredScenarios")
+    if working_state_id is None or observation.get("designStateId") != working_state_id or not isinstance(required, list):
+        return [f"candidate.workPackages: state/observation.json observes {observation.get('designStateId')!r}, not the "
+                f"working state {working_state_id!r}; observe the working state before planning"]
+    uncovered = []
+    for key, raw in composition_mod.worst_check_endpoints(observation).items():
+        if key.split("|", 2)[0] not in required:
+            continue
+        if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                   for package in active.values()):
+            uncovered.append(f"candidate.workPackages: blocker {key} (PT endpoint {raw!r}) is covered by no active "
+                             "slot; put its endpoint pin in an active slot's targetPins, or, for a top-level port, "
+                             "its check key in targets")
+    return uncovered
+
+
+def _violating_checks(workspace, working_state_id, core):
+    """`[(slack, key, raw endpoint)]` of every violating check of a required scenario, worst first.
+
+    From `state/observation.json` of the working state and the stamped `state/policy.json`; None when
+    either cannot be read or the observation is of another state (`_uncovered_blocker_problems`
+    already names that as one problem).
+    """
+    try:
+        observation = _load_json(Path(workspace) / "state" / "observation.json")
+        _verify_identity(observation, "observation-set", core)
+        policy = _load_json(Path(workspace) / "state" / "policy.json")
+        _verify_identity(policy, "policy", core)
+    except (ValueError, OSError):
+        return None
+    required = policy.get("requiredScenarios")
+    if working_state_id is None or observation.get("designStateId") != working_state_id or not isinstance(required, list):
+        return None
+    rows = []
+    for key, entry in (observation.get("checks") or {}).items():
+        if not isinstance(entry, dict) or not isinstance(key, str) or key.split("|", 2)[0] not in required:
+            continue
+        slack = entry.get("slack")
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value >= 0:
+            continue
+        raw = entry.get("endpoint")
+        rows.append((value, key, raw if isinstance(raw, str) and raw else None))
+    return sorted(rows)
+
+
+def _parked_seat_problems(workspace, working_state_id, active, parked, core, workspaces_mod, composition_mod):
+    """One `Advice` per slot parked within `workerSlots` while a violating check is covered by no active slot.
+
+    #64 treatment attempt 1: the plan took only each required scenario's single worst check as a
+    blocker, made 3 clusters and parked w04..w06 although six seats existed and 2016 checks violated,
+    many in disjoint leaf cells (the dma FIFO and the dmi sync flops, `lsu_axi_arvalid`,
+    `sb_axi_wdata[0]`). Blockers first means the seats go to the worst violating checks: while one is
+    covered by no active slot (`composition.covers`, the rule of `_uncovered_blocker_problems`), a
+    seat up to `workerSlots` should not be parked. The i-th such parked slot (in slot order) is named with the
+    i-th worst uncovered check. A slot above `workerSlots` is parked by rule and never named here. Under
+    the worker/aggregation principle (FABRIC.md G45) this is advice, never a refusal for parking a slot.
+    """
+    try:
+        record = _load_json(Path(workspace) / "state" / "worker-slots.json")
+        _verify_identity(record, "worker-slots", core)
+        count = record.get("workerSlots")
+    except (ValueError, OSError):
+        return []  # `_worker_slot_problems` names the unverifiable record
+    if isinstance(count, bool) or not isinstance(count, int):
+        return []
+    seats = [task_id for task_id in parked if workspaces_mod.slot_number(task_id) <= count]
+    if not seats:
+        return []
+    checks = _violating_checks(workspace, working_state_id, core)
+    if not checks:
+        return []
+    uncovered = [(slack, key, raw) for slack, key, raw in checks
+                 if not any(composition_mod.covers(key, raw, package.get("targets") or [], package.get("targetPins") or [])
+                            for package in active.values())]
+    return [Advice(f"candidate.workPackages.{task_id}: parked, but workerSlots is {count} and the violating check {key} "
+            f"(slack {slack:g} ns, PT endpoint {raw!r}) is covered by no active slot; make {task_id} active on a "
+            "cluster of the worst uncovered checks whose leaf cells no other active slot claims (resolve their "
+            "endpoints with read-atcs.py resolve-instances), or add the check to the targets of the active slot "
+            "whose edit domain holds its cells. Park a slot up to workerSlots only when every violating check of "
+            "a required scenario is covered")
+            for task_id, (slack, key, raw) in zip(seats, uncovered)]
 
 
 def _read_worker_result(report, workspace, expected_task_id, mods):
@@ -1308,7 +1784,13 @@ def _read_worker_result(report, workspace, expected_task_id, mods):
     predicted = obj.get("predicted")
     predicted = predicted if isinstance(predicted, dict) else {}
     missing = core.unknown("not reported in predicted")
+    # Issue #64 Task 5: the join `check-worker-results` judges each branch on this count.
+    refusals = obj.get("refusals")
+    refusal_count = len(refusals) if isinstance(refusals, list) else 1
+    if obj.get("admissible") is not True:
+        refusal_count = max(refusal_count, 1)
     return [
+        _emit_count("tc_worker_refusal_count", refusal_count),
         _emit("tc_xtop_setup_wns_ns", "ns", predicted.get("xtopSetupWns", missing), mode="setup"),
         _emit("tc_xtop_hold_wns_ns", "ns", predicted.get("xtopHoldWns", missing), mode="hold"),
         _emit("tc_presta_setup_wns_ns", "ns", predicted.get("prestaSetupWns", missing), mode="setup"),
@@ -1365,6 +1847,38 @@ def _read_composition_facts(report, workspace, extra, mods):
     return [_emit_count("tc_unresolved_conflict_count", count)]
 
 
+def _read_integration_plan(report, workspace, extra, mods):
+    """`integration-plan` reviewed against its `composition-facts`: `(values, problems)`.
+
+    Envelope::
+
+        {"plan": {...unstamped or stamped "integration-plan" fields...},
+         "facts": {...a stamped "composition-facts" artifact...}}
+
+    `integration._collect_plan_problems(plan, facts)` (the helper behind
+    `plan_invalid_count`) gives the problems; `facts` is schema/id-verified
+    first (a refusal, not a count). A `select` that is not a list makes
+    `tc_selected_contribution_count` unknown and is counted.
+    """
+    core = mods["core"]
+    integration_mod = mods["integration"]
+    envelope = _load_json(report)
+    found = _shape_problems(envelope, ("plan", "facts"))
+    if found:
+        return [_emit_count("tc_request_invalid_count", len(found)),
+                _emit("tc_selected_contribution_count", "count", core.unknown("the integration plan is not an object"))], found
+    plan = envelope["plan"]
+    facts = envelope["facts"]
+    _verify_identity(facts, "composition-facts", core)
+
+    found = [message if message.startswith("plan.") else f"plan.{message}"
+             for message in integration_mod._collect_plan_problems(plan, facts)]
+    select = plan.get("select")
+    selected = (_emit_count("tc_selected_contribution_count", len(select)) if isinstance(select, list)
+                else _emit("tc_selected_contribution_count", "count", core.unknown("plan.select is not a list")))
+    return [_emit_count("tc_request_invalid_count", len(found)), selected], found
+
+
 def _read_integration_state(report, workspace, extra, mods):
     """I3 (final review): `tc_replay_mismatch_count` is only ever a known count when
     every one of this batch's steps was actually verified against its expected delta
@@ -1409,6 +1923,23 @@ def _read_integration_state(report, workspace, extra, mods):
     ]
 
 
+def _recipe_batch_provenance(workspace):
+    """Whether the workspace's own state shows a recipe batch (Issue #64 Task 6)."""
+    state_dir = Path(workspace) / "state"
+    for name, test in (("replay-request.json", lambda doc: doc.get("mode") == "recipe"),
+                       ("integration-state.json",
+                        lambda doc: isinstance(doc.get("chosen"), dict) and bool(doc["chosen"].get("eco")))):
+        path = state_dir / name
+        if path.is_file() and not path.is_symlink():
+            try:
+                doc = _load_json(path)
+            except ValueError:
+                continue
+            if isinstance(doc, dict) and test(doc):
+                return True
+    return False
+
+
 def _read_precheck_evidence(report, workspace, extra, mods):
     """A stamped `atcs.precheck-evidence/1` artifact
     (`atcs.verification.precheck_evidence(merge_commit, spef_net_names_path)`):
@@ -1430,7 +1961,17 @@ def _read_precheck_evidence(report, workspace, extra, mods):
     _verify_identity(obj, "precheck-evidence", core)
 
     new_nets = obj.get("newNets")
-    if not isinstance(new_nets, list) or not all(isinstance(net, str) for net in new_nets):
+    batch_kind = obj.get("batchKind", "legacy")
+    if batch_kind not in ("legacy", "recipe"):
+        raise ValueError("precheck-evidence.batchKind must be legacy or recipe")
+    # A recipe pre-check never gates, so the claim needs provenance in the workspace itself: a
+    # recipe replay-request, or an integration-state that chose an ECO pair. Without it, the
+    # evidence gates exactly like a legacy batch.
+    recipe_provenance = _recipe_batch_provenance(workspace)
+    if batch_kind == "recipe" and new_nets is None:
+        if not isinstance(obj.get("newNetsUnknown"), str) or not obj["newNetsUnknown"]:
+            raise ValueError("precheck-evidence.newNets is null without newNetsUnknown")
+    elif not isinstance(new_nets, list) or not all(isinstance(net, str) for net in new_nets):
         raise ValueError("precheck-evidence.newNets must be a list of strings")
 
     source = obj.get("spefNetNames")
@@ -1448,7 +1989,23 @@ def _read_precheck_evidence(report, workspace, extra, mods):
         ]
 
     result = verification_mod.presta_qualification(new_nets, spef_net_names)
-    return [_emit("tc_unqualified_rc_net_count", "count", result["count"])]
+    count = result["count"]
+    if batch_kind == "recipe" and new_nets is None:
+        count = core.unknown(f"the batch's new nets are unknown: {obj['newNetsUnknown']}")
+    if batch_kind == "legacy" or not recipe_provenance:
+        # A legacy M5 batch uses the pre-check as its decision basis: its unqualified nets gate it.
+        gate = count
+    else:
+        # Issue #64 Task 6: a recipe batch's pre-check cannot model the nets auto-fix inserts, so
+        # it never gates the batch -- refreshed PrimeTime is the only judge. It must still state
+        # honestly whether it is predictive: exactly when every new net is known and qualified.
+        predictive = core.is_known(count) and core.value_of(count) == 0
+        if obj.get("predictive") is not predictive:
+            raise ValueError(
+                f"precheck-evidence.predictive is {obj.get('predictive')!r}, the evidence shows {predictive!r}"
+            )
+        gate = core.known(0)
+    return [_emit("tc_unqualified_rc_net_count", "count", count), _emit("tc_presta_gate_net_count", "count", gate)]
 
 
 _EVALUATION_FIELDS = (
@@ -1471,7 +2028,303 @@ def _read_evaluation(report, workspace, extra, mods):
     values = []
     for type_name, field, unit, mode in _EVALUATION_FIELDS:
         values.append(_emit(type_name, unit, obj.get(field, missing), mode=mode))
+    # Availability of the XTop comparison, not a never-worse guarantee or an adoption gate.
+    guarantee = obj.get("batchGuarantee")
+    unevidenced = 1 if isinstance(guarantee, dict) and guarantee.get("evidenced") is False else 0
+    values.append(_emit_count("tc_batch_guarantee_unevidenced", unevidenced))
     return values
+
+
+_ENGINEERING_MODES = ("setup", "hold")
+
+
+def _engineering_metrics(value, label):
+    if not isinstance(value, dict) or set(value) != set(_ENGINEERING_MODES):
+        raise ValueError(f"{label} must have exactly setup and hold")
+    normalized = {}
+    for mode in _ENGINEERING_MODES:
+        row = value[mode]
+        if not isinstance(row, dict) or set(row) != {"wnsNs", "tnsNs", "violations", "report"}:
+            raise ValueError(f"{label}.{mode} must have wnsNs, tnsNs, violations and report")
+        wns, tns, violations = row["wnsNs"], row["tnsNs"], row["violations"]
+        for name, number in (("wnsNs", wns), ("tnsNs", tns)):
+            if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
+                raise ValueError(f"{label}.{mode}.{name} must be a finite number")
+        if isinstance(violations, bool) or not isinstance(violations, int) or violations < 0:
+            raise ValueError(f"{label}.{mode}.violations must be a non-negative int")
+        normalized[mode] = {"wnsNs": float(wns), "tnsNs": float(tns), "violations": violations}
+    return normalized
+
+
+def _engineering_file_ref(value, workspace, core, label):
+    if not isinstance(value, dict) or set(value) != {"path", "sha256"}:
+        raise ValueError(f"{label} must be exactly {{path, sha256}}")
+    _require_file(workspace, value["path"], value["sha256"], core, label)
+
+
+def _verify_engineering_metric_reports(raw_metrics, normalized, workspace, core, contributions, label):
+    for mode in _ENGINEERING_MODES:
+        report_ref = raw_metrics[mode]["report"]
+        report_label = f"{label}.{mode}.report"
+        _engineering_file_ref(report_ref, workspace, core, report_label)
+        raw = _safe_join(workspace, report_ref["path"], report_label).read_text(encoding="utf-8")
+        parsed = (contributions.parse_gain_summary(raw).get(mode) or {}).get("total") or {}
+        declared = normalized[mode]
+        if (parsed.get("worst"), parsed.get("tns"), parsed.get("count")) != (
+                declared["wnsNs"], declared["tnsNs"], declared["violations"]):
+            raise ValueError(f"{report_label} native WNS/TNS/count disagree with declared measurements")
+
+
+def _engineering_tree_ref(value, workspace, core, label):
+    if not isinstance(value, dict) or set(value) != {"path", "digest"}:
+        raise ValueError(f"{label} must be exactly {{path, digest}}")
+    _require_tree(workspace, value["path"], value["digest"], core, label)
+
+
+
+
+_COLLATERAL_CHECKS = {"transition", "capacitance", "fanout", "legality"}
+_COLLATERAL_REASON_PREFIXES = {
+    "transition": ("break_max_transition",),
+    "capacitance": ("break_max_capacitance",),
+    "fanout": ("break_max_fanout",),
+    "legality": ("legal_fail_",),
+}
+
+
+def _engineering_collateral_report(row, check, workspace, core, contributions, state_id, scenarios, label):
+    if not isinstance(row, dict):
+        raise ValueError(f"{label} must be an object")
+    if set(row) == {"unknown"} and isinstance(row["unknown"], str) and row["unknown"].strip():
+        return None, row["unknown"]
+    if set(row) != {"scope", "stateId", "requiredScenarios", "source"}:
+        raise ValueError(
+            f"{label} must declare scope/stateId/requiredScenarios/source or unknown; model counts are not evidence")
+    if row["scope"] != "timing-fix-fail-reasons":
+        return None, f"unsupported native collateral scope: {row['scope']!r}"
+    if row["stateId"] != state_id or row["requiredScenarios"] != list(scenarios):
+        raise ValueError(f"{label} does not match the current state/scenario identity")
+    source = row["source"]
+    source_keys = {"path", "sha256", "tool", "version", "command"}
+    if (not isinstance(source, dict) or set(source) != source_keys
+            or not all(isinstance(source.get(key), str) and source[key].strip() for key in source)):
+        raise ValueError(f"{label}.source must name hashed path and non-empty tool/version/command")
+    _engineering_file_ref(
+        {"path": source["path"], "sha256": source["sha256"]}, workspace, core, f"{label}.source")
+    text = _safe_join(workspace, source["path"], f"{label}.source").read_text(encoding="utf-8")
+    parsed = contributions.parse_fail_reasons(text)
+    if parsed is None:
+        return None, "unsupported native collateral report format: no XTop fail-reason table"
+    for raw_line in text.splitlines():
+        tokens = raw_line.split()
+        if (len(tokens) >= 4 and re.match(r"^-?(?:\d+(?:\.\d*)?|\.\d+)$", tokens[0])
+                and any(re.match(r"^[a-zA-Z0-9_]+:\d+(?:\.\d+)?%$", token) for token in tokens[3:])
+                and tokens[1] not in scenarios):
+            raise ValueError(f"{label}.source names undeclared scenario {tokens[1]!r}")
+    prefixes = _COLLATERAL_REASON_PREFIXES[check]
+    facts = {reason: count for reason, count in parsed.items()
+             if any(reason.startswith(prefix) for prefix in prefixes)}
+    if not facts:
+        return None, (
+            f"native timing-fix fail-reason scope has no {check} finding; it cannot prove global zero")
+    return facts, (
+        f"native timing-fix fail-reason scope is a bounded blocker sample, not a global {check} check")
+
+
+def _engineering_collateral(value, workspace, core, contributions, identity, native, selected_state_id):
+    if not isinstance(value, dict) or set(value) != {"before", "after"}:
+        raise ValueError("engineering-result.collateral must have exactly before and after")
+    scenarios = native.get("requiredScenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise ValueError("xtop-context.requiredScenarios must be a non-empty list")
+    facts, unknown = {"before": {}, "after": {}}, {"before": {}, "after": {}}
+    for phase, state_id in (("before", identity["commonStateId"]), ("after", selected_state_id)):
+        rows = value[phase]
+        if not isinstance(rows, dict) or set(rows) != _COLLATERAL_CHECKS:
+            raise ValueError(f"engineering-result.collateral.{phase} must have exactly {sorted(_COLLATERAL_CHECKS)}")
+        for check in sorted(_COLLATERAL_CHECKS):
+            parsed, reason = _engineering_collateral_report(
+                rows[check], check, workspace, core, contributions, state_id, scenarios,
+                f"engineering-result.collateral.{phase}.{check}")
+            if parsed is not None:
+                facts[phase][check] = parsed
+            if reason is not None:
+                unknown[phase][check] = reason
+    return facts, unknown
+
+
+def _engineering_regressions(before, after, goal, collateral, collateral_unknown, core):
+    reasons = []
+    for mode in _ENGINEERING_MODES:
+        target = goal[f"{mode}WnsNs"]
+        prior, current = before[mode], after[mode]
+        prior_ok = prior["violations"] == 0 and prior["wnsNs"] >= target
+        current_ok = current["violations"] == 0 and current["wnsNs"] >= target
+        regressed = prior_ok and not current_ok
+        if not prior_ok and not current_ok:
+            regressed = (current["violations"] > prior["violations"]
+                or current["wnsNs"] < prior["wnsNs"] - 1e-9
+                or current["tnsNs"] < prior["tnsNs"] - 1e-9)
+        if regressed:
+            reasons.append(f"timing:{mode}")
+    for check in sorted(_COLLATERAL_CHECKS):
+        prior = collateral["before"].get(check, {})
+        current = collateral["after"].get(check, {})
+        reasons.extend(f"{check}:{key}" for key, excess in current.items()
+                       if key not in prior or excess > prior[key] + 1e-9)
+    if reasons:
+        return core.known(len(reasons)), reasons
+    if collateral_unknown["before"] or collateral_unknown["after"]:
+        return core.unknown(
+            "required collateral comparison unknown: "
+            + ", ".join(sorted(set(collateral_unknown["before"]) | set(collateral_unknown["after"])))), reasons
+    return core.known(len(reasons)), reasons
+
+
+def _read_engineering_result(report, workspace, extra, mods):
+    """Read one Host-delivered resident result and independently verify its engineering evidence.
+
+    Host delivery already binds the file to the current task/execution. This Reader binds its
+    business content to this Campaign's baseline, native context and engineering starting state,
+    then re-hashes the raw reports, scripts, ECOs, selected checkpoint and reproduction material.
+    """
+    del extra
+    core = mods["core"]
+    obj = _load_json(report)
+    _verify_identity(obj, "engineering-result", core)
+    if obj.get("kind") != "result":
+        raise ValueError("engineering-result.kind must be 'result'")
+
+    task = obj.get("task")
+    task_keys = {"taskId", "runId", "executionId", "nodeId"}
+    if (not isinstance(task, dict) or set(task) != task_keys
+            or not all(isinstance(task[key], str) and task[key] for key in task_keys)):
+        raise ValueError("engineering-result.task must carry non-empty taskId/runId/executionId/nodeId")
+    if task["nodeId"] != "fix-timing":
+        raise ValueError("engineering-result.task.nodeId must be 'fix-timing'")
+    result_sha256 = core.file_sha256(Path(report))
+    deliveries = []
+    for manifest_path in Path(workspace).glob(".hima-engineering/*/delivery/manifest.json"):
+        manifest = _load_json(manifest_path)
+        if manifest.get("schema") != "hima-resident-engineering-delivery/1":
+            continue
+        stored_sha = manifest.get("sha256")
+        body = dict(manifest)
+        body.pop("sha256", None)
+        if stored_sha != hashlib.sha256(core.canonical(body)).hexdigest():
+            raise ValueError(f"resident delivery manifest digest mismatch: {manifest_path}")
+        artifacts = manifest.get("artifacts")
+        if isinstance(artifacts, list) and any(
+                isinstance(item, dict) and item.get("kind") == "result" and item.get("sha256") == result_sha256
+                for item in artifacts):
+            deliveries.append(manifest)
+    if len(deliveries) != 1:
+        raise ValueError("engineering result must match exactly one verified Host delivery manifest")
+    delivery = deliveries[0]
+    if task != {key: delivery.get(key) for key in task_keys}:
+        raise ValueError("engineering-result.task does not match the verified Host delivery identity")
+
+    baseline = _load_json(Path(workspace) / "state" / "baseline.json")
+    _verify_identity(baseline, "design-state", core)
+    common = _load_json(Path(workspace) / "state" / "common-stage.json")
+    _verify_identity(common, "common-stage", core)
+    native = _load_json(Path(workspace) / "state" / "xtop-context.json")
+    _verify_identity(native, "xtop-context", core)
+
+    identity = obj.get("inputIdentity")
+    expected_identity = {
+        "baselineStateId": baseline["id"],
+        "nativeContextId": native["id"],
+        "commonStateId": common.get("stateId"),
+        "worklistId": common.get("worklistId"),
+    }
+    if identity != expected_identity:
+        raise ValueError("engineering-result.inputIdentity does not match baseline/native/common R1")
+
+    selected = obj.get("selected")
+    if (not isinstance(selected, dict) or set(selected) != {"stateId", "checkpoint"}
+            or not isinstance(selected.get("stateId"), str) or not selected["stateId"]):
+        raise ValueError("engineering-result.selected must have stateId and checkpoint")
+    _engineering_tree_ref(selected["checkpoint"], workspace, core, "engineering-result.selected.checkpoint")
+
+    measurements = obj.get("measurements")
+    if not isinstance(measurements, dict) or set(measurements) != {"before", "after"}:
+        raise ValueError("engineering-result.measurements must have exactly before and after")
+    before = _engineering_metrics(measurements["before"], "engineering-result.measurements.before")
+    after = _engineering_metrics(measurements["after"], "engineering-result.measurements.after")
+    common_after = _engineering_metrics(common.get("measurements", {}).get("after"),
+                                        "common-stage.measurements.after")
+    if before != common_after:
+        raise ValueError("engineering result did not start from the verified common R1 measurements")
+    # This method's declared setup/hold targets are both fixed at 0 ns (contract.yml).
+    # Regression classification belongs to the repair task, never to an external benchmark.
+    goal = {"setupWnsNs": 0, "holdWnsNs": 0}
+    collateral, collateral_unknown = _engineering_collateral(
+        obj.get("collateral"), workspace, core, mods["contributions"], identity, native, selected["stateId"])
+
+    _verify_engineering_metric_reports(
+        common["measurements"]["after"], common_after, workspace, core, mods["contributions"],
+        "common-stage.measurements.after")
+    for phase in ("before", "after"):
+        _verify_engineering_metric_reports(
+            measurements[phase], before if phase == "before" else after,
+            workspace, core, mods["contributions"], f"engineering-result.measurements.{phase}")
+
+    artifacts = obj.get("artifacts")
+    required_artifacts = {"scripts", "logicalEco", "physicalEco", "reproduction", "nativeTrace"}
+    if not isinstance(artifacts, dict) or set(artifacts) != required_artifacts:
+        raise ValueError(f"engineering-result.artifacts must have exactly {sorted(required_artifacts)}")
+    scripts, trace = artifacts["scripts"], artifacts["nativeTrace"]
+    if not isinstance(scripts, list) or not scripts:
+        raise ValueError("engineering-result.artifacts.scripts must be a non-empty list")
+    if not isinstance(trace, list) or not trace:
+        raise ValueError("engineering-result.artifacts.nativeTrace must be a non-empty list")
+    for key in ("logicalEco", "physicalEco", "reproduction"):
+        _engineering_file_ref(artifacts[key], workspace, core, f"engineering-result.artifacts.{key}")
+    for index, ref in enumerate(scripts):
+        _engineering_file_ref(ref, workspace, core, f"engineering-result.artifacts.scripts[{index}]")
+    for index, ref in enumerate(trace):
+        _engineering_file_ref(ref, workspace, core, f"engineering-result.artifacts.nativeTrace[{index}]")
+
+    for key in ("remaining", "regressed", "blocked", "unknown"):
+        value = obj.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError(f"engineering-result.{key} must be a list of facts")
+    timing_remaining = sum(after[mode]["violations"] for mode in _ENGINEERING_MODES)
+    known_remaining = timing_remaining + sum(
+        sum(facts.values()) for facts in collateral["after"].values())
+    regression_measure, _regression_reasons = _engineering_regressions(
+        before, after, goal, collateral, collateral_unknown, core)
+    if not isinstance(obj.get("stopReason"), str) or not obj["stopReason"].strip():
+        raise ValueError("engineering-result.stopReason must be a non-empty string")
+    if not isinstance(obj.get("bestEffort"), bool) or not isinstance(obj.get("noOp"), bool):
+        raise ValueError("engineering-result.bestEffort and noOp must be booleans")
+    if obj["noOp"] and (before != after or collateral["before"] != collateral["after"]
+                        or collateral_unknown["before"] != collateral_unknown["after"]):
+        raise ValueError("engineering-result.noOp is true but raw before/after facts differ")
+
+    remaining_measure = (core.known(known_remaining) if known_remaining > 0
+        else core.unknown("required collateral checks unknown: " + ", ".join(sorted(collateral_unknown["after"])))
+        if collateral_unknown["after"] else core.known(0))
+    comparative = []
+    for phase, measured in (("before", before),):
+        for mode in _ENGINEERING_MODES:
+            for suffix, field, unit in (("violation_count", "violations", "count"), ("wns_ns", "wnsNs", "ns"), ("tns_ns", "tnsNs", "ns")):
+                comparative.append(_emit(f"tc_engineering_{phase}_{mode}_{suffix}", unit, core.known(measured[mode][field]), mode=mode))
+    return [
+        _emit_count("tc_engineering_result_error_count", 0),
+        _emit_count("tc_engineering_timing_remaining_violation_count", timing_remaining),
+        _emit("tc_engineering_setup_violation_count", "count", core.known(after["setup"]["violations"]), mode="setup"),
+        _emit("tc_engineering_hold_violation_count", "count", core.known(after["hold"]["violations"]), mode="hold"),
+        *comparative,
+        _emit("tc_engineering_setup_wns_ns", "ns", core.known(after["setup"]["wnsNs"]), mode="setup"),
+        _emit("tc_engineering_hold_wns_ns", "ns", core.known(after["hold"]["wnsNs"]), mode="hold"),
+        _emit("tc_engineering_setup_tns_ns", "ns", core.known(after["setup"]["tnsNs"]), mode="setup"),
+        _emit("tc_engineering_hold_tns_ns", "ns", core.known(after["hold"]["tnsNs"]), mode="hold"),
+        _emit("tc_engineering_remaining_violation_count", "count", remaining_measure),
+        _emit("tc_engineering_regression_count", "count", regression_measure),
+        _emit_count("tc_engineering_collateral_unknown_count", len(collateral_unknown["after"])),
+    ]
 
 
 def _read_acceptance_record(report, workspace, extra, mods):
@@ -1553,7 +2406,7 @@ def _refresh_ledger_entry_count(ledger_path, core):
 def _read_refresh_budget(report, workspace, extra, mods):
     """`tc_refreshes_completed`: completed full physical refreshes, read right before one more.
 
-    Issue #63: every Explore revisit consumes a Harness generation whether or not it refreshes
+    Issue #63 (ported to 0.2.0 for #64 Track B): every Explore revisit consumes a Harness generation whether or not it refreshes
     anything, so the Pack caps Innovus/StarRC/PrimeTime refreshes itself -- the `refresh-budget`
     rule holds this count below the Run's Goal value `max_physical_refreshes` at the Judges
     `check-refresh-budget` (before `implement`) and `check-refresh-budget-apr` (before
@@ -1617,6 +2470,38 @@ _NEXT_DECISION_REQUIRED_FIELDS = (
 )
 _ID_SHAPE_RE = re.compile(r"^[0-9a-f]{20}$")
 _APR_STAGES = ("place", "cts", "route", "postroute")
+
+
+# Actions whose route reaches prepare-workers (research) or replay-prepare (compose, revise), both
+# of which refuse an XTop context not bound to the current working state (stale-base).
+_BATCH_ACTIONS = ("research", "compose", "revise")
+
+
+def _stale_xtop_context_problems(workspace, action):
+    """#64 Track B (from #63's dry path): after a physical refresh is adopted,
+    `state/xtop-context.json` still names the state `observe` last bound it to, and only `observe`
+    rebinds it. A batch action on that context ends in prepare-workers or replay-prepare exiting 3
+    stale-base, so it is counted here with the way out. No context at all is left to those tools:
+    a Site that declares no `xtopContext` cannot run a worker whatever is decided."""
+    path = Path(workspace) / "state" / "xtop-context.json"
+    if not path.exists():
+        return []
+    core = _atcs_modules(workspace)["core"]
+    try:
+        context = _load_json(path)
+        _verify_identity(context, "xtop-context", core)
+    except (ValueError, OSError) as error:
+        return [f"action: {action} needs state/xtop-context.json bound to the working state, and it does "
+                f"not verify ({error}); observe first"]
+    try:
+        working = _load_json(Path(workspace) / "state" / "working-state.json")
+    except (ValueError, OSError):
+        return []  # the stateRef check names an unreadable working state
+    bound, current = context.get("designStateId"), working.get("id") if isinstance(working, dict) else None
+    if current is None or bound == current:
+        return []
+    return [f"action: observe first: the XTop context is bound to {bound!r}, the working state is {current!r}; "
+            f"{action} needs a context bound to the working state, which only observe writes"]
 
 
 def _implement_batch_ready(workspace, mods):
@@ -1701,38 +2586,6 @@ def _implement_batch_ready(workspace, mods):
 
 # One check key: `<scenario>|<setup|hold>|<endpoint>`, no whitespace and no wildcard anywhere.
 _CHECK_KEY_RE = re.compile(r"^[^|\s*?]+\|(?:setup|hold)\|[^|\s*?@]+(?:@\*\*\w+\*\*)?$")
-
-# Actions whose route reaches prepare-workers (research) or replay-prepare (compose, revise), both
-# of which refuse an XTop context not bound to the current working state (stale-base).
-_BATCH_ACTIONS = ("research", "compose", "revise")
-
-
-def _stale_xtop_context_problems(workspace, action):
-    """Dry path (slice 4): after a physical refresh is adopted, `state/xtop-context.json` still
-    names the state `observe` last bound it to, and only `observe` rebinds it. A batch action
-    on that context ends in prepare-workers or replay-prepare exiting 3 stale-base, so it is
-    counted here with the way out. No context at all is left to those tools: a Site that
-    declares no `xtopContext` cannot run a worker whatever is decided."""
-    path = Path(workspace) / "state" / "xtop-context.json"
-    if not path.exists():
-        return []
-    core = _atcs_modules(workspace)["core"]
-    try:
-        context = _load_json(path)
-        _verify_identity(context, "xtop-context", core)
-    except (ValueError, OSError) as error:
-        return [f"action: {action} needs state/xtop-context.json bound to the working state, and it does "
-                f"not verify ({error}); observe first"]
-    try:
-        working = _load_json(Path(workspace) / "state" / "working-state.json")
-    except (ValueError, OSError):
-        return []  # the stateRef check names an unreadable working state
-    bound, current = context.get("designStateId"), working.get("id") if isinstance(working, dict) else None
-    if current is None or bound == current:
-        return []
-    return [f"action: observe first: the XTop context is bound to {bound!r}, the working state is {current!r}; "
-            f"{action} needs a context bound to the working state, which only observe writes"]
-
 
 def _observation_check_keys(workspace):
     """The check keys of `state/observation.json`, or None when it cannot be read."""
@@ -1826,7 +2679,7 @@ def _collect_next_decision_problems(obj, workspace):
     return problems
 
 
-def _next_decision(report, workspace, extra, mods):
+def _read_next_decision(report, workspace, extra, mods):
     """`next-decision`, self-contained: reference resolvability is a workspace scan.
 
     `tc_next_action`/`tc_stop_required` are both derived from the *same*
@@ -1861,28 +2714,45 @@ _HANDLERS = {
     "evaluation": lambda report, workspace, extra, mods: _read_evaluation(report, workspace, extra, mods),
     "acceptance-record": lambda report, workspace, extra, mods: _read_acceptance_record(report, workspace, extra, mods),
     "refresh-budget": lambda report, workspace, extra, mods: _read_refresh_budget(report, workspace, extra, mods),
+    "engineering-result": lambda report, workspace, extra, mods: _read_engineering_result(report, workspace, extra, mods),
 }
 
 # Request kinds: each returns `(values, problems)`, its count being `len(problems)`.
 _REQUEST_HANDLERS = {
-    "observation-request": lambda report, workspace, extra, mods: _observation_request(report, workspace, extra, mods),
-    "work-package": lambda report, workspace, extra, mods: _request_envelope(report, workspace, None, mods),
-    "campaign-plan": lambda report, workspace, extra, mods: _campaign_plan(report, workspace, extra, mods),
-    "worker-request": lambda report, workspace, extra, mods: _request_envelope(report, workspace, extra[0] if extra else None, mods),
-    "integration-plan": lambda report, workspace, extra, mods: _integration_plan(report, workspace, extra, mods),
-    "next-decision": lambda report, workspace, extra, mods: _next_decision(report, workspace, extra, mods),
+    "observation-request": lambda report, workspace, extra, mods: _read_observation_request(report, workspace, extra, mods),
+    "work-package": lambda report, workspace, extra, mods: _read_request_envelope(report, workspace, None, mods),
+    "campaign-plan": lambda report, workspace, extra, mods: _read_campaign_plan(report, workspace, extra, mods),
+    "worker-request": lambda report, workspace, extra, mods: _with_slot_parked(
+        _read_request_envelope(report, workspace, extra[0] if extra else None, mods), report, mods),
+    "integration-plan": lambda report, workspace, extra, mods: _read_integration_plan(report, workspace, extra, mods),
+    "next-decision": lambda report, workspace, extra, mods: _read_next_decision(report, workspace, extra, mods),
 }
+
+
+def _read_with_advice(kind, report, workspace, extra):
+    """`(values, problems, advice)`; `problems` and `advice` are None for a kind that is not a request.
+
+    A request handler returns its findings in one list; the `Advice` ones are split off here and
+    not counted: `tc_request_invalid_count` is the number of the others.
+    """
+    extra = extra or []
+    if kind not in _HANDLERS and kind not in _REQUEST_HANDLERS:
+        raise ValueError(f"unknown reader kind: {kind!r}; known kinds: {sorted(set(_HANDLERS) | set(_REQUEST_HANDLERS))}")
+    mods = _atcs_modules(workspace)
+    if kind not in _REQUEST_HANDLERS:
+        return _HANDLERS[kind](report, workspace, extra, mods), None, None
+    values, found = _REQUEST_HANDLERS[kind](report, workspace, extra, mods)
+    counted = [str(item) for item in found if not isinstance(item, Advice)]
+    advice = [str(item) for item in found if isinstance(item, Advice)]
+    values = [_emit_count("tc_request_invalid_count", len(counted)) if value.get("type") == "tc_request_invalid_count"
+              else value for value in values]
+    return values, counted, advice
 
 
 def _read(kind, report, workspace, extra):
     """`(values, problems)`; `problems` is None for a kind that is not a request."""
-    extra = extra or []
-    mods = _atcs_modules(workspace) if kind in _HANDLERS or kind in _REQUEST_HANDLERS else None
-    if kind in _REQUEST_HANDLERS:
-        return _REQUEST_HANDLERS[kind](report, workspace, extra, mods)
-    if kind in _HANDLERS:
-        return _HANDLERS[kind](report, workspace, extra, mods), None
-    raise ValueError(f"unknown reader kind: {kind!r}; known kinds: {sorted(set(_HANDLERS) | set(_REQUEST_HANDLERS))}")
+    values, found, _advice = _read_with_advice(kind, report, workspace, extra)
+    return values, found
 
 
 def read(kind, report, workspace, extra=None):
@@ -1899,6 +2769,13 @@ def problems(kind, report, workspace, slot=None):
     if kind not in _REQUEST_HANDLERS:
         raise ValueError(f"{kind!r} is not a request kind; request kinds: {sorted(_REQUEST_HANDLERS)}")
     return _read(kind, report, workspace, [slot] if slot else [])[1]
+
+
+def advice(kind, report, workspace, slot=None):
+    """The advisory findings on the request document `report`, one string each; never counted."""
+    if kind not in _REQUEST_HANDLERS:
+        raise ValueError(f"{kind!r} is not a request kind; request kinds: {sorted(_REQUEST_HANDLERS)}")
+    return _read_with_advice(kind, report, workspace, [slot] if slot else [])[2]
 
 
 # ---------------------------------------------------------------------------
@@ -2083,16 +2960,414 @@ def _resolve_instances_main(argv):
     Path(out).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Cluster seating (#66 D1): `read-atcs.py seat-clusters WORKSPACE OUT [--slots N]`
+# ---------------------------------------------------------------------------
+#
+# Manual ECO is bottleneck removal: each expert seat owns one coherent blocker cluster and works it
+# hardest first. This helper proposes the partition, so the plan Workshop seats clusters instead of
+# inventing one: the required scenarios' violating checks (state/observation.json, with the fail
+# reasons of state/residual-cases.json when present) become at most `workerSlots` disjoint clusters
+# (no two seats share an endpoint cell), ordered by worst slack. It writes a candidate `workPackages`
+# block the Workshop may adopt or edit; nothing else. No endpoint count is imposed.
+
+CLUSTER_CAUSES = ("scenario-worst", "startpoint", "clock-enable", "hierarchy", "fanout", "fail-reason", "region")
+"""`workPackage.cluster.cause`: the shared cause a cluster names in its `key`."""
+
+_CLOCK_ENABLE_RE = re.compile(r"(^|_)(clk|clock|ck)_?en(able)?(_?\d*|\[\d+\])$", re.I)
+
+
+def _cell_key(instance):
+    """An instance path compared the way the plan Reader's disjointness check reads it."""
+    segments = _split_instance_path(instance)
+    return "/".join(segments) if segments else instance
+
+
+def _cell_prefix(instance):
+    """The hierarchy an instance sits in (its path without the leaf), None for a cell directly under top."""
+    segments = _split_instance_path(instance) or [instance]
+    return "/".join(segments[:-1]) or None
+
+
+def _fail_pattern(row):
+    """`<mode>:<dominant fail reason>` of a check, None when it has no fail reason."""
+    counted = [(count, reason) for reason, count in row["failReasons"].items() if count > 0]
+    return f"{row['mode']}:{max(counted, key=lambda item: (item[0], item[1]))[1]}" if counted else None
+
+
+def _row_order(row):
+    """Hardest first: worst slack, then the harder fail reasons (the larger count), then the key."""
+    return (row["slack"], -row["failWeight"], row["check"])
+
+
+def _group_order(group):
+    return _row_order(min(group["rows"], key=_row_order))
+
+
+def _merge_level(groups, slots, cause, attribute):
+    """Fold the least hard groups into a harder one sharing `attribute`, until at most `slots` remain.
+
+    Only a group no level has formed yet (cause None), or one this level formed, takes part; a group
+    formed at an earlier level (a shared startpoint) keeps its cause.
+    """
+    def value_of(group):
+        return group["key"] if group["cause"] == cause else attribute(min(group["rows"], key=_row_order))
+
+    while len(groups) > slots:
+        groups.sort(key=_group_order)
+        merged = False
+        for group in reversed(groups):
+            if group["cause"] not in (None, cause):
+                continue
+            value = value_of(group)
+            if value is None:
+                continue
+            peer = next((other for other in groups if other is not group and other["cause"] in (None, cause)
+                         and value_of(other) == value), None)
+            if peer is None:
+                continue
+            peer["rows"] += group["rows"]
+            peer["cause"], peer["key"] = cause, value
+            groups.remove(group)
+            merged = True
+            break
+        if not merged:
+            return
+
+
+# L4 qualification run 4 (#64): the Site's PrimeTime names a check's endpoint as its instance, with no pin,
+# so a seat got `targetPins: []` and its Operator could read no target. An instance endpoint's pin comes
+# from the netlist: the flop's asynchronous pin for an `@**async_default**` check (reset recovery and
+# removal), else its data pin.
+_ASYNC_PIN_RE = re.compile(r"^(CDN|SDN|CD|SD|RN|SN|RB|SB|R|S|CLR|CLRN|PRE|PREN|RST|RSTN|RESET|RESETN|SET|SETN)$")
+_DATA_PIN_RE = re.compile(r"^(D|DA|DB|D\d+)$")
+_CLOCK_PIN_RE = re.compile(r"^(CP|CPN|CK|CKN|CLK|CLKN|G|GN|E|EN|TE|SE|SI)$")
+
+
+def _leaf_pins(modules, top, instance):
+    """The connected pin names of the leaf cell `instance` (a resolved full path), or [] when not found."""
+    segments = _split_instance_path(instance)
+    if not segments:
+        return []
+    module, index = top, 0
+    while index < len(segments):
+        body = modules.get(module)
+        if body is None:
+            return []
+        found = None
+        for count in range(len(segments) - index, 0, -1):  # longest first, as the resolver walks
+            for spelling in _spellings("/".join(segments[index:index + count])):
+                if spelling in body["instances"]:
+                    found = (spelling, count)
+                    break
+            if found:
+                break
+        if found is None:
+            return []
+        name, count = found
+        kind = body["instances"][name]
+        index += count
+        if index == len(segments):
+            return [] if kind in modules else [pin for pin, net in (body["conns"].get(name) or {}).items() if net is not None]
+        module = kind
+    return []
+
+
+def _endpoint_pin(pins, asynchronous):
+    """The endpoint pin a check reaches on a cell with `pins`: its asynchronous pin, else its data pin."""
+    for pattern in ((_ASYNC_PIN_RE,) if asynchronous else ()) + (_DATA_PIN_RE,):
+        found = [pin for pin in pins if pattern.match(pin)]
+        if found:
+            return "D" if "D" in found else found[0]
+    return None
+
+
+def _seat_rows(workspace, working_state, observation, required):
+    """`(rows, unresolved)`: each violating check of a required scenario with its endpoint's leaf cell."""
+    case_reasons, batch_reasons = {}, {}
+    residual_path = Path(workspace) / "state" / "residual-cases.json"
+    if residual_path.is_file():
+        residual = _load_json(residual_path)
+        residual = residual if isinstance(residual, dict) else {}
+        batch = residual.get("batchFailReasons")
+        batch_reasons = batch if isinstance(batch, dict) else {}
+        for case in residual.get("cases") or []:
+            if isinstance(case, dict) and isinstance(case.get("failReasons"), dict):
+                for key in case.get("checks") or []:
+                    if isinstance(key, str):
+                        case_reasons[key] = case["failReasons"]
+
+    def reasons_of(key, mode):
+        found = case_reasons.get(key)
+        if not found:
+            found = batch_reasons.get(mode)
+        found = found if isinstance(found, dict) else {}
+        return {reason: count for reason, count in found.items()
+                if isinstance(reason, str) and isinstance(count, (int, float)) and not isinstance(count, bool)}
+
+    rows = []
+    for key, entry in (observation.get("checks") or {}).items():
+        parts = key.split("|", 2) if isinstance(key, str) else []
+        if len(parts) != 3 or parts[0] not in required or parts[1] not in ("setup", "hold") or not isinstance(entry, dict):
+            continue
+        slack = entry.get("slack")
+        value = slack.get("value") if isinstance(slack, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value >= 0:
+            continue
+        raw = entry.get("endpoint")
+        startpoint = entry.get("startpoint")
+        reasons = reasons_of(key, parts[1])
+        rows.append({"check": key, "scenario": parts[0], "mode": parts[1], "slack": value,
+                     "endpoint": raw if isinstance(raw, str) and raw.strip() else _endpoint_part(key),
+                     "startpoint": startpoint if isinstance(startpoint, str) and startpoint.strip() else None,
+                     "failReasons": reasons, "failWeight": sum(reasons.values())})
+    rows.sort(key=_row_order)
+
+    answer = resolve_endpoints(workspace, sorted({row["endpoint"] for row in rows}))
+    resolved = {item["endpoint"]: item for item in answer["resolved"]}
+    why = {item["endpoint"]: item["unresolved"] for item in answer["unresolved"]}
+    modules = _netlist_index_cache[str(_safe_join(workspace, working_state["netlist"]["path"], "design-state.netlist"))]
+    workspaces_mod = _atcs_modules(workspace)["workspaces"]
+    seated, unresolved = [], []
+    for row in rows:
+        item = resolved.get(row["endpoint"])
+        if item is None and "primary port" in (why.get(row["endpoint"]) or ""):
+            # A primary port is never a target; the cell driving it is (#66 D1).
+            item, reason = _net_driver(modules, working_state.get("top"), _endpoint_part(row["endpoint"]), [])
+            if item is not None:
+                item = dict(item, via="port-driver")
+            else:
+                why[row["endpoint"]] = reason
+        if item is None or not workspaces_mod._is_safe_name(item["instance"]):
+            reason = why.get(row["endpoint"]) or f"{item['instance']!r} is not a safe Tcl name"
+            unresolved.append({"check": row["check"], "endpoint": row["endpoint"], "unresolved": reason})
+            continue
+        pin = f"{item['instance']}/{item['pin']}" if item["via"] == "pin" and item.get("pin") else None
+        pins = _leaf_pins(modules, working_state.get("top"), item["instance"]) if item["via"] == "instance" else []
+        if pin is None and item["via"] == "instance":
+            named = _endpoint_pin(pins, "@**async" in row["check"])
+            pin = f"{item['instance']}/{named}" if named else None
+        seated.append(dict(row, instance=item["instance"], cell=_cell_key(item["instance"]), pin=pin,
+                           via=item["via"], pins=pins))
+    return seated, unresolved
+
+
+def _fallback_pins(rows):
+    """An active seat never has empty target pins: the hardest instance endpoint's first input-like pin (not
+    an output, clock or scan pin), when the netlist names one; else none (the session reads the cell)."""
+    for row in rows:
+        for pin in row.get("pins") or []:
+            if not _OUTPUT_PIN_RE.match(pin) and not _CLOCK_PIN_RE.match(pin):
+                return [f"{row['instance']}/{pin}"]
+    return []
+
+
+def _clusters(rows, slots, worst):
+    """The ordered disjoint clusters of `rows` (see `seat_clusters`), every one of them, hardest first."""
+    groups = {}
+    for row in rows:  # one endpoint cell is one seat's: its checks never split
+        groups.setdefault(row["cell"], {"rows": [], "cause": None, "key": None})["rows"].append(row)
+    # Level 1, always: a startpoint shared by the checks of several cells (a clock enable, a shared source).
+    parent = {cell: cell for cell in groups}
+
+    def find(cell):
+        while parent[cell] != cell:
+            parent[cell] = parent[parent[cell]]
+            cell = parent[cell]
+        return cell
+
+    by_start = {}
+    for row in rows:
+        if row["startpoint"]:
+            by_start.setdefault(row["startpoint"], set()).add(row["cell"])
+    for cells in by_start.values():
+        cells = sorted(cells)
+        for cell in cells[1:]:
+            parent[find(cell)] = find(cells[0])
+    merged = {}
+    for cell, group in groups.items():
+        merged.setdefault(find(cell), {"rows": [], "cause": None, "key": None})["rows"] += group["rows"]
+    groups = list(merged.values())
+    for group in groups:
+        cells = {row["cell"] for row in group["rows"]}
+        if len(cells) < 2:
+            continue
+        shared = [row for row in sorted(group["rows"], key=_row_order)
+                  if row["startpoint"] and len(by_start[row["startpoint"]]) > 1]
+        key = shared[0]["startpoint"]
+        leaf = key.rsplit("/", 1)[-1]
+        group["cause"], group["key"] = ("clock-enable" if _CLOCK_ENABLE_RE.search(leaf) else "startpoint"), key
+    # Levels 2 and 3, only while more clusters than seats remain: a hierarchy, then a fail-reason pattern.
+    _merge_level(groups, slots, "hierarchy", lambda row: _cell_prefix(row["instance"]))
+    _merge_level(groups, slots, "fail-reason", _fail_pattern)
+    for group in groups:
+        group["rows"].sort(key=_row_order)
+        if group["cause"] is not None:
+            continue
+        hardest = group["rows"][0]
+        worst_rows = [row for row in group["rows"] if row["check"] in worst]
+        prefix = _cell_prefix(hardest["instance"])
+        if worst_rows:
+            group["cause"], group["key"] = "scenario-worst", f"{worst_rows[0]['scenario']}|{worst_rows[0]['mode']}"
+        elif prefix is not None:
+            group["cause"], group["key"] = "hierarchy", prefix
+        elif _fail_pattern(hardest) is not None:
+            group["cause"], group["key"] = "fail-reason", _fail_pattern(hardest)
+        else:
+            group["cause"], group["key"] = "hierarchy", hardest["instance"]
+    return sorted(groups, key=_group_order)
+
+
+def _unique(items):
+    seen, out = set(), []
+    for item in items:
+        if item is not None and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def seat_clusters(workspace, slots=None):
+    """Partition the required scenarios' violating checks into at most `slots` ordered blocker clusters.
+
+    `read-atcs.py seat-clusters WORKSPACE OUT [--slots N]` (#66 D1). Read against the verified
+    working state, policy and observation (of the working state), with the fail reasons of
+    `state/residual-cases.json` (each case's own, else the evaluated batch's for its mode) when present.
+    `slots` defaults to the bound `workerSlots` knob. Every endpoint resolves to its leaf cell
+    (`resolve_endpoints`); a primary port resolves to the cell driving it, which joins the edit domain
+    while the port's check key stays in `targets` (a port is never a target pin). Clusters, never
+    sharing an endpoint cell:
+
+    1. a startpoint the checks of several cells share (`clock-enable` when it is named like one,
+       else `startpoint`), always;
+    2. while more clusters than seats remain, the least hard cluster not yet formed folds into the
+       hardest one of its hierarchy (`hierarchy`, keyed by the leaf's parent path);
+    3. then likewise by the dominant fail reason of its mode (`fail-reason`, `<mode>:<reason>`);
+    4. a cluster left unformed names the scenario whose worst check it holds (`scenario-worst`), else
+       its hierarchy.
+
+    The clusters are ordered by worst slack and the hardest `slots` are seated w01.. in order; the rest
+    are listed in `uncovered`, hardest first. Returns the candidate `workPackages` block: an active
+    package's `targets` are its `cluster.checks` hardest first (slack, then the larger fail-reason
+    count), `targetPins` the pins those endpoints name, `editDomain.instances` their leaf cells (nets
+    and regions are left to the session's derivation), `scope` every toolkit mutation at the Pack cap.
+    Writes nothing.
+    """
+    mods = _atcs_modules(workspace)
+    core, workspaces_mod, composition_mod = mods["core"], mods["workspaces"], mods["composition"]
+    workspace = Path(workspace)
+    working = _load_json(workspace / "state" / "working-state.json")
+    _verify_identity(working, "design-state", core)
+    policy = _load_json(workspace / "state" / "policy.json")
+    _verify_identity(policy, "policy", core)
+    observation = _load_json(workspace / "state" / "observation.json")
+    _verify_identity(observation, "observation-set", core)
+    if observation.get("designStateId") != working.get("id"):
+        raise ValueError(f"state/observation.json observes {observation.get('designStateId')!r}, not the working "
+                         f"state {working.get('id')!r}; observe the working state first")
+    required = policy.get("requiredScenarios")
+    if not isinstance(required, list):
+        raise ValueError("state/policy.json has no requiredScenarios list")
+    if slots is None:
+        slots = _worker_slot_count(workspace, core)
+        if slots is None:
+            raise ValueError("state/worker-slots.json cannot be verified; bind workerSlots or pass --slots N")
+    if isinstance(slots, bool) or not isinstance(slots, int) or not 0 <= slots <= len(workspaces_mod.TASK_IDS):
+        raise ValueError(f"slots must be an integer 0..{len(workspaces_mod.TASK_IDS)}, got {slots!r}")
+
+    common_path = workspace / "state/common-stage.json"
+    if common_path.is_file():
+        common = _load_json(common_path)
+        if common.get("parentStateId") != working["id"]:
+            raise ValueError("native common R1 has another physical parent")
+        # This is a seating projection of native predicted residuals, never a final STA observation.
+        observation = {**observation, "id": common["worklistId"], "checks": common.get("nativeChecks") or {}}
+    rows, unresolved = _seat_rows(workspace, working, observation, required)
+    worst = set(composition_mod.worst_checks(observation))
+    clusters = _clusters(rows, slots, worst)
+    seated, rest = clusters[:slots], clusters[slots:]
+    checks = observation.get("checks") or {}
+    packages = {}
+    for index, task_id in enumerate(workspaces_mod.TASK_IDS):
+        if index >= len(seated):
+            why = (f"above workerSlots {slots}" if index >= slots else
+                   f"seat-clusters found no further cluster: every resolved violating check of a required scenario "
+                   f"is in {', '.join(workspaces_mod.TASK_IDS[:len(seated)]) or 'no slot'}"
+                   + (f" ({len(unresolved)} did not resolve to a leaf cell)" if unresolved else ""))
+            packages[task_id] = {"taskId": task_id, "baseStateId": working["id"], "parked": True, "problem": why}
+            continue
+        group = seated[index]
+        keys = [row["check"] for row in group["rows"]]
+        opposite = []
+        for row in group["rows"]:
+            other = "hold" if row["mode"] == "setup" else "setup"
+            candidate = f"{row['scenario']}|{other}|{row['check'].split('|', 2)[2]}"
+            if candidate in checks and candidate not in keys:
+                opposite.append(candidate)
+        hardest = group["rows"][0]
+        noun = "check" if len(keys) == 1 else "checks"
+        packages[task_id] = {
+            "taskId": task_id,
+            "baseStateId": working["id"],
+            "problem": (f"{group['cause']} cluster {group['key']}: {len(keys)} violating {noun} of the required "
+                        f"scenarios, hardest {hardest['check']} at {hardest['slack']:g} ns"),
+            "cluster": {"cause": group["cause"], "key": group["key"], "checks": keys},
+            "targets": list(keys),
+            "editDomain": {"instances": _unique(row["instance"] for row in group["rows"]), "nets": [], "regions": []},
+            "protected": {"instances": [], "nets": []},
+            "mayAffect": _unique(opposite),
+            "actions": ["size_cell", "insert_buffer", "delete_buffer"],
+            "budget": {"xtopMinutes": 60, "attempts": 3},
+            "targetPins": _unique(row["pin"] for row in group["rows"]) or _fallback_pins(group["rows"]),
+            "scope": {"commands": list(workspaces_mod.MUTATE_COMMANDS),
+                      "maxMutations": workspaces_mod.SCOPE_MAX_MUTATIONS},
+            "observe": "fast",
+        }
+    uncovered = sorted(({"check": row["check"], "slack": row["slack"],
+                         "cluster": {"cause": group["cause"], "key": group["key"]}}
+                        for group in rest for row in group["rows"]),
+                       key=lambda item: (item["slack"], item["check"]))
+    return {"schema": "atcs-seat-clusters/1", "designStateId": working["id"], "observationId": observation.get("id"),
+            "workerSlots": slots, "workPackages": packages, "uncovered": uncovered, "unresolved": unresolved}
+
+
+def _seat_clusters_main(argv):
+    usage = "usage: read-atcs.py seat-clusters WORKSPACE OUT_JSON [--slots N]"
+    if len(argv) not in (2, 4) or (len(argv) == 4 and argv[2] != "--slots"):
+        raise SystemExit(usage)
+    slots = None
+    if len(argv) == 4:
+        if not re.fullmatch(r"[0-9]+", argv[3]):
+            raise SystemExit(f"{usage}: N is an integer 0..6, got {argv[3]!r}")
+        slots = int(argv[3])
+    answer = seat_clusters(argv[0], slots)
+    Path(argv[1]).write_text(json.dumps(answer, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "resolve-instances":
         _resolve_instances_main(sys.argv[2:])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "masters":
+        _masters_main(sys.argv[2:])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "brief":
+        # #64 T06 w02: an author passed the workspace too (`brief <request> <workspace>`) and looped on the
+        # usage error. The one argument naming an existing JSON file is the request.
+        found = [arg for arg in sys.argv[2:] if arg.endswith(".json") and Path(arg).is_file()]
+        if len(sys.argv) < 3 or len(found) != 1:
+            raise SystemExit("usage: read-atcs.py brief REQUEST_JSON (exactly one argument: the written request's path)")
+        write_operator_brief(found[0])
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "seat-clusters":
+        _seat_clusters_main(sys.argv[2:])
         return
     if len(sys.argv) < 5:
         raise SystemExit("usage: read-atcs.py <kind> REPORT OUT WORKSPACE [extra...]")
     kind, report, out, workspace = sys.argv[1:5]
     extra = sys.argv[5:]
     try:
-        values, found = _read(kind, report, workspace, extra)
+        values, found, advisory = _read_with_advice(kind, report, workspace, extra)
     except Exception as error:
         if kind in _REQUEST_HANDLERS:
             _write_problems_file(report, [], refused=f"{type(error).__name__}: {error}")
@@ -2100,7 +3375,7 @@ def main():
     if found is not None:
         # Beside the document, before OUT: the Judge that reads OUT's count finds the
         # owner's explanation of it already in place (`<output>Problems`, contract.yml).
-        _write_problems_file(report, found)
+        _write_problems_file(report, found, advice=advisory)
     document = json.dumps({"values": values}, sort_keys=True, allow_nan=False) + "\n"
     Path(out).write_text(document, encoding="utf-8")
 

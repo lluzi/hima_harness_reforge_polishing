@@ -435,6 +435,12 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'local-tcl-fixture';
     const opened = await request({ action: 'open', requestId: 'interactive-open' });
     assert.equal(opened.status, 'opened', opened.reason); assert.equal(opened.readiness, 'ready');
+    assert.deepEqual(Object.keys(opened.context).sort(), ['asOf', 'budget', 'execution', 'operator', 'run'],
+      'an Operator sees the local turn state, never the whole Pack graph and Run method');
+    assert.equal(opened.context.run.id, runId);
+    assert.equal(opened.context.execution.id, executionId);
+    assert.equal(opened.context.method, undefined);
+    assert.equal(opened.context.nodes, undefined);
     assert.equal(opened.session?.qualification?.testOnly, true, 'trusted continuation of the same fixture remains owner-drivable for typed protocol coverage');
     const toolSessionId = opened.session?.toolSessionId as string; assert.ok(toolSessionId); sessions.push(toolSessionId);
     const launched = host.ctx.hima.ledger.records({ runId, type: 'job' })
@@ -448,6 +454,7 @@ test('real Host owns one qualified interactive Job from begin through typed Tcl 
     const set = await request({ action: 'input', requestId: 'interactive-set', toolSessionId, commandId: 'set-1',
       command: { name: 'set_value', args: { key: 'answer', value: 42 } }, waitMs: 1_000 });
     assert.equal(set.status, 'completed');
+    assert.ok(JSON.stringify(set.context).length < 2_000, 'one command receipt does not scale with the complete Run graph');
     const duplicate = await request({ action: 'input', requestId: 'interactive-set', toolSessionId, commandId: 'set-1',
       command: { name: 'set_value', args: { key: 'answer', value: 42 } }, waitMs: 0 });
     assert.equal(duplicate.status, 'duplicate');

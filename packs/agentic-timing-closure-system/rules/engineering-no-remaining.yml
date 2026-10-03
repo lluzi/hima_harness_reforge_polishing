@@ -1,0 +1,6 @@
+id: engineering-no-remaining
+version: "2"
+title: No violation remains across timing and required global collateral
+requires: [{ type: tc_engineering_remaining_violation_count }]
+subject: { type: tc_engineering_remaining_violation_count }
+predicate: { op: eq, threshold: 0, unit: count }

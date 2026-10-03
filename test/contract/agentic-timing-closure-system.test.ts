@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile, appendFile, realpath } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile, appendFile, realpath, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { loadPack, checkPack, loadSite, packStage, installPackMethod, strategyFrom, readersDirName } from '@hima/harness';
@@ -11,43 +11,133 @@ import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { writeMomentScenario } from './support/moments.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
-import { retainRunMaterial, runDelegations, BUILTIN_TCL_ADAPTER_DIGEST, interactiveCommandsDigest } from '@hima/harness';
+import { retainRunMaterial, runDelegations, BUILTIN_TCL_ADAPTER_DIGEST, WORKSHOP_ENTRY_SCHEMA, interactiveCommandsDigest } from '@hima/harness';
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
+import { copyLegacyAtcsPack } from './support/atcs-legacy.ts';
 
 const packId = 'agentic-timing-closure-system';
-test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Contribution collector', async t => {
+
+test('ATCS readiness ships the endpoint resolver before engineering or legacy research', async () => {
+  const packDir = path.join(repoRoot, 'packs', packId);
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  assert.equal(readersDirName, 'hima-readers');
+  assert.equal(pack.graph.entry, 'bind-inputs');
+  assert.deepEqual(pack.graph.edges.filter(edge => edge.from === 'bind-inputs').map(edge => edge.to), ['read-readiness']);
+  assert.equal((pack.graph.nodes.find(node => node.id === 'read-readiness') as any).parameters.observes, 'inputReadiness');
+  assert.equal(pack.contract.outputs.find(output => output.name === 'inputReadiness')!.reader, 'atcs-readiness');
+  const reader = parse(await readFile(path.join(packDir, 'readers/atcs-readiness.yml'), 'utf8')) as any;
+  assert.equal(reader.file, 'tools/read-atcs.py');
+  assert.match(await readFile(path.join(packDir, 'knowledge/endpoint-resolution.md'), 'utf8'),
+    /workspace \/ "hima-readers" \/ "atcs-readiness" \/ "read-atcs\.py"/);
+});
+
+test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  assert.equal(pack.contract.version, '0.3.3');
+
+  const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
+  assert.ok(tool, 'the Pack declares one fix-timing tool');
+  assert.deepEqual(tool.outsourcing, {
+    role: 'resident-engineering-agent',
+    reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage'],
+    knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md'],
+    artifactPrefix: 'engineering',
+    produces: 'engineeringResult',
+  });
+  assert.equal(tool.interactive, undefined, 'outsourced work is not a second interactive protocol');
+  assert.equal(pack.contract.outputs.some(item => item.name === 'autoFixReference'), false);
+  assert.equal(pack.contract.tools.some(item => item.id === 'auto-fix-reference'), false);
+  assert.ok(!(pack.graph.nodes as any[]).find(node => node.id === 'check-engineering-goal').parameters.rules.includes('engineering-beats-autofix'));
+
+  assert.deepEqual(tool.licences, { xtop: 1 });
+
+  const nodes = (pack.graph.nodes as any[]).map(node => node.id);
+  assert.deepEqual(nodes, [
+    'bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'prepare-native-context',
+    'common-autofix', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
+    'check-engineering-collateral', 'check-engineering-goal', 'finish-engineering', 'wait-for-person',
+  ]);
+  assert.equal((pack.graph.nodes as any[]).find(node => node.id === 'fix-timing').kind, 'act');
+  assert.deepEqual((pack.graph as any).autopilot, [
+    { from: ['bind-inputs'], until: ['fix-timing', 'wait-for-person'] },
+    { from: ['read-engineering-result'], until: ['check-engineering-goal', 'wait-for-person'] },
+  ]);
+  assert.deepEqual(pack.contract.agentTeams ?? [], [], 'the new method declares no fixed internal repair team');
+  assert.deepEqual(pack.contract.workshops ?? [], [], 'the new method does not make Hima author six work packages');
+  assert.deepEqual(pack.contract.strategy, {
+    nativeReportPaths: { type: 'number', unit: 'paths', min: 1000, max: 100000, default: 10000, precision: 0 },
+  }, 'the only strategy controls raw evidence breadth, not seats, mutations or methods');
+
+  const reachableTools = new Set((pack.graph.nodes as any[]).map(node => node.parameters?.tool).filter(Boolean));
+  assert.deepEqual([...reachableTools], ['bind-inputs', 'baseline', 'prepare-native-context', 'common-autofix', 'fix-timing']);
+  for (const id of ['observe-baseline', 'physical-baseline', 'implement', 'extract', 'sta', 'physical-candidate']) {
+    assert.equal(reachableTools.has(id), false, `${id} is not a producer or mandatory tail on the new route`);
+  }
+
+  const result = pack.contract.outputs.find(item => item.name === 'engineeringResult');
+  assert.deepEqual(result && { path: result.path, reader: result.reader }, {
+    path: 'state/engineering-result.json', reader: 'atcs-engineering-result',
+  });
+  const semanticValues = (parse(await readFile(path.join(repoRoot, 'packs', packId, 'semantics.yml'), 'utf8')) as any).values;
+  for (const type of ['tc_engineering_result_error_count', 'tc_engineering_setup_wns_ns',
+    'tc_engineering_hold_wns_ns', 'tc_engineering_setup_tns_ns', 'tc_engineering_hold_tns_ns',
+    'tc_engineering_remaining_violation_count', 'tc_engineering_regression_count',
+    'tc_engineering_collateral_unknown_count']) {
+    assert.ok(semanticValues[type], `${type} is Pack-local`);
+  }
+  assert.equal(semanticValues.tc_final_setup_wns_ns, undefined,
+    'the XTop-only Pack cannot emit or reinterpret legacy final physical-signoff facts');
+  assert.equal(semanticValues.tc_final_hold_wns_ns, undefined);
+  const legacySemantics = (parse(await readFile(
+    path.join(repoRoot, 'packs', packId, 'legacy/0.2.10/semantics.yml'), 'utf8')) as any).values;
+  assert.ok(legacySemantics.tc_final_setup_wns_ns && legacySemantics.tc_final_hold_wns_ns,
+    'the retained 0.2.10 method keeps its original final physical-signoff meanings');
+});
+
+test('ATCS forks six self-driving worker branches: each branch\'s child authors its request, a refused request is revised in its own branch, slot w01\'s Operator works from its embedded request, parked slots pass as no-ops, and the join collects every slot with no owner turn inside the fork', async t => {
   process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   process.env.HIMA_TEST_SILENT_AGENT = '1';
-  const prior = process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
+  const prior = { binding: process.env.HIMA_TEST_INTERACTIVE_BINDING_ID, results: process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS };
   process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = 'atcs-local';
-  t.after(() => { if (prior === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID;
-    else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior; });
+  // Every branch child is played by this test through the Ledger's production handoff shape.
+  process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = 'ledger';
+  t.after(() => {
+    if (prior.binding === undefined) delete process.env.HIMA_TEST_INTERACTIVE_BINDING_ID; else process.env.HIMA_TEST_INTERACTIVE_BINDING_ID = prior.binding;
+    if (prior.results === undefined) delete process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS; else process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS = prior.results;
+  });
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   const packsDir = path.join(h.home, 'hima/packs');
-  const variant = path.join(packsDir, packId);
-  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
+  const variant = await copyLegacyAtcsPack(packsDir);
   const contract = parse(await readFile(path.join(variant, 'contract.yml'), 'utf8')) as any;
   const wrapper = await realpath('/usr/bin/tclsh');
   contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];
   contract.budget.closingReserveMs = 1000;
   contract.workspace.copy.push('atcs-repl.tcl');
   const tool = contract.tools.find((item: any) => item.id === 'xtop-operator');
-  tool.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/workspaces/w01/r1'];
-  tool.interactive.argv = tool.argv;
-  tool.licences = {};
-  for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 10000;
+  // The interactive session is the synthetic REPL for slot w01; the batch path stays the Pack's own
+  // `operate-parked` no-op, which is how a parked slot's operate node settles without XTop.
+  tool.interactive.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/workspaces/w01/r1'];
+  for (const member of contract.agentTeams[0].members) member.budgetShare.maxElapsedMs = 60000;
   await writeFile(path.join(variant, 'contract.yml'), stringify(contract));
   const graph = parse(await readFile(path.join(variant, 'graph.yml'), 'utf8')) as any;
-  graph.entry = 'operate-worker-01'; // Start at the changed seam; pre-EDA preparation is separately Python-tested.
+  // Start at the fork, which the owner opens here; pre-EDA preparation and the plan are the dry
+  // path's and the Pack's Python tests'. The fork and the join-to-compose segment stay self-driving.
+  graph.entry = 'prepare-workers';
+  graph.autopilot = graph.autopilot.filter((item: any) => item.fork !== undefined || item.from?.[0] === 'check-worker-results');
+  assert.equal(graph.autopilot.length, 2);
+  // Each author's share is sized for this test's time box: six authors and an Operator are charged
+  // against the Run's delegation time, and the Pack's own 15-minute share is a live Campaign's.
+  graph.autopilot.find((item: any) => item.fork !== undefined).author.maxElapsedMs = 60000;
   await writeFile(path.join(variant, 'graph.yml'), stringify(graph));
   await cp(path.join(repoRoot, 'test/fixtures/interactive-job/atcs-repl.tcl'), path.join(variant, 'flow/atcs-repl.tcl'));
+  const capsPath = path.join(h.workspace, 'caps.json');
   const site = await writeLocalSite(h, {
     allowedReadRoots: [h.workspace, path.dirname(wrapper)], allowedWriteRoots: [h.workspace],
-    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 1, innovus: 1, primetime: 1, starrc: 1 },
+    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 2, innovus: 1, primetime: 1, starrc: 1 },
     bindings: { designStateManifest: path.join(h.workspace, 'manifest.json'),
-      analysisContract: path.join(h.workspace, 'analysis'), siteCapabilities: path.join(h.workspace, 'caps.json'),
+      analysisContract: path.join(h.workspace, 'analysis'), siteCapabilities: capsPath,
       workspaceRoot: h.workspace },
   });
   const pack = loadPack(packsDir, packId);
@@ -83,89 +173,162 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
   const replay = await writeMomentScenario(h, 'notice', path.join(repoRoot, 'test/fixtures/delegation'));
   await writeReplayOverlay(h.home, { file: replay.file, overrideFile: replay.override, childFiles: replay.children });
   const host = await bootInProcess(h); let cleanupRunId: string | undefined;
-  t.after(async () => { if (cleanupRunId) await host.ctx.hima.cancelRun(cleanupRunId); await host.dispose(); await h.dispose(); });
+  t.after(async () => { if (cleanupRunId) { try { await host.ctx.hima.cancelRun(cleanupRunId); } catch { /* ended */ } } await host.dispose(); await h.dispose(); });
   const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-  // Issue 63: the physical-refresh cap is a Goal value fixed when the Run is created. 2, not the
-  // default 1, so the assertions below prove the creation value reached the Run's goal and is what
-  // both refresh-budget Judges bind.
+  // #66 D9: the decisive experiment is one generation and one refresh, so the Pack declares
+  // budget.minimumGenerations 1 (asserted below) and a one-generation Run is no longer refused.
+  // #64 Track B (from #63): the physical-refresh cap is a Goal value fixed when the Run is created.
+  // 3, not the default 2, so the assertions below prove the creation value reached the Run's goal and
+  // is what the refresh-budget Judge binds.
   const started = await host.ctx.hima.startRun({ pack: packId, site: 'local',
-    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 2 }, ownerSessionId: actor, timeBoxMs: 60000 });
+    goal: { target_setup_wns_ns: 0, target_hold_wns_ns: 0, max_physical_refreshes: 3 }, ownerSessionId: actor, timeBoxMs: 1_800_000 });
   assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
   const runId = started.run.id; cleanupRunId = runId;
   const createdRun = host.ctx.hima.ledger.run(runId)!;
-  assert.equal(createdRun.goal?.max_physical_refreshes, 2);
+  assert.equal(createdRun.goal?.max_physical_refreshes, 3);
   assert.equal(createdRun.strategy?.max_physical_refreshes, undefined);
-  for (const judgeId of ['check-refresh-budget', 'check-refresh-budget-apr']) {
-    const reference = (pack.graph.nodes.find(node => node.id === judgeId) as any).parameters.bind.max_physical_refreshes;
-    assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
-    assert.equal(createdRun.goal?.[reference.name], 2, `${judgeId} binds the Run's creation value`);
-  }
+  const reference = (pack.graph.nodes.find(node => node.id === 'check-refresh-budget') as any).parameters.bind.max_physical_refreshes;
+  assert.deepEqual(reference, { from: 'goal', name: 'max_physical_refreshes' });
+  assert.equal(createdRun.goal?.[reference.name], 3, 'check-refresh-budget binds the Run\'s creation value');
   // An owner's next-strategy Explore decision (and a revision) is admitted through strategyFrom
   // over the Run's Strategy (fabric.ts completeAdmittedNode, revisionAction); the cap is no knob there.
   assert.ok('error' in strategyFrom(pack.contract.strategy, { ...createdRun.strategy, max_physical_refreshes: 4 }));
   assert.ok('error' in strategyFrom(pack.contract.strategy, { refreshLimit: 4 }));
   const workspace = started.workspace;
   assert.ok(workspace);
-  // Real Pack producers seed the base, private slot and worker manifest. All files are synthetic.
+  // Real Pack producers seed the base, the XTop context and one admitted campaign plan: slot w01
+  // works one blocker cluster inside a scope of two commands and two mutations, and w02..w06 are
+  // parked. All files are synthetic.
   const seeded = spawnSync('python3', ['-c', [
     'import sys,json; from pathlib import Path',
     'sys.path.insert(0,sys.argv[1]); sys.path.insert(0,sys.argv[2])',
+    // The stub XTop session (test/fixtures/interactive-job/atcs-repl.tcl) reports one scenario, func_ss,
+    // so that is the required scenario whose rows the capture's gain gates read (Task 7 fix round 1).
     'import test_cli_state as f; from atcs import core,state,workspaces',
     'w=Path(sys.argv[3]); manifest=f._make_baseline_manifest(w)',
     'base=state.design_state(manifest); core.write_artifact(w/"state/working-state.json",base)',
-    'raw={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1}}',
-    'package=workspaces.validate_work_package(raw,base,{"pgVerification":False}); slot=workspaces.prepare(package,str(w),base)',
-    'f._write_json(w/"state/workers.json",{"requiredSlots":["w01"],"workers":{"w01":{"root":slot["root"],"opsLog":str(w/slot["root"]/"ops.jsonl"),"workspaceManifest":slot,"workPackage":package}}})',
-    'f._write_json(w/"research/requests/worker-request-w01.json",{"candidate":raw,"baseState":base,"siteCapabilities":{"pgVerification":False},"actions":[{"instance":"U1","toMaster":"BUF2"}]})',
+    'caps={"design":"top","techLef":"tech.lef","cellLefGlob":"*.lef","pgVerification":False,**f._write_xtop_context(w,base["id"],("func_ss",))}',
+    'f._write_json(Path(sys.argv[4]),caps)',
+    'active={"taskId":"w01","baseStateId":base["id"],"problem":"synthetic sizing","targets":[],"editDomain":{"instances":["U1"],"nets":[],"regions":[]},"protected":{"instances":[],"nets":[]},"mayAffect":[],"actions":["size_cell"],"budget":{"xtopMinutes":1,"queries":1,"attempts":1},"targetPins":["U1/A"],"scope":{"commands":["atcs_size_cell","atcs_undo"],"maxMutations":2}}',
+    'packages={s:({"taskId":s,"baseStateId":base["id"],"parked":True,"problem":"one blocker cluster; slot "+s+" has none"} if s!="w01" else active) for s in workspaces.TASK_IDS}',
+    'f._write_json(w/"research/requests/campaign-plan.json",{"candidate":{"workPackages":packages,"reason":"one blocker cluster"},"baseState":base,"siteCapabilities":{"pgVerification":False}})',
+    '[f._write_json(w/"seed"/("worker-request-"+s+".json"),{"candidate":p,"baseState":base,"siteCapabilities":{"pgVerification":False}}) for s,p in packages.items()]',
+    // Live02's refused shape: a descriptive taskId instead of the slot key.
+    'f._write_json(w/"seed"/"worker-request-w02-refused.json",{"candidate":dict(packages["w02"],taskId="w02-parked"),"baseState":base,"siteCapabilities":{"pgVerification":False}})',
   ].join('\n'), path.join(repoRoot, 'packs', packId, 'flow'),
-    path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace], { encoding: 'utf8' });
+    path.join(repoRoot, 'packs', packId, 'flow/tests'), workspace, capsPath], { encoding: 'utf8' });
   assert.equal(seeded.status, 0, seeded.stderr);
-  const planPath = path.join(workspace, 'research/requests/worker-request-w01.json');
-  const planBytes = await readFile(planPath); const planHash = createHash('sha256').update(planBytes).digest('hex');
-  const readerOut = path.join(workspace, 'reader.json');
-  const read = spawnSync('python3', [path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'),
-    'worker-request', planPath, readerOut, workspace, 'w01'], { encoding: 'utf8' });
-  assert.equal(read.status, 0, read.stderr);
-  const retained = await retainRunMaterial({ ledger: host.ctx.hima.ledger, packsDir }, runId, planBytes, planHash);
-  assert.ok(retained);
-  await host.ctx.hima.ledger.appendObservation(runId, { path: planPath, contentSha256: planHash,
-    retainedPath: retained, bytes: planBytes.length, reader: { id: 'atcs-worker-request-01', version: '1',
-      reportKind: 'atcs-worker-request', emits: ['tc_request_invalid_count'] }, values: [] });
+  // The Reader script the Workshops call as hima-readers/atcs-readiness/read-atcs.py; this Run starts at
+  // prepare-workers, so no Reader has been shipped to the workspace yet and the stand-in authors use a copy.
+  await cp(path.join(repoRoot, 'packs', packId, 'tools/read-atcs.py'), path.join(workspace, 'seed/read-atcs.py'));
+
   const control = () => host.ctx.hima.ledger.run(runId)!.control!;
-  const begin = await host.ctx.hima.executionAction({ runId, actor, action: 'begin',
-    nodeId: 'operate-worker-01', requestId: 'begin', expectedEpoch: control().epoch, expectedRevision: control().revision });
-  assert.equal(begin.kind, 'accepted', JSON.stringify(begin));
-  const executionId = begin.receipt!.executionId!;
-  const create = (memberId: string) => host.ctx.hima.delegate({ runId, actor, action: 'create', requestId: 'create-' + memberId,
-    expectedEpoch: control().epoch, expectedRevision: control().revision,
-    recipe: { teamId: 'atcs-worker-01', version: '3', memberId, executionId } } as never) as Promise<any>;
-  // Deterministic model stand-ins use the production Ledger handoff shape; no model-quality claim.
-  const resultAndAdopt = async (child: any, value: any) => {
-    const id = child.effectiveContract.delegationId;
-    const row = runDelegations((host.ctx.hima as any).deps(), runId).find(item => item.delegationId === id)!;
-    const text = JSON.stringify(value);
-    const record = await host.ctx.hima.ledger.appendDelegation(runId, { delegationId: id, parentSessionId: actor,
-      childSessionId: row.childSessionId, requestId: 'result-' + id, requestDigest: 'a'.repeat(64),
-      event: 'result-observed', payload: { candidate: true, source: 'native-live-session', handoff: {
-        outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
-        contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
-        output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
-        unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] },
-      } } });
-    const adoption = await host.ctx.hima.delegate({ runId, actor, action: 'adopt', delegationId: id,
-      resultRecordId: record.id, requestId: 'adopt-' + id,
-      expectedEpoch: control().epoch, expectedRevision: control().revision } as never) as any;
-    assert.equal(adoption.status, 'accepted', JSON.stringify(adoption));
+  const context = () => host.ctx.hima.executionContext(runId);
+  const records = () => host.ctx.hima.ledger.records({ runId });
+  const deps = () => (host.ctx.hima as any).deps();
+  let serial = 0;
+  const act = (action: string, fields: Record<string, unknown> = {}) => host.ctx.hima.executionAction({ runId, actor, origin: 'agent',
+    action: action as never, requestId: `atcs-${++serial}`, expectedEpoch: control().epoch, expectedRevision: control().revision, ...fields });
+  const slots = ['w01', 'w02', 'w03', 'w04', 'w05', 'w06'];
+  const nn = (slot: string) => slot.slice(1);
+  const branchNodes = slots.flatMap(slot => ['research-worker-', 'read-worker-request-', 'operate-worker-', 'capture-worker-', 'read-worker-result-'].map(prefix => prefix + nn(slot)));
+
+  // The owner opens the fork at prepare-workers: six branches, one per slot.
+  const begun = await act('begin', { nodeId: 'prepare-workers' });
+  assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
+  const prepare = begun.receipt!.executionId!;
+  assert.equal((await act('work', { executionId: prepare })).kind, 'accepted');
+  await waitUntil('prepare-workers settles', () => ['ready', 'failed'].includes(control().executions[prepare]?.phase ?? ''), 20000, 25);
+  assert.equal(control().executions[prepare]?.phase, 'ready', JSON.stringify(control().executions[prepare]));
+  assert.equal((await act('complete', { executionId: prepare })).kind, 'accepted');
+  assert.ok(context().run.fork, 'the Run stands inside the worker fork');
+  const workers = JSON.parse(await readFile(path.join(workspace, 'state/workers.json'), 'utf8'));
+  assert.deepEqual(workers.requiredSlots, slots);
+  assert.deepEqual(slots.filter(slot => workers.workers[slot].parked === true), slots.slice(1));
+  // Inside the fork the owner's node turn is refused: the branches are the Pack's autopilot's.
+  const fenced = await act('begin', { nodeId: 'research-worker-01' });
+  assert.equal(fenced.kind, 'refused');
+  assert.match(fenced.reason ?? '', /driven by this Pack's autopilot/);
+
+  // Each branch's own child Agent authors its research Workshop; this test plays each child through
+  // the Ledger's production handoff shape (deterministic stand-ins, no model-quality claim).
+  const answer = async (delegationId: string, text: string) => {
+    const row = runDelegations(deps(), runId).find(item => item.delegationId === delegationId)!;
+    await host.ctx.hima.ledger.appendDelegation(runId, { delegationId, parentSessionId: actor, childSessionId: row.childSessionId,
+      requestId: `result-${delegationId}-${++serial}`.slice(0, 160), requestDigest: 'a'.repeat(64), event: 'result-observed', payload: {
+        candidate: true, source: 'native-live-session', handoff: {
+          outputIdentity: createHash('sha256').update(JSON.stringify([{ type: 'text', text }])).digest('hex'),
+          contract: { recordId: row.contractRecordId, requestDigest: row.requestDigest },
+          output: { text, content: [{ type: 'text', text }], truncated: false }, completedTurn: { turn: 1, endSeq: 1 },
+          unknowns: [], evidence: { artifactRefs: [], diffRefs: [], testRefs: [], limitations: ['synthetic model result'] },
+        } } });
   };
-  const researcher = await create('researcher'); assert.equal(researcher.status, 'created', JSON.stringify(researcher));
-  await resultAndAdopt(researcher, { schema: 'atcs-worker-research/1', hypotheses: ['synthetic sizing'],
-    evidenceRefs: researcher.effectiveContract.inputRefs, limitations: ['no EDA'] });
-  const reviewer = await create('reviewer'); assert.equal(reviewer.status, 'created', JSON.stringify(reviewer));
-  await resultAndAdopt(reviewer, { schema: 'atcs-worker-review/1', planSha256: planHash, command: 'atcs_size_cell',
-    arguments: { instance: 'U1', toMaster: 'BUF2' }, evidenceRefs: reviewer.effectiveContract.inputRefs, limitations: ['no EDA'] });
-  const operator = await create('operator'); assert.equal(operator.status, 'created', JSON.stringify(operator));
-  const operatorId = operator.receipt.childSessionId;
-  const interactive = (body: any) => host.ctx.hima.interactive(operatorId, { runId, executionId,
+  const own = (delegationId: string) => records().filter(record => record.type === 'delegation' && record.delegationId === delegationId);
+  const authorAsked = async (slot: string): Promise<string> => {
+    let id = '';
+    await waitUntil(`research-worker-${nn(slot)}'s author is asked`, () => {
+      const row = runDelegations(deps(), runId).find(item => item.delegationId.startsWith(`autopilot-author-research-worker-${nn(slot)}-`));
+      if (row === undefined || row.state !== 'accepted') return false;
+      const asked = own(row.delegationId).filter(record => record.type === 'delegation' && (record.event === 'created' || record.event === 'followup-sent')).at(-1)?.seq ?? 0;
+      const answered = own(row.delegationId).filter(record => record.type === 'delegation' && record.event === 'result-observed').at(-1)?.seq ?? 0;
+      id = row.delegationId;
+      return asked > answered;
+    }, 60000, 25);
+    return id;
+  };
+  // The stand-in author copies its seed request and, for an active slot, runs the Reader's brief step
+  // its Workshop's purpose names (#64 T05 w03: the Operator's task embeds operatorBrief).
+  const copyEntry = (slot: string, seed: string) => JSON.stringify({ schema: WORKSHOP_ENTRY_SCHEMA,
+    entry: ['import json, shutil, subprocess, sys', 'w = sys.argv[1]', `target = w + "/research/requests/worker-request-${slot}.json"`,
+      `shutil.copyfile(w + "/seed/${seed}.json", target)`,
+      'if not json.load(open(target))["candidate"].get("parked"):',
+      '    subprocess.run([sys.executable, w + "/seed/read-atcs.py", "brief", target], check=True)', ''].join('\n') });
+  await Promise.all(slots.map(async slot => {
+    // #64 Track B: slot w02's first request is refused, as live02's were.
+    await answer(await authorAsked(slot), copyEntry(slot, slot === 'w02' ? 'worker-request-w02-refused' : `worker-request-${slot}`));
+    if (slot !== 'w02') return;
+    // A refused request is revised in its own branch, in the same generation and without a person:
+    // the Reader counts it and writes why beside it, and the autopilot restarts the branch at its
+    // Workshop and asks the same author again with those problems.
+    const followup = await authorAsked(slot);
+    const why = await readFile(path.join(workspace, 'research/requests/worker-request-w02.problems.txt'), 'utf8');
+    assert.match(why, /^2 problems in worker-request-w02\.json/);
+    assert.match(why, /^- candidate\.taskId \(slot w02\): must be 'w02' for this slot, got 'w02-parked'/m);
+    assert.match(why, /^- candidate\.taskId \(slot w02\): taskId must be one of .*required format: exactly the slot key/m);
+    const refused = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-02');
+    assert.ok(refused?.type === 'observation');
+    assert.deepEqual(refused.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 2], ['tc_slot_parked', 1]]);
+    await answer(followup, copyEntry(slot, 'worker-request-w02'));
+  }));
+
+  // Slot w01's Operator is materialized with its admitted request embedded in its task and bound to
+  // that request's own scope; a parked slot's operate node is the Pack's batch no-op.
+  let operator: ReturnType<typeof runDelegations>[number] | undefined;
+  await waitUntil('slot w01\'s Operator is materialized', () => {
+    operator = runDelegations(deps(), runId).find(row => row.effective.recipe?.teamId === 'atcs-worker-01' && row.effective.recipe.memberId === 'operator');
+    return operator !== undefined;
+  }, 60000, 25);
+  const planReading = records().findLast(record => record.type === 'observation' && record.reader.id === 'atcs-worker-request-01');
+  assert.ok(planReading?.type === 'observation');
+  const planHash = planReading.contentSha256;
+  const requestBytes = await readFile(path.join(workspace, 'research/requests/worker-request-w01.json'));
+  assert.equal(planHash, createHash('sha256').update(requestBytes).digest('hex'));
+  const request = JSON.parse(requestBytes.toString('utf8'));
+  const task = operator!.contract.task;
+  const at = task.indexOf('Exact input workerRequest01 ');
+  assert.ok(at >= 0, `the Operator's task embeds workerRequest01: ${task.slice(0, 400)}`);
+  const embedded = JSON.parse(task.slice(task.indexOf('\n', at) + 1).split('\n')[0]!);
+  assert.equal(embedded.candidate, undefined, 'the task embeds the bounded brief, never the whole candidate');
+  assert.deepEqual(embedded.operatorBrief, request.operatorBrief, 'the embedded brief is the admitted request\'s own');
+  assert.equal(embedded.operatorBrief.taskId, request.candidate.taskId);
+  assert.deepEqual(embedded.operatorBrief.scope, { commands: request.candidate.scope.commands, maxMutations: request.candidate.scope.maxMutations });
+  assert.equal(embedded.operatorBrief.targets.count, request.candidate.targets.length);
+  assert.deepEqual(operator!.effective.tools, ['hima_interactive', 'hima_delegation_input'], `the Operator reads its exact request in bounded windows: ${JSON.stringify((operator!.effective as any).unavailable)}`);
+  assert.match(task, new RegExp(planHash), 'and its plan hash');
+  assert.match(task, /before\.dump/); assert.match(task, /after\.dump/);
+  assert.deepEqual((operator!.effective.recipe!.inlinePayload as any).scope, { commands: ['atcs_size_cell', 'atcs_undo'], maxMutations: 2 });
+  const executionId = operator!.effective.recipe!.executionId;
+  const interactive = (body: any) => host.ctx.hima.interactive(operator!.childSessionId, { runId, executionId,
     nodeId: 'operate-worker-01', ownerEpoch: control().epoch, controlRevision: control().revision, ...body }) as Promise<any>;
   const opened = await interactive({ action: 'open', requestId: 'open' }); assert.equal(opened.status, 'opened', JSON.stringify(opened));
   const toolSessionId = opened.session.toolSessionId;
@@ -176,44 +339,79 @@ test('ATCS bounded worker uses the frozen Team seam, typed Operator and real Con
     assert.equal(value.status, 'completed', JSON.stringify(value)); return value;
   };
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'before.dump') }, 'before');
+  await send('atcs_ref', {}, 'reference');
+  // Outside the request's scope, or under another plan hash, the Host refuses before the tool sees it.
+  const outsideScope = await interactive({ action: 'input', requestId: 'outside', commandId: 'outside', toolSessionId,
+    command: { name: 'atcs_remove_buffer', args: { instance: 'U1', planSha256: planHash } }, waitMs: 0 });
+  assert.equal(outsideScope.status, 'refused', JSON.stringify(outsideScope));
+  assert.match(outsideScope.reason, /outside the immutable/);
+  const staleHash = await interactive({ action: 'input', requestId: 'stale', commandId: 'stale', toolSessionId,
+    command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: 'f'.repeat(64) } }, waitMs: 0 });
+  assert.equal(staleHash.status, 'refused', JSON.stringify(staleHash));
   await send('atcs_size_cell', { instance: 'U1', toMaster: 'BUF2', planSha256: planHash }, 'mutation');
   const duplicate = await interactive({ action: 'input', requestId: 'mutation', commandId: 'mutation', toolSessionId,
     command: { name: 'atcs_size_cell', args: { instance: 'U1', toMaster: 'BUF2', planSha256: planHash } }, waitMs: 0 });
   assert.equal(duplicate.status, 'duplicate');
   await send('atcs_dump_cells', { path: path.join(slotRoot, 'after.dump') }, 'after');
-  await send('atcs_export_changes', {}, 'export');
+  await send('atcs_export_changes', { limitations: '' }, 'export');
   await send('atcs_close', {}, 'exit');
   await waitUntil('ATCS synthetic Operator is ready', () => control().executions[executionId]?.phase === 'ready', 5000, 25);
-  await resultAndAdopt(operator, { schema: 'atcs-worker-receipts/1', planSha256: planHash, mutationReceipt: 'mutation',
-    limitations: ['synthetic Tcl; no commercial qualification'] });
-  const completed = await host.ctx.hima.executionAction({ runId, actor, action: 'complete', executionId,
-    requestId: 'complete', expectedEpoch: control().epoch, expectedRevision: control().revision });
-  assert.equal(completed.kind, 'accepted', JSON.stringify(completed));
-  assert.equal(host.ctx.hima.ledger.run(runId)!.currentNode, 'capture-worker-01');
-  for (const nodeId of ['capture-worker-01', 'read-worker-result-01', 'collect']) {
-    assert.equal(host.ctx.hima.ledger.run(runId)!.currentNode, nodeId);
-    const begun = await host.ctx.hima.executionAction({ runId, actor, action: 'begin', nodeId,
-      requestId: 'begin-' + nodeId, expectedEpoch: control().epoch, expectedRevision: control().revision });
-    assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
-    const id = begun.receipt!.executionId!;
-    const work = await host.ctx.hima.executionAction({ runId, actor, action: 'work', executionId: id,
-      requestId: 'work-' + nodeId, expectedEpoch: control().epoch, expectedRevision: control().revision });
-    assert.notEqual(work.kind, 'refused', JSON.stringify(work));
-    await waitUntil('ATCS node ready: ' + nodeId, () => control().executions[id]?.phase === 'ready', 10000, 25);
-    const done = await host.ctx.hima.executionAction({ runId, actor, action: 'complete', executionId: id,
-      requestId: 'complete-' + nodeId, expectedEpoch: control().epoch, expectedRevision: control().revision });
-    assert.equal(done.kind, 'accepted', JSON.stringify(done));
-  }
-  const joined = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
-  assert.equal(joined.contributions.length, 1);
-  assert.deepEqual(joined.pending, [], 'parked slots are not falsely reported as pending work');
-  assert.equal(joined.contributions[0].operations.length, 1);
-  assert.equal(joined.contributions[0].operations[0].toMaster, 'BUF2');
-  assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
-});
-const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v9/atcs-xtop-operator-v9.sh';
+  await answer(operator!.delegationId, JSON.stringify({ schema: 'atcs-worker-session/1', planSha256: planHash, mutationReceipts: ['mutation'],
+    stopReason: 'no-candidate-gains', limitations: ['synthetic Tcl; no commercial qualification'] }));
 
-test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the local Site, and passes its Python contract tests', async (t) => {
+  // Every branch captures and reads its own result; the join judges all six and collects, with no
+  // owner turn on the way.
+  await waitUntil('the join collects every slot', () => records().some(record => record.type === 'node' && record.nodeId === 'collect' && record.state === 'done'), 120000, 50);
+  assert.equal(context().run.fork, undefined, 'the join closed the fork');
+  const ownerTurns = Object.values(control().requests).filter(request => request.origin !== 'autopilot' && request.origin !== 'human'
+    && ['begin', 'work', 'write', 'complete'].includes(request.receipt.action)
+    && [...branchNodes, 'check-worker-results', 'collect'].includes(control().executions[request.receipt.executionId ?? '']?.nodeId ?? ''));
+  assert.deepEqual(ownerTurns, [], 'the owner took no turn inside the fork or at the join');
+  assert.ok(own(operator!.delegationId).some(record => record.type === 'delegation' && record.event === 'result-adopted'), 'the Operator\'s schema-valid result was adopted');
+  const restarts = records().filter(record => record.type === 'resumed' && record.kind === 'restart');
+  assert.deepEqual(restarts.map(record => record.type === 'resumed' ? [record.nodeId, record.writer] : []), [['research-worker-02', 'executor']],
+    'slot w02 was revised once, by the autopilot');
+  assert.equal(records().filter(record => record.type === 'decision').length, 0, 'no Explore decided the revision');
+  for (const slot of slots) {
+    const reading = records().findLast(record => record.type === 'observation' && record.reader.id === `atcs-worker-request-${nn(slot)}`);
+    assert.ok(reading?.type === 'observation');
+    assert.equal(reading.branchId, `research-worker-${nn(slot)}`, `slot ${slot}'s request is read in its own branch`);
+    assert.deepEqual(reading.values.map(value => [value.type, value.value]), [['tc_request_invalid_count', 0], ['tc_slot_parked', slot === 'w01' ? 0 : 1]], `slot ${slot}'s request is admitted`);
+  }
+  for (const slot of slots.slice(1)) {
+    const receipt = JSON.parse(await readFile(path.join(workspace, workers.workers[slot].root, 'parked.json'), 'utf8'));
+    assert.equal(receipt.taskId, slot);
+  }
+  const interactiveJobs = records().filter(record => record.type === 'job' && record.event === 'launched' && record.nodeId?.startsWith('operate-worker-'));
+  assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.branchId] : []).sort(),
+    slots.map(slot => [`operate-worker-${nn(slot)}`, `research-worker-${nn(slot)}`]), 'each operate Job runs in its own branch');
+  // #64 Track B: a parked slot costs no Team, no interactive (XTop) Job and no licence claim; only the
+  // active slot's interactive session holds the xtop seat.
+  assert.deepEqual(interactiveJobs.map(record => record.type === 'job' ? [record.nodeId, record.licences ?? null] : []).sort(),
+    slots.map(slot => [`operate-worker-${nn(slot)}`, slot === 'w01' ? { xtop: 1 } : null]), 'only the session holds a seat');
+  const members = runDelegations(deps(), runId).filter(row => row.effective.recipe !== undefined);
+  assert.deepEqual(members.map(row => [row.effective.recipe!.teamId, row.effective.recipe!.memberId]), [['atcs-worker-01', 'operator']],
+    'the Run holds exactly slot w01\'s Operator: no Team for a parked slot, and the advisory Reviewer is never waited for');
+  assert.deepEqual(records().filter(record => record.type === 'verdict').map(record => record.type === 'verdict' ? [record.branchId, record.ruleId, record.outcome] : []),
+    slots.map(slot => [`research-worker-${nn(slot)}`, 'worker-result-admissible', 'PASS']), 'the join judged each slot\'s sealed result');
+
+  const joined = JSON.parse(await readFile(path.join(workspace, 'state/contributions-collected.json'), 'utf8'));
+  assert.deepEqual(joined.pending, [], 'every slot, active or parked, sealed a Contribution');
+  assert.deepEqual(joined.contributions.map((item: any) => item.taskId).sort(), slots);
+  const session = joined.contributions.find((item: any) => item.taskId === 'w01');
+  assert.equal(session.kind, 'xtop-session');
+  assert.equal(session.admissible, true, JSON.stringify(session.refusals));
+  assert.deepEqual(session.commands.map((command: any) => [command.proc, command.args.toMaster]), [['atcs_size_cell', 'BUF2']]);
+  assert.deepEqual(session.delta.mastersChanged, { U1: ['BUF1', 'BUF2'] });
+  for (const parked of joined.contributions.filter((item: any) => item.taskId !== 'w01')) {
+    assert.deepEqual([parked.kind, parked.parked, parked.admissible, parked.operations.length], ['no-fix', true, true, 0], parked.taskId);
+  }
+  assert.equal((await readFile(path.join(slotRoot, 'ops.jsonl'), 'utf8')).trim().split('\n').length, 1);
+  assert.equal((await readFile(path.join(slotRoot, 'gain.jsonl'), 'utf8')).trim().split('\n').length, 2, 'the session reference and one mutation reading');
+});
+const atcsXtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/atcs-v31/atcs-xtop-operator-v31.sh';
+
+test('the retained ATCS 0.2.10 snapshot loads, fits its Sites, and passes the focused native/Reader regressions', async (t) => {
   const h = await createHimaHome();
   t.after(() => h.dispose());
   const local = await writeLocalSite(h, {
@@ -224,46 +422,216 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
       siteCapabilities: path.join(h.workspace, 'siteCapabilities.json'),
       workspaceRoot: h.workspace,
     },
-    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 1 },
+    licences: { innovus: 1, primetime: 1, starrc: 1, xtop: 2 },
   });
 
-  const packDir = path.join(repoRoot, 'packs', packId);
-  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  const team = pack.contract.agentTeams.find(item => item.id === 'atcs-worker-01')!;
-  const researcher = team.members.find(item => item.id === 'researcher')!;
-  assert.equal(team.version, '3');
-  assert.equal(researcher.budgetShare.maxTokensPerTurn, 8000);
-  assert.equal(researcher.budgetShare.maxFollowups, 1);
-  assert.match(researcher.taskTemplate, /at most one hypothesis per declared action/);
-  for (const [id, followups] of [['reviewer', 1], ['operator', 0]] as const) {
-    const member = team.members.find(item => item.id === id)!;
-    assert.equal(member.budgetShare.maxTokensPerTurn, 5000);
-    assert.equal(member.budgetShare.maxFollowups, followups);
-  }
-  assert.equal(packStage(packDir).stage, 'compiled');
-  // Issue 63 slice 2: +4 nodes (a fresh refresh-budget reading and its Judge before `implement`
-  // and before `apr-prepare`), +6 edges.
-  // Issue 63 slice 3 (gap 2): +1 node, the `retry-worker-01` Explore.
-  // Review 2 (I2): +1 node, the `route-worker-action-01` Judge.
-  assert.equal(pack.graph.nodes.length, 112);
-  // Final review (Minor): +2 edges -- check-setup-goal/check-hold-goal each gain
-  // an explicit UNDETERMINED edge to `residual` (an unknown final WNS is an
-  // evidence gap, not a person-facing wait) instead of falling through to the
-  // engine's own unlabelled-UNDETERMINED default (wait-for-person).
-  // Issue 63 slice 3 (gap 2): +1 edge -- check-worker-request-01 FAIL now goes to retry-worker-01
-  // (replacing FAIL->wait-for-person), which revisits research-worker-01.
-  // Review 2 (I2): +2 edges -- check-worker-request-01 PASS enters route-worker-action-01, whose PASS
-  // reaches operate-worker-01 and whose FAIL (an admitted no-safe-action request) reaches decide-next.
-  assert.equal(pack.graph.edges.length, 152);
+  const legacyPacksDir = path.join(h.home, 'legacy-packs');
+  const packDir = await copyLegacyAtcsPack(legacyPacksDir);
+  const pack = loadPack(legacyPacksDir, packId);
+  // Issue #64, reshaped 2026-09-29 (ADR-0016): every worker slot's Team is v5. The Operator works in
+  // its admitted request's own `candidate.scope` within the recipe; the Reviewer is optional advice.
+  const operatorTool = pack.contract.tools.find(item => item.id === 'xtop-operator')!;
+  const mutations = operatorTool.interactive!.commands.mutate;
+  const toolkit = spawnSync('python3', ['-c', 'import json,sys; sys.path.insert(0, sys.argv[1]); from atcs import workspaces; '
+    + 'print(json.dumps([list(workspaces.MUTATE_COMMANDS), workspaces.SCOPE_MAX_MUTATIONS, list(workspaces.TASK_IDS)]))',
+  path.join(packDir, 'flow')], { encoding: 'utf8' });
+  assert.equal(toolkit.status, 0, toolkit.stderr);
+  const [packageCommands, recipeCap, slots] = JSON.parse(toolkit.stdout) as [string[], number, string[]];
+  assert.deepEqual(packageCommands, mutations, 'the work package scope admits exactly the toolkit mutations');
+  assert.deepEqual(slots, ['w01', 'w02', 'w03', 'w04', 'w05', 'w06']);
+  const operateNodes = (pack.graph.nodes as any[]).map(node => node.id as string).filter(id => /^operate-worker-\d\d$/.test(id));
+  assert.deepEqual(operateNodes.sort(), slots.map(slot => `operate-worker-${slot.slice(1)}`), 'the graph operates all six worker slots');
 
-  // Issue 63 slice 2: every Explore revisit consumes a Harness generation, so `generationLimit`
-  // bounds revisits, not Innovus/StarRC/PrimeTime refreshes. The Run's Goal value
-  // `max_physical_refreshes`, fixed at Run creation, caps them: a fresh reading of the refresh
-  // ledger, then a Judge, right before each physical refresh.
+  // Issue #64 Task 5: `prepare-workers` forks into six parallel worker branches, each a pure act
+  // chain for one slot, joined at the judge `check-worker-results`, which leads to `collect`.
+  const { forkFrom } = await import(new URL('../../packages/harness/lib/packs.js', import.meta.url).href);
+  const prepare = (pack.graph.nodes as any[]).find(node => node.id === 'prepare-workers');
+  const fork = forkFrom(pack.graph, prepare);
+  assert.ok(fork?.ok, `prepare-workers forks: ${JSON.stringify(fork)}`);
+  assert.equal(fork.join, 'check-worker-results');
+  assert.deepEqual(fork.branches.map((branch: any) => branch.id), slots.map(slot => `research-worker-${slot.slice(1)}`));
+  for (const branch of fork.branches as { id: string; nodes: string[] }[]) {
+    const nn = branch.id.slice(-2);
+    assert.deepEqual(branch.nodes, [`research-worker-${nn}`, `read-worker-request-${nn}`, `operate-worker-${nn}`,
+      `capture-worker-${nn}`, `read-worker-result-${nn}`], `branch ${branch.id} runs slot w${nn}'s chain`);
+  }
+  const join = (pack.graph.nodes as any[]).find(node => node.id === 'check-worker-results');
+  assert.equal(join.kind, 'judge');
+  assert.deepEqual(join.parameters.rules, ['worker-result-admissible']);
+  assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.from === 'check-worker-results')
+    .map(edge => [edge.outcome, edge.to]).sort(), [['FAIL', 'collect'], ['PASS', 'collect'], ['UNDETERMINED', 'collect']],
+  'every joined outcome collects: a refused slot is excluded by the ranked recipe, not by the route');
+  const operatorNode = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
+  for (const slot of slots) {
+    assert.deepEqual(operatorNode(`operate-worker-${slot.slice(1)}`).parameters, { tool: 'xtop-operator', arguments: { SLOT: slot } });
+    assert.deepEqual(operatorNode(`capture-worker-${slot.slice(1)}`).parameters, { tool: 'capture-contribution', arguments: { SLOT: slot } });
+    const request = pack.contract.outputs.find(item => item.name === `workerRequest${slot.slice(1)}`)!;
+    const result = pack.contract.outputs.find(item => item.name === `workerResult${slot.slice(1)}`)!;
+    assert.equal(request.path, `research/requests/worker-request-${slot}.json`, 'each slot reads its own request path');
+    assert.equal(result.path, `state/contribution-${slot}.json`, 'each slot reads its own result path');
+  }
+  // The `workerSlots` knob (0..6, default 6) is bound for the plan Reader on every way into `plan`;
+  // #66 D8: 0 parks every seat, the qualified full-auto control arm.
+  assert.deepEqual(pack.contract.strategy.workerSlots, { type: 'number', unit: 'slots', min: 0, max: 6, default: 6 });
+  assert.deepEqual(operatorNode('bind-worker-slots').parameters,
+    { tool: 'worker-slots', arguments: { WORKER_SLOTS: { from: 'strategy', name: 'workerSlots' } } });
+  assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'plan').map(edge => edge.from), ['bind-worker-slots']);
+  // The frozen 0.2.10 owner-lead route retained the replay helper but did not put it on the graph:
+  // compose went directly to the persistent lead, and final AutoFinish stayed disabled.
+  assert.equal(operatorNode('replay-prepare'), undefined);
+  const replayPrepare = pack.contract.tools.find(item => item.id === 'replay-prepare')!;
+  assert.ok(replayPrepare.inputs.includes('AUTO_FINISH'));
+  assert.equal(replayPrepare.argv[replayPrepare.argv.length - 1], '${AUTO_FINISH}');
+  assert.deepEqual((pack.graph.edges as any[]).filter(edge => edge.to === 'bind-worker-slots').map(edge => [edge.from, edge.outcome]),
+    [['check-refresh-budget', 'PASS']], 'every generation plans only past the refresh-budget gate');
+  const planner = pack.contract.workshops.find(item => item.id === 'plan-campaign')!;
+  for (const words of [/post-auto residuals/, /commonStage\.nativeChecks/, /at most six unique disjoint work packages/,
+    /Preserve disjoint cluster ownership/, /workerSlots 0 is the strong repeated-default-GBA control/,
+    /maxMutations 600/, /full qualified toolkit/, /validate_work_package/]) {
+    assert.match(planner.purpose, words, `plan-campaign purpose states ${words}`);
+  }
+  assert.doesNotMatch(planner.purpose, /may share edit-domain nets/, 'US8: active slots are disjoint in nets as well as instances');
+  // Issue #64 live retest, Track B (from #63): every request-writing Workshop reads one admitted example
+  // as declared knowledge (knowledge/example-*.md), and flow/tests/test_workshop_examples.py pins each
+  // against its validator and Reader. Here: each example is declared, listed by its Workshop, named in
+  // its purpose, and the loaded Pack holds the same parseable JSON.
+  const examples: Record<string, string> = {
+    'plan-campaign': 'example-campaign-plan.md', 'compose-contributions': 'example-integration-plan.md',
+    ...Object.fromEntries(slots.map(slot => [`research-worker-${slot.slice(1)}`, 'example-worker-request.md'])) };
+  for (const workshop of pack.contract.workshops) {
+    const file = examples[workshop.id]!;
+    assert.ok(file, `${workshop.id} has an example`);
+    assert.ok(pack.contract.knowledge.some(item => item.file === file), `${file} is declared knowledge`);
+    assert.ok(workshop.knowledge.includes(file), `${workshop.id} lists ${file}`);
+    assert.ok(workshop.id === 'compose-contributions' ? /existing example/.test(workshop.purpose)
+      : workshop.purpose.includes(file), `${workshop.id}'s purpose names its admitted example`);
+  }
+  const knowledgeExample = async (file: string, section?: string): Promise<any> => {
+    let text = await readFile(path.join(packDir, 'knowledge', file), 'utf8');
+    if (section !== undefined) text = text.split(`\n## ${section}\n`)[1]!.split('\n## ')[0]!;
+    const blocks = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)];
+    assert.equal(blocks.length, 1, `${file} ${section ?? ''} holds one json block`);
+    return JSON.parse(blocks[0]![1]!);
+  };
+  const planExample = await knowledgeExample('example-campaign-plan.md');
+  assert.deepEqual(Object.keys(planExample.candidate.workPackages), slots);
+  for (const slot of slots) assert.equal(planExample.candidate.workPackages[slot].taskId, slot, 'taskId is exactly the slot key');
+  const activeExample = planExample.candidate.workPackages.w01;
+  assert.ok(activeExample.protected && activeExample.actions, 'the active example carries protected and actions');
+  assert.ok(activeExample.scope.commands.includes('atcs_undo') && activeExample.scope.commands.every((c: string) => mutations.includes(c)));
+  assert.equal(activeExample.scope.maxMutations, recipeCap);
+  const active = await knowledgeExample('example-worker-request.md', 'Active slot');
+  const { scope: activeScope, ...activeCore } = activeExample;
+  const { scope: requestScope, ...requestCore } = active.candidate;
+  assert.deepEqual(requestCore, activeCore, 'the example request preserves the prepared package identity and domain');
+  assert.equal(requestScope.maxMutations, activeScope.maxMutations);
+  assert.ok(requestScope.commands.includes('atcs_undo')
+    && requestScope.commands.every((command: string) => activeScope.commands.includes(command)),
+  'the request may use an admitted subset of the prepared toolkit scope');
+  const noSafeMove = await knowledgeExample('example-worker-request.md', 'Active slot with no safe move');
+  assert.deepEqual([noSafeMove.candidate, noSafeMove.sessionPlan], [active.candidate, []]);
+  assert.ok(noSafeMove.noSafeAction.trim());
+  const parked = await knowledgeExample('example-worker-request.md', 'Parked slot');
+  assert.deepEqual(Object.keys(parked.candidate).sort(), ['baseStateId', 'parked', 'problem', 'taskId']);
+  // US10/US34: the prior batch's post-auto-finish fail reasons reach the next generation's research.
+  for (const workshop of pack.contract.workshops.filter(item => item.id === 'plan-campaign' || /^research-worker-\d\d$/.test(item.id))) {
+    assert.ok(workshop.reads.includes('residualCases'), `${workshop.id} reads the residual cases and their batch fail reasons`);
+  }
+  // A parked slot's operate node is the batch no-op `operate-parked`, never an XTop session; an active
+  // slot's stays the Team Operator's interactive session.
+  const xtopOperator = pack.contract.tools.find(item => item.id === 'xtop-operator')!;
+  assert.equal(xtopOperator.interactive!.mode, 'hybrid');
+  assert.deepEqual(xtopOperator.argv, ['python3', '${WORKSPACE}/flow/atcs_cli.py', 'operate-parked', '${WORKSPACE}', '${SLOT}']);
+  assert.equal(xtopOperator.interactive!.argv![0], atcsXtopOperatorWrapper);
+  const workerTeams = pack.contract.agentTeams.filter(item => item.id.startsWith('atcs-worker-'));
+  assert.deepEqual(workerTeams.map(item => item.triggerNode).sort(), operateNodes.sort(),
+    'every operate-worker node has exactly one worker Team');
+  const team01 = workerTeams.find(item => item.id === 'atcs-worker-01')!;
+  const slotless = (value: unknown, slot: string) => JSON.stringify(value).replaceAll(`-${slot}`, '-NN')
+    .replaceAll(`Request${slot}`, 'RequestNN').replaceAll(`w${slot}`, 'wNN');
+  const structurallySlotless = (team: any, slot: string) => {
+    const copy = structuredClone(team);
+    const operator = copy.members.find((member: any) => member.id === 'operator');
+    operator.taskTemplate = operator.taskTemplate.replace(/Expertise prior: [^;]+;/, 'Expertise prior: SLOT-SPECIFIC;');
+    return slotless(copy, slot);
+  };
+  for (const team of workerTeams) {
+    const slot = team.id.slice(-2);
+    assert.equal(team.triggerNode, `operate-worker-${slot}`);
+    assert.equal(structurallySlotless(team, slot), structurallySlotless(team01, '01'),
+      `${team.id} preserves the shared Team structure while its expertise prior remains slot-specific`);
+  }
+  const team = team01;
+  assert.equal(team.version, '6', '#66 D7: the Operator works its cluster as one batch');
+  assert.deepEqual(team.members.map(item => item.id), ['reviewer', 'operator'], 'the Researcher is the branch\'s own author; no approval member');
+  const reviewer = team.members.find(item => item.id === 'reviewer')!;
+  const operatorMember = team.members.find(item => item.id === 'operator')!;
+  assert.equal(reviewer.optional, true, 'the Reviewer is optional advice whose absence never blocks');
+  assert.deepEqual(reviewer.resultSchema, { id: 'atcs-worker-review/3', required: ['schema', 'planSha256', 'evidenceRefs', 'limitations'] });
+  assert.match(reviewer.taskTemplate, /Advisory only: nothing waits for you/);
+  // #66 D7 (Harness H2a honours it): 40 minutes, four follow-ups and 12000 tokens a turn hold a batch.
+  assert.deepEqual(operatorMember.budgetShare, { maxElapsedMs: 2400000, maxFollowups: 4, maxTokensPerTurn: 12000 });
+  assert.equal(operatorMember.followup, 'reuse-same-child');
+  assert.deepEqual(team.batchWhen, [{ input: 'workerRequest01', value: 'tc_slot_parked', equals: 1 },
+    { input: 'workerRequest01', value: 'tc_request_invalid_count', above: 0 }], 'a parked or refused slot runs the batch no-op');
+  assert.match(operatorMember.taskTemplate, /One operation or undo is not completion/);
+  assert.match(operatorMember.taskTemplate, /actual Host budget remains/);
+  assert.match(operatorMember.taskTemplate, /report missing capability precisely/);
+  assert.deepEqual(operatorMember.reviewedAction, { mode: 'request-scope', planInput: 'workerRequest01', scopePath: ['candidate', 'scope'],
+    commands: mutations, maxMutations: recipeCap, hostPlanHashArgument: 'planSha256' });
+  // #64 M-T03-1: the Operator's task embeds its request; its template names the fields it works from
+  // and the exact dump names the capture seals (#64 D-T03-2).
+  assert.deepEqual(operatorMember.taskInputs, [{ input: 'workerRequest01', fields: ['operatorBrief', 'sessionPlan', 'siteCapabilities'] }]);
+  // #64 T05 w03: the task holds a bounded brief; the Operator reads its exact request in bounded windows.
+  assert.deepEqual(operatorMember.allowedTools, ['hima_interactive', 'hima_delegation_input']);
+  assert.match(operatorMember.taskTemplate, /Use only granted input windows and typed interactive commands/);
+  for (const words of [/Preserve exact planSha256, namePrefix, scope and regions/, /outside the declared domain/,
+    /verify automatic before\.dump/, /Use native library candidates/, /current export with physical-risk limitations/]) {
+    assert.match(operatorMember.taskTemplate, words, `the Operator template states ${words}`);
+  }
+  assert.equal(recipeCap, 600, '#66 D7: a batch of tens to hundreds of trials and their undos, at the Harness ceiling (H1)');
+  assert.deepEqual(operatorMember.resultSchema, { id: 'atcs-worker-session/1',
+    required: ['schema', 'planSha256', 'mutationReceipts', 'stopReason', 'limitations'] });
+  // The Operator template is the knowledge file's expert loop, in order.
+  let step = 0;
+  for (const word of ['before.dump', 'atcs_ref', 'root-cause hypothesis', 'Try one coherent',
+    'Measure HOLD WNS', 'keep or undo', 'after.dump', 'current export', 'atcs_close']) {
+    const found = operatorMember.taskTemplate.indexOf(word, step);
+    assert.ok(found >= 0, `the Operator template runs the expert loop in order; ${word} is missing after offset ${step}`);
+    step = found + word.length;
+  }
+  assert.ok(pack.contract.knowledge.some(item => item.file === 'xtop-expert-operator.md'));
+  assert.equal(packStage(packDir).stage, 'compiled');
+  // The 2026-09-29 reshape (ADR-0016): plan -> six self-driving branches -> merge -> one refresh ->
+  // evaluate -> automatic re-observation -> one owner decision. 136 nodes and 178 edges before.
+  assert.equal(pack.graph.nodes.length, 72);
+  assert.equal(pack.graph.edges.length, 86);
+  assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'explore').map(node => node.id), ['decide'], 'one owner decision per generation');
+  assert.deepEqual((pack.graph.nodes as any[]).filter(node => node.kind === 'wait').map(node => node.id), ['wait-for-person'], 'a person only as the honest end');
+  assert.deepEqual((pack.graph as any).autopilot, [
+    { from: ['bind-inputs'], until: ['plan', 'wait-for-person'] },
+    { from: ['read-campaign-plan'], until: ['decide'] },
+    { fork: 'prepare-workers', revisions: 2, author: { maxElapsedMs: 900000, maxFollowups: 4, maxTokensPerTurn: 48000 } },
+    { from: ['check-worker-results'], until: ['compose'] },
+    { from: ['prepare-lead'], until: ['timing-lead'] },
+    { from: ['finalize-lead'], until: ['decide'] },
+  ], 'the owner acts at plan, compose and decide only');
+  // Every in-loop Judge labels all three outcomes: an UNDETERMINED never falls through to a person.
+  for (const node of (pack.graph.nodes as any[]).filter(item => item.kind === 'judge' && item.id !== 'check-inputs' && item.id !== 'check-refresh-budget')) {
+    const outcomes = (pack.graph.edges as any[]).filter(edge => edge.from === node.id).map(edge => edge.outcome).sort();
+    assert.deepEqual(outcomes, ['FAIL', 'PASS', 'UNDETERMINED'], `${node.id} labels its outcomes`);
+    assert.ok(!(pack.graph.edges as any[]).some(edge => edge.from === node.id && edge.to === 'wait-for-person'), `${node.id} never waits for a person`);
+  }
+
+  // #64 Track B (from #63 slice 2): every Explore revisit consumes a Harness generation, so
+  // `generationLimit` bounds revisits, not Innovus/StarRC/PrimeTime refreshes (live02 spent both
+  // generations with zero refreshes). The Run's Goal value `max_physical_refreshes` (default 2, the
+  // #64 deal), fixed at Run creation, caps them: a fresh reading of the refresh ledger, then a Judge,
+  // right before each physical refresh.
   assert.deepEqual((pack.contract.goal as any).max_physical_refreshes,
-    { type: 'number', unit: 'count', min: 1, max: 4, default: 1, precision: 0 });
+    { type: 'number', unit: 'count', min: 1, max: 4, default: 2, precision: 0 });
   assert.equal((pack.contract.words as any).max_physical_refreshes.unit, 'count');
-  assert.deepEqual(Object.keys(pack.contract.strategy), ['maxPaths']);
+  assert.deepEqual(Object.keys(pack.contract.strategy), ['maxPaths', 'workerSlots', 'autoFinish']);
   const workingState = pack.contract.outputs.find(output => output.name === 'workingState')!;
   assert.equal(workingState.reader, 'atcs-refresh-budget');
   const nodeOf = (id: string) => (pack.graph.nodes as any[]).find(node => node.id === id);
@@ -271,56 +639,39 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     .map(edge => `${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}->${edge.to}`).sort();
   const edgesTo = (id: string) => (pack.graph.edges as any[]).filter(edge => edge.to === id)
     .map(edge => `${edge.from}->${edge.outcome ?? ''}${edge.revisit ? 'revisit' : ''}`).sort();
-  for (const [read, check, refresh] of [['read-refresh-budget', 'check-refresh-budget', 'implement'],
-    ['read-refresh-budget-apr', 'check-refresh-budget-apr', 'apr-prepare']] as const) {
-    assert.equal(nodeOf(read).kind, 'act');
-    assert.equal(nodeOf(read).parameters.observes, 'workingState');
-    assert.equal(nodeOf(check).kind, 'judge');
-    assert.deepEqual(nodeOf(check).parameters.rules, ['refresh-budget']);
-    assert.deepEqual(nodeOf(check).parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
-    assert.deepEqual(edgesFrom(read), [`->${check}`]);
-    assert.deepEqual(edgesFrom(check), ['FAIL->wait-for-person', `PASS->${refresh}`]);
-    assert.deepEqual(edgesTo(refresh), [`${check}->PASS`], `${refresh} is entered only through ${check}`);
-  }
-  assert.deepEqual(edgesTo('read-refresh-budget'), ['check-presta-model->PASS', 'revisit-implement->revisit']);
-  assert.deepEqual(edgesTo('read-refresh-budget-apr'), ['revisit-earlier-apr->revisit']);
-  // Review C-5: the refreshing nodes behind the two gates are entered only from behind them.
-  assert.deepEqual(edgesTo('apr-run'), ['apr-prepare->']);
-  assert.deepEqual(edgesTo('extract'), ['apr-run->', 'implement->']);
-  assert.deepEqual(edgesFrom('check-presta-model'), ['FAIL->decide-next', 'PASS->read-refresh-budget']);
-
-  // Issue 63 slice 3 (gap 2): a refused request is revised, never a Run-ending wait. Before, a
-  // check-worker-request-01 FAIL parked the Run at wait-for-person, which has no outgoing edge.
-  const requestJudges = (pack.graph.nodes as any[]).filter(node => node.kind === 'judge'
-    && node.parameters.rules[0] === 'request-admissible').map(node => node.id);
-  assert.ok(requestJudges.length >= 6, requestJudges.join(','));
-  for (const judge of requestJudges) {
-    assert.ok(!edgesFrom(judge).includes('FAIL->wait-for-person'), `${judge} FAIL ends the Run at wait-for-person`);
-  }
-  assert.deepEqual(nodeOf('check-worker-request-01').parameters.rules, ['request-admissible', 'request-checked']);
-  assert.deepEqual(edgesFrom('check-worker-request-01'), ['FAIL->retry-worker-01', 'PASS->route-worker-action-01']);
-  // Review 2 (I2): an admitted request that states no safe action reaches decide-next, not the Team.
-  assert.deepEqual(nodeOf('route-worker-action-01').parameters.rules, ['worker-action-proposed']);
-  assert.deepEqual(edgesFrom('route-worker-action-01'), ['FAIL->decide-next', 'PASS->operate-worker-01']);
-  assert.deepEqual(edgesTo('operate-worker-01'), ['route-worker-action-01->PASS']);
-  assert.equal(nodeOf('retry-worker-01').kind, 'explore');
-  assert.equal(nodeOf('retry-worker-01').parameters.chooser, 'atcs-revisit');
-  assert.deepEqual(edgesFrom('retry-worker-01'), ['revisit->research-worker-01']);
+  // One refresh per generation: its cap gate is read at the start of every generation, before the plan.
+  assert.equal(nodeOf('read-refresh-budget').kind, 'act');
+  assert.equal(nodeOf('read-refresh-budget').parameters.observes, 'workingState');
+  assert.equal(nodeOf('check-refresh-budget').kind, 'judge');
+  assert.deepEqual(nodeOf('check-refresh-budget').parameters.rules, ['refresh-budget']);
+  assert.deepEqual(nodeOf('check-refresh-budget').parameters.bind, { max_physical_refreshes: { from: 'goal', name: 'max_physical_refreshes' } });
+  assert.deepEqual(edgesFrom('read-refresh-budget'), ['->check-refresh-budget']);
+  assert.deepEqual(edgesFrom('check-refresh-budget'), ['FAIL->wait-for-person', 'PASS->bind-worker-slots', 'UNDETERMINED->wait-for-person']);
+  assert.deepEqual(edgesTo('read-refresh-budget'), ['common-autofix->', 'decide->revisit']);
+  assert.deepEqual(edgesFrom('decide'), ['revisit->read-refresh-budget'], 'continue is the next generation from the working state');
+  assert.deepEqual(edgesTo('implement'), ['finalize-lead->']);
+  assert.deepEqual(edgesTo('extract'), ['implement->']);
+  assert.equal(nodeOf('apr-run'), undefined, 'no earlier-APR detour');
   assert.ok(pack.contract.rules.includes('refresh-budget'));
+  // #64 Track B (C28), reshaped: every generation refreshes once. #66 D9: one generation is the floor
+  // (the decisive experiment is one generation, one refresh).
+  assert.equal((pack.contract.budget as any).minimumGenerations, 1);
+  assert.equal((pack.contract.goal as any).max_physical_refreshes.default, 2);
 
-  // Failure catalogue C22: knowledge/endpoint-resolution.md tells a Workshop to run the Pack's
-  // resolver at <workspace>/hima-readers/atcs-readiness/read-atcs.py. That is where the Harness
-  // ships a reader's script (runPackReader: <workspace>/<readersDirName>/<reader id>/<basename>), and
-  // atcs-readiness is the reader of the Run's second node, so the copy exists before any Workshop.
-  assert.equal(readersDirName, 'hima-readers');
-  assert.equal(pack.graph.entry, 'bind-inputs');
-  assert.deepEqual(edgesFrom('bind-inputs'), ['->read-readiness']);
-  assert.equal(nodeOf('read-readiness').parameters.observes, 'inputReadiness');
-  assert.equal(pack.contract.outputs.find(output => output.name === 'inputReadiness')!.reader, 'atcs-readiness');
-  const readinessReader = parse(await readFile(path.join(packDir, 'readers/atcs-readiness.yml'), 'utf8')) as any;
-  assert.equal(readinessReader.file, 'tools/read-atcs.py');
-  assert.match(await readFile(path.join(packDir, 'knowledge/endpoint-resolution.md'), 'utf8'),
-    /workspace \/ "hima-readers" \/ "atcs-readiness" \/ "read-atcs\.py"/);
+  // #64 Track B (from #63 slice 3 gap 1): every request output has an itemized `<output>Problems`
+  // beside it (written by tools/read-atcs.py, no reader), read by the Workshop that produces it.
+  for (const workshop of pack.contract.workshops) {
+    const problems = pack.contract.outputs.find(output => output.name === `${workshop.produces}Problems`)!;
+    const request = pack.contract.outputs.find(output => output.name === workshop.produces)!;
+    assert.ok(problems, `${workshop.produces} has its Problems output`);
+    assert.equal(problems.path, request.path.replace(/\.json$/, '.problems.txt'));
+    assert.equal(problems.reader, undefined);
+    if (workshop.id === 'compose-contributions') {
+      assert.equal((workshop as any).revision, undefined, 'the owner composes once; no self-revision loop reads its own problems');
+    } else {
+      assert.ok(workshop.reads.includes(problems.name), `${workshop.id} reads ${problems.name}`);
+    }
+  }
 
   // Issue 63 (fresh03 `sta` blocked: "references ${MAX_PATHS}, which nothing bound"): every
   // `${NAME}` a node's tool command line uses is bound by that node or is a Harness-reserved value.
@@ -360,6 +711,22 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
   for (const forbiddenCommand of ['source', 'exec', 'sh', 'bash']) {
     assert.equal(commandNames.includes(forbiddenCommand), false, `interactive catalog exposes ${forbiddenCommand}`);
   }
+  // Issue #64 Task 3: the XTop expert toolkit. Reads never carry the plan hash; every mutation takes
+  // it last, so a reviewed scope can name any of them.
+  assert.deepEqual(interactiveTool.interactive.commands.read,
+    ['atcs_ref', 'atcs_gain', 'atcs_paths', 'atcs_fail_reasons', 'atcs_candidates', 'atcs_point', 'atcs_gba']);
+  assert.deepEqual(interactiveTool.interactive.commands.mutate, [
+    'atcs_size_cell', 'atcs_exchange_cell', 'atcs_insert_buffer', 'atcs_insert_dummy', 'atcs_split_load',
+    'atcs_split_net', 'atcs_move_cell', 'atcs_remove_buffer', 'atcs_fix_hold_pins', 'atcs_fix_setup_pins', 'atcs_undo',
+    'atcs_path_pin_rank', 'atcs_legalization_range']);
+  for (const command of interactiveTool.interactive.commands.mutate) {
+    assert.deepEqual(interactiveTool.interactive.arguments[command]?.at(-1), { name: 'planSha256', type: 'string' },
+      `${command} takes planSha256 last`);
+  }
+  for (const command of interactiveTool.interactive.commands.read) {
+    assert.equal((interactiveTool.interactive.arguments[command] ?? []).some(item => item.name === 'planSha256'), false,
+      `${command} is a read`);
+  }
   const qualifiedWrapper = path.join(atcs28SourceDir, 'atcs-xtop-operator-v5.sh');
   const shellSyntax = spawnSync('/bin/bash', ['-n', qualifiedWrapper], { encoding: 'utf8' });
   assert.equal(shellSyntax.status, 0, shellSyntax.stderr);
@@ -381,64 +748,62 @@ test('the agentic timing closure system Pack loads, fits linglong-atcs28 and the
     for (const pattern of forbidden) assert.doesNotMatch(word, pattern, `argv word "${word}" references a forbidden path`);
   }
 
-  // The next-decision Reader (tools/read-atcs.py) refuses stateRef/observationRef that are not a
-  // 20-hex artifact `id` and a budgetRef that is not a string; the Workshop purpose must say so, or
-  // the Researcher guesses (Issue 63: objects of 64-hex content hashes, request-admissible FAIL).
-  const decider = pack.contract.workshops.find((w: { produces?: string }) => w.produces === 'nextDecision');
-  assert.ok(decider, 'a workshop produces nextDecision');
-  assert.match(decider.purpose, /stateRef is the `id` \(20 lowercase hex\) of state\/working-state\.json/);
-  assert.match(decider.purpose, /observationRef is the `id` \(20 lowercase hex\) of the observation/);
-  assert.match(decider.purpose, /budgetRef is a non-empty string/);
-
-  // A Team member whose reply is not exactly one JSON object is refused before result-observed, and its
-  // delegation id is fixed per execution, so without one same-child follow-up the Team can never
-  // complete and the execution stays begun (Issue 63: a reviewer reply missing one closing bracket).
-  const workerTeam = pack.contract.agentTeams.find((t: { id: string }) => t.id === 'atcs-worker-01');
-  for (const role of ['researcher', 'reviewer']) {
-    const member = workerTeam.members.find((m: { id: string }) => m.id === role);
-    assert.equal(member.followup, 'reuse-same-child', `${role} allows one repair follow-up`);
-    assert.equal(member.budgetShare.maxFollowups, 1, `${role} allocates exactly one follow-up`);
-    assert.match(member.taskTemplate, /If the owner returns a refusal of your reply, answer with the corrected single JSON object only/);
+  // The reshape removed the owner's in-loop decisions: no next-decision or observation-request
+  // Workshop, Reader or output remains, and no rule routes on them.
+  for (const gone of ['nextDecision', 'observationRequest', 'aprTask']) {
+    assert.equal(pack.contract.outputs.find(output => output.name === gone), undefined, `${gone} is gone`);
   }
-  // The owner must know to use that follow-up, or it escalates a formatting refusal to a person.
+  assert.deepEqual(pack.contract.workshops.map(item => item.id).filter(id => !/^research-worker-\d\d$/.test(id)), ['plan-campaign', 'compose-contributions']);
+  // Each branch Workshop declares its revision: a refused request is revised by the branch's author.
+  for (const slot of slots) {
+    const workshop = pack.contract.workshops.find(item => item.id === `research-worker-${slot.slice(1)}`)! as any;
+    assert.deepEqual(workshop.revision, { refusedWhen: 'tc_request_invalid_count', problems: `workerRequest${slot.slice(1)}Problems` });
+  }
   const teamKnowledge = await readFile(path.join(repoRoot, 'packs', packId, 'knowledge/agent-team.md'), 'utf8');
-  assert.match(teamKnowledge, /The recipe allows one\nfollow-up to the same child/);
+  assert.match(teamKnowledge, /the owner takes none/);
+  assert.match(teamKnowledge, /Reviewer: optional and advisory/);
 
   installPackMethod({ from: packDir, to: path.join(h.home, 'hima/packs', packId) });
   const host = await bootInProcess(h);
   try {
     const throughHost = await himaCommand(host, h.workspace, `/hima pack check ${packId} --site local`);
     assert.equal(throughHost.kind, 'success', throughHost.text);
-    assert.match(throughHost.text, /agentic-timing-closure-system@0\.1\.10.*fit/s);
+    assert.match(throughHost.text, /agentic-timing-closure-system@0\.2\.10.*fit/s);
   } finally { await host.dispose(); }
 
-  const tests = spawnSync('python3', ['-m', 'unittest', 'discover', '-s', path.join(packDir, 'flow/tests'), '-v'], {
-    cwd: repoRoot,
+  const tests = spawnSync('python3', ['-m', 'unittest',
+    'test_owner_timing_lead.py', 'test_engineering_result.py', 'test_resident_native_context.py', '-v'], {
+    cwd: path.join(packDir, 'flow/tests'),
+    env: { ...process.env, HIMA_TEST_REPO_ROOT: repoRoot },
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);
 });
 
-// Issue 63: nothing in the repo fails when flow/ drifts away from the installed v9 wrapper's
-// pinned adapter/flow identities -- linglong-atcs28/wrapper-pins.json records what that Site
-// administrator's installed wrapper actually pins, and this test is the gate: a flow/ change
-// without a matching wrapper update (a new sha256, a new flowDigest) fails here first.
-test('linglong-atcs28 wrapper-pins.json matches the Pack flow/ this repo ships', async () => {
-  const pinsPath = path.join(repoRoot, 'sites/linglong-atcs28/wrapper-pins.json');
-  const pins = JSON.parse(await readFile(pinsPath, 'utf8'));
-
-  const packDir = path.join(repoRoot, 'packs', packId);
-  const adapterSha256 = createHash('sha256')
-    .update(await readFile(path.join(packDir, 'flow/atcs_cli.py')))
-    .digest('hex');
-  assert.equal(pins.adapterSha256, adapterSha256,
-    'wrapper-pins.json adapterSha256 must equal sha256(flow/atcs_cli.py); update the pinned wrapper before this file');
-
-  const digest = spawnSync('python3', ['flow/atcs_cli.py', 'flow-digest', 'flow'], {
-    cwd: packDir,
-    encoding: 'utf8',
-  });
-  assert.equal(digest.status, 0, `${digest.stdout}\n${digest.stderr}`);
-  assert.equal(pins.flowDigest, digest.stdout.trim(),
-    'wrapper-pins.json flowDigest must equal `python3 flow/atcs_cli.py flow-digest flow`\'s current output');
+test('the retained interactive binding generator refuses to qualify the new outsourced Pack as an old Operator startup', async (t) => {
+  // Issue #64 Task 7 fix round 1: the atcs-v10 binding came out as `linglong-atcs28:xtop-operator-v5`.
+  const h = await createHimaHome(); t.after(() => h.dispose());
+  const legacyPacksDir = path.join(h.home, 'legacy-packs');
+  await copyLegacyAtcsPack(legacyPacksDir);
+  const pack = loadPack(legacyPacksDir, 'agentic-timing-closure-system');
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'xtop-operator')!;
+  const wrapper = tool.interactive?.argv?.[0] ?? '';
+  const version = /atcs-v(\d+)\/atcs-xtop-operator-v\1\.sh$/.exec(wrapper)?.[1];
+  assert.ok(version, `the contract names an installed atcs-vN wrapper: ${wrapper}`);
+  const { packDigestExcludes } = await import('@hima/harness');
+  const template = await readFile(path.join(repoRoot, `sites/linglong-atcs28/xtop-operator-environment-v${version}.template.json`), 'utf8');
+  const evidence = template
+    .replace('<current-pack-digest>', pack.folder.digest(packDigestExcludes))
+    .replace('<current-adapter-digest>', BUILTIN_TCL_ADAPTER_DIGEST)
+    .replace('<current-commands-digest>', interactiveCommandsDigest(tool))
+    .replace('<passed-after-fresh-production-root-qualification>', 'passed')
+    .replaceAll('<64-lowercase-hex>', 'a'.repeat(64));
+  assert.equal(JSON.parse(evidence).wrapper.path, wrapper, 'the environment template names the contract wrapper');
+  const environment = path.join(h.home, 'xtop-operator-environment.json');
+  const output = path.join(h.home, 'interactive-bindings.json');
+  await writeFile(environment, evidence);
+  const generated = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
+    '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
+  assert.equal(generated.status, 1);
+  assert.match(generated.stderr, /current retained XTop Pack has no matching production Operator startup/);
 });

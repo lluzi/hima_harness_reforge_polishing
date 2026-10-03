@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  BUILTIN_TCL_ADAPTER_DIGEST, batchToolRefusal, createInteractiveBindingBridge,
+  BUILTIN_TCL_ADAPTER_DIGEST, batchToolRefusal, checkPack, createInteractiveBindingBridge,
   installPackMethod, interactiveCommandsDigest, loadPack, loadSite, packDigestExcludes, toolArgv,
 } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
@@ -263,4 +263,58 @@ test('production evidence is enforced only after the Site wrapper, Permit roots 
   await assert.rejects(() => writableBridge.verifyAdminBinding(writableResolved.binding), /wrapper.*writable|task-writable Permit root/i);
 
   assert.equal((await readFile(wrapper, 'utf8')), wrapperBytes, 'negative verification does not mutate Site-owned wrapper bytes');
+});
+
+test('a hybrid tool may hold its seats in the interactive session only, so its batch no-op holds none', async (t) => {
+  // #64 Track B: a hybrid tool whose batch path is a no-op (the ATCS parked-slot operate node) held
+  // the tool's licence for every batch Job. `interactive.licences` gives the session its own seats;
+  // the batch path keeps the tool's `licences` (here none), and checkPack holds both against the Site.
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const installed = await installPack(home);
+  const packId = 'interactive-session-licences';
+  await writePackVariant(installed.packsDir, packId, [
+    ['    licences:\n      Design-Compiler: 1\n', ''],
+    ['    argv:', `    interactive:
+      mode: hybrid
+      adapter: hima-tcl-line-v1
+      licences: { Design-Compiler: 1 }
+      commands:
+        read: [get_value]
+        mutate: [set_value]
+        save: [save_state]
+    argv:`],
+  ]);
+  const pack = loadPack(installed.packsDir, packId);
+  const packDigest = pack.folder.digest(packDigestExcludes);
+  const tool = pack.contract.tools.find((candidate) => candidate.id === 'synth')!;
+  assert.deepEqual(tool.licences, {}, 'the batch path holds no seat');
+  assert.deepEqual(tool.interactive!.licences, { 'Design-Compiler': 1 });
+
+  const siteWith = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
+    allowedWrappers: ['make'], bindings: { flowRoot: pack.dir, design: 'opene902', workspaceRoot: home.workspace }, licences: { 'Design-Compiler': 1 } });
+  const site = loadSite(siteWith.sitesDir, siteWith.name);
+  const fit = checkPack(pack, site).licences.filter((check) => check.tool.startsWith('synth'));
+  assert.deepEqual(fit.map((check) => [check.tool, check.name, check.held, check.error]), [['synth (interactive)', 'Design-Compiler', 1, undefined]]);
+  const without = { ...site, capacity: { ...site.capacity, licences: {} } };
+  const refused = checkPack(pack, without);
+  assert.equal(refused.fit, false);
+  assert.ok(refused.errors.some((error) => error.includes('tool "synth (interactive)" holds 1 of "Design-Compiler"')), refused.errors.join('\n'));
+
+  const adminDir = path.join(home.home, 'admin'); await mkdir(adminDir);
+  const environmentFile = path.join(adminDir, 'environment.json');
+  const environmentBytes = '{"tool":"fixture-tcl","version":"1","confinement":"workspace"}\n';
+  await writeFile(environmentFile, environmentBytes);
+  const configFile = path.join(adminDir, 'interactive-bindings.json');
+  const row = { id: 'session-licences', site: 'local', packDigest, toolId: 'synth', adapter: 'hima-tcl-line-v1',
+    adapterHash: BUILTIN_TCL_ADAPTER_DIGEST, commandsDigest: interactiveCommandsDigest(tool),
+    environment: { id: 'fixture-env', file: environmentFile, sha256: createHash('sha256').update(environmentBytes).digest('hex') }, mutation: 'qualified' };
+  await writeFile(configFile, `${JSON.stringify({ schema: 'hima-interactive-bindings/1', bindings: [row] }, null, 2)}\n`);
+  const bridge = createInteractiveBindingBridge({ packsDir: installed.packsDir, sitesDir: siteWith.sitesDir, interactiveBindingsFile: configFile });
+  const run = { id: 'run-licences', campaignId: 'campaign-licences', siteId: 'local', packId, packDigest,
+    createdAt: new Date().toISOString(), nextSeq: 1, status: 'running', strategy: { periodNs: 2.5 }, generation: 1 };
+  const execution = { id: 'execution-licences', nodeId: 'synthesize', kind: 'act', generation: 1, attempt: 1,
+    methodDigest: packDigest, inputDigest: 'd'.repeat(64), phase: 'ready' };
+  const resolved = await bridge.resolve({ pack, run: run as never, execution: execution as never, site, workspace: home.workspace });
+  assert.ok(resolved);
+  assert.deepEqual(resolved.licences, { 'Design-Compiler': 1 }, 'the session holds its own seat');
 });

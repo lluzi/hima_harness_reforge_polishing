@@ -14,6 +14,7 @@ import { packDigestExcludes } from './pack-folder.js';
 import type { NodeExecution, RunRecord } from './ledger.js';
 import { loadSite, type Site } from './sites.js';
 import { channelFor } from './channel.js';
+import { defaultInteractiveCloseGraceMs } from './interactive-job.js';
 import type {
   DerivedInteractiveOperation, EncodedInteractiveCommand, InteractiveBinding,
   VerifiedBindingEvidence,
@@ -91,6 +92,8 @@ export interface ResolveInteractiveBindingRequest {
   readonly execution: NodeExecution;
   readonly site: Site;
   readonly workspace: string;
+  /** The Run's recorded input bindings (#64 D-C01-1); the Site's own only for a Run that recorded none. */
+  readonly bindings?: Readonly<Record<string, string>>;
   /** Optional exact node supplied by Fabric; otherwise resolved from the retained Pack graphs. */
   readonly node?: Extract<PackNode, { kind: 'act' }>;
 }
@@ -279,7 +282,7 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
       if (row.adapterHash !== BUILTIN_TCL_ADAPTER_DIGEST) throw new Error(`interactive binding ${row.id} pins unsupported adapter hash ${row.adapterHash}`);
       if (row.commandsDigest !== interactiveCommandsDigest(tool)) throw new Error(`interactive binding ${row.id} does not pin the retained Pack command classification`);
       if (row.adapter !== tool.interactive.adapter) throw new Error(`interactive binding ${row.id} and retained tool ${tool.id} name different adapters`);
-      const bindings = boundInputs(request.pack, request.site);
+      const bindings = request.bindings ?? boundInputs(request.pack, request.site);
       const taken = nodeArguments(node, request.run, bindings);
       if (!taken.ok) throw new Error(taken.reason);
       // FLOW_ROOT/DESIGN are legacy aliases used by Packs that actually declare those inputs.
@@ -294,11 +297,13 @@ export function createInteractiveBindingBridge(config: InteractiveBindingBridgeC
         source, adapter: { id: BUILTIN_TCL_ADAPTER_ID, version: '1', digest: BUILTIN_TCL_ADAPTER_DIGEST,
           completionProtocol: 'versioned-marker', allowsMultiline: false },
         environment: { id: row.environment.id, digest: row.environment.sha256 }, mutation: row.mutation,
-        limits: { startupWaitMs: 60_000, callWaitMaxMs: 60_000, commandMaxMs: 10 * 60_000,
+        limits: { closeGraceMs: tool.interactive.closeGraceMs ?? defaultInteractiveCloseGraceMs,
+          startupWaitMs: 60_000, callWaitMaxMs: 60_000, commandMaxMs: 10 * 60_000,
           sessionMaxMs: 60 * 60_000, idleMaxMs: 10 * 60_000 },
       };
       return { binding, site: request.site.name, workspace: request.workspace, argv,
-        name: `${node.id}-interactive`, licences: tool.licences, commands: interactiveCommandContracts(tool) };
+        name: `${node.id}-interactive`, licences: tool.interactive?.licences ?? tool.licences,
+        commands: interactiveCommandContracts(tool) };
     },
 
     async verifyAdminBinding(binding) {

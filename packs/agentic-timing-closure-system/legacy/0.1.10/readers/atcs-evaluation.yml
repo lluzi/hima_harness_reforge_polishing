@@ -1,0 +1,14 @@
+id: atcs-evaluation
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'evaluation', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-evaluation/1
+emits:
+  - tc_final_setup_wns_ns
+  - tc_final_hold_wns_ns
+  - tc_missing_required_check_count
+  - tc_final_identity_error_count
+  - tc_applicable_constraint_failure_count
+  - tc_applicable_constraint_unknown_count
+  - tc_fixed_check_count
+  - tc_missing_prior_check_count

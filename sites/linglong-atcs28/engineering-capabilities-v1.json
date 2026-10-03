@@ -1,0 +1,71 @@
+{
+  "schema": "hima-resident-engineering-capability/1",
+  "protocol": "hima-resident-engineering/1",
+  "wrapper": {
+    "argv": [
+      "/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py",
+      "--capability",
+      "/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-v1.json"
+    ]
+  },
+  "native": {
+    "executable": "/home/luzi/.opencode/bin/opencode",
+    "version": "1.18.34",
+    "argv": ["acp", "--pure"],
+    "model": "deepseek/deepseek-flash",
+    "protocolVersion": 1
+  },
+  "sandbox": {
+    "kind": "podman",
+    "executable": "/usr/bin/podman",
+    "image": "7d651dc8f1ab7d423b9d61be83fc3f5d608996ed7b91fa6588c3ed16daccfd54",
+    "readOnlyRoots": [
+      "/data/eda/env",
+      "/data/eda/software/eda_tools/empyrean",
+      "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+      "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
+      "/data/eda/project/techlib/tsmc28",
+      "/data/eda/project/hima_harness/atcs-inputs"
+    ],
+    "privateWorkspace": "workspace",
+    "privateHome": "home",
+    "network": "host"
+  },
+  "environment": {
+    "inherit": [
+      "PATH",
+      "LANG",
+      "LC_ALL",
+      "LM_LICENSE_FILE",
+      "SNPSLMD_LICENSE_FILE",
+      "CDS_LIC_FILE",
+      "MGLS_LICENSE_FILE",
+      "MGLS_LICENSE_SEARCH",
+      "SALT_LICENSE_SERVER"
+    ],
+    "set": {
+      "TZ": "America/Los_Angeles",
+      "EDA_DIR": "/data/eda",
+      "EDA_ROOT": "/data/eda",
+      "EDA_INIT": "/data/eda/env/eda_tools_2025_env.sh",
+      "EDA_NETWORK_POLICY": "local-resources",
+      "HTTP_PROXY": "",
+      "HTTPS_PROXY": "",
+      "ALL_PROXY": "",
+      "http_proxy": "",
+      "https_proxy": "",
+      "all_proxy": "",
+      "NO_PROXY": "localhost,127.0.0.1,::1,linglong,.local",
+      "no_proxy": "localhost,127.0.0.1,::1,linglong,.local"
+    },
+    "toolPaths": ["/usr/local/bin", "/usr/bin", "/bin"],
+    "credentialReadPaths": [
+      "/home/luzi/.config/opencode",
+      "/home/luzi/.local/share/opencode/auth.json"
+    ]
+  },
+  "delivery": {
+    "candidate": "resident-delivery.json"
+  },
+  "stopGraceSeconds": 10
+}

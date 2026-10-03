@@ -599,9 +599,9 @@ class XtopOperatorArgvTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Step 1 requirement: typed procedures reject a target outside the
-# edit-domain list passed at session start (real tclsh execution, XTop
-# commands stubbed).
+# Session-setup stubs for tests that source a compiled XTop template in tclsh.
+# The typed toolkit's edit-domain, budget, trace and undo behaviour is covered
+# by `test_xtop_toolkit.py` (Issue #64 Task 3).
 # ---------------------------------------------------------------------------
 
 
@@ -642,93 +642,6 @@ proc foreach_in_collection {iter_var collection body} {
 """
 
 
-@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
-class TypedProcedureEditDomainTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = _tmp()
-        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
-            (self.tmp / name).write_text("stub", encoding="utf-8")
-        self.run_root = self.tmp / "run"
-        self.run_root.mkdir()
-        self.ops_log = self.run_root / "ops.jsonl"
-
-        manifest = {"namePrefix": "atcs_w01_r1_"}
-        operator_task = adapters.compile_xtop_operator_task(
-            manifest, "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"),
-            str(self.tmp / "netlist.v"), str(self.tmp / "design.def"), str(self.run_root), _xtop_context(self.tmp),
-        )
-        self.operator_tcl_path = self.run_root / "operator.tcl"
-        self.operator_tcl_path.write_text(operator_task["tcl"], encoding="utf-8")
-
-        edit_domain = {"instances": ["U_IN_DOMAIN"], "nets": ["N_IN_DOMAIN"]}
-        analysis_task = adapters.compile_xtop_analysis_manual_task(
-            manifest, edit_domain, self.operator_tcl_path, self.ops_log,
-        )
-        self.script_path = self.tmp / "test-session.tcl"
-        self.script_path.write_text(_STUB_PROCS + analysis_task["tcl"], encoding="utf-8")
-
-    def _run_tcl(self, extra_commands):
-        script = self.script_path.read_text(encoding="utf-8") + "\n" + extra_commands
-        combined = self.tmp / "combined.tcl"
-        combined.write_text(script, encoding="utf-8")
-        return subprocess.run([TCLSH, str(combined)], capture_output=True, text=True)
-
-    def test_rejects_size_cell_on_out_of_domain_instance(self):
-        result = self._run_tcl('atcs_size_cell U_OUT_DOMAIN MOCKBUFX4\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-        self.assertFalse(self.ops_log.exists() and self.ops_log.read_text().strip(),
-                          "an out-of-scope mutation must not be logged")
-
-    def test_rejects_delete_buffer_on_out_of_domain_instance(self):
-        result = self._run_tcl('atcs_delete_buffer U_OUT_DOMAIN\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-
-    def test_rejects_insert_buffer_on_out_of_domain_net(self):
-        result = self._run_tcl('atcs_insert_buffer N_OUT_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\n')
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("out-of-scope", result.stdout + result.stderr)
-
-    def test_accepts_size_cell_on_in_domain_instance_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_size_cell U_IN_DOMAIN MOCKBUFX4\nputs "TCL-OK"\n')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("TCL-OK", result.stdout)
-        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
-        self.assertEqual(len(lines), 1)
-        op = json.loads(lines[0])
-        self.assertEqual(op, {"op": "size_cell", "instance": "U_IN_DOMAIN", "fromMaster": "MASTERX", "toMaster": "MOCKBUFX4"})
-
-    def test_cell_query_and_mutation_readback_resolve_native_collections(self):
-        result = self._run_tcl('''
-proc get_cells {args} { return "COLLECTION:[lindex $args 0]" }
-proc get_attribute {obj attr} {
-    if {![string match "COLLECTION:*" $obj]} { error "unwrapped native object" }
-    return MASTERX
-}
-if {[atcs_query_cells U_IN_DOMAIN ref_name] ne "MASTERX"} { error "wrong query" }
-atcs_size_cell U_IN_DOMAIN MOCKBUFX4
-puts "COLLECTION-PASS"
-''')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("COLLECTION-PASS", result.stdout)
-
-    def test_accepts_insert_buffer_on_in_domain_net_and_logs_one_operation(self):
-        result = self._run_tcl('atcs_insert_buffer N_IN_DOMAIN {P1 P2} U_NEW N_NEW MOCKBUFX2\nputs "TCL-OK"\n')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        lines = [line for line in self.ops_log.read_text(encoding="utf-8").splitlines() if line.strip()]
-        self.assertEqual(len(lines), 1)
-        op = json.loads(lines[0])
-        self.assertEqual(op["op"], "insert_buffer")
-        self.assertEqual(op["net"], "N_IN_DOMAIN")
-        self.assertEqual(op["loadPins"], ["P1", "P2"])
-        self.assertEqual(op["newInstance"], "U_NEW")
-        self.assertEqual(op["newNet"], "N_NEW")
-        self.assertEqual(op["master"], "MOCKBUFX2")
-        self.assertIsNone(op["location"])
-
-
 # ---------------------------------------------------------------------------
 # atcs_dump_cells writes the "instance master" dump M3 parses.
 # ---------------------------------------------------------------------------
@@ -752,17 +665,52 @@ class DumpCellsTest(unittest.TestCase):
         )
         analysis_task = adapters.compile_xtop_analysis_manual_task(
             manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl",
+            max_mutations=1,
         )
         (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
         script_path = tmp / "dump-session.tcl"
-        dump_path = tmp / "cells.dump"
+        # #64 D-T03-2: the typed dump writes only before.dump or after.dump, always in the slot root.
+        dump_path = run_root / "before.dump"
         script_path.write_text(
-            _STUB_PROCS + analysis_task["tcl"] + f'\natcs_dump_cells "{dump_path}"\n', encoding="utf-8",
+            _STUB_PROCS + analysis_task["tcl"] + f'\natcs_dump_cells "{tmp / "elsewhere" / "before.dump"}"\n', encoding="utf-8",
         )
         result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         parsed = contributions_module.parse_cell_dump(dump_path.read_text(encoding="utf-8"))
         self.assertEqual(parsed, {"U_IN_DOMAIN": "MASTERX", "U_OUT_DOMAIN": "MASTERX"})
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class DumpNameConfinementTest(unittest.TestCase):
+    """#64 D-T03-2: an Operator that named its dumps w04-before.dump left capture nothing to seal. The
+    typed dump states the two names capture seals and refuses any other, before writing anything; the
+    replay's own dumps go through atcs_write_cell_dump, which no typed command reaches."""
+
+    def test_any_other_name_is_refused_naming_the_two(self):
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (tmp / name).write_text("stub", encoding="utf-8")
+        run_root = tmp / "run"
+        run_root.mkdir()
+        manifest = {"namePrefix": "atcs_w04_r1_"}
+        operator_task = adapters.compile_xtop_operator_task(
+            manifest, "top", str(tmp / "tech.lef"), str(tmp / "cells.lef"),
+            str(tmp / "netlist.v"), str(tmp / "design.def"), str(run_root), _xtop_context(tmp),
+        )
+        analysis_task = adapters.compile_xtop_analysis_manual_task(
+            manifest, {"instances": [], "nets": []}, run_root / "operator.tcl", run_root / "ops.jsonl", max_mutations=1,
+        )
+        (run_root / "operator.tcl").write_text(operator_task["tcl"], encoding="utf-8")
+        script_path = tmp / "dump-names.tcl"
+        script_path.write_text(_STUB_PROCS + analysis_task["tcl"]
+                               + '\nputs [catch {atcs_dump_cells w04-before.dump} message]\nputs $message\n', encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1\natcs_dump_cells writes only before.dump or after.dump", result.stdout)
+        self.assertFalse((run_root / "w04-before.dump").exists())
+        self.assertFalse((tmp / "w04-before.dump").exists())
+        self.assertIn("atcs_write_cell_dump", (PACK_DIR / "flow" / "templates" / "xtop-replay.tcl").read_text(encoding="utf-8"))
 
 
 class XtopReplayWorkspaceTest(unittest.TestCase):
@@ -830,6 +778,27 @@ class XtopReplayEndToEndTest(unittest.TestCase):
         self.assertTrue((Path(task["dumpDir"]) / "000.dump").is_file())
         self.assertTrue((Path(task["dumpDir"]) / "001.dump").is_file())
 
+    def test_a_failing_step_is_recorded_and_the_replay_continues(self):
+        """Best effort (replay is an aggregator): the failing step gets an `error` receipt, the state
+        after it is dumped, and the next step still runs."""
+        steps = [{"stepId": "s1", "op": {"op": "size_cell", "instance": "U_BAD", "toMaster": "MOCKBUFX4"}},
+                 {"stepId": "s2", "op": {"op": "size_cell", "instance": "U_IN_DOMAIN", "toMaster": "MOCKBUFX4"}}]
+        task, script_path = self._compile_and_write(steps)
+        failing = ('proc size_cell {insts master} {\n'
+                   '    if {$insts eq "U_BAD"} { error "stub refused U_BAD" }\n'
+                   '    set ::ATCS_TEST_LAST_CALL [list size_cell $insts $master]\n}\n')
+        text = script_path.read_text(encoding="utf-8")
+        script_path.write_text(text.replace(_STUB_PROCS, _STUB_PROCS + failing, 1), encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = [json.loads(line) for line in Path(task["receiptsLog"]).read_text().splitlines()]
+        self.assertEqual([(row["stepId"], row["status"]) for row in rows], [("s1", "error"), ("s2", "ok")])
+        self.assertIn("stub refused U_BAD", rows[0]["error"])
+        receipts = adapters.read_replay_receipts(task["receiptsLog"])
+        self.assertEqual([receipt["status"] for receipt in receipts], ["error", "ok"])
+        for index in (0, 1, 2):
+            self.assertTrue((Path(task["dumpDir"]) / f"{index:03d}.dump").is_file(), index)
+
     def test_a_missing_required_input_refuses_before_any_workspace_command(self):
         # DEF file does not exist -- must fail on the `file readable` check, never
         # silently proceed to `create_workspace`.
@@ -838,6 +807,497 @@ class XtopReplayEndToEndTest(unittest.TestCase):
         result = subprocess.run([TCLSH, str(script_path)], capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("not readable", result.stdout + result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 6: the generation's one replay -- the ranked expert recipe
+# through the toolkit procedures, protection, auto-finish, one ECO pair, and a
+# concurrent plain auto-fix control arm -- and the Innovus ECO-pair implement.
+# ---------------------------------------------------------------------------
+
+from atcs import integration as integration_module  # noqa: E402
+
+RECIPE_PLAN_A = "a" * 64
+RECIPE_PLAN_B = "b" * 64
+RECIPE_SCENARIOS = ["s1", "s2"]
+
+
+def _recipe_command(seq, proc, args, instances, skip=None):
+    return {"seq": seq, "proc": proc, "cmd": proc[len("atcs_"):], "args": args, "instances": instances,
+            "skip": skip}
+
+
+def _recipe_request(batch_id="b1", auto_finish=True, extra_w02=()):
+    """Two ranked sessions over the toolkit's stub design (test_xtop_toolkit.STUB_XTOP):
+    w01 resizes U1 (applied), resizes U2 to its own master (the toolkit refuses it) and
+    splits N2 (XTop fails it); w02 inserts a buffer on N1 (applied) and carries one
+    command the composition skipped, then tries to resize w01's U2 (outside its own domain)."""
+    recipe = {"sessions": [
+        {"rank": 1, "contribution": "c1", "taskId": "w01", "commands": [
+            _recipe_command(1, "atcs_size_cell",
+                            {"instance": "U1", "toMaster": "BUFX2", "planSha256": RECIPE_PLAN_A}, ["U1"]),
+            _recipe_command(2, "atcs_size_cell",
+                            {"instance": "U2", "toMaster": "INVX1", "planSha256": RECIPE_PLAN_A}, ["U2"]),
+            _recipe_command(3, "atcs_split_net", {"net": "N2", "master": "BUFX2", "rule": "wire_length",
+                                                  "segments": 2, "planSha256": RECIPE_PLAN_A}, []),
+        ]},
+        {"rank": 2, "contribution": "c2", "taskId": "w02", "commands": [
+            _recipe_command(1, "atcs_insert_buffer", {
+                "net": "N1", "loadPins": ["U3/A"], "masters": ["BUFX2"], "newInstances": ["atcs_w02_r1_b1"],
+                "newNets": ["atcs_w02_r1_n1"], "planSha256": RECIPE_PLAN_B}, ["atcs_w02_r1_b1"]),
+            _recipe_command(2, "atcs_size_cell",
+                            {"instance": "U1", "toMaster": "BUFX4", "planSha256": RECIPE_PLAN_B}, ["U1"],
+                            skip="shared-instance"),
+            _recipe_command(3, "atcs_size_cell",
+                            {"instance": "U2", "toMaster": "INVX2", "planSha256": RECIPE_PLAN_B}, ["U2"]),
+            *extra_w02,
+        ]},
+    ], "excluded": []}
+    sessions = {
+        "w01": {"contributionId": "c1", "revision": 1, "namePrefix": "atcs_w01_r1_",
+                "editDomain": {"instances": ["U1", "U2"], "nets": ["N2"], "regions": [[0, 0, 50, 50]]},
+                "targetPins": ["U9/D"],
+                "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}}},
+        "w02": {"contributionId": "c2", "revision": 1, "namePrefix": "atcs_w02_r1_",
+                "editDomain": {"instances": ["U3"], "nets": ["N1"], "regions": []}, "targetPins": [],
+                "delta": {"mastersChanged": {}, "added": {"atcs_w02_r1_b1": "BUFX2"}, "removed": {}}},
+    }
+    plan = {"batchId": batch_id, "baseStateId": "base-1", "reason": "blockers first", "autoFinish": auto_finish}
+    return integration_module.prepare_recipe_replay(plan, "base-1", recipe, sessions,
+                                                    required_scenarios=RECIPE_SCENARIOS, removable_fillers=["FILL*"])
+
+
+def _summary_table(check, rows):
+    """`summarize_gba_violations -exclude_path` in the real XTop layout (notes/real-summarize-sample.txt)."""
+    lines = [f"### {check} summary ###", "Scenario                  Count      Worst        TNS", "-" * 54,
+             f"total                 {sum(r[0] for r in rows.values()):>10} "
+             f"{min(r[1] for r in rows.values()):>10.4f} {sum(r[2] for r in rows.values()):>10.4f}"]
+    for name, (count, worst, tns) in rows.items():
+        lines.append(f"  {name:<24}{count:>6} {worst:>10.4f} {tns:>10.4f}")
+    return "\n".join(lines)
+
+
+# Additions to the toolkit's stub XTop for a replay: dont-touch, `redirect -file`,
+# the final per-scenario summaries, and an ECO pair from write_design_changes.
+REPLAY_STUB = r"""
+set ::stub_dont_touch {}
+proc set_dont_touch {args} {
+    stub_record set_dont_touch {*}$args
+    set ::stub_dont_touch [stub_names [lindex $args 0]]
+    return 1
+}
+proc redirect {args} {
+    if {[lindex $args 0] eq "-file"} {
+        stub_record redirect -file
+        set code [catch {uplevel #0 [lindex $args 2]} r]
+        set fh [open [lindex $args 1] w]
+        puts $fh $r
+        close $fh
+        if {$code} { error $r }
+        return ""
+    }
+    stub_record redirect {*}[lrange $args 0 end-1]
+    set target [lindex $args end-1]
+    set code [catch {uplevel #0 [lindex $args end]} r]
+    upvar #0 $target captured
+    set captured "captured: $r\n"
+    if {$code} { error $r }
+    return ""
+}
+# The probe tables in real XTop's layout (live_session_samples.LIVE_PROBE_SETUP): one endpoint row per reason.
+set ::stub_fail_reasons_setup "### setup top 4 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      no_setup_gain:100%\n-0.0100    func_ss                 U1/D      no_setup_gain:100%\n-0.0100    func_ss                 U2/D      no_setup_gain:100%\n-0.0100    func_ss                 U3/D      legal_fail_no_space_on_row:100%\n"
+set ::stub_fail_reasons_hold "### hold top 7 endpoints ###\n  Slack    Scenario                Name       Fail Reason      \n------------------------------------------------------------\n-0.0100    func_ss                 U0/D      break_setup:100%\n-0.0100    func_ss                 U1/D      break_setup:100%\n-0.0100    func_ss                 U2/D      no_hold_gain:100%\n-0.0100    func_ss                 U3/D      no_hold_gain:100%\n-0.0100    func_ss                 U4/D      no_hold_gain:100%\n-0.0100    func_ss                 U5/D      no_hold_gain:100%\n-0.0100    func_ss                 U6/D      no_hold_gain:100%\n"
+proc summarize_gba_violations {args} {
+    stub_record summarize_gba_violations {*}$args
+    if {[lsearch -exact $args -with_fail_reason] >= 0} {
+        # Real XTop (Task 7, #64 Q1 both arms' xtop-replay.log): fail reasons belong to the last fix flow's check.
+        if {[lsearch -exact $args -$::stub_fix_ran] < 0} {
+            puts "Error: Last flow is '${::stub_fix_ran}_gba', mismatched with current summary."
+            error ""
+        }
+        if {[lsearch -exact $args -setup] >= 0} { return $::stub_fail_reasons_setup }
+        return $::stub_fail_reasons_hold
+    }
+    if {[lsearch -exact $args -exclude_path] >= 0} {
+        if {[lsearch -exact $args -setup] >= 0} { return $::stub_summary_setup }
+        return $::stub_summary_hold
+    }
+    return "WNS \"delta\"\t-0.010 for $args"
+}
+proc write_design_changes {args} {
+    stub_record write_design_changes {*}$args
+    lassign [stub_opts {-format -eco_file_prefix -output_dir} $args] o pos
+    foreach kind {netlist physical} {
+        set fh [open [file join [stub_one $o -output_dir] "[stub_one $o -eco_file_prefix]_${kind}_top.txt"] w]
+        puts $fh [set ::stub_eco_$kind]
+        close $fh
+    }
+    return ""
+}
+set ::stub_eco_netlist "ecoChangeCell -inst U1 -cell BUFX2"
+set ::stub_eco_physical "placeInstance U1 1.0 2.0 R0"
+"""
+
+
+class RecipeReplayTaskTest(unittest.TestCase):
+    def setUp(self):
+        self.request = _recipe_request()
+        self.task = adapters.compile_recipe_replay_task(
+            "top", "/pdk/tech.lef", "/pdk/cells/*.lef", "/ws/netlist.v", "/ws/design.def", self.request,
+            "/ws/integrations/b1", _xtop_context(),
+        )
+
+    def test_each_arm_is_the_worker_session_setup_and_toolkit_then_the_replay(self):
+        for arm in ("merged", "control"):
+            tcl = self.task["arms"][arm]["tcl"]
+            self.assertIn("proc atcs_size_cell {instance to_master plan_sha256}", tcl)
+            self.assertIn("read_timing_data -data_dir $env(STA_DATA)", tcl)
+            self.assertLess(tcl.index("proc atcs_mutate"), tcl.index("source $env(RECIPE_TCL)"))
+            self.assertIn(f"set ::ATCS_ARM {{{arm}}}", tcl)
+            self.assertEqual(self.task["arms"][arm]["root"], f"/ws/integrations/b1/{arm}")
+            self.assertEqual(self.task["arms"][arm]["env"]["RUN_ROOT"], f"/ws/integrations/b1/{arm}")
+
+    def test_the_toolkit_domain_is_set_per_session_never_a_union(self):
+        for arm in ("merged", "control"):
+            self.assertIn("set ::EDIT_DOMAIN_INSTANCES {}", self.task["arms"][arm]["tcl"])
+        self.assertIn("set ::ATCS_MAX_MUTATIONS {5}", self.task["arms"]["merged"]["tcl"])
+        self.assertIn("set ::ATCS_MAX_MUTATIONS {1}", self.task["arms"]["control"]["tcl"])
+
+    def test_the_merged_recipe_runs_sessions_in_rank_order_each_ending_in_its_dump(self):
+        steps = self.request["steps"]
+        text = self.task["arms"]["merged"]["recipeText"]
+        self.assertEqual(text.splitlines(), [
+            "atcs_replay_session {w01} {atcs_w01_r1_} {U1 U2} {N2} {U9/D} {0 0 50 50}",
+            f"atcs_replay_step {{{steps[0]['stepId']}}} 0 {{atcs_size_cell {{U1}} {{BUFX2}} {{{RECIPE_PLAN_A}}}}}",
+            f"atcs_replay_step {{{steps[1]['stepId']}}} 0 {{atcs_size_cell {{U2}} {{INVX1}} {{{RECIPE_PLAN_A}}}}}",
+            f"atcs_replay_step {{{steps[2]['stepId']}}} 0 {{atcs_split_net {{N2}} {{BUFX2}} {{wire_length}} 2 "
+            f"{{{RECIPE_PLAN_A}}}}}",
+            "atcs_replay_session_end 1",
+            "atcs_replay_session {w02} {atcs_w02_r1_} {U3} {N1} {} {}",
+            f"atcs_replay_step {{{steps[3]['stepId']}}} 0 {{atcs_insert_buffer {{N1}} {{{{U3/A}}}} {{{{BUFX2}}}} "
+            f"{{{{atcs_w02_r1_b1}}}} {{{{atcs_w02_r1_n1}}}} {{{RECIPE_PLAN_B}}}}}",
+            f"atcs_replay_step {{{steps[4]['stepId']}}} 1 {{}}",
+            f"atcs_replay_step {{{steps[5]['stepId']}}} 0 {{atcs_size_cell {{U2}} {{INVX2}} {{{RECIPE_PLAN_B}}}}}",
+            "atcs_replay_session_end 2",
+        ])
+        self.assertEqual(self.task["arms"]["control"]["recipeText"], "")
+
+    def test_each_arm_carries_its_own_auto_fix(self):
+        self.assertEqual(self.task["arms"]["merged"]["autoFixText"].splitlines(), self.request["autoFinishTcl"])
+        self.assertEqual(self.task["arms"]["control"]["autoFixText"].splitlines(), self.request["controlTcl"])
+        request = _recipe_request(auto_finish=False)
+        task = adapters.compile_recipe_replay_task("top", "t", "c", "n", "d", request, "/ws/i/b1", _xtop_context())
+        self.assertEqual(task["arms"]["merged"]["autoFixText"], "")
+        self.assertEqual(task["arms"]["control"]["autoFixText"].splitlines(), request["controlTcl"])
+
+    def test_the_template_exports_one_innovus_pair_per_arm_with_keep_route(self):
+        text = adapters.load_template("xtop-replay.tcl")
+        self.assertIn("write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco -keep_route",
+                      text)
+        self.assertIn(
+            "write_design_changes -format INNOVUS -eco_file_prefix atcs_batch -output_dir eco-control -keep_route",
+            text)
+        self.assertIn("{summarize_gba_violations -exclude_path -setup}", text)
+        self.assertIn("{summarize_gba_violations -exclude_path -hold}", text)
+        self.assertIn("set_dont_touch [get_cells -exact $protected] true", text)
+
+    def test_every_xtop_option_the_replay_body_emits_is_on_the_knowledge_packs_surface(self):
+        from test_xtop_toolkit import XTOP_SURFACE
+        # `set_dont_touch object_list [value]` is a man-only row of command_surface.tsv (no options).
+        surface = dict(XTOP_SURFACE, set_dont_touch=set())
+        text = adapters.load_template("xtop-replay.tcl")
+        lines = [line for line in text.splitlines() if not line.strip().startswith("#")]
+        import re
+        for command in ("write_design_changes", "summarize_gba_violations", "redirect", "set_dont_touch"):
+            for line in lines:
+                for match in re.finditer(rf"\b{command}\b([^\[\]}}\n]*)", line):
+                    options = set(re.findall(r"(?<![\w$])-([a-z_]+)", match.group(1)))
+                    self.assertLessEqual(options, surface[command], line)
+        for line in self.request["autoFinishTcl"] + self.request["controlTcl"]:
+            command, *words = line.split()
+            options = {word[1:] for word in words if word.startswith("-") and not word[1:2].isdigit()}
+            self.assertLessEqual(options, surface[command], line)
+
+    def test_a_legacy_request_is_refused(self):
+        with self.assertRaises(core.AtcsError) as ctx:
+            adapters.compile_recipe_replay_task("top", "t", "c", "n", "d", {"steps": []}, "/ws/i/b1",
+                                                _xtop_context())
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
+
+
+@unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+class RecipeReplayTclshTest(unittest.TestCase):
+    """Both arms run to completion in `tclsh` over the toolkit's stub XTop, then the Pack
+    reads them back, reconciles, chooses and seals -- the real Tcl, never a text match."""
+
+    def setUp(self):
+        from test_xtop_toolkit import STUB_XTOP  # the Task 3 toolkit's in-memory XTop
+        self.stub = STUB_XTOP + REPLAY_STUB
+        self.tmp = _tmp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("tech.lef", "cells.lef", "netlist.v", "design.def"):
+            (self.tmp / name).write_text("stub", encoding="utf-8")
+        self.request = _recipe_request()
+        self.output_root = self.tmp / "integrations" / "b1"
+        self.task = adapters.compile_recipe_replay_task(
+            "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"), str(self.tmp / "netlist.v"),
+            str(self.tmp / "design.def"), self.request, str(self.output_root), _xtop_context(self.tmp),
+        )
+
+    def _run_arm(self, arm, setup_rows, hold_rows, fix_effect, extra=""):
+        arm_task = self.task["arms"][arm]
+        root = Path(arm_task["root"])
+        root.mkdir(parents=True, exist_ok=True)
+        Path(arm_task["recipePath"]).write_text(arm_task["recipeText"], encoding="utf-8")
+        Path(arm_task["autoFixPath"]).write_text(arm_task["autoFixText"], encoding="utf-8")
+        calls = root / "calls.txt"
+        preamble = (
+            f'set env(STUB_CALLS) "{calls}"\n' + self.stub
+            + f"set ::stub_summary_setup {{{_summary_table('setup', setup_rows)}}}\n"
+            + f"set ::stub_summary_hold {{{_summary_table('hold', hold_rows)}}}\n"
+            + f"set ::stub_fix_effect {{{fix_effect}}}\nset ::stub_fail {{split_net}}\n" + extra
+        )
+        script = root / "run.tcl"
+        script.write_text(preamble + arm_task["tcl"], encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script)], capture_output=True, text=True, cwd=str(root))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.arm_output = {**getattr(self, "arm_output", {}), arm: result.stdout + result.stderr}
+        words = [line.split("\x1f") for line in calls.read_text(encoding="utf-8").splitlines()]
+        return words
+
+    def _run_both(self, merged_rows, control_rows, merged_fix="UOUT BUFX4", control_fix="UOUT BUFX8"):
+        merged = self._run_arm("merged", *merged_rows, merged_fix)
+        control = self._run_arm("control", *control_rows, control_fix)
+        arms = {arm: adapters.read_replay_arm(self.task["arms"][arm]["root"], arm, self.request, self.tmp)
+                for arm in ("merged", "control")}
+        return merged, control, arms
+
+    EVEN = ({"s1": (1, -0.02, -0.02), "s2": (0, 0.0, 0.0)}, {"s1": (0, 0.0, 0.0), "s2": (2, -0.05, -0.08)})
+    BETTER = ({"s1": (0, 0.0, 0.0), "s2": (0, 0.0, 0.0)}, {"s1": (0, 0.0, 0.0), "s2": (1, -0.01, -0.01)})
+
+    def test_merged_replays_protects_auto_finishes_and_exports_in_order(self):
+        merged, _, arms = self._run_both(self.EVEN, self.EVEN)
+        commands = [words[0] for words in merged]
+        first = {name: commands.index(name) for name in
+                 ("size_cell", "insert_buffer", "set_dont_touch", "fix_hold_gba_violations",
+                  "fix_setup_gba_violations", "write_design_changes")}
+        self.assertLess(first["size_cell"], first["insert_buffer"])
+        self.assertLess(first["insert_buffer"], first["set_dont_touch"])
+        self.assertLess(first["set_dont_touch"], first["fix_setup_gba_violations"])
+        self.assertLess(first["fix_setup_gba_violations"], first["fix_hold_gba_violations"])
+        self.assertLess(first["fix_hold_gba_violations"], first["write_design_changes"])
+        auto = [words for words in merged if words[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations")]
+        self.assertEqual([" ".join(words) for words in auto], self.request["autoFinishTcl"])
+        dont_touch = next(words for words in merged if words[0] == "set_dont_touch")
+        self.assertEqual(dont_touch[-1], "true")
+        self.assertEqual(arms["merged"]["result"]["protected"], ["U1", "atcs_w02_r1_b1"])
+        export = next(words for words in merged if words[0] == "write_design_changes")
+        self.assertEqual(export[1:], ["-format", "INNOVUS", "-eco_file_prefix", "atcs_batch", "-output_dir", "eco",
+                                      "-keep_route"])
+        dumps = Path(self.task["arms"]["merged"]["dumpDir"])
+        self.assertEqual(sorted(p.name for p in dumps.iterdir()), ["000.dump", "001.dump", "002.dump", "auto.dump"])
+
+    def test_both_arms_record_fail_reasons_after_auto_fix_and_the_chosen_arms_are_sealed(self):
+        """US10/US34: the reasons XTop could not fix what is left after auto-finish, read back from both
+        arms, and the chosen arm's sealed with the batch. XTop keeps them for the last fix flow's check
+        only (auto-finish ends with a hold pass): D-Q1-6 (#64 Q1) reads that check alone, so the replay log
+        holds no "Error:" line, and the other check is recorded unread with why."""
+        merged, control, arms = self._run_both(self.EVEN, self.EVEN)
+        for words in (merged, control):
+            commands = [" ".join(w) for w in words]
+            last_fix = max(i for i, w in enumerate(words)
+                           if w[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations"))
+            self.assertEqual(words[last_fix][0], "fix_hold_gba_violations")
+            export = next(i for i, w in enumerate(words) if w[0] == "write_design_changes")
+            line = "summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -hold"
+            self.assertIn(line, commands)
+            self.assertLess(last_fix, commands.index(line))
+            self.assertLess(commands.index(line), export)
+            self.assertNotIn("summarize_gba_violations -exclude_path -with_top_n 20 -with_fail_reason -setup", commands)
+        expected = {"hold": {"break_setup": 2, "no_hold_gain": 5}}
+        for arm in ("merged", "control"):
+            self.assertEqual(arms[arm]["result"]["failReasons"]["hold"], 0)
+            self.assertIn("last fix flow's check only (hold_gba)", arms[arm]["result"]["failReasons"]["setup"])
+            self.assertNotIn("Error:", self.arm_output[arm], "the replay log a Site wrapper scans holds no error line")
+        state = integration_module.reconcile_recipe(self.request, arms)
+        for arm in ("merged", "control"):
+            self.assertEqual(state["arms"][arm]["failReasons"], expected)
+            self.assertEqual(state["arms"][arm]["failReasonsUnread"], ["setup"])
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["failReasons"], {"arm": "merged", **expected, "unread": ["setup"]})
+        merge = integration_module.seal_batch(state, self.request, {"baseStateId": "base-1"}, [
+            {"id": "c1", "revision": 1}, {"id": "c2", "revision": 3}])
+        self.assertEqual(merge["failReasons"], {"arm": "merged", **expected, "unread": ["setup"]})
+
+    def test_skipped_commands_are_recorded_and_the_replay_continues(self):
+        _, _, arms = self._run_both(self.EVEN, self.EVEN)
+        receipts = {row["stepId"]: row for row in arms["merged"]["receipts"]}
+        steps = self.request["steps"]
+        self.assertEqual(receipts[steps[0]["stepId"]]["status"], "applied")
+        self.assertEqual(receipts[steps[1]["stepId"]]["status"], "skipped")
+        self.assertIn("already INVX1", receipts[steps[1]["stepId"]]["reason"])
+        self.assertEqual(receipts[steps[2]["stepId"]]["status"], "skipped")
+        self.assertIn("split_net failed", receipts[steps[2]["stepId"]]["reason"])
+        self.assertEqual(receipts[steps[3]["stepId"]]["status"], "applied")
+        self.assertEqual(receipts[steps[4]["stepId"]], {"stepId": steps[4]["stepId"], "slot": "w02",
+                                                        "status": "skipped", "attempted": False, "reason": "recipe"})
+        # A later session never edits an earlier session's instance: its own domain only.
+        self.assertEqual(receipts[steps[5]["stepId"]]["status"], "skipped")
+        self.assertIn("out-of-scope instance: U2", receipts[steps[5]["stepId"]]["reason"])
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["sessions"]["w01"]["applied"], [steps[0]["stepId"]])
+        self.assertEqual([s["stepId"] for s in state["sessions"]["w01"]["skipped"]],
+                         [steps[1]["stepId"], steps[2]["stepId"]])
+        self.assertTrue(state["sessions"]["w01"]["deltaMatches"])
+        self.assertTrue(state["sessions"]["w02"]["deltaMatches"])
+        self.assertEqual(state["sessions"]["w02"]["skipped"][0]["reason"], "recipe:shared-instance")
+
+    def test_the_expert_nets_of_kept_commands_are_read_back(self):
+        _, _, arms = self._run_both(self.EVEN, self.EVEN)
+        self.assertEqual(arms["merged"]["keptInstanceNets"], {"atcs_w02_r1_b1": ["atcs_w02_r1_n1"]})
+        self.assertEqual(arms["control"]["keptInstanceNets"], {})
+
+    def test_a_changed_instance_that_no_longer_exists_is_not_protected_and_is_recorded(self):
+        self.request = _recipe_request(extra_w02=[_recipe_command(
+            4, "atcs_remove_buffer", {"instance": "atcs_w02_r1_b1", "planSha256": RECIPE_PLAN_B},
+            ["atcs_w02_r1_b1"])])
+        self.task = adapters.compile_recipe_replay_task(
+            "top", str(self.tmp / "tech.lef"), str(self.tmp / "cells.lef"), str(self.tmp / "netlist.v"),
+            str(self.tmp / "design.def"), self.request, str(self.output_root), _xtop_context(self.tmp),
+        )
+        merged = self._run_arm("merged", *self.EVEN, "UOUT BUFX4")
+        dont_touch = next(words for words in merged if words[0] == "set_dont_touch")
+        self.assertEqual(dont_touch[1:], ["cell:U1", "true"])
+        result = json.loads(Path(self.task["arms"]["merged"]["armResult"]).read_text())
+        self.assertEqual(result["protected"], ["U1"])
+        self.assertEqual(result["protectMissing"], ["atcs_w02_r1_b1"])
+        self.assertEqual(result["protectCode"], 0)
+
+    def test_control_runs_plain_auto_fix_only_into_eco_control(self):
+        _, control, arms = self._run_both(self.EVEN, self.EVEN)
+        names = [words[0] for words in control]
+        for absent in ("size_cell", "insert_buffer", "split_net", "set_dont_touch"):
+            self.assertNotIn(absent, names)
+        auto = [" ".join(words) for words in control
+                if words[0] in ("fix_hold_gba_violations", "fix_setup_gba_violations")]
+        self.assertEqual(auto, self.request["controlTcl"])
+        export = next(words for words in control if words[0] == "write_design_changes")
+        self.assertIn("eco-control", export)
+        self.assertEqual(len(arms["control"]["eco"]["netlist"]), 1)
+        self.assertTrue(arms["control"]["eco"]["netlist"][0]["path"].endswith(
+            "integrations/b1/control/eco-control/atcs_batch_netlist_top.txt"))
+        self.assertEqual(arms["control"]["autoDelta"]["mastersChanged"], {"UOUT": ["BUFX1", "BUFX8"]})
+
+    def test_control_is_chosen_when_it_predicts_better_and_sealed_with_both_predictions(self):
+        _, _, arms = self._run_both(self.EVEN, self.BETTER)
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["chosen"]["arm"], "control")
+        merge = integration_module.seal_batch(state, self.request, {"baseStateId": "base-1"}, [])
+        self.assertEqual(merge["choice"]["arm"], "control")
+        self.assertEqual(merge["eco"]["netlist"]["path"],
+                         "integrations/b1/control/eco-control/atcs_batch_netlist_top.txt")
+        self.assertEqual(merge["eco"]["netlist"]["sha256"],
+                         core.file_sha256(self.tmp / merge["eco"]["netlist"]["path"]))
+        self.assertEqual(merge["arms"]["merged"]["prediction"]["worstHoldWns"], -0.05)
+        self.assertEqual(merge["arms"]["control"]["prediction"]["worstHoldWns"], -0.01)
+
+    def test_merged_is_chosen_on_a_tie(self):
+        _, _, arms = self._run_both(self.EVEN, self.EVEN)
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["chosen"]["eco"]["physical"]["path"],
+                         "integrations/b1/merged/eco/atcs_batch_physical_top.txt")
+
+    def test_auto_finish_changing_a_protected_instance_is_recorded(self):
+        _, _, arms = self._run_both(self.EVEN, self.EVEN, merged_fix="U1 BUFX8")
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["protectedChanged"], ["U1"])
+
+    def test_an_unsafe_merged_pair_falls_back_to_a_safe_control(self):
+        self._run_arm("merged", *self.BETTER, "UOUT BUFX4",
+                      extra='set ::stub_eco_netlist "FORMATVERSION 2"\n')
+        self._run_arm("control", *self.EVEN, "UOUT BUFX8")
+        arms = {arm: adapters.read_replay_arm(self.task["arms"][arm]["root"], arm, self.request, self.tmp)
+                for arm in ("merged", "control")}
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("FORMATVERSION", state["chosen"]["reason"])
+
+    def test_a_control_arm_that_never_ran_does_not_fail_the_merged_arm(self):
+        self._run_arm("merged", *self.EVEN, "UOUT BUFX4")
+        arms = {arm: adapters.read_replay_arm(self.task["arms"][arm]["root"], arm, self.request, self.tmp)
+                for arm in ("merged", "control")}
+        self.assertIsNone(arms["control"]["result"])
+        state = integration_module.reconcile_recipe(self.request, arms)
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertFalse(state["arms"]["control"]["safe"])
+
+
+class InnovusEcoPairTaskTest(unittest.TestCase):
+    PAIR = {"netlist": {"path": "integrations/b1/merged/eco/atcs_batch_netlist_top.txt", "sha256": "1" * 64},
+            "physical": {"path": "integrations/b1/merged/eco/atcs_batch_physical_top.txt", "sha256": "2" * 64}}
+
+    def test_without_an_eco_pair_the_task_is_byte_identical_to_before(self):
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": "base123", "contributions": [], "operations": [],
+            "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell MOCKBUFX4\n", "sourceMap": {}, "newNets": [],
+        })
+        task = adapters.compile_innovus_eco_task(merge_commit, "/campaign/state/current.enc", "top",
+                                                 "/campaign/implementations/m1")
+        import hashlib
+        self.assertEqual(hashlib.sha256(task["tcl"].encode("utf-8")).hexdigest(),
+                         "baa34fba6ee006ef873b4c69d405e19ee9caac876a4f3895fcac111d28b67f50")
+        self.assertEqual(sorted(task), ["command", "ecoPath", "ecoText", "env", "outputs", "tcl"])
+
+    def test_an_eco_pair_is_sourced_netlist_then_physical_then_routed(self):
+        task = adapters.compile_innovus_eco_task({"eco": self.PAIR}, "/campaign/state/current.enc", "top",
+                                                 "/campaign/implementations/m1", eco_root="/campaign")
+        tcl = task["tcl"]
+        order = ["restoreDesign $env(CURRENT_DB).dat $env(DESIGN)", "source $env(NETLIST_ECO)",
+                 "source $env(PHYSICAL_ECO)",
+                 "setNanoRouteMode -routeWithEco true -routeWithTimingDriven false -routeWithSiDriven false "
+                 "-drouteUseMultiCutViaEffort high",
+                 "ecoRoute", "saveDesign $env(OUTPUT_ROOT)/DBS/$env(DESIGN).enc -compress"]
+        positions = [tcl.index(line) for line in order]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(task["ecoCopies"], [
+            {"role": "netlist", "from": "/campaign/integrations/b1/merged/eco/atcs_batch_netlist_top.txt",
+             "to": "/campaign/implementations/m1/eco/netlist.tcl", "sha256": "1" * 64},
+            {"role": "physical", "from": "/campaign/integrations/b1/merged/eco/atcs_batch_physical_top.txt",
+             "to": "/campaign/implementations/m1/eco/physical.tcl", "sha256": "2" * 64},
+        ])
+        self.assertEqual(task["env"]["NETLIST_ECO"], "/campaign/implementations/m1/eco/netlist.tcl")
+        self.assertEqual(set(task["outputs"]), {"database", "def", "netlist", "drc", "connectivity"})
+        self.assertNotIn("ecoText", task)
+
+    def test_a_relative_pair_without_a_root_or_a_malformed_hash_is_missing_input(self):
+        for eco, root in ((self.PAIR, None), ({"netlist": self.PAIR["netlist"]}, "/c"),
+                          ({"netlist": self.PAIR["netlist"], "physical": {"path": "x", "sha256": "ZZ"}}, "/c")):
+            with self.subTest(eco=eco, root=root):
+                with self.assertRaises(core.AtcsError) as ctx:
+                    adapters.compile_innovus_eco_task({"eco": eco}, "/c/db.enc", "top", "/c/i/m1", eco_root=root)
+                self.assertEqual(ctx.exception.code, "missing-input")
+
+    @unittest.skipUnless(TCLSH, "tclsh is not available in this environment")
+    def test_the_pair_template_runs_in_order_under_a_stub_innovus(self):
+        tmp = _tmp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        task = adapters.compile_innovus_eco_task({"eco": self.PAIR}, str(tmp / "db.enc"), "top",
+                                                 str(tmp / "impl"), eco_root=str(tmp))
+        log = tmp / "calls.txt"
+        (tmp / "impl" / "eco").mkdir(parents=True)
+        Path(task["ecoCopies"][0]["to"]).write_text("record netlist-eco\n", encoding="utf-8")
+        Path(task["ecoCopies"][1]["to"]).write_text("record physical-eco\n", encoding="utf-8")
+        stub = f'proc record {{args}} {{ set fh [open "{log}" a]; puts $fh [join $args " "]; close $fh }}\n'
+        for name in ("restoreDesign", "setNanoRouteMode", "ecoRoute", "verify_drc", "verifyConnectivity",
+                     "saveDesign", "defOut", "saveNetlist"):
+            stub += f"proc {name} {{args}} {{ record {name} }}\n"
+        script = tmp / "run.tcl"
+        script.write_text(stub + task["tcl"], encoding="utf-8")
+        result = subprocess.run([TCLSH, str(script)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(log.read_text(encoding="utf-8").splitlines()[:5],
+                         ["restoreDesign", "netlist-eco", "physical-eco", "setNanoRouteMode", "ecoRoute"])
 
 
 # ---------------------------------------------------------------------------
@@ -1297,7 +1757,7 @@ class CliCollectContributionIndexTest(unittest.TestCase):
     read envelope exactly: partial completion is reported via `pending`,
     never a missing-input refusal (see `_cmd_collect`'s own docstring)."""
 
-    def test_collect_succeeds_with_no_contributions_yet_and_reports_all_three_pending(self):
+    def test_collect_succeeds_with_no_contributions_yet_and_reports_every_slot_pending(self):
         workspace = _tmp()
         self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
         result = subprocess.run([sys.executable, str(CLI_PATH), "collect", str(workspace)],
@@ -1305,10 +1765,11 @@ class CliCollectContributionIndexTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(body["contributions"], [])
-        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03"])
+        # Issue #64 Task 4: six declared slots.
+        self.assertEqual(sorted(entry["slot"] for entry in body["pending"]), ["w01", "w02", "w03", "w04", "w05", "w06"])
         self.assertTrue(all(entry.get("reason") for entry in body["pending"]))
 
-    def test_collect_reports_one_pending_when_two_of_three_slots_sealed(self):
+    def test_collect_reports_the_rest_pending_when_two_slots_sealed(self):
         from atcs import contributions as contributions_module
 
         workspace = _tmp()
@@ -1334,7 +1795,7 @@ class CliCollectContributionIndexTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         body = json.loads((workspace / "state" / "contributions-collected.json").read_text())
         self.assertEqual(len(body["contributions"]), 2)
-        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03"])
+        self.assertEqual([entry["slot"] for entry in body["pending"]], ["w03", "w04", "w05", "w06"])
         del contributions_module  # imported only to document the shape's producer module
 
 

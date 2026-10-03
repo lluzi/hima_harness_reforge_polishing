@@ -1,0 +1,7 @@
+id: engineering-setup-goal
+version: "1"
+title: The selected native XTop setup WNS meets the Run target
+parameter: { name: target_setup_wns_ns, unit: ns }
+requires: [{ type: tc_engineering_setup_wns_ns, mode: setup }]
+subject: { type: tc_engineering_setup_wns_ns, mode: setup }
+predicate: { op: gte, threshold: { parameter: target_setup_wns_ns }, unit: ns }

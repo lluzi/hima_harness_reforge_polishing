@@ -21,7 +21,7 @@ import type { BlockerView, CancelView, Citation, CodeView, DecisionView, Experie
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { scoped, actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
+import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -657,18 +657,29 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
 export function ArchiveSection({ view }: { view: RunView }): ReactElement | null {
   const viewer = useViewerSession();
   const [manifest, setManifest] = useState<import('../experience-report.js').RunAssetManifest>();
-  const [reading, setReading] = useState<{ path?: string; text?: string; error?: string; loading?: boolean }>({});
+  const [deliveries, setDeliveries] = useState<readonly import('../engineering-executor.js').EngineeringDeliveryView[]>([]);
+  const [reading, setReading] = useState<{ path?: string; text?: string; error?: string; loading?: boolean;
+    asset?: import('./api.js').ArchiveAnswer['asset']; delivery?: import('../engineering-executor.js').EngineeringDeliveryView;
+    selection?: import('./api.js').EngineeringAssetSelection }>({});
   const pending = useRef<AbortController | undefined>();
-  useEffect(() => { pending.current?.abort(); setManifest(undefined); setReading({}); return () => pending.current?.abort(); }, [view.run.id]);
-  const read = (material?: string) => {
+  useEffect(() => { pending.current?.abort(); setManifest(undefined); setDeliveries([]); setReading({}); return () => pending.current?.abort(); }, [view.run.id]);
+  const read = (material?: string, delivery?: import('../engineering-executor.js').EngineeringDeliveryView, ref?: import('../engineering-executor.js').EngineeringAssetRef) => {
     pending.current?.abort(); const controller = new AbortController(); pending.current = controller;
-    setReading({ path: material, loading: true });
-    void fetchArchive(view.run.id, material, controller.signal, viewer).then(result => {
+    const selection = delivery && ref ? { execution: delivery.executionId, delivery: delivery.requestId, artifact: ref.id,
+      ...(ref.treeId ? { tree: ref.treeId } : {}) } : undefined;
+    setReading({ path: ref?.path ?? material, loading: true, delivery, selection });
+    void fetchArchive(view.run.id, material, controller.signal, viewer, selection).then(result => {
       if (controller.signal.aborted) return;
-      if (!result.ok) { setReading({ path: material, error: result.error.message }); return; }
-      setManifest(result.value.manifest); setReading({ path: material, text: result.value.text });
+      if (!result.ok) { setReading({ path: ref?.path ?? material, error: result.error.message }); return; }
+      if (result.value.manifest) setManifest(result.value.manifest);
+      if (result.value.deliveries) setDeliveries(result.value.deliveries);
+      setReading({ path: ref?.path ?? material, text: result.value.text, asset: result.value.asset, delivery, selection });
     });
   };
+  const assetButton = (delivery: import('../engineering-executor.js').EngineeringDeliveryView, ref: import('../engineering-executor.js').EngineeringAssetRef) =>
+    <button className='hima-button hima-run-card-archive-row' key={ref.id} data-hima-control={`engineering-asset-${ref.id}`} onClick={() => read(undefined, delivery, ref)} title={ref.sha256 ?? ref.digest}>
+      {ref.path}{ref.kind === 'directory' ? ' · directory' : ''}{ref.bytes === undefined ? '' : ` · ${ref.bytes} bytes`}
+    </button>;
   if (!view.archive) return null;
   return <Section title='Knowledge archived in this Pack' region='run-archive' state={{ delivery: view.archive.delivery }}>
     <p className="hima-muted">Recorded delivery: {view.archive.delivery}{view.archive.reason ? ` · ${view.archive.reason}` : ''}</p>
@@ -679,6 +690,20 @@ export function ArchiveSection({ view }: { view: RunView }): ReactElement | null
       {manifest.materials.map(material => <button className='hima-button hima-run-card-archive-row' key={material.path} data-hima-control={`archive-material-${material.path}`} onClick={() => read(material.path)} title={`${material.source}\nsha256 ${material.sha256}`}>{material.path} · {material.bytes} bytes · {material.sha256.slice(0, 12)}</button>)}
       {reading.text !== undefined ? <div data-hima-region='archive-content'>{reading.path?.endsWith('.md') ? reportBlocks(reading.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre className="hima-logtail">{reading.text}</pre>}</div> : null}
     </> : null}
+    {deliveries.map(delivery => <div key={delivery.requestId} data-hima-region='engineering-delivery-assets'>
+      <h4>Engineering deliverables</h4><p className='hima-muted'>{delivery.summary}</p>
+      <p className='hima-muted'>Files remain on the Site and are checked against their recorded hashes when opened. Open the result document for its referenced reports and checkpoint.</p>
+      {delivery.artifacts.map(artifact => assetButton(delivery, { ...artifact, kind: 'file' }))}
+    </div>)}
+    {reading.asset && reading.delivery ? <div data-hima-region='engineering-asset-content'>
+      <p className='hima-wrap'>{reading.asset.ref.path} · {reading.asset.ref.sha256 ?? reading.asset.ref.digest}</p>
+      {reading.selection ? <a className='hima-button' data-hima-control='engineering-asset-download'
+        href={engineeringAssetDownloadUrl(view.run.id, reading.selection, viewer)} download={`${reading.asset.ref.path.split('/').at(-1)}${reading.asset.kind === 'directory' ? '.tar' : ''}`}>Download verified {reading.asset.kind === 'directory' ? 'directory' : 'file'}</a> : null}
+      {reading.asset.text !== undefined ? (reading.asset.ref.path.endsWith('.md') ? reportBlocks(reading.asset.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre className='hima-logtail'>{reading.asset.text}</pre>) : reading.asset.kind === 'file' ? <p className='hima-muted'>Binary file · {reading.asset.ref.bytes} bytes. Download to use it in the engineering tool.</p> : null}
+      {reading.asset.truncated ? <p className='hima-muted'>Preview shows the first 1 MiB; the download contains the complete verified file.</p> : null}
+      {reading.asset.references?.length ? <h4>Referenced engineering materials</h4> : null}
+      {(reading.asset.references ?? reading.asset.entries ?? []).map(ref => assetButton(reading.delivery!, ref))}
+    </div> : null}
   </Section>;
 }
 
@@ -753,6 +778,7 @@ export function ExperienceSection({ view, experience, onOpenSaved }: { view: Run
         <div><a href={scoped(experienceMarkdownHref(view.run.id), viewer)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
       </div>
       <div className="hima-run-card-section">
+        <p className="hima-muted">This view is refreshed from retained evidence. The download opens the original saved report; the recorded Run ending is unchanged.</p>
         {reportBlocks(experienceReport(view, experience.writtenAt).markdown).map((entry, index) => (
           <ReportBlockRow key={index} block={entry} />
         ))}

@@ -5,11 +5,11 @@ import path from 'node:path';
 import { testFixtureCanRunHere } from './interactive-binding.js';
 import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
-import { controlling, identityOf, type FabricDeps } from './fabric.js';
+import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
 import {
-  closeInteractiveJob, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
+  closeInteractiveJob, interactiveCloseGrace, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
-  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseResult,
+  type InteractiveAddress, type InteractiveAuthority, type InteractiveChannel, type InteractiveCloseGrace, type InteractiveCloseResult,
   type InteractiveInputResult, type InteractiveJobIdentity, type InteractiveOpenResult, type InteractiveQualification,
   type InteractiveReceipt, type InteractiveRecord as ProtocolRecord, type InteractiveSession,
   type InteractiveSignalResult, type TranscriptRead,
@@ -40,7 +40,9 @@ export interface InteractiveBinding {
   readonly environment: { readonly id: string; readonly digest: string };
   readonly mutation: 'qualified' | 'unavailable';
   readonly limits: { readonly startupWaitMs: number; readonly callWaitMaxMs: number;
-    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number };
+    readonly commandMaxMs: number; readonly sessionMaxMs: number; readonly idleMaxMs: number;
+    /** The retained tool's declared close grace (`interactive.closeGraceMs`); the default when absent. */
+    readonly closeGraceMs?: number };
 }
 
 export interface DerivedInteractiveOperation {
@@ -92,6 +94,9 @@ export interface InteractiveRuntimeDeps {
   readonly mintProtocolToken?: () => string;
   /** Required Host callback: issue the qualified interrupt/close path and record its actual outcome. */
   readonly onDeadline: (deadline: InteractiveDeadline) => Promise<void>;
+  /** How long a close waits for the Job's process group after hangup and after TERM, for every
+   *  binding; absent, each binding's declared `closeGraceMs` (or the default) applies. */
+  readonly closeGrace?: InteractiveCloseGrace;
 }
 
 export interface InteractiveSessionView {
@@ -107,6 +112,8 @@ export interface InteractiveSessionView {
     readonly callerDigest: string; readonly requestDigest: string; readonly operationDigest: string; readonly protocolToken: string; readonly cursorBefore: number;
     readonly commandDeadlineAt: string; readonly state: 'intent' | 'sent' | 'uncertain' };
   readonly lastCursor?: number; readonly reason?: string;
+  /** The Job's process group a close recorded as surviving hangup and TERM (#64 D-T01-3). */
+  readonly survivedPid?: number;
 }
 
 export type InteractiveOperateRequest = InteractiveAddress & ({
@@ -196,8 +203,13 @@ function validateControl(run: RunRecord, request: InteractiveAddress, operation:
   if (runExitFence(run) && (operation === 'open' || operation === 'input' && effect !== 'read')) return 'the App is closing; no new interactive mutation may start before recovery';
   if (run.status !== 'running' && !['signal', 'close'].includes(operation) && !(operation === 'input' && effect === 'read')) return `run ${run.id} is ${run.status ?? 'not running'}`;
   if (control.stop !== undefined && operation !== 'close' && operation !== 'signal') return 'the Run has a stop request; no new interactive command may start';
+  // Interactive authority is keyed by the execution, not by the Run-wide control cursor: every owner
+  // action in any fork branch bumps `revision`, so exact equality would let progress in one branch
+  // revoke another branch's in-flight session (#64 D-T01-2). What this execution depends on is read
+  // below as current facts (owner, epoch, hold, stop, budget, the execution itself); the caller's
+  // revision need only not come from the future.
   if ((control.owner !== request.actor && control.owner !== request.authorityOwner)
-      || control.epoch !== request.ownerEpoch || control.revision !== request.controlRevision) return 'owner, delegated authority, epoch or control revision is stale';
+      || control.epoch !== request.ownerEpoch || request.controlRevision > control.revision) return 'owner, delegated authority, epoch or control revision is stale';
   if (!currentExecution(run, request.executionId, request.nodeId, ['signal', 'close'].includes(operation) || operation === 'input' && effect === 'read')) return 'the interactive execution is absent, settled, failed or superseded';
   const execution = run.control?.executions[request.executionId];
   if (operation === 'open' && (execution?.phase !== 'begun' || execution.intent !== undefined
@@ -221,7 +233,7 @@ function validateBindingShape(run: RunRecord, execution: NodeExecution, derived:
   if (binding.packId !== run.packId || binding.packDigest !== run.packDigest || binding.nodeId !== execution.nodeId) return 'interactive binding does not match the retained Run method and execution';
   if (!path.posix.isAbsolute(derived.workspace) || derived.argv.length === 0 || derived.argv.some((word) => word.includes('\0'))) return 'retained interactive workspace/argv is invalid';
   const limits = binding.limits;
-  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs]
+  if (![limits.startupWaitMs, limits.callWaitMaxMs, limits.commandMaxMs, limits.sessionMaxMs, limits.idleMaxMs, limits.closeGraceMs ?? 1]
       .every((value) => Number.isSafeInteger(value) && value > 0)) return 'interactive binding limits must be positive safe integers';
   return undefined;
 }
@@ -327,7 +339,8 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
       continue;
     }
     if (record.event === 'closed') sessions.set(record.toolSessionId, { ...previous, status: 'closed', activeCommand: undefined });
-    if (record.event === 'close-uncertain') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason });
+    if (record.event === 'close-uncertain' || record.event === 'process-survived') sessions.set(record.toolSessionId, { ...previous, status: 'uncertain', reason: record.reason,
+      ...(record.event === 'process-survived' && record.pid !== undefined ? { survivedPid: record.pid } : {}) });
   }
   return [...sessions.values()].map((session) => {
     // A finished Job is authoritative process exit even when the tool's normal
@@ -370,22 +383,47 @@ function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protoc
   }
   if (kind === 'signal') return lastEvent(records, ['signal-delivered']) ? { status: 'duplicate', process: 'running-or-exited' }
     : { status: 'uncertain', reason: 'signal intent has no delivered receipt' };
-  return lastEvent(records, ['closed']) ? { status: 'duplicate', process: 'exited' }
+  if (lastEvent(records, ['closed'])) return { status: 'duplicate', process: 'exited' };
+  const survived = lastEvent(records, ['process-survived']);
+  return survived?.event === 'process-survived' && survived.pid !== undefined
+    ? { status: 'process-survived', pid: survived.pid, reason: survived.reason ?? `process group ${String(survived.pid)} survived the close` }
     : { status: 'uncertain', reason: 'close intent has no confirmed process exit' };
 }
 
 class RunInteractiveAuthority implements InteractiveAuthority {
   private readonly deps: InteractiveRuntimeDeps;
-  private readonly request: InteractiveAddress;
+  private readonly request: InteractiveOperateRequest;
   private readonly derived: DerivedInteractiveOperation;
   private readonly qualification: InteractiveQualification;
   private readonly callerDigest: string;
-  constructor(deps: InteractiveRuntimeDeps, request: InteractiveAddress, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
+  /** True while this operation itself holds the Run's admission queue (`underRunQueue`). */
+  private holdsRunQueue = false;
+  constructor(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest, derived: DerivedInteractiveOperation, qualification: InteractiveQualification, callerDigest: string) {
     this.deps = deps; this.request = request; this.derived = derived; this.qualification = qualification; this.callerDigest = callerDigest;
   }
 
-  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+  /** The Run's admission queue, entered once: inside `underRunQueue` this operation already holds it. */
+  private locked<T>(act: () => Promise<T>): Promise<T> {
+    return this.holdsRunQueue ? act() : controlling(this.deps.fabric, this.request.runId, act);
+  }
+
+  /**
+   * Run `act` holding the Run's admission queue, with this authority's own steps inside it taking
+   * the queue as already held. An interactive open enters the queue *before* the Site's slot claim,
+   * the order every batch launch already takes them in (the owner's `work` holds the queue and then
+   * claims the Site): taken the other way round, an open holding the claim while it waited for the
+   * queue and a `work` holding the queue while it waited for the claim stopped the whole Host
+   * (#64 D-T02-3).
+   */
+  underRunQueue<T>(act: () => Promise<T>): Promise<T> {
     return controlling(this.deps.fabric, this.request.runId, async () => {
+      this.holdsRunQueue = true;
+      try { return await act(); } finally { this.holdsRunQueue = false; }
+    });
+  }
+
+  async admit(intent: Parameters<InteractiveAuthority['admit']>[0]): ReturnType<InteractiveAuthority['admit']> {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       if (intent.record.callerDigest !== this.callerDigest) return { kind: 'refused', reason: 'interactive helper intent does not match the retained caller digest' };
@@ -422,18 +460,37 @@ class RunInteractiveAuthority implements InteractiveAuthority {
       if (intent.action === 'input' && view?.activeCommand !== undefined) {
         const reply = view.activeCommand.state === 'sent' && intent.record.effect === 'reply'
           && intent.record.replyToCommandId === view.activeCommand.commandId;
-        if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state})` };
+        if (!reply) return { kind: 'refused', reason: `interactive command ${view.activeCommand.commandId} still owns the single-writer lease (${view.activeCommand.state});`
+          + ` its completion is not recorded yet: call observe with commandId "${view.activeCommand.commandId}" to record it, then send the next input` };
+      }
+      let payload: ProtocolRecord = intent.record;
+      const scope = this.request.reviewedScope;
+      if (intent.action === 'input' && intent.record.effect === 'mutation' && scope !== undefined && this.request.action === 'input') {
+        // The retained Pack classifies the command; only its save commands are outside the scope.
+        const { name, args } = this.request.command;
+        if (fresh.commands.find((command) => command.name === name)?.effect !== 'save') {
+          if (!scope.commands.includes(name)) return { kind: 'refused', reason: `The Operator mutation ${name} is outside the immutable owner-adopted reviewed scope (${scope.commands.join(', ')}).` };
+          const values = args !== null && typeof args === 'object' && !Array.isArray(args) ? args as Record<string, unknown> : {};
+          if (values[scope.planHashArgument] !== scope.planSha256) return { kind: 'refused', reason: `The Operator mutation ${scope.planHashArgument} differs from the owner-adopted reviewed plan SHA-256.` };
+          // The budget caps the approval: counted from the Ledger for this execution and Operator, across its
+          // tool sessions, under the Run lock, so a restart, a reopen or a concurrent call cannot exceed it.
+          const admitted = protocolRecords(this.deps.fabric.ledger, run.id).filter((item) => item.payload.event === 'input-intent'
+            && item.payload.executionId === intent.record.executionId && item.payload.actor === intent.record.actor
+            && item.payload.scopeMutation === true).length;
+          if (admitted >= scope.maxMutations) return { kind: 'refused', reason: `The owner-adopted reviewed scope admits at most ${scope.maxMutations} mutations in this approved execution; ${admitted} were already admitted.` };
+          payload = { ...intent.record, scopeMutation: true };
+        }
       }
       const appended = await this.deps.fabric.ledger.appendInteractive(run.id, {
         executionId: intent.record.executionId, toolSessionId: intent.record.toolSessionId,
-        requestId: intent.record.requestId, event: intent.record.event, payload: intent.record as never,
+        requestId: intent.record.requestId, event: intent.record.event, payload: payload as never,
       });
       return { kind: 'reserved', reservationId: appended.id, qualification };
     });
   }
 
   async authorizeBeforeDispatch(input: Parameters<InteractiveAuthority['authorizeBeforeDispatch']>[0]): ReturnType<InteractiveAuthority['authorizeBeforeDispatch']> {
-    return controlling(this.deps.fabric, this.request.runId, async () => {
+    return this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) return { kind: 'refused', reason: `unknown Run ${this.request.runId}` };
       const reservation = this.deps.fabric.ledger.records({ runId: run.id, type: 'interactive' })
@@ -461,7 +518,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
 
   async record(record: ProtocolRecord): Promise<void> {
     const parsed = parseInteractiveRecord(record);
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       if (parsed.runId !== this.request.runId || parsed.executionId !== this.request.executionId
           || parsed.nodeId !== this.request.nodeId || parsed.actor !== this.request.actor
           || parsed.ownerEpoch !== this.request.ownerEpoch) throw new Error('interactive outcome identity does not match its runtime authority');
@@ -473,27 +530,55 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         executionId: parsed.executionId, toolSessionId: parsed.toolSessionId,
         requestId: parsed.requestId, event: parsed.event, payload: parsed as never,
       });
+      if (parsed.event === 'process-survived') await this.raiseSurvivor(parsed as ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number });
     });
   }
 
+  /**
+   * A tool that outlived its close holds its node, its Site slot and its locks (#64 review I1). That
+   * is a person's to see and act on, so it is raised as a blocker on the node, the execution names
+   * the surviving process group, and the owner is told — never a node silently `working` until the
+   * time box ends. Called under the Run lock, right after the `process-survived` record.
+   */
+  private async raiseSurvivor(record: ProtocolRecord & { readonly event: 'process-survived'; readonly reason?: string; readonly pid?: number }): Promise<void> {
+    const run = this.deps.fabric.ledger.run(this.request.runId);
+    const execution = run?.control?.executions[record.executionId];
+    if (!run?.control || !execution) return;
+    const reason = record.reason ?? `process group ${String(record.pid)} of interactive Job ${record.toolSessionId} survived its close`;
+    await this.deps.fabric.ledger.appendBlocker(run.id, { nodeId: execution.nodeId, attempts: execution.attempt,
+      ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }), reason });
+    if (!['completed', 'failed'].includes(execution.phase)) await updateExecution(this.deps.fabric, run.id, execution.id, { phase: 'uncertain', reason });
+    this.deps.fabric.notify?.(run.control.owner, run.id, execution.id,
+      `Node ${execution.nodeId}: ${reason}. It is a blocker on that node: a person must end that process group on Site ${run.siteId} before the node's tool slot can be used again. Other nodes are not held by it.`);
+  }
+
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
-    await controlling(this.deps.fabric, this.request.runId, async () => {
+    await this.locked(async () => {
       const run = this.deps.fabric.ledger.run(this.request.runId);
       if (!run) throw new Error(`unknown Run ${this.request.runId}`);
       const refused = validateControl(run, this.request, 'open');
       if (refused) throw new Error(refused);
+      // A Job opened inside a fork belongs to its execution's branch, exactly as a batch launch does
+      // (`claimSlotAndLaunch`); later records of the same Job read the branch back off this launch.
+      const branchId = run.control?.executions[this.request.executionId]?.branchId;
       await this.deps.fabric.ledger.appendJob(run.id, { event: 'launched', job,
-        nodeId: this.request.nodeId, ...(Object.keys(this.derived.licences).length === 0 ? {} : { licences: { ...this.derived.licences } }) });
+        nodeId: this.request.nodeId, ...(branchId === undefined ? {} : { branchId }),
+        ...(Object.keys(this.derived.licences).length === 0 ? {} : { licences: { ...this.derived.licences } }) });
       await advance(this.deps.fabric.ledger, run.id, { jobs: 1 });
     });
   }
 
   async recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void> {
     if (!outcome.wasRunning || !outcome.observedGone) return;
-    await controlling(this.deps.fabric, this.request.runId, async () => {
-      const ended = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
-        .some((record) => record.type === 'job' && record.job.session === job.session && record.event !== 'launched');
-      if (!ended) await this.deps.fabric.ledger.appendJob(this.request.runId, { event: 'killed', job, nodeId: this.request.nodeId });
+    await this.locked(async () => {
+      // A Job belongs where it was launched: the branch is read back off the launch, as `jobs.ts`
+      // `belongsTo` does for the `finished`/`killed` records of a batch Job.
+      const records = this.deps.fabric.ledger.records({ runId: this.request.runId, type: 'job' })
+        .filter((record): record is JobRecord => record.type === 'job' && record.job.session === job.session);
+      const ended = records.some((record) => record.event !== 'launched');
+      const branchId = records.find((record) => record.event === 'launched')?.branchId;
+      if (!ended) await this.deps.fabric.ledger.appendJob(this.request.runId, { event: 'killed', job, nodeId: this.request.nodeId,
+        ...(branchId === undefined ? {} : { branchId }) });
     });
   }
 }
@@ -518,9 +603,73 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
+/**
+ * How long an input or observe call waits for its command's completion. Omitted, it is the binding's
+ * whole call wait (review I1 of attempt 3): a wait of 0 returned "sent" at once, and the completion
+ * was then recorded only if the Operator knew to call `observe` with the right command id — w01 read
+ * DONE three times and never did, and its lease could never be settled.
+ */
+const callWait = (waitMs: number | undefined, binding: InteractiveBinding): number =>
+  Math.min(waitMs ?? binding.limits.callWaitMaxMs, binding.limits.callWaitMaxMs);
+
+/** The close grace for one binding: the Host's override when it has one, else the declared one. */
+const closeGraceFor = (deps: InteractiveRuntimeDeps, binding: InteractiveBinding): InteractiveCloseGrace =>
+  deps.closeGrace ?? interactiveCloseGrace(binding.limits.closeGraceMs);
+
+/**
+ * A retry of a node opens the same tool slot. While an earlier Job of that node has a recorded
+ * `process-survived` close and its process group still runs, the surviving tool still owns the slot
+ * and its locks: refuse naming the group rather than launch a wrapper into those locks. A group that
+ * is still finishing its own shutdown (a container stop can take longer than the close waited) is
+ * asked again through the Site channel until the close grace has passed, and only a group still
+ * running after that refuses the slot.
+ */
+async function survivingSlotJob(deps: InteractiveRuntimeDeps, run: RunRecord, nodeId: string, grace: InteractiveCloseGrace): Promise<string | undefined> {
+  // Asked of each recorded survivor's process group itself (#64 review I2): its tmux session may be
+  // gone (a bare kill by an older Host or a person) while the tool still holds the slot's locks.
+  const survivors = listInteractiveSessions(deps.fabric.ledger, run.id)
+    .filter((session) => session.nodeId === nodeId && session.survivedPid !== undefined);
+  if (survivors.length === 0) return undefined;
+  const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, run.siteId));
+  const until = nowOf(deps) + grace.hangupMs + grace.terminateMs;
+  for (const session of survivors) {
+    let alive: boolean;
+    try {
+      alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      while (alive && nowOf(deps) < until) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, Math.max(1, until - nowOf(deps)))));
+        alive = await jobProcessGroupAlive(on, session.survivedPid!);
+      }
+    } catch (error) {
+      // Unknown is its own answer: the slot is neither admitted nor declared held by a live group.
+      return `whether process group ${String(session.survivedPid)} of the previous interactive Job ${session.toolSessionId} of node ${nodeId}`
+        + ` still runs could not be asked: ${error instanceof Error ? error.message : String(error)}; open again once Site ${run.siteId} answers`;
+    }
+    if (alive) {
+      return `the previous interactive Job ${session.toolSessionId} of node ${nodeId} survived its close: process group ${String(session.survivedPid)}`
+        + ' still runs and holds this tool slot; end that process group on the Site, then open again';
+    }
+  }
+  return undefined;
+}
+
 function sessionFor(ledger: Ledger, request: InteractiveAddress & { readonly toolSessionId: string }): InteractiveSessionView | undefined {
   return listInteractiveSessions(ledger, request.runId, request.executionId)
     .find((session) => session.toolSessionId === request.toolSessionId && session.nodeId === request.nodeId);
+}
+
+function completedCloseEffect(ledger: Ledger, runId: string, toolSessionId: string): boolean {
+  const closingInputs = new Set<string>();
+  for (const { payload } of protocolRecords(ledger, runId)) {
+    if (payload.toolSessionId !== toolSessionId) continue;
+    if (payload.event === 'input-intent' && payload.effect === 'close') {
+      closingInputs.add(`${payload.requestId}\0${payload.commandId}\0${payload.inputDigest}`);
+    } else if (payload.event === 'command-completed'
+        && closingInputs.has(`${payload.requestId}\0${payload.commandId}\0${payload.inputDigest}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function operateInteractive(deps: InteractiveRuntimeDeps, request: InteractiveOperateRequest): Promise<InteractiveOperateResult> {
@@ -554,23 +703,39 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     if (!deps.claimJobSlot) return { status: 'refused', reason: 'interactive Job/licence slot authority is unavailable' };
     const refused = validateControl(facts.run, request, 'open');
     if (refused) return { status: 'refused', reason: refused };
+    const survivor = await survivingSlotJob(deps, facts.run, request.nodeId, closeGraceFor(deps, facts.derived.binding));
+    if (survivor) return { status: 'refused', reason: survivor };
     const at = nowOf(deps); const runDeadline = hardDeadline(facts.run, at);
     const sessionDeadline = Math.min(at + facts.derived.binding.limits.sessionMaxMs, runDeadline ?? Number.MAX_SAFE_INTEGER);
-    const claimed = await deps.claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
+    // Run queue first, then the Site claim, as every batch launch takes them; the wait for the tool's
+    // ready line happens after both are released (#64 D-T02-3).
+    const claimJobSlot = deps.claimJobSlot;
+    const claimed = await authority.underRunQueue(() => claimJobSlot({ run: facts.run, site: facts.derived.site, licences: facts.derived.licences,
       launch: () => launchInteractiveJob({ ledger: deps.fabric.ledger, sitesDir: deps.fabric.sitesDir }, {
         site: facts.derived.site, run: request.runId, executionId: request.executionId, nodeId: request.nodeId,
         requestId: request.requestId, callerDigest, actor: request.actor, ownerEpoch: request.ownerEpoch,
         controlRevision: request.controlRevision, workspace: facts.derived.workspace, argv: facts.derived.argv,
         name: facts.derived.name, sessionDeadlineAt: new Date(sessionDeadline).toISOString(),
-        startupWaitMs: facts.derived.binding.limits.startupWaitMs,
-      }, authority) });
-    return claimed.kind === 'claimed' ? claimed.launched.result : { status: 'refused', reason: claimed.reason };
+        startupWaitMs: facts.derived.binding.limits.startupWaitMs, closeGrace: closeGraceFor(deps, facts.derived.binding),
+      }, authority, { readiness: 'after-claim' }) }));
+    if (claimed.kind !== 'claimed') return { status: 'refused', reason: claimed.reason };
+    return claimed.launched.ready ? claimed.launched.ready() : claimed.launched.result;
   }
   const view = sessionFor(deps.fabric.ledger, request);
   const session = view && nativeSession(view);
   if (!view || !session) return { status: 'refused', reason: 'interactive session is absent, incomplete or not owned by this execution' };
-  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor) {
+  // The Host's own stop of a session (a deadline, or an Operator lost to a restart) acts on the Job
+  // itself; it is not the owner typing into the Operator's session (#64 D-T02-5).
+  const hostStop = request.hostStop !== undefined && (request.action === 'close' || request.action === 'signal');
+  if (!facts.qualification.testOnly && view.operatorSessionId !== request.actor && !hostStop) {
     return { status: 'refused', reason: 'This production interactive session belongs to its recorded Operator child; the Run owner may inspect and adopt the child result but cannot take over typed operations.' };
+  }
+  if (request.action === 'close' && !hostStop && view.status !== 'closed') {
+    const finalizers = facts.derived.commands.filter((command) => command.effect === 'close' && command.arguments !== undefined);
+    if (finalizers.length > 0 && !completedCloseEffect(deps.fabric.ledger, request.runId, request.toolSessionId)) {
+      const names = finalizers.map((command) => `${command.name}(${command.arguments!.map((argument) => argument.name).join(', ')})`);
+      return { status: 'refused', reason: `close-command-required: complete one declared close-effect command through input first: ${names.join(' or ')}; then close transport.` };
+    }
   }
   const on: InteractiveChannel = channelFor(loadSite(deps.fabric.sitesDir, facts.run.siteId));
   if (request.action === 'read') {
@@ -584,7 +749,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     return observeInteractiveToken(on, { ...request, requestId: command.requestId, session, protocolToken: command.protocolToken,
       callerDigest: command.callerDigest,
       inputDigest: command.inputDigest, operationDigest: command.operationDigest,
-      cursorBefore: command.cursorBefore, waitMs: Math.min(request.waitMs ?? 0, facts.derived.binding.limits.callWaitMaxMs) }, authority);
+      cursorBefore: command.cursorBefore, waitMs: callWait(request.waitMs, facts.derived.binding) }, authority);
   }
   if (request.action === 'input') {
     if (view.status !== 'ready') return { status: 'refused', reason: `interactive mutation requires one ready admitted session; current state is ${view.status}` };
@@ -604,21 +769,23 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
       Date.parse(session.sessionDeadlineAt), runDeadline ?? Number.MAX_SAFE_INTEGER);
     return sendInteractiveInput(on, { ...request, session, callerDigest, protocolToken: token, requestDigest, text: encoded.text,
       submit: encoded.submit, effect: encoded.effect, cursorBefore: view.lastCursor ?? 0,
-      waitMs: Math.min(request.waitMs ?? 0, facts.derived.binding.limits.callWaitMaxMs),
+      waitMs: callWait(request.waitMs, facts.derived.binding),
       commandDeadlineAt: new Date(commandDeadline).toISOString() }, authority);
   }
   if (request.action === 'signal') return signalInteractiveJob(on, { ...request, callerDigest, session }, authority);
-  return closeInteractiveJob(on, { ...request, callerDigest, session }, authority);
+  return closeInteractiveJob(on, { ...request, callerDigest, session, grace: closeGraceFor(deps, facts.derived.binding) }, authority);
 }
 
 export interface InteractiveTimerController {
+  /** Project the durable deadlines onto this process's timers; it records nothing. */
   reconcile(): Promise<readonly InteractiveDeadline[]>;
   dispose(): void;
 }
 
 /**
  * Turn pre-crash intents into durable uncertainty before any route can consider retrying them.
- * It never sends transport input and never manufactures a Job outcome.
+ * It never sends transport input and never manufactures a Job outcome. Only for a Host that has just
+ * started: while a Host runs, an intent without its outcome is an operation still in flight.
  */
 export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): Promise<InteractiveSessionView[]> {
   for (const siteName of new Set(deps.fabric.ledger.runs().map((run) => run.siteId))) {
@@ -634,7 +801,7 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
         if (intent.event === 'open-intent') return ['opened', 'open-uncertain', 'open-released'].includes(item.payload.event);
         if (intent.event === 'input-intent') return ['input-sent', 'input-uncertain', 'command-completed', 'command-failed'].includes(item.payload.event);
         if (intent.event === 'signal-intent') return ['signal-delivered', 'signal-uncertain'].includes(item.payload.event);
-        return ['closed', 'close-uncertain'].includes(item.payload.event);
+        return ['closed', 'close-uncertain', 'process-survived'].includes(item.payload.event);
       });
       if (settled) continue;
       let outcome: ProtocolRecord;
@@ -666,22 +833,36 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
 
 /** Process-local timers project durable absolute deadlines; disposal never stops a Job by itself. */
 export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): InteractiveTimerController {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>(); let disposed = false;
+  // One timer per deadline key, holding the absolute time it is set for. An idle deadline moves later
+  // with every recorded activity; a re-projection whose time differs replaces the timer, so the timer
+  // that fires is always the current deadline's and never one an Operator's activity has already
+  // moved (review C1 of attempt 3: the stale idle timer closed a session being driven).
+  const timers = new Map<string, { readonly timer: ReturnType<typeof setTimeout>; readonly at: string }>(); let disposed = false;
+  // A deadline fires once per Host (#64 D-T02-5): every interactive call re-projects the deadlines,
+  // and one that had already fired, for a session its stop did not close, used to be scheduled and
+  // fired again each time — 42 notices to the owner in 17 minutes of attempt 2.
+  const fired = new Set<string>();
   const schedule = (deadline: InteractiveDeadline): void => {
     const key = `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`;
-    if (timers.has(key) || disposed) return;
+    const existing = timers.get(key);
+    if (disposed || fired.has(`${key}@${deadline.at}`) || existing?.at === deadline.at) return;
+    if (existing) { clearTimeout(existing.timer); timers.delete(key); }
     const fire = (): void => {
       if (disposed) return;
       const remaining = Date.parse(deadline.at) - nowOf(deps);
-      if (remaining > 0) { timers.set(key, setTimeout(fire, Math.min(remaining, 2_147_000_000))); return; }
+      if (remaining > 0) { timers.set(key, { timer: setTimeout(fire, Math.min(remaining, 2_147_000_000)), at: deadline.at }); return; }
       timers.delete(key);
+      fired.add(`${key}@${deadline.at}`);
       void deps.onDeadline(deadline).catch((error) => deps.fabric.log?.(`interactive deadline callback failed for ${deadline.toolSessionId}: ${String(error)}`));
     };
     fire();
   };
   return {
+    // Deadlines only. Turning cut-off intents into uncertainty is a restart's work
+    // (`reconcileInteractiveState`, run once when a Host starts): run after every interactive call, it
+    // read another Operator's open or close that was simply still in flight as one a crash had cut
+    // off, and wrote "Host restarted" over it while the Host never restarted (#64 D-T02-3).
     async reconcile() {
-      await reconcileInteractiveState(deps);
       const deadlines: InteractiveDeadline[] = [];
       for (const run of deps.fabric.ledger.runs()) for (const session of listInteractiveSessions(deps.fabric.ledger, run.id)) {
         if (session.status === 'closed') continue;
@@ -707,10 +888,10 @@ export function createInteractiveTimerController(deps: InteractiveRuntimeDeps): 
         }
       }
       const current = new Set(deadlines.map((deadline) => `${deadline.kind}:${deadline.runId}:${deadline.toolSessionId}:${deadline.commandId ?? ''}`));
-      for (const [key, timer] of timers) if (!current.has(key)) { clearTimeout(timer); timers.delete(key); }
+      for (const [key, held] of timers) if (!current.has(key)) { clearTimeout(held.timer); timers.delete(key); }
       for (const deadline of deadlines) schedule(deadline);
       return deadlines;
     },
-    dispose() { disposed = true; for (const timer of timers.values()) clearTimeout(timer); timers.clear(); },
+    dispose() { disposed = true; for (const held of timers.values()) clearTimeout(held.timer); timers.clear(); },
   };
 }

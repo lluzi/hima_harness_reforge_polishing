@@ -136,6 +136,21 @@ In this folder and nowhere else, and only what the spec states:
   so a person can run a generation by hand exactly as the harness runs it. Write one **only** where
   the Golden Flow shows you that command line.
 
+### Declare eligible engineering tasks
+
+For every tool the approved spec permits outsourcing, add `outsourcing` to its existing `tools`
+entry: `role: resident-engineering-agent`, `reads` naming existing outputs, `knowledge` naming
+contract knowledge files, and `produces` naming one output with a Reader. Use the tool's description
+and file for the full task goal, scope, playbook and delivery instructions; preserve its declared
+inputs, argv and licences. Bind the tool from an ordinary act node and schedule its input producers
+before it. The Site's `engineeringCapabilities` binding chooses the concrete executor.
+
+Give the executor enough material to independently research, write scripts, operate approved tools
+and return engineering artifacts. Its internal collaborators are its own choice. Add downstream
+Reader and Goal checks: a verified best-effort delivery can complete the task while unmet business
+targets remain false. A tool with no outsourcing declaration retains normal execution. A declared
+tool cannot also use the Tcl interactive adapter.
+
 ### Compile every Workshop
 
 For each actual Workshop in `SPEC.md`, write a `contract.workshops` entry using the Workshop

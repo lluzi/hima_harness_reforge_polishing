@@ -62,6 +62,9 @@ export type SshTarget = z.infer<typeof sshSchema>;
 
 const absolutePosixPath = z.string().regex(/^\//, 'a discovered Site path must be absolute');
 const maximumDiscoveryRoots = 64;
+// Rediscovery transports the reviewed Permit, including versioned tool wrappers. Keep a finite
+// request bound without truncating legitimate EDA profiles at the former 16-hint ceiling.
+const maximumDiscoveryWrappers = 64;
 
 /** The small amount of non-secret direction a person may give discovery. It is intentionally not a
  * free-form command, environment, credential, or YAML escape hatch. */
@@ -75,7 +78,7 @@ export const siteDiscoveryRequestSchema = z.object({
     // that existing profile rather than rejecting it at the old eight-root UI hint ceiling.
     allowedReadRoots: z.array(absolutePosixPath).max(maximumDiscoveryRoots).default([]),
     allowedWriteRoots: z.array(absolutePosixPath).max(maximumDiscoveryRoots).default([]),
-    allowedWrappers: z.array(z.string().min(1)).max(16).default([]),
+    allowedWrappers: z.array(z.string().min(1)).max(maximumDiscoveryWrappers).default([]),
     /** Executable names requested by the selected Pack; discovery never invents vendor tools. */
     toolCommands: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/)).max(32).default([]),
   }).default({ allowedReadRoots: [], allowedWriteRoots: [], allowedWrappers: [], toolCommands: [] }),

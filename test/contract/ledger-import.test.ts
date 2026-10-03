@@ -28,6 +28,7 @@ let oldHome: HimaHome;
 let snapshot: Snapshot;
 let v28Snapshot: Snapshot;
 let v29Snapshot: Snapshot;
+let v30Snapshot: Snapshot;
 let sourceFile: string;
 let original: Buffer;
 let runId: string;
@@ -59,9 +60,10 @@ before(async () => {
     assert.equal(host.ctx.hima.ledger.records({ runId }).length, 2);
   } finally { await host.dispose(); }
   const current = JSON.parse(await readFile(storedAt(oldHome.home), 'utf8')) as Snapshot;
-  assert.equal(current.unit.version, 30);
+  assert.equal(current.unit.version, 31);
   v28Snapshot=structuredClone(current);v28Snapshot.unit.version=28;
   v29Snapshot=structuredClone(current);v29Snapshot.unit.version=29;
+  v30Snapshot=structuredClone(current);v30Snapshot.unit.version=30;
   assert.ok(Object.values(current.tables.runs).every((run) => run.control === undefined));
   // v19 ad84d2f wrote these same observation/Run shapes. Only its storage stamp differs, exactly
   // as ledger-version.test.ts generates the prior-version fixture from real persisted facts. The
@@ -87,7 +89,7 @@ test('offline v21 to v27 polishing facts import into the current domain without 
     const receipt = await importLegacyLedger({ sourceFile: source, home: targetHome });
     assert.equal(receipt.source.version, version);
     const imported = JSON.parse(await readFile(storedAt(targetHome), 'utf8'));
-    assert.equal(imported.unit.version, 30);
+    assert.equal(imported.unit.version, 31);
     assert.deepEqual(imported.tables, document.tables);
     assert.deepEqual(await readFile(source), bytes);
   }
@@ -97,7 +99,7 @@ test('v28 import preserves actual project lineage and refuses a v29 delegation d
   const source=path.join(temporary,'v28-project.json');const bytes=Buffer.from(JSON.stringify(v28Snapshot));
   await writeFile(source,bytes);const target=await freshDestination('v28');
   const receipt=await importLegacyLedger({sourceFile:source,home:target});
-  assert.equal(receipt.source.version,28);assert.equal(receipt.target.version,30);
+  assert.equal(receipt.source.version,28);assert.equal(receipt.target.version,31);
   assert.deepEqual(JSON.parse(await readFile(storedAt(target),'utf8')).tables,v28Snapshot.tables);
   assert.deepEqual(await readFile(source),bytes);
   const corrupt=structuredClone(v28Snapshot);const [key,row]=Object.entries(corrupt.tables.records)[0]!;
@@ -110,7 +112,7 @@ test('v29 import is a pure pass-through and refuses a v30 restart supersession f
   const source = path.join(temporary, 'v29-current.json'); const bytes = Buffer.from(JSON.stringify(v29Snapshot));
   await writeFile(source, bytes); const target = await freshDestination('v29');
   const receipt = await importLegacyLedger({ sourceFile: source, home: target });
-  assert.equal(receipt.source.version, 29); assert.equal(receipt.target.version, 30);
+  assert.equal(receipt.source.version, 29); assert.equal(receipt.target.version, 31);
   assert.deepEqual(JSON.parse(await readFile(storedAt(target), 'utf8')).tables, v29Snapshot.tables);
   assert.deepEqual(await readFile(source), bytes);
   const forward = structuredClone(v29Snapshot); const run = Object.values(forward.tables.runs).find((row) => row.id === runId)!;
@@ -120,6 +122,21 @@ test('v29 import is a pure pass-through and refuses a v30 restart supersession f
     type: 'resumed', nodeId: 'observe', who: 'person', kind: 'restart', invalidates: [] } as unknown as LedgerRecord;
   const bad = path.join(temporary, 'v29-forward-record.json'); await writeFile(bad, JSON.stringify(forward));
   await assert.rejects(importLegacyLedger({ sourceFile: bad, home: await freshDestination('v29-reject') }), /unsupported fields/);
+});
+
+test('v30 import is a pure pass-through and refuses a v31 autopilot origin or stopped decision (ADR-0016)', async () => {
+  const source = path.join(temporary, 'v30-current.json'); const bytes = Buffer.from(JSON.stringify(v30Snapshot));
+  await writeFile(source, bytes); const target = await freshDestination('v30');
+  const receipt = await importLegacyLedger({ sourceFile: source, home: target });
+  assert.equal(receipt.source.version, 30); assert.equal(receipt.target.version, 31);
+  assert.deepEqual(JSON.parse(await readFile(storedAt(target), 'utf8')).tables, v30Snapshot.tables);
+  const forward = structuredClone(v30Snapshot); const run = Object.values(forward.tables.runs).find((row) => row.id === runId)!;
+  const seq = run.nextSeq; run.nextSeq = seq + 1;
+  const id = `${runId}#${String(seq).padStart(6, '0')}`;
+  forward.tables.records[id] = { id, runId, siteId: run.siteId, seq, at: new Date().toISOString(), writer: 'executor', generation: 1,
+    type: 'decision', nodeId: 'explore', chooser: 'timing-push', chooserOrigin: 'bundle', chosen: { stopped: true }, rationale: {}, cites: [] } as unknown as LedgerRecord;
+  const bad = path.join(temporary, 'v30-forward-record.json'); await writeFile(bad, JSON.stringify(forward));
+  await assert.rejects(importLegacyLedger({ sourceFile: bad, home: await freshDestination('v30-reject') }), /v31/);
 });
 
 async function freshDestination(label: string): Promise<string> {
@@ -148,7 +165,7 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
   assert.equal(receipt.source.sha256, hash(original));
   assert.equal(receipt.source.bytes, original.length);
   assert.equal(receipt.source.version, 19);
-  assert.equal(receipt.target.version, 30);
+  assert.equal(receipt.target.version, 31);
   assert.equal(receipt.runs, 2);
   assert.equal(receipt.records, 2);
   assert.equal(receipt.ownership, 'unchanged-unowned');
@@ -158,7 +175,7 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
   assert.equal(hash(importedBytes), receipt.target.sha256);
   const imported = JSON.parse(importedBytes.toString()) as Snapshot;
   assert.deepEqual(imported.tables, snapshot.tables);
-  assert.equal(imported.unit.version, 30);
+  assert.equal(imported.unit.version, 31);
   assert.deepEqual((await readdir(home)).sort(), ['ledger-import', 'storages'], 'the offline command did not start or prepare a Host');
   const workspace = path.join(home, 'workspace');
   await mkdir(workspace);
@@ -180,7 +197,7 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
 });
 
 test('opening the original v19 home still fails the version gate without rewriting it', async () => {
-  await assert.rejects(bootInProcess(oldHome), /version-mismatch|stored version 19 != expected 30/);
+  await assert.rejects(bootInProcess(oldHome), /version-mismatch|stored version 19 != expected 31/);
   assert.deepEqual(await readFile(storedAt(oldHome.home)), original);
 });
 
@@ -192,10 +209,10 @@ test('an explicit v20 snapshot is copied into an empty v21 home while its source
   const home = await freshDestination('v20-readback');
   const receipt = await importLegacyLedger({ sourceFile: source, home });
   assert.equal(receipt.source.version, 20);
-  assert.equal(receipt.target.version, 30);
+  assert.equal(receipt.target.version, 31);
   assert.deepEqual(await readFile(source), bytes);
   const copied = JSON.parse(await readFile(storedAt(home), 'utf8')) as Snapshot;
-  assert.equal(copied.unit.version, 30);
+  assert.equal(copied.unit.version, 31);
   assert.deepEqual(copied.tables, v20.tables);
 });
 
@@ -382,14 +399,14 @@ test('mid-write failure and process death cannot publish a partial import or alt
     // The rename may win the race. Every file and every source fact must then be present; an
     // existing directory, a parseable Ledger alone, or an unverified receipt is not a pass.
     const imported = await readFile(storedAt(home));
-    assert.deepEqual(JSON.parse(imported.toString()), { ...changed, unit: { name: 'hima_ledger', version: 30 } });
+    assert.deepEqual(JSON.parse(imported.toString()), { ...changed, unit: { name: 'hima_ledger', version: 31 } });
     assert.deepEqual(await readFile(path.join(home, 'ledger-import/source-v19.json')), before);
     const receipt = JSON.parse(await readFile(path.join(home, 'ledger-import/receipt.json'), 'utf8'));
     assert.match(receipt.importedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(receipt, {
       format: 'hima-ledger-import-v1',
       source: { path: source, version: 19, sha256: hash(before), bytes: before.length, backup: 'ledger-import/source-v19.json' },
-      target: { version: 30, sha256: hash(imported), file: 'storages/hima_ledger.json' },
+      target: { version: 31, sha256: hash(imported), file: 'storages/hima_ledger.json' },
       importedAt: receipt.importedAt, runs: Object.keys(changed.tables.runs).length,
       records: Object.keys(changed.tables.records).length, ownership: 'unchanged-unowned',
     });

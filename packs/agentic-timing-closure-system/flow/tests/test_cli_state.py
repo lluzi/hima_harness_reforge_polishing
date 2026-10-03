@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -514,6 +515,7 @@ class TwoRoundFlowTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [instance], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
         }
         validated = workspaces.validate_work_package(work_package_raw, base_state, {"pgVerification": False})
         manifest = workspaces.prepare(validated, str(self.workspace), base_state)
@@ -683,6 +685,7 @@ class TwoRoundFlowTest(unittest.TestCase):
                 "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
                 "protected": {"instances": [], "nets": []}, "mayAffect": [],
                 "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
             }
             for task_id in workspaces.TASK_IDS
         }
@@ -709,10 +712,10 @@ class TwoRoundFlowTest(unittest.TestCase):
 
 
 class StaleXtopContextAfterAdoptTest(TwoRoundFlowTest):
-    """Dry path (slice 4, BLOCKED 1): after a physical refresh is adopted, a batch cannot start
-    on the XTop context `observe` bound to the pre-refresh state. This reproduces the dry path's
-    exit through the real CLI stages, then shows the next-decision Reader refuses the `research`
-    that led there, with the way out."""
+    """#64 Track B (from #63's dry path): after a physical refresh is adopted, a batch cannot start
+    on the XTop context `observe` bound to the pre-refresh state. This reproduces the exit through
+    the real CLI stages, then shows the next-decision Reader refuses the `research` that led there,
+    with the way out."""
 
     def test_research_after_adopt_on_the_old_context_is_refused_with_observe_first(self):
         workspace = self.workspace
@@ -729,21 +732,25 @@ class StaleXtopContextAfterAdoptTest(TwoRoundFlowTest):
         working_state = json.loads((workspace / "state" / "working-state.json").read_text())
         self.assertEqual(working_state["id"], adopted_id)
 
-        # The dry path's generation 2: route-research -> plan -> prepare-workers.
-        eda_profile_path = workspace / "eda-profile.json"
-        _write_json(eda_profile_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef", **xtop_site})
-        site_caps_path = workspace / "site-caps.json"
-        _write_json(site_caps_path, {"pgVerification": False})
-        packages = {task_id: {
-            "taskId": task_id, "baseStateId": adopted_id, "problem": "round 2", "targets": [],
+        # Generation 2: route-research -> plan -> prepare-workers, one active slot and five parked.
+        site_path = workspace / "site-caps.json"
+        _write_json(site_path, {"design": "top", "techLef": "tech.lef", "cellLefGlob": "*.lef",
+                                "pgVerification": False, **xtop_site})
+        active = {
+            "taskId": "w01", "baseStateId": adopted_id, "problem": "round 2", "targets": [],
             "editDomain": {"instances": ["U1"], "nets": [], "regions": []}, "protected": {"instances": [], "nets": []},
             "mayAffect": [], "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
-        } for task_id in workspaces.TASK_IDS}
+            "targetPins": ["U1/A"],
+            "scope": {"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
+        }
+        packages = {task_id: active if task_id == "w01" else
+                    {"taskId": task_id, "baseStateId": adopted_id, "parked": True, "problem": "no cluster"}
+                    for task_id in workspaces.TASK_IDS}
         plan_path = workspace / "campaign-plan.json"
         _write_json(plan_path, {"candidate": {"workPackages": packages, "reason": "round 2"},
                                 "baseState": working_state, "siteCapabilities": {"pgVerification": False}})
-        result = _run("prepare-workers", workspace, workspace / "state" / "working-state.json", site_caps_path,
-                      eda_profile_path, plan_path)
+        result = _run("prepare-workers", workspace, workspace / "state" / "working-state.json", site_path,
+                      site_path, plan_path)
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stderr), {"code": "stale-base",
                                                      "detail": "XTop context is not bound to the current design state"})
@@ -1372,6 +1379,51 @@ class PrestaPredictedLabelTest(TwoRoundFlowTest):
         self.assertAlmostEqual(core.value_of(predicted["predictedBaseNetlistHoldWns"]), 0.03)
 
 
+class RecipePrestaTest(TwoRoundFlowTest):
+    """Issue #64 Task 6 review: a recipe batch whose auto-fix inserted instances seals unknown
+    new nets; `presta` records a non-predictive pre-check that does not gate the batch, and never
+    claims a qualification it does not have."""
+
+    def test_two_round_flow_uses_adopted_state_id(self):
+        self.skipTest("inherited from TwoRoundFlowTest -- already covered there, not this class's own case")
+
+    def test_unknown_new_nets_make_a_non_predictive_pre_check_that_does_not_gate(self):
+        import test_integration_recovery as tir
+        workspace = self.workspace
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        self.assertEqual(_run("baseline", workspace, workspace / "manifest.json").returncode, 0)
+        base_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        request = integration.prepare_recipe_replay(
+            tir.recipe_plan(batch_id="batch-recipe", base_state_id=base_state["id"]), base_state["id"],
+            tir.default_recipe(), tir.recipe_sessions(), required_scenarios=["s1", "s2"])
+        auto = {"mastersChanged": {}, "added": {"atcs_b_auto_eco_1": "BUFX2"}, "removed": {}}
+        arms = {"merged": tir.arm_evidence("merged", receipts=tir.merged_receipts(request),
+                                           session_deltas=tir.matching_session_deltas(),
+                                           auto_delta=auto, total_delta=auto),
+                "control": tir.arm_evidence("control")}
+        state = integration.reconcile_recipe(request, arms)
+        self.assertIsNone(state["newNets"])
+        facts = core.stamp("composition-facts", {"baseStateId": base_state["id"], "considered": [],
+                                                 "duplicates": [], "conflicts": [], "order": []})
+        core.write_artifact(workspace / "state" / "composition-facts.json", facts)
+        core.write_artifact(workspace / "state" / "replay-request.json", request)
+        core.write_artifact(workspace / "state" / "integration-state.json", state)
+        _write_json(workspace / "state" / "contributions-collected.json", {"contributions": [
+            tir.make_contribution("c1"), tir.make_contribution("c2", task_id="w02", revision=3)]})
+        report_root = workspace / "integrations" / "batch-recipe" / "presta"
+        _write_text(report_root / REQUIRED_SCENARIOS[0] / "global_timing.rpt",
+                    fixtures.global_report("0.05", "0.00", "0", "0.03", "0.00", "0"))
+        result = _run("presta", workspace, workspace / "state" / "working-state.json",
+                      _scenarios_contract_path(workspace), _site_profile_path(workspace))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        evidence = json.loads((workspace / "state" / "presta.json").read_text())
+        self.assertEqual(evidence["batchKind"], "recipe")
+        self.assertIs(evidence["predictive"], False)
+        self.assertIsNone(evidence["newNets"])
+        self.assertIn("auto-fix", evidence["newNetsUnknown"])
+
+
 class StaMaxPathsTest(TwoRoundFlowTest):
     """I10 (final review): `sta` now takes `MAX_PATHS` from the Strategy the same way
     `observe` does -- the Site/Workshop-authored `query-spec.json`'s own `maxPaths` is
@@ -1760,6 +1812,7 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
                 "targets": [], "editDomain": {"instances": [], "nets": [], "regions": []},
                 "protected": {"instances": [], "nets": []}, "mayAffect": [],
                 "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
             }
             for task_id in workspaces.TASK_IDS
         }
@@ -1785,6 +1838,12 @@ class PrepareWorkersByteIdentityTest(unittest.TestCase):
         for task_id in workspaces.TASK_IDS:
             self.assertEqual(workers["workers"][task_id]["workPackage"]["taskId"], task_id)
             self.assertEqual(len(workers["workers"][task_id]["sessionTclSha256"]), 64)
+        # Issue #64 Task 4: six slots, and each session bakes the package's scope budget (the recipe
+        # cap; the Reviewer's smaller budget is the Host's) and its observation mode.
+        self.assertEqual(sorted(workers["workers"]), ["w01", "w02", "w03", "w04", "w05", "w06"])
+        session_tcl = Path(workers["workers"]["w06"]["sessionTcl"]).read_text(encoding="utf-8")
+        self.assertIn(f"set ::ATCS_MAX_MUTATIONS {{{workspaces.SCOPE_MAX_MUTATIONS}}}", session_tcl)
+        self.assertIn("set ::ATCS_OBSERVE {fast}", session_tcl)
 
     def test_missing_xtop_context_refuses_before_any_worker_session_is_compiled(self):
         (self.workspace / "state" / "xtop-context.json").unlink()
@@ -1868,6 +1927,7 @@ class CaptureContributionComposedTest(unittest.TestCase):
             "targets": [], "editDomain": {"instances": [instance], "nets": [], "regions": []},
             "protected": {"instances": [], "nets": []}, "mayAffect": [],
             "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+            "targetPins": [], "scope": {"commands": ["atcs_size_cell", "atcs_undo"], "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
         }
         validated = workspaces.validate_work_package(work_package_raw, self.base_state, {"pgVerification": False})
         manifest = workspaces.prepare(validated, str(self.workspace), self.base_state)
@@ -2731,6 +2791,62 @@ class ResidualQueriesTheEvaluatedCandidateStateTest(unittest.TestCase):
         self.assertFalse((workspace / "research" / "residual").exists())
 
 
+class ResidualCarriesTheBatchFailReasonsTest(unittest.TestCase):
+    """US10/US34: the evaluated batch's sealed post-auto-finish fail reasons reach the residual,
+    per check kind, so the next generation's research reads what plain auto-fix could not fix."""
+
+    CHECK_KEY = "func_ssg_rcworst_m40|setup|U_FF_2/D"
+
+    def _workspace(self, fail_reasons, merge_id_override=None):
+        workspace = _tmp()
+        self.addCleanup(shutil.rmtree, workspace, ignore_errors=True)
+        manifest = _make_baseline_manifest(workspace)
+        _write_json(workspace / "manifest.json", manifest)
+        result = _run("baseline", workspace, workspace / "manifest.json")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        parent_state = json.loads((workspace / "state" / "working-state.json").read_text())
+        core.write_artifact(workspace / "state" / "readiness.json", _full_flow_readiness(workspace, manifest))
+        merge_commit = core.stamp("merge-commit", {
+            "parentStateId": parent_state["id"], "batchId": "gen-1", "contributions": [], "operations": [],
+            "choice": {"arm": "control", "reason": "r"}, "failReasons": fail_reasons,
+        })
+        _write_json(workspace / "state" / "merge-commit.json", merge_commit)
+        _write_json(workspace / "state" / "implement.json", {
+            "mergeCommitId": merge_id_override or merge_commit["id"], "design": "top",
+            "parentStateId": parent_state["id"],
+        })
+        evaluation = core.stamp("evaluation", {
+            "candidateId": merge_commit["id"], "parentStateId": parent_state["id"], "stateId": "0" * 20,
+            "finalSetupWns": core.known(-0.12), "finalHoldWns": core.known(0.03),
+            "comparison": {"fixed": [], "remaining": [self.CHECK_KEY], "entrant": [], "regressed": [],
+                           "missingPrior": []},
+        })
+        _write_json(workspace / "state" / "evaluation.json", evaluation)
+        _write_json(workspace / "state" / "sta.json", {"designStateId": "0" * 20, "database": {}, "sta": {
+            "func_ssg_rcworst_m40": {"corner": CORNER, "inputs": {}, "observation": {
+                "precision": "gba", "scenarios": {}, "sources": [],
+                "checks": {self.CHECK_KEY: {"slack": core.known(-0.12), "startpoint": "U_FF_1/CP"}}}}}})
+        return workspace, merge_commit
+
+    def _residual(self, workspace):
+        result = _run("residual", workspace, _scenarios_contract_path(workspace), _site_profile_path(workspace))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads((workspace / "state" / "residual-cases.json").read_text())
+
+    def test_the_sealed_fail_reasons_reach_the_residual_and_each_case_of_that_check(self):
+        reasons = {"arm": "control", "setup": {"no_setup_gain": 3}, "hold": {"break_setup": 2}}
+        workspace, merge_commit = self._workspace(reasons)
+        doc = self._residual(workspace)
+        self.assertEqual(doc["batchFailReasons"], {"mergeCommitId": merge_commit["id"], **reasons})
+        self.assertEqual(doc["cases"][0]["failReasons"], {"no_setup_gain": 3})
+
+    def test_a_merge_commit_of_another_candidate_is_not_read(self):
+        workspace, _ = self._workspace({"arm": "merged", "setup": {"no_setup_gain": 3}}, merge_id_override="other")
+        doc = self._residual(workspace)
+        self.assertNotIn("batchFailReasons", doc)
+        self.assertEqual(doc["cases"][0]["failReasons"], {})
+
+
 class ResidualBaselineOnlyTest(unittest.TestCase):
     """Task 12c item 1b: `residual` derives its remaining failing checks from
     `state/observation.json` when `state/evaluation.json` does not exist yet,
@@ -3010,7 +3126,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
 
     def _write_candidate(self, parent_min_wns, candidate_setup_wns, candidate_hold_wns,
                           predicted_setup=0.02, predicted_hold=0.05, validation_level="xtop",
-                          parent_known=True, precision="gba"):
+                          parent_known=True, precision="gba", merge_commit_extra=None):
         self.decision_id_seed += 1
         state_id = f"candidate-state-{self.decision_id_seed}"
 
@@ -3034,6 +3150,7 @@ class RecordExperienceComposedTest(unittest.TestCase):
             "contributions": [{"id": "contrib-1", "revision": 1}],
             "operations": [{"op": "size_cell", "instance": "U1", "fromMaster": "BUFX1", "toMaster": "BUFX2"}],
             "innovusEcoTcl": "ecoChangeCell -inst {U1} -cell BUFX2", "sourceMap": {}, "newNets": [],
+            **(merge_commit_extra or {}),
         })
         merge_id = merge_commit["id"]
         _write_json(self.workspace / "state" / "merge-commit.json", merge_commit)
@@ -3119,6 +3236,29 @@ class RecordExperienceComposedTest(unittest.TestCase):
         self.assertAlmostEqual(core.value_of(entry["measured"]), 0.04)  # 0.04 - 0.0
         self.assertAlmostEqual(core.value_of(entry["predicted"]), 0.02)  # min(0.02, 0.05) - 0.0
         self.assertEqual(entry["verdict"], "helped")
+
+    def _recipe_entry(self, control_prediction):
+        """A recipe batch that chose control: its prediction is the chosen arm's XTop summary."""
+        reason_path = self._write_candidate(
+            parent_min_wns=0.0, candidate_setup_wns=0.07, candidate_hold_wns=0.04, merge_commit_extra={
+                "contributions": [], "choice": {"arm": "control", "reason": "r"}, "arms": {
+                    "merged": {"prediction": {"worstSetupWns": -0.01, "worstHoldWns": -0.02}},
+                    "control": {"prediction": control_prediction}}})
+        _write_json(reason_path, {"plan": {"batchId": "batch-fixture", "reason": "ranked recipe"}, "facts": {}})
+        result = _run("record-experience", self.workspace, reason_path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads((self.workspace / "state" / "experience.json").read_text())["entries"][-1]
+
+    def test_a_recipe_batch_predicts_from_the_chosen_arms_xtop_summary(self):
+        entry = self._recipe_entry({"worstSetupWns": 0.0, "worstHoldWns": -0.03})
+        self.assertAlmostEqual(core.value_of(entry["predicted"]), -0.03)  # min(0.0, -0.03) - 0.0
+        self.assertEqual(entry["conditions"]["predictionModel"], "xtop")
+
+    def test_an_unknown_chosen_arm_prediction_is_an_unknown_prediction(self):
+        entry = self._recipe_entry({"unknown": "no readable hold table"})
+        self.assertFalse(core.is_known(entry["predicted"]))
+        self.assertIn("no readable hold table", entry["predicted"]["unknown"])
+        self.assertEqual(entry["conditions"]["predictionModel"], "unknown")
 
     def test_measured_negative_delta_is_hurt(self):
         reason_path = self._write_candidate(parent_min_wns=0.05, candidate_setup_wns=0.01, candidate_hold_wns=0.01)
@@ -3449,12 +3589,13 @@ class ComposeFactsSecondPassTest(unittest.TestCase):
         self.assertEqual(facts["unresolvedCount"], 1)  # resolutions NOT applied
 
 
+
     def _graph_tool_argv(self, node_id):
         """The argv the shipped contract gives the tool that graph node `node_id` runs,
         `${WORKSPACE}` bound to this test's workspace (read from graph.yml and contract.yml)."""
         import re
-        graph = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
-        contract = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        graph = (PACK_DIR / "legacy/0.2.10/graph.yml").read_text(encoding="utf-8")
+        contract = (PACK_DIR / "legacy/0.2.10/contract.yml").read_text(encoding="utf-8")
         node = re.search(rf"^  - id: {re.escape(node_id)}\n    kind: act\n    parameters: \{{ tool: ([\w-]+) \}}$",
                          graph, re.M)
         self.assertIsNotNone(node, f"graph node {node_id} runs no tool")
@@ -3463,11 +3604,11 @@ class ComposeFactsSecondPassTest(unittest.TestCase):
         return [word.replace("${WORKSPACE}", str(self.workspace)) for word in argv]
 
     def test_a_refused_plan_with_malformed_resolutions_is_not_applied(self):
-        """C06 (failure catalogue): PR03's generation-3 first pass exited 3 (missing-input
-        `resolutions[].conflictKey is required`) on the integration plan the Reader had refused
-        in generation 2, still on disk. The first pass runs before the compose Workshop writes
-        this batch's plan, so the graph's first-pass node must never read that file; only the
-        second pass, behind request-admissible PASS, applies a plan's resolutions."""
+        """C06 (#63 failure catalogue, ea3993f3, ported for #64): PR03's generation-3 first pass exited 3
+        (missing-input `resolutions[].conflictKey is required`) on the integration plan the Reader had
+        refused in generation 2, still on disk. The first pass runs before the compose Workshop writes
+        this batch's plan, so the graph's first-pass node must never read that file; only the second
+        pass, behind request-admissible PASS, applies a plan's resolutions."""
         plan_path = self.workspace / "research" / "requests" / "integration-plan.json"
         _write_json(plan_path, {"plan": {
             "batchId": "batch-g2", "baseStateId": self.base_state_id, "select": [],
@@ -3728,6 +3869,244 @@ class EvaluateUnconstrainedCoverageTest(TwoRoundFlowTest):
         # missing a required check is the unconstrained-endpoint regression.
         self.assertEqual(core.value_of(evaluation["finalIdentityErrorCount"]), 0)
         self.assertEqual(core.value_of(evaluation["missingRequiredCheckCount"]), 1)
+
+
+# ---------------------------------------------------------------------------
+# Issue #64 Task 6: `replay-prepare` replays Task 4b's ranked recipe as two concurrent
+# XTop arms; `reconcile` chooses; `implement` sources the chosen ECO pair.
+# ---------------------------------------------------------------------------
+
+_RECIPE_PLAN = "c" * 64
+
+_CONCURRENT_WRAPPER = """#!/bin/sh
+# Each call registers itself, then waits (5 s at most) until both arms have started:
+# run one after the other, the first call would time out and fail.
+starts="$(dirname "$0")/starts"
+mkdir -p "$starts"
+: > "$starts/$$"
+i=0
+while [ $i -lt 100 ]; do
+  [ "$(ls "$starts" | wc -l)" -ge 2 ] && exit 0
+  sleep 0.05
+  i=$((i + 1))
+done
+exit 9
+"""
+
+_CONTROL_FAILS_WRAPPER = """#!/bin/sh
+case "$(pwd)" in */control) echo "ERROR: xtop crashed" ; exit 7 ;; esac
+exit 0
+"""
+
+
+class RecipeReplayCliTest(unittest.TestCase):
+    """The replay job, end to end through the CLI with a fake Site wrapper (no XTop)."""
+
+    def setUp(self):
+        self.workspace = _tmp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        self.base_state = core.stamp("design-state", {
+            "top": "top", "stage": "postroute",
+            "database": {"path": "db.enc", "sha256": "a" * 64, "datDigest": "b" * 64},
+            "netlist": {"path": "netlist.v", "sha256": "c" * 64}, "def": None,
+            "spef": {}, "sdc": [], "tools": {}, "scenarios": [], "parentId": None,
+        })
+        self.base_state_path = self.workspace / "base-state.json"
+        _write_json(self.base_state_path, self.base_state)
+        base_id = self.base_state["id"]
+        _write_xtop_context(self.workspace, base_id, ("synthetic",))
+        contribution = core.stamp("contribution", {
+            "taskId": "w01", "revision": 2, "baseStateId": base_id, "kind": "xtop-session",
+            "operations": [], "delta": {"mastersChanged": {"U1": ["BUFX1", "BUFX2"]}, "added": {}, "removed": {}},
+            "admissible": True, "refusals": [], "session": {"lines": 1},
+        })
+        self.contribution = contribution
+        _write_json(self.workspace / "state" / "contributions-collected.json", {"contributions": [contribution]})
+        _write_json(self.workspace / "state" / "workers.json", {"workers": {"w01": {
+            "namePrefix": "atcs_w01_r2_",
+            "workPackage": {"editDomain": {"instances": ["U1"], "nets": [], "regions": []}, "targetPins": []},
+        }}, "requiredSlots": ["w01"]})
+        recipe = {"sessions": [{"rank": 1, "contribution": contribution["id"], "taskId": "w01", "commands": [
+            {"seq": 1, "proc": "atcs_size_cell", "cmd": "size_cell", "instances": ["U1"], "skip": None,
+             "args": {"instance": "U1", "toMaster": "BUFX2", "planSha256": _RECIPE_PLAN}},
+        ]}], "excluded": []}
+        self.facts = core.stamp("composition-facts", {
+            "baseStateId": base_id, "considered": [contribution["id"]], "duplicates": [], "conflicts": [],
+            "interactions": [], "staleBase": [], "order": [contribution["id"]], "unresolvedCount": 0,
+            "unknownResolutions": [], "recipe": recipe,
+        })
+        _write_json(self.workspace / "state" / "composition-facts.json", self.facts)
+        self.plan_path = self.workspace / "integration-plan.json"
+        _write_json(self.plan_path, {"plan": {"batchId": "gen-1", "baseStateId": base_id,
+                                              "select": [contribution["id"]],
+                                              "resolutions": [], "deferred": [], "reason": "ranked recipe"},
+                                     "facts": self.facts})
+
+    def _site(self, wrapper_text):
+        wrapper = self.workspace / "wrapper.sh"
+        wrapper.write_text(wrapper_text, encoding="utf-8")
+        wrapper.chmod(0o755)
+        path = self.workspace / "site-profile.json"
+        _write_json(path, {
+            "edaShell": [str(wrapper)], "design": "top",
+            "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "cells" / "*.lef"),
+            **_xtop_site_config(self.workspace, ("synthetic",)),
+        })
+        return path
+
+    def _prepare(self, wrapper_text="#!/bin/sh\nexit 0\n", *extra):
+        return _run("replay-prepare", self.workspace, self.base_state_path, self.plan_path,
+                    self._site(wrapper_text), *extra)
+
+    def test_both_arms_are_started_together_in_one_replay_job(self):
+        result = self._prepare(_CONCURRENT_WRAPPER)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertEqual(receipts["mode"], "recipe")
+        self.assertEqual(set(receipts["arms"]), {"merged", "control"})
+        for arm in ("merged", "control"):
+            self.assertNotIn("toolFailure", receipts["arms"][arm], receipts)
+            root = self.workspace / "integrations" / "gen-1" / arm
+            for name in ("xtop-replay.tcl", "recipe.tcl", "auto-fix.tcl"):
+                self.assertTrue((root / name).is_file(), f"{arm}/{name}")
+        request = json.loads((self.workspace / "state" / "replay-request.json").read_text())
+        self.assertEqual(request["mode"], "recipe")
+        self.assertEqual(request["requiredScenarios"], ["synthetic"])
+        self.assertEqual(request["sessions"][0]["namePrefix"], "atcs_w01_r2_")
+        recipe_text = (self.workspace / "integrations" / "gen-1" / "merged" / "recipe.tcl").read_text()
+        self.assertIn(f"atcs_size_cell {{U1}} {{BUFX2}} {{{_RECIPE_PLAN}}}", recipe_text)
+
+    def test_a_failing_control_arm_is_recorded_and_never_fails_the_replay(self):
+        result = self._prepare(_CONTROL_FAILS_WRAPPER)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipts = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertIn("toolFailure", receipts["arms"]["control"])
+        self.assertNotIn("toolFailure", receipts["arms"]["merged"])
+
+    def test_the_auto_finish_knob_turns_off_only_the_merged_auto_finish(self):
+        result = self._prepare("#!/bin/sh\nexit 0\n", "0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        root = self.workspace / "integrations" / "gen-1"
+        self.assertEqual((root / "merged" / "auto-fix.tcl").read_text(), "")
+        self.assertEqual(len((root / "control" / "auto-fix.tcl").read_text().splitlines()), 4)
+
+    def test_a_reused_batch_id_is_refused(self):
+        self.assertEqual(self._prepare().returncode, 0)
+        result = self._prepare()
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr)["code"], "batch-id-reused")
+
+    def _write_arm(self, arm, hold_worst, netlist="ecoChangeCell -inst U1 -cell BUFX2\n"):
+        root = self.workspace / "integrations" / "gen-1" / arm
+        (root / "dumps").mkdir(parents=True, exist_ok=True)
+        (root / "dumps" / "000.dump").write_text("U1 BUFX1\nUOUT BUFX1\n", encoding="utf-8")
+        after = "U1 BUFX2\nUOUT BUFX1\n" if arm == "merged" else "U1 BUFX1\nUOUT BUFX1\n"
+        if arm == "merged":
+            (root / "dumps" / "001.dump").write_text(after, encoding="utf-8")
+        (root / "dumps" / "auto.dump").write_text(after.replace("UOUT BUFX1", "UOUT BUFX4"), encoding="utf-8")
+        request = json.loads((self.workspace / "state" / "replay-request.json").read_text())
+        if arm == "merged":
+            (root / "receipts.jsonl").write_text(json.dumps({
+                "stepId": request["steps"][0]["stepId"], "slot": "w01", "status": "applied", "attempted": True,
+                "seq": 1}) + "\n", encoding="utf-8")
+        (root / "predict").mkdir(exist_ok=True)
+        for check, worst in (("setup", 0.0), ("hold", hold_worst)):
+            (root / "predict" / f"{check}.rpt").write_text(
+                f"### {check} summary ###\nScenario                  Count      Worst        TNS\n"
+                f"{'-' * 54}\ntotal                         1    {worst:.4f}    {worst:.4f}\n"
+                f"  synthetic                   1    {worst:.4f}    {worst:.4f}\n", encoding="utf-8")
+        eco = root / ("eco" if arm == "merged" else "eco-control")
+        eco.mkdir(exist_ok=True)
+        (eco / "atcs_batch_netlist_top.txt").write_text(netlist, encoding="utf-8")
+        (eco / "atcs_batch_physical_top.txt").write_text("placeInstance U1 1.0 2.0 R0\n", encoding="utf-8")
+        (root / "arm-result.json").write_text(json.dumps({
+            "arm": arm, "complete": True, "tainted": "", "protected": ["U1"] if arm == "merged" else [],
+            "protectCode": 0, "protectResult": "", "autoFix": [], "predict": {"setup": 0, "hold": 0},
+            "exportCode": 0, "exportResult": ""}), encoding="utf-8")
+        return eco
+
+    def test_reconcile_chooses_the_better_arm_and_implement_sources_its_pair(self):
+        self.assertEqual(self._prepare().returncode, 0)
+        self._write_arm("merged", -0.01)
+        control_eco = self._write_arm("control", -0.03)
+        result = _run("reconcile", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = json.loads((self.workspace / "state" / "integration-state.json").read_text())
+        self.assertEqual(state["chosen"]["arm"], "merged")
+        self.assertEqual(state["chosen"]["eco"]["netlist"]["path"],
+                         "integrations/gen-1/merged/eco/atcs_batch_netlist_top.txt")
+        self.assertTrue(state["sessions"]["w01"]["deltaMatches"])
+        self.assertTrue(control_eco.is_dir())
+
+        request = json.loads((self.workspace / "state" / "replay-request.json").read_text())
+        merge_commit = integration.seal_batch(state, request, self.facts, [self.contribution])
+        impl_root = self.workspace / "implementations" / merge_commit["id"]
+        (impl_root / "DBS").mkdir(parents=True)
+        (impl_root / "DBS" / "top.enc").write_bytes(b"db")
+        _sha256_matching_empty_directory(impl_root / "DBS" / "top.enc.dat")
+        _write_text(impl_root / "EXPORT" / "design.def", "DEF\n")
+        _write_text(impl_root / "EXPORT" / "design.v", "module top(); endmodule\n")
+        _write_text(impl_root / "RPT" / "verify_drc.rpt", fixtures.drc_report([]))
+        _write_text(impl_root / "RPT" / "verify_connectivity.rpt", fixtures.connectivity_report([]))
+        result = _run("implement", self.workspace, self.base_state_path, self._site("#!/bin/sh\nexit 0\n"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        sealed = json.loads((self.workspace / "state" / "merge-commit.json").read_text())
+        self.assertEqual(sealed["id"], merge_commit["id"])
+        self.assertEqual(sealed["choice"]["arm"], "merged")
+        self.assertEqual((impl_root / "eco" / "netlist.tcl").read_text(), "ecoChangeCell -inst U1 -cell BUFX2\n")
+        self.assertTrue((impl_root / "eco" / "physical.tcl").is_file())
+        innovus = (impl_root / "innovus-eco.tcl").read_text()
+        self.assertIn(f'set env(NETLIST_ECO) "{impl_root / "eco" / "netlist.tcl"}"', innovus)
+        self.assertIn("source $env(NETLIST_ECO)\nsource $env(PHYSICAL_ECO)\nsetNanoRouteMode -routeWithEco true",
+                      innovus)
+        self.assertFalse((impl_root / "eco.tcl").exists())
+
+    def test_implement_refuses_a_pair_that_changed_after_the_batch_was_sealed(self):
+        self.assertEqual(self._prepare().returncode, 0)
+        merged_eco = self._write_arm("merged", -0.01)
+        self._write_arm("control", -0.03)
+        self.assertEqual(_run("reconcile", self.workspace).returncode, 0)
+        (merged_eco / "atcs_batch_netlist_top.txt").write_text("ecoChangeCell -inst U1 -cell BUFX8\n",
+                                                               encoding="utf-8")
+        result = _run("implement", self.workspace, self.base_state_path, self._site("#!/bin/sh\nexit 0\n"))
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr)["code"], "identity-mismatch")
+        self.assertFalse((self.workspace / "state" / "merge-commit.json").exists())
+
+    def test_reconcile_falls_back_to_control_when_the_merged_pair_is_unsafe(self):
+        self.assertEqual(self._prepare().returncode, 0)
+        self._write_arm("merged", 0.0, netlist="FORMATVERSION 2\n")
+        self._write_arm("control", -0.03)
+        result = _run("reconcile", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = json.loads((self.workspace / "state" / "integration-state.json").read_text())
+        self.assertEqual(state["chosen"]["arm"], "control")
+        self.assertIn("FORMATVERSION", state["chosen"]["reason"])
+
+    def test_an_unexpected_error_in_one_arm_is_recorded_and_the_other_arm_still_runs(self):
+        calls = []
+
+        def fake_run_tool(site_profile, command, cwd, log_path, shell_env=None):
+            calls.append(Path(cwd).name)
+            if Path(cwd).name == "control":
+                raise RuntimeError("wrapper vanished")
+            return log_path
+
+        site = self._site("#!/bin/sh\nexit 0\n")
+        with mock.patch.object(atcs_cli.adapters, "run_tool", side_effect=fake_run_tool):
+            code = atcs_cli.main(["replay-prepare", str(self.workspace), str(self.base_state_path),
+                                  str(self.plan_path), str(site)])
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(calls), ["control", "merged"])
+        receipts = json.loads((self.workspace / "state" / "replay-receipts.json").read_text())
+        self.assertNotIn("toolFailure", receipts["arms"]["merged"])
+        self.assertIn("RuntimeError: wrapper vanished", receipts["arms"]["control"]["toolFailure"]["detail"])
+
+    def test_reconcile_refuses_when_no_arm_left_an_eco_pair(self):
+        self.assertEqual(self._prepare().returncode, 0)
+        result = _run("reconcile", self.workspace)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stderr)["code"], "missing-input")
 
 
 if __name__ == "__main__":

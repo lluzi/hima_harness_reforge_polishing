@@ -1,0 +1,8 @@
+id: atcs-contribution-index
+version: "1"
+file: tools/read-atcs.py
+argv: [/usr/bin/python3, '${READER}', 'contribution-index', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: atcs-contribution-index/1
+emits:
+  - tc_ready_contribution_count
+  - tc_pending_research_count

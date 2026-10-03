@@ -237,6 +237,8 @@ export interface DecisionView {
   readonly chosen: DecisionChoice;
   readonly rationale: Readonly<Record<string, number>>;
   readonly agent?: DecisionRecord['agent'];
+  /** Host-validated required Judge scope, when retained in the completed execution receipt. */
+  readonly requiredVerdictIds?: readonly string[];
   readonly cites: readonly string[];
 }
 
@@ -695,6 +697,7 @@ export interface RemoteOperations {
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
   readRunAssets?(runId: string): Promise<import('./experience.js').ReadRunAssetsResult>;
+  readEngineeringAsset?(runId: string, executionId: string, requestId: string, artifactId: string, treeId?: string, download?: boolean): Promise<import('./engineering-executor.js').EngineeringAssetRead>;
   readArchivedMaterial?(runId: string, relative: string): Promise<import('./experience.js').ReadArchivedMaterialResult>;
   /** Browser-session owner review only; not an Agent confirmation tool. */
   packTransfer?(request: PackTransferBody): import('./release.js').PackTransferReview;
@@ -855,7 +858,13 @@ function resumeView(record: ResumedRecord): ResumeView {
   return { recordId: record.id, at: record.at, nodeId: record.nodeId, who: record.who };
 }
 
-function decisionView(record: DecisionRecord): DecisionView {
+function decisionView(record: DecisionRecord, run: RunRecord): DecisionView {
+  const receipt = record.agent === undefined ? undefined : Object.values(run.control?.requests ?? {}).findLast(request =>
+    request.state === 'done' && request.actor === record.agent!.sessionId && request.receipt.action === 'complete'
+    && request.receipt.executionId === record.agent!.executionId)?.receipt;
+  const scope = (receipt?.data as { requiredVerdictIds?: unknown } | undefined)?.requiredVerdictIds;
+  const requiredVerdictIds = Array.isArray(scope) && scope.length > 0 && scope.every(id => typeof id === 'string')
+    && new Set(scope).size === scope.length ? scope as string[] : scope === undefined ? undefined : [];
   return {
     recordId: record.id,
     at: record.at,
@@ -865,6 +874,7 @@ function decisionView(record: DecisionRecord): DecisionView {
     chosen: record.chosen,
     rationale: record.rationale,
     ...(record.agent === undefined ? {} : { agent: record.agent }),
+    ...(requiredVerdictIds === undefined ? {} : { requiredVerdictIds }),
     cites: record.cites,
   };
 }
@@ -981,7 +991,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
     // A restart is shown with the revisions it resembles, not as a blocker resume.
     resumes: records.filter((r): r is ResumedRecord => r.type === 'resumed' && r.kind !== 'restart').map(resumeView),
-    decision: decision ? decisionView(decision) : null,
+    decision: decision ? decisionView(decision, run) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
     analyses: records.flatMap(record => record.type === 'analysis' ? [{ ...record.analysis, recordId: record.id, at: record.at, sessionId: record.sessionId, nodeId: record.nodeId, ...(record.generation===undefined?{}:{generation:record.generation}), ...(record.loopId===undefined?{}:{loopId:record.loopId}) }] : []),
@@ -1173,7 +1183,8 @@ interface Answer {
    * JSON string. A failure on that route is still JSON, like every other failure here: an error is
    * the namespace's own answer and not the artefact.
    */
-  readonly media?: 'text/markdown';
+  readonly media?: 'text/markdown' | 'application/octet-stream';
+  readonly filename?: string;
 }
 
 const ok = (body: unknown): Answer => ({ status: 200, body });
@@ -1839,6 +1850,18 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     if (method !== 'GET' || !ops.readRunAssets || !ops.readArchivedMaterial) return failure(405, 'hima/bad-request', 'archive reads require GET on a supporting Host');
     const runId = decoded(archive[1]!, 'run id');
     if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId}`);
+    const artifactId = url.searchParams.get('artifact');
+    if (artifactId !== null) {
+      const executionId = url.searchParams.get('execution'), requestId = url.searchParams.get('delivery');
+      if (!ops.readEngineeringAsset || !executionId || !requestId) return failure(400, 'hima/bad-request', 'engineering asset needs its recorded execution and delivery');
+      try {
+        const asset = await ops.readEngineeringAsset(runId, executionId, requestId, artifactId, url.searchParams.get('tree') ?? undefined, url.searchParams.get('format') === 'download');
+        if (asset.kind === 'directory') return ok({ asset });
+        if (url.searchParams.get('format') === 'download') return { status: 200, body: asset.bytes, media: 'application/octet-stream', filename: asset.ref.path.split('/').at(-1) };
+        const { bytes: _bytes, ...preview } = asset;
+        return ok({ asset: preview });
+      } catch (error) { return failure(409, 'hima/material-changed', (error as Error).message); }
+    }
     const relative = url.searchParams.get('material');
     const result = relative === null ? await ops.readRunAssets(runId) : await ops.readArchivedMaterial(runId, relative);
     if (result.kind === 'read') return ok(result);
@@ -1927,9 +1950,11 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
 
 function send(res: ServerResponse, answer: Answer): void {
   const markdown = answer.media === 'text/markdown';
-  const body = markdown ? String(answer.body) : JSON.stringify(answer.body);
+  const binary = answer.media === 'application/octet-stream';
+  const body = binary ? Buffer.from(answer.body as Uint8Array) : markdown ? String(answer.body) : JSON.stringify(answer.body);
   res.writeHead(answer.status, {
-    'content-type': markdown ? 'text/markdown; charset=utf-8' : 'application/json; charset=utf-8',
+    'content-type': binary ? 'application/octet-stream' : markdown ? 'text/markdown; charset=utf-8' : 'application/json; charset=utf-8',
+    ...(binary ? { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(answer.filename ?? 'engineering-artifact').replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`, 'content-length': String(Buffer.byteLength(body)) } : {}),
     'cache-control': 'no-store',
   });
   res.end(body);

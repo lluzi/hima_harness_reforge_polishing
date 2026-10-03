@@ -16,6 +16,7 @@ pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.
 | local | L1/L2；真实 Host、HTTP、本地文件、独立 tmux 作业及 stand-in。需要 tmux、make 和相关本地报告副本；无需 SSH 凭据、Electron、模型或 EDA | `pnpm run test:local` |
 | desktop | 含真实 Electron driver 的文件，暂时连同这些文件中的较低成本用例保留。需要桌面环境和 Electron | `pnpm run test:desktop` |
 | live-site | `ssh.live.test.ts`、`jobs.live.test.ts`、`pack.live.test.ts`；真实 SSH、远端 `make -v`/tmux、约 56 MB 的流程复制与测试目录清理 | `pnpm run test:live:site` |
+| live-model | L4 真实模型、无 EDA：`child-compaction.live.test.ts` 以 App 组合（web-app 层，`standard` preset）经 Run 委派创建子会话，在 deepseek-flash 上经历真实压缩后从检查点续作并复述身份；阈值仅在本进程内按 0.80/0.16 形状缩放。需要启动环境中的 `DEEPSEEK_API_KEY`，缺少则 skip（不是通过）；`HIMA_LIVE_EVIDENCE_DIR` 可保存证据 | `pnpm run test:live:model` |
 
 后两组按分级政策单独选择。不要使用 `test/contract/**/*.test.ts` 全量 glob，也不要用 `--test-name-pattern` 当作外部依赖隔离手段：模块注册发生在名称过滤之前。live 文件另有显式选择检查，误用直接 glob 会在探测前失败。
 

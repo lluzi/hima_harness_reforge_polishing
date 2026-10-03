@@ -19,7 +19,11 @@ spec = importlib.util.spec_from_file_location("admin_verifier", VERIFIER)
 verify_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(verify_module)
 
-class VerifierTest(unittest.TestCase):
+class _VerifierFixture(unittest.TestCase):
+    """A prepared Campaign workspace and slot w01, and the verifier run against them."""
+
+    DEF_TEXT = "synthetic input\n"
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -32,6 +36,7 @@ class VerifierTest(unittest.TestCase):
         self.expected_flow = verify_module.flow_hash(self.w / "flow")
         for name in ("db.enc", "net.v", "design.def", "design.sdc", "rc.spef"):
             (self.w / name).write_text("synthetic input\n")
+        (self.w / "design.def").write_text(self.DEF_TEXT)
         (self.w / "db.enc.dat").mkdir()
         (self.w / "db.enc.dat/data").write_text("synthetic DB\n")
         self.base = state.design_state({"top": "top", "stage": "postroute", "root": str(self.w),
@@ -54,9 +59,9 @@ class VerifierTest(unittest.TestCase):
         compiled = adapters.compile_xtop_site_context(self.profile, ["slow"])
         context_root = self.w / "research/observe/g1"
         context_root.mkdir(parents=True)
-        library = context_root / "library.tcl"
+        library = self.library = context_root / "library.tcl"
         library.write_text(compiled["libraryTcl"])
-        timing = context_root / "sta_data"
+        timing = self.timing = context_root / "sta_data"
         timing.mkdir()
         (timing / "slow_data_finish").write_text("synthetic timing\n")
         self.context = core.stamp("xtop-context", {"designStateId": self.base["id"], "requiredScenarios": ["slow"],
@@ -65,41 +70,91 @@ class VerifierTest(unittest.TestCase):
             "libraryFiles": compiled["libraryFiles"], "siteMap": compiled["siteMap"],
             "removableFillers": compiled["removableFillers"], "ecoParameters": compiled["ecoParameters"]})
         core.write_artifact(self.w / "state/xtop-context.json", self.context)
-        package = workspaces.validate_work_package({"taskId": "w01", "baseStateId": self.base["id"],
-            "problem": "synthetic", "targets": [], "editDomain": {"instances": ["U1"], "nets": [], "regions": []},
-            "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
-            "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1}}, self.base, self.profile)
+        self.prepare_slot("w01")
+
+    def prepare_slot(self, slot, parked=False):
+        """Prepare one slot exactly as `prepare-workers` does (Issue #64: w01..w06, expert fields)."""
+        if parked:
+            raw = {"taskId": slot, "baseStateId": self.base["id"], "parked": True, "problem": "no blocker"}
+        else:
+            raw = {"taskId": slot, "baseStateId": self.base["id"],
+                "problem": "synthetic", "targets": [], "editDomain": {"instances": ["U1"], "nets": ["n1"],
+                "regions": [[0, 0, 10.5, 20]]}, "protected": {"instances": [], "nets": []}, "mayAffect": [],
+                "actions": ["size_cell"], "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1},
+                "targetPins": ["U2/D"], "scope": {"commands": list(workspaces.MUTATE_COMMANDS),
+                "maxMutations": workspaces.SCOPE_MAX_MUTATIONS}, "observe": "full"}
+        package = workspaces.validate_work_package(raw, self.base, self.profile)
         manifest = workspaces.prepare(package, str(self.w), self.base)
         self.slot = self.w / manifest["root"]
-        runtime_context = dict(self.context)
-        runtime_context["libraryTcl"] = {**self.context["libraryTcl"], "path": str(library)}
-        runtime_context["staData"] = {**self.context["staData"], "path": str(timing)}
-        operator = adapters.compile_xtop_operator_task(manifest, "top", self.profile["techLef"],
-            self.profile["cellLefGlob"], str(self.w / "net.v"), str(self.w / "design.def"), str(self.slot), runtime_context)
-        (self.slot / "operator.tcl").write_text(operator["tcl"])
-        manual = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"],
-            self.slot / "operator.tcl", self.slot / "ops.jsonl")
-        self.manual = self.slot / "xtop-analysis-manual.tcl"
-        self.manual.write_text(manual["tcl"])
-        self.index = {"workers": {"w01": {"workspaceManifest": manifest, "workPackage": package,
-            "workPackageId": package["id"], "manifestId": manifest["id"],
-            "root": manifest["root"], "namePrefix": manifest["namePrefix"], "sessionTcl": str(self.manual),
-            "sessionTclSha256": core.file_sha256(self.manual), "opsLog": str(self.slot / "ops.jsonl")}}}
+        entry = {"workspaceManifest": manifest, "workPackage": package, "workPackageId": package["id"],
+            "manifestId": manifest["id"], "root": manifest["root"], "namePrefix": manifest["namePrefix"]}
+        if parked:
+            entry["parked"] = True
+        else:
+            runtime_context = dict(self.context)
+            runtime_context["libraryTcl"] = {**self.context["libraryTcl"], "path": str(self.library)}
+            runtime_context["staData"] = {**self.context["staData"], "path": str(self.timing)}
+            operator = adapters.compile_xtop_operator_task(manifest, "top", self.profile["techLef"],
+                self.profile["cellLefGlob"], str(self.w / "net.v"), str(self.w / "design.def"), str(self.slot),
+                runtime_context)
+            (self.slot / "operator.tcl").write_text(operator["tcl"])
+            # The same call `prepare-workers` makes (atcs_cli._cmd_prepare_workers).
+            manual = adapters.compile_xtop_analysis_manual_task(manifest, package["editDomain"],
+                self.slot / "operator.tcl", self.slot / "ops.jsonl", target_pins=package.get("targetPins"),
+                max_mutations=package["scope"].get("maxMutations"), observe=package.get("observe"))
+            self.manual = self.slot / "xtop-analysis-manual.tcl"
+            self.manual.write_text(manual["tcl"])
+            entry.update(sessionTcl=str(self.manual), sessionTclSha256=core.file_sha256(self.manual),
+                         opsLog=str(self.slot / "ops.jsonl"))
+        self.index = getattr(self, "index", {"workers": {}})
+        self.index["workers"][slot] = entry
         self.index_path = self.w / "state/workers.json"
         self.index_path.write_text(json.dumps(self.index))
 
-    def run_verifier(self):
-        return subprocess.run([sys.executable, "-I", str(VERIFIER), "--workspace", str(self.w), "--slot", "w01",
+    def run_verifier(self, slot="w01"):
+        return subprocess.run([sys.executable, "-I", str(VERIFIER), "--workspace", str(self.w), "--slot", slot,
             "--flow", self.expected_flow, "--profile", str(self.profile_path),
             "--profile-hash", core.file_sha256(self.profile_path), "--admin-root", str(self.admin)],
             capture_output=True, text=True)
 
+
+class VerifierTest(_VerifierFixture):
     def test_untouched_fixture_produces_readonly_admin_startup_and_slot_identity(self):
         result = self.run_verifier()
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
         self.assertTrue(Path(receipt["startup"]).is_relative_to(self.admin))
         self.assertEqual(receipt["slotRoot"], str(self.slot))
+
+    def test_expert_session_fields_are_regenerated_identically(self):
+        # Issue #64 Task 4: the session Tcl bakes targetPins, scope.maxMutations and observe.
+        text = self.manual.read_text()
+        self.assertIn("set ::EDIT_DOMAIN_PINS {U2/D}", text)
+        budget = f"set ::ATCS_MAX_MUTATIONS {{{workspaces.SCOPE_MAX_MUTATIONS}}}"
+        self.assertIn(budget, text)
+        self.assertIn("set ::ATCS_OBSERVE {full}", text)
+        result = self.run_verifier()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        startup = Path(json.loads(result.stdout)["startup"]).read_text()
+        for line in ("set ::EDIT_DOMAIN_PINS {U2/D}", budget, "set ::ATCS_OBSERVE {full}"):
+            self.assertIn(line, startup)
+
+    def test_sixth_slot_is_verified(self):
+        self.prepare_slot("w06")
+        result = self.run_verifier("w06")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["slotRoot"], str(self.slot))
+
+    def test_seventh_slot_is_refused(self):
+        result = self.run_verifier("w07")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown slot", result.stderr)
+
+    def test_parked_slot_is_refused(self):
+        self.prepare_slot("w04", parked=True)
+        result = self.run_verifier("w04")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("parked", result.stderr)
 
     def test_changed_helper_is_refused_without_executing_it(self):
         sentinel = self.root / "executed"
@@ -108,14 +163,18 @@ class VerifierTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(sentinel.exists())
 
-    def test_manual_tcl_and_record_hash_changed_together_are_refused(self):
-        self.manual.write_text("exec arbitrary-command\n")
-        self.index["workers"]["w01"]["sessionTclSha256"] = core.file_sha256(self.manual)
-        self.index_path.write_text(json.dumps(self.index))
+    def test_a_prepared_session_tcl_that_differs_from_its_recorded_hash_is_refused(self):
+        self.manual.write_text(self.manual.read_text() + "exec arbitrary-command\n")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from its recorded sha256", result.stderr)
+
+    def test_a_missing_operator_tcl_is_refused(self):
+        (self.slot / "operator.tcl").unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
-    def test_operator_tcl_change_is_refused(self):
-        (self.slot / "operator.tcl").write_text("exec arbitrary-command\n")
+    def test_a_missing_session_tcl_is_refused(self):
+        self.manual.unlink()
         self.assertNotEqual(self.run_verifier().returncode, 0)
 
     def test_sibling_slot_manifest_is_refused(self):
@@ -222,6 +281,228 @@ class VerifierTest(unittest.TestCase):
         cache.mkdir()
         (cache / "core.cpython-312.pyc").write_bytes(b"untrusted cache")
         self.assertEqual(self.run_verifier().returncode, 0)
+
+
+# A base DEF the Pack reads: row pitch 1152 DBU at 2000 DBU/um = 0.576 um, so a plan instance's derived
+# region is its origin +- 4 rows (2.304 um) (`adapters.def_instance_regions`).
+PLACED_DEF = """VERSION 5.8 ;
+DESIGN top ;
+UNITS DISTANCE MICRONS 2000 ;
+DIEAREA ( 0 0 ) ( 400000 400000 ) ;
+ROW core_row_0 core 0 0 N DO 1000 BY 1 STEP 280 0 ;
+ROW core_row_1 core 0 1152 FS DO 1000 BY 1 STEP 280 0 ;
+COMPONENTS 2 ;
+ - U1 SOME_CELL + PLACED ( 20000 40000 ) N ;
+ - U9 SOME_CELL + FIXED ( 1000 1000 ) N ;
+END COMPONENTS
+END DESIGN
+"""
+
+
+class PackPreparedSlotTest(_VerifierFixture):
+    """T05 (#64 attempt 5, #66 D2): every operate-worker job exited 3 with "generated Tcl differs from
+    independent regeneration" before any Agent command: the verifier recompiled the session Tcl without the
+    ATCS-09 lines prepare-workers bakes (EDIT_DOMAIN_LOCAL, ATCS_LOCAL_FANOUT_MAX, derived regions). The
+    prepared session Tcl and operator.tcl are Runtime-owned inputs: the verifier keeps its static checks and
+    starts XTop from the prepared bytes. Here the head's real `prepare-workers` prepares the slot."""
+
+    DEF_TEXT = PLACED_DEF
+
+    def prepare_with_pack(self, regions=()):
+        packages = {slot: {"taskId": slot, "baseStateId": self.base["id"], "parked": True, "problem": "none"}
+                    for slot in workspaces.TASK_IDS}
+        packages["w02"] = {"taskId": "w02", "baseStateId": self.base["id"], "problem": "synthetic", "targets": [],
+            "editDomain": {"instances": ["U1"], "nets": ["n1"], "regions": [list(r) for r in regions]},
+            "protected": {"instances": [], "nets": []}, "mayAffect": [], "actions": ["size_cell"],
+            "budget": {"xtopMinutes": 1, "queries": 1, "attempts": 1}, "targetPins": ["U2/D"],
+            "scope": {"commands": list(workspaces.MUTATE_COMMANDS), "maxMutations": workspaces.SCOPE_MAX_MUTATIONS},
+            "observe": "fast"}
+        plan = self.root / "campaign-plan.json"
+        plan.write_text(json.dumps({"candidate": {"workPackages": packages, "reason": "r"}}))
+        result = subprocess.run([sys.executable, str(self.w / "flow/atcs_cli.py"), "prepare-workers", str(self.w),
+            str(self.w / "state/working-state.json"), str(self.profile_path), str(self.profile_path), str(plan)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.index_path = self.w / "state/workers.json"
+        self.index = json.loads(self.index_path.read_text())
+        entry = self.index["workers"]["w02"]
+        self.slot = self.w / entry["root"]
+        self.manual = Path(entry["sessionTcl"])
+        return entry
+
+    def test_a_pack_prepared_slot_with_the_atcs09_lines_starts_from_its_prepared_bytes(self):
+        entry = self.prepare_with_pack()
+        self.assertIs(entry["localTopology"], True)
+        self.assertEqual(entry["derivedRegions"], [[7.696, 17.696, 12.304, 22.304]])
+        prepared = self.manual.read_bytes()
+        for line in (b"set ::EDIT_DOMAIN_LOCAL {1}\n", b"set ::ATCS_LOCAL_FANOUT_MAX {12}\n",
+                     b"set ::EDIT_DOMAIN_REGIONS {7.696 17.696 12.304 22.304}"):
+            self.assertIn(line, prepared)
+        result = self.run_verifier("w02")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt["slotRoot"], str(self.slot))
+        startup = Path(receipt["startup"])
+        self.assertTrue(startup.is_relative_to(self.admin))
+        self.assertEqual(startup.read_bytes(), prepared)
+
+    def test_a_plans_own_regions_start_too(self):
+        self.prepare_with_pack(regions=[(0, 0, 5, 5)])
+        result = self.run_verifier("w02")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(json.loads(result.stdout)["startup"]).read_bytes(), self.manual.read_bytes())
+
+    def test_a_tampered_prepared_session_is_refused(self):
+        self.prepare_with_pack()
+        self.manual.write_text(self.manual.read_text().replace("{12}", "{100000}"))
+        result = self.run_verifier("w02")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from its recorded sha256", result.stderr)
+
+    def test_a_missing_base_input_is_refused(self):
+        self.prepare_with_pack()
+        (self.w / "design.sdc").unlink()
+        self.assertNotEqual(self.run_verifier("w02").returncode, 0)
+
+FRESH = Path(__file__).with_name("fresh-worker-slot.py")
+WRAPPER_V13 = Path(__file__).with_name("atcs-xtop-operator-v13.sh")
+WRAPPER_V14 = Path(__file__).with_name("atcs-xtop-operator-v14.sh")
+# #64 treatment attempt 1, slot w02: the 44 multiply linked files attempt 1's orphaned XTop left in
+# workspaces/w02/r1 (the retained `find -links +1` listing, one "<links> <inode> <path>" row each).
+STALE_LOCKS = REPO / "packs/agentic-timing-closure-system/flow/tests/live_fixtures/t01-w02-stale-locks-list.txt"
+
+
+class RetrySlotTest(_VerifierFixture):
+    """Every Operator attempt starts in a slot holding no earlier attempt (#64 treatment attempt 1, w02).
+
+    `prepare-workers` picks `workspaces/<slot>/r<N>` once per plan and the Harness retries the operate
+    node with the same argv, so attempt 2 met attempt 1's XTop workspaces and hard-linked locks: the
+    verifier refused it, and after a person cleared the locks attempt 4's XTop stopped at
+    `save_workspace` ("Directory exists"). The v13 wrapper runs `fresh-worker-slot.py` first."""
+
+    def leave_attempt_one(self):
+        """The shapes attempt 1 left in the slot: its XTop workspaces with the retained hard-linked
+        lock pairs, its session outputs and its private home."""
+        rows = [line.split() for line in STALE_LOCKS.read_text().splitlines() if line.strip()]
+        self.assertEqual(len(rows), 44)
+        by_inode = {}
+        for _links, inode, rel in rows:
+            by_inode.setdefault(inode, []).append(rel)
+        for first, *others in by_inode.values():
+            target = self.slot / first
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("lock\n")
+            for other in others:
+                os.link(target, self.slot / other)
+        (self.slot / "swerv_wrapper_operator_baseline").mkdir()
+        (self.slot / "swerv_wrapper_operator_baseline" / "workspace.db").write_text("baseline\n")
+        for name in ("ops.jsonl", "before.dump", "xtop_log_1.txt"):
+            (self.slot / name).write_text("attempt 1\n")
+        (self.slot / ".operator-home-2343326").mkdir()
+        return len(by_inode)
+
+    def run_fresh(self, slot="w01"):
+        return subprocess.run([sys.executable, "-I", str(FRESH), "--workspace", str(self.w), "--slot", slot],
+                              capture_output=True, text=True)
+
+    def test_the_retry_lands_in_the_same_round_directory_and_the_verifier_refuses_it(self):
+        pairs = self.leave_attempt_one()
+        self.assertEqual(pairs, 22)
+        package = self.index["workers"]["w01"]["workPackage"]
+        again = workspaces.prepare(package, str(self.w), self.base)
+        self.assertEqual(self.w / again["root"], self.slot, "prepare-workers returns the same r<N> for the retry")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("multiply linked", result.stderr)
+
+    def test_a_retry_starts_in_a_slot_holding_only_its_prepared_files(self):
+        self.leave_attempt_one()
+        result = self.run_fresh()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(sorted(path.name for path in self.slot.iterdir()),
+                         ["manifest.json", "operator.tcl", "xtop-analysis-manual.tcl"])
+        retired = Path(receipt["retired"])
+        self.assertEqual(retired, self.slot.with_name(self.slot.name + ".attempt-1"))
+        self.assertEqual(len([path for path in retired.rglob("*.exclusive.cdslck*")]), 44, "nothing is deleted")
+        self.assertIn("swerv_wrapper_operator_baseline", receipt["moved"])
+        verified = self.run_verifier()
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertEqual(json.loads(verified.stdout)["slotRoot"], str(self.slot))
+
+    def test_each_further_attempt_is_retired_beside_the_last(self):
+        self.leave_attempt_one()
+        self.assertEqual(self.run_fresh().returncode, 0)
+        (self.slot / "ops.jsonl").write_text("attempt 2\n")
+        second = json.loads(self.run_fresh().stdout)
+        self.assertEqual(Path(second["retired"]).name, self.slot.name + ".attempt-2")
+        self.assertEqual(second["moved"], ["ops.jsonl"])
+
+    def test_a_first_attempt_is_left_alone(self):
+        result = self.run_fresh()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["retired"], None)
+        self.assertFalse(self.slot.with_name(self.slot.name + ".attempt-1").exists())
+
+    def test_a_parked_slot_is_refused(self):
+        self.prepare_slot("w02", parked=True)
+        result = self.run_fresh("w02")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("parked", result.stderr)
+
+    def test_the_v13_wrapper_runs_the_step_pinned_before_the_verifier(self):
+        text = WRAPPER_V13.read_text()
+        self.assertIn("fresh_slot=/data/eda/project/hima_harness/operator-admin/atcs-v13/fresh-worker-slot.py", text)
+        self.assertIn("fresh_slot_sha256=", text)
+        self.assertLess(text.index('python3 -I "$fresh_slot"'), text.index('python3 -I "$verifier"'))
+        self.assertIn("operator-admin/atcs-v13/verify-worker-startup.py", text)
+
+
+
+class WrapperCloseV14Test(unittest.TestCase):
+    """#64 treatment attempt 2 (D-T02-2): v13 ran podman in the foreground, so its HUP/TERM trap fired only after
+    podman returned, and every Harness close left the container and its XTop running. v14 is v13 with the
+    container in the background and one close path for HUP, TERM, INT and EOF on stdin. The behaviour is
+    qualified on the Site (README); these pin the shape of the template that was installed."""
+
+    def setUp(self):
+        self.v13 = WRAPPER_V13.read_text()
+        self.v14 = WRAPPER_V14.read_text()
+
+    def test_every_close_is_trapped_before_the_container_starts_and_the_wrapper_waits_on_it(self):
+        launch = self.v14.index("podman run --rm -it")
+        for trap in ("trap leave EXIT", "trap 'close_session hangup' HUP", "trap 'close_session terminate' TERM",
+                     "trap 'close_session interrupt' INT"):
+            self.assertLess(self.v14.index(trap), launch, trap)
+        self.assertIn("""' -- "$session_tcl" 0<&0 &\npodman_pid=$!\n""", self.v14)
+        self.assertIn('wait -n -p ended "$podman_pid" "$stdin_pid"', self.v14)
+        self.assertIn("close_session stdin-eof", self.v14)
+        self.assertIn("poller.register(0, 0)", self.v14, "stdin is watched for hang-up without being read")
+
+    def test_a_close_stops_the_container_in_its_own_session_and_checks_nothing_remains(self):
+        self.assertIn('setsid --wait podman stop -t 20 -- "$container_name"', self.v14)
+        close = self.v14[self.v14.index("close_session() {"):self.v14.index("leave() {")]
+        self.assertLess(close.index("trap '' HUP INT TERM"), close.index("stop_container"))
+        self.assertLess(close.index("stop_container"), close.index("container_processes"))
+        self.assertLess(close.index("exit 5"), close.index("exit 0"))
+
+    def test_the_container_name_and_xtop_pid_are_written_to_the_slot(self):
+        self.assertIn('session_record="$slot_root/session.json"', self.v14)
+        self.assertIn('"container": name, "xtopPid"', self.v14)
+
+    def test_the_launch_and_every_pin_are_v13_s(self):
+        def launch(text):
+            return text[text.index("podman run --rm -it"):text.index("' -- \"$session_tcl\"")]
+        self.assertEqual(launch(self.v14), launch(self.v13))
+        pins = [line for line in self.v13.splitlines() if line.startswith(("image=", "adapter_sha256=", "flow_digest=",
+                "verifier_sha256=", "fresh_slot_sha256=", "site_profile=", "site_profile_sha256="))]
+        self.assertEqual(len(pins), 7)
+        for line in pins:
+            self.assertIn(line + "\n", self.v14)
+        self.assertLess(self.v14.index('python3 -I "$fresh_slot"'), self.v14.index('python3 -I "$verifier"'))
+        self.assertNotIn("atcs-v13", self.v14)
+        self.assertEqual(self.v14.count("operator-admin/atcs-v14/"), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ import {
   cancelDelegation, createDelegation, delegationToolDenial, followupDelegation, readDelegationResult, readDelegationTranscript,
   registerDelegationGuard, type DelegationAuthority, type DelegationContract, type DelegationRuntimePolicy,
   type DurableDelegationState, type EffectiveDelegationContract,
-} from '../../packages/harness/src/delegation.ts';
+} from '@hima/harness';
 import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { writeMomentScenario } from './support/moments.ts';

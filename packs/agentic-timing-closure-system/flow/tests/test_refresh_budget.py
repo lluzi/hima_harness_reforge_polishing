@@ -1,10 +1,11 @@
 """The physical-refresh budget: a reader-backed count a Judge caps by the Run's Goal value
-`max_physical_refreshes` (Issue #63 slice 2).
+`max_physical_refreshes` (Issue #63 slice 2, ported to Pack 0.2.0 for Issue #64 Track B).
 
-Live Ledger (Pack 0.2.0, same Harness semantics as 0.1.10): two `revisit-research` Explore
-decisions each consumed one Harness generation although no Innovus/StarRC/PrimeTime refresh
-ran, so `generationLimit` bounds revisits, not physical refreshes. `atcs.refresh` already
-counts completed refreshes in `state/refresh-ledger.json`, but nothing capped that count.
+Live Ledger (Pack 0.2.0, live02): two `revisit-research` Explore decisions each consumed one
+Harness generation although no Innovus/StarRC/PrimeTime refresh ran, so `generationLimit`
+bounds revisits, not physical refreshes. On this Pack the default cap is 2, the two full
+refreshes the #64 comparison is run with. `atcs.refresh` already counts completed refreshes
+in `state/refresh-ledger.json`, but nothing capped that count.
 
 This module pins the Pack side of the cap:
 
@@ -166,13 +167,13 @@ class RefreshBudgetDeclarationTest(unittest.TestCase):
         self.assertEqual(re.findall(r"^  - (\S+)$", text, re.M), [FACT])
 
     def test_semantics_declares_the_fact_in_count(self):
-        text = (PACK_DIR / "semantics.yml").read_text(encoding="utf-8")
+        text = (PACK_DIR / "legacy/0.2.10/semantics.yml").read_text(encoding="utf-8")
         match = re.search(rf"^  {FACT}:\n    unit: (\S+)$", text, re.M)
         self.assertIsNotNone(match)
         self.assertEqual(match.group(1), "count")
 
     def test_working_state_output_is_read_by_the_budget_reader(self):
-        text = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        text = (PACK_DIR / "legacy/0.2.10/contract.yml").read_text(encoding="utf-8")
         block = re.search(r"  - name: workingState\n    path: (\S+)\n    reader: (\S+)\n", text)
         self.assertIsNotNone(block, "workingState declares the refresh-budget reader")
         self.assertEqual(block.groups(), ("state/working-state.json", "atcs-refresh-budget"))
@@ -184,25 +185,27 @@ class RefreshBudgetDeclarationTest(unittest.TestCase):
         self.assertRegex(text, r"op: lt\n\s+threshold: \{ parameter: max_physical_refreshes \}\n\s+unit: count")
 
     def test_cap_is_a_goal_value_with_a_label_and_no_strategy_knob(self):
-        text = (PACK_DIR / "contract.yml").read_text(encoding="utf-8")
+        text = (PACK_DIR / "legacy/0.2.10/contract.yml").read_text(encoding="utf-8")
         goal = re.search(r"^goal:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
         strategy = re.search(r"^strategy:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
         words = re.search(r"^words:\n(.*?)(?=^\S)", text, re.S | re.M).group(1)
         self.assertIn(
-            "  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 1, precision: 0 }\n", goal)
+            "  max_physical_refreshes: { type: number, unit: count, min: 1, max: 4, default: 2, precision: 0 }\n", goal)
         self.assertRegex(words, r"\n  max_physical_refreshes: \{ label: [^,]+, unit: count \}")
         self.assertNotIn("refresh", strategy.lower())
         self.assertNotIn("refreshLimit", text)
 
-    def test_both_budget_judges_bind_the_cap_from_goal(self):
-        text = (PACK_DIR / "graph.yml").read_text(encoding="utf-8")
+    def test_the_one_budget_judge_binds_the_cap_from_goal_at_every_generation_start(self):
+        """ADR-0016: every generation holds one refresh, so one gate at the generation's start caps it."""
+        text = (PACK_DIR / "legacy/0.2.10/graph.yml").read_text(encoding="utf-8")
         binds = re.findall(
             r"^  - id: (check-refresh-budget\S*)\n    kind: judge\n    parameters:\n      rules: \[refresh-budget\]\n      bind: (.*)$",
             text, re.M)
         self.assertEqual(sorted(binds), [
             ("check-refresh-budget", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
-            ("check-refresh-budget-apr", "{ max_physical_refreshes: { from: goal, name: max_physical_refreshes } }"),
         ])
+        self.assertIn("{ from: decide, to: read-refresh-budget, revisit: true }", text)
+        self.assertIn("{ from: check-refresh-budget, to: wait-for-person, outcome: FAIL }", text)
 
 
 if __name__ == "__main__":

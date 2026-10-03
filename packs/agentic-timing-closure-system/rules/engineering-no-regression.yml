@@ -1,0 +1,6 @@
+id: engineering-no-regression
+version: "2"
+title: No timing or required global collateral regression is established
+requires: [{ type: tc_engineering_regression_count }]
+subject: { type: tc_engineering_regression_count }
+predicate: { op: eq, threshold: 0, unit: count }

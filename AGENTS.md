@@ -34,6 +34,10 @@ Site、Run、Knowledge 或测试切片前，必须阅读
 开始开发切片、派工或升级模型、安排测试与复核前，必须阅读
 `docs/agents/model-policy.md`，按其中的模型、Effort 与上下文规则执行。
 
+跨 Codex–Claude 协调或更换长上下文会话时，先读
+`docs/agents/codex-claude-coordination.md`，再读启动消息点名的唯一 active baton；
+不要用聊天历史代替交接状态。
+
 ### Issue tracker
 
 任务与任务规格使用 `lluzi/hima_harness_reforge_polishing` 的 GitHub Issues。

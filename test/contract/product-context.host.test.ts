@@ -40,9 +40,12 @@ test('the Host contributes stable product identity and a live, path-free Hima in
   }
 });
 
-test('the product context tells HimaGuide to answer identity from context without source discovery', () => {
-  assert.match(HIMA_PRODUCT_CONTEXT, /general-purpose chat and coding/i);
-  assert.match(HIMA_PRODUCT_CONTEXT, /Do not search source code, the filesystem or the web/);
-  assert.match(HIMA_PRODUCT_CONTEXT, /visible Campaign Agent owns execution decisions/);
+test('the shared product context stays role-neutral and sends bounded children to their granted professional facts', () => {
+  assert.match(HIMA_PRODUCT_CONTEXT, /current role, task, inputs, tools, budget and recipient/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Do not search product source code/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Guide serves the person.*Campaign owner coordinates.*bounded child performs/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Start one execution only once/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /status reply is one current snapshot.*yield instead of busy-polling/i);
+  assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /You are HimaGuide/i);
   assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /Fmax (?:improved|increased)|ready to run/i);
 });

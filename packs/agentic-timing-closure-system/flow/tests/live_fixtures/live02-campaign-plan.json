@@ -1,0 +1,289 @@
+{
+  "baseState": {
+    "database": {
+      "datDigest": "e86ef476761e162d2601c39ed4effc82331d2ea0feb4fd82ae662a4b0b78cfbe",
+      "path": "baseline/database/postroute_final.enc",
+      "sha256": "79d098156f87a6ecdfc6a3591ac20b9e9533091409b9dbf8cd09fcaa1f70bc9d"
+    },
+    "def": {
+      "path": "baseline/def/swerv_wrapper.postroute.def",
+      "sha256": "73e25dc78bb761de2ab2636ed25dead880f4e6761b41f41cc54d4941ebd6192b"
+    },
+    "id": "089c9d07c3338b120fa7",
+    "netlist": {
+      "path": "baseline/netlist/swerv_wrapper.postroute.v",
+      "sha256": "6c9ed3189d9012a29229af594c22f230818e40b52bb3f307cb66ae07dc812e86"
+    },
+    "parentId": null,
+    "scenarios": [
+      "func_ssg_rcworst_m40",
+      "func_ssg_rcworst_125",
+      "func_ffg_cbest_m40",
+      "func_ffg_cbest_125"
+    ],
+    "schema": "atcs.design-state/1",
+    "sdc": [
+      {
+        "path": "baseline/sdc/0/swerv_wrapper.input.sdc",
+        "sha256": "47b51fc7a7f2ea572c78cbd48645ded06c8b21f016ae8ea6e4ca541232f9b565"
+      }
+    ],
+    "spef": {
+      "cbest": {
+        "path": "baseline/spef/cbest/swerv_wrapper.cbest.spef",
+        "sha256": "3fc820b3a7c8e15413cc225cf1498fa80cabd214995dfd5a35f7cb9760845d7b"
+      },
+      "cworst_T": {
+        "path": "baseline/spef/cworst_T/swerv_wrapper.cworst_T.spef",
+        "sha256": "c4f610b1354c91c7c60290926efbc2be485f6fcdb089cc7a640521542c5c3cd6"
+      }
+    },
+    "stage": "postroute",
+    "tools": {
+      "innovus": "23.14",
+      "primetime": "PrimeTime X-2025.06",
+      "starrc": "StarRC X-2025.06-SP1",
+      "xtop": "XTop 2025.09.tmp15"
+    },
+    "top": "swerv_wrapper"
+  },
+  "candidate": {
+    "reason": "Blockers first: one active slot per required scenario's worst setup and worst hold check, worst slack taking the lowest slot. func_ssg_rcworst_m40 setup worst -0.1567 ns on ifu_axi_araddr[5]; func_ssg_rcworst_m40 hold worst -0.1531 ns on swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_; func_ssg_rcworst_125 hold worst -0.1382 ns on swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_; func_ssg_rcworst_125 setup worst -0.0851 ns on ifu_axi_araddr[4]; func_ffg_cbest_125 hold worst -0.0749 ns on swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_; func_ffg_cbest_m40 hold worst -0.0693 ns on swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_. 3 separable cluster(s) mapped onto 6 active slot(s); parked w04, w05, w06 for lack of a separable cluster. Clusters that would have shared an instance were merged into one slot rather than split, because two active slots may not share an instance or an edit-domain net. The edit domain is seeded with each blocker's owning instance and its nets are left for the worker session's own XTop read, which is free, before any mutation. Coverage gaps in this observation: func_ffg_cbest_m40|setup: no violated check observed; func_ffg_cbest_125|setup: no violated check observed.",
+    "workPackages": {
+      "w01": {
+        "admissibleActions": [
+          "size_cell",
+          "insert_buffer",
+          "delete_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "margin": 4,
+          "maxMutations": 120,
+          "note": "Working budget for the expert loop, not a token figure: six trials with one undo each when a trial does not gain, plus a margin of four for toolkit refusals (a refused mutation still costs one approved mutation).",
+          "trials": 6,
+          "undos": 6
+        },
+        "editDomain": {
+          "instances": [
+            "ifu_axi_araddr[4]",
+            "ifu_axi_araddr[5]",
+            "swerv_dma_ctrl",
+            "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff"
+          ],
+          "nets": [],
+          "regions": []
+        },
+        "mayAffect": [
+          "func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]"
+        ],
+        "observe": "fast",
+        "problem": "func_ssg_rcworst_125 and func_ssg_rcworst_m40 worst hold and setup blocker: the most negative observed slack is -0.1567 ns on func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_ (startpoint swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_, path group core_clock), out of 950 violated endpoint(s) in this scenario/mode. The cluster exists because plain auto-fix has not closed these endpoints; the first generation carries no batch fail reasons, so this session reads its own fail reasons after its first fix.",
+        "protectedObjects": [],
+        "scope": {
+          "commands": [
+            "atcs_dump_cells",
+            "atcs_ref",
+            "atcs_paths",
+            "atcs_fail_reasons",
+            "atcs_candidates",
+            "atcs_gain",
+            "atcs_size_cell",
+            "atcs_insert_buffer",
+            "atcs_remove_buffer",
+            "atcs_split_load",
+            "atcs_split_net",
+            "atcs_exchange_cell",
+            "atcs_fix_hold_pins",
+            "atcs_fix_setup_pins",
+            "atcs_export_changes",
+            "atcs_close",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "ifu_axi_araddr[4]",
+          "ifu_axi_araddr[5]",
+          "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_"
+        ],
+        "targets": [
+          "func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+          "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]",
+          "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+          "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]"
+        ],
+        "taskId": "w01-func_ssg_rcworst_125-func_ssg_rcworst_m40-hold+setup"
+      },
+      "w02": {
+        "admissibleActions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "margin": 4,
+          "maxMutations": 120,
+          "note": "Working budget for the expert loop, not a token figure: six trials with one undo each when a trial does not gain, plus a margin of four for toolkit refusals (a refused mutation still costs one approved mutation).",
+          "trials": 6,
+          "undos": 6
+        },
+        "editDomain": {
+          "instances": [
+            "swerv_dma_ctrl"
+          ],
+          "nets": [],
+          "regions": []
+        },
+        "mayAffect": [
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "observe": "fast",
+        "problem": "func_ffg_cbest_125 worst hold blocker: the most negative observed slack is -0.0749 ns on func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_ (startpoint dma_bus_clk_en, path group core_clock), out of 427 violated endpoint(s) in this scenario/mode. The cluster exists because plain auto-fix has not closed these endpoints; the first generation carries no batch fail reasons, so this session reads its own fail reasons after its first fix.",
+        "protectedObjects": [],
+        "scope": {
+          "commands": [
+            "atcs_dump_cells",
+            "atcs_ref",
+            "atcs_paths",
+            "atcs_candidates",
+            "atcs_gain",
+            "atcs_size_cell",
+            "atcs_insert_dummy",
+            "atcs_insert_buffer",
+            "atcs_fix_hold_pins",
+            "atcs_export_changes",
+            "atcs_close",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "targets": [
+          "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "taskId": "w02-func_ffg_cbest_125-hold"
+      },
+      "w03": {
+        "admissibleActions": [
+          "size_cell",
+          "insert_buffer"
+        ],
+        "baseStateId": "089c9d07c3338b120fa7",
+        "budget": {
+          "margin": 4,
+          "maxMutations": 120,
+          "note": "Working budget for the expert loop, not a token figure: six trials with one undo each when a trial does not gain, plus a margin of four for toolkit refusals (a refused mutation still costs one approved mutation).",
+          "trials": 6,
+          "undos": 6
+        },
+        "editDomain": {
+          "instances": [
+            "swerv_dma_ctrl"
+          ],
+          "nets": [],
+          "regions": []
+        },
+        "mayAffect": [
+          "func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "observe": "fast",
+        "problem": "func_ffg_cbest_m40 worst hold blocker: the most negative observed slack is -0.0693 ns on func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_ (startpoint dma_bus_clk_en, path group core_clock), out of 430 violated endpoint(s) in this scenario/mode. The cluster exists because plain auto-fix has not closed these endpoints; the first generation carries no batch fail reasons, so this session reads its own fail reasons after its first fix.",
+        "protectedObjects": [],
+        "scope": {
+          "commands": [
+            "atcs_dump_cells",
+            "atcs_ref",
+            "atcs_paths",
+            "atcs_candidates",
+            "atcs_gain",
+            "atcs_size_cell",
+            "atcs_insert_dummy",
+            "atcs_insert_buffer",
+            "atcs_fix_hold_pins",
+            "atcs_export_changes",
+            "atcs_close",
+            "atcs_undo"
+          ],
+          "maxMutations": 120
+        },
+        "targetPins": [
+          "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "targets": [
+          "func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_"
+        ],
+        "taskId": "w03-func_ffg_cbest_m40-hold"
+      },
+      "w04": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "No separable blocker cluster left: the required scenarios' worst setup and hold checks were already claimed by lower slots and active slots may not share an instance or an edit-domain net.",
+        "taskId": "w04-parked"
+      },
+      "w05": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "No separable blocker cluster left: the required scenarios' worst setup and hold checks were already claimed by lower slots and active slots may not share an instance or an edit-domain net.",
+        "taskId": "w05-parked"
+      },
+      "w06": {
+        "baseStateId": "089c9d07c3338b120fa7",
+        "parked": true,
+        "problem": "No separable blocker cluster left: the required scenarios' worst setup and hold checks were already claimed by lower slots and active slots may not share an instance or an edit-domain net.",
+        "taskId": "w06-parked"
+      }
+    }
+  },
+  "requiredScenarios": [
+    "func_ssg_rcworst_m40",
+    "func_ssg_rcworst_125",
+    "func_ffg_cbest_m40",
+    "func_ffg_cbest_125"
+  ],
+  "siteCapabilities": {},
+  "worstPerScenarioMode": {
+    "func_ffg_cbest_125|hold": {
+      "check": "func_ffg_cbest_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "slack": -0.0749,
+      "startpoint": "dma_bus_clk_en"
+    },
+    "func_ffg_cbest_m40|hold": {
+      "check": "func_ffg_cbest_m40|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "slack": -0.0693,
+      "startpoint": "dma_bus_clk_en"
+    },
+    "func_ssg_rcworst_125|hold": {
+      "check": "func_ssg_rcworst_125|hold|swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "endpoint": "swerv_dma_ctrl/GenFifo_3__fifo_done_bus_dff_dffsc_dout_reg_0_",
+      "slack": -0.1382,
+      "startpoint": "dma_bus_clk_en"
+    },
+    "func_ssg_rcworst_125|setup": {
+      "check": "func_ssg_rcworst_125|setup|ifu_axi_araddr[4]",
+      "endpoint": "ifu_axi_araddr[4]",
+      "slack": -0.0851,
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_2_"
+    },
+    "func_ssg_rcworst_m40|hold": {
+      "check": "func_ssg_rcworst_m40|hold|swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "endpoint": "swerv_lsu/bus_intf/bus_buffer/lsu_axi_rdata_ff_genblock_dff/dout_reg_59_",
+      "slack": -0.1531,
+      "startpoint": "lsu_axi_rdata[59]"
+    },
+    "func_ssg_rcworst_m40|setup": {
+      "check": "func_ssg_rcworst_m40|setup|ifu_axi_araddr[5]",
+      "endpoint": "ifu_axi_araddr[5]",
+      "slack": -0.1567,
+      "startpoint": "swerv_ifu/mem_ctl/miss_state_ff_dffs_dout_reg_0_"
+    }
+  }
+}

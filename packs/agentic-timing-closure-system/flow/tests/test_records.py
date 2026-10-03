@@ -20,11 +20,11 @@ import unittest
 from pathlib import Path
 
 PACK_ROOT = Path(__file__).resolve().parents[2]
-INTENT_PATH = PACK_ROOT / "INTENT.md"
-SPEC_PATH = PACK_ROOT / "SPEC.md"
-FABRIC_PATH = PACK_ROOT / "FABRIC.md"
-GRAPH_PATH = PACK_ROOT / "graph.yml"
-CONTRACT_PATH = PACK_ROOT / "contract.yml"
+INTENT_PATH = PACK_ROOT / "legacy/0.2.10/INTENT.md"
+SPEC_PATH = PACK_ROOT / "legacy/0.2.10/SPEC.md"
+FABRIC_PATH = PACK_ROOT / "legacy/0.2.10/FABRIC.md"
+GRAPH_PATH = PACK_ROOT / "legacy/0.2.10/graph.yml"
+CONTRACT_PATH = PACK_ROOT / "legacy/0.2.10/contract.yml"
 
 FABRIC_HEADINGS = ["Files written", "Gaps", "Reviews"]
 
@@ -72,36 +72,29 @@ SPEC_VALUE_NAMES = [
     "tc_applicable_constraint_unknown_count",
     "tc_fixed_check_count",
     "tc_missing_prior_check_count",
+    "tc_batch_guarantee_unevidenced",
     "tc_refresh_count",
     "tc_refreshes_completed",
     "tc_accepted_artifact_ready",
-    "tc_stop_required",
-    "tc_next_action",
+    "tc_slot_parked",
     "tc_selected_contribution_count",
 ]
 
-# The eleven base Judge rule ids plus the six single-predicate split-part ids that
-# the three compound rules (replay-consistent, final-evidence-ready,
-# required-constraints-pass) compile down to.
+# ADR-0016 (2026-09-29): the Judge rules the reshaped graph routes on -- identity, merge integrity
+# and the refresh-budget Goal cap, and the decision's evidence -- each named in SPEC "Judge rules".
 SPEC_RULE_IDS = [
     "inputs-ready",
-    "request-admissible",
-    "replay-consistent",
-    "composition-ready",
-    "presta-model-qualified",
-    "final-evidence-ready",
-    "required-constraints-pass",
-    "setup-goal",
-    "hold-goal",
-    "artifact-ready",
-    "continue-or-wait",
     "refresh-budget",
+    "request-admissible",
+    "request-checked",
+    "worker-result-admissible",
+    "composition-ready",
+    "composition-checked",
     "replay-consistent-mismatch",
     "replay-consistent-scope",
-    "final-evidence-ready-coverage",
     "final-evidence-ready-identity",
-    "required-constraints-pass-failures",
-    "required-constraints-pass-unknowns",
+    "setup-goal",
+    "hold-goal",
 ]
 
 
@@ -395,7 +388,7 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
     def test_every_graph_rule_has_a_rule_file(self):
         graph_rules = {rule for rules in yaml_key_lists(GRAPH_PATH.read_text(encoding="utf-8"), "rules") for rule in rules}
         self.assertTrue(graph_rules, "graph.yml names no rules at all; the parser found nothing")
-        missing = sorted(rule for rule in graph_rules if not (PACK_ROOT / "rules" / f"{rule}.yml").is_file())
+        missing = sorted(rule for rule in graph_rules if not (PACK_ROOT / "legacy/0.2.10/rules" / f"{rule}.yml").is_file())
         self.assertEqual(missing, [], f"graph.yml names rule(s) with no rules/<id>.yml: {missing}")
 
     def test_contract_rules_cover_graph_rules_and_have_files(self):
@@ -406,7 +399,7 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         graph_rules = {rule for rules in yaml_key_lists(GRAPH_PATH.read_text(encoding="utf-8"), "rules") for rule in rules}
         self.assertEqual(sorted(graph_rules - declared), [], "graph.yml applies rules contract.yml does not list")
         for rule in declared:
-            path = PACK_ROOT / "rules" / f"{rule}.yml"
+            path = PACK_ROOT / "legacy/0.2.10/rules" / f"{rule}.yml"
             self.assertTrue(path.is_file(), f"contract.yml lists {rule} with no {path.name}")
             self.assertIn(f"id: {rule}\n", path.read_text(encoding="utf-8"), f"{path.name} must declare id {rule}")
 
@@ -414,19 +407,19 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         text = GRAPH_PATH.read_text(encoding="utf-8")
         choosers = set(re.findall(r"chooser: ([a-z0-9-]+)", text))
         self.assertTrue(choosers)
-        missing = sorted(c for c in choosers if not (PACK_ROOT / "choosers" / f"{c}.yml").is_file())
+        missing = sorted(c for c in choosers if not (PACK_ROOT / "legacy/0.2.10/choosers" / f"{c}.yml").is_file())
         self.assertEqual(missing, [], f"graph.yml names chooser(s) with no choosers/<id>.yml: {missing}")
 
     def test_every_output_reader_has_a_reader_file(self):
         outputs = contract_outputs(CONTRACT_PATH.read_text(encoding="utf-8"))
         readers = [reader for _, reader in outputs if reader]
         self.assertTrue(readers, "contract.yml declares no output reader; the parser found nothing")
-        missing = sorted(r for r in readers if not (PACK_ROOT / "readers" / f"{r}.yml").is_file())
+        missing = sorted(r for r in readers if not (PACK_ROOT / "legacy/0.2.10/readers" / f"{r}.yml").is_file())
         self.assertEqual(missing, [], f"contract.yml names reader(s) with no readers/<id>.yml: {missing}")
 
     def test_every_reader_file_is_bound_to_an_output(self):
         bound = {reader for _, reader in contract_outputs(CONTRACT_PATH.read_text(encoding="utf-8")) if reader}
-        on_disk = {path.stem for path in (PACK_ROOT / "readers").glob("*.yml")}
+        on_disk = {path.stem for path in (PACK_ROOT / "legacy/0.2.10/readers").glob("*.yml")}
         self.assertEqual(sorted(on_disk - bound), [], "readers/ holds reader(s) no contract output uses")
 
     def test_tool_written_outputs_match_the_cli_path_table(self):
@@ -444,11 +437,12 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
             sys.path.remove(str(flow_dir))
         root = Path("/campaign")
         written = {str(path.relative_to(root)) for path in cli._paths(root).values()}
-        written |= {str(cli._contribution_path(root, slot).relative_to(root)) for slot in ("w01", "w02", "w03")}
+        written |= {str(cli._contribution_path(root, slot).relative_to(root)) for slot in cli.workspaces.TASK_IDS}
         declared = re.findall(r"^    path: (\S+)$", CONTRACT_PATH.read_text(encoding="utf-8"), re.M)
         tool_written = [path for path in declared if path.split("/")[0] in ("state", "accepted", "apr")]
         self.assertTrue(tool_written)
-        self.assertIn("state/apr-task.json", tool_written, "the one APR task output is state/apr-task.json")
+        # ADR-0016: the earlier-APR route is retired from the reference graph, and with it state/apr-task.json.
+        self.assertNotIn("state/apr-task.json", tool_written)
         self.assertEqual(sorted(set(tool_written) - written), [], "contract.yml declares tool outputs atcs_cli.py never writes")
 
     def test_next_decision_reader_admits_exactly_the_cli_apr_stages(self):
@@ -469,21 +463,27 @@ class CompiledMethodCrossCheckTest(unittest.TestCase):
         nodes, edges = graph_nodes_and_edges(GRAPH_PATH.read_text(encoding="utf-8"))
         first = {node: rules[0] for node, (kind, rules) in nodes.items() if kind == "judge" and rules}
         pass_to = {src: dst for src, dst, outcome in edges if outcome == "PASS"}
+        then = {}
+        for src, dst, outcome in edges:
+            if outcome is None:
+                then.setdefault(src, []).append(dst)
+        # ADR-0016: the final evaluation's checks are facts the one decision reads, not a routed chain;
+        # the replay's integrity pair stays a chain, each Judge also carrying the other rule so the
+        # owner's decision after it weighs two verdicts.
         chains = [
             ["replay-consistent-mismatch", "replay-consistent-scope"],
-            ["final-evidence-ready-coverage", "final-evidence-ready-identity",
-             "required-constraints-pass-failures", "required-constraints-pass-unknowns",
-             "setup-goal", "hold-goal"],
         ]
         for chain in chains:
-            # A gate that re-judges every part of the chain at once (goal-met-gate) is not a chain start.
-            starts = [node for node, rule in first.items()
-                      if rule == chain[0] and not set(chain) <= set(nodes[node][1])]
+            starts = [node for node, rule in first.items() if rule == chain[0]]
             self.assertTrue(starts, f"no judge starts the chain {chain}")
             for start in starts:
                 seen, node = [first[start]], start
                 while len(seen) < len(chain):
                     node = pass_to.get(node)
+                    # Issue #64 Task 5: a re-read before the next Judge (required after the worker
+                    # fork's join, packs.ts `exploreAfter`) is a pass-through act, not a break.
+                    while node in nodes and nodes[node][0] == "act" and len(then.get(node, [])) == 1:
+                        node = then[node][0]
                     if node not in first:
                         break
                     seen.append(first[node])

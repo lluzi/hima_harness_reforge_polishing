@@ -1,0 +1,6 @@
+id: worker-result-admissible
+version: "1"
+title: The worker slot sealed an admissible Contribution (a session, a no-fix or a parked no-fix)
+requires: [{ type: tc_worker_refusal_count }]
+subject: { type: tc_worker_refusal_count }
+predicate: { op: eq, threshold: 0, unit: count }
