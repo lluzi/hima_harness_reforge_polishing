@@ -97,24 +97,34 @@ export async function freePort(): Promise<number> {
 
 /**
  * Stop a child the way a host holding a session lock and an append-only writer should be stopped:
- * ask, wait, and only then insist.
+ * ask and wait for its ordered cleanup. A deadline does not prove the Host or database stopped.
  *
  * @param child - the process to stop.
- * @param graceMs - how long SIGTERM is given before SIGKILL.
+ * @param graceMs - how long to wait for confirmed shutdown before reporting an unconfirmed stop.
  * @returns the exit code, or null when the signal ended it.
  */
-export function stopChild(child: ChildProcess, graceMs = 4_000): Promise<number | null> {
-  return new Promise((resolve) => {
+export function stopChild(child: ChildProcess, graceMs = 30_000): Promise<number | null> {
+  return new Promise((resolve, reject) => {
     if (child.exitCode !== null || child.signalCode !== null) { resolve(child.exitCode); return; }
-    const insist = setTimeout(() => child.kill('SIGKILL'), graceMs);
-    child.once('close', (code) => { clearTimeout(insist); resolve(code); });
+    const ended = (code: number | null) => { clearTimeout(deadline); resolve(code); };
+    const deadline = setTimeout(() => {
+      child.off('close', ended);
+      reject(new Error(`Host shutdown was not confirmed within ${graceMs} ms. The original Host and database may still be running; their state and ownership were preserved.`));
+    }, graceMs);
+    child.once('close', ended);
     child.kill('SIGTERM');
   });
 }
 
-/** A booted hima host: the child, where it serves, and how to stop it. */
-export interface LaunchedHost {
+/** The child and its receipt-aware stop, available before the Host has become ready. */
+export interface SpawnedHost {
   readonly child: ChildProcess;
+  /** Stop with the same resource receipt check before and after readiness. */
+  stop(graceMs?: number): Promise<number | null>;
+}
+
+/** A booted hima host: its owned child, where it serves, and how to stop it. */
+export interface LaunchedHost extends SpawnedHost {
   /** The tokened URL the web app printed. Loading it once exchanges the token for a session cookie. */
   readonly url: string;
   /** That URL's origin, which is what every later request and every cookie belongs to. */
@@ -122,7 +132,7 @@ export interface LaunchedHost {
   readonly port: number;
   stdout(): string;
   stderr(): string;
-  /** SIGTERM, wait, then SIGKILL; resolves with the exit code. */
+  /** SIGTERM and wait for ordered shutdown; rejects if shutdown is unconfirmed. */
   stop(graceMs?: number): Promise<number | null>;
 }
 
@@ -140,7 +150,8 @@ export interface HostLaunchRequest {
   /** How long to wait for the host to print its URL and start answering. */
   readonly timeoutMs?: number;
   /**
-   * Called with the child the instant it exists, before this function has waited for anything.
+   * Called with the child and its receipt-aware stop as soon as their readers are attached,
+   * before this function has waited for readiness.
    *
    * A boot takes seconds and may take the whole timeout, and whoever asked for the host can be asked
    * to quit inside that window. A caller that only learns about the child when this promise resolves
@@ -148,7 +159,7 @@ export interface HostLaunchRequest {
    * *next* launch fails for a reason its message cannot explain. The child is published first and
    * waited for second, so there is no moment in which it is running unowned.
    */
-  readonly onSpawn?: (child: ChildProcess) => void;
+  readonly onSpawn?: (child: ChildProcess, lifecycle: SpawnedHost) => void;
 }
 
 /**
@@ -197,8 +208,6 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     env: req.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  // Published before anything is awaited, so a caller asked to quit mid-boot has something to stop.
-  req.onSpawn?.(child);
   let out = '';
   let err = '';
   // Both streams are scanned: dsh prints its URL on stdout, but a line that lands on stderr is still
@@ -206,6 +215,34 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
   // that was already serving.
   child.stdout!.on('data', (d) => { out += String(d); });
   child.stderr!.on('data', (d) => { err += String(d); });
+  const closed = new Promise<number | null>(resolve => { child.once('close', resolve); });
+  const lifecycle: SpawnedHost = {
+    child,
+    stop: async (graceMs) => {
+      await stopChild(child, graceMs);
+      const code = await closed;
+      const receipts = new Set(err.split('\n'));
+      if (code !== 0 || child.signalCode !== null
+        || !receipts.has(`hima: resource shutdown confirmed; pid=${child.pid}`)
+        || receipts.has(`hima: resource shutdown unconfirmed; pid=${child.pid}`)) {
+        throw new Error(`Host resource shutdown unconfirmed (exit ${code ?? child.signalCode}). The original Home and database may still be owned; inspect their retained state before reopening.`);
+      }
+      return code;
+    },
+  };
+  // Attach receipt readers before publishing the stop handle, including during startup.
+  req.onSpawn?.(child, lifecycle);
+  let spawnError: Error | undefined;
+  child.once('error', error => { spawnError = error; });
+  const checkAlive = (): void => {
+    if (spawnError) throw new HostLaunchError(`Host could not be spawned: ${spawnError.message}`, out, err);
+    if (child.exitCode !== null || child.signalCode !== null) throw new HostLaunchError(`dsh exited before startup with ${child.exitCode ?? child.signalCode}`, out, err);
+  };
+  const unconfirmed = async (reason: string): Promise<never> => {
+    let cleanup = '';
+    try { await lifecycle.stop(); } catch (error) { cleanup = `\n${String(error)}`; }
+    throw new HostLaunchError(`${reason}${cleanup}`, out, err);
+  };
   const printed = (): { url: string; token: string } | undefined => {
     for (const line of `${out}\n${err}`.split('\n')) {
       const found = extractLaunchUrl(line);
@@ -215,12 +252,9 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
   };
 
   const deadline = Date.now() + timeoutMs;
-  const started = await until(deadline, printed, () => {
-    if (child.exitCode !== null) throw new HostLaunchError(`dsh exited early with ${child.exitCode}`, out, err);
-  });
+  const started = await until(deadline, printed, checkAlive);
   if (!started) {
-    child.kill('SIGKILL');
-    throw new HostLaunchError(`dsh never printed its URL within ${timeoutMs} ms`, out, err);
+    return unconfirmed(`dsh readiness was not confirmed within ${timeoutMs} ms`);
   }
   const address = new URL(started.url);
   const origin = address.origin;
@@ -229,12 +263,9 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
   // probing a port nothing is listening on while `origin` pointed at the right one.
   const port = address.port === '' ? reserved : Number(address.port);
 
-  const serving = await until(deadline, async () => (await probe(origin)) === true || undefined, () => {
-    if (child.exitCode !== null) throw new HostLaunchError(`dsh exited with ${child.exitCode} before it answered`, out, err);
-  });
+  const serving = await until(deadline, async () => (await probe(origin)) === true || undefined, checkAlive);
   if (!serving) {
-    child.kill('SIGKILL');
-    throw new HostLaunchError(`dsh printed ${started.url} but never answered on ${origin}`, out, err);
+    return unconfirmed(`dsh printed its URL but never confirmed readiness on ${origin}`);
   }
 
   return {
@@ -244,7 +275,7 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     port,
     stdout: () => out,
     stderr: () => err,
-    stop: (graceMs) => stopChild(child, graceMs),
+    stop: lifecycle.stop,
   };
 }
 

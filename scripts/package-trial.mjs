@@ -6,9 +6,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
+import { packagePostgres } from './package-postgres.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const node24 = '/Users/lluzi/.local/node24/bin/node';
+const node24 = process.env.HIMA_NODE || process.execPath;
 const trialVersion = JSON.parse(readFileSync(path.join(root, 'packages/desktop/package.json'), 'utf8')).version;
 const macVersion = trialVersion.split('-')[0];
 const trialPackId = 'custom-cell-fmax-dtco';
@@ -342,6 +343,10 @@ function collect(base, current = base, files = {}) {
  */
 async function verifyBundleIdentity(app, manifest) {
   const resource = path.join(app, 'Contents/Resources/app');
+  const postgresManifest = path.join(resource, 'postgres/postgres-runtime.json');
+  if (!existsSync(postgresManifest) || manifest.runtimeInputs?.postgres?.manifestSha256 !== hash(postgresManifest)) fail('bundled PostgreSQL identity differs from the release manifest');
+  const postgres = JSON.parse(readFileSync(postgresManifest, 'utf8'));
+  if (postgres.version !== '16.15' || postgres.platform !== 'darwin-arm64') fail('bundled PostgreSQL version/platform is incompatible');
   const packsRoot = path.join(resource, 'packs');
   const recorded = manifest.runtimeInputs?.packs;
   if (!Array.isArray(recorded)) fail('manifest records no bundled Pack identities');
@@ -494,13 +499,14 @@ function smokeRelocatedHost(app) {
   const resource = path.join(app, 'Contents/Resources/app');
   const pdfFixture = readFileSync(path.join(root, 'test/fixtures/knowledge/eda-clock-guide.pdf')).toString('base64');
   const home = mkdtempSync(path.join(path.dirname(app), '.host-smoke-'));
+  let passed = false;
   try {
     const homeModule = pathToFileURL(path.join(resource, 'lib/hima-home.js')).href;
     const hostModule = pathToFileURL(path.join(resource, 'lib/host-launch.js')).href;
     const smoke = `
       import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
       import { himaHomeSources, prepareHimaHome } from ${JSON.stringify(homeModule)};
-      import { launchHimaHost, stopChild } from ${JSON.stringify(hostModule)};
+      import { launchHimaHost } from ${JSON.stringify(hostModule)};
       const home = ${JSON.stringify(home)};
       const workspace = home + '/workspace';
       const bundledPack = ${JSON.stringify(path.join(resource, trialPackRelative))};
@@ -560,11 +566,15 @@ function smokeRelocatedHost(app) {
         if (choices.proposal?.ready !== false || !Array.isArray(choices.proposal?.unknowns) || !choices.proposal.unknowns.some((item) => /No Site is selected/.test(item))) {
           throw new Error('cold candidate claimed Campaign readiness without a Site');
         }
-      } finally { await stopChild(host.child); }
+      } finally { await host.stop(); }
     `;
-    run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval', smoke], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' } });
+    run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval', smoke], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1', HIMA_POSTGRES_RUNTIME: path.join(resource, 'postgres') } });
+    passed = true;
     process.stdout.write('package-trial: relocated Host smoke passed\n');
-  } finally { rmSync(home, { recursive: true, force: true }); }
+  } finally {
+    if (passed) rmSync(home, { recursive: true, force: true });
+    else process.stderr.write(`package-trial: failed relocated Host smoke retained Home ${home}; inspect resource ownership before cleanup\n`);
+  }
 }
 
 async function smokeVersionIsolatedTrialHome(app) {
@@ -692,6 +702,10 @@ if (args.includes('--help') || args.includes('-h')) {
   const output = path.resolve(value('--output') ?? path.join(root, '.hima-tmp/pilot-release'));
   if (process.platform !== 'darwin' || process.arch !== 'arm64') fail('this builder must run on macOS arm64');
   if (!existsSync(node24)) fail(`Node 24 is unavailable at ${node24}`);
+  if (!/^v24\./.test(run(node24, ['--version']).trim())) fail('packaging requires Node 24; invoke this script with Node 24 or select HIMA_NODE');
+  const postgresPrefix = value('--postgres-prefix');
+  const postgresBuildManifest = value('--postgres-build-manifest');
+  if (!postgresPrefix || !postgresBuildManifest) fail('native PostgreSQL inputs required: --postgres-prefix <16.15 install> --postgres-build-manifest <pinned build identity.json>');
   if (['HimaHarness.app', 'trial-manifest.json', 'launch-hima-trial.command', 'COMPUTER-USE-START.md']
       .some(name => existsSync(path.join(output, name)))) fail(`refusing to overwrite an existing trial artifact in ${output}`);
   for (const built of ['packages/desktop/lib/main.js', 'packages/harness/lib/index.js', 'packages/harness/lib/client.js']) {
@@ -777,6 +791,7 @@ if (args.includes('--help') || args.includes('-h')) {
     symlinkSync('../node_modules/@hima/harness', path.join(resource, 'packages/harness'));
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
     cpSync(node24, path.join(resource, 'node/bin/node'));
+    const postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
@@ -798,6 +813,8 @@ if (args.includes('--help') || args.includes('-h')) {
       artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
       platform: 'macos-arm64', signing: 'ad-hoc, not notarized',
       runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
+        postgres: { version: postgres.version, platform: postgres.platform, source: postgres.source,
+          manifestSha256: hash(path.join(resource, 'postgres/postgres-runtime.json')) },
         bundledPacks: bundledPackIds, packs, atcsSite,
         atcsBinding: atcsBindingIds.length ? atcsBindingIds : atcsBindingNone,
         trialPack: { id: trialPackId, version: trialPack.version, methodDigest: trialPack.methodDigest,

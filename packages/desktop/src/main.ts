@@ -15,14 +15,13 @@
 // host is ready, no IPC for the remote page. The launch, readiness and stop patterns are in
 // `host-launch.ts`, which the contract suite boots hosts with too.
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type Session } from 'electron';
-import type { ChildProcess } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
-import { launchHimaHost, HostLaunchError, stopChild, type LaunchedHost } from './host-launch.js';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
+import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
 
@@ -186,8 +185,8 @@ interface WindowBounds { width: number; height: number; x?: number; y?: number }
 const defaultBounds: WindowBounds = { width: 1280, height: 860 };
 
 let host: LaunchedHost | undefined;
-/** The dsh child from the moment it is spawned, which is before the host is ready to be loaded. */
-let hostChild: ChildProcess | undefined;
+/** The owned child and resource stop are available before the host is ready to be loaded. */
+let spawnedHost: SpawnedHost | undefined;
 let stopping: Promise<number | null> | undefined;
 
 /**
@@ -493,16 +492,14 @@ function fenceVerdict(target: string, allowedOrigin: string | undefined): { read
 /**
  * Stop the host, once, however the app is ending.
  *
- * The child, not `host`: a boot takes seconds and can take the whole timeout, and a person who
- * closes the window inside that window would otherwise leave a dsh running with nothing left to stop
- * it — holding the home's session lock, so the *next* launch fails for a reason its message cannot
- * explain. `launchHimaHost` hands the child over the instant it is spawned, and that is what this
- * stops: SIGTERM, four seconds, then SIGKILL, the same way whichever end of the boot we are at.
+ * A boot takes seconds and can take the whole timeout. `launchHimaHost` publishes the child and
+ * its receipt-aware stop before readiness, so explicit Quit during boot has the same ordered
+ * resource confirmation as Quit after readiness.
  */
 function stopHost(): Promise<number | null> {
-  const child = host?.child ?? hostChild;
-  if (child === undefined) return Promise.resolve(null);
-  stopping ??= stopChild(child);
+  const lifecycle = host ?? spawnedHost;
+  if (lifecycle === undefined) return Promise.resolve(null);
+  stopping ??= lifecycle.stop().catch(error => { stopping = undefined; throw error; });
   return stopping;
 }
 
@@ -555,6 +552,7 @@ async function start(): Promise<void> {
   // support code. Now they are one module, this runs them, and it says what it did on the way past.
   const env = hostEnvironment();
   env.HIMA_DESKTOP_CONTROL_TOKEN = desktopExitToken;
+  env.HIMA_POSTGRES_RUNTIME = postgresRuntimeDirectory(env);
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
   // into a prepared home explicitly, which is how pilot validation is run.
   if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {
@@ -627,7 +625,7 @@ async function start(): Promise<void> {
       env,
       profile: HIMA_PROFILE,
       // Published the moment it is spawned, not when it is ready: see `stopHost`.
-      onSpawn: (child) => { hostChild = child; },
+      onSpawn: (_child, lifecycle) => { spawnedHost = lifecycle; },
     });
   } catch (err) {
     // Quitting mid-boot ends the child, which ends the launch in here: that is the person leaving,
@@ -636,7 +634,7 @@ async function start(): Promise<void> {
     // A host that failed to boot says why *in the window*. Its stderr in a console nobody opened is
     // the failure mode this shell exists to avoid: the window is the only surface there is.
     const said = err instanceof HostLaunchError ? `${err.reason}\n\n--- stdout ---\n${err.stdout}\n--- stderr ---\n${err.stderr}` : String(err);
-    await showFailure(win, 'The hima profile did not start', 'Nothing is running. This is what dsh said:', said);
+    await showFailure(win, 'The hima profile did not start', 'Startup was not confirmed. The original Home and database state are preserved. This is what dsh said:', said);
     return;
   }
   watchHostExit(win, host);
@@ -691,7 +689,7 @@ async function start(): Promise<void> {
 async function showFailure(win: BrowserWindow, heading: string, lead: string, said: string): Promise<void> {
   if (driver) {
     process.stderr.write(`hima-desktop: ${heading}\n${said}\n`);
-    await stopHost();
+    await stopHost().catch(error => { process.stderr.write(`hima-desktop: ${String(error)}\n`); });
     app.exit(EXIT_FAILED);
     return;
   }
@@ -759,9 +757,15 @@ async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:strin
 }
 
 async function finishAppExit():Promise<void> {
-  const win=BrowserWindow.getAllWindows()[0];if(!win||!host){quitting=true;await stopHost();app.quit();return;}
+  const win=BrowserWindow.getAllWindows()[0];
   let requestId=`desktop-${randomUUID()}`;
   try {
+    const child = (host ?? spawnedHost)?.child;
+    // A dead origin cannot supply job state. Still check retained resource receipts, then offer
+    // an honest exit if closure is unknown instead of retrying HTTP against the dead Host.
+    if (!win || !host || (child && (child.exitCode !== null || child.signalCode !== null))) {
+      quitting=true;await stopHost();app.quit();return;
+    }
     let appliedMode=requestedExitMode;
     let state=await exitRequest(win,{requestId,mode:appliedMode});
     if(!state.ready&&!driver){
@@ -778,9 +782,13 @@ async function finishAppExit():Promise<void> {
     }
     quitting=true;await stopHost();app.quit();
   } catch(error) {
-    exitPending=false;requestedExitMode='drain';
-    if(driver){process.stderr.write(`hima-desktop: exit could not verify job state: ${String(error)}\n`);quitting=true;await stopHost();app.exit(EXIT_FAILED);return;}
-    await dialog.showMessageBox(win,{type:'error',message:'Exit could not verify the current work.',detail:`${String(error)}\nThe Host remains open. Some Jobs may already have stopped; inspect their actual receipts before trying Quit again.`});
+    quitting=false;exitPending=false;requestedExitMode='drain';
+    if(driver){process.stderr.write(`hima-desktop: exit could not verify job or resource state: ${String(error)}\n`);quitting=true;await stopHost().catch(()=>undefined);app.exit(EXIT_FAILED);return;}
+    const child = (host ?? spawnedHost)?.child;
+    const ended = child !== undefined && (child.exitCode !== null || child.signalCode !== null);
+    if (!win) { process.stderr.write(`hima-desktop: exit resource state is unknown: ${String(error)}\n`);quitting=true;app.exit(EXIT_FAILED);return; }
+    const answer = await dialog.showMessageBox(win,{type:'error',message:'Exit could not verify the current work and resources.',detail:`${String(error)}\nThe original Home and database state are preserved. Some Jobs may already have stopped; inspect their actual receipts before reopening.${ended ? '\nThe Host has ended. Closing the App does not confirm resource shutdown.' : '\nThe Host may still be running; inspect it before trying Quit again.'}`,buttons:ended?['Close App','Keep App open']:['OK'],defaultId:ended?1:0,cancelId:ended?1:0});
+    if (ended && answer.response===0) { quitting=true;app.exit(EXIT_FAILED); }
   }
 }
 app.on('before-quit',event=>{

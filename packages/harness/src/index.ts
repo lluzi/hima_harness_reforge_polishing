@@ -43,6 +43,7 @@ const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
+import { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, type LocalDatabase } from './local-database.js';
 import { nativeSessionMemoryEvidence } from './native-session-memory.js';
 import { readExperience, readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge,
   recordExperienceAdoption, type ExperienceAdoptionRequest, type WorkMemoryScope, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
@@ -197,6 +198,8 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 // caller — the contract tests, the acceptance script — takes them from here rather than retyping
 // them by hand, where a drift in the host's answer would go unnoticed until a person read the JSON.
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
+export { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, POSTGRES_VERSION } from './local-database.js';
+export type { LocalDatabase, LocalDatabaseConnection } from './local-database.js';
 export { pickOwnedRun, isOwner, recordEndedSeenAt } from './run-ownership.js';
 export type {
   HimaErrorCode,
@@ -515,7 +518,41 @@ export default class Hima extends Service {
   }
 
   async [Service.init](): Promise<void> {
-    const domain = await this.ctx.storageDomain.open(ledgerSpec);
+    let databaseStarting: Promise<LocalDatabase>;
+    let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
+    let closing = false;
+    let closeHostResources = async () => {
+      const database = await databaseStarting;
+      try { if (domainStarting) await (await domainStarting).close(); }
+      finally { await database.stop(); }
+    };
+    // Cordis disposes independent effects concurrently: one ordered disposer owns both the
+    // application resources and PostgreSQL. Register before starting either resource: mid-boot
+    // disposal waits for their actual creation and then closes them instead of missing their owner.
+    this.ctx.effect(() => async () => {
+      closing = true;
+      try {
+        await closeHostResources();
+        // The vendor CLI may force exit zero after five seconds while disposal is still pending.
+        // Only this flushed positive receipt proves our entire ordered resource shutdown finished.
+        await new Promise<void>(resolve => { process.stderr.write(`hima: resource shutdown confirmed; pid=${process.pid}\n`, () => resolve()); });
+      } catch (error) {
+        await new Promise<void>(resolve => { process.stderr.write(`hima: resource shutdown unconfirmed; pid=${process.pid}\n`, () => resolve()); });
+        throw error;
+      }
+    }, 'hima: Host and local database lifetime');
+    // The same product-owned lifecycle is used by the headless profile and Electron's Host.
+    databaseStarting = startLocalDatabase({ home: localDatabaseHome(), runtimeDirectory: localDatabaseRuntime() });
+    const database = await databaseStarting;
+    if (closing) return;
+    const openingDomain = this.ctx.storageDomain.open(ledgerSpec);
+    domainStarting = openingDomain;
+    const domain = await openingDomain;
+    if (closing) return;
+    closeHostResources = async () => {
+      try { await domain.close(); }
+      finally { await database.stop(); }
+    };
     this.ledger = new Ledger(domain);
     // Product identity is a prompt contribution rather than a document the Agent has to discover.
     // The dynamic inventory is recomputed at assembly time, so installs and Campaign changes are
@@ -568,7 +605,7 @@ export default class Hima extends Service {
     // #64 D-T04-1: the existing kick, scheduled — a Run a non-kicking path left on a self-driving node
     // is picked up within one period (`Autopilot.sweep`).
     this.ctx.effect(() => { const timer = setInterval(() => this.autopilot?.sweep(), autopilotSweepMs); timer.unref?.(); return () => clearInterval(timer); });
-    this.ctx.effect(() => async () => {
+    closeHostResources = async () => {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
       for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
@@ -579,7 +616,9 @@ export default class Hima extends Service {
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
       await domain.close();
-    });
+      // U3 closes DBOS and its application pools here, before PostgreSQL is stopped.
+      await database.stop();
+    };
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.
     // A headless host has no web server and no browser session to guard it with, and still works.
     this.ctx.inject(['webServer', 'connection'], (webCtx) => {

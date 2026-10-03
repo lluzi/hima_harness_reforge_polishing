@@ -135,6 +135,12 @@ export function checkoutRoot(): string {
   return path.resolve(packageDir, '../..');
 }
 
+/** The native database is an App resource; source deployments explicitly supply the same pinned
+ * distribution through HIMA_POSTGRES_RUNTIME. No system PostgreSQL or customer Docker is used. */
+export function postgresRuntimeDirectory(env: NodeJS.ProcessEnv = process.env): string {
+  return env.HIMA_POSTGRES_RUNTIME?.trim() ? path.resolve(env.HIMA_POSTGRES_RUNTIME) : path.join(checkoutRoot(), 'postgres');
+}
+
 /** The three things in this checkout a hima home is made out of. */
 export interface HimaHomeSources {
   /** `profiles/hima`: the profile manifest and the privacy overlay, copied whole. */

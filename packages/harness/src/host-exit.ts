@@ -8,6 +8,7 @@ export interface HostExitRequest {
     readonly mode: HostExitMode;
 }
 export interface HostExitStatus {
+    /** Work reached its exit boundary. The Host must still close DBOS/pools and then PostgreSQL. */
     readonly ready: boolean;
     readonly mode?: HostExitMode;
     readonly requestId?: string;

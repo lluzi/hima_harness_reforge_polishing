@@ -22,8 +22,128 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { bootDriver } from './support/driver.ts';
+import { bootDriver, electronBinary, whyNoWindow } from './support/driver.ts';
+import { createHimaHome, recordTestBoot, repoRoot } from './support/dsh-home.ts';
+import { waitUntil } from './support/fabric.ts';
+import { startLocalDatabase } from '@hima/harness';
+
+test('explicit App interruption during database initialization closes owned resources and the same Home reopens', async t => {
+  const electron = electronBinary();
+  if ('missing' in electron) { t.skip(electron.missing); return; }
+  const unavailable = whyNoWindow();
+  if (unavailable) { t.skip(unavailable); return; }
+  const home = await createHimaHome();
+  recordTestBoot('electron');
+  const child = spawn(electron.at, [path.join(repoRoot, 'packages/desktop/lib/main.js'), '--driver'], {
+    cwd: home.workspace,
+    env: { ...home.env, HIMA_NODE: process.execPath, HIMA_WORKSPACE: home.workspace,
+      HIMA_USER_DATA: path.join(home.home, 'electron'), HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  assert.ok(child.stderr); child.stderr.on('data', value => { stderr += String(value); });
+  child.stdout?.resume();
+  const ended = () => child.exitCode !== null || child.signalCode !== null;
+  try {
+    await waitUntil('database initialization in this App', () => {
+      if (ended()) throw new Error(stderr);
+      return existsSync(path.join(home.home, 'hima/database/data-initializing'));
+    }, 30_000, 10);
+    child.kill('SIGTERM');
+    await waitUntil('mid-boot App exit', ended, 15_000, 25);
+    assert.equal(child.exitCode, 0, stderr);
+    assert.equal(existsSync(path.join(home.home, 'hima/database/data/postmaster.pid')), false);
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false);
+    const reopened = await bootDriver(t, { existing: home });
+    assert.ok(reopened);
+    try { assert.ok((await reopened.quit()).ok); assert.equal(await reopened.exit(), 0); }
+    finally { await reopened.dispose(); }
+  } finally {
+    if (!ended()) { child.kill('SIGTERM'); await waitUntil('owned App cleanup', ended, 15_000, 25); }
+    if (existsSync(path.join(home.home, 'hima/database/data/postmaster.pid'))) {
+      const database = await startLocalDatabase({ home: home.home });
+      await database.stop();
+    }
+    await home.dispose();
+  }
+});
+
+test('App interruption before Host readiness reports unknown resource shutdown after vendor forced zero exit', async t => {
+  const electron = electronBinary();
+  if ('missing' in electron) { t.skip(electron.missing); return; }
+  const unavailable = whyNoWindow();
+  if (unavailable) { t.skip(unavailable); return; }
+  const runtime = process.env.HIMA_POSTGRES_RUNTIME; assert.ok(runtime);
+  const home = await createHimaHome();
+  const entry = new URL('../../packages/harness/src/local-database.ts', import.meta.url).href;
+  const prior = spawn(process.execPath, ['--input-type=module', '--eval', `
+    import { startLocalDatabase } from ${JSON.stringify(entry)};
+    const database = await startLocalDatabase({ home: ${JSON.stringify(home.home)} });
+    process.send({ identity: database.identity }); setInterval(()=>{},1000);
+  `], { env: home.env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  prior.stdout!.resume(); prior.stderr!.resume();
+  const priorClosed = new Promise(resolve => prior.once('close', resolve));
+  let child: ReturnType<typeof spawn> | undefined;
+  let holder: ReturnType<typeof spawn> | undefined;
+  let holderClosed: Promise<number | null> | undefined;
+  let appClosed: Promise<number | null> | undefined;
+  let stderr = '';
+  try {
+    await new Promise<void>((resolve, reject) => {
+      prior.once('message', () => resolve()); prior.once('error', reject);
+      prior.once('exit', code => reject(new Error(`private database owner ended ${code} before initialization`)));
+    });
+    const pidFile = path.join(home.home, 'hima/database/data/postmaster.pid');
+    const pgPid = Number((await readFile(pidFile, 'utf8')).split('\n')[0]);
+    prior.kill('SIGKILL'); await priorClosed;
+    const credentials = JSON.parse(await readFile(path.join(home.home, 'hima/database/credentials.json'), 'utf8')) as { port: number; user: string; password: string };
+    holder = spawn(path.join(runtime, 'bin/psql'), ['-X', '-A', '-t', '-q', '-v', 'ON_ERROR_STOP=1'], {
+      env: { ...home.env, PGHOST: '127.0.0.1', PGPORT: String(credentials.port), PGUSER: credentials.user,
+        PGPASSWORD: credentials.password, PGDATABASE: 'postgres', PGCONNECT_TIMEOUT: '3' }, stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    holderClosed = new Promise(resolve => holder!.once('close', resolve));
+    const locked = new Promise<void>((resolve, reject) => {
+      let output = ''; holder!.stdout!.on('data', value => { output += String(value); if (output.includes('identity-lock-held')) resolve(); });
+      holder!.once('error', reject); holder!.once('exit', code => reject(new Error(`private lock holder ended ${code} before locking`)));
+    });
+    holder.stdin!.write('BEGIN; LOCK TABLE public.hima_cluster_identity IN ACCESS EXCLUSIVE MODE;\n\\echo identity-lock-held\n');
+    await locked;
+    recordTestBoot('electron');
+    child = spawn(electron.at, [path.join(repoRoot, 'packages/desktop/lib/main.js'), '--driver'], {
+      cwd: home.workspace, env: { ...home.env, HIMA_NODE: process.execPath, HIMA_WORKSPACE: home.workspace,
+        HIMA_USER_DATA: path.join(home.home, 'electron'), HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    appClosed = new Promise(resolve => child!.once('close', resolve));
+    child.stdout!.resume(); child.stderr!.on('data', value => { stderr += String(value); });
+    await waitUntil('the booting Host acquires the original Home while its identity query is blocked', async () => {
+      if (child!.exitCode !== null || child!.signalCode !== null) throw new Error(stderr);
+      const owner = await readFile(path.join(home.home, 'hima/database/host-owner/owner.json'), 'utf8').catch(() => undefined);
+      return owner !== undefined && (JSON.parse(owner) as { pid: number }).pid !== prior.pid;
+    }, 30_000);
+    child.kill('SIGTERM');
+    await waitUntil('App reports failed mid-boot resource closure', () => child!.exitCode !== null || child!.signalCode !== null, 15_000);
+    assert.equal(await appClosed, 1, stderr);
+    assert.match(stderr, /resource shutdown unconfirmed/);
+    assert.doesNotMatch(stderr, /UnhandledPromiseRejection/);
+    process.kill(pgPid, 0);
+    assert.ok(existsSync(path.join(home.home, 'hima/database/host-owner')), 'unknown ownership is retained');
+  } finally {
+    if (prior.exitCode === null && prior.signalCode === null) prior.kill('SIGKILL');
+    await priorClosed;
+    if (holder && holder.exitCode === null && holder.signalCode === null) holder.stdin!.end('ROLLBACK;\n');
+    if (holderClosed) assert.equal(await holderClosed, 0);
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await waitUntil('owned App exit after identity lock release', () => child!.exitCode !== null || child!.signalCode !== null, 15_000);
+    }
+    await appClosed;
+    const retained = await startLocalDatabase({ home: home.home }); await retained.stop();
+    await home.dispose();
+  }
+});
 
 test('closing and reopening the window preserves the same Host; explicit Quit still stops it', async t => {
   const d = await bootDriver(t, { home: 'hima' });
