@@ -1,0 +1,139 @@
+{
+  "hima_sha": "0626bba394db8b29a02aa9defa718aba07554571",
+  "package_pins": {
+    "package.json": {
+      "dependencies": {},
+      "devDependencies": {
+        "@deepseek-ai/cordis": "4.0.2",
+        "@deepseek-ai/dsh": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-app-boot": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-commands": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-llm-replay": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-skill": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-tool-terminal": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-tools": "0.1.5-alpha.1"
+      },
+      "peerDependencies": {},
+      "optionalDependencies": {}
+    },
+    "packages/harness/package.json": {
+      "dependencies": {
+        "@deepseek-ai/dsh-terminal": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-terminal-bash": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-tool-terminal": "0.1.5-alpha.1"
+      },
+      "devDependencies": {
+        "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-client-connection": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-home-paths": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-host-webserver": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-skill": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-storage-domain": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+        "@deepseek-ai/schemastery": "3.18.2"
+      },
+      "peerDependencies": {
+        "@deepseek-ai/cordis": "^4.0.2",
+        "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-client-connection": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-commands": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-home-paths": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-host-webserver": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-skill": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-storage-domain": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+        "@deepseek-ai/schemastery": "3.18.2"
+      },
+      "optionalDependencies": {}
+    },
+    "packages/desktop/package.json": {
+      "dependencies": {
+        "@deepseek-ai/dsh": "0.1.5-alpha.1"
+      },
+      "devDependencies": {},
+      "peerDependencies": {},
+      "optionalDependencies": {}
+    },
+    "profiles/hima/package.json": {
+      "dependencies": {
+        "@deepseek-ai/dsh-tool-terminal": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-terminal": "0.1.5-alpha.1",
+        "@deepseek-ai/dsh-terminal-bash": "0.1.5-alpha.1"
+      },
+      "devDependencies": {},
+      "peerDependencies": {},
+      "optionalDependencies": {}
+    }
+  },
+  "consumption": [
+    {
+      "scope": "native sessions / presets",
+      "files": [
+        "packages/harness/src/guide-sessions.ts",
+        "packages/harness/src/index.ts"
+      ],
+      "symbols": [
+        "sessionController.create",
+        "workspaceRegistry.list",
+        "sessionPersistence.stat",
+        "agentPresets.mount",
+        "agents.create",
+        "agents.resume"
+      ]
+    },
+    {
+      "scope": "memory / retained events",
+      "files": [
+        "packages/harness/src/native-session-memory.ts",
+        "packages/harness/src/delegation.ts"
+      ],
+      "symbols": [
+        "sessionQuery.readSession",
+        "sessionQuery.readSurface",
+        "session.deriveMessages",
+        "header.cwd",
+        "header.parentSession",
+        "events.seq"
+      ]
+    },
+    {
+      "scope": "owner messages",
+      "files": [
+        "packages/harness/src/index.ts"
+      ],
+      "symbols": [
+        "agent.followup",
+        "agent.inbox.replace"
+      ]
+    },
+    {
+      "scope": "Host / profile",
+      "files": [
+        "profiles/hima/cordis.patch.yml",
+        "profiles/hima/package.json",
+        "packages/desktop/src/host-launch.ts"
+      ],
+      "symbols": [
+        "agent-default-model",
+        "llm-deepseek",
+        "--profile",
+        "dsh web:"
+      ]
+    },
+    {
+      "scope": "persistence",
+      "files": [
+        "packages/harness/src/ledger.ts"
+      ],
+      "symbols": [
+        "defineDomain",
+        "domainTable"
+      ]
+    }
+  ],
+  "method": "static definitions and call sites; not runtime validation"
+}

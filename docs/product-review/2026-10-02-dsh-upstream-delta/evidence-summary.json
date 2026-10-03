@@ -1,0 +1,151 @@
+{
+  "access": {
+    "utc": "2026-10-03T02:37:03.037232+00:00",
+    "America/Los_Angeles": "2026-10-02T19:37:03.038133-07:00"
+  },
+  "refs": {
+    "pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+    "previous": "00102833dfaee1da9f48a3a8eae9d34005a75218",
+    "release": "639ed015397290b3745d163aafe02ffee4aa3f84",
+    "master": "da00f7f5358f2949383b35c14f548bc20187d80c"
+  },
+  "stats": {
+    "pin-release": {
+      "--count": 4381,
+      "first_parent": 549,
+      "no_merges": 2942,
+      "shortstat": "9511 files changed, 1346845 insertions(+), 166466 deletions(-)"
+    },
+    "previous-release": {
+      "--count": 950,
+      "first_parent": 169,
+      "no_merges": 633,
+      "shortstat": "4423 files changed, 198706 insertions(+), 106632 deletions(-)"
+    },
+    "release-master": {
+      "--count": 258,
+      "first_parent": 42,
+      "no_merges": 196,
+      "shortstat": "3925 files changed, 50228 insertions(+), 32381 deletions(-)"
+    },
+    "pin-master": {
+      "--count": 4639,
+      "first_parent": 591,
+      "no_merges": 3138,
+      "shortstat": "10373 files changed, 1383994 insertions(+), 185768 deletions(-)"
+    }
+  },
+  "key_commits": [
+    {
+      "commit": "9b7a8ccc9fabc2e87386acf7f8b0741baf978022",
+      "info": "9b7a8ccc9fabc2e87386acf7f8b0741baf978022\t2026-09-09T16:20:00+08:00\tfeat(agent): await initialization through agent/created",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "f4a32dbd0a2cd4ad3c0f22a3b7f7cdc0ccc7a67a",
+      "info": "f4a32dbd0a2cd4ad3c0f22a3b7f7cdc0ccc7a67a\t2026-09-18T19:05:32+08:00\trefactor(llm): flatten tool results and validate native V4 sessions",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "e55093b47d6cfc7db94d703ee6b04fdf39d925aa",
+      "info": "e55093b47d6cfc7db94d703ee6b04fdf39d925aa\t2026-09-16T22:05:17+08:00\tfeat(subagent): migrate direct catalog consumers to parent projections",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "6830e1460d0f09ed48fc976efc6193e67d345faf",
+      "info": "6830e1460d0f09ed48fc976efc6193e67d345faf\t2026-09-17T05:27:26+08:00\trefactor(session-controller): own Client Session generations",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "d1e22a7e247060496e1acdba9ef3be1700e23ec7",
+      "info": "d1e22a7e247060496e1acdba9ef3be1700e23ec7\t2026-09-21T08:24:18Z\tfeat(preset): declare Agent compositions in profile YAML (#4569)",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "555b664b08db05e1cf8eeebb7eb00960ddf785b7",
+      "info": "555b664b08db05e1cf8eeebb7eb00960ddf785b7\t2026-09-19T19:56:53+08:00\tfix(compaction): reserve configurable 64K pressure headroom",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "8de4e51875d0957fcac4259a0a6a008d3bdffd8c",
+      "info": "8de4e51875d0957fcac4259a0a6a008d3bdffd8c\t2026-09-26T00:13:35+08:00\tfix(session): tolerate a pending-free tool/result during recovery",
+      "present_in_previous_review_tag": false
+    },
+    {
+      "commit": "b6775f6d4f55eaa0bcac36318cd7dfc98d70195c",
+      "info": "b6775f6d4f55eaa0bcac36318cd7dfc98d70195c\t2026-09-22T15:29:23+08:00\tfix(tool-jobs): wake an idle owner for every completion by default",
+      "present_in_previous_review_tag": true
+    },
+    {
+      "commit": "ab695ef4cf4c798840506e45503ffd75c38cc47a",
+      "info": "ab695ef4cf4c798840506e45503ffd75c38cc47a\t2026-09-16T13:52:23+08:00\tfeat(web): give user terminals system-user permissions",
+      "present_in_previous_review_tag": true
+    }
+  ],
+  "npm_receipts": [
+    {
+      "package": "@deepseek-ai/dsh-agent",
+      "version": "0.1.5-alpha.1",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.1.5-alpha.1.tgz",
+      "integrity": "sha512-Klimoo970OFP2/5sk6MaycY5l4VHeK8dN5jEIL3l9EBerr4QnoDOZMmLVkrx3cSk9OCm4KfQWrv8Gkm1HJ3fUg==",
+      "actual_integrity": "sha512-Klimoo970OFP2/5sk6MaycY5l4VHeK8dN5jEIL3l9EBerr4QnoDOZMmLVkrx3cSk9OCm4KfQWrv8Gkm1HJ3fUg==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-agent/0.1.5-alpha.1.tgz"
+    },
+    {
+      "package": "@deepseek-ai/dsh-agent",
+      "version": "0.2.0-rc.2",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.2.0-rc.2.tgz",
+      "integrity": "sha512-CUkbU+c1G0ETXkpoLkpAFo5midz66FQGtlgQOP9pzvU9H3zJQVl4H5LrhhGVbEXKLFgdbtQiOynEW8hpWn3y0Q==",
+      "actual_integrity": "sha512-CUkbU+c1G0ETXkpoLkpAFo5midz66FQGtlgQOP9pzvU9H3zJQVl4H5LrhhGVbEXKLFgdbtQiOynEW8hpWn3y0Q==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-agent/0.2.0-rc.2.tgz"
+    },
+    {
+      "package": "@deepseek-ai/dsh-session",
+      "version": "0.2.0-rc.2",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session/-/dsh-session-0.2.0-rc.2.tgz",
+      "integrity": "sha512-wj+6MeqCYbDcbEvKH3puHyEGdjyu51JwBoN6Ua2tz6griLufDgLM5HpSU40L5xgpbOfrYVhXZs4vRgOrMlFY2g==",
+      "actual_integrity": "sha512-wj+6MeqCYbDcbEvKH3puHyEGdjyu51JwBoN6Ua2tz6griLufDgLM5HpSU40L5xgpbOfrYVhXZs4vRgOrMlFY2g==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-declarations/dsh-session/0.2.0-rc.2.tgz"
+    },
+    {
+      "package": "@deepseek-ai/dsh-agent-preset-registry",
+      "version": "0.2.0-rc.2",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent-preset-registry/-/dsh-agent-preset-registry-0.2.0-rc.2.tgz",
+      "integrity": "sha512-Awdhxsnm85ZrQASUc/fLpBHnggAnI2ar7RIJL++Lcy04Hx9q/INqJlFfCKVL68ugZGh14iJNy5/OM+ZfcmbjUw==",
+      "actual_integrity": "sha512-Awdhxsnm85ZrQASUc/fLpBHnggAnI2ar7RIJL++Lcy04Hx9q/INqJlFfCKVL68ugZGh14iJNy5/OM+ZfcmbjUw==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-declarations/dsh-agent-preset-registry/0.2.0-rc.2.tgz"
+    },
+    {
+      "package": "@deepseek-ai/dsh-llm",
+      "version": "0.2.0-rc.2",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-llm/-/dsh-llm-0.2.0-rc.2.tgz",
+      "integrity": "sha512-6QFrQn/h0iNqCfPpgQidnHtLSpA99A7ZND/uYKaGSd/4BGP8KBhuRd0w63e9s4u+hfW8jc3j29WKcNLIOeUfcA==",
+      "actual_integrity": "sha512-6QFrQn/h0iNqCfPpgQidnHtLSpA99A7ZND/uYKaGSd/4BGP8KBhuRd0w63e9s4u+hfW8jc3j29WKcNLIOeUfcA==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-declarations/dsh-llm/0.2.0-rc.2.tgz"
+    },
+    {
+      "package": "@deepseek-ai/dsh-subagent",
+      "version": "0.2.0-rc.2",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subagent/-/dsh-subagent-0.2.0-rc.2.tgz",
+      "integrity": "sha512-33izf4xhq03RzolYUjv223tKmeOBl8fMnvnRN15zZB3GWfNRcBTVUUxuu99rCN8TSRRt5A5ABTwYbObb1Isjqw==",
+      "actual_integrity": "sha512-33izf4xhq03RzolYUjv223tKmeOBl8fMnvnRN15zZB3GWfNRcBTVUUxuu99rCN8TSRRt5A5ABTwYbObb1Isjqw==",
+      "matched": true,
+      "gitHead": null,
+      "file": "npm-declarations/dsh-subagent/0.2.0-rc.2.tgz"
+    }
+  ],
+  "scope": "Read-only official source/metadata and npm declaration audit; no installs or tests.",
+  "original_agent_report_sha256": "c3fa5b2b34b2645ba023a488214023bddcbdeec289f389a9462d74fa2200bfcc",
+  "archived_report_sha256": "5dff203a563b1103b1556d50f8517d717ebf56707c0e3f9f60b74e343969fc91",
+  "raw_evidence_directory": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/dsh-upstream-20261002-jukggh44"
+}

@@ -1,0 +1,31 @@
+{
+  "sha": "fa9ffcdc79aff0ac9e471c8d09df380bf0827d5c",
+  "snapshot_kind": "fixed committed text files, not a runnable checkout",
+  "files": 443,
+  "bytes": 8371380,
+  "archived_tar_sha256": "c4f835c2e614d9a37fbce1fb0d97be05aeb0f05f388ba984cd98b6dae86fd2a2",
+  "excluded": "binary artifacts, symlinks, uncommitted live worktree changes, .hima-tmp runtime artifacts",
+  "created_utc": "2026-10-03T03:10:20.309829+00:00",
+  "additional_fixed_site_files": [
+    {
+      "path": "sites/linglong-atcs28/templates/resident-engineering-wrapper.py",
+      "sha256": "37a5d7414123880bae0d7c2e5e0e58b13a3a412fa18ff0ca6f070cc77ed3db8c",
+      "bytes": 61181
+    },
+    {
+      "path": "sites/linglong-atcs28/test_resident_engineering_wrapper.py",
+      "sha256": "27e6812cf754b735991debc1f5287ddc83024cd778d2df662a4a1cfc03113d9c",
+      "bytes": 40027
+    },
+    {
+      "path": "sites/linglong-atcs28/engineering-capabilities-v1.json",
+      "sha256": "82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000",
+      "bytes": 2172
+    },
+    {
+      "path": "sites/linglong-atcs28/assessment/2026-10-02-resident-engineering-adapter.md",
+      "sha256": "0cf5dbe8ea117466215c892da5642a9de094997cf18596cb7a154e06eadebfc2",
+      "bytes": 9665
+    }
+  ]
+}
