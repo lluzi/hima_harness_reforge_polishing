@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Stand-in `podman` for the custom-cell-fmax-sky130-demo dry path (no container, no EDA).
+
+Answers exactly the calls flow/cellfmax_cli.py makes:
+
+  podman image inspect --format {{.Id}} <image>   prints IMAGE_ID (the Site binds this same id)
+  podman run ... -v <dir>:/work:rw ... -lc 'bash /work/inputs/orfs_arm.sh'
+      writes the ORFS outputs the Pack reads (6_report.json, 5_2_route.json, 6_final.v,
+      top-paths.txt) under <dir> for the CELLFMAX_VARIANT it was given, and exits 0
+  podman run ... klayout ...                       no-op, exit 0 (cell image rendering)
+  podman stop ...                                  exit 0
+
+The worst setup slack is a function of how many custom cells the run may use: a custom cell is
+usable when the run's custom LEF (/work/inputs/custom.lef) declares it, it is not in the run's
+DONT_USE_CELLS, and its name does not contain `_SLOW` (a cell the placer never picks, which is how
+the convergence scenario's rounds add nothing). 0 usable cells give the stock -0.249301 ns, 1 gives
+-0.10 ns, 2 or more give 0.0 ns, so every round gain is hand-computable from 1000 / (3.6 - WNS).
+Every call is appended to $CELLFMAX_PODMAN_LOG when it is set.
+"""
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+IMAGE_ID = "c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667"
+STOCK_WNS = -0.249301
+STOCK_TNS = -1.91346
+STOCK_INSTANCES = 37939
+WNS_BY_USABLE = {0: STOCK_WNS, 1: -0.10}
+INSTANCES_PER_CUSTOM_CELL = 7
+
+
+def log(argv):
+    target = os.environ.get("CELLFMAX_PODMAN_LOG")
+    if target:
+        try:
+            with open(target, "a") as stream:
+                stream.write(json.dumps(argv) + "\n")
+        except OSError:
+            pass
+
+
+def run_orfs(argv):
+    env, work = {}, None
+    for index, word in enumerate(argv):
+        if word == "-e" and index + 1 < len(argv) and "=" in argv[index + 1]:
+            key, value = argv[index + 1].split("=", 1)
+            env[key] = value
+        if word == "-v" and index + 1 < len(argv) and argv[index + 1].endswith(":/work:rw"):
+            work = Path(argv[index + 1][: -len(":/work:rw")])
+    if work is None or "CELLFMAX_VARIANT" not in env:
+        print("podman stand-in: no /work mount or CELLFMAX_VARIANT", file=sys.stderr)
+        return 125
+    variant = env["CELLFMAX_VARIANT"]
+    dont_use = set(env.get("CELLFMAX_VAR_DONT_USE_CELLS", "").split())
+    lef = work / "inputs" / "custom.lef"
+    declared = re.findall(r"(?m)^\s*MACRO\s+(\S+)\s*$", lef.read_text()) if lef.is_file() else []
+    usable = [name for name in declared if name not in dont_use and "_SLOW" not in name]
+    wns = WNS_BY_USABLE.get(len(usable), 0.0)
+    tns = STOCK_TNS if not usable else round(STOCK_TNS * wns / STOCK_WNS, 5)
+    instances = STOCK_INSTANCES + INSTANCES_PER_CUSTOM_CELL * len(usable)
+    logs = work / "logs" / "sky130hd" / "aes" / variant
+    results = work / "results" / "sky130hd" / "aes" / variant
+    logs.mkdir(parents=True, exist_ok=True)
+    results.mkdir(parents=True, exist_ok=True)
+    (logs / "6_report.json").write_text(json.dumps({
+        "finish__timing__setup__ws": wns, "finish__timing__setup__tns": tns,
+        "finish__design__instance__count": instances, "finish__design__instance__area": 405000.0,
+        "finish__power__total": 0.0912,
+    }))
+    (logs / "5_2_route.json").write_text(json.dumps({"detailedroute__route__drc_errors": 0}))
+    lines = ["module aes_cipher_top (clk);", " input clk;", " wire n1;",
+             " sky130_fd_sc_hd__nand2_1 _1_ (.A(a), .B(b), .Y(n1));",
+             " sky130_fd_sc_hd__dfxtp_1 _2_ (.CLK(clk), .D(n1), .Q(q));"]
+    for name in usable:
+        for index in range(INSTANCES_PER_CUSTOM_CELL):
+            lines.append(" %s _c%s_%d_ (.A(a), .B(b), .C(c), .Y(n%d));" % (name, name.lower(), index, index + 10))
+    lines.append("endmodule")
+    (results / "6_final.v").write_text("\n".join(lines) + "\n")
+    first = usable[0] if usable else "sky130_fd_sc_hd__nor3_1"
+    (work / "top-paths.txt").write_text(
+        "Startpoint: _2_ (rising edge-triggered flip-flop clocked by clk)\n"
+        "Endpoint: u_sbox/_9_/D (rising edge-triggered flip-flop clocked by clk)\n"
+        "   0.40    0.40 ^ _2_/Q (sky130_fd_sc_hd__dfxtp_1)\n"
+        "   0.30    0.70 v _c1_/Y (%s)\n"
+        "   0.20    0.90 ^ _1_/Y (sky130_fd_sc_hd__nand2_1)\n"
+        "           0.90   data arrival time\n\n"
+        "  %.3f   slack (%s)\n\n" % (first, wns, "MET" if wns >= 0 else "VIOLATED"))
+    print("== podman stand-in ORFS variant=%s usable=%s wns=%s" % (variant, ",".join(usable) or "-", wns))
+    return 0
+
+
+def main(argv):
+    log(argv)
+    if argv[:2] == ["image", "inspect"]:
+        print(IMAGE_ID)
+        return 0
+    if argv[:1] == ["stop"]:
+        return 0
+    if argv[:1] == ["run"]:
+        if any("klayout" in word for word in argv):
+            return 0
+        if any("orfs_arm.sh" in word for word in argv):
+            return run_orfs(argv)
+    print("podman stand-in: unsupported call %r" % (argv,), file=sys.stderr)
+    return 125
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
