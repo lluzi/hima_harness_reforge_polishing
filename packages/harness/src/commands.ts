@@ -20,7 +20,7 @@ import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobSta
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
 import { loadSite } from './sites.js';
 import { checkInstalledPack, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
-import { releasePack } from './release.js';
+import { releasePackFromRuntime } from './release.js';
 import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult, type WorkspaceFilesResult } from './workspace.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
@@ -584,10 +584,9 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
   const [sub = '', ...rest] = rawInput.trim().split(/\s+/).filter(Boolean);
   if (sub === '' || sub === 'version') return { kind: 'success', text: versionLine() };
   if (!legacyAutomaticAllowed()) {
+    if (sub === 'observe' || sub === 'job' && rest[0] === 'launch') return { kind: 'error', text: 'New execution uses a declared DBOS Task. Choose a Pack and start a Campaign; standalone legacy observe/job launch cannot create a Run.' };
     const namedRun = ['status', 'resume', 'cancel', 'judge'].includes(sub) ? rest[0]
-      : sub === 'observe' ? flagValue(rest.slice(2), '--run')
-      : sub === 'job' ? rest[0] === 'launch' ? flagValue(rest.slice(1, rest.indexOf('--') < 0 ? undefined : rest.indexOf('--')), '--run') : rest[1]
-      : undefined;
+      : sub === 'job' ? rest[1] : undefined;
     if (namedRun) {
       try { await assertRunProject(deps, String(agent.id), agent.session.header.cwd, namedRun); }
       catch { return { kind: 'error', text: 'This Run is not linked to the current project.' }; }
@@ -670,7 +669,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSession
   let result: StartRunResult;
   try {
     result = await startRun(deps, {
-      ownerSessionId: legacyAutomaticAllowed() ? undefined : ownerSessionId,
+      ownerSessionId,
       pack,
       site,
       goal: goal.params,
@@ -814,7 +813,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[], projectSess
   if (verb === 'release') {
     if (flags.length > 0) return wrong;
     try {
-      const released = releasePack(deps, { pack });
+      const released = await releasePackFromRuntime(deps, { pack });
       if (released.kind === 'refused') return { kind: 'error', text: released.reason };
       const { sealed } = released;
       return {

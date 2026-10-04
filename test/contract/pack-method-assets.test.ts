@@ -8,11 +8,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedLocalSite, writeConvergingVariant } from '../../packages/desktop/src/local-site.ts';
-import { HIMA_TEST_SECTIONS, exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, packTransferReceiptFile, pipelineFiles, readPackMigrationReceipt, releaseIssue, releasePack, snapshotPackFolder, verifiedPackRelocation } from '@hima/harness';
+import { HIMA_TEST_SECTIONS, exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, packTransferReceiptFile, pipelineFiles, readPackMigrationReceipt, releaseIssue, snapshotPackFolder, verifiedPackRelocation } from '@hima/harness';
+import type { TaskIdentity } from '@hima/harness';
 import { packsDirOf, versionFileFor, writePackFiles } from './support/pack.ts';
 import { createHimaHome } from './support/dsh-home.ts';
-import { bootInProcess } from './support/boot-inprocess.ts';
-import { killSessions, localHome, sessionsOf } from './support/fabric.ts';
+import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { killSessions, localHome, sessionsOf, waitUntil } from './support/fabric.ts';
+import { himaCommand } from './support/command.ts';
 import { committedRecord } from './support/pipeline.ts';
 import * as harness from '@hima/harness';
 
@@ -171,15 +173,15 @@ test('self migration records only reviewed exact bytes, resumes safely, and give
   assert.equal(verifiedPackRelocation({ packDir: second.to, originalPath: original, sha256: reviewed!.sha256, bytes: bytes.byteLength }), path.join(second.to, relative), 'a later reviewed migration preserves the original source identity');
 });
 
-function legacyDriveFixture(t: import('node:test').TestContext): void {
-  const legacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
-  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '1';
-  t.after(() => { if (legacy === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE; else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = legacy; });
+function silentOwnerFixture(t: import('node:test').TestContext): void {
+  const previous = process.env.HIMA_TEST_SILENT_AGENT;
+  process.env.HIMA_TEST_SILENT_AGENT = '1';
+  t.after(() => { if (previous === undefined) delete process.env.HIMA_TEST_SILENT_AGENT; else process.env.HIMA_TEST_SILENT_AGENT = previous; });
 }
 
 /** Real Host, installed method ownership, and actual local test Runs; no synthetic PASS record. */
 async function publicationFixture(t: import('node:test').TestContext) {
-  legacyDriveFixture(t);
+  silentOwnerFixture(t);
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);
   const { h, flow } = home;
@@ -196,39 +198,60 @@ async function publicationFixture(t: import('node:test').TestContext) {
   await rm(installed, { recursive: true });
   installPackMethod({ from: source, to: installed });
   const host = await bootInProcess(h);
+  const owner = await createRootAgent(host.ctx, h.workspace);
   const sessions: string[] = [];
   t.after(async () => { killSessions(sessions); await host.dispose(); await h.dispose(); });
-  const deps = { packsDir: packsDirOf(h), ledger: host.ctx.hima.ledger };
   const testMethod = async () => {
-    const ran = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2.3 }, strategy: { periodNs: 2.2 }, test: true, generationLimit: 1 });
-    assert.equal(ran.kind, 'ran', JSON.stringify(ran));
-    assert.ok(ran.kind === 'ran');
+    const ran = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2.3 }, strategy: { periodNs: 2.2 }, test: true, generationLimit: 1, ownerSessionId: String(owner.id) });
+    assert.ok(ran.kind === 'preparing' || ran.kind === 'ran', JSON.stringify(ran));
     sessions.push(...sessionsOf(host, ran.run.id));
-    const row = host.ctx.hima.ledger.run(ran.run.id)!;
+    await waitUntil('the DBOS test Run ends from its actual local method', async () => (await host.ctx.hima.readExecutionContext(ran.run.id)).run.status?.startsWith('ended-') === true, 20_000, 25);
+    const context = await host.ctx.hima.readExecutionContext(ran.run.id);
+    assert.ok(context.durable);
+    const row = context.run;
     assert.equal(row.purpose, 'test');
     assert.equal(row.status, 'ended-goal-met');
     assert.equal(row.packDigest, packDigestOf(installed));
-    const records = host.ctx.hima.ledger.records({ runId: row.id });
-    assert.deepEqual(records.filter((r) => r.type === 'code' || r.type === 'refusal'), []);
+    const tasks = context.durable.tasks as unknown as readonly { identity: TaskIdentity }[];
+    const nativeEvidence = (await Promise.all(tasks.map(async task => [
+      ...await host.ctx.hima.durable.store.orderedExternalEffectFacts(task.identity, 'code:'),
+      ...await host.ctx.hima.durable.store.orderedExternalEffectFacts(task.identity, 'refusal:'),
+    ]))).flat();
+    assert.deepEqual(nativeEvidence, [], 'the actual PG task facts contain no authored code or refusal');
     const bound: Readonly<Record<string, string>> = { Run: `run: ${row.id}`, Ending: `status: ${row.status}`, Code: 'none', Refusals: 'none' };
     await writeFile(path.join(installed, pipelineFiles.test), HIMA_TEST_SECTIONS.map((section) => `## ${section}\n\n${bound[section] ?? 'Local stand-in mechanism test; no model or EDA claim.'}\n`).join('\n'));
-    t.diagnostic(JSON.stringify({ testRun: row.id, purpose: row.purpose, status: row.status, methodDigest: row.packDigest, testRecordSha256: createHash('sha256').update(await readFile(path.join(installed, pipelineFiles.test))).digest('hex'), localJobs: records.filter((r) => r.type === 'job' && r.event === 'launched').length }));
+    t.diagnostic(JSON.stringify({ testRun: row.id, purpose: row.purpose, status: row.status, methodDigest: row.packDigest, testRecordSha256: createHash('sha256').update(await readFile(path.join(installed, pipelineFiles.test))).digest('hex'), engine: context.engine, synthTaskInvocations: context.executions.filter(task => task.nodeId === 'synthesize').length }));
     return row;
   };
-  return { h, installed, deps, testMethod };
+  return { h, installed, testMethod, publish: () => host.ctx.hima.releasePack({ pack: packId }),
+    publishThroughCommand: () => himaCommand(host, h.workspace, `/hima pack release ${packId}`),
+    publishThroughTool: async () => {
+      const author = await createRootAgent(host.ctx, h.workspace);
+      return host.ctx.tools.execute({ name: 'hima_pack_release', arguments: { pack: packId }, agent: author,
+        callId: 'publication-source-guard' as never, signal: AbortSignal.timeout(5000) });
+    },
+  };
 }
 
 test('an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact', async (t) => {
-  const { h, installed, deps, testMethod } = await publicationFixture(t);
+  const { h, installed, publish, testMethod, publishThroughCommand, publishThroughTool } = await publicationFixture(t);
   const row = await testMethod();
   const asset = path.join(installed, 'run-assets', row.id, 'customer.md');
   await mkdir(path.dirname(asset), { recursive: true });
   await writeFile(asset, 'private customer result\n');
-  const initial = releasePack(deps, { pack: packId });
+  const initial = await publish();
   assert.equal(initial.kind, 'released', JSON.stringify(initial));
+  const command = await publishThroughCommand();
+  assert.equal(command.kind, 'success', command.text);
+  assert.match(command.text, new RegExp(`run ${row.id}`));
+  const throughTool = await publishThroughTool();
+  assert.equal(throughTool.isError, false, JSON.stringify(throughTool));
+  const value = JSON.parse(throughTool.content.find(item => item.type === 'text')?.text ?? '{}');
+  assert.equal(value.kind, 'released');
+  assert.equal(value.run, row.id);
   const oldSeal = await readFile(path.join(installed, pipelineFiles.version));
   await new Promise((resolve) => setTimeout(resolve, 2));
-  const repeated = releasePack(deps, { pack: packId });
+  const repeated = await publish();
   assert.equal(repeated.kind, 'released', JSON.stringify(repeated));
   assert.ok(repeated.kind === 'released' && repeated.rewritten);
   assert.notDeepEqual(await readFile(path.join(installed, pipelineFiles.version)), oldSeal);
@@ -236,11 +259,11 @@ test('an installed method can be tested, released and re-released, exported and 
   const manifest = await readFile(path.join(installed, '.hima-method-install.json'));
   const lock = path.join(path.dirname(installed), `.${packId}.hima-install-lock`);
   await writeFile(lock, 'another installation owns this lock\n');
-  assert.equal(releasePack(deps, { pack: packId }).kind, 'refused');
+  assert.equal((await publish()).kind, 'refused');
   await rm(lock);
   const marker = path.join(installed, '.hima-method-update.json');
   await writeFile(marker, 'an interrupted installation must remain refused\n');
-  const interrupted = releasePack(deps, { pack: packId });
+  const interrupted = await publish();
   assert.ok(interrupted.kind === 'refused');
   assert.match(interrupted.reason, /interrupted method update/);
   assert.deepEqual(await readFile(path.join(installed, pipelineFiles.version)), publishedSeal);
@@ -257,9 +280,9 @@ test('an installed method can be tested, released and re-released, exported and 
 });
 
 test('an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive', async (t) => {
-  const { h, installed, deps, testMethod } = await publicationFixture(t);
+  const { h, installed, publish, testMethod } = await publicationFixture(t);
   const oldRun = await testMethod();
-  assert.equal(releasePack(deps, { pack: packId }).kind, 'released');
+  assert.equal((await publish()).kind, 'released');
   const oldMethod = loadRunPack(packsDirOf(h), packId, oldRun.packDigest);
   const oldScript = oldMethod.folder.text('tools/synth.sh');
   const receiver = path.join(h.home, 'receiver', packId);
@@ -273,7 +296,7 @@ test('an authorised new version of known installed method files publishes and up
   await writeFile(path.join(installed, 'tools/synth.sh'), `${oldScript}\n# Owner-authored method revision for version 3.\n`);
   const newRun = await testMethod();
   assert.notEqual(newRun.packDigest, oldRun.packDigest);
-  const release = releasePack(deps, { pack: packId });
+  const release = await publish();
   assert.equal(release.kind, 'released', JSON.stringify(release));
   assert.ok(release.kind === 'released');
   assert.equal(release.sealed.test.run, newRun.id);
@@ -291,9 +314,9 @@ test('an authorised new version of known installed method files publishes and up
 });
 
 test('installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest', async (t) => {
-  const { installed, deps, testMethod } = await publicationFixture(t);
+  const { installed, publish, testMethod } = await publicationFixture(t);
   const oldRun = await testMethod();
-  assert.equal(releasePack(deps, { pack: packId }).kind, 'released');
+  assert.equal((await publish()).kind, 'released');
   const manifestFile = path.join(installed, '.hima-method-install.json');
   const before = await readFile(manifestFile);
   const scriptFile = path.join(installed, 'tools/synth.sh');
@@ -302,7 +325,7 @@ test('installed publication refuses tested same-version edits, unknown customer 
   await writeFile(scriptFile, `${oldScript}\n# A tested method change still requires a new version.\n`);
   const changedRun = await testMethod();
   assert.notEqual(changedRun.packDigest, oldRun.packDigest);
-  const sameVersion = releasePack(deps, { pack: packId });
+  const sameVersion = await publish();
   assert.equal(sameVersion.kind, 'refused', JSON.stringify(sameVersion));
   assert.ok(sameVersion.kind === 'refused');
   assert.match(sameVersion.reason, /different method content.*new version/);
@@ -313,7 +336,7 @@ test('installed publication refuses tested same-version edits, unknown customer 
   const unknown = path.join(installed, 'customer-private.py');
   await writeFile(unknown, 'private customer algorithm\n');
   await testMethod();
-  const unknownResult = releasePack(deps, { pack: packId });
+  const unknownResult = await publish();
   assert.equal(unknownResult.kind, 'refused', JSON.stringify(unknownResult));
   assert.ok(unknownResult.kind === 'refused');
   assert.match(unknownResult.reason, /customer-private.py.*unknown ownership/);
@@ -322,7 +345,7 @@ test('installed publication refuses tested same-version edits, unknown customer 
   forged.files['customer-private.py'] = createHash('sha256').update(await readFile(unknown)).digest('hex');
   await writeFile(manifestFile, JSON.stringify(forged));
   const forgedBytes = await readFile(manifestFile);
-  const forgedResult = releasePack(deps, { pack: packId });
+  const forgedResult = await publish();
   assert.equal(forgedResult.kind, 'refused', JSON.stringify(forgedResult));
   assert.ok(forgedResult.kind === 'refused');
   assert.match(forgedResult.reason, /original method ownership/);
@@ -348,8 +371,8 @@ test('repeated local seeding preserves the installed Pack customer archive byte 
   }
 });
 
-test('a real Host resumes the old Run against its original method after an installed version upgrade', async (t) => {
-  legacyDriveFixture(t);
+test('a real DBOS Host reopens the old Run against its original method after an installed version upgrade', async (t) => {
+  silentOwnerFixture(t);
   const h = await createHimaHome();
   let runningHost: Awaited<ReturnType<typeof bootInProcess>> | undefined;
   t.after(async () => { await runningHost?.dispose(); await h.dispose(); });
@@ -360,23 +383,38 @@ test('a real Host resumes the old Run against its original method after an insta
   await writeFile(graphFile, (await readFile(graphFile, 'utf8')).replace('entry: synthesize', 'entry: blocked'));
   const seeded = await seedLocalSite({ home: h.home, checkout: path.join(h.home, 'source') });
   const digest = packDigestOf(seeded.packDir);
-  const host = await bootInProcess(h);
+  let host = await bootInProcess(h);
   runningHost = host;
-  const opened = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2 } });
-  assert.ok(opened.kind === 'ran', JSON.stringify(opened));
-  assert.equal(opened.run.currentNode, 'blocked');
+  const owner = await createRootAgent(host.ctx, h.workspace);
+  const opened = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+  assert.ok(opened.kind === 'preparing' || opened.kind === 'ran', JSON.stringify(opened));
+  const waitingTask = async () => {
+    const context = await host.ctx.hima.readExecutionContext(opened.run.id);
+    assert.ok(context.durable);
+    return (context.durable.tasks as unknown as readonly { identity: { taskId: string }; state: { state: string } }[]).some(task => task.identity.taskId === 'blocked' && task.state.state === 'waiting');
+  };
+  await waitUntil('the old compiled wait task has its durable waiting fact', waitingTask, 12_000, 25);
+  const before = await host.ctx.hima.readExecutionContext(opened.run.id);
+  assert.equal(before.method!.reference.entry, 'blocked');
+  assert.equal(before.method!.digest, digest);
+  assert.match((await host.ctx.hima.durable.store.run(opened.run.id)).engine, /^dbos\//);
   await writeFile(graphFile, (await readFile(graphFile, 'utf8')).replaceAll('blocked', 'blocked-new-version').replace("version: '2'", "version: '3'"));
   const contractFile = path.join(source, 'contract.yml');
   await writeFile(contractFile, (await readFile(contractFile, 'utf8')).replace("version: '2'", "version: '3'"));
   installPackMethod({ from: source, to: seeded.packDir });
   assert.notEqual(packDigestOf(seeded.packDir), digest);
-  assert.equal(loadRunPack(path.dirname(seeded.packDir), 'opene902-timing-probe', digest).graph.entry, 'blocked');
-  const resumed = await host.ctx.hima.resumeRun(opened.run.id, 'method-resolution-test');
-  assert.ok(resumed.kind === 'resumed', JSON.stringify(resumed));
-  assert.equal(resumed.run.currentNode, 'blocked');
-  assert.equal(host.ctx.hima.ledger.run(opened.run.id)?.packDigest, digest);
-  const workspace = host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'workspace' }).find((row) => row.type === 'workspace');
-  assert.equal(workspace?.type === 'workspace' ? workspace.packDigest : undefined, digest);
+  assert.equal(loadRunPack(path.dirname(seeded.packDir), packId, digest).graph.entry, 'blocked');
+  await host.dispose(); runningHost = undefined;
+  host = await bootInProcess(h); runningHost = host;
+  const reopened = await host.ctx.hima.readExecutionContext(opened.run.id);
+  assert.equal(reopened.method!.reference.entry, 'blocked');
+  assert.equal(reopened.method!.version, '2');
+  assert.equal(reopened.run.packDigest, digest);
+  assert.equal(await waitingTask(), true, 'restart keeps the original wait task rather than dispatching the newly installed method');
+  assert.equal(loadPack(path.dirname(seeded.packDir), packId).contract.version, '3');
+  const authoritative = await host.ctx.hima.durable.store.run(opened.run.id);
+  assert.equal(authoritative.engine, before.engine);
+  assert.equal(authoritative.owner, String(owner.id), 'reopen preserves the original conversational owner');
 });
 
 test('run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused', async (t) => {
@@ -489,4 +527,21 @@ test('installed Pack ownership refuses unknown files even inside installer metad
   const privateFile = path.join(seeded.packDir, 'private-customer-algorithm.py');
   await writeFile(privateFile, 'print("customer secret")\n');
   assert.throws(() => exportPackMethod({ from: seeded.packDir, to: path.join(home, 'share') }), /unknown|ownership|manifest/);
+});
+
+test('internal candidate ATCS development method installs exact bytes without fabricating a release seal', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'u9-atcs-development-install-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const id = 'agentic-timing-closure-system';
+  const source = path.join(checkout, 'packs', id);
+  const installed = path.join(root, 'packs', id);
+  const expected = packDigestOf(source);
+  const receipt = installPackMethod({ from: source, to: installed });
+  assert.equal(receipt.digest, expected);
+  const pack = loadPack(path.dirname(installed), id);
+  assert.equal(pack.contract.version, '0.4.0');
+  assert.equal(pack.flow!.irSha256, loadPack(path.dirname(source), id).flow!.irSha256);
+  assert.equal(packDigestOf(installed), expected);
+  await assert.rejects(readFile(path.join(installed, 'VERSION.yml')), /ENOENT/);
+  assert.equal(await readFile(path.join(installed, 'TEST.md'), 'utf8'), await readFile(path.join(source, 'TEST.md'), 'utf8'));
 });

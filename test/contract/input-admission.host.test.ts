@@ -1,31 +1,34 @@
 // PLS-21: public command/tool admission, isolated real Host and stand-in Site.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { localFabric } from './support/fabric.ts';
-import { himaCommand, siteCommandTimeoutMs } from './support/command.ts';
+import { localFabric, waitUntil } from './support/fabric.ts';
+import { siteCommandTimeoutMs } from './support/command.ts';
 import { createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
+import { admissionProposal, confirmAdmission, admissionStatus } from './support/u9-admission.ts';
 
-test('command and tool inputs reject duplicate names and numeric spellings that change value', async (t) => {
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+
+test('confirmed tool inputs reject invalid Goal values and preserve a lossless decimal', async (t) => {
   const local = await localFabric(t, { sleepSeconds: 0 });
   if (!local) return;
   const { h, host, dispose } = local;
   try {
-    const line = `/hima run ${timingProbePackId} --site local --generations 1`;
-    for (const args of ['--goal target_period_ns=2 --goal target_period_ns=3', '--goal target_period_ns=2 --set periodNs=2 --set periodNs=3', '--goal target_period_ns=2.00000000000000001', '--goal target_period_ns=2 --set periodNs=2.00000000000000001', '--goal target_period_ns=', '--goal target_period_ns=2 --goal __proto__=2']) {
-      const result = await himaCommand(host, h.workspace, `${line} ${args}`);
-      assert.equal(result.kind, 'error', `${args}: ${result.text}`);
-      assert.equal(result.runId, undefined);
-    }
+    // Raw duplicate/lossless-number parsing is covered by current HTTP admission in start-form.
+    // /hima run no longer starts product Runs under ADR-0018.
     const agent = await createRootAgent(host.ctx, h.workspace);
+    const { proposal } = await admissionProposal(host, h, timingProbePackId, { goal: { target_period_ns: 2.3 } });
+    assert.equal(proposal.ready, true, JSON.stringify(proposal));
     for (const goal of [{ target_period_ns: NaN }, { target_period_ns: Infinity }, { target_period_ns: -1 }, { unknown: 2 }, { target_period_ns: '2.00000000000000001' }]) {
-      const result = await host.ctx.tools.execute({ callId: 'admission-test' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
+      const result = await host.ctx.tools.execute({ callId: 'admission-test' as never, name: 'hima_run', arguments: { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal, strategy: proposal.strategy }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
       assert.equal(result.isError, true, JSON.stringify(result));
     }
-    assert.deepEqual(host.ctx.hima.ledger.runs(), []);
-    const result = await host.ctx.tools.execute({ callId: 'admission-valid' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: '2.30' }, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
+    assert.deepEqual(await host.ctx.hima.durable.store.runs(), []);
+    const result = await host.ctx.tools.execute({ callId: 'admission-valid' as never, name: 'hima_run', arguments: { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: { target_period_ns: '2.30' }, strategy: proposal.strategy }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
     assert.equal(result.isError, false, JSON.stringify(result));
-    assert.deepEqual(host.ctx.hima.ledger.runs()[0]?.goal, { target_period_ns: 2.3 });
+    const value = JSON.parse(result.content!.find(item => item.type === 'text')!.text!);
+    assert.deepEqual((await host.ctx.hima.readExecutionContext(value.runId)).run.goal, { target_period_ns: 2.3 });
   } finally { await dispose(); }
 });
 
@@ -45,10 +48,22 @@ test('a make expansion bound by a node is refused before any Job or escaping fil
       const graph = parse(original);
       graph.nodes[0].parameters.arguments.PERIOD_NS = payload;
       await writeFile(graphFile, stringify(graph));
-      const result = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2 --generations 1`);
-      assert.equal(result.kind, 'error', result.text);
-      assert.match(result.text, /literal data/);
-      for (const run of host.ctx.hima.ledger.runs()) assert.equal(host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).length, 0);
+      const guide = await createRootAgent(host.ctx, h.workspace);
+      const refused = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(guide.id) });
+      if (refused.kind === 'preparing' || refused.kind === 'ran') {
+        await waitUntil('unsafe bound input is refused before physical submit', async () => {
+          const context = await host.ctx.hima.readExecutionContext(refused.run.id);
+          return JSON.stringify(context.durable?.tasks).includes('literal data');
+        });
+        const view = await admissionStatus(host, guide, refused.run.id);
+        assert.equal(view.jobs.length, 0, JSON.stringify(view.jobs));
+      } else {
+        assert.equal(refused.kind, 'unfit', JSON.stringify(refused));
+        assert.match(JSON.stringify(refused), /literal data/);
+      }
+      for (const run of await host.ctx.hima.durable.store.runs()) {
+        assert.equal((await admissionStatus(host, guide, run.runId)).jobs.length, 0);
+      }
       await assert.rejects(access(marker), { code: 'ENOENT' });
     }
   } finally { await dispose(); }
@@ -82,20 +97,30 @@ test('reader and tool paths preserve spaces while dynamic Site bindings cannot l
     };
     for (const design of [`$(shell touch ${marker})`, `x; touch ${marker}`, `x\"; touch ${marker}; echo \"`, `x\ntouch ${marker}`]) {
       await site(design);
-      const result = await himaCommand(host, h.workspace, `/hima run ${pack} --site local --goal target_period_ns=2 --generations 1`);
-      assert.equal(result.kind, 'error', result.text);
-      assert.match(result.text, /literal data/);
-      assert.deepEqual(host.ctx.hima.ledger.runs(), []);
+      const guide = await createRootAgent(host.ctx, h.workspace);
+      const refused = await host.ctx.hima.startRun({ pack, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(guide.id) });
+      if (refused.kind === 'preparing' || refused.kind === 'ran') {
+        await waitUntil('unsafe bound input is refused before physical submit', async () => {
+          const context = await host.ctx.hima.readExecutionContext(refused.run.id);
+          return JSON.stringify(context.durable?.tasks).includes('literal data');
+        });
+        const view = await admissionStatus(host, guide, refused.run.id);
+        assert.equal(view.jobs.length, 0, JSON.stringify(view.jobs));
+      } else {
+        assert.equal(refused.kind, 'unfit', JSON.stringify(refused));
+        assert.match(JSON.stringify(refused), /literal data/);
+      }
+      assert.deepEqual(await host.ctx.hima.durable.store.runs(), []);
       await assert.rejects(access(marker), { code: 'ENOENT' });
     }
     await site(flow.design);
-    const result = await himaCommand(host, h.workspace, `/hima run ${pack} --site local --goal target_period_ns=2 --generations 1`, siteCommandTimeoutMs);
-    assert.equal(result.kind, 'success', result.text);
-    assert.ok(result.runId, result.text);
-    const jobs = host.ctx.hima.ledger.records({ runId: result.runId, type: 'job' });
-    assert.ok(jobs.some((record) => record.type === 'job' && record.event === 'launched' && record.job.workspace.includes('research with spaces')));
-    const readings = host.ctx.hima.ledger.records({ runId: result.runId, type: 'observation' });
-    assert.ok(readings.some((record) => record.type === 'observation' && record.reader.id === 'count-candidates'), JSON.stringify(readings));
+    const result = await confirmAdmission(host, h, pack, { goal: { target_period_ns: 2 }, budget: { generations: 1 } });
+    await waitUntil('Reader task produces its sourced observation', async () => (await admissionStatus(host, result.guide, result.runId)).observations.some((record: any) => record.reader.id === 'count-candidates'));
+    const view = await admissionStatus(host, result.guide, result.runId);
+    const jobs = view.jobs;
+    assert.ok(jobs.some((record: any) => record.event === 'launched' && record.job.workspace.includes('research with spaces')));
+    const readings = view.observations;
+    assert.ok(readings.some((record: any) => record.reader.id === 'count-candidates'), JSON.stringify(readings));
   } finally { await dispose(); }
 });
 
@@ -109,20 +134,21 @@ test('a chooser candidate outside Strategy bounds cannot start a second generati
     const { packsDirOf } = await import('./support/pack.ts');
     const file = path.join(packsDirOf(h), timingProbePackId, 'contract.yml');
     await writeFile(file, (await readFile(file, 'utf8')).replace('min: 0.5', 'min: 2.29'));
-    const result = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2 --generations 3`);
-    assert.equal(result.kind, 'error', result.text);
-    assert.match(result.text, /invalid strategy knob/);
-    assert.ok(result.runId, result.text);
-    const run = host.ctx.hima.ledger.run(result.runId);
-    assert.deepEqual(run?.goal, { target_period_ns: 2 });
-    assert.equal(run?.generation, 1);
-    const jobs = host.ctx.hima.ledger.records({ runId: result.runId, type: 'job' });
-    assert.equal(jobs.filter((record) => record.type === 'job' && record.event === 'launched').length, 1);
-    assert.equal(host.ctx.hima.ledger.records({ runId: result.runId, type: 'decision' }).length, 0);
+    const result = await confirmAdmission(host, h, timingProbePackId, { goal: { target_period_ns: 2 }, budget: { generations: 3 } });
+    await waitUntil('the invalid chooser candidate is refused', async () => {
+      const context = await host.ctx.hima.readExecutionContext(result.runId);
+      return context.durable?.tasks?.some((task: any) => task.state?.state === 'failed' || task.state?.state === 'waiting') === true || context.durable?.workflow?.status === 'ERROR' || (context.durable?.outcome as { state?: string } | undefined)?.state === 'failed';
+    });
+    const context = await host.ctx.hima.readExecutionContext(result.runId);
+    assert.match(JSON.stringify(context.durable), /invalid strategy knob/);
+    assert.deepEqual(context.run.goal, { target_period_ns: 2 });
+    const view = await admissionStatus(host, result.guide, result.runId);
+    assert.equal(view.jobs.filter((record: any) => record.event === 'launched').length, 1);
+    assert.equal(view.decisions?.length ?? 0, 0);
   } finally { await dispose(); }
 });
 
-test('the command and model tool both bind a newly declared relative Goal by its own name', async (t) => {
+test('independent confirmed model-tool Runs bind a newly declared relative Goal by its own name', async (t) => {
   const local = await localFabric(t, { sleepSeconds: 0 });
   if (!local) return;
   const { h, host, dispose } = local;
@@ -139,11 +165,8 @@ test('the command and model tool both bind a newly declared relative Goal by its
     await writeFile(contract, (await readFile(contract, 'utf8')) + '\ngoal:\n  improvement_pct: { type: number, unit: "%", min: 0, max: 100, default: 5, precision: 2 }\n');
     const graph = path.join(packsDirOf(h), pack, 'graph.yml');
     await writeFile(graph, (await readFile(graph, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
-    const command = await himaCommand(host, h.workspace, `/hima run ${pack} --site local --goal improvement_pct=25 --generations 1`);
-    assert.equal(command.kind, 'success', command.text);
-    const agent = await createRootAgent(host.ctx, h.workspace);
-    const result = await host.ctx.tools.execute({ callId: 'relative-goal-tool' as never, name: 'hima_run', arguments: { pack, site: 'local', goal: { improvement_pct: '5.25' }, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
-    assert.equal(result.isError, false, JSON.stringify(result));
-    assert.deepEqual(host.ctx.hima.ledger.runs().map((run) => run.goal?.improvement_pct).sort((a, b) => a! - b!), [5.25, 25]);
+    const first = await confirmAdmission(host, h, pack, { goal: { improvement_pct: 25 }, budget: { generations: 1 } });
+    const second = await confirmAdmission(host, h, pack, { goal: { improvement_pct: 5.25 }, budget: { generations: 1 } });
+    assert.deepEqual([first.context.run.goal?.improvement_pct, second.context.run.goal?.improvement_pct].sort((a, b) => a! - b!), [5.25, 25]);
   } finally { await dispose(); }
 });

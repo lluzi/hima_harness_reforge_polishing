@@ -1,12 +1,14 @@
-// Build a bounded, unsigned macOS arm64 trial app. This intentionally produces no
+// Build a bounded native macOS arm64 or Linux x64 trial distribution. This intentionally produces no
 // archive or network release: GitHub publication happens only after acceptance.
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 import { packagePostgres } from './package-postgres.mjs';
+import { nativeLayout, stageRuntimeNotices, auditDistribution, stageCorrespondingSource, hashFile } from './package-native-audit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const node24 = process.env.HIMA_NODE || process.execPath;
@@ -28,6 +30,10 @@ const qualificationRelative = 'operator-qualification';
 const bindingsRelative = `${qualificationRelative}/interactive-bindings.json`;
 const args = process.argv.slice(2);
 const value = (flag) => { const at = args.indexOf(flag); return at < 0 ? undefined : args[at + 1]; };
+const internalCandidate = args.includes('--internal-candidate');
+const layoutFor = manifest => nativeLayout(manifest.platform ?? 'darwin-arm64');
+const resourceFor = (app, manifest = { platform: `${process.platform}-${process.arch}` }) => path.join(app, layoutFor(manifest).resource);
+const executableFor = (app) => path.join(app, nativeLayout(`${process.platform}-${process.arch}`).executable);
 const fail = (message) => { throw new Error(`package-trial: ${message}`); };
 const run = (command, commandArgs, options = {}) => {
   const result = spawnSync(command, commandArgs, { cwd: root, encoding: 'utf8', ...options });
@@ -35,12 +41,20 @@ const run = (command, commandArgs, options = {}) => {
   return result.stdout;
 };
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
-const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const hash = hashFile;
+const productSourcePaths = ['packages', 'packs', 'profiles', 'sites', 'scripts', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'THIRD_PARTY_NOTICES.md', 'docs/operations'];
 const sourceState = () => {
   const sha = run('git', ['rev-parse', 'HEAD']).trim();
-  const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim() !== '';
-  const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD'])).digest('hex');
-  return { sha, dirty, diffSha256 };
+  const scoped = internalCandidate ? ['--', ...productSourcePaths] : [];
+  const dirty = run('git', ['status', '--porcelain', '--untracked-files=no', ...scoped]).trim() !== '';
+  const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD', ...scoped])).digest('hex');
+  if (!internalCandidate) return { sha, dirty, diffSha256 };
+  const files = {};
+  for (const file of [...new Set(run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '--', ...productSourcePaths]).split('\n').filter(Boolean))].sort()) {
+    const absolute = path.join(root, file);
+    files[file] = !existsSync(absolute) ? 'deleted' : lstatSync(absolute).isSymbolicLink() ? `symlink:${readlinkSync(absolute)}:${hash(realpathSync(absolute))}` : hash(absolute);
+  }
+  return { sha, dirty, diffSha256, qualification: 'explicit internal candidate frozen by actual product source bytes; not a clean release snapshot', scope: productSourcePaths, files, productSourceDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex') };
 };
 
 /**
@@ -140,7 +154,7 @@ const harness = async (module) => import(pathToFileURL(path.join(root, 'packages
  * ATCS ships in development: a seal is optional, but when TEST.md and VERSION.yml are there the
  * native release authority must accept them, and a half seal is refused rather than guessed at.
  */
-async function assertAtcsPackAssets(packsRoot) {
+async function assertAtcsPackAssets(packsRoot, allowDevelopment = internalCandidate) {
   const pack = path.join(packsRoot, atcsPackId);
   for (const file of ['contract.yml', 'graph.yml', 'flow/atcs_cli.py']) {
     const at = path.join(pack, file);
@@ -154,6 +168,7 @@ async function assertAtcsPackAssets(packsRoot) {
   const graphVersion = /^version:\s*["']?([^"'\s]+)["']?/m.exec(graph)?.[1];
   if (!version || version !== graphVersion) fail('ATCS Pack contract/graph versions differ');
   const present = ['TEST.md', 'VERSION.yml'].filter(file => existsSync(path.join(pack, file)));
+  if (present.length === 1 && allowDevelopment && present[0] === 'TEST.md' && parse(contract).status === 'development') return { version, development: true };
   if (present.length === 1) fail(`ATCS Pack ${atcsPackId} carries only one of TEST.md and VERSION.yml`);
   if (present.length === 0) return { version };
   const { snapshotPackFolder } = await harness('pack-folder.js');
@@ -170,11 +185,11 @@ async function assertAtcsPackAssets(packsRoot) {
  * to), its version, its contract status, and its stage — `released` only on an accepted native seal,
  * otherwise the native ladder's own rung.
  */
-async function packIdentities(packsRoot) {
+async function packIdentities(packsRoot, allowDevelopment = internalCandidate) {
   const trial = assertTrialPackAssets(packsRoot);
   const timing = await assertTimingPackAssets(packsRoot);
   assertDemoPackAssets(packsRoot);
-  const atcs = await assertAtcsPackAssets(packsRoot);
+  const atcs = await assertAtcsPackAssets(packsRoot, allowDevelopment);
   const { packDigestOf } = await harness('pack-folder.js');
   const { packStage } = await harness('packs.js');
   const seals = { [trialPackId]: trial, [timingPackId]: timing, [atcsPackId]: atcs };
@@ -185,7 +200,7 @@ async function packIdentities(packsRoot) {
     const status = /^status:\s*["']?([^"'\s]+)["']?/m.exec(contract)?.[1] ?? 'unstated';
     const seal = seals[id];
     return { id, version, packDigest: packDigestOf(dir), status,
-      stage: seal?.methodDigest ? 'released' : packStage(dir).stage,
+      stage: seal?.methodDigest ? 'released' : seal?.development ? 'development' : packStage(dir).stage,
       ...(seal?.methodDigest ? { methodDigest: seal.methodDigest, testRun: seal.testRun } : {}) };
   });
 }
@@ -342,15 +357,17 @@ function collect(base, current = base, files = {}) {
  * It reads only the App's resource tree, so it needs no signed launcher, bundled Node or Electron.
  */
 async function verifyBundleIdentity(app, manifest) {
-  const resource = path.join(app, 'Contents/Resources/app');
+  const resource = resourceFor(app, manifest);
   const postgresManifest = path.join(resource, 'postgres/postgres-runtime.json');
   if (!existsSync(postgresManifest) || manifest.runtimeInputs?.postgres?.manifestSha256 !== hash(postgresManifest)) fail('bundled PostgreSQL identity differs from the release manifest');
   const postgres = JSON.parse(readFileSync(postgresManifest, 'utf8'));
-  if (postgres.version !== '16.15' || postgres.platform !== 'darwin-arm64') fail('bundled PostgreSQL version/platform is incompatible');
+  if (postgres.version !== '16.15' || postgres.platform !== layoutFor(manifest).platform) fail('bundled PostgreSQL version/platform is incompatible');
+  if (manifest.runtimeInputs?.sbom && manifest.runtimeInputs.sbom.sha256 !== hash(path.join(resource, manifest.runtimeInputs.sbom.file))) fail('bundled SBOM identity differs from the release manifest');
+  if (manifest.runtimeInputs?.node?.binarySha256 && manifest.runtimeInputs.node.binarySha256 !== hash(path.join(resource, 'node/bin/node'))) fail('bundled Node binary identity differs from the release manifest');
   const packsRoot = path.join(resource, 'packs');
   const recorded = manifest.runtimeInputs?.packs;
   if (!Array.isArray(recorded)) fail('manifest records no bundled Pack identities');
-  const actual = await packIdentities(packsRoot);
+  const actual = await packIdentities(packsRoot, manifest.purpose === 'internal-u10-candidate');
   for (const pack of actual) {
     const expected = recorded.find(entry => entry?.id === pack.id);
     if (JSON.stringify(expected) !== JSON.stringify(pack)) {
@@ -385,14 +402,16 @@ async function verify(app, allowPending = false) {
   if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
   const manifest = JSON.parse(readFileSync(manifestAt, 'utf8'));
   if (!allowPending && manifest.status === 'building') fail('candidate validation has not finished');
-  const resource = path.join(app, 'Contents/Resources/app');
+  const resource = resourceFor(app, manifest);
   const actual = collect(app);
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) fail('manifest hashes or release file list do not match');
   if (manifest.artifactDigest !== undefined
       && manifest.artifactDigest !== createHash('sha256').update(JSON.stringify(actual)).digest('hex')) {
     fail('artifact digest does not match the signed App file inventory');
   }
-  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`, `Contents/Resources/app/${timingPackRelative}/contract.yml`, `Contents/Resources/app/${timingPackRelative}/graph.yml`, `Contents/Resources/app/${demoPackRelative}/contract.yml`, `Contents/Resources/app/${demoPackRelative}/graph.yml`, `Contents/Resources/app/${atcsPackRelative}/contract.yml`, `Contents/Resources/app/${atcsPackRelative}/graph.yml`]) {
+  const layout = layoutFor(manifest);
+  if (layout.platform !== `${process.platform}-${process.arch}`) fail('native verification must run on the candidate target platform');
+  for (const required of [layout.executable, ...['lib/main.js', 'node/bin/node', 'profiles/hima/package.json', 'postgres/postgres-runtime.json', 'third-party/SBOM.json', 'third-party/NODE-LICENSE', 'third-party/ELECTRON-LICENSE', 'third-party/CHROMIUM-LICENSES.html', `${trialPackRelative}/contract.yml`, `${trialPackRelative}/graph.yml`, `${trialPackRelative}/knowledge/manifest.yml`, `${timingPackRelative}/contract.yml`, `${timingPackRelative}/graph.yml`, `${demoPackRelative}/contract.yml`, `${demoPackRelative}/graph.yml`, `${atcsPackRelative}/contract.yml`, `${atcsPackRelative}/graph.yml`].map(file => `${layout.resource}/${file}`)]) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
   const trialPack = assertTrialPackAssets(path.join(resource, 'packs'));
@@ -410,13 +429,13 @@ async function verify(app, allowPending = false) {
     fail('manifest timing Pack identity differs from the bundled native release seal');
   }
   await verifyBundleIdentity(app, manifest);
-  const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
-  if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
+  const architecture = run('file', [path.join(app, layout.executable)]);
+  if (!architecture.includes(layout.platform === 'darwin-arm64' ? 'arm64' : 'x86-64')) fail(`launcher architecture differs from ${layout.platform}: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
   if (!/^v24\./.test(nodeVersion)) fail(`bundled Node is not Node 24: ${nodeVersion}`);
-  const dylibs = run('otool', ['-L', path.join(resource, 'node/bin/node')]);
+  const dylibs = run(process.platform === 'darwin' ? 'otool' : 'ldd', process.platform === 'darwin' ? ['-L', path.join(resource, 'node/bin/node')] : [path.join(resource, 'node/bin/node')]);
   if (/\/(opt\/homebrew|usr\/local)\//.test(dylibs)) fail(`bundled Node links a local dylib:\n${dylibs}`);
-  run('codesign', ['--verify', '--deep', '--strict', app]);
+  if (process.platform === 'darwin') run('codesign', ['--verify', '--deep', '--strict', app]);
   const qualificationModule = pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/interactive-binding.js')).href;
   const testFlag = run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval',
     `import { testFixtureCanRunHere } from ${JSON.stringify(qualificationModule)}; process.stdout.write(String(testFixtureCanRunHere()));`], {
@@ -425,7 +444,7 @@ async function verify(app, allowPending = false) {
   if (testFlag !== 'false') fail('a packaged Host accepted an environment-forged interactive test qualification');
   const runtimeData = mkdtempSync(path.join(path.dirname(app), '.runtime-info-'));
   try {
-    const runtime = JSON.parse(run(path.join(app, 'Contents/MacOS/HimaHarness'), ['--runtime-info'], {
+    const runtime = JSON.parse(run(executableFor(app), ['--runtime-info'], {
       env: { ...process.env, HIMA_USER_DATA: runtimeData, HIMA_NODE: '', npm_node_execpath: '' },
     }));
     if (runtime.isPackaged !== true || runtime.node?.source !== 'bundled-node24' || runtime.node?.available !== true) {
@@ -436,6 +455,12 @@ async function verify(app, allowPending = false) {
 }
 
 function writeComputerUseLauncher(output) {
+  if (process.platform === 'linux') {
+    writeFileSync(path.join(output, 'launch-hima-trial.sh'), '#!/bin/sh\nset -eu\nkit_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$kit_dir/HimaHarness/HimaHarness" "$@"\n');
+    chmodSync(path.join(output, 'launch-hima-trial.sh'), 0o755);
+    writeFileSync(path.join(output, 'COMPUTER-USE-START.md'), '# Start the native Linux trial\n\nRun ./launch-hima-trial.sh from a non-root desktop session with a working Electron sandbox (unprivileged user namespaces). No Docker, global Node or PostgreSQL is required. Do not disable the sandbox. Follow the operation manual supplied for your assigned trial. Install/reopen qualification is recorded separately.\n');
+    return;
+  }
   const launcher = path.join(output, 'launch-hima-trial.command');
   writeFileSync(launcher, `#!/bin/zsh
 set -euo pipefail
@@ -478,7 +503,7 @@ export DSH_TELEMETRY_DISABLED="1"
 exec "$app/Contents/MacOS/HimaHarness" "$@" > >(tee -a "$log") 2> >(tee -a "$log" >&2)
 `);
   chmodSync(launcher, 0o755);
-  writeFileSync(path.join(output, 'COMPUTER-USE-START.md'), `# Start HimaHarness with Claude Code Computer Use
+  writeFileSync(path.join(output, 'COMPUTER-USE-START.md'), `# Start HimaHarness for the assigned Computer Use trial
 
 The App is ad-hoc signed because this machine has no Apple Developer ID identity. Start the downloaded
 trial from a shell so the kit can remove only macOS download quarantine, verify the unchanged bundle,
@@ -489,14 +514,14 @@ cd "/path/to/extracted/HimaHarness-${trialVersion}"
 zsh ./launch-hima-trial.command
 \`\`\`
 
-Keep that shell running. When the window title is \`HimaHarness\`, bind Claude Code Computer Use to
+Keep that shell running. When the window title is \`HimaHarness\`, bind the assigned Computer Use operator to
 that app and follow the operation manual supplied for your assigned trial. Do not open the inner \`.app\` directly through
 Finder or LaunchServices; Gatekeeper will reject this non-notarized trial.
 `);
 }
 
 function smokeRelocatedHost(app) {
-  const resource = path.join(app, 'Contents/Resources/app');
+  const resource = resourceFor(app);
   const pdfFixture = readFileSync(path.join(root, 'test/fixtures/knowledge/eda-clock-guide.pdf')).toString('base64');
   const home = mkdtempSync(path.join(path.dirname(app), '.host-smoke-'));
   let passed = false;
@@ -585,7 +610,7 @@ async function smokeVersionIsolatedTrialHome(app) {
   const stale = `${JSON.stringify({ unit: { name: 'hima_ledger', version: 26 }, global: null,
     tables: { runs: {}, records: {} } }, null, 2)}\n`;
   const bootVersionedWindow = (site) => new Promise((resolve, reject) => {
-    const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver', ...(site ? ['--site', site] : [])], {
+    const child = spawn(executableFor(app), ['--driver', ...(site ? ['--site', site] : [])], {
       cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
         HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
@@ -624,7 +649,7 @@ async function smokeVersionIsolatedTrialHome(app) {
     }
     if (readFileSync(staleLedger, 'utf8') !== stale) fail('the prior trial ledger was changed during isolated startup');
     const refusedOldHome = await new Promise((resolve, reject) => {
-      const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
+      const child = spawn(executableFor(app), ['--driver'], {
         cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace,
           DSH_HOME: staleHome, DSH_AGENTS_HOME: path.join(staleHome, 'agents'),
@@ -661,8 +686,15 @@ async function smokeVersionIsolatedTrialHome(app) {
   } finally { rmSync(userData, { recursive: true, force: true }); }
 }
 
-if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --verify <HimaHarness.app>\n');
+if (args[0] === '--verify-desktop') {
+  const app = value('--verify-desktop');
+  if (!app) fail('--verify-desktop needs the frozen native artifact path');
+  await verify(path.resolve(app));
+  await smokeVersionIsolatedTrialHome(path.resolve(app));
+} else if (args[0] === '--check-platform-layout') {
+  process.stdout.write(`${JSON.stringify(nativeLayout(args[1]))}\n`);
+} else if (args.includes('--help') || args.includes('-h')) {
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --verify <native artifact> | --verify-desktop <native artifact>\n');
 } else if (args[0] === '--check-interactive-bindings') {
   const file = value('--check-interactive-bindings');
   if (!file) fail('--check-interactive-bindings needs an absolute administrator file');
@@ -700,26 +732,29 @@ if (args.includes('--help') || args.includes('-h')) {
   await verify(path.resolve(app));
 } else {
   const output = path.resolve(value('--output') ?? path.join(root, '.hima-tmp/pilot-release'));
-  if (process.platform !== 'darwin' || process.arch !== 'arm64') fail('this builder must run on macOS arm64');
+  const layout = nativeLayout(`${process.platform}-${process.arch}`);
   if (!existsSync(node24)) fail(`Node 24 is unavailable at ${node24}`);
   if (!/^v24\./.test(run(node24, ['--version']).trim())) fail('packaging requires Node 24; invoke this script with Node 24 or select HIMA_NODE');
+  const nodeBuildManifest = value('--node-build-manifest'); const nodeArchive = value('--node-archive');
+  const electronBuildManifest = value('--electron-build-manifest'); const electronArchive = value('--electron-archive');
+  if (!nodeBuildManifest || !nodeArchive || !electronBuildManifest || !electronArchive) fail('fixed native archive inputs required: --node-build-manifest, --node-archive, --electron-build-manifest, --electron-archive');
   const postgresPrefix = value('--postgres-prefix');
   const postgresBuildManifest = value('--postgres-build-manifest');
   if (!postgresPrefix || !postgresBuildManifest) fail('native PostgreSQL inputs required: --postgres-prefix <16.15 install> --postgres-build-manifest <pinned build identity.json>');
-  if (['HimaHarness.app', 'trial-manifest.json', 'launch-hima-trial.command', 'COMPUTER-USE-START.md']
+  if ([layout.artifact, 'trial-manifest.json', 'launch-hima-trial.command', 'launch-hima-trial.sh', 'COMPUTER-USE-START.md']
       .some(name => existsSync(path.join(output, name)))) fail(`refusing to overwrite an existing trial artifact in ${output}`);
   for (const built of ['packages/desktop/lib/main.js', 'packages/harness/lib/index.js', 'packages/harness/lib/client.js']) {
     if (!existsSync(path.join(root, built))) fail(`release inputs are not built: ${built} (run pnpm run build once before packaging)`);
   }
   const untrackedInputs = run('git', ['ls-files', '--others', '--exclude-standard', '--',
-    'packages', 'packs', 'profiles']).trim();
-  if (untrackedInputs) fail(`untracked product inputs must be committed before packaging: ${untrackedInputs}`);
+    'packages', 'packs', 'profiles', 'scripts', 'THIRD_PARTY_NOTICES.md']).trim();
+  if (untrackedInputs && !internalCandidate) fail(`untracked product inputs must be committed before packaging: ${untrackedInputs}`);
   const ignoredInputs = run('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--',
     'packs', 'profiles']).split('\n').filter(Boolean).filter(file => !(file.startsWith('packs/')
       && file.split('/').some(part => part.startsWith('.') || part === 'run-assets')));
   if (ignoredInputs.length) fail(`ignored resource inputs are not approved release assets: ${ignoredInputs.join(', ')}`);
   const source = sourceState();
-  if (source.dirty) fail('commit tracked product changes before building a release candidate');
+  if (source.dirty && !internalCandidate) fail('commit tracked product changes before building a release candidate');
   // Admission precedes build/deployment; an unsealed method cannot produce a candidate.
   const timingPack = await assertTimingPackAssets(path.join(root, 'packs'));
   const bindingFile = value('--interactive-bindings');
@@ -743,13 +778,14 @@ if (args.includes('--help') || args.includes('-h')) {
   try {
     const deployed = path.join(stage, 'app');
     run('pnpm', ['--config.verifyDepsBeforeRun=false', '--filter', '@hima/desktop', '--prod', 'deploy', '--legacy', deployed], { env: { ...process.env, CI: 'true', PATH: `${path.dirname(node24)}:${process.env.PATH}` } });
-    const electronApp = path.join(root, 'node_modules/.pnpm/electron@44.2.0/node_modules/electron/dist/Electron.app');
+    const electronDist = path.join(root, 'node_modules/.pnpm/electron@44.2.0/node_modules/electron/dist');
+    const electronApp = process.platform === 'darwin' ? path.join(electronDist, 'Electron.app') : electronDist;
     if (!existsSync(electronApp)) fail('Electron 44.2 app template is absent from deployed dependencies');
-    const app = path.join(output, 'HimaHarness.app');
+    const app = path.join(output, layout.artifact);
     cpSync(electronApp, app, { recursive: true, dereference: false, verbatimSymlinks: true });
     // Electron uses its executable name to distinguish a packaged app from its SDK.
-    renameSync(path.join(app, 'Contents/MacOS/Electron'), path.join(app, 'Contents/MacOS/HimaHarness'));
-    const resource = path.join(app, 'Contents/Resources/app');
+    renameSync(path.join(app, process.platform === 'darwin' ? 'Contents/MacOS/Electron' : 'electron'), executableFor(app));
+    const resource = resourceFor(app);
     cpSync(deployed, resource, { recursive: true, dereference: false, verbatimSymlinks: true, filter: (source) => {
       const parts = relative(deployed, source).split('/');
       return !parts.some((part) => part === 'electron' || part.startsWith('electron@'))
@@ -793,6 +829,12 @@ if (args.includes('--help') || args.includes('-h')) {
     cpSync(node24, path.join(resource, 'node/bin/node'));
     const postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
+    const nodeIdentity = stageRuntimeNotices({ resource, electronDist, nodeBinary: node24, nodeManifest: nodeBuildManifest, nodeArchive, electronManifest: electronBuildManifest, electronArchive });
+    const sbom = auditDistribution({ app, resource, lockfile: path.join(root, 'pnpm-lock.yaml'), electronVersion: '44.2.0', noticeMaterials: value('--notice-materials') });
+    const correspondingSource = stageCorrespondingSource({resource, sourceMaterials:value('--source-materials')});
+    cpSync(path.join(root, 'docs/operations/third-party-rights.md'), path.join(resource, 'third-party/RIGHTS.md'));
+    if (!internalCandidate && !value('--source-materials')) fail('native release requires its fixed corresponding-source materials');
+    if (process.platform === 'darwin') {
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
       .replace(/<key>CFBundleExecutable<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleExecutable</key><string>HimaHarness</string>')
@@ -802,17 +844,24 @@ if (args.includes('--help') || args.includes('-h')) {
       .replace(/<key>CFBundleShortVersionString<\/key>\s*<string>[^<]*<\/string>/, `<key>CFBundleShortVersionString</key><string>${macVersion}</string>`)
       .replace(/<key>CFBundleVersion<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleVersion</key><string>1</string>');
     writeFileSync(info, plist);
-    // Branding changes invalidate the template signature. Ad-hoc signing keeps the bundle
-    // structurally verifiable; it is not commercial signing or notarization. The checksum
-    // manifest is external so signing and manifest creation do not invalidate each other.
-    run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none',
+    // Official Electron bundles are linker-signed without resource seals. Sign its known child
+    // bundles explicitly before the outer App; --deep would also rewrite pinned PostgreSQL bytes.
+    for (const entry of readdirSync(path.join(app, 'Contents/Frameworks')).sort()) {
+      if (entry.endsWith('.framework') || entry.endsWith('.app')) run('codesign', ['--force', '--sign', '-', '--timestamp=none', '--preserve-metadata=entitlements,flags', path.join(app, 'Contents/Frameworks', entry)]);
+    }
+    // This is structural ad-hoc signing, not commercial signing or notarization.
+    // The final manifest inventories signed bytes; native inputs retain their upstream hashes.
+    run('codesign', ['--force', '--sign', '-', '--timestamp=none',
       '--preserve-metadata=entitlements,flags', app]);
+    }
+    nodeIdentity.upstreamBinarySha256 = nodeIdentity.binarySha256;
+    nodeIdentity.binarySha256 = hash(path.join(resource, 'node/bin/node'));
     const files = collect(app);
     const runtimeLedger = await import(pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/ledger.js')).href);
     const manifest = { format: 2, version: trialVersion, appVersion: trialVersion,
       artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
-      platform: 'macos-arm64', signing: 'ad-hoc, not notarized',
-      runtimeInputs: { node: '24', ledgerSchema: runtimeLedger.ledgerSpec.version,
+      platform: layout.platform, signing: layout.signing, osBaseline: layout.baseline, purpose: internalCandidate ? 'internal-u10-candidate' : 'trial-release', commercialDistribution: 'not qualified; source/license obligations and actual platform installation acceptance remain separate',
+      runtimeInputs: { node: nodeIdentity, sbom, correspondingSource, harnessVersion: JSON.parse(readFileSync(path.join(resource, 'node_modules/@hima/harness/package.json'), 'utf8')).version, dbosVersion: JSON.parse(readFileSync(path.resolve(path.dirname(createRequire(realpathSync(path.join(resource, 'node_modules/@hima/harness/package.json'))).resolve('@dbos-inc/dbos-sdk')), '../../package.json'), 'utf8')).version, electron: nodeIdentity.electron, ledgerSchema: runtimeLedger.ledgerSpec.version,
         postgres: { version: postgres.version, platform: postgres.platform, source: postgres.source,
           manifestSha256: hash(path.join(resource, 'postgres/postgres-runtime.json')) },
         bundledPacks: bundledPackIds, packs, atcsSite,
@@ -828,20 +877,21 @@ if (args.includes('--help') || args.includes('-h')) {
       source, files };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     await verify(app, true);
-    await smokeVersionIsolatedTrialHome(app);
+    // GUI cold-start/reopen belongs to the frozen-candidate operator, after lower gates.
+    // The packager never opens a window or counts an unavailable display as PASS.
     smokeRelocatedHost(app);
     writeComputerUseLauncher(output);
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed before candidate publication');
     // Only the completed kit may carry this label. Publishing the same file
     // inventory by rename keeps a failed smoke from looking like acceptance.
     const accepted = path.join(stage, 'accepted-manifest.json');
-    writeFileSync(accepted, `${JSON.stringify({ ...manifest, status: 'structurally-verified trial candidate' }, null, 2)}\n`);
+    writeFileSync(accepted, `${JSON.stringify({ ...manifest, status: internalCandidate ? 'structurally-verified internal candidate; development Pack; not released or accepted' : 'structurally-verified trial candidate' }, null, 2)}\n`);
     renameSync(accepted, path.join(output, 'trial-manifest.json'));
     await verify(app);
   } catch (error) {
     // These names were absent at admission, so only this attempt can own them.
     // A failed smoke must never leave a signed App beside a verified label.
-    for (const name of ['HimaHarness.app', 'trial-manifest.json', 'launch-hima-trial.command', 'COMPUTER-USE-START.md']) {
+    for (const name of [layout.artifact, 'trial-manifest.json', 'launch-hima-trial.command', 'launch-hima-trial.sh', 'COMPUTER-USE-START.md']) {
       rmSync(path.join(output, name), { recursive: true, force: true });
     }
     throw error;

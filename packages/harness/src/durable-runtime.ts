@@ -75,6 +75,7 @@ export async function startDurableRuntime(options: {
   const systemPool=new Pool({...options.database.system,connectionTimeoutMillis:2000});
   systemPool.on('error',()=>undefined);
   let stopping:Promise<void>|undefined;
+  let dbosClosed=false, applicationClosed=false, systemClosed=false;
   const runtime:DurableRuntime={applicationVersion,store,workflows,
     async startWorkflow(name,workflowId,input) {
       const workflow=workflows[name]; if(!workflow) throw new Error(`Unregistered durable workflow ${name}; reopen with the frozen executable version`);
@@ -84,16 +85,29 @@ export async function startDurableRuntime(options: {
     },
     commitResult:result=>store.commitResult(result),
     stop() {
-      return stopping ??= (async()=>{
-        try { await DBOS.shutdown({deregister:true,workflowCompletionTimeoutMS:1000}); }
-        finally {
-          try { await store.close(); await systemPool.end(); }
-          finally { active=false; }
-        }
+      if(stopping)return stopping;
+      const attempt=(async()=>{
+        // Retain each original resource until its own close is confirmed. A failed closer stays
+        // fenced; the Host's same-request retry resumes only the unfinished stages.
+        if(!dbosClosed) { await DBOS.shutdown({deregister:true,workflowCompletionTimeoutMS:1000}); dbosClosed=true; }
+        if(!applicationClosed) { await store.close(); applicationClosed=true; }
+        if(!systemClosed) { await systemPool.end(); systemClosed=true; }
+        active=false;
       })();
+      stopping=attempt;
+      void attempt.catch(()=>{if(stopping===attempt)stopping=undefined;});
+      return attempt;
     },
   };
   try {
+    // Read the pinned SDK authority before launch can recover any checkpoint. No SDK writes.
+    const retained = await systemPool.query<{ present:boolean }>("SELECT to_regclass('dbos.workflow_status') IS NOT NULL AS present");
+    if (retained.rows[0]?.present) {
+      const incompatible = await systemPool.query<{ workflow_uuid:string }>(
+        "SELECT workflow_uuid FROM dbos.workflow_status WHERE application_version IS DISTINCT FROM $1 AND status = ANY($2::text[]) LIMIT 1",
+        [applicationVersion,['PENDING','ENQUEUED','DELAYED']]);
+      if (incompatible.rowCount) throw new Error('Reopen the original frozen App to normally close its pending workflow before upgrading; no checkpoint was converted or recovered.');
+    }
     await store.initialize();
     for(const definition of options.workflows ?? []) {
       if(!definition.name.trim() || Object.hasOwn(workflows,definition.name)) throw new Error('Durable workflow registration names must be unique and nonempty');

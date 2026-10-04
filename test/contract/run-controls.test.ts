@@ -1,84 +1,85 @@
-// PLS-06: simultaneous user actions at the real Host service boundary, with actual local Jobs.
+// U9: simultaneous controls at the real Host boundary. DBOS alone advances verified tasks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rename } from 'node:fs/promises';
-import path from 'node:path';
-import { himaCommand } from './support/command.ts';
-import { jobRecords, killSessions, localFabric, recordsOf, sessionsOf } from './support/fabric.ts';
+import { localFabric, waitUntil } from './support/fabric.ts';
 import { timingProbePackId } from './support/pack.ts';
+import { confirmAdmission, admissionStatus } from './support/u9-admission.ts';
 import { tmuxHasSession } from './support/tmux.ts';
 
-test('simultaneous resumes clear one blocker once and launch only one replacement Job', async (t) => {
-  const local = await localFabric(t, { failures: 1, sleepSeconds: 0 });
-  if (!local) return;
-  const { h, host, dispose } = local;
-  let runId: string | undefined;
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+
+async function controlledRun(t: Parameters<typeof localFabric>[0]) {
+  const local = await localFabric(t, { sleepSeconds: 2 });
+  assert.ok(local);
+  const admitted = await confirmAdmission(local.host, local.h, timingProbePackId, {
+    goal: { target_period_ns: 2 }, budget: { generations: 1, retries: 1, timeBoxMinutes: 0.5 },
+  });
+  await waitUntil('the original real Job launches', async () => (await admissionStatus(local.host, admitted.guide, admitted.runId)).jobs.some((job: any) => job.event === 'launched'));
+  const control = (await local.host.ctx.hima.readExecutionContext(admitted.runId)).run.control!;
+  const pause = await local.host.ctx.hima.executionAction({ runId: admitted.runId, actor: control.owner, origin: 'agent',
+    action: 'pause', requestId: 'initial-pause', expectedEpoch: control.epoch, expectedRevision: control.revision });
+  assert.equal(pause.kind, 'accepted', JSON.stringify(pause));
+  return { ...local, ...admitted, paused: pause.context.run.control! };
+}
+
+function continuation(local: Awaited<ReturnType<typeof controlledRun>>, requestId: string) {
+  return { runId: local.runId, actor: local.paused.owner, origin: 'agent' as const, action: 'continue' as const,
+    requestId, expectedEpoch: local.paused.epoch, expectedRevision: local.paused.revision };
+}
+
+test('simultaneous duplicate continuations clear one hold without relaunching the original Job', async t => {
+  const local = await controlledRun(t);
   try {
-    const started = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --generations 1 --retries 1 --time-box 0.5`);
-    runId = started.runId!;
-    assert.equal(started.kind, 'error', 'the real failed Job is reported as a blocked command');
-    assert.equal(host.ctx.hima.ledger.run(runId)?.status, 'waiting');
-    const blocker = recordsOf(host, runId).find((r) => r.type === 'blocker');
-    assert.ok(blocker, 'the failed real Job requires one human decision');
-    const answers = await Promise.all([
-      host.ctx.hima.resumeRun(runId, 'first-face'),
-      host.ctx.hima.resumeRun(runId, 'second-face'),
-    ]);
-    t.diagnostic(JSON.stringify(answers.map((a) => ({ kind: a.kind, status: a.run.status }))));
-    const resumed = recordsOf(host, runId).filter((r) => r.type === 'resumed');
-    assert.equal(resumed.length, 1, 'one action clears this blocker, even when two faces resume together');
-    assert.equal(resumed[0]?.clears, blocker.id);
-    assert.equal(jobRecords(host, runId).filter((r) => r.event === 'launched').length, 2, 'the original failed Job and exactly one retry');
-    assert.equal(host.ctx.hima.ledger.run(runId)?.status, 'ended-budget-exhausted');
-  } finally {
-    if (runId) killSessions(sessionsOf(host, runId));
-    await dispose();
-  }
+    const request = continuation(local, 'same-continue');
+    const answers = await Promise.all([local.host.ctx.hima.executionAction(request), local.host.ctx.hima.executionAction(request)]);
+    assert.ok(answers.every(answer => ['accepted', 'duplicate'].includes(answer.kind)), JSON.stringify(answers));
+    const context = await local.host.ctx.hima.readExecutionContext(local.runId);
+    assert.deepEqual(context.run.control?.paused, []);
+    assert.equal(context.durable?.controls.filter((control: any) => control.commandId === request.requestId).length, 1);
+    const view = await admissionStatus(local.host, local.guide, local.runId);
+    assert.equal(view.jobs.filter((job: any) => job.event === 'launched').length, 1, 'control never creates a second physical submit');
+  } finally { await local.dispose(); }
 });
 
-test('a cancel crossing a resume leaves a terminal Run and no live Job', async (t) => {
-  const local = await localFabric(t, { failures: 1, sleepSeconds: 0 });
-  if (!local) return;
-  const { h, host, dispose } = local;
-  let runId: string | undefined;
+test('a cancel crossing a continuation reaches proved closure and late control cannot resurrect the Run', async t => {
+  const local = await controlledRun(t);
   try {
-    const started = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --generations 1 --retries 1 --time-box 0.5`);
-    runId = started.runId!;
-    assert.equal(host.ctx.hima.ledger.run(runId)?.status, 'waiting');
-    await Promise.all([host.ctx.hima.resumeRun(runId, 'resuming-face'), host.ctx.hima.cancelRun(runId)]);
-    assert.equal(host.ctx.hima.ledger.run(runId)?.status, 'cancelled');
-    for (const session of sessionsOf(host, runId)) assert.equal(tmuxHasSession(session), false, 'a crossed action leaves no Job running');
-    const before = recordsOf(host, runId);
-    assert.equal((await host.ctx.hima.resumeRun(runId, 'late-face')).kind, 'not-waiting');
-    assert.equal((await host.ctx.hima.cancelRun(runId)).kind, 'ended');
-    assert.deepEqual(recordsOf(host, runId), before, 'later actions cannot resurrect or rewrite the terminal Run');
-  } finally {
-    if (runId) killSessions(sessionsOf(host, runId));
-    await dispose();
-  }
+    const resume = continuation(local, 'crossed-continue');
+    const cancel = { ...resume, requestId: 'crossed-cancel', action: 'cancel' as const, origin: 'human' as const };
+    const answers = await Promise.all([local.host.ctx.hima.executionAction(resume), local.host.ctx.hima.executionAction(cancel)]);
+    // If continue wins the epoch race, a human refreshes the current facts to issue their stop.
+    if (answers[1].kind === 'refused') {
+      const current = (await local.host.ctx.hima.readExecutionContext(local.runId)).run.control!;
+      assert.equal((await local.host.ctx.hima.executionAction({ ...cancel, requestId: 'refreshed-cancel', expectedEpoch: current.epoch, expectedRevision: current.revision })).kind, 'accepted');
+    } else assert.ok(['accepted', 'duplicate'].includes(answers[1].kind), JSON.stringify(answers));
+    await waitUntil('the accepted cancellation proves original resource closure', async () => (await admissionStatus(local.host, local.guide, local.runId)).run.stopState?.closed === true);
+    const context = await local.host.ctx.hima.readExecutionContext(local.runId);
+    assert.equal(context.run.status, 'cancelled');
+    const view = await admissionStatus(local.host, local.guide, local.runId);
+    for (const job of view.jobs.filter((job: any) => job.event === 'launched')) assert.equal(tmuxHasSession(job.job.session), false);
+    const current = context.run.control!;
+    assert.equal((await local.host.ctx.hima.executionAction({ ...resume, requestId: 'late-continue', expectedEpoch: current.epoch, expectedRevision: current.revision })).kind, 'refused');
+    assert.equal((await local.host.ctx.hima.readExecutionContext(local.runId)).run.status, 'cancelled');
+  } finally { await local.dispose(); }
 });
 
-test('a failed resume admission does not prevent a later corrected request', async (t) => {
-  const local = await localFabric(t, { failures: 1, sleepSeconds: 0 });
-  if (!local) return;
-  const { h, host, dispose } = local;
-  let runId: string | undefined;
-  const site = path.join(h.home, 'hima/sites/local.yml');
+test('a refused stale control leaves facts unchanged and a corrected current request can continue', async t => {
+  const local = await controlledRun(t);
   try {
-    const started = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --generations 1 --retries 1 --time-box 0.5`);
-    runId = started.runId!;
-    const before = recordsOf(host, runId);
-    // Method recovery now returns an explicit refusal. A missing live Site still rejects the
-    // admission promise, exercising queue recovery after an actual I/O error.
-    await rename(site, `${site}.held`);
-    try {
-      await assert.rejects(() => host.ctx.hima.resumeRun(runId!, 'missing-site'), /site/i);
-      assert.deepEqual(recordsOf(host, runId), before, 'failed validation changes no history');
-    } finally { await rename(`${site}.held`, site); }
-    assert.equal((await host.ctx.hima.resumeRun(runId, 'corrected-face')).kind, 'resumed');
-    assert.equal(recordsOf(host, runId).filter((r) => r.type === 'resumed').length, 1);
-  } finally {
-    if (runId) killSessions(sessionsOf(host, runId));
-    await dispose();
-  }
+    const before = await local.host.ctx.hima.readExecutionContext(local.runId);
+    const request = continuation(local, 'corrected-continue');
+    const wrongOwner = await local.host.ctx.hima.executionAction({ ...request, actor: String(local.guide.id), requestId: 'wrong-owner-continue' });
+    assert.equal(wrongOwner.kind, 'refused');
+    const denied = await local.host.ctx.hima.executionAction({ ...request, requestId: 'stale-continue', expectedEpoch: local.paused.epoch - 1 });
+    assert.equal(denied.kind, 'refused');
+    assert.match(denied.reason ?? '', /stale/);
+    const after = await local.host.ctx.hima.readExecutionContext(local.runId);
+    assert.deepEqual(after.durable?.controls, before.durable?.controls);
+    assert.deepEqual(after.run.control, before.run.control);
+    assert.equal((await local.host.ctx.hima.executionAction(request)).kind, 'accepted');
+    const corrected = await local.host.ctx.hima.readExecutionContext(local.runId);
+    assert.deepEqual(corrected.run.control?.paused, []);
+    assert.equal(corrected.durable?.controls.filter((control: any) => control.commandId === request.requestId).length, 1);
+  } finally { await local.dispose(); }
 });

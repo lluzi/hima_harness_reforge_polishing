@@ -21,11 +21,11 @@ import type {
 } from './interactive-runtime.js';
 
 export const BUILTIN_TCL_ADAPTER_ID = 'hima-tcl-line-v1';
-/** Test authorization is unavailable from any module physically shipped in a signed App. */
+/** Test authorization is unavailable from any module physically shipped in a native App distribution. */
 export function testFixtureCanRunHere(): boolean {
   const modulePath = fileURLToPath(import.meta.url);
   return process.env.NODE_TEST_CONTEXT !== undefined
-    && !/\/[^/]+\.app\/Contents\/Resources\/app\//.test(modulePath);
+    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(modulePath);
 }
 const adapterDescription = [
   BUILTIN_TCL_ADAPTER_ID,

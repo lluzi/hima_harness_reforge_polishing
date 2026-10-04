@@ -23,7 +23,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createHimaHome, harnessPackageDir, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
-import { api, openSession, postObserve } from './support/hima-api.ts';
+import { api, createLiveSession, openSession, postObserve } from './support/hima-api.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { installPack, timingProbePackId } from './support/pack.ts';
 import { writeStandinFlow } from './support/standin-flow.ts';
@@ -295,6 +295,36 @@ test('a run HimaFabric never started cannot be cancelled, and says so with 409 h
     const missing = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/run-nope/cancel', { method: 'POST' }), 404);
     assert.equal(missing.error.code, 'hima/run-not-found');
   } finally { await wb.dispose(); }
+});
+
+test('normal project cancellation refuses an undisclosed Run before reading its context or writing records', async () => {
+  const h = await createHimaHome();
+  h.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+  let host: BootedHost | undefined;
+  try {
+    host = await bootHimaHost(h);
+    const cookie = await openSession(host);
+    const sessionId = await createLiveSession(host, cookie, h.workspace);
+    const runsPath = `/hima/api/runs?sessionId=${encodeURIComponent(sessionId)}`;
+    const before = await answer<{ runs: unknown[] }>(await api(host, cookie, runsPath), 200);
+    assert.deepEqual(before.runs, []);
+    const ledgerPath = path.join(h.home, 'storages/hima_ledger.json');
+    const ledgerBytes = async () => {
+      try { return await readFile(ledgerPath); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+    };
+    const beforeLedger = await ledgerBytes();
+    for (const suffix of ['', `?sessionId=${encodeURIComponent(sessionId)}`]) {
+      const refused: HimaErrorBody = await answer<HimaErrorBody>(await api(host, cookie, `/hima/api/runs/run-nope/cancel${suffix}`, { method: 'POST' }), 403);
+      assert.equal(refused.error.code, 'hima/not-authorized');
+      assert.doesNotMatch(refused.error.message, /run-nope|owner|epoch|revision/);
+    }
+    assert.deepEqual(await ledgerBytes(), beforeLedger, 'a refused cancellation changes no historical records');
+    assert.deepEqual(await answer(await api(host, cookie, runsPath), 200), before, 'a refused cancellation creates no current Run');
+  } finally {
+    if (host) assert.equal(await host.stop(), 0, host.stderr());
+    await h.dispose();
+  }
 });
 
 test('every route the workbench uses, and the workbench page itself, sit behind the web app\'s own session cookie', async (t) => {

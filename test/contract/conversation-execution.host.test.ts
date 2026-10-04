@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HimaErrorBody, RecordsView } from '@hima/harness';
-import { localHome } from './support/fabric.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
 
@@ -172,5 +172,56 @@ test('native preparation validates a live selected session and exposes durable c
     assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 403, 'unscoped mutation is denied before Run details are inspected');
     assert.equal((await post(`/runs/${view.run.id}/control`, { action: 'work', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-work' })).status, 400);
     assert.equal(contextBody.run.control.revision, 0);
+  } finally { await host.stop(); await local.h.dispose(); }
+});
+
+test('a prepared DBOS product Run refuses standalone moments through its authorized public route', async (t) => {
+  const local = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(local);
+  const { bootHimaHost } = await import('./support/boot-host.ts');
+  const { api, openSession } = await import('./support/hima-api.ts');
+  const host = await bootHimaHost(local.h);
+  try {
+    const cookie = await openSession(host);
+    const sessionResponse = await api(host, cookie, '/api/session/create', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: 'hima-native-owner', method: 'session/create', payload: { args: { request: { cwd: local.h.workspace } } } }),
+    });
+    const native = await sessionResponse.json() as { result: { ok: boolean; value: { sessionId: string } } };
+    assert.equal(native.result.ok, true, JSON.stringify(native));
+    const owner = native.result.value.sessionId;
+    const post = (route: string, body: object) => api(host, cookie, `/hima/api${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const input = { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 } };
+    assert.equal((await post('/runs/start', input)).status, 400);
+    assert.equal((await post('/runs/start', { ...input, sessionId: 'session-forged' })).status, 400);
+    const empty = await api(host, cookie, `/hima/api/runs?sessionId=${owner}`);
+    assert.deepEqual(await empty.json(), { runs: [] });
+    const choicesResponse = await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`);
+    const choices = await choicesResponse.json() as { proposal: { id: string; goal: Record<string, number>; strategy: Record<string, number | string> } };
+    const prepared = await post('/runs/start', { ...input, proposalId: choices.proposal.id, goal: choices.proposal.goal,
+      strategy: choices.proposal.strategy, sessionId: owner });
+    const preparedText = await prepared.text();
+    assert.equal(prepared.status, 200, preparedText);
+    const view = JSON.parse(preparedText);
+    assert.notEqual(view.run.control.owner, owner);
+    assert.equal(view.run.control.guideSessionId, owner);
+    assert.equal(view.jobs.length, 0);
+    await waitUntil('the accepted Run has durably prepared its original workspace', async () => {
+      const response = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=workspace&sessionId=${owner}`);
+      assert.equal(response.status, 200);
+      const value = await response.json() as RecordsView;
+      return value.records.some(record => record.type === 'workspace' && (record.event === 'prepared' || record.event === 'reused'));
+    });
+    const context = await api(host, cookie, `/hima/api/runs/${view.run.id}/context?sessionId=${owner}`);
+    assert.equal(context.status, 200);
+    const contextBody = await context.json() as { run: { control: { owner: string; guideSessionId?: string; epoch: number; revision: number } } };
+    assert.equal(contextBody.run.control.owner, view.run.control.owner);
+    assert.equal(contextBody.run.control.guideSessionId, owner);
+    const moment = await post(`/runs/${view.run.id}/moment?sessionId=${owner}`, { instructions: 'inspect this Run' });
+    const momentBody = await moment.json() as HimaErrorBody;
+    assert.equal(moment.status, 409, JSON.stringify(momentBody));
+    assert.equal(momentBody.error.code, 'hima/run-not-in-state');
+    assert.match(momentBody.error.message, /controlled by its conversation Agent/);
+    const sessions = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session&sessionId=${owner}`);
+    assert.deepEqual((await sessions.json() as RecordsView).records, [], 'a policy refusal opens no separate model session');
   } finally { await host.stop(); await local.h.dispose(); }
 });

@@ -24,7 +24,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /** The profile the workbench is: dsh's own web app plus the Hima bundle, under the privacy overlay. */
 export const HIMA_PROFILE = 'hima';
@@ -96,6 +96,15 @@ export function resolveDshHome(env: NodeJS.ProcessEnv = process.env): string {
   if (chosen === '~') return homedir();
   const expanded = chosen.startsWith('~/') || chosen.startsWith('~\\') ? path.join(homedir(), chosen.slice(2)) : chosen;
   return path.resolve(expanded);
+}
+
+/** Preflight before profile mutation or dsh/model initialization. Load the offline gate only. */
+export async function assertHimaHomeExecutionAllowed(home: string, harnessPackage?: string): Promise<void> {
+  // The hold marker is sufficient to reject even an unavailable/damaged executable distribution.
+  if (existsSync(path.join(home, 'hima/restore-hold.json'))) throw new Error('This restored Home is held for offline inspection/extraction; supply and qualify the complete final source-retired backup before opening it.');
+  const root = harnessPackage ?? path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json'));
+  const gate = await import(pathToFileURL(path.join(root, 'lib/local-database.js')).href);
+  await gate.assertHomeExecutionAllowed({home});
 }
 
 /**
@@ -277,6 +286,7 @@ async function refreshManagedModelBlock(profileDir: string, templateDir: string)
  */
 export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<PreparedHimaHome> {
   const sources = req.sources ?? himaHomeSources(req.root);
+  await assertHimaHomeExecutionAllowed(req.home, sources.harnessPackage);
   if (!existsSync(sources.profileTemplate)) throw new Error(`profile template missing: ${sources.profileTemplate}`);
   // Both halves must be built: the host's client-module registry fails activation loudly when a
   // package declaring `dsh.client` has no bundle, so a stale build would look like a boot failure.

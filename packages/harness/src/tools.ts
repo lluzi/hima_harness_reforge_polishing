@@ -24,7 +24,7 @@ import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
 import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
-import { releasePack } from './release.js';
+import { releasePackFromRuntime } from './release.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import type { SiteDiscoveryResult } from './sites.js';
 import type { PreparationView } from './workbench.js';
@@ -765,7 +765,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       },
       execute: async (args, execution) => {
         if (!execution.agent) throw new Error('hima_run requires a live conversational Agent');
-        if (args.proposalId === undefined && !legacyAutomaticAllowed()) {
+        if (args.proposalId === undefined) {
           throw new Error('confirm the current Campaign proposal returned by hima_prepare before starting a Run');
         }
         const goal = strategyArgument(args.goal, 'goal') ?? {};
@@ -799,7 +799,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // there. Budget is the same shape: a confirmed Campaign is refused explicit budget args
         // above, so the file's own Budget override — the only other source — is what reaches the Run.
         const result = await (guidedStart ?? ((request: StartRunRequest) => startRun(deps, request)))({
-          ownerSessionId: legacyAutomaticAllowed() ? undefined : String(execution.agent.id),
+          ownerSessionId: String(execution.agent.id),
           ...(args.proposalId === undefined ? {} : { proposalId: args.proposalId }),
           pack: args.pack,
           site: args.site,
@@ -968,8 +968,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: (args) => {
-        const result = releasePack(deps, { pack: args.pack });
+      execute: async (args) => {
+        const result = await releasePackFromRuntime(deps, { pack: args.pack });
         if (result.kind === 'refused') return Promise.resolve({ kind: 'refused' as const, reason: result.reason });
         const { sealed } = result;
         return Promise.resolve({

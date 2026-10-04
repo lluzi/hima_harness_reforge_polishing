@@ -139,7 +139,8 @@ test('vendor five-second forced zero exit cannot confirm an actual Host whose Po
     await assert.rejects(host.stop(), /resource shutdown unconfirmed/);
     assert.equal(host.child.exitCode, 0, 'the real vendor deadline forced zero exit during disposal');
     assert.equal(host.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${host.child.pid}`), false);
-    assert.equal(host.stderr().split('\n').includes(`hima: resource shutdown unconfirmed; pid=${host.child.pid}`), false, 'disposer remained pending; it did not report failure before forced exit');
+    // A still-open owned client can produce an explicit refusal before the vendor deadline.
+    // Either that refusal or a pending closer is unconfirmed; neither proves PostgreSQL stopped.
     process.kill(pid, 0);
     assert.ok(await stat(path.join(home.home, 'hima/database/host-owner')));
   } finally {
@@ -294,6 +295,8 @@ test('native stop sends no signal while owned resources are unproved and repeats
   const {createRequire}=await import('node:module');const {repoRoot}=await import('./support/dsh-home.ts');const require=createRequire(path.join(repoRoot,'packages/harness/package.json'));const {stringify}=require('yaml');
   await writeFile(path.join(home.home,'cordis.patch.yml'),stringify([{insert:[{id:'native-signal-marker',name:plugin}]}]));
   const host=await launchHimaHost({dshEntry:dshBin,node:process.execPath,cwd:home.workspace,env:home.env,profile:'hima'});
+  const pidFile=path.join(home.home,'hima/database/data/postmaster.pid'),ownerFile=path.join(home.home,'hima/database/host-owner');
+  const originalPid=(await readFile(pidFile,'utf8')).split('\n')[0]!,originalOwner=await readFile(path.join(ownerFile,'owner.json'),'utf8');
   const credentials=JSON.parse(await readFile(path.join(home.home,'hima/database/credentials.json'),'utf8'));
   const holder=spawn(path.join(runtime,'bin/psql'),['-X','-A','-t','-q','-v','ON_ERROR_STOP=1'],{env:{...process.env,PGHOST:'127.0.0.1',PGPORT:String(credentials.port),PGUSER:credentials.user,PGPASSWORD:credentials.password,PGDATABASE:'postgres'},stdio:['pipe','pipe','pipe']});
   const closed=new Promise(resolve=>holder.once('close',resolve));let released=false;
@@ -303,13 +306,21 @@ test('native stop sends no signal while owned resources are unproved and repeats
     holder.stdin.write('BEGIN; LOCK TABLE public.hima_cluster_identity IN ACCESS EXCLUSIVE MODE;\n\\echo finalize-lock-held\n');await locked;
     await assert.rejects(host.stop(5000),/resource shutdown unconfirmed/);
     assert.equal(host.child.exitCode,null);assert.equal(host.child.signalCode,null);assert.equal(existsSync(marker),false,'native disposal cannot begin without owned resource proof');
+    assert.equal((await readFile(pidFile,'utf8')).split('\n')[0],originalPid);process.kill(Number(originalPid),0);
+    assert.equal(await readFile(path.join(ownerFile,'owner.json'),'utf8'),originalOwner,'the original writer lock remains held after refusal');
+    assert.equal(host.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${host.child.pid}`),false);
     const state=await (await request()).json() as any;assert.ok(state.requestId);assert.equal(state.mode,'keep-jobs');assert.equal(state.finalized,false);
+    assert.equal(state.ready,false,'an actual failed resource close remains unconfirmed');
+    assert.ok((await request({requestId:'wrong-partial',mode:'finish-exit'})).status>=400,'a different request cannot retry the original finalizer');
     assert.ok((await request({requestId:state.requestId,mode:'cancel-exit'})).status>=400,'half-closed resources cannot be reopened by cancelling');
     assert.ok((await request({requestId:'replace-partial',mode:'drain',expectedRequestId:state.requestId})).status>=400);
     holder.stdin.end('ROLLBACK;\n');released=true;assert.equal(await closed,0);
+    const afterRelease=await (await request()).json() as any;
+    assert.equal(afterRelease.requestId,state.requestId);assert.equal(afterRelease.ready,false);assert.equal(afterRelease.finalized,false);
     assert.equal(await host.stop(),0);
     assert.equal(host.stderr().split('\n').filter(line=>line===`hima: resource shutdown confirmed; pid=${host.child.pid}`).length,1);
     assert.equal(existsSync(marker),true);
+    assert.equal(existsSync(pidFile),false);assert.equal(existsSync(ownerFile),false);
   } finally {
     if(!released){holder.stdin.end('ROLLBACK;\n');await closed;}
     await host.stop().catch(()=>undefined);

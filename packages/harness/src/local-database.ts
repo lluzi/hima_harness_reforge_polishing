@@ -2,8 +2,8 @@
 // external credentials or cloud service is required of the person opening the App.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { chmod, lstat, mkdir, readFile, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { chmod, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { homedir, hostname } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -127,6 +127,75 @@ async function ownHome(root: string): Promise<() => Promise<void>> {
   };
 }
 
+/** The lineage authority survives loss of either Home and is never selected by DSH_HOME. */
+export function localLineageDirectory(): string { return path.join(homedir(), '.hima', 'database-lineages'); }
+export interface DatabaseLineage {
+  format: 'hima-database-lineage/1'; identity: string; machine: string; epoch: number;
+  currentHome: string; retainedMaterialsDir: string; retiredHomes: string[]; retiredManifest?: string;
+  activated?: {home:string;manifest:string;at:string};
+}
+const machineIdentity = () => createHash('sha256').update(JSON.stringify([hostname(), homedir(), process.getuid?.(), process.platform, process.arch])).digest('hex');
+export async function canonicalHome(home: string): Promise<string> {
+  const selected = path.resolve(home);
+  if (await exists(selected)) return realpath(selected);
+  return path.join(await canonicalHome(path.dirname(selected)), path.basename(selected));
+}
+export async function readDatabaseLineage(identity: string): Promise<DatabaseLineage> {
+  if (!/^[0-9a-f-]{36}$/.test(identity)) throw problem('invalid cluster lineage identity; execution remains held.');
+  const value = JSON.parse(await privateFile(path.join(localLineageDirectory(), identity, 'lineage.json'))) as DatabaseLineage;
+  if (value.format !== 'hima-database-lineage/1' || value.identity !== identity || value.machine !== machineIdentity()
+    || !Number.isSafeInteger(value.epoch) || !Array.isArray(value.retiredHomes) || !path.isAbsolute(value.currentHome)
+    || !path.isAbsolute(value.retainedMaterialsDir) || value.activated && (value.activated.home!==value.currentHome || value.activated.manifest!==value.retiredManifest || !value.activated.at)) throw problem('the surviving lineage authority is invalid or belongs to another machine; execution remains held.');
+  return value;
+}
+export async function writeDatabaseLineage(value: DatabaseLineage): Promise<void> {
+  const folder = path.join(localLineageDirectory(), value.identity);
+  await privateDirectory(folder);
+  const stage = path.join(folder, `lineage-${randomUUID()}.partial`);
+  await writeFile(stage, JSON.stringify(value), { mode: 0o600, flag: 'wx' });
+  const staged=await open(stage,'r');try{await staged.sync();}finally{await staged.close();}
+  await rename(stage, path.join(folder, 'lineage.json'));
+  const directory=await open(folder,'r');try{await directory.sync();}finally{await directory.close();}
+}
+/** Used by normal startup and offline cold backup; same claim, no second execution owner. */
+export async function claimDatabaseLineage(identity: string): Promise<() => Promise<void>> {
+  const folder = path.join(localLineageDirectory(), identity);
+  await privateDirectory(folder);
+  return ownHome(folder);
+}
+export async function assertHomeExecutionAllowed(options: { home: string }): Promise<void> {
+  const home = await canonicalHome(options.home);
+  const authorityRoot=path.resolve(localLineageDirectory());
+  if(home===authorityRoot||home.startsWith(authorityRoot+path.sep)||authorityRoot.startsWith(home+path.sep))throw problem('select a Home separate from the surviving lineage authority directory.');
+  if (await exists(path.join(home, 'hima/restore-hold.json'))) throw problem('this restored Home is held. Use offline backup inspection/extraction, then supply the complete final source-retired archive to qualify it before opening the App.');
+  // Check paths before credentials: recreating a deleted retired Home cannot generate a new lineage.
+  const directory = localLineageDirectory();
+  if (await exists(directory)) {
+    for (const entry of await import('node:fs/promises').then(fs => fs.readdir(directory))) {
+      const record = await readDatabaseLineage(entry);
+      if (record.retiredHomes.includes(home) && record.currentHome !== home) throw problem('this source Home was retired. Open the qualified target Home; no database or model was started.');
+    }
+  }
+  const imported = path.join(home, 'hima/restore-lineage.json');
+  if (await exists(imported)) {
+    const receipt = JSON.parse(await privateFile(imported)) as { identity: string; manifest: string; epoch: number; qualified?: boolean };
+    const record = await readDatabaseLineage(receipt.identity).catch(() => { throw problem('restored lineage authority is missing or corrupt; this Home remains held for offline inspection.'); });
+    if (!receipt.qualified || receipt.manifest !== record.retiredManifest || receipt.epoch !== record.epoch || record.currentHome !== home) throw problem('this imported Home remains held for offline inspection; complete final retirement qualification is required.');
+  }
+  await legacyCutoverReceipt(home);
+}
+export async function resolveRetainedMaterialsDirectory(options: { home: string }): Promise<string> {
+  await assertHomeExecutionAllowed(options);
+  const home = await canonicalHome(options.home);
+  const imported = path.join(home, 'hima/restore-lineage.json');
+  if (!(await exists(imported))) return path.join(home, 'hima/run-assets/dbos');
+  const receipt = JSON.parse(await privateFile(imported)) as { identity: string };
+  const root = (await readDatabaseLineage(receipt.identity)).retainedMaterialsDir;
+  const info = await lstat(root);
+  if (!info.isDirectory() || info.isSymbolicLink() || process.getuid && info.uid !== process.getuid() || await realpath(root) !== root) throw problem('the verified original retained material directory is unavailable; this Home remains held.');
+  return root;
+}
+
 async function portAvailable(port = 0): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -156,6 +225,7 @@ async function postmaster(data: string, postgres: string, port: number): Promise
 }
 
 export async function startLocalDatabase(options: { readonly home: string; readonly runtimeDirectory?: string; readonly timeoutMs?: number }): Promise<LocalDatabase> {
+  await assertHomeExecutionAllowed({ home: options.home });
   if (process.getuid?.() === 0) throw problem('PostgreSQL cannot run as root. Open HimaHarness as an ordinary user.');
   const runtime = await realpath(options.runtimeDirectory ?? localDatabaseRuntime()).catch(() => { throw problem('the native runtime is missing. Install this App\'s pinned PostgreSQL distribution or set HIMA_POSTGRES_RUNTIME.'); });
   const manifest = JSON.parse(await readFile(path.join(runtime, 'postgres-runtime.json'), 'utf8').catch(() => { throw problem('the native runtime manifest is missing. Reinstall the pinned distribution.'); })) as RuntimeManifest;
@@ -182,6 +252,7 @@ export async function startLocalDatabase(options: { readonly home: string; reado
   const credentialsFile = path.join(root, 'credentials.json');
   const timeoutMs = options.timeoutMs ?? 30_000;
   let retainedOnError = false;
+  let releaseLineage: (() => Promise<void>) | undefined;
   try {
     let credentials: Credentials;
     if (await exists(credentialsFile)) {
@@ -196,6 +267,25 @@ export async function startLocalDatabase(options: { readonly home: string; reado
       if (await exists(data)) throw problem('the cluster has no private credentials. Restore the original Home; it was not reinitialized.');
       credentials = { identity: randomUUID(), port: await portAvailable(), user: 'hima', password: randomBytes(32).toString('hex'), version: POSTGRES_VERSION };
       await writeFile(credentialsFile, JSON.stringify(credentials), { mode: 0o600, flag: 'wx' });
+    }
+    const home = await canonicalHome(options.home);
+    releaseLineage = await claimDatabaseLineage(credentials.identity);
+    const lineageFile = path.join(localLineageDirectory(), credentials.identity, 'lineage.json');
+    if (await exists(lineageFile)) {
+      const lineage = await readDatabaseLineage(credentials.identity);
+      if (lineage.currentHome !== home) throw problem('another Home owns this cluster lineage. No PostgreSQL process was started.');
+      const imported = path.join(home,'hima/restore-lineage.json');
+      if(await exists(imported)) {
+        const receipt=JSON.parse(await privateFile(imported)) as {qualified:boolean;manifest:string;epoch:number};
+        if(!receipt.qualified||receipt.manifest!==lineage.retiredManifest||receipt.epoch!==lineage.epoch)throw problem('restored final retirement receipt changed; execution remains held.');
+        // Consume retirement before opening PG: even a DB-only decision/control can create a
+        // missing suffix. Normal reopens retain this receipt; old archives cannot qualify again.
+        if(!lineage.activated)await writeDatabaseLineage({...lineage,activated:{home,manifest:receipt.manifest,at:new Date().toISOString()}});
+      }
+
+    } else {
+      if (await exists(path.join(home, 'hima/restore-lineage.json'))) throw problem('the imported cluster has lost its surviving lineage authority; execution remains held.');
+      await writeDatabaseLineage({format:'hima-database-lineage/1',identity:credentials.identity,machine:machineIdentity(),epoch:0,currentHome:home,retiredHomes:[],retainedMaterialsDir:path.join(home,'hima/run-assets/dbos')});
     }
     if (!(await exists(data))) {
       const initializing = path.join(root, 'data-initializing');
@@ -220,6 +310,7 @@ export async function startLocalDatabase(options: { readonly home: string; reado
       return result.out.trim();
     };
     const running = await postmaster(data, bin('postgres'), credentials.port);
+    if(running)retainedOnError=true;
     if (!running) {
       await portAvailable(credentials.port);
       retainedOnError = true; // Even a timed-out pg_ctl may have launched the owned server.
@@ -242,22 +333,78 @@ export async function startLocalDatabase(options: { readonly home: string; reado
     }
     retainedOnError = false;
     let stopping: Promise<void> | undefined;
+    let capturedAuthority: Record<string, unknown> | undefined;
     return {
       identity: credentials.identity, application: connection('hima_application'), system: connection('hima_dbos_system'),
       stop: () => stopping ??= (async () => {
+        // This read-only closure capture runs only after consumers close DBOS and their pools.
+        // The offline backup never starts an imported cluster to reconstruct missing authority.
+        const capture = async (database: string, schema: string): Promise<Record<string, unknown>> => {
+          const tables = JSON.parse(await query(database, `SELECT COALESCE(json_agg(tablename ORDER BY tablename),'[]'::json) FROM pg_tables WHERE schemaname='${schema}';`)) as string[];
+          const answer: Record<string, unknown> = {};
+          for (const table of tables) {
+            if (!/^[a-z_]+$/.test(table)) throw problem('backup closure found an unrecognized authority table; preserve the original Home.');
+            answer[table] = JSON.parse(await query(database, `SELECT COALESCE(json_agg(to_jsonb(t)),'[]'::json) FROM "${schema}"."${table}" t;`));
+          }
+          return answer;
+        };
+        if (await postmaster(data,bin('postgres'),credentials.port)) {
+          if (await query('postgres', "SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND backend_type='client backend';") !== '0') throw problem('database clients still own material writers; close DBOS and all pools before taking the cold authority cut.');
+          capturedAuthority = {format:'hima-cold-authority/1',identity:credentials.identity,
+          host:{pid:process.pid,processIdentity:await processIdentity(process.pid)},
+          postmaster:{pid:await postmaster(data,bin('postgres'),credentials.port)},
+          application:await capture('hima_application','hima'), system:await capture('hima_dbos_system','dbos')};
+        }
         const pid = await postmaster(data, bin('postgres'), credentials.port);
         if (pid) {
           if (await query('postgres', 'SELECT identity FROM public.hima_cluster_identity;\n') !== credentials.identity) throw problem('stop refused: the responding database identity changed. No process was stopped.');
           const stopped = await command(bin('pg_ctl'), ['-D', data, '-m', 'fast', '-w', '-t', String(Math.max(1, Math.ceil(timeoutMs / 1000))), 'stop'], { timeoutMs: timeoutMs + 1000 });
           if (stopped.code !== 0 || await postmaster(data, bin('postgres'), credentials.port)) throw problem('stop did not confirm the owned database ended. Its PID and owner lock were preserved; inspect the original process before reopening.');
         }
+        if (!capturedAuthority) throw problem('no original authority capture is available after this interrupted stop; preserve the Home for inspection.');
+        const controlSha256 = createHash('sha256').update(await readFile(path.join(data,'global/pg_control'))).digest('hex');
+        const receiptStage = path.join(root, `backup-authority-${randomUUID()}.partial`);
+        await writeFile(receiptStage,JSON.stringify({...capturedAuthority,controlSha256,closedAt:new Date().toISOString()}),{mode:0o600,flag:'wx'});
+        await rename(receiptStage,path.join(root,'backup-authority.json'));
         await release();
+        await releaseLineage?.();
       })().catch(error => { stopping = undefined; throw error; }),
     };
   } catch (error) {
     // A retained postmaster needs a stale Host lock for safe takeover when this Host exits. If this
     // process is still alive, the lock correctly prevents a concurrent second writer.
-    if (!retainedOnError) await release();
+    if (!retainedOnError) { await release(); await releaseLineage?.(); }
     throw error;
   }
+}
+
+async function legacyCutoverReceipt(home: string) {
+  // This standalone source module also serves offline inspection; do not import the Harness graph.
+  if (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_LEGACY_AUTO_DRIVE === '1'
+    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(fileURLToPath(import.meta.url))) return;
+  const file = path.join(home, 'storages/hima_ledger.json');
+  let bytes: Buffer;
+  try {
+    const info = await lstat(file);
+    if (!info.isFile() || info.isSymbolicLink() || process.getuid && info.uid !== process.getuid()) throw new Error('Legacy ledger is not an owned plain file; preserve its original Home.');
+    bytes = await readFile(file);
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  const document = JSON.parse(bytes.toString()) as { tables?: { runs?: Record<string, { id?: string; status?: string; control?: unknown; currentNode?: unknown }> }; unit?: {version?:number} };
+  const rows = Object.entries(document.tables?.runs ?? {});
+  const active = rows.filter(([,run]) => (run.status !== undefined || run.control !== undefined || run.currentNode !== undefined)
+    && run.status !== 'cancelled' && !run.status?.startsWith('ended-'));
+  if (active.length) throw new Error(`Active legacy Run ${active.map(([id])=>id).join(', ')} prevents DBOS cutover. Open the original App and normally close these Runs first; the Home was preserved.`);
+  return {format:'hima-dbos-cutover/1', engine:'dbos/5.2.11',
+    ledger:{file:'storages/hima_ledger.json',version:document.unit?.version,sha256:createHash('sha256').update(bytes).digest('hex')},
+    runs:rows.map(([id,run])=>({id,...(run.status!==undefined?{status:run.status}:{})})),
+    at:new Date().toISOString()};
+}
+/** Called by the owned Host only after the original Ledger schema has opened successfully. */
+export async function recordHomeCutover(options:{home:string}):Promise<void> {
+  const home=await canonicalHome(options.home);
+  const value=await legacyCutoverReceipt(home);if(!value)return;
+  const receipt=path.join(home,'hima/cutover.json');
+  try {await lstat(receipt);return;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+  await mkdir(path.dirname(receipt),{recursive:true,mode:0o700});
+  await writeFile(receipt,JSON.stringify(value),{mode:0o600,flag:'wx'});
 }

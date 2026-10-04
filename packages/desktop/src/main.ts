@@ -19,7 +19,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
@@ -560,8 +560,9 @@ async function start(): Promise<void> {
     env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
   }
   try {
-    const bundledRuntime = app.isPackaged ? await import('@hima/harness') : undefined;
-    if (bundledRuntime) {
+    // Schema preflight must not import the Host entry point or run its Home gate.
+    const bundledLedger:Pick<typeof import('@hima/harness'),'ledgerSpec'>|undefined = app.isPackaged ? await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/ledger.js')).href) : undefined;
+    if (bundledLedger) {
       const selected = resolveDshHome(env);
       const ledgerFile = path.join(selected, 'storages/hima_ledger.json');
       const existing = lstatSync(ledgerFile, { throwIfNoEntry: false });
@@ -572,8 +573,8 @@ async function start(): Promise<void> {
         let stored: { unit?: { name?: unknown; version?: unknown } };
         try { stored = JSON.parse(readFileSync(ledgerFile, 'utf8')) as typeof stored; }
         catch { throw new Error('The selected Hima Home has an unreadable Ledger. It was not modified.'); }
-        if (stored.unit?.name !== 'hima_ledger' || stored.unit.version !== bundledRuntime.ledgerSpec.version) {
-          throw new Error(`The selected Hima Home needs Ledger schema ${bundledRuntime.ledgerSpec.version}; it was not modified. Use this App's own versioned home, or review an explicit offline import into a new home.`);
+        if (stored.unit?.name !== 'hima_ledger' || stored.unit.version !== bundledLedger.ledgerSpec.version) {
+          throw new Error(`The selected Hima Home needs Ledger schema ${bundledLedger.ledgerSpec.version}; it was not modified. Use this App's own versioned home, or review an explicit offline import into a new home.`);
         }
       }
     }
@@ -583,7 +584,7 @@ async function start(): Promise<void> {
     // existing Pack, its historical snapshots and its customer assets belong to
     // the user and are never replaced just because the App version changed.
     if (app.isPackaged) {
-      const installPackMethod = bundledRuntime!.installPackMethod;
+      const {installPackMethod}:Pick<typeof import('@hima/harness'),'installPackMethod'> = await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/release.js')).href);
       for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure']) {
         const source = path.join(checkoutRoot(), 'packs', id);
         const destination = path.join(prepared.home, 'hima/packs', id);

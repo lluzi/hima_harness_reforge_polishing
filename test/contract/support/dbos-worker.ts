@@ -19,6 +19,37 @@ const database=await startLocalDatabase({home,runtimeDirectory:process.env.HIMA_
 const manifest={files:{'test-executable':'a'.repeat(64)},adapters:{'test-task':'1'}};
 let systemLock:any;
 const marker=path.join(home,'business-calls');
+if (mode?.startsWith('cutover-version-')) {
+  const retainedManifest = {files:{'test-executable':'a'.repeat(64)},adapters:{'test-task':'1'}};
+  const changedManifest = {files:{'test-executable':'c'.repeat(64)},adapters:{'test-task':'1'}};
+  let retainedRuntime:any;
+  try {
+    if (mode === 'cutover-version-changed') {
+      let unexpected:any;
+      try { await assert.rejects(async()=>{unexpected=await startDurableRuntime({database,manifest:changedManifest});}, /original frozen App.*pending workflow/i); }
+      finally { await unexpected?.stop(); }
+      process.send?.({ok:true,refused:true});
+    } else {
+      retainedRuntime = await startDurableRuntime({database,manifest:retainedManifest,workflows:[{name:'cutover-wait',execute:async()=>{
+        await DBOS.recv('continue',3600);
+        await DBOS.runStep(async()=>{await appendFile(marker,'completed\n');},{name:'original-effect'});
+        return {ok:true};
+      }}]});
+      if (mode === 'cutover-version-original') {
+        await retainedRuntime.startWorkflow('cutover-wait','original-pending',{});
+        const status = await DBOS.getWorkflowStatus('original-pending');
+        assert.equal(status?.status,'PENDING');
+        process.send?.({ok:true,version:retainedRuntime.applicationVersion});
+      } else {
+        await DBOS.send('original-pending',{ok:true},'continue','original-response');
+        await DBOS.retrieveWorkflow('original-pending').getResult();
+        process.send?.({ok:true,version:retainedRuntime.applicationVersion});
+      }
+      await new Promise<void>(resolve=>process.once('message',()=>resolve()));
+    }
+  } finally { await retainedRuntime?.stop(); await database.stop(); }
+  process.exit(0);
+}
 if(mode==='startup') {
   await assert.rejects(startDurableRuntime({database,manifest:{files:{},adapters:{}}}),/Freeze executable/);
   const saved=process.env.DBOS__CLOUD;process.env.DBOS__CLOUD='true';

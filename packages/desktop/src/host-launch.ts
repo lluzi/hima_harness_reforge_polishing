@@ -21,6 +21,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { randomBytes,randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /** The loopback address the host is told to bind. Never `0.0.0.0`: the dsh CLI refuses that outright,
  *  and a workbench that listened on a customer's LAN would be a second thing for CAD to defend. */
@@ -202,11 +207,18 @@ export class HostLaunchError extends Error {
  * @throws HostLaunchError when the host exits early, prints no URL, or never answers in time.
  */
 export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHost> {
+  const selected = req.env.DSH_HOME?.trim() ? req.env.DSH_HOME : path.join(homedir(), '.dsh');
+  const home = path.resolve(selected === '~' ? homedir() : selected.startsWith('~/') ? path.join(homedir(),selected.slice(2)) : selected);
+  if (existsSync(path.join(home,'hima/restore-hold.json'))) throw new Error('This restored Home is held for offline inspection/extraction; qualify the final source-retired backup before opening it.');
+  const harness = path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json'));
+  const gate = await import(pathToFileURL(path.join(harness,'lib/local-database.js')).href);
+  await gate.assertHomeExecutionAllowed({home});
   const timeoutMs = req.timeoutMs ?? 90_000;
   const reserved = req.port ?? (await freePort());
   const controlToken=/^[a-f0-9]{64}$/.test(req.env.HIMA_DESKTOP_CONTROL_TOKEN??'')?req.env.HIMA_DESKTOP_CONTROL_TOKEN!:randomBytes(32).toString('hex');
   let servingOrigin:string|undefined;
   let stopping:Promise<number|null>|undefined;
+  let finalizingRequestId:string|undefined;
   const child = spawn(req.node, [req.dshEntry, ...buildHostArguments({ profile: req.profile, port: reserved })], {
     cwd: req.cwd,
     env: {...req.env,HIMA_DESKTOP_CONTROL_TOKEN:controlToken},
@@ -239,7 +251,8 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
               try {state=await request({requestId:`native-keep-${randomUUID()}`,mode:'keep-jobs'});}
               catch(error){state=await request();if(!state.requestId)throw error;}
             }
-            if(!state.ready)throw new Error('The accepted Host exit has not reached its actual boundary; its mode and original resources were preserved.');
+            if(!state.ready&&state.requestId!==finalizingRequestId)throw new Error('The accepted Host exit has not reached its actual boundary; its mode and original resources were preserved.');
+            finalizingRequestId=state.requestId;
             const finalized=await request({requestId:state.requestId,mode:'finish-exit'});
             if(!finalized.finalized)throw new Error('Host owned resource finalization was not confirmed');
           } catch(error) {
@@ -250,9 +263,10 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
         }
         await stopChild(child,graceMs);
         const code=await closed;
-        const receipts=new Set(err.split('\n'));
-        if(code!==0||child.signalCode!==null||!receipts.has(`hima: resource shutdown confirmed; pid=${child.pid}`)||
-          receipts.has(`hima: resource shutdown unconfirmed; pid=${child.pid}`))throw new Error(`Host resource shutdown unconfirmed (exit ${code??child.signalCode}). The original Home and database may still be owned; inspect their retained state before reopening.`);
+        const receipts=err.split('\n');
+        const confirmed=receipts.lastIndexOf(`hima: resource shutdown confirmed; pid=${child.pid}`);
+        const unconfirmed=receipts.lastIndexOf(`hima: resource shutdown unconfirmed; pid=${child.pid}`);
+        if(code!==0||child.signalCode!==null||confirmed<0||unconfirmed>confirmed)throw new Error(`Host resource shutdown unconfirmed (exit ${code??child.signalCode}). The original Home and database may still be owned; inspect their retained state before reopening.`);
         return code;
       })();
       const pending=stopping;

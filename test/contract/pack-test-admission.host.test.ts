@@ -7,12 +7,12 @@ import { test } from 'node:test';
 import path from 'node:path';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { bootHimaHost } from './support/boot-host.ts';
-import { localHome } from './support/fabric.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { packsDirOf, timingProbePackId, versionFileFor, writePackFiles, writePackVariant } from './support/pack.ts';
 import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS } from '@hima/harness';
 
-process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '1';
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 
 const textOf = (result: { content?: readonly { type: string; text?: string }[] }): string =>
@@ -58,17 +58,22 @@ test('confirmed Pack TEST admission is consistent across Fabric, hima_run and HT
   try {
     const agent = await createRootAgent(host.ctx, h.workspace);
     const proposal = await prepare(host, agent, timingProbePackId);
-    const direct = await host.ctx.hima.startRun({ proposalId: proposal.id, pack: timingProbePackId, site: 'local',
+    const direct = await host.ctx.hima.startRun({ ownerSessionId: String(agent.id), proposalId: proposal.id, pack: timingProbePackId, site: 'local',
       goal: proposal.goal, strategy: proposal.strategy, test: true });
-    assert.equal(direct.kind, 'ran');
-    if (direct.kind === 'ran') assert.equal(direct.run.purpose, 'test', 'Fabric marks the confirmed unreleased Pack Run as its test evidence');
+    assert.ok(direct.kind === 'preparing' || direct.kind === 'ran', JSON.stringify(direct));
+    if (direct.kind !== 'preparing' && direct.kind !== 'ran') throw new Error('Run admission failed');
+    await waitUntil('the TEST Run is prepared', async () => {
+      const context = await host.ctx.hima.readExecutionContext(direct.run.id);
+      return ['prepared', 'reused'].includes(context.durable?.preparation?.kind ?? '');
+    });
+    assert.equal((await host.ctx.hima.readExecutionContext(direct.run.id)).run.purpose, 'test', 'Fabric preserves the confirmed TEST purpose in current facts');
 
     const prepared = await prepare(host, agent, timingProbePackId);
     const throughTool = await host.ctx.tools.execute({ name: 'hima_run', callId: 'pack-test-admission-run' as never,
       arguments: { proposalId: prepared.id, pack: timingProbePackId, site: 'local', goal: prepared.goal,
         strategy: prepared.strategy, test: true }, agent, signal: AbortSignal.timeout(20_000) });
     assert.equal(throughTool.isError, false, textOf(throughTool));
-    assert.equal(host.ctx.hima.ledger.run(jsonOf(throughTool).runId)?.purpose, 'test', 'hima_run reaches the same Fabric admission');
+    assert.equal((await host.ctx.hima.readExecutionContext(jsonOf(throughTool).runId)).run.purpose, 'test', 'hima_run reaches the same Fabric admission');
 
     const released = await prepare(host, agent, releasedPack);
     const releasedThroughTool = await host.ctx.tools.execute({ name: 'hima_run', callId: 'sealed-pack-test-admission-run' as never,
@@ -76,7 +81,7 @@ test('confirmed Pack TEST admission is consistent across Fabric, hima_run and HT
         strategy: released.strategy, test: true }, agent, signal: AbortSignal.timeout(20_000) });
     assert.equal(releasedThroughTool.isError, true);
     assert.match(textOf(releasedThroughTool), /confirmed released product Campaign cannot be changed into a Pack test/);
-    await assert.rejects(host.ctx.hima.startRun({ proposalId: released.id, pack: releasedPack, site: 'local',
+    await assert.rejects(host.ctx.hima.startRun({ ownerSessionId: String(agent.id), proposalId: released.id, pack: releasedPack, site: 'local',
       goal: released.goal, strategy: released.strategy, test: true }), /confirmed released product Campaign cannot be changed into a Pack test/);
   } finally {
     await host.dispose();

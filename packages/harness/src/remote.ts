@@ -1522,13 +1522,13 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
  * of it, rather than out of a shape invented for this one route.
  */
 async function cancelOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
-  if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
   let result: CancelResult;
   try {
+    if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
     result = await ops.cancelRun(runId);
   } catch (err) {
-    // A Run this ledger does not hold is the same 404 the read route gives for it; every other fault
-    // is ours and goes to the internal-error path.
+    // Both the current context read and cancellation can refuse an unknown reference. Preserve
+    // that typed 404; database, transport and other faults keep the internal-error path.
     if (err instanceof RunReferenceError) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
     throw err;
   }

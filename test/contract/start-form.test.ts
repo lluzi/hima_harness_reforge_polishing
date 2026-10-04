@@ -1,214 +1,142 @@
-// L2: the real Host serves preparation facts before any Campaign exists.
+// U9: current ConfigurationPage facts and confirmed Campaign-file admission on an actual Host.
+// Standalone legacy /hima HTML form rendering is retired; API tests do not qualify native UI layout.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installPack, packsDirOf, timingProbePackId, writePackVariant } from './support/pack.ts';
 import { writeLocalSite, writeSiteWithDirPermit } from './support/site.ts';
-import { writeFile } from 'node:fs/promises';
-import { writeStandinFlow } from './support/standin-flow.ts';
+import { writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootHimaHost } from './support/boot-host.ts';
-import { api, openSession } from './support/hima-api.ts';
+import { api, createLiveSession, openSession } from './support/hima-api.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 
-test('an empty home explains Pack and Site preparation without creating a Run or contacting a Site', async () => {
-  const home = await createHimaHome();
-  const host = await bootHimaHost(home);
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+const optionsPath = (pack: string, site = 'local') => `/hima/api/start-options?pack=${pack}&site=${site}`;
+const headers = { 'content-type': 'application/json' };
+
+async function preparedFile(host: Awaited<ReturnType<typeof bootHimaHost>>, cookie: string, sessionId: string, pack: string, goal: object, extra: object = {}) {
+  const response = await api(host, cookie, '/hima/api/campaign', { method: 'PUT', headers,
+    body: JSON.stringify({ sessionId, file: { schema: 'hima-campaign/1', pack: { id: pack }, site: { name: 'local' }, goal, ...extra } }) });
+  const view = await response.json() as any;
+  assert.equal(response.status, 200, JSON.stringify(view));
+  return view;
+}
+
+function startFile(host: Awaited<ReturnType<typeof bootHimaHost>>, cookie: string, sessionId: string, pack: string, proposalId: string, extra: object = {}) {
+  return api(host, cookie, '/hima/api/runs/start', { method: 'POST', headers,
+    body: JSON.stringify({ sessionId, pack, site: 'local', proposalId, fromCampaignFile: true, ...extra }) });
+}
+
+async function launched(host: Awaited<ReturnType<typeof bootHimaHost>>, cookie: string, sessionId: string, runId: string) {
+  await waitUntil('the confirmed Campaign launches its original real Job', async () => {
+    const current = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${sessionId}`)).json() as any;
+    return current.jobs?.some((job: any) => job.event === 'launched') === true;
+  });
+}
+
+test('an empty home supplies no invented Pack, Site or Run and all preparation routes remain fenced', async () => {
+  const home = await createHimaHome(); const host = await bootHimaHost(home);
   try {
-    const cookie = await openSession(host);
-    const response = await api(host, cookie, '/hima/');
-    const html = await response.text();
-    assert.equal(response.status, 200, html);
-    assert.match(html, /No HimaPack is installed/);
-    assert.match(html, /No Site is configured/);
-    assert.match(html, /data-hima-state-count="0"/);
-    assert.match(html, /data-hima-control="start"[^>]*disabled/);
-    const choices = await api(host, cookie, '/hima/api/start-options');
-    assert.equal(choices.status, 200);
-    assert.deepEqual(await choices.json(), { packs: [], sites: [] });
-    const runs = await api(host, cookie, '/hima/api/runs');
-    assert.equal(runs.status, 200);
-    assert.deepEqual(await runs.json(), { runs: [] });
-    for (const route of ['/hima/api/start-options', '/hima/api/runs']) {
+    const cookie = await openSession(host); const sessionId = await createLiveSession(host, cookie, home.workspace);
+    assert.deepEqual(await (await api(host, cookie, '/hima/api/start-options')).json(), { packs: [], sites: [] });
+    assert.deepEqual(await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json(), { runs: [] });
+    const campaign = await (await api(host, cookie, `/hima/api/campaign?session=${sessionId}`)).json() as any;
+    assert.equal(campaign.exists, false); assert.equal(campaign.file.pack, undefined); assert.equal(campaign.file.site, undefined);
+    for (const route of ['/hima/api/start-options', `/hima/api/runs?sessionId=${sessionId}`]) {
       assert.equal((await fetch(new URL(route, host.url))).status, 401);
       assert.equal((await api(host, cookie, route, { headers: { origin: 'https://foreign.invalid' } })).status, 403);
       assert.equal((await api(host, cookie, route, { method: 'DELETE' })).status, 405);
     }
-    const audit = await api(host, cookie, '/hima/api/audit');
-    assert.deepEqual((await audit.json() as { commands: unknown[] }).commands, []);
-  } finally {
-    assert.equal(await host.stop(), 0, host.stderr());
-    await home.dispose();
-  }
+    assert.equal((await api(host, cookie, '/hima/api/audit')).status, 403, 'global diagnostic audit grants no current project authority');
+  } finally { assert.equal(await host.stop(), 0, host.stderr()); await home.dispose(); }
 });
 
-
-test('Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced', async () => {
-  const home = await createHimaHome();
-  await installPack(home);
-  await writeLocalSite(home); // No bindings: a real static mismatch.
+test('Pack/Site diagnostics and typed declarations precede admission without contacting the Site', async () => {
+  const home = await createHimaHome(); await installPack(home); await writeLocalSite(home);
   const host = await bootHimaHost(home);
   try {
-    const cookie = await openSession(host);
-    const target = `/hima/?pack=${timingProbePackId}&site=local`;
-    const html = await (await api(host, cookie, target)).text();
-    assert.match(html, /data-hima-region="start-check"/);
-    assert.match(html, /data-hima-state-status="unfit"/);
-    assert.match(html, /flowRoot.*not bound/);
-    assert.match(html, /Site owner/);
-    assert.match(html, /Connections, available licences and tools have not been tested/);
-    const refused = await api(host, cookie, '/hima/api/runs/start', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.3 } }),
-    });
-    assert.equal(refused.status, 400, await refused.text());
-    assert.match(await (await api(host, cookie, '/hima/')).text(), /data-hima-state-count="0"/);
-    assert.deepEqual((await (await api(host, cookie, '/hima/api/audit')).json() as { commands: unknown[] }).commands, []);
-    assert.equal((await fetch(new URL(target, host.url))).status, 401);
-    assert.equal((await api(host, cookie, target, { headers: { origin: 'https://foreign.invalid' } })).status, 403);
+    const cookie = await openSession(host); const sessionId = await createLiveSession(host, cookie, home.workspace);
+    const get = async (pack = timingProbePackId, site = 'local') => (await api(host, cookie, optionsPath(pack, site))).json() as Promise<any>;
+    const unfit = await get(); assert.equal(unfit.check.fit, false); assert.match(JSON.stringify(unfit.check), /flowRoot.*not bound/);
+    const refused = await api(host, cookie, '/hima/api/runs/start', { method: 'POST', headers, body: JSON.stringify({ sessionId, pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.3 } }) });
+    assert.equal(refused.status, 400);
     await writeLocalSite(home, { bindings: { flowRoot: '/not-checked-remotely', design: 'opene902', workspaceRoot: home.workspace } });
-    const fit = await (await api(host, cookie, target)).text();
-    assert.match(fit, /data-hima-state-status="fit"/);
-    assert.match(fit, /Static declarations match/);
-    const prepared = await (await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`)).json() as { pack: string; site: string; check: { fit: boolean }; strategy: object };
-    assert.equal(prepared.pack, timingProbePackId);
-    assert.equal(prepared.site, 'local');
-    assert.equal(prepared.check.fit, true);
-    assert.ok('periodNs' in prepared.strategy);
-    const unknown = await (await api(host, cookie, '/hima/?pack=missing&site=local')).text();
-    assert.match(unknown, /data-hima-state-status="request"/);
-    assert.match(unknown, /Select an installed Pack/);
-    const unknownPrepared = await (await api(host, cookie, '/hima/api/start-options?pack=missing&site=local')).json() as { preparation: { kind: string; message: string }; check?: object };
-    assert.equal(unknownPrepared.preparation.kind, 'request');
-    assert.match(unknownPrepared.preparation.message, /Select an installed Pack/);
-    assert.equal(unknownPrepared.check, undefined);
-    const badSite = await writeSiteWithDirPermit(home);
-    const badConfig = await (await api(host, cookie, `/hima/?pack=${timingProbePackId}&site=${badSite.name}`)).text();
-    assert.match(badConfig, /data-hima-state-status="site"/);
-    assert.match(badConfig, /Site owner.*configuration/);
-    const contract = path.join(packsDirOf(home), timingProbePackId, 'contract.yml');
-    await writeFile(contract, 'not: [valid');
-    const badPack = await (await api(host, cookie, target)).text();
-    assert.match(badPack, /data-hima-state-status="pack"/);
-    assert.match(badPack, /Pack owner/);
-    assert.match(badPack, /data-hima-state-count="0"/);
-  } finally {
-    assert.equal(await host.stop(), 0, host.stderr());
-    await home.dispose();
-  }
+    const fit = await get(); assert.equal(fit.check.fit, true); assert.equal(fit.proposal.ready, true); assert.ok('periodNs' in fit.strategy);
+    const missing = await get('missing'); assert.equal(missing.preparation.kind, 'request'); assert.match(missing.preparation.message, /Select an installed Pack/);
+    const badSite = await writeSiteWithDirPermit(home); assert.equal((await get(timingProbePackId, badSite.name)).preparation.kind, 'site');
+    await writeFile(path.join(packsDirOf(home), timingProbePackId, 'contract.yml'), 'not: [valid');
+    assert.equal((await get()).preparation.kind, 'pack');
+    assert.deepEqual(await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json(), { runs: [] });
+  } finally { assert.equal(await host.stop(), 0, host.stderr()); await home.dispose(); }
 });
 
-
-test('a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally', async (t) => {
-  const home = await createHimaHome();
-  const flow = await writeStandinFlow(t, home);
-  if (flow === undefined) { await home.dispose(); return; }
-  await installPack(home);
-  const options = {
-    allowedReadRoots: [home.workspace, flow.root], allowedWriteRoots: [home.workspace],
-    bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: home.workspace },
-  };
-  await writeLocalSite(home, options);
-  const host = await bootHimaHost(home);
+test('stale preparation and changed Strategy or Budget are refused; repaired Campaign facts admit normally', async t => {
+  const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
+  const { h, flow } = local; const host = await bootHimaHost(h);
+  const site = { allowedReadRoots: [h.workspace, flow.root], allowedWriteRoots: [h.workspace], bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace } };
   try {
-    const cookie = await openSession(host);
-    const target = `/hima/?pack=${timingProbePackId}&site=local`;
-    assert.match(await (await api(host, cookie, target)).text(), /data-hima-state-status="fit"/);
-    const start = (changes: Record<string, unknown> = {}) => api(host, cookie, '/hima/api/runs', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.3 }, generations: 1, ...changes }),
-    });
-    await writeLocalSite(home, { ...options, allowedWrappers: [] });
-    const denied = await start();
-    assert.equal(denied.status, 400, await denied.text());
-    const wrapper = await (await api(host, cookie, target)).text();
-    assert.match(wrapper, /data-hima-state-status="unfit"/);
-    assert.match(wrapper, /make.*not.*allowed|not.*permit|refus/i);
-    await writePackVariant(packsDirOf(home), 'bad-rule', [['  - clock-period-at-most', '  - no-<script>alert(1)</script>']]);
-    const rule = await (await api(host, cookie, '/hima/?pack=bad-rule&site=local')).text();
-    assert.match(rule, /data-hima-state-status="unfit"/);
-    assert.match(rule, /no-&lt;script&gt;alert/);
-    assert.ok(!rule.includes('<script>alert(1)</script>'));
-    await writeLocalSite(home, options);
-    for (const changes of [{ strategy: { periodNs: 0 } }, { timeBox: 0 }, { pack: 'missing' }, { site: 'missing' }]) {
-      const refused = await start(changes);
-      assert.equal(refused.status, 400, await refused.text());
-    }
-    assert.match(await (await api(host, cookie, '/hima/')).text(), /data-hima-state-count="0"/);
-    assert.deepEqual((await (await api(host, cookie, '/hima/api/audit')).json() as { commands: unknown[] }).commands, []);
-    const valid = await start();
-    const body = await valid.json() as { run: { id: string }; jobs: { event: string }[] };
-    assert.equal(valid.status, 200, JSON.stringify(body));
-    assert.ok(body.jobs.some((job) => job.event === 'launched'));
-    assert.match(body.run.id, /^run-/);
-    assert.match(await (await api(host, cookie, '/hima/')).text(), /data-hima-state-count="1"/);
-  } finally {
-    assert.equal(await host.stop(), 0, host.stderr());
-    await home.dispose();
-  }
+    const cookie = await openSession(host); const sessionId = await createLiveSession(host, cookie, h.workspace);
+    const original = await preparedFile(host, cookie, sessionId, timingProbePackId, { target_period_ns: 2.3 }, { budget: { generations: 1 } });
+    assert.equal(original.preparation.proposal.ready, true);
+    await writeLocalSite(h, { ...site, allowedWrappers: [] });
+    const stale = await startFile(host, cookie, sessionId, timingProbePackId, original.preparation.proposal.id); assert.equal(stale.status, 400);
+    const unfit = await (await api(host, cookie, optionsPath(timingProbePackId))).json() as any;
+    assert.equal(unfit.check.fit, false); assert.match(JSON.stringify(unfit.check), /make.*not.*allowed|not.*permit|refus/i);
+    await writePackVariant(packsDirOf(h), 'bad-rule', [['  - clock-period-at-most', '  - no-<script>alert(1)</script>']]);
+    const rule = await (await api(host, cookie, optionsPath('bad-rule'))).json() as any; assert.equal(rule.check.fit, false); assert.match(JSON.stringify(rule.check), /no-<script>alert/);
+    await writeLocalSite(h, site);
+    for (const extra of [{ strategy: { periodNs: 0 } }, { timeBox: 0 }, { generations: 2 }]) assert.equal((await startFile(host, cookie, sessionId, timingProbePackId, original.preparation.proposal.id, extra)).status, 400);
+    const unknown = await api(host, cookie, '/hima/api/campaign', { method: 'PUT', headers, body: JSON.stringify({ sessionId, file: { schema: 'hima-campaign/1', unknown: true } }) }); assert.equal(unknown.status, 400);
+    assert.deepEqual(await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json(), { runs: [] });
+    const repaired = await preparedFile(host, cookie, sessionId, timingProbePackId, { target_period_ns: 2.3 }, { budget: { generations: 1 } });
+    const started = await startFile(host, cookie, sessionId, timingProbePackId, repaired.preparation.proposal.id); const view = await started.json() as any;
+    assert.equal(started.status, 200, JSON.stringify(view)); assert.deepEqual(view.run.goal, { target_period_ns: 2.3 }); assert.equal(view.run.budget.generationLimit, 1);
+    await launched(host, cookie, sessionId, view.run.id);
+  } finally { assert.equal(await host.stop(), 0, host.stderr()); await h.dispose(); }
 });
 
-// PLS-21: a relative improvement target has no period semantics. Both form projections and the
-// final start hold the same contract, even when an author changes it after preparation.
-test('a declared relative Goal is rendered and revalidated before any Run exists', async (t) => {
-  const home = await createHimaHome();
-  const flow = await writeStandinFlow(t, home);
-  if (flow === undefined) { await home.dispose(); return; }
-  await installPack(home);
-  const pack = 'relative-goal';
-  await writePackVariant(packsDirOf(home), pack, [
-    ['  target_period_ns:', '  improvement_pct:'],
-    ['clock period at most, unit: ns', 'relative improvement, unit: "%"'],
-  ], [['target_period_ns', 'improvement_pct']]);
-  const contract = path.join(packsDirOf(home), pack, 'contract.yml');
-  const { readFile } = await import('node:fs/promises');
-  const graphPath = path.join(packsDirOf(home), pack, 'graph.yml');
-  await writeFile(graphPath, (await readFile(graphPath, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
-  const original = (await readFile(contract, 'utf8')).replace(/(improvement_pct:\n\s+label: relative improvement\n\s+unit:) ns/, '$1 %');
+test('relative Goal declarations and raw numeric spelling remain typed and revalidated before physical work', async t => {
+  const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local); const { h } = local; const pack = 'relative-goal';
+  await writePackVariant(packsDirOf(h), pack, [['  target_period_ns:', '  improvement_pct:'], ['clock period at most, unit: ns', 'relative improvement, unit: "%"']], [['target_period_ns', 'improvement_pct']]);
+  const file = path.join(packsDirOf(h), pack, 'contract.yml'); const original = (await readFile(file, 'utf8')).replace(/(improvement_pct:\n\s+label: relative improvement\n\s+unit:) ns/, '$1 %');
+  const graphFile = path.join(packsDirOf(h), pack, 'graph.yml');
+  await writeFile(graphFile, (await readFile(graphFile, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
   const declaration = '\ngoal:\n  improvement_pct: { type: number, unit: "%", min: 0, max: 100, default: 5, precision: 2 }\n';
-  await writeFile(contract, original + declaration);
-  await writeLocalSite(home, {
-    allowedReadRoots: [home.workspace, flow.root], allowedWriteRoots: [home.workspace],
-    bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: home.workspace },
-  });
-  const host = await bootHimaHost(home);
+  await writeFile(file, original + declaration);
+  const host = await bootHimaHost(h);
   try {
-    const cookie = await openSession(host);
-    const choices = await (await api(host, cookie, `/hima/api/start-options?pack=${pack}&site=local`)).json() as { goal?: object; check?: { fit: boolean } };
-    assert.equal(choices.check?.fit, true, JSON.stringify(choices));
+    const cookie = await openSession(host); const sessionId = await createLiveSession(host, cookie, h.workspace);
+    const choices = await (await api(host, cookie, optionsPath(pack))).json() as any; assert.equal(choices.check.fit, true);
     assert.deepEqual(choices.goal, { improvement_pct: { type: 'number', unit: '%', min: 0, max: 100, default: 5, precision: 2 } });
-    const html = await (await api(host, cookie, `/hima/?pack=${pack}&site=local`)).text();
-    assert.match(html, /data-hima-control="start-goal-improvement_pct"/);
-    assert.match(html, /relative improvement \(%\)/);
-    assert.ok(!html.includes('data-hima-control="start-target"'));
-    const start = (goal: object) => api(host, cookie, '/hima/api/runs', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pack, site: 'local', goal, generations: 1 }),
-    });
     for (const goal of [{ improvement_pct: -1 }, { improvement_pct: 100.01 }, { improvement_pct: 1.001 }, { target_period_ns: 2.3 }]) {
-      const response = await start(goal);
-      assert.equal(response.status, 400, await response.text());
+      const response = await api(host, cookie, '/hima/api/runs/start', { method: 'POST', headers, body: JSON.stringify({ sessionId, proposalId: choices.proposal.id, pack, site: 'local', goal }) }); assert.equal(response.status, 400);
     }
-    for (const raw of ['"improvement_pct":1,"improvement_pct":2', '"improvement_pct":2.00000000000000001']) {
-      const response = await api(host, cookie, '/hima/api/runs', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: `{"pack":"${pack}","site":"local","goal":{${raw}},"generations":1}`,
-      });
-      const text = await response.text();
-      assert.equal(response.status, 400, text);
-      assert.match(text, /duplicate|representable/);
+    for (const { raw, expected } of [
+      { raw: '"goal":{"improvement_pct":1,"improvement_pct":2}', expected: /duplicate/ },
+      { raw: '"goal":{"improvement_pct":2.00000000000000001}', expected: /representable/ },
+      { raw: '"goal":{"improvement_pct":5},"strategy":{"periodNs":2,"periodNs":3}', expected: /duplicate/ },
+    ]) {
+      const response = await api(host, cookie, '/hima/api/runs/start', { method: 'POST', headers, body: `{"sessionId":"${sessionId}","proposalId":"${choices.proposal.id}","pack":"${pack}","site":"local",${raw}}` });
+      const message = await response.text(); assert.equal(response.status, 400, message); assert.match(message, expected);
     }
-    await writeFile(contract, original + declaration.replace('max: 100', 'max: 10'));
-    const stale = await start({ improvement_pct: 25 });
-    assert.equal(stale.status, 400, await stale.text());
-    assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
-    assert.deepEqual((await (await api(host, cookie, '/hima/api/audit')).json() as { commands: unknown[] }).commands, []);
-    const valid = await start({ improvement_pct: 10 });
-    const result = await valid.json() as { run: { goal: object }; jobs: { event: string }[] };
-    assert.equal(valid.status, 200, JSON.stringify(result));
-    assert.deepEqual(result.run.goal, { improvement_pct: 10 });
-    assert.ok(result.jobs.some((job) => job.event === 'launched'));
-  } finally {
-    assert.equal(await host.stop(), 0, host.stderr());
-    await home.dispose();
-  }
+    // These parse correctly, but neither matches the reviewed Goal. Keep this distinct from
+    // token-loss rejection: __proto__ is not currently a forbidden JSON token.
+    for (const rawGoal of ['{"improvement_pct":2}', '{"__proto__":2}']) {
+      const mismatch = await api(host, cookie, '/hima/api/runs/start', { method: 'POST', headers,
+        body: `{"sessionId":"${sessionId}","proposalId":"${choices.proposal.id}","pack":"${pack}","site":"local","goal":${rawGoal}}` });
+      assert.equal(mismatch.status, 400); assert.match(await mismatch.text(), /submitted Goal or Strategy differs/);
+    }
+    const prepared = await preparedFile(host, cookie, sessionId, pack, { improvement_pct: 25 }, { budget: { generations: 1 } });
+    await writeFile(file, original + declaration.replace('max: 100', 'max: 10'));
+    assert.equal((await startFile(host, cookie, sessionId, pack, prepared.preparation.proposal.id)).status, 400);
+    assert.deepEqual(await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json(), { runs: [] });
+    const rawCampaign = await api(host, cookie, '/hima/api/campaign', { method: 'PUT', headers,
+      body: `{"sessionId":"${sessionId}","file":{"schema":"hima-campaign/1","pack":{"id":"${pack}"},"site":{"name":"local"},"goal":{"improvement_pct":10.00},"budget":{"generations":1}}}` });
+    const corrected = await rawCampaign.json() as any; assert.equal(rawCampaign.status, 200, JSON.stringify(corrected));
+    assert.equal(corrected.preparation.proposal.ready, true);
+    const admitted = await startFile(host, cookie, sessionId, pack, corrected.preparation.proposal.id); const view = await admitted.json() as any;
+    assert.equal(admitted.status, 200, JSON.stringify(view)); assert.deepEqual(view.run.goal, { improvement_pct: 10 }); await launched(host, cookie, sessionId, view.run.id);
+  } finally { assert.equal(await host.stop(), 0, host.stderr()); await h.dispose(); }
 });

@@ -167,6 +167,10 @@ export class RunStore {
     return readRun(rows[0]);
   }
   async run(runId: string): Promise<DurableRun> { return this.#run(this.#pool, runId); }
+  /** Keep one Run's authority stable while a reader publishes its verified filesystem result. */
+  async withRunReadBoundary<T>(runId:string, read:()=>Promise<T>):Promise<T> {
+    return this.transaction(async client=>{await this.#run(client,runId,true);return read();},'hima.readRunBoundary');
+  }
   async runs(): Promise<DurableRun[]> { return (await this.#pool.query<DurableRun>(`SELECT ${runColumns} FROM hima.runs ORDER BY created_at,run_id`)).rows.map(readRun); }
   /** Actual and former owner authority for Host routing; Guide-only relations grant no role. */
   async runsForOwner(sessionId:string):Promise<DurableRun[]> {

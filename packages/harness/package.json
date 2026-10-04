@@ -1,6 +1,6 @@
 {
   "name": "@hima/harness",
-  "version": "0.1.2",
+  "version": "0.3.0",
   "description": "HimaHarness bundle for DeepSeek Harness: campaigns that end in facts",
   "type": "module",
   "main": "lib/index.js",
@@ -12,7 +12,11 @@
     },
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./run-backup": {
+      "types": "./lib/types/run-backup.d.ts",
+      "default": "./lib/run-backup.js"
+    }
   },
   "files": [
     "lib/**/*.js",

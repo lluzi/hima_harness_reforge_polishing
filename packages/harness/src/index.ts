@@ -52,7 +52,7 @@ const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { readDurableHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
-import { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, type LocalDatabase } from './local-database.js';
+import { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, recordHomeCutover, assertHomeExecutionAllowed, resolveRetainedMaterialsDirectory, type LocalDatabase } from './local-database.js';
 import { nativeSessionMemoryEvidence } from './native-session-memory.js';
 import { readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge,
   recordExperienceAdoption, type ExperienceAdoptionRequest, type WorkMemoryScope, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
@@ -61,7 +61,7 @@ import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { createDurableViewReaders } from './durable-views.js';
-import { previewPackTransfer, applyPackTransfer, loadRunPack } from './release.js';
+import { previewPackTransfer, applyPackTransfer, loadRunPack, releasePackFromRuntime } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
 import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
@@ -79,7 +79,6 @@ import { authorizeProjectRun, readGuideContext, readNativeSessionContext, resolv
 export { readGuideContext, readNativeSessionContext, resolveReportAddress, targetAddress } from './guide-context.js';
 export type { TargetAddress, GuideContextView } from './guide-context.js';
 import { authenticCampaignProposalId, sameCampaignProposalFacts } from './fabric.js';
-import { legacyAutomaticAllowed } from './runs.js';
 export { prepareCampaignSession, readChildSessionView, listSessionChildren } from './guide-sessions.js';
 export type { PreparedCampaignSession } from './guide-sessions.js';
 import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './workshop.js';
@@ -489,6 +488,8 @@ function testDiscoveryChannelFor(): ((name: string, ssh: SshTarget) => Channel) 
   });
 }
 
+await assertHomeExecutionAllowed({home:localDatabaseHome()});
+
 export default class Hima extends Service {
   static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
   static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required(), interactiveBindingsFile:z.string() });
@@ -536,35 +537,52 @@ export default class Hima extends Service {
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
   private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
 
+  private retainedMaterialsDir = '';
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'hima');
   }
 
   async [Service.init](): Promise<void> {
+    await assertHomeExecutionAllowed({home:localDatabaseHome()});
+    const retainedMaterialsDir = await resolveRetainedMaterialsDirectory({home:localDatabaseHome()});
+    this.retainedMaterialsDir = retainedMaterialsDir;
     let databaseStarting: Promise<LocalDatabase>;
     let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
     let durableStarting: Promise<DurableRuntime> | undefined;
     let closing = false;
+    let durableClosed = false, domainClosed = false;
+    let closingAttempt: Promise<void> | undefined;
     let closeHostResources = async () => {
       const database = await databaseStarting;
       const durable = await durableStarting?.catch(() => undefined);
-      if (durable) await durable.stop();
-      try { if (domainStarting) await (await domainStarting).close(); }
+      if (durable && !durableClosed) { await durable.stop(); durableClosed = true; }
+      try {
+        if (domainStarting && !domainClosed) { await (await domainStarting).close(); domainClosed = true; }
+      }
       finally { await database.stop(); }
     };
     // Cordis disposes independent effects concurrently: one ordered disposer owns both the
     // application resources and PostgreSQL. Register before starting either resource: mid-boot
     // disposal waits for their actual creation and then closes them instead of missing their owner.
-    this.closeHostResources=()=>this.resourcesClosing??=(async()=>{
-      closing=true;
-      try {
-        await closeHostResources();
-        await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown confirmed; pid=${process.pid}\n`,()=>resolve()));
-      } catch(error) {
-        await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown unconfirmed; pid=${process.pid}\n`,()=>resolve()));
-        throw error;
-      }
-    })();
+    this.closeHostResources=()=>{
+      if(closingAttempt)return closingAttempt;
+      const attempt=(async()=>{
+        closing=true;
+        try {
+          await closeHostResources();
+          await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown confirmed; pid=${process.pid}\n`,()=>resolve()));
+        } catch(error) {
+          await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown unconfirmed; pid=${process.pid}\n`,()=>resolve()));
+          throw error;
+        }
+      })();
+      closingAttempt=attempt;
+      this.resourcesClosing=attempt;
+      // Keep the resource fence after failure; only the same closer may retry. Successfully
+      // completed consumers stay closed while PostgreSQL rechecks its original ownership.
+      void attempt.catch(()=>{if(closingAttempt===attempt)closingAttempt=undefined;});
+      return attempt;
+    };
     this.ctx.effect(()=>()=>this.closeHostResources(),'hima: Host and local database lifetime');
     // The same product-owned lifecycle is used by the headless profile and Electron's Host.
     databaseStarting = startLocalDatabase({ home: localDatabaseHome(), runtimeDirectory: localDatabaseRuntime() });
@@ -575,6 +593,7 @@ export default class Hima extends Service {
     const domain = await openingDomain;
     if (closing) return;
     this.ledger = new Ledger(domain);
+    await recordHomeCutover({home:localDatabaseHome()});
     const manifest = await installedExecutableManifest();
     if (closing) return;
     const interactiveBridge = createInteractiveBindingBridge({ packsDir: this.config.packsDir, sitesDir: this.config.sitesDir,
@@ -583,11 +602,11 @@ export default class Hima extends Service {
       ...preparationWorkflowDefinitions({ sitesDir: this.config.sitesDir }),
       ...flowWorkflowDefinitions({ finalize: async (runtime,runId,revision,attempt) => {
         await this.durableAdaptersReady;
-        return createDurableViewReaders({...this.deps(),durable:runtime},{retainedMaterialsDir:path.join(localDatabaseHome(),'hima','run-assets','dbos')}).finalizeDelivery(runId,revision,attempt);
+        return createDurableViewReaders({...this.deps(),durable:runtime},{retainedMaterialsDir:this.retainedMaterialsDir}).finalizeDelivery(runId,revision,attempt);
       }, resolveAdapter: async context => {
         await this.durableAdaptersReady;
         return resolveDurableTaskAdapter(context, { ctx: this.ctx, sitesDir: this.config.sitesDir,
-          retainedMaterialsDir: path.join(localDatabaseHome(), 'hima', 'run-assets', 'dbos'),
+          retainedMaterialsDir: this.retainedMaterialsDir,
           interactive: { bridge: interactiveBridge,
             ...(testFixtureCanRunHere() && process.env.HIMA_TEST_INTERACTIVE_BINDING_ID
               ? { trustedTestQualification: { bindingId: process.env.HIMA_TEST_INTERACTIVE_BINDING_ID } } : {}) } });
@@ -596,11 +615,6 @@ export default class Hima extends Service {
     durableStarting = startDurableRuntime({ database, manifest, workflows });
     this.durable = await durableStarting;
     if (closing) return;
-    closeHostResources = async () => {
-      await this.durable.stop();
-      try { await domain.close(); }
-      finally { await database.stop(); }
-    };
     // Product identity is a prompt contribution rather than a document the Agent has to discover.
     // The dynamic inventory is recomputed at assembly time, so installs and Campaign changes are
     // visible on the next step without restarting the Host or scanning the checkout.
@@ -636,7 +650,10 @@ export default class Hima extends Service {
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
     this.judge = createJudge(this.ledger, this.config.packsDir);
     // Legacy records remain readable. Only DBOS advances new Runs; no old dispatcher is started.
+    const closeOwnedConsumers = closeHostResources;
+    let observersClosed = false;
     closeHostResources = async () => {
+      if(!observersClosed) {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
       for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
@@ -647,9 +664,9 @@ export default class Hima extends Service {
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
       await Promise.all([this.factProjection,this.factNotifications]);
-      await this.durable.stop();
-      await domain.close();
-      await database.stop();
+        observersClosed = true;
+      }
+      await closeOwnedConsumers();
     };
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.
     // A headless host has no web server and no browser session to guard it with, and still works.
@@ -951,6 +968,8 @@ export default class Hima extends Service {
   // holding `ctx.hima` reaches. Each is the module operation with this host's dependencies handed
   // to it, and none of them decides anything of its own.
 
+  releasePack(req:{readonly pack:string}):Promise<import('./release.js').ReleaseResult> { return releasePackFromRuntime(this.deps(),req); }
+
   observe(req: ObserveRequest): Promise<ObserveResult> {
     return observe(this.deps(), req);
   }
@@ -974,7 +993,7 @@ export default class Hima extends Service {
   controlDurableRun(command: DurableCommand) { return controlDurableRun(this.deps(), command); }
 
   private viewReaders() {
-    return createDurableViewReaders(this.deps(),{retainedMaterialsDir:path.join(localDatabaseHome(),'hima','run-assets','dbos')});
+    return createDurableViewReaders(this.deps(),{retainedMaterialsDir:this.retainedMaterialsDir});
   }
 
   private guideDeps() {
@@ -1079,21 +1098,25 @@ export default class Hima extends Service {
   /** Finish owned resources while the native transport still serves, before SIGTERM starts
    * the vendor's unrelated five-second whole-tree deadline. One closer owns both paths. */
   async finishExit(requestId:string):Promise<HostExitStatus> {
+    if(this.finalizationRequestId&&this.finalizationRequestId!==requestId)throw new BadRequest('App exit finalization request is stale');
     if(this.exitFinalization) {
       if(this.finalizationRequestId!==requestId)throw new BadRequest('App exit finalization request is stale');
       return this.exitFinalization;
     }
+    const retry=this.resourcesClosing!==undefined&&this.finalExitStatus!==undefined;
     this.finalizationRequestId=requestId;
     this.exitFinalization=(async()=>{
       await this.reconciled;
-      const state=await this.exitStatus();
+      // Once consumers close, querying their store is impossible. The original accepted resource
+      // boundary remains fenced; retry only its closer, never preparation or physical stop jobs.
+      const state=retry?this.finalExitStatus!:await this.exitStatus();
       if(state.requestId!==requestId)throw new BadRequest('App exit finalization request is stale');
-      if(!state.ready)throw new BadRequest('App exit has not reached its actual resource boundary');
-      await this.durable.store.beginHostExitFinalization(requestId);
+      if(!state.ready&&!retry)throw new BadRequest('App exit has not reached its actual resource boundary');
+      if(!retry)await this.durable.store.beginHostExitFinalization(requestId);
       this.finalExitStatus={...state,finalized:false};
       try {
         await this.closeHostResources();
-        return this.finalExitStatus={...state,finalized:true};
+        return this.finalExitStatus={...state,ready:true,finalized:true};
       } catch(error) {
         this.finalExitStatus={...state,ready:false,finalized:false};
         throw error;
@@ -1101,7 +1124,8 @@ export default class Hima extends Service {
     })();
     try {return await this.exitFinalization;}
     catch(error) {
-      if(!this.resourcesClosing){this.exitFinalization=undefined;this.finalizationRequestId=undefined;}
+      this.exitFinalization=undefined;
+      if(!this.resourcesClosing)this.finalizationRequestId=undefined;
       throw error;
     }
   }
@@ -1602,7 +1626,6 @@ export default class Hima extends Service {
   /** A confirmed Guide proposal starts in an independent native session. Fabric still owns Run admission. */
   async startGuidedRun(request: StartRunRequest): Promise<StartRunResult> {
     if(this.exitRequest)throw new BadRequest('the App is closing; no new task may start');
-    if (legacyAutomaticAllowed()) return this.startRun(request);
     if (!request.ownerSessionId || !request.proposalId) {
       throw new BadRequest('confirm a current Campaign proposal from a live Guide conversation before starting');
     }
@@ -1730,7 +1753,11 @@ export default class Hima extends Service {
    * isolated dsh session, and composing one takes the context the bundle was applied with. Every
    * other operation is given the ledger and where things are installed, and reaches no host at all.
    */
-  openMoment(runId: string, instructions: string): Promise<MomentOnNode> {
+  async openMoment(runId: string, instructions: string): Promise<MomentOnNode> {
+    if(await knownDurableRun(this.deps(),runId)) {
+      const {RunStartError}=await import('./errors.js');
+      throw new RunStartError(`run ${runId} is controlled by its conversation Agent; separate model moments are unavailable. Ask the owning conversation Agent to inspect this Run.`);
+    }
     return momentOnCurrentNode({ ledger: this.ledger, ctx: this.ctx }, runId, instructions);
   }
 

@@ -20,7 +20,11 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 
 2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；四项已完成验收：完整 local 377/377、安装态作者只读终检11/11通过，原始失败与适用边界见 [验收记录](docs/assessment/2026-09-12/pls-next/README.md)。该历史批次当时完成12/26个PLS，当时依赖前沿为 PLS-23、PLS-24、PLS-10、PLS-14。
 
-开始 Campaign 会准备一个持久 Run 并绑定当前可见的 Campaign Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。用户可以在同一产品中新开 Side Talk 继续普通对话或 Coding，切换会话不改变 Campaign owner；显式 handoff 才转移执行。暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。
+当前 DBOS 迁移候选用冻结的 Task 输入、输出和声明式组合推进新 Run。业务执行继续复用
+Site/Channel、工具、模型任务和驻场工程；DBOS 负责持久执行与恢复，应用数据库保存权限、
+结果和交接事实，Ledger 保留历史投影。暂停、取消和消息先持久记录，再由实际 effect 核对。
+旧活动 Run 不热迁移；本地安装、退出、备份与恢复边界见[本地运行说明](docs/operations/local-runtime.md)。
+候选尚在完整 App/ATCS 验收中，历史发布不代表本轮完成。
 
 ## 本地准备
 
