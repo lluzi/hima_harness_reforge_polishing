@@ -160,7 +160,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installHimaLocale(ctx.locale));
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Hima Workspace',
-    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Campaign and Data Insight beside the conversation, with source-linked evidence.' }],
+    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Campaign and QuaLib Insight beside the conversation, with source-linked evidence.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   // C19: `uiWorkspace` (the native folder picker) is resolved lazily, inside the callback itself,

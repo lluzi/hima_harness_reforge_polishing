@@ -251,9 +251,12 @@ export const en = {
   'insight.analyse.notReady': 'This library folder and kit are not ready to analyse: {reason}',
   'insight.analyse.failed': 'Analysis did not finish: {reason}',
   'insight.analyse.openRun': 'Open this Run',
+  'insight.analyse.restoreHeading': 'Could not restore your Campaign draft. Copy your original draft below to recover it:',
+  'insight.analyse.restoreEmptyFailed': 'Could not clear the analysis Campaign file this view wrote ({reason}); no earlier draft existed to restore.',
 
   // QuaLib Insight preparation view (retained-data selector). English byte-identical to the literals
-  // these keys replaced.
+  // these keys replaced, except the eyebrow which is renamed from "DATA INSIGHT".
+  'insight.prep.eyebrow': 'QuaLib Insight',
   'insight.prep.heading': 'Choose retained data to inspect',
   'insight.prep.intro': 'Opening a retained report creates no Campaign, Job, analysis, or model call. The Host validates the selected record and supported schema.',
   'insight.prep.noCandidate': 'No retained report candidate is visible from the last Campaign view. Paste an exact record reference below.',
@@ -600,7 +603,10 @@ export const zh: Record<keyof typeof en, string> = {
   'insight.analyse.notReady': '该 library 文件夹与 kit 尚不可分析：{reason}',
   'insight.analyse.failed': '分析未能完成：{reason}',
   'insight.analyse.openRun': '打开此 Run',
+  'insight.analyse.restoreHeading': '无法恢复你的 Campaign 草稿。请从下方复制你的原始草稿以便恢复：',
+  'insight.analyse.restoreEmptyFailed': '无法清除此视图写入的分析 Campaign 文件（{reason}）；此前不存在需要恢复的草稿。',
 
+  'insight.prep.eyebrow': 'QuaLib 洞察',
   'insight.prep.heading': '选择要查看的已保留数据',
   'insight.prep.intro': '打开一份已保留的报告不会创建 Campaign、Job、分析或模型调用。Host 会校验所选记录与受支持的 schema。',
   'insight.prep.noCandidate': '上一个 Campaign 视图中没有可见的已保留报告候选。请在下方粘贴确切的记录引用。',

@@ -75,13 +75,15 @@ export function goalDefaults(choices: StartChoices | undefined): Record<string, 
 }
 
 /** What the Analyse button builds a Campaign file from. The folder and kit are the person's choices in
- *  the tab; the Goal and the time box are the Pack's own default and this tab's modest box. */
+ *  the tab; the Goal and the time box are the Pack's own default and this tab's modest box. A Pack
+ *  that declares no choice knob at all leaves `kitKnob`/`kit` out, and the analysis file then carries
+ *  no Strategy override rather than a `{ '': … }` knob no Pack declares. */
 export interface AnalysisRequest {
   readonly packId: string;
   readonly siteName: string;
   readonly folder: string;
-  readonly kitKnob: string;
-  readonly kit: string;
+  readonly kitKnob?: string;
+  readonly kit?: string;
   readonly goal: Readonly<Record<string, number>>;
   readonly timeBoxMinutes: number;
 }
@@ -109,7 +111,7 @@ export function analysisCampaignFile(request: AnalysisRequest): CampaignFile {
     site: { name: request.siteName },
     inputs: { [LIB_INSIGHT_ROOT_INPUT]: request.folder },
     goal: { ...request.goal },
-    strategy: { [request.kitKnob]: request.kit },
+    strategy: request.kitKnob === undefined ? {} : { [request.kitKnob]: request.kit ?? '' },
     budget: { timeBoxMinutes: request.timeBoxMinutes },
     knowledge: [],
     notes: '',

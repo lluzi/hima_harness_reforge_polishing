@@ -217,7 +217,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'insight'
-        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} pickFolder={pickFolder} openRun={runId => chooseCampaign({ kind: 'campaign', runId })} />
+        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} pickFolder={pickFolder} openRun={runId => chooseCampaign({ kind: 'campaign', runId })} onRunStarted={() => list.refresh()} />
         : address.kind === 'child'
           ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined

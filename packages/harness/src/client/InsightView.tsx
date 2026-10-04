@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import type { ReadExperienceResult } from '../experience.js';
 import { reportBlocks } from '../experience-report.js';
 import { fetchCampaignFile, fetchGuideContext, fetchRun, fetchSites, fetchStartChoices, resolveReportAddress, saveCampaignFile, startCampaign } from './api.js';
@@ -13,7 +13,7 @@ import { readLibraryInsightView } from './library-insight-view.js';
 import { useHimaT, labelKeyed } from './locale/index.js';
 import {
   ANALYSIS_TIME_BOX_MINUTES, analysisCampaignFile, analysisOutcome, defaultLibraryFolder,
-  discoverLibraryAnalysisPacks, goalDefaults, libraryKitKnob, LIBRARY_KIT_KNOB,
+  discoverLibraryAnalysisPacks, goalDefaults, libraryKitKnob,
   type PackChoicesEntry,
 } from './library-analysis.js';
 import type { StartChoices } from '../workbench.js';
@@ -35,7 +35,7 @@ function reportFailure(value: unknown): string {
 
 export interface AvailableInsightReport { readonly reportRef: string; readonly label: string; readonly detail: string }
 
-export function InsightView({ sessionId, scope, reportRef, availableReports, onReference, onSelectReportRef, pickFolder, openRun }: { readonly sessionId: string; readonly scope?: string; readonly reportRef?: string; readonly availableReports: readonly AvailableInsightReport[]; readonly onReference:(text:string)=>void; onSelectReportRef(reportRef?: string): void; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void }): ReactElement {
+export function InsightView({ sessionId, scope, reportRef, availableReports, onReference, onSelectReportRef, pickFolder, openRun, onRunStarted }: { readonly sessionId: string; readonly scope?: string; readonly reportRef?: string; readonly availableReports: readonly AvailableInsightReport[]; readonly onReference:(text:string)=>void; onSelectReportRef(reportRef?: string): void; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void; onRunStarted?(): void }): ReactElement {
   const [library, setLibrary] = useState<LibraryInsightReportView>();
   const [feedback, setFeedback] = useState<GenerationFeedbackReportView>();
   const [report, setReport] = useState<RetainedReport>();
@@ -69,7 +69,7 @@ export function InsightView({ sessionId, scope, reportRef, availableReports, onR
 
   if(library)return <LibraryInsightPanel key={`${sessionId}:${library.reportRef}:${library.source.sha256}`} report={library} viewer={sessionId} onReference={onReference} onChooseAnother={() => onSelectReportRef()}/>;
   if(feedback)return <GenerationFeedbackPanel key={`${sessionId}:${feedback.reportRef}:${feedback.source.sha256}`} view={feedback} viewer={sessionId} onReference={onReference} onChooseAnother={() => onSelectReportRef()}/>;
-  if (reportRef === undefined) return <ReportPreparation sessionId={sessionId} scope={scope} availableReports={availableReports} onSelect={onSelectReportRef} pickFolder={pickFolder} openRun={openRun}/>;
+  if (reportRef === undefined) return <ReportPreparation sessionId={sessionId} scope={scope} availableReports={availableReports} onSelect={onSelectReportRef} pickFolder={pickFolder} openRun={openRun} onRunStarted={onRunStarted}/>;
   return <section className='hima-insight-report' data-hima-region='insight-report' data-hima-state-report={reportRef}>
     <header><div><span className='hima-studio-eyebrow'>RETAINED INSIGHT</span><h2>Campaign Experience report</h2></div><button type='button' className='hima-button' onClick={() => onSelectReportRef()}>Choose another report</button></header>
     {loading ? <p>Resolving and verifying the retained report bytes…</p> : failure ? <p role='alert'>Verified report unavailable: {failure}</p> : report && identity ? <>
@@ -82,14 +82,14 @@ export function InsightView({ sessionId, scope, reportRef, availableReports, onR
 }
 
 const rememberedReportRefs = new Map<string, string>();
-function ReportPreparation({ sessionId, scope, availableReports, onSelect, pickFolder, openRun }: { readonly sessionId: string; readonly scope?: string; readonly availableReports: readonly AvailableInsightReport[]; onSelect(reportRef: string): void; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void }): ReactElement {
+function ReportPreparation({ sessionId, scope, availableReports, onSelect, pickFolder, openRun, onRunStarted }: { readonly sessionId: string; readonly scope?: string; readonly availableReports: readonly AvailableInsightReport[]; onSelect(reportRef: string): void; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void; onRunStarted?(): void }): ReactElement {
   const t = useHimaT();
   const [draft, setDraft] = useState(() => rememberedReportRefs.get(sessionId) ?? '');
   const change = (value: string) => { setDraft(value); rememberedReportRefs.delete(sessionId); rememberedReportRefs.set(sessionId, value); if (rememberedReportRefs.size > 64) { const oldest = rememberedReportRefs.keys().next().value; if (oldest !== undefined) rememberedReportRefs.delete(oldest); } };
   const submit = (event: FormEvent) => { event.preventDefault(); const reportRef = draft.trim(); if (reportRef !== '') onSelect(reportRef); };
   return <section className='hima-insight-preparation' data-hima-region='insight-preparation'>
-    <span className='hima-studio-eyebrow'>DATA INSIGHT</span><h2>{t('insight.prep.heading')}</h2><p>{t('insight.prep.intro')}</p>
-    <LibraryAnalysisSection sessionId={sessionId} pickFolder={pickFolder} openRun={openRun} onAnalysed={onSelect} />
+    <span className='hima-studio-eyebrow'>{t('insight.prep.eyebrow')}</span><h2>{t('insight.prep.heading')}</h2><p>{t('insight.prep.intro')}</p>
+    <LibraryAnalysisSection sessionId={sessionId} pickFolder={pickFolder} openRun={openRun} onAnalysed={onSelect} onRunStarted={onRunStarted} />
     {availableReports.length === 0 ? <p className='hima-small'>{t('insight.prep.noCandidate')}</p> : <label>{t('insight.prep.candidates')}<select data-hima-control='insight-report-candidate' value={availableReports.some(option => option.reportRef === draft) ? draft : ''} onChange={event => change(event.target.value)}><option value=''>{t('insight.prep.chooseCandidate')}</option>{availableReports.map(option => <option value={option.reportRef} key={option.reportRef}>{option.label}</option>)}</select></label>}
     {availableReports.map(option => option.reportRef === draft ? <p className='hima-small' key={option.reportRef}>{option.detail}</p> : null)}
     <form className='hima-report-selector' onSubmit={submit}><label>{t('insight.prep.exactRef')}<input data-hima-control='insight-report-ref' value={draft} onChange={event => change(event.target.value)} placeholder={t('insight.prep.recordIdentity')}/></label><button type='submit' className='hima-button' data-hima-control='insight-open-report' disabled={draft.trim() === ''}>{t('insight.prep.openReport')}</button></form>
@@ -107,6 +107,13 @@ type AnalysisPhase =
   | { readonly phase: 'running'; readonly runId: string }
   | { readonly phase: 'failed'; readonly reason: string; readonly runId?: string };
 
+/** The in-flight analysis per session, kept at module scope (the same pattern `rememberedReportRefs`
+ *  uses) so switching to the Campaign tab and back — which unmounts and remounts this section — does
+ *  not drop a running analysis on the floor: the remount reads this map, resumes polling a `running`
+ *  Run and keeps Analyse disabled while one is `starting`/`running`. A `starting` phase is the
+ *  in-flight flag; `idle` clears the entry. */
+const rememberedRuns = new Map<string, AnalysisPhase>();
+
 /**
  * The "Analyse a library folder" section of the QuaLib Insight preparation view (when no report is
  * open). It discovers the installed library-analysis Packs (those declaring the library-root input),
@@ -116,7 +123,7 @@ type AnalysisPhase =
  * verified library report in this tab when it finishes. The person's own `hima/campaign.yml` draft is
  * read, saved aside and restored around the start, never clobbered (`library-analysis.ts`).
  */
-function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed }: { readonly sessionId: string; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void; onAnalysed(reportRef: string): void }): ReactElement | null {
+function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed, onRunStarted }: { readonly sessionId: string; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void; onAnalysed(reportRef: string): void; onRunStarted?(): void }): ReactElement | null {
   const t = useHimaT();
   const [packs, setPacks] = useState<readonly PackChoicesEntry[]>();
   const [sites, setSites] = useState<readonly SiteHeadView[]>([]);
@@ -124,13 +131,37 @@ function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed }: 
   const [siteName, setSiteName] = useState('');
   const [active, setActive] = useState<StartChoices>();
   const [folder, setFolder] = useState('');
-  const [folderTouched, setFolderTouched] = useState(false);
   const [kit, setKit] = useState('');
-  const [run, setRun] = useState<AnalysisPhase>({ phase: 'idle' });
+  const [run, setRunState] = useState<AnalysisPhase>(() => rememberedRuns.get(sessionId) ?? { phase: 'idle' });
   const [runElapsed, setRunElapsed] = useState<{ readonly node?: string; readonly elapsedMs?: number }>();
   const [notice, setNotice] = useState<string>();
+  // The person's original draft text to show when restoring it failed, so nothing they wrote is lost
+  // even if the Host would not take it back; persistent until the next Analyse (`setNotice`/`analyse`).
+  const [recovery, setRecovery] = useState<string>();
+
+  // The folder field is only auto-filled from the Site binding while the person has not typed in it;
+  // a ref (not state) so the preparation effect reads the live value without depending on it, and it
+  // resets whenever the Pack or Site changes so the new Site's binding fills in.
+  const folderTouched = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+  // `onAnalysed` kept in a ref so the polling effect need not depend on it — a new function identity
+  // from the parent's every render would otherwise tear down and restart the 2 s poll each time.
+  const onAnalysedRef = useRef(onAnalysed);
+  onAnalysedRef.current = onAnalysed;
 
   const statusLabel = useCallback((status: string) => labelKeyed(t, `status.${status}`, status), [t]);
+
+  /** Record a phase both in React state (if still mounted) and in the module map, so a remount after
+   *  a tab switch resumes from exactly where the Run is. `idle` clears the entry. */
+  const trackRun = useCallback((next: AnalysisPhase) => {
+    if (next.phase === 'idle') rememberedRuns.delete(sessionId); else rememberedRuns.set(sessionId, next);
+    if (aliveRef.current) setRunState(next);
+  }, [sessionId]);
+
+  // Resume the tracked phase for this session on mount and whenever the session changes — the map is
+  // the source of truth across unmounts, so a Run that started under one tab is picked back up here.
+  useEffect(() => { setRunState(rememberedRuns.get(sessionId) ?? { phase: 'idle' }); }, [sessionId]);
 
   // Discover the installed library-analysis Packs and the Sites once, by asking the Host what it has
   // and, per Pack, what it declares — no Pack id is named here (`discoverLibraryAnalysisPacks`).
@@ -155,22 +186,23 @@ function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed }: 
   }, [sessionId]);
 
   // The preparation for the selected Pack and Site, which carries the library-root binding the folder
-  // defaults to, the kit knob's own options, and the Pack's Goal defaults.
+  // defaults to, the kit knob's own options, and the Pack's Goal defaults. `active` is cleared at the
+  // start so a stale preparation never drives the form (or the Analyse button) while the new fetch is
+  // in flight, and `folderTouched` resets so the new Site's own binding fills the folder.
   useEffect(() => {
-    if (packId === '' || siteName === '') { setActive(undefined); return; }
+    setActive(undefined);
+    folderTouched.current = false;
+    if (packId === '' || siteName === '') return;
     const controller = new AbortController();
     void fetchStartChoices(packId, siteName, controller.signal).then((result) => {
-      if (controller.signal.aborted || !result.ok) return;
+      if (controller.signal.aborted) return;
+      if (!result.ok) { setNotice(result.error.message); return; }
       setActive(result.value);
-      const defaultFolder = defaultLibraryFolder(result.value);
-      setFolder((current) => folderTouched ? current : defaultFolder);
+      setFolder((current) => folderTouched.current ? current : defaultLibraryFolder(result.value));
       const kitInfo = libraryKitKnob(result.value);
-      if (kitInfo !== undefined) setKit((current) => kitInfo.knob.options.includes(current) ? current : kitInfo.knob.default);
+      setKit((current) => kitInfo !== undefined && kitInfo.knob.options.includes(current) ? current : kitInfo?.knob.default ?? '');
     });
     return () => controller.abort();
-    // `folderTouched` is read, not depended on: a later Pack/Site change still refreshes the default,
-    // and once the person edits the folder their value stands until they change Pack or Site again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packId, siteName]);
 
   // Poll the started Run, show where it stands, and open its library report the moment it finishes
@@ -186,52 +218,67 @@ function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed }: 
       if (result.ok) {
         setRunElapsed({ node: result.value.run.currentNode, elapsedMs: result.value.run.meters?.elapsedMs });
         const outcome = analysisOutcome(result.value, statusLabel, result.value.blockers.at(-1)?.reason);
-        if (outcome.kind === 'report') { onAnalysed(outcome.reportRef); return; }
-        if (outcome.kind === 'failed') { setRun({ phase: 'failed', reason: outcome.reason, runId }); return; }
+        // Clear the tracked Run before opening, so returning to this tab does not re-open the report.
+        if (outcome.kind === 'report') { trackRun({ phase: 'idle' }); onAnalysedRef.current(outcome.reportRef); return; }
+        if (outcome.kind === 'failed') { trackRun({ phase: 'failed', reason: outcome.reason, runId }); return; }
       }
       timer = setTimeout(() => { void poll(); }, 2000);
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [run, sessionId, statusLabel, onAnalysed]);
+  }, [run, sessionId, statusLabel, trackRun]);
 
   const kitInfo = libraryKitKnob(active);
 
   /** Start the analysis: save the person's draft aside, write and confirm a derived Campaign file,
-   *  then restore their draft. Nothing here overwrites `hima/campaign.yml` without putting it back. */
+   *  then restore their draft. Nothing here overwrites `hima/campaign.yml` without putting it back —
+   *  and if the restore is refused, the person's original draft text is shown so it is never lost. */
   const analyse = async () => {
     const trimmed = folder.trim();
-    if (packId === '' || siteName === '' || trimmed === '') { setNotice(t('insight.analyse.needFolder')); return; }
-    setNotice(undefined); setRun({ phase: 'starting' }); setRunElapsed(undefined);
+    if (packId === '' || siteName === '' || trimmed === '' || active === undefined) { setNotice(t('insight.analyse.needFolder')); return; }
+    setNotice(undefined); setRecovery(undefined); trackRun({ phase: 'starting' }); setRunElapsed(undefined);
     const existing = await fetchCampaignFile(sessionId);
-    if (!existing.ok) { setRun({ phase: 'failed', reason: existing.error.message }); return; }
+    if (!existing.ok) { trackRun({ phase: 'failed', reason: existing.error.message }); return; }
     const original = existing.value.file;
-    const restore = () => saveCampaignFile(sessionId, original);
+    const originalText = existing.value.text;
     const derived = analysisCampaignFile({
-      packId, siteName, folder: trimmed, kitKnob: kitInfo?.name ?? LIBRARY_KIT_KNOB, kit,
+      packId, siteName, folder: trimmed, ...(kitInfo === undefined ? {} : { kitKnob: kitInfo.name, kit }),
       goal: goalDefaults(active), timeBoxMinutes: ANALYSIS_TIME_BOX_MINUTES,
     });
     const saved = await saveCampaignFile(sessionId, derived, existing.value.mtimeMs);
     // A conflict means the file changed since this read and the derived file was never written, so
     // there is nothing of the person's to restore — report and stop.
-    if (!saved.ok) { setRun({ phase: 'failed', reason: saved.error.message }); return; }
+    if (!saved.ok) { trackRun({ phase: 'failed', reason: saved.error.message }); return; }
+    // Put the person's draft back, holding the mtime the derived save just returned so a writer that
+    // raced in between is detected rather than silently overwritten. If it is refused, their original
+    // text is surfaced in a persistent block for manual recovery (the Host exposes no raw-text or
+    // delete write, so an absent prior draft is restored to the empty document `fetchCampaignFile`
+    // returned for it, and a failure to even empty it is reported as a notice since there is no text
+    // to recover).
+    const restore = async (): Promise<void> => {
+      const restored = await saveCampaignFile(sessionId, original, saved.value.mtimeMs);
+      if (restored.ok) return;
+      if (existing.value.exists) setRecovery(originalText);
+      else setNotice(t('insight.analyse.restoreEmptyFailed', { reason: restored.error.message }));
+    };
     const prepared = await fetchCampaignFile(sessionId);
     const proposal = prepared.ok ? prepared.value.preparation?.proposal : undefined;
     if (!prepared.ok || proposal === undefined || proposal.ready !== true) {
       await restore();
-      const reason = prepared.ok ? (proposal?.unknowns.join(' ') || t('insight.analyse.notReady', { reason: '' })) : prepared.error.message;
-      setRun({ phase: 'failed', reason: t('insight.analyse.notReady', { reason }) }); return;
+      const reason = prepared.ok ? proposal?.unknowns.join(' ') ?? '' : prepared.error.message;
+      trackRun({ phase: 'failed', reason: t('insight.analyse.notReady', { reason }) }); return;
     }
     const started = await startCampaign({ fromCampaignFile: true, sessionId, pack: packId, site: siteName, proposalId: proposal.id });
     await restore();
-    if (!started.ok) { setRun({ phase: 'failed', reason: started.error.message }); return; }
-    setRun({ phase: 'running', runId: started.value.run.id });
+    if (!started.ok) { trackRun({ phase: 'failed', reason: started.error.message }); return; }
+    trackRun({ phase: 'running', runId: started.value.run.id });
+    onRunStarted?.();
   };
 
   const choose = async () => {
     if (!pickFolder) return;
     const picked = await pickFolder().catch(() => null);
-    if (picked !== null) { setFolder(picked); setFolderTouched(true); }
+    if (picked !== null) { setFolder(picked); folderTouched.current = true; }
   };
 
   if (packs === undefined) return null;
@@ -245,12 +292,13 @@ function LibraryAnalysisSection({ sessionId, pickFolder, openRun, onAnalysed }: 
         <option value=''>{t('config.chooseSite')}</option>
         {sites.map((site) => <option key={site.name} value={site.name}>{site.name} — {site.kind}{site.readiness !== 'ready' ? ` (${site.readiness})` : ''}</option>)}
       </select></label>
-      <label>{t('insight.analyse.folder')}<input data-hima-control='insight-analyse-folder' value={folder} disabled={busy} placeholder={t('insight.analyse.folderPlaceholder')} onChange={(event) => { setFolder(event.target.value); setFolderTouched(true); }} /></label>
+      <label>{t('insight.analyse.folder')}<input data-hima-control='insight-analyse-folder' value={folder} disabled={busy} placeholder={t('insight.analyse.folderPlaceholder')} onChange={(event) => { setFolder(event.target.value); folderTouched.current = true; }} /></label>
       {pickFolder ? <button type='button' className='hima-button' data-hima-control='insight-analyse-pick' disabled={busy} onClick={() => { void choose(); }}>{t('insight.analyse.pick')}</button> : null}
       {kitInfo ? <label>{t('insight.analyse.kit')}<select data-hima-control='insight-analyse-kit' value={kit} disabled={busy} onChange={(event) => setKit(event.target.value)}>{kitInfo.knob.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label> : null}
-      <button type='button' className='hima-button hima-primary' data-hima-control='insight-analyse-start' disabled={busy || folder.trim() === '' || siteName === ''} onClick={() => { void analyse(); }}>{run.phase === 'starting' ? t('insight.analyse.starting') : t('insight.analyse.analyse')}</button>
+      <button type='button' className='hima-button hima-primary' data-hima-control='insight-analyse-start' disabled={busy || active === undefined || folder.trim() === '' || siteName === ''} onClick={() => { void analyse(); }}>{run.phase === 'starting' ? t('insight.analyse.starting') : t('insight.analyse.analyse')}</button>
       {run.phase === 'running' ? <p className='hima-small' role='status' data-hima-region='insight-analyse-progress'>{t('insight.analyse.running')} · {runElapsed?.node ?? '…'} · {duration(runElapsed?.elapsedMs ?? 0)}</p> : null}
       {run.phase === 'failed' ? <div className='hima-config-readiness-row' role='alert' data-hima-region='insight-analyse-failed'><span>{t('insight.analyse.failed', { reason: run.reason })}</span>{run.runId ? <button type='button' className='hima-button' data-hima-control='insight-analyse-open-run' onClick={() => openRun(run.runId!)}>{t('insight.analyse.openRun')}</button> : null}</div> : null}
+      {recovery !== undefined ? <div className='hima-insight-recovery' role='alert' data-hima-region='insight-analyse-recovery'><p className='hima-small'>{t('insight.analyse.restoreHeading')}</p><textarea data-hima-control='insight-analyse-recovery-text' readOnly rows={6} value={recovery} /></div> : null}
       {notice ? <p className='hima-notice' role='alert'>{notice}</p> : null}
     </>}
   </section>;

@@ -83,6 +83,13 @@ test('the Analyse Campaign file carries the folder, kit, Goal and time box, buil
     kitKnob: 'kit', kit: 'kit-b', goal: { min_findings: 1 }, timeBoxMinutes: ANALYSIS_TIME_BOX_MINUTES,
   });
   assert.deepEqual(again, file);
+  // A Pack that declares no choice knob leaves the kit out entirely, and the file then carries no
+  // Strategy override — never a `{ '': '' }` knob no Pack declares.
+  const noKit = analysisCampaignFile({
+    packId: 'offline-library-demo', siteName: 'library-local', folder: '/libs/prepared',
+    goal: { min_findings: 1 }, timeBoxMinutes: ANALYSIS_TIME_BOX_MINUTES,
+  });
+  assert.deepEqual(noKit.strategy, {});
 });
 
 test('a finished Run opens its library report; a running one waits, a blocked or report-less one fails', () => {
