@@ -1,0 +1,6 @@
+id: libinsight-insight
+version: "0.1.0"
+file: tools/read-insight.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-library-insight-report/1
+emits: [files_analysed, report_valid, findings_reported]

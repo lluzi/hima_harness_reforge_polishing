@@ -1,0 +1,10 @@
+values:
+  files_analysed:
+    unit: count
+    description: Number of library files the offline LibInsight analysis processed without error.
+  report_valid:
+    unit: count
+    description: One only when the insight report validates against hima-library-insight-report/1.
+  findings_reported:
+    unit: count
+    description: Number of findings carried in the versioned read-only insight report (after the cap).

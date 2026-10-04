@@ -1,0 +1,7 @@
+id: libinsight-findings-reported
+version: "0.1.0"
+title: The report carries at least the required number of findings
+parameter: { name: min_findings, unit: count }
+requires: [{ type: findings_reported }]
+subject: { type: findings_reported }
+predicate: { op: gte, threshold: { parameter: min_findings }, unit: count }

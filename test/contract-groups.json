@@ -67,6 +67,7 @@
     "test/contract/lfr-round-interface.test.ts",
     "test/contract/library-insight.test.ts",
     "test/contract/library-intelligence-pack.test.ts",
+    "test/contract/libinsight-offline-demo.test.ts",
     "test/contract/live-check-continuation.test.ts",
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",

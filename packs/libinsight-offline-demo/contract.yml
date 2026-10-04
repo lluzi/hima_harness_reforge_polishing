@@ -1,0 +1,66 @@
+id: libinsight-offline-demo
+version: "0.1.0"
+title: Library insight analysis of a standard-cell library release (offline demo)
+status: development
+minimumHarnessVersion: 0.1.0
+inputs:
+  - name: libInsightRoot
+    description: >-
+      Read-only folder of a prepared LibInsight store and Kit Release (the lib_insight repository):
+      kits/<kit>.json and data/store. No vendor Liberty runtime or seat is read or required.
+  - name: workspaceRoot
+    description: Site-permitted Campaign private workspace root; all analysis output is written here.
+outputs:
+  - name: runManifest
+    path: derived/run-manifest.json
+    description: >-
+      Small offline-run manifest written by the analyse tool (kit, library-file counts, runtime,
+      lib_insight commit). An artifact; no native Liberty facts.
+  - name: insightReport
+    path: derived/insight-report.json
+    reader: libinsight-insight
+    description: >-
+      Versioned read-only v1 Library Insight report (hima-library-insight-report/1), with the most
+      severe findings first and an explicit note of the total finding count and the applied cap.
+environment:
+  wrappers: [/usr/bin/python3]
+workspace:
+  source: pack
+  copy: [tools]
+tools:
+  - id: analyse
+    file: tools/analyse.py
+    description: >-
+      Validate the LibInsight root (kits/<kit>.json and data/store present; refuse if the Kit
+      references store files that are missing) and run the offline LibInsight analyse step into the
+      Campaign workspace. Reads a prepared store only; see INTENT.md for the full safety boundary.
+    inputs: [WORKSPACE, LIBINSIGHT_ROOT, KIT]
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/tools/analyse.py
+      - ${WORKSPACE}
+      - ${LIBINSIGHT_ROOT}
+      - ${KIT}
+  - id: report
+    file: tools/report.py
+    description: >-
+      Build a v1 Library Insight report, a human-readable summary.md and a prototype-app.json from
+      the offline analysis output already in the workspace. Reads derived results only; never the
+      vendor API.
+    inputs: [WORKSPACE, KIT]
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/tools/report.py
+      - ${WORKSPACE}
+      - ${KIT}
+rules: [libinsight-report-valid, libinsight-findings-reported, libinsight-files-analysed]
+knowledge:
+  - file: analysis-method.md
+    purpose: Scope, inputs, evidence class and limits of the offline LibInsight demo analysis.
+goal:
+  min_findings: { type: number, unit: count, min: 0, max: 1000000, default: 1, precision: 0 }
+strategy:
+  kit: { type: choice, options: [tsmc28-180a, n12-100], default: tsmc28-180a }
+words:
+  min_findings: { label: minimum findings reported, unit: count }
+  kit: { label: library kit }

@@ -1,0 +1,8 @@
+id: libinsight-complete
+version: "0.1.0"
+title: End the demo Campaign goal-met once analysis and report both succeed
+reads:
+  findings_reported: { type: findings_reported, unit: count }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true

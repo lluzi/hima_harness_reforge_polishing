@@ -1,0 +1,40 @@
+id: libinsight-offline-demo
+version: "0.1.0"
+entry: analyse
+nodes:
+  - id: analyse
+    kind: act
+    parameters:
+      tool: analyse
+      arguments:
+        LIBINSIGHT_ROOT: { from: input, name: libInsightRoot }
+        KIT: { from: strategy, name: kit }
+  - id: report
+    kind: act
+    parameters:
+      tool: report
+      arguments:
+        KIT: { from: strategy, name: kit }
+  - id: read-insight
+    kind: act
+    parameters: { observes: insightReport }
+  - id: judge
+    kind: judge
+    parameters:
+      rules: [libinsight-report-valid, libinsight-findings-reported, libinsight-files-analysed]
+      bind: { min_findings: { from: goal, name: min_findings } }
+  - id: complete
+    kind: explore
+    parameters:
+      chooser: libinsight-complete
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+edges:
+  - { from: analyse, to: report }
+  - { from: report, to: read-insight }
+  - { from: read-insight, to: judge }
+  - { from: judge, to: complete, outcome: PASS }
+  - { from: judge, to: blocked, outcome: FAIL }
+  - { from: judge, to: blocked, outcome: UNDETERMINED }
+loops: {}

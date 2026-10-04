@@ -1,0 +1,16 @@
+# Permit for the libinsight-offline-demo local Site. Replace __DSH_HOME__ with an absolute path on
+# this machine before loading (the same value used for workspaceRoot in site.yml). The lib_insight
+# checkout is a read-only input and appears only under allowedReadRoots, never allowedWriteRoots.
+allowedReadRoots:
+  - __DSH_HOME__/hima/sites/libinsight-local/workspace
+  - /Users/lluzi/code/lib_insight
+allowedWriteRoots:
+  - __DSH_HOME__/hima/sites/libinsight-local/workspace
+allowedWrappers:
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - deletions
+  - repository-downloads

@@ -1,0 +1,6 @@
+id: libinsight-files-analysed
+version: "0.1.0"
+title: The offline analysis covered at least one library file
+requires: [{ type: files_analysed }]
+subject: { type: files_analysed }
+predicate: { op: gte, threshold: 1, unit: count }

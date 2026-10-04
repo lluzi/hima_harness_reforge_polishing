@@ -1,0 +1,19 @@
+# Local demo Site for the libinsight-offline-demo Pack (customer demo only).
+#
+# This is a template. Before loading it, the demo kit (or you) must replace every __DSH_HOME__ with
+# an absolute path on this machine -- the harness home whose hima/sites/ this file is copied into --
+# so the workspace root and the permitted read/write roots are real absolute directories. The
+# libInsightRoot binding and read root point at the read-only lib_insight checkout and are already
+# concrete; change them only if your checkout is elsewhere.
+name: libinsight-local
+kind: local
+workspaceRoot: __DSH_HOME__/hima/sites/libinsight-local/workspace
+permit: ./permit.yml
+bindings:
+  libInsightRoot: /Users/lluzi/code/lib_insight
+  workspaceRoot: __DSH_HOME__/hima/sites/libinsight-local/workspace
+capacity:
+  cores: 8
+  memoryGiB: 16
+  parallelJobs: 1
+  licences: {}

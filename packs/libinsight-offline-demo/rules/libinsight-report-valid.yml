@@ -1,0 +1,6 @@
+id: libinsight-report-valid
+version: "0.1.0"
+title: The library insight report validates against the v1 schema
+requires: [{ type: report_valid }]
+subject: { type: report_valid }
+predicate: { op: eq, threshold: 1, unit: count }
