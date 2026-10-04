@@ -6,7 +6,7 @@ bindings:
   designStateManifest: /data/eda/project/hima_harness/atcs-inputs/designStateManifest-postroute-final.json
   analysisContract: /data/eda/project/hima_harness/atcs-inputs/analysisContract
   siteCapabilities: /data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v5.json
-  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-v1.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v2/engineering-capabilities-v2.json
   nativeTimingContext: /data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json
   workspaceRoot: /data/eda/project/hima_harness/atcs-runs
 ssh:
