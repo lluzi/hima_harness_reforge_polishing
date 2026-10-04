@@ -9,6 +9,7 @@ import { NODE, PITCH } from '../canvas-layout.js';
 import type { NodeKind, PlacedNode } from '../canvas-layout.js';
 import { fetchLogTail } from './api.js';
 import { Glyph } from './glyphs.js';
+import { labelKeyed, useHimaT } from './locale/index.js';
 
 /** The `<pattern>` id `FabricCanvas` declares once in its own `<defs>` for an affected node's hatch
  *  fill; shared here so the two files agree on one id without a third module for a single string. */
@@ -167,6 +168,7 @@ export interface FabricNodeProps {
 }
 
 export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
+  const t = useHimaT();
   // C19: the log-tail poll never runs while stale/reduced-motion (the caller hands this component
   // `reducedMotion || stale` as one flag, `FabricCanvas.tsx`) — a stale node is already showing a
   // frozen fact, not a live one, so polling for a fresh log line underneath it would only ever
@@ -199,7 +201,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
           plus its caption when the Pack gave it one — the same words the label and caption texts
           below already show, gathered into one tooltip so hovering anywhere on the node (not only
           its label text) reads them. */}
-      <title>{`${node.id} · ${node.kind} · ${node.state}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
+      <title>{`${node.id} · ${node.kind} · ${labelKeyed(t, `nodeState.${node.state}`, node.state)}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
       <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
       {selected ? <SelectedHalo node={node} /> : null}
       {node.current ? <CurrentRing node={node} /> : null}
@@ -218,7 +220,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
             are two different facts, never folded into one truncated line. */}
         {awaitingAgent !== true ? null : (
           <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">
-            awaiting Agent<title>awaiting the Campaign Agent</title>
+            {t('node.awaitingAgent')}<title>{t('node.awaitingAgent.title')}</title>
           </text>
         )}
         {logLine === undefined ? null : <text className="hima-node-log" y={labelY + 30} textAnchor="middle">{truncate(logLine, 40)}<title>{logLine}</title></text>}

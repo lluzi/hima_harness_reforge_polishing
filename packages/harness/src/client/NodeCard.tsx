@@ -25,6 +25,7 @@ import { fetchLogTail } from './api.js';
 import { useEscape } from './escape-stack.js';
 import { BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
+import { labelKeyed, useHimaT, type Translate } from './locale/index.js';
 
 export interface NodeCardProps {
   readonly node: PlacedNode;
@@ -49,11 +50,24 @@ export interface NodeCardProps {
   readonly acting: Acting;
 }
 
-const TAB_LABEL: Readonly<Record<NodeCardTabKey, string>> = {
-  facts: 'Facts', job: 'Job', code: 'Code', knowledge: 'Knowledge', evidence: 'Evidence',
-  rules: 'Rules', verdicts: 'Verdicts', decision: 'Decision', strategy: 'Strategy',
-  generations: 'Generations', blocker: 'Blocker', clearance: 'Clearance',
+/** The node card's tab label, translated per key (the key union doubles as the dictionary suffix). */
+const tabLabel = (t: Translate, key: NodeCardTabKey): string => t(`node.tab.${key}`);
+
+/** The English `what` phrase `absentSaid` takes, mapped to its Hima noun key. A phrase this map does
+ *  not carry falls back to the card-labels English sentence, never a dropped line. */
+const ABSENT_WHAT: Readonly<Record<string, string>> = {
+  'declared input': 'absent.declaredInput', observation: 'absent.observation', 'job launch': 'absent.jobLaunch',
+  code: 'absent.code', knowledge: 'absent.knowledge', verdict: 'absent.verdict', rule: 'absent.rule',
+  decision: 'absent.decision', strategy: 'absent.strategy', generation: 'absent.generation',
+  blocker: 'absent.blocker', clearance: 'absent.clearance',
 };
+
+/** The "No … recorded for this node yet." line, in the active locale, mirroring `absentSaid`. */
+function AbsentLine({ what }: { what: string }): ReactElement {
+  const t = useHimaT();
+  const key = ABSENT_WHAT[what];
+  return <p className="hima-muted">{key === undefined ? absentSaid(what) : t('node.absent', { what: t(key) })}</p>;
+}
 
 /** The node's own declared parameters, read off the Pack's reference graph the execution context
  *  carries — the one place a node's `observes`/`rules`/`opens` word lives; absent before a Run has
@@ -78,22 +92,23 @@ function latestObservationOf(node: PlacedNode, view: RunView, context: Execution
 }
 
 function FactsTab({ node, view, context }: { node: PlacedNode; view: RunView; context?: ExecutionContext }): ReactElement {
+  const t = useHimaT();
   const inputs = context?.method?.contract.inputs ?? [];
   const bindings = view.workspace?.bindings;
   const { type, observation } = latestObservationOf(node, view, context);
   return (
     <>
-      <h5>Declared inputs</h5>
-      {inputs.length === 0 ? <p className="hima-muted">{absentSaid('declared input')}</p> : (
+      <h5>{t('node.declaredInputs')}</h5>
+      {inputs.length === 0 ? <AbsentLine what='declared input' /> : (
         <ul>{inputs.map((input) => (
           <li key={input.name}>
-            <span className="hima-mono">{input.name}</span>: <span className="hima-mono">{bindings?.[input.name] ?? 'unbound'}</span>
+            <span className="hima-mono">{input.name}</span>: <span className="hima-mono">{bindings?.[input.name] ?? t('node.unbound')}</span>
             {input.description === '' ? null : <span className="hima-muted"> — {input.description}</span>}
           </li>
         ))}</ul>
       )}
-      <h5>{type === undefined ? 'Observation' : `Latest reading of ${type}`}</h5>
-      {observation === undefined ? <p className="hima-muted">{absentSaid('observation')}</p> : <ObservationRow observation={observation} />}
+      <h5>{type === undefined ? t('node.observation') : t('node.latestReading', { type })}</h5>
+      {observation === undefined ? <AbsentLine what='observation' /> : <ObservationRow observation={observation} />}
     </>
   );
 }
@@ -120,6 +135,7 @@ function useNodeLog(runId: string, nodeId: string, active: boolean): { readonly 
 }
 
 function JobTab({ node, view, runId, motionOff }: { node: PlacedNode; view: RunView; runId: string; motionOff: boolean }): ReactElement {
+  const t = useHimaT();
   const folded = jobFolded(view, node.id);
   // C19: the live log poll never runs while stale/reduced-motion — a stale card is already showing
   // a frozen fact, not a live one, so polling for fresh lines underneath it would only ever answer
@@ -129,7 +145,7 @@ function JobTab({ node, view, runId, motionOff }: { node: PlacedNode; view: RunV
   const executions = Object.values(view.run.control?.executions ?? {}).filter((execution) => execution.nodeId === node.id);
   return (
     <>
-      {folded.launched === undefined ? <p className="hima-muted">{absentSaid('job launch')}</p> : (
+      {folded.launched === undefined ? <AbsentLine what='job launch' /> : (
         <p className="hima-muted">
           launched {folded.launched}
           {folded.finished === undefined ? '' : ` · finished ${folded.finished}`}
@@ -146,9 +162,9 @@ function JobTab({ node, view, runId, motionOff }: { node: PlacedNode; view: RunV
       ))}
       {!running ? null : (
         <div className="hima-activity">
-          <header><span>live log</span><span>{node.id}</span></header>
-          <pre>{log.lines.length === 0 ? 'Waiting for output…' : log.lines.join('\n')}</pre>
-          {log.truncated !== true ? null : <footer><span>truncated to the bounded tail the Host caps</span></footer>}
+          <header><span>{t('node.liveLog')}</span><span>{node.id}</span></header>
+          <pre>{log.lines.length === 0 ? t('node.waitingOutput') : log.lines.join('\n')}</pre>
+          {log.truncated !== true ? null : <footer><span>{t('node.logTruncated')}</span></footer>}
         </div>
       )}
     </>
@@ -157,7 +173,7 @@ function JobTab({ node, view, runId, motionOff }: { node: PlacedNode; view: RunV
 
 function CodeTab({ node, view, openFiles }: { node: PlacedNode; view: RunView; openFiles(): void }): ReactElement {
   const files = view.code.filter((code) => code.nodeId === node.id);
-  if (files.length === 0) return <p className="hima-muted">{absentSaid('code')}</p>;
+  if (files.length === 0) return <AbsentLine what='code' />;
   return <>{files.map((code) => (
     <button key={code.recordId} type="button" className="hima-material-row" data-hima-control={`open-code-${code.recordId}`} onClick={openFiles}>
       <span className="hima-mono">{code.path.split(/[\\/]/).at(-1)}</span>
@@ -168,7 +184,7 @@ function CodeTab({ node, view, openFiles }: { node: PlacedNode; view: RunView; o
 
 function KnowledgeTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
   const files = view.knowledge.filter((entry) => entry.nodeId === node.id);
-  if (files.length === 0) return <p className="hima-muted">{absentSaid('knowledge')}</p>;
+  if (files.length === 0) return <AbsentLine what='knowledge' />;
   return <>{files.map((entry) => (
     <div key={entry.recordId} className="hima-block">
       <div className="hima-mono">{entry.file}</div>
@@ -182,14 +198,14 @@ function EvidenceTab({ node, view, context }: { node: PlacedNode; view: RunView;
   const packNode = packNodeOf(context, node.id);
   const ruleIds = packNode?.kind === 'judge' ? packNode.parameters.rules : [];
   const verdicts = view.verdicts.filter((verdict) => ruleIds.includes(verdict.ruleId) || verdict.cites.some((cite) => cite.recordId === observation?.recordId));
-  if (verdicts.length === 0) return <p className="hima-muted">{absentSaid('verdict')}</p>;
+  if (verdicts.length === 0) return <AbsentLine what='verdict' />;
   return <>{verdicts.map((verdict) => <VerdictRow key={verdict.recordId} verdict={verdict} />)}</>;
 }
 
 function RulesTab({ node, context }: { node: PlacedNode; context?: ExecutionContext }): ReactElement {
   const packNode = packNodeOf(context, node.id);
   const rules = packNode?.kind === 'judge' ? packNode.parameters.rules : [];
-  if (rules.length === 0) return <p className="hima-muted">{absentSaid('rule')}</p>;
+  if (rules.length === 0) return <AbsentLine what='rule' />;
   return <ol>{rules.map((rule) => <li key={rule} className="hima-mono">{rule}</li>)}</ol>;
 }
 
@@ -197,19 +213,19 @@ function VerdictsTab({ node, view, context }: { node: PlacedNode; view: RunView;
   const packNode = packNodeOf(context, node.id);
   const ruleIds = packNode?.kind === 'judge' ? packNode.parameters.rules : [];
   const verdicts = view.verdicts.filter((verdict) => ruleIds.includes(verdict.ruleId));
-  if (verdicts.length === 0) return <p className="hima-muted">{absentSaid('verdict')}</p>;
+  if (verdicts.length === 0) return <AbsentLine what='verdict' />;
   return <>{verdicts.map((verdict) => <VerdictRow key={verdict.recordId} verdict={verdict} />)}</>;
 }
 
 function DecisionTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
   const decision = view.decision;
-  if (decision === null || decision === undefined || decision.nodeId !== node.id) return <p className="hima-muted">{absentSaid('decision')}</p>;
+  if (decision === null || decision === undefined || decision.nodeId !== node.id) return <AbsentLine what='decision' />;
   return <DecisionRow decision={decision} view={view} />;
 }
 
 function StrategyTab({ view }: { view: RunView }): ReactElement {
   const strategy = view.run.strategy;
-  if (strategy === undefined) return <p className="hima-muted">{absentSaid('strategy')}</p>;
+  if (strategy === undefined) return <AbsentLine what='strategy' />;
   return <p className="hima-mono">{strategySaid(strategy, view.run.words?.strategy)}</p>;
 }
 
@@ -224,13 +240,13 @@ function GenerationsTab({ node, view, context }: { node: PlacedNode; view: RunVi
   const packNode = packNodeOf(context, node.id);
   const opensLoop = packNode?.kind === 'explore' && packNode.parameters.opens !== undefined;
   const rows = opensLoop ? loopsIn(view).filter((loop) => loop.nodeId === node.id).flatMap((loop) => loop.generations) : view.generations;
-  if (rows.length === 0) return <p className="hima-muted">{absentSaid('generation')}</p>;
+  if (rows.length === 0) return <AbsentLine what='generation' />;
   return <div className="hima-run-card-ledger"><GenerationsTable view={view} rows={rows} markRegions={false} /></div>;
 }
 
 function BlockerTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
   const blocker = view.blockers.filter((candidate) => candidate.nodeId === node.id).at(-1);
-  if (blocker === undefined) return <p className="hima-muted">{absentSaid('blocker')}</p>;
+  if (blocker === undefined) return <AbsentLine what='blocker' />;
   return <BlockerRow blocker={blocker} latest />;
 }
 
@@ -241,15 +257,16 @@ function BlockerTab({ node, view }: { node: PlacedNode; view: RunView }): ReactE
  * `RunView` keeps `cancels` and `resumes` two lists (#41 task 6 review).
  */
 function ClearanceTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
+  const t = useHimaT();
   const resume = view.resumes.filter((candidate) => candidate.nodeId === node.id).at(-1);
   const cancels = view.cancels.filter((cancel) => cancel.nodeId === node.id);
   return (
     <>
-      <h5>Clearance</h5>
-      {resume === undefined ? <p className="hima-muted">{absentSaid('clearance')}</p> : <p>Cleared by <span className="hima-mono">{resume.who}</span> at {resume.at}</p>}
+      <h5>{t('node.clearance')}</h5>
+      {resume === undefined ? <AbsentLine what='clearance' /> : <p>{t('node.clearedBy', { who: resume.who, at: resume.at })}</p>}
       {cancels.length === 0 ? null : (
         <>
-          <h5>Cancel requests</h5>
+          <h5>{t('node.cancelRequests')}</h5>
           {cancels.map((cancel) => <CancelRow key={cancel.recordId} view={view} cancel={cancel} />)}
         </>
       )}
@@ -289,6 +306,7 @@ type ConfirmKey = 'node-pause' | 'node-continue' | 'run-pause' | 'run-stop';
  * pause a Run it does not own, and this footer is a node-scoped reflection of that same control.
  */
 function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView; owner: boolean; acting: Acting }): ReactElement {
+  const t = useHimaT();
   const [confirming, setConfirming] = useState<ConfirmKey>();
   const toggle = (key: ConfirmKey) => setConfirming((current) => (current === key ? undefined : key));
   const active = view.run.status === 'running' || view.run.status === 'waiting';
@@ -299,7 +317,7 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
         <p>{sentence}</p>
         <div className="hima-node-card-footer-row">
           <button type="button" className="hima-button hima-primary" data-hima-control={`${key}-confirm`} disabled={acting.inFlight !== undefined} onClick={() => { onConfirm(); setConfirming(undefined); }}>{confirmLabel}</button>
-          <button type="button" className="hima-button" onClick={() => setConfirming(undefined)}>Cancel</button>
+          <button type="button" className="hima-button" onClick={() => setConfirming(undefined)}>{t('node.cancel')}</button>
         </div>
       </div>
     )
@@ -310,12 +328,12 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
       <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
         {!active ? null : (
           <div className="hima-node-card-footer-row">
-            <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>Pause this node</button>
-            <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>Continue this node</button>
+            <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>{t('node.pauseNode')}</button>
+            <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>{t('node.continueNode')}</button>
           </div>
         )}
-        {confirmBlock('node-pause', `Jobs already running will continue; no new work starts at ${node.id}.`, 'Confirm pause', () => { acting.act('pause', node.id); })}
-        {confirmBlock('node-continue', `New work starts again at ${node.id}.`, 'Confirm continue', () => { acting.act('continue', node.id); })}
+        {confirmBlock('node-pause', t('node.pauseNode.confirmText', { node: node.id }), t('node.confirmPause'), () => { acting.act('pause', node.id); })}
+        {confirmBlock('node-continue', t('node.continueNode.confirmText', { node: node.id }), t('node.confirmContinue'), () => { acting.act('continue', node.id); })}
         {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
         {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
       </footer>
@@ -323,17 +341,17 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
   }
   return (
     <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
-      <p className="hima-node-card-owner">Owned by Campaign Agent{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
+      <p className="hima-node-card-owner">{t('node.ownedBy')}{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
       <details className="hima-node-card-emergency" data-hima-region="emergency">
-        <summary>Emergency</summary>
+        <summary>{t('node.emergency')}</summary>
         {!active ? null : (
           <div className="hima-node-card-footer-row">
-            <button type="button" className="hima-button" data-hima-control="run-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-pause')}>Pause run</button>
-            <button type="button" className="hima-button" data-hima-control="run-stop" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-stop')}>Stop run</button>
+            <button type="button" className="hima-button" data-hima-control="run-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-pause')}>{t('node.pauseRun')}</button>
+            <button type="button" className="hima-button" data-hima-control="run-stop" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-stop')}>{t('node.stopRun')}</button>
           </div>
         )}
-        {confirmBlock('run-pause', 'Jobs already running will continue; no new work starts anywhere in this run.', 'Confirm pause', () => { acting.act('pause'); })}
-        {confirmBlock('run-stop', 'This asks every Job this run holds to stop; work already running may take a moment to end.', 'Confirm stop', () => { acting.act('cancel'); })}
+        {confirmBlock('run-pause', t('node.pauseRun.confirmText'), t('node.confirmPause'), () => { acting.act('pause'); })}
+        {confirmBlock('run-stop', t('node.stopRun.confirmText'), t('node.confirmStop'), () => { acting.act('cancel'); })}
         {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
         {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
       </details>
@@ -342,6 +360,7 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
 }
 
 export function NodeCard({ node, view, context, runId, owner, anchor, canvas, motionOff, onClose, openFiles, acting }: NodeCardProps): ReactElement {
+  const t = useHimaT();
   const tabs = TABS_BY_KIND[node.kind];
   const [tab, setTab] = useState<NodeCardTabKey>(tabs[0]!);
   useEffect(() => { setTab(TABS_BY_KIND[node.kind][0]!); }, [node.id, node.kind]);
@@ -371,13 +390,13 @@ export function NodeCard({ node, view, context, runId, owner, anchor, canvas, mo
       <header className="hima-node-card-header">
         <div>
           <h4>{node.id}</h4>
-          <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{nodeView.state}</span></>}</p>
+          <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{labelKeyed(t, `nodeState.${nodeView.state}`, nodeView.state)}</span></>}</p>
         </div>
-        <button type="button" className="hima-icon-button" data-hima-control="node-card-close" aria-label="Close node" onClick={onClose}><Glyph name="close" /></button>
+        <button type="button" className="hima-icon-button" data-hima-control="node-card-close" aria-label={t('node.close')} onClick={onClose}><Glyph name="close" /></button>
       </header>
       <nav className="hima-node-card-tabs" aria-label={`${node.id} tabs`}>
         {tabs.map((key) => (
-          <button key={key} type="button" aria-pressed={tab === key} data-hima-control={`node-card-tab-${key}`} onClick={() => setTab(key)}>{TAB_LABEL[key]}</button>
+          <button key={key} type="button" aria-pressed={tab === key} data-hima-control={`node-card-tab-${key}`} onClick={() => setTab(key)}>{tabLabel(t, key)}</button>
         ))}
       </nav>
       <div className="hima-node-card-content">

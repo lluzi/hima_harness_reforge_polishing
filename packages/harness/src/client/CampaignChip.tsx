@@ -4,7 +4,8 @@
 // never touched Campaign at all.
 import type { ReactElement } from 'react';
 import { Glyph } from './glyphs.js';
-import { statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
+import { useHimaT } from './locale/index.js';
+import { STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
 export interface CampaignChipProps {
@@ -16,14 +17,15 @@ export interface CampaignChipProps {
  *  `openRun` is this registration's own inject (`index.ts`). */
 export function CampaignChip({ sessionId, openRun }: CampaignChipProps): ReactElement | null {
   const { run, stale } = useOwnedRun(sessionId);
+  const t = useHimaT();
   if (run === undefined) return null;
   const status = run.status;
-  const said = statusSaid(status);
+  const said = t(status === undefined ? 'status.none' : `status.${status}`);
   const waiting = status === 'waiting';
   // A stale read keeps showing the last known state (never blanks or collapses it) — the same rule
   // the tab title follows — dimmed by CSS off `data-hima-state-stale`, with the tooltip saying so.
-  const title = `Campaign — ${said}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`
-    + (stale ? ' — the last read did not answer; showing the last known state' : '');
+  const title = (run.currentNode === undefined ? t('chip.title', { said }) : t('chip.title.at', { said, node: run.currentNode }))
+    + (stale ? t('chip.title.stale') : '');
   return (
     // C9: `hima-campaign-chip-wrap` keeps this mount from stretching to fill the shell's own header
     // actions flexbox — without it, the chip collided with the shell's own header chips beside it

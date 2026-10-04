@@ -6,7 +6,8 @@ import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
-import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
+import { installHimaLocale, useHimaT, type LocaleRuntimeLike } from './locale/index.js';
+import { campaignEvents, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -28,6 +29,9 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
+  /** The shell's locale runtime (`@deepseek-ai/dsh-client-locale`), a hard dependency this adapter
+   *  injects so the Hima panels can register their own zh/en dictionaries and translate. */
+  readonly locale: LocaleRuntimeLike;
   readonly sessions: { open(id: string): void; openSubagent(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void };
   effect(callback: () => (() => void)): unknown;
   /** Optional-service lookup ("Prefer `ctx.get(name)` with an undefined check; use `inject` only for
@@ -38,7 +42,7 @@ export interface ClientContext {
   get?(name: string): unknown;
 }
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'];
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation', 'locale'];
 export const name = 'hima-guide';
 
 /** Hima's own mark, composed through the shell's brand seats. */
@@ -87,12 +91,13 @@ function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id:
  */
 function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const { run, stale } = useOwnedRun(sessionId);
+  const t = useHimaT();
   const status = run?.status;
   const body = run === undefined
-    ? 'Hima Workspace'
-    : createElement('span', null, 'Campaign ·',
+    ? t('tab.workspace')
+    : createElement('span', null, t('tab.campaign'),
         createElement(Glyph, { name: status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
-        ` ${status === 'running' ? (run.currentNode ?? 'running') : statusSaid(status)}`,
+        ` ${status === 'running' ? (run.currentNode ?? t('tab.running')) : t(status === undefined ? 'status.none' : `status.${status}`)}`,
         status === 'waiting' ? createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }) : null);
   // The shell mounts this outside `HimaWorkbench`'s own `.hima-root` tree (it is the tab strip's own
   // chip, not the tab body), so the token sheet's own `--hima-*` custom properties — the waiting
@@ -149,6 +154,10 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
 }
 
 export function apply(ctx: ClientContext): void {
+  // Register the Hima zh/en dictionaries once and capture the runtime for `useHimaT`. Wrapped in
+  // `ctx.effect` so the dictionaries unregister on unload, exactly as the shell's own feature plugins
+  // register their namespaces (`ctx.locale.register(ns, { zh, en })`).
+  ctx.effect(() => installHimaLocale(ctx.locale));
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Hima Workspace',
     guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Campaign and Data Insight beside the conversation, with source-linked evidence.' }],

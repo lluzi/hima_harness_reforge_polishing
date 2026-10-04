@@ -18,6 +18,7 @@ import {
   MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
+import { useHimaT } from './locale/index.js';
 import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
 import { useViewerSession } from './viewer-session.js';
@@ -65,13 +66,14 @@ function useReducedMotion(): boolean {
  *  decision and blockers that read them, and finally its Workshop, growths and revisions. Says so
  *  plainly when none of that exists yet, rather than an empty pane a person might read as broken. */
 function EvidenceView({ view }: { view: RunView }): ReactElement {
+  const t = useHimaT();
   const hasMaterial = view.code.length > 0 || view.knowledge.length > 0;
   const hasGrowth = view.generations.some((generation) => (generation.growths ?? []).length > 0);
   const empty = !hasMaterial && view.archive === undefined && view.workshop === undefined && !hasGrowth
     && (view.revisions ?? []).length === 0 && view.observations.length === 0 && view.verdicts.length === 0
     && (view.decision === null || view.decision === undefined) && view.blockers.length === 0
     && view.refusals.length === 0 && view.cancels.length === 0;
-  if (empty) return <div className="hima-detail hima-evidence"><p>No verified evidence has been recorded for this Campaign yet.</p></div>;
+  if (empty) return <div className="hima-detail hima-evidence"><p>{t('campaign.noEvidence')}</p></div>;
   return (
     <div className="hima-detail hima-evidence">
       <MaterialSection view={view} />
@@ -81,10 +83,10 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
       <RevisionSection view={view} />
       {view.observations.length === 0 ? null : (
         <section>
-          <h3>Observations</h3>
+          <h3>{t('campaign.observations')}</h3>
           {view.observations.map((observation) => (
             <details key={observation.recordId}>
-              <summary>{observation.path.split('/').at(-1)} · observation</summary>
+              <summary>{observation.path.split('/').at(-1)} · {t('campaign.summaryObservation')}</summary>
               <ObservationRow observation={observation} />
             </details>
           ))}
@@ -92,7 +94,7 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
       )}
       {view.verdicts.length === 0 ? null : (
         <section>
-          <h3>Verdicts</h3>
+          <h3>{t('campaign.verdicts')}</h3>
           {view.verdicts.map((verdict) => (
             <details key={verdict.recordId} open={verdict.outcome !== 'PASS'}>
               <summary>{verdict.outcome} · {verdict.ruleId}@{verdict.ruleVersion}</summary>
@@ -102,21 +104,21 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
         </section>
       )}
       {view.decision === null || view.decision === undefined ? null : (
-        <details open><summary>Decision</summary><DecisionRow decision={view.decision} view={view} /></details>
+        <details open><summary>{t('campaign.decision')}</summary><DecisionRow decision={view.decision} view={view} /></details>
       )}
       {view.blockers.map((blocker) => (
         <details key={blocker.recordId} open>
-          <summary>{blocker.nodeId} · blocker</summary>
+          <summary>{blocker.nodeId} · {t('campaign.summaryBlocker')}</summary>
           <p>{blocker.reason}</p>
           {blocker.logTail === undefined ? null : <pre>{blocker.logTail}</pre>}
         </details>
       ))}
       {view.refusals.map((refusal, index) => (
-        <details key={index} open><summary>Refused access</summary><p>{refusal.path}</p><p>{refusal.reason}</p></details>
+        <details key={index} open><summary>{t('campaign.refusedAccess')}</summary><p>{refusal.path}</p><p>{refusal.reason}</p></details>
       ))}
       {view.cancels.map((cancel) => (
         <details key={cancel.recordId}>
-          <summary>Cancellation</summary>
+          <summary>{t('campaign.cancellation')}</summary>
           <p>{cancelAsked(cancel)}</p>
           <p>{cancelObserved(view, cancel).said}</p>
         </details>
@@ -128,6 +130,7 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
 /** The Report view: the Campaign's technical report, as a current ledger preview or — on request —
  *  the saved file itself, read back and held to its recorded hash. */
 function ReportView({ view, runId, openEvidence }: { view: RunView; runId: string; openEvidence(): void }): ReactElement {
+  const t = useHimaT();
   const viewer = useViewerSession();
   const [saved, setSaved] = useState<{ markdown?: string; error?: string; loading?: boolean }>();
   const pending = useRef<AbortController>();
@@ -148,42 +151,43 @@ function ReportView({ view, runId, openEvidence }: { view: RunView; runId: strin
   };
   return (
     <div className="hima-detail hima-report">
-      <h3>Technical report</h3>
-      <button type="button" className="hima-button" onClick={openEvidence}>Open deliverables and supporting evidence</button>
-      <p className="hima-small">Open and download verified files in Evidence. Engineering summaries are agent statements; recorded checks and the Run ending establish the verified outcome.</p>
+      <h3>{t('campaign.technicalReport')}</h3>
+      <button type="button" className="hima-button" onClick={openEvidence}>{t('campaign.openDeliverables')}</button>
+      <p className="hima-small">{t('campaign.reportNote')}</p>
       {saved ? (
         <>
-          <button type="button" className="hima-button" onClick={() => { pending.current?.abort(); setSaved(undefined); }}>Current ledger preview</button>
-          <p className="hima-small">{saved.markdown !== undefined ? 'Saved Markdown · original bytes verified by the Host' : saved.loading ? 'Reading and verifying the saved file…' : 'Saved file could not be verified'}</p>
-          {saved.loading ? <p>Reading saved report…</p>
+          <button type="button" className="hima-button" onClick={() => { pending.current?.abort(); setSaved(undefined); }}>{t('campaign.currentLedgerPreview')}</button>
+          <p className="hima-small">{saved.markdown !== undefined ? t('campaign.savedMarkdown') : saved.loading ? t('campaign.readingVerifying') : t('campaign.savedUnverified')}</p>
+          {saved.loading ? <p>{t('campaign.readingSavedReport')}</p>
             : saved.error ? <p role="alert" className="hima-notice">{saved.error}</p>
               : reportBlocks(saved.markdown!).map((block, index) => <ReportBlockRow key={index} block={block} />)}
         </>
       ) : view.experience ? (
         <ExperienceSection view={view} experience={view.experience} onOpenSaved={() => { void openSaved(); }} />
       ) : (
-        <p>{view.experienceUnavailable ?? 'A technical report will appear here when the Run closes.'}</p>
+        <p>{view.experienceUnavailable ?? t('campaign.reportWhenClosed')}</p>
       )}
     </div>
   );
 }
 
 function GenerationResearch({ view }: { readonly view: RunView }): ReactElement {
+  const t = useHimaT();
   const groups = groupGenerationAnalyses(view.analyses ?? []);
   return <section className='hima-generation-research' data-hima-region='generation-research'>
-    <h3>Generation research feedback</h3>
-    {groups.length === 0 ? <p>No source-linked research interpretation is recorded for these generations.</p> : groups.map((group, groupIndex) => {
-      const heading = group.generation === undefined ? 'Unclassified research interpretation' : `${group.loopId === undefined ? '' : `Loop ${group.loopId} · `}Generation ${String(group.generation)}`;
+    <h3>{t('campaign.researchFeedback')}</h3>
+    {groups.length === 0 ? <p>{t('campaign.noResearch')}</p> : groups.map((group, groupIndex) => {
+      const heading = group.generation === undefined ? t('campaign.unclassifiedResearch') : `${group.loopId === undefined ? '' : `Loop ${group.loopId} · `}Generation ${String(group.generation)}`;
       return <details key={group.generation === undefined ? 'unclassified' : `${group.loopId ?? 'outer'}:${String(group.generation)}`} data-hima-state-generation={group.generation === undefined ? 'unclassified' : String(group.generation)} open={groupIndex === groups.length - 1}>
         <summary>{heading} · {group.analyses.length} analysis record{group.analyses.length === 1 ? '' : 's'}</summary>
-        {group.generation === undefined ? <p className='hima-memory-warning'>The Ledger record has no generation identity. It is not assigned to Generation 1.</p> : null}
+        {group.generation === undefined ? <p className='hima-memory-warning'>{t('campaign.noGenerationIdentity')}</p> : null}
         {group.analyses.map(analysis => <article key={analysis.recordId}>
           <header><strong>{analysis.question}</strong><span>{analysis.recordId}</span></header>
-          {analysis.comparisons.map((comparison, index) => <p key={`comparison:${String(index)}`}>Comparison condition: {comparison}</p>)}
-          {analysis.hypotheses.map((hypothesis, index) => <p key={`hypothesis:${String(index)}`}>Hypothesis, unverified: {hypothesis}</p>)}
-          {analysis.claims.map((claim, index) => <div key={`claim:${String(index)}`}><p>Interpretation: {claim.text}</p><p className='hima-small'>Evidence references: {claim.cites.join(', ')}</p></div>)}
-          {analysis.nextExperiments.map((experiment, index) => <p key={`next:${String(index)}`}>Next discriminating experiment: {experiment}</p>)}
-          {analysis.limitations.map((limitation, index) => <p className='hima-small' key={`limit:${String(index)}`}>Limitation: {limitation}</p>)}
+          {analysis.comparisons.map((comparison, index) => <p key={`comparison:${String(index)}`}>{t('campaign.comparisonCondition', { text: comparison })}</p>)}
+          {analysis.hypotheses.map((hypothesis, index) => <p key={`hypothesis:${String(index)}`}>{t('campaign.hypothesis', { text: hypothesis })}</p>)}
+          {analysis.claims.map((claim, index) => <div key={`claim:${String(index)}`}><p>{t('campaign.interpretation', { text: claim.text })}</p><p className='hima-small'>{t('campaign.evidenceReferences', { refs: claim.cites.join(', ') })}</p></div>)}
+          {analysis.nextExperiments.map((experiment, index) => <p key={`next:${String(index)}`}>{t('campaign.nextExperiment', { text: experiment })}</p>)}
+          {analysis.limitations.map((limitation, index) => <p className='hima-small' key={`limit:${String(index)}`}>{t('campaign.limitation', { text: limitation })}</p>)}
         </article>)}
       </details>;
     })}
@@ -191,6 +195,7 @@ function GenerationResearch({ view }: { readonly view: RunView }): ReactElement 
 }
 
 export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner, openFiles }: CampaignTabProps): ReactElement {
+  const t = useHimaT();
   const [section, setSection] = useState<Section>('live');
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const reducedMotion = useReducedMotion();
@@ -261,9 +266,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
-      <nav className="hima-campaign-views" aria-label="Campaign views">
-        {SECTIONS.map(({ key, said }) => (
-          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{said}</button>
+      <nav className="hima-campaign-views" aria-label={t('campaign.views')}>
+        {SECTIONS.map(({ key }) => (
+          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{t(`campaign.section.${key}`)}</button>
         ))}
       </nav>
       <div className="hima-campaign-content">
@@ -271,18 +276,18 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           scene === undefined
             ? <div className="hima-empty">
                 <p>{packUnavailable && packId !== undefined
-                  ? `The Pack ${packId} is not installed on this Host; the reference graph cannot be shown.`
+                  ? t('campaign.packNotInstalled', { pack: packId })
                   : packVersionMismatch && packId !== undefined
-                    ? `The installed Pack ${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`} does not match the version${packVersion === undefined ? '' : ` ${packVersion}`} this Campaign ran; the reference graph cannot be shown.`
-                    : context?.reason ?? 'Reading the reference graph…'}</p>
+                    ? t('campaign.packVersionMismatch', { installed: `${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`}`, ran: packVersion === undefined ? '' : ` ${packVersion}` })
+                    : context?.reason ?? t('campaign.readingReferenceGraph')}</p>
               </div>
             : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />
         ) : view === undefined
-          ? <div className="hima-empty"><p>Reading Run records…</p></div>
+          ? <div className="hima-empty"><p>{t('campaign.readingRunRecords')}</p></div>
           : section === 'generations'
-            ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}<GenerationResearch view={view}/></div>
+            ? <div className="hima-detail"><h3>{t('campaign.generationsHeading')}</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>{t('campaign.noGenerationOpened')}</p>}<GenerationResearch view={view}/></div>
             : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (

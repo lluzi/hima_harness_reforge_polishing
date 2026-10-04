@@ -26,6 +26,7 @@ import type { PreparationView, StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, saveCampaignFile, startCampaign } from './api.js';
 import { KindOutline } from './FabricNode.js';
 import { Glyph, type GlyphName } from './glyphs.js';
+import { useHimaT } from './locale/index.js';
 
 /** C17: a state roundel — a glyph coloured by the same good/warn/bad vocabulary the rest of the
  *  client already reads off `data-state` (`.hima-state-word`, `workbench-style.ts`) — so a person
@@ -39,7 +40,8 @@ function StateRoundel({ state, glyph }: { state: 'good' | 'warn' | 'bad'; glyph:
  *  silently rendering nothing (an eyebrow over a blank space) reads as broken rather than "not yet
  *  applicable". */
 function AvailableOncePackChosen(): ReactElement {
-  return <p className="hima-muted">Available once a Pack is chosen.</p>;
+  const t = useHimaT();
+  return <p className="hima-muted">{t('config.availableOncePack')}</p>;
 }
 
 export interface ConfigurationPageProps {
@@ -235,6 +237,7 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
 interface ServerSnapshot { readonly file: CampaignFile; readonly text: string; readonly mtimeMs?: number }
 
 export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, openPackOwner, onBusy, refreshSignal }: ConfigurationPageProps): ReactElement {
+  const t = useHimaT();
   const ask = askGuide ?? draftToGuide;
   const [draft, setDraft] = useState<CampaignFile>();
   const [view, setView] = useState<CampaignFileView>();
@@ -510,29 +513,29 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
    *  makes, at once rather than waiting out the rest of the 3 s interval. */
   const retry = () => { setError(undefined); void tick.current(); };
 
-  const unknowns = proposal?.unknowns ?? (draft.pack === undefined ? ['Choose a HimaPack to begin Campaign preparation.'] : []);
+  const unknowns = proposal?.unknowns ?? (draft.pack === undefined ? [t('config.choosePackToBegin')] : []);
 
   return <div className="hima-config hima-root" data-hima-region="configuration" data-hima-state-ready={String(ready)} data-hima-state-pack={draft.pack?.id ?? ''} data-hima-state-site={siteName} data-hima-state-changed={String(changed.size)}>
     <header className="hima-config-header">
-      <h2>Campaign configuration</h2>
+      <h2>{t('config.title')}</h2>
       <p className="hima-config-header-sub">hima/campaign.yml{changed.size > 0 ? ` · HimaGuide filled ${changed.size} field${changed.size === 1 ? '' : 's'} since you last looked` : ''}</p>
     </header>
 
     <section data-hima-region="config-name">
-      <span className="hima-config-eyebrow">Name</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.name')}</span>
       <div {...rowProps('name', changed)}>
-        <EditableField control="config-name" value={draft.name ?? ''} placeholder="Untitled Campaign" ariaLabel="Campaign name" onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
+        <EditableField control="config-name" value={draft.name ?? ''} placeholder={t('config.untitledCampaign')} ariaLabel={t('config.campaignName')} onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
           onCommit={(text) => commitField('name', (file) => ({ ...file, name: text === '' ? undefined : text }))} />
         <ChangedMark path="name" changed={changed} />
       </div>
     </section>
 
     <section data-hima-region="config-pack">
-      <span className="hima-config-eyebrow">Pack</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.pack')}</span>
       <div {...rowProps('pack', changed)}>
-        <select data-hima-control="config-pack" aria-label="Pack" value={draft.pack?.id ?? ''} onFocus={() => clearChanged('pack')}
+        <select data-hima-control="config-pack" aria-label={t('config.eyebrow.pack')} value={draft.pack?.id ?? ''} onFocus={() => clearChanged('pack')}
           onChange={(event) => { const id = event.target.value; clearChanged('pack'); commitField('pack', (file) => ({ ...file, pack: id === '' ? undefined : { id } })); }}>
-          <option value="">Choose a Pack…</option>
+          <option value="">{t('config.choosePack')}</option>
           {choices?.packs.map((id) => <option key={id} value={id} disabled={choices?.cannotStart?.includes(id)}>{id}{choices?.marks?.[id] ? ` — ${choices.marks[id]}` : ''}</option>)}
         </select>
         <ChangedMark path="pack" changed={changed} />
@@ -541,28 +544,28 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         <p className="hima-config-detail">{proposal.pack.title} · {proposal.pack.id}@{proposal.pack.version}{proposal.pack.status ? <span className="hima-pill">{proposal.pack.status.normalized}</span> : null}</p>
         <MiniReferenceGraph graph={proposal.referenceGraph} />
       </> : draft.pack === undefined ? <div className="hima-config-empty-pack" data-hima-region="config-empty-pack">
-        {choices?.packs.length === 0 ? <strong>No HimaPack is installed.</strong> : null}
-        <button className="hima-button" data-hima-control="config-install-pack" onClick={() => { void installPack(); }}>Install a Pack</button>
-        <button className="hima-button" data-hima-control="config-ask-pack" onClick={() => ask('What is a HimaPack and which one should I install for …?')}>Ask HimaGuide</button>
+        {choices?.packs.length === 0 ? <strong>{t('config.noPackInstalled')}</strong> : null}
+        <button className="hima-button" data-hima-control="config-install-pack" onClick={() => { void installPack(); }}>{t('config.installPack')}</button>
+        <button className="hima-button" data-hima-control="config-ask-pack" onClick={() => ask('What is a HimaPack and which one should I install for …?')}>{t('config.askGuide')}</button>
       </div> : null}
     </section>
 
     <section data-hima-region="config-site">
-      <span className="hima-config-eyebrow">Site</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.site')}</span>
       <div {...rowProps('site', changed)}>
-        <select data-hima-control="config-site" aria-label="Site" value={siteName} onFocus={() => clearChanged('site')}
+        <select data-hima-control="config-site" aria-label={t('config.eyebrow.site')} value={siteName} onFocus={() => clearChanged('site')}
           onChange={(event) => { const name = event.target.value; clearChanged('site'); commitField('site', (file) => ({ ...file, site: name === '' ? undefined : { name } })); }}>
-          <option value="">Choose a Site…</option>
+          <option value="">{t('config.chooseSite')}</option>
           {sites.map((site) => <option key={site.name} value={site.name}>{site.name} — {site.kind}{site.readiness !== 'ready' ? ` (${site.readiness})` : ''}</option>)}
         </select>
         <ChangedMark path="site" changed={changed} />
         {siteName !== '' && siteNeedsAttention
           ? <>
-              <button className="hima-button" data-hima-control="config-discover" onClick={() => ask(`Discover the Site ${siteName} with hima_site and tell me what you find.`)}>Discover with HimaGuide</button>
+              <button className="hima-button" data-hima-control="config-discover" onClick={() => ask(`Discover the Site ${siteName} with hima_site and tell me what you find.`)}>{t('config.discoverWithGuide')}</button>
               {/* Bug 2 fix: a real GUI save path for a Site's own facts and Permit, beside the
                   chat-only affordance above. Rediscovering only reads the Site; nothing is written
                   until the person reviews the draft below and clicks Save. */}
-              <button className="hima-button" data-hima-control="config-site-rediscover" disabled={discovering} onClick={() => { void rediscoverSite(); }}>{discovering && siteRediscovery === undefined ? 'Rediscovering…' : 'Rediscover'}</button>
+              <button className="hima-button" data-hima-control="config-site-rediscover" disabled={discovering} onClick={() => { void rediscoverSite(); }}>{discovering && siteRediscovery === undefined ? t('config.rediscovering') : t('config.rediscover')}</button>
             </>
           : null}
       </div>
@@ -574,17 +577,17 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         <p className="hima-small">Wrappers: {siteRediscovery.result.permit.allowedWrappers.join(', ') || 'none'}</p>
         {siteRediscovery.result.unknowns.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
         {siteRediscovery.result.conflicts.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
-        {siteRediscoveryError ? <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{siteRediscoveryError}</span><button type="button" className="hima-button" data-hima-control="config-site-rediscover-retry" disabled={discovering} onClick={() => { void rediscoverSite(); }}>Rediscover and review again</button></div> : null}
-        <button className="hima-button hima-primary" data-hima-control="config-site-rediscover-save" disabled={discovering} onClick={() => { void saveSiteRediscovery(); }}>{discovering ? 'Saving…' : 'Save reviewed Site'}</button>
-        <button className="hima-button" data-hima-control="config-site-rediscover-discard" disabled={discovering} onClick={() => { setSiteRediscovery(undefined); setSiteRediscoveryError(undefined); }}>Discard</button>
+        {siteRediscoveryError ? <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{siteRediscoveryError}</span><button type="button" className="hima-button" data-hima-control="config-site-rediscover-retry" disabled={discovering} onClick={() => { void rediscoverSite(); }}>{t('config.rediscoverReview')}</button></div> : null}
+        <button className="hima-button hima-primary" data-hima-control="config-site-rediscover-save" disabled={discovering} onClick={() => { void saveSiteRediscovery(); }}>{discovering ? t('config.saving') : t('config.saveReviewedSite')}</button>
+        <button className="hima-button" data-hima-control="config-site-rediscover-discard" disabled={discovering} onClick={() => { setSiteRediscovery(undefined); setSiteRediscoveryError(undefined); }}>{t('config.discard')}</button>
       </div> : null}
       {/* C17: `align-items:flex-start` (`workbench-style.ts`) — a `flex-direction:column` container
           otherwise stretches each labelled field to the row's own full width, which reads oddly for
           two short-and-tall fields (an SSH destination line, a hints textarea) stacked in one column. */}
       {siteName === '' ? <div className="hima-config-site-new">
-        <label className="hima-config-site-new-label">SSH destination<input data-hima-control="config-site-ssh" aria-label="SSH destination" value={sshDestination} placeholder="user@host" onChange={(event) => setSshDestination(event.target.value)} /></label>
-        <label className="hima-config-site-new-label">Discovery hints<textarea data-hima-control="config-site-hints" aria-label="Discovery hints" value={siteHints} placeholder="Workspace root, e.g. /work/hima" onChange={(event) => setSiteHints(event.target.value)} /></label>
-        <button className="hima-button" data-hima-control="config-discover" disabled={sshDestination.trim() === '' || discovering} onClick={() => { void discoverNewSite(); }}>{discovering ? 'Discovering…' : 'Discover with HimaGuide'}</button>
+        <label className="hima-config-site-new-label">{t('config.sshDestination')}<input data-hima-control="config-site-ssh" aria-label={t('config.sshDestination')} value={sshDestination} placeholder={t('config.userHost')} onChange={(event) => setSshDestination(event.target.value)} /></label>
+        <label className="hima-config-site-new-label">{t('config.discoveryHints')}<textarea data-hima-control="config-site-hints" aria-label={t('config.discoveryHints')} value={siteHints} placeholder={t('config.hintsPlaceholder')} onChange={(event) => setSiteHints(event.target.value)} /></label>
+        <button className="hima-button" data-hima-control="config-discover" disabled={sshDestination.trim() === '' || discovering} onClick={() => { void discoverNewSite(); }}>{discovering ? t('config.discovering') : t('config.discoverWithGuide')}</button>
       </div> : null}
     </section>
 
@@ -594,10 +597,10 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         Site's own binding) is shown as the field's real text; the placeholder is reserved for a
         genuinely unbound input, never used to stand in for a value this page already knows. */}
     <section data-hima-region="config-inputs">
-      <span className="hima-config-eyebrow">Inputs</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.inputs')}</span>
       {draft.pack === undefined ? <AvailableOncePackChosen /> : (proposal?.inputs ?? []).map((input) => {
         const path = `inputs.${input.name}`;
-        const state = input.source === 'file' ? 'bound by HimaGuide' : input.source === 'site' ? 'bound by Site' : 'unbound';
+        const state = input.source === 'file' ? t('config.boundByGuide') : input.source === 'site' ? t('config.boundBySite') : t('config.unbound');
         const draftValue = draft.inputs[input.name];
         const boundValue = draftValue ?? (input.ready ? input.value : undefined);
         return <div key={input.name} data-hima-region={`config-input-${input.name}`} data-hima-state-bound={String(input.ready)} {...inputRowProps(path, changed)}>
@@ -610,14 +613,14 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
             onCommit={(text) => commitField(path, (file) => ({ ...file, inputs: text === '' ? withoutKey(file.inputs, input.name) : { ...file.inputs, [input.name]: text } }))} />
           <span className="hima-config-input-state">{state}<ChangedMark path={path} changed={changed} /></span>
           <span className="hima-config-input-desc">{input.description}
-            {input.ready ? null : <button className="hima-button" data-hima-control={`config-ask-${input.name}`} onClick={() => ask(`Bind the input '${input.name}': ${input.description}.`)}>Ask HimaGuide</button>}
+            {input.ready ? null : <button className="hima-button" data-hima-control={`config-ask-${input.name}`} onClick={() => ask(`Bind the input '${input.name}': ${input.description}.`)}>{t('config.askGuide')}</button>}
           </span>
         </div>;
       })}
     </section>
 
     <section data-hima-region="config-goal">
-      <span className="hima-config-eyebrow">Goal</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.goal')}</span>
       {draft.pack === undefined ? <AvailableOncePackChosen /> : Object.entries(proposal?.goalDeclared ?? {}).map(([name, declared]) => {
         const path = `goal.${name}`;
         const label = declared.label + (declared.unit ? ` (${declared.unit})` : '');
@@ -635,7 +638,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     </section>
 
     <section data-hima-region="config-strategy">
-      <span className="hima-config-eyebrow">Strategy</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.strategy')}</span>
       {draft.pack === undefined ? <AvailableOncePackChosen /> : Object.entries(view?.preparation?.strategy ?? {}).map(([name, knob]) => {
         const path = `strategy.${name}`;
         const label = view?.preparation?.words?.strategy[name]?.label ?? name;
@@ -657,8 +660,8 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     </section>
 
     <section data-hima-region="config-budget">
-      <span className="hima-config-eyebrow">Budget</span>
-      {([['timeBoxMinutes', 'Time box (minutes)'], ['retries', 'Retries'], ['generations', 'Generations']] as const).map(([key, label]) => {
+      <span className="hima-config-eyebrow">{t('config.eyebrow.budget')}</span>
+      {([['timeBoxMinutes', t('config.budget.timeBox')], ['retries', t('config.budget.retries')], ['generations', t('config.budget.generations')]] as const).map(([key, label]) => {
         const path = `budget.${key}`;
         const declared = proposal?.budget[key];
         return <div key={key} {...rowProps(path, changed)}>
@@ -677,32 +680,32 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         whichever documents the person names, exactly as every other "Ask HimaGuide" control here
         drafts rather than sends. */}
     <section data-hima-region="config-knowledge">
-      <span className="hima-config-eyebrow">Knowledge</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.knowledge')}</span>
       <p>{proposal?.pack.knowledge.length ?? 0} Pack document(s) · {proposal?.knowledge.currentDocuments ?? 0} current document(s)</p>
       {draft.knowledge.length > 0 ? <ul>{draft.knowledge.map((item, index) => <li key={index} className="hima-small hima-wrap" title={item}>{item}</li>)}</ul> : null}
       <div className="hima-config-knowledge-add-row">
-        <input data-hima-control="config-knowledge-path" aria-label="Path to a knowledge document" value={knowledgePath} placeholder="Path to a document" onChange={(event) => setKnowledgePath(event.target.value)} />
-        <button className="hima-button" data-hima-control="config-knowledge-add" onClick={addKnowledge}>Add a document</button>
-        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this Campaign: …')}>Ask HimaGuide</button>
+        <input data-hima-control="config-knowledge-path" aria-label={t('config.pathToDocument')} value={knowledgePath} placeholder={t('config.pathPlaceholder')} onChange={(event) => setKnowledgePath(event.target.value)} />
+        <button className="hima-button" data-hima-control="config-knowledge-add" onClick={addKnowledge}>{t('config.addDocument')}</button>
+        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this Campaign: …')}>{t('config.askGuide')}</button>
       </div>
     </section>
 
     <section data-hima-region="config-readiness" data-hima-state-ready={String(ready)}>
-      <span className="hima-config-eyebrow">Readiness</span>
+      <span className="hima-config-eyebrow">{t('config.eyebrow.readiness')}</span>
       {unknowns.length > 0 || error !== undefined ? <div role="alert">
         {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row">
           <StateRoundel state="warn" glyph="circle" />
           <span>{sentence}</span>
-          <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>Ask HimaGuide</button>
+          <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>{t('config.askGuide')}</button>
         </div>)}
         {error ? <div className="hima-config-readiness-row"><StateRoundel state="bad" glyph="warning" /><span>{error}</span>
-          <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
+          <button className="hima-button" data-hima-control="config-retry" onClick={retry}>{t('config.retry')}</button>
         </div> : null}
       </div> : null}
-      {ready ? <div className="hima-config-readiness-row"><StateRoundel state="good" glyph="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
+      {ready ? <div className="hima-config-readiness-row"><StateRoundel state="good" glyph="check" /><span>{t('config.everyCheckPasses')}</span></div> : null}
       <div className="hima-config-confirm-row">
-        <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting Campaign…' : 'Confirm and start Campaign'}</button>
-        <span className="hima-small">enabled when every check passes</span>
+        <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? t('config.startingCampaign') : t('config.confirmAndStart')}</button>
+        <span className="hima-small">{t('config.enabledWhenReady')}</span>
       </div>
     </section>
   </div>;

@@ -11,6 +11,7 @@ import type { RunView } from '../remote.js';
 import { NODE_CARD_WIDTH } from '../node-card-layout.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
+import { useHimaT } from './locale/index.js';
 import { NodeCard } from './NodeCard.js';
 import type { Acting } from './HimaRunCard.js';
 
@@ -125,6 +126,7 @@ function splitGoalText(text: string): { readonly label: string; readonly value: 
 export function FabricCanvas({
   runId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
 }: FabricCanvasProps): ReactElement {
+  const t = useHimaT();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 760, height: 618 });
@@ -420,7 +422,7 @@ export function FabricCanvas({
               there. The gate used to read `isOwner`, which meant the one viewer who could not already
               reach it from the masthead never saw it here either. */}
           {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
-            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
+            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>{t('canvas.openAgent')}</button>
           ) : null}
           {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
               (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's
@@ -439,19 +441,19 @@ export function FabricCanvas({
               ) : null}
               {confirmingControl !== 'resume' ? null : (
                 <div className="hima-node-card-confirm" data-hima-region="resume-confirm">
-                  <p>New work starts again in this run.</p>
+                  <p>{t('canvas.resumeConfirmText')}</p>
                   <div className="hima-node-card-footer-row">
-                    <button type="button" className="hima-button hima-primary" data-hima-control="resume-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('resume'); setConfirmingControl(undefined); }}>Confirm resume</button>
-                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>Cancel</button>
+                    <button type="button" className="hima-button hima-primary" data-hima-control="resume-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('resume'); setConfirmingControl(undefined); }}>{t('canvas.confirmResume')}</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
                   </div>
                 </div>
               )}
               {confirmingControl !== 'cancel' ? null : (
                 <div className="hima-node-card-confirm" data-hima-region="cancel-confirm">
-                  <p>This asks every Job this run holds to stop; work already running may take a moment to end.</p>
+                  <p>{t('canvas.stopConfirmText')}</p>
                   <div className="hima-node-card-footer-row">
-                    <button type="button" className="hima-button hima-primary" data-hima-control="cancel-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('cancel'); setConfirmingControl(undefined); }}>Confirm stop</button>
-                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>Cancel</button>
+                    <button type="button" className="hima-button hima-primary" data-hima-control="cancel-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('cancel'); setConfirmingControl(undefined); }}>{t('canvas.confirmStop')}</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
                   </div>
                 </div>
               )}
@@ -570,16 +572,16 @@ export function FabricCanvas({
           />
         )}
         <div className="hima-canvas-legend">
-          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="act" half={7} /></svg>act</span>
-          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="judge" half={7} /></svg>judge</span>
-          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="explore" half={7} mark /></svg>explore</span>
-          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="wait" half={7} /></svg>wait</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="act" half={7} /></svg>{t('legend.act')}</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="judge" half={7} /></svg>{t('legend.judge')}</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="explore" half={7} mark /></svg>{t('legend.explore')}</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="wait" half={7} /></svg>{t('legend.wait')}</span>
         </div>
         <div className="hima-canvas-tools">
-          <button type="button" className="hima-icon-button" data-hima-control="canvas-locate" aria-label="Locate current node" onClick={locate}><Glyph name="locate" /></button>
-          <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-in" aria-label="Zoom in" onClick={() => zoomBy(1.2)}><Glyph name="zoom-in" /></button>
-          <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-out" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><Glyph name="zoom-out" /></button>
-          <button type="button" className="hima-icon-button" data-hima-control="canvas-fit" aria-label="Fit the whole graph" onClick={fitAll}><Glyph name="fit" /></button>
+          <button type="button" className="hima-icon-button" data-hima-control="canvas-locate" aria-label={t('canvas.locate')} onClick={locate}><Glyph name="locate" /></button>
+          <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-in" aria-label={t('canvas.zoomIn')} onClick={() => zoomBy(1.2)}><Glyph name="zoom-in" /></button>
+          <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-out" aria-label={t('canvas.zoomOut')} onClick={() => zoomBy(1 / 1.2)}><Glyph name="zoom-out" /></button>
+          <button type="button" className="hima-icon-button" data-hima-control="canvas-fit" aria-label={t('canvas.fit')} onClick={fitAll}><Glyph name="fit" /></button>
         </div>
       </div>
       {/* Always rendered, regardless of which card — if any — is open: the node card's own Job tab is

@@ -7,13 +7,14 @@ import { useEffect, useState, type ReactElement } from 'react';
 import type { ExecutionContext } from '../fabric.js';
 import type { RunView } from '../remote.js';
 import { duration, labelled, runPurposeMark, runStatusLabel } from '../card-labels.js';
+import { labelKeyed, useHimaT } from './locale/index.js';
 
-/** The Budget standing, in the one word the mockup's own sub-line uses beside the elapsed figure —
- *  read from `ExecutionContext.budget.phase` (`budgetStanding`'s own live computation), because
- *  nothing in `RunMeters` states whether a Run is still active, spending its closing reserve, or
- *  already exhausted; only the execution context knows that right now. */
+/** The Budget standing, read from `ExecutionContext.budget.phase` (`budgetStanding`'s own live
+ *  computation), because nothing in `RunMeters` states whether a Run is still active, spending its
+ *  closing reserve, or already exhausted; only the execution context knows that right now. The phase
+ *  maps to a Hima dictionary key so the standing reads in the active locale. */
 const BUDGET_STANDING: Readonly<Record<ExecutionContext['budget']['phase'], string>> = {
-  active: 'budget active', closing: 'budget closing reserve', exhausted: 'budget exhausted',
+  active: 'masthead.budget.active', closing: 'masthead.budget.closing', exhausted: 'masthead.budget.exhausted',
 };
 
 export interface MastheadProps {
@@ -43,26 +44,30 @@ function useTick(active: boolean): void {
 }
 
 export function Masthead({ name, view, context, stale, reducedMotion, isOwner, ownerId, readAt, openOwner }: MastheadProps): ReactElement {
+  const t = useHimaT();
   const run = view?.run;
   const status = run?.status;
   const ticking = status === 'running' && !stale && !reducedMotion;
   useTick(ticking);
-  const said = status === undefined ? undefined : labelled(runStatusLabel, status);
+  // The seal word is drawn in the active locale when this build knows the status, falling back to the
+  // exact card-labels English for a status a newer host added (see `labelKeyed`).
+  const said = status === undefined ? undefined : labelKeyed(t, `status.${status}`, labelled(runStatusLabel, status).said);
   const elapsedBase = run?.meters?.elapsedMs;
   const elapsedMs = elapsedBase === undefined ? undefined : elapsedBase + (ticking && readAt !== undefined ? Math.max(0, Date.now() - readAt) : 0);
   // One elapsed figure, not two: `elapsed <now> of a time box of <bound>`, both sides through the
   // same `duration()` a person reads everywhere else on the card — never this ticking value beside a
-  // second, static rendering of the same fact.
+  // second, static rendering of the same fact. The numbers come from `duration()` unchanged; only the
+  // wording around them is translated.
   const elapsedPhrase = elapsedMs === undefined || run?.budget === undefined ? undefined
-    : `elapsed ${duration(elapsedMs)} of a time box of ${duration(run.budget.timeBoxMs)}`;
-  const budgetWord = context === undefined ? undefined : BUDGET_STANDING[context.budget.phase];
+    : t('masthead.elapsed', { now: duration(elapsedMs), box: duration(run.budget.timeBoxMs) });
+  const budgetWord = context === undefined ? undefined : t(BUDGET_STANDING[context.budget.phase]);
   const purposeMark = runPurposeMark(run?.purpose);
   // C19: a Campaign with no name of its own (`name` absent — no Campaign file, or one that never
   // set `name`) never falls back to the raw campaign id (a bare uuid-shaped identifier means nothing
   // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
   // the same two facts the sub-line beside it already reads off `run.currentNode`/`run.generation`,
   // named here where a title is expected instead of an opaque id.
-  const fallbackTitle = run?.packId === undefined ? 'Campaign' : `${run.packId}${run.generation === undefined ? '' : ` · gen ${run.generation}`}`;
+  const fallbackTitle = run?.packId === undefined ? t('masthead.campaign') : `${run.packId}${run.generation === undefined ? '' : ` · ${t('masthead.gen', { n: run.generation })}`}`;
 
   return (
     <header className="hima-masthead" data-hima-region="campaign-masthead"
@@ -72,18 +77,18 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
         <h2>{name ?? fallbackTitle}{purposeMark === undefined ? null : ` · ${purposeMark}`}</h2>
         <p className="hima-masthead-sub">
           {said === undefined
-            ? (view === undefined ? null : <span className="hima-masthead-seal">No Fabric state recorded</span>)
-            : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said.said}</span>}
+            ? (view === undefined ? null : <span className="hima-masthead-seal">{t('masthead.noFabricState')}</span>)
+            : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said}</span>}
           {run?.currentNode === undefined ? null : <span> · {run.currentNode}</span>}
-          {run?.generation === undefined ? null : <span> · gen {run.generation}</span>}
+          {run?.generation === undefined ? null : <span> · {t('masthead.gen', { n: run.generation })}</span>}
           {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}
           {budgetWord === undefined ? null : <span> · {budgetWord}</span>}
         </p>
       </div>
       {isOwner || ownerId === undefined ? null : (
         <div className="hima-masthead-owner">
-          <span>Owned by Campaign Agent {ownerId.slice(-6)}</span>
-          <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(ownerId)}>Open Campaign Agent</button>
+          <span>{t('masthead.ownedBy', { id: ownerId.slice(-6) })}</span>
+          <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(ownerId)}>{t('canvas.openAgent')}</button>
         </div>
       )}
     </header>

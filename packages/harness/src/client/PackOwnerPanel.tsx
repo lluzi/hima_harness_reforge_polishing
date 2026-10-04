@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { reviewPackTransfer } from './api.js';
 import { Glyph } from './glyphs.js';
+import { useHimaT } from './locale/index.js';
 
 export interface PackOwnerPanelProps {
   readonly sessionId: string;
@@ -18,6 +19,7 @@ export interface PackOwnerPanelProps {
 }
 
 export function PackOwnerPanel({ sessionId, initialPack, initialLocation, pickFolder }: PackOwnerPanelProps): ReactElement {
+  const t = useHimaT();
   const [pack, setPack] = useState(initialPack);
   const [mode, setMode] = useState<'install' | 'share' | 'migrate' | 'upgrade'>(initialPack ? 'share' : 'install');
   const [location, setLocation] = useState(initialLocation ?? '');
@@ -42,37 +44,37 @@ export function PackOwnerPanel({ sessionId, initialPack, initialLocation, pickFo
     pending.current = false; setBusy(false);
     if (!result.ok) { setReview(undefined); setMessage(result.error.message); return; }
     setReview(result.value);
-    setMessage(confirm ? 'Confirmed files verified and written. No public upload was performed.' : 'Review the exact files and destination before confirming.');
+    setMessage(confirm ? t('pack.confirmed') : t('pack.reviewBeforeConfirm'));
     if (confirm) setReview(undefined);
   };
   return <section className='hima-detail' data-hima-region='pack-owner'>
-    <h3>Pack & knowledge assets</h3>
-    <p className='hima-small'>Install a transparent Pack folder, then inspect or move its method and local research assets.</p>
+    <h3>{t('pack.heading')}</h3>
+    <p className='hima-small'>{t('pack.intro')}</p>
     <fieldset disabled={busy} className='hima-owner-fieldset'>
       <div className='hima-fields'>
-        <label>Installed Pack<input data-hima-control='owner-pack' value={pack} onChange={event => { invalidate(); setPack(event.target.value); }} /></label>
-        <label>Action<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
-          <option value='install'>Install Pack from folder</option><option value='share'>Share method / selected materials</option><option value='migrate'>Migrate my Pack with all assets</option><option value='upgrade'>Install tested method upgrade</option>
+        <label>{t('pack.installedPack')}<input data-hima-control='owner-pack' value={pack} onChange={event => { invalidate(); setPack(event.target.value); }} /></label>
+        <label>{t('pack.action')}<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
+          <option value='install'>{t('pack.mode.install')}</option><option value='share'>{t('pack.mode.share')}</option><option value='migrate'>{t('pack.mode.migrate')}</option><option value='upgrade'>{t('pack.mode.upgrade')}</option>
         </select></label>
-        <label>{fromSource ? (mode === 'install' ? 'Pack source folder' : 'Tested release source folder') : 'New destination Pack folder'}
+        <label>{fromSource ? (mode === 'install' ? t('pack.sourceFolder') : t('pack.releaseFolder')) : t('pack.destinationFolder')}
           <span className='hima-owner-location-row'>
             <input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} />
-            {pickFolder ? <button type='button' className='hima-icon-button' data-hima-control='owner-location-pick' aria-label='Choose a folder'
+            {pickFolder ? <button type='button' className='hima-icon-button' data-hima-control='owner-location-pick' aria-label={t('pack.chooseFolder')}
               onClick={() => { void pickFolder().then((picked) => { if (picked !== null) { invalidate(); setLocation(picked); } }).catch(() => {}); }}><Glyph name='locate' /></button> : null}
           </span>
         </label>
       </div>
-      {mode === 'share' ? <label className='hima-owner-assets-label'>Optional material paths, one per line<textarea className='hima-run-card-owner-textarea' data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
-        : <p className='hima-small'>{mode === 'install' ? 'Review shows every method and knowledge file before this fixed Pack is installed. Author status is displayed and does not change execution.' : mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}
-      <button className='hima-button hima-owner-review-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>Review files</button>
+      {mode === 'share' ? <label className='hima-owner-assets-label'>{t('pack.optionalMaterials')}<textarea className='hima-run-card-owner-textarea' data-hima-control='owner-assets' value={assets} placeholder={t('pack.optionalMaterials.placeholder')} onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
+        : <p className='hima-small'>{mode === 'install' ? t('pack.note.install') : mode === 'migrate' ? t('pack.note.migrate') : t('pack.note.upgrade')}</p>}
+      <button className='hima-button hima-owner-review-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>{t('pack.reviewFiles')}</button>
       {review ? <div data-hima-region='pack-review'>
-        <p className='hima-wrap'>Destination: <code>{review.to}</code></p>
+        <p className='hima-wrap'>{t('pack.destination')}<code>{review.to}</code></p>
         <p className='hima-small'>{review.files.length} files · {review.changes.length} changes · review <code title={review.reviewSha256}>{review.reviewSha256.slice(0, 12)}</code></p>
-        <div className='hima-run-card-material-panel'><table><thead><tr><th className='hima-owner-file-column'>File</th><th className='hima-owner-bytes-column'>Bytes</th><th>SHA-256</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td className='hima-owner-file-cell'>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
+        <div className='hima-run-card-material-panel'><table><thead><tr><th className='hima-owner-file-column'>{t('pack.col.file')}</th><th className='hima-owner-bytes-column'>{t('pack.col.bytes')}</th><th>{t('pack.col.sha')}</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td className='hima-owner-file-cell'>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
         {/* C18: the raw JSON dump added nothing the table above does not already state in words —
             every file, its bytes and its hash — so it is removed rather than kept as a second,
             unreadable copy of the same review. */}
-        <button className='hima-button hima-primary' data-hima-control='owner-confirm' onClick={() => { void submit(true); }}>Confirm these exact files</button>
+        <button className='hima-button hima-primary' data-hima-control='owner-confirm' onClick={() => { void submit(true); }}>{t('pack.confirmFiles')}</button>
       </div> : null}
     </fieldset>
     {message ? <p role='status' data-hima-region='pack-owner-message'>{message}</p> : null}
