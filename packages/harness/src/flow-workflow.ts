@@ -30,6 +30,7 @@ export interface FlowWorkflowOptions {
    * Receipt materialization availability/diagnostics before throwing the typed recoverable
    * error so restoring files during replay cannot change an earlier operation branch. */
   readonly resolveAdapter: (context: FlowAdapterContext) => Promise<TaskEffectAdapter|TaskCollectionPending>;
+  readonly finalize?: (runtime:DurableRuntime,runId:string,revision:number,attempt:number) => Promise<{complete:boolean;diagnostic?:string}>;
 }
 /** Only retained method/Site availability failures use this recoverable resolver boundary.
  * Actual adapter effects keep their own identity/reconciliation error protocol. */
@@ -480,6 +481,18 @@ export function flowWorkflowDefinitions(options: FlowWorkflowOptions): readonly 
       const after = await runtime.store.flowAuthority(input.runId);
       const final = after.run.cancelled&&result.state==='succeeded'?{...result,state:'cancelled' as const,reason:'Cancellation applied; verified Task results and closure proofs are retained'}:after.run.revision !== context.revision ? { ...result, state: 'superseded' as const, reason: 'A fresh root owns the accepted revision' } : result;
       await runtime.store.putFlowFact(input.runId, `outcome:${context.revision}`, asJson(final));
+      if(options.finalize && final.state !== 'superseded' && ['succeeded','cancelled'].includes(final.state)) {
+        for(let attempt=0;;attempt++) {
+          let delivery:{complete:boolean;diagnostic?:string};
+          try {delivery=await options.finalize(runtime,input.runId,context.revision,attempt);}
+          catch(error){delivery={complete:false,diagnostic:text(error)};}
+          if(!delivery.complete)await runtime.store.putFlowFact(input.runId,`delivery-diagnostic:${context.revision}:${jsonDigest(asJson(delivery))}`,asJson(delivery));
+          if(delivery.complete)break;
+          const current=await runtime.store.flowAuthority(input.runId);
+          if(current.run.revision!==context.revision || current.at>=Date.parse(current.run.deadlineAt))break;
+          await waitForOriginalDeadline(attempt,current.at,Date.parse(current.run.deadlineAt));
+        }
+      }
       return asJson(final);
     } },
     { name: names.block, execute: (runtime, input) => executeBlock(runtime, input as unknown as Execution).then(asJson) },

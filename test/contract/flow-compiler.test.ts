@@ -27,6 +27,14 @@ const seq = (id: string, ...steps: Flow[]): Extract<Flow, { kind: 'sequence' }> 
 const binding = (taskId: string, ...path: string[]) => ({ taskId, path });
 const from = (taskId: string, ...path: string[]) => ({ source: 'committedOutput' as const, taskId, path });
 
+test('a declared closing task freezes its use of the original reserve without changing the Run budget', () => {
+  const declaration = { ...task('deliver'), budget: 'closing' };
+  const compiled = compileFlow({ ...source(task('work')), flow: declaration }, { packSha256: sha });
+  assert.equal(compiled.tasks.deliver!.budget, 'closing');
+  assert.notEqual(compiled.irSha256, compileFlow(source(task('deliver')), { packSha256: sha }).irSha256);
+  assert.throws(() => compileFlow({ ...source(task('work')), flow: { ...declaration, budget: 'unlimited' } }, { packSha256: sha }), /budget/);
+});
+
 test('five elements compile into immutable stable IR; named parallel ordering and carry share original Run budget', () => {
   const flow = seq('all', decision(),
     { kind: 'choice', id: 'select', select: binding('decide', 'route'), cases: { continue: task('work'), stop: seq('done') } },
@@ -76,6 +84,11 @@ test('strict and dynamic diagnostic flows use the same grammar and freeze result
   const before = base.irSha256;
   const fragment = { flow: seq('detour', task('check', { original: from('diagnose') }), task('report', { value: from('check') })), return: binding('report') };
   const frozen = freezeFlowFragment(base, 'diagnostic', fragment);
+  const closingFragment = { flow: { ...task('closing-diagnostic'), budget: 'closing' }, return: binding('closing-diagnostic') };
+  assert.throws(() => freezeFlowFragment(base, 'diagnostic', closingFragment), /closing reserve/);
+  const closingBase = compileFlow({ ...strict, flow: seq('s', { ...task('diagnose'), budget: 'closing' }, task('deliver')),
+    extensions: [{ id: 'diagnostic', afterTask: 'diagnose', fragmentPath: ['extra'], returnTo: 'deliver' }] }, { packSha256: sha });
+  assert.equal(freezeFlowFragment(closingBase, 'diagnostic', closingFragment).flow.tasks['closing-diagnostic']!.budget, 'closing');
   assert.equal(frozen.returnTo, 'deliver'); assert.equal(frozen.flow.schema, base.schema);
   assert.equal(base.irSha256, before); assert.ok(Object.isFrozen(frozen.flow));
   assert.equal(frozen.sha256, freezeFlowFragment(base, 'diagnostic', fragment).sha256);
@@ -116,6 +129,19 @@ test('normal Pack loader resolves local schema bytes and includes them in immuta
   assert.equal(loadPack(path.dirname(installed), 'example').flow!.irSha256, history.flow!.irSha256);
 });
 
+test('normal flow views show sequence and branch handoffs, including an empty choice path', async t => {
+  const dir = await folder(t);
+  const method = source(seq('s', decision(),
+    { kind: 'choice', id: 'choose', select: binding('decide', 'route'), cases: { continue: task('work'), stop: seq('skip') } },
+    { kind: 'parallel', id: 'join', branches: { a: { flow: task('a'), required: true }, b: { flow: task('b'), required: true } }, results: {} },
+    task('deliver')));
+  await writeFile(path.join(dir, 'graph.yml'), stringify(method));
+  const pack = loadPack(path.dirname(dir), 'example');
+  assert.deepEqual(pack.graph.edges.map(edge => `${edge.from}->${edge.to}`).sort(),
+    ['decide->work', 'decide->a', 'decide->b', 'work->a', 'work->b', 'a->deliver', 'b->deliver'].sort());
+  assert.equal(pack.flow!.blocks.choose!.kind, 'choice', 'the IR retains execution semantics independently of display edges');
+});
+
 test('schema refusals have local positive paths and producer upgrades validate business values without changing consumers', async t => {
   const dir = await folder(t);
   const producer = task('produce'), consumer = task('consume', { value: from('produce') });
@@ -140,7 +166,7 @@ test('schema refusals have local positive paths and producer upgrades validate b
 });
 
 test('every shipped supported legacy method compiles without altering its full semantic declarations', async t => {
-  for (const id of ['opene902-timing-probe', 'library-intelligence', 'xtop-timing-closure', 'aes-timing-research', 'aes-tsmc28-dtco', 'custom-cell-fmax-dtco', 'agentic-timing-closure-system']) {
+  for (const id of ['opene902-timing-probe', 'library-intelligence', 'xtop-timing-closure', 'aes-timing-research', 'aes-tsmc28-dtco', 'custom-cell-fmax-dtco']) {
     const pack = loadPack(path.join(root, 'packs'), id);
     assert.equal(pack.flow!.source, 'legacy', id);
     const compatibility = pack.flow!.compatibility as { graph: unknown; contract: unknown };

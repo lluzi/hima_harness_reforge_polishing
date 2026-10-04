@@ -81,6 +81,7 @@ export interface RunAssetManifest {
   readonly siteId: string;
   readonly pack: ExperiencePack;
   readonly methodDigest?: string;
+  readonly revision?: number;
   readonly createdAt: string;
   readonly delivery: 'complete' | 'pending' | 'failed';
   readonly materials: readonly ExperienceAsset[];
@@ -157,6 +158,9 @@ export interface ExperienceJsonV3 extends Omit<ExperienceJsonV2, 'schema'> {
 export interface ExperienceJsonV4 extends Omit<ExperienceJsonV3, 'schema'> {
   readonly schema: typeof EXPERIENCE_SCHEMA;
   readonly analyses: readonly import('./remote.js').AnalysisView[];
+  readonly revision?: number;
+  readonly goalState?: 'met' | 'not-met' | 'unknown';
+  readonly tasks?: readonly import('./record-views.js').DurableTaskView[];
 }
 export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2 | ExperienceJsonV3 | ExperienceJsonV4;
 
@@ -216,6 +220,9 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV4 {
   const { run } = view;
   return {
     schema: EXPERIENCE_SCHEMA,
+    ...(run.engine?{revision:run.control?.revision??0}:{}),
+    ...(run.goalState === undefined ? {} : { goalState: run.goalState }),
+    ...(view.tasks === undefined ? {} : { tasks: view.tasks }),
     runId: run.id,
     campaignId: run.campaignId,
     pack: { id: run.packId ?? '', version: run.packVersion ?? '' },
@@ -474,6 +481,8 @@ export function endingReason(view: RunView): string {
   if (status === 'ended-budget-exhausted') {
     return meters?.endedBy === undefined ? said : `${labelledEndedBy(meters.endedBy)} ran out`;
   }
+  if (view.run.engine && view.run.goalState === 'unknown' && status?.startsWith('ended-')) return 'Task contracts completed; Goal is unknown';
+  if (view.run.engine && view.run.goalState === 'not-met' && status?.startsWith('ended-')) return 'Task contracts completed; Goal was not met';
   const decision = view.decision;
   if (status === 'ended-goal-met' || status === 'ended-converged') {
     return decision === null ? said : chosenSaid(decision, view.run.words);
@@ -541,6 +550,13 @@ function experienceMarkdown(json: ExperienceJsonV4, view: RunView): string {
       ['written at', json.writtenAt],
     ]),
     '',
+    ...(json.goalState === undefined ? [] : [`${json.goalState === 'unknown' ? 'Goal assessment is UNKNOWN.' : `Goal assessment: ${json.goalState}.`} Task contract completion is technical execution success; engineering adoption and physical sign-off are not established by this report.`, '']),
+    ...(json.tasks === undefined ? [] : ['## Task results and artifacts', '', ...json.tasks.flatMap(task => [
+      `### ${task.taskId}`, '', `Contract state: ${task.projection.state}. ${task.current === false ? 'Historical invocation.' : 'Current invocation.'}`, '',
+      ...(task.result ? fenced(JSON.stringify(task.result.value, null, 2)) : ['No committed Task result.']), '',
+      ...table(['artifact', 'path', 'media type', 'sha256'], (task.result?.artifacts ?? []).map(artifact => [artifact.name, artifact.path, artifact.mediaType ?? NOT_HELD, artifact.sha256])), '',
+      `Sources: ${task.sourceFactIds.join(', ') || NOT_HELD}`, '',
+    ])]),
     ...researchSection(json.research),
     ...codeSection(json.code),
     ...knowledgeSection(json.knowledge),

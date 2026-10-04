@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "runId",
+        "taskId",
+        "effectId",
+        "name",
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-inputs-input": {
+      "type": "object",
+      "properties": {
+        "DESIGN_STATE_MANIFEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SITE_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_TIMING_CONTEXT": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "DESIGN_STATE_MANIFEST",
+        "SITE_CAPABILITIES",
+        "NATIVE_TIMING_CONTEXT"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-inputs-output": {
+      "type": "object",
+      "properties": {
+        "DESIGN_STATE_MANIFEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SITE_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_TIMING_CONTEXT": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readinessId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "DESIGN_STATE_MANIFEST",
+        "SITE_CAPABILITIES",
+        "NATIVE_TIMING_CONTEXT",
+        "readinessId"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-baseline-input": {
+      "type": "object",
+      "properties": {
+        "DESIGN_STATE_MANIFEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SITE_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_TIMING_CONTEXT": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_REPORT_PATHS": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 100000
+        }
+      },
+      "required": [
+        "DESIGN_STATE_MANIFEST",
+        "SITE_CAPABILITIES",
+        "NATIVE_TIMING_CONTEXT",
+        "NATIVE_REPORT_PATHS"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-baseline-output": {
+      "type": "object",
+      "properties": {
+        "DESIGN_STATE_MANIFEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SITE_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_TIMING_CONTEXT": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baselineStateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nativeContextId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commonStateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worklistId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "DESIGN_STATE_MANIFEST",
+        "SITE_CAPABILITIES",
+        "NATIVE_TIMING_CONTEXT",
+        "baselineStateId",
+        "nativeContextId",
+        "commonStateId",
+        "worklistId"
+      ],
+      "additionalProperties": false
+    },
+    "fix-timing-input": {
+      "type": "object",
+      "properties": {
+        "SITE_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "NATIVE_TIMING_CONTEXT": {
+          "type": "string",
+          "minLength": 1
+        },
+        "TARGET_SETUP_NS": {
+          "type": "number",
+          "const": 0
+        },
+        "TARGET_HOLD_NS": {
+          "type": "number",
+          "const": 0
+        }
+      },
+      "required": [
+        "SITE_CAPABILITIES",
+        "NATIVE_TIMING_CONTEXT",
+        "TARGET_SETUP_NS",
+        "TARGET_HOLD_NS"
+      ],
+      "additionalProperties": false
+    },
+    "fix-timing-output": {
+      "type": "object",
+      "properties": {
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "contentSha256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "unit": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "unknownReason": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "mode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "unit",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "contentSha256",
+              "values"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "engineering": {
+          "$ref": "#/$defs/engineering"
+        }
+      },
+      "required": [
+        "observations",
+        "engineering"
+      ],
+      "additionalProperties": false
+    },
+    "evaluate-timing-input": {
+      "type": "object",
+      "properties": {
+        "READER_VALUE": {
+          "$ref": "#/$defs/fix-timing-output"
+        },
+        "DOMAIN_REPORT": {
+          "$ref": "#/$defs/artifactRef"
+        },
+        "TARGET_SETUP_NS": {
+          "type": "number",
+          "const": 0
+        },
+        "TARGET_HOLD_NS": {
+          "type": "number",
+          "const": 0
+        }
+      },
+      "required": [
+        "READER_VALUE",
+        "DOMAIN_REPORT",
+        "TARGET_SETUP_NS",
+        "TARGET_HOLD_NS"
+      ],
+      "additionalProperties": false
+    },
+    "evaluate-timing-output": {
+      "type": "object",
+      "properties": {
+        "goalMet": {
+          "type": "boolean"
+        },
+        "timing": {
+          "$ref": "#/$defs/timingPair"
+        },
+        "beforeTiming": {
+          "$ref": "#/$defs/timingPair"
+        },
+        "collateral": {
+          "$ref": "#/$defs/collateral"
+        },
+        "engineering": {
+          "$ref": "#/$defs/engineering"
+        },
+        "domainReport": {
+          "$ref": "#/$defs/artifactRef"
+        }
+      },
+      "required": [
+        "goalMet",
+        "timing",
+        "beforeTiming",
+        "collateral",
+        "engineering",
+        "domainReport"
+      ],
+      "additionalProperties": false
+    },
+    "deliver-input": {
+      "type": "object",
+      "properties": {
+        "EVALUATION": {
+          "$ref": "#/$defs/evaluate-timing-output"
+        },
+        "DOMAIN_REPORT": {
+          "$ref": "#/$defs/artifactRef"
+        }
+      },
+      "required": [
+        "EVALUATION",
+        "DOMAIN_REPORT"
+      ],
+      "additionalProperties": false
+    },
+    "deliver-output": {
+      "type": "object",
+      "properties": {
+        "goalMet": {
+          "type": "boolean"
+        },
+        "timing": {
+          "$ref": "#/$defs/timingPair"
+        },
+        "beforeTiming": {
+          "$ref": "#/$defs/timingPair"
+        },
+        "collateral": {
+          "$ref": "#/$defs/collateral"
+        },
+        "engineering": {
+          "$ref": "#/$defs/engineering"
+        },
+        "domainReport": {
+          "$ref": "#/$defs/artifactRef"
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engineeringPackagePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "goalMet",
+        "timing",
+        "beforeTiming",
+        "collateral",
+        "engineering",
+        "domainReport",
+        "reportPath",
+        "engineeringPackagePath"
+      ],
+      "additionalProperties": false
+    },
+    "timingPair": {
+      "type": "object",
+      "properties": {
+        "setup": {
+          "type": "object",
+          "properties": {
+            "wnsNs": {
+              "$ref": "#/$defs/measure"
+            },
+            "tnsNs": {
+              "$ref": "#/$defs/measure"
+            },
+            "violations": {
+              "$ref": "#/$defs/measure"
+            }
+          },
+          "required": [
+            "wnsNs",
+            "tnsNs",
+            "violations"
+          ],
+          "additionalProperties": false
+        },
+        "hold": {
+          "type": "object",
+          "properties": {
+            "wnsNs": {
+              "$ref": "#/$defs/measure"
+            },
+            "tnsNs": {
+              "$ref": "#/$defs/measure"
+            },
+            "violations": {
+              "$ref": "#/$defs/measure"
+            }
+          },
+          "required": [
+            "wnsNs",
+            "tnsNs",
+            "violations"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "setup",
+        "hold"
+      ],
+      "additionalProperties": false
+    },
+    "collateral": {
+      "type": "object",
+      "properties": {
+        "remaining": {
+          "$ref": "#/$defs/measure"
+        },
+        "regression": {
+          "$ref": "#/$defs/measure"
+        },
+        "unknown": {
+          "$ref": "#/$defs/measure"
+        }
+      },
+      "required": [
+        "remaining",
+        "regression",
+        "unknown"
+      ],
+      "additionalProperties": false
+    },
+    "engineering": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "outcome",
+        "summary",
+        "stopReason"
+      ],
+      "additionalProperties": false
+    },
+    "measure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "unknown": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

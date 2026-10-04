@@ -67,6 +67,9 @@ async function main() {
     unknown:flow(task('unknown')),
     human:flow({...task('human'),tool:'builtin/human-wait'}),
     deadline:flow(seq('s',task('first',{delay:literal(180)}),task('forbidden'))),
+    'closing-budget':flow(seq('closing-sequence',task('work',{delay:literal(2000)}),
+      {...task('delivery',{n:from('work','n')}),budget:'closing'},task('forbidden'))),
+    'closing-hard':flow({...task('cached'),budget:'closing'}),
     revise:flow(seq('s',{kind:'parallel',id:'p',branches:{a:{flow:task('a',{n:literal(1)}),required:true},b:{flow:task('b',{delay:literal(700)}),required:true}},results:{}},task('consumer',{a:from('a','n'),b:from('b','n')}))),
     cached:flow(task('cached')),
     'pending-ready':flow(task('await-ready')),
@@ -484,6 +487,21 @@ async function main() {
     await command('fragment-revise','respond',{response:{effectId:response.identity.effectId,output:{schemaVersion:'1',value:{accepted:true},artifacts:[],diagnostics:[]}}});
     const result:any=await DBOS.retrieveWorkflow(changed.workflowId).getResult();assert.equal(result.state,'succeeded',JSON.stringify(result));assert.equal(result.committed.producer.value.n,2);
     const calls=await rows();for(const id of ['producer','diagnostic','consumer'])assert.equal(calls.filter((r:any)=>r.task===id&&r.phase==='start').length,2,id);assert.equal((await handle.getResult()).state,'superseded');send({ok:true,result,calls});
+  }else if(mode==='closing-budget'){
+    const {handle,opening}=await open('closing-budget','closing-budget',{closingReserveMs:13500,attemptLimit:1},15000);
+    const result:any=await handle.getResult(),calls=await rows(),authority=await store.flowAuthority('closing-budget');
+    assert.equal(result.committed.delivery.value.n,42,JSON.stringify(result));
+    assert.equal(result.state,'waiting');
+    assert.equal(calls.filter((row:any)=>row.phase==='start').length,2);
+    assert.equal(calls.some((row:any)=>row.task==='forbidden'),false);
+    const delivery=calls.find((row:any)=>row.task==='delivery'&&row.phase==='start');
+    assert.ok(delivery.at>=Date.parse(opening.deadlineAt)-13500,'delivery actually starts inside the original reserve');
+    assert.equal(authority.dispatchedEffects.length,1,'closing delivery does not consume another experiment attempt');
+    assert.equal(authority.run.deadlineAt,opening.deadlineAt);send({ok:true,result,calls});
+  }else if(mode==='closing-hard'){
+    const {handle,opening}=await open('closing-hard','closing-hard',{closingReserveMs:7000},8000);
+    const timer=setTimeout(()=>void writeFile(path.join(home,'dispatch-gate'),'resume'),Math.max(0,Date.parse(opening.deadlineAt)-Date.now()+100));
+    try{const result:any=await handle.getResult();assert.notEqual(result.state,'succeeded');assert.equal((await rows()).length,0,'closing task cannot submit after the original hard deadline');assert.equal((await store.run('closing-hard')).deadlineAt,opening.deadlineAt);send({ok:true,result});}finally{clearTimeout(timer);}
   }else if(mode==='deadline'){
     const {handle,opening}=await open('deadline','deadline',{closingReserveMs:700},1000);const result:any=await handle.getResult();
     assert.equal(result.state,'waiting');assert.equal((await rows()).some((r:any)=>r.task==='forbidden'),false);assert.equal((await store.run('deadline')).deadlineAt,opening.deadlineAt);send({ok:true,result,opening});

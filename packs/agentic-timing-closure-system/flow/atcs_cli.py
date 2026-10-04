@@ -4924,6 +4924,17 @@ def main(argv=None):
     # where `/tmp` is itself a symlink) into a different, if equivalent,
     # string than the one it was actually given.
     workspace = os.path.abspath(workspace)
+    if subcommand.startswith("task-"):
+        from atcs import business_tasks
+        try:
+            task_input, task_output = rest
+            result = business_tasks.execute(subcommand[5:], workspace, _read_plain(task_input), sys.modules[__name__])
+            core.write_artifact(task_output, result)
+            return 0
+        except core.AtcsError as exc:
+            return _fail(exc.code, exc.detail, 3)
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            return _fail("malformed-input", f"{type(exc).__name__}: {exc}", 2)
     handler = SUBCOMMANDS.get(subcommand)
     if handler is None:
         return _fail("missing-input", f"unknown subcommand: {subcommand!r}", 2)

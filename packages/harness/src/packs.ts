@@ -838,7 +838,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.2.2';
+export const harnessVersion = '0.3.0';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 

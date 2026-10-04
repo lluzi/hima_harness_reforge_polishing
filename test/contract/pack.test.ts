@@ -226,10 +226,10 @@ ontology:
     assert.equal(preview.contract.tools[0]?.recommendedVersion, 'S-2024.03');
     assert.deepEqual(preview.contract.ontology.aliases, { target_period_ns: ['clock target', 'timing target'] });
 
-    await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 0.3.0`]]);
+    await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 9.0.0`]]);
     const tooNew = checkPack(loadPack(packsDir, 'metadata-too-new'), site);
     assert.equal(tooNew.fit, false);
-    assert.match(tooNew.errors.join('\n'), new RegExp(`requires HimaHarness 0\\.3\\.0 or later, but this Harness is ${harnessVersion.replace(/\./g, '\\.')}`));
+    assert.match(tooNew.errors.join('\n'), new RegExp(`requires HimaHarness 9\\.0\\.0 or later, but this Harness is ${harnessVersion.replace(/\./g, '\\.')}`));
   } finally {
     await dispose();
   }

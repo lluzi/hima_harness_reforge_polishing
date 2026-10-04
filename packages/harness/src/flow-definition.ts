@@ -11,6 +11,8 @@ export interface FlowTask {
   readonly contract: TaskContract; readonly inputs: Readonly<Record<string, TaskInputBinding>>;
   /** Missing optional producer results omit these keys; input schema still validates the value. */
   readonly optionalInputs?: readonly string[];
+  /** Closing tasks may consume the original closing reserve; no task extends the hard deadline. */
+  readonly budget?: 'work' | 'closing';
 }
 export interface FlowSequence { readonly kind: 'sequence'; readonly id: string; readonly steps: readonly Flow[] }
 export interface FlowChoice {
@@ -40,7 +42,7 @@ export interface FlowSource {
 const bindings = z.record(z.string().min(1), taskInputBinding);
 export const flowElement: z.ZodType<Flow> = z.lazy(() => z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('task'), id: packId, tool: z.string().min(1), contract: taskContract,
-    inputs: bindings, optionalInputs: z.array(z.string().min(1)).optional() }),
+    inputs: bindings, optionalInputs: z.array(z.string().min(1)).optional(), budget: z.enum(['work', 'closing']).optional() }),
   z.strictObject({ kind: z.literal('sequence'), id: packId, steps: z.array(flowElement) }),
   z.strictObject({ kind: z.literal('choice'), id: packId, select: taskOutputBinding, cases: z.record(z.string().min(1), flowElement) }),
   z.strictObject({ kind: z.literal('parallel'), id: packId,
@@ -105,7 +107,7 @@ export function flowTaskCountsExperiment(flow: CompiledFlow, taskId: string): bo
   const task = flow.tasks[taskId];
   if (!task) throw new Error(`Unknown frozen task ${taskId}`);
   if (task.tool === 'builtin/human-wait') return false;
-  return flow.source !== 'legacy' || (task.legacy as { kind?: string } | undefined)?.kind === 'act';
+  return flow.source === 'legacy' ? (task.legacy as { kind?: string } | undefined)?.kind === 'act' : task.budget !== 'closing';
 }
 /** Membership comes only from the frozen IR; callers cannot assign a task to another branch. */
 export function flowTaskBranches(flow: CompiledFlow, taskId: string): readonly FlowBranch[] {

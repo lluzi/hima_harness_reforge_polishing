@@ -106,6 +106,14 @@ composition has a unique id. A task's `tool` names a declared contract tool; a c
 using a model and a complete outsourced engineering task share the same data contract. The builtin
 `builtin/human-wait` task waits for a durable human response.
 
+Tasks default to `budget: work`: new work stops at the original Run deadline minus
+`closingReserveMs` and consumes the original attempt allowance. Declare `budget: closing` on
+evaluation or delivery tasks that consume retained results during that reserve. They use no new
+work attempt, but retain the same hard deadline, Site Permit, resource and human-control checks.
+Keep engineering and fresh experiments as work tasks; a closing declaration grants no extra time.
+An extension can declare closing tasks only when its slot's `afterTask` already has `budget: closing`;
+a model-generated diagnostic cannot grant itself access to the reserve.
+
 This strict graph uses the JSON-native `measure-json` and `deliver-json` tools declared above.
 The legacy `measure` command remains an example for the legacy graph later in this file. The task adapter returns the
 business value described by its output schema; Runtime fills identity and commits the envelope.

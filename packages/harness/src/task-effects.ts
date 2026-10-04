@@ -442,7 +442,9 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
           if(recoveryState.state!=='finished'||recoveryState.exitCode!==0||owned?.quiescent!==true||state?.phase!=='stopped'||!await retainedJobResourcesClosed(identity.site,recovered))return {closed:false,reason:'Same-task cleanup has not confirmed the original native/wrapper resources quiescent'};
         } else {
         const delivery=completion.delivery;
-        const requestId=delivery?`auto-release-${delivery.sha256.slice(0,32)}`:`auto-release-failed-${held.plan.envelope.sha256.slice(0,32)}`;
+        // A prior terminal refusal is immutable. A new signed native state permits a
+        // fresh same-resource cleanup request; unchanged state always reuses its identity.
+        const requestId=delivery?`auto-release-${jsonDigest([delivery.sha256,state?.sha256??null]).slice(0,32)}`:`auto-release-failed-${held.plan.envelope.sha256.slice(0,32)}`;
         const ack=await request(prepared,requestId,{operation:'release'},delivery?{deliverySha256:delivery.sha256}:{});
         state=await readEngineeringState(identity.site,held.plan.taskDir,held.plan.taskId);
         owned=await readEngineeringOwned(identity.site,held.plan.taskDir,held.plan.taskId);

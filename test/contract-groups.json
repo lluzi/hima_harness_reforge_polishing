@@ -169,7 +169,8 @@
     "test/contract/atcs-operator-qualification.live.test.ts"
   ],
   "atcs-dry": [
-    "test/contract/atcs-dry-path.host.test.ts"
+    "test/contract/atcs-dry-path.host.test.ts",
+    "test/contract/atcs-resident-durable.host.test.ts"
   ],
   "live-model": [
     "test/contract/child-compaction.live.test.ts"

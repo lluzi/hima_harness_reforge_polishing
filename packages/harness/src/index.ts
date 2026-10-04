@@ -26,6 +26,7 @@ import { flowWorkflowDefinitions } from './flow-workflow.js';
 import { resolveDurableTaskAdapter } from './durable-task-adapters.js';
 import { knownDurableRun, durableProposalRun, durableStartRequestDigest, durableStartResult } from './durable-fabric.js';
 import type { DurableCommand } from './run-store.js';
+import { reconcilePublishedLegacyArchive } from './experience.js';
 import { nativeDelegationPolicy } from './native-task-adapters.js';
 import { operateTaskInteractive, type TaskInteractiveDeps } from './task-interactive.js';
 import { Service, type Context } from '@deepseek-ai/cordis';
@@ -580,7 +581,10 @@ export default class Hima extends Service {
       interactiveBindingsFile: this.config.interactiveBindingsFile });
     const workflows = [
       ...preparationWorkflowDefinitions({ sitesDir: this.config.sitesDir }),
-      ...flowWorkflowDefinitions({ resolveAdapter: async context => {
+      ...flowWorkflowDefinitions({ finalize: async (runtime,runId,revision,attempt) => {
+        await this.durableAdaptersReady;
+        return createDurableViewReaders({...this.deps(),durable:runtime},{retainedMaterialsDir:path.join(localDatabaseHome(),'hima','run-assets','dbos')}).finalizeDelivery(runId,revision,attempt);
+      }, resolveAdapter: async context => {
         await this.durableAdaptersReady;
         return resolveDurableTaskAdapter(context, { ctx: this.ctx, sitesDir: this.config.sitesDir,
           retainedMaterialsDir: path.join(localDatabaseHome(), 'hima', 'run-assets', 'dbos'),
@@ -698,12 +702,12 @@ export default class Hima extends Service {
           startRun: (req) => this.startGuidedRun(req),
           resumeRun: (runId, who) => this.resumeRun(runId, who),
           cancelRun: (runId) => this.cancelRun(runId),
-          readExperience: (runId) => this.readExperience(runId),
+          readExperience: (runId,revision) => this.readExperience(runId,revision),
           readMaterial: (runId, recordId) => this.readMaterial(runId, recordId),
-          readRunAssets: (runId) => readRunAssets(this.deps(), runId),
+          readRunAssets: (runId,revision) => this.viewReaders().readRunAssets(runId,revision),
           readTaskArtifact: (runId,effectId,name) => this.viewReaders().readTaskArtifact(runId,effectId,name),
           readEngineeringAsset: (runId, executionId, requestId, artifactId, treeId, download) => readEngineeringAsset(this.deps(), runId, executionId, requestId, artifactId, treeId, download),
-          readArchivedMaterial: (runId, relative) => readArchivedMaterial(this.deps(), runId, relative),
+          readArchivedMaterial: (runId, relative,revision) => this.viewReaders().readArchivedMaterial(runId, relative,revision),
           // The one operation of this namespace that reaches dsh's agent seam, and the only one
           // that needs the host itself rather than the ledger: a moment is composed out of this
           // context (#59). Handed in like every other operation, so `remote.ts` stays a module a
@@ -834,6 +838,8 @@ export default class Hima extends Service {
     // may have an hour of synthesis still to wait for, and a workbench that would not answer until
     // then is one nobody could cancel from.
     this.reconciled = this.durableAdaptersReady.then(() => recoverDurablePreparations(this.durable)).then(async () => {
+      const pgRuns=new Set((await this.durable.store.runs()).map(run=>run.runId));
+      for(const run of this.ledger.runs())if(!pgRuns.has(run.id)&&hasEnded(run.status))await reconcilePublishedLegacyArchive(this.deps(),run.id);
       const previous=await this.durable.store.hostExit();
       if(previous)await this.durable.store.releaseHostExit(previous.requestId,true);
       return [];
@@ -1708,8 +1714,8 @@ export default class Hima extends Service {
   }
 
   /** Read a Campaign's technical report back off its Site, both files held against their hashes. */
-  readExperience(runId: string): Promise<ReadExperienceResult> {
-    return this.viewReaders().readExperience(runId);
+  readExperience(runId: string,selection?:number|string): Promise<ReadExperienceResult> {
+    return this.viewReaders().readExperience(runId,selection);
   }
 
   /** Read one Run-owned historical code or knowledge version at its recorded identity. */

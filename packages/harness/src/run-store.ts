@@ -61,7 +61,9 @@ export type ExternalResearchWriteRequest = ResearchWriteRequest & {readonly call
 function mismatch(kind: string): never { throw new Error(`${kind} identity was reused with different input; retain the original identity or start a new invocation`); }
 function assertName(name: string): void { if (!name.trim()) throw new Error('A stable nonempty identity is required'); }
 const declaredAmount=(amounts:Readonly<Record<string,number>>,name:string)=>Object.hasOwn(amounts,name)?amounts[name]!:0;
-const countedInvocation = `(i.invocation->'context'->'flow'->>'source'<>'legacy' OR i.invocation->'context'->'flow'->'tasks'->i.task_id->'legacy'->>'kind'='act')`;
+const countedInvocation = `(CASE WHEN i.invocation->'context'->'flow'->'tasks'->i.task_id->>'tool'='builtin/human-wait' THEN false
+  WHEN i.invocation->'context'->'flow'->>'source'='legacy' THEN COALESCE(i.invocation->'context'->'flow'->'tasks'->i.task_id->'legacy'->>'kind'='act',false)
+  ELSE COALESCE(i.invocation->'context'->'flow'->'tasks'->i.task_id->>'budget'<>'closing',true) END)`;
 const runColumns = `engine, schema_version AS "schemaVersion", run_id AS "runId", input_sha256 AS "inputSha256", application_version AS "applicationVersion", opening,
  owner, deadline_at AS "deadlineAt", epoch, revision, hold, cancelled,hold_source AS "holdSource"`;
 function readRun(row: DurableRun): DurableRun { return { ...row, deadlineAt: new Date(row.deadlineAt).toISOString(),holdSource:row.holdSource??(row.hold?'unknown':null) }; }
@@ -344,6 +346,32 @@ export class RunStore {
       const proof=parent?.proof??{closed:true,unstarted:!parent?.dispatched,derived:resources.filter(resource=>resource.proof!==null).map(resource=>({effectId:resource.effectId,proof:resource.proof}))};
       return this.#putFlowFact(client,identity.runId,name,{closed:true,proof});
     },'hima.confirmFlowStopped');
+  }
+  /** Archive IO joins the existing Host admission lock; its immutable intent precedes file writes. */
+  async admitDeliveryWrite(runId:string,revision:number,attempt:number):Promise<boolean> {
+    return this.transaction(async client=>{
+      const host=(await client.query<{active_request:string|null;finalizing:boolean}>('SELECT active_request,finalizing FROM hima.host_exit WHERE singleton=true FOR SHARE')).rows[0]!;
+      if(host.finalizing||host.active_request)return false;
+      const run=await this.#run(client,runId,true);if(run.revision!==revision||run.applicationVersion!==this.applicationVersion)return false;
+      await this.#putFlowFact(client,runId,`delivery-io:intent:${revision}:${attempt}`,{revision,attempt});return true;
+    },'hima.deliveryWriteAdmission');
+  }
+  /** Uncached callback check: a replayed receipt cannot start new IO after exit finalization. */
+  async assertDeliveryWrite(runId:string,revision:number,attempt:number):Promise<void> {
+    await this.#externalTransaction(async client=>{
+      const host=(await client.query<{active_request:string|null;finalizing:boolean;accepted_at:string|null}>(`SELECT h.active_request,h.finalizing,r.accepted_at FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0]!;
+      const run=await this.#run(client,runId,true);
+      const intent=(await client.query<{at:string}>('SELECT at FROM hima.outbox WHERE fact_id=$1',[factIdentity('flow-fact',runId,`delivery-io:intent:${revision}:${attempt}`)])).rows[0];
+      if(!intent||host.finalizing||run.revision!==revision||run.applicationVersion!==this.applicationVersion||host.accepted_at&&Date.parse(intent.at)>Date.parse(host.accepted_at))throw new Error('Original archive file write is not admitted under the current Host lifetime');
+    });
+  }
+  /** Delivery readers need completed and failed immutable facts even after history acknowledgement. */
+  async orderedFlowFacts(runId:string,prefix:string):Promise<readonly {name:string;value:JsonValue;source:DurableFact}[]> {
+    const rows=(await this.#pool.query<{name:string;value:JsonValue;factId:string;runId:string;seq:number;kind:string;payload:JsonValue;at:string}>(`
+      SELECT f.name,f.value,o.fact_id AS "factId",o.run_id AS "runId",o.seq,o.kind,o.payload,o.at
+      FROM hima.flow_facts f JOIN hima.outbox o ON o.run_id=f.run_id AND o.kind='flow-fact' AND o.payload->>'name'=f.name
+      WHERE f.run_id=$1 AND left(f.name,length($2))=$2 ORDER BY o.seq`,[runId,prefix])).rows;
+    return rows.map(({name,value,...source})=>({name,value,source:{...source,at:new Date(source.at).toISOString()}}));
   }
   async flowFact(runId:string,name:string):Promise<JsonValue|null> {
     return this.transaction(async client=>(await client.query<{value:JsonValue}>('SELECT value FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[runId,name])).rows[0]?.value??null,'hima.flowFactRead');

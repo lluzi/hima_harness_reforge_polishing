@@ -713,10 +713,10 @@ export interface RemoteOperations {
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
-  readRunAssets?(runId: string): Promise<import('./experience.js').ReadRunAssetsResult>;
+  readRunAssets?(runId: string,revision?:number): Promise<import('./experience.js').ReadRunAssetsResult>;
   readTaskArtifact?(runId:string,effectId:string,name:string):Promise<import('./engineering-executor.js').EngineeringAssetRead>;
   readEngineeringAsset?(runId: string, executionId: string, requestId: string, artifactId: string, treeId?: string, download?: boolean): Promise<import('./engineering-executor.js').EngineeringAssetRead>;
-  readArchivedMaterial?(runId: string, relative: string): Promise<import('./experience.js').ReadArchivedMaterialResult>;
+  readArchivedMaterial?(runId: string, relative: string,revision?:number): Promise<import('./experience.js').ReadArchivedMaterialResult>;
   /** Browser-session owner review only; not an Agent confirmation tool. */
   packTransfer?(request: PackTransferBody): import('./release.js').PackTransferReview;
   readonly ledger: Ledger;
@@ -767,7 +767,7 @@ export interface RemoteOperations {
   /** Read a Campaign's technical report back off its Site, holding both files against the hashes the
    *  `experience` record keeps. Here rather than done in this module, for the reason `installed` is:
    *  this namespace reaches no Site and opens no file of its own. */
-  readExperience(runId: string): Promise<ReadExperienceResult>;
+  readExperience(runId: string,revision?:number): Promise<ReadExperienceResult>;
   /** Read one code/knowledge/input-provenance record only within its Run, held to its content hash. */
   readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult>;
   /**
@@ -1588,9 +1588,14 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
  * The Run is looked up here first so a Run this ledger does not hold is the same 404 every other
  * read route gives for it, and only then is the Site asked anything at all.
  */
-async function experienceOperation(ops: RemoteOperations, runId: string, asMarkdown: boolean): Promise<Answer> {
+function reportRevision(url:URL):number|undefined {
+  const raw=url.searchParams.get('revision');if(raw===null)return undefined;
+  const revision=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(revision)||revision<0)throw new BadRequest('Report revision must be a nonnegative integer');return revision;
+}
+
+async function experienceOperation(ops: RemoteOperations, runId: string, asMarkdown: boolean,revision?:number): Promise<Answer> {
   if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
-  const read = await ops.readExperience(runId);
+  const read = await ops.readExperience(runId,revision);
   if (read.kind === 'none') {
     return failure(404, 'hima/record-not-found', read.why ?? `run ${runId} has no experience record: a campaign's technical report is written when its run ends`);
   }
@@ -1912,7 +1917,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
       } catch (error) { return failure(409, 'hima/material-changed', (error as Error).message); }
     }
     const relative = url.searchParams.get('material');
-    const result = relative === null ? await ops.readRunAssets(runId) : await ops.readArchivedMaterial(runId, relative);
+    const result = relative === null ? await ops.readRunAssets(runId,reportRevision(url)) : await ops.readArchivedMaterial(runId, relative,reportRevision(url));
     if (result.kind === 'read') return ok(result);
     return failure(result.kind === 'none' ? 404 : 409, 'hima/material-changed', `archive is ${result.kind}: ${'why' in result ? result.why : 'path' in result ? result.path : 'required materials unavailable'}`);
   }
@@ -1958,7 +1963,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   const experience = /^\/runs\/([^/]+)\/experience(\.md)?$/.exec(rest);
   if (experience) {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
-    return experienceOperation(ops, decoded(experience[1]!, 'run id'), experience[2] !== undefined);
+    return experienceOperation(ops, decoded(experience[1]!, 'run id'), experience[2] !== undefined,reportRevision(url));
   }
 
   const material = /^\/runs\/([^/]+)\/material\/([^/]+)$/.exec(rest);

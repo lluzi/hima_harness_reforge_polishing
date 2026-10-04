@@ -19,6 +19,7 @@ const {loadPack,toolArgv}=await moduleAt('packs');
 const {loadSite}=await moduleAt('sites');
 const {executeTaskEffect,sendTaskEffectMessage,declaredCommandTaskAdapter,commandTaskAdapter,residentEngineeringTaskAdapter,taskEffectAdapterVersion,collectTaskProducerOutput}=await moduleAt('task-effects');
 const {stopRetainedJob}=await moduleAt('jobs');
+const {writeEngineeringRequest,waitEngineeringReceipt}=await moduleAt('engineering-executor');
 const [homeArgument,requestedMode]=process.argv.slice(2);if(!homeArgument||!requestedMode)throw new Error('Private task effect Home and mode required');
 const mode=requestedMode;
 const home=await realpath(homeArgument);
@@ -27,6 +28,12 @@ const workspace=path.join(home,'work'),sitesDir=path.join(home,'sites'),packDir=
 await mkdir(workspace,{recursive:true});await mkdir(sitesDir,{recursive:true});await mkdir(path.join(packDir,'tools'),{recursive:true});await mkdir(path.join(packDir,'knowledge'),{recursive:true});
 const wrapper=path.join(root,'sites/linglong-atcs28/templates/resident-engineering-wrapper.py');
 let native=path.join(root,'sites/linglong-atcs28/tests/fixtures/acp-standin.py');
+if(mode==='resident-inflight-message') {
+ const retained=await readFile(native,'utf8');
+ const barrier=`def complete_prompt(request_id, text):\n    if "CLOSURE_BARRIER" in text:\n        gate = Path(os.environ["STANDIN_CLOSURE_GATE"])\n        gate.with_suffix(".ready").write_text("native prompt running")\n        while not gate.exists():\n            if cancelled.wait(.02): return\n`;
+ native=path.join(workspace,'acp-closure-fixture.py');
+ await writeFile(native,retained.replace('def complete_prompt(request_id, text):\n',barrier));await chmod(native,0o755);
+}
 if(mode.startsWith('resident-failure')) {
  const retained=await readFile(native,'utf8');
  const failure=`def complete_prompt(request_id, text):\n    if "FAIL_PROMPT" in text:\n        send({"jsonrpc":"2.0", "id":request_id, "error":{"code":-32000,"message":"deterministic failed native prompt"}})\n        return\n`;
@@ -36,7 +43,7 @@ if(mode.startsWith('resident-failure')) {
 const capabilityPath=path.join(workspace,'engineering-capability.json');
 await writeFile(capabilityPath,JSON.stringify({schema:'hima-resident-engineering-capability/1',protocol:'hima-resident-engineering/1',
  wrapper:{argv:[wrapper,'--capability',capabilityPath]},native:{executable:native,version:'1.18.34',argv:[],model:'deepseek/deepseek-flash',protocolVersion:1},
- sandbox:{kind:'none',testOnly:true,privateWorkspace:'workspace',privateHome:'home'},environment:{inherit:[],set:{},toolPaths:[],credentialReadPaths:[]},delivery:{candidate:'resident-delivery.json'},stopGraceSeconds:1}));
+ sandbox:{kind:'none',testOnly:true,privateWorkspace:'workspace',privateHome:'home'},environment:{inherit:[],set:mode==='resident-inflight-message'?{STANDIN_CLOSURE_GATE:path.join(workspace,'closure-prompt-gate')}:{},toolPaths:[],credentialReadPaths:[]},delivery:{candidate:'resident-delivery.json'},stopGraceSeconds:1}));
 const permit={allowedReadRoots:[workspace,packDir,path.dirname(wrapper),path.dirname(native)],allowedWriteRoots:[workspace],allowedWrappers:['/bin/sh','/usr/bin/python3',wrapper],forbidden:['services','licences','network','deletions','downloads']};
 await writeFile(path.join(sitesDir,'local.permit.yml'),stringify(permit));
 await writeFile(path.join(sitesDir,'local.yml'),stringify({name:'local',kind:'local',workspaceRoot:workspace,permit:'./local.permit.yml',bindings:{engineeringCapabilities:capabilityPath},capacity:{cores:2,memoryGiB:1,parallelJobs:2,licences:{fixture:1}}}));
@@ -101,9 +108,11 @@ async function nativeFixtureJournal(request:any,result:any) {
  await store.recordExternalEffectFact(request.identity,'authority-fixture',{winner});
 }
 async function exists(file:string){try{await readFile(file);return true;}catch{return false;}}
+function residentIdentity(run:any){
+ return {run:{id:run.runId,control:{owner:'owner',epoch:0,revision:0},packDigest:pack.flow.packSha256,goal:{}},execution:{id:`engineering-${run.runId}`,nodeId:'engineering',kind:'act',attempt:1},site,pack,workspace,bindings:{},outsourcing:pack.contract.tools[1].outsourcing,licences:{fixture:1},tool:pack.contract.tools[1],boundInputs:{},siteIdentityMatches:true};
+}
 function residentAdapter(run:any,req:any,goal:string){
- const engineeringIdentity={run:{id:run.runId,control:{owner:'owner',epoch:0,revision:0},packDigest:pack.flow.packSha256,goal:{}},execution:{id:`engineering-${run.runId}`,nodeId:'engineering',kind:'act',attempt:1},site,pack,workspace,bindings:{},outsourcing:pack.contract.tools[1].outsourcing,licences:{fixture:1},tool:pack.contract.tools[1],boundInputs:{},siteIdentityMatches:true};
- return residentEngineeringTaskAdapter({sitesDir,siteId:'local',identity:engineeringIdentity,start:{operation:'start',goal},collect:realReader});
+ return residentEngineeringTaskAdapter({sitesDir,siteId:'local',identity:residentIdentity(run),start:{operation:'start',goal},collect:realReader});
 }
 runtime=await startDurableRuntime({database,manifest,workflows:[{name:'u4-task',async execute(rt:any,input:any){
  const run=await rt.store.run(input.runId),request=requestFor(run,input.value);
@@ -225,7 +234,13 @@ if(mode==='matrix') {
  assert.equal(await store.reserveExternalEffectResources(ids[3],{siteId:'prototype-site',jobs:0,licences:{constructor:1}},{jobs:1,licences:{constructor:1}}),true);
  for(const id of [ids[1],ids[3]])await store.releaseExternalEffectResources(id,{neverDispatched:true});
  process.send!({ok:true,scenario:'resource-prototypes'});
-} else if(mode.startsWith('resident-failure')) {
+} else if(mode==='resident-inflight-message') {
+ const retained=await readFile(native,'utf8');
+ const barrier=`def complete_prompt(request_id, text):\n    if "CLOSURE_BARRIER" in text:\n        gate = Path(os.environ["STANDIN_CLOSURE_GATE"])\n        gate.with_suffix(".ready").write_text("native prompt running")\n        while not gate.exists():\n            if cancelled.wait(.02): return\n`;
+ native=path.join(workspace,'acp-closure-fixture.py');
+ await writeFile(native,retained.replace('def complete_prompt(request_id, text):\n',barrier));await chmod(native,0o755);
+}
+if(mode.startsWith('resident-failure')) {
  const input={goal:'FAIL_PROMPT'},run=await open('resident-failure',input),req=requestFor(run,input,'engineering'),adapter=residentAdapter(run,req,input.goal);
  // Hold the observation only, so this test can exercise either live or already-gone wrapper.
  const heldAdapter={...adapter,reconcile:async(prepared:any,receipt:any)=>{
@@ -253,6 +268,80 @@ if(mode==='matrix') {
  const following=await open('after-failure',{}),followingReq=requestFor(following,{}),followingAdapter=await commandAdapter(followingReq);
  assert.equal((await waitCommand(followingReq,followingAdapter)).state,'succeeded','The original Site licence becomes reusable after confirmed failed-task closure');
  process.send!({ok:true,scenario:mode,terminal:'failed',leaseReleased:true});
+} else if(mode==='resident-late-message'||mode==='resident-retained-message'||mode==='resident-changed-message'||mode==='resident-inflight-message') {
+ const input={goal:'DELIVER_RESULT'},run=await open('resident-late-message',input),req=requestFor(run,input,'engineering');
+ const base=residentAdapter(run,req,input.goal);
+ let readerAdmitted=false;
+ const adapter={...base,
+  collect:async(...args:any[])=>readerAdmitted?base.collect(...args):{pending:true,state:'waiting',reason:{code:'fixture-reader-pending',message:'Explicit Reader barrier after signed delivery',source:'fixture'}},
+  release:async(...args:any[])=>mode!=='resident-late-message'&&!readerAdmitted?{closed:false,reason:'Explicit barrier after validated-result'}:base.release(...args),
+ };
+ let outcome:any;
+ const pendingAdapter=mode==='resident-late-message'?adapter:{...adapter,collect:base.collect};
+ for(let n=0;n<100;n++){outcome=await executeTaskEffect(store,req,pendingAdapter);if(outcome.reason?.code==='fixture-reader-pending'||outcome.retainedResult)break;await new Promise(resolve=>setTimeout(resolve,20));}
+ if(mode==='resident-late-message')assert.equal(outcome.reason?.code,'fixture-reader-pending',JSON.stringify(outcome));
+ else assert.ok(outcome.retainedResult,'Explicit closing barrier retains verified Reader/result before late native dispatch');
+ const retainedBefore=await store.effectFact(req.identity.effectId,'validated-result');
+
+ const prepared=await store.effectFact(req.identity.effectId,'prepared'),taskDir=prepared.plan.taskDir,stateAt=path.join(taskDir,'state.json');
+ const first=JSON.parse(await readFile(stateAt,'utf8'));assert.equal(first.phase,'delivered','Reader barrier begins only after real signed snapshot');
+ const message=await sendTaskEffectMessage(store,req,adapter,'late-business-message',mode==='resident-changed-message'?'DELIVER_BEST_EFFORT':mode==='resident-inflight-message'?'CLOSURE_BARRIER':'Preserve the same selected engineering result and explain uncertainty.');assert.equal(message.state,'completed');
+ let completed:any;
+ let originalReleaseFile:string|undefined;
+ if(mode==='resident-inflight-message') {
+  const gate=path.join(workspace,'closure-prompt-gate');
+  for(let n=0;n<100&&!await exists(gate+'.ready');n++)await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(await exists(gate+'.ready'),true,'Native prompt is actually running before cleanup');
+  readerAdmitted=true;
+  const closing=executeTaskEffect(store,req,adapter);
+  const {readdir}=await import('node:fs/promises');let releaseId:string|undefined;
+  for(let n=0;n<100;n++){releaseId=(await readdir(path.join(taskDir,'requests'))).find(name=>name.startsWith('auto-release'));if(releaseId)break;await new Promise(resolve=>setTimeout(resolve,20));}
+  assert.ok(releaseId,'Original stable cleanup request is queued while native prompt is active');
+  originalReleaseFile=releaseId;
+  const release=JSON.parse(await readFile(path.join(taskDir,'requests',releaseId),'utf8'));
+  const statusId='zz-after-original-release';
+  assert.ok(`${statusId}.json`>releaseId,'Status barrier sorts after the captured release in the wrapper request loop');
+  const status=await writeEngineeringRequest(residentIdentity(run),prepared.plan.taskId,statusId,{operation:'status'});
+  assert.equal(status.taskDir,taskDir);
+  const statusReceipt=await waitEngineeringReceipt(site,taskDir,prepared.plan.taskId,statusId,status.frame.sha256,3000);
+  assert.equal(statusReceipt?.status,'completed','Authentic status receipt proves the wrapper traversed the original release with the prompt gate closed');
+  assert.equal(await exists(gate),false,'Native prompt remains gated through wrapper processing');
+  assert.equal(await exists(path.join(taskDir,'receipts',releaseId)),false,'Running prompt does not poison stable cleanup with an immutable refusal');
+  assert.equal((await store.effectResources(req.identity.effectId))[0].released,false,'Active native prompt holds original resources');
+  await writeFile(gate,'native completion authorized by test barrier');
+  const releaseReceipt=await waitEngineeringReceipt(site,taskDir,prepared.plan.taskId,release.requestId,release.sha256,12000);
+  assert.equal(releaseReceipt?.status,'completed','The same original release completes after native prompt completion');
+  outcome=await closing;
+ } else {
+  for(let n=0;n<100;n++){completed=JSON.parse(await readFile(stateAt,'utf8'));if(completed.phase==='waiting'&&completed.detail?.completedRequestId==='late-business-message')break;await new Promise(resolve=>setTimeout(resolve,20));}
+  assert.equal(completed.detail?.completedRequestId,'late-business-message','Native completion barrier is distinct from queued ACK');
+  readerAdmitted=true;outcome=await executeTaskEffect(store,req,adapter);
+ }
+ if(mode!=='resident-changed-message')for(let n=0;n<100&&outcome.state==='waiting'&&outcome.reason.code==='resource-closure';n++){
+  await new Promise(resolve=>setTimeout(resolve,20));outcome=await executeTaskEffect(store,req,adapter);
+ }
+ if(outcome.state==='waiting') {
+  const {readdir}=await import('node:fs/promises');
+  const receipts=[];for(const name of await readdir(path.join(taskDir,'receipts')))if(name.startsWith('auto-release'))receipts.push(JSON.parse(await readFile(path.join(taskDir,'receipts',name),'utf8')));
+  console.error(JSON.stringify({phase:'closure-diagnostic',outcome,state:JSON.parse(await readFile(stateAt,'utf8')),receipts}));
+ }
+ if(originalReleaseFile) {
+  const {readdir}=await import('node:fs/promises');
+  assert.deepEqual((await readdir(path.join(taskDir,'requests'))).filter(name=>name.startsWith('auto-release')),[originalReleaseFile],'Closure succeeds using only the original release request, without a replacement');
+ }
+ if(mode==='resident-changed-message') {
+  assert.equal(outcome.state,'waiting',JSON.stringify(outcome));assert.equal(outcome.reason.code,'resource-closure');
+  assert.equal((await store.effectResources(req.identity.effectId))[0].released,false,'Changed late candidate cannot release frozen result resources');
+  assert.deepEqual(await store.effectFact(req.identity.effectId,'validated-result'),retainedBefore,'Verified bytes never replaced by newer unverified message output');
+  assert.equal(await store.result(req.identity.effectId),undefined);
+ } else {
+  assert.equal(outcome.state,'succeeded',JSON.stringify(outcome));
+  assert.equal((await store.effectResources(req.identity.effectId))[0].released,true);
+  if(retainedBefore)assert.deepEqual(outcome.result,retainedBefore,'Closure retries preserve exact previously validated result');
+ }
+ const readerLines=(await readFile(path.join(workspace,'reader-calls'),'utf8')).trim().split('\n');assert.equal(readerLines.length,1,'Late closure never repeats Reader/engineering work');
+ process.send!({ok:true,scenario:mode,queuedAckDistinct:true,lateMessageCompleted:true,leaseReleased:mode!=='resident-changed-message',...(originalReleaseFile?{originalReleaseCompleted:true,noReplacementRelease:true}:{})});
+
 } else if(mode==='resident') {
  const input={goal:'DELIVER_BAD_RESULT'},run=await open('resident',input),req=requestFor(run,input,'engineering');
  const adapter=residentAdapter(run,req,input.goal);

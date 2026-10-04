@@ -91,7 +91,7 @@ export async function readDurableHostExitStatus(store:import('./run-store.js').R
     const request=await store.hostExit();
     const activeAgents=agents?.list().filter(a=>a.status==='running').map(a=>String(a.id))??[];
     const lastRequest=request?.requestId??await store.lastHostExitRequestId();
-    const runs:HostExitStatus['runs'][number][]=[];
+    const runs:HostExitStatus['runs'][number][]=[];let deliveryWriting=false;
     for(const run of await store.runs()) {
         const facts=await store.flowPhysicalFacts(run.runId);
         const resources=facts.resources.filter(resource=>!resource.released);
@@ -118,13 +118,16 @@ export async function readDurableHostExitStatus(store:import('./run-store.js').R
                 if(!complete)preparationUnknown=true;
             }
         }
+        const delivery=await store.orderedFlowFacts(run.runId,'delivery-io:');
+        const pendingDelivery=delivery.some(fact=>fact.name.startsWith('delivery-io:intent:')&&!delivery.some(closed=>closed.name===fact.name.replace('delivery-io:intent:','delivery-io:closed:')&&(closed.value as {closed?:boolean}).closed===true));
+        deliveryWriting ||= pendingDelivery;
         const jobs:string[]=[];
         for(const resource of resources.filter(resource=>resource.claim.jobs>0)){const snapshot=await store.effectSnapshot(resource.identity);const prepared=snapshot.facts.prepared as {session?:string}|undefined;jobs.push(prepared?.session??resource.effectId);}
         const unknown=preparationUnknown||unclosed.some(effect=>effect.phase==='intent'||!resources.some(resource=>resource.effectId===effect.identity.effectId));
         const failed=await store.flowFact(run.runId,`app-exit-failed:${lastRequest??''}`);
-        const state=(failed&&(resources.length||unclosed.length))||unknown?'uncertain':resources.length||unclosed.length||collecting?'working':'ready';
-        runs.push({runId:run.runId,state,jobs,...(failed?{reason:'Original stop failed; its physical facts and human holds are retained.'}:unknown?{reason:preparationUnknown?'Admitted preparation has no confirmed write closure.':'Original dispatch closure is unproved.'}:collecting?{reason:'Original submitted output awaits its necessary collection.'}:resources.length?{reason:'Original physical resources await closure.'}:{})});
+        const state=(failed&&(resources.length||unclosed.length))||unknown?'uncertain':resources.length||unclosed.length||collecting||pendingDelivery?'working':'ready';
+        runs.push({runId:run.runId,state,jobs,...(failed?{reason:'Original stop failed; its physical facts and human holds are retained.'}:unknown?{reason:preparationUnknown?'Admitted preparation has no confirmed write closure.':'Original dispatch closure is unproved.'}:pendingDelivery?{reason:'Original report/archive file publication awaits write closure.'}:collecting?{reason:'Original submitted output awaits its necessary collection.'}:resources.length?{reason:'Original physical resources await closure.'}:{})});
     }
-    return {...request,agents:activeAgents,runs,ready:request?.mode==='keep-jobs'||(activeAgents.length===0&&runs.every(run=>run.state==='ready'))};
+    return {...request,agents:activeAgents,runs,ready:request?.mode==='keep-jobs'?!deliveryWriting:(activeAgents.length===0&&runs.every(run=>run.state==='ready'))};
     });
 }

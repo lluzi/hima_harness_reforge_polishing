@@ -1,147 +1,218 @@
 id: agentic-timing-closure-system
-version: "0.3.3"
+version: 0.4.0
 title: Agentic timing closure system
 status: development
-minimumHarnessVersion: 0.2.2
-
+minimumHarnessVersion: 0.3.0
 ontology:
   aliases:
-    engineeringResult: [resident engineering delivery, XTop timing repair result]
-
+    engineeringResult:
+    - resident engineering delivery
+    - XTop timing repair result
 budget:
   timeBoxMs: 7200000
   closingReserveMs: 900000
   minimumGenerations: 1
-
 inputs:
-  - name: designStateManifest
-    description: >-
-      JSON manifest of the recoverable starting design state. The Pack stages and hashes its database,
-      netlist, DEF, SPEF, SDC, scenarios, libraries and tool identities before any engineering work.
-  - name: nativeTimingContext
-    description: >-
-      Site-bound atcs.native-timing-context/1 document for the same designStateManifest. It identifies
-      retained native XTop timing data and source reports by digest, plus the exact scenario and
-      constraint identities. The Pack copies and re-hashes these retained inputs; it does not launch
-      PrimeTime to recreate them on the new route.
-  - name: siteCapabilities
-    description: >-
-      Site-owned XTop design, technology, library, scenario and ECO configuration, including the
-      qualified EDA shell. The Pack re-hashes the referenced libraries at use.
-  - name: workspaceRoot
-    description: Campaign-private output root allowed by the Site Permit.
-
+- name: designStateManifest
+  description: JSON manifest of the recoverable starting design state. The Pack stages and hashes its
+    database, netlist, DEF, SPEF, SDC, scenarios, libraries and tool identities before any engineering
+    work.
+- name: nativeTimingContext
+  description: Site-bound atcs.native-timing-context/1 document for the same designStateManifest. It identifies
+    retained native XTop timing data and source reports by digest, plus the exact scenario and constraint
+    identities. The Pack copies and re-hashes these retained inputs; it does not launch PrimeTime to recreate
+    them on the new route.
+- name: siteCapabilities
+  description: Site-owned XTop design, technology, library, scenario and ECO configuration, including
+    the qualified EDA shell. The Pack re-hashes the referenced libraries at use.
+- name: workspaceRoot
+  description: Campaign-private output root allowed by the Site Permit.
 outputs:
-  - name: inputReadiness
-    path: state/readiness.json
-    reader: atcs-readiness
-    description: Verified minimum design and Site readiness.
-  - name: baselineState
-    path: state/baseline.json
-    description: Staged, content-addressed starting design state.
-  - name: nativeContext
-    path: state/xtop-context.json
-    description: >-
-      Verified XTop scenario/library/timing-data context copied from the retained native input and
-      bound to baselineState.
-  - name: commonStage
-    path: state/common-stage.json
-    description: >-
-      Actual native XTop analysis before and after the shared initial AutoFix, common R1 saved
-      workspace, raw reports, ECO identity, native checks and residual worklist.
-  - name: engineeringResult
-    path: state/engineering-result.json
-    reader: atcs-engineering-result
-    description: >-
-      Resident engineer's primary result: current task/execution and base/R1/selected-state identity;
-      actual raw XTop before/after reports; scripts, logical/physical ECO, checkpoint and reproduction
-      references; remaining/regressed/blocked/unknown facts; stop reason and best-effort status.
-
+- name: inputReadiness
+  path: state/readiness.json
+  reader: atcs-readiness
+  description: Verified minimum design and Site readiness.
+- name: baselineState
+  path: state/baseline.json
+  description: Staged, content-addressed starting design state.
+- name: nativeContext
+  path: state/xtop-context.json
+  description: Verified XTop scenario/library/timing-data context copied from the retained native input
+    and bound to baselineState.
+- name: commonStage
+  path: state/common-stage.json
+  description: Actual native XTop analysis before and after the shared initial AutoFix, common R1 saved
+    workspace, raw reports, ECO identity, native checks and residual worklist.
+- name: engineeringResult
+  path: state/engineering-result.json
+  reader: atcs-engineering-result
+  description: 'Resident engineer''s primary result: current task/execution and base/R1/selected-state
+    identity; actual raw XTop before/after reports; scripts, logical/physical ECO, checkpoint and reproduction
+    references; remaining/regressed/blocked/unknown facts; stop reason and best-effort status.'
+- name: timingEvaluation
+  path: state/timing-evaluation.json
+  description: Timing-only Goal plus raw committed Reader measures and independent collateral uncertainty.
+- name: finalReport
+  path: delivery/report.json
+  description: Explicit final goalMet, measurements, stop reason and engineering package references.
 environment:
-  wrappers: [python3, /usr/bin/python3]
-
+  wrappers:
+  - python3
+  - /usr/bin/python3
 workspace:
   source: pack
-  copy: [atcs_cli.py, atcs, templates]
-
+  copy:
+  - atcs_cli.py
+  - atcs
+  - templates
 tools:
-  - id: bind-inputs
-    file: flow/atcs_cli.py
-    description: Bind and verify the design, Site and retained native timing input identities.
-    inputs: [WORKSPACE, DESIGN_STATE_MANIFEST, SITE_CAPABILITIES, NATIVE_TIMING_CONTEXT]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', bind-resident-inputs, '${WORKSPACE}', '${DESIGN_STATE_MANIFEST}', '${SITE_CAPABILITIES}', '${NATIVE_TIMING_CONTEXT}']
-
-  - id: baseline
-    file: flow/atcs_cli.py
-    description: Stage and hash the starting design state without launching an EDA producer.
-    inputs: [WORKSPACE, DESIGN_STATE_MANIFEST]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', baseline, '${WORKSPACE}', '${DESIGN_STATE_MANIFEST}']
-
-  - id: prepare-native-context
-    file: flow/atcs_cli.py
-    description: Copy and verify retained native timing data; bind it to the staged design and current Site libraries/scenarios.
-    inputs: [WORKSPACE, NATIVE_TIMING_CONTEXT, SITE_CAPABILITIES]
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', prepare-native-context, '${WORKSPACE}', '${NATIVE_TIMING_CONTEXT}', '${SITE_CAPABILITIES}']
-
-  - id: common-autofix
-    file: flow/atcs_cli.py
-    description: Analyze actual native XTop before and after the common initial AutoFix and save common R1 once.
-    inputs: [WORKSPACE, SITE_CAPABILITIES, NATIVE_REPORT_PATHS]
-    licences: { xtop: 1 }
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', resident-common-autofix, '${WORKSPACE}', '${SITE_CAPABILITIES}', '${NATIVE_REPORT_PATHS}']
-
-  - id: fix-timing
-    file: flow/atcs_cli.py
-    description: >-
-      Own the complete XTop timing-repair engineering task. Start from the verified common R1 and keep
-      the design, constraints, library set and scenarios fixed. Inspect actual native setup and hold
-      evidence; form and test root-cause hypotheses; write and run private Tcl/Python analysis and
-      repair scripts; use any reasonable supported XTop technique, including ordinary AutoFix,
-      resize/VT, insert/split/remove, placement, routing/detour and combinations; measure every
-      candidate; keep, undo or return to the best actual checkpoint. Continue while useful improvement
-      remains within the Run and Site budget, without a fixed mutation count, hard-coded design
-      objects or an internal Hima seat plan. Deliver one atcs.engineering-result/1 document backed by
-      actual raw native before/after reports and file digests. Include the selected checkpoint,
-      logical and physical ECO (legitimate hashed no-op exports when no change is best), all generated
-      scripts and reproduction instructions, native trace, remaining/regressed/blocked/unknown facts
-      and the exact stop reason. A complete best-effort delivery may leave Goal false. Do not claim
-      final physical signoff, invent metrics, change constraints/scenarios/libraries, or replace
-      missing engineering artifacts with prose.
-    inputs: [WORKSPACE, SITE_CAPABILITIES, NATIVE_TIMING_CONTEXT, TARGET_SETUP_NS, TARGET_HOLD_NS]
-    licences: { xtop: 1 }
-    argv: [python3, '${WORKSPACE}/flow/atcs_cli.py', engineering-result, '${WORKSPACE}', '${TARGET_SETUP_NS}', '${TARGET_HOLD_NS}']
-    outsourcing:
-      role: resident-engineering-agent
-      reads: [inputReadiness, baselineState, nativeContext, commonStage]
-      knowledge: [resident-timing-playbook.md, xtop-capabilities.md, state-and-evidence.md]
-      artifactPrefix: engineering
-      produces: engineeringResult
-
+- id: prepare-inputs
+  file: flow/atcs_cli.py
+  description: Bind retained design/native/Site inputs and verify readiness.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/atcs_cli.py
+  - task-prepare-inputs
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: prepare-baseline
+  file: flow/atcs_cli.py
+  description: Stage baseline, verify native context and run actual common AutoFix R1.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/atcs_cli.py
+  - task-prepare-baseline
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  licences:
+    xtop: 1
+- id: fix-timing
+  file: flow/atcs_cli.py
+  description: Own the complete XTop timing-repair engineering task. Start from the verified common R1
+    and keep the design, constraints, library set and scenarios fixed. Inspect actual native setup and
+    hold evidence; form and test root-cause hypotheses; write and run private Tcl/Python analysis and
+    repair scripts; use any reasonable supported XTop technique, including ordinary AutoFix, resize/VT,
+    insert/split/remove, placement, routing/detour and combinations; measure every candidate; keep, undo
+    or return to the best actual checkpoint. Continue while useful improvement remains within the Run
+    and Site budget, without a fixed mutation count, hard-coded design objects or an internal Hima seat
+    plan. Deliver one atcs.engineering-result/1 document backed by actual raw native before/after reports
+    and file digests. Include the selected checkpoint, logical and physical ECO (legitimate hashed no-op
+    exports when no change is best), all generated scripts and reproduction instructions, native trace,
+    remaining/regressed/blocked/unknown facts and the exact stop reason. A complete best-effort delivery
+    may leave Goal false. Do not claim final physical signoff, invent metrics, change constraints/scenarios/libraries,
+    or replace missing engineering artifacts with prose.
+  inputs:
+  - WORKSPACE
+  - SITE_CAPABILITIES
+  - NATIVE_TIMING_CONTEXT
+  - TARGET_SETUP_NS
+  - TARGET_HOLD_NS
+  licences:
+    xtop: 1
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/atcs_cli.py
+  - engineering-result
+  - ${WORKSPACE}
+  - ${TARGET_SETUP_NS}
+  - ${TARGET_HOLD_NS}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - inputReadiness
+    - baselineState
+    - nativeContext
+    - commonStage
+    knowledge:
+    - resident-timing-playbook.md
+    - xtop-capabilities.md
+    - state-and-evidence.md
+    artifactPrefix: engineering
+    produces: engineeringResult
+- id: evaluate-timing
+  file: flow/atcs_cli.py
+  description: Evaluate committed Reader measurements; keep collateral UNKNOWN separate from timing Goal.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/atcs_cli.py
+  - task-evaluate-timing
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: deliver
+  file: flow/atcs_cli.py
+  description: Package verified engineering artifacts and final Goal/report without restarting engineering.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/atcs_cli.py
+  - task-deliver
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
 rules:
-  - inputs-ready
-  - engineering-delivery-ready
-  - engineering-setup-goal
-  - engineering-hold-goal
-  - engineering-no-remaining
-  - engineering-timing-clear
-  - engineering-no-regression
-
+- inputs-ready
+- engineering-delivery-ready
+- engineering-setup-goal
+- engineering-hold-goal
+- engineering-no-remaining
+- engineering-timing-clear
+- engineering-no-regression
 goal:
-  target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
-  target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 0, default: 0 }
-
+  target_setup_wns_ns:
+    type: number
+    unit: ns
+    min: 0
+    max: 0
+    default: 0
+  target_hold_wns_ns:
+    type: number
+    unit: ns
+    min: 0
+    max: 0
+    default: 0
 strategy:
-  nativeReportPaths: { type: number, unit: paths, min: 1000, max: 100000, default: 10000, precision: 0 }
-
+  nativeReportPaths:
+    type: number
+    unit: paths
+    min: 1000
+    max: 100000
+    default: 10000
+    precision: 0
 words:
-  target_setup_wns_ns: { label: target native XTop setup WNS, unit: ns }
-  target_hold_wns_ns: { label: target native XTop hold WNS, unit: ns }
-  nativeReportPaths: { label: common native report path breadth, unit: paths }
-
+  target_setup_wns_ns:
+    label: target native XTop setup WNS
+    unit: ns
+  target_hold_wns_ns:
+    label: target native XTop hold WNS
+    unit: ns
+  nativeReportPaths:
+    label: common native report path breadth
+    unit: paths
 knowledge:
-  - file: resident-timing-playbook.md
-    purpose: Complete whole-task XTop engineering goal, fixed identities, one persistent native session, evidence-led hold/setup mechanisms, best-state selection and delivery contract.
-  - file: xtop-capabilities.md
-    purpose: XTop native analysis, AutoFix, ECO, checkpoint and export capabilities available to the engineering task.
-  - file: state-and-evidence.md
-    purpose: Design-state, scenario, evidence identity, unknown and prediction-only boundaries; XTop results do not reinterpret final physical signoff.
+- file: resident-timing-playbook.md
+  purpose: Complete whole-task XTop engineering goal, fixed identities, one persistent native session,
+    evidence-led hold/setup mechanisms, best-state selection and delivery contract.
+- file: xtop-capabilities.md
+  purpose: XTop native analysis, AutoFix, ECO, checkpoint and export capabilities available to the engineering
+    task.
+- file: state-and-evidence.md
+  purpose: Design-state, scenario, evidence identity, unknown and prediction-only boundaries; XTop results
+    do not reinterpret final physical signoff.

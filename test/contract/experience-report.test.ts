@@ -28,6 +28,19 @@ function fixture(): RunView {
 
 function projected(view: RunView) { return experienceReport(view, at).json.research; }
 
+test('cancelled durable report preserves its ending with UNKNOWN and incomplete tasks', () => {
+  const view = fixture();
+  const report = experienceReport({ ...view,
+    run: { ...view.run, engine: 'dbos/5.2.11', status: 'cancelled', goalState: 'unknown' },
+    tasks: [], nodes: [], observations: [], verdicts: [], generations: [], decision: null }, at);
+  assert.equal(report.json.ending.status, 'cancelled');
+  assert.equal(report.json.goalState, 'unknown');
+  assert.deepEqual(report.json.tasks, []);
+  assert.match(report.markdown, /cancelled/i);
+  assert.match(report.markdown, /Goal assessment is UNKNOWN/);
+  assert.doesNotMatch(report.markdown, /Task contracts completed/);
+});
+
 test('report shows Reader comparison inputs omitted by the judging rule without promoting stale evidence', () => {
   const view = fixture();
   const values = [

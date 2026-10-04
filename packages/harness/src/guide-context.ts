@@ -30,7 +30,7 @@ export interface GuideContextDeps {
   readRun?(runId:string):Promise<import('./ledger.js').RunRecord|undefined>;
   readRunRecord?(recordId:string):Promise<import('./ledger.js').LedgerRecord|undefined>;
   assignedGuide?(viewerSessionId:string,parentSessionId:string,childSessionId?:string):Promise<boolean>;
-  readExperience(runId: string): Promise<ReadExperienceResult>;
+  readExperience(runId: string,recordId?:string): Promise<ReadExperienceResult>;
   readReportMaterial?(runId:string,recordId:string):Promise<{kind:'read';text:string}|{kind:'unavailable';why:string}>;
   readTaskArtifact?(runId:string,effectId:string,name:string):Promise<import('./engineering-executor.js').EngineeringAssetRead>;
 }
@@ -106,7 +106,7 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
         missing:'evidenceClass' in facts&&facts.evidenceClass==='synthetic'
           ?['Synthetic fixture only. Native Library qualification has not passed.']:[]};
     }
-    const report = await deps.readExperience(record.runId);
+    const report = await deps.readExperience(record.runId,record.id);
     if (report.kind !== 'read' || report.record.id !== record.id) {
       return { ...head, facts: null, sources: [record.id], missing: [report.kind === 'read' ? 'The retained report identity changed.' : `Report bytes are ${report.kind}.`] };
     }

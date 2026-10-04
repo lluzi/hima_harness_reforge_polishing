@@ -1085,6 +1085,10 @@ class Wrapper:
 
     def handle(self, request):
         operation = request["operation"]
+        # Queue ACK is not prompt completion. Keep the original delivery/cleanup request
+        # pending until all accepted prompts finish; a transient refusal would be immutable.
+        if operation in {"delivery", "release"} and any(thread.is_alive() for thread in self.prompt_threads):
+            return
         if operation == "start":
             if self.rpc is not None:
                 self.receipt(request, "rejected", error="task already started")
@@ -1139,6 +1143,30 @@ class Wrapper:
                 self.receipt(request, "rejected", error=str(error))
         elif operation == "release":
             state = load_json(self.task_dir / "state.json")
+            if state.get("phase") in {"waiting", "delivered"} and request["payload"].get("deliverySha256"):
+                # A completed informational message may have returned this same native task
+                # to waiting after its Reader/result was retained. Reaffirm the exact current
+                # candidate and plain-file hashes, without replaying engineering or its Reader.
+                try:
+                    manifest = load_json(self.task_dir / "delivery" / "manifest.json")
+                    if (manifest.get("sha256") != digest_body(manifest)
+                            or manifest.get("taskId") != self.task["taskId"]
+                            or manifest.get("runId") != self.task["runId"]
+                            or manifest.get("executionId") != self.task["executionId"]
+                            or manifest.get("sessionId") != self.session_id
+                            or request["payload"]["deliverySha256"] != manifest.get("sha256")):
+                        raise ValueError("release delivery identity or digest mismatch")
+                    candidate = manifest.get("candidate", {})
+                    current_bytes = read_confined(self.workspace, PurePosixPath(self.capability["delivery"]["candidate"]))
+                    if candidate.get("sha256") != sha256(current_bytes).hexdigest():
+                        raise ValueError("release delivery changed after validated result; retain original resources")
+                    current = self.collect_delivery(request)
+                    if current["sha256"] != request["payload"]["deliverySha256"]:
+                        raise ValueError("release delivery changed after validated result; retain original resources")
+                    state = load_json(self.task_dir / "state.json")
+                except Exception as error:
+                    self.receipt(request, "rejected", error=str(error))
+                    return
             if state.get("phase") == "delivered":
                 manifest = load_json(self.task_dir / "delivery" / "manifest.json")
                 if request["payload"].get("deliverySha256") != manifest.get("sha256"):

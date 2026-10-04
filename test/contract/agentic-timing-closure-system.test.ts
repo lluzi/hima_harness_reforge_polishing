@@ -18,13 +18,13 @@ import { copyLegacyAtcsPack } from './support/atcs-legacy.ts';
 
 const packId = 'agentic-timing-closure-system';
 
-test('ATCS readiness ships the endpoint resolver before engineering or legacy research', async () => {
+test('ATCS readiness precedes engineering and retains the legacy endpoint resolver assets', async () => {
   const packDir = path.join(repoRoot, 'packs', packId);
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
   assert.equal(readersDirName, 'hima-readers');
-  assert.equal(pack.graph.entry, 'bind-inputs');
-  assert.deepEqual(pack.graph.edges.filter(edge => edge.from === 'bind-inputs').map(edge => edge.to), ['read-readiness']);
-  assert.equal((pack.graph.nodes.find(node => node.id === 'read-readiness') as any).parameters.observes, 'inputReadiness');
+  assert.equal(pack.graph.entry, 'prepare-inputs');
+  assert.deepEqual(pack.graph.edges.filter(edge => edge.from === 'prepare-inputs').map(edge => edge.to), ['prepare-baseline']);
+  assert.equal(pack.flow?.tasks['prepare-inputs']?.tool, 'prepare-inputs');
   assert.equal(pack.contract.outputs.find(output => output.name === 'inputReadiness')!.reader, 'atcs-readiness');
   const reader = parse(await readFile(path.join(packDir, 'readers/atcs-readiness.yml'), 'utf8')) as any;
   assert.equal(reader.file, 'tools/read-atcs.py');
@@ -32,9 +32,15 @@ test('ATCS readiness ships the endpoint resolver before engineering or legacy re
     /workspace \/ "hima-readers" \/ "atcs-readiness" \/ "read-atcs\.py"/);
 });
 
-test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering evidence separate from final signoff', async () => {
+test('ATCS 0.4 outsources one whole fix-timing task and keeps XTop engineering evidence separate from final signoff', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.3.3');
+  assert.equal(pack.contract.version, '0.4.0');
+  assert.equal(pack.contract.minimumHarnessVersion, '0.3.0');
+  assert.equal(pack.contract.budget.timeBoxMs, 7_200_000);
+  assert.equal(pack.contract.budget.closingReserveMs, 900000,
+    'the original fifteen-minute reserve remains available to declared evaluation and delivery Tasks');
+  assert.equal(pack.flow!.tasks['evaluate-timing']!.budget, 'closing');
+  assert.equal(pack.flow!.tasks.deliver!.budget, 'closing');
 
   const tool = pack.contract.tools.find(item => item.id === 'fix-timing') as any;
   assert.ok(tool, 'the Pack declares one fix-timing tool');
@@ -48,21 +54,17 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
   assert.equal(tool.interactive, undefined, 'outsourced work is not a second interactive protocol');
   assert.equal(pack.contract.outputs.some(item => item.name === 'autoFixReference'), false);
   assert.equal(pack.contract.tools.some(item => item.id === 'auto-fix-reference'), false);
-  assert.ok(!(pack.graph.nodes as any[]).find(node => node.id === 'check-engineering-goal').parameters.rules.includes('engineering-beats-autofix'));
+  assert.ok(!pack.graph.nodes.some(node => node.kind === 'judge' || node.kind === 'explore'));
 
   assert.deepEqual(tool.licences, { xtop: 1 });
 
   const nodes = (pack.graph.nodes as any[]).map(node => node.id);
   assert.deepEqual(nodes, [
-    'bind-inputs', 'read-readiness', 'check-inputs', 'baseline', 'prepare-native-context',
-    'common-autofix', 'fix-timing', 'read-engineering-result', 'check-engineering-delivery',
-    'check-engineering-collateral', 'check-engineering-goal', 'finish-engineering', 'wait-for-person',
+    'prepare-inputs', 'prepare-baseline', 'fix-timing', 'evaluate-timing', 'deliver',
   ]);
   assert.equal((pack.graph.nodes as any[]).find(node => node.id === 'fix-timing').kind, 'act');
-  assert.deepEqual((pack.graph as any).autopilot, [
-    { from: ['bind-inputs'], until: ['fix-timing', 'wait-for-person'] },
-    { from: ['read-engineering-result'], until: ['check-engineering-goal', 'wait-for-person'] },
-  ]);
+  assert.deepEqual((pack.graph as any).autopilot ?? [], []);
+  assert.equal(pack.flow?.blocks[pack.flow.entry]?.kind, 'sequence');
   assert.deepEqual(pack.contract.agentTeams ?? [], [], 'the new method declares no fixed internal repair team');
   assert.deepEqual(pack.contract.workshops ?? [], [], 'the new method does not make Hima author six work packages');
   assert.deepEqual(pack.contract.strategy, {
@@ -70,7 +72,7 @@ test('ATCS 0.3 outsources one whole fix-timing node and keeps XTop engineering e
   }, 'the only strategy controls raw evidence breadth, not seats, mutations or methods');
 
   const reachableTools = new Set((pack.graph.nodes as any[]).map(node => node.parameters?.tool).filter(Boolean));
-  assert.deepEqual([...reachableTools], ['bind-inputs', 'baseline', 'prepare-native-context', 'common-autofix', 'fix-timing']);
+  assert.deepEqual([...reachableTools], ['prepare-inputs', 'prepare-baseline', 'fix-timing', 'evaluate-timing', 'deliver']);
   for (const id of ['observe-baseline', 'physical-baseline', 'implement', 'extract', 'sta', 'physical-candidate']) {
     assert.equal(reachableTools.has(id), false, `${id} is not a producer or mandatory tail on the new route`);
   }

@@ -252,6 +252,9 @@ export function freezeFlowFragment(base: CompiledFlow, slotId: string, fragment:
   const source = flowSource.parse({ schema: flowSourceVersion, id: base.packId, version: base.version, flow: fragment.flow });
   const compiled = compileSource(source, { packSha256: base.packSha256, localSchemas: base.localSchemas, tools: base.toolIds }, external,
     available, carryScopeAtTask(base.blocks, base.entry, slot.afterTask));
+  if (base.tasks[slot.afterTask]?.budget !== 'closing' && Object.values(compiled.tasks).some(task => task.budget === 'closing')) {
+    fail('/extension/flow/budget', 'this slot does not grant the closing reserve; keep diagnostic tasks in the original work budget');
+  }
   for (const id of Object.keys(compiled.blocks)) if (Object.hasOwn(base.blocks, id)) fail('/extension/flow/id', `fragment ID ${id} conflicts with the frozen method; use a new ID`);
   const returnTask = compiled.tasks[returned.data.taskId];
   if (!returnTask || !guaranteedTasks(compiled.blocks, compiled.entry).has(returned.data.taskId)) fail('/extension/return', 'return a task output produced on every successful fragment path');
@@ -503,17 +506,35 @@ export function freezeLegacyFlowFragment(base:CompiledFlow,slotId:string,candida
 /** Existing faces read this declaration projection. It is never the execution source for new Runs. */
 export function projectFlowGraph(source: FlowSource): PackGraph {
   const nodes: PackNode[] = [];
-  const walk = (flow: Flow): void => {
+  const edges: PackGraph['edges'][number][] = [];
+  const walk = (flow: Flow): { first: string[]; last: string[]; empty: boolean } => {
     if (flow.kind === 'task') {
       nodes.push(flow.tool === 'builtin/human-wait' ? { id: flow.id, kind: 'wait', parameters: { blocker: 'Waiting for a durable human response' } }
         : { id: flow.id, kind: 'act', parameters: { tool: flow.tool, arguments: {} } });
-    } else if (flow.kind === 'sequence') flow.steps.forEach(walk);
-    else if (flow.kind === 'choice') Object.values(flow.cases).forEach(walk);
-    else if (flow.kind === 'parallel') Object.values(flow.branches).forEach(branch => walk(branch.flow));
-    else walk(flow.body);
+      return { first: [flow.id], last: [flow.id], empty: false };
+    }
+    if (flow.kind === 'sequence') {
+      let first: string[] = [], last: string[] = [], empty = true;
+      for (const step of flow.steps) {
+        const next = walk(step);
+        for (const from of last) for (const to of next.first) edges.push({ from, to });
+        if (empty) first = [...new Set([...first, ...next.first])];
+        last = next.empty ? [...new Set([...last, ...next.last])] : next.last;
+        empty = empty && next.empty;
+      }
+      return { first, last, empty };
+    }
+    // Show possible handoffs at branches; the frozen IR still owns selection and joining.
+    // A repeated body is drawn once, with actual iteration identities in its task facts.
+    if (flow.kind === 'repeat') return walk(flow.body);
+    const branches = flow.kind === 'choice' ? Object.values(flow.cases) : Object.values(flow.branches).map(branch => branch.flow);
+    const ends = branches.map(walk);
+    return { first: ends.flatMap(end => end.first), last: ends.flatMap(end => end.last),
+      empty: flow.kind === 'choice' ? ends.some(end => end.empty) : ends.every(end => end.empty) };
   };
   walk(source.flow);
-  return { id: source.id, version: source.version, entry: nodes[0]?.id ?? source.flow.id, nodes, edges: [], loops: {}, autopilot: [] };
+  const uniqueEdges = [...new Map(edges.map(edge => [JSON.stringify([edge.from, edge.to]), edge])).values()];
+  return { id: source.id, version: source.version, entry: nodes[0]?.id ?? source.flow.id, nodes, edges: uniqueEdges, loops: {}, autopilot: [] };
 }
 
 /** One normal loader entry derives compilation and digest from exactly the same method bytes. */

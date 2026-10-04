@@ -14,6 +14,12 @@ test('revising one actual input reruns its consumers while active sibling retain
 test('original closing reserve blocks new business Jobs',{timeout:60000},async()=>{
   const home=await dbosHome(),host=flowProcess(home,'deadline');try{assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}
 });
+test('declared closing delivery consumes committed values inside the reserve without a fresh work attempt',{timeout:60000},async()=>{
+  const home=await dbosHome(),host=flowProcess(home,'closing-budget');try{assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}
+});
+test('closing-task admission still refuses submit after the original hard deadline',{timeout:60000},async()=>{
+  const home=await dbosHome(),host=flowProcess(home,'closing-hard');try{assert.equal((await host.next()).stage,'cached-admission');assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}
+});
 for(const scenario of ['choice','repeat','extension'])test(`${scenario} commit survives Host kill and selects the same original child`,{timeout:90000},async()=>{
   const home=await dbosHome();let host=flowProcess(home,`crash-${scenario}`);
   try{assert.equal((await host.next()).stage,'committed-decision');await host.kill();host=flowProcess(home,`recover-${scenario}`);assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}

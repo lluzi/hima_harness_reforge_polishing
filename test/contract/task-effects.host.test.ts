@@ -28,3 +28,15 @@ test('undeclared inherited licence properties refuse; explicitly declared featur
 for(const boundary of ['live','gone'])test(`known resident failure closes original ${boundary} wrapper resources without a success result`,{timeout:90000},async()=>{
  const home=await dbosHome(),host=worker(home,`resident-failure-${boundary}`);try{const result=await host.next();assert.equal(result.ok,true);assert.equal(result.terminal,'failed');assert.equal(result.leaseReleased,true);}finally{await host.close();await cleanDbosHome(home);}
 });
+
+test('resident late business message completes after delivery while Reader is pending, then closes the same native resources',{timeout:90000},async()=>{
+ const home=await dbosHome(),host=worker(home,'resident-late-message');try{const result=await host.next();assert.equal(result.ok,true);assert.equal(result.leaseReleased,true);}finally{await host.close();await cleanDbosHome(home);}
+});
+
+for(const boundary of ['retained','changed'])test(`resident ${boundary} result keeps exact validated bytes across late completed native message closure`,{timeout:90000},async()=>{
+ const home=await dbosHome(),host=worker(home,`resident-${boundary}-message`);try{const result=await host.next();assert.equal(result.ok,true);assert.equal(result.leaseReleased,boundary==='retained');}finally{await host.close();await cleanDbosHome(home);}
+});
+
+test('resident running accepted message defers the original release receipt until native completion and quiescence',{timeout:90000},async()=>{
+ const home=await dbosHome(),host=worker(home,'resident-inflight-message');try{const result=await host.next();assert.equal(result.ok,true);assert.equal(result.leaseReleased,true);assert.equal(result.originalReleaseCompleted,true);assert.equal(result.noReplacementRelease,true);}finally{await host.close();await cleanDbosHome(home);}
+});
