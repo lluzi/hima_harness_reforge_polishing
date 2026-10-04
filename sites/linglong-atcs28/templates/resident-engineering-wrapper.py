@@ -317,13 +317,14 @@ def copy_confined(root, relative, destination):
 
 
 class ACP:
-    def __init__(self, argv, cwd, env, trace, stderr_log):
+    def __init__(self, argv, cwd, env, trace, stderr_log, on_text_chunk=None):
         self.trace = trace
         self.write_lock = threading.Lock()
         self.pending = {}
         self.pending_lock = threading.Lock()
         self.next_id = 1
         self.closed = threading.Event()
+        self.on_text_chunk = on_text_chunk
         self.process = subprocess.Popen(
             argv, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True,
@@ -351,6 +352,25 @@ class ACP:
                 message = json.loads(line, parse_constant=reject_constant, object_pairs_hook=unique_object)
                 self._record("native-to-wrapper", message)
                 if "method" in message:
+                    # A public reply chunk is captured synchronously, in this same read of the
+                    # native stdout stream, strictly before the prompt's own RPC response can be
+                    # read off the same stream a line later. Routing it through the `incoming`
+                    # queue instead would race the prompt worker's blocking rpc.request() against
+                    # the main loop's 20ms handle_native() poll, and the reply could still be empty
+                    # when the worker reads it.
+                    # Untrusted shapes: anything that is not a well-formed text chunk keeps the
+                    # original queue route, so a malformed notification cannot stop this reader.
+                    params = message.get("params")
+                    update = params.get("update") if isinstance(params, dict) else None
+                    if (self.on_text_chunk is not None and message.get("method") == "session/update"
+                            and isinstance(update, dict) and update.get("sessionUpdate") == "agent_message_chunk"):
+                        content = update.get("content")
+                        if isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str):
+                            try:
+                                self.on_text_chunk(params.get("sessionId"), content["text"])
+                            except Exception:
+                                pass
+                        continue
                     incoming.put(message)
                     continue
                 key = message.get("id")
@@ -438,6 +458,10 @@ class Wrapper:
         self.prompt_threads = set()
         self.inflight = set()
         self.prompt_lock = threading.Lock()
+        self.reply_chunks = []
+        self.reply_size = 0
+        self.reply_trimmed = False
+        self.reply_lock = threading.Lock()
         self.runtime = self.task_dir / "runtime.json"
         self.resumed = self.runtime.exists()
         if self.resumed:
@@ -649,7 +673,8 @@ class Wrapper:
     def launch(self):
         self.state("starting")
         try:
-            self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log")
+            self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log",
+                           on_text_chunk=self._on_native_text_chunk)
             self.record_owned(False)
             initialized = self.rpc.request("initialize", {
                 "protocolVersion": self.capability["native"]["protocolVersion"],
@@ -672,6 +697,21 @@ class Wrapper:
                     pass
             raise
 
+    def _on_native_text_chunk(self, session_id, text):
+        # Called from ACP._read's own thread, not the prompt worker or the main loop; this is the
+        # only writer, and run_prompt's reset/read of reply_chunks happens only in the main thread's
+        # handle() dispatch and the worker's own completion, so a lock keeps the append atomic
+        # without claiming any ordering guarantee beyond that.
+        if session_id != self.session_id:
+            return
+        with self.reply_lock:
+            self.reply_chunks.append(text)
+            self.reply_size += len(text)
+            if self.reply_size > 8000:
+                # Bound memory over a long turn: only the tail is ever reported.
+                kept = "".join(self.reply_chunks)[-4000:]
+                self.reply_chunks, self.reply_size, self.reply_trimmed = [kept], len(kept), True
+
     def prompt_text(self, payload, initial=False):
         if initial:
             return canonical({
@@ -688,8 +728,11 @@ class Wrapper:
                 "workspace": str(self.workspace),
                 "delivery": {
                     "candidate": self.capability["delivery"]["candidate"],
+                    **({"artifactPrefix": self.task["delivery"]["artifactPrefix"]}
+                       if isinstance(self.task.get("delivery"), dict) and "artifactPrefix" in self.task["delivery"]
+                       else {}),
                     "jsonSchema": DELIVERY_CANDIDATE_SCHEMA,
-                    "instructions": "Write only the candidate object described by jsonSchema to candidate. Include exactly one artifact with kind result containing the Pack result; list every referenced supporting plain file, including checkpoint tree files, with its actual sha256. Do not copy this delivery description, task IDs, envelope hashes or advisory keys into the candidate. A rejected candidate can be repaired in the same task without repeating engineering work.",
+                    "instructions": "Write only the candidate object described by jsonSchema to candidate. Include exactly one artifact with kind result containing the Pack result; list every referenced supporting plain file, including checkpoint tree files, with its actual sha256. Every supporting artifact path must be workspace-relative under artifactPrefix (if given) in this private workspace; do not list tool scratch directories. The Host copies the result and this support tree into the Campaign workspace only after verification; never write a Campaign path yourself. Do not copy this delivery description, task IDs, envelope hashes or advisory keys into the candidate. A rejected candidate can be repaired in the same task without repeating engineering work.",
                 },
             }).decode("utf-8")
         text = payload.get("text")
@@ -710,6 +753,8 @@ class Wrapper:
                                 "error": "task was cancelled before message delivery was confirmed",
                             })
                         return
+                    with self.reply_lock:
+                        self.reply_chunks, self.reply_size, self.reply_trimmed = [], 0, False
                     self.state("running", request["requestId"])
                     params = {
                         "sessionId": self.session_id,
@@ -722,6 +767,15 @@ class Wrapper:
                         detail = {"stopReason": result.get("stopReason")}
                         if not initial:
                             detail["completedRequestId"] = request["requestId"]
+                        with self.reply_lock:
+                            reply_text = "".join(self.reply_chunks)
+                            trimmed = self.reply_trimmed
+                        # A surrogate pair split across chunks must not fail a finished turn.
+                        reply_text = reply_text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+                        detail["reply"] = {
+                            "text": reply_text[-4000:], "requestId": request["requestId"],
+                            "truncated": trimmed or len(reply_text) > 4000,
+                        }
                         self.state("waiting", detail=detail)
                         if not initial:
                             self.event("input", {
@@ -765,6 +819,8 @@ class Wrapper:
                 return
             method = message.get("method")
             if method == "session/update":
+                # Public reply text is captured synchronously in ACP._read (see on_text_chunk);
+                # every other session/update (thought chunks, tool calls) stays discarded here.
                 continue
             if method != "session/request_permission" or "id" not in message:
                 if "id" in message:

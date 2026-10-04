@@ -175,3 +175,19 @@ export class WorkshopNodeError extends Error {}
 
 /** A before-launch callback vetoed before tmux dispatch; unlike a lost response, no Job was sent. */
 export class LaunchNotDispatchedError extends Error {}
+
+/**
+ * Thrown by `materializeEngineeringResult` only for a deterministic manifest fault found while
+ * reading and checking the delivery's declared artifacts — before the first directory is created or
+ * byte is copied into the Campaign workspace: a support path outside the Pack's declared artifact
+ * prefix, a repeated artifact path, a retained digest that no longer matches, two artifacts that
+ * collide at one Campaign path, or an existing Campaign path that already holds different bytes.
+ *
+ * Every one of these is a fact about the delivery manifest itself, reproducible from the same
+ * inputs, and it is raised having written nothing — so the owner can correct the manifest (a fresh
+ * revisioned artifact path, a corrected prefix) and retry the same delivery. That is why the caller
+ * answers it `rejected`/`done` rather than `unknown`: unlike a copy that failed partway through, no
+ * uncertain Campaign write is left behind to reconcile. Once the first `ensureDirectory`/`cp` after
+ * the planning loop has run, a fault is ordinary copy/transport uncertainty and stays a plain `Error`.
+ */
+export class EngineeringDeliveryRejectedError extends Error {}

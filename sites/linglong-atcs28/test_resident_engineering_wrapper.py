@@ -323,6 +323,65 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         response = self.request("delivery:contract", "delivery")
         self.assertEqual(response["status"], "completed", response)
 
+    def test_initial_prompt_declares_the_host_enforced_artifact_prefix(self):
+        self.task_record["delivery"] = {"manifest": "delivery/manifest.json", "artifactPrefix": "engineering"}
+        publish(self.task / "task.json", framed(self.task_record))
+        self.start_wrapper()
+        self.request("start:prefix", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] != "waiting" and time.monotonic() < deadline:
+            time.sleep(.02)
+        trace = [json.loads(line) for line in (self.task / "native/session-events.jsonl").read_text().splitlines()]
+        prompt = next(row["message"]["params"]["prompt"][0]["text"] for row in trace
+                      if row["direction"] == "wrapper-to-native" and row["message"].get("method") == "session/prompt")
+        delivery = json.loads(prompt)["delivery"]
+        self.assertEqual(delivery["artifactPrefix"], "engineering")
+        self.assertIn("artifactPrefix", delivery["instructions"])
+        self.assertIn("Campaign", delivery["instructions"])
+
+    def test_initial_prompt_tolerates_an_envelope_with_no_artifact_prefix(self):
+        # self.task_record's default delivery block (set up in WrapperFixture) carries no
+        # artifactPrefix, matching an older envelope; the wrapper must not raise over its absence.
+        self.start_wrapper()
+        self.request("start:no-prefix", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] != "waiting" and time.monotonic() < deadline:
+            time.sleep(.02)
+        trace = [json.loads(line) for line in (self.task / "native/session-events.jsonl").read_text().splitlines()]
+        prompt = next(row["message"]["params"]["prompt"][0]["text"] for row in trace
+                      if row["direction"] == "wrapper-to-native" and row["message"].get("method") == "session/prompt")
+        delivery = json.loads(prompt)["delivery"]
+        self.assertNotIn("artifactPrefix", delivery)
+
+    def test_completed_native_reply_text_is_retained_in_the_waiting_state(self):
+        self.start_wrapper()
+        self.request("start:reply", "start")
+        deadline = time.monotonic() + 5
+        state = wait_json(self.task / "state.json")
+        while state["phase"] != "waiting" and time.monotonic() < deadline:
+            time.sleep(.02)
+            state = wait_json(self.task / "state.json")
+        self.assertEqual(state["phase"], "waiting")
+        reply = state["detail"]["reply"]
+        self.assertEqual(reply, {"text": "done", "requestId": "start:reply", "truncated": False})
+
+    def test_second_reply_does_not_carry_over_the_first_prompts_text(self):
+        self.start_wrapper()
+        self.request("start:reply-a", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] == "running" and time.monotonic() < deadline:
+            time.sleep(.02)
+        message = self.request("message:reply-b", "message", {"text": "a distinct second turn"})
+        self.assertEqual(message["status"], "accepted")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = wait_json(self.task / "state.json")
+            if state.get("detail", {}).get("completedRequestId") == "message:reply-b":
+                break
+            time.sleep(.02)
+        self.assertEqual(state["detail"]["completedRequestId"], "message:reply-b")
+        self.assertEqual(state["detail"]["reply"], {"text": "done", "requestId": "message:reply-b", "truncated": False})
+
     def test_observed_extra_keys_and_missing_fields_have_actionable_delivery_errors(self):
         self.start_wrapper()
         self.request("start:invalid-contract", "start")
@@ -739,3 +798,33 @@ def process_exists(pid):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class AcpReaderRobustnessTest(unittest.TestCase):
+    def test_malformed_notifications_do_not_stop_the_reader_and_text_chunks_are_captured(self):
+        module = load_wrapper_module()
+        with tempfile.TemporaryDirectory() as directory:
+            acp = module.ACP.__new__(module.ACP)
+            acp.trace = Path(directory) / "trace.jsonl"
+            acp.write_lock = module.threading.Lock()
+            acp.pending, acp.pending_lock = {}, module.threading.Lock()
+            acp.closed = module.threading.Event()
+            chunks = []
+            acp.on_text_chunk = lambda session, text: chunks.append((session, text))
+            lines = [
+                {"jsonrpc": "2.0", "method": "session/update", "params": None},
+                {"jsonrpc": "2.0", "method": "session/update", "params": ["x"]},
+                {"jsonrpc": "2.0", "method": "session/update", "params": {"update": "x"}},
+                {"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s", "update": {"sessionUpdate": "agent_message_chunk", "content": None}}},
+                {"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "done"}}}},
+                {"jsonrpc": "2.0", "id": 7, "result": {"stopReason": "end_turn"}},
+            ]
+            waiter = module.queue.Queue()
+            acp.pending[7] = waiter
+            acp.process = mock.Mock(stdout=[json.dumps(line) + "\n" for line in lines])
+            while not module.incoming.empty():
+                module.incoming.get_nowait()
+            acp._read()
+            self.assertEqual(chunks, [("s", "done")])
+            self.assertEqual(waiter.get_nowait()["result"]["stopReason"], "end_turn")
+            self.assertEqual(module.incoming.qsize(), 3)

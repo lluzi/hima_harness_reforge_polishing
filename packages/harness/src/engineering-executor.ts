@@ -18,6 +18,7 @@ import { pathsOf, type Site } from './sites.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobDeps, type LaunchIntent } from './jobs.js';
 import { claimSlot, claimSlotAndLaunch, type Claim } from './job-cap.js';
 import type { NodeExecution, RunRecord } from './ledger.js';
+import { EngineeringDeliveryRejectedError } from './errors.js';
 
 export const engineeringProtocol = 'hima-resident-engineering/1' as const;
 
@@ -237,7 +238,8 @@ export async function planEngineeringTask(identity: EngineeringTaskIdentity, req
       declaredInputs: tool.inputs, boundInputs, referenceArgv: toolArgv(tool, boundInputs), flow: p.join(workspace, 'flow'),
       method: { id: pack.id, version: pack.contract.version, digest: run.packDigest },
     },
-    delivery: { manifest: p.join(taskDir, 'delivery', 'manifest.json'), candidate: capability.delivery.candidate },
+    delivery: { manifest: p.join(taskDir, 'delivery', 'manifest.json'), candidate: capability.delivery.candidate,
+      artifactPrefix: outsourcing.artifactPrefix },
     ...(request.context === undefined ? {} : { context: request.context }), createdAt: new Date().toISOString(),
   });
   return { taskId, taskDir, capability, capabilityPath: loadedCapability.path,
@@ -475,7 +477,7 @@ const beneath = (candidate: string, root: string): boolean => candidate.startsWi
 /** Materialize the result and the Pack-confined immutable support tree before its Reader runs. */
 export async function materializeEngineeringResult(identity: EngineeringTaskIdentity, taskDir: string, delivery: EngineeringDelivery): Promise<{ readonly path: string; readonly sha256: string }> {
   const results = delivery.artifacts.filter((artifact) => artifact.kind === 'result');
-  if (results.length !== 1) throw new Error(`engineering delivery needs exactly one result artifact; found ${results.length}`);
+  if (results.length !== 1) throw new EngineeringDeliveryRejectedError(`engineering delivery needs exactly one result artifact; found ${results.length}`);
   const channel = channelFor(identity.site);
   const p = pathsOf(identity.site);
   const produced = identity.pack.contract.outputs.find((item) => item.name === identity.outsourcing.produces)!;
@@ -494,26 +496,26 @@ export async function materializeEngineeringResult(identity: EngineeringTaskIden
   // directory. Support files are immutable once published: a repair must name a fresh revisioned
   // checkpoint/artifact path, so omitted old members cannot contaminate the selected tree digest.
   for (const artifact of delivery.artifacts) {
-    if (seenPaths.has(artifact.path)) throw new Error(`engineering delivery repeats artifact path ${artifact.path}`);
+    if (seenPaths.has(artifact.path)) throw new EngineeringDeliveryRejectedError(`engineering delivery repeats artifact path ${artifact.path}`);
     seenPaths.add(artifact.path);
     if (artifact.kind !== 'result' && !artifact.path.startsWith(prefix)) {
-      throw new Error(`engineering support artifact ${artifact.path} is outside Pack prefix ${artifactPrefix}`);
+      throw new EngineeringDeliveryRejectedError(`engineering support artifact ${artifact.path} is outside Pack prefix ${artifactPrefix}`);
     }
     const source = p.join(taskDir, delivery.artifactRoot, artifact.path);
     const retained = await decidedDigest(identity.site, channel, source, `retained engineering artifact ${artifact.path}`);
-    if (retained.sha256 !== artifact.sha256) throw new Error(`retained engineering artifact ${artifact.path} digest changed`);
+    if (retained.sha256 !== artifact.sha256) throw new EngineeringDeliveryRejectedError(`retained engineering artifact ${artifact.path} digest changed`);
     const target = artifact.kind === 'result' ? resultTarget : p.join(identity.workspace, artifact.path);
     const decision = await decideWrite(identity.site, target, channel);
     if (!decision.ok) throw new Error(decision.reason);
     if (planned.some((item) => item.absPath === decision.absPath
       || item.absPath.startsWith(`${decision.absPath}/`) || decision.absPath.startsWith(`${item.absPath}/`))) {
-      throw new Error(`engineering artifacts collide at Campaign path ${decision.absPath}`);
+      throw new EngineeringDeliveryRejectedError(`engineering artifacts collide at Campaign path ${decision.absPath}`);
     }
     let needsWrite = true;
     if (artifact.kind !== 'result' && decision.exists) {
       const existing = await decidedDigest(identity.site, channel, decision.absPath, `existing engineering support artifact ${artifact.path}`);
       if (existing.sha256 !== artifact.sha256) {
-        throw new Error(`engineering support path ${decision.absPath} already contains different bytes; use a fresh revisioned artifact path`);
+        throw new EngineeringDeliveryRejectedError(`engineering support path ${decision.absPath} already contains different bytes; use a fresh revisioned artifact path`);
       }
       needsWrite = false;
     }

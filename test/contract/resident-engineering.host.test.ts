@@ -505,6 +505,8 @@ test('public Host keeps one resident task through start, message, Reader-verifie
     assert.equal(jobsOf(host, started.run.id).filter((record) => record.event === 'launched').length, 1);
     const taskId = engineering.data.taskId as string;
     const taskDir = path.join(workspace.workspace, '.hima-engineering', taskId);
+    const envelope = JSON.parse(await readFile(path.join(taskDir, 'task.json'), 'utf8'));
+    assert.equal(envelope.delivery.artifactPrefix, 'engineering', 'the executor must receive the Host-enforced support destination prefix');
     const other = await createRootAgent(host.ctx, fixture.h.workspace);
     const staleOwner = readToolResult(await publicCaller(host, other)({ run: started.run.id, action: 'engineering', requestId: 'wrong-owner-status',
       executionId, expectedEpoch: controlled().epoch, expectedRevision: controlled().revision, engineering: { operation: 'status' } }));
@@ -573,10 +575,30 @@ test('delivery preflight cannot overwrite Campaign authority outside the Pack ar
       executionId: task.executionId, expectedEpoch: task.controlled().epoch, expectedRevision: task.controlled().revision,
       engineering: { operation: 'delivery' } });
     assert.equal(answer.isError, false, JSON.stringify(answer));
+    const rejected = readToolResult(answer);
+    assert.equal((rejected.data ?? rejected.receipt?.data)?.status, 'rejected', 'a known pre-write validation failure is not an uncertain Campaign copy');
+    assert.equal(task.controlled().requests['outside-prefix-delivery'].state, 'done');
     assert.match(answer.content.filter((item) => item.type === 'text').map((item) => item.text).join(''), /outside Pack prefix engineering/);
     assert.equal(await readFile(protectedPath, 'utf8'), 'Campaign authority\n');
     await assert.rejects(readFile(path.join(task.workspace.workspace, 'engineering/result.json')), { code: 'ENOENT' },
       'complete manifest preflight occurs before the result output is written');
+  } finally {
+    await host.dispose(); await fixture.h.dispose();
+  }
+});
+
+test('resident status exposes the completed native public reply to its owner', async (t) => {
+  const fixture = await installResidentFixture(t);
+  const host = await bootInProcess(fixture.h);
+  try {
+    const owner = await createRootAgent(host.ctx, fixture.h.workspace);
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
+    await waitUntil('native public reply completed', async () => {
+      try { return JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8')).phase === 'waiting'; } catch { return false; }
+    }, 10_000, 20);
+    const status = await task.execute('read-native-reply', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
+    assert.equal(status.data.state.detail.reply?.text, 'done', 'phase/end_turn alone loses the reply that explains readiness or blockers');
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }
