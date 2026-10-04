@@ -1,0 +1,6 @@
+id: comparison-valid
+version: "0.1.0"
+title: The two arms of this round form a valid matched comparison
+requires: [{ type: comparison_valid }]
+subject: { type: comparison_valid }
+predicate: { op: eq, threshold: 1, unit: count }

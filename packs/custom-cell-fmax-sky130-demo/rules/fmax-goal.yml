@@ -1,0 +1,7 @@
+id: fmax-goal
+version: "0.1.0"
+title: The best matched Fmax gain reaches the Campaign target
+parameter: { name: target_fmax_gain_pct, unit: percent }
+requires: [{ type: best_gain_pct }]
+subject: { type: best_gain_pct }
+predicate: { op: gte, threshold: { parameter: target_fmax_gain_pct }, unit: percent }

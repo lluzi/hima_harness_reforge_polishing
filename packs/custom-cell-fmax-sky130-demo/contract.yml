@@ -1,0 +1,177 @@
+id: custom-cell-fmax-sky130-demo
+version: "0.1.0"
+title: Custom standard cells for a faster aes on open-source SKY130 (demo)
+status: development
+minimumHarnessVersion: 0.2.2
+
+ontology:
+  aliases:
+    roundRecipe: [round recipe, custom-cell round delivery, resident cell engineering result]
+
+budget:
+  timeBoxMs: 18000000
+  closingReserveMs: 900000
+  minimumGenerations: 1
+
+inputs:
+  - name: orfsRoot
+    description: Read-only OpenROAD-flow-scripts checkout holding the sky130hd platform and the aes design.
+  - name: celluziRoot
+    description: Read-only celluzi project, the source of the cell toolbox, the LibreCell venv and earlier cell results.
+  - name: designConfig
+    description: ORFS design config relative to the ORFS flow directory (designs/sky130hd/aes/config.mk).
+  - name: containerImage
+    description: Image id of the pinned IIC-OSIC-TOOLS image (Yosys, OpenROAD, OpenSTA, KLayout, Magic, Netgen).
+  - name: bool2cmosRoot
+    description: Read-only bool2cmos project (Boolean function to transistor SPICE).
+  - name: workspaceRoot
+    description: Campaign-private output root allowed by the Site Permit.
+
+outputs:
+  - name: inputsState
+    path: state/inputs.json
+    description: Bound tool, ORFS, design and image identities with SHA-256 of each source file.
+  - name: baselineState
+    path: state/baseline.json
+    reader: cellfmax-baseline
+    description: Stock sky130hd ORFS run of aes at the baseline clock, read from ORFS metric files.
+  - name: lessons
+    path: state/lessons.json
+    description: Every measured round so far, with its cells, adoption, matched gain, outcome and remaining top paths.
+  - name: best
+    path: state/best.json
+    description: The best cumulative custom-cell library so far (empty before the first improving round).
+  - name: roundRecipe
+    path: state/round-recipe.json
+    reader: cellfmax-recipe
+    description: >-
+      The resident engineer's round delivery (hima-cellfmax-round-recipe/1): clock, synthesis method,
+      cumulative custom library with per-file SHA-256, findings report, datasheets, usage guide and
+      the agent's own trial claim. Support files live under cells/r<k>/.
+  - name: armCustom
+    path: state/arm-custom.json
+    reader: cellfmax-arm
+    description: ORFS run with the round recipe, custom cells allowed.
+  - name: armControl
+    path: state/arm-control.json
+    reader: cellfmax-arm
+    description: ORFS run with the same recipe and the same merged library, custom cells in dont-use.
+  - name: roundRecord
+    path: state/round.json
+    reader: cellfmax-round
+    description: Deterministic comparison of the two arms of this round (hima-cellfmax-round/1).
+  - name: summary
+    path: derived/summary.md
+    description: Per-round matched Fmax, Harness gain next to the agent's claim, cells, lessons and the claim boundary.
+
+environment:
+  wrappers: [/usr/bin/python3]
+
+workspace:
+  source: pack
+  copy: [cellfmax_cli.py, orfs_arm.sh, top_paths.tcl, toolbox]
+
+tools:
+  - id: bind-inputs
+    file: flow/cellfmax_cli.py
+    description: >-
+      Verify the Site bindings (ORFS checkout and commit, aes config and SDC, sky130hd platform
+      Liberty and dont-use list, container image id, celluzi and bool2cmos roots, toolbox copies)
+      and write state/inputs.json with SHA-256 of each; create empty lessons and best files. Runs no EDA.
+    inputs: [WORKSPACE, ORFS_ROOT, CELLUZI_ROOT, DESIGN_CONFIG, CONTAINER_IMAGE, BOOL2CMOS_ROOT]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', bind, '${WORKSPACE}', '${ORFS_ROOT}', '${CELLUZI_ROOT}', '${DESIGN_CONFIG}', '${CONTAINER_IMAGE}', '${BOOL2CMOS_ROOT}']
+
+  - id: baseline
+    file: flow/cellfmax_cli.py
+    description: >-
+      Run the full ORFS flow (synthesis to finish) of aes with the stock sky130hd library at the
+      baseline clock in the pinned container, into runs/baseline/ of the Campaign; write
+      state/baseline.json from the ORFS metric files and the final routed netlist.
+    inputs: [WORKSPACE, PERIOD_NS, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', baseline, '${WORKSPACE}', '${PERIOD_NS}', '${TIMEOUT_MIN}']
+
+  - id: engineer
+    file: flow/cellfmax_cli.py
+    description: >-
+      Own one round of custom-cell work on aes/sky130hd. Read the baseline facts, lessons.json (every
+      earlier round's measured result, with adopted cells, gains, failures and remaining top paths)
+      and best.json (the best cumulative library so far). Find where the critical paths spend time;
+      propose up to 10 new cells that could shorten them (skewed or upsized variants, fused
+      single-output cells, multi-output cells for shared-input cones); build each one (bool2cmos
+      SPICE, LibreCell layout, DRC/LVS where possible, LEF normalised to sky130hd, modelled Liberty
+      with a stated physical reason for every derate); optionally remap critical windows with emap
+      (multi-output cells only enter this way); choose the clock period for this round (tighten it
+      when the last round met timing). Do your own discovery: write and run your own
+      OpenSTA/OpenROAD/Yosys/Python analysis, and run trial ORFS flows in your private workspace,
+      including your own with/without-custom-cell comparison (analyse first; at most two trial flows
+      at once, each with NUM_CORES=8; leave time in the round for HimaHarness's own measurement).
+      Write up what you found: findings.md, one datasheet per new cell, and usage-guide.md saying how
+      and where the cells should be used. Put your own trial comparison in agentClaim; HimaHarness
+      re-measures custom versus control independently and shows its number next to yours. Deliver one
+      hima-cellfmax-round-recipe/1 as the result with every support file under cells/r<k>/ (k is
+      the number of rounds in lessons.json plus one). Do not run the measured arms, change the Goal,
+      claim measured cell timing, invent metrics, or drop a cell from the best library.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', recipe, '${WORKSPACE}']
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, baselineState, lessons, best]
+      knowledge: [cell-playbook.md, toolbox.md, evidence-and-claims.md]
+      artifactPrefix: cells
+      produces: roundRecipe
+
+  - id: arm-custom
+    file: flow/cellfmax_cli.py
+    description: >-
+      Measured arm with custom cells allowed: ORFS of aes with the round recipe (merged Liberty,
+      custom LEF, round SDC, optional emap netlist) into runs/r<k>/custom/; write state/arm-custom.json.
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', arm, '${WORKSPACE}', custom, '${TIMEOUT_MIN}']
+
+  - id: arm-control
+    file: flow/cellfmax_cli.py
+    description: >-
+      Matched control arm: same recipe, same merged Liberty and LEF, every custom cell added to the
+      full platform dont-use list (and the stock emap netlist on emap rounds), into
+      runs/r<k>/control/; write state/arm-control.json.
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', arm, '${WORKSPACE}', control, '${TIMEOUT_MIN}']
+
+  - id: compare-round
+    file: flow/cellfmax_cli.py
+    description: >-
+      Deterministic round record from the two arm files: validity, matched gain, adoption,
+      improvement over the best so far; append lessons, update the best library on improvement,
+      write derived/round-<k>.md, cell images and derived/summary.md. Uses no model text as a fact.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', compare, '${WORKSPACE}']
+
+rules:
+  - baseline-valid
+  - arm-finished
+  - comparison-valid
+  - fmax-goal
+  - cells-adopted
+  - round-improved
+
+knowledge:
+  - file: cell-playbook.md
+    purpose: Measured lessons for custom cells on aes/sky130hd, matched arms, adoption, derates, multi-output windows and round planning.
+  - file: toolbox.md
+    purpose: Every cell, layout, timing-model, analysis and emap tool available to the engineer, with exact commands, inputs, outputs, run time and failure modes.
+  - file: evidence-and-claims.md
+    purpose: What is real, what is modelled and what is never claimed in this demo.
+
+goal:
+  target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 50, default: 5, precision: 2 }
+
+strategy:
+  baselinePeriodNs: { type: number, unit: ns, min: 2, max: 10, default: 3.6, precision: 3 }
+  armTimeoutMin: { type: number, unit: min, min: 10, max: 180, default: 60, precision: 0 }
+  engineeringRevision: { type: number, unit: count, min: 0, max: 1, default: 0, precision: 0 }
+
+words:
+  target_fmax_gain_pct: { label: matched Fmax gain over the stock control at least, unit: percent }
+  baselinePeriodNs: { label: baseline clock period, unit: ns }
+  armTimeoutMin: { label: time limit per ORFS run, unit: min }
+  engineeringRevision: { label: another engineering round requested (0 before the first), unit: count }

@@ -1,0 +1,6 @@
+id: cellfmax-baseline
+version: "0.1.0"
+file: tools/read-baseline.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-cellfmax-arm/1
+emits: [baseline_valid, baseline_fmax_mhz, baseline_wns_ns, baseline_drc]

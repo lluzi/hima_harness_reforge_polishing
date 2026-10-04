@@ -1,0 +1,6 @@
+id: baseline-valid
+version: "0.1.0"
+title: The stock baseline ORFS run finished with zero route DRC errors
+requires: [{ type: baseline_valid }]
+subject: { type: baseline_valid }
+predicate: { op: eq, threshold: 1, unit: count }

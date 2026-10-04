@@ -1,0 +1,5 @@
+* LVS reference for lclayout INV (sky130 devices). Ports match Magic extraction.
+.subckt INV GND VDD Y A
+XM1 Y A GND GND sky130_fd_pr__nfet_01v8 w=0.65 l=0.15
+XM0 Y A VDD VDD sky130_fd_pr__pfet_01v8 w=1.0 l=0.15
+.ends

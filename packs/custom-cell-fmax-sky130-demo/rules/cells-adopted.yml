@@ -1,0 +1,6 @@
+id: cells-adopted
+version: "0.1.0"
+title: The custom arm placed at least one custom cell
+requires: [{ type: custom_adopted }]
+subject: { type: custom_adopted }
+predicate: { op: gte, threshold: 1, unit: count }

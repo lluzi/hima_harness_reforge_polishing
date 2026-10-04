@@ -1,0 +1,6 @@
+id: cellfmax-round
+version: "0.1.0"
+file: tools/read-round.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-cellfmax-round/1
+emits: [comparison_valid, round_gain_pct, best_gain_pct, round_improved, custom_adopted, best_custom_fmax_mhz, fmax_vs_original_baseline_pct, function_verified, agent_claim_gain_pct, claim_delta_pct, control_matches_baseline]

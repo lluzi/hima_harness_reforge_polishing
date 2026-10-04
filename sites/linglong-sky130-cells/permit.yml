@@ -1,0 +1,21 @@
+allowedReadRoots:
+  - /data/eda/project/celluzi
+  - /data/eda/project/bool2cmos
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v2
+  - /data/eda/project/hima_harness/operator-admin/cellfmax-toolbox
+  - /data/eda/project/hima_harness/cellfmax-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/cellfmax-runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v2/resident-engineering-wrapper.py
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

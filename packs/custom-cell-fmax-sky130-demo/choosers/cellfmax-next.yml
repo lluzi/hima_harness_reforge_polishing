@@ -1,0 +1,17 @@
+# Changes only the round counter. It cannot change the Goal, an arm or a measured fact. The owner
+# cites the current comparison and goal verdicts when it asks for another round.
+id: cellfmax-next
+version: "0.1.0"
+title: End at the Goal, stop when two rounds add nothing, else run another engineering round
+parameter: { name: roundStep, unit: count }
+reads:
+  bestCustomFmax: { type: best_custom_fmax_mhz, unit: mhz }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS, goal: FAIL }
+    next: { engineeringRevision: roundStep }
+  - when: { constraint: FAIL }
+    next: { engineeringRevision: roundStep }
+  - when: { constraint: UNDETERMINED }
+    next: { engineeringRevision: roundStep }

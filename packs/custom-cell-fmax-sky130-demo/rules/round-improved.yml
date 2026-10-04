@@ -1,0 +1,6 @@
+id: round-improved
+version: "0.1.0"
+title: This round beat the best custom Fmax so far with a positive matched gain
+requires: [{ type: round_improved }]
+subject: { type: round_improved }
+predicate: { op: eq, threshold: 1, unit: count }

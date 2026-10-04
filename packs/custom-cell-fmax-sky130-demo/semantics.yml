@@ -1,0 +1,70 @@
+values:
+  baseline_valid:
+    unit: count
+    description: "One when the stock baseline ORFS run finished with zero route DRC errors."
+  baseline_fmax_mhz:
+    unit: mhz
+    description: "Stock baseline Fmax, 1000 / (period - worst setup slack) at finish."
+  baseline_wns_ns:
+    unit: ns
+    description: "Stock baseline worst setup slack at finish (negative when violated)."
+  baseline_drc:
+    unit: count
+    description: "Detailed-route DRC errors of the stock baseline."
+  recipe_valid:
+    unit: count
+    description: "One when the engineer's round recipe passed every deterministic check."
+  recipe_new_cells:
+    unit: count
+    description: "Number of cells first built in this round."
+  recipe_period_ns:
+    unit: ns
+    description: "Clock period the engineer chose for this round."
+  arm_finished:
+    unit: count
+    description: "One when this ORFS arm finished and its metrics, netlist and reports were read."
+  arm_fmax_mhz:
+    unit: mhz
+    description: "Arm Fmax, 1000 / (period - worst setup slack) at finish."
+  arm_route_drc:
+    unit: count
+    description: "Detailed-route DRC errors of this arm."
+  arm_custom_instances:
+    unit: count
+    description: "Custom-cell instances in this arm's final routed netlist."
+  arm_forbidden_instances:
+    unit: count
+    description: "lpflow or probe instances in this arm's final routed netlist."
+  comparison_valid:
+    unit: count
+    description: "One when both arms finished at the recipe period with the same recipe, zero DRC, no forbidden cells and no custom cell in the control."
+  round_gain_pct:
+    unit: percent
+    description: "100 x (custom-arm Fmax / control-arm Fmax - 1) for this round."
+  best_gain_pct:
+    unit: percent
+    description: "Largest matched round gain over the valid rounds so far."
+  round_improved:
+    unit: count
+    description: "One when the round is valid, its gain is positive and its custom Fmax is above the best custom Fmax so far."
+  custom_adopted:
+    unit: count
+    description: "Custom-cell instances in the custom arm's final routed netlist."
+  best_custom_fmax_mhz:
+    unit: mhz
+    description: "Best custom-arm Fmax of an improving round so far, or the stock baseline Fmax before one."
+  fmax_vs_original_baseline_pct:
+    unit: percent
+    description: "Informational. Custom-arm Fmax against the stock baseline at the baseline clock."
+  function_verified:
+    unit: count
+    description: "Informational. One when the arms were synthesised from RTL, or the remapped window has a passing equivalence log."
+  agent_claim_gain_pct:
+    unit: percent
+    description: "Informational. The engineer's own trial gain, never a result."
+  claim_delta_pct:
+    unit: percent
+    description: "Informational. The engineer's claimed gain minus the HimaHarness round gain."
+  control_matches_baseline:
+    unit: count
+    description: "Informational. One when the control arm reproduced the stock baseline exactly (same clock, orfs-abc)."

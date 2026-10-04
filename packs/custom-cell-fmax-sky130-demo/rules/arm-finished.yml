@@ -1,0 +1,6 @@
+id: arm-finished
+version: "0.1.0"
+title: The measured ORFS arm finished and its metrics were read
+requires: [{ type: arm_finished }]
+subject: { type: arm_finished }
+predicate: { op: eq, threshold: 1, unit: count }

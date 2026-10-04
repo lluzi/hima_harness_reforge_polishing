@@ -1,0 +1,6 @@
+id: cellfmax-arm
+version: "0.1.0"
+file: tools/read-arm.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-cellfmax-arm/1
+emits: [arm_finished, arm_fmax_mhz, arm_route_drc, arm_custom_instances, arm_forbidden_instances]

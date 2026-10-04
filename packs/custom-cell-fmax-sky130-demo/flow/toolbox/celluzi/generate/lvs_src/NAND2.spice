@@ -1,0 +1,7 @@
+* LVS reference for lclayout NAND2 (sky130 devices). Y = !(A & B).
+.subckt NAND2 GND VDD B A
+XMPA Y A VDD VDD sky130_fd_pr__pfet_01v8 w=0.84 l=0.15
+XMPB Y B VDD VDD sky130_fd_pr__pfet_01v8 w=0.84 l=0.15
+XMNA Y A N1 GND sky130_fd_pr__nfet_01v8 w=0.65 l=0.15
+XMNB N1 B GND GND sky130_fd_pr__nfet_01v8 w=0.65 l=0.15
+.ends

@@ -1,0 +1,270 @@
+{
+  "schema": "hima-cellfmax-toolbox-sources/1",
+  "note": "Verbatim copies from the read-only celluzi project; source paths are relative to the Site binding celluziRoot. Scripts that name /foss/designs/celluzi assume the celluzi container mount; see knowledge/toolbox.md.",
+  "files": [
+    {
+      "path": "toolbox/celluzi/detect/__init__.py",
+      "root": "celluzi",
+      "source": "detect/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "toolbox/celluzi/detect/dump_paths.tcl",
+      "root": "celluzi",
+      "source": "detect/dump_paths.tcl",
+      "sha256": "5f0cd7b1cad4c0fe1f0ca66ca34b2f8dd95a763049085fe60b762b57923c90db"
+    },
+    {
+      "path": "toolbox/celluzi/detect/fusion_upside.tcl",
+      "root": "celluzi",
+      "source": "detect/fusion_upside.tcl",
+      "sha256": "6be952d78b501d9713cd33c6cf8464e41b7c331221ea228c62539b1aea5aaf7f"
+    },
+    {
+      "path": "toolbox/celluzi/detect/fusion_upside_score.py",
+      "root": "celluzi",
+      "source": "detect/fusion_upside_score.py",
+      "sha256": "2a6132cc4a1a38f4b4d986d0bb73172fec99dba6462004270371f06a0ea2d11d"
+    },
+    {
+      "path": "toolbox/celluzi/detect/interface.py",
+      "root": "celluzi",
+      "source": "detect/interface.py",
+      "sha256": "b8aec2ec7a2c9f08e8b69720979ab448c36a91c241e03a8a64b9ae2af1004b98"
+    },
+    {
+      "path": "toolbox/celluzi/detect/methods/__init__.py",
+      "root": "celluzi",
+      "source": "detect/methods/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "toolbox/celluzi/detect/methods/critpath.py",
+      "root": "celluzi",
+      "source": "detect/methods/critpath.py",
+      "sha256": "e9d5dd5491af3518790ddc40e3e70e9e9b0d5ad86fa91d327bc8ed68d01b6593"
+    },
+    {
+      "path": "toolbox/celluzi/detect/probe_substrate.sh",
+      "root": "celluzi",
+      "source": "detect/probe_substrate.sh",
+      "sha256": "791ac896d920ee13130285e717427c9172be99a84f41c743976a2d361d539fc9"
+    },
+    {
+      "path": "toolbox/celluzi/detect/run_critpath.py",
+      "root": "celluzi",
+      "source": "detect/run_critpath.py",
+      "sha256": "9463f4942d2903ff76e3506a459b15037c579206b29c098033eb6a665db6639c"
+    },
+    {
+      "path": "toolbox/celluzi/detect/sta_paths.tcl",
+      "root": "celluzi",
+      "source": "detect/sta_paths.tcl",
+      "sha256": "b38b06ba9b3ab7ffc3dc3eded8901c457adcca6224093bf94b414fce3420a75a"
+    },
+    {
+      "path": "toolbox/celluzi/generate/extract_cell.sh",
+      "root": "celluzi",
+      "source": "generate/extract_cell.sh",
+      "sha256": "5f4ba33bf1ec5c528d12acef79b18dda4fa13e7b9293e89407dc9e07a45d25a9"
+    },
+    {
+      "path": "toolbox/celluzi/generate/extract_pipeline.sh",
+      "root": "celluzi",
+      "source": "generate/extract_pipeline.sh",
+      "sha256": "2f94f9a39ef6c7a4c18187b150250894debb6e8404d20181d8895ac6e591f54b"
+    },
+    {
+      "path": "toolbox/celluzi/generate/fix_extracted_subckt.py",
+      "root": "celluzi",
+      "source": "generate/fix_extracted_subckt.py",
+      "sha256": "72077c0fbdaedf873a05ad24033687b6cdde0b2ea1617f4fdd1518746307973c"
+    },
+    {
+      "path": "toolbox/celluzi/generate/gds_layers.py",
+      "root": "celluzi",
+      "source": "generate/gds_layers.py",
+      "sha256": "7405fae0947c7bde1c958ff7fc944e2f19e2d4feea1d35c481ae49ed521581fc"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_MUX2I_XNOR2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_MUX2I_XNOR2.sp",
+      "sha256": "8fd4ee6a7a97fb0efcb811c108d8846e5c027916e07766bbd45960299f618f37"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_MUX2I_XOR2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_MUX2I_XOR2.sp",
+      "sha256": "6376507604e6939145109b4a251652f7e5594743c5834aed1ecb7a91d86d233c"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_O22AI_XNOR2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_O22AI_XNOR2.sp",
+      "sha256": "4bef97c0e30af2e1e45e04bd9ca441b1abd87ee4bbff3e9d32cf8a9805c9699f"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XNOR2_NAND2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XNOR2_NAND2.sp",
+      "sha256": "d6b1781733d1bdc23ff5f4ac61aba0906b0af6ef4b4940efaabf9031e5fd8546"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XNOR2_XNOR3.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XNOR2_XNOR3.sp",
+      "sha256": "5e2bb8ad8f2529b0673ec9698aba23b56bc76ffccf329add92c21655c8069df6"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XNOR3_MUX2I.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XNOR3_MUX2I.sp",
+      "sha256": "04b072d4421b946b6340a36927d35992ac4d5a12518d9983db9a8cd45ba38cdd"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XNOR3_XNOR3.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XNOR3_XNOR3.sp",
+      "sha256": "14ab6bf88f2d4ef318ca8b814e3d4b2035561329fcfe019c1717fdf332e8149a"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XOR2_NAND2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XOR2_NAND2.sp",
+      "sha256": "30f165db3d29b01787933abea55e6488b512e5b405249bd1d7d958732a844000"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/FUSE_XOR2_NOR2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/FUSE_XOR2_NOR2.sp",
+      "sha256": "41f45a8bbe41d9b1c8405a802f4be57e1639a94013b6500238bda72f910989b6"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/INV2X.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/INV2X.sp",
+      "sha256": "e1ac5708a9c11c388cad8f840dd2527c2cf4e2e7cc6d0c5087c2fb572fe101c5"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lclayout_cells/NOR3_PU2.sp",
+      "root": "celluzi",
+      "source": "generate/lclayout_cells/NOR3_PU2.sp",
+      "sha256": "9e256a9ad5af489771feab42c2f363f44013f7838a672e57c7ce6b3805f7ef58"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_ref/FUSE_O22AI_XNOR2.foundry.sp",
+      "root": "celluzi",
+      "source": "generate/lvs_ref/FUSE_O22AI_XNOR2.foundry.sp",
+      "sha256": "c109c39d40dcaf47f5acd5c5927c6b919f381174b435069519b2807dc212f6a6"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_ref/FUSE_O22AI_XNOR2.sp",
+      "root": "celluzi",
+      "source": "generate/lvs_ref/FUSE_O22AI_XNOR2.sp",
+      "sha256": "42dc824cf14ff87b740b2b914e66723741dfdfa4978dad212b4b81f1fec7f959"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_ref/FUSE_O22AI_XNOR2_fref.sp",
+      "root": "celluzi",
+      "source": "generate/lvs_ref/FUSE_O22AI_XNOR2_fref.sp",
+      "sha256": "c109c39d40dcaf47f5acd5c5927c6b919f381174b435069519b2807dc212f6a6"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_ref/FUSE_XOR2_NAND2.sp",
+      "root": "celluzi",
+      "source": "generate/lvs_ref/FUSE_XOR2_NAND2.sp",
+      "sha256": "191875088c1e74958a58a29007de765d658cf39871b98ddfeda028e6b8f42e96"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_ref/NOR3_PU2.sp",
+      "root": "celluzi",
+      "source": "generate/lvs_ref/NOR3_PU2.sp",
+      "sha256": "b495f8ea825b4bcefe8b7d456c045e4ec75b3976c328805a646af9bb9685668e"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_src/INV.spice",
+      "root": "celluzi",
+      "source": "generate/lvs_src/INV.spice",
+      "sha256": "e6a89a3012a6f9a9722ce3bf899945bffd9d9fed817f060dbfef92a64cc55091"
+    },
+    {
+      "path": "toolbox/celluzi/generate/lvs_src/NAND2.spice",
+      "root": "celluzi",
+      "source": "generate/lvs_src/NAND2.spice",
+      "sha256": "fd07c97e73be2f0a48a3b7f143d907747703bce4d6ad5a575fcf6422afacd79b"
+    },
+    {
+      "path": "toolbox/celluzi/generate/run_drc_cell.sh",
+      "root": "celluzi",
+      "source": "generate/run_drc_cell.sh",
+      "sha256": "7bdd07be31b1bd13447f2ecc575e1cb14e6dc194e7df1c24160856807d5a7188"
+    },
+    {
+      "path": "toolbox/celluzi/generate/run_lclayout.sh",
+      "root": "celluzi",
+      "source": "generate/run_lclayout.sh",
+      "sha256": "7a2eb3388590d954c90890300abe6104ebc84ca01a6da30927196a5f4903222e"
+    },
+    {
+      "path": "toolbox/celluzi/generate/run_lvs.sh",
+      "root": "celluzi",
+      "source": "generate/run_lvs.sh",
+      "sha256": "6793791728c31acc364b20aaf3cf6bd002f391cea017b4cee60ec665de26c39f"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/collect_metrics.py",
+      "root": "celluzi",
+      "source": "scripts/collect_metrics.py",
+      "sha256": "2e7b7345f636aeee3810b633b7e4ad9430025792a366cce46d296349c607f712"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/compose_netlist.py",
+      "root": "celluzi",
+      "source": "scripts/compose_netlist.py",
+      "sha256": "a8cf63d81dff96106678625c210db401dab23a22b60048f0a5beeadc53348c2d"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/estimate_lib.py",
+      "root": "celluzi",
+      "source": "scripts/estimate_lib.py",
+      "sha256": "9b2f7b690205cb7df4b5162a1a17fc5020dd4bf591cd59bdacb521cf592c7e17"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/fix_lef_obs.py",
+      "root": "celluzi",
+      "source": "scripts/fix_lef_obs.py",
+      "sha256": "fca3eee921a7b0d504bf7a014b7c786b62a1dc2b91d21a5096f583c3a09cbcde"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/fix_lef_sky130hd.py",
+      "root": "celluzi",
+      "source": "scripts/fix_lef_sky130hd.py",
+      "sha256": "e5f935897583f92a9bdc9f74b0ace3d07addbef396b399d7e7cb62b7fc31f559"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/librecell_sky130_tech.py",
+      "root": "celluzi",
+      "source": "scripts/librecell_sky130_tech.py",
+      "sha256": "2444c71e37734b7bfb49f11112374b7a109ed52447237f563a9019f5e13d4231"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/merge_lib.py",
+      "root": "celluzi",
+      "source": "scripts/merge_lib.py",
+      "sha256": "5831b98be1986ca6fffffe4963d8792d255b3bb3181372794178dd48424150e5"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/model_fused_cell.py",
+      "root": "celluzi",
+      "source": "scripts/model_fused_cell.py",
+      "sha256": "69296d5d9c34c0a52b0c1cb9f192f5b1b7ca5474778bf832a53b4f729e969ace"
+    },
+    {
+      "path": "toolbox/celluzi/scripts/skew_lib.py",
+      "root": "celluzi",
+      "source": "scripts/skew_lib.py",
+      "sha256": "c121bfd22de6790f80a81b9f0cb1404fb11322d74104ce50f92b804d8bbb0742"
+    }
+  ]
+}

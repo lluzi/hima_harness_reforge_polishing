@@ -1,0 +1,21 @@
+name: linglong-sky130-cells
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/cellfmax-runs
+permit: ./permit.yml
+bindings:
+  orfsRoot: /data/eda/project/celluzi/OpenROAD-flow-scripts
+  celluziRoot: /data/eda/project/celluzi
+  designConfig: designs/sky130hd/aes/config.mk
+  containerImage: c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667
+  bool2cmosRoot: /data/eda/project/bool2cmos
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v2/engineering-capabilities-sky130.json
+  workspaceRoot: /data/eda/project/hima_harness/cellfmax-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 24
+  memoryGiB: 64
+  parallelJobs: 3
+  licences: {}

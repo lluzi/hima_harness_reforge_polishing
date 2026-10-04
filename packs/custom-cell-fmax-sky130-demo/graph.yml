@@ -1,0 +1,118 @@
+# Baseline once, then rounds of: resident engineer -> two matched ORFS arms in parallel -> compare ->
+# Reader -> judges -> next round. The owner starts and collects each engineering task and decides
+# next-round; everything between is self-driving. The round record is read twice: once for the
+# adoption/improvement verdicts (check-round) and once, fresh, for the constraint/Goal judge that
+# the next-round chooser weighs (an explore node needs exactly one judge after a fresh reading).
+id: custom-cell-fmax-sky130-demo
+version: "0.1.0"
+entry: bind-inputs
+autopilot:
+  - { from: [bind-inputs], until: [engineer, blocked] }
+  - { fork: engineer }
+  - { from: [arms-joined], until: [next-round, blocked] }
+
+nodes:
+  - id: bind-inputs
+    kind: act
+    parameters:
+      tool: bind-inputs
+      arguments:
+        ORFS_ROOT: { from: input, name: orfsRoot }
+        CELLUZI_ROOT: { from: input, name: celluziRoot }
+        DESIGN_CONFIG: { from: input, name: designConfig }
+        CONTAINER_IMAGE: { from: input, name: containerImage }
+        BOOL2CMOS_ROOT: { from: input, name: bool2cmosRoot }
+  - id: baseline
+    kind: act
+    parameters:
+      tool: baseline
+      arguments:
+        PERIOD_NS: { from: strategy, name: baselinePeriodNs }
+        TIMEOUT_MIN: { from: strategy, name: armTimeoutMin }
+  - id: read-baseline
+    kind: act
+    parameters: { observes: baselineState }
+  - id: check-baseline
+    kind: judge
+    parameters: { rules: [baseline-valid] }
+  - id: engineer
+    kind: act
+    parameters:
+      tool: engineer
+  - id: arm-custom
+    kind: act
+    parameters:
+      tool: arm-custom
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: armTimeoutMin }
+  - id: read-arm-custom
+    kind: act
+    parameters: { observes: armCustom }
+  - id: arm-control
+    kind: act
+    parameters:
+      tool: arm-control
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: armTimeoutMin }
+  - id: read-arm-control
+    kind: act
+    parameters: { observes: armControl }
+  - id: arms-joined
+    kind: judge
+    parameters: { rules: [arm-finished] }
+  - id: compare-round
+    kind: act
+    parameters:
+      tool: compare-round
+  - id: read-round
+    kind: act
+    parameters: { observes: roundRecord }
+  - id: check-round
+    kind: judge
+    parameters: { rules: [cells-adopted, round-improved] }
+  - id: read-round-goal
+    kind: act
+    parameters: { observes: roundRecord }
+  - id: judge-round
+    kind: judge
+    parameters:
+      rules: [comparison-valid, fmax-goal]
+      bind:
+        target_fmax_gain_pct: { from: goal, name: target_fmax_gain_pct }
+  - id: next-round
+    kind: explore
+    parameters:
+      chooser: cellfmax-next
+      bind: { roundStep: 1 }
+      converge: { read: bestCustomFmax, band: 0.001, generations: 2, generationLimit: 4 }
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: bind-inputs, to: baseline }
+  - { from: baseline, to: read-baseline }
+  - { from: read-baseline, to: check-baseline }
+  - { from: check-baseline, to: engineer, outcome: PASS }
+  - { from: check-baseline, to: blocked, outcome: FAIL }
+  - { from: check-baseline, to: blocked, outcome: UNDETERMINED }
+  - { from: engineer, to: arm-custom }
+  - { from: engineer, to: arm-control }
+  - { from: arm-custom, to: read-arm-custom }
+  - { from: arm-control, to: read-arm-control }
+  - { from: read-arm-custom, to: arms-joined }
+  - { from: read-arm-control, to: arms-joined }
+  - { from: arms-joined, to: compare-round, outcome: PASS }
+  - { from: arms-joined, to: compare-round, outcome: FAIL }
+  - { from: arms-joined, to: compare-round, outcome: UNDETERMINED }
+  - { from: compare-round, to: read-round }
+  - { from: read-round, to: check-round }
+  - { from: check-round, to: read-round-goal, outcome: PASS }
+  - { from: check-round, to: read-round-goal, outcome: FAIL }
+  - { from: check-round, to: read-round-goal, outcome: UNDETERMINED }
+  - { from: read-round-goal, to: judge-round }
+  - { from: judge-round, to: next-round, outcome: PASS }
+  - { from: judge-round, to: next-round, outcome: FAIL }
+  - { from: judge-round, to: next-round, outcome: UNDETERMINED }
+  - { from: next-round, to: engineer, revisit: true }
+loops: {}

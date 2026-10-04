@@ -1,0 +1,6 @@
+id: cellfmax-recipe
+version: "0.1.0"
+file: tools/read-recipe.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-cellfmax-round-recipe/1
+emits: [recipe_valid, recipe_new_cells, recipe_period_ns]
