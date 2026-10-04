@@ -140,6 +140,9 @@ export const HIMA_STYLE = `
 .hima-identity-list{max-height:180px;overflow:auto;margin:0;padding-left:20px;font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow)}
 .hima-report-selector{display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:end;gap:var(--hima-sp-2);width:min(720px,100%)}
 @media(max-width:720px){.hima-feedback-coverage{grid-template-columns:1fr}.hima-feedback-coverage>h3{grid-column:auto}.hima-report-selector{grid-template-columns:1fr}}
+.hima-insight-analyse{align-self:stretch;display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-2);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-soft)}
+.hima-insight-analyse>label{display:grid;gap:var(--hima-sp-1);font-size:var(--hima-fs-label);max-width:520px;width:min(520px,100%)}
+.hima-insight-analyse input,.hima-insight-analyse select{min-width:0;padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);color:var(--hima-ink);background:var(--hima-paper)}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
    Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at

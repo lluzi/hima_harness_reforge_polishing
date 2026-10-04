@@ -136,7 +136,7 @@ test('Guide keeps its conversation while Campaign and Data Insight remain peer m
     const initial = await d.read('studio'); assert.ok(initial.ok);
     const guide = initial.state.session;
     assert.ok((await d.click('studio-mode-insight')).ok);
-    assert.ok((await d.wait('studio', 'Data Insight', 5000)).ok);
+    assert.ok((await d.wait('studio', 'QuaLib Insight', 5000)).ok);
     const insight = await d.read('studio'); assert.ok(insight.ok);
     assert.equal(insight.state.mode, 'insight');
     const before = await (await api(host, cookie, `/hima/api/runs?sessionId=${guide}`)).json() as { runs: unknown[] };

@@ -16,6 +16,7 @@ import { HIMA_STYLE } from './workbench-style.js';
 import { runIdForWorkbenchAddress, workbenchAddressKey, workbenchAddressOf, type WorkbenchAddress } from './workbench-address.js';
 import { ChildSessionPanel } from './ChildSessionPanel.js';
 import { InsightView, type AvailableInsightReport } from './InsightView.js';
+import { useHimaT } from './locale/index.js';
 import { TeamPanel } from './TeamPanel.js';
 import { WorkMemoryPanel } from './WorkMemoryPanel.js';
 import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbench-state.js';
@@ -67,6 +68,7 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
 }
 
 export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder }: WorkbenchProps): ReactElement {
+  const t = useHimaT();
   const activeSessionId = useSessions((state) => state.current) ?? sessionId;
   const { tab } = useTabInfo();
   const requestedAddress = workbenchAddressOf(tab.navigation.params);
@@ -183,8 +185,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         replaced with an icon-only control that text could not still match. */}
     <header className='hima-studio-header'>
       <div className='hima-studio-modes' role='tablist' aria-label='Hima work mode'>
-        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>Campaign</button>
-        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>Data Insight</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>{t('workbench.mode.campaign')}</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>{t('workbench.mode.insight')}</button>
       </div>
       {address.kind !== 'campaign' ? null : <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
         <option value=''>Select a Campaign</option>
@@ -215,7 +217,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'insight'
-        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} />
+        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} pickFolder={pickFolder} openRun={runId => chooseCampaign({ kind: 'campaign', runId })} />
         : address.kind === 'child'
           ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined
