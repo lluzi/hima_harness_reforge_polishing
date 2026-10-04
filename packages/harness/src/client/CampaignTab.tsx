@@ -15,7 +15,7 @@ import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
-  MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
+  TaskSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
 import { shortTime } from './time.js';
@@ -67,13 +67,14 @@ function useReducedMotion(): boolean {
 function EvidenceView({ view }: { view: RunView }): ReactElement {
   const hasMaterial = view.code.length > 0 || view.knowledge.length > 0;
   const hasGrowth = view.generations.some((generation) => (generation.growths ?? []).length > 0);
-  const empty = !hasMaterial && view.archive === undefined && view.workshop === undefined && !hasGrowth
+  const empty = !view.tasks?.length && !hasMaterial && view.archive === undefined && view.workshop === undefined && !hasGrowth
     && (view.revisions ?? []).length === 0 && view.observations.length === 0 && view.verdicts.length === 0
     && (view.decision === null || view.decision === undefined) && view.blockers.length === 0
     && view.refusals.length === 0 && view.cancels.length === 0;
   if (empty) return <div className="hima-detail hima-evidence"><p>No verified evidence has been recorded for this Campaign yet.</p></div>;
   return (
     <div className="hima-detail hima-evidence">
+      <TaskSection view={view} />
       <MaterialSection view={view} />
       <ArchiveSection view={view} />
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}

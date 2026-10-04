@@ -10,6 +10,14 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       CREATE SCHEMA IF NOT EXISTS hima;
       CREATE TABLE IF NOT EXISTS hima.schema_version(version integer PRIMARY KEY);
       INSERT INTO hima.schema_version VALUES (1) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS hima.host_exit (
+        singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), active_request text);
+      INSERT INTO hima.host_exit(singleton) VALUES(true) ON CONFLICT DO NOTHING;
+      CREATE TABLE IF NOT EXISTS hima.host_exit_requests (
+        request_id text PRIMARY KEY, mode text NOT NULL, released_at timestamptz,
+        accepted_at timestamptz NOT NULL DEFAULT clock_timestamp());
+      ALTER TABLE hima.host_exit ADD COLUMN IF NOT EXISTS finalizing boolean NOT NULL DEFAULT false;
+      ALTER TABLE hima.host_exit_requests ADD COLUMN IF NOT EXISTS replaces_request text;
       CREATE TABLE IF NOT EXISTS hima.runs (
         run_id text PRIMARY KEY, engine text NOT NULL DEFAULT 'dbos/5.2.11', schema_version integer NOT NULL DEFAULT 1, input_sha256 text NOT NULL, application_version text NOT NULL,
         opening jsonb NOT NULL, owner text NOT NULL, deadline_at timestamptz NOT NULL,
@@ -23,6 +31,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       CREATE TABLE IF NOT EXISTS hima.effects (
         effect_id text PRIMARY KEY, run_id text NOT NULL REFERENCES hima.runs, input_sha256 text NOT NULL,
         identity jsonb NOT NULL, intent jsonb NOT NULL, phase text NOT NULL DEFAULT 'intent', fact jsonb);
+      ALTER TABLE hima.effects ADD COLUMN IF NOT EXISTS admitted_at timestamptz;
       CREATE TABLE IF NOT EXISTS hima.effect_facts (
         effect_id text NOT NULL REFERENCES hima.effects, phase text NOT NULL, fact jsonb NOT NULL,
         PRIMARY KEY(effect_id,phase));

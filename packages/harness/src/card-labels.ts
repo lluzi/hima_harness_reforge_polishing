@@ -1634,3 +1634,50 @@ export const experienceMarkdownHref = (runId: string): string => experienceMarkd
 export function experienceState(experience: ExperienceView): Readonly<Record<string, string>> {
   return { source: 'ledger-preview', 'recorded-file-sha256': experience.markdown.sha256, sha256: experience.markdown.sha256, 'written-at': experience.writtenAt };
 }
+
+/** Explicit durable Goal and physical stop facts take precedence over legacy status spelling. */
+export function runStatusSaid(run: RunHeadView): StateLabel | undefined {
+  if (run.goalState !== undefined) {
+    const ended = run.status?.startsWith('ended-') || run.status === 'cancelled';
+    return { said: `${run.status==='cancelled'?'cancelled':ended?'ended':run.status??'pending'} · Goal ${run.goalState === 'met' ? 'met' : run.goalState === 'not-met' ? 'not met' : 'unknown'}`,
+      colour: run.goalState === 'met' ? good : run.goalState === 'not-met' ? bad : warn };
+  }
+  return run.status === undefined ? undefined : labelled(runStatusLabel, run.status);
+}
+
+export function runCanControl(run: RunHeadView, action: 'continue' | 'cancel' = 'continue'): boolean {
+  return (run.status === 'running' || run.status === 'waiting') && run.stopState?.state !== 'closed'
+    && (action === 'cancel' || run.deadlineAt === undefined || Date.parse(run.deadlineAt) > Date.now());
+}
+
+/** A late network response must never replace a more recent authoritative snapshot. */
+export function runSnapshotOlder(incoming: Pick<RunView, 'run'>, current: Pick<RunView, 'run'>): boolean {
+  if (incoming.run.id !== current.run.id) return true;
+  const a = incoming.run, b = current.run;
+  return (a.sourceRevision !== undefined && b.sourceRevision !== undefined && a.sourceRevision < b.sourceRevision)
+    || (a.control !== undefined && b.control !== undefined && (a.control.epoch < b.control.epoch
+      || (a.control.epoch === b.control.epoch && a.control.revision < b.control.revision)));
+}
+
+/** Only the explicit human-response wait exposes an editor; other waits remain observational. */
+export function taskCanRespond(task: import('./remote.js').DurableTaskView, run: RunHeadView): boolean {
+  return task.current !== false && !task.result && !task.retainedResult && task.projection.state === 'waiting'
+    && (task.tool==='builtin/human-wait'||task.projection.reason.code==='human-response')
+    && task.identity !== undefined && task.contract !== undefined && runCanControl(run)
+    && !run.control?.paused.some(scope=>scope==='*'||scope===task.taskId);
+}
+
+/** A reference node can have several retained loop/revision invocations. Show current unfinished
+ * work before completed history; each invocation remains individually inspectable. */
+export function taskStateForNode(tasks:readonly import('./remote.js').DurableTaskView[]|undefined,nodeId:string):import('./task-contract.js').TaskProjectionState|undefined {
+  const current=(tasks??[]).filter(task=>task.taskId===nodeId&&task.current!==false&&task.rootFlow!==false);
+  const compare=(a:typeof current[number],b:typeof current[number])=>{
+    const left=a.iterations??[],right=b.iterations??[];
+    if(left.length!==right.length||left.some((step,index)=>step.repeatId!==right[index]?.repeatId))return 0;
+    for(let i=0;i<left.length;i++){const delta=left[i]!.iteration-right[i]!.iteration;if(delta)return delta;}
+    return 0;
+  };
+  const latest=current.reduce<typeof current[number]|undefined>((chosen,task)=>!chosen||compare(task,chosen)>0?task:chosen,undefined);
+  const visible=latest?current.filter(task=>compare(task,latest)===0):[];
+  return (['failed','waiting','running','pending','cancelled','succeeded'] as const).find(state=>visible.some(task=>task.projection.state===state));
+}

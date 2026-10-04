@@ -699,6 +699,7 @@ async function showFailure(win: BrowserWindow, heading: string, lead: string, sa
     `${APP_NAME} — ${heading.toLowerCase()}`,
     `<h1>${escapeHtml(heading)}</h1><p>${escapeHtml(lead)}</p><pre>${escapeHtml(said)}</pre>`,
   ));
+  if (!win.isDestroyed()) win.showInactive();
 }
 
 /** The tail of what a process said, which is the part that explains why it stopped. */
@@ -745,13 +746,14 @@ let exitPending = false;
 let requestedExitMode: 'drain'|'keep-jobs'|'stop-jobs' = 'drain';
 let cancelExitRequested=false;
 
-async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string}):Promise<{ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]}> {
+type NativeExitStatus={requestId?:string;mode?:typeof requestedExitMode;finalized?:boolean;ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]};
+async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string;expectedRequestId?:string}):Promise<NativeExitStatus> {
   if(!host)return {ready:true,runs:[],agents:[]};
   let cookies=await win.webContents.session.cookies.get({url:host.origin});
   let cookie=cookies.filter(c=>c.name.startsWith(HOST_COOKIE_PREFIX)).map(c=>`${c.name}=${c.value}`).join('; ');
   if(!cookie){const opened=await fetch(host.url,{redirect:'manual',signal:AbortSignal.timeout(5000)});cookie=opened.headers.get('set-cookie')?.split(';')[0]??'';}
-  const response=await fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',headers:{cookie,'content-type':'application/json','x-hima-desktop-control':desktopExitToken},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20_000)});
-  const answer=await response.json() as {ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[];error?:{message:string}};
+  const response=await fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',redirect:'error',headers:{cookie,'content-type':'application/json','x-hima-desktop-control':desktopExitToken},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20_000)});
+  const answer=await response.json() as NativeExitStatus&{error?:{message:string}};
   if(!response.ok)throw new Error(answer.error?.message??`Exit status HTTP ${response.status}`);
   return answer;
 }
@@ -767,22 +769,39 @@ async function finishAppExit():Promise<void> {
       quitting=true;await stopHost();app.quit();return;
     }
     let appliedMode=requestedExitMode;
-    let state=await exitRequest(win,{requestId,mode:appliedMode});
+    let state=await exitRequest(win);
+    if(state.requestId) {
+      requestId=state.requestId;
+      if(state.finalized!==undefined) {
+        // A lost HTTP acknowledgement does not create a new quit intent or reopen pools.
+        // Reuse the exact accepted mode and the same resource finalizer, even after PG closed.
+        appliedMode=state.mode??appliedMode;requestedExitMode=appliedMode;
+        await exitRequest(win,{requestId,mode:'finish-exit'});
+        quitting=true;await stopHost();app.quit();return;
+      }
+      if(state.mode!==appliedMode) {
+        const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;
+        state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});
+      }
+    } else state=await exitRequest(win,{requestId,mode:appliedMode});
     if(!state.ready&&!driver){
       const choice=await dialog.showMessageBox(win,{type:'question',title:'Finish current work',message:'The App is preparing to exit.',detail:'New Campaign work is fenced. Wait for current work to reach a recoverable boundary, or choose what happens to existing jobs. Keeping jobs does not keep the Agent running.',buttons:['Wait and quit','Quit now and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:3});
-      if(choice.response===3){await exitRequest(win,{requestId,mode:'cancel-exit'});exitPending=false;return;}
-      if(choice.response===1||choice.response===2){requestedExitMode=choice.response===1?'keep-jobs':'stop-jobs';appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+      if(choice.response===3){await exitRequest(win,{requestId,mode:'cancel-exit'});exitPending=false;requestedExitMode='drain';return;}
+      if(choice.response===1||choice.response===2){requestedExitMode=choice.response===1?'keep-jobs':'stop-jobs';appliedMode=requestedExitMode;const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});}
     }
     while(!state.ready){
       win.setTitle(`${APP_NAME} — waiting for a recoverable boundary`);
       await new Promise(resolve=>setTimeout(resolve,300));
       state=await exitRequest(win);
       if(cancelExitRequested){await exitRequest(win,{requestId,mode:'cancel-exit'});cancelExitRequested=false;exitPending=false;requestedExitMode='drain';win.setTitle(APP_NAME);return;}
-      if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+      if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});}
     }
+    await exitRequest(win,{requestId,mode:'finish-exit'});
     quitting=true;await stopHost();app.quit();
   } catch(error) {
-    quitting=false;exitPending=false;requestedExitMode='drain';
+    quitting=false;exitPending=false;
+    // Retain the person's accepted mode across a transport failure; a fresh Quit reads
+    // and reuses its durable request instead of silently selecting a different disposition.
     if(driver){process.stderr.write(`hima-desktop: exit could not verify job or resource state: ${String(error)}\n`);quitting=true;await stopHost().catch(()=>undefined);app.exit(EXIT_FAILED);return;}
     const child = (host ?? spawnedHost)?.child;
     const ended = child !== undefined && (child.exitCode !== null || child.signalCode !== null);

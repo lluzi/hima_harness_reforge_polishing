@@ -20,6 +20,7 @@
 // restated below where they bind our design; the code is our own.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
+import { randomBytes,randomUUID } from 'node:crypto';
 
 /** The loopback address the host is told to bind. Never `0.0.0.0`: the dsh CLI refuses that outright,
  *  and a workbench that listened on a customer's LAN would be a second thing for CAD to defend. */
@@ -203,9 +204,12 @@ export class HostLaunchError extends Error {
 export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHost> {
   const timeoutMs = req.timeoutMs ?? 90_000;
   const reserved = req.port ?? (await freePort());
+  const controlToken=/^[a-f0-9]{64}$/.test(req.env.HIMA_DESKTOP_CONTROL_TOKEN??'')?req.env.HIMA_DESKTOP_CONTROL_TOKEN!:randomBytes(32).toString('hex');
+  let servingOrigin:string|undefined;
+  let stopping:Promise<number|null>|undefined;
   const child = spawn(req.node, [req.dshEntry, ...buildHostArguments({ profile: req.profile, port: reserved })], {
     cwd: req.cwd,
-    env: req.env,
+    env: {...req.env,HIMA_DESKTOP_CONTROL_TOKEN:controlToken},
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';
@@ -218,16 +222,42 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
   const closed = new Promise<number | null>(resolve => { child.once('close', resolve); });
   const lifecycle: SpawnedHost = {
     child,
-    stop: async (graceMs) => {
-      await stopChild(child, graceMs);
-      const code = await closed;
-      const receipts = new Set(err.split('\n'));
-      if (code !== 0 || child.signalCode !== null
-        || !receipts.has(`hima: resource shutdown confirmed; pid=${child.pid}`)
-        || receipts.has(`hima: resource shutdown unconfirmed; pid=${child.pid}`)) {
-        throw new Error(`Host resource shutdown unconfirmed (exit ${code ?? child.signalCode}). The original Home and database may still be owned; inspect their retained state before reopening.`);
-      }
-      return code;
+    stop: (graceMs=30_000) => {
+      stopping??=(async()=>{
+        if(servingOrigin&&child.exitCode===null&&child.signalCode===null) {
+          const request=async(body?:object):Promise<{requestId?:string;ready:boolean;finalized?:boolean}>=>{
+            const response=await fetch(new URL('/hima/api/lifecycle/exit',servingOrigin),{
+              method:body?'POST':'GET',redirect:'error',headers:{'content-type':'application/json','x-hima-desktop-control':controlToken},
+              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(graceMs)});
+            const answer=await response.json() as {requestId?:string;ready:boolean;finalized?:boolean;error?:{message:string}};
+            if(!response.ok)throw new Error(answer.error?.message??`Host exit HTTP ${response.status}`);
+            return answer;
+          };
+          try {
+            let state=await request();
+            if(!state.requestId) {
+              try {state=await request({requestId:`native-keep-${randomUUID()}`,mode:'keep-jobs'});}
+              catch(error){state=await request();if(!state.requestId)throw error;}
+            }
+            if(!state.ready)throw new Error('The accepted Host exit has not reached its actual boundary; its mode and original resources were preserved.');
+            const finalized=await request({requestId:state.requestId,mode:'finish-exit'});
+            if(!finalized.finalized)throw new Error('Host owned resource finalization was not confirmed');
+          } catch(error) {
+            // A failed/timed-out finalization does not authorize a native signal. Preserve
+            // the accepted mode and original ownership; a repeat can await the same closer.
+            throw new Error(`Host resource shutdown unconfirmed: ${String(error)}`,{cause:error});
+          }
+        }
+        await stopChild(child,graceMs);
+        const code=await closed;
+        const receipts=new Set(err.split('\n'));
+        if(code!==0||child.signalCode!==null||!receipts.has(`hima: resource shutdown confirmed; pid=${child.pid}`)||
+          receipts.has(`hima: resource shutdown unconfirmed; pid=${child.pid}`))throw new Error(`Host resource shutdown unconfirmed (exit ${code??child.signalCode}). The original Home and database may still be owned; inspect their retained state before reopening.`);
+        return code;
+      })();
+      const pending=stopping;
+      void pending.catch(()=>{if(stopping===pending)stopping=undefined;});
+      return pending;
     },
   };
   // Attach receipt readers before publishing the stop handle, including during startup.
@@ -258,6 +288,7 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
   }
   const address = new URL(started.url);
   const origin = address.origin;
+  if(origin!==new URL(`http://${HOST_ADDRESS}:${reserved}`).origin)return unconfirmed('dsh printed an address outside its owned loopback listener; no native capability was sent');
   // The port the host bound, read off the URL it printed, not the one we asked it for. They are the
   // same today; if dsh ever chose another, a caller that had been handed the reservation would be
   // probing a port nothing is listening on while `origin` pointed at the right one.
@@ -268,6 +299,7 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     return unconfirmed(`dsh printed its URL but never confirmed readiness on ${origin}`);
   }
 
+  servingOrigin=origin;
   return {
     child,
     url: started.url,

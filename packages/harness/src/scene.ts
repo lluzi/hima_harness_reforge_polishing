@@ -20,7 +20,7 @@
 // reference`, which is true of every `PackGraph` (`loops` always present, even empty) and false of
 // `PreparationView.referenceGraph` (which never declares the field at all).
 import type { LayoutEdge, LayoutFacts, LayoutGraph, LayoutNode, LayoutSubgraph, NodeVisualState } from './canvas-layout.js';
-import { nodeCaption } from './card-labels.js';
+import { taskStateForNode, nodeCaption } from './card-labels.js';
 import type { ExecutionContext } from './fabric.js';
 import type { PackEdge, PackGraph, PackNode } from './packs.js';
 import type { RunView } from './remote.js';
@@ -168,6 +168,12 @@ export function sceneInputs(
   for (const node of view.nodes) {
     states[node.nodeId] = node.state;
     if (node.waitedForSlot === true) waitedForSlot.push(node.nodeId);
+  }
+  // Keep the established glyph vocabulary; exact six-state task words remain on each node/card.
+  for (const taskId of new Set((view.tasks??[]).map(task=>task.taskId))) {
+    const state=taskStateForNode(view.tasks,taskId);if(state===undefined)continue;
+    states[taskId] = state === 'succeeded' ? 'done' : state === 'failed' ? 'blocked'
+      : state === 'waiting' ? 'waiting-for-slot' : state;
   }
   const revisions = (view.revisions ?? []).map((revision) => ({ changedNodes: revision.changedNodes, affectedNodes: revision.affectedNodes }));
   const growths = growthsOf(context, graph);

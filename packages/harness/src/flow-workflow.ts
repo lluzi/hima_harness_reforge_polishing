@@ -6,7 +6,7 @@ import { flowTaskCountsExperiment, flowInvocationRevision, flowExtensionKey, typ
 import { freezeFlowFragment, freezeLegacyFlowFragment } from './flow-compiler.js';
 import { branchContains, jsonDigest, type DurableCommand, type FlowInvocationRecord } from './run-store.js';
 import { createTaskResult, validateTaskInput, type JsonValue, type TaskInputBinding, type TaskResult, type TaskDiagnostic, } from './task-contract.js';
-import { executeTaskEffect, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type TaskCollectionPending } from './task-effects.js';
+import { executeTaskEffect, sendTaskEffectMessage, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type TaskCollectionPending } from './task-effects.js';
 
 export interface FlowStart {
   readonly runId: string; readonly flow: CompiledFlow;
@@ -63,7 +63,7 @@ interface Execution extends FlowStart {
   readonly terminal: { taskId: string; effectId: string } | null;
 }
 interface TaskExecution extends Execution { readonly taskId: string; readonly input: JsonValue }
-const names = { root: 'hima.flow', block: 'hima.flow.block', task: 'hima.flow.task', control: 'hima.flow.control', cleanup: 'hima.flow.cleanup', deadline: 'hima.flow.deadline' } as const;
+const names = { root: 'hima.flow', block: 'hima.flow.block', task: 'hima.flow.task', control: 'hima.flow.control', cleanup: 'hima.flow.cleanup', message: 'hima.flow.message', deadline: 'hima.flow.deadline' } as const;
 const asJson = (value: unknown): JsonValue => value as JsonValue;
 const rootId = (runId: string, revision = 0): string => `hima-flow:${jsonDigest([runId, revision])}`;
 const text = (error: unknown): string => error instanceof Error ? error.message : String(error);
@@ -202,9 +202,10 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
       if (stopped || authority.at >= Date.parse(authority.run.deadlineAt)) return outcome(context, state, stopped ? 'Original resources closed' : 'Cancellation requested; closure unknown');
       await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt)); continue;
     }
+    const exit=authority.hostExit,dispatched=authority.submittedEffects.includes(fixedIdentity.effectId);
     const held = heldReason(authority, context);
-    if (held) {
-      await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3, { state: 'waiting', reason: held });
+    if ((exit && (!dispatched || exit.mode !== 'drain')) || (held && !dispatched)) {
+      await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3, { state: 'waiting', reason: held ?? 'App exit fences the next business task' });
       if (authority.at >= Date.parse(authority.run.deadlineAt)) return outcome(context, 'waiting', 'Original deadline reached under human hold');
       await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt)); continue;
     }
@@ -228,6 +229,8 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
         return outcome({ ...context, committed: { ...context.committed, [task.id]: committed },terminal:{taskId:task.id,effectId:committed.identity.effectId} });
       }
       lastReason = 'Declared business intervention needs a schema-valid response';
+      await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3, { state: 'waiting', reason: lastReason,
+        diagnostic: { code: 'human-response', message: lastReason, source: fixedIdentity.effectId } });
     } else {
       let adapter: TaskEffectAdapter | TaskCollectionPending;
       try { adapter = await options.resolveAdapter(adapterContext(runtime, context, request)); }
@@ -243,14 +246,14 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
         return outcome(context, 'failed', reason);
       }
       if('pending' in adapter) {
-        await runtime.store.flowState(context.runId,fixedIdentity.effectId,attempt*3,{state:adapter.state,reason:adapter.reason.message});
+        await runtime.store.flowState(context.runId,fixedIdentity.effectId,attempt*3,asJson({state:adapter.state,reason:adapter.reason.message,diagnostic:adapter.reason}));
         if(authority.at>=Date.parse(authority.run.deadlineAt))return outcome(context,'waiting',adapter.reason.message);
         await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt));continue;
       }
       if(attempt===0)await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3 + 1, { state: 'running' });
       const result = await executeTaskEffect(runtime.store, request, adapter);
       await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3 + 2, asJson(result.state === 'succeeded'
-        ? { state: 'succeeded' } : { state: result.state, reason: result.reason.message }));
+        ? { state: 'succeeded' } : { state: result.state, reason: result.reason.message, diagnostic: result.reason }));
       if (result.state === 'succeeded') return outcome({ ...context, committed: { ...context.committed, [task.id]: result.result },terminal:{taskId:task.id,effectId:result.result.identity.effectId} });
       if (result.state === 'failed') return outcome(context, 'failed', result.reason.message);
       lastReason = result.reason.message;
@@ -372,7 +375,11 @@ async function executeBlock(runtime: DurableRuntime, initial: Execution): Promis
   }
 }
 
-async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; invocation: FlowInvocationRecord; reason: string }, options: FlowWorkflowOptions): Promise<JsonValue> {
+async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; invocation: FlowInvocationRecord; reason: string; exitRequestId?:string }, options: FlowWorkflowOptions): Promise<JsonValue> {
+  if(input.reason==='app-exit') {
+    const active=await runtime.store.hostExit();
+    if(!input.exitRequestId||active?.requestId!==input.exitRequestId||active.mode!=='stop-jobs')return {closed:false,reason:'App exit stop request is stale or no longer active'};
+  }
   const context = input.invocation.context as unknown as TaskExecution;
   const authority = await runtime.store.flowAuthority(input.runId);
   const request: TaskEffectRequest = { identity: input.invocation.identity, input: context.input,
@@ -411,7 +418,7 @@ async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; i
   const result = await taskEffectStep('hima.control.stop-original', async () => {
     if (!await adapter.permit(prepared, 'release')) return { closed: false as const, reason: 'Current Site Permit blocks original cleanup' };
     return adapter.stop!(prepared, snapshot.facts.submitted, (id, value) => runtime.store.claimEffectCleanup(request.identity,
-      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value)));
+      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value),input.reason==='app-exit'?input.exitRequestId:undefined));
   }).catch(error => ({ closed: false as const, reason: text(error) }));
   if (result.closed) {
     await runtime.store.releaseEffectResources(request.identity, result.proof);
@@ -422,6 +429,7 @@ async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; i
 async function cleanup(runtime:DurableRuntime,input:Parameters<typeof cleanupAttempt>[1],options:FlowWorkflowOptions):Promise<JsonValue> {
   for(let attempt=0;;attempt++){
     const result=await cleanupAttempt(runtime,input,options) as unknown as {closed:boolean;reason?:string};
+    if(input.reason==='app-exit')return asJson(result);
     const authority=await runtime.store.flowAuthority(input.runId);
     if(result.closed||result.reason?.includes('no physical stop')||authority.at>=Date.parse(authority.run.deadlineAt))return asJson(result);
     // Query the original identity while a launch/stop acknowledgement is uncertain. Stable raw
@@ -429,8 +437,39 @@ async function cleanup(runtime:DurableRuntime,input:Parameters<typeof cleanupAtt
     await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt));
   }
 }
+export interface FlowTaskMessage {
+  readonly runId:string;readonly effectId:string;readonly requestId:string;readonly owner:string;
+  readonly epoch:number;readonly revision:number;readonly message:string;
+}
 export function flowWorkflowDefinitions(options: FlowWorkflowOptions): readonly DurableWorkflowDefinition[] {
   return [
+    { name:names.message,async execute(runtime,value) {
+      const input=value as unknown as FlowTaskMessage;
+      const invocation=(await runtime.store.flowInvocations(input.runId)).find(item=>item.identity.effectId===input.effectId);
+      if(!invocation)throw new Error('Native message needs its original recorded task invocation');
+      const context=invocation.context as unknown as TaskExecution,task=context.flow.tasks[context.taskId]!;
+      const request:TaskEffectRequest={identity:invocation.identity,input:context.input,contract:task.contract,localSchemas:context.flow.localSchemas,
+        admission:{runId:input.runId,effectId:input.effectId,owner:input.owner,epoch:input.epoch,revision:input.revision}};
+      for(let attempt=0;;attempt++) {
+        let result:Awaited<ReturnType<typeof sendTaskEffectMessage>>|{state:'failed';reason:TaskDiagnostic};
+        try {
+          const adapter=await options.resolveAdapter(adapterContext(runtime,context,request));
+          result='pending' in adapter ? {state:'waiting',reason:adapter.reason}
+            : await sendTaskEffectMessage(runtime.store,request,adapter,input.requestId,input.message);
+        } catch(error) {
+          result=error instanceof TaskAdapterMaterializationError ? {state:'waiting',reason:error.diagnostic}
+            : {state:'failed',reason:{code:'message-failed',message:text(error),source:'task-message'}};
+        }
+        const authority=await runtime.store.flowAuthority(input.runId);
+        const sent=await taskEffectStep('hima.message.dispatch',()=>runtime.store.effectDispatchExists(request.identity,`message:${input.requestId}`));
+        if(result.state==='completed'||result.state==='failed'||authority.at>=Date.parse(authority.run.deadlineAt)||!sent&&
+          (authority.run.cancelled||authority.run.hold||authority.hostExit||authority.run.owner!==input.owner||authority.run.epoch!==input.epoch||authority.run.revision!==input.revision)) {
+          await runtime.store.putFlowFact(input.runId,`task-message-result:${input.requestId}`,asJson(result));
+          return asJson(result);
+        }
+        await waitForOriginalDeadline(attempt,authority.at,Date.parse(authority.run.deadlineAt));
+      }
+    } },
     { name: names.root, async execute(runtime, value) {
       const input = value as unknown as FlowStart;
       const authority = await runtime.store.flowAuthority(input.runId);
@@ -505,6 +544,19 @@ export async function startFlow(runtime: DurableRuntime, input: FlowStart): Prom
 export async function scheduleFlowDeadline(runtime:DurableRuntime,runId:string):Promise<WorkflowHandle<JsonValue>> {
   const run=await runtime.store.run(runId);
   return runtime.startWorkflow(names.deadline,`hima-deadline:${jsonDigest([runId,run.revision])}`,{runId,revision:run.revision});
+}
+/** A message is a stable external effect on the existing task, never a new task or budget. */
+export async function messageFlowTask(runtime:DurableRuntime,input:FlowTaskMessage):Promise<WorkflowHandle<JsonValue>> {
+  if(!input.requestId.trim()||!input.message.trim())throw new Error('Native message needs nonempty request identity and business text');
+  const key=`task-message:${input.requestId}`,previous=await runtime.store.flowFact(input.runId,key);
+  if(previous) {
+    if(jsonDigest(previous)!==jsonDigest(input))throw new Error('Native message identity was reused with different input');
+  } else {
+    const run=await runtime.store.run(input.runId);
+    if(run.owner!==input.owner||run.epoch!==input.epoch||run.revision!==input.revision||run.cancelled||run.hold)throw new Error('Native message owner/control is stale or held; refresh current Run facts');
+    await runtime.store.putFlowFact(input.runId,key,asJson(input));
+  }
+  return runtime.startWorkflow(names.message,`hima-message:${jsonDigest([input.runId,input.requestId])}`,asJson(input));
 }
 export async function controlFlow(runtime: DurableRuntime, command: DurableCommand): Promise<WorkflowHandle<JsonValue>> {
   return runtime.startWorkflow(names.control, `hima-control:${jsonDigest([command.runId, command.commandId, command])}`, asJson(command));

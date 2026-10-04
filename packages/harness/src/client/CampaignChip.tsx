@@ -3,6 +3,7 @@
 // that owns no Run — so the header stays exactly as quiet as it always was for a conversation that
 // never touched Campaign at all.
 import type { ReactElement } from 'react';
+import { runStatusSaid } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
 import { statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { HIMA_STYLE } from './workbench-style.js';
@@ -18,7 +19,7 @@ export function CampaignChip({ sessionId, openRun }: CampaignChipProps): ReactEl
   const { run, stale } = useOwnedRun(sessionId);
   if (run === undefined) return null;
   const status = run.status;
-  const said = statusSaid(status);
+  const said = runStatusSaid(run)?.said ?? statusSaid(status);
   const waiting = status === 'waiting';
   // A stale read keeps showing the last known state (never blanks or collapses it) — the same rule
   // the tab title follows — dimmed by CSS off `data-hima-state-stale`, with the tooltip saying so.
@@ -35,7 +36,7 @@ export function CampaignChip({ sessionId, openRun }: CampaignChipProps): ReactEl
         data-hima-state-stale={String(stale)}
         title={title}
         onClick={() => { openRun(run.id); }}>
-        <Glyph name={status === undefined ? 'circle' : STATUS_GLYPH[status]} size={13} />
+        <Glyph name={run.goalState === 'unknown' ? 'circle' : run.goalState === 'not-met' ? 'square' : run.goalState === 'met' ? 'check' : status === undefined ? 'circle' : STATUS_GLYPH[status]} size={13} />
         <span>{said}</span>
         {run.currentNode === undefined ? null : <span className="hima-mono hima-campaign-chip-node">{' · '}{run.currentNode}</span>}
         {waiting ? <span className="hima-campaign-chip-badge" aria-hidden="true" /> : null}

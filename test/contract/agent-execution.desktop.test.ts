@@ -1,150 +1,128 @@
-// L3: one real native Electron route. Model responses are scripted replay; Host/tools/Jobs/UI are real.
+// L3: actual native Electron, PG/DBOS, human wait and command. Only dialogue is replayed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { RunView } from '@hima/harness';
-import { localHome, killSessions } from './support/fabric.ts';
+import { createHimaHome } from './support/dsh-home.ts';
 import { bootDriver, fillConfiguration } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
-import { writeExecutionReplay, replayJobStarted, replayPaused, replayCompleted } from './support/agent-execution-replay.ts';
-import { timingProbePackId } from './support/pack.ts';
-
-process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
-process.env.HIMA_TEST_SILENT_AGENT = '1';
+import { writeDurableDesktopFixture, desktopPack, deliveryText } from './support/durable-desktop-fixture.ts';
 const initialDraft = 'Keep the existing research question and evidence in view. Unsent desktop test draft.';
-const continuedDraft = 'After this verified result, compare the next experiment before launching it. Unsent draft.';
 
-test('independent Campaign conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files', async (t) => {
-  const home = await localHome(t, { sleepSeconds: 25 });
-  assert.ok(home);
-  const replay = await writeExecutionReplay(home.h, { notifications: true });
+test('independent Guide completes a DBOS human wait and real command, preserves focus and drafts, opens verified artifact and normally reopens', async (t) => {
+  const home = await createHimaHome({desktopShaped:true});
+  let preserveHome=false;
+  const replay = await writeDurableDesktopFixture(home);
   const port = await freePort();
-  const d = await bootDriver(t, { existing: home.h, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port,
-    model: { replay }, env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '0' } });
-  if (!d) { await home.h.dispose(); return; }
-  const browser = await inspectWindow(port);
-  const jobSessions = new Set<string>();
-  const capture = async (name: string) => {
-    if (!process.env.HIMA_UI_ARTIFACTS) return;
-    await mkdir(process.env.HIMA_UI_ARTIFACTS, { recursive: true });
-    assert.ok((await d.screenshot(path.join(process.env.HIMA_UI_ARTIFACTS, `${name}.png`))).ok);
-  };
+  let d = await bootDriver(t, { existing: home, theme: 'light', window: { width:1440,height:960 }, remoteDebuggingPort:port, model:{replay}, env:{ HIMA_TEST_LEGACY_AUTO_DRIVE:'0',HIMA_TEST_SILENT_AGENT:'0' } });
+  if (!d) { await home.dispose(); return; }
+  let browser = await inspectWindow(port);
+  const capture = async (name:string) => { if(process.env.HIMA_UI_ARTIFACTS){await mkdir(process.env.HIMA_UI_ARTIFACTS,{recursive:true});assert.ok((await d!.screenshot(path.join(process.env.HIMA_UI_ARTIFACTS,`${Date.now()}-${name}.png`))).ok);} };
   try {
-    await d.open('/');
-    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-    await browser.markText('button', 'Continue', 'notice-continue');
-    assert.ok((await d.click('notice-continue')).ok);
-    const host = await d.host(); assert.ok(host.ok);
-    const cookie = await d.cookie();
-    const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'client-request', rpcId: 'hima-owned-workspace', method: 'workspace/create', payload: { args: { request: { path: home.h.workspace } } } }),
-    });
-    const created = await workspace.json() as { result: { ok: boolean } };
-    assert.equal(created.result.ok, true, JSON.stringify(created));
-    await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
-    await browser.markText('button', 'New Session', 'native-new-session');
-    assert.ok((await d.click('native-new-session')).ok);
+    await d.open('/'); await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
+    await browser.markText('button','Continue','notice-continue'); assert.ok((await d.click('notice-continue')).ok);
+    const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
+    const workspace = await api(host,cookie,'/api/workspace/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:'hima-owned-workspace',method:'workspace/create',payload:{args:{request:{path:home.workspace}}}})});
+    assert.equal((await workspace.json() as {result:{ok:boolean}}).result.ok,true);
+    await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes(${JSON.stringify(path.basename(home.workspace))}) || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()===${JSON.stringify(path.basename(home.workspace))})`);
+    await browser.markText('button','New Session','native-new-session'); assert.ok((await d.click('native-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-    await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
-    await browser.send('Input.insertText', { text: initialDraft });
-    assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
-    const studio = await d.read('studio'); assert.ok(studio.ok);
-    const selectedSession = studio.state.session; assert.ok(selectedSession);
+    await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`); await browser.send('Input.insertText',{text:initialDraft});
+    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio','Campaign configuration',12000)).ok);
+    const studio = await d.read('studio'); assert.ok(studio.ok); const guide = studio.state.session; assert.ok(guide);
     const url = await browser.evaluate<string>('location.href');
-    await fillConfiguration(d, browser, {
-      pack: timingProbePackId, site: 'local',
-      goal: { target_period_ns: '2.0' }, knobs: { periodNs: '2.3' },
-      budget: { timeBoxMinutes: '2', generations: '2' },
-    });
-    await browser.evaluate(`(() => {
-      window.__himaDelivery = [];
-      addEventListener('error', event => window.__himaDelivery.push({ error: event.message, stack: event.error?.stack }));
-      addEventListener('unhandledrejection', event => window.__himaDelivery.push({ rejection: String(event.reason), stack: event.reason?.stack }));
-      const original = window.fetch;
-      window.fetch = async (...args) => {
-        const response = await original(...args);
-        const url = String(args[0]);
-        if (url.includes('/runs/start') || url.includes('/session/prompt')) window.__himaDelivery.push({ url, body: await response.clone().text() });
-        return response;
-      };
-    })()`);
+    assert.ok((await d.fill('config-site','local')).ok);
+    await fillConfiguration(d,browser,{pack:desktopPack,site:'local',goal:{periodNs:'1'},knobs:{periodNs:'2'},budget:{timeBoxMinutes:'2',generations:'2'}});
     assert.ok((await d.click('config-confirm')).ok);
-    await browser.wait(`!!document.querySelector('[data-hima-control="open-owner"]')`, 10000);
-    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), initialDraft, 'Guide draft survives independent dispatch');
-    assert.ok((await d.click('open-owner')).ok);
-    await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayJobStarted)})`, 30_000);
+    await browser.wait(`!!document.querySelector('[data-hima-control="open-owner"]')`,15000);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`),initialDraft);
+    const state = await d.read('studio'); assert.ok(state.ok); const runId = state.state.run; assert.ok(runId);
+    const readRun = async () => { const r=await api(host,cookie,`/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guide)}`); assert.equal(r.status,200,await r.clone().text()); return r.json() as Promise<RunView>; };
+    let view = await readRun(); assert.equal(view.run.control?.guideSessionId,guide); const owner = view.run.control!.owner; assert.notEqual(owner,guide);
+    await browser.wait(`!!document.querySelector('[data-hima-control="node-human-input"]')`);
+    assert.ok((await d.click('node-human-input')).ok);
+    await browser.wait(`!!document.querySelector('textarea[data-hima-control^="task-response-"]')`,20000);
+    view=await readRun(); const waiting=view.tasks!.find(task=>task.taskId==='human-input'&&task.identity)!; assert.ok(waiting.identity);
+    const responseControl=`task-response-${waiting.identity.effectId}`, sendControl=`task-respond-${waiting.identity.effectId}`;
+    assert.ok((await d.fill(responseControl,'{"message":')).ok);
+    await browser.evaluate(`document.querySelector('textarea').focus()`);
+    const camera=await browser.evaluate(`document.querySelector('.hima-canvas-transform').getAttribute('transform')`);
+    const selected=await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-card"]').getAttribute('data-hima-state-node')`);
+    const tab=await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-card"]').getAttribute('data-hima-state-tab')`);
+    // An independent human actor changes the same normal authority while the editor stays focused.
+    const control=async(action:string, expected:RunView)=>api(host,cookie,`/hima/api/runs/${runId}/control`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:guide,action,requestId:`desktop-${action}-${expected.run.control!.revision}`,expectedEpoch:expected.run.control!.epoch,expectedRevision:expected.run.control!.revision})});
+    const paused=await control('pause',view);assert.equal(paused.status,200,await paused.clone().text());
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-card"]')?.textContent.includes('pause')`);
+    const held=await readRun();assert.deepEqual(held.run.control!.paused,['*']);assert.ok(held.run.sourceRevision!>view.run.sourceRevision!);
+    assert.equal(await browser.evaluate(`document.querySelector('textarea').value`),'{"message":');
+    assert.equal(await browser.evaluate(`document.activeElement===document.querySelector('textarea')`),true);
+    assert.equal(await browser.evaluate(`document.querySelector('.hima-canvas-transform').getAttribute('transform')`),camera);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-card"]').getAttribute('data-hima-state-node')`),selected);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-card"]').getAttribute('data-hima-state-tab')`),tab);
+    await capture('dbos-held-draft');
+    const stale=await control('continue',view);assert.equal(stale.status,409);assert.deepEqual((await readRun()).run.control!.paused,['*']);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="${sendControl}"]').disabled`),true,'held response remains visible but cannot submit');
+    assert.ok((await d.click('run-continue')).ok);
+    assert.ok((await d.click('run-continue-confirm')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="durable-task"]')?.textContent.includes('human-response')`);
+    assert.ok((await d.click(sendControl)).ok);await browser.wait(`document.body.innerText.includes('Enter a valid JSON value')`);assert.equal(await browser.evaluate(`document.querySelector('textarea').value`),'{"message":');
+    assert.ok((await d.fill(responseControl,'{"unexpected":true}')).ok);assert.ok((await d.click(sendControl)).ok);
+    await browser.wait(`!!document.querySelector('[role="alert"]')`);assert.equal(await browser.evaluate(`document.querySelector('textarea').value`),'{"unexpected":true}');
+    assert.ok((await d.fill(responseControl,'{"message":"accepted by human","period":1}')).ok);assert.ok((await d.click(sendControl)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-goal"]')?.getAttribute('data-hima-state-goal')==='unknown' && document.querySelector('[data-hima-control="task-respond-${waiting.identity.effectId}"]')?.disabled`,30000);
+    for(let i=0;i<150;i++){view=await readRun();if(view.tasks?.find(task=>task.taskId==='produce')?.result)break;await new Promise(r=>setTimeout(r,100));}
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-produce"]')?.getAttribute('data-hima-state-task-status')==='succeeded'`,15000);
+    const produced=view.tasks!.find(task=>task.taskId==='produce')!;assert.equal(produced.projection.state,'succeeded');assert.deepEqual(produced.result!.value,{message:'accepted by human',period:1});assert.equal(view.run.goalState,'unknown');assert.notEqual(view.run.status,'ended-goal-met');assert.equal(view.run.control!.owner,owner);
+    assert.ok(!await browser.evaluate(`!!document.querySelector('[data-hima-control="resume"], [data-hima-control="continue"], [data-hima-control="run-continue"]')`),'closed work has no continuation');
+    assert.ok((await d.click('node-card-close')).ok);
+    const selectedProduce=await d.click('node-produce');assert.ok(selectedProduce.ok,JSON.stringify(selectedProduce));
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-card"]')?.getAttribute('data-hima-state-node')==='produce'`);await browser.wait(`!!document.querySelector('[data-hima-region="task-artifact"]')`);
+    const artifact=produced.result!.artifacts[0]!;assert.equal(artifact.sha256,createHash('sha256').update(deliveryText).digest('hex'));
+    assert.ok((await d.click(`task-artifact-${artifact.effectId}-${artifact.name}`)).ok);await browser.wait(`document.querySelector('[data-hima-region="task-artifact-content"]')?.textContent.includes('Verified desktop delivery')`);
+    const downloadUrl=await browser.evaluate<string>(`document.querySelector('[data-hima-control="task-artifact-download"]').getAttribute('href')`);
+    assert.ok(downloadUrl.includes(`effect=${encodeURIComponent(artifact.effectId)}`));assert.ok(downloadUrl.includes('artifact=delivery'));
+    const download=await api(host,cookie,downloadUrl);assert.equal(download.status,200);assert.equal(await download.text(),deliveryText);
+    await browser.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:1250,y:480,deltaY:350,deltaX:0});
+    await capture('dbos-artifact-unknown-goal');
+    assert.equal(await browser.evaluate('location.href'),url);assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`),initialDraft);
+    assert.ok((await d.click('open-owner')).ok);await browser.wait(`document.querySelector('[contenteditable="true"]')?.textContent===''`);assert.equal((await readRun()).run.control!.owner,owner);
     await browser.wait(`!!document.querySelector('[data-hima-region="campaign-chip"]')`);
-    await browser.mark('[data-hima-region="campaign-chip"]', 'execution-campaign');
-    assert.ok((await d.click('execution-campaign')).ok);
+    await browser.mark('[data-hima-region="campaign-chip"]','owner-campaign');
+    assert.ok((await d.click('owner-campaign')).ok);
     await browser.wait(`!!document.querySelector('[data-hima-region="studio"]')`);
-    const running = await d.read('studio'); assert.ok(running.ok);
-    const runId = running.state.run; assert.ok(runId);
-    const readRun = async () => {
-      const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(selectedSession)}`)).json() as RunView;
-      for (const job of view.jobs) jobSessions.add(job.job.session);
-      return view;
-    };
-    const first = await readRun();
-    assert.equal(first.run.control?.guideSessionId, selectedSession);
-    assert.notEqual(first.run.control?.owner, selectedSession, 'Campaign execution remains an independent native root');
-    const execution = Object.values(first.run.control!.executions)[0]; assert.ok(execution);
-    assert.equal(execution.phase, 'working');
-    assert.equal(first.jobs.filter((job) => job.event === 'launched').length, 1);
-    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), '', 'execution composer does not inherit Guide draft');
-    await browser.wait(`document.querySelector('.hima-studio [data-hima-state-execution="${execution.id}"]')?.getAttribute('data-hima-state-phase')==='working'`);
-    await capture('owned-running');
-
-    // A normal user message, not a control-button-generated prompt, steers the same Agent.
-    await browser.evaluate(`(() => { const e=document.querySelector('[contenteditable="true"]'); e.focus(); const r=document.createRange(); r.selectNodeContents(e); const s=getSelection(); s.removeAllRanges(); s.addRange(r); })()`);
-    await browser.send('Input.insertText', { text: 'Pause synthesize now and inspect the current facts. Keep this conversation responsive.' });
-    await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayPaused)})`, 20_000);
-    const paused = await readRun();
-    assert.deepEqual(paused.run.control?.paused, ['synthesize']);
-    assert.equal(paused.run.control?.executions[execution.id]?.phase, 'working', 'typed steering completed before the actual long Job ended');
-    assert.equal(paused.jobs.filter((job) => job.event === 'launched').length, 1);
-    await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
-    await browser.send('Input.insertText', { text: continuedDraft });
-    assert.ok((await d.click('node-synthesize')).ok);
-    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-control="node-continue"]')`);
-    await capture('owned-paused');
-    await browser.wait(`document.querySelector('.hima-studio [data-hima-state-execution="${execution.id}"]')?.getAttribute('data-hima-state-phase')==='ready'`, 40_000);
-    assert.deepEqual((await readRun()).run.control?.paused, ['synthesize']);
-    await browser.wait(`document.body.innerText.includes('Replay: Job facts are ready; waiting for human Continue.')`, 10000);
-    assert.ok((await d.click('node-continue')).ok);
-    assert.ok((await d.click('node-continue-confirm')).ok);
-    await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayCompleted)})`, 20_000);
-    const complete = await readRun();
-    assert.equal(complete.run.control?.executions[execution.id]?.phase, 'completed');
-    assert.equal(complete.run.currentNode, 'read-qor');
-    assert.equal(Object.values(complete.run.control!.executions).length, 1);
-    assert.equal(complete.jobs.filter((job) => job.event === 'launched').length, 1);
-    assert.equal(await browser.evaluate('location.href'), url);
-    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), continuedDraft);
-    await capture('owned-after-continue');
-
-    await browser.markText('button', 'Files & code', 'native-files');
-    assert.ok((await d.click('native-files')).ok);
-    await browser.wait(`document.body.innerText.includes(${JSON.stringify(complete.run.campaignId)})`);
-    await browser.markText('button', complete.run.campaignId, 'campaign-files');
-    assert.ok((await d.click('campaign-files')).ok);
-    await browser.wait(`document.body.innerText.includes('workspace.json')`);
-    await browser.markText('button', 'workspace.json', 'workspace-record');
-    assert.ok((await d.click('workspace-record')).ok);
-    await browser.wait(`document.body.innerText.includes('flowRoot')`);
-    assert.equal(await browser.evaluate('location.href'), url);
-    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), continuedDraft);
-    await capture('owned-native-files');
-  } catch (error) {
-    t.diagnostic(await browser.evaluate<string>('document.body.innerText'));
-    t.diagnostic(d.stderr());
-    t.diagnostic(JSON.stringify(await browser.evaluate('window.__himaDelivery'), null, 2));
-    await capture('owned-failure');
-    throw error;
-  } finally { killSessions([...jobSessions]); browser.close(); await d.dispose(); await home.h.dispose(); }
+    await browser.markText('button','Files & code','native-files');assert.ok((await d.click('native-files')).ok);await browser.wait(`document.body.innerText.includes('workspace.json') || document.body.innerText.includes(${JSON.stringify(view.run.campaignId)})`);await capture('dbos-native-files');
+    const persisted=view;
+        browser.close();assert.ok((await d.quit('drain')).ok);assert.equal(await d.exit(),0,'normal drain exit, without fallback kill');await d.dispose();
+    const port2=await freePort();d=await bootDriver(t,{existing:home,theme:'light',window:{width:1440,height:960},remoteDebuggingPort:port2,model:{replay},env:{HIMA_TEST_SILENT_AGENT:'1'}});assert.ok(d);browser=await inspectWindow(port2);
+    await d.open('/');
+    const retainedSessionSelector=`[role="treeitem"]:has(button[aria-label="Session actions for ${path.basename(home.workspace)}"])`;
+    await browser.wait(`!!document.querySelector(${JSON.stringify(retainedSessionSelector)})`,20000);
+    await browser.mark(retainedSessionSelector,'reopened-session');
+    assert.ok((await d.click('reopened-session')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="open-workbench"]')`);
+    assert.ok((await d.click('open-workbench')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="studio-run"] option[value="${runId}"]')`,20000);
+    assert.ok((await d.fill('studio-run',runId)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.textContent.includes('Goal unknown')`,20000);
+    await browser.wait(`!!document.querySelector('[data-hima-control="node-produce"]')`,15000);
+    assert.ok((await d.click('canvas-fit')).ok);
+    await browser.wait(`(() => { const n=document.querySelector('[data-hima-control="node-produce"]').getBoundingClientRect(),c=document.querySelector('[data-hima-region="campaign-graph"]').getBoundingClientRect();return n.width>0&&n.left>=c.left&&n.right<=c.right&&n.top>=c.top&&n.bottom<=c.bottom; })()`);
+    const nativeReopened=await d.read('studio');assert.ok(nativeReopened.ok);assert.equal(nativeReopened.state.run,runId);assert.ok([owner,guide].includes(nativeReopened.state.session!));
+    const reopenedProduce=await d.click('node-produce');assert.ok(reopenedProduce.ok,JSON.stringify(reopenedProduce));
+    await browser.wait(`!!document.querySelector('[data-hima-region="task-artifact"]')`);
+    assert.ok((await d.click(`task-artifact-${artifact.effectId}-${artifact.name}`)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="task-artifact-content"]')?.textContent.includes('Verified desktop delivery')`);
+    await browser.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:1250,y:480,deltaY:350,deltaX:0});
+    await capture('dbos-normal-reopen');
+    const reopenedHost=await d.host();assert.ok(reopenedHost.ok);const reopened=await api(reopenedHost,await d.cookie(),`/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guide)}`);assert.equal(reopened.status,200);const reopenedView=await reopened.json() as RunView;assert.equal(reopenedView.run.goalState,'unknown');assert.equal(reopenedView.tasks!.find(task=>task.taskId==='produce')!.result!.artifacts[0]!.sha256,artifact.sha256);assert.equal(reopenedView.run.control!.owner,persisted.run.control!.owner);
+    if(process.env.HIMA_UI_ARTIFACTS)await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS,'observed-run.json'),JSON.stringify(reopenedView,null,2));
+    browser.close();assert.ok((await d.quit('drain')).ok);assert.equal(await d.exit(),0);
+  } catch(error){preserveHome=true;t.diagnostic(`Retained failed Home: ${home.home}`);
+    if(process.env.HIMA_UI_ARTIFACTS)await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS,'retained-failed-home.txt'),home.home+'\n');
+    t.diagnostic(await browser.evaluate<string>('document.body.innerText').catch(()=>'<window closed>'));t.diagnostic(d?.stderr() ?? "reopen unavailable");await capture('dbos-failure').catch(()=>{});throw error;}
+  finally{browser.close();await d?.dispose();if(!preserveHome)await home.dispose();}
 });

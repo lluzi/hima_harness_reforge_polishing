@@ -163,10 +163,11 @@ export interface FabricNodeProps {
    *  `running` — the Campaign Agent has not yet begun it. Drawn as the node's own caption line so a
    *  screenshot of a "running" Run never shows a node that looks merely idle with no explanation. */
   readonly awaitingAgent?: boolean;
+  readonly taskState?: import('../task-contract.js').TaskProjectionState;
   onSelect(id: string): void;
 }
 
-export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
+export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, awaitingAgent, taskState, onSelect }: FabricNodeProps): ReactElement {
   // C19: the log-tail poll never runs while stale/reduced-motion (the caller hands this component
   // `reducedMotion || stale` as one flag, `FabricCanvas.tsx`) — a stale node is already showing a
   // frozen fact, not a live one, so polling for a fresh log line underneath it would only ever
@@ -179,6 +180,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
       data-hima-region={`campaign-node-${node.id}`}
       data-hima-state-kind={node.kind}
       data-hima-state-state={node.state}
+      data-hima-state-task-status={taskState}
       data-hima-state-current={String(node.current)}
       data-hima-state-selected={String(selected)}
       className={`hima-node hima-node-${node.kind} hima-node-state-${node.state}${node.current ? ' hima-node-current' : ''}${node.state === 'cancelled' ? ' hima-node-faded' : ''}${selected ? ' hima-node-selected' : ''}`}
@@ -199,7 +201,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
           plus its caption when the Pack gave it one — the same words the label and caption texts
           below already show, gathered into one tooltip so hovering anywhere on the node (not only
           its label text) reads them. */}
-      <title>{`${node.id} · ${node.kind} · ${node.state}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
+      <title>{`${node.id} · ${node.kind} · ${taskState ?? node.state}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
       <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
       {selected ? <SelectedHalo node={node} /> : null}
       {node.current ? <CurrentRing node={node} /> : null}
@@ -216,6 +218,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
         {/* A3: drawn on its own line, below the Pack's own caption (if any) rather than replacing
             it — a node's declared caption and "the Run is running but has not yet begun this node"
             are two different facts, never folded into one truncated line. */}
+        {taskState === undefined ? null : <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">{taskState}</text>}
         {awaitingAgent !== true ? null : (
           <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">
             awaiting Agent<title>awaiting the Campaign Agent</title>

@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type R
 import { centerAt, fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
-import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
+import { taskStateForNode, runStatusSaid, runCanControl, goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { NODE_CARD_WIDTH } from '../node-card-layout.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
@@ -336,7 +336,7 @@ export function FabricCanvas({
   const run = view?.run;
   const ended = run?.status !== undefined && (run.status.startsWith('ended-') || run.status === 'cancelled');
   const goalText = run?.goal === undefined ? '' : goalSaid(run.goal, run.words);
-  const seal = run?.status === undefined ? undefined : sealSaid(run.status, run.meters?.endedBy);
+  const seal = run?.status === undefined ? undefined : { ...sealSaid(run.status, run.meters?.endedBy), title: runStatusSaid(run)?.said ?? run.status };
 
   // The selected node, only while it is still actually in the scene — a poll can move a node out of
   // the drawn set (a Loop that collapsed again, a growth's frame that closed) between the click that
@@ -401,7 +401,7 @@ export function FabricCanvas({
   // right now, so it is gated on the Run still being active. A blocker (`kind: 'waiting'`) already
   // implies `status === 'waiting'`, which is itself active, but the fence check is separate (it reads
   // `context`, not `run.status` directly) and needs its own gate.
-  const active = run?.status === 'running' || run?.status === 'waiting';
+  const active = run !== undefined && runCanControl(run);
   const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
   const fenceReason = active && context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
     ? context.reason ?? (context.budget.phase === 'exhausted' ? 'the Budget is exhausted' : 'the Budget is closing')
@@ -431,7 +431,7 @@ export function FabricCanvas({
               clicked. */}
           {run?.control !== undefined ? null : (
             <>
-              {showsResume(run?.status) ? (
+              {run !== undefined && runCanControl(run) && showsResume(run.status) ? (
                 <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => toggleControl('resume')}>{runControls.resume.said}</button>
               ) : null}
               {showsCancel(run?.status) ? (
@@ -503,9 +503,10 @@ export function FabricCanvas({
                 // running, the node awaits the Campaign Agent's own `hima_execute` turn to actually
                 // begin it. Without this the canvas looked like it contradicted the masthead; this
                 // caption says plainly what is actually true instead.
-                awaitingAgent={node.current && node.state === 'available' && run?.status === 'running'} />
+                taskState={taskStateForNode(view?.tasks,node.id)}
+                awaitingAgent={run?.engine !== 'dbos/5.2.11' && node.current && node.state === 'available' && run?.status === 'running'} />
             ))}
-            <g data-hima-region="campaign-goal" data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
+            <g data-hima-region="campaign-goal" data-hima-state-goal={run?.goalState} data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
               {ended ? (
                 <>
                   {/* C13: r=26 plus a second, concentric ring 4px past it (same colour, 2px stroke)
@@ -514,7 +515,7 @@ export function FabricCanvas({
                   <circle r={26} className="hima-goal-seal" />
                   <circle r={30} className="hima-goal-seal-ring" />
                   <g className="hima-goal-seal-glyph" transform="translate(-8,-8)">
-                    <Glyph name={run?.status === 'ended-goal-met' ? 'check' : 'square'} />
+                    <Glyph name={(run?.goalState === 'met' || (run?.goalState === undefined && run?.status === 'ended-goal-met')) ? 'check' : 'square'} />
                   </g>
                   {/* The status word and the reason sit below the sealed roundel, on paper, never
                       inside the small filled circle: a 20 px display word and a 13 px reason line

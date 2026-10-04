@@ -20,10 +20,10 @@ import type { ExecutionContext } from '../fabric.js';
 import type { PackNode } from '../packs.js';
 import { cardPosition, NODE_CARD_HEIGHT, NODE_CARD_WIDTH, TABS_BY_KIND, type NodeCardTabKey } from '../node-card-layout.js';
 import type { ObservationView, RunView } from '../remote.js';
-import { absentSaid, counted, jobFolded, loopsIn, strategySaid } from '../card-labels.js';
+import { runCanControl, absentSaid, counted, jobFolded, loopsIn, strategySaid } from '../card-labels.js';
 import { fetchLogTail } from './api.js';
 import { useEscape } from './escape-stack.js';
-import { BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
+import { TaskDetails, BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
 
 export interface NodeCardProps {
@@ -275,7 +275,7 @@ function TabContent({ tab, node, view, context, runId, motionOff, openFiles }: {
   }
 }
 
-type ConfirmKey = 'node-pause' | 'node-continue' | 'run-pause' | 'run-stop';
+type ConfirmKey = 'node-pause' | 'node-continue' | 'run-pause' | 'run-continue' | 'run-stop';
 
 /**
  * The footer: node-scoped Pause/Continue for the owner, each behind its own inline confirm naming
@@ -291,7 +291,7 @@ type ConfirmKey = 'node-pause' | 'node-continue' | 'run-pause' | 'run-stop';
 function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView; owner: boolean; acting: Acting }): ReactElement {
   const [confirming, setConfirming] = useState<ConfirmKey>();
   const toggle = (key: ConfirmKey) => setConfirming((current) => (current === key ? undefined : key));
-  const active = view.run.status === 'running' || view.run.status === 'waiting';
+  const active = runCanControl(view.run);
 
   const confirmBlock = (key: ConfirmKey, sentence: string, confirmLabel: string, onConfirm: () => void): ReactNode => (
     confirming !== key ? null : (
@@ -305,15 +305,21 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
     )
   );
 
+  const canContinue=owner||(acting.sessionId!==undefined&&view.run.control?.guideSessionId===acting.sessionId);
+  const continueRun=active&&canContinue&&view.run.control?.paused.includes('*')?<>
+    <button type="button" className="hima-button" data-hima-control="run-continue" disabled={acting.inFlight!==undefined} onClick={()=>toggle('run-continue')}>Continue Run</button>
+    {confirmBlock('run-continue','Allow the original Run to continue within its remaining budget.','Confirm continue',()=>{acting.act('continue');})}
+  </>:null;
   if (owner) {
     return (
       <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
         {!active ? null : (
           <div className="hima-node-card-footer-row">
             <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>Pause this node</button>
-            <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>Continue this node</button>
+            <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined || !view.run.control?.paused.includes(node.id)} onClick={() => toggle('node-continue')}>Continue this node</button>
           </div>
         )}
+        {continueRun}
         {confirmBlock('node-pause', `Jobs already running will continue; no new work starts at ${node.id}.`, 'Confirm pause', () => { acting.act('pause', node.id); })}
         {confirmBlock('node-continue', `New work starts again at ${node.id}.`, 'Confirm continue', () => { acting.act('continue', node.id); })}
         {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
@@ -324,11 +330,16 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
   return (
     <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
       <p className="hima-node-card-owner">Owned by Campaign Agent{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
+      {continueRun}
+      {active&&canContinue&&view.run.control?.paused.includes(node.id)?<>
+        <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight!==undefined} onClick={()=>toggle('node-continue')}>Continue this node</button>
+        {confirmBlock('node-continue',`Allow the original branch at ${node.id} to continue.`,'Confirm continue',()=>{acting.act('continue',node.id);})}
+      </>:null}
       <details className="hima-node-card-emergency" data-hima-region="emergency">
         <summary>Emergency</summary>
-        {!active ? null : (
+        {!runCanControl(view.run, 'cancel') ? null : (
           <div className="hima-node-card-footer-row">
-            <button type="button" className="hima-button" data-hima-control="run-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-pause')}>Pause run</button>
+            {active ? <button type="button" className="hima-button" data-hima-control="run-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-pause')}>Pause run</button> : null}
             <button type="button" className="hima-button" data-hima-control="run-stop" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-stop')}>Stop run</button>
           </div>
         )}
@@ -381,6 +392,7 @@ export function NodeCard({ node, view, context, runId, owner, anchor, canvas, mo
         ))}
       </nav>
       <div className="hima-node-card-content">
+        {view.tasks?.filter(task => task.taskId === node.id && task.rootFlow!==false).map(task => <TaskDetails key={task.identity?.effectId ?? task.taskId} task={task} view={view} acting={acting} />)}
         <TabContent tab={tab} node={node} view={view} context={context} runId={runId} motionOff={motionOff} openFiles={openFiles} />
       </div>
       <Footer node={node} view={view} owner={owner} acting={acting} />

@@ -17,6 +17,7 @@ export const targetAddress = z.discriminatedUnion('kind', [
     .refine(value => value.executionId !== undefined || value.generation !== undefined, 'a node address needs executionId or generation'),
   z.strictObject({ kind: z.literal('report'), reportRef: id, version: id, sha256: z.string().regex(/^[a-f0-9]{64}$/) }),
   z.strictObject({ kind: z.literal('child'), parentSessionId: id, childSessionId: id }),
+  z.strictObject({ kind: z.literal('task-artifact'), runId: id, effectId: id, name: id }),
 ]);
 export type TargetAddress = z.infer<typeof targetAddress>;
 export class GuideContextError extends Error {
@@ -25,9 +26,13 @@ export class GuideContextError extends Error {
 export interface GuideContextDeps {
   readonly ctx: Context;
   readonly ledger: Ledger;
-  executionContext(runId: string): ExecutionContext;
+  executionContext(runId: string): ExecutionContext | Promise<ExecutionContext>;
+  readRun?(runId:string):Promise<import('./ledger.js').RunRecord|undefined>;
+  readRunRecord?(recordId:string):Promise<import('./ledger.js').LedgerRecord|undefined>;
+  assignedGuide?(viewerSessionId:string,parentSessionId:string,childSessionId?:string):Promise<boolean>;
   readExperience(runId: string): Promise<ReadExperienceResult>;
   readReportMaterial?(runId:string,recordId:string):Promise<{kind:'read';text:string}|{kind:'unavailable';why:string}>;
+  readTaskArtifact?(runId:string,effectId:string,name:string):Promise<import('./engineering-executor.js').EngineeringAssetRead>;
 }
 
 /** A project's identity is its actual workspace; a shared Site never grants project membership. */
@@ -49,7 +54,7 @@ export async function assertRunProject(deps: Pick<FabricDeps, 'ledger' | 'projec
 
 export async function authorizeProjectRun(deps: GuideContextDeps, sessionId: string, runId: string): Promise<string> {
   const workspace = await sessionProject(deps.ctx, sessionId, true);
-  const run = deps.ledger.run(runId);
+  const run = deps.readRun ? await deps.readRun(runId) : deps.ledger.run(runId);
   if (!run) throw new GuideContextError('hima/not-found', 'The requested Campaign does not exist.');
   if (run.control?.owner === sessionId || run.control?.guideSessionId === sessionId) return workspace;
   const source = run.projectSessionId ?? run.control?.guideSessionId ?? run.control?.owner;
@@ -61,7 +66,7 @@ export async function authorizeProjectRun(deps: GuideContextDeps, sessionId: str
 
 /** Resolve a retained report's immutable address before clients request that version. */
 export async function resolveReportAddress(deps: GuideContextDeps, sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>> {
-  const record = deps.ledger.record(reportRef);
+  const record = deps.readRunRecord ? await deps.readRunRecord(reportRef) : deps.ledger.record(reportRef);
   if (!record || !['experience','code','knowledge','observation'].includes(record.type)) throw new GuideContextError('hima/not-found', 'This reference is not a retained Campaign report.');
   await authorizeProjectRun(deps, sessionId, record.runId);
   if(record.type==='experience')return { kind: 'report', reportRef: record.id, version: String(record.seq), sha256: record.json.sha256 };
@@ -89,12 +94,12 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
   const workspaceRef = await sessionProject(deps.ctx, request.sessionId, true);
   const head = { requestId: request.requestId, target, scope: { workspaceRef, sessionId: request.sessionId }, asOf: new Date().toISOString() };
   if (target.kind === 'child') {
-    return { ...head, facts: await readChildSessionView(deps.ctx, { viewerSessionId: request.sessionId, ...target }), sources: [target.childSessionId], missing: [] };
+    return { ...head, facts: await readChildSessionView(deps.ctx, { viewerSessionId: request.sessionId, ...target, assignedGuide:deps.assignedGuide }), sources: [target.childSessionId], missing: [] };
   }
   if (target.kind === 'report') {
     const address = await resolveReportAddress(deps, request.sessionId, target.reportRef);
     if (address.sha256 !== target.sha256 || address.version !== target.version) throw new GuideContextError('hima/context-stale', 'The report address no longer matches the recorded version.');
-    const record = deps.ledger.record(target.reportRef)!;
+    const record = (deps.readRunRecord ? await deps.readRunRecord(target.reportRef) : deps.ledger.record(target.reportRef))!;
     if(record.type==='code'||record.type==='knowledge'||record.type==='observation'){
       const facts=await readTypedReport(deps,record);
       return {...head,sourceRevision:record.seq,facts,sources:[record.id],
@@ -108,7 +113,19 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
     return { ...head, sourceRevision: record.seq, facts: report, sources: [record.id], missing: [] };
   }
   await authorizeProjectRun(deps, request.sessionId, target.runId);
-  const facts = deps.executionContext(target.runId);
+  if (target.kind === 'task-artifact') {
+    if (!deps.readTaskArtifact) throw new GuideContextError('hima/not-found', 'Task artifact reading is unavailable.');
+    let artifact: Awaited<ReturnType<NonNullable<GuideContextDeps['readTaskArtifact']>>>;
+    try { artifact = await deps.readTaskArtifact(target.runId, target.effectId, target.name); }
+    catch (error) { throw new GuideContextError('hima/context-stale', `The original task artifact cannot be read: ${String(error).slice(0, 1000)}`); }
+    if (artifact.kind !== 'file') throw new GuideContextError('hima/not-found', 'This task artifact is not a readable file.');
+    const text = artifact.text?.slice(0, 64 * 1024);
+    return { ...head, facts: { kind: 'task-artifact' as const, ref: artifact.ref,
+      ...(text === undefined ? {} : { text }), truncated: artifact.truncated || (artifact.text?.length ?? 0) > 64 * 1024 },
+      sources: [target.runId, target.effectId, artifact.ref.sha256 ?? artifact.ref.id],
+      missing: text === undefined ? ['Binary artifact: verified reference is available; use the App to open or download its bytes.'] : [] };
+  }
+  const facts = await deps.executionContext(target.runId);
   if (target.kind === 'node') {
     if (!facts.nodes.some(node => node.id === target.nodeId)) throw new GuideContextError('hima/not-found', 'The requested node is not part of this Campaign.');
     const execution = target.executionId === undefined ? undefined : facts.executions.find(item => item.id === target.executionId && item.nodeId === target.nodeId);
@@ -117,14 +134,14 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
       throw new GuideContextError('hima/context-stale', 'The requested generation differs from the available node context.');
     }
   }
-  return { ...head, sourceRevision: facts.run.control?.revision ?? facts.run.nextSeq,
+  return { ...head, sourceRevision: 'engine' in facts.run && facts.run.engine==='dbos/5.2.11' ? facts.run.nextSeq-1 : facts.run.control?.revision ?? facts.run.nextSeq,
     ownedRun: facts.run.control?.owner === request.sessionId ? facts.run.id : undefined,
     facts, sources: [facts.run.id], missing: facts.reason ? [facts.reason] : [] };
 }
 export type GuideContextView = Awaited<ReturnType<typeof readGuideContext>>;
 
 /** Read retained native events without waking an Agent or manufacturing historical provider context. */
-export async function readNativeSessionContext(ctx:Context,request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number},ledger?:Ledger) {
+export async function readNativeSessionContext(ctx:Context,request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number},ledger?:Ledger,assignedGuide?:(viewer:string,parent:string,child?:string)=>Promise<boolean>) {
   const workspace=await sessionProject(ctx,request.sessionId,true);
   if(await sessionProject(ctx,request.targetSessionId)!==workspace)throw new GuideContextError('hima/not-authorized','This conversation belongs to another project.');
   const query=ctx.get('sessionQuery') as {readSession(id:string):Promise<{session:{id:string;parentSession?:string};events:readonly {seq:number;data?:unknown;type?:string}[]}>;readSurface(id:string):Promise<{session:{id:string};capturedThroughSeq:number|null;events:readonly unknown[]}>}|undefined;
@@ -139,15 +156,15 @@ export async function readNativeSessionContext(ctx:Context,request:{sessionId:st
   // a child, the parent Run relationship alone is too broad: that same owner
   // may have unrelated native children in the same workspace. Require this
   // exact child to be in that Run's retained delegation journal.
-  const assignedGuide=ledger?.runs().some(run=>run.control?.owner===targetOwner
+  const assigned=await assignedGuide?.(request.sessionId,targetOwner,parent===undefined?undefined:request.targetSessionId) || (ledger?.runs().some(run=>run.control?.owner===targetOwner
     &&run.control.guideSessionId===request.sessionId
     &&(parent===undefined||ledger.records({runId:run.id,type:'delegation'}).some(record=>record.type==='delegation'
       &&record.childSessionId===request.targetSessionId&&record.parentSessionId===parent
-      &&['create-intent','created','result-observed'].includes(record.event))))??false;
-  if(request.sessionId!==request.targetSessionId&&request.sessionId!==parent&&!assignedGuide)throw new GuideContextError('hima/not-authorized','Only this conversation, its parent, or its recorded Guide may inspect this retained context.');
+      &&['create-intent','created','result-observed'].includes(record.event))))??false);
+  if(request.sessionId!==request.targetSessionId&&request.sessionId!==parent&&!assigned)throw new GuideContextError('hima/not-authorized','Only this conversation, its parent, or its recorded Guide may inspect this retained context.');
   const log=await query.readSession(request.targetSessionId);
   if(String(log.session.id)!==request.targetSessionId||request.parentSessionId!==undefined&&String(log.session.parentSession)!==request.parentSessionId)throw new GuideContextError('hima/context-stale','The retained conversation lineage differs from the requested identity.');
-  if(log.session.parentSession&&request.sessionId!==request.targetSessionId)await readChildSessionView(ctx,{viewerSessionId:request.sessionId,parentSessionId:String(log.session.parentSession),childSessionId:request.targetSessionId});
+  if(log.session.parentSession&&request.sessionId!==request.targetSessionId)await readChildSessionView(ctx,{viewerSessionId:request.sessionId,parentSessionId:String(log.session.parentSession),childSessionId:request.targetSessionId,assignedGuide:async()=>assigned});
   const from=request.fromSeq??0;if(!Number.isSafeInteger(from)||from<0)throw new GuideContextError('hima/invalid-view-address','Event cursor must be nonnegative.');
   const eventView=(event:unknown,index:number)=>{
     const row=event as {seq?:number;type?:string;data?:{type?:string}};

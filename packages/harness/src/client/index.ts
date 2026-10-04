@@ -2,6 +2,7 @@
 // Hima occupies the native dsh dock. The host owns sessions, chat, files and panel geometry;
 // this adapter registers the Hima view and passes navigation actions into presentation components.
 import { createElement, useState, type ReactElement } from 'react';
+import { runStatusSaid } from '../card-labels.js';
 import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
@@ -91,8 +92,8 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const body = run === undefined
     ? 'Hima Workspace'
     : createElement('span', null, 'Campaign ·',
-        createElement(Glyph, { name: status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
-        ` ${status === 'running' ? (run.currentNode ?? 'running') : statusSaid(status)}`,
+        createElement(Glyph, { name: run.goalState === 'unknown' ? 'circle' : run.goalState === 'not-met' ? 'square' : run.goalState === 'met' ? 'check' : status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
+        ` ${run.goalState === undefined && status === 'running' ? (run.currentNode ?? 'running') : runStatusSaid(run)?.said ?? statusSaid(status)}`,
         status === 'waiting' ? createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }) : null);
   // The shell mounts this outside `HimaWorkbench`'s own `.hima-root` tree (it is the tab strip's own
   // chip, not the tab body), so the token sheet's own `--hima-*` custom properties — the waiting

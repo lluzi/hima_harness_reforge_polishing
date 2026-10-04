@@ -1,15 +1,15 @@
 // Product preparation and PG-backed Fabric views; the finite DBOS interpreter alone schedules tasks.
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { DurableRuntime, DurableWorkflowDefinition } from './durable-runtime.js';
 import { durableEngine } from './durable-runtime.js';
-import { factIdentity, jsonDigest, type DurableRun, type DurableCommand } from './run-store.js';
+import { branchContains, factIdentity, jsonDigest, type DurableRun, type DurableCommand } from './run-store.js';
 import { taskEffectAdapterVersion, taskEffectStep } from './task-effects.js';
 import type { JsonValue, TaskIdentity } from './task-contract.js';
 import { startFlow, scheduleFlowDeadline, controlFlow, readFlow, type FlowStart } from './flow-workflow.js';
 import type { DurableProductOpening } from './durable-task-adapters.js';
 import { prepareWorkspaceFiles, type WorkspaceFilesResult } from './workspace.js';
-import { snapshotPackFolder, packDigestExcludes } from './pack-folder.js';
+import { snapshotPackFolder, packDigestExcludes, viewsOf as packFolderViews } from './pack-folder.js';
 import { loadPackFrom, boundInputs, type Pack } from './packs.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
 import { channelFor } from './channel.js';
@@ -17,6 +17,7 @@ import { decideWrite } from './shell.js';
 import { budgetStanding } from './budget.js';
 import type { RunRecord, NodeExecution } from './ledger.js';
 import type { FabricDeps } from './node-turns.js';
+import {flowTaskBranches,type FlowBranch} from './flow-definition.js';
 import type { ExecutionContext } from './fabric.js';
 
 const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -97,7 +98,10 @@ export async function durableProposalRun(deps: FabricDeps, proposalId: string, r
   if (existing && dataOf(existing).requestDigest !== requestDigest) throw new Error('This Campaign proposal already belongs to different accepted request facts');
   return existing;
 }
-export function durableStartRequestDigest(request: unknown): string { return jsonDigest(json(request)); }
+export function durableStartRequestDigest(req: import('./fabric.js').StartRunRequest): string {
+  return jsonDigest(json({pack:req.pack,site:req.site,goal:req.goal,strategy:req.strategy,
+    inputs:req.overrides?.inputs??req.inputs,overrides:req.overrides,test:req.test,timeBoxMs:req.timeBoxMs,retryAllowance:req.retryAllowance,generationLimit:req.generationLimit}));
+}
 export async function startDurablePreparation(runtime: DurableRuntime, runId: string): Promise<void> {
   await runtime.startWorkflow(preparationWorkflowName,`hima-prepare:${runId}`,{runId});
 }
@@ -145,10 +149,17 @@ export function preparationWorkflowDefinitions(options: { readonly sitesDir: str
                 const current=await runtime.store.run(runId);
                 if(current.cancelled||Date.now()>=Date.parse(current.deadlineAt)) throw new Error('Preparation stopped under original control/deadline');
                 if(current.hold) { await new Promise(resolve=>setTimeout(resolve,100)); continue; }
-                await runtime.store.assertEffectAdmission({runId,effectId:identity.effectId,owner:current.owner,epoch:current.epoch,revision:current.revision},async()=>{
-                  const fresh=loadSite(options.sitesDir,data.product.siteId);
-                  return jsonDigest(json(fresh))===data.product.siteDigest && (await decideWrite(fresh,target,channelFor(fresh))).ok;
-                });
+                try {
+                  await runtime.store.assertEffectAdmission({runId,effectId:identity.effectId,owner:current.owner,epoch:current.epoch,revision:current.revision},async()=>{
+                    const fresh=loadSite(options.sitesDir,data.product.siteId);
+                    return jsonDigest(json(fresh))===data.product.siteDigest && (await decideWrite(fresh,target,channelFor(fresh))).ok;
+                  });
+                } catch(error) {
+                  // Exit may win after the uncached read. It is a lifetime fence, not an
+                  // occupied workspace or terminal preparation outcome. Keep the original Step.
+                  if(await runtime.store.hostExit()){await new Promise(resolve=>setTimeout(resolve,100));continue;}
+                  throw error;
+                }
                 await runtime.store.recordExternalEffectFact(identity,'preparation-write-intent',json({workspace:data.product.workspace}));
                 writeDispatched=true;
                 return;
@@ -175,6 +186,36 @@ export interface DurableExecutionContext extends ExecutionContext {
   readonly engine: typeof durableEngine;
   readonly durable: Awaited<ReturnType<typeof readFlow>> & { readonly preparation: WorkspaceFilesResult | null; readonly outcome: JsonValue | null; readonly revisionPreparation: Awaited<ReturnType<typeof DBOS.getWorkflowStatus>>; readonly preparationWorkflow: Awaited<ReturnType<typeof DBOS.getWorkflowStatus>> };
 }
+const readMethods = new WeakMap<DurableRuntime, Map<string, Pack>>();
+/** Read the immutable PG method receipt; this never invokes the adapter's materializing writer. */
+export async function readFrozenProductMethod(runtime: DurableRuntime, run: DurableRun): Promise<Pack> {
+  const product = dataOf(run).product;
+  const id = factIdentity('flow-fact', run.runId, `product-method:${product.method.packDigest}`);
+  let cache = readMethods.get(runtime);
+  const key = `${product.method.retainedPackDir}:${product.method.packDigest}`;
+  const cached = cache?.get(key);
+  if (cached) return cached;
+  const fact = await runtime.store.fact(id);
+  if (!fact) {
+    // Before the first task captures its immutable method receipt, preparation owns these bytes.
+    const folder = snapshotPackFolder(product.method.retainedPackDir);
+    if (folder.digest(packDigestExcludes) !== product.method.packDigest) throw new Error('Original retained method bytes changed');
+    const pack=loadPackFrom(folder);
+    if (!cache) {cache=new Map();readMethods.set(runtime,cache);}
+    cache.set(key,pack);return pack;
+  }
+  if (fact.runId !== run.runId || fact.kind !== 'flow-fact') throw new Error('Original method receipt source differs');
+  const held = fact.payload as unknown as {value:{dir:string;packSha256:string;files:[string,string,number][];directories:string[];entries:string[]}};
+  const frozen = held.value;
+  if (frozen.dir !== product.method.retainedPackDir || frozen.packSha256 !== product.method.packDigest) throw new Error('Original frozen method has another source identity');
+  const files = new Map(frozen.files.map(([name,bytes]) => [name,Buffer.from(bytes,'base64')]));
+  const folder=packFolderViews(frozen.dir,files,new Set(frozen.directories),new Set(frozen.entries),new Map(frozen.files.map(([name,,mode])=>[name,mode])));
+  if (folder.digest(packDigestExcludes) !== product.method.packDigest) throw new Error('Original frozen method bytes differ from the Run identity');
+  const pack=loadPackFrom(folder);
+  if (!cache) { cache=new Map();readMethods.set(runtime,cache); }
+  cache.set(key,pack);return pack;
+}
+
 export async function readDurableExecutionContext(deps: FabricDeps, runId: string): Promise<DurableExecutionContext> {
   const runtime = durableRuntimeOf(deps), flow = await readFlow(runtime,runId);
   const preparationWorkflow = await DBOS.getWorkflowStatus(`hima-prepare:${runId}`);
@@ -187,10 +228,8 @@ export async function readDurableExecutionContext(deps: FabricDeps, runId: strin
   if(revisionControl) {const command=revisionControl as unknown as DurableCommand;const held=await runtime.store.flowFact(runId,`facade-command:${command.commandId}`) as unknown as PreparedFacadeCommand|null;
     if(held?.revision&&jsonDigest(json(held.command))===jsonDigest(revisionControl))revisionPreparation=await DBOS.getWorkflowStatus(`hima-prepare-revision:${jsonDigest([runId,command.commandId,held.requestDigest])}`);}
 
-  const data = dataOf(flow.run), folder = snapshotPackFolder(data.product.method.retainedPackDir);
-  if (folder.digest(packDigestExcludes) !== data.product.method.packDigest) throw new Error('Original retained method bytes changed; restore the frozen method before reading its execution');
-  const pack = loadPackFrom(folder);
-  const tasks = flow.tasks as unknown as {identity:TaskIdentity;version:number;iterations:{repeatId:string;iteration:number}[];valid:boolean;state:{state:string;reason?:string};result:unknown}[];
+  const data = dataOf(flow.run), pack = await readFrozenProductMethod(runtime, flow.run);
+  const tasks = flow.tasks as unknown as {identity:TaskIdentity;version:number;iterations:{repeatId:string;iteration:number}[];branches:FlowBranch[];valid:boolean;state:{state:string;reason?:string};result:unknown}[];
   if(flow.run.cancelled) {
     const unclosedResources=(flow.resources as unknown as {released:boolean}[]).filter(resource=>!resource.released).length;
     const effectsWithoutStopProof=tasks.filter(task=>(flow.stopped[task.identity.effectId] as {closed?:boolean}|undefined)?.closed!==true).length;
@@ -200,9 +239,16 @@ export async function readDurableExecutionContext(deps: FabricDeps, runId: strin
     const closed=unclosedResources===0&&effectsWithoutStopProof===0&&preparationClosed&&revisionClosed;
     run={...run,status:closed?'cancelled':'waiting',stopState:{state:closed?'closed':preparationWorkflow?.status==='ERROR'||revisionPreparation?.status==='ERROR'||preparationOutput?.preparationClosed===false||(revisionPreparation?.output as {preparationClosed?:boolean}|undefined)?.preparationClosed===false?'unknown':'closing',closed,unclosedResources,effectsWithoutStopProof}};
   }
+  const holds:NonNullable<ExecutionContext['holds']>[number][]=flow.run.hold?[{scope:'*',source:flow.run.holdSource??'unknown'}]:[];
+  for(const control of await runtime.store.branchControls(runId))if(control.hold) {
+    const scopes=new Set(Object.keys(data.start.flow.tasks).filter(taskId=>branchContains(control.branches,flowTaskBranches(data.start.flow,taskId))));
+    for(const task of tasks)if(task.valid&&branchContains(control.branches,task.branches))scopes.add(task.identity.taskId);
+    for(const scope of scopes)holds.push({scope,source:control.holdSource??'unknown'});
+  }
+  if(run.control)run={...run,control:{...run.control,paused:[...new Set(holds.map(hold=>hold.scope))]}};
   const executions:NodeExecution[] = tasks.map(task=>({id:task.identity.effectId,nodeId:task.identity.taskId,kind:pack.graph.nodes.find(node=>node.id===task.identity.taskId)?.kind??'act',methodDigest:task.identity.packSha256,inputDigest:task.identity.inputSha256,phase:task.result?'completed':task.state.state==='failed'?'failed':task.state.state==='unknown'?'uncertain':'begun',attempt:task.version+1,generation:(task.iterations?.at(-1)?.iteration??0)+1,...(task.iterations?.length?{loopId:task.iterations.at(-1)!.repeatId,loopGeneration:task.iterations.at(-1)!.iteration+1}:{})}));
   return {engine:durableEngine,run,nodes:pack.graph.nodes,budget:budgetStanding(run,0),available:[],executions,growths:[],revisions:[],
-    holds:flow.run.hold?[{scope:'*',source:flow.run.holdSource??'unknown'}]:[],
+    holds,
     method:{id:pack.id,version:pack.contract.version,digest:data.product.method.packDigest,dir:pack.dir,contract:pack.contract,reference:pack.graph},
     reason:flow.run.applicationVersion!==runtime.applicationVersion?'This Run requires its original frozen executable version for control/continuation; retained facts remain readable':flow.run.cancelled&&!run.stopState?.closed?'Cancellation accepted; original resource closure is not yet proved':flow.run.hold??(revisionPreparation?.status==='ERROR'?'Admitted revision material preparation failed; inspect its original error':revisionPreparation&&revisionPreparation.status!=='SUCCESS'?'Approved revision material preparation is pending':preparationWorkflow?.status==='ERROR'?'Durable preparation failed; inspect its workflow error':flow.workflow?.status==='ERROR'?'Durable execution failed; inspect its workflow error':!prepared?'Durable workspace preparation is pending':prepared.kind!=='prepared'&&prepared.kind!=='reused'?'Workspace preparation requires attention':undefined),
     durable:{...flow,preparation:prepared,preparationWorkflow,revisionPreparation,outcome}};
@@ -485,17 +531,25 @@ function revisionPreparationWorkflowDefinition(options:{readonly sitesDir:string
     });
     const wait=async(attempt:number,state:{at:number;deadlineAt:string})=>DBOS.sleep(Math.min(5000,100*2**Math.min(attempt,6),Math.max(0,Date.parse(state.deadlineAt)-state.at)));
     const beforeWrite=(effectId:string)=>async(target:string)=>{
-      const authority=await runtime.store.currentFlowAuthority(command.runId),current=authority.run;
-      const {flowInvocationRevision}=await import('./flow-definition.js'),{branchContains}=await import('./run-store.js');
-      const accepted=authority.revisionRules.find(rule=>rule.revision===receipt.revision);
-      if(current.cancelled||Date.now()>=Date.parse(current.deadlineAt)||!accepted||flowInvocationRevision(authority.revisionRules,accepted.selected).version!==receipt.revision)throw new Error('Revision preparation stopped under original control/deadline');
-      if(current.hold||authority.branches.some(member=>(member.hold||member.cancelled)&&branchContains(member.branches,plan.branches)))throw new Error('Revision preparation is paused before its actual write');
-      await runtime.store.assertEffectAdmission({runId:command.runId,effectId,owner:current.owner,epoch:current.epoch,revision:current.revision},async()=>{
-        const fresh=loadSite(options.sitesDir,data.product.siteId);return jsonDigest(json(fresh))===data.product.siteDigest&&(await decideWrite(fresh,target,channelFor(fresh))).ok;
-      });
-      await runtime.store.recordExternalEffectFact(identity,effectId===identity.effectId?'revision-retain-intent':'revision-workspace-intent',json({commandId:command.commandId}));
-      writeAdmitted=true;
+      for(;;) {
+        const authority=await runtime.store.currentFlowAuthority(command.runId),current=authority.run;
+        const {flowInvocationRevision}=await import('./flow-definition.js'),{branchContains}=await import('./run-store.js');
+        const accepted=authority.revisionRules.find(rule=>rule.revision===receipt.revision);
+        if(current.cancelled||Date.now()>=Date.parse(current.deadlineAt)||!accepted||flowInvocationRevision(authority.revisionRules,accepted.selected).version!==receipt.revision)throw new Error('Revision preparation stopped under original control/deadline');
+        if(current.hold||authority.branches.some(member=>(member.hold||member.cancelled)&&branchContains(member.branches,plan.branches)))throw new Error('Revision preparation is paused before its actual write');
+        try {
+          await runtime.store.assertEffectAdmission({runId:command.runId,effectId,owner:current.owner,epoch:current.epoch,revision:current.revision},async()=>{
+            const fresh=loadSite(options.sitesDir,data.product.siteId);return jsonDigest(json(fresh))===data.product.siteDigest&&(await decideWrite(fresh,target,channelFor(fresh))).ok;
+          });
+        } catch(error) {
+          if(await runtime.store.hostExit()){await new Promise(resolve=>setTimeout(resolve,100));continue;}
+          throw error;
+        }
+        await runtime.store.recordExternalEffectFact(identity,effectId===identity.effectId?'revision-retain-intent':'revision-workspace-intent',json({commandId:command.commandId}));
+        writeAdmitted=true;return;
+      }
     };
+
     let assets:import('./workspace.js').WorkspaceRevisionAsset[];
     for(let attempt=0;;attempt++) {
       const state=await snapshot();

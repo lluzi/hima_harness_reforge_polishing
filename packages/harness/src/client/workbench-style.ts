@@ -263,6 +263,15 @@ export const HIMA_STYLE = `
 [data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal{fill:var(--hima-warn)}
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal-ring,
 [data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal-ring{stroke:var(--hima-warn)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="met"] .hima-goal-seal{fill:var(--hima-good)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="met"] .hima-goal-seal-ring{stroke:var(--hima-good)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="not-met"] .hima-goal-seal{fill:var(--hima-bad)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="not-met"] .hima-goal-seal-ring{stroke:var(--hima-bad)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="unknown"] .hima-goal-seal{fill:var(--hima-warn)}
+[data-hima-region="campaign-goal"][data-hima-state-goal="unknown"] .hima-goal-seal-ring{stroke:var(--hima-warn)}
+.hima-masthead-seal-met,.hima-state-word[data-state="met"]{color:var(--hima-good)}
+.hima-masthead-seal-not-met,.hima-state-word[data-state="not-met"]{color:var(--hima-bad)}
+.hima-masthead-seal-unknown,.hima-state-word[data-state="unknown"]{color:var(--hima-warn)}
 .hima-goal-seal-glyph{color:var(--hima-on-solid)}
 .hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-ink);text-anchor:middle}
 .hima-goal-reason{font-size:var(--hima-fs-label);fill:var(--hima-ink-2);text-anchor:middle}

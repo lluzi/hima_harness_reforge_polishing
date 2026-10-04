@@ -125,7 +125,10 @@
     "test/contract/dbos-flow.host.test.ts",
     "test/contract/dbos-control.host.test.ts",
     "test/contract/durable-fabric.host.test.ts",
-    "test/contract/dbos-host-authority.host.test.ts"
+    "test/contract/dbos-host-authority.host.test.ts",
+    "test/contract/durable-views.host.test.ts",
+    "test/contract/durable-ui-display.test.ts",
+    "test/contract/durable-task-message.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",

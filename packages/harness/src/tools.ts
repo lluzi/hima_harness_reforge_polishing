@@ -17,6 +17,7 @@ import { assertRunProject } from './guide-context.js';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { knownDurableRun } from './durable-fabric.js';
+import { createDurableViewReaders } from './durable-views.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, readExecutionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
@@ -231,9 +232,9 @@ export function guideTools(operations: {
     execute:async(args,execution)=>{if(!execution.agent||!operations.delegate)throw new Error('Run delegation is unavailable');return toolJson(await operations.delegate({...args,actor:String(execution.agent.id),origin:'agent'} as never));},
   }),defineTool({
     name: 'hima_inspect',
-    description: 'Inspect an exact Run, node execution/generation, retained report version, or native child in this project. Read-only, sourced current facts; selecting a target never grants ownership.',
+    description: 'Inspect an exact Run, node execution/generation, retained report version, verified task artifact, or native child in this project. Task artifacts return hash-checked text up to 64 KiB of characters, explicit truncation and a reference; binary bytes stay in the App. Read-only, sourced current facts; selecting a target never grants ownership.',
     parameters: { requestId: { type: 'string', required: true }, target: { type: 'object', required: true, additionalProperties: true,
-      description: 'TargetAddress: run{runId}; node{runId,nodeId,executionId or generation}; report{reportRef,version,sha256}; child{parentSessionId,childSessionId}. Include kind.' } },
+      description: 'TargetAddress: run{runId}; node{runId,nodeId,executionId or generation}; report{reportRef,version,sha256}; task-artifact{runId,effectId,name}; child{parentSessionId,childSessionId}. Include kind; use the exact effectId and artifact name recorded in the task result.' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     execute: async (args, execution) => {
       if (!execution.agent) throw new Error('a live conversation is required');
@@ -540,12 +541,12 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
         await assertProjectAccess(deps, execution.agent, args.run);
-        const context = await readExecutionContext(deps, args.run);
+        const readers=createDurableViewReaders(deps),context=await readers.executionContext(args.run);
         let words: RunWords | undefined;
         try { words = runPackWords(deps.packsDir, context.run); }
         catch { /* Keep execution facts readable when the original method is unavailable. */ }
         // What an Explore here must cite leads, so it is read before the Ledger that follows it.
-        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: context.engine ? context.durable : runView(deps.ledger, context.run, words) });
+        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: await readers.readRunView(args.run) ?? runView(deps.ledger, context.run, words) });
       },
     }),
     defineTool({
@@ -553,34 +554,26 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       description: 'Control or inspect a Campaign as its actual owning Agent. New Runs execute their frozen task flow automatically; do not use begin/work/complete to advance them. pause and continue affect the named branch or whole Run; cancel requests actual resource closure, whose status can remain unknown. handoff changes the recorded owner. revise changes a selected invocation and its affected consumers while retaining prior iterations and valid siblings. grow proposes bounded diagnostic work at a declared extension position, then returns its sourced result to the original method. Use the latest context owner/epoch/revision and retain requestId only for an identical retry. Native engineering, scoped code and evidence operations are usable only when offered by the current execution context. A result or accepted control request is not proof that resources stopped or a business Goal was met.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
-        action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend', 'analyze', 'engineering'] },
+        action: { type: 'string', required: true, enum: ['pause', 'continue', 'cancel', 'handoff', 'respond', 'revise', 'grow', 'engineering'] },
         expectedEpoch: { type: 'integer', required: true, description: 'Owner epoch from the latest context.' },
         expectedRevision: { type: 'integer', required: true, description: 'Control revision from the latest context.' },
         requestId: { type: 'string', required: true, description: 'Unique bounded request identity, reused only for an identical retry.' },
-        nodeId: { type: 'string', description: 'Exact reference node for begin, or optional pause scope.' },
-        executionId: { type: 'string', description: 'Admitted execution identity for node work and completion.' },
+        nodeId: { type: 'string', description: 'Exact task id for optional branch pause, continue or cancel scope.' },
+        executionId: { type: 'string', description: 'Original execution identity from the current task facts.' },
         targetOwner: { type: 'string', description: 'Explicit handoff target; must be a real Host conversation.' },
-        path: { type: 'string', description: 'Workshop code path relative to this execution\'s private workshop.directory returned by recommend, not the Campaign workspace. For the executable use the returned entry exactly, e.g. analyze.sh, without prepending research/analysis or the absolute entryPath. Helper paths use the same private base.' },
-        content: { type: 'string', description: 'Exact code/file content for write.' },
-        output: { type: 'string', description: 'Declared output name, or @job-log for this execution’s actual Job log.' },
-        file: { type: 'string', description: 'Declared knowledge file.' },
-        assetRun: { type: 'string', description: 'Optional verified historical source Run. Omit with file to preserve current Pack knowledge reads; omit both to read the best automatically applicable archived source.' },
-        assetPath: { type: 'string', description: 'Optional material path from the selected source Run\'s verified archive; defaults to experience.json. It never names an arbitrary filesystem path.' },
-        analysis: { type: 'object', additionalProperties: false, description: 'For analyze before the Run ends. Cite actual records of this Run; quoted numbers must match their observations. Model text remains interpretation, never a Judge verdict.', properties: {
-          question: { type: 'string', required: true }, hypotheses: { type: 'array', items: { type: 'string' }, required: true },
-          comparisons: { type: 'array', items: { type: 'string' }, required: true }, limitations: { type: 'array', items: { type: 'string' }, required: true },
-          nextExperiments: { type: 'array', items: { type: 'string' }, required: true },
-          claims: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
-            text: { type: 'string', required: true }, cites: { type: 'array', items: { type: 'string' }, required: true },
-            measurements: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
-              recordId: { type: 'string', required: true }, field: { type: 'string', required: true }, value: { type: 'number', required: true }, unit: { type: 'string' },
+        response: { type: 'object', additionalProperties: false, description: 'For a recorded human-response wait: return the selected effect and a value matching its output contract.', properties: {
+          effectId: { type: 'string', required: true },
+          output: { type: 'object', additionalProperties: false, required: true, properties: {
+            schemaVersion: { type: 'string', required: true }, value: { type: 'json', required: true },
+            artifacts: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              runId: {type:'string',required:true}, taskId: {type:'string',required:true}, effectId: {type:'string',required:true},
+              name: {type:'string',required:true}, path: {type:'string',required:true}, sha256: {type:'string',required:true}, mediaType: {type:'string'},
             } } },
-          } } },
+            diagnostics: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              code: {type:'string',required:true}, message: {type:'string',required:true}, source: {type:'string',required:true},
+            } } },
+          } },
         } },
-        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy', 'stop'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites: next-strategy continues with the next generation, stop ends the Campaign honestly with its Goal not met, goal-met needs every required verdict PASS. work does not submit a decision.' },
-        strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
-        rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
-        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete. context.cite lists exactly the ids the current Explore requires.' },
         proposal: { type: 'object', additionalProperties: false,
           description: 'For grow, express the research intent with the exact named fields below. Omit method, parent and inputThroughSeq to let Harness attach current Run identities. Omit inputs to use current-generation evidence, or give record sequence numbers/ids; Harness computes record identities. Reuse proposalId only for identical intent; correcting a refused proposal uses a new proposalId/requestId. Explicit wrong hashes are still refused.',
           properties: {
@@ -622,22 +615,23 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         proposalId: { type: 'string', description: 'Accepted proposal identity when settling an active optional growth branch.' },
         growthDisposition: { type: 'string', enum: ['failed', 'cancelled', 'abandoned'], description: 'For grow on an active optional branch: preserve this outcome and return to its declared parent after confirming no in-flight Job.' },
         engineering: { type: 'object', additionalProperties: false,
-          description: 'Resident engineering lifecycle. start needs goal and optional context; message needs message; status/cancel/delivery/release carry only operation.',
+          description: 'Send a business message to the current resident task using its recorded executionId. Start, collection and release are automatic; use pause/cancel for control and hima_context for facts.',
           properties: {
-            operation: { type: 'string', required: true, enum: ['start', 'message', 'status', 'cancel', 'delivery', 'release'] },
-            goal: { type: 'string' }, context: { type: 'string' }, message: { type: 'string' },
+            operation: { type: 'string', required: true, enum: ['message'] },
+            message: { type: 'string', required:true },
           } },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: executionText(value) }] },
       execute: async (args, execution) => {
         await assertProjectAccess(deps, execution.agent, args.run);
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
-        const { run, strategy, ...fields } = args;
-        const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
+        const { run, ...fields } = args;
+        const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent' };
         const durable = await knownDurableRun(deps, run);
         const bound = durable ? request : request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelResearchProposal(deps, run, 'growth', args.proposal) }
           : request.action === 'revise' && args.revision !== undefined ? { ...request, revision: modelResearchProposal(deps, run, 'revision', args.revision) } : request;
-        return toolJson({ runId: run, ...await executionAction(deps, bound) });
+        const result=await executionAction(deps,bound);
+        return toolJson({runId:run,...result,context:await createDurableViewReaders(deps).executionContext(run)});
       },
     }),
     defineTool({
@@ -822,14 +816,14 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           retryAllowance: toolNumber('retries', args.retries) ?? overrides?.budget?.retries,
           generationLimit: toolNumber('generations', args.generations) ?? overrides?.budget?.generations,
         });
-        return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' || result.kind === 'preparing' ? { context: toolJson(await readExecutionContext(deps, result.run.id)) } : {}) };
+        return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' || result.kind === 'preparing' ? { context: toolJson(await createDurableViewReaders(deps).executionContext(result.run.id)) } : {}) };
       },
     }),
     // The resume face as a tool, beside the run face: a waiting Run is cleared the same way from
     // an agent as from the command line.
     defineTool({
       name: 'hima_resume',
-      description: 'Legacy compatibility only. Agent-owned Runs refuse this operation: read hima_context and use hima_execute continue with current owner epoch/revision. No automatic continuation is available in production.',
+      description: 'Legacy compatibility only. Agent-owned Runs refuse this operation: read hima_context and use hima_execute continue with current owner epoch/revision. Current Run flows advance automatically after verified results; legacy mechanical resume is unavailable.',
       parameters: {
         run: { type: 'string', required: true, description: 'The run id to resume, as /hima status names it.' },
       },
@@ -900,7 +894,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
     }),
     defineTool({
       name: 'hima_status',
-      description: 'Read one HimaHarness run back out of the HimaLedger: the run row, every observation, refusal and verdict, the state of each node, one row per generation of its loop, its jobs, its blockers, its latest decision and its experience report. What the run view route answers, without a browser. A run this ledger does not hold is answered in words and nothing is read, and a run whose pack cannot be loaded is answered as unreadable naming the pack rather than as a view with the pack\'s own words missing.',
+      description: 'Read current Run, task, Goal, stop and source-linked Job/result facts. New Runs read PostgreSQL authority; retained legacy Runs use their historical reader. Reading changes neither ownership nor execution.',
       parameters: {
         run: { type: 'string', required: true, description: 'The run id, as /hima run or /hima status names it.' },
       },
@@ -921,6 +915,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       },
       execute: async (args, execution) => {
         await assertProjectAccess(deps, execution.agent, args.run);
+        const current=await createDurableViewReaders(deps).readRunView(args.run);
+        if(current)return {kind:'run' as const,...toolJson(current)};
         const run = deps.ledger.run(args.run);
         // A refusal in words, as `hima_resume` answers one: the caller asked about a run and there is
         // no such run, which is a fact about their request and not a fault of this host.

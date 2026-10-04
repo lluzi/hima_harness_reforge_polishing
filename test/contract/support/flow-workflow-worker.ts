@@ -26,6 +26,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
 async function main() {
   const workerStarted=Date.now();
   const [home,mode] = process.argv.slice(2); if(!home)throw new Error('Private Home required');
+  const trace=async(stage:string)=>{if(process.env.HIMA_FLOW_TRACE_FILE)await appendFile(process.env.HIMA_FLOW_TRACE_FILE,JSON.stringify({pid:process.pid,mode,stage,at:new Date().toISOString(),elapsedMs:Date.now()-workerStarted})+'\n');};
+  await trace('worker-start');
   const lib = process.env.HIMA_U6_TEST_LIB ?? path.join(root,'lib');
   const load = (name: string) => import(pathToFileURL(path.join(lib,`${name}.js`)).href);
   const {DBOS} = await import(pathToFileURL(require.resolve('@dbos-inc/dbos-sdk')).href);
@@ -35,7 +37,9 @@ async function main() {
   const {compileFlow,compileLegacyFlow,compileLegacyGrowth} = await load('flow-compiler');
   const {commandTaskAdapter, taskEffectStep,executeTaskEffect} = await load('task-effects');
   const {stringify} = require('yaml');
+  await trace('database-start');
   const database = await startLocalDatabase({home,runtimeDirectory:process.env.HIMA_POSTGRES_RUNTIME});
+  await trace('database-ready');
   const sitesDir=path.join(home,'sites'),workspace=path.join(home,'workspace');
   await mkdir(sitesDir,{recursive:true});await mkdir(workspace,{recursive:true});
   await writeFile(path.join(sitesDir,'local.permit.yml'),stringify({allowedReadRoots:[workspace],allowedWriteRoots:[workspace],allowedWrappers:[process.execPath],forbidden:['services','licences','network','deletions','downloads']}));
@@ -51,6 +55,7 @@ async function main() {
   const decisionSchema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',properties:{route:{type:'string',enum:['again','stop']}},required:['route']}};
   const flow=(value:any,extensions:any[]=[])=>compileFlow({schema:'hima-flow/1',id:'fixture',version:'1',flow:value,extensions},{packSha256:'a'.repeat(64)});
   const methods:any={
+    message:flow(task('message-task',{delay:literal(12000)})),
     overlap:flow({kind:'parallel',id:'p',branches:{a:{flow:task('a',{n:literal(11),delay:literal(400)}),required:true},b:{flow:task('b',{n:literal(29),delay:literal(400)}),required:true}},results:{a:{output:{taskId:'a',path:[]},required:true},b:{output:{taskId:'b',path:[]},required:true}}}),
     pause:flow({kind:'parallel',id:'p',branches:{a:{flow:seq('a-chain',task('a',{delay:literal(300)}),task('a-next',{value:from('a','n')})),required:true},b:{flow:task('b',{delay:literal(200)}),required:true}},results:{}}),
     required:flow({kind:'parallel',id:'p',branches:{a:{flow:task('a',{fail:literal(true)}),required:true},b:{flow:task('b'),required:false}},results:{}}),
@@ -86,7 +91,14 @@ async function main() {
   const optionalFragment=compileLegacyGrowth({id:'optional-fixture',graph:optionalGraph,contract:optionalContract,flow:optionalBase,folder:{digest:()=>optionalBase.packSha256}},optionalProposal(mode==='optional-failed'));
   methods['optional-failed']=optionalBase;methods['optional-abandoned']=optionalBase;methods['optional-cancelled']=optionalBase;
   let gateOnce=false;let cleanupObservations=0;
+  let messagePreparationBlocked=false,messagePreparationObserved=false;
   const resolveAdapter=async(context:any)=>{
+    if(messagePreparationBlocked&&DBOS.workflowID?.startsWith('hima-message:')) {
+      messagePreparationObserved=true;
+      const reason={code:'adapter-materialization',source:'fixture-adapter',message:'Restore the original message adapter assets'};
+      if(mode==='message-unavailable')throw new TaskAdapterMaterializationError(reason);
+      return {pending:true,state:'waiting',reason};
+    }
     if(context.task.id==='materialization'&&(await taskEffectStep('fixture.materialization-availability',async()=>({unavailable:await exists(path.join(home,'materialization-unavailable'))}))).unavailable) {
       const diagnostic={code:'adapter-materialization',source:'fixture-adapter',message:'Restore the original retained adapter binding'};
       throw new TaskAdapterMaterializationError(diagnostic);
@@ -111,6 +123,10 @@ async function main() {
     const adapter=commandTaskAdapter({sitesDir,siteId:'local',workspace:dir,argv:[process.execPath,'-e',script,dir,context.task.id,JSON.stringify(value)],name:context.task.id,
       stage:async()=>{await mkdir(dir,{recursive:true});await appendFile(path.join(home,'stages'),JSON.stringify({task:context.task.id,input:context.request.input})+'\n');await writeFile(path.join(dir,'input.json'),JSON.stringify(context.request.input));},
       collect:async()=>taskEffectStep('fixture.read-original-output',async()=>({schemaVersion:context.request.contract.output.version,value:JSON.parse(await readFile(path.join(dir,'output.json'),'utf8')),artifacts:[],diagnostics:[]}))});
+    if(context.task.id==='message-task') {
+      adapter.message=async(_prepared:any,id:string,input:any,before:()=>Promise<void>)=>{await before();await appendFile(path.join(home,'messages'),JSON.stringify({id,input})+'\n');throw new Error('Fixture lost native ACK');};
+      adapter.reconcileMessage=async(_prepared:any,id:string,input:any)=>await exists(path.join(home,'message-ack'))?{id,input,accepted:true}:undefined;
+    }
     if(context.task.id==='held-revision'&&context.invocation.revision===0){const stop=adapter.stop;adapter.stop=async(prepared:any,receipt:any,before:any)=>await exists(path.join(home,'original-close-gate'))?stop!(prepared,receipt,before):{closed:false,reason:'Original task stop acknowledgement is unknown; reconcile original identity'};}
     if(context.task.id==='reader-parent'){
       adapter.collect=async(_prepared:any,_receipt:any,request:any)=>{
@@ -151,7 +167,7 @@ async function main() {
     };}
     return adapter;
   };
-  const {flowWorkflowDefinitions,startFlow,controlFlow,readFlow,TaskAdapterMaterializationError}=await load('flow-workflow');
+  const {flowWorkflowDefinitions,startFlow,controlFlow,messageFlowTask,readFlow,TaskAdapterMaterializationError}=await load('flow-workflow');
   let retainedProducerCalls=0;
   const retainedWorkflow={name:'fixture.retained-materialization',async execute(runtime:any,input:any){
     let metadata:any;
@@ -164,7 +180,9 @@ async function main() {
     }
     return metadata;
   }};
+  await trace('runtime-start');
   const runtime=await startDurableRuntime({database,manifest,workflows:[...flowWorkflowDefinitions({resolveAdapter}),retainedWorkflow]});
+  await trace('runtime-ready');
   const store=runtime.store;
   if(mode?.startsWith('crash-')){
     const prefix={choice:'choice:',repeat:'repeat:',extension:'fragment:'}[mode.slice(6) as 'choice'|'repeat'|'extension'];
@@ -193,7 +211,42 @@ async function main() {
     if(value.action==='status')send({stage:'status',view:await readFlow(runtime,value.runId),rows:await rows()});
     for(const callback of messages)callback(value);
   }catch(error){send({stage:'error',error:String(error)});}});
-  if(mode==='flows'){
+  if(mode?.startsWith('message')) {
+    await open('message','message',{},30000);
+    await until(async()=>(await rows()).some((row:any)=>row.task==='message-task'&&row.phase==='start'));
+    const invocation=(await store.flowInvocations('message'))[0],run=await store.run('message');
+    const input={runId:'message',effectId:invocation.identity.effectId,requestId:'business-message',owner:run.owner,epoch:run.epoch,revision:run.revision,message:'Inspect the original timing path'};
+    messagePreparationBlocked=mode!=='message';
+    const handle=await messageFlowTask(runtime,input);
+    if(messagePreparationBlocked) {
+      await until(async()=>messagePreparationObserved);
+      assert.equal(await exists(path.join(home,'messages')),false,'pending preparation cannot dispatch a message');
+      if(mode==='message-pending-cancel') {
+        await command('message','cancel');
+        const result=await handle.getResult();assert.equal(result.state,'waiting');
+        assert.deepEqual(await store.flowFact('message','task-message-result:business-message'),result);
+        assert.deepEqual(await(await messageFlowTask(runtime,input)).getResult(),result);
+        assert.equal(await exists(path.join(home,'messages')),false,'cancelled preparation never dispatches');
+        send({ok:true,result,externalMessages:0});return;
+      }
+      messagePreparationBlocked=false;
+      // Bound the red proof too: the old fixed-ID workflow has already terminated here.
+      const restored=await messageFlowTask(runtime,input);assert.equal(restored.workflowID,handle.workflowID);
+      const outcome=await Promise.race([until(()=>exists(path.join(home,'messages'))).then(()=>undefined),handle.getResult()]);
+      assert.equal(outcome,undefined,'restoration keeps the original workflow live until native dispatch');
+    }
+    await until(()=>exists(path.join(home,'messages')));
+    const duplicate=await messageFlowTask(runtime,input);assert.equal(duplicate.workflowID,handle.workflowID);
+    await assert.rejects(messageFlowTask(runtime,{...input,message:'different contents'}),/different|identity/);
+    await assert.rejects(messageFlowTask(runtime,{...input,requestId:'stale-message',owner:'former-owner'}),/stale/);
+    await writeFile(path.join(home,'message-ack'),'native ACK is now queryable');
+    const result=await handle.getResult();assert.equal(result.state,'completed');assert.equal(result.value.input,input.message);
+    assert.equal((await readFile(path.join(home,'messages'),'utf8')).trim().split('\n').length,1,'lost ACK and duplicate API never resend the message');
+    assert.deepEqual(await store.flowFact('message','task-message-result:business-message'),result);
+    await command('message','cancel');
+    assert.deepEqual(await(await messageFlowTask(runtime,input)).getResult(),result,'identical retry reads the original completed message even after cancellation');
+    send({ok:true,result,externalMessages:1});
+  }else if(mode==='flows'){
     for(const scenario of ['overlap','required','optional','choice','repeat','extension','repeat-terminal']){
       const {handle}=await open(scenario,scenario);const result:any=await handle.getResult();
       assert.equal(result.state,scenario==='required'?'failed':'succeeded',JSON.stringify(result));
@@ -246,9 +299,11 @@ async function main() {
       send({stage:'idle-bounded'});
     }finally{await system.end();await application.end();}
   }else if(mode==='idle-recover'){
-    const view=await readFlow(runtime,'idle-receipts');
+    await trace('read-recovered-flow');
+    const view=await readFlow(runtime,'idle-receipts');await trace('recovered-flow-read');
     assert.ok(['PENDING','ENQUEUED'].includes(view.workflow.status));assert.equal((await rows()).length,0);
     await until(async()=>(await readFlow(runtime,'idle-receipts')).workflow.status==='PENDING');
+    await trace('recovered-flow-pending');
     const startupMs=Date.now()-workerStarted;assert.ok(startupMs<5000,`Host recovery took ${startupMs}ms`);send({stage:'idle-reopened',startupMs,deadline:view.run.deadlineAt});
     const continuedAt=Date.now();await command('idle-receipts','continue');
     const invocation=(await store.flowInvocations('idle-receipts'))[0];

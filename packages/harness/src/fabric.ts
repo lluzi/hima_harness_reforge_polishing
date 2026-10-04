@@ -384,8 +384,7 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   }
   const runtime = durableRuntimeOf(deps);
   if (!req.ownerSessionId) throw new RunStartError('Every new durable Run requires its conversational owner');
-  const requestDigest = durableStartRequestDigest({pack:req.pack,site:req.site,goal:req.goal,strategy:req.strategy,
-    inputs:req.overrides?.inputs??req.inputs,overrides:req.overrides,test:req.test,timeBoxMs:req.timeBoxMs,retryAllowance:req.retryAllowance,generationLimit:req.generationLimit});
+  const requestDigest = durableStartRequestDigest(req);
   if (req.proposalId) {
     const original = await durableProposalRun(deps,req.proposalId,requestDigest);
     if (original) {
@@ -1267,6 +1266,9 @@ export interface GrowthView {
   readonly optional?: boolean; readonly reason?: string; readonly evidence?: readonly string[];
 }
 export interface ExecutionContext {
+  /** Bounded current task facts shared by Guide, model tools and the existing execution view. */
+  readonly tasks?: readonly import('./record-views.js').DurableTaskView[];
+  readonly sources?: readonly string[];
   /** Derived from durable control receipts, never an independent pause store. */
   readonly holds?: readonly { readonly scope: string; readonly source: 'human' | 'agent' | 'unknown'; readonly actor?: string; readonly requestId?: string }[];
   /** Canonical record identities for structured grow/revise proposals; file SHA is a different identity. */
@@ -2035,10 +2037,20 @@ export async function readExecutionContext(deps:FabricDeps,runId:string):Promise
 export async function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
   if(await knownDurableRun(deps,req.runId)) {
     const context = await readDurableExecutionContext(deps,req.runId);
-    if (!['pause','continue','cancel','handoff','revise','grow','respond'].includes(req.action)) return {kind:'unsupported',context,reason:'DBOS executes the frozen Pack method automatically; only explicit business intervention and control are accepted'};
+    if (!['pause','continue','cancel','handoff','revise','grow','respond','engineering'].includes(req.action)) return {kind:'unsupported',context,reason:'DBOS executes the frozen Pack method automatically; only explicit business intervention and control are accepted'};
     try {
       if(req.origin!=='human' && !deps.host?.get('agents')?.list().some(agent=>String(agent.id)===req.actor)) return {kind:'refused',context,reason:'Control actor must be a live conversation on this Host'};
-      const humanControl=req.origin==='human'&&(req.action==='pause'||req.action==='cancel'||req.action==='continue'&&context.run.control?.guideSessionId===req.actor);
+      if(req.action==='engineering') {
+        const operation=engineeringRequest.parse(req.engineering);
+        if(operation.operation!=='message'||!req.executionId)throw new Error('Tasks start, collect and close automatically; send a message to an existing execution, or inspect/control its current facts');
+        const {messageFlowTask}=await import('./flow-workflow.js');
+        const handle=await messageFlowTask(durableRuntimeOf(deps),{runId:req.runId,effectId:req.executionId,requestId:req.requestId,
+          owner:req.actor,epoch:req.expectedEpoch,revision:req.expectedRevision,message:operation.message});
+        const retained=await durableRuntimeOf(deps).store.flowFact(req.runId,`task-message-result:${req.requestId}`);
+        const data={state:retained?'recorded':'accepted',workflowId:handle.workflowID,...(retained?{result:retained}:{})};
+        return {kind:'accepted',context:await readDurableExecutionContext(deps,req.runId),data,receipt:{requestId:req.requestId,action:req.action,data}};
+      }
+      const humanControl=req.origin==='human'&&(req.action==='pause'||req.action==='cancel'||(req.action==='continue'||req.action==='respond')&&context.run.control?.guideSessionId===req.actor);
       const command: import('./run-store.js').DurableCommand = {runId:req.runId,commandId:req.requestId,action:req.action as import('./run-store.js').DurableCommand['action'],
         owner:humanControl?context.run.control!.owner:req.actor,actor:req.actor,epoch:req.expectedEpoch,revision:req.expectedRevision,origin:req.origin==='human'?'human':'agent',...(req.targetOwner?{nextOwner:req.targetOwner}:{}),
         ...(req.nodeId&&['pause','continue','cancel'].includes(req.action)?{scope:{taskId:req.nodeId}}:{}),

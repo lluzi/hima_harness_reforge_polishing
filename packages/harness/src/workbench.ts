@@ -124,7 +124,7 @@
 //   data-hima-control="start-generations" the Budget's generation limit
 //   data-hima-control="start"           submits the form
 import { legacyPeriodGoal } from './run-arguments.js';
-import { answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startGoalField, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
+import { runStatusSaid, answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startGoalField, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
 import type { PackCheck, PackOverview } from './packs.js';
 import type { LedgerBranchRow, LedgerGenerationRow, LedgerJoinRow, LedgerRow, MeterRow, StartField } from './card-labels.js';
 import { experienceReport, reportBlocks } from './experience-report.js';
@@ -209,6 +209,11 @@ const runStatusGlyph: Readonly<Record<RunStatus, Glyph>> = {
   'ended-converged': 'waiting',
   'ended-budget-exhausted': 'missed',
 };
+function runGlyph(run:RunHeadView):Glyph {
+  if(run.status?.startsWith('ended-')&&run.goalState)return run.goalState==='met'?'done':run.goalState==='not-met'?'missed':'waiting';
+  return run.status?runStatusGlyph[run.status]:'pending';
+}
+
 
 /** Which shape each node state wears, keyed by every one the ledger can write. `reconciled` wears
  *  the dashed ring of a node nothing has settled yet, because that is what it is: a host picked the
@@ -342,7 +347,7 @@ function seal(view: RunView): string {
       + pill(NO_FABRIC_STATE, plain, 'pending')
       + '</div>';
   }
-  const label = labelled(runStatusLabel, status);
+  const label = runStatusSaid(run)!;
   const moment = status === 'running' ? 'running' : status === 'waiting' ? 'waiting' : 'ended';
   const blocker = view.blockers.at(-1);
   const cancel = view.cancels.at(-1);
@@ -354,7 +359,7 @@ function seal(view: RunView): string {
   return `<div class="seal" data-seal="${moment}">`
     + '<div class="seal-head">'
     + (moment === 'running' ? `<span class="mark" style="color:${label.colour}"></span>` : '')
-    + pill(label.said, label.colour, runStatusGlyph[status])
+    + pill(label.said, label.colour, runGlyph(run))
     + '</div>'
     + (beside === '' ? '' : `<div class="seal-said">${beside}</div>`)
     + '</div>';
@@ -637,7 +642,7 @@ function convergencePlot(view: RunView): { readonly keys: string; readonly figur
   // The generation the Campaign ended on, marked where it falls: a Run that met its Goal or stopped
   // learning ended *at* a generation, and that is the one a person is looking for on the picture. The
   // outer graph's own last row, because that is where a Campaign ends — a Loop ends inside it.
-  const ending = view.run.status === 'ended-goal-met' || view.run.status === 'ended-converged'
+  const ending = view.run.goalState==='met'||view.run.goalState===undefined&&(view.run.status === 'ended-goal-met' || view.run.status === 'ended-converged')
     ? rows.filter((r) => r.loop === undefined).at(-1)
     : undefined;
   const mark = ending === undefined
@@ -1438,7 +1443,7 @@ function renderRunList(runs: readonly RunHeadView[]): string {
   const heads = [runColumns.run, runColumns.status, runColumns.pack, runColumns.started, runColumns.generation];
   const rows = runs.map((run) => '<tr>'
     + `<td><a class="mono" href="${runCardPath(run.id)}">${escape(run.id)}</a></td>`
-    + `<td>${run.status === undefined ? `<span class="faint">${escape(NO_FABRIC_STATE)}</span>` : statePill(runStatusLabel, runStatusGlyph, run.status)}</td>`
+    + `<td>${run.status === undefined ? `<span class="faint">${escape(NO_FABRIC_STATE)}</span>` : pill(runStatusSaid(run)!.said,runStatusSaid(run)!.colour,runGlyph(run))}</td>`
     + `<td class="mono">${run.packId === undefined ? `<span class="faint">${escape(NOT_RECORDED)}</span>` : escape(run.packId)}`
     + `${runPurposeMark(run.purpose) === undefined ? '' : `<span class="faint"> · ${escape(runPurposeMark(run.purpose)!)}</span>`}</td>`
     // The timestamp in the page's own reading face (`--hima-font-ui`) and not the mono one: the

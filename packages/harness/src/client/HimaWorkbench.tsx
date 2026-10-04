@@ -9,7 +9,7 @@ import { Diagnostics } from './Diagnostics.js';
 import { useRunActions } from './HimaRunCard.js';
 import { campaignEvents, isOwner as isOwnerOf, useRunsList } from './owned-run.js';
 import { PackOwnerPanel } from './PackOwnerPanel.js';
-import { runPurposeMark } from '../card-labels.js';
+import { runSnapshotOlder, runPurposeMark } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
 import { shortTime } from './time.js';
 import { HIMA_STYLE } from './workbench-style.js';
@@ -44,7 +44,7 @@ export interface WorkbenchProps {
 }
 
 /** Serial, abortable reads. Failed reads retain an explicitly stale snapshot of the same identity. */
-function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<HimaResult<T>>, active: boolean) {
+function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<HimaResult<T>>, active: boolean, older?: (incoming: T, current: T) => boolean) {
   const [snapshot, setSnapshot] = useState<{ key: string; value?: T; error?: string; at?: number }>({ key });
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -55,13 +55,13 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
       const result = await read(controller.signal);
       if (controller.signal.aborted) return;
       setSnapshot((previous) => result.ok
-        ? { key, value: result.value, at: Date.now() }
+        ? previous.key === key && previous.value !== undefined && older?.(result.value, previous.value) ? previous : { key, value: result.value, at: Date.now() }
         : { ...(previous.key === key ? previous : { key }), error: result.error.message });
       timer = setTimeout(() => { void poll(); }, 2000);
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [key, read, active, revision]);
+  }, [key, read, active, revision, older]);
   const current = snapshot.key === key ? snapshot : { key };
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
@@ -89,9 +89,9 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const list = useRunsList(activeSessionId);
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal, activeSessionId), [selected, activeSessionId]);
   const runReadKey = JSON.stringify([activeSessionId, selected ?? '']);
-  const snapshot = usePollingRead(runReadKey, read, selected !== undefined && tab.visible);
+  const snapshot = usePollingRead(runReadKey, read, selected !== undefined && tab.visible, runSnapshotOlder);
   const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal, activeSessionId), [selected, activeSessionId]);
-  const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible);
+  const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible, runSnapshotOlder);
   const view = snapshot.value;
   const retainedReportRef = view?.experience?.recordId;
   const visibleInsightReports: readonly AvailableInsightReport[] = view === undefined ? [] : [
@@ -101,7 +101,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       detail: `Observation candidate · ${observation.reader.reportKind} · ${observation.contentSha256}. The Host still validates whether its retained bytes are a supported Insight report.`,
     })),
   ];
-  const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
+  const acting = useRunActions(selected, () => { snapshot.refresh(); execution.refresh(); list.refresh(); }, activeSessionId, view);
   const isOwner = isOwnerOf(view?.run.control, activeSessionId);
   const [childCheck, setChildCheck] = useState<{ key: string; ready: boolean; error?: string; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' } }>({ key: '', ready: false });
   const [childRefresh, setChildRefresh] = useState(0);

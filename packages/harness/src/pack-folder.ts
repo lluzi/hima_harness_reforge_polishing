@@ -312,7 +312,7 @@ const digestOver = (files: readonly (readonly [string, string])[]): string =>
   createHash('sha256').update(files.map(([at, sha]) => `${at} ${sha}\n`).join('')).digest('hex');
 
 /** The snapshot's two derived views, over one map of bytes read once. */
-function viewsOf(dir: string, files: ReadonlyMap<string, Uint8Array>, directories: ReadonlySet<string>, entries: ReadonlySet<string>, modes: ReadonlyMap<string, number>): PackFolderSnapshot {
+export function viewsOf(dir: string, files: ReadonlyMap<string, Uint8Array>, directories: ReadonlySet<string>, entries: ReadonlySet<string>, modes: ReadonlyMap<string, number>): PackFolderSnapshot {
   // Hashed once, on the first question that needs it: a Run asks for one digest, a release asks for
   // a digest and a file list, and hashing the same bytes twice would be two spellings of one number.
   let hashes: readonly (readonly [string, string])[] | undefined;

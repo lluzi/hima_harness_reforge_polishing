@@ -54,7 +54,7 @@ export interface FlowPhysicalResource {
   readonly claim:EffectResourceClaim; readonly released:boolean; readonly proof:JsonValue|null;
 }
 export interface FlowPhysicalEffect {
-  readonly identity:TaskIdentity; readonly phase:string;
+  readonly identity:TaskIdentity; readonly phase:string; readonly admittedAt:string|null;
   readonly dispatches:readonly {readonly dispatchId:string;readonly inputSha256:string;readonly at:string}[];
 }
 export type ExternalResearchWriteRequest = ResearchWriteRequest & {readonly callId:string;readonly contentSha256:string};
@@ -83,6 +83,82 @@ export class RunStore {
   async transaction<T>(body: (client: ClientBase) => Promise<T>, name: string): Promise<T> {
     return this.#source.runTransaction(() => body(this.#source.client), { name, isolationLevel: 'SERIALIZABLE' });
   }
+  /** Host lock always precedes Run locks. App-exit stop admission uses the same boundary. */
+  async #assertHostAdmission(client:ClientBase,admission?:EffectAdmission):Promise<boolean> {
+    const row=(await client.query<{active_request:string|null;mode:string|null;accepted_at:string|null;finalizing:boolean}>(`SELECT h.active_request,h.finalizing,r.mode,r.accepted_at FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0];
+    const collecting=admission?Boolean((await client.query(`SELECT 1 FROM hima.flow_derived_effects d JOIN hima.effect_dispatches p ON p.effect_id=d.parent_effect_id
+      WHERE d.child_effect_id=$1 AND d.run_id=$2 AND d.purpose='collect' AND p.dispatch_id='submit'
+      AND ($3::timestamptz IS NULL OR (p.started_at<=$3::timestamptz
+        AND NOT EXISTS(SELECT 1 FROM hima.effect_facts f WHERE f.effect_id=d.parent_effect_id AND f.phase IN ('validated-result','terminal-failure'))
+        AND NOT EXISTS(SELECT 1 FROM hima.results r WHERE r.effect_id=d.parent_effect_id)))`,[admission.effectId,admission.runId,row?.accepted_at??null])).rowCount):false;
+    const originalPreparation=admission&&row?.active_request&&row.mode==='drain'?Boolean((await client.query(`SELECT 1 FROM hima.effects WHERE effect_id=$1 AND run_id=$2
+      AND ((identity->>'taskId'='hima.prepare' AND effect_id='hima-prepare-effect:'||run_id)
+        OR (identity->>'taskId'='hima.prepare-revision' AND left(effect_id,length('hima-revision-effect:'))='hima-revision-effect:')
+        OR (identity->>'taskId'='hima.apply-revision-input' AND left(effect_id,length('hima-workspace-revision:'))='hima-workspace-revision:'))
+      AND admitted_at<=$3::timestamptz`,[admission.effectId,admission.runId,row.accepted_at])).rowCount):false;
+    if(row?.finalizing||(row?.active_request&&!(row.mode==='drain'&&(collecting||originalPreparation))))throw new Error('The App is closing; new business admission is fenced');
+    return collecting;
+  }
+  /** Read-only Host status assembly. Taking the admission row exclusively prevents a
+   * permitted drain Reader callback crossing readiness while its original facts are read.
+   * The reader must not admit, cancel or acquire another Host lifecycle boundary. */
+  async readHostExitBoundary<T>(read:()=>Promise<T>):Promise<T> {
+    return this.#externalTransaction(async client=>{
+      await client.query('SELECT active_request FROM hima.host_exit WHERE singleton=true FOR UPDATE');
+      return read();
+    });
+  }
+  /** Stop only under the currently accepted request. The callback is synchronous so
+   * Agent cancellation cannot cross a committed replacement/cancellation. */
+  async withHostExitStopBoundary(requestId:string,stop:()=>void):Promise<boolean> {
+    return this.#externalTransaction(async client=>{
+      if(!await this.#hostExitStopActive(client,requestId))return false;
+      stop();return true;
+    });
+  }
+  async #hostExitStopActive(client:ClientBase,requestId:string):Promise<boolean> {
+    const row=(await client.query<{active_request:string|null;mode:string|null;finalizing:boolean}>(`SELECT h.active_request,h.finalizing,r.mode FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0];
+    return row?.active_request===requestId&&row.mode==='stop-jobs'&&!row.finalizing;
+  }
+  async hostExit():Promise<import('./host-exit.js').HostExitRequest|undefined> {
+    const row=(await this.#pool.query<{requestId:string;mode:import('./host-exit.js').HostExitMode}>(`SELECT r.request_id AS "requestId",r.mode FROM hima.host_exit h JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true`)).rows[0];
+    return row;
+  }
+  async lastHostExitRequestId():Promise<string|undefined> {
+    return (await this.#pool.query<{request_id:string}>('SELECT request_id FROM hima.host_exit_requests ORDER BY accepted_at DESC LIMIT 1')).rows[0]?.request_id;
+  }
+  async acceptHostExit(request:import('./host-exit.js').HostExitRequest):Promise<void> {
+    await this.#externalTransaction(async client=>{
+      const state=(await client.query<{active_request:string|null;finalizing:boolean}>('SELECT active_request,finalizing FROM hima.host_exit WHERE singleton=true FOR UPDATE')).rows[0]!;
+      if(state.finalizing)throw new Error('Host resources are finalizing; exit cannot be replaced or cancelled');
+      const active=state.active_request;
+      const prior=(await client.query<{mode:string;released_at:unknown;replaces_request:string|null}>('SELECT mode,released_at,replaces_request FROM hima.host_exit_requests WHERE request_id=$1',[request.requestId])).rows[0];
+      if(prior&&(prior.mode!==request.mode||prior.released_at||prior.replaces_request!==(request.expectedRequestId??null)))throw new Error('App exit request identity was reused with different contents or after release');
+      if(active!==request.requestId) {
+        if(request.expectedRequestId!==undefined&&active!==request.expectedRequestId)throw new Error('App exit replacement request is stale');
+        if(active&&request.expectedRequestId!==active)throw new Error('Another App exit request is already active');
+        if(active)await client.query('UPDATE hima.host_exit_requests SET released_at=clock_timestamp() WHERE request_id=$1',[active]);
+      }
+      await client.query('INSERT INTO hima.host_exit_requests(request_id,mode,replaces_request) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[request.requestId,request.mode,request.expectedRequestId??null]);
+      await client.query('UPDATE hima.host_exit SET active_request=$1 WHERE singleton=true',[request.requestId]);
+    });
+  }
+  async beginHostExitFinalization(requestId:string):Promise<void> {
+    await this.#externalTransaction(async client=>{
+      const state=(await client.query<{active_request:string|null}>('SELECT active_request FROM hima.host_exit WHERE singleton=true FOR UPDATE')).rows[0]!;
+      if(state.active_request!==requestId)throw new Error('App exit request is stale');
+      await client.query('UPDATE hima.host_exit SET finalizing=true WHERE singleton=true');
+    });
+  }
+  async releaseHostExit(requestId:string,previousLifetime=false):Promise<void> {
+    await this.#externalTransaction(async client=>{
+      const state=(await client.query<{active_request:string|null;finalizing:boolean}>('SELECT active_request,finalizing FROM hima.host_exit WHERE singleton=true FOR UPDATE')).rows[0]!;
+      if(state.active_request!==requestId)throw new Error('App exit request is stale');
+      if(state.finalizing&&!previousLifetime)throw new Error('Host resources are finalizing; exit cannot be cancelled');
+      await client.query('UPDATE hima.host_exit_requests SET released_at=clock_timestamp() WHERE request_id=$1',[requestId]);
+      await client.query('UPDATE hima.host_exit SET active_request=NULL,finalizing=false WHERE singleton=true');
+    });
+  }
   async #run(client: Pick<ClientBase, 'query'>, runId: string, lock = false): Promise<DurableRun> {
     const { rows } = await client.query<DurableRun>(`SELECT ${runColumns} FROM hima.runs WHERE run_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [runId]);
     if (!rows[0]) throw new Error(`Unknown DBOS Run ${runId}`);
@@ -106,6 +182,7 @@ export class RunStore {
     if (opening.applicationVersion !== this.applicationVersion) throw new Error('Run executable version differs from this Host');
     taskJsonValue.parse(opening.data);
     return this.transaction(async client => {
+      await this.#assertHostAdmission(client);
       await client.query(`INSERT INTO hima.runs(run_id,input_sha256,application_version,opening,owner,deadline_at)
         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, [opening.runId,opening.inputSha256,opening.applicationVersion,JSON.stringify(opening),opening.owner,opening.deadlineAt]);
       const run = await this.#run(client, opening.runId, true);
@@ -350,7 +427,7 @@ export class RunStore {
     }
     for(const scope of invocation.scope.extensions??[])if((await client.query('SELECT 1 FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,`extension-disposition:${flowExtensionKey(scope)}`])).rowCount)throw new Error('Original optional extension is stopped; no new business effects');
     const controls=(await client.query<{branches:FlowBranch[];hold:string|null;cancelled:boolean}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1',[run.runId])).rows;
-    if(controls.some(control=>(control.hold||control.cancelled)&&branchContains(control.branches,invocation.branches)))throw new Error('Effect admission blocked by current branch control');
+    if(controls.some(control=>(control.cancelled||(control.hold&&invocation.purpose!=='collect'))&&branchContains(control.branches,invocation.branches)))throw new Error('Effect admission blocked by current branch control');
     const data=run.opening.data as {budget?:{closingReserveMs?:number;attemptLimit?:number}};
     if(invocation.experiment&&invocation.purpose!=='collect'&&Date.now()>=Date.parse(run.deadlineAt)-(data.budget?.closingReserveMs??0))throw new Error('Original Run is closing; no new business effects');
     if(invocation.purpose==='collect'&&!(await client.query("SELECT 1 FROM hima.flow_derived_effects d JOIN hima.effect_dispatches p ON p.effect_id=d.parent_effect_id WHERE d.child_effect_id=$1 AND p.dispatch_id='submit'",[effectId])).rowCount)throw new Error('Collection must consume an already admitted original parent');
@@ -364,11 +441,13 @@ export class RunStore {
       const run=await this.#run(client,runId,lock);
       const revisionRules=await this.#revisionRules(client,runId);
       const branches=(await client.query<{branches:FlowBranch[];hold:string|null;cancelled:boolean}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1 ORDER BY scope_digest',[runId])).rows;
-      const dispatchedEffects=(await client.query<{effect_id:string}>(`SELECT d.effect_id FROM hima.effect_dispatches d JOIN hima.flow_invocations i USING(effect_id) WHERE i.run_id=$1 AND d.dispatch_id='submit' AND ${countedInvocation} ORDER BY d.effect_id`,[runId])).rows.map(row=>row.effect_id);
+      const submitted=(await client.query<{effect_id:string;experiment:boolean}>(`SELECT d.effect_id,${countedInvocation} AS experiment FROM hima.effect_dispatches d JOIN hima.flow_invocations i USING(effect_id) WHERE i.run_id=$1 AND d.dispatch_id='submit' ORDER BY d.effect_id`,[runId])).rows;
+      const dispatchedEffects=submitted.filter(row=>row.experiment).map(row=>row.effect_id),submittedEffects=submitted.map(row=>row.effect_id);
+      const hostExit=(await client.query<import('./host-exit.js').HostExitRequest>(`SELECT r.request_id AS "requestId",r.mode FROM hima.host_exit h JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true`)).rows[0]??null;
       const extensions=(await client.query<{name:string;value:JsonValue}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND name LIKE 'extension-disposition:%' ORDER BY name",[runId])).rows;
-      return {run,at:Date.now(),dispatchedEffects,revisionRules,branches,extensionDispositions:Object.fromEntries(extensions.map(row=>[row.name.slice('extension-disposition:'.length),row.value]))};
+      return {run,at:Date.now(),dispatchedEffects,submittedEffects,hostExit,revisionRules,branches,extensionDispositions:Object.fromEntries(extensions.map(row=>[row.name.slice('extension-disposition:'.length),row.value]))};
   }
-  async flowAuthority(runId:string):Promise<{run:DurableRun;at:number;dispatchedEffects:string[];revisionRules:FlowRevisionRule[];extensionDispositions:Record<string,JsonValue>;branches:Array<{branches:FlowBranch[];hold:string|null;cancelled:boolean}>}> {
+  async flowAuthority(runId:string):Promise<{run:DurableRun;at:number;dispatchedEffects:string[];submittedEffects:string[];hostExit:import('./host-exit.js').HostExitRequest|null;revisionRules:FlowRevisionRule[];extensionDispositions:Record<string,JsonValue>;branches:Array<{branches:FlowBranch[];hold:string|null;cancelled:boolean}>}> {
     return this.transaction(client=>this.#readFlowAuthority(client,runId,true),'hima.flowAuthority');
   }
   /** Compact receipted watchdog observation; immutable Run opening and full resource history
@@ -416,12 +495,12 @@ export class RunStore {
     const resources=(await this.#pool.query<FlowPhysicalResource>(`SELECT l.effect_id AS "effectId",e.identity,l.site_id AS "siteId",l.claim,
       (l.released_at IS NOT NULL) AS released,l.proof FROM hima.effect_leases l JOIN hima.effects e USING(effect_id)
       WHERE e.run_id=$1 ORDER BY l.effect_id`,[runId])).rows;
-    const effects=(await this.#pool.query<FlowPhysicalEffect>(`SELECT identity,phase,
+    const effects=(await this.#pool.query<FlowPhysicalEffect>(`SELECT identity,phase,admitted_at AS "admittedAt",
       COALESCE((SELECT jsonb_agg(jsonb_build_object('dispatchId',d.dispatch_id,'inputSha256',d.input_sha256,'at',d.started_at) ORDER BY d.dispatch_id)
         FROM hima.effect_dispatches d WHERE d.effect_id=e.effect_id),'[]'::jsonb) AS dispatches
       FROM hima.effects e WHERE run_id=$1 ORDER BY effect_id`,[runId])).rows;
     const stopped=(await this.#pool.query<{name:string;value:JsonValue}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND name LIKE 'stopped:%' ORDER BY name",[runId])).rows;
-    return {resources,effects,stopped:Object.fromEntries(stopped.map(row=>[row.name.slice('stopped:'.length),row.value]))};
+    return {resources,effects:effects.map(effect=>({...effect,admittedAt:effect.admittedAt?new Date(effect.admittedAt).toISOString():null})),stopped:Object.fromEntries(stopped.map(row=>[row.name.slice('stopped:'.length),row.value]))};
   }
   async prepareEffect(identity: TaskIdentity, intent: JsonValue): Promise<void> {
     taskIdentity.parse(identity); taskJsonValue.parse(intent);
@@ -450,16 +529,18 @@ export class RunStore {
     body:(run:DurableRun,facts:Readonly<Record<string,JsonValue>>,record:(phase:string,fact:JsonValue)=>Promise<void>)=>Promise<T>):Promise<T> {
     taskIdentity.parse(identity);
     return this.#externalTransaction(async client=>{
+      const collecting=options.admission?await this.#assertHostAdmission(client,options.admission):false;
       const run=await this.#run(client,identity.runId,true);
       const effect=(await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0];
       if(run.applicationVersion!==this.applicationVersion||!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('External callback effect');
       const admission=options.admission;
       if(admission) {
         if(admission.runId!==identity.runId||admission.effectId!==identity.effectId)throw new Error('Native callback admission belongs to another effect');
-        if(run.cancelled||run.hold||run.owner!==admission.owner||run.epoch!==admission.epoch||!await this.#effectRevisionMatches(client,run,admission)||Date.parse(run.deadlineAt)<=Date.now())throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
+        if(run.cancelled||(run.hold&&!collecting)||run.owner!==admission.owner||run.epoch!==admission.epoch||!await this.#effectRevisionMatches(client,run,admission)||Date.parse(run.deadlineAt)<=Date.now())throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
         await this.#assertBusinessEffectOpen(client,identity.runId,identity.effectId);
       }
       if(!await options.permit())throw new Error('Native callback is blocked by current Site Permit');
+      if(admission)await client.query('UPDATE hima.effects SET admitted_at=COALESCE(admitted_at,clock_timestamp()) WHERE effect_id=$1',[identity.effectId]);
       const rows=(await this.#orderedExternalEffectFacts(client,identity,'')).map(row=>[row.phase,row.fact] as const);
       const facts:Record<string,JsonValue>=Object.fromEntries(rows);
       return body(run,facts,async(phase,fact)=>{
@@ -475,11 +556,12 @@ export class RunStore {
     const client = await this.#pool.connect();
     try {
       await client.query('BEGIN');
+      const collecting=await this.#assertHostAdmission(client,admission);
       const run = await this.#run(client,admission.runId,true);
-      if (run.applicationVersion !== this.applicationVersion || run.cancelled || run.hold || run.owner !== admission.owner || run.epoch !== admission.epoch || !await this.#effectRevisionMatches(client,run,admission) || Date.parse(run.deadlineAt) <= Date.now()) throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
+      if (run.applicationVersion !== this.applicationVersion || run.cancelled || (run.hold&&!collecting) || run.owner !== admission.owner || run.epoch !== admission.epoch || !await this.#effectRevisionMatches(client,run,admission) || Date.parse(run.deadlineAt) <= Date.now()) throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
       await this.#assertBusinessEffectOpen(client,admission.runId,admission.effectId);
       if (!await permit()) throw new Error('Effect admission blocked by current Site Permit');
-      await client.query("UPDATE hima.effects SET phase='admitted' WHERE effect_id=$1 AND phase='intent'",[admission.effectId]);
+      await client.query("UPDATE hima.effects SET admitted_at=COALESCE(admitted_at,clock_timestamp()),phase=CASE WHEN phase='intent' THEN 'admitted' ELSE phase END WHERE effect_id=$1",[admission.effectId]);
       await client.query('COMMIT');
       return run;
     } catch(error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
@@ -492,6 +574,8 @@ export class RunStore {
       UNION SELECT d.parent_effect_id FROM hima.flow_derived_effects d JOIN ancestry a ON d.child_effect_id=a.effect_id WHERE d.run_id=$2)
       SELECT 1 FROM ancestry a WHERE EXISTS(SELECT 1 FROM hima.results r WHERE r.effect_id=a.effect_id)
       OR EXISTS(SELECT 1 FROM hima.effect_facts f WHERE f.effect_id=a.effect_id AND f.phase='terminal-failure')
+      OR (EXISTS(SELECT 1 FROM hima.host_exit WHERE singleton=true AND active_request IS NOT NULL)
+        AND EXISTS(SELECT 1 FROM hima.effect_facts f WHERE f.effect_id=a.effect_id AND f.phase='validated-result'))
       OR (COALESCE((SELECT purpose FROM hima.flow_derived_effects WHERE child_effect_id=$1),'business')<>'collect'
         AND EXISTS(SELECT 1 FROM hima.effect_leases l WHERE l.effect_id=a.effect_id AND l.released_at IS NOT NULL)) LIMIT 1`,[effectId,runId])).rowCount;
     if(closedParent)throw new Error('Derived task parent is terminal or released; no new business work');
@@ -700,30 +784,33 @@ export class RunStore {
     const client=await this.#pool.connect();
     try {
       await client.query('BEGIN');
+      const collecting=await this.#assertHostAdmission(client,admission);
       const run=await this.#run(client,admission.runId,true);
-      if(run.applicationVersion!==this.applicationVersion || run.cancelled || run.hold || run.owner!==admission.owner || run.epoch!==admission.epoch || !await this.#effectRevisionMatches(client,run,admission) || Date.parse(run.deadlineAt)<=Date.now()) throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
+      if(run.applicationVersion!==this.applicationVersion || run.cancelled || (run.hold&&!collecting) || run.owner!==admission.owner || run.epoch!==admission.epoch || !await this.#effectRevisionMatches(client,run,admission) || Date.parse(run.deadlineAt)<=Date.now()) throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
       await this.#assertBusinessEffectOpen(client,admission.runId,admission.effectId);
       const previous=(await client.query<{input_sha256:string}>('SELECT input_sha256 FROM hima.effect_dispatches WHERE effect_id=$1 AND dispatch_id=$2',[admission.effectId,dispatchId])).rows[0];
       if(previous) { if(previous.input_sha256!==inputSha256) mismatch('Dispatch'); await client.query('COMMIT'); return false; }
       if(!await permit()) throw new Error('Effect admission blocked by current Site Permit');
       await client.query('INSERT INTO hima.effect_dispatches(effect_id,dispatch_id,input_sha256) VALUES($1,$2,$3)',[admission.effectId,dispatchId,inputSha256]);
-      await client.query("UPDATE hima.effects SET phase='admitted' WHERE effect_id=$1 AND phase='intent'",[admission.effectId]);
+      await client.query("UPDATE hima.effects SET admitted_at=COALESCE(admitted_at,clock_timestamp()),phase=CASE WHEN phase='intent' THEN 'admitted' ELSE phase END WHERE effect_id=$1",[admission.effectId]);
       await client.query('COMMIT'); return true;
     } catch(error) {await client.query('ROLLBACK').catch(()=>undefined);throw error;}
     finally {client.release();}
   }
   /** Cleanup targets the original owned resource and may proceed under pause/cancel/handoff.
    * This permission can never submit new business work or repeat a native prompt. */
-  async claimEffectCleanup(identity:TaskIdentity,permit:()=>Promise<boolean>,dispatchId:string,inputSha256:string):Promise<boolean> {
+  async claimEffectCleanup(identity:TaskIdentity,permit:()=>Promise<boolean>,dispatchId:string,inputSha256:string,exitRequestId?:string):Promise<boolean> {
     assertName(dispatchId);
     const client=await this.#pool.connect();
     try {
       await client.query('BEGIN');
+      const stopActive=exitRequestId===undefined||await this.#hostExitStopActive(client,exitRequestId);
       const run=await this.#run(client,identity.runId,true);
       const effect=(await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0];
       if(run.applicationVersion!==this.applicationVersion||!effect||jsonDigest(effect.identity)!==jsonDigest(identity)) mismatch('Cleanup effect');
       const previous=(await client.query<{input_sha256:string}>('SELECT input_sha256 FROM hima.effect_dispatches WHERE effect_id=$1 AND dispatch_id=$2',[identity.effectId,dispatchId])).rows[0];
       if(previous) {if(previous.input_sha256!==inputSha256)mismatch('Cleanup dispatch');await client.query('COMMIT');return false;}
+      if(!stopActive)throw new Error('App exit stop request is stale or no longer active');
       if(!await permit())throw new Error('Original resource cleanup is blocked by current Site Permit');
       await client.query('INSERT INTO hima.effect_dispatches(effect_id,dispatch_id,input_sha256) VALUES($1,$2,$3)',[identity.effectId,dispatchId,inputSha256]);
       await client.query('COMMIT');return true;
@@ -753,6 +840,18 @@ export class RunStore {
     },'hima.commitResult');
   }
   async result(effectId:string): Promise<TaskResult|undefined> { return (await this.#pool.query<{result:TaskResult}>('SELECT result FROM hima.results WHERE effect_id=$1',[effectId])).rows[0]?.result; }
+  /** Read freshness includes retained facts whose history projection was already acknowledged. */
+  async sourceRevision(runId:string):Promise<number> {
+    const {rows}=await this.#pool.query<{revision:string}>('SELECT COALESCE(MAX(seq),0) AS revision FROM hima.outbox WHERE run_id=$1',[runId]);
+    return Number(rows[0]!.revision);
+  }
+  async latestControlFact(runId:string):Promise<{command:DurableCommand;factId:string}|undefined> {
+    return (await this.#pool.query<{command:DurableCommand;factId:string}>(`SELECT payload AS command,fact_id AS "factId" FROM hima.outbox WHERE run_id=$1 AND kind='control' ORDER BY seq DESC LIMIT 1`,[runId])).rows[0];
+  }
+  async branchControls(runId:string):Promise<Array<{branches:FlowBranch[];hold:string|null;cancelled:boolean;holdSource:'human'|'agent'|'unknown'|null}>> {
+    return (await this.#pool.query<{branches:FlowBranch[];hold:string|null;cancelled:boolean;holdSource:'human'|'agent'|'unknown'|null}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1 ORDER BY scope_digest',[runId])).rows;
+  }
+  async pendingFactCount(runId:string):Promise<number> {return Number((await this.#pool.query<{count:string}>('SELECT count(*) AS count FROM hima.outbox WHERE run_id=$1 AND acknowledged_at IS NULL',[runId])).rows[0]!.count);}
   async pendingFacts(runId?:string): Promise<DurableFact[]> {
     return (await this.#pool.query<DurableFact>(`SELECT fact_id AS "factId",run_id AS "runId",seq,kind,payload,at FROM hima.outbox WHERE acknowledged_at IS NULL ${runId ? 'AND run_id=$1' : ''} ORDER BY run_id,seq`,runId ? [runId] : [])).rows.map(row=>({...row,at:new Date(row.at).toISOString()}));
   }

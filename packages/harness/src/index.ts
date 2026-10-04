@@ -18,12 +18,13 @@
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
 import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
+import { setTimeout as waitForFactPoll } from 'node:timers/promises';
 import { readFileSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { installedExecutableManifest, startDurableRuntime, type DurableRuntime } from './durable-runtime.js';
 import { flowWorkflowDefinitions } from './flow-workflow.js';
 import { resolveDurableTaskAdapter } from './durable-task-adapters.js';
-import { knownDurableRun } from './durable-fabric.js';
+import { knownDurableRun, durableProposalRun, durableStartRequestDigest, durableStartResult } from './durable-fabric.js';
 import type { DurableCommand } from './run-store.js';
 import { nativeDelegationPolicy } from './native-task-adapters.js';
 import { operateTaskInteractive, type TaskInteractiveDeps } from './task-interactive.js';
@@ -49,22 +50,23 @@ import { Autopilot } from './autopilot.js';
 const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
-import { recordExitFence, releaseExitFence, readHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
+import { readDurableHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
 import { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, type LocalDatabase } from './local-database.js';
 import { nativeSessionMemoryEvidence } from './native-session-memory.js';
-import { readExperience, readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge,
+import { readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge,
   recordExperienceAdoption, type ExperienceAdoptionRequest, type WorkMemoryScope, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
+import { createDurableViewReaders } from './durable-views.js';
 import { previewPackTransfer, applyPackTransfer, loadRunPack } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
 import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
-import { jobKill, nodeLogTail } from './jobs.js';
+import { nodeLogTail } from './jobs.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -278,7 +280,7 @@ export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 // has ended, and a node's own caption. On the surface for the reason every other word of the card is:
 // `scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and the
 // contract suite asserts on the same three functions the canvas actually renders from.
-export { goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
+export { taskStateForNode, taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
 
 // The node card's own pure layout and tab-set facts (#41 task 6): on the surface so its L1 tests
 // (`test/contract/canvas-layout.test.ts`) can assert on the same functions `client/NodeCard.tsx`
@@ -386,7 +388,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'HimaHarness adds governed chip-design Campaigns and Data Insight to DeepSeek Harness. A HimaPack declares one transparent method; a Site supplies the permitted execution environment; one persistent Run records facts, work and evidence.',
   'Your current role, task, inputs, tools, budget and recipient are stated separately. Follow that exact role: a Guide serves the person, a Campaign owner coordinates the Run, and a bounded child performs only its delegated work.',
   'Use only granted inputs and tools. Do not search product source code to rediscover a Pack or tool contract; report a missing professional fact or capability to the recipient instead.',
-  'When the current act tool declares resident engineering outsourcing, the Campaign owner may hand that complete engineering node to the Site executor through hima_execute engineering start, continue the same task with messages, and collect Reader-verified delivery before release. Start one execution only once. A status reply is one current snapshot: if the task remains starting or running with no actionable change, tell the person it is active and yield instead of busy-polling in the same turn. The external engineering session is an executor, never another Run owner.',
+  'For a declared resident engineering task, the workflow starts the Site executor, collects its contract-checked delivery and closes its resources automatically. The Campaign owner may use hima_execute engineering message on the recorded execution to give business steering, and hima_context to inspect current facts. A status reply is one snapshot: when no actionable fact changed, explain that work remains active and yield instead of busy-polling. The external engineering session executes this task and does not acquire Run ownership.',
   'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
   'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
 ].join('\n');
@@ -506,6 +508,11 @@ export default class Hima extends Service {
   private readonly durableAdaptersReady = new Promise<void>(resolve => { this.releaseDurableAdapters = resolve; });
   private notificationsActive = false;
   private exitRequest: HostExitRequest | undefined;
+  private closeHostResources!:()=>Promise<void>;
+  private resourcesClosing:Promise<void>|undefined;
+  private exitFinalization:Promise<HostExitStatus>|undefined;
+  private finalizationRequestId:string|undefined;
+  private finalExitStatus:HostExitStatus|undefined;
   private interactiveRuntime:InteractiveRuntimeDeps|undefined;
   private taskInteractiveRuntime:TaskInteractiveDeps|undefined;
   private interactiveTimers:InteractiveTimerController|undefined;
@@ -518,6 +525,9 @@ export default class Hima extends Service {
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
   private readonly guideNoticeIdentities = new Map<string,string>();
   private readonly factStop = new AbortController();
+  private factProjection:Promise<void>=Promise.resolve();
+  private factNotifications:Promise<void>=Promise.resolve();
+  private readonly notifiedSourceRevisions=new Map<string,number>();
   /** The Harness's own driver of Pack-declared autopilot regions (ADR-0016). */
   private autopilot: Autopilot | undefined;
   private autopilotStopped = false;
@@ -544,18 +554,17 @@ export default class Hima extends Service {
     // Cordis disposes independent effects concurrently: one ordered disposer owns both the
     // application resources and PostgreSQL. Register before starting either resource: mid-boot
     // disposal waits for their actual creation and then closes them instead of missing their owner.
-    this.ctx.effect(() => async () => {
-      closing = true;
+    this.closeHostResources=()=>this.resourcesClosing??=(async()=>{
+      closing=true;
       try {
         await closeHostResources();
-        // The vendor CLI may force exit zero after five seconds while disposal is still pending.
-        // Only this flushed positive receipt proves our entire ordered resource shutdown finished.
-        await new Promise<void>(resolve => { process.stderr.write(`hima: resource shutdown confirmed; pid=${process.pid}\n`, () => resolve()); });
-      } catch (error) {
-        await new Promise<void>(resolve => { process.stderr.write(`hima: resource shutdown unconfirmed; pid=${process.pid}\n`, () => resolve()); });
+        await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown confirmed; pid=${process.pid}\n`,()=>resolve()));
+      } catch(error) {
+        await new Promise<void>(resolve=>process.stderr.write(`hima: resource shutdown unconfirmed; pid=${process.pid}\n`,()=>resolve()));
         throw error;
       }
-    }, 'hima: Host and local database lifetime');
+    })();
+    this.ctx.effect(()=>()=>this.closeHostResources(),'hima: Host and local database lifetime');
     // The same product-owned lifecycle is used by the headless profile and Electron's Host.
     databaseStarting = startLocalDatabase({ home: localDatabaseHome(), runtimeDirectory: localDatabaseRuntime() });
     const database = await databaseStarting;
@@ -633,6 +642,7 @@ export default class Hima extends Service {
       await this.autopilot?.drain();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
+      await Promise.all([this.factProjection,this.factNotifications]);
       await this.durable.stop();
       await domain.close();
       await database.stop();
@@ -643,17 +653,22 @@ export default class Hima extends Service {
       webCtx.effect(
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
+          readRunView: runId=>this.viewReaders().readRunView(runId),
+          listRunHeads: ()=>this.viewReaders().listRunHeads(),
+          readRunRecord: recordId=>this.viewReaders().readRunRecord(recordId),
+          readRunRecords: (runId,type)=>this.viewReaders().readRunRecords(runId,type),
           prepareExit: request=>this.prepareExit(request),
           exitStatus: ()=>this.exitStatus(),
+          finishExit: id=>this.finishExit(id),
           cancelExit: id=>this.cancelExit(id),
           authorizeDesktopExit: token=>this.authorizeDesktopExit(token),
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           sessionWorkspace: (id) => this.sessionWorkspace(id),
           authorizeRunAccess: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
           readGuideContext: request => readGuideContext(this.guideDeps(), request),
-          readSessionContext: request=>readNativeSessionContext(this.ctx,request,this.ledger),
+          readSessionContext: request=>readNativeSessionContext(this.ctx,request,this.ledger,this.viewReaders().assignedGuide),
           resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
-          listSessionChildren: request => listSessionChildren(this.ctx, request),
+          listSessionChildren: request => listSessionChildren(this.ctx, {...request,assignedGuide:this.viewReaders().assignedGuide}),
           workMemory: (sessionId, request) => this.workMemory(sessionId, request, 'person'),
           correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
           experienceCandidates: (sessionId,runId)=>this.experienceCandidates(sessionId,runId),
@@ -676,7 +691,7 @@ export default class Hima extends Service {
           },
           interactive:(sessionId,request)=>this.interactive(sessionId,request),
           interactiveSessions:(sessionId,runId)=>this.interactiveSessions(sessionId,runId),
-          executionContext: (runId) => this.readExecutionContext(runId),
+          executionContext: (runId) => this.viewReaders().executionContext(runId),
           executionAction: (request) => this.executionAction(request),
           observe: (req) => this.observe(req),
           judge: (runId, ruleIds, params) => this.judge.evaluate({ runId, ruleIds, params }),
@@ -686,6 +701,7 @@ export default class Hima extends Service {
           readExperience: (runId) => this.readExperience(runId),
           readMaterial: (runId, recordId) => this.readMaterial(runId, recordId),
           readRunAssets: (runId) => readRunAssets(this.deps(), runId),
+          readTaskArtifact: (runId,effectId,name) => this.viewReaders().readTaskArtifact(runId,effectId,name),
           readEngineeringAsset: (runId, executionId, requestId, artifactId, treeId, download) => readEngineeringAsset(this.deps(), runId, executionId, requestId, artifactId, treeId, download),
           readArchivedMaterial: (runId, relative) => readArchivedMaterial(this.deps(), runId, relative),
           // The one operation of this namespace that reaches dsh's agent seam, and the only one
@@ -817,7 +833,11 @@ export default class Hima extends Service {
     // again from the ledger and carried on. The host serves while that happens — a Run resumed here
     // may have an hour of synthesis still to wait for, and a workbench that would not answer until
     // then is one nobody could cancel from.
-    this.reconciled = this.durableAdaptersReady.then(() => recoverDurablePreparations(this.durable)).then(() => []);
+    this.reconciled = this.durableAdaptersReady.then(() => recoverDurablePreparations(this.durable)).then(async () => {
+      const previous=await this.durable.store.hostExit();
+      if(previous)await this.durable.store.releaseHostExit(previous.requestId,true);
+      return [];
+    });
     void this.reconciled.catch(error => this.ctx.logger.warn(`Durable preparation recovery remains unavailable: ${String(error)}`));
     this.ctx.inject(['sessionController'], nativeCtx => {
       nativeCtx.effect(() => {
@@ -827,6 +847,8 @@ export default class Hima extends Service {
       });
     });
     this.releaseDurableAdapters();
+    this.factProjection=this.observeDurableFacts('history',()=>this.projectDurableHistory());
+    this.factNotifications=this.observeDurableFacts('notifications',()=>this.deliverDurableBoundaries());
   }
 
   /**
@@ -945,10 +967,15 @@ export default class Hima extends Service {
   readExecutionContext(runId: string) { return readExecutionContext(this.deps(), runId); }
   controlDurableRun(command: DurableCommand) { return controlDurableRun(this.deps(), command); }
 
+  private viewReaders() {
+    return createDurableViewReaders(this.deps(),{retainedMaterialsDir:path.join(localDatabaseHome(),'hima','run-assets','dbos')});
+  }
+
   private guideDeps() {
+    const readers=this.viewReaders();
     return { ctx: this.ctx, ledger: this.ledger,
-      executionContext: (runId: string) => this.executionContext(runId),
-      readExperience: (runId: string) => this.readExperience(runId), readReportMaterial:(runId:string,recordId:string)=>readReportMaterial(this.deps(),runId,recordId) };
+      executionContext: readers.executionContext,readRun:readers.readRun,readRunRecord:readers.readRunRecord,assignedGuide:readers.assignedGuide,
+      readExperience: readers.readExperience,readReportMaterial:readers.readReportMaterial,readTaskArtifact:readers.readTaskArtifact };
   }
 
   async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
@@ -993,37 +1020,85 @@ export default class Hima extends Service {
   }
 
   async prepareExit(request: HostExitRequest): Promise<HostExitStatus> {
-    if(!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.requestId)||!['drain','keep-jobs','stop-jobs'].includes(request.mode))throw new BadRequest('invalid App exit request');
+    if(this.resourcesClosing)throw new BadRequest('Host resources are finalizing; no new exit operation is allowed');
+    if(!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.requestId)||(request.expectedRequestId!==undefined&&!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.expectedRequestId))||!['drain','keep-jobs','stop-jobs'].includes(request.mode))throw new BadRequest('invalid App exit request');
+    await this.reconciled;
+    await this.durable.store.acceptHostExit(request);
     this.exitRequest=request;
-    try {
-      for(const run of this.ledger.runs().filter(run=>run.control&&(run.status==='running'||run.status==='waiting'))) {
-        await controlling(this.deps(),run.id,()=>recordExitFence(this.ledger,run.id,request,identityOf(request)));
-      }
-      if(request.mode==='stop-jobs') {
-        for(const run of this.ledger.runs()) {
-          const open=new Map<string,import('./ledger.js').JobRecord>();
-          for(const record of this.ledger.records({runId:run.id,type:'job'}))if(record.type==='job')open.set(record.job.session,record);
-          for(const [session,record] of open)if(record.event==='launched')await jobKill(this.deps(),{run:run.id,session});
+    if(request.mode==='stop-jobs') {
+      // Reuse finite cleanup of the original identities; do not cancel the whole Run.
+      const work=(async()=>{
+        for(const run of await this.durable.store.runs()) {
+          for(const invocation of await this.durable.store.flowInvocations(run.runId)) {
+            const active=await this.durable.store.hostExit();
+            if(active?.requestId!==request.requestId||active.mode!=='stop-jobs')return;
+            const physical=await this.durable.store.flowPhysicalFacts(run.runId);
+            const owned=[invocation.identity,...(await this.durable.store.derivedEffects(invocation.identity)).map(effect=>effect.identity)];
+            if(!physical.effects.some(effect=>owned.some(identity=>identity.effectId===effect.identity.effectId)&&effect.dispatches.some(dispatch=>!dispatch.dispatchId.startsWith('stop:')&&!dispatch.dispatchId.startsWith('cleanup:'))))continue;
+            const handle=await this.durable.startWorkflow('hima.flow.cleanup',`hima-app-exit:${identityOf([request.requestId,invocation.identity.effectId])}`,
+              {runId:run.runId,invocation:invocation as unknown as import('./task-contract.js').JsonValue,reason:'app-exit',exitRequestId:request.requestId});
+            const result=await handle.getResult() as {closed?:boolean;reason?:string};
+            if(!result.closed) {
+              const active=await this.durable.store.hostExit();
+              if(active?.requestId!==request.requestId||active.mode!=='stop-jobs')return;
+              await this.durable.store.putFlowFact(run.runId,`app-exit-failed:${request.requestId}`,result as import('./task-contract.js').JsonValue);
+              throw new Error(result.reason??'Original stop closure is unproved');
+            }
+          }
         }
-        for(const agent of this.ctx.get('agents')?.list()??[])agent.cancel({kind:'hook',reason:'App exit requested stopping active work'});
-      }
-      return this.exitStatus();
-    } catch (error) {
-      try { await this.cancelExit(request.requestId); }
-      catch (releaseError) {
-        throw new Error(`App exit failed and its admission fence could not be released: ${String(releaseError)}. Inspect the retained Run receipts before continuing.`, { cause:error });
-      }
-      throw error;
+        await this.durable.store.withHostExitStopBoundary(request.requestId,()=>{
+          for(const agent of this.ctx.get('agents')?.list()??[])agent.cancel({kind:'hook',reason:'App exit requested stopping active work'});
+        });
+      })();
+      void work.catch(async error=>{
+        try { if((await this.durable.store.hostExit())?.requestId===request.requestId)await this.cancelExit(request.requestId); }
+        catch(releaseError){this.ctx.logger.warn(`App exit stop failed and its fence release failed: ${String(releaseError)}`);}
+        this.ctx.logger.warn(`App exit stop failed: ${String(error)}`);
+      });
     }
+    return this.exitStatus();
   }
 
   async cancelExit(requestId:string):Promise<HostExitStatus> {
-    if(this.exitRequest?.requestId!==requestId)throw new BadRequest('App exit request is stale');
-    for(const run of this.ledger.runs())if(run.control)await controlling(this.deps(),run.id,()=>releaseExitFence(this.ledger,run.id));
+    if(this.resourcesClosing)throw new BadRequest('Host resources are finalizing; exit cannot be cancelled');
+    await this.durable.store.releaseHostExit(requestId);
     this.exitRequest=undefined;return this.exitStatus();
   }
 
-  exitStatus():HostExitStatus { return readHostExitStatus(this.ledger,this.ctx.get('agents'),this.exitRequest); }
+  exitStatus():Promise<HostExitStatus> {
+    if(this.finalExitStatus)return Promise.resolve(this.finalExitStatus);
+    return readDurableHostExitStatus(this.durable.store,this.ctx.get('agents'));
+  }
+
+  /** Finish owned resources while the native transport still serves, before SIGTERM starts
+   * the vendor's unrelated five-second whole-tree deadline. One closer owns both paths. */
+  async finishExit(requestId:string):Promise<HostExitStatus> {
+    if(this.exitFinalization) {
+      if(this.finalizationRequestId!==requestId)throw new BadRequest('App exit finalization request is stale');
+      return this.exitFinalization;
+    }
+    this.finalizationRequestId=requestId;
+    this.exitFinalization=(async()=>{
+      await this.reconciled;
+      const state=await this.exitStatus();
+      if(state.requestId!==requestId)throw new BadRequest('App exit finalization request is stale');
+      if(!state.ready)throw new BadRequest('App exit has not reached its actual resource boundary');
+      await this.durable.store.beginHostExitFinalization(requestId);
+      this.finalExitStatus={...state,finalized:false};
+      try {
+        await this.closeHostResources();
+        return this.finalExitStatus={...state,finalized:true};
+      } catch(error) {
+        this.finalExitStatus={...state,ready:false,finalized:false};
+        throw error;
+      }
+    })();
+    try {return await this.exitFinalization;}
+    catch(error) {
+      if(!this.resourcesClosing){this.exitFinalization=undefined;this.finalizationRequestId=undefined;}
+      throw error;
+    }
+  }
 
   async experienceCandidates(sessionId:string,runId:string):Promise<object> {
     const workspaceRef=await authorizeProjectRun(this.guideDeps(),sessionId,runId);
@@ -1525,18 +1600,18 @@ export default class Hima extends Service {
     if (!request.ownerSessionId || !request.proposalId) {
       throw new BadRequest('confirm a current Campaign proposal from a live Guide conversation before starting');
     }
-    const prior = this.ledger.runs().find(run => run.proposalId === request.proposalId);
-    if (prior?.control && prior.control.guideSessionId !== request.ownerSessionId) {
-      if (prior.control.guideSessionId === undefined && prior.control.owner === request.ownerSessionId) return this.startRun(request);
-      throw new BadRequest('this proposal belongs to another Guide; open its existing Campaign');
+    const prior = await durableProposalRun(this.deps(),request.proposalId,durableStartRequestDigest(request));
+    if (prior) {
+      const product=(prior.opening.data as {product?:{guideSessionId?:string;parentSessionId?:string}}).product;
+      if(product?.guideSessionId!==request.ownerSessionId) throw new BadRequest('this proposal belongs to another Guide; open its existing Campaign');
+      // A duplicate confirmation reads the accepted Run, including after handoff or Pack upgrade.
+      // It cannot create another owner or reinterpret the original method from today's files.
+      return durableStartResult(this.durable,prior);
     }
-    if (!prior) {
-      if (!authenticCampaignProposalId(request.proposalId)) throw new BadRequest('the Campaign proposal is not an authenticated current confirmation');
-      const preparation = this.preparation(loadPack(this.config.packsDir, request.pack), loadSite(this.config.sitesDir, request.site), request.overrides);
-      if (!preparation.ready || !sameCampaignProposalFacts(preparation.id, request.proposalId)) throw new BadRequest('Campaign preparation changed; review the current proposal before starting');
-    }
+    if (!authenticCampaignProposalId(request.proposalId)) throw new BadRequest('the Campaign proposal is not an authenticated current confirmation');
+    const preparation = this.preparation(loadPack(this.config.packsDir, request.pack), loadSite(this.config.sitesDir, request.site), request.overrides);
+    if (!preparation.ready || !sameCampaignProposalFacts(preparation.id, request.proposalId)) throw new BadRequest('Campaign preparation changed; review the current proposal before starting');
     const task = await prepareCampaignSession(this.ctx, { guideSessionId: request.ownerSessionId, proposalId: request.proposalId });
-    if (prior?.control && (prior.control.owner !== task.sessionId || prior.control.guideSessionId !== request.ownerSessionId)) throw new BadRequest('this proposal already belongs to another execution session; open the existing Campaign');
     return this.startRun({ ...request, ownerSessionId: task.sessionId, guideSessionId: request.ownerSessionId, notifyOwnerOnOpen: true });
   }
 
@@ -1548,6 +1623,61 @@ export default class Hima extends Service {
     const result=await executionAction(this.deps(),request);
     if(result.kind==='accepted'){this.notifyGuideBoundary(request.runId);this.autopilot?.kick(request.runId);}
     return result;
+  }
+
+  /** Independent sinks of committed facts: neither loop chooses or advances business work. */
+  private async observeDurableFacts(label:string,consume:()=>Promise<void>):Promise<void> {
+    let lastFailure:string|undefined;
+    while(!this.factStop.signal.aborted) {
+      try {await consume();lastFailure=undefined;}
+      catch(error) {const failure=String(error);if(failure!==lastFailure&&!this.factStop.signal.aborted)this.ctx.logger.warn(`Durable ${label} remains pending: ${failure}`);lastFailure=failure;}
+      await waitForFactPoll(2000,undefined,{signal:this.factStop.signal}).catch(()=>undefined);
+    }
+  }
+
+  private async projectDurableHistory():Promise<void> {
+    const originals=new Map((await this.durable.store.runs()).map(run=>[run.runId,run]));
+    await this.durable.store.projectFacts(async fact=>{
+      if(this.factStop.signal.aborted)throw new Error('Host is stopping; history facts remain pending');
+      const original=originals.get(fact.runId)??await this.durable.store.run(fact.runId);
+      const opening=(original.opening.data as unknown as {run:import('./ledger.js').RunRecord}).run;
+      await this.ledger.projectDurableFact(fact,opening);
+    });
+  }
+
+  private async deliverDurableBoundaries():Promise<void> {
+    if(!this.notificationsActive||this.exitRequest||(process.env.NODE_TEST_CONTEXT!==undefined&&process.env.HIMA_TEST_SILENT_AGENT==='1'))return;
+    for(const original of await this.durable.store.runs()) {
+      if(this.factStop.signal.aborted||this.exitRequest)return;
+      const sourceRevision=await this.durable.store.sourceRevision(original.runId);
+      if(this.notifiedSourceRevisions.get(original.runId)===sourceRevision)continue;
+      const view=await this.viewReaders().readRunView(original.runId);if(!view)continue;
+      const blockers=(view.tasks??[]).filter(task=>task.current!==false&&(task.projection.state==='failed'||task.projection.state==='waiting'&&
+        ['human-response','reader-rejected','resource-closure','adapter-materialization','input-schema','output-schema','output-envelope','artifact-identity'].includes(task.projection.reason.code)))
+        .map(task=>({taskId:task.taskId,effectId:task.identity?.effectId,projection:task.projection}));
+      const terminal=hasEnded(view.run.status),stop=view.run.stopState,control=await this.durable.store.latestControlFact(original.runId);
+      if(!terminal&&!blockers.length&&!stop&&!control){this.notifiedSourceRevisions.set(original.runId,sourceRevision);continue;}
+      const current=await this.durable.store.run(original.runId);
+      if(current.epoch!==original.epoch||current.revision!==original.revision)continue;
+      const guide=(original.opening.data as {product?:{guideSessionId?:string}}).product?.guideSessionId;
+      const boundary={runId:original.runId,epoch:current.epoch,revision:current.revision,status:view.run.status??null,
+        goalState:view.run.goalState??'unknown',stop:stop??null,blockers,control:control?{action:control.command.action,commandId:control.command.commandId,source:control.factId}:null};
+      const fingerprint=identityOf({...boundary,stop:stop?.state??null});
+      let allDelivered=true;
+      for(const recipient of new Set([current.owner,...(guide&&(terminal||blockers.length||stop)?[guide]:[])])) {
+        const key=`notice:${identityOf({recipient,fingerprint})}`;
+        if(await this.durable.store.flowFact(original.runId,key))continue;
+        const agent=this.ctx.get('agents')?.get(recipient as never);if(!agent){allDelivered=false;continue;}
+        const marker=`Hima durable boundary ${fingerprint}`;
+        const messages=[...agent.session.deriveMessages(),...agent.inbox.nextTurn,...agent.inbox.nextStep];
+        if(!JSON.stringify(messages).includes(marker)) {
+          const text=`${marker}. Source: Hima PostgreSQL Run ${original.runId}, read watermark ${view.run.sourceRevision}. ${JSON.stringify(boundary)}. Read current task facts and explain the verified outcome or actionable blocker. Workflow continuation is automatic. Current owner is ${current.owner}; this notice grants no execution authority, new Campaign, or additional budget.`;
+          agent.followup(createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text}]}));
+        }
+        await this.durable.store.putFlowFact(original.runId,key,{recipient,fingerprint,sourceRevision:view.run.sourceRevision??0});
+      }
+      if(allDelivered)this.notifiedSourceRevisions.set(original.runId,sourceRevision);
+    }
   }
 
   /** A source-linked important boundary reaches the original Guide; it grants no execution authority. */
@@ -1579,12 +1709,12 @@ export default class Hima extends Service {
 
   /** Read a Campaign's technical report back off its Site, both files held against their hashes. */
   readExperience(runId: string): Promise<ReadExperienceResult> {
-    return readExperience(this.deps(), runId);
+    return this.viewReaders().readExperience(runId);
   }
 
   /** Read one Run-owned historical code or knowledge version at its recorded identity. */
   readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult> {
-    return readMaterial(this.deps(), runId, recordId);
+    return this.viewReaders().readMaterial(runId,recordId);
   }
 
   /**
@@ -1783,6 +1913,20 @@ export default class Hima extends Service {
    *  and has simply written nothing yet, not a fault and not "no Job" — `nodeLogTail` never lets a
    *  Job whose log is not there yet reach here as a thrown error (#41 task 4, blocking review item). */
   private async jobLogTail(runId: string, nodeId: string, lines: number): Promise<LogTailView> {
+    const original=await knownDurableRun(this.deps(),runId);
+    if(original) {
+      const records=await this.viewReaders().readRunRecords(runId,'job');
+      const record=records.findLast(record=>record.type==='job'&&record.nodeId===nodeId);
+      if(record?.type!=='job')return {nodeId,lines:[],at:new Date().toISOString(),truncated:false};
+      const product=(original.opening.data as unknown as {product:{siteId:string;siteDigest:string}}).product;
+      const site=loadSite(this.config.sitesDir,product.siteId);
+      const {jsonDigest}=await import('./run-store.js');
+      if(jsonDigest(JSON.parse(JSON.stringify(site)))!==product.siteDigest)throw new Error('Original Site changed; job log requires its recorded Site definition');
+      const {retainedJobTail}=await import('./jobs.js');
+      const bound=Math.min(Math.max(Math.trunc(lines),1),100),text=await retainedJobTail(site,record.job,bound+1),rows=text.split('\n');
+      if(rows.at(-1)==='')rows.pop();
+      return {nodeId,session:record.job.session,lines:rows.slice(-bound),truncated:rows.length>bound,at:new Date().toISOString()};
+    }
     const found = await nodeLogTail(this.deps(), { run: runId, nodeId, lines });
     return { nodeId, ...(found.session === undefined ? {} : { session: found.session }), lines: found.lines, at: new Date().toISOString(), truncated: found.truncated };
   }
