@@ -80,6 +80,16 @@ LibInsight, Run `run-39f7b4fb`: TSMC28 kit, 72 files, 258,485 findings, report o
 severe (`ended-goal-met`); about 25–30 min on a loaded Mac, N12 about 4 min. The report opens in
 QuaLib Insight with corner/view/severity filters and provenance.
 
+QuaLib Insight (App trial.37): the Data Insight tab is now QuaLib Insight. "Analyse a library
+folder" started Run `run-2e884efe` (TSMC28, about 21 min, `ended-goal-met`) without any Campaign
+screen, restored the person's Campaign draft, and opened the report in the tab when it ended. Asked
+about one finding, the Guide explained it, separated what it does not mean, and proposed triage.
+
+Recordings (`.hima-tmp/customer-demo-kit/recordings`): `01-atcs-setup-en`, `02-atcs-start-en`,
+`03-atcs-results-en`, `04-atcs-zh`, `05-qualib-insight-zh`, `06-qualib-insight-en`. Screenshots:
+`screenshots/{en,zh,prototype}` (prototype = lib_insight UI on the same results, shown as the
+prototype).
+
 Recordings and screenshots live outside git in `.hima-tmp/customer-demo-kit/{recordings,screenshots}`.
 
 ## Known limits to state honestly
@@ -90,6 +100,12 @@ Recordings and screenshots live outside git in `.hima-tmp/customer-demo-kit/{rec
 - LibInsight demo data was extracted earlier with the vendor API outside HimaHarness; the report is
   labelled native-qualified at the user's request.
 - Some header buttons and graph markers remain English in the Chinese UI.
+- Demo Pack report: every finding's provenance carries the same SHA-256 (a shared bundle hash), so
+  the hash cannot tie a finding to its corner file; the Guide spotted this. Fix in `report.py`.
+- QuaLib Insight progress line updates elapsed time only on Run events; the zh help sentence about
+  "no Campaign wording" should be reworded for customers.
+- QuaLib Insight starts its Run by saving and restoring the Campaign draft; the migration should give
+  it an explicit start route instead.
 - Earlier reference result `cf7a804c`: Setup 0 / Hold 0 versus strong serial AutoFix 24 / 82, one design.
   The Run's final label is "goal not met" and the collateral checks are UNKNOWN. It is a timing
   result, not full physical signoff.
