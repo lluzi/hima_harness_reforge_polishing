@@ -135,7 +135,7 @@ test('native Workshop code -> retained program -> existing Reader and continuabl
         assert.match(JSON.stringify(changed), /different.*content|identity.*different/i);
         assert.equal(await readFile(path.join(workshopAbs, 'entry.sh'), 'utf8'), script);
         const startedProgram = await executeTaskEffect(store, request, adapter);
-        assert.equal(startedProgram.state, 'waiting');
+        assert.equal(startedProgram.state, 'running');
         const busy = await writer('exit 3\n', 'native-active-rewrite');
         assert.match(JSON.stringify(busy), /program Job owns.*Workshop code/);
         assert.equal(await readFile(path.join(workshopAbs, 'entry.sh'), 'utf8'), script);
@@ -197,7 +197,7 @@ test('native Workshop code -> retained program -> existing Reader and continuabl
                     await awaitReviewerBlocked();
                     assert.equal(await nativeMessagesCompletedThrough(host!.ctx, reviewerId, [], priorTurn!.completedTurn!.endSeq), false);
                     const older = await executeTaskEffect(store, teamRequest, base);
-                    assert.equal(older.state, 'waiting');
+                    assert.equal(older.state, 'running');
                     assert.equal(older.retainedResult, undefined);
                     assert.equal(await store.effectFact(teamRequest.identity.effectId, 'validated-result'), undefined);
                     blockReviewer = false;

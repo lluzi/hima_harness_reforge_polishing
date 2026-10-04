@@ -735,7 +735,7 @@ export interface RemoteOperations {
    * `session` absent when that node has no Job open right now.
    */
   jobLogTail?(runId: string, nodeId: string, lines: number): Promise<LogTailView>;
-  executionContext?(runId: string): ExecutionContext;
+  executionContext?(runId: string): ExecutionContext | Promise<ExecutionContext>;
   executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;
   /** Ask HimaJudge to rule; the verdicts it wrote are read back from the ledger, not from here. */
@@ -1348,7 +1348,7 @@ async function startFromCampaignFileOperation(ops: RemoteOperations, request: St
   } catch (err) {
     return startThrew(request, err);
   }
-  if (result.kind !== 'ran') return startedNothing(request, result);
+  if (result.kind !== 'ran' && result.kind !== 'preparing') return startedNothing(request, result);
   return ok(runAnswer(ops, result.run));
 }
 
@@ -1384,7 +1384,7 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
   } catch (err) {
     return startThrew(request, err);
   }
-  if (result.kind !== 'ran') return startedNothing(request, result);
+  if (result.kind !== 'ran' && result.kind !== 'preparing') return startedNothing(request, result);
   return ok(runAnswer(ops, result.run));
 }
 
@@ -1437,7 +1437,7 @@ function startThrew(request: StartRunBody, err: unknown): Answer {
  * this Campaign's — so both reach them as their request's fault rather than as a 500 that says
  * nothing, and in the words `/hima run` uses for them.
  */
-function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, { kind: 'ran' }>): never {
+function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, { kind: 'ran' | 'preparing' }>): never {
   if (result.kind === 'unfit') {
     throw new BadRequest(`site ${request.site} cannot host pack ${request.pack}: ${result.check.errors.join('; ')}`);
   }
@@ -1486,7 +1486,7 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
  * of it, rather than out of a shape invented for this one route.
  */
 async function cancelOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
-  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
+  if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
   let result: CancelResult;
   try {
     result = await ops.cancelRun(runId);
@@ -1510,12 +1510,13 @@ async function cancelOperation(ops: RemoteOperations, runId: string): Promise<An
   if (result.kind === 'not-stopped') {
     return failure(409, 'hima/run-not-stopped', `run ${runId} was not cancelled: its job was ${result.reason}`);
   }
+  if (result.kind === 'stopping') return { status: 202, body: { run: runAnswer(ops, result.run), reason: result.reason } };
   return ok(runAnswer(ops, result.run));
 }
 
 /** Legacy resume refuses owned Runs; the versioned control endpoint is their continuation path. */
 async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
-  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run continuation requires the control endpoint with current owner epoch and revision');
+  if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run continuation requires the control endpoint with current owner epoch and revision');
   let result: ResumeResult;
   try {
     result = await ops.resumeRun(runId, 'workbench');
@@ -1667,7 +1668,7 @@ function auditOperation(ops: RemoteOperations, drain: boolean): Answer {
 /** Why a Campaign got no workspace. `unfit` is answered before a Run exists, so it cannot arrive here. */
 function unpreparedReason(prepared: Extract<StartRunResult, { kind: 'unprepared' }>['prepared']): string {
   if (prepared.kind === 'occupied') return prepared.reason;
-  if (prepared.kind === 'refused') return prepared.record.reason;
+  if (prepared.kind === 'refused') return 'record' in prepared ? prepared.record.reason : prepared.reason;
   return 'the pack does not fit this site';
 }
 
@@ -1870,7 +1871,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (execution) {
     const runId = decoded(execution[1]!, 'run id');
     if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
-    if (execution[2] === 'context' && method === 'GET' && ops.executionContext) return ok(ops.executionContext(runId));
+    if (execution[2] === 'context' && method === 'GET' && ops.executionContext) return ok(await ops.executionContext(runId));
     if (execution[2] === 'control' && method === 'POST') return controlOperation(ops, runId, req);
     return failure(405, 'hima/bad-request', 'execution context is GET; human control is POST');
   }
@@ -2146,7 +2147,7 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
     // before #41 task 3's owner model existed) or an uninstalled pack: neither is a reference graph
     // this route can hold a node id against, so an empty list refuses nothing here — only a
     // *non-empty* one that plainly does not name this node id is the caller's mistake.
-    const nodes = ops.executionContext?.(runId).nodes;
+    const nodes = (await ops.executionContext?.(runId))?.nodes;
     if (nodes !== undefined && nodes.length > 0 && !nodes.some((node) => node.id === nodeId)) {
       throw new BadRequest(`node "${nodeId}" is not in this Run's method`);
     }

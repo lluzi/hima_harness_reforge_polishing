@@ -16,6 +16,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
         epoch integer NOT NULL DEFAULT 0, revision integer NOT NULL DEFAULT 0,
         hold text, cancelled boolean NOT NULL DEFAULT false, fact_seq integer NOT NULL DEFAULT 0,
         created_at timestamptz NOT NULL DEFAULT clock_timestamp());
+      ALTER TABLE hima.runs ADD COLUMN IF NOT EXISTS hold_source text;
       CREATE TABLE IF NOT EXISTS hima.commands (
         run_id text NOT NULL REFERENCES hima.runs, command_id text NOT NULL, digest text NOT NULL,
         command jsonb NOT NULL, receipt jsonb NOT NULL, PRIMARY KEY(run_id,command_id));
@@ -41,6 +42,23 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
         kind text NOT NULL, payload jsonb NOT NULL, at timestamptz NOT NULL DEFAULT clock_timestamp(),
         acknowledged_at timestamptz, UNIQUE(run_id,seq));
       CREATE INDEX IF NOT EXISTS outbox_pending ON hima.outbox(run_id,seq) WHERE acknowledged_at IS NULL;
+      CREATE INDEX IF NOT EXISTS outbox_flow_state_effect ON hima.outbox(run_id,(payload->>'effectId'),seq DESC) WHERE kind='flow-state';
+      CREATE TABLE IF NOT EXISTS hima.flow_facts (
+        run_id text NOT NULL REFERENCES hima.runs, name text NOT NULL, digest text NOT NULL,
+        value jsonb NOT NULL, PRIMARY KEY(run_id,name));
+      CREATE TABLE IF NOT EXISTS hima.flow_invocations (
+        effect_id text PRIMARY KEY, run_id text NOT NULL REFERENCES hima.runs,
+        task_id text NOT NULL, version integer NOT NULL, branches jsonb NOT NULL,
+        invocation jsonb NOT NULL);
+      CREATE TABLE IF NOT EXISTS hima.flow_branch_controls (
+        run_id text NOT NULL REFERENCES hima.runs, scope_digest text NOT NULL, branches jsonb NOT NULL,
+        hold text, cancelled boolean NOT NULL DEFAULT false, PRIMARY KEY(run_id,scope_digest));
+      ALTER TABLE hima.flow_branch_controls ADD COLUMN IF NOT EXISTS hold_source text;
+      CREATE TABLE IF NOT EXISTS hima.flow_derived_effects (
+        child_effect_id text PRIMARY KEY, parent_effect_id text NOT NULL,
+        run_id text NOT NULL REFERENCES hima.runs, parent_identity jsonb NOT NULL, child_identity jsonb NOT NULL, purpose text NOT NULL DEFAULT 'business',
+        CHECK(child_effect_id<>parent_effect_id));
+      ALTER TABLE hima.flow_derived_effects ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'business';
     `);
     const { rows } = await client.query<{version: number}>('SELECT version FROM hima.schema_version');
     if (rows.length !== 1 || rows[0]?.version !== 1) throw new Error('Unsupported Hima application database schema; reopen with its original App version');

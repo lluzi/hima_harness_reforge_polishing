@@ -58,6 +58,9 @@ const requestFor=(run:any,input:any,task='produce')=>({identity:{runId:run.runId
 const commandAdapter=async(request:any,flags:any={})=>{
  const base=await declaredCommandTaskAdapter({request,tool:pack.contract.tools[0],sitesDir,siteId:'local',workspace,platform:{MARKER:path.join(workspace,`calls-${request.identity.runId}`)},kind:flags.program?'program':'command'});
  return {...base,
+  // This fixture withholds all early physical-closure proof, so verified output must remain
+  // retained behind the final release boundary and cannot free a competing licence.
+  settledResources:flags.releaseUnknown?undefined:base.settledResources,
   async submit(prepared:any,before:any){if(flags.unknown){await before();throw new Error('Fixture launch outcome has no reliable evidence');}const result=await base.submit(prepared,async()=>{await before();const held=await store.effectResources();assert.ok(held.filter((lease:any)=>!lease.released).reduce((sum:number,lease:any)=>sum+(lease.claim.licences.fixture??0),0)<=1,'Actual callback sees at most one retained licence holder');});if(flags.nativeJournal)await nativeFixtureJournal(request,result);if(flags.lostAck)throw new Error('Fixture lost actual launch acknowledgement');return result;},
   async collect(prepared:any,receipt:any,req:any){const result=await base.collect(prepared,receipt,req);if(flags.readerReject&&!await exists(path.join(workspace,'reader-fixed')))throw new Error('Real Reader fixture rejects retained result until repaired');return result;},
   async release(prepared:any,receipt:any,before:any){if(flags.releaseUnknown&&!await exists(path.join(workspace,'release-confirmed')))return {closed:false,reason:'Fixture retained real Job release is unknown'};return base.release(prepared,receipt,before);},
@@ -107,7 +110,7 @@ runtime=await startDurableRuntime({database,manifest,workflows:[{name:'u4-task',
  const adapter=await commandAdapter(request,input.flags);
  for(let poll=0;poll<100;poll++) {
   const outcome=await executeTaskEffect(rt.store,request,adapter);
-  if(outcome.state!=='waiting')return outcome;
+  if(outcome.state!=='waiting'&&outcome.state!=='running')return outcome;
   if((await rt.store.run(input.runId)).hold) {
     await DBOS.setEvent('paused-before-send',{calls:await exists(path.join(workspace,'calls-crash'))});
     await DBOS.recv('continue');
@@ -119,7 +122,7 @@ runtime=await startDurableRuntime({database,manifest,workflows:[{name:'u4-task',
 }},{name:'u4-resident',async execute(rt:any,input:any){
  const run=await rt.store.run(input.runId),request=requestFor(run,input.value,'engineering'),adapter=residentAdapter(run,request,input.value.goal);
  for(let poll=0;poll<100;poll++){
-  const outcome=await executeTaskEffect(rt.store,request,adapter);if(outcome.state!=='waiting')return outcome;await DBOS.sleep(20);
+  const outcome=await executeTaskEffect(rt.store,request,adapter);if(outcome.state!=='waiting'&&outcome.state!=='running')return outcome;await DBOS.sleep(20);
  }
  throw new Error('Resident native delivery did not auto hand off');
 }}]});
@@ -135,7 +138,7 @@ let closeResolve:()=>void;const closed=new Promise<void>(resolve=>{closeResolve=
 process.on('message',async(message:any)=>{if(message.action==='pause'){await store.command({runId:'crash',commandId:'pause',action:'pause',owner:'owner',epoch:0,revision:0});process.send!({stage:'paused'});}if(message.action==='close'){await finish();closeResolve();}});
 process.on('uncaughtException',error=>{console.error(error);void finish().finally(()=>process.exit(1));});
 async function open(id:string,input:any){return store.createRun({runId:id,inputSha256:jsonDigest(input),applicationVersion:runtime.applicationVersion,owner:'owner',deadlineAt:'2099-01-01T00:00:00.000Z',data:{input}});}
-async function waitCommand(req:any,adapter:any){let out;for(let n=0;n<100;n++){out=await executeTaskEffect(store,req,adapter);if(out.state!=='waiting'||out.reason.code==='reader-rejected'||out.retainedResult)return out;if(DBOS.isInWorkflow())await DBOS.sleep(20);else await new Promise(resolve=>setTimeout(resolve,20));}throw new Error(JSON.stringify(out));}
+async function waitCommand(req:any,adapter:any){let out;for(let n=0;n<100;n++){out=await executeTaskEffect(store,req,adapter);if((out.state!=='waiting'&&out.state!=='running')||out.reason.code==='reader-rejected'||out.retainedResult)return out;if(DBOS.isInWorkflow())await DBOS.sleep(20);else await new Promise(resolve=>setTimeout(resolve,20));}throw new Error(JSON.stringify(out));}
 async function realReader(identity:any,delivery:any,materialized:any,req:any){
  const readerScript=path.join(workspace,'reader.py'),out=path.join(workspace,'reader.json'),marker=path.join(workspace,'reader-calls');
  await writeFile(readerScript,`import json,pathlib,sys\nv=json.loads(pathlib.Path(sys.argv[1]).read_text())\nwith pathlib.Path(sys.argv[3]).open('a') as f:f.write('reader\\n')\nif v.get('schema')!='fixture-result/1' or v.get('value') not in ['native','repaired']:raise SystemExit('Reader rejects result; repair same native task')\npathlib.Path(sys.argv[2]).write_text(json.dumps({'schemaVersion':'1','value':{'goalMet':False,'evidence':'UNKNOWN'},'artifacts':[{'name':'result','path':'result.json'}],'diagnostics':[{'code':'timing','message':'Fixture delivery is not Timing signoff','source':'fixture-reader'}]}))\n`);

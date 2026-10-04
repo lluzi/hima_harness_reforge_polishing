@@ -2,7 +2,7 @@
 // Native Workshop/Team producers for the shared effect protocol. Native sessions are external
 // capabilities; RunStore owns their intent, identity and facts. No Ledger drives this path.
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile, readFile, lstat } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import { channelFor, mustRun } from './channel.js';
@@ -13,7 +13,7 @@ import type { JobIdentity } from './ledger.js';
 import { HIMA_MOMENT_PRESET, openMoment, readMomentResult, type Moment } from './moments.js';
 import { workshopTools, readBack, type WorkshopScope, type WorkshopAuthority } from './workshop.js';
 import { createDelegation, delegationChildSessionId, delegationRequestDigest, readDelegationResult, cancelDelegation, followupDelegation, readNativeMessageReceipt, nativeMessagesCompletedThrough, type DelegationContract, type DelegationAuthority, type EffectiveDelegationContract, type OperatorDelegationGrant, type DelegationRuntimePolicy } from './delegation.js';
-import { executeTaskEffect, commandTaskAdapter, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type CommandTaskAdapterOptions, type EffectClosure } from './task-effects.js';
+import { executeTaskEffect, commandTaskAdapter, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type CommandTaskAdapterOptions, type EffectClosure, type TaskCollectionPending } from './task-effects.js';
 import { jsonDigest, type RunStore } from './run-store.js';
 import { createTaskResult, type JsonValue, type TaskToolOutput, type TaskIdentity } from './task-contract.js';
 const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -99,6 +99,43 @@ async function assertWorkshopCodeIdle(options: NativeOptions): Promise<void> {
             throw new Error('The original retained program Job owns this Workshop code; wait for its confirmed closure before writing');
     }
 }
+/** A parked/cold native driver is closed only by its original persisted terminal turn,
+ * exact lineage and absence of newer work. A vanished registry handle alone is never proof. */
+async function stoppedNativeTurn(ctx: Context, effective: { childSessionId: string; parentSessionId?: string; workspace?: string }): Promise<JsonValue | undefined> {
+    const query = ctx.get('sessionQuery' as never) as { readSession(id: string): Promise<{ session: { id: unknown; parentSession?: unknown; cwd?: string }; events: { seq: number; type: string; data?: unknown }[] }> } | undefined;
+    if (!query) return undefined;
+    try {
+        const log = await query.readSession(effective.childSessionId);
+        if (String(log.session.id) !== effective.childSessionId || effective.parentSessionId && String(log.session.parentSession) !== effective.parentSessionId) return undefined;
+        if (effective.workspace && (!log.session.cwd || await realpath(log.session.cwd) !== await realpath(effective.workspace))) return undefined;
+        const end = log.events.findLast(event => event.type === 'turn/end');
+        if (!end || typeof (end.data as { reason?: { kind?: unknown } })?.reason?.kind !== 'string') return undefined;
+        if (log.events.some(event => event.seq > end.seq && (event.type === 'turn/start' || event.type === 'user/message' || event.type === 'agent/inbox/spliced' && (event.data as { outcome?: string })?.outcome !== 'canceled'))) return undefined;
+        return json({ sessionId: effective.childSessionId, endSeq: end.seq, reason: (end.data as { reason: unknown }).reason, nativeAbsent: true });
+    } catch { return undefined; }
+}
+export interface NativeTaskTurn {
+    readonly state: 'running' | 'ended' | 'unknown'; readonly sessionId: string;
+    readonly turn?: number; readonly endSeq?: number; readonly reason?: string;
+    readonly text?: string; readonly successfulWriteCalls?: readonly string[];
+}
+/** Current native boundary only: a previous complete answer cannot repair/finish newer work. */
+export async function readNativeTaskTurn(ctx: Context, sessionId: string): Promise<NativeTaskTurn> {
+    const query = ctx.get('sessionQuery' as never) as { readSession(id:string):Promise<{session:{id:unknown};events:{seq:number;type:string;data?:unknown}[]}> } | undefined;
+    if (!query) return { state:'unknown',sessionId };
+    try {
+        const log=await query.readSession(sessionId);
+        if(String(log.session.id)!==sessionId)throw new Error('Native repair witness names another session');
+        const end=log.events.findLast(event=>event.type==='turn/end'),start=log.events.findLast(event=>event.type==='turn/start');
+        if(!end||start&&start.seq>end.seq)return {state:start?'running':'unknown',sessionId};
+        const data=end.data as {turn?:number;reason?:{kind?:string}};
+        if(!Number.isSafeInteger(data.turn)||typeof data.reason?.kind!=='string')return {state:'unknown',sessionId};
+        const calls=new Set(log.events.filter(event=>event.type==='tool/call'&&(event.data as {turn?:number;name?:string})?.turn===data.turn&&(event.data as {name?:string}).name==='hima_workshop_write').map(event=>(event.data as {callId:string}).callId));
+        const writes=log.events.filter(event=>event.type==='tool/result'&&(event.data as {turn?:number})?.turn===data.turn).flatMap(event=>{const blocks=(event.data as {message?:{content?:{type?:string;toolCallId?:string;isError?:boolean}[]}})?.message?.content??[];return blocks.filter(block=>block.type==='tool-result'&&!block.isError&&block.toolCallId&&calls.has(block.toolCallId)).map(block=>block.toolCallId!);});
+        const text=log.events.filter(event=>event.type==='assistant/message'&&(event.data as {turn?:number;interrupted?:boolean})?.turn===data.turn&&!(event.data as {interrupted?:boolean}).interrupted).flatMap(event=>(event.data as {message?:{content?:{type?:string;text?:string}[]}})?.message?.content??[]).filter(block=>block.type==='text').map(block=>block.text??'').join('');
+        return {state:'ended',sessionId,turn:data.turn!,endSeq:end.seq,reason:data.reason.kind,text,successfulWriteCalls:writes};
+    } catch(error) {return {state:'unknown',sessionId};}
+}
 /** Immutable source facts survive the model Host. Returned Knowledge bytes have a retained copy. */
 export function nativeWorkshopAuthority(options: NativeOptions, root: string): WorkshopAuthority {
     const record = (kind: string, data: unknown) => options.store.recordExternalEffectFact(options.request.identity, `${kind}:${digest(data)}`, json(data));
@@ -155,6 +192,7 @@ export interface NativeWorkshopOptions extends NativeOptions {
     readonly argv: readonly string[];
     /** Existing domain Reader/program collector. It uses its own Steps/child effects. */
     readonly collectProgram: CommandTaskAdapterOptions['collect'];
+    readonly modelSelection?: { readonly provider: string; readonly model: string };
 }
 /** Model writes scoped code; a separate retained program Job and existing Reader produce data. */
 export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectAdapter {
@@ -199,7 +237,7 @@ export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectA
     };
     return { kind: 'workshop', version: taskEffectAdapterVersion, resources: { siteId: site.name, jobs: 0, licences: {} }, capacity: { jobs: site.capacity.parallelJobs, licences: site.capacity.licences },
         async prepare() {
-            const selection = options.ctx.get('agentDefaultModel')?.currentSelection();
+            const selection = options.modelSelection ?? options.ctx.get('agentDefaultModel')?.currentSelection();
             if (!selection)
                 throw new Error('Native Workshop requires the actual Host model route');
             return { sessionId, workspace: options.workspace, workshop: options.scope.declaration.id, configDigest, modelSelection: json(selection) };
@@ -251,6 +289,7 @@ export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectA
             });
             const input = request.input, suffix = digest({ input, code: [...latest.values()].map(({ path, sha256 }) => ({ path, sha256 })) });
             const childRequest: TaskEffectRequest = { ...request, input, identity: { ...request.identity, taskId: `${request.identity.taskId}:program`, effectId: `${request.identity.effectId}:program:${suffix}`, inputSha256: jsonDigest(input) }, admission: { ...request.admission, effectId: `${request.identity.effectId}:program:${suffix}` } };
+            await options.store.bindDerivedEffect(request.identity, childRequest.identity);
             await taskEffectStep('hima.workshop.program-intent', () => options.store.recordExternalEffectFact(request.identity, `program:${suffix}`, json({ identity: childRequest.identity, code: [...latest.values()].map(({ path, sha256 }) => ({ path, sha256 })) })));
             const program = commandTaskAdapter({ sitesDir: options.sitesDir, siteId: options.siteId, workspace: options.workspace, name: `workshop-${options.scope.declaration.id}`, argv: options.argv, kind: 'program', licences: options.scope.declaration.licences, collect: options.collectProgram });
             const sourceReady = async () => {
@@ -298,8 +337,8 @@ export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectA
                 },
             };
             const result = await executeTaskEffect(options.store, childRequest, guarded);
-            if (result.state !== 'succeeded')
-                throw new Error(result.reason.message);
+            if (result.state === 'failed') throw new Error(result.reason.message);
+            if (result.state !== 'succeeded') return { pending: true, state: result.state, reason: result.reason };
             return remapOutput(request, { schemaVersion: request.contract.output.version, value: result.result.value, artifacts: result.result.artifacts, diagnostics: result.result.diagnostics });
         },
         async message(_prepared, id, input, beforeSubmit) {
@@ -310,6 +349,7 @@ export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectA
             await options.store.recordExternalEffectFact(options.request.identity, `message:${id}:intent`, { sessionId, textSha256: digest(text) });
             const { moment, fault } = await connect(_prepared, true);
             await beforeSubmit();
+            fault.why=undefined;
             await retainNativeAdmission(options, sessionId, permit);
             await admission(options, permit);
             const answer = await moment.ask(text);
@@ -324,6 +364,38 @@ export function workshopTaskAdapter(options: NativeWorkshopOptions): TaskEffectA
                 return held;
             const original = await readNativeMessageReceipt(options.ctx, sessionId, `[hima-native-request:${id}]`);
             return original ? json(original) : undefined;
+        },
+        async stop(prepared, _receipt, beforeCleanup) {
+            check(prepared);
+            const programs = await options.store.listExternalEffectFacts(options.request.identity, 'program:');
+            const proofs: JsonValue[] = [];
+            for (const fact of Object.values(programs)) {
+                const identity = (fact as unknown as { identity: TaskIdentity }).identity;
+                const effect = await options.store.effect(identity.effectId);
+                if (!effect) continue;
+                const original = await options.store.effectFact(identity.effectId, 'prepared');
+                if (!original) return { closed: false, reason: 'Original Workshop program has no recoverable prepared Job identity' };
+                const program = commandTaskAdapter({ sitesDir: options.sitesDir, siteId: options.siteId, workspace: options.workspace, name: `workshop-${options.scope.declaration.id}`, argv: options.argv, kind: 'program', licences: options.scope.declaration.licences, collect: options.collectProgram });
+                const closed = await program.stop!(original, await options.store.effectFact(identity.effectId, 'submitted'), (id, input) => beforeCleanup(`${identity.effectId}:${id}`, input));
+                if (!closed.closed) return closed;
+                await options.store.releaseExternalEffectResources(identity, closed.proof);
+                proofs.push(closed.proof);
+            }
+            const held = live.get(sessionId);
+            if (held || options.ctx.get('agents')?.get(sessionId as never)) {
+                if (!await beforeCleanup('stop-workshop', { sessionId })) {
+                    if (options.ctx.get('agents')?.get(sessionId as never)) return { closed: false, reason: 'Original Workshop stop remains unconfirmed' };
+                } else {
+                    const original = held ?? await connect(prepared, true);
+                    await original.moment.close('interrupted');
+                    live.delete(sessionId);
+                }
+            }
+            if (options.ctx.get('agents')?.get(sessionId as never)) return { closed: false, reason: 'Original Workshop disposal has no confirmed native closure' };
+            const recorded = await options.store.externalEffectFact(options.request.identity, 'session:closed');
+            const terminal = recorded ?? await stoppedNativeTurn(options.ctx, { childSessionId: sessionId, workspace: options.workspace });
+            if (!terminal && await options.store.effectDispatchExists(options.request.identity, 'submit')) return { closed: false, reason: 'Original cold Workshop has no confirmed native terminal boundary' };
+            return { closed: true, proof: { sessionId, programs: proofs, terminal: terminal ?? { neverAdmitted: true }, closed: true } };
         },
         async release() {
             const held = live.get(sessionId);
@@ -350,7 +422,7 @@ export interface NativeTeamOptions extends NativeOptions {
     readonly collectMembers: (members: readonly {
         effective: EffectiveDelegationContract;
         result: Awaited<ReturnType<typeof readDelegationResult>>;
-    }[], request: TaskEffectRequest) => Promise<TaskToolOutput>;
+    }[], request: TaskEffectRequest) => Promise<TaskToolOutput | TaskCollectionPending>;
 }
 function teamAuthority(options: NativeTeamOptions, beforeNative: () => Promise<void>): DelegationAuthority {
     const phase = (id: string) => `child:${id}`;
@@ -490,6 +562,7 @@ export function teamTaskAdapter(options: NativeTeamOptions): TaskEffectAdapter {
                 return { members: found, selections };
             });
             const output = await options.collectMembers(selected.members, request);
+            if ('pending' in output) return output;
             createTaskResult(request.identity, request.contract, output, request.localSchemas);
             await sealNativeCompletion(options, selected.selections);
             return output;
@@ -538,6 +611,38 @@ export function teamTaskAdapter(options: NativeTeamOptions): TaskEffectAdapter {
                 return receipt;
             const original = await readNativeMessageReceipt(options.ctx, delegationChildSessionId(member.contract.parentSessionId, member.contract.delegationId), `[hima-native-request:${id}]`);
             return original ? json(original) : undefined;
+        },
+        async stop(prepared, _receipt, beforeCleanup) {
+            check(prepared);
+            const proofs: JsonValue[] = [];
+            for (const member of options.members) {
+                const id = delegationChildSessionId(member.contract.parentSessionId, member.contract.delegationId);
+                const intent = await options.store.externalEffectFact(options.request.identity, `child:${member.contract.delegationId}:intent`) as unknown as { effective: EffectiveDelegationContract; requestDigest: string } | undefined;
+                if (!intent) continue;
+                if (member.operatorGrant) {
+                    if (!options.closeOperator) return { closed: false, reason: 'Original Operator requires its interactive Job cleanup bridge' };
+                    const closed = await options.closeOperator(id);
+                    if (!closed.closed) return closed;
+                    proofs.push(closed.proof);
+                    await options.store.recordExternalEffectFact(options.request.identity, `operator-closed:${id}`, closed.proof);
+                }
+                const child = options.ctx.get('agents')?.get(id as never);
+                if (!child) {
+                    const terminal = await stoppedNativeTurn(options.ctx, intent.effective);
+                    if (!terminal) return { closed: false, reason: 'Original cold native child stop/completion cannot be proved' };
+                    proofs.push(terminal);
+                    await options.store.recordExternalEffectFact(options.request.identity, `stopped:${id}`, terminal);
+                    continue;
+                }
+                if (child.status !== 'idle') {
+                    const input = json({ parentSessionId: member.contract.parentSessionId, childSessionId: id });
+                    if (await beforeCleanup(id, input)) await cancelDelegation(options.ctx, { parentSessionId: member.contract.parentSessionId, childSessionId: id, requestId: `stop-${digest(id).slice(0, 20)}` }, teamAuthority(options, async () => {}));
+                }
+                if (options.ctx.get('agents')?.get(id as never)?.status !== 'idle') return { closed: false, reason: 'Original native child interruption is not yet quiescent' };
+                if (!await options.store.externalEffectFact(options.request.identity, `cleanup:${id}:confirmed`)) await options.store.recordExternalEffectFact(options.request.identity, `cleanup:${id}:confirmed`, json({ effect: 'confirmed', childSessionId: id }));
+                proofs.push({ childSessionId: id, quiescent: true });
+            }
+            return { closed: true, proof: { children: proofs, closed: true } };
         },
         async release(_prepared, _receipt, beforeCleanup) {
             for (const member of options.members.filter(item => item.operatorGrant !== undefined)) {
@@ -621,7 +726,7 @@ export async function nativeDelegationPolicy(store: RunStore, childSessionId: st
         if (Date.now() >= Date.parse(fact.deadlineAt))
             throw new Error('Native child task allocation deadline expired');
         await store.assertEffectAdmission(current, async () => digest(loadSite(fact.guard.sitesDir, fact.guard.siteId)) === fact.guard.siteDigest);
-        const closed = await store.externalEffectFact(held.identity, `cleanup:${childSessionId}:confirmed`) ?? await store.externalEffectFact(held.identity, 'collection-seal');
+        const closed = await store.externalEffectFact(held.identity, `cleanup:${childSessionId}:confirmed`) ?? await store.externalEffectFact(held.identity, `stopped:${childSessionId}`) ?? await store.externalEffectFact(held.identity, 'collection-seal');
         if (closed) {
             writesAllowed = false;
             reason = 'Original native child is already closed';

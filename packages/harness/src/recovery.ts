@@ -20,7 +20,7 @@ import { loadRunPack } from './release.js';
 import { jobKill, jobStatus, reconcileLaunchIntent } from './jobs.js';
 import { loadSite, pathsOf } from './sites.js';
 import { existingRun, legacyAutomaticAllowed } from './runs.js';
-import { recordNode } from './ledger.js';
+import { hasEnded, recordNode } from './ledger.js';
 import type { JobRecord, NodeState, RunFork, RunRecord, WorkspaceRecord } from './ledger.js';
 import { openJobsOfRun } from './job-cap.js';
 import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemptOf, waitedMsOf } from './budget.js';
@@ -31,6 +31,7 @@ import { drive, controlling, executionPack, reconcileAppliedRevisions, residentE
 import { engineeringTaskDirectory, engineeringTaskId, loadEngineeringCapability, readEngineeringOwned, reconcileEngineeringTask } from './engineering-executor.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
+import { knownDurableRun, readDurableExecutionContext, controlDurableRun } from './durable-fabric.js';
 
 // ---------------------------------------------------------------------------------------------
 // Finding a Run again: what a host does with the Runs the last one left in flight.
@@ -584,6 +585,8 @@ async function openJob(deps: FabricDeps, run: RunRecord, nodeId?: string): Promi
 // ---------------------------------------------------------------------------------------------
 
 export type CancelResult =
+  /** The durable cancellation is accepted; physical closure is still independently observed. */
+  | { readonly kind: 'stopping'; readonly run: RunRecord; readonly reason: string }
   /**
    * The Run is over: every Job it had open was stopped and seen to stop, or it had none to stop.
    *
@@ -626,6 +629,19 @@ export type CancelResult =
 /** Trusted service emergency path still fences admission; slow stop I/O uses a separate key in
  * the same existing queue map so context, duplicate receipts and refusals stay responsive. */
 export async function cancelRun(deps: FabricDeps, runId: string, requestedReason: 'cancel' | 'budget' = 'cancel'): Promise<CancelResult> {
+  const durable = await knownDurableRun(deps, runId);
+  if (durable) {
+    const before = await readDurableExecutionContext(deps, runId);
+    if (!durable.cancelled && hasEnded(before.run.status)) return { kind: 'ended', run: before.run };
+    if (!durable.cancelled) await controlDurableRun(deps, {
+      runId, commandId: `service-${requestedReason}:${durable.epoch}:${durable.revision}`,
+      action: 'cancel', owner: durable.owner, epoch: durable.epoch, revision: durable.revision,
+    });
+    const context = await readDurableExecutionContext(deps, runId);
+    return context.run.stopState?.closed
+      ? { kind: 'cancelled', run: context.run, stopped: undefined }
+      : { kind: 'stopping', run: context.run, reason: context.reason ?? 'Cancellation accepted; original resource closure is pending' };
+  }
   await controlling(deps, runId, async () => {
     const run = existingRun(deps.ledger, runId);
     if (run.control !== undefined && (run.status === 'running' || run.status === 'waiting')

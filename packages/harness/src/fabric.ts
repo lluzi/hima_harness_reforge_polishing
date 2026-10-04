@@ -1,5 +1,8 @@
+import { durableRuntimeOf, knownDurableRun, openDurableProductRun, durableProposalRun, durableStartRequestDigest, durableStartResult, durableRunView, startDurablePreparation, readDurableExecutionContext, controlDurableRun, prepareDurableResearchCommand, submitDurableResearchCommand } from './durable-fabric.js';
+export { preparationWorkflowDefinitions, recoverDurablePreparations, controlDurableRun } from './durable-fabric.js';
 import { runExitFence } from './host-exit.js';
-// HimaFabric v1: the runner that owns a Campaign's graph and a Run's state. It executes the four
+// New Run admission/control uses PG and DBOS; the legacy runner below remains a historical reader.
+// Historical HimaFabric v1: the runner that owns a Campaign's graph and a Run's state. It executes the four
 // node kinds and nothing more (D29): an act node runs one of the pack's tools on the Site as a Job
 // and waits for it, or reads one of the contract's outputs into HimaLedger; a judge node asks
 // HimaJudge for a verdict per rule and takes the edge the first rule's outcome labels; an explore
@@ -38,7 +41,7 @@ import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { loadRunPack, preservePackMethod } from './release.js';
-import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, verifyWorkspaceRevisionSources, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
+import { applyWorkspaceRevision, campaignIdFor, verifyWorkspaceRevisionSources, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
 import type { PreparationOverrides } from './campaign-file.js';
 import { listRunKnowledge, readRunKnowledge, writeExperience } from './experience.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -235,20 +238,14 @@ export interface StartRunRequest {
 }
 
 export type StartRunResult =
-  /**
-   * This Site cannot host this pack. No Campaign, no Run, no record: nothing happened on any Site,
-   * and the caller is handed the whole check — the same answer `/hima pack check` gives.
-   */
+  /** The declared Site/inputs cannot host this method. No Run or Site write exists. */
   | { readonly kind: 'unfit'; readonly check: PackCheck }
-  /**
-   * The Campaign has no workspace to run in: the Permit refused a path, or something is already at
-   * the workspace path that is not this Campaign's. The Run exists and carries whatever preparation
-   * recorded, and it never got a fabric state — HimaFabric did not start it, and the ledger says so
-   * by the absence of a status rather than by a word invented for the case.
-   */
-  | { readonly kind: 'unprepared'; readonly run: RunRecord; readonly prepared: PrepareResult }
-  /** The graph was executed. The Run carries where it got to; `ended-*` and `waiting` are all here. */
-  | { readonly kind: 'ran'; readonly run: RunRecord; readonly workspace: string };
+  /** Original Run persists; preparation explains why its workspace could not be accepted. */
+  | { readonly kind: 'unprepared'; readonly run: import('./durable-fabric.js').DurableRunView; readonly prepared: PrepareResult | import('./workspace.js').WorkspaceFilesResult }
+  /** Workspace accepted; current PG/DBOS facts say whether execution is running or finished. */
+  | { readonly kind: 'ran'; readonly run: import('./durable-fabric.js').DurableRunView; readonly workspace: string }
+  /** Original PG opening exists; DBOS prepares and executes asynchronously. */
+  | { readonly kind: 'preparing'; readonly run: import('./durable-fabric.js').DurableRunView; readonly workspace: string };
 
 /** The Site a preparation actually checks facts against: the Site's own bindings, with a Campaign
  *  file's input overrides (#41 task 3) merged over them in memory. The Permit is untouched — every
@@ -355,14 +352,14 @@ export function authenticCampaignProposalId(proposalId: string): boolean {
 }
 
 /**
- * Start a Campaign of `pack` on `site` toward `goal`, and execute its graph.
+ * Admit a Campaign and persist its original method/input; DBOS prepares and executes asynchronously.
  *
  * @param deps - the ledger, HimaJudge, and where sites and packs are installed.
  * @param req - the pack, the Site, the Goal, the first strategy, and the Budget.
- * @returns what the Run did, or why it could not start.
+ * @returns the original Run/preparation identity, or the preflight refusal.
  * @throws RunStartError when the request itself cannot be acted on; PackNotFoundError and
- *         SiteNotFoundError for a pack or Site that is not installed; RunFaultError when a node's
- *         turn threw, after the fault has been recorded against the Run.
+ *         SiteNotFoundError for a pack or Site that is not installed. Local runtime/database
+ *         failure is unavailable, with no legacy execution fallback.
  */
 const proposalStarts = new WeakMap<Ledger, Map<string, Promise<StartRunResult>>>();
 
@@ -384,6 +381,18 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   if (req.ownerSessionId === undefined && !legacyAutomaticAllowed()) throw new RunStartError('preparing a Run requires a live conversational owner');
   if (req.ownerSessionId !== undefined && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.ownerSessionId)) {
     throw new RunStartError('the execution owner must be a live conversation on this Host');
+  }
+  const runtime = durableRuntimeOf(deps);
+  if (!req.ownerSessionId) throw new RunStartError('Every new durable Run requires its conversational owner');
+  const requestDigest = durableStartRequestDigest({pack:req.pack,site:req.site,goal:req.goal,strategy:req.strategy,
+    inputs:req.overrides?.inputs??req.inputs,overrides:req.overrides,test:req.test,timeBoxMs:req.timeBoxMs,retryAllowance:req.retryAllowance,generationLimit:req.generationLimit});
+  if (req.proposalId) {
+    const original = await durableProposalRun(deps,req.proposalId,requestDigest);
+    if (original) {
+      try { req.onOpened?.(durableRunView(original)); } catch(error) { deps.log?.(`run-opened callback: ${(error as Error).message}`); }
+      await startDurablePreparation(runtime,original.runId);
+      return durableStartResult(runtime,original);
+    }
   }
   const site = loadSite(deps.sitesDir, req.site);
   // H4: the one source of truth for which input overrides this start actually applies is
@@ -420,7 +429,6 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // A pack the Site cannot host is answered before a Campaign exists, exactly as preparation does:
   // nothing was attempted anywhere, so nothing is recorded anywhere.
   const check = checkPack(pack, effectiveSite);
-  const existingProposal = req.proposalId === undefined ? undefined : deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
   // Preferably the caller's own overrides object (#41 task 3): a Campaign-file-aware caller already
   // holds the very `PreparationOverrides` its preparation minted `proposalId` from, and handing it
   // straight through recomputes the *exact* facts identity — a Strategy knob away from its default
@@ -439,7 +447,7 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
     strategy: req.strategy,
     inputs: req.inputs,
   });
-  if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site, identityOverrides)) {
+  if (req.proposalId !== undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site, identityOverrides)) {
     throw new RunStartError('Campaign preparation changed after confirmation; inspect a fresh proposal before starting');
   }
   if (req.proposalId !== undefined && req.test === true && packStageFrom(folder).stage === 'released') {
@@ -460,19 +468,6 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   const first = strategyFrom(pack.contract.strategy, req.strategy);
   if ('error' in first) throw new RunStartError(first.error);
   const strategy = first.strategy;
-
-  if (req.proposalId !== undefined) {
-    const existing = deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
-    if (existing !== undefined) {
-      if (existing.packId !== pack.id || existing.siteId !== site.name || identityOf(existing.goal) !== identityOf(goal)
-          || identityOf(existing.firstStrategy) !== identityOf(strategy)) {
-        throw new RunStartError('this Campaign proposal already belongs to a Run with different Pack, Site, Goal or Strategy facts');
-      }
-      const workspace = deps.ledger.records({ runId: existing.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
-      if (workspace === undefined) throw new RunStartError(`Campaign proposal ${req.proposalId} already opened ${existing.id}, which has no prepared workspace; inspect that Run instead of creating another`);
-      return { kind: 'ran', run: existing, workspace: workspace.workspace };
-    }
-  }
 
   const campaignId = campaignIdFor(pack, new Date());
   const budget = {
@@ -555,86 +550,20 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   }
   const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId,
     ...(req.guideSessionId === undefined ? {} : { guideSessionId: req.guideSessionId }),
-    epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
-  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.proposalId === undefined ? {} : { proposalId: req.proposalId }), packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
+    epoch: 0, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
+  const durable = await openDurableProductRun(deps,{pack,site,effectiveSite,retainedPackDir:folder.dir,
+    owner:req.ownerSessionId,requestDigest,inputs:inputOverrides,
+    opening:{campaignId,siteId:site.name,...(req.proposalId?{proposalId:req.proposalId}:{}),packId:pack.id,purpose,packDigest,goal,budget,firstStrategy:strategy,strategy,generation:1,...control}});
+  const opened = durableRunView(durable);
   if (req.proposalId !== undefined) {
-    // The same basis `identityOverrides` above recomputed the confirmed facts with: a pending id for
-    // a Campaign-file-aware preparation was stored under a facts key that included its overrides,
-    // and evicting it under the overrides-free key would never find it.
-    const facts = campaignProposalFactsIdentity(pack, site, identityOverrides);
+    const facts = campaignProposalFactsIdentity(pack,site,identityOverrides);
     if (pendingProposalIds.get(facts) === req.proposalId) pendingProposalIds.delete(facts);
   }
-  // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
-  // a caller that answers on the Run's existence must have the Run before anything else can happen
-  // to it.
-  try {
-    req.onOpened?.(opened);
-  } catch (err) {
-    // A listener is not this Run's to be faulted by. The row exists, nothing on the ledger is the
-    // worse for a callback that threw, and faulting the start here would leave exactly the shape the
-    // lines below work to prevent: an opened row with no fabric state and no record saying why. It
-    // is a fact about a caller and not about a Run, so it goes to the host log (#18) and the start
-    // carries on.
-    deps.log?.(`the run-opened callback for ${opened.id} threw and was not acted on: ${(err as Error).message}`);
-  }
-
-  // The Campaign's workspace, through #12's own operation and recorded against this Run. Idempotent
-  // for this Campaign: a Run re-entered after a restart reuses the workspace rather than paying the
-  // 56 MB again, and a workspace belonging to something else is refused rather than run in.
-  //
-  // Preparation reaches a Site, and a Site can stop answering in the middle of a 56 MB copy. A fault
-  // here is recorded before it is raised, exactly as a node's turn records one: unrecorded, it left
-  // the Run row opened with no fabric state and nothing at all saying why, and `/hima status` could
-  // report only that HimaFabric never started this Run.
-  let prepared: PrepareResult;
-  try {
-    // H4: the same `inputOverrides` `effectiveSite` above was built from, not `req.inputs` alone —
-    // the workspace this Campaign is actually prepared with must bind the same inputs the check and
-    // the facts identity already agreed on.
-    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder, inputs: inputOverrides });
-  } catch (err) {
-    const message = (err as Error).message;
-    await blockAtEntry(deps, opened, pack, `the campaign workspace could not be prepared: ${message}`, strategy);
-    throw new RunFaultError(opened.id, `run ${opened.id} stopped before its first node: ${message}`);
-  }
-  if (prepared.kind !== 'prepared' && prepared.kind !== 'reused') {
-    // A Campaign that got no workspace is as final for this Run as a fault is, so it is recorded the
-    // same way and in the same breath: the entry node blocked in the words the preparation itself
-    // used, and the Run waiting for a person. Written now rather than left to the next host, which
-    // could only re-stamp the row with a reason it had to invent — three lines from a fault branch
-    // that records one immediately. What the caller is told does not change: this is still
-    // `unprepared`, and every face still answers it the way it always has.
-    await blockAtEntry(deps, opened, pack, `the campaign workspace could not be prepared: ${whyUnprepared(prepared)}`, strategy);
-    return { kind: 'unprepared', run: deps.ledger.run(opened.id) ?? opened, prepared };
-  }
-  const workspace = prepared.file.workspace;
-
-  await deps.ledger.advanceRun(opened.id, {
-    status: 'running',
-    currentNode: pack.graph.entry,
-    strategy,
-    meters: { elapsedMs: 0, jobsLaunched: 0, attempts: 0 },
-  });
-
-  if (req.notifyOwnerOnOpen === true && opened.control !== undefined) {
-    deps.notify?.(opened.control.owner, opened.id, `start:${req.proposalId ?? opened.id}`,
-      'This prepared Campaign is now owned by this conversation. Read hima_context, inspect the reference graph and current facts, then choose each authorized node with hima_execute. Do not create another Run or hidden execution Agent.');
-  }
-
-  const driving: Driving = {
-    deps,
-    runId: opened.id,
-    site,
-    pack,
-    bindings: boundInputs(pack, effectiveSite),
-    workspace,
-    campaignId,
-    // A Run opened a moment ago has waited on nobody: there is no blocker to have waited at.
-    waitedMs: 0,
-  };
-  if (opened.control === undefined) await drive(driving);
-  else scheduleExecutionDeadline(deps, opened.id);
-  return { kind: 'ran', run: existingRun(deps.ledger, opened.id), workspace };
+  try { req.onOpened?.(opened); } catch(error) { deps.log?.(`run-opened callback for ${opened.id}: ${(error as Error).message}`); }
+  await startDurablePreparation(runtime,opened.id);
+  if(req.notifyOwnerOnOpen) deps.notify?.(durable.owner,opened.id,`start:${req.proposalId??opened.id}`,
+    'This Campaign is accepted. DBOS prepares its original workspace and executes the frozen Pack method automatically. Read hima_context for current facts; business intervention remains explicit.');
+  return durableStartResult(runtime,durable);
 }
 
 export type ResumeResult =
@@ -681,6 +610,7 @@ export type ResumeResult =
  *         Run was started with is no longer installed; RunFaultError when a node's turn threw.
  */
 export async function resumeRun(deps: FabricDeps, req: { readonly runId: string; readonly who: string }): Promise<ResumeResult> {
+  if(await knownDurableRun(deps,req.runId)) return {kind:'unresumable',run:(await readDurableExecutionContext(deps,req.runId)).run,reason:'This durable Run uses current owner/epoch/revision control; inspect its context and submit an explicit continue or business response'};
   const owned = existingRun(deps.ledger, req.runId);
   if (owned.control !== undefined) return { kind: 'unresumable', run: owned, reason: 'this Run belongs to its conversational Agent; inspect its execution context and use its control protocol' };
   if (!legacyAutomaticAllowed()) return { kind: 'unresumable', run: owned, reason: 'historical Runs require explicit safe adoption by a live conversational owner; automatic continuation is disabled' };
@@ -1300,37 +1230,12 @@ async function endRun(ctx: Driving): Promise<void> {
   await progress(ctx, {}, { status: 'ended-goal-not-met', ...next });
 }
 
-/**
- * Why a preparation gave the Campaign no workspace, in words the ledger already holds: a Permit
- * refusal's own record names the path it refused and why, and an occupied workspace names itself and
- * what is the matter with it.
- *
- * Said again on the blocked node because that is where a person will read it. `/hima status` renders
- * a Run's nodes and its decision, not its refusals, so a node saying only that there is no workspace
- * would send whoever is looking off to find a record the face does not show them.
- */
-function whyUnprepared(prepared: PrepareResult): string {
-  if (prepared.kind === 'refused') return `the site's permit refused ${prepared.record.path}: ${prepared.record.reason}`;
-  if (prepared.kind === 'occupied') return `${prepared.workspace} is not this campaign's to run in: ${prepared.reason}`;
-  // `unfit` is answered before a Run is opened at all, so it cannot arrive here; a kind added later
-  // says its own name rather than being described as something it is not.
-  return `the preparation answered ${prepared.kind}`;
-}
-
-/** A Run that never got past its own opening: the entry node blocked carrying why, and a Run that
- *  waits for a person rather than one with no fabric state and no explanation. */
-async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason: string, strategy: RunProgress['strategy']): Promise<void> {
-  const entry = pack.graph.nodes.find((n) => n.id === pack.graph.entry);
-  if (entry) await recordNode(deps.ledger, run.id, entry, 'blocked', attemptOf(deps.ledger, run.id, entry.id), { reason });
-  await advance(deps.ledger, run.id, {}, { status: 'waiting', currentNode: pack.graph.entry, strategy });
-  if (run.control !== undefined) scheduleExecutionDeadline(deps, run.id);
-}
-
 /** The Host supplies actor from the actual tool/session context. */
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze' | 'measure-value' | 'engineering';
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze' | 'measure-value' | 'engineering' | 'respond';
+  readonly response?: { readonly effectId: string; readonly output: import('./task-contract.js').TaskToolOutput };
   readonly analysis?: unknown;
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
@@ -1431,10 +1336,15 @@ export function revisionImpactForRun(deps: FabricDeps, runId: string, changedNod
 function revisionRoots(pack: Pack, run: RunRecord, records: readonly LedgerRecord[],
   declaredNodes: readonly string[], changes: readonly RevisionProposal['changes'][number][], nextStrategy: RunStrategy | undefined,
   workspacePaths: ReadonlyMap<string, string>): { readonly roots?: string[]; readonly reason?: string } {
+  return revisionDependencyRoots(pack,run.strategy,declaredNodes,changes,nextStrategy,workspacePaths,records.flatMap(record=>record.type==='knowledge'&&record.origin==='input'&&record.exposedBytes===0?[{nodeId:record.nodeId,path:record.path}]:[]));
+}
+
+/** Shared dependency ownership from frozen method declarations and actual retained input captures. */
+export function revisionDependencyRoots(pack:Pack,currentStrategy:RunStrategy|undefined,declaredNodes:readonly string[],changes:readonly RevisionProposal['changes'][number][],nextStrategy:RunStrategy|undefined,workspacePaths:ReadonlyMap<string,string>,inputCaptures:readonly {readonly nodeId:string;readonly path:string}[]):{readonly roots?:string[];readonly reason?:string} {
   const roots = new Set(declaredNodes);
   const graphs = runGraphsOf(pack).map(({ graph }) => graph);
   if (nextStrategy !== undefined) {
-    const changedKnobs = Object.keys(nextStrategy).filter((name) => run.strategy?.[name] !== nextStrategy[name]);
+    const changedKnobs = Object.keys(nextStrategy).filter((name) => currentStrategy?.[name] !== nextStrategy[name]);
     if (changedKnobs.length === 0 && changes.length === 0) return { reason: 'revision strategy does not change any current value' };
     for (const graph of graphs) for (const node of graph.nodes) {
       if (node.kind !== 'act') continue;
@@ -1455,8 +1365,7 @@ function revisionRoots(pack: Pack, run: RunRecord, records: readonly LedgerRecor
         if (workshop?.reads.some((name) => outputNames.has(name))) consumers.add(node.id);
       }
     }
-    for (const record of records) if (record.type === 'knowledge' && record.origin === 'input'
-        && record.path === target && record.exposedBytes === 0) consumers.add(record.nodeId);
+    for (const capture of inputCaptures) if (capture.path === target) consumers.add(capture.nodeId);
     if (consumers.size === 0) {
       return { reason: `workspace input ${change.path} has no declared or recorded consumer; its dependency scope cannot be established` };
     }
@@ -2117,8 +2026,28 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
   }
 }
 
+/** Current PG facts for new Runs; the synchronous executionContext is only the historical reader. */
+export async function readExecutionContext(deps:FabricDeps,runId:string):Promise<ExecutionContext & {readonly engine?: 'dbos/5.2.11';readonly durable?: import('./durable-fabric.js').DurableExecutionContext['durable']}> {
+  return await knownDurableRun(deps,runId) ? readDurableExecutionContext(deps,runId) : executionContext(deps,runId);
+}
+
 /** Claiming runs no tool; repeated claims return the same durable execution. */
-export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
+export async function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
+  if(await knownDurableRun(deps,req.runId)) {
+    const context = await readDurableExecutionContext(deps,req.runId);
+    if (!['pause','continue','cancel','handoff','revise','grow','respond'].includes(req.action)) return {kind:'unsupported',context,reason:'DBOS executes the frozen Pack method automatically; only explicit business intervention and control are accepted'};
+    try {
+      if(req.origin!=='human' && !deps.host?.get('agents')?.list().some(agent=>String(agent.id)===req.actor)) return {kind:'refused',context,reason:'Control actor must be a live conversation on this Host'};
+      const humanControl=req.origin==='human'&&(req.action==='pause'||req.action==='cancel'||req.action==='continue'&&context.run.control?.guideSessionId===req.actor);
+      const command: import('./run-store.js').DurableCommand = {runId:req.runId,commandId:req.requestId,action:req.action as import('./run-store.js').DurableCommand['action'],
+        owner:humanControl?context.run.control!.owner:req.actor,actor:req.actor,epoch:req.expectedEpoch,revision:req.expectedRevision,origin:req.origin==='human'?'human':'agent',...(req.targetOwner?{nextOwner:req.targetOwner}:{}),
+        ...(req.nodeId&&['pause','continue','cancel'].includes(req.action)?{scope:{taskId:req.nodeId}}:{}),
+        ...(req.action==='revise'?{change:req.revision as import('./run-store.js').DurableCommand['change']}:{}) ,...(req.response?{response:req.response}:{})};
+      const legacyResearch=req.action==='grow'||req.action==='revise'&&req.revision!==null&&typeof req.revision==='object'&&'changedNodes' in req.revision;
+      const data = legacyResearch ? await submitDurableResearchCommand(deps,await prepareDurableResearchCommand(deps,req)) : await controlDurableRun(deps,command);
+      return {kind:('duplicate' in data&&data.duplicate===true)||context.durable.controls.some(control=>(control as {commandId?:string}).commandId===req.requestId)?'duplicate':'accepted',context:await readDurableExecutionContext(deps,req.runId),data,receipt:{requestId:req.requestId,action:req.action,data}};
+    } catch(error) { return {kind:'refused',context:await readDurableExecutionContext(deps,req.runId),reason:(error as Error).message}; }
+  }
   return controlling(deps, req.runId, async () => {
     const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string; data?: unknown } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });

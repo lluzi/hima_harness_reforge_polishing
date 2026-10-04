@@ -22,6 +22,8 @@ export type EffectObservation = {readonly state:'ready';readonly receipt:JsonVal
   | {readonly state:'running'|'unknown';readonly reason:string}
   | {readonly state:'failed';readonly reason:string;readonly receipt?:JsonValue};
 export type EffectClosure={readonly closed:true;readonly proof:JsonValue}|{readonly closed:false;readonly reason:string};
+/** Host composition is still collecting the original effect; this is never producer output. */
+export interface TaskCollectionPending { readonly pending:true; readonly state:'running'|'waiting'; readonly reason:TaskDiagnostic }
 export interface TaskEffectAdapter {
   readonly kind:'command'|'program'|'workshop'|'team'|'resident-engineering'; readonly version:string;
   readonly resources:EffectResourceClaim;
@@ -37,13 +39,18 @@ export interface TaskEffectAdapter {
   reconcile(prepared:JsonValue,receipt:JsonValue|undefined):Promise<EffectObservation>;
   /** Workflow composition, including the existing domain Reader/child operations. This callback
    * must use taskEffectStep for raw I/O; never put its datasource/child work inside one Step. */
-  collect(prepared:JsonValue,receipt:JsonValue,request:TaskEffectRequest):Promise<TaskToolOutput>;
+  collect(prepared:JsonValue,receipt:JsonValue,request:TaskEffectRequest):Promise<TaskToolOutput|TaskCollectionPending>;
   release(prepared:JsonValue,receipt:JsonValue,beforeCleanup?:(id:string,input:JsonValue)=>Promise<boolean>):Promise<EffectClosure>;
+  /** Read-only original batch group closure, independent of Reader/business acceptance.
+   * Native/resident scopes omit this until all of their live resources actually close. */
+  settledResources?(prepared:JsonValue,receipt:JsonValue):Promise<EffectClosure>;
+  /** Independent control cleanup of this original task, never a success result or new work. */
+  stop?(prepared:JsonValue,receipt:JsonValue|undefined,beforeCleanup:(id:string,input:JsonValue)=>Promise<boolean>):Promise<EffectClosure>;
   message?(prepared:JsonValue,id:string,input:JsonValue,beforeSubmit:()=>Promise<void>):Promise<JsonValue>;
   reconcileMessage?(prepared:JsonValue,id:string,input:JsonValue):Promise<JsonValue|undefined>;
 }
 export type TaskEffectOutcome={readonly state:'succeeded';readonly result:TaskResult}
-  | {readonly state:'waiting'|'failed';readonly reason:TaskDiagnostic;readonly retainedResult?:TaskResult};
+  | {readonly state:'running'|'waiting'|'failed';readonly reason:TaskDiagnostic;readonly retainedResult?:TaskResult;readonly collecting?:boolean};
 function reason(state:'waiting'|'failed',code:string,message:string,retainedResult?:TaskResult):TaskEffectOutcome {
   return {state,reason:{code,message,source:'task-effect'},...(retainedResult?{retainedResult}:{})};
 }
@@ -78,8 +85,9 @@ export async function executeTaskEffect(store:RunStore,request:TaskEffectRequest
   }
   let retained=snapshot.facts['validated-result'] as TaskResult|undefined;
   let receipt=snapshot.facts.submitted;
-  if(!await store.reserveEffectResources(identity,adapter.resources,adapter.capacity)) return reason('waiting','site-capacity','The original Site Job/licence capacity is held; wait for confirmed resource closure');
-  if(receipt===undefined && retained===undefined) {
+  if(!snapshot.resourcesReleased&&!await store.reserveEffectResources(identity,adapter.resources,adapter.capacity)) return reason('waiting','site-capacity','The original Site Job/licence capacity is held; wait for confirmed resource closure');
+  let resourcesReleased=snapshot.resourcesReleased;
+  if(receipt===undefined && retained===undefined && !resourcesReleased) {
     try {
       const fixed=prepared;
       const submitted=await external('hima.effect.submit',async()=>{
@@ -103,7 +111,8 @@ export async function executeTaskEffect(store:RunStore,request:TaskEffectRequest
   if(retained===undefined) {
     let observed:EffectObservation;
     const failure=snapshot.facts['executor-failure'] as {reason:string;receipt?:JsonValue}|undefined;
-    try {observed=failure?{state:'failed',...failure}:await external('hima.effect.reconcile',()=>adapter.reconcile(prepared!,receipt));}
+    const ready=adapter.settledResources?snapshot.facts['executor-ready']:undefined;
+    try {observed=failure?{state:'failed',...failure}:ready?{state:'ready',receipt:ready}:await external('hima.effect.reconcile',()=>adapter.reconcile(prepared!,receipt));}
     catch(error) {return reason('waiting','effect-unknown',`Query the original task session: ${errorText(error)}`);}
     if(observed.state==='failed') {
       if(!failure)await store.recordEffectFact(identity,'executor-failure',{reason:observed.reason,...(observed.receipt===undefined?{}:{receipt:observed.receipt})});
@@ -116,9 +125,25 @@ export async function executeTaskEffect(store:RunStore,request:TaskEffectRequest
       await store.recordEffectFact(identity,'terminal-failure',{reason:observed.reason});
       return reason('failed','executor-failed',observed.reason);
     }
+    if(observed.state==='running')return {state:'running',reason:{code:'effect-running',message:observed.reason,source:'task-effect'}};
     if(observed.state!=='ready') return reason('waiting','effect-unknown',observed.reason);
+    if(adapter.settledResources) {
+      if(!ready)await store.recordEffectFact(identity,'executor-ready',observed.receipt);
+      if(!resourcesReleased) {
+        const closure=await external('hima.effect.settled-resources',async()=>{
+          if(!await adapter.permit(prepared!,'release'))throw new Error('Current Site Permit cannot confirm original batch closure');
+          return adapter.settledResources!(prepared!,observed.receipt);
+        }).catch(error=>({closed:false as const,reason:errorText(error)}));
+        if(!closure.closed)return reason('waiting','resource-closure',closure.reason);
+        await store.releaseEffectResources(identity,closure.proof);resourcesReleased=true;
+      }
+    }
     try {
       const output=await adapter.collect(prepared!,observed.receipt,request);
+      if('pending' in output && output.pending===true) {
+        if(output.state!=='running'&&output.state!=='waiting')throw new Error('Pending collection must describe running or waiting original work');
+        return {state:output.state,reason:taskDiagnostic.parse(output.reason),collecting:true};
+      }
       retained=createTaskResult(identity,request.contract,output,request.localSchemas);
       await store.recordEffectFact(identity,'validated-result',retained as unknown as JsonValue);
       await store.recordEffectFact(identity,'completion-receipt',observed.receipt);
@@ -126,7 +151,7 @@ export async function executeTaskEffect(store:RunStore,request:TaskEffectRequest
     receipt=observed.receipt;
   }
   receipt=snapshot.facts['completion-receipt']??receipt??prepared;
-  const released=snapshot.resourcesReleased;
+  const released=resourcesReleased;
   if(!released) {
     let closure:EffectClosure;
     try {
@@ -188,7 +213,7 @@ export function bindTaskToolInputs(tool:PackTool,input:JsonValue,platform:Readon
 export interface CommandTaskAdapterOptions {
   readonly sitesDir:string;readonly siteId:string;readonly workspace:string;readonly argv:readonly string[];
   readonly name:string;readonly licences?:Readonly<Record<string,number>>;
-  readonly collect:(site:Site,job:JobIdentity,request:TaskEffectRequest)=>Promise<TaskToolOutput>;
+  readonly collect:(site:Site,job:JobIdentity,request:TaskEffectRequest)=>Promise<TaskToolOutput|TaskCollectionPending>;
   readonly kind?:'command'|'program';
   readonly stage?:(site:Site)=>Promise<void>;
 }
@@ -199,6 +224,10 @@ export function commandTaskAdapter(options:CommandTaskAdapterOptions):TaskEffect
   const site=current();
   const originalSiteDigest=jsonDigest(site);
   const job=(prepared:JsonValue)=>prepared as unknown as JobIdentity;
+  const closedResources=async(_prepared:JsonValue,receipt:JsonValue):Promise<EffectClosure>=>{
+    const original=await reconnectRetainedJob(current(),job(receipt));
+    return await retainedJobResourcesClosed(current(),original)?{closed:true,proof:{session:original.session,processGroup:original.pid??null,closed:true}}:{closed:false,reason:'Original Job process group/session closure is not yet confirmed'};
+  };
   return {kind:options.kind??'command',version:taskEffectAdapterVersion,
     resources:{siteId:site.name,jobs:1,licences:{...options.licences}},
     capacity:{jobs:site.capacity.parallelJobs,licences:site.capacity.licences},
@@ -223,7 +252,14 @@ export function commandTaskAdapter(options:CommandTaskAdapterOptions):TaskEffect
       return {state:state.state==='running'?'running':'unknown',reason:`Original Job ${original.session} is ${state.state}; reconnect it without launching another Job`};
     },
     collect:(_prepared,receipt,request)=>options.collect(current(),job(receipt),request),
-    async release(_prepared,receipt) {const original=job(receipt);return await retainedJobResourcesClosed(current(),original)?{closed:true,proof:{session:original.session,processGroup:original.pid??null,closed:true}}:{closed:false,reason:'Original Job process group/session closure is not yet confirmed'};},
+    release:closedResources,settledResources:closedResources,
+    async stop(prepared,receipt,beforeCleanup) {
+      const original=await reconnectRetainedJob(current(),job(receipt??prepared));
+      if(original.pid===undefined)return {closed:false,reason:'Original Job launch/PID acknowledgement is unknown; query its original identity before stop'};
+      if(await retainedJobResourcesClosed(current(),original))return {closed:true,proof:{session:original.session,processGroup:original.pid??null,closed:true}};
+      if(await beforeCleanup('stop-job',prepared))await stopRetainedJob(current(),original);
+      return await retainedJobResourcesClosed(current(),original)?{closed:true,proof:{session:original.session,processGroup:original.pid??null,closed:true}}:{closed:false,reason:'Original Job stop request has no confirmed process-group closure'};
+    },
   };
 }
 const relativePath=z.string().min(1).refine(value=>!value.startsWith('/')&&!value.includes('\\')&&!value.includes(':')&&value.split('/').every(part=>part!==''&&part!=='.'&&part!=='..'),'use a normalized task-workspace-relative path');
@@ -297,7 +333,7 @@ export interface ResidentTaskAdapterOptions {
   readonly sitesDir:string;readonly siteId:string;readonly identity:EngineeringTaskIdentity;
   readonly start:Extract<EngineeringRequest,{operation:'start'}>;
   /** Existing domain Reader, supplied by Host. Runtime metadata comes from request.identity. */
-  readonly collect:(identity:EngineeringTaskIdentity,delivery:EngineeringDelivery,materialized:{path:string;sha256:string},request:TaskEffectRequest)=>Promise<TaskToolOutput>;
+  readonly collect:(identity:EngineeringTaskIdentity,delivery:EngineeringDelivery,materialized:{path:string;sha256:string},request:TaskEffectRequest)=>Promise<TaskToolOutput|TaskCollectionPending>;
 }
 interface ResidentPrepared {
   plan:Omit<EngineeringTaskPlan,'knowledge'|'methodFiles'> & {knowledge:{path:string;sha256:string;bytes:string}[];methodFiles:{path:string;sha256:string;bytes:string}[]};
@@ -321,7 +357,7 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
     const sent=await writeEngineeringRequest(identity,held.plan.taskId,id,operation,payload);
     return waitEngineeringReceipt(identity.site,sent.taskDir,held.plan.taskId,id,sent.frame.sha256,operation.operation==='release'?12000:1000);
   }
-  return {kind:'resident-engineering',version:taskEffectAdapterVersion,
+  const adapter:TaskEffectAdapter={kind:'resident-engineering',version:taskEffectAdapterVersion,
     resources:{siteId:site.name,jobs:1,licences:{...options.identity.licences}},
     capacity:{jobs:site.capacity.parallelJobs,licences:site.capacity.licences},
     async prepare(task) {
@@ -417,6 +453,16 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
       if(!state||!owned||owned.quiescent!==true)return {closed:false,reason:'Original signed native closure facts are missing'};
       return {closed:true,proof:{session:originalJob.session,nativeSession:completion.delivery?.sessionId??completion.nativeSession??state.sessionId??null,ownedSha256:owned.sha256,stateSha256:state.sha256,closed:true}};
     },
+    async stop(prepared,receipt,beforeCleanup) {
+      const held=decodeResident(prepared),identity=fresh();
+      const input={taskId:held.plan.taskId,envelopeSha256:held.plan.envelope.sha256};
+      const state=await readEngineeringState(identity.site,held.plan.taskDir,held.plan.taskId);
+      if(!['released','stopped'].includes(state?.phase??'') && await beforeCleanup('cancel-native',input)) {
+        await request(prepared,`auto-cancel-${held.plan.envelope.sha256.slice(0,32)}`,{operation:'cancel'});
+      }
+      // release reconnects fixed ownership and, when required, the one original cleanup Job.
+      return adapter.release(prepared,receipt??({job:held.job} as unknown as JsonValue),beforeCleanup);
+    },
     async message(prepared,id,input,beforeSubmit) {
       if(typeof input!=='string'||!input.trim())throw new Error('Resident native message must be nonempty text');
       await beforeSubmit();
@@ -433,4 +479,5 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
       return await readEngineeringReceipt(identity.site,held.plan.taskDir,held.plan.taskId,id,digest) as unknown as JsonValue|undefined;
     },
   };
+  return adapter;
 }

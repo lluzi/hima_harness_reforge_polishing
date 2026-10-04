@@ -47,6 +47,7 @@ export const taskInputBinding = z.discriminatedUnion('source', [
   z.strictObject({ source: z.literal('carry'), path: fieldPath }),
   z.strictObject({ source: z.literal('committedOutput'), ...taskOutputBinding.shape }),
   z.strictObject({ source: z.literal('artifactRef'), taskId: name, name }),
+  z.strictObject({ source: z.literal('extensionResult'), slotId: name, path: fieldPath }),
 ]);
 export type TaskInputBinding = z.infer<typeof taskInputBinding>;
 

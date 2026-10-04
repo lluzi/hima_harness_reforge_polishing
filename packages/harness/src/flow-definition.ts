@@ -97,3 +97,136 @@ export interface FrozenFlowFragment {
 export interface FrozenLegacyFlowFragment extends FrozenFlowFragment {
   readonly proposalId: string; readonly requiredOutputs: readonly string[]; readonly optional: boolean;
 }
+
+export interface FlowBranch { readonly parallelId: string; readonly branch: string }
+/** Preserve the legacy Act pool. Deterministic Judge/Explore/continuation and human responses
+ * may consume retained facts during closing, without becoming fresh experiments. */
+export function flowTaskCountsExperiment(flow: CompiledFlow, taskId: string): boolean {
+  const task = flow.tasks[taskId];
+  if (!task) throw new Error(`Unknown frozen task ${taskId}`);
+  if (task.tool === 'builtin/human-wait') return false;
+  return flow.source !== 'legacy' || (task.legacy as { kind?: string } | undefined)?.kind === 'act';
+}
+/** Membership comes only from the frozen IR; callers cannot assign a task to another branch. */
+export function flowTaskBranches(flow: CompiledFlow, taskId: string): readonly FlowBranch[] {
+  let found: readonly FlowBranch[] | undefined;
+  const walk = (id: string, branches: readonly FlowBranch[], seen: Set<string>): void => {
+    if (seen.has(id)) return;
+    const block = flow.blocks[id]; if (!block) throw new Error(`Unknown frozen block ${id}`);
+    const next = new Set(seen).add(id);
+    if (block.kind === 'task' && block.taskId === taskId) {
+      if (found && JSON.stringify(found) !== JSON.stringify(branches)) throw new Error(`Task ${taskId} has ambiguous branch membership`);
+      found = branches;
+    } else if (block.kind === 'parallel') block.branches.forEach(branch => walk(branch.flow, [...branches, { parallelId: id, branch: branch.name }], next));
+    else if (block.kind === 'sequence') block.steps.forEach(child => walk(child, branches, next));
+    else if (block.kind === 'choice') Object.values(block.cases).forEach(child => walk(child, branches, next));
+    else if (block.kind === 'repeat') {
+      walk(block.body, branches, next);
+      Object.values(block.entries ?? {}).forEach(entry => walk(entry.body, branches, next));
+    }
+  };
+  walk(flow.entry, [], new Set());
+  if (!found) throw new Error(`Task ${taskId} is not reachable in the frozen method`);
+  return found;
+}
+/** Data and control consumers, without treating an independent parallel sibling as a consumer. */
+export function flowRevisionConsumers(flow: CompiledFlow, changed: string, fragments: readonly FrozenFlowFragment[] = []): readonly string[] {
+  const methods = [flow, ...fragments.map(fragment => fragment.flow)];
+  if (!methods.some(method => method.tasks[changed])) throw new Error(`Unknown revision task ${changed}`);
+  const dependencies: Record<string, Set<string>> = {};
+  for (const method of methods) for (const id of Object.keys(method.tasks)) {
+    const sources = dependencies[id] ??= new Set();
+    (method.dependencies[id] ?? []).forEach(task => sources.add(task));
+  }
+  for (const method of methods) {
+    const walk = (id: string, controls: Set<string>, seen: Set<string>): Set<string> => {
+      if (seen.has(id)) return controls;
+      const next = new Set(seen).add(id), block = method.blocks[id]!;
+      if (block.kind === 'task') { controls.forEach(task => { if (task !== block.taskId) dependencies[block.taskId]!.add(task); }); return controls; }
+      if (block.kind === 'sequence') {
+        let current = new Set(controls); for (const step of block.steps) current = walk(step, current, next); return current;
+      }
+      if (block.kind === 'choice') {
+        const gated = new Set(controls).add(block.select.taskId);
+        const outcomes = Object.values(block.cases).map(child => walk(child, new Set(gated), next));
+        for (const outcome of outcomes) outcome.forEach(task => gated.add(task));
+        return gated;
+      }
+      if (block.kind === 'parallel') {
+        const after = new Set(controls);
+        for (const branch of block.branches) walk(branch.flow, new Set(controls), next).forEach(task => after.add(task));
+        return after;
+      }
+      const gated = new Set(controls);
+      const entries = [{ body: block.body, carry: block.carry, stop: block.stop }, ...Object.values(block.entries ?? {})];
+      for (const entry of entries) {
+        gated.add(entry.stop.output.taskId);
+        for (const carry of Object.values(entry.carry)) {
+          gated.add(carry.next.taskId);
+          if (carry.initial.source === 'committedOutput' || carry.initial.source === 'artifactRef') gated.add(carry.initial.taskId);
+        }
+      }
+      const outcomes = entries.map(entry => walk(entry.body, new Set(gated), next));
+      for (const outcome of outcomes) outcome.forEach(task => gated.add(task));
+      return gated;
+    };
+    const fragment = fragments.find(fragment => fragment.flow === method);
+    const slot = fragment && flow.extensions.find(slot => slot.id === fragment.slotId);
+    walk(method.entry, new Set(slot ? [slot.afterTask] : []), new Set());
+    for (const extension of method.extensions) dependencies[extension.returnTo]?.add(extension.afterTask);
+    if (fragment) dependencies[fragment.returnTo]?.add(fragment.return.taskId);
+  }
+  const affected = new Set([changed]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [task, sources] of Object.entries(dependencies)) if (!affected.has(task) && [...sources].some(source => affected.has(source))) { affected.add(task); grew = true; }
+  }
+  return [...affected].sort();
+}
+
+export interface FlowExtensionScope {readonly producerEffectId:string;readonly slotId:string}
+export function flowExtensionKey(scope:FlowExtensionScope):string{return JSON.stringify([scope.producerEffectId,scope.slotId]);}
+export interface FlowInvocationPath {
+  readonly flowSha256: string; readonly taskId: string;readonly extensions?:readonly FlowExtensionScope[];
+  readonly iterations: readonly { readonly repeatId: string; readonly iteration: number }[];
+  readonly branches: readonly FlowBranch[];
+}
+export interface FlowRevisionRule {
+  readonly revision: number; readonly changedTask: string; readonly changedEffectId: string;
+  readonly selected: FlowInvocationPath; readonly selectedKey: string; readonly input: JsonValue;
+  readonly evidence: JsonValue; readonly affected: readonly string[]; readonly invalidatedKeys: readonly string[]; readonly invalidatedEffects: readonly string[];
+  readonly preserved: Readonly<Record<string, { readonly version: number; readonly input: JsonValue | null }>>;
+  readonly inputPatches?:readonly {readonly taskId:string;readonly fields:Readonly<Record<string,JsonValue>>}[];
+}
+export function flowInvocationKey(scope: FlowInvocationPath): string {
+  // The tuple preserves invocation path ordering and exact original names, without expressions.
+  return JSON.stringify([scope.flowSha256, scope.taskId, scope.iterations.map(item => [item.repeatId, item.iteration]), scope.branches.map(item => [item.parallelId, item.branch]),(scope.extensions??[]).map(flowExtensionKey)]);
+}
+function atOrAfter(scope:FlowInvocationPath,frontier:FlowInvocationPath):boolean {
+  for(let index=0;index<Math.min(scope.iterations.length,frontier.iterations.length);index++) {
+    const actual=scope.iterations[index]!, selected=frontier.iterations[index]!;
+    if(actual.repeatId!==selected.repeatId)break;
+    if(actual.iteration!==selected.iteration)return actual.iteration>selected.iteration;
+  }
+  // Tasks outside the selected loop are filtered by actual/static data and control dependencies;
+  // existing prior logical keys have an explicit preserved version and never reach this fallback.
+  return true;
+}
+export function flowInvocationRevision(rules:readonly FlowRevisionRule[],scope:FlowInvocationPath,consumedVersions:readonly number[]=[]):{version:number;input:JsonValue|null} {
+  const key=flowInvocationKey(scope);let value:{version:number;input:JsonValue|null}={version:0,input:null};
+  for(const rule of rules) {
+    if(rule.selectedKey===key)value={version:rule.revision,input:rule.input};
+    else if(rule.invalidatedKeys.includes(key))value={version:rule.revision,input:value.input};
+    else if(Object.hasOwn(rule.preserved,key))value=consumedVersions.some(version=>version>=rule.revision)?{version:rule.revision,input:value.input}:{...rule.preserved[key]!};
+    else if(rule.affected.includes(scope.taskId)&&atOrAfter(scope,rule.selected))value={version:rule.revision,input:value.input};
+  }
+  return value;
+}
+
+export function flowRevisionApplies(rule:FlowRevisionRule,scope:FlowInvocationPath,consumedVersions:readonly number[]):boolean {
+  const key=flowInvocationKey(scope);
+  if(rule.selectedKey===key||rule.invalidatedKeys.includes(key))return true;
+  if(!rule.affected.includes(scope.taskId))return false;
+  return Object.hasOwn(rule.preserved,key)?consumedVersions.some(version=>version>=rule.revision):atOrAfter(scope,rule.selected);
+}

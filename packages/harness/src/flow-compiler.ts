@@ -147,6 +147,13 @@ function compileSource(source: FlowSource, options: CompileFlowOptions, external
     return producer;
   };
   const input = (binding: TaskInputBinding, available: Availability, at: string, consumer?: string, optional = false, carryScope: ReadonlySet<string> = new Set()): void => {
+    if (binding.source === 'extensionResult') {
+      const slot = source.extensions?.find(slot => slot.id === binding.slotId);
+      if (!slot) fail(at, `unknown extension slot ${binding.slotId}; declare its producer and return task`);
+      if (consumer !== slot.returnTo) fail(at, `consume extension ${slot.id} at its declared return task ${slot.returnTo}`);
+      reference({ taskId: slot.afterTask, path: [] }, available, at, optional);
+      if (consumer && !dependencies[consumer]!.includes(slot.afterTask)) dependencies[consumer]!.push(slot.afterTask);
+    }
     if (binding.source === 'carry' && (!binding.path.length || !carryScope.has(binding.path[0]!))) fail(at, 'name a carry key declared by the enclosing repeat; carry is available only inside its body');
     if (binding.source === 'committedOutput' || binding.source === 'artifactRef') {
       reference({ taskId: binding.taskId, path: binding.source === 'artifactRef' ? [] : binding.path }, available, at, optional);
@@ -326,7 +333,16 @@ function lowerLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: s
       legacy: structuredClone(node) as unknown as JsonValue };
     dependencies[node.id] = [];
     blocks[node.id] = { kind: 'task', id: node.id, taskId: node.id };
+    if(node.kind==='explore' && node.parameters.growth) {
+      const id=internal(node.id,'growth-resume'),slotId=internal(node.id,'growth');
+      tasks[id]={kind:'task',id,tool:'builtin/legacy-growth-resume',contract:legacyContract(node),
+        inputs:{priorDecision:{source:'committedOutput',taskId:node.id,path:[]},diagnostic:{source:'extensionResult',slotId,path:[]}},
+        optionalInputs:['diagnostic'],legacy:structuredClone(node) as unknown as JsonValue};
+      dependencies[id]=[node.id];blocks[id]={kind:'task',id,taskId:id};
+      extensions.push({id:slotId,afterTask:node.id,fragmentPath:['extension'],returnTo:id});
+    }
   }
+  const decisionSource=(id:string):string=>tasks[internal(id,'growth-resume')]?internal(id,'growth-resume'):id;
   if (boundary) {
     tasks[boundary.task.id] = boundary.task; dependencies[boundary.task.id] = [];
     blocks[boundary.task.id] = { kind: 'task', id: boundary.task.id, taskId: boundary.task.id };
@@ -360,6 +376,7 @@ function lowerLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: s
         // The Explore adapter consumes the child composition result and emits its named outcome.
         work = sequence(internal(id, 'open-loop'), [loop, node.id]);
       }
+      if(node.kind==='explore'&&node.parameters.growth)work=sequence(internal(id,'growth-sequence'),[work,decisionSource(id)]);
       let route = edges[0] ? target(edges[0].to) : empty;
       if (node.kind === 'judge' || (node.kind === 'explore' && node.parameters.opens)) {
         const values = node.kind === 'judge' ? ['PASS', 'FAIL', 'UNDETERMINED'] : ['goal-met', 'converged', 'generation-limit'];
@@ -368,11 +385,11 @@ function lowerLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: s
           return [outcome, edge ? target(edge.to) : outcome === 'UNDETERMINED' ? humanWait() : empty];
         }));
         const choiceId = internal(id, 'choice');
-        blocks[choiceId] = { kind: 'choice', id: choiceId, select: { taskId: id, path: ['outcome'] }, cases };
+        blocks[choiceId] = { kind: 'choice', id: choiceId, select: { taskId: decisionSource(id), path: ['outcome'] }, cases };
         route = choiceId;
       } else if (node.kind === 'explore') {
         const choiceId = internal(id, 'continue');
-        blocks[choiceId] = { kind: 'choice', id: choiceId, select: { taskId: id, path: ['route'] }, cases: { repeat: route, stop: empty } };
+        blocks[choiceId] = { kind: 'choice', id: choiceId, select: { taskId: decisionSource(id), path: ['route'] }, cases: { repeat: route, stop: empty } };
         route = choiceId;
       } else if (node.kind === 'act' && edges.length > 1) {
         // Existing validateForkShape proves a linear chain per branch and one common Judge join.
@@ -402,38 +419,40 @@ function lowerLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: s
     if (revisit.length === 0) return target(part.entry);
     const first = revisit[0]!;
     const initial: TaskInputBinding = inheritedCarry ? { source: 'carry', path: ['strategy'] } : { source: 'strategy', path: [] };
-    const carry = { strategy: { initial, next: { taskId: first.from, path: ['strategy'] } } };
+    const carry = { strategy: { initial, next: { taskId: decisionSource(first.from), path: ['strategy'] } } };
     blocks[repeatId] = { kind: 'repeat', id: repeatId, body: target(part.entry), carry,
-      stop: { output: { taskId: first.from, path: ['route'] }, equals: 'stop' }, budget: 'original-run',
-      entries: Object.fromEntries(revisit.map(edge => [edge.from, { body: target(edge.to),
-        carry: { strategy: { initial, next: { taskId: edge.from, path: ['strategy'] } } },
-        stop: { output: { taskId: edge.from, path: ['route'] }, equals: 'stop' } }])),
+      stop: { output: { taskId: decisionSource(first.from), path: ['route'] }, equals: 'stop' }, budget: 'original-run',
+      entries: Object.fromEntries(revisit.map(edge => [decisionSource(edge.from), { body: target(edge.to),
+        carry: { strategy: { initial, next: { taskId: decisionSource(edge.from), path: ['strategy'] } } },
+        stop: { output: { taskId: decisionSource(edge.from), path: ['route'] }, equals: 'stop' } }])),
       // Original Run/loop meters use the declaration in compatibility; no fresh child budget.
     };
     return repeatId;
   };
   const entry = partEntry(graph, graph.id, inheritedCarry);
-  for (const node of graph.nodes) if (node.kind === 'explore' && node.parameters.growth) {
-    extensions.push({ id: internal(node.id, 'growth'), afterTask: node.id, fragmentPath: ['extension'], returnTo: node.id });
-  }
+
   // Explicit dependencies derive from bindings and legacy reader-consumer references. U6 may also
   // depend on committed control decisions, without invalidating independent sibling results.
   for (const task of Object.values(tasks)) {
-    const part = allParts.find(part => part.nodes.some(node => node.id === task.id));
+    const legacy=task.legacy as unknown as PackNode;
+    const originId=legacy?.id??task.id;
+    const part = allParts.find(part => part.nodes.some(node => node.id === originId));
     const ancestors = new Set<string>();
     const collect = (id: string): void => {
       for (const edge of part?.edges ?? []) if (!edge.revisit && edge.to === id && !ancestors.has(edge.from)) { ancestors.add(edge.from); collect(edge.from); }
     };
-    collect(task.id);
+    collect(originId);
     const node = task.legacy as unknown as PackNode;
     const outputNames = node?.kind === 'act' && node.parameters.workshop
       ? contract.workshops.find(workshop => workshop.id === node.parameters.workshop)?.reads ?? []
-      : node?.kind === 'judge' || node?.kind === 'explore' ? contract.outputs.map(output => output.name) : [];
+      : node?.kind === 'act' ? contract.agentTeams.filter(team=>team.triggerNode===originId).flatMap(team=>team.members.flatMap(member=>member.inputs))
+        : node?.kind === 'judge' || node?.kind === 'explore' ? contract.outputs.map(output => output.name) : [];
     const producers = Object.values(tasks).filter(candidate => {
       const producer = candidate.legacy as unknown as PackNode;
       return ancestors.has(candidate.id) && producer?.kind === 'act' && producer.parameters.observes && outputNames.includes(producer.parameters.observes);
     }).map(candidate => candidate.id).filter(id => id !== task.id);
-    dependencies[task.id] = producers.sort();
+    const bound=Object.values(task.inputs).flatMap(binding=>binding.source==='committedOutput'||binding.source==='artifactRef'?[binding.taskId]:[]);
+    dependencies[task.id] = [...new Set([...(dependencies[task.id]??[]),...producers,...bound])].sort();
   }
   return finish({ schema: flowIRVersion, source: 'legacy', packId: graph.id, version: graph.version,
     entry, blocks, tasks, localSchemas: {}, toolIds: contract.tools.map(tool => tool.id), dependencies, extensions, packSha256,
@@ -459,9 +478,26 @@ export function compileLegacyGrowth(pack: Pack, candidate: unknown): FrozenLegac
     entry: graph.graph.entry, nodes: [...graph.graph.nodes], edges: [...graph.graph.edges], loops: {}, autopilot: [] };
   const flow = lowerLegacyFlow(fragmentGraph, pack.contract, base.packSha256, { id: graph.returnNode, task: returned },
     carryScopeAtTask(base.blocks, base.entry, graph.parentNode).has('strategy'));
-  const data = { slotId: slot.id, returnTo: graph.returnNode, return: { taskId: id, path: [] }, flow,
+  const data = { slotId: slot.id, returnTo: slot.returnTo, return: { taskId: id, path: [] }, flow,
     proposalId: proposal.proposalId, requiredOutputs: proposal.requiredOutputs, optional: proposal.optional };
   return freeze({ ...data, sha256: digest(data) });
+}
+
+/** A compiled fragment returned by a producer is still untrusted data. Re-derive it from its
+ * proposal and the frozen original method, instead of accepting a self-reported SHA as proof. */
+export function freezeLegacyFlowFragment(base:CompiledFlow,slotId:string,candidate:unknown):FrozenLegacyFlowFragment {
+  const proposed=candidate as FrozenLegacyFlowFragment;
+  const compatibility=base.compatibility as unknown as {graph:PackGraph;contract:PackContract}|undefined;
+  if(base.source!=='legacy'||!compatibility?.graph||!compatibility.contract||!proposed?.flow?.tasks||!proposed.return)fail('/extension','compiled legacy growth needs its frozen reference method and proposal');
+  const declaration=proposed.flow.tasks[proposed.return.taskId]?.legacy as unknown as {proposal?:unknown}|undefined;
+  if(!declaration?.proposal)fail('/extension','compiled legacy growth must retain its original validated proposal');
+  // validateGrowthGraph reads only these immutable method fields and the already-frozen digest.
+  // No current Pack disk bytes, Ledger projection or executable adapter is involved.
+  const authority={id:base.packId,graph:compatibility.graph,contract:compatibility.contract,flow:base,
+    folder:{digest:()=>base.packSha256}} as unknown as Pack;
+  const frozen=compileLegacyGrowth(authority,declaration.proposal);
+  if(frozen.slotId!==slotId||canonical(frozen)!==canonical(proposed))fail('/extension','compiled legacy fragment differs from its validated proposal and frozen method');
+  return frozen;
 }
 
 /** Existing faces read this declaration projection. It is never the execution source for new Runs. */

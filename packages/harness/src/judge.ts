@@ -103,6 +103,44 @@ function resolveThreshold(rule: Rule, params: Readonly<Record<string, number>> |
   return { ok: true, value: bound, boundParameters: { [threshold.parameter]: bound } };
 }
 
+/** Apply the existing deterministic domain rule to source-linked readings without scheduling or storage. */
+export function judgeReading(runId: string, rule: Rule, observations: readonly ObservationRecord[], params?: Readonly<Record<string, number>>, branchId?: string): Omit<VerdictRecord, 'id' | 'runId' | 'siteId' | 'seq' | 'at' | 'writer' | 'type'> {
+  const result = (outcome: VerdictOutcome, valuesAsRead: SemanticValue[], cites: string[], reason?: string, boundParameters?: Readonly<Record<string, number>>) => ({
+    outcome, ruleId: rule.id, ruleVersion: rule.version, valuesAsRead, cites,
+    ...(reason === undefined ? {} : { reason }), ...(boundParameters === undefined ? {} : { boundParameters }),
+    ...(branchId === undefined ? {} : { branchId }),
+  });
+    const valuesAsRead: SemanticValue[] = [];
+    const cites: string[] = [];
+    const numbers: number[] = [];
+
+    for (const req of rule.requires) {
+      const found = latestMatch(observations, req);
+      if (!found) {
+        return result('UNDETERMINED', valuesAsRead, cites, `run ${runId} has no observed ${describeRequirement(req)} value, which this rule requires`);
+      }
+      valuesAsRead.push(structuredClone(found.value));
+      if (!cites.includes(found.recordId)) cites.push(found.recordId);
+      if (found.value.value === null) {
+        return result('UNDETERMINED', valuesAsRead, cites, `${describeRequirement(req)} is unknown in observation ${found.recordId}: ${found.value.unknownReason}`);
+      }
+      numbers.push(found.value.value);
+    }
+
+    // The rule schema guarantees the subject is one of the requirements, so this index exists.
+    const at = rule.requires.findIndex((req) => sameRequirement(req, rule.subject));
+    const subject = valuesAsRead[at]!;
+    if (subject.unit !== rule.predicate.unit) {
+      return result('UNDETERMINED', valuesAsRead, cites, `${describeRequirement(rule.subject)} is in ${subject.unit}, but this rule's threshold is in ${rule.predicate.unit}`);
+    }
+    const resolved = resolveThreshold(rule, params);
+    if (!resolved.ok) {
+      return result('UNDETERMINED', valuesAsRead, cites, resolved.reason);
+    }
+    const outcome: VerdictOutcome = holds(rule.predicate.op, numbers[at]!, resolved.value) ? 'PASS' : 'FAIL';
+    return result(outcome, valuesAsRead, cites, undefined, resolved.boundParameters);
+}
+
 export class Judge {
   readonly #ledger: Ledger;
   readonly #writer: VerdictWriter;
@@ -167,37 +205,8 @@ export class Judge {
   }
 
   async #judge(runId: string, rule: Rule, observations: readonly ObservationRecord[], params: Readonly<Record<string, number>> | undefined, branchId?: string): Promise<VerdictRecord> {
-    const append = (outcome: VerdictOutcome, valuesAsRead: SemanticValue[], cites: string[], reason?: string, bound?: Readonly<Record<string, number>>): Promise<VerdictRecord> =>
-      this.#append(runId, rule, outcome, valuesAsRead, cites, reason, bound, branchId);
-    const valuesAsRead: SemanticValue[] = [];
-    const cites: string[] = [];
-    const numbers: number[] = [];
-
-    for (const req of rule.requires) {
-      const found = latestMatch(observations, req);
-      if (!found) {
-        return append('UNDETERMINED', valuesAsRead, cites, `run ${runId} has no observed ${describeRequirement(req)} value, which this rule requires`);
-      }
-      valuesAsRead.push(structuredClone(found.value));
-      if (!cites.includes(found.recordId)) cites.push(found.recordId);
-      if (found.value.value === null) {
-        return append('UNDETERMINED', valuesAsRead, cites, `${describeRequirement(req)} is unknown in observation ${found.recordId}: ${found.value.unknownReason}`);
-      }
-      numbers.push(found.value.value);
-    }
-
-    // The rule schema guarantees the subject is one of the requirements, so this index exists.
-    const at = rule.requires.findIndex((req) => sameRequirement(req, rule.subject));
-    const subject = valuesAsRead[at]!;
-    if (subject.unit !== rule.predicate.unit) {
-      return append('UNDETERMINED', valuesAsRead, cites, `${describeRequirement(rule.subject)} is in ${subject.unit}, but this rule's threshold is in ${rule.predicate.unit}`);
-    }
-    const resolved = resolveThreshold(rule, params);
-    if (!resolved.ok) {
-      return append('UNDETERMINED', valuesAsRead, cites, resolved.reason);
-    }
-    const outcome: VerdictOutcome = holds(rule.predicate.op, numbers[at]!, resolved.value) ? 'PASS' : 'FAIL';
-    return append(outcome, valuesAsRead, cites, undefined, resolved.boundParameters);
+    const value = judgeReading(runId, rule, observations, params, branchId);
+    return this.#append(runId, rule, value.outcome, value.valuesAsRead, value.cites, value.reason, value.boundParameters, branchId);
   }
 
   #append(

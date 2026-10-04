@@ -120,7 +120,12 @@
     "test/contract/dbos-commit.host.test.ts",
     "test/contract/task-effects.host.test.ts",
     "test/contract/native-task-effects.host.test.ts",
-    "test/contract/task-interactive.host.test.ts"
+    "test/contract/task-interactive.host.test.ts",
+    "test/contract/durable-task-adapters.host.test.ts",
+    "test/contract/dbos-flow.host.test.ts",
+    "test/contract/dbos-control.host.test.ts",
+    "test/contract/durable-fabric.host.test.ts",
+    "test/contract/dbos-host-authority.host.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse, stringify } from 'yaml';
 import { copyLegacyAtcsPack } from './support/atcs-legacy.ts';
 import { compileFlow, compileLegacyFlow, compileLegacyGrowth, freezeFlowFragment,
@@ -89,7 +89,7 @@ test('strict and dynamic diagnostic flows use the same grammar and freeze result
 async function folder(t: import('node:test').TestContext): Promise<string> {
   const parent = await mkdtemp(path.join(tmpdir(), 'u5-flow-')); t.after(() => rm(parent, { recursive: true, force: true }));
   const dir = path.join(parent, 'example'); await mkdir(path.join(dir, 'tools'), { recursive: true });
-  await writeFile(path.join(dir, 'tools/measure.sh'), '#!/bin/sh\nprintf "{}"\n');
+  await writeFile(path.join(dir,'tools/measure.sh'),'#!/bin/sh\nprintf "{}"\n');
   await writeFile(path.join(dir, 'contract.yml'), stringify({ id: 'example', version: '1', title: 'Example', inputs: [{ name: 'design' }],
     tools: [{ id: 'measure', file: 'tools/measure.sh', inputs: [], argv: ['sh', 'tools/measure.sh'] }],
     environment: { wrappers: ['sh'] }, workspace: { copy: [] }, strategy: { effort: { type: 'number', unit: 'count', min: 1, max: 3, default: 1 } } }));
@@ -199,15 +199,15 @@ test('legacy finite matrix preserves fork join, loop, growth, revision and all J
   assert.ok(compiled.tasks.wait);
   const repeat = compiled.blocks[compiled.entry]!; assert.ok(repeat.kind === 'repeat');
   assert.equal(repeat.body, '@start/step');
-  assert.deepEqual(repeat.entries, { next: { body: '@start/step',
-    carry: { strategy: { initial: { source: 'strategy', path: [] }, next: binding('next', 'strategy') } },
-    stop: { output: binding('next', 'route'), equals: 'stop' } } });
+  assert.deepEqual(repeat.entries, { '@next/growth-resume': { body: '@start/step',
+    carry: { strategy: { initial: { source: 'strategy', path: [] }, next: binding('@next/growth-resume', 'strategy') } },
+    stop: { output: binding('@next/growth-resume', 'route'), equals: 'stop' } } });
   assert.deepEqual(compiled.blocks['@join/choice'], { kind: 'choice', id: '@join/choice', select: binding('join', 'outcome'),
     cases: { PASS: '@next/step', FAIL: '@next/step', UNDETERMINED: '@wait/step' } });
   assert.deepEqual(compiled.blocks['@start/join'], { kind: 'sequence', id: '@start/join', steps: ['@start/parallel', '@join/step'] });
   assert.deepEqual(compiled.blocks['@a/branch'], { kind: 'sequence', id: '@a/branch', steps: ['a'] });
   assert.deepEqual(compiled.blocks['@b/branch'], { kind: 'sequence', id: '@b/branch', steps: ['b'] });
-  assert.deepEqual(compiled.blocks['@next/continue'], { kind: 'choice', id: '@next/continue', select: binding('next', 'route'),
+  assert.deepEqual(compiled.blocks['@next/continue'], { kind: 'choice', id: '@next/continue', select: binding('@next/growth-resume', 'route'),
     cases: { repeat: '@terminal', stop: '@terminal' } });
   assert.equal(compiled.irSha256, compileLegacyFlow(graph, contract, sha).irSha256);
 });
@@ -237,11 +237,11 @@ test('the published strict and dynamic author examples load and climb the ordina
   const yamls = [...anatomy.matchAll(/```yaml\n([\s\S]*?)\n```/g)].map(match => match[1]!);
   const contract = parse(yamls.find(text => text.startsWith('id: example-probe'))!);
   const declaration = parse(yamls.find(text => text.startsWith('schema: hima-flow/1'))!);
-  const schema = [...anatomy.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => match[1]!).find(text => text.includes('"measurement"'))!;
+  const schema = [...anatomy.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => match[1]!).find(text => text.includes('"$schema"') && text.includes('"measurement"'))!;
   await writeFile(path.join(dir, 'contract.yml'), stringify(contract));
   await writeFile(path.join(dir, 'graph.yml'), stringify(declaration));
   await writeFile(path.join(dir, 'schemas/measurement.json'), schema);
-  await writeFile(path.join(dir, 'tools/measure.sh'), '#!/bin/sh\nprintf "{}"\n');
+  for(const tool of contract.tools){await mkdir(path.dirname(path.join(dir,tool.file)),{recursive:true});await writeFile(path.join(dir,tool.file),'#!/bin/sh\nprintf "{}"\n');}
   for (const [file, sections] of [['INTENT.md', HIMA_INTENT_SECTIONS], ['SPEC.md', HIMA_SPEC_SECTIONS], ['FABRIC.md', HIMA_FABRIC_SECTIONS]] as const) {
     await writeFile(path.join(dir, file), sections.map(section => `## ${section}\n\nAuthor example business description.\n`).join('\n'));
   }
@@ -252,7 +252,7 @@ test('the published strict and dynamic author examples load and climb the ordina
   const dynamic = loadPack(parent, 'example-probe');
   const fragment = parse(yamls.find(text => text.startsWith('flow:\n  kind: task\n  id: diagnostic-check'))!);
   const frozen = freezeFlowFragment(dynamic.flow!, 'diagnostic', fragment);
-  assert.equal(frozen.returnTo, 'deliver'); assert.equal(frozen.flow.tasks['diagnostic-check']!.tool, 'measure');
+  assert.equal(frozen.returnTo, 'deliver'); assert.equal(frozen.flow.tasks['diagnostic-check']!.tool, 'measure-json');
   assert.equal(packStage(dir).stage, 'compiled');
 });
 
@@ -276,11 +276,19 @@ test('accepted legacy growth compiles an immutable additive fragment returning t
       ...['PASS', 'FAIL', 'UNDETERMINED'].map(outcome => ({ from: 'extra-judge', to: 'next-period', outcome }))],
     requiredOutputs: ['qorReport'], endCondition: 'new observation and verdict retained', returnNode: 'next-period', optional: true };
   const frozen = compileLegacyGrowth(pack, proposal);
-  assert.equal(frozen.returnTo, 'next-period'); assert.deepEqual(frozen.requiredOutputs, ['qorReport']); assert.equal(frozen.optional, true);
+  assert.equal(frozen.returnTo, '@next-period/growth-resume'); assert.deepEqual(frozen.requiredOutputs, ['qorReport']); assert.equal(frozen.optional, true);
   assert.equal(frozen.flow.schema, pack.flow!.schema); assert.ok(Object.isFrozen(frozen.flow));
   assert.ok(frozen.flow.tasks[frozen.return.taskId]); assert.ok(!frozen.flow.tasks['next-period'], 'fragment does not execute the parent');
+  const resume=pack.flow!.tasks['@next-period/growth-resume']!;assert.equal(resume.tool,'builtin/legacy-growth-resume');
+  assert.deepEqual(resume.inputs.priorDecision,{source:'committedOutput',taskId:'next-period',path:[]});
+  assert.deepEqual(resume.inputs.diagnostic,{source:'extensionResult',slotId:'@next-period/growth',path:[]});
+  assert.deepEqual(resume.optionalInputs,['diagnostic']);
   assert.equal(frozen.sha256, compileLegacyGrowth(pack, proposal).sha256);
   assert.deepEqual(await readFile(path.join(dir, 'graph.yml')), before);
+  const module=await import(pathToFileURL(path.join(process.env.HIMA_U6_TEST_LIB??path.join(root,'packages/harness/lib'),'flow-compiler.js')).href);
+  assert.equal(module.freezeLegacyFlowFragment(pack.flow!,'@next-period/growth',frozen).sha256,frozen.sha256);
+  const forged=structuredClone(frozen);(forged.flow.tasks['extra-tool'] as {tool:string}).tool='builtin/human-wait';
+  assert.throws(()=>module.freezeLegacyFlowFragment(pack.flow!,'@next-period/growth',forged),/differs from its validated proposal/);
   assert.throws(() => compileLegacyGrowth(pack, { ...proposal, returnNode: 'judge' }), /return to its declared parent/);
   assert.throws(() => compileLegacyGrowth(pack, { ...proposal, edges: [...proposal.edges, { from: 'extra-read', to: 'extra-tool' }] }), /cycle/);
 });
@@ -369,9 +377,9 @@ test('legacy opened loop Judge inherits the declared root Wait before synthesizi
   const outer = compiled.blocks[compiled.entry], inner = compiled.blocks['@loop-probe-loop/repeat'];
   assert.ok(outer?.kind === 'repeat' && inner?.kind === 'repeat');
   assert.equal(outer.body, '@probe/step');
-  assert.deepEqual(outer.entries, { 'next-research': { body: '@mine-start/step',
-    carry: { strategy: { initial: { source: 'strategy', path: [] }, next: binding('next-research', 'strategy') } },
-    stop: { output: binding('next-research', 'route'), equals: 'stop' } } });
+  assert.deepEqual(outer.entries, { '@next-research/growth-resume': { body: '@mine-start/step',
+    carry: { strategy: { initial: { source: 'strategy', path: [] }, next: binding('@next-research/growth-resume', 'strategy') } },
+    stop: { output: binding('@next-research/growth-resume', 'route'), equals: 'stop' } } });
   assert.equal(inner.body, '@synthesize/step');
   assert.deepEqual(inner.entries, { 'next-period': { body: '@synthesize/step',
     carry: { strategy: { initial: { source: 'carry', path: ['strategy'] }, next: binding('next-period', 'strategy') } },
@@ -411,4 +419,33 @@ test('normal legacy loader preserves local Wait priority, explicit UNDETERMINED 
   const wait = compiled.tasks['@opene902-timing-probe/human-wait']!;
   assert.equal(wait.tool, 'builtin/human-wait');
   assert.deepEqual(wait.legacy, { reason: 'unlabelled UNDETERMINED', resume: 'rejudge', graph: simpleId });
+});
+
+test('explicit extension return binds only at the declared reachable consumer', () => {
+  const sourceValue = { ...source(seq('extension-sequence', task('extension-producer'),
+    task('extension-consumer', { returned: { source: 'extensionResult', slotId: 'extension-slot', path: ['value'] } }))),
+    extensions: [{ id: 'extension-slot', afterTask: 'extension-producer', fragmentPath: ['fragment'], returnTo: 'extension-consumer' }] };
+  const flow = compileFlow(sourceValue, { packSha256: sha });
+  assert.deepEqual(flow.tasks['extension-consumer']!.inputs.returned, { source: 'extensionResult', slotId: 'extension-slot', path: ['value'] });
+  assert.deepEqual(flow.dependencies['extension-consumer'], ['extension-producer']);
+  assert.throws(() => compileFlow({ ...sourceValue, extensions: [] }, { packSha256: sha }), /unknown extension slot/);
+  const ordered=sourceValue.flow;assert.ok(ordered.kind==='sequence');
+  assert.throws(() => compileFlow({ ...sourceValue, flow: seq('reversed-extension', ordered.steps[1]!, ordered.steps[0]!) }, { packSha256: sha }), /not a committed predecessor/);
+});
+
+test('revision closure includes actual choice/repeat/fragment consumers and preserves an independent branch', async () => {
+  const {flowRevisionConsumers}=await import(pathToFileURL(path.join(process.env.HIMA_U6_TEST_LIB??path.join(root,'packages/harness/lib'),'flow-definition.js')).href);
+  const base=compileFlow(source(seq('s',{kind:'parallel',id:'parallel',branches:{
+    a:{required:true,flow:seq('a-chain',decision('a-decision'),{kind:'choice',id:'a-choice',select:binding('a-decision','route'),cases:{continue:task('a-work'),stop:task('a-stop')}})},
+    b:{required:true,flow:task('b')}
+  },results:{}},task('join'))),{packSha256:sha});
+  assert.deepEqual(flowRevisionConsumers(base,'a-decision'),['a-decision','a-stop','a-work','join']);
+  const repeat=compileFlow(source({kind:'repeat',id:'repeat',body:seq('body',task('work',{n:{source:'carry',path:['n']}}),decision('stop')),
+    carry:{n:{initial:{source:'literal',value:0},next:binding('work')}},stop:{output:binding('stop','route'),equals:'stop'},maxIterations:3,budget:'original-run'}),{packSha256:sha});
+  assert.deepEqual(flowRevisionConsumers(repeat,'stop'),['stop','work']);
+  const withSlot=compileFlow({...source(seq('extension',task('producer'),task('consumer',{returned:{source:'extensionResult',slotId:'slot',path:[]}}))),
+    extensions:[{id:'slot',afterTask:'producer',fragmentPath:['extra'],returnTo:'consumer'}]},{packSha256:sha});
+  const fragment=freezeFlowFragment(withSlot,'slot',{flow:task('diagnostic'),return:binding('diagnostic')});
+  assert.deepEqual(flowRevisionConsumers(withSlot,'producer',[fragment]),['consumer','diagnostic','producer']);
+  assert.deepEqual(flowRevisionConsumers(withSlot,'diagnostic',[fragment]),['consumer','diagnostic']);
 });

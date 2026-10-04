@@ -16,8 +16,9 @@ import { realpathSync } from 'node:fs';
 import { assertRunProject } from './guide-context.js';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
+import { knownDurableRun } from './durable-fabric.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
+import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, readExecutionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
@@ -395,6 +396,7 @@ interface CancelToolValue {
 function cancelToolValue(result: CancelResult): CancelToolValue {
   const head: CancelToolValue = { kind: result.kind, runId: result.run.id };
   const withStatus = result.run.status === undefined ? head : { ...head, status: result.run.status };
+  if (result.kind === 'stopping') return { ...withStatus, reason: result.reason };
   if (result.kind === 'not-stopped') return { ...withStatus, stoppedSession: result.session, reason: result.reason };
   if (result.kind !== 'cancelled' || !result.stopped) return withStatus;
   return { ...withStatus, stoppedSession: result.stopped.job.session, recordId: result.stopped.id };
@@ -538,17 +540,17 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
         await assertProjectAccess(deps, execution.agent, args.run);
-        const context = executionContext(deps, args.run);
+        const context = await readExecutionContext(deps, args.run);
         let words: RunWords | undefined;
         try { words = runPackWords(deps.packsDir, context.run); }
         catch { /* Keep execution facts readable when the original method is unavailable. */ }
         // What an Explore here must cite leads, so it is read before the Ledger that follows it.
-        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: runView(deps.ledger, context.run, words) });
+        return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: context.engine ? context.durable : runView(deps.ledger, context.run, words) });
       },
     }),
     defineTool({
       name: 'hima_execute',
-      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. A begun act tool whose contract declares outsourcing can use engineering start with a complete goal and context; it returns a bound Site Job promptly. Continue the same task with message/status/cancel/delivery/release. Start one execution once: after a started, admitted or unknown start, never send another start for that execution. Status is a point-in-time read, not a blocking wait; when it still says starting or running and exposes no new actionable fact, report that the task is active and yield the turn instead of calling status again. Delivery is accepted only after its artifacts pass their declared Pack Reader; best-effort engineering completion remains distinct from Pack Goal success. A verified delivery makes the execution ready, not completed. Release the engineering session, then explicitly complete the same executionId using the returned epoch/revision. Release only cleans up resources; successor nodes and their autopilot cannot start before that owner completion. Normal work and engineering are exclusive for one execution. For a Workshop, begin returns nextAction=recommend: use recommend with that executionId before work to obtain the actual private directory, entry, argv, inputs, Pack knowledge and bounded history, then write the entry. The single entry execution is the result of the Workshop and must write or touch its declared output; explore with read/knowledge before writing the entry, because an entry that exits 0 without that output is a failed attempt. read/write/knowledge operate within that admitted scope. A rejected authored Workshop program is a coding diagnostic: open the next available attempt and revise it without asking a person to clear a mechanical retry. When context.available lists independent branches, begin/work their licence-free Jobs up to the Site job cap before waiting; never repeat one already working. knowledge with file reads current Pack method knowledge; assetRun/assetPath reads only a verified in-scope Run archive. Historical text is background and cannot change Goal, method or permissions. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. grow submits one structured additive branch. revise accepts a byte-identified bounded code/input change, preserves both versions, invalidates exactly its dependency closure and starts no Job; each rerun is still an explicit owner action. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; engineering status/cancel/delivery/release remain available to collect or stop its existing task. Run cancel requests real stop of every owned Job process group. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
+      description: 'Control or inspect a Campaign as its actual owning Agent. New Runs execute their frozen task flow automatically; do not use begin/work/complete to advance them. pause and continue affect the named branch or whole Run; cancel requests actual resource closure, whose status can remain unknown. handoff changes the recorded owner. revise changes a selected invocation and its affected consumers while retaining prior iterations and valid siblings. grow proposes bounded diagnostic work at a declared extension position, then returns its sourced result to the original method. Use the latest context owner/epoch/revision and retain requestId only for an identical retry. Native engineering, scoped code and evidence operations are usable only when offered by the current execution context. A result or accepted control request is not proof that resources stopped or a business Goal was met.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
         action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend', 'analyze', 'engineering'] },
@@ -582,7 +584,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         proposal: { type: 'object', additionalProperties: false,
           description: 'For grow, express the research intent with the exact named fields below. Omit method, parent and inputThroughSeq to let Harness attach current Run identities. Omit inputs to use current-generation evidence, or give record sequence numbers/ids; Harness computes record identities. Reuse proposalId only for identical intent; correcting a refused proposal uses a new proposalId/requestId. Explicit wrong hashes are still refused.',
           properties: {
-            proposalId: { type: 'string', required: true },
+            proposalId: { type: 'string', description: 'Optional stable business proposal name; the Host supplies one for a durable request when omitted.' },
             impactNodes: { type: 'array', items: { type: 'string' }, required: true },
             expectedChanges: { type: 'array', items: { type: 'string' }, required: true },
             nodes: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
@@ -601,7 +603,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
             inputs: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'object', additionalProperties: false, properties: { recordId: { type: 'string', required: true }, contentIdentity: { type: 'string' } } }] } },
           },
         },
-        revision: { type: 'object', additionalProperties: false, description: 'For revise, provide revisionId, reason, changedNodes, changes and optional strategy. Harness fills omitted method/input identities and affectedNodes from the effective graph. Workshop changes can omit fromSha256/sourceRecordId to use the latest valid code for that node/path; workspace changes require a verified fromSha256 or captured sourceRecordId. Explicit false identities/impact are refused. Use a new revisionId for changed intent.', properties: {
+        revision: { description: 'Revise the selected durable task business input/evidence, or submit the existing bounded code-change form. Prior valid work remains retained.', oneOf: [{ type: 'object', additionalProperties: false, description: 'For revise, provide revisionId, reason, changedNodes, changes and optional strategy. Harness fills omitted method/input identities and affectedNodes from the effective graph. Workshop changes can omit fromSha256/sourceRecordId to use the latest valid code for that node/path; workspace changes require a verified fromSha256 or captured sourceRecordId. Explicit false identities/impact are refused. Use a new revisionId for changed intent.', properties: {
           revisionId: { type: 'string', required: true }, reason: { type: 'string', required: true },
           changedNodes: { type: 'array', items: { type: 'string' }, required: true },
           affectedNodes: { type: 'array', items: { type: 'string' } }, strategy: { type: 'object', additionalProperties: true },
@@ -612,6 +614,11 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           method: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, version: { type: 'string', required: true }, digest: { type: 'string', required: true } } },
           inputThroughSeq: { type: 'integer' }, inputs: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'object', additionalProperties: false, properties: { recordId: { type: 'string', required: true }, contentIdentity: { type: 'string' } } }] } },
         } },
+          { type: 'object', additionalProperties: false, properties: {
+            taskId: { type: 'string', required: true }, effectId: { type: 'string', description: 'Selected current invocation from context; needed when a repeated task has multiple occurrences.' },
+            input: { type: 'object', additionalProperties: true, required: true, description: 'Replacement business input for the selected invocation, validated against its frozen task schema.' },
+            evidence: { type: 'object', additionalProperties: true, required: true, description: 'Reason and sourced change evidence; accepted code assets retain original bytes and identity.' },
+          } }] },
         proposalId: { type: 'string', description: 'Accepted proposal identity when settling an active optional growth branch.' },
         growthDisposition: { type: 'string', enum: ['failed', 'cancelled', 'abandoned'], description: 'For grow on an active optional branch: preserve this outcome and return to its declared parent after confirming no in-flight Job.' },
         engineering: { type: 'object', additionalProperties: false,
@@ -627,7 +634,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
         const { run, strategy, ...fields } = args;
         const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
-        const bound = request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelResearchProposal(deps, run, 'growth', args.proposal) }
+        const durable = await knownDurableRun(deps, run);
+        const bound = durable ? request : request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelResearchProposal(deps, run, 'growth', args.proposal) }
           : request.action === 'revise' && args.revision !== undefined ? { ...request, revision: modelResearchProposal(deps, run, 'revision', args.revision) } : request;
         return toolJson({ runId: run, ...await executionAction(deps, bound) });
       },
@@ -746,7 +754,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           type: 'object',
           additionalProperties: false,
           properties: {
-            kind: { type: 'string', required: true, enum: ['ran', 'unfit', 'unprepared'] },
+            kind: { type: 'string', required: true, enum: ['ran', 'preparing', 'unfit', 'unprepared'] },
             runId: { type: 'string' },
             campaignId: { type: 'string' },
             context: { type: 'object', additionalProperties: true, description: 'Current reference and execution facts for this same Agent.' },
@@ -814,7 +822,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           retryAllowance: toolNumber('retries', args.retries) ?? overrides?.budget?.retries,
           generationLimit: toolNumber('generations', args.generations) ?? overrides?.budget?.generations,
         });
-        return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' ? { context: toolJson(executionContext(deps, result.run.id)) } : {}) };
+        return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' || result.kind === 'preparing' ? { context: toolJson(await readExecutionContext(deps, result.run.id)) } : {}) };
       },
     }),
     // The resume face as a tool, beside the run face: a waiting Run is cleared the same way from
@@ -991,7 +999,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           type: 'object',
           additionalProperties: false,
           properties: {
-            kind: { type: 'string', required: true, enum: ['cancelled', 'ended', 'not-started', 'not-stopped'] },
+            kind: { type: 'string', required: true, enum: ['cancelled', 'ended', 'not-started', 'not-stopped', 'stopping'] },
             runId: { type: 'string', required: true },
             status: { type: 'string', description: 'The run\'s status now: `cancelled` when this call ended it.' },
             stoppedSession: { type: 'string', description: 'The tmux session that was stopped, or the one still there on `not-stopped`.' },
@@ -1003,7 +1011,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       },
       execute: async (args, execution) => {
         await assertProjectAccess(deps, execution.agent, args.run);
-        if (deps.ledger.run(args.run)?.control) throw new Error('use hima_context then hima_execute cancel with the current owner epoch and control revision');
+        if ((await readExecutionContext(deps, args.run)).run.control) throw new Error('use hima_context then hima_execute cancel with the current owner epoch and control revision');
         return cancelToolValue(await cancelRun(deps, args.run));
       },
     }),
