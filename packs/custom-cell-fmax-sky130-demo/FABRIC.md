@@ -12,7 +12,8 @@
    `check-round` (`cells-adopted`, `round-improved`) → `read-round-goal` → `judge-round`
    (`comparison-valid`, `fmax-goal`). Self-driving up to `next-round`.
 6. `next-round` (owner decision, chooser `cellfmax-next`): Goal met → `ended-goal-met`; best custom
-   Fmax unchanged for two rounds → `ended-converged`; otherwise revisit `engineer`. Round five would
+   Fmax unchanged across the last three rounds (two consecutive rounds after the last improvement
+   added nothing; so round 3 at the earliest) → `ended-converged`; otherwise revisit `engineer`. Round five would
    exceed `generationLimit: 4` → `ended-budget-exhausted`.
 
 No licence is held. An ORFS run of aes takes about 15–25 min with 8 CPUs on linglong.

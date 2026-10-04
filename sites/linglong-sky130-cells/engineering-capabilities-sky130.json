@@ -11,7 +11,10 @@
   "native": {
     "executable": "/home/luzi/.opencode/bin/opencode",
     "version": "1.18.34",
-    "argv": ["acp", "--pure"],
+    "argv": [
+      "acp",
+      "--pure"
+    ],
     "model": "deepseek/deepseek-flash",
     "protocolVersion": 1
   },
@@ -29,7 +32,11 @@
     "network": "host"
   },
   "environment": {
-    "inherit": ["PATH", "LANG", "LC_ALL"],
+    "inherit": [
+      "PATH",
+      "LANG",
+      "LC_ALL"
+    ],
     "set": {
       "TZ": "America/Los_Angeles",
       "EMPYREAN_LICENSE_MODE": "old",
@@ -45,6 +52,7 @@
       "KLAYOUT_PATH": "/foss/pdks/sky130A/libs.tech/klayout",
       "PYTHONPYCACHEPREFIX": "/tmp/pycache",
       "QT_QPA_PLATFORM": "offscreen",
+      "PYTHONPATH": "/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/foss/tools/yosys/share/yosys/python3:/foss/tools/klayout/pymod",
       "HTTP_PROXY": "",
       "HTTPS_PROXY": "",
       "ALL_PROXY": "",
@@ -54,7 +62,14 @@
       "NO_PROXY": "localhost,127.0.0.1,::1,linglong,.local",
       "no_proxy": "localhost,127.0.0.1,::1,linglong,.local"
     },
-    "toolPaths": ["/foss/tools/bin", "/foss/tools/klayout", "/foss/tools/sak", "/usr/local/bin", "/usr/bin", "/bin"],
+    "toolPaths": [
+      "/foss/tools/bin",
+      "/foss/tools/klayout",
+      "/foss/tools/sak",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin"
+    ],
     "credentialReadPaths": [
       "/home/luzi/.config/opencode",
       "/home/luzi/.local/share/opencode/auth.json"

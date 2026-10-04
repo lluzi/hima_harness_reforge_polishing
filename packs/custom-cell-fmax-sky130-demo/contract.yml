@@ -109,7 +109,10 @@ tools:
       and where the cells should be used. Put your own trial comparison in agentClaim; HimaHarness
       re-measures custom versus control independently and shows its number next to yours. Deliver one
       hima-cellfmax-round-recipe/1 as the result with every support file under cells/r<k>/ (k is
-      the number of rounds in lessons.json plus one). Do not run the measured arms, change the Goal,
+      the number of rounds in lessons.json plus one). Before delivering, run
+      `python3 <campaign>/flow/cellfmax_cli.py precheck <campaign> $PWD <your recipe>` (your
+      workspace is <campaign>/.hima-engineering/<task>/workspace) and fix every refusal it prints;
+      HimaHarness runs the same check on delivery. Do not run the measured arms, change the Goal,
       claim measured cell timing, invent metrics, or drop a cell from the best library.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', recipe, '${WORKSPACE}']

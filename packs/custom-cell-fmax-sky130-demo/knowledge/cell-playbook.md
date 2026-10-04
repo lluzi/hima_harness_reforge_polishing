@@ -52,6 +52,13 @@ failed idea without a new, stated reason.
   Use them on local windows of critical cones, not the whole design.
 - sky130hd already has `fa_*`, `ha_*`, `maj3_*`. `emap` may pick those even without your cells; the
   control arm runs the same `emap` pass with your cells removed, so only your cells' effect counts.
+- Measured in this Pack's dry run (2026-10-04): an `emap` delay remap of a 122-cell window around
+  the 5 worst baseline paths (stock library, equivalence PASS) improved the endpoints inside the
+  window (−0.25 → −0.03…−0.19 ns) but the design got worse at finish (WNS −0.249 → −0.628 ns,
+  236.5 MHz): the worst path moved to a cone outside the window (`sa00_sr[5]` → `sa00_sr[6]`, a
+  1.2 ns `mux2i_2` stage) and placement/repair shifted across the design. In delay mode emap chose
+  no stock fa/ha. A window remap must cover the whole near-critical cone set, or it just moves the
+  worst path; check the remaining top paths before spending an arm on it.
 - A multi-output cell enters only through an `emap-window` round (the resizer cannot create one).
   Cut windows at flops or clearly critical nets. An equivalence check is recommended; without one the
   round is shown as "function not verified".

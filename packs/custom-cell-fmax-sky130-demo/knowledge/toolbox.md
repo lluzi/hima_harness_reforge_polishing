@@ -56,14 +56,25 @@ takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__s
 
 ## Build a cell
 
-1. **SPICE.** Write the transistor netlist yourself or generate it with bool2cmos
-   (`/data/eda/project/bool2cmos`, see its README). Examples: `flow/toolbox/celluzi/generate/lclayout_cells/*.sp`
+1. **SPICE.** Write the transistor netlist yourself or generate it with bool2cmos (verified):
+   `PYTHONPATH=/data/eda/project/bool2cmos:$PYTHONPATH python3 -m bool2cmos --function "!(A|B|C)" --inputs A,B,C --output Y --pdk sky130 --cell-name MY_NOR3 --out my_nor3.sp`
+   (several `--function ... --output ...` pairs make one multi-output cell; pins come out as
+   `A B C Y VGND VNB VPB VPWR`; check the printed `symbolic check = PASS`). Size devices yourself
+   for skewed variants. Examples: `flow/toolbox/celluzi/generate/lclayout_cells/*.sp`
    (NOR3_PU2, INV2X, fused cells), LVS references in `generate/lvs_ref/`.
-2. **Layout (LibreCell).** `$CELLUZI_ROOT/tools/librecell_venv/bin/python3 -m lclayout.standalone
-   --cell <NAME> --netlist <cell.sp> --tech $CELLUZI_ROOT/pdk/librecell_sky130_tech.py --output-dir <dir>`
-   (the same command as `generate/run_lclayout.sh`). LVS failure means the cell is wrong; do not use
-   `--ignore-lvs`. Minutes per cell; large cells can take much longer.
-3. **Post-process and checks.** `generate/postprocess_cell.py`, Magic extraction (`extract_cell.sh`),
+2. **Layout (LibreCell).** The venv's `lclayout` script has a shebang for the celluzi mount, so call
+   its entry point through the venv Python (verified on linglong: NOR3_PU2 in 22 s):
+
+   ```sh
+   $CELLUZI_ROOT/tools/librecell_venv/bin/python3 -c 'import sys; from lclayout.standalone import main; sys.argv=["lclayout"]+sys.argv[1:]; main()' \
+     --cell <NAME> --netlist <cell.sp> --tech $CELLUZI_ROOT/pdk/librecell_sky130_tech.py --output-dir <dir>
+   ```
+
+   `PYTHONPATH` (set in your sandbox) supplies numpy. `<NAME>.gds` and `<NAME>.lef` are written first;
+   a trailing `KeyError: 'metal2_label'` from the Magic writer comes after them and does not affect
+   them. Do not use `--ignore-lvs`. Large cells can take much longer.
+3. **Post-process and checks.** A raw LibreCell GDS is not DRC-clean (NOR3_PU2 raw: 14 violations,
+   li.6, m1.6, via1.5a, m2.5, m1.2); the earlier clean cells went through the post-processing below. `generate/postprocess_cell.py`, Magic extraction (`extract_cell.sh`),
    Netgen LVS (`run_lvs.sh`), KLayout DRC with the full sky130A deck (`run_drc_cell.sh <gds> <top> <report.xml>`).
    A cell is `drc-lvs-clean` only when both passed; otherwise mark it `abstract` and say why.
 4. **LEF.** `python3 flow/toolbox/celluzi/scripts/fix_lef_sky130hd.py <in.lef> --inputs A,B,C --output Y -o <out.lef>`
@@ -74,7 +85,14 @@ takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__s
    the base cell, the derate and the physical reason in the recipe. Every Liberty cell must declare
    `pg_pin`s VPWR, VGND, VPB, VNB, and its output pins must equal the recipe `outputs`.
 
-The recipe validator refuses: a missing file, a SHA-256 that differs, Liberty and LEF signal pins
+Check your delivery before you request it (the same validator HimaHarness runs on delivery; your
+workspace is `<campaign>/.hima-engineering/<task>/workspace`, so the Campaign is three levels up):
+
+```sh
+python3 <campaign>/flow/cellfmax_cli.py precheck <campaign> "$PWD" cells/r<k>/round-recipe.json
+```
+
+It prints `precheck PASS` or the exact change needed. The recipe validator refuses: a missing file, a SHA-256 that differs, Liberty and LEF signal pins
 that differ, missing power pins, a changed or dropped best-library cell, a support file outside
 `cells/r<k>/`, more than 10 new cells, a multi-output cell without `emap-window`, and a missing
 findings report, datasheet or usage guide. The message says exactly what to change.

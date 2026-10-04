@@ -281,6 +281,44 @@ class RecipeTest(unittest.TestCase):
         self.refused(r"byte-identical to best\.json")
 
 
+class FunctionVerifiedTest(unittest.TestCase):
+    def test_equivalence_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "cells/r1/equiv.log"
+            log.parent.mkdir(parents=True)
+            recipe = {"synthesis": {"method": "emap-window", "equivalence": "cells/r1/equiv.log"}}
+            log.write_text("Found 65 $equiv cells: 65 are proven and 0 are unproven.\nEquivalence successfully proven!\n")
+            self.assertEqual(cli._function_verified(tmp, recipe)[0], 1)
+            log.write_text("Found 65 $equiv cells: 63 are proven and 2 are unproven.\n")
+            self.assertEqual(cli._function_verified(tmp, recipe)[0], 0)
+            log.write_text("EQUIVALENCE: FAIL\n")
+            self.assertEqual(cli._function_verified(tmp, recipe)[0], 0)
+            self.assertEqual(cli._function_verified(tmp, {"synthesis": {"method": "emap-window", "equivalence": None}})[0], 0)
+            self.assertEqual(cli._function_verified(tmp, {"synthesis": {"method": "orfs-abc"}})[0], 1)
+
+
+class PrecheckTest(unittest.TestCase):
+    def test_engineer_prechecks_private_files_against_campaign_state(self):
+        ws = Workspace()
+        own = Path(tempfile.mkdtemp(prefix="cellfmax-own-"))
+        try:
+            # The engineer's files live in its private workspace, not yet in the Campaign.
+            shutil.move(str(ws.root / "cells"), str(own / "cells"))
+            recipe = own / "round-recipe.json"
+            ws.root.joinpath("cells").mkdir()
+            shutil.copytree(own / "cells", ws.root / "cells", dirs_exist_ok=True)
+            ws.recipe()
+            shutil.rmtree(ws.root / "cells")
+            shutil.move(str(ws.root / "state" / "round-recipe.json"), str(recipe))
+            cli.cmd_precheck(ws.root, own, recipe)
+            (own / "cells/r1/usage-guide.md").unlink()
+            with self.assertRaisesRegex(cli.ToolError, "usage-guide.md' does not exist"):
+                cli.cmd_precheck(ws.root, own, recipe)
+        finally:
+            ws.close()
+            shutil.rmtree(own, ignore_errors=True)
+
+
 class CompareTest(unittest.TestCase):
     def setUp(self):
         self.ws = Workspace()

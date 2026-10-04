@@ -7,6 +7,7 @@ agent's own trial numbers are carried as `agentClaim` and are never used as a re
   bind      <WS> <ORFS_ROOT> <CELLUZI_ROOT> <DESIGN_CONFIG> <IMAGE> <BOOL2CMOS_ROOT>
   baseline  <WS> <PERIOD_NS> <TIMEOUT_MIN>
   recipe    <WS>                              validate state/round-recipe.json (engineer delivery)
+  precheck  <WS> <OWN_WORKSPACE> <RECIPE>     the engineer's own check of its recipe before delivery
   arm       <WS> <custom|control> <TIMEOUT_MIN>
   compare   <WS>                              round record, lessons, best library and summary
   finish    <WS>                              rewrite derived/summary.{md,json} from the lessons
@@ -109,7 +110,10 @@ def state_dir(ws):
 
 
 def rel_under(ws, rel, prefix):
-    """Resolve a recipe path; it must be relative, without '..', and under <prefix>/."""
+    """Resolve a recipe path; it must be relative, without '..', and under <prefix>/.
+
+    `ws` is the Campaign workspace, or a list of roots searched in order (the engineer's private
+    workspace first, then the Campaign) when the engineer prechecks its delivery."""
     if not isinstance(rel, str) or not rel:
         raise ToolError("a recipe path is empty or not a string")
     part = PurePosixPath(rel)
@@ -117,10 +121,11 @@ def rel_under(ws, rel, prefix):
         raise ToolError("recipe path %r must be relative and stay inside the workspace" % rel)
     if not rel.startswith(prefix.rstrip("/") + "/"):
         raise ToolError("recipe path %r must be under %s/" % (rel, prefix.rstrip("/")))
-    path = Path(ws) / rel
-    if not path.is_file():
-        raise ToolError("recipe file %r does not exist" % rel)
-    return path
+    for root in (ws if isinstance(ws, list) else [ws]):
+        path = Path(root) / rel
+        if path.is_file():
+            return path
+    raise ToolError("recipe file %r does not exist" % rel)
 
 
 # ---------------------------------------------------------------- Liberty / LEF / netlist parsing
@@ -507,13 +512,14 @@ def load_lessons(ws):
     return read_json(path) if path.is_file() else {"schema": "hima-cellfmax-lessons/1", "rounds": []}
 
 
-def validate_recipe(ws, rerun=False):
+def validate_recipe(ws, rerun=False, recipe_path=None, files_root=None):
     """Check the engineer's delivery. Raises ToolError naming exactly what must change.
 
     At delivery the recipe must be the next round. The arms and compare-round may run again for the
     round already recorded in lessons.json (`rerun`), but only with byte-identical recipe bytes."""
     ws = Path(ws)
-    path = state_dir(ws) / "round-recipe.json"
+    path = Path(recipe_path) if recipe_path else state_dir(ws) / "round-recipe.json"
+    roots = [Path(files_root), Path(ws)] if files_root else [Path(ws)]
     if not path.is_file():
         raise ToolError("state/round-recipe.json is missing; the engineer must deliver it as its result")
     try:
@@ -538,10 +544,10 @@ def validate_recipe(ws, rerun=False):
     if method not in ("orfs-abc", "emap-window"):
         raise ToolError("synthesis.method must be 'orfs-abc' or 'emap-window'")
     if method == "emap-window":
-        rel_under(ws, synthesis.get("netlist"), prefix)
-        rel_under(ws, synthesis.get("controlNetlist"), prefix)
+        rel_under(roots, synthesis.get("netlist"), prefix)
+        rel_under(roots, synthesis.get("controlNetlist"), prefix)
         if synthesis.get("equivalence") is not None:
-            rel_under(ws, synthesis["equivalence"], prefix)
+            rel_under(roots, synthesis["equivalence"], prefix)
     library = recipe.get("library") or {}
     cells = library.get("cells") or []
     if not isinstance(cells, list):
@@ -561,8 +567,8 @@ def validate_recipe(ws, rerun=False):
         raise ToolError("an orfs-abc round needs at least one custom cell")
     lib_cells, lef_cells = {}, {}
     if cells:
-        lib_file = rel_under(ws, library.get("lib"), prefix)
-        lef_file = rel_under(ws, library.get("lef"), prefix)
+        lib_file = rel_under(roots, library.get("lib"), prefix)
+        lef_file = rel_under(roots, library.get("lef"), prefix)
         lib_cells = liberty_cells(lib_file.read_text(errors="replace"))
         lef_cells = lef_macros(lef_file.read_text(errors="replace"))
     for cell in cells:
@@ -592,7 +598,7 @@ def validate_recipe(ws, rerun=False):
         hashes = cell.get("sha256") or {}
         cell_prefix = "cells/%s" % origin
         for key, rel in files.items():
-            file_path = rel_under(ws, rel, cell_prefix)
+            file_path = rel_under(roots, rel, cell_prefix)
             actual = sha256_file(file_path)
             if hashes.get(key) != actual:
                 raise ToolError("cell %s files.%s sha256 differs from the file (%s)" % (name, key, actual))
@@ -619,11 +625,11 @@ def validate_recipe(ws, rerun=False):
         if lib_outputs != set(outputs):
             raise ToolError("cell %s outputs %s differ from its Liberty output pins %s" % (name, outputs, sorted(lib_outputs)))
     report = recipe.get("report") or {}
-    rel_under(ws, report.get("findings"), prefix)
-    rel_under(ws, report.get("usage"), prefix)
+    rel_under(roots, report.get("findings"), prefix)
+    rel_under(roots, report.get("usage"), prefix)
     datasheets = report.get("datasheets") or []
     for rel in datasheets:
-        rel_under(ws, rel, prefix)
+        rel_under(roots, rel, prefix)
     sheet_names = {PurePosixPath(rel).stem for rel in datasheets}
     lacking = [cell["name"] for cell in new_cells if cell["name"] not in sheet_names]
     if lacking:
@@ -639,10 +645,21 @@ def validate_recipe(ws, rerun=False):
             if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool)):
                 raise ToolError("agentClaim.%s must be a number" % key)
         for rel in claim.get("runs") or []:
-            rel_under(ws, rel, prefix)
+            rel_under(roots, rel, prefix)
     for rel in recipe.get("evidence") or []:
-        rel_under(ws, rel, "cells")
+        rel_under(roots, rel, "cells")
     return recipe, sha256_file(path)
+
+
+def cmd_precheck(ws, own_workspace, recipe):
+    """The engineer's own check before delivery: the same validator, on its private files.
+
+    Files are looked up in <own_workspace> first, then in the Campaign <ws> (earlier rounds' cells)."""
+    recipe_doc, digest = validate_recipe(ws, recipe_path=recipe, files_root=own_workspace)
+    cells = (recipe_doc.get("library") or {}).get("cells") or []
+    print("precheck PASS: round %d, %d cell(s), method %s, period %g ns; deliver %s as the result and every "
+          "cells/r%d/ file it names as support" % (recipe_doc["round"], len(cells), recipe_doc["synthesis"]["method"],
+                                                  recipe_doc["periodNs"], recipe, recipe_doc["round"]))
 
 
 def cmd_recipe(ws):
@@ -683,7 +700,7 @@ def _function_verified(ws, recipe):
         return 0, "function not verified: no equivalence log for the remapped window"
     text = (Path(ws) / log).read_text(errors="replace")
     if re.search(r"Equivalence successfully proven|Networks are equivalent|EQUIVALENCE: PASS", text) and \
-            not re.search(r"(?i)not equivalent|EQUIVALENCE: FAIL|unproven", text):
+            not re.search(r"(?i)not equivalent|EQUIVALENCE: FAIL|\b[1-9]\d* (?:are )?unproven", text):
         return 1, "equivalence log passed"
     return 0, "function not verified: the equivalence log does not show a pass"
 
@@ -901,7 +918,7 @@ def cmd_finish(ws):
 # ---------------------------------------------------------------- entry
 
 COMMANDS = {
-    "bind": (cmd_bind, 6), "baseline": (cmd_baseline, 3), "recipe": (cmd_recipe, 1),
+    "bind": (cmd_bind, 6), "baseline": (cmd_baseline, 3), "recipe": (cmd_recipe, 1), "precheck": (cmd_precheck, 3),
     "arm": (cmd_arm, 3), "compare": (cmd_compare, 1), "finish": (cmd_finish, 1),
 }
 
