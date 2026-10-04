@@ -130,7 +130,7 @@ Units and responsibilities:
 | `bind-inputs` | Pack tool | Verify Site bindings: image digest, ORFS commit, design config, PDK, celluzi toolbox files; write `state/inputs.json` with SHA-256 of each | Run EDA |
 | `baseline` | Pack tool | ORFS full flow (synth→finish) with stock lib at P0 into `runs/baseline/` (WORK_HOME); write `state/baseline.json` | Touch celluzi tree |
 | `read-baseline` | Reader | Facts: `baseline_fmax_mhz`, `baseline_wns_ns`, `baseline_drc`, `baseline_valid` | |
-| `engineer` | Pack tool with `outsourcing:` (resident OpenCode) | Dig, propose, build cells, choose recipe; deliver `state/round-recipe.json` + support artifacts under `cells/r<k>/` | Run the measured arms, change the Goal, write lessons or judge facts |
+| `engineer` | Pack tool with `outsourcing:` (resident OpenCode) | Discovery (own analysis scripts, OpenSTA/OpenROAD, trial ORFS runs incl. its own with/without comparisons), cell building, recipe choice; deliver `state/round-recipe.json` + findings report, cell datasheets, usage guide and support artifacts under `cells/r<k>/` | Run the measured arms, change the Goal, write lessons or judge facts; its own trial numbers are claims, never results |
 | `arm-custom`, `arm-control` | Pack tools (same script, `--arm`) | Run ORFS with the recipe into `runs/r<k>/<arm>/`; write `state/arm-<arm>.json` | Interpret results |
 | `read-arm-*` | Readers | Arm facts (finished, Fmax, WNS, DRC, custom instance count) | |
 | `arms-joined` | Judge | Both arms produced metrics (join point) | |
@@ -217,7 +217,7 @@ different bytes ("use a fresh revisioned artifact path"), while the result path 
   "synthesis": { "method": "orfs-abc" }
                | { "method": "emap-window", "netlist": "cells/r2/aes.emap.v",
                    "controlNetlist": "cells/r2/aes.emap-stock.v",
-                   "equivalence": "cells/r2/equiv.log" },
+                   "equivalence": "cells/r2/equiv.log" | null },   // optional, see 3.4
   "library": {
     "lib": "cells/r2/custom.lib",          // custom cells only, merged by the arm launcher
     "lef": "cells/r2/custom.lef",
@@ -230,13 +230,42 @@ different bytes ("use a fresh revisioned artifact path"), while the result path 
     ]
   },
   "hypothesis": "short text: what this round expects and why",
-  "evidence": ["cells/r2/notes.md", "cells/r2/top-paths.txt"]
+  "report": {
+    "findings": "cells/r2/findings.md",
+    "datasheets": ["cells/r2/datasheets/NOR3_PU2.md"],
+    "usage": "cells/r2/usage-guide.md"
+  },
+  "agentClaim": {                       // the agent's own trial comparison, shown next to the Harness number
+    "customFmaxMhz": 268.1, "controlFmaxMhz": 251.9, "gainPct": 6.4,
+    "runs": ["cells/r2/trials/custom/metrics.json", "cells/r2/trials/control/metrics.json"]
+  } | null,
+  "evidence": ["cells/r2/top-paths.txt"]
 }
 ```
 
 `origin` names the round that first built the cell; old cells must be byte-identical to `best.json`.
 Up to 10 new cells per round (keep the demo legible). A multi-output cell lists several outputs and
-must come with `emap-window` synthesis and an equivalence log.
+must come with `emap-window` synthesis. The equivalence log is optional (user decision 2026-10-04:
+demo). When it is absent, `compare-round` marks the round `function_verified: false` and the summary
+shows "function not verified" for that round.
+
+**Findings report** (the customer-facing deliverable of each round, written by the agent):
+
+- `findings.md`: what the agent analysed (commands and scripts it ran, kept under `cells/r<k>/`),
+  where the critical paths spend time, which opportunities it found and rejected and why, what the
+  lessons ledger changed in its thinking.
+- `datasheets/<cell>.md`, one per new cell: function, transistor netlist (SPICE excerpt), layout
+  picture (PNG from `render_gds.py`), area versus the nearest foundry cell, DRC/LVS status, the
+  modelled-timing assumption and its physical reason.
+- `usage-guide.md`: where and how to use each cell (which cones or path shapes, resizer adoption or
+  `emap` window remapping, clock regime), and when not to use it.
+- `agentClaim`: the agent's own with/without trial result, if it ran one. HimaHarness never takes
+  this number as a result. `compare-round` records it next to the independent arm result as
+  `agent_claim_gain_pct` and `claim_delta_pct`, and the summary shows both. A large gap is itself a
+  lesson for the next round.
+
+The recipe validator checks that `report.findings`, one datasheet per new cell, and `report.usage`
+exist; their content is not judged.
 
 ### 3.3 Measured arms
 
@@ -312,10 +341,15 @@ Requirements:
     the selected window), a genlib built from the merged Liberty (multi-output cells expressed as
     repeated GATE entries with the same cell name, one per output pin — check mockturtle's genlib
     multi-output convention in its `emap` docs/tests), run `emap` delay-oriented with multi-output
-    enabled, write a mapped Verilog. A Yosys script cuts the window from the mapped netlist
-    (`select` the cone cells → `submod`/`extract`), and stitches the remapped module back. An
-    equivalence check of the stitched netlist against the original is mandatory (Yosys
-    `equiv_make/equiv_simple/equiv_induct` or ABC `cec` on the window); its log is a recipe file.
+    enabled, write a mapped Verilog. `emap` itself is a whole-network mapper (the paper leaves
+    incremental remapping as future work), so incremental remapping is done around it: a Yosys
+    script cuts the critical window from the mapped netlist (`select` the cone cells →
+    `submod`/`extract`), `emap` maps only that module, and the remapped module is stitched back; the
+    rest of the netlist is untouched and ORFS still places, routes and repairs the whole design.
+    `emap` sees only the window: cut windows at flops or clearly critical nets, and check whether its
+    parameters accept per-input arrival times (unverified). An equivalence check of the stitched
+    netlist (Yosys `equiv_make/equiv_simple/equiv_induct` or ABC `cec` on the window) is optional
+    for this demo; provide the script, and record its log in the recipe when it is run.
     Note: sky130hd already has `fa_*`, `ha_*`, `maj3_*`; `emap` may use those even without custom
     cells, which is why the control arm uses the same `emap` pass with custom cells removed.
   - `hima-mo-resynth` from `packs/custom-cell-fmax-dtco/flow/domain/multi_output_resynth/`
@@ -349,18 +383,24 @@ Requirements:
 > multi-output cells for shared-input cones); build each one (bool2cmos SPICE → LibreCell layout →
 > DRC/LVS where possible → LEF normalised to sky130hd → modelled Liberty with a stated physical
 > reason for every derate); optionally remap critical windows with `emap` (multi-output cells only
-> enter this way, with a passing equivalence check); choose the clock period for this round (tighten
-> it when the last round met timing). You may run quick trial ORFS runs in your private workspace to
-> check adoption. Deliver one `hima-cellfmax-round-recipe/1` with every file under `cells/r<k>/`. Do
-> not run the measured arms, change the Goal, claim measured cell timing, invent metrics, or drop a
-> cell from the best library.
+> enter this way); choose the clock period for this round (tighten it when the last round met
+> timing). Do your own discovery: write and run your own OpenSTA/OpenROAD/Yosys/Python analysis,
+> and run trial ORFS flows in your private workspace, including your own with/without-custom-cell
+> comparison (analyse first; at most two trial flows at once, each with capped CPUs; leave time in
+> the round for HimaHarness's own measurement). Write up what you found: `findings.md`, one
+> datasheet per new cell, and `usage-guide.md` saying how and where the cells should be used. Put
+> your own trial comparison in `agentClaim`; HimaHarness re-measures custom versus control
+> independently and shows its number next to yours. Deliver one `hima-cellfmax-round-recipe/1`
+> with every file under `cells/r<k>/`. Do not run the measured arms, change the Goal, claim
+> measured cell timing, invent metrics, or drop a cell from the best library.
 
 `knowledge/cell-playbook.md` (≤ 2 pages) — condensed rules from §2: matched arms only; cells pay off
 on a few dominant cones near closure; the resizer satisfices; adoption needs a real modelled
 advantage (~2.5 % threshold seen) and correct pg_pins; area cost matters (NOR3_PU2 was 2.3× nor3_1);
 derates must follow topology (doubled pull-up → faster rise, not "5 % faster everywhere"; drive is
 load-dependent); multi-output: global mapping helps area not delay, use local windows on critical
-cones, prove equivalence; read the lessons ledger first and do not repeat a failed idea without a new
+cones (equivalence check recommended, optional); analyse before running trial flows (each ORFS
+trial is ~20 min); read the lessons ledger first and do not repeat a failed idea without a new
 reason; tighten the clock when timing is met.
 
 `knowledge/evidence-and-claims.md`: what is real (layout, DRC/LVS, adoption, ORFS timing given the
@@ -384,7 +424,9 @@ Reader outputs follow the LibInsight pattern (`argv: [/usr/bin/python3, '${READE
   largest `round_gain_pct` over valid rounds, `round_improved` (`comparison_valid` and custom Fmax
   above the best valid custom Fmax so far), `custom_adopted` (total custom instances in the custom
   arm's final netlist). Informational only (shown, never judged): `fmax_vs_original_baseline_pct`
-  = custom Fmax vs the 3.6 ns baseline.
+  = custom Fmax vs the 3.6 ns baseline; `function_verified` (1 when the round's equivalence log
+  exists and passed, 0 otherwise); `agent_claim_gain_pct` and `claim_delta_pct` (agent's own trial
+  gain and its difference from the Harness `round_gain_pct`).
 
   **Why the Goal is judged against the round's own control arm.** The control arm is the stock
   reference at the same clock and with the same flow: it loads the same merged lib with every custom
@@ -410,7 +452,8 @@ recipe; otherwise `best.json` is unchanged and the round's cells are recorded in
 tried (with the reason: not adopted / adopted but slower / invalid comparison / build failure).
 
 `finish` writes `derived/summary.md` and `derived/summary.json`: per round Fmax (custom, control),
-gain, adopted cells with counts, cell images (`render_gds.py` → PNG for each adopted cell with a GDS),
+Harness gain next to the agent's claimed gain, "function not verified" where applicable, links to
+that round's findings report, datasheets and usage guide, adopted cells with counts, cell images (`render_gds.py` → PNG for each adopted cell with a GDS),
 lessons, final verdict, and the claim boundary text verbatim:
 
 > Custom-cell timing is modelled from foundry tables (estimate_lib, derate stated per cell), not
@@ -460,7 +503,7 @@ watch.py). Order:
       `lib/tlo/_est_nor3_pu2/`) → both arms in parallel → `compare-round`. Expect custom adoption
       > 0, control custom = 0, a positive round gain (July: −0.37 → −0.13 at global route; measure
       at finish). This is the happy-path proof before any agent runs.
-   c. `emap` driver on one small critical window: equivalence passes, stitched netlist runs through
+   c. `emap` driver on one small critical window: the optional equivalence script runs once, and the stitched netlist runs through
       ORFS `SYNTH_NETLIST_FILES`.
    d. Resident sandbox smoke: capability + image + OpenCode start, a trivial task that runs
       `yosys -V` and `openroad -version` and delivers a minimal recipe.
