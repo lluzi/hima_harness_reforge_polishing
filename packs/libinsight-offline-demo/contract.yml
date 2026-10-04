@@ -1,5 +1,5 @@
 id: libinsight-offline-demo
-version: "0.1.0"
+version: "0.1.1"
 title: Library insight analysis of a standard-cell library release (offline demo)
 status: development
 minimumHarnessVersion: 0.1.0
@@ -29,7 +29,7 @@ workspace:
   copy: [tools]
 tools:
   - id: analyse
-    file: tools/analyse.py
+    file: flow/tools/analyse.py
     description: >-
       Validate the LibInsight root (kits/<kit>.json and data/store present; refuse if the Kit
       references store files that are missing) and run the offline LibInsight analyse step into the
@@ -42,7 +42,7 @@ tools:
       - ${LIBINSIGHT_ROOT}
       - ${KIT}
   - id: report
-    file: tools/report.py
+    file: flow/tools/report.py
     description: >-
       Build a v1 Library Insight report, a human-readable summary.md and a prototype-app.json from
       the offline analysis output already in the workspace. Reads derived results only; never the

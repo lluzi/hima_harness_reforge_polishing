@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { mkdtemp, mkdir, readFile, rm, writeFile, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { checkPack, loadPack, loadSite, libraryInsightDocument } from '@hima/harness';
@@ -11,7 +12,7 @@ import { repoRoot } from './support/dsh-home.ts';
 const packId = 'libinsight-offline-demo';
 const packsDir = path.join(repoRoot, 'packs');
 const packDir = path.join(packsDir, packId);
-const reportTool = path.join(packDir, 'tools/report.py');
+const reportTool = path.join(packDir, 'flow/tools/report.py');
 const readerTool = path.join(packDir, 'tools/read-insight.py');
 
 // The names the harness binds itself into any tool's argv; a tool may declare them without a node
@@ -23,7 +24,9 @@ const FORBIDDEN = [/extract\//, /tmlib/, /edarun/, /EMPYREAN/, /calibrate/, /bat
 test('the demo Pack loads, validates, and declares the offline analysis-to-report method', () => {
   const pack = loadPack(packsDir, packId);
   assert.equal(pack.contract.id, packId);
-  assert.equal(pack.contract.version, '0.1.0');
+  assert.equal(pack.contract.version, '0.1.1');
+  // A source: pack workspace copies each entry from the Pack's own flow/ directory.
+  for (const entry of pack.contract.workspace.copy ?? []) assert.ok(existsSync(path.join(packDir, 'flow', entry)), `flow/${entry} must exist in the Pack`);
   assert.equal(pack.graph.version, pack.contract.version, 'graph and contract versions must match');
   assert.equal(pack.graph.entry, 'analyse');
   assert.deepEqual(pack.contract.tools.map((t) => t.id), ['analyse', 'report']);
@@ -67,7 +70,7 @@ test('every ${NAME} in a tool argv is bound by the contract or the harness', () 
 test('nothing the Pack executes references the vendor Liberty runtime, seat, or write steps', async () => {
   // Scan only executable/declared surfaces, not the .md documentation (which explains the boundary).
   const surfaces = ['contract.yml', 'graph.yml', 'semantics.yml',
-    'tools/analyse.py', 'tools/report.py', 'tools/read-insight.py',
+    'flow/tools/analyse.py', 'flow/tools/report.py', 'tools/read-insight.py',
     'readers/libinsight-insight.yml', 'choosers/libinsight-complete.yml',
     'rules/libinsight-report-valid.yml', 'rules/libinsight-findings-reported.yml', 'rules/libinsight-files-analysed.yml'];
   for (const relative of surfaces) {
@@ -77,7 +80,7 @@ test('nothing the Pack executes references the vendor Liberty runtime, seat, or 
     }
   }
   // The analyse tool only ever drives the offline analyse subcommand.
-  const analyse = await readFile(path.join(packDir, 'tools/analyse.py'), 'utf8');
+  const analyse = await readFile(path.join(packDir, 'flow/tools/analyse.py'), 'utf8');
   assert.ok(analyse.includes('"analyse"'), 'analyse tool invokes the analyse subcommand');
   assert.ok(analyse.includes('PYTHONDONTWRITEBYTECODE'), 'analyse tool keeps bytecode out of the read-only root');
 });
