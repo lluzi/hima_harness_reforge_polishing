@@ -27,6 +27,10 @@ the table below so it can be ported after the migration.
 | zh/en UI for Hima panels through the shell locale runtime | `de3560b9` | Port to migration (U7 faces) | Settings → Language switches live |
 | Offline LibInsight demo Pack and local Site | `5f248092`, `ea726fce` | Demo-only | Tools ship under `flow/`; Pack 0.1.1 |
 | QuaLib Insight tab (was Data Insight): analyse a library folder from the tab, open its report there | `aa2fd1e9~1` + review fixes | Port idea to migration (U7); replace draft save/restore with an explicit start route | Reviewed |
+| SKY130 custom-cell Fmax demo Pack `custom-cell-fmax-sky130-demo` 0.1.0 and Site `linglong-sky130-cells` | `09239208`, `ce61d508` | Demo-only | Design: `docs/superpowers/specs/2026-10-04-custom-cell-fmax-sky130-demo-design.md`; deviations in the Pack `SPEC.md` |
+| Engineer `precheck` (same validator as the delivery Reader, on the private workspace) | `ce61d508` | Demo-only (Pack) | A Reader refusal reaches only the Job log, not the owner or engineer (Harness gap, below) |
+| No-entrypoint image `localhost/iic-osic-celluzi-hima:2026.06` for the resident sandbox | Site README | Demo Site config | The IIC-OSIC VNC entrypoint swallows the wrapper's command; no wrapper change |
+| No-model Host dry path of the demo graph (group `cellfmax-dry`) | `63cbac16`, `2e0cfc26` | Demo-only test | Intermittent fork-round launch stall on the Mac (below) |
 
 ## Build and launch
 
@@ -92,6 +96,42 @@ prototype).
 
 Recordings and screenshots live outside git in `.hima-tmp/customer-demo-kit/{recordings,screenshots}`.
 
+## Custom-cell Fmax on SKY130 (2026-10-04, App 0.3.0-trial.37, Pack 0.1.0 @ `2e0cfc26`)
+
+The third demo: a resident OpenCode engineer designs custom standard cells for `aes` on open-source
+SKY130; every round HimaHarness re-measures them independently with two matched ORFS arms (same
+recipe and merged library, custom cells allowed versus forbidden). Design and deviations:
+`docs/superpowers/specs/2026-10-04-custom-cell-fmax-sky130-demo-design.md`, Pack `SPEC.md`.
+
+Lower gates before any GUI work (linglong, real bytes): the Pack's own baseline reproduced the frozen
+golden exactly (WNS −0.249301 ns, TNS −1.91346 ns, 37,939 instances, route DRC 0) with the ORFS
+checkout mounted read-only; a hand-built round with the July `NOR3_PU2` gave +3.96 % matched; the
+`emap` window toolchain ran end to end (equivalence PASS) but its first window made timing worse;
+the resident sandbox (v2 wrapper, no-entrypoint image) ran OpenCode and the EDA tools.
+
+Live Campaign, Run `run-f42706a0-d392-44a5-8f54-085b2c95d2b1`, ended by itself `ended-goal-met`
+in round 2 of 4 (200.8 of 300 min). Every number below is read by the Pack Readers from ORFS files:
+
+| round | engineer's cells (new this round) | custom arm | control arm (= stock baseline) | matched gain | engineer's own claim |
+| --- | --- | --- | --- | --- | --- |
+| 1 | XNOR2_PU2, XOR2_PU2, XOR2_ND2, NOR3_PU2 | 270.33 MHz, 16 instances adopted | 259.79 MHz | +4.06 % | +4.06 % |
+| 2 | + NOR3_ND2, MUX2I_PU2/ND2, O21AI_PU2/ND2, A21OI_PU2, A22OI_PU2, A221OI_PU2, O221AI_ND2, XNOR2_ND2 | 273.15 MHz (WNS −0.061 ns), 122 adopted (O21AI_PU2 59, A221OI_PU2 25, A21OI_PU2 19, NOR3_PU2 17, XNOR2_PU2 2) | 259.79 MHz (WNS −0.249 ns) | **+5.14 %** | +5.14 % |
+
+Round 2 started from round 1's measured lesson (the remaining worst path needed about 0.033 ns and
+ran through low-drive AOI/OAI and mux stages) and kept every round-1 cell byte-identical. Route DRC
+0 in every arm; round 2 cost +0.66 % area and +0.40 % power. Layouts of the live Run's cells are
+`abstract` (LibreCell layouts that were not taken through DRC/LVS); the earlier one-round wiring
+Run `run-1a52e6fd-…` used DRC/LVS-clean `NOR2_PU2`/`NOR3_PU2` and reached +4.96 %.
+
+Claim boundary (shown verbatim in the Run summary): custom-cell timing is modelled from foundry
+tables with a stated derate per cell, not characterized; results are open-source ORFS timing on
+SKY130 under these models; not signoff, not silicon.
+
+Recordings (`.hima-tmp/customer-demo-kit/recordings`): `07-cellfmax-start-en` (request; stopped at a
+screen lock), `08-cellfmax-confirm-en`, `09-cellfmax-live-graph-en` (two arms in parallel),
+`10-cellfmax-round2-verdict-en` (verdicts and the owner's ending), `11-cellfmax-results-zh` (Guide
+explains the results in Chinese). Screenshots: `screenshots/en/cellfmax-*`.
+
 ## Known limits to state honestly
 
 - The handoff fix above removes the r7 stall on this branch; it is not yet on `main` or the
@@ -109,6 +149,17 @@ Recordings and screenshots live outside git in `.hima-tmp/customer-demo-kit/{rec
 - Earlier reference result `cf7a804c`: Setup 0 / Hold 0 versus strong serial AutoFix 24 / 82, one design.
   The Run's final label is "goal not met" and the collateral checks are UNKNOWN. It is a timing
   result, not full physical signoff.
+
+- Custom-cell demo: the Campaign owner cannot sleep while a Job runs; its goal loop fired about 20
+  rounds a minute (cap raised to 2000; about 100M+ cached tokens per Run). Host wake-ups alone drove
+  the Run correctly after the cap ran out or the goal went inactive.
+- Custom-cell demo: when the delivery Reader refuses a resident result, the reason reaches only the
+  Job log, not the owner (the Pack's `precheck` lets the engineer catch it first).
+- Custom-cell demo: on this Mac the no-model Host dry path (`cellfmax-dry`) intermittently stalls in
+  a fork round with the next launch never recorded (2 of ~10 runs); not diagnosed; not seen on the
+  SSH Site in either GUI Run.
+- Custom-cell demo: Pack `INTENT.md` lacks the "Business" section the authoring check expects; the
+  Guide asks to proceed.
 
 ## Feedback
 
