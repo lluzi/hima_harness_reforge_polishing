@@ -31,11 +31,11 @@ Goal true with broader UNKNOWN, honest best effort, raw regression with empty mo
 changed report/checkpoint refusal, CLI ABI and usable final package contents. Existing Reader tests
 retain forged timing/hash/identity/scenario/script/checkpoint counterexamples. See TEST.md.
 
-Public Host complete dry route and archive integration are separate integration responsibilities.
+Public Host complete dry route and archive integration passed for clear and residual cases; the retained release test also proves the residual route.
 No model, commercial EDA, GUI or independent benchmark is needed for private schema/program proofs.
 Live evidence from earlier Pack versions keeps its original identity and scope; it is not a new
 0.4 engineering experiment or physical signoff qualification.
 
 ## Reviews
 
-The Pack-owned Python suites passed 16 Reader, 3 context and 10 business checks. Integration findings and independent review are recorded by the U8 assessment; full Host archive acceptance remains in progress.
+The Pack-owned Python suites passed 16 Reader, 3 context and 10 business checks. Integration findings and independent review are recorded by the U8 assessment. Current Host archive integration and the original real U10 journey have separate evidence; human acceptance remains pending.
