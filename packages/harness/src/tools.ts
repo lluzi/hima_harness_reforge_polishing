@@ -22,7 +22,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, readExecutionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
-import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
+import { checkInstalledPackFromRuntime, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
 import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePackFromRuntime } from './release.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
@@ -894,7 +894,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       execute: async (args) => {
-        const result = checkInstalledPack(deps, { pack: args.pack, site: args.site });
+        const result = await checkInstalledPackFromRuntime(deps, { pack: args.pack, site: args.site });
         const stage = packCheckStage(result);
         // An absent key, never an undefined one: at the top of the ladder there is no next rung, and
         // a rung that stopped on nothing has no issue to name.

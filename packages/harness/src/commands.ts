@@ -19,7 +19,7 @@ import { observe, type ObserveResult } from './observe.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
 import { loadSite } from './sites.js';
-import { checkInstalledPack, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
+import { checkInstalledPackFromRuntime, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
 import { releasePackFromRuntime } from './release.js';
 import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult, type WorkspaceFilesResult } from './workspace.js';
@@ -840,7 +840,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[], projectSess
   }
   try {
     if (verb === 'check') {
-      const result = checkInstalledPack(deps, { pack, site });
+      const result = await checkInstalledPackFromRuntime(deps, { pack, site });
       return { kind: packCheckFit(result) ? 'success' : 'error', text: describePackCheckResult(result) };
     }
     const result = await prepareWorkspace(deps, { pack, site, campaign, projectSessionId });

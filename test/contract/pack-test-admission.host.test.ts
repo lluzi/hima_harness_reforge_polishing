@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import path from 'node:path';
+import { access } from 'node:fs/promises';
+import { himaCommand } from './support/command.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -113,4 +115,70 @@ test('confirmed Pack TEST admission is consistent across Fabric, hima_run and HT
     assert.equal(await web.stop(), 0, web.stderr());
     await h.dispose();
   }
+});
+
+test('Pack check reads a normally ended DBOS TEST Run and refuses a false Ending before sealing', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const { h } = home;
+  const folder = path.join(packsDirOf(h), timingProbePackId);
+  const record = (sections: readonly string[]): string => sections.map(section =>
+    `## ${section}\n\nLocal stand-in mechanism evidence; no EDA or model claim.\n`).join('\n');
+  await writePackFiles(folder, { 'INTENT.md': record(HIMA_INTENT_SECTIONS),
+    'SPEC.md': record(HIMA_SPEC_SECTIONS), 'FABRIC.md': record(HIMA_FABRIC_SECTIONS) });
+  let host: Awaited<ReturnType<typeof bootInProcess>> | undefined = await bootInProcess(h);
+  try {
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local',
+      goal: { target_period_ns: 0.1 }, strategy: { periodNs: 2.2 }, generationLimit: 1,
+      test: true, ownerSessionId: String(owner.id) });
+    assert.ok(started.kind === 'preparing' || started.kind === 'ran', JSON.stringify(started));
+    if (started.kind !== 'preparing' && started.kind !== 'ran') throw new Error('TEST Run admission failed');
+    const runId = started.run.id;
+    await waitUntil('the actual DBOS TEST Run ends', async () =>
+      (await host!.ctx.hima.readExecutionContext(runId)).run.status?.startsWith('ended-') === true, 20_000, 25);
+    const context = await host.ctx.hima.readExecutionContext(runId);
+    assert.equal(context.run.purpose, 'test');
+    assert.equal(context.run.status, 'ended-goal-not-met');
+    assert.equal((context.run as typeof context.run & { goalState: string }).goalState, 'not-met');
+    const testRecord = (ending: string): string => HIMA_TEST_SECTIONS.map(section =>
+      `## ${section}\n\n${({ Run: `run: ${runId}`, Ending: `status: ${ending}`, Code: 'none', Refusals: 'none' } as Record<string, string>)[section] ?? 'Local stand-in mechanism test.'}\n`).join('\n');
+    await writePackFiles(folder, { 'TEST.md': testRecord('ended-goal-not-met') });
+    const checked = jsonOf(await host.ctx.tools.execute({ name: 'hima_pack_check',
+      callId: 'dbos-test-pack-check' as never, arguments: { pack: timingProbePackId, site: 'local' },
+      agent: owner, signal: AbortSignal.timeout(5000) }));
+    assert.equal(checked.stage, 'tested', JSON.stringify(checked));
+    assert.equal(checked.fit, true, JSON.stringify(checked));
+    assert.match(checked.text, /ended ended-goal-not-met/);
+    const command = await himaCommand(host, h.workspace, `/hima pack check ${timingProbePackId} --site local`);
+    assert.equal(command.kind, 'success', command.text);
+    assert.match(command.text, /stage: tested/);
+    // Reopening the same Home must read the retained PG facts, with no Run recreation.
+    await host.dispose(); host = undefined;
+    host = await bootInProcess(h);
+    const author = await createRootAgent(host.ctx, h.workspace);
+    const execute = async (name: string) => host!.ctx.tools.execute({ name,
+      callId: `dbos-reopened-${name}` as never, arguments: name === 'hima_pack_check'
+        ? { pack: timingProbePackId, site: 'local' } : { pack: timingProbePackId },
+      agent: author, signal: AbortSignal.timeout(5000) });
+    assert.equal(jsonOf(await execute('hima_pack_check')).stage, 'tested');
+    await writePackFiles(folder, { 'TEST.md': testRecord('ended-goal-met') });
+    const falseEnding = jsonOf(await execute('hima_pack_check'));
+    assert.equal(falseEnding.stage, 'compiled');
+    assert.equal(falseEnding.fit, false);
+    assert.match(falseEnding.issue, /says status: ended-goal-met and run .* ended ended-goal-not-met/);
+    const refused = await execute('hima_pack_release');
+    assert.equal(jsonOf(refused).kind, 'refused', textOf(refused));
+    assert.match(textOf(refused), /says status: ended-goal-met and run .* ended ended-goal-not-met/);
+    await assert.rejects(access(path.join(folder, 'VERSION.yml')), /ENOENT/);
+    await writePackFiles(folder, { 'TEST.md': testRecord('ended-goal-not-met') });
+    const released = await execute('hima_pack_release');
+    assert.equal(released.isError, false, textOf(released));
+    assert.equal(jsonOf(released).kind, 'released', textOf(released));
+    const sealed = jsonOf(await execute('hima_pack_check'));
+    assert.equal(sealed.stage, 'released', JSON.stringify(sealed));
+    assert.equal(sealed.fit, true, JSON.stringify(sealed));
+    t.diagnostic(JSON.stringify({ runId, purpose: context.run.purpose, status: context.run.status,
+      methodDigest: context.run.packDigest, engine: context.engine }));
+  } finally { await host?.dispose(); await h.dispose(); }
 });

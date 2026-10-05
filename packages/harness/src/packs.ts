@@ -4405,3 +4405,35 @@ export function checkInstalledPack(deps: ReleaseDeps & { readonly sitesDir: stri
   // record names is in this host's ledger and ran these very files.
   return { kind: 'checked', check: withTestRecord(checkPack(loaded, site), loaded, deps.ledger) };
 }
+
+/** Host checks use current application facts for DBOS TEST Runs. Released customer Packs retain
+ * their portable seal, and historical TEST Runs retain the synchronous Ledger check. */
+export async function checkInstalledPackFromRuntime(
+  deps: import('./fabric.js').FabricDeps,
+  req: { readonly pack: string; readonly site: string },
+): Promise<PackCheckResult> {
+  if (!deps.durable) return checkInstalledPack(deps, req);
+  // Preserve the existing Site-first errors, including for incomplete authoring folders.
+  loadSite(deps.sitesDir, req.site);
+  const folder = installedPackFolder(deps.packsDir, req.pack);
+  if (folder === undefined || packStageFrom(folder).stage !== 'tested') {
+    return checkInstalledPack(deps, req);
+  }
+  const text = folder.text(pipelineFiles.test);
+  const named = text === undefined ? undefined : runNamedByTestRecord(text);
+  if (named?.kind !== 'named') return checkInstalledPack(deps, req);
+  const { knownDurableRun } = await import('./durable-fabric.js');
+  if (!await knownDurableRun(deps, named.run)) return checkInstalledPack(deps, req);
+  return deps.durable.store.withRunReadBoundary(named.run, async () => {
+    const { createDurableViewReaders } = await import('./durable-views.js');
+    const readers = createDurableViewReaders(deps);
+    const run = await readers.readRun(named.run);
+    const records = await readers.readRunRecords(named.run);
+    // As in publication, a changed TEST Run id cannot borrow the selected Run's facts.
+    const lookup: RunLookup = {
+      run: id => id === named.run ? run : undefined,
+      records: ({ runId }) => runId === named.run ? records : [],
+    };
+    return checkInstalledPack({ ...deps, ledger: lookup }, req);
+  });
+}
