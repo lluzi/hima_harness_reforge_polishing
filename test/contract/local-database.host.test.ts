@@ -265,16 +265,24 @@ test('a zero Host exit without a positive resource-shutdown receipt remains unco
   finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
 });
 
-test('a flushed positive resource-shutdown receipt and normal Host exit confirm App shutdown', async () => {
+// Actual positive native finalization is covered by host-lifecycle.host.test.ts's
+// normal-Host and delayed-disposal cases. A raw receipt cannot replace that protocol.
+test('a raw positive receipt cannot confirm shutdown without native finalization', async () => {
   const folder = await mkdtemp(path.join(tmpdir(), 'hima-host-positive-receipt-'));
   const entry = path.join(folder, 'host.mjs');
   await writeFile(entry, `import {createServer} from 'node:http';
     const server=createServer((request,response)=>{response.writeHead(401);response.end();});
-    server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=contract'));
-    process.on('SIGTERM',()=>process.stderr.write('hima: resource shutdown confirmed; pid='+process.pid+'\\n',()=>server.close(()=>process.exit(0))));
+    server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>process.stderr.write('hima: resource shutdown confirmed; pid='+process.pid+'\\n',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=contract')));
+    process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
   `);
   const host = await launchHimaHost({ dshEntry: entry, node: process.execPath, cwd: folder, env: process.env, profile: 'hima' });
-  try { assert.equal(await host.stop(), 0); }
+  try {
+    await assert.rejects(host.stop(), /resource shutdown unconfirmed/);
+    assert.ok(host.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${host.child.pid}`), 'a real flushed raw receipt was present');
+    assert.equal(host.child.exitCode, null, 'failed finalization does not signal the original Host');
+    assert.equal(host.child.signalCode, null);
+    process.kill(host.child.pid!, 0);
+  }
   finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
 });
 
