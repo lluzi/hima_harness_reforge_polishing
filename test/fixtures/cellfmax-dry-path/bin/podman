@@ -7,11 +7,17 @@ Answers exactly the calls flow/cellfmax_cli.py makes:
   podman run ... -v <dir>:/work:rw ... -lc 'bash /work/inputs/orfs_arm.sh'
       writes the ORFS outputs the Pack reads (6_report.json, 5_2_route.json, 6_final.v,
       top-paths.txt) under <dir> for the CELLFMAX_VARIANT it was given, and exits 0
+  podman run ... -c '<script calling flow/toolbox/char/characterize.py>'
+      the characterize step: creates runs/calibration/calibration.json when the script would
+      calibrate (it is missing), then writes <out>/characterization.json (every job cell `ok`) and
+      <out>/custom.measured.lib with one minimal cell group per job cell (the job's pins, footprint
+      and functions, which characterize took from the foundry cell for a drop-in variant); exit 0
   podman run ... klayout ...                       no-op, exit 0 (cell image rendering)
   podman stop ...                                  exit 0
 
 The worst setup slack is a function of how many custom cells the run may use: a custom cell is
-usable when the run's custom LEF (/work/inputs/custom.lef) declares it, it is not in the run's
+usable when the run's custom LEF (/work/inputs/custom.lef: the Pack writes only the measured
+cells into it, the same cells its merged measured Liberty adds) declares it, it is not in the run's
 DONT_USE_CELLS, and its name does not contain `_SLOW` (a cell the placer never picks, which is how
 the convergence scenario's rounds add nothing). 0 usable cells give the stock -0.249301 ns, 1 gives
 -0.10 ns, 2 or more give 0.0 ns, so every round gain is hand-computable from 1000 / (3.6 - WNS).
@@ -20,6 +26,7 @@ Every call is appended to $CELLFMAX_PODMAN_LOG when it is set.
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -91,6 +98,52 @@ def run_orfs(argv):
     return 0
 
 
+def _after(words, flag):
+    return words[words.index(flag) + 1] if flag in words and words.index(flag) + 1 < len(words) else None
+
+
+def measured_cell(cell):
+    """A minimal Liberty cell group for one job cell: its pins, footprint and functions, no tables."""
+    pins = cell["pins"]
+    lines = ['    cell ("%s") {' % cell["name"], "        area : %s;" % (cell.get("area_um2") or 10.0),
+             '        cell_footprint : "%s";' % cell["footprint"],
+             '        pg_pin ("%s") { pg_type : "primary_ground"; voltage_name : "%s"; }' % (pins["ground"], pins["ground"]),
+             '        pg_pin ("%s") { pg_type : "primary_power"; voltage_name : "%s"; }' % (pins["power"], pins["power"])]
+    lines += ['        pin ("%s") { direction : "input"; capacitance : 0.002; }' % pin for pin in pins["inputs"]]
+    lines += ['        pin ("%s") { direction : "output"; function : "%s"; timing () { related_pin : "%s"; } }'
+              % (pin, cell["functions"][pin], pins["inputs"][0]) for pin in pins["outputs"]]
+    return "\n".join(lines + ["    }", ""])
+
+
+def run_characterize(script):
+    words = shlex.split(script)
+    at = next((i for i, w in enumerate(words) if w.endswith("/characterize.py")), None)
+    # The calibrate.py call before it has its own --out (the calibration directory).
+    tail = words[at + 1:] if at is not None else []
+    job_path = tail[0] if tail else None
+    out, calibration = _after(tail, "--out"), _after(tail, "--calibration")
+    if job_path is None or out is None or calibration is None:
+        print("podman stand-in: characterize script without job, --out or --calibration: %r" % script, file=sys.stderr)
+        return 125
+    calibration = Path(calibration)
+    if any(w.endswith("/calibrate.py") for w in words) and not calibration.is_file():
+        calibration.parent.mkdir(parents=True, exist_ok=True)
+        calibration.write_text(json.dumps({"schema": "stand-in-calibration", "firstJob": job_path}) + "\n")
+    job = json.loads(Path(job_path).read_text())
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    cells = job.get("cells", [])
+    (out / "custom.measured.lib").write_text(
+        "library (cellfmax_measured) {\n    delay_model : \"table_lookup\";\n    time_unit : \"1ns\";\n"
+        + "".join(measured_cell(cell) for cell in cells) + "}\n")
+    (out / "characterization.json").write_text(json.dumps({
+        "cells": [{"name": cell["name"], "status": "ok", "reason": None} for cell in cells],
+        "method": "podman stand-in (no ngspice)", "calibration": str(calibration), "factors": None,
+    }))
+    print("== podman stand-in characterize %d cell(s)" % len(cells))
+    return 0
+
+
 def main(argv):
     log(argv)
     if argv[:2] == ["image", "inspect"]:
@@ -103,6 +156,9 @@ def main(argv):
             return 0
         if any("orfs_arm.sh" in word for word in argv):
             return run_orfs(argv)
+        script = _after(argv, "-c")
+        if script is not None and "characterize.py" in script:
+            return run_characterize(script)
     print("podman stand-in: unsupported call %r" % (argv,), file=sys.stderr)
     return 125
 

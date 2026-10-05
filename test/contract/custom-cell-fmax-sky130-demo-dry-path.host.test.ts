@@ -3,6 +3,7 @@
 //
 //   bind-inputs -> baseline -> read-baseline -> check-baseline            (autopilot)
 //   engineer                                                              (owner: resident task)
+//   characterize                                                          (autopilot)
 //   arm-custom -> read-arm-custom  ||  arm-control -> read-arm-control    (fork drives itself)
 //   arms-joined -> compare-round -> read-round -> check-round
 //               -> read-round-goal -> judge-round                         (autopilot)
@@ -15,11 +16,14 @@
 // What stands in, and only at the Site/tool/model boundary:
 // - EDA: `test/fixtures/cellfmax-dry-path/bin/podman`, first on the Host's PATH (set before the
 //   Host boots and before this file's private tmux server starts, because a local Job's environment
-//   is the tmux server's). It answers `image inspect` with the image id the Site binds, and an ORFS
-//   `run` by writing the metric files, final netlist and top-paths report the Pack reads, with a WNS
-//   fixed by how many custom cells the run may use (see the stand-in's docstring).
+//   is the tmux server's). It answers `image inspect` with the image id the Site binds, the
+//   characterize container by measuring every job cell `ok` into a minimal measured Liberty (and
+//   calibrating once per Campaign), and an ORFS `run` by writing the metric files, final netlist and
+//   top-paths report the Pack reads, with a WNS fixed by how many measured custom cells the run may
+//   use (see the stand-in's docstring).
 // - ORFS checkout: `test/fixtures/cellfmax-dry-path/orfs` (Makefile, aes config and SDC, sky130hd
-//   config with a DONT_USE_CELLS block, a minimal Liberty), copied into the home; empty celluzi and
+//   config with a DONT_USE_CELLS block, a minimal Liberty holding the foundry nor3_1 and nand2_1 the
+//   cells compare to, with their footprints and functions), copied into the home; empty celluzi and
 //   bool2cmos roots.
 // - Resident engineer: the ACP stand-in `sites/linglong-atcs28/tests/fixtures/acp-standin.py` behind
 //   the production resident wrapper (sandbox `none`, HIMA_RESIDENT_TESTING=1). Its result bytes and
@@ -44,9 +48,10 @@ import { writeLocalSite } from './support/site.ts';
 const packId = 'custom-cell-fmax-sky130-demo';
 const fixture = path.join(repoRoot, 'test/fixtures/cellfmax-dry-path');
 const IMAGE_ID = 'c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667';
-const CLAIM_BOUNDARY = 'Custom-cell timing is modelled from foundry tables (estimate_lib, derate stated per cell), not '
-  + 'characterized. Layouts marked drc-lvs-clean passed KLayout DRC and Netgen LVS. Results are '
-  + 'open-source ORFS timing on SKY130 under these models; not signoff, not silicon.';
+const CLAIM_BOUNDARY = 'Custom-cell timing is SPICE-characterized by HimaHarness from each cell\'s Magic-extracted layout '
+  + '(ngspice, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90), not signed '
+  + 'off; only DRC/LVS-clean cells are measured and used. Results are open-source ORFS timing on SKY130 '
+  + 'under these measured models; not signoff, not silicon.';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -73,7 +78,11 @@ const TWO_CELLS = fmax(0.0); // 277.7778 MHz
 // Cell and recipe material the resident stand-in delivers.
 // ---------------------------------------------------------------------------------------------
 
-interface Cell { readonly name: string; readonly origin: string; readonly inputs: readonly string[] }
+interface Cell {
+  readonly name: string; readonly origin: string; readonly inputs: readonly string[];
+  /** The Liberty function of Y the engineer states, and the foundry cell it is a drop-in variant of. */
+  readonly function: string; readonly compareTo: string;
+}
 
 const cellLib = (cell: Cell) => [
   `    cell (${cell.name}) {`,
@@ -83,15 +92,17 @@ const cellLib = (cell: Cell) => [
   '        pg_pin ("VPB") { pg_type : "pwell"; voltage_name : "VPB"; }',
   '        pg_pin ("VPWR") { pg_type : "primary_power"; voltage_name : "VPWR"; }',
   ...cell.inputs.map((pin) => `        pin ("${pin}") { direction : "input"; capacitance : 0.002; }`),
-  `        pin ("Y") { direction : "output"; function : "(!${cell.inputs.join('&!')})"; timing () { related_pin : "A"; } }`,
+  `        pin ("Y") { direction : "output"; function : "${cell.function}"; timing () { related_pin : "A"; } }`,
   '    }', ''].join('\n');
 const cellLef = (cell: Cell) => [
   `MACRO ${cell.name}`, '  CLASS CORE ;', '  SIZE 3.22 BY 2.72 ;',
   ...['VPWR:POWER', 'VGND:GROUND', 'Y:SIGNAL', ...cell.inputs.map((pin) => `${pin}:SIGNAL`), 'VPB:POWER', 'VNB:GROUND']
     .flatMap((entry) => { const [pin, use] = entry.split(':'); return [`  PIN ${pin}`, `    USE ${use} ;`, `  END ${pin}`]; }),
   `END ${cell.name}`, ''].join('\n');
+/** The cell factory's files: SPICE, GDS, LEF and the Magic-extracted netlist HimaHarness characterizes. */
 const cellFiles = (cell: Cell): Record<string, string> => ({
-  sp: `.subckt ${cell.name} ${cell.inputs.join(' ')} Y VPWR VGND\n.ends\n`, gds: `GDSII ${cell.name}\n`, lef: cellLef(cell), lib: cellLib(cell),
+  sp: `.subckt ${cell.name} ${cell.inputs.join(' ')} Y VPWR VGND\n.ends\n`, gds: `GDSII ${cell.name}\n`, lef: cellLef(cell),
+  ext: `.subckt ${cell.name} VPWR VGND Y ${cell.inputs.join(' ')}\n.ends\n`,
 });
 const sha = (text: string | Buffer) => createHash('sha256').update(text).digest('hex');
 
@@ -103,9 +114,10 @@ interface Round {
 }
 
 /**
- * One round's delivery: every new cell's files under cells/r<k>/, the cumulative custom.lib/lef of
- * all cells under cells/r<k>/, findings, usage guide, one datasheet per new cell. Cells of earlier
- * rounds keep their own origin's paths and bytes (byte-identical to best.json).
+ * One round's delivery: every new cell's files under cells/r<k>/, the cumulative custom.lef of all
+ * cells (and the engineer's own custom.lib, a claim) under cells/r<k>/, findings, library table and
+ * usage guide. Cells of earlier rounds keep their own origin's paths and bytes (byte-identical to
+ * best.json).
  */
 function roundDelivery(k: number, cells: readonly Cell[], { omitUsage = false, claimGainPct = 4.5 } = {}): Round {
   const prefix = `cells/r${k}`;
@@ -115,8 +127,8 @@ function roundDelivery(k: number, cells: readonly Cell[], { omitUsage = false, c
     const bytes = cellFiles(cell);
     if (cell.origin === `r${k}`) for (const key of Object.keys(files)) support[files[key]!] = bytes[key]!;
     return {
-      name: cell.name, outputs: ['Y'], origin: cell.origin, function: `Y=!(${cell.inputs.join('|')})`, layout: 'drc-lvs-clean',
-      timingModel: { method: 'estimate_lib', base: 'sky130_fd_sc_hd__nor3_1', derate: { rise: 0.6 }, reason: 'two parallel PMOS fingers in the pull-up' },
+      name: cell.name, inputs: [...cell.inputs], outputs: ['Y'], functions: { Y: cell.function }, compareTo: cell.compareTo,
+      origin: cell.origin, layout: 'drc-lvs-clean',
       files, sha256: Object.fromEntries(Object.keys(files).map((key) => [key, sha(bytes[key]!)])),
     };
   });
@@ -125,12 +137,13 @@ function roundDelivery(k: number, cells: readonly Cell[], { omitUsage = false, c
   support[`${prefix}/findings.md`] = `# Round ${k} findings\n\nStand-in findings.\n`;
   if (!omitUsage) support[`${prefix}/usage-guide.md`] = `# Round ${k} usage\n\nStand-in usage guide.\n`;
   const fresh = cells.filter((cell) => cell.origin === `r${k}`);
-  for (const cell of fresh) support[`${prefix}/datasheets/${cell.name}.md`] = `# ${cell.name}\n\nStand-in datasheet.\n`;
+  support[`${prefix}/library.md`] = ['| cell | function | vs foundry | factory |', '| --- | --- | --- | --- |',
+    ...fresh.map((cell) => `| ${cell.name} | Y=${cell.function} | ${cell.compareTo} | drc-lvs-clean |`), ''].join('\n');
   const recipe = {
     schema: 'hima-cellfmax-round-recipe/1', round: k, periodNs: 3.6, synthesis: { method: 'orfs-abc' },
     library: { lib: `${prefix}/custom.lib`, lef: `${prefix}/custom.lef`, cells: recipeCells },
     hypothesis: `round ${k}: faster pull-up cells on the rise-critical cones`,
-    report: { findings: `${prefix}/findings.md`, datasheets: fresh.map((cell) => `${prefix}/datasheets/${cell.name}.md`), usage: `${prefix}/usage-guide.md` },
+    report: { findings: `${prefix}/findings.md`, library: `${prefix}/library.md`, usage: `${prefix}/usage-guide.md` },
     agentClaim: { customFmaxMhz: 270.0, controlFmaxMhz: 259.8, gainPct: claimGainPct, runs: [] }, evidence: [],
   };
   return { recipe: `${JSON.stringify(recipe, null, 2)}\n`, support };
@@ -277,11 +290,46 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
     assert.equal((delivery.data as any)?.status, 'verified', JSON.stringify(delivery).slice(0, 4000));
     const release = await act('engineering', { executionId, engineering: { operation: 'release' } });
     assert.equal((release.data as any)?.status, 'released', JSON.stringify(release).slice(0, 2000));
+    // Every record from here on belongs to this round's characterize step, fork and tail.
+    const mark = records().length;
     const done = await act('complete', { executionId }); assert.equal(done.kind, 'accepted', `engineer complete: ${done.reason}`);
-    // Completing the engineer opens the fork; record its branches before they drive themselves to the join.
-    const forkBranches = Object.keys(run().fork?.branches ?? {}).sort();
     const envelope = JSON.parse(await readFile(path.join(taskDirOf(taskId), 'task.json'), 'utf8'));
-    return { executionId, taskId, envelope, delivery: delivery.data as any, rejected, rejectedReason, forkBranches };
+    return { executionId, taskId, envelope, delivery: delivery.data as any, rejected, rejectedReason, mark };
+  };
+
+  /**
+   * After a round reached next-round: the characterize step after the engineer drove itself (only
+   * autopilot turns on its executions), measured `expected` ([name, foundry footprint] per cell)
+   * with the foundry function text, and finished before the fork's first branch record; the custom
+   * arm then ran exactly the measured cells on the measured Liberty. Returns the fork's branches.
+   */
+  const characterized = async (k: number, mark: number, expected: ReadonlyArray<readonly [string, string, string]>) => {
+    const since = records().slice(mark);
+    const at = since.findIndex((rec: any) => rec.type === 'node' && rec.nodeId === 'characterize' && rec.state === 'done');
+    assert.ok(at >= 0, `round ${k}: characterize completed\n${timeline()}`);
+    const firstBranch = since.findIndex((rec: any) => rec.branchId !== undefined);
+    assert.ok(firstBranch > at, `round ${k}: characterize completed (record ${at}) before the fork's first branch record (${firstBranch})\n${timeline()}`);
+    const charExecutions = new Set(Object.values(control().executions).filter((e) => e.nodeId === 'characterize').map((e) => e.id));
+    assert.equal(charExecutions.size, k, `round ${k}: one characterize execution per round`);
+    const turns = Object.values(control().requests).filter((request) => charExecutions.has(request.receipt.executionId ?? ''));
+    assert.ok(turns.some((request) => request.receipt.action === 'complete'), `round ${k}: characterize completed through a control turn`);
+    assert.deepEqual([...new Set(turns.map((request) => request.origin))], ['autopilot'],
+      `round ${k}: every characterize turn is the autopilot's: ${JSON.stringify(turns.map((t) => [t.receipt.action, t.origin]))}`);
+    const names = expected.map(([name]) => name);
+    const record = JSON.parse(await readFile(path.join(workspace, 'state/characterization.json'), 'utf8'));
+    assert.equal(record.round, k);
+    assert.deepEqual(record.measuredNames, names, `round ${k}: the characterize step measured the round's cells`);
+    assert.deepEqual(record.cells.map((row: any) => [row.name, row.status, row.footprint]),
+      expected.map(([name, footprint]) => [name, 'measured', footprint]));
+    assert.equal(record.measuredLib, `runs/r${k}/char/custom.measured.lib`);
+    const job = JSON.parse(await readFile(path.join(workspace, `runs/r${k}/char/job.json`), 'utf8'));
+    assert.deepEqual(job.cells.map((cell: any) => [cell.name, cell.footprint, cell.functions.Y]), expected,
+      `round ${k}: drop-in variants take the foundry footprint and function text`);
+    const armCustom = JSON.parse(await readFile(path.join(workspace, 'state/arm-custom.json'), 'utf8'));
+    assert.deepEqual(armCustom.customCells, names, `round ${k}: the custom arm ran the measured cells`);
+    assert.equal(armCustom.sources['custom.measured.lib'], sha(await readFile(path.join(workspace, record.measuredLib))),
+      `round ${k}: the custom arm merged the measured Liberty`);
+    return [...new Set(since.map((rec: any) => rec.branchId as string | undefined).filter((id) => id !== undefined))].sort();
   };
 
   /** The owner's decision at next-round, citing exactly the evidence the Harness names. */
@@ -306,15 +354,20 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
       .map((r: any) => `${((Date.parse(r.at) - t0) / 1000).toFixed(1)}s ${r.type} ${r.nodeId ?? r.job?.name ?? ''} ${r.state ?? r.event ?? ''}`).join('\n');
   };
 
-  return { owner, runId, workspace, context, run, records, act, reach, doneNodes, latestValues, verdicts, engineer, decide, failure, timeline, phaseOf };
+  return { owner, runId, workspace, context, run, records, act, reach, doneNodes, latestValues, verdicts, engineer, characterized, decide, failure, timeline, phaseOf };
 }
 
 const AUTOPILOT_HEAD = ['bind-inputs', 'baseline', 'read-baseline', 'check-baseline'];
 const ROUND_TAIL = ['arms-joined', 'compare-round', 'read-round', 'check-round', 'read-round-goal', 'judge-round'];
 const ARMS = ['arm-custom', 'read-arm-custom', 'arm-control', 'read-arm-control'];
 
-const NOR3: Cell = { name: 'NOR3_PU2', origin: 'r1', inputs: ['A', 'B', 'C'] };
-const NAND2: Cell = { name: 'NAND2_PD2', origin: 'r2', inputs: ['A', 'B'] };
+const NOR3: Cell = { name: 'NOR3_PU2', origin: 'r1', inputs: ['A', 'B', 'C'], function: '!(A|B|C)', compareTo: 'sky130_fd_sc_hd__nor3_1' };
+const NAND2: Cell = { name: 'NAND2_PD2', origin: 'r2', inputs: ['A', 'B'], function: '!(A&B)', compareTo: 'sky130_fd_sc_hd__nand2_1' };
+// What characterize hands the measurement for each cell: [name, footprint, function], both taken
+// from the fixture platform Liberty's foundry cell the drop-in variant compares to.
+const NOR3_MEASURED = ['NOR3_PU2', 'sky130_fd_sc_hd__nor3', '(!A&!B&!C)'] as const;
+const NAND2_MEASURED = ['NAND2_PD2', 'sky130_fd_sc_hd__nand2', '(!A) | (!B)'] as const;
+const FORK = ['arm-control', 'arm-custom'];
 
 // Group `cellfmax-dry` (on demand, not `local`): on this Mac a Run of either scenario intermittently
 // stalls in a fork round with the next launch never recorded (2 of ~10 runs, both files at the same
@@ -353,10 +406,10 @@ test('cellfmax dry path: two rounds drive the whole graph and end goal-met at a 
       assert.equal(await readFile(path.join(r.workspace, rel), 'utf8'), round1.support[rel], `${rel} materialized in the Campaign`);
     }
     assert.equal(await readFile(path.join(r.workspace, 'state/round-recipe.json'), 'utf8'), round1.recipe, 'the result lands at the produces path');
-    assert.deepEqual(e1.forkBranches, ['arm-control', 'arm-custom'], 'completing the engineer opened the two-arm fork');
     await r.reach('next-round');
+    assert.deepEqual(await r.characterized(1, e1.mark, [NOR3_MEASURED]), FORK, 'the measured characterize step opened the two-arm fork');
     const doneR1 = r.doneNodes();
-    for (const node of [...ARMS, ...ROUND_TAIL]) assert.ok(doneR1.includes(node), `${node} drove itself in round 1: ${doneR1.join(' ')}`);
+    for (const node of ['characterize', ...ARMS, ...ROUND_TAIL]) assert.ok(doneR1.includes(node), `${node} drove itself in round 1: ${doneR1.join(' ')}`);
     const arms = JSON.parse(await readFile(path.join(r.workspace, 'state/arm-custom.json'), 'utf8'));
     assert.deepEqual(arms.customInstances, { NOR3_PU2: 7 });
     const control = JSON.parse(await readFile(path.join(r.workspace, 'state/arm-control.json'), 'utf8'));
@@ -395,6 +448,7 @@ test('cellfmax dry path: two rounds drive the whole graph and end goal-met at a 
     }
     assert.equal(digest(e2.envelope, 'baselineState'), digest(e1.envelope, 'baselineState'));
     await r.reach('next-round');
+    assert.deepEqual(await r.characterized(2, e2.mark, [NOR3_MEASURED, NAND2_MEASURED]), FORK);
     const g2 = gainPct(TWO_CELLS, STOCK);
     const facts2 = r.latestValues('cellfmax-round');
     assert.equal(facts2.comparison_valid, 1);
@@ -413,13 +467,17 @@ test('cellfmax dry path: two rounds drive the whole graph and end goal-met at a 
     assert.match(summary, /\| 2 \| 3\.6 \| orfs-abc \| 277\.78 \| 259\.79 \|/);
     const lessons = JSON.parse(await readFile(path.join(r.workspace, 'state/lessons.json'), 'utf8'));
     assert.deepEqual(lessons.rounds.map((round: any) => [round.round, round.roundGainPct, round.roundImproved]), [[1, g1, true], [2, g2, true]]);
-    // Every EDA call went to the stand-in through the Jobs' PATH: one image check, three ORFS runs a
-    // round pair (baseline, then custom and control each round) and one cell image per new cell.
+    // Every EDA call went to the stand-in through the Jobs' PATH: one image check, one characterize
+    // container a round (calibrating only in round 1), three ORFS runs a round pair (baseline, then
+    // custom and control each round) and one cell image per new cell.
     const calls = (await readFile(home.podmanLog, 'utf8')).trim().split('\n').map((line) => JSON.parse(line) as string[]);
     const variants = calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('orfs_arm.sh')))
       .map((argv) => argv.find((w) => w.startsWith('CELLFMAX_VARIANT='))).sort();
     assert.deepEqual(variants, ['CELLFMAX_VARIANT=base', 'CELLFMAX_VARIANT=control', 'CELLFMAX_VARIANT=control', 'CELLFMAX_VARIANT=custom', 'CELLFMAX_VARIANT=custom']);
     assert.equal(calls.filter((argv) => argv[0] === 'image').length, 1);
+    assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('/characterize.py'))).length, 2, 'one characterize container a round');
+    const calibration = JSON.parse(await readFile(path.join(r.workspace, 'runs/calibration/calibration.json'), 'utf8'));
+    assert.match(calibration.firstJob, /\/runs\/r1\/char\/job\.json$/, 'calibrated once, in round 1');
     assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('klayout'))).length, 2, 'one KLayout image per new cell');
     t.diagnostic(`round gains ${g1} % then ${g2} %; run ${r.runId} ended ${r.run().status}`);
   } finally {
@@ -434,9 +492,10 @@ test('cellfmax dry path: rounds that add nothing end converged on the owner\'s d
     const r = await openRun(host, home, { target_fmax_gain_pct: 5 });
     const recommendations: unknown[] = [];
     for (let k = 1; k <= 4; k += 1) {
-      const inert: Cell = { name: `NOR3_SLOW_R${k}`, origin: `r${k}`, inputs: ['A', 'B', 'C'] };
-      await r.engineer(k, roundDelivery(k, [inert], { claimGainPct: 3 }));
+      const inert: Cell = { ...NOR3, name: `NOR3_SLOW_R${k}`, origin: `r${k}` };
+      const { mark } = await r.engineer(k, roundDelivery(k, [inert], { claimGainPct: 3 }));
       await r.reach('next-round');
+      assert.deepEqual(await r.characterized(k, mark, [[inert.name, NOR3_MEASURED[1], NOR3_MEASURED[2]]]), FORK);
       const facts = r.latestValues('cellfmax-round');
       assert.equal(facts.comparison_valid, 1, `round ${k}`);
       assert.equal(facts.custom_adopted, 0, `round ${k}`);

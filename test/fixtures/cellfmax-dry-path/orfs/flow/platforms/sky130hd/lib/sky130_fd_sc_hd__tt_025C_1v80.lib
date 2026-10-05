@@ -1,11 +1,23 @@
 library (sky130_fd_sc_hd__tt_025C_1v80) {
     delay_model : "table_lookup";
     time_unit : "1ns";
-    cell ("sky130_fd_sc_hd__nor3_1") {
-        area : 6.256;
+    cell ("sky130_fd_sc_hd__nand2_1") {
+        area : 3.7536;
+        cell_footprint : "sky130_fd_sc_hd__nand2";
         pg_pin ("VGND") { pg_type : "primary_ground"; voltage_name : "VGND"; }
         pg_pin ("VPWR") { pg_type : "primary_power"; voltage_name : "VPWR"; }
         pin ("A") { direction : "input"; capacitance : 0.0023; }
-        pin ("Y") { direction : "output"; function : "(!A)"; }
+        pin ("B") { direction : "input"; capacitance : 0.0023; }
+        pin ("Y") { direction : "output"; function : "(!A) | (!B)"; }
+    }
+    cell ("sky130_fd_sc_hd__nor3_1") {
+        area : 6.256;
+        cell_footprint : "sky130_fd_sc_hd__nor3";
+        pg_pin ("VGND") { pg_type : "primary_ground"; voltage_name : "VGND"; }
+        pg_pin ("VPWR") { pg_type : "primary_power"; voltage_name : "VPWR"; }
+        pin ("A") { direction : "input"; capacitance : 0.0023; }
+        pin ("B") { direction : "input"; capacitance : 0.0023; }
+        pin ("C") { direction : "input"; capacitance : 0.0023; }
+        pin ("Y") { direction : "output"; function : "(!A&!B&!C)"; }
     }
 }
