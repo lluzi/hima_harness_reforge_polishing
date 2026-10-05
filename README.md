@@ -24,7 +24,7 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 Site/Channel、工具、模型任务和驻场工程；DBOS 负责持久执行与恢复，应用数据库保存权限、
 结果和交接事实，Ledger 保留历史投影。暂停、取消和消息先持久记录，再由实际 effect 核对。
 旧活动 Run 不热迁移；本地安装、退出、备份与恢复边界见[本地运行说明](docs/operations/local-runtime.md)。
-候选尚在完整 App/ATCS 验收中，历史发布不代表本轮完成。
+本轮已生成 [Mac 普通试用发布候选](docs/assessment/dbos-atcs-migration/mac-trial-release.md)与 ATCS 0.4 方法封板。真实 ATCS 已完成业务与交付，Timing 仍有 Setup 残余；最终用户签收待取得。历史发布不代表本轮资格。
 
 ## 本地准备
 

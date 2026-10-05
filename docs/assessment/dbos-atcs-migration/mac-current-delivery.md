@@ -2,7 +2,9 @@
 
 本轮依用户要求只交付 Mac 可运行的重点业务，不要求 Linux 版。
 
-## 可运行候选
+当前普通试用发布为 [Mac trial release](mac-trial-release.md)，App/Pack 封板已生成；用户最终签收待取得。下列 Mac11 为此前内部候选，保留其原资格与限制。
+
+## 前一内部可运行候选（Mac11，历史资格）
 
 - Mac11 App：`.hima-tmp/dbos-migration/u9/candidate-mac-11/HimaHarness.app`。
 - 普通启动入口：同目录 `launch-hima-trial.command`；模型认证沿用已有环境变量，不包含密钥。

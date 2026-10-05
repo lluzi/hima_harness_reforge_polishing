@@ -1,0 +1,152 @@
+{
+  "schema": "hima.dbos-atcs-mac-publication/1",
+  "recordedAt": "2026-10-05T09:36:02.154219+00:00",
+  "status": "local trial publication prepared; final human acceptance pending",
+  "candidate": {
+    "path": ".hima-tmp/dbos-migration/u10/mac-release-02/HimaHarness.app",
+    "launcher": ".hima-tmp/dbos-migration/u10/mac-release-02/launch-hima-trial.command",
+    "version": "0.3.0-trial.35",
+    "sourceSha": "fd9cb10c979544394305669f33a9d5a913762c6c",
+    "purpose": "trial-release",
+    "artifactDigest": "dfae0348263ca07c043f3a8386088ac9790a8e44fbf63750d08a24e7615e83db",
+    "manifestSha256": "d6fae9494811095618bed3b518a3eb598f8cf1c32fb30b9ca60ca5734c661230",
+    "cleanTrackedSource": true,
+    "githubReleaseOrPublicAssetUpload": false
+  },
+  "pack": {
+    "id": "agentic-timing-closure-system",
+    "version": "0.4.0",
+    "methodDigest": "ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e",
+    "stage": "released",
+    "contractStatus": "development",
+    "releaseRun": "run-c3d71089-6450-49f2-8db1-98c5c4c6d8f5",
+    "purpose": "test",
+    "ending": "ended-goal-not-met",
+    "nativeSealFiles": 354,
+    "versionSealSha256": "75f3a49664a5382244d129c0a0905f6d404763d39dc3c39b7c3a2a9bcb6134b1",
+    "ordinaryToolCheckAndRelease": true,
+    "sameRunAfterUpgrade": true,
+    "newBusinessJobsDuringSealing": 0,
+    "falseEndingRefusedWithoutSeal": true,
+    "retainedHome": ".hima-tmp/dbos-migration/u10/publication/home",
+    "sealMeans": "method integrity and local integration, not new commercial EDA effectiveness"
+  },
+  "checks": {
+    "packagerNativeVerification": {
+      "exitCode": 0,
+      "log": ".hima-tmp/dbos-migration/u10/publication/evidence/package-2.log"
+    },
+    "desktop": {
+      "commandExitCode": 0,
+      "seconds": 17.29,
+      "scope": "isolated test Home, old-Home refusal, preparation, normal quit and reopen",
+      "singleAppIsolation": "NOT_QUALIFIED: customer-demo-kit App PID11056 was already running",
+      "preflightWasNotHonoredBeforeLaunch": true,
+      "currentAttemptCountsAsIsolatedGuiAcceptance": false,
+      "ownedAppSurvivorsAfterCommand": 0,
+      "foreignAppPreserved": true,
+      "priorQualification": "Mac11 lifecycle and original source32a normal independent ATCS GUI journey retain their exact identities",
+      "log": ".hima-tmp/dbos-migration/u10/publication/evidence/desktop.log"
+    },
+    "nativeObligations": {
+      "qualification": "technical-obligations-qualified-for-stated-scope",
+      "rawUnresolved": 1,
+      "effectiveUnresolved": 0,
+      "reportSha256": "78bc4dfe1789a7fde31be835f1ba734bb5da99fbb9fd37d51da66601bfcbeb6d",
+      "scope": "accepted fixed source/notice/rebuild/replacement materials bound to final native bytes; not legal clearance or commercial signing"
+    }
+  },
+  "packCheckRepair": {
+    "commit": "5090a8ac21e915aa7853bd0e14c90057d0b8bec8",
+    "reproduced": "PG ended TEST Run was compiled/unfit because tool/command read stale Ledger status",
+    "red": {
+      "pass": 0,
+      "fail": 1,
+      "seconds": 3.453
+    },
+    "canonicalCurrent": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "seconds": 11.983,
+      "hostProcess": 1,
+      "hostInProcess": 3,
+      "ssh": 0
+    },
+    "applicableHistoricalChecks": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "seconds": 6.116
+    },
+    "retainedHistoricalProbeFailure": "one additional old /hima run fixture failed at the legacy interface under forced HIMA_TEST_LEGACY_AUTO_DRIVE=0 before entering the new Pack check; original 3PASS/1FAIL kept",
+    "buildTypesSeamsBoundary": "PASS",
+    "simplification": {
+      "reuseApplied": 0,
+      "qualityApplied": 0,
+      "efficiencyApplied": 1,
+      "scope": "early non-durable return avoids duplicate legacy folder traversal"
+    },
+    "codeReview": {
+      "status": "complete",
+      "verdict": "Ready to merge",
+      "findings": 0,
+      "path": "/tmp/compound-engineering-502/ce-code-review/20261005-021516-9030c24b/review.json"
+    }
+  },
+  "evidenceReuseAndFailures": {
+    "originalRealU10Unmodified": true,
+    "originalCampaignPurposeNotRelabeled": true,
+    "originalGoalMet": false,
+    "originalSetupRemaining": 18,
+    "originalHoldRemaining": 0,
+    "broaderUnknown": 4,
+    "physicalAdoption": "NOT_PROVEN",
+    "newPublicationTest": "five complete local residual Tasks; native/model stand-ins, no model API/SSH/EDA/GUI",
+    "originalCodeNormalDrainBeforeUpgrade": true,
+    "versionGuardRefusalRetained": true,
+    "toolPreparationFailuresRetained": "initial PG prefix did not match its build manifest; retry used the original verified build prefix; one original-package test-loader preparation failed, repaired in a private copy; repeated finalized exit request refused",
+    "originalU8EvidenceUnmodified": true
+  },
+  "models": {
+    "implementation": "gpt-6.1-sol / medium",
+    "diagnosisReview": "gpt-6.1-sol / high",
+    "fixedOperations": "Root inline",
+    "externalClaude": false,
+    "productModelCalls": 0,
+    "developmentTokenUsage": "not measured"
+  },
+  "remaining": [
+    "User final business acceptance",
+    "Latest desktop command is not evidence of a clean single-App GUI run; foreign demo remains untouched"
+  ],
+  "deferredByUser": [
+    "Linux",
+    "whole legacy corpus",
+    "extra platform/user-account coverage"
+  ],
+  "sealedOrdinaryCampaign": {
+    "purpose": "campaign",
+    "status": "ended-goal-not-met",
+    "packDigest": "ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e",
+    "runId": "run-e5cf07c4-bb3f-43c5-99cb-4ea26621669a",
+    "newEngineeringStarts": 1,
+    "readerJobs": 1,
+    "goalMet": false,
+    "broaderUnknown": 4,
+    "deadlineWorkflow": "SUCCESS",
+    "productModelCalls": 0,
+    "sshCalls": 0,
+    "edaCalls": 0,
+    "exitCode": 0,
+    "seconds": 17.819,
+    "hostInProcess": 1,
+    "compiledLibraryBinding": {
+      "files": 163,
+      "differences": [],
+      "scope": "canonical Host code bytes equal ordinary frozen Mac trial; stand-in dependencies differ from GUI/real EDA"
+    },
+    "actualGuiOrCommercialEda": false,
+    "evidence": ".hima-tmp/dbos-migration/u10/sealed-route/evidence"
+  }
+}

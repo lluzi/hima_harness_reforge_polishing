@@ -162,9 +162,10 @@
     "before/after setup and hold raw reports"
   ],
   "remainingPlanWork": [
-    "Current Mac11 is a runnable internal candidate; ordinary release/Pack seal and human final acceptance remain separate",
-    "Linux and extra-account/native-hardware qualification deferred by directuser instruction",
-    "Old-corpus claims remain follow-up; directly relevant genuine reliability/asset failures remain required fixes"
+    "Final user business acceptance remains pending",
+    "Latest desktop command passed but was not a clean single-App GUI acceptance; original qualified scopes retain their identities",
+    "Linux and extra-account/native-hardware qualification deferred by direct user instruction",
+    "Old-corpus claims remain follow-up; directly relevant reliability and asset failures remain required fixes"
   ],
   "humanFinalAcceptance": "NOT_OBTAINED",
   "limits": [
@@ -326,5 +327,14 @@
       ],
       "originalTimingGoal": "NOT_MET unchanged"
     }
+  },
+  "macTrialPublication": {
+    "record": "actual-run/mac-trial-publication.json",
+    "candidateSourceSha": "fd9cb10c979544394305669f33a9d5a913762c6c",
+    "candidateArtifactDigest": "dfae0348263ca07c043f3a8386088ac9790a8e44fbf63750d08a24e7615e83db",
+    "normalAppPackSealPrepared": true,
+    "humanFinalAcceptance": "NOT_OBTAINED",
+    "latestSingleAppGuiAttempt": "NOT_QUALIFIED; foreign demo App present",
+    "issueU10": "OPEN"
   }
 }
