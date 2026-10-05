@@ -15,3 +15,5 @@
 结论：U9 Mac 开发及技术资格完成，按用户授权关单。Linux 构建/安装/升级/平台报告/硬件/桌面要求从 U9/U10 移除，历史资料保留。U10 继续承担普通 App/Pack 发布封板和最终业务验收；Goal false、UNKNOWN 和 LIMITED 不变。
 
 证据：[原生资格](U9-native-qualification.md)、[源码契约](current-source-contracts.md)、[当前 Mac 交付](mac-current-delivery.md)、[Mac11 身份](actual-run/mac11-root-qualification.json)、[当前 ATCS 字节绑定](actual-run/mac11-atcs-current-code-qualification.json)。
+
+GitHub verification: U9 #92 CLOSED at `2026-10-05T08:52:27Z`; U10 #93 remains OPEN with Mac-only closure criteria.

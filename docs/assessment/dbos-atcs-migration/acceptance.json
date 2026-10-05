@@ -311,7 +311,10 @@
       "scope": "Mac only",
       "developmentAndTechnicalQualification": "COMPLETE",
       "closeAuthorized": true,
-      "linuxRequirements": "removed from checklist and closure criteria"
+      "linuxRequirements": "removed from checklist and closure criteria",
+      "issueState": "CLOSED",
+      "closedAt": "2026-10-05T08:52:27Z",
+      "issueUrl": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/92"
     },
     "U10": {
       "scope": "Mac App/ATCS only",
