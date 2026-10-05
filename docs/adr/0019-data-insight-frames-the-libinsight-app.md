@@ -27,3 +27,13 @@ status: accepted
 - 需要本机 Python ≥ 3.9 与 numpy（默认 `python3`，可用 `HIMA_LIBINSIGHT_PYTHON` 指定）。
 - LibInsight 的 Analysis runs 页面在其进程内运行本地分阶段分析，它们不是 HimaHarness Run，不进入 Ledger/DBOS。
 - Guide 尚不能读取 iframe 内当前选中的 cell、图表或 finding；AI 联动需要 LibInsight 提供受控的选择/上下文接口后再接入。
+
+验证（2026-10-05）：
+
+- L2 `test/contract/libinsight-viewer.test.ts`：启动/复用/重启后沿用文件夹与端口、无凭据环境、失败输出、
+  进程意外退出、并发打开只起一个进程、启动中停止不留进程。
+- L3 `test/contract/unified-workbench.test.ts`（Catsights）：iframe 自身文档渲染、Host cookie 不到达 viewer、
+  切换 Campaign 后不重载、Retained reports 往返、选择器无结果时可输入路径并切换数据文件夹。
+- 打包 App（trial.38 发现选择器返回空时按钮无反应，trial.39 修复）：真实 `lib_insight/data`（TSMC28 180a 等）
+  的 Health/Overall map、Capability、Working range heatmap 在 Data Insight 内呈现，退出 App 后 viewer 进程随之结束。
+  截图在 `.hima-tmp/libinsight-embed/kit-li-*/screenshots/`（不入 Git）。
