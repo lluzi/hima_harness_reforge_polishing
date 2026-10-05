@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-05T06:39:25.773511+00:00",
+  "candidateSource": "d02c7d0f9024a39a560375bc17a9d3f7525dbf43",
+  "productSourceDigest": "2040ddab0233499131fd4192a5f3113fea086ecf4f4688f9e2723cdaf4a418be",
+  "artifactDigest": "cdedf9e5d5b55748ed244acb203e94abd34244bdd777e12b478617bf0267c97a",
+  "pairedManifestSha256": "ba9269b2eb04771a1da5eb8ec9346ef4847506b1dc3ecffb2b0a28c573cf3812",
+  "buildAndRelocatedHostSmoke": "PASS",
+  "desktopVerification": {
+    "exitCode": 0,
+    "elapsedSeconds": null,
+    "scope": "existing isolated Home/oldHome refusal/local preparation/normal quit/reopen checks",
+    "operator": "Root fixed script, no subagent",
+    "secondsNotMeasured": true
+  },
+  "nativeObligationsReport": {
+    "path": ".hima-tmp/dbos-migration/u9/candidate-mac-10/final-native-obligations.json",
+    "sha256": "df047093ed2a0ca08d7e6415805f9de464b0b4a0a03b644bbe3ad258af04c8a6",
+    "commandExitCode": 0,
+    "qualification": "technical-obligations-qualified-for-stated-scope",
+    "rawUnresolvedCount": 1,
+    "effectiveUnresolvedCount": 0,
+    "scope": "same accepted exact native bytes/source/notice/replacement evidence; no new library rebuild or legal clearance"
+  },
+  "businessProofBoundary": "actual ATCS used immutable source32a Mac08; this changed-surface qualification invokes no new model or EDA",
+  "exactCandidateExecutableProcessProbe": {
+    "pids": [],
+    "scope": "executables physically beneath exact candidate App path; no separately retained transient Home PG identity"
+  },
+  "nonAdministratorOrHumanAcceptance": "NOT_PROVEN"
+}

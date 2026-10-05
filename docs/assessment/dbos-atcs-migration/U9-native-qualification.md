@@ -72,3 +72,13 @@ node scripts/package-trial.mjs --finalize-native-obligations /actual/native/arti
 使用原已审查 native support packet 产生新的外部 `final-native-obligations.json`：raw1/effective0，1275对应源码文件，完整原生文件桥接核验通过。未重复改源码重建库，未改动任何 App/manifest 字节。技术资格不声明 legal clearance、商业签名或新非管理员安装。
 
 本次没有调用产品模型、EDA 或新 ATCS Campaign。实际工程与普通 App 交付证明仍对应原 source32a Mac08；Mac09 的行为增量由定点 Host/PG/权限检查和上述分发验证覆盖。Linux 最新已测分发物仍为 source32a，不把 Mac09 资格移用到 Linux。证据：`packaging/mac09.log`、`mac09-desktop.log`、`mac09-root-qualification.json` 及候选 paired manifest/外部报告。
+
+## Mac10 当前源码分发
+
+新增不可变 Mac10，source `d02c7d0f9024a39a560375bc17a9d3f7525dbf43`，包含 `5cca505d` 的当前 Campaign 知识读取修复。artifactDigest `cdedf9e5d5b55748ed244acb203e94abd34244bdd777e12b478617bf0267c97a`，paired manifest SHA256 `ba9269b2eb04771a1da5eb8ec9346ef4847506b1dc3ecffb2b0a28c573cf3812`。App 位于 `.hima-tmp/dbos-migration/u9/candidate-mac-10/HimaHarness.app`；它仍是内部候选，未正式发布。
+
+打包时从该源码重新编译入口，实际搬移后的 Host/Pack 检查和既有桌面隔离 Home、旧 Home 拒绝、当地 Site 准备、正常退出/reopen 检查通过。桌面命令 exit0，耗时未单独测量；不借用 Mac09 的时间。退出后精确候选路径下的可执行进程为零，未另存桌面临时 Home 的每个 PG 身份。没有新的非管理员账户或用户本人签收证据。
+
+最终原生义务报告 raw1/effective0，按此前已接受的原生字节、源码/通知、实际修改库重建与替换证据核对新产物；没有重复构建未变化的第三方库，也不声明正式法律意见。报告路径 `candidate-mac-10/final-native-obligations.json`，摘要与身份见 [mac10-root-qualification.json](actual-run/mac10-root-qualification.json)。真实 ATCS 仍对应 source32a Mac08；本次没有调用产品模型或 EDA。Linux 新候选资格单列，不能借用此 Mac 结论。
+
+随后 Guide 的真实 Host 夹具复现了另一条退出竞态：已接受的原生 keep-jobs 请求在报告写入期间返回 ready:false，`host-launch.ts` 立即拒绝而未等待边界。这不改写上述已测检查的 PASS；该场景及后续修复的分发资格仍待完成。原失败见 `u9/guide-read-fixtures/evidence/failed-native-closure.json`。
