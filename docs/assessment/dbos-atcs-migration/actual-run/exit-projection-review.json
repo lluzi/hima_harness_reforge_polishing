@@ -1,0 +1,75 @@
+{
+  "status": "complete",
+  "verdict": "ACCEPT",
+  "completed_at": "2026-10-05T02:41:24Z",
+  "scope": {
+    "base": "e7a777e70b67372b3b39074b5f17f2f49d785e91",
+    "target": "private four-file candidate",
+    "workspace": ".hima-tmp/dbos-migration/u10/exit-projection/workspace",
+    "files_changed": 4,
+    "patch_sha256": "f2b9154572f908b5ae2169f668128f88aff65d623a5829234e1a80de81449163",
+    "file_sha256": {
+      "packages/harness/src/task-effects.ts": "3767d5f733a3ea91aac13ee7c9decb1121a50da3ce0f7a1953eb2904d53a682e",
+      "packages/harness/src/durable-views.ts": "325f0f317e6aba08735f74a6f8bbf690f4e8311c0c8146423fccef6cec1b49b7",
+      "test/contract/durable-views.host.test.ts": "3dface08d239663be570671168402e94a9b7c5dbcfbfc1f45b83d26045dbdf67",
+      "test/contract/support/durable-views-worker.ts": "ade1f21b694820e37940b9f9dfe06424c6ea4d7400d643e737577959e1513d3e"
+    }
+  },
+  "intent": "Preserve an actually observed command Job exit number through the existing failure fact and durable public Job projection; historical missing metadata remains absent.",
+  "model_allocation": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "route": "parent-dispatched native Codex reviewer",
+    "fresh_context": true,
+    "claude": false,
+    "recursive_workers": false
+  },
+  "findings": [],
+  "actionable_findings": [],
+  "coverage": {
+    "source": [
+      "task-effects.ts failure observation/persistence/command adapter",
+      "durable-views.ts Job fact projection",
+      "existing Job state and strict identity/record contracts",
+      "immutable PG facts and snapshot replay",
+      "remote HTTP/Run views, jobView, UI exit consumers",
+      "focused test fixture identity/readiness/cleanup"
+    ],
+    "identity": "private files, base files and patch SHA256 independently matched retained source-identities.json",
+    "test_execution": "retained logs inspected; no rerun",
+    "depth": "single independent scoped correctness review; no cross-model or recursive dispatch"
+  },
+  "evidence": {
+    "red": {
+      "pass": 0,
+      "fail": 1,
+      "duration_ms": 3818.650125,
+      "failure": "stored observed exit metadata: undefined !== 7"
+    },
+    "green_final": {
+      "pass": 1,
+      "fail": 0,
+      "duration_ms": 4839.786333
+    },
+    "nearest_regression": {
+      "pass": 4,
+      "fail": 0,
+      "duration_ms": 11255.788917
+    },
+    "private_build_types": "PASS reported and logs inspected; build exit statuses retained only in result.md",
+    "compiled_private_modules": "metadata changes confirmed",
+    "resource_closure": "retained record reports zero owned workers/runners; cleanup source inspected; no fresh inventory"
+  },
+  "limits": [
+    "No reviewer test rerun or live probe",
+    "L3-L5 not established by this review",
+    "No claim of whole U10 or whole migration plan PASS",
+    "Restart recovery of the exact new field not separately exercised",
+    "Canonical integration/checks/commit/push/remote SHA owned by parent"
+  ],
+  "mutations": [
+    ".hima-tmp/dbos-migration/u10/exit-projection/review.md",
+    ".hima-tmp/dbos-migration/u10/exit-projection/review.json"
+  ],
+  "artifact_path": ".hima-tmp/dbos-migration/u10/exit-projection/review.md"
+}

@@ -1,0 +1,46 @@
+{
+  "scope": "canonical exact4file review binding and post-integration deterministic Host/PG proof",
+  "base": "e7a777e70b67372b3b39074b5f17f2f49d785e91",
+  "canonicalMatchesReviewedFiles": true,
+  "build": {
+    "exitCode": 0,
+    "seconds": 2.7062
+  },
+  "red": "author retained actual exit7 missing structured metadata, 1FAIL; not rerun by root",
+  "focused": {
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 4.142748,
+    "actualExit7": true,
+    "exit0Preserved": true,
+    "missingHistoricalCodeStaysUnknown": true
+  },
+  "nearestRegressions": {
+    "pass": 4,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 9.993985
+  },
+  "fullTypes": {
+    "exitCode": 0
+  },
+  "seams": {
+    "exitCode": 0
+  },
+  "boundary": {
+    "exitCode": 0
+  },
+  "diffCheck": {
+    "exitCode": 0
+  },
+  "review": "ACCEPT independent scoped Sol/high",
+  "productModelCalls": 0,
+  "edaJobs": 0,
+  "liveSiteCalls": 0,
+  "limits": [
+    "no original source32a App/Run/history rewritten",
+    "no new GUI or whole migration acceptance implied",
+    "PG fact field uses optional JSON metadata; no schema migration"
+  ]
+}

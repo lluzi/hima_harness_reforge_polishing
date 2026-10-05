@@ -1,9 +1,34 @@
 # ATCS 0.4 verification
 
+## Actual U10, 2026-10-05
+
+The source32a frozen macOS App completed one real DeepSeek/OpenCode/XTop Run through its ordinary
+installation, Site/input preparation, five automatic Tasks, artifact viewing/downloading and normal
+Quit. Run `run-e7ed880e-5d24-44b8-9b92-0e72bd63129d`; Pack digest
+`ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e`.
+The first Reader rejected malformed fact arrays; the same native session corrected its delivery
+without restarting engineering. The second Reader passed; assessment, report and archive completed.
+
+Goal was **not met**. Relative to common R1, hold109/−0.1523/−4.7021 became0/0/0;
+setup28/−0.038/−0.2306 became18/−0.0237/−0.0973 (count/WNS/TNS,ns). Native evidence is
+prediction-only; four global collateral checks and regression remain UNKNOWN. No independent
+AutoFix comparison or physical signoff is claimed. Checkpoint, ECO, scripts, raw Timing and
+reproduction instructions were actually opened; downloaded files matched their visible hashes.
+
+Independent Codex medium operated the normal App; no developer rescue or manual completion was
+used. Guide source-search drift was stopped without consuming implementation output; setup and
+transient report/UI errors are recorded. Root separately verified all seven recorded remote Jobs,
+native ownership/container and local App/Host/PG children closed after normal Quit. Human final
+acceptance is pending. Detailed identities, four verdicts and retained evidence are in
+`docs/assessment/dbos-atcs-migration/README.md` and its JSON records. Post-run source fixes have
+their own low-layer evidence and do not change the tested App identity. Platform and normal release
+eligibility remain incomplete; this document does not manufacture a VERSION seal.
+
 ## Site
 
-Private synthetic local Site only. The ordinary resident wrapper and ACP protocol run against a
-local vendor stand-in; no model API, SSH, commercial EDA or GUI acceptance is claimed here.
+The actual U10 used the already declared linglong-atcs28 Site and current four-scenario postroute
+inputs. The earlier U8 cases below used a private synthetic local Site: the ordinary resident wrapper
+and ACP protocol ran against a vendor stand-in, with no model API, SSH, commercial EDA or GUI.
 
 ## Run
 
@@ -57,6 +82,7 @@ checkpoint trees. Every retained negative has an admitted positive case; UNKNOWN
 
 ## Disagreements
 
-Dry evidence concerns local integration and protocol correctness. Native research quality,
-commercial XTop improvement, installer qualification and final independent App acceptance remain
-separate U9/U10 obligations. No original failed Run or unknown adoption result is rewritten.
+Dry evidence concerns local integration and protocol correctness. The actual U10 evidence above
+concerns its frozen App and best-effort native task. Platform installer qualification and formal
+release eligibility remain separate U9 obligations; wider adoption and human acceptance remain
+unproved. No original failed Run or unknown adoption result is rewritten.

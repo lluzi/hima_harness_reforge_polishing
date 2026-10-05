@@ -1,0 +1,101 @@
+{
+  "status": "complete",
+  "verdict": "ACCEPT",
+  "acceptance_scope": "Exact private three-file bounded U10 read-permit cost candidate; not full U10 acceptance or canonical/App qualification",
+  "base_sha": "b8f63256e45f4b91f769603dd8423f5123c8649e",
+  "candidate_path": ".hima-tmp/dbos-migration/u10/read-permit-cost/workspace",
+  "diff_path": ".hima-tmp/dbos-migration/u10/read-permit-cost/evidence/implementation.patch",
+  "diff_matches_candidate_against_base": true,
+  "requested_model": "gpt-6.1-sol",
+  "requested_effort": "high",
+  "actual_served_model": "unverified; no trustworthy served-model receipt exposed",
+  "reviewers": [
+    "independent permission and data-integrity reviewer"
+  ],
+  "recursive_workers": 0,
+  "external_review": false,
+  "files_changed": [
+    "packages/harness/src/shell.ts",
+    "test/contract/read-permit.test.ts",
+    "test/contract-groups.json"
+  ],
+  "findings": [],
+  "actionable_findings": [],
+  "checks": {
+    "literal_containment_is_ordering_only": true,
+    "tried_roots_freshly_realpath_resolved": true,
+    "all_alias_roots_retained": true,
+    "stable_filesystem_allowed_set_preserved": true,
+    "separator_aware_canonical_containment_unchanged": true,
+    "hash_write_identity_and_runtime_behavior_unchanged": true,
+    "source_matches_built_js_by_inspection": true
+  },
+  "evidence_reviewed": {
+    "red_real": {
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "actual_final_root_realpath_calls": 26
+    },
+    "green_final": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "final_root_realpath_call_bound": 2
+    },
+    "private_typescript_build_exit_code": 0,
+    "focused_typecheck_exit_code": 0,
+    "inventory_files_each_assigned_once": 170,
+    "host_boots": 0,
+    "ssh_subprocess_attempts": 0,
+    "reviewer_reran_tests_or_builds": false
+  },
+  "testing_limits": [
+    "Author receipts inspected; no independent rerun. Integrator owns canonical focused verification.",
+    "Misleading literal hint uses a deterministic resolver fixture; actual symlink tests separately cover alias, in-root link, escape and sequential alias retargeting.",
+    "No active Run, remote latency, full delivery-loop performance, GUI, model, EDA, PostgreSQL, App or full U10 acceptance measured.",
+    "Alias-only and unsuccessful decisions retain worst-case full-root resolution.",
+    "Stable filesystem and fixed permit equivalence; existing mutable-filesystem races remain and no concurrency guarantee is introduced.",
+    "5886 for 218 digests is consistent arithmetic from unchanged hash plus original 26 realpaths, not a reviewer measurement of the active Run."
+  ],
+  "source_hashes_sha256": {
+    "evidence/implementation.patch": "c746993b29e9784bfc162bc65d94a4cb4755b39da6ea13ce18f45b418f11778e",
+    "workspace/packages/harness/src/shell.ts": "ac3f8a9a0b2f4c60c61a5269373727104b9a77d6110591a81b547b334067022b",
+    "base/packages/harness/src/shell.ts": "9aa0ff1aa39ae6d81c4fcfff3332502e8d2d2e11a2f97776fdf74468f5ee74e7",
+    "workspace/test/contract/read-permit.test.ts": "bb23e19b68342cfc34b6f0c52a44141d8765cdf08fd53c9d9f91e0797184814d",
+    "workspace/test/contract-groups.json": "fc51424198e7467d19271ab4bcbd3d7220edf3d42be27acf6fcd2a55c5d5a184",
+    "workspace/packages/harness/lib/shell.js": "1b69e6ef531b02ee3d890d81f4a9911cf0c2ee412ee17a91923eb2f44f9637e6",
+    "evidence/red-real.log": "8ba87259e671576525172a97998517c926a7982785e25c64dc10d559662aef4d",
+    "evidence/green-final.log": "ab96ec671c75925138c339dd28c57007eecbfe47c8609576928f7fdc2ba0adeb"
+  },
+  "mutations": [
+    "review.md",
+    "review.json"
+  ],
+  "canonical_and_active_app_mutated": false,
+  "full_u10_pass_claimed": false,
+  "final_canonical_type_target_addendum": {
+    "verdict": "ACCEPT",
+    "scope": "Three unique type module targets (four references) changed from src to generated lib/types declarations only; same bounded review unit",
+    "exact_replacement_only_verified": true,
+    "runtime_dynamic_import_urls_unchanged": true,
+    "five_test_bodies_unchanged": true,
+    "production_shell_source_unchanged": true,
+    "canonical_test_sha256": "5d0709b98217300159dea027ea80ab62499834b210b26c10ab6e3ab0aa4c66a7",
+    "canonical_shell_source_sha256": "ac3f8a9a0b2f4c60c61a5269373727104b9a77d6110591a81b547b334067022b",
+    "declaration_modules_inspected": [
+      "packages/harness/lib/types/shell.d.ts",
+      "packages/harness/lib/types/sites.d.ts",
+      "packages/harness/lib/types/channel.d.ts"
+    ],
+    "canonical_full_typecheck": {
+      "status": "PASS reported by integrator; not independently rerun or receipt-inspected in addendum",
+      "elapsed_seconds": 8.869,
+      "prior_failure_elapsed_seconds": 9.218,
+      "prior_failure": "TS1294 under test/tsconfig erasableSyntaxOnly via production source type imports"
+    },
+    "new_findings": [],
+    "tests_or_builds_rerun": false,
+    "whole_u10_reassessed": false
+  }
+}

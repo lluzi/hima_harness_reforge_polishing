@@ -1,0 +1,27 @@
+{
+  "scope": "Root independent inspection of one-file fixture diff and canonical actual execution; no product diff",
+  "verdict": "ACCEPT",
+  "testScope": "ended historical Run/document/record/excerpt preservation, not active DBOS or Agent effect recovery",
+  "preserved": [
+    "document/chunk/page/origin/source SHA",
+    "explicit clear true/false",
+    "Pack digest",
+    "same Run and full persisted record",
+    "exact current/retained excerpt before restart and after clear"
+  ],
+  "canonical": {
+    "pass": 4,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 5.810535,
+    "hostInProcess": 3,
+    "ssh": 0,
+    "productModelCalls": 0,
+    "testTypes": 0,
+    "diffCheck": 0
+  },
+  "sourceSha256": "05c7fbe90fc182367b01d745e29c94e4515d2df4974582d805ea8b3ba682a641",
+  "originalBaselineCase": 556,
+  "baseline954NotRelabeled": true,
+  "omittedSameFileCase": "owner-binding case remains unselected/PENDING"
+}

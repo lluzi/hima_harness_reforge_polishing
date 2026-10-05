@@ -1,0 +1,96 @@
+{
+  "schema": "hima.dbos-atcs-evidence-index/1",
+  "retainedLocalRoot": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10",
+  "primaryPublishedFiles": [
+    "README.md",
+    "candidate-manifest.json",
+    "acceptance.json",
+    "actual-run/REPORT.md",
+    "actual-run/report.json",
+    "actual-run/operator-report.md",
+    "actual-run/owned-remote.json",
+    "actual-run/owned-local-after-quit.json",
+    "actual-run/read-permit-remote-observation.json"
+  ],
+  "largeArtifact": {
+    "name": "engineering-artifacts.tar.gz",
+    "bytes": 81317581,
+    "sha256": "3d78c1ea0a87d3864adb367856e052370a97f6e0d8c339bd0ad23b37b724d4ae"
+  },
+  "largeArtifactPath": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/operator/engineering-artifacts.tar.gz",
+  "signedTaskDirectory": "/data/eda/project/hima_harness/atcs-runs/agentic-timing-closure-system-20261005-002400-ad70/.hima-engineering/resident-338f34f133f6cd3acc5e33fb",
+  "diagnoses": [
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/handoff-diagnosis/diagnosis.md",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/handoff-diagnosis/followup-20261005T0114.md",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/handoff-diagnosis/followup-20261005T0143.md",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/handoff-diagnosis/followup-20261005T0203.md"
+  ],
+  "postRunFixEvidence": [
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/read-permit-cost",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u10/exit-projection"
+  ],
+  "nativeQualification": "U9-native-qualification.md",
+  "originalCorpus": "../../../.hima-tmp/dbos-migration/u9/test-corpus/classification.json",
+  "integrity": [
+    {
+      "path": "actual-run/REPORT.md",
+      "sha256": "c33d45da0479ac44758aee40acb08dbdb3e3c865a906fd9378e2bf8e5524b423",
+      "bytes": 1031
+    },
+    {
+      "path": "actual-run/exit-projection-review.json",
+      "sha256": "b8204a6b5811b4eb20ed36ae5622eeed9e659d18e17f808b2f56a6ed47ca4b40",
+      "bytes": 3205
+    },
+    {
+      "path": "actual-run/exit-projection-verification.json",
+      "sha256": "1621c0d37abd71deea6da309721b8181c832ddb939025830db22f60c8a12477b",
+      "bytes": 1108
+    },
+    {
+      "path": "actual-run/knowledge-history-verification.json",
+      "sha256": "cab94d60ea5293af3070235ca7d73e36fbc98bc872f735bdc806c92917c84be2",
+      "bytes": 911
+    },
+    {
+      "path": "actual-run/operator-report.md",
+      "sha256": "dd23c98ca2e73f00a635a2cc93c6d2606020a9900ce2f6e473c6435aec81e408",
+      "bytes": 14582
+    },
+    {
+      "path": "actual-run/owned-local-after-quit.json",
+      "sha256": "59b65550f217a3187a2208d3466911be41b6b1364c0c44c42f1aecdf0202b344",
+      "bytes": 196
+    },
+    {
+      "path": "actual-run/owned-remote.json",
+      "sha256": "0d7245a1f2361b4352753e9238f4fe280580edbf17ea0328f7b5bf924ab9f3e0",
+      "bytes": 2540
+    },
+    {
+      "path": "actual-run/read-permit-observation-closure.json",
+      "sha256": "91c0a5406fdc4736fd17074fad3e6613856b7a763066a4eb040f5da7c8a1c953",
+      "bytes": 140
+    },
+    {
+      "path": "actual-run/read-permit-remote-observation.json",
+      "sha256": "aaf79d3532160351c87ebcbadd79966490b95bbe87d9ecdbd9ac0f08e0e33561",
+      "bytes": 1334
+    },
+    {
+      "path": "actual-run/read-permit-review.json",
+      "sha256": "f4856eeaafb59b733ba04b7d4e6630806c13b879b17602561d0404638e245296",
+      "bytes": 4910
+    },
+    {
+      "path": "actual-run/read-permit-verification.json",
+      "sha256": "539e296907a1c0e19a0ba2c043ac3c616a43caca8300df34481a5d06b47d22cb",
+      "bytes": 2153
+    },
+    {
+      "path": "actual-run/report.json",
+      "sha256": "4a2f565e8591aec3725293f0836e4c2657be71ea043519362e7edcce87a9cc4c",
+      "bytes": 2108
+    }
+  ]
+}

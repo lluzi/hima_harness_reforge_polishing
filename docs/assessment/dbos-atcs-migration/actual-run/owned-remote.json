@@ -1,0 +1,85 @@
+{
+  "observedAt": "2026-10-05T02:18:36.336988+00:00",
+  "scope": "read-only exact recorded jobs/native ownership; no signals/control/global cleanup",
+  "jobs": [
+    {
+      "task": "prepare-inputs",
+      "session": "hima-effect-d019045e4cfb621b3c18f8b7c67cb6d9",
+      "pid": 3401402,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "prepare-baseline",
+      "session": "hima-effect-641db1617d57e8eaa77d8c5cc4b948c4",
+      "pid": 3401690,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "fix-timing",
+      "session": "hima-effect-53c22e645289c37bc972465c05f2cb6e",
+      "pid": 3404880,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "fix-timing:reader-engineeringResult:b09b3fc1ed93cdf521d3f4ef",
+      "session": "hima-effect-1caafdaf87b632f0f64bd61b3f5cad01",
+      "pid": 3478500,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "fix-timing:reader-engineeringResult:f7128283d0e3ccb59a2df3db",
+      "session": "hima-effect-0d26c7c913d405c55a6c42ea16d9949b",
+      "pid": 3587546,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "evaluate-timing",
+      "session": "hima-effect-33115b97bb1f9edd5ec08eaa404aaf7d",
+      "pid": 3658372,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    },
+    {
+      "task": "deliver",
+      "session": "hima-effect-daa4b07202baf0388b260c5f6ade567c",
+      "pid": 3658590,
+      "processes": [],
+      "tmuxReturnCode": 1,
+      "tmuxState": "absent"
+    }
+  ],
+  "owned": {
+    "taskId": "resident-338f34f133f6cd3acc5e33fb",
+    "quiescent": true,
+    "updatedAt": "2026-10-05T02:12:35.674853Z",
+    "sha256": "e69a02de8401f116a390e46845fed81cfdcdba8610ce24b1934d17e860b0fa0c",
+    "processPid": 3404904,
+    "processGroupId": 3404904,
+    "containerId": "86e28ac7517789a7a3a8b54b6de23d3c11e816789f8f7f4ce45ecf3e25b33a25",
+    "signatureValid": true
+  },
+  "state": {
+    "taskId": "resident-338f34f133f6cd3acc5e33fb",
+    "phase": "released",
+    "updatedAt": "2026-10-05T02:12:35.679890Z",
+    "sha256": "3b64333041dc5f3a1c3ffee8e3504882f891d2564bc945252365659c85f4cade",
+    "signatureValid": true
+  },
+  "nativeProcesses": [],
+  "container": {
+    "id": "86e28ac7517789a7a3a8b54b6de23d3c11e816789f8f7f4ce45ecf3e25b33a25",
+    "existsReturnCode": 1,
+    "state": "absent"
+  }
+}

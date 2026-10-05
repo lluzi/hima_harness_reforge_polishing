@@ -1,0 +1,204 @@
+{
+  "schema": "hima.dbos-atcs-migration-acceptance/1",
+  "status": "in-progress",
+  "assessmentDate": "2026-10-05",
+  "scope": "one source32a frozen macOS App + ATCS0.4.0 actual native business run; whole platform/release plan remains incomplete",
+  "runId": "run-e7ed880e-5d24-44b8-9b92-0e72bd63129d",
+  "candidateArtifactDigest": "f3761080797de7cc6d2d85f11eae2f1309514ca68a236d9847b6e043ef92e9a1",
+  "candidateSourceSha": "32a03eb4d8b31454d64525d3465566a17768b72e",
+  "verdicts": {
+    "durableMigration": {
+      "verdict": "PASS",
+      "scope": "tested failure/recovery mechanisms U1-U9 plus this automatic native task handoff, repaired same native session, persisted results, automatic closing and exact owned-process closure; not all platforms or unresolved corpus claims"
+    },
+    "productJourney": {
+      "verdict": "PASS",
+      "qualification": "ordinary installation/preparation/status/artifact opening/saving/normal quit completed; recorded setup friction and Guide source-search drift limit a perfectly isolated journey claim; operator stopped it and used no implementation output or developer rescue"
+    },
+    "timingResult": {
+      "verdict": "GOAL_NOT_MET",
+      "goalMet": false,
+      "outcome": "best-effort",
+      "beforeCommonR1": {
+        "hold": {
+          "tnsNs": {
+            "value": -4.7021
+          },
+          "violations": {
+            "value": 109
+          },
+          "wnsNs": {
+            "value": -0.1523
+          }
+        },
+        "setup": {
+          "tnsNs": {
+            "value": -0.2306
+          },
+          "violations": {
+            "value": 28
+          },
+          "wnsNs": {
+            "value": -0.038
+          }
+        }
+      },
+      "after": {
+        "hold": {
+          "tnsNs": {
+            "value": 0
+          },
+          "violations": {
+            "value": 0
+          },
+          "wnsNs": {
+            "value": 0
+          }
+        },
+        "setup": {
+          "tnsNs": {
+            "value": -0.0973
+          },
+          "violations": {
+            "value": 18
+          },
+          "wnsNs": {
+            "value": -0.0237
+          }
+        }
+      },
+      "collateral": {
+        "regression": {
+          "unknown": "required collateral comparison unknown: capacitance, fanout, legality, transition"
+        },
+        "remaining": {
+          "value": 18
+        },
+        "unknown": {
+          "value": 4
+        }
+      }
+    },
+    "adoptionScope": {
+      "verdict": "LIMITED",
+      "scope": "XTop prediction-only timing; checkpoint/ECO/scripts/raw reports/reproduction materials are delivered",
+      "regression": "UNKNOWN",
+      "collateralUnknownCount": 4,
+      "physicalAdoptionOrSignoff": "NOT_PROVEN"
+    }
+  },
+  "terminal": {
+    "state": "ended-goal-not-met",
+    "fiveTasks": "succeeded",
+    "flowSuccessAt": "2026-10-05T02:14:07.060Z",
+    "deadlineWorkflowSuccessAt": "2026-10-05T02:14:25.384Z",
+    "actualNativeStartCount": 1,
+    "nativeWorkRestarted": false,
+    "operatorOrDeveloperRescue": false,
+    "manualCompletion": false,
+    "automaticRepair": {
+      "firstReaderPhysicalExitCode": 1,
+      "reason": "remaining contained strings; original Reader requires fact objects",
+      "firstReaderPhysicalExitAt": "2026-10-05T01:03:47.522399Z",
+      "repairMessageQueuedAt": "2026-10-05T01:25:08.165Z",
+      "revisedManifestSha256": "4a4f3d2275e3c3af2742479322a359fc249fd65b285ddc61e93b6464e97b4b30",
+      "secondReaderPhysicalExitCode": 0,
+      "secondReaderPhysicalExitAt": "2026-10-05T01:49:16.480008Z",
+      "secondReaderLeaseReleasedAt": "2026-10-05T02:12:28.003Z",
+      "parentLeaseReleasedAt": "2026-10-05T02:12:42.487Z"
+    }
+  },
+  "resources": {
+    "remote": {
+      "verdict": "PASS",
+      "observedAt": "2026-10-05T02:18:36.336988Z",
+      "recordedJobs": 7,
+      "ownedProcesses": 0,
+      "ownedTmuxSessions": 0,
+      "nativeOwnedDescendants": 0,
+      "signedQuiescent": true,
+      "signedPhase": "released",
+      "exactOwnedContainer": "absent"
+    },
+    "local": {
+      "verdict": "PASS",
+      "normalQuit": true,
+      "observedAt": "2026-10-05T02:25:06.971001Z",
+      "ownedAppHostPostgresAndChildren": 0
+    },
+    "noForcedExpensiveJobSignals": true
+  },
+  "files": [
+    {
+      "name": "common-stage.json",
+      "bytes": 74745,
+      "sha256": "fc2b0540e76ac3c413beee5c67961bf2c5ad9acd1981b6ac5d346e3ec0d4aa2c"
+    },
+    {
+      "name": "REPORT.md",
+      "bytes": 1031,
+      "sha256": "c33d45da0479ac44758aee40acb08dbdb3e3c865a906fd9378e2bf8e5524b423"
+    },
+    {
+      "name": "report.json",
+      "bytes": 2108,
+      "sha256": "4a2f565e8591aec3725293f0836e4c2657be71ea043519362e7edcce87a9cc4c"
+    },
+    {
+      "name": "engineering-artifacts.tar.gz",
+      "bytes": 81317581,
+      "sha256": "3d78c1ea0a87d3864adb367856e052370a97f6e0d8c339bd0ad23b37b724d4ae"
+    }
+  ],
+  "actualOpenedMaterials": [
+    "REPORT.md",
+    "report.json",
+    "selected r1final native checkpoint directory",
+    "logical ECO",
+    "physical ECO",
+    "candidate.tcl",
+    "recipe_last_hold.tcl",
+    "REPRODUCE.md",
+    "before/after setup and hold raw reports"
+  ],
+  "remainingPlanWork": [
+    "U9 clean new macOS nonadministrator account qualification not obtained",
+    "U9 native Linux hardware/physical desktop not obtained; existing Ubuntu22 x64 emulated sandbox qualification remains separately scoped",
+    "retained valid claims in original 238-failure local corpus require claim-specific migration/qualification",
+    "normal release seal/Pack VERSION and App publication only when actual release eligibility established",
+    "changed source App/package qualification remains separate from the source32a actual Run"
+  ],
+  "humanFinalAcceptance": "NOT_OBTAINED",
+  "limits": [
+    "no standalone continuous AutoFix comparison Campaign",
+    "no postroute physical signoff",
+    "native screenshots/AX retained in conversation tools, no invented disk recording",
+    "original broad local baseline remains954/713PASS/238FAIL/3SKIP, not relabeled green",
+    "served developer model tokens/request counts not measured"
+  ],
+  "sourceFollowups": [
+    {
+      "commit": "e7a777e70b67372b3b39074b5f17f2f49d785e91",
+      "scope": "fresh permission root ordering, no hash/cache/Write change",
+      "canonicalFocused": "10PASS",
+      "review": "ACCEPT",
+      "readonlyRemoteObservation": "218artifacts/658commands/13.612s, one observation"
+    },
+    {
+      "commit": "49e68c4f4e8d525a586be00af4fc9e8a339446be",
+      "scope": "retain actually observed optional command exit metadata in failure facts/public Job views",
+      "canonicalFocused": "1PASS+4nearestPASS",
+      "fullTypesSeamsBoundary": "PASS",
+      "review": "ACCEPT",
+      "originalSource32aHistoryNotRewritten": true
+    }
+  ],
+  "retainedCorpusFollowup": {
+    "case": 556,
+    "commit": "b200706ca101f6fe01e155b300512e9fc621c3fc",
+    "scope": "ended historical Run/current document and exact recorded excerpt across restart/clear",
+    "canonical": "4PASS, 5.8105s, 3 in-process Host boots, SSH0/model0",
+    "activeDbosKnowledgeEffectRecovery": "NOT_PROVEN_BY_THIS_CASE",
+    "original954BaselineUnchanged": true
+  }
+}

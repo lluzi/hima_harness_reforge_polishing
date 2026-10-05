@@ -1,0 +1,5 @@
+{
+  "scope": "read-only exact benchmark control socket/process check; no removal or signals",
+  "socketPresent": false,
+  "processes": []
+}
