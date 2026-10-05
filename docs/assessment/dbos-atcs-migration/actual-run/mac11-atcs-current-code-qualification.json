@@ -1,0 +1,34 @@
+{
+  "time": "2026-10-05T08:34:43.520743+00:00",
+  "artifactSource": "489a63c4a6c72b35b996bf90d94230e2841a93c8",
+  "artifactDigest": "fb601ae14662d13223d27e7ba3d39d8ff50edcc748aaf7d3da5c54c445700276",
+  "productSourceDigest": "7df1f745b6c3110c8dabd27e430d7a60f1997c2ed28b2f351507d30d2185ac38",
+  "compiledLibraryBinding": {
+    "files": 163,
+    "differences": [],
+    "scope": "canonical tested JS/declarations exactly match Mac11 staged harness; L2 test harness location and vendor stand-ins differ from packaged GUI"
+  },
+  "currentATCS": {
+    "pass": 2,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 27.907,
+    "hostInProcess": 2,
+    "ssh": 0,
+    "productModelCalls": 0,
+    "realEDA": 0,
+    "cases": [
+      "clear:Goal met, broader UNKNOWN4",
+      "residual:Goal not met, broader UNKNOWN4"
+    ],
+    "fiveTasksEach": true,
+    "nativeEngineeringStartsEach": 1,
+    "readerJobsEach": 1,
+    "originalMessageIdentityAndDelivery": true
+  },
+  "oldU8EvidenceRestoredExact": true,
+  "originalSource32aRealATCSUnchanged": true,
+  "scope": "current-code changed-surface complete ATCS qualification bound by exact compiled bytes + Mac11 lifecycle; not a new real-model/EDA GUI run",
+  "releaseSeal": "development candidate only; no fabricated VERSION",
+  "linux": "deferred by directuser scope update"
+}
