@@ -161,6 +161,11 @@ explains the results in Chinese). Screenshots: `screenshots/en/cellfmax-*`.
 - Custom-cell demo: Pack `INTENT.md` lacks the "Business" section the authoring check expects; the
   Guide asks to proceed.
 
+## Preparing the demo again
+
+Step-by-step preparation, commands, pitfalls and the post-migration checklist:
+[HAPPY-PATH-GUIDE.md](HAPPY-PATH-GUIDE.md).
+
 ## Feedback
 
 Copy `feedback/TEMPLATE.md` to `feedback/<YYYY-MM-DD>-<customer>.md` for each session. After the
