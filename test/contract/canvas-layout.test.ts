@@ -290,14 +290,13 @@ const shippedPackIds = readdirSync(packsDir).filter((id) => existsSync(path.join
 const footprint = (n: PlacedNode) => ({ left: n.x - (PITCH - 8) / 2, right: n.x + (PITCH - 8) / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 + 39 });
 const overlaps = (a: ReturnType<typeof footprint>, b: ReturnType<typeof footprint>) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-test('the current ATCS 0.3 single-engineering route lays out its fix, delivery and terminal Goal nodes', () => {
+test('the current ATCS 0.4 route lays out five business tasks and its terminal Goal', () => {
   const pack = loadPack(packsDir, 'agentic-timing-closure-system');
   const scene = shippedScene('agentic-timing-closure-system');
-  assert.equal(pack.contract.version, '0.3.3');
+  assert.equal(pack.contract.version, '0.4.0');
   assert.equal(scene.nodes.length, pack.graph.nodes.length);
-  for (const id of ['fix-timing', 'read-engineering-result', 'check-engineering-delivery', 'check-engineering-collateral', 'check-engineering-goal']) {
-    assert.ok(scene.nodes.some((node) => node.id === id), `${id} is placed`);
-  }
+  assert.deepEqual(new Set(scene.nodes.map(node => node.id)),
+    new Set(['prepare-inputs', 'prepare-baseline', 'fix-timing', 'evaluate-timing', 'deliver']));
   for (let i = 0; i < scene.nodes.length; i++) {
     for (let j = i + 1; j < scene.nodes.length; j++) {
       assert.ok(!overlaps(footprint(scene.nodes[i]!), footprint(scene.nodes[j]!)));
