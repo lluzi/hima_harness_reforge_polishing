@@ -2,6 +2,8 @@
 
 ## 当前执行前沿：本地 DBOS 迁移（2026-10-03）
 
+2026-10-05 用户收窄本轮交付：优先重点业务在 Mac App 正常运行，Linux 版延后；旧语料不整体阻塞本轮交付，相关真实可靠性/资产缺口继续处理。最新边界见实施计划顶部调整。
+
 用户已授权[完整实施计划](plans/2026-10-03-0701-refactor-dbos-fabric-atcs-migration-plan.md)，
 责任决定见 [ADR-0018](adr/0018-dbos-owns-durable-execution.md)。这一前沿优先于下文历史规划
 的“无新数据库”与 owner/autopilot 机械推进描述；Guide、业务 owner、Site、Job、权限、

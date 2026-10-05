@@ -162,11 +162,10 @@
     "before/after setup and hold raw reports"
   ],
   "remainingPlanWork": [
-    "U9 clean new macOS nonadministrator account qualification not obtained",
-    "U9 native Linux hardware/physical desktop not obtained; existing Ubuntu22 x64 emulated sandbox qualification remains separately scoped",
-    "retained valid claims in original 238-failure local corpus require claim-specific migration/qualification",
-    "normal release seal/Pack VERSION and App publication only when actual release eligibility established",
-    "changed source App/package qualification remains separate from the source32a actual Run"
+    "Verify current Mac11 changed surfaces against priority ATCS; preserve original source32a actual business evidence",
+    "Complete current Mac delivery and normal Pack/App release eligibility with exact evidence",
+    "Keep directly relevant reliability/asset gaps as required checks; remaining old-corpus claims tracked follow-up",
+    "Human final acceptance remains distinct from implementation/test proof"
   ],
   "humanFinalAcceptance": "NOT_OBTAINED",
   "limits": [
@@ -255,5 +254,21 @@
       "review": "ACCEPT"
     },
     "fullOriginalCorpus": "954/713PASS/238FAIL/3SKIP unchanged original run; not relabeled"
+  },
+  "deliveryScopeUpdate": {
+    "date": "2026-10-05",
+    "authority": "direct user instruction",
+    "requiredPlatform": "macOS arm64 current verified environment",
+    "priority": "key business ATCS runnable through normal App path",
+    "linux": "deferred; not a current gate; prior evidence retained",
+    "additionalAccountAndHardware": "follow-up coverage, not claimed PASS",
+    "legacyCorpus": "claim-specific backlog; not whole198 prerequisite",
+    "unchangedRequirements": [
+      "identity/permission/budget",
+      "no duplicate external effects",
+      "durable result/closure/recovery",
+      "historical asset bytes",
+      "commercial native obligations materials"
+    ]
   }
 }
