@@ -135,18 +135,21 @@ test('Campaign-attached document evidence is bound to one owner execution and it
   } finally { await host.dispose(); await home.h.dispose(); }
 });
 
-test('current knowledge survives Host restart, records the excerpt that reached a Campaign, clears explicitly, and never changes the Pack digest', async () => {
+test('current knowledge and recorded excerpts survive Host restart for an ended historical Run, clear explicitly, and never change the Pack digest', async () => {
   const h = await createHimaHome();
   const root = path.join(h.home, 'hima/current-knowledge');
   await installPack(h);
   const before = packDigestOf(path.join(packsDirOf(h), timingProbePackId));
   const imported = await importCurrentKnowledge({ root, scope: 'campaign-proposal', file: fixture, title: 'EDA Timing Preparation Guide', version: '1' });
   assert.equal(packDigestOf(path.join(packsDirOf(h), timingProbePackId)), before);
+  let history: { runId: string; record: Awaited<ReturnType<typeof recordDocumentKnowledgeRead>>; excerpt: string } | undefined;
   let host = await bootInProcess(h);
   try {
-    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'knowledge-fixture', siteId: 'local', packId: timingProbePackId, status: 'running' });
+    // Seed an already-ended historical Run: this proves retained knowledge, not active DBOS execution recovery.
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'knowledge-fixture', siteId: 'local', packId: timingProbePackId, status: 'cancelled' });
     const [hit] = await searchCurrentKnowledge(root, 'campaign-proposal', 'clock uncertainty baseline custom-cell arm');
     assert.ok(hit);
+    const excerpt = await readCurrentKnowledge(root, 'campaign-proposal', imported.document.id, hit.id);
     const record = await recordDocumentKnowledgeRead({ ledger: host.ctx.hima.ledger, packsDir: packsDirOf(h), runId: run.id,
       nodeId: 'prepare', attempt: 1, sessionId: 'session-current-knowledge', workshop: 'analysis', root, hit: hit!, origin: 'current' });
     assert.equal(record.origin, 'current');
@@ -154,14 +157,35 @@ test('current knowledge survives Host restart, records the excerpt that reached 
     assert.equal(record.chunkId, hit?.id);
     assert.equal(record.page, 1);
     assert.equal(record.sourceMaterialSha256, imported.document.sha256);
+    assert.equal(record.sha256, excerpt.sha256);
+    assert.equal(record.bytes, Buffer.byteLength(excerpt.text));
+    assert.equal(record.exposedBytes, Buffer.byteLength(excerpt.text));
+    assert.equal(record.knowledgeScope, 'campaign-proposal');
+    assert.match(excerpt.text, /clock uncertainty/i);
+    history = { runId: run.id, record, excerpt: excerpt.text };
   } finally { await host.dispose(); }
 
   host = await bootInProcess(h);
   try {
-    assert.deepEqual((await listCurrentKnowledge(root, 'campaign-proposal')).map((item) => item.id), [imported.document.id]);
+    assert.ok(history);
+    assert.equal(host.ctx.hima.ledger.run(history.runId)?.status, 'cancelled');
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId: history.runId, type: 'knowledge' }), [history.record]);
+    const retained = await host.ctx.hima.readMaterial(history.runId, history.record.id);
+    assert.equal(retained.kind, 'read');
+    assert.ok(retained.kind === 'read');
+    assert.deepEqual(retained.record, history.record);
+    assert.equal(retained.text, history.excerpt);
+    assert.deepEqual(await listCurrentKnowledge(root, 'campaign-proposal'), [imported.document]);
+    const current = await readCurrentKnowledge(root, 'campaign-proposal', history.record.documentId!, history.record.chunkId!);
+    assert.equal(current.text, history.excerpt);
+    assert.equal(current.sha256, history.record.sha256);
     assert.equal(await clearCurrentKnowledge(root, 'campaign-proposal', imported.document.id), true);
     assert.deepEqual(await listCurrentKnowledge(root, 'campaign-proposal'), []);
     assert.equal(await clearCurrentKnowledge(root, 'campaign-proposal', imported.document.id), false);
+    const retainedAfterClear = await host.ctx.hima.readMaterial(history.runId, history.record.id);
+    assert.equal(retainedAfterClear.kind, 'read');
+    assert.ok(retainedAfterClear.kind === 'read');
+    assert.equal(retainedAfterClear.text, history.excerpt, 'clearing current knowledge preserves the recorded historical excerpt');
     assert.equal(packDigestOf(path.join(packsDirOf(h), timingProbePackId)), before);
   } finally { await host.dispose(); await h.dispose(); }
 });
