@@ -4,7 +4,7 @@
 
 2026-10-05 用户收窄本轮交付：优先重点业务在 Mac App 正常运行，Linux 版延后；旧语料不整体阻塞本轮交付，相关真实可靠性/资产缺口继续处理。最新边界见实施计划顶部调整。
 
-当前 U10 已生成[普通 Mac 试用发布](assessment/dbos-atcs-migration/mac-trial-release.md)与原生 ATCS 方法封板；封板后的普通 Campaign 本地完整路径通过。最终用户签收待取得；最新桌面命令虽通过，但因已有演示 App 运行，不计作隔离 GUI 验收。原独立真实 ATCS 与 Mac11 资格保持原身份。
+U10 已于 2026-10-05 依用户决定关闭：在最新 DBOS 版 App（trial.36，修复僵尸进程组收束 `fcd019ff`）上完成英文与中文对话的真实 ATCS 演示录制，见[演示记录](product-demo/dbos-atcs/README.md)。Timing Goal 仍为 not met，collateral 仍为 UNKNOWN；原独立真实 ATCS 与 Mac11 资格保持原身份。
 
 用户已授权[完整实施计划](plans/2026-10-03-0701-refactor-dbos-fabric-atcs-migration-plan.md)，
 责任决定见 [ADR-0018](adr/0018-dbos-owns-durable-execution.md)。这一前沿优先于下文历史规划

@@ -59,3 +59,13 @@
 [U9 原生资格](U9-native-qualification.md)记录实际 Mac/Linux 分发物、冷备份、许可通知/源码/替换证明及外部原生义务报告。新 Mac 非管理员账户、真实 Linux 硬件/物理桌面资格尚未取得；当前 Linux 证据是 Ubuntu22 x64 用户空间在 Mac 上模拟的隔离桌面。不能声明两个平台全部交付完成。
 
 原始完整 local 基线仍是 954 项、713 PASS / 238 FAIL / 3 SKIP。已修复的实际问题和已迁移用例各有定点证据，其余有效业务、权限、历史、预算和资源契约须逐项对账，不能整批删除或写成全绿。正式 Pack VERSION、App 发布以及整个计划完成仍以实际资格为条件。
+
+## 2026-10-05 用户指定的演示录制与 U10 关单
+
+用户要求在最新 DBOS 版 HimaHarness 上录制 ATCS happy-path 演示（英文对话与中文对话各一次完整真实运行，英文界面），修复发现的缺陷，并在录制完成后关闭 U10。
+
+- 英文 Run `run-1a29b362`（trial.35）自行结束为 `ended-goal-not-met`：Hold 109→0，Setup 28→16（WNS −0.0237 ns）。录制中途以“Quit now and keep jobs”退出并重开，同一 Run、同一 Job 继续，没有重复启动。
+- 第一次中文 Run `run-d529a082` 暴露一个产品缺陷：Site 共享 tmux 未回收的僵尸进程组被 `kill -s 0` 视为存活，`evaluate-timing` 永久等待 resource-closure。修复为 `fcd019ff`，经独立 Opus 复核，并在现场僵尸上复测；该 Run 作为证据保留。
+- 中文 Run `run-f612a1ea`（trial.36，source `019838c9`）自行结束为 `ended-goal-not-met`：Hold 109→7，Setup 28→23。三次结果差异来自单轮驻场工程的不同路径，不是语言造成的。
+
+U10 依用户决定关闭（`humanFinalAcceptance: USER_DIRECTED_CLOSE`）。这不把 Timing Goal 改为 PASS，也不把 collateral UNKNOWN 或 prediction-only 结果当作签核。详见[演示记录](../../product-demo/dbos-atcs/README.md)和 [acceptance.json](acceptance.json) 的 `userDirectedClosure`。

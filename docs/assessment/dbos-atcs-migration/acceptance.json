@@ -1,6 +1,6 @@
 {
   "schema": "hima.dbos-atcs-migration-acceptance/1",
-  "status": "in-progress",
+  "status": "closed",
   "assessmentDate": "2026-10-05",
   "scope": "one source32a frozen macOS App + ATCS0.4.0 actual native business run; whole platform/release plan remains incomplete",
   "runId": "run-e7ed880e-5d24-44b8-9b92-0e72bd63129d",
@@ -162,12 +162,11 @@
     "before/after setup and hold raw reports"
   ],
   "remainingPlanWork": [
-    "Final user business acceptance remains pending",
     "Latest desktop command passed but was not a clean single-App GUI acceptance; original qualified scopes retain their identities",
     "Linux and extra-account/native-hardware qualification deferred by direct user instruction",
     "Old-corpus claims remain follow-up; directly relevant reliability and asset failures remain required fixes"
   ],
-  "humanFinalAcceptance": "NOT_OBTAINED",
+  "humanFinalAcceptance": "USER_DIRECTED_CLOSE",
   "limits": [
     "no standalone continuous AutoFix comparison Campaign",
     "no postroute physical signoff",
@@ -336,5 +335,112 @@
     "humanFinalAcceptance": "NOT_OBTAINED",
     "latestSingleAppGuiAttempt": "NOT_QUALIFIED; foreign demo App present",
     "issueU10": "OPEN"
+  },
+  "userDirectedClosure": {
+    "date": "2026-10-05",
+    "instruction": "User asked to record happy-path demos on the latest DBOS HimaHarness with ATCS (English and Chinese conversation), fix bugs found, and close U10 after the ATCS recording.",
+    "meaning": "Closes U10 as the user's business decision for Mac delivery. It does not turn the Timing Goal into PASS, collateral UNKNOWN into known, or prediction-only timing into sign-off.",
+    "demo": "docs/product-demo/dbos-atcs/README.md",
+    "candidates": [
+      {
+        "id": "A",
+        "app": "0.3.0-trial.35",
+        "source": "fd9cb10c979544394305669f33a9d5a913762c6c",
+        "artifactDigest": "dfae0348263ca07c043f3a8386088ac9790a8e44fbf63750d08a24e7615e83db"
+      },
+      {
+        "id": "B",
+        "app": "0.3.0-trial.36",
+        "source": "019838c9df677a099325073af931b72be20e22f1",
+        "artifactDigest": "11b22fac69203d90fa4ebb621186a48cf194cf3f851849e82428f82d4f2dbde0",
+        "manifestSha256": "18c66300de5c997a343ce5e4df87a15270b796304e1841e05a00597e31e096c8"
+      }
+    ],
+    "pack": {
+      "id": "agentic-timing-closure-system",
+      "version": "0.4.0",
+      "digest": "ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e"
+    },
+    "runs": [
+      {
+        "run": "run-1a29b362-86ce-4977-8d6d-d2d4fd71071e",
+        "candidate": "A",
+        "conversation": "en",
+        "terminal": "ended-goal-not-met",
+        "fiveTasks": "succeeded",
+        "after": {
+          "setup": {
+            "violations": 16,
+            "wnsNs": -0.0237,
+            "tnsNs": -0.1256
+          },
+          "hold": {
+            "violations": 0,
+            "wnsNs": 0,
+            "tnsNs": 0
+          }
+        },
+        "demonstrated": [
+          "single Guide confirmation",
+          "DBOS resume after Quit now and keep jobs during fix-timing: same Run, same Job, no second launch",
+          "automatic Reader-rejection repair in the same task",
+          "verified REPORT.md from Evidence"
+        ]
+      },
+      {
+        "run": "run-d529a082-b558-416b-823e-165035c981a9",
+        "candidate": "A",
+        "conversation": "zh",
+        "terminal": "not-ended (waiting resource-closure)",
+        "defect": "evaluate-timing Job shell left an unreaped zombie by the Site's shared tmux server; kill -s 0 counted it alive",
+        "fix": "fcd019ff",
+        "retained": ".hima-tmp/dbos-demo/kit-zh (resumable only by the original executable)"
+      },
+      {
+        "run": "run-f612a1ea-650c-43a9-b30c-41c501af673f",
+        "candidate": "B",
+        "conversation": "zh",
+        "terminal": "ended-goal-not-met",
+        "fiveTasks": "succeeded",
+        "after": {
+          "setup": {
+            "violations": 23,
+            "wnsNs": -0.0333,
+            "tnsNs": -0.1544
+          },
+          "hold": {
+            "violations": 7,
+            "wnsNs": -0.0429,
+            "tnsNs": -0.1685
+          }
+        },
+        "demonstrated": [
+          "Chinese Guide proposal and confirmation",
+          "Chinese owner conversation",
+          "automatic Reader-rejection repair",
+          "verified REPORT.md from Evidence"
+        ]
+      }
+    ],
+    "before": {
+      "setup": {
+        "violations": 28,
+        "wnsNs": -0.038,
+        "tnsNs": -0.2306
+      },
+      "hold": {
+        "violations": 109,
+        "wnsNs": -0.1523,
+        "tnsNs": -4.7021
+      }
+    },
+    "teardown": "All three Apps quit normally; zero HimaHarness processes; zero remote processes for Runs A and C; Run B jobs all exited on the Site.",
+    "knownLimits": [
+      "owner job accounting can miss a finished resident session (Run C hima-effect-6b074a36)",
+      "interactive XTop close watcher still uses kill -s 0 only",
+      "Chinese demo uses English UI; zh UI not ported from customer-demo",
+      "no AutoFix comparison; collateral UNKNOWN; prediction-only"
+    ],
+    "operator": "Claude Code (Opus 5.5) at the user's direct request, overriding the earlier Codex-only U10 operator assignment"
   }
 }
