@@ -85,23 +85,22 @@ class Workspace:
 
     def write_cells(self, k, lib=CELL_LIB, lef=CELL_LEF):
         d = self.root / "cells" / ("r%d" % k)
-        (d / "datasheets").mkdir(parents=True, exist_ok=True)
+        d.mkdir(parents=True, exist_ok=True)
         (d / "NOR3_PU2.lib").write_text(lib)
         (d / "NOR3_PU2.lef").write_text(lef)
         (d / "NOR3_PU2.sp").write_text(".subckt NOR3_PU2 A B C Y VPWR VGND\n.ends\n")
+        (d / "NOR3_PU2.ext").write_text(".subckt NOR3_PU2 VDD GND Y B A C\n.ends\n")
         (d / "NOR3_PU2.gds").write_bytes(b"GDSII")
         (d / "custom.lib").write_text(lib)
         (d / "custom.lef").write_text(lef)
         (d / "findings.md").write_text("findings")
         (d / "usage-guide.md").write_text("usage")
-        (d / "datasheets" / "NOR3_PU2.md").write_text("sheet")
+        (d / "library.md").write_text("| NOR3_PU2 | rise-skewed nor3 |")
 
     def cell(self, origin="r1"):
-        files = {key: "cells/%s/NOR3_PU2.%s" % (origin, key) for key in ("sp", "gds", "lef", "lib")}
-        return {"name": "NOR3_PU2", "outputs": ["Y"], "origin": origin, "function": "Y=!(A|B|C)",
-                "layout": "drc-lvs-clean",
-                "timingModel": {"method": "estimate_lib", "base": "sky130_fd_sc_hd__nor3_1", "derate": {"rise": 0.6},
-                                "reason": "two parallel PMOS fingers in the pull-up"},
+        files = {key: "cells/%s/NOR3_PU2.%s" % (origin, key) for key in ("sp", "gds", "lef", "ext")}
+        return {"name": "NOR3_PU2", "inputs": ["A", "B", "C"], "outputs": ["Y"], "origin": origin,
+                "functions": {"Y": "!(A|B|C)"}, "compareTo": "sky130_fd_sc_hd__nor3_1", "layout": "drc-lvs-clean",
                 "files": files, "sha256": {key: sha(self.root / rel) for key, rel in files.items()}}
 
     def recipe(self, k=1, cells=None, **extra):
@@ -111,13 +110,24 @@ class Workspace:
             "library": {"lib": "cells/r%d/custom.lib" % k, "lef": "cells/r%d/custom.lef" % k,
                         "cells": cells if cells is not None else [self.cell("r%d" % k)]},
             "hypothesis": "rise-skewed nor3 on rise-critical repairs",
-            "report": {"findings": "cells/r%d/findings.md" % k, "datasheets": ["cells/r%d/datasheets/NOR3_PU2.md" % k],
+            "report": {"findings": "cells/r%d/findings.md" % k, "library": "cells/r%d/library.md" % k,
                        "usage": "cells/r%d/usage-guide.md" % k},
             "agentClaim": None, "evidence": [],
         }
         body.update(extra)
         (self.root / "state" / "round-recipe.json").write_text(json.dumps(body))
         return body
+
+    def characterized(self, k=1, measured=("NOR3_PU2",), lib=CELL_LIB):
+        """What the characterize step writes: the measured Liberty and the per-cell outcome."""
+        d = self.root / "runs" / ("r%d" % k) / "char"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "custom.measured.lib").write_text(lib)
+        (self.root / "state" / "characterization.json").write_text(json.dumps({
+            "schema": "hima-cellfmax-characterization/1", "round": k,
+            "measuredLib": "runs/r%d/char/custom.measured.lib" % k if measured else None,
+            "measuredNames": list(measured),
+            "cells": [{"name": n, "status": "measured", "reason": None} for n in measured]}))
 
     def arm(self, kind, k=1, period=3.6, wns=-0.1, finished=True, custom=14, forbidden=0, drc=0, recipe_sha=None, instances=37900, tns=-1.0):
         record = {"schema": "hima-cellfmax-arm/1", "arm": kind, "round": k, "periodNs": period, "finished": finished,
@@ -227,7 +237,38 @@ class RecipeTest(unittest.TestCase):
         lef = CELL_LEF.replace("  PIN C\n    USE SIGNAL ;\n  END C\n", "  PIN D\n    USE SIGNAL ;\n  END D\n")
         self.ws.write_cells(1, lef=lef)
         self.ws.recipe()
-        self.refused(r"signal pins differ")
+        self.refused(r"signal pins differ: recipe")
+
+    def test_clean_cell_needs_its_extracted_netlist_and_abstract_does_not(self):
+        cell = self.ws.cell()
+        del cell["files"]["ext"], cell["sha256"]["ext"]
+        self.ws.recipe(cells=[cell])
+        self.refused(r"files\.ext \(the Magic-extracted netlist")
+        cell["layout"] = "abstract"
+        self.ws.recipe(cells=[cell])
+        cli.validate_recipe(self.ws.root)
+
+    def test_functions_must_cover_every_output_and_name_only_inputs(self):
+        cell = self.ws.cell()
+        cell["outputs"] = ["Y", "Z"]
+        self.ws.recipe(cells=[cell])
+        self.refused(r"one Liberty function per output")
+        cell = self.ws.cell()
+        cell["functions"] = {"Y": "!(A|B|D)"}
+        self.ws.recipe(cells=[cell])
+        self.refused(r"name pins \['D'\] that are not inputs")
+
+    def test_compare_to_must_name_a_foundry_cell(self):
+        cell = self.ws.cell()
+        cell["compareTo"] = "nor3_1"
+        self.ws.recipe(cells=[cell])
+        self.refused(r"needs compareTo")
+
+    def test_engineer_liberty_is_optional(self):
+        body = self.ws.recipe()
+        del body["library"]["lib"]
+        (self.ws.root / "state" / "round-recipe.json").write_text(json.dumps(body))
+        cli.validate_recipe(self.ws.root)
 
     def test_missing_power_pins_are_refused(self):
         lef = CELL_LEF.replace("  PIN VPB\n    USE POWER ;\n  END VPB\n", "")
@@ -250,17 +291,14 @@ class RecipeTest(unittest.TestCase):
         self.ws.recipe(k=2)
         self.refused(r"recipe round must be 1")
 
-    def test_multi_output_cell_needs_emap(self):
-        cell = self.ws.cell()
-        cell["outputs"] = ["Y", "Z"]
-        self.ws.recipe(cells=[cell])
-        self.refused(r"multi-output cell NOR3_PU2 needs emap-window")
-
-    def test_missing_datasheet_is_refused(self):
+    def test_missing_library_table_is_refused(self):
         body = self.ws.recipe()
-        body["report"]["datasheets"] = []
+        del body["report"]["library"]
         (self.ws.root / "state" / "round-recipe.json").write_text(json.dumps(body))
-        self.refused(r"one datasheet per new cell")
+        self.refused(r"a recipe path is empty")
+
+    def test_many_new_cells_are_allowed(self):
+        self.assertGreaterEqual(cli.MAX_NEW_CELLS, 200)
 
     def test_best_library_cells_must_stay_byte_identical(self):
         best = dict(cli.EMPTY_BEST, round=1, customFmaxMhz=270.0,
@@ -275,7 +313,7 @@ class RecipeTest(unittest.TestCase):
         self.ws.recipe(k=2, cells=[self.ws.cell("r1")])
         cli.validate_recipe(self.ws.root)
         # A mutated old cell file: refused.
-        (self.ws.root / "cells/r1/NOR3_PU2.lib").write_text(CELL_LIB.replace("10.0", "11.0"))
+        (self.ws.root / "cells/r1/NOR3_PU2.sp").write_text(".subckt NOR3_PU2 A B C Y VPWR VGND\n* edited\n.ends\n")
         mutated = self.ws.cell("r1")
         self.ws.recipe(k=2, cells=[mutated])
         self.refused(r"byte-identical to best\.json")
@@ -323,6 +361,7 @@ class CompareTest(unittest.TestCase):
     def setUp(self):
         self.ws = Workspace()
         self.ws.recipe(agentClaim={"customFmaxMhz": 280.0, "controlFmaxMhz": 260.0, "gainPct": 7.0, "runs": []})
+        self.ws.characterized()
 
     def tearDown(self):
         self.ws.close()
@@ -423,6 +462,7 @@ class ReaderTest(unittest.TestCase):
         ws = Workspace()
         try:
             ws.recipe()
+            ws.characterized()
             # At delivery the recipe Reader accepts the next round's recipe ...
             values, error = self.run_reader("read-recipe.py", ws.root / "state" / "round-recipe.json", str(ws.root))
             self.assertIsNone(error)
@@ -488,3 +528,68 @@ class ReaderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def timed_cell(name, rise, fall, cap):
+    """A Liberty cell with one A->Y arc and 2x2 tables, for ratio checks."""
+    table = lambda q, v: ('%s ("del_1_7_7") { index_1("0.1, 0.2"); index_2("0.01, 0.02"); '
+                          'values("%s, %s", "%s, %s"); }' % (q, v, v, v, v))
+    return ('cell ("%s") { area : 5.0; pin ("A") { direction : "input"; capacitance : %s; } '
+            'pin ("Y") { direction : "output"; function : "(!A)"; timing () { related_pin : "A"; '
+            'timing_sense : "negative_unate"; %s %s } } }\n' % (name, cap, table("cell_rise", rise), table("cell_fall", fall)))
+
+
+class MeasuredLibraryTest(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+
+    def tearDown(self):
+        self.ws.close()
+
+    def test_lef_subset_keeps_only_named_macros(self):
+        two = CELL_LEF + CELL_LEF.replace("NOR3_PU2", "OTHER")
+        kept = cli.lef_subset("VERSION 5.7 ;\n" + two, ["OTHER"])
+        self.assertIn("MACRO OTHER", kept)
+        self.assertNotIn("MACRO NOR3_PU2", kept)
+        self.assertTrue(kept.startswith("VERSION 5.7 ;"))
+        self.assertTrue(kept.rstrip().endswith("END LIBRARY"))
+
+    def test_arms_load_only_measured_cells(self):
+        root = self.ws.root
+        (root / "orfs").mkdir()
+        (root / "orfs" / "platform.lib").write_text("library (x) {\n}\n")
+        (root / "orfs" / "constraint.sdc").write_text("set clk_period 3.6\n")
+        inputs = {"sdc": str(root / "orfs" / "constraint.sdc"), "platformLib": str(root / "orfs" / "platform.lib"),
+                  "platformDontUse": ["sky130_fd_sc_hd__probe_p_8"]}
+        abstract = dict(self.ws.cell(), name="ABSTRACT1", layout="abstract")
+        body = self.ws.recipe()
+        body["library"]["cells"].append(abstract)
+        self.ws.characterized(measured=("NOR3_PU2",))
+        variables, sources, names = cli.prepare_run(root, inputs, root / "runs" / "r1" / "control", 3.6, body, "control")
+        self.assertEqual(names, ["NOR3_PU2"])
+        self.assertIn("NOR3_PU2", variables["DONT_USE_CELLS"].split())
+        self.assertNotIn("ABSTRACT1", variables["DONT_USE_CELLS"].split())
+        self.assertIn("custom.measured.lib", sources)
+        merged = (root / "runs" / "r1" / "control" / "inputs" / "merged.lib").read_text()
+        self.assertIn("NOR3_PU2", merged)
+        # No measured cell: the arms run the stock library (an honest zero round, never a stall).
+        self.ws.characterized(measured=())
+        variables, _, names = cli.prepare_run(root, inputs, root / "runs" / "r1" / "custom", 3.6, body, "custom")
+        self.assertEqual(names, [])
+        self.assertNotIn("LIB_FILES", variables)
+
+    def test_library_rows_report_measured_ratios_against_the_foundry_cell(self):
+        root = self.ws.root
+        ref = root / "platform.lib"
+        ref.write_text("library (x) {\n" + timed_cell("sky130_fd_sc_hd__nor3_1", 0.20, 0.05, 0.0025) + "}\n")
+        (root / "state" / "inputs.json").write_text(json.dumps({"platformLib": str(ref)}))
+        body = self.ws.recipe()
+        body["library"]["cells"][0]["compareTo"] = "sky130_fd_sc_hd__nor3_1"
+        self.ws.characterized(lib=timed_cell("NOR3_PU2", 0.14, 0.06, 0.0040))
+        rows = cli.library_rows(root, body, {"NOR3_PU2": 14})
+        self.assertEqual(rows[0]["status"], "measured")
+        self.assertEqual(rows[0]["adopted"], 14)
+        ratios = rows[0]["measuredVsFoundry"]
+        self.assertAlmostEqual(ratios["cell_rise"], 0.7, places=3)   # 0.14 / 0.20
+        self.assertAlmostEqual(ratios["cell_fall"], 1.2, places=3)   # 0.06 / 0.05
+        self.assertAlmostEqual(ratios["input_cap"], 1.6, places=3)   # 0.0040 / 0.0025

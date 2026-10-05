@@ -21,7 +21,7 @@ test('the demo Pack loads and declares the matched-arm custom-cell round', () =>
   assert.equal(pack.contract.id, packId);
   assert.equal(pack.graph.version, pack.contract.version, 'graph and contract versions must match');
   assert.equal(pack.graph.entry, 'bind-inputs');
-  assert.deepEqual(pack.contract.tools.map((t) => t.id), ['bind-inputs', 'baseline', 'engineer', 'arm-custom', 'arm-control', 'compare-round']);
+  assert.deepEqual(pack.contract.tools.map((t) => t.id), ['bind-inputs', 'baseline', 'engineer', 'characterize', 'arm-custom', 'arm-control', 'compare-round']);
   for (const tool of pack.contract.tools) assert.deepEqual(tool.licences, {}, `${tool.id} holds no licence`);
   // A source: pack workspace copies each entry from the Pack's own flow/ directory.
   assert.equal(pack.contract.workspace.source, 'pack');
@@ -36,15 +36,17 @@ test('the demo Pack loads and declares the matched-arm custom-cell round', () =>
   assert.deepEqual(engineer.outsourcing?.reads, ['inputsState', 'baselineState', 'lessons', 'best']);
   // The engineer's result is accepted only through its Reader (the Pack validator).
   assert.equal(pack.contract.outputs.find((o) => o.name === 'roundRecipe')?.reader, 'cellfmax-recipe');
-  assert.equal(pack.contract.budget.timeBoxMs, 18_000_000);
+  assert.equal(pack.contract.budget.timeBoxMs, 28_800_000);
   assert.equal(pack.contract.goal.target_fmax_gain_pct?.default, 5);
 });
 
-test('the graph forks two measured arms into a judge join and loops through an owner decision', () => {
+test('the graph measures the library, forks two measured arms into a judge join and loops through an owner decision', () => {
   const pack = loadPack(packsDir, packId);
   const out = (from: string) => pack.graph.edges.filter((e) => e.from === from);
-  assert.deepEqual(out('engineer').map((e) => e.to).sort(), ['arm-control', 'arm-custom']);
-  assert.ok(out('engineer').every((e) => e.outcome === undefined), 'the fork edges are unlabelled');
+  // HimaHarness characterizes the engineer's cells before any arm runs; the arms fork from that step.
+  assert.deepEqual(out('engineer').map((e) => e.to), ['characterize']);
+  assert.deepEqual(out('characterize').map((e) => e.to).sort(), ['arm-control', 'arm-custom']);
+  assert.ok(out('characterize').every((e) => e.outcome === undefined), 'the fork edges are unlabelled');
   const join = pack.graph.nodes.find((n) => n.id === 'arms-joined');
   assert.equal(join?.kind, 'judge');
   const next = pack.graph.nodes.find((n) => n.id === 'next-round');
@@ -106,7 +108,9 @@ test('the resident capability points at the installed v2 wrapper and the no-entr
   assert.ok(!JSON.stringify(capability).includes('tsmc28'), 'no TSMC28 roots in the SKY130 sandbox');
 });
 
-test('the Pack tool and Reader unit suite passes (python3 -m unittest)', () => {
-  const run = spawnSync('python3', ['-m', 'unittest', 'test/contract/support/cellfmax_cli_test.py'], { cwd: repoRoot, encoding: 'utf8' });
-  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+test('the Pack tool, Reader and characterizer unit suites pass (python3 -m unittest)', () => {
+  for (const suite of ['test/contract/support/cellfmax_cli_test.py', 'test/contract/support/cellfmax_char_test.py']) {
+    const run = spawnSync('python3', ['-m', 'unittest', suite], { cwd: repoRoot, encoding: 'utf8' });
+    assert.equal(run.status, 0, `${suite}\n${run.stdout}\n${run.stderr}`);
+  }
 });

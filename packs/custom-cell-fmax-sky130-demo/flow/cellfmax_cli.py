@@ -8,6 +8,7 @@ agent's own trial numbers are carried as `agentClaim` and are never used as a re
   baseline  <WS> <PERIOD_NS> <TIMEOUT_MIN>
   recipe    <WS>                              validate state/round-recipe.json (engineer delivery)
   precheck  <WS> <OWN_WORKSPACE> <RECIPE>     the engineer's own check of its recipe before delivery
+  characterize <WS> <TIMEOUT_MIN>            measure every DRC/LVS-clean extracted cell (ngspice, calibrated)
   arm       <WS> <custom|control> <TIMEOUT_MIN>
   compare   <WS>                              round record, lessons, best library and summary
   finish    <WS>                              rewrite derived/summary.{md,json} from the lessons
@@ -33,12 +34,13 @@ NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 RECIPE_SCHEMA = "hima-cellfmax-round-recipe/1"
 ARM_SCHEMA = "hima-cellfmax-arm/1"
 ROUND_SCHEMA = "hima-cellfmax-round/1"
-MAX_NEW_CELLS = 10
+MAX_NEW_CELLS = 400
 NUM_CORES = 8
 CLAIM_BOUNDARY = (
-    "Custom-cell timing is modelled from foundry tables (estimate_lib, derate stated per cell), not "
-    "characterized. Layouts marked drc-lvs-clean passed KLayout DRC and Netgen LVS. Results are "
-    "open-source ORFS timing on SKY130 under these models; not signoff, not silicon."
+    "Custom-cell timing is SPICE-characterized by HimaHarness from each cell's Magic-extracted layout "
+    "(ngspice, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90), not signed "
+    "off; only DRC/LVS-clean cells are measured and used. Results are open-source ORFS timing on SKY130 "
+    "under these measured models; not signoff, not silicon."
 )
 FLOW_DIR = Path(__file__).resolve().parent
 EMPTY_BEST = {"schema": "hima-cellfmax-best/1", "round": 0, "customFmaxMhz": None, "library": {"cells": []}}
@@ -315,14 +317,14 @@ def prepare_run(ws, inputs, run_dir, period_ns, recipe=None, arm=None):
     custom_names = []
     if recipe is not None:
         library = recipe.get("library") or {}
-        cells = library.get("cells") or []
+        measured = load_characterization(ws, recipe)
+        cells = [cell for cell in library.get("cells") or [] if cell["name"] in measured["measuredNames"]]
         custom_names = [cell["name"] for cell in cells]
         if cells:
-            lib_path = Path(ws) / library["lib"]
-            lef_path = Path(ws) / library["lef"]
+            lib_path = Path(ws) / measured["measuredLib"]
             merged = staged / "merged.lib"
             _merge_liberty(Path(inputs["platformLib"]), lib_path, merged)
-            shutil.copyfile(lef_path, staged / "custom.lef")
+            write_text(staged / "custom.lef", lef_subset((Path(ws) / library["lef"]).read_text(errors="replace"), custom_names))
             variables["LIB_FILES"] = "/work/inputs/merged.lib"
             variables["ADDITIONAL_LEFS"] = "/work/inputs/custom.lef"
             gds = [Path(ws) / cell["files"]["gds"] for cell in cells if cell.get("files", {}).get("gds")]
@@ -331,10 +333,7 @@ def prepare_run(ws, inputs, run_dir, period_ns, recipe=None, arm=None):
                 for path in gds:
                     shutil.copyfile(path, staged / "gds" / path.name)
                 variables["ADDITIONAL_GDS"] = " ".join("/work/inputs/gds/" + path.name for path in gds)
-            missing_gds = [cell["name"] for cell in cells if not cell.get("files", {}).get("gds")]
-            if missing_gds:
-                variables["GDS_ALLOW_EMPTY"] = "|".join(missing_gds)
-            sources.update({"merged.lib": sha256_file(merged), "custom.lib": sha256_file(lib_path),
+            sources.update({"merged.lib": sha256_file(merged), "custom.measured.lib": sha256_file(lib_path),
                             "custom.lef": sha256_file(staged / "custom.lef")})
         dont_use = list(inputs["platformDontUse"])
         if arm == "control":
@@ -347,6 +346,112 @@ def prepare_run(ws, inputs, run_dir, period_ns, recipe=None, arm=None):
             variables["SYNTH_NETLIST_FILES"] = "/work/inputs/synth.v"
             sources["synth.v"] = sha256_file(staged / "synth.v")
     return variables, sources, custom_names
+
+
+def lef_subset(text, names):
+    """The LEF header (everything before the first MACRO) plus only the named MACROs."""
+    first = re.search(r"(?m)^\s*MACRO\s", text)
+    header = text[:first.start()] if first else text
+    blocks = [m.group(0) for m in re.finditer(r"(?ms)^\s*MACRO\s+(\S+)\s*$.*?^\s*END\s+\1\s*$", text) if m.group(1) in names]
+    return header.rstrip() + "\n\n" + "\n\n".join(block.strip("\n") for block in blocks) + "\n\nEND LIBRARY\n"
+
+
+def _lef_area(text, name):
+    macro = lef_macros_raw(text).get(name, "")
+    size = re.search(r"SIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)", macro)
+    return round(float(size.group(1)) * float(size.group(2)), 4) if size else None
+
+
+def lef_macros_raw(text):
+    return {m.group(1): m.group(0) for m in re.finditer(r"(?ms)^\s*MACRO\s+(\S+)\s*$.*?^\s*END\s+\1\s*$", text)}
+
+
+def load_characterization(ws, recipe):
+    path = state_dir(ws) / "characterization.json"
+    if not path.is_file():
+        raise ToolError("state/characterization.json is missing; the characterize step runs before the arms")
+    record = read_json(path)
+    if record.get("round") != recipe["round"]:
+        raise ToolError("state/characterization.json is for round %s, not %s" % (record.get("round"), recipe["round"]))
+    return record
+
+
+def cmd_characterize(ws, timeout_min):
+    """Measure every DRC/LVS-clean extracted custom cell with ngspice (calibrated) for this round."""
+    ws = Path(ws)
+    inputs = load_inputs(ws)
+    recipe, recipe_sha = validate_recipe(ws, rerun=True)
+    k = recipe["round"]
+    library = recipe.get("library") or {}
+    cells = library.get("cells") or []
+    run_dir = ws / "runs" / ("r%d" % k) / "char"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    run_dir.mkdir(parents=True)
+    lef_text = (ws / library["lef"]).read_text(errors="replace") if cells else ""
+    rows, job = [], []
+    for cell in cells:
+        files = cell.get("files") or {}
+        if cell.get("layout") != "drc-lvs-clean" or not files.get("ext"):
+            rows.append({"name": cell["name"], "status": "excluded", "reason": "abstract layout: no DRC/LVS-clean extracted netlist to measure"})
+            continue
+        spice = (ws / files["ext"]).resolve()
+        ports = re.search(r"(?mi)^\.subckt\s+%s\s+(.*)$" % re.escape(cell["name"]), spice.read_text(errors="replace"))
+        if not ports:
+            rows.append({"name": cell["name"], "status": "excluded", "reason": "the extracted netlist has no .subckt %s" % cell["name"]})
+            continue
+        names = ports.group(1).split()
+        power = "VPWR" if "VPWR" in names else "VDD"
+        ground = "VGND" if "VGND" in names else "GND"
+        job.append({"name": cell["name"], "spice": str(spice), "subckt": cell["name"],
+                    "pins": {"power": power, "ground": ground, "inputs": cell["inputs"], "outputs": cell["outputs"]},
+                    "functions": cell["functions"], "area_um2": _lef_area(lef_text, cell["name"]),
+                    "lef": str((ws / files["lef"]).resolve()), "index_ref": cell["compareTo"], "footprint": cell["name"]})
+    write_json(run_dir / "job.json", {"cells": job})
+    started = time.time()
+    rc, tail = 0, []
+    result = {}
+    if job:
+        ref = inputs["platformLib"]
+        char = ws / "flow" / "toolbox" / "char"
+        cal = ws / "runs" / "calibration"
+        script = ("export PATH=/foss/tools/bin:/usr/bin:/bin; cd %s && "
+                  "( [ -f %s/calibration.json ] || python3 %s/calibrate.py --reference-lib %s --out %s --jobs 16 ) && "
+                  "python3 %s/characterize.py %s/job.json --reference-lib %s --calibration %s/calibration.json --out %s --jobs 16"
+                  ) % (run_dir, cal, char, ref, cal, char, run_dir, ref, cal, run_dir)
+        orfs = inputs["orfsRoot"]
+        argv = ["podman", "run", "--rm", "--entrypoint", "/bin/bash", "--userns=keep-id", "--cpus=16",
+                "-v", "%s:%s:rw" % (ws.resolve(), ws.resolve()), "-v", "%s:%s:ro" % (orfs, orfs),
+                inputs["containerImageId"], "-c", script]
+        log_path = run_dir / "char.log"
+        with open(log_path, "w") as log:
+            try:
+                rc = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, timeout=float(timeout_min) * 60).returncode
+            except subprocess.TimeoutExpired:
+                rc = "timeout"
+        tail = log_path.read_text(errors="replace").splitlines()[-30:]
+        if rc not in (0, 1) or not (run_dir / "characterization.json").is_file():
+            raise ToolError("characterization refused or failed (exit %s): %s" % (rc, " | ".join(tail[-6:])))
+        result = read_json(run_dir / "characterization.json")
+        by_name = {c.get("name"): c for c in result.get("cells", [])}
+        for cell in job:
+            entry = by_name.get(cell["name"], {})
+            ok = entry.get("status") == "ok"
+            rows.append({"name": cell["name"], "status": "measured" if ok else "failed",
+                         "reason": None if ok else (entry.get("reason") or "no characterization result")})
+    measured_names = [row["name"] for row in rows if row["status"] == "measured"]
+    lib = run_dir / "custom.measured.lib"
+    record = {
+        "schema": "hima-cellfmax-characterization/1", "round": k, "recipeSha256": recipe_sha,
+        "measuredLib": os.path.relpath(lib, ws) if measured_names and lib.is_file() else None,
+        "measuredNames": measured_names if lib.is_file() else [],
+        "cells": rows, "method": result.get("method"), "calibration": result.get("calibration"),
+        "factors": result.get("factors"), "exitCode": rc, "wallSeconds": round(time.time() - started, 1),
+        "writtenAt": now(),
+    }
+    write_json(state_dir(ws) / "characterization.json", record)
+    counts = {status: sum(1 for row in rows if row["status"] == status) for status in ("measured", "failed", "excluded")}
+    print("round %d characterization: %s in %ss" % (k, counts, record["wallSeconds"]))
 
 
 def _merge_liberty(base, custom, out):
@@ -567,34 +672,44 @@ def validate_recipe(ws, rerun=False, recipe_path=None, files_root=None):
         raise ToolError("an orfs-abc round needs at least one custom cell")
     lib_cells, lef_cells = {}, {}
     if cells:
-        lib_file = rel_under(roots, library.get("lib"), prefix)
         lef_file = rel_under(roots, library.get("lef"), prefix)
-        lib_cells = liberty_cells(lib_file.read_text(errors="replace"))
         lef_cells = lef_macros(lef_file.read_text(errors="replace"))
+        if library.get("lib"):
+            # The engineer's own Liberty is a claim, compared with HimaHarness's measurement.
+            lib_file = rel_under(roots, library.get("lib"), prefix)
+            lib_cells = liberty_cells(lib_file.read_text(errors="replace"))
     for cell in cells:
         name = cell.get("name")
         if not isinstance(name, str) or not NAME_RE.match(name) or name.startswith(CELL_PREFIX):
-            raise ToolError("cell name %r must be a plain identifier and not a foundry cell name" % name)
+            raise ToolError("cell %s: the name must be a plain identifier and not a foundry cell name" % name)
         origin = cell.get("origin")
         match = re.fullmatch(r"r(\d+)", origin or "")
         if not match or not 1 <= int(match.group(1)) <= k:
             raise ToolError("cell %s origin must be r1..r%d" % (name, k))
+        inputs = cell.get("inputs")
         outputs = cell.get("outputs")
-        if not isinstance(outputs, list) or not outputs or not all(isinstance(o, str) and o for o in outputs):
-            raise ToolError("cell %s needs a non-empty outputs list" % name)
-        if len(outputs) > 1 and method != "emap-window":
-            raise ToolError("multi-output cell %s needs emap-window synthesis" % name)
+        for label, pins in (("inputs", inputs), ("outputs", outputs)):
+            if not isinstance(pins, list) or not pins or not all(isinstance(o, str) and re.fullmatch(r"[A-Z][A-Z0-9_]*", o) for o in pins):
+                raise ToolError("cell %s needs a non-empty %s list of upper-case pin names" % (name, label))
+        if set(inputs) & set(outputs) or set(inputs + outputs) & set(PG_PINS):
+            raise ToolError("cell %s: inputs, outputs and power pins must be distinct" % name)
+        functions = cell.get("functions")
+        if not isinstance(functions, dict) or set(functions) != set(outputs) or not all(isinstance(v, str) and v.strip() for v in functions.values()):
+            raise ToolError("cell %s needs functions: one Liberty function per output, e.g. {\"Y\": \"!(A|B)\"}" % name)
+        used = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", " ".join(functions.values())))
+        if not used <= set(inputs):
+            raise ToolError("cell %s functions name pins %s that are not inputs" % (name, sorted(used - set(inputs))))
+        compare_to = cell.get("compareTo")
+        if not isinstance(compare_to, str) or not compare_to.startswith(CELL_PREFIX):
+            raise ToolError("cell %s needs compareTo: the nearest foundry cell, e.g. sky130_fd_sc_hd__nor3_1" % name)
         layout = cell.get("layout")
         if layout not in ("drc-lvs-clean", "abstract"):
             raise ToolError("cell %s layout must be 'drc-lvs-clean' or 'abstract'" % name)
-        model = cell.get("timingModel") or {}
-        if not model.get("method") or not model.get("base") or not isinstance(model.get("reason"), str) or not model["reason"].strip():
-            raise ToolError("cell %s timingModel needs method, base and a physical reason" % name)
         files = cell.get("files") or {}
-        required = ["sp", "lef", "lib"] + (["gds"] if layout == "drc-lvs-clean" else [])
+        required = ["sp", "lef"] + (["gds", "ext"] if layout == "drc-lvs-clean" else [])
         for key in required:
             if not files.get(key):
-                raise ToolError("cell %s needs files.%s" % (name, key))
+                raise ToolError("cell %s needs files.%s (%s)" % (name, key, "the Magic-extracted netlist HimaHarness characterizes" if key == "ext" else "from the cell factory"))
         hashes = cell.get("sha256") or {}
         cell_prefix = "cells/%s" % origin
         for key, rel in files.items():
@@ -608,32 +723,23 @@ def validate_recipe(ws, rerun=False, recipe_path=None, files_root=None):
                 raise ToolError("cell %s claims origin %s but is not in the best library; rebuild it under %s/" % (name, origin, prefix))
             if prior.get("sha256") != hashes or prior.get("files") != files:
                 raise ToolError("cell %s from %s must be byte-identical to best.json" % (name, origin))
-        if name not in lib_cells:
-            raise ToolError("cell %s has no cell() group in %s" % (name, library.get("lib")))
         if name not in lef_cells:
             raise ToolError("cell %s has no MACRO in %s" % (name, library.get("lef")))
-        lib_signal = set(lib_cells[name]["pins"])
         lef_pins = lef_cells[name]["pins"]
         lef_signal = {pin for pin, use in lef_pins.items() if use not in ("POWER", "GROUND")}
-        if lib_signal != lef_signal:
-            raise ToolError("cell %s signal pins differ: Liberty %s, LEF %s" % (name, sorted(lib_signal), sorted(lef_signal)))
+        if lef_signal != set(inputs + outputs):
+            raise ToolError("cell %s signal pins differ: recipe %s, LEF %s" % (name, sorted(inputs + outputs), sorted(lef_signal)))
         if set(PG_PINS) - set(lef_pins):
-            raise ToolError("cell %s LEF must carry power pins %s (run fix_lef_sky130hd.py)" % (name, ", ".join(PG_PINS)))
-        if set(PG_PINS) - lib_cells[name]["pg_pins"]:
-            raise ToolError("cell %s Liberty must declare pg_pins %s" % (name, ", ".join(PG_PINS)))
-        lib_outputs = {pin for pin, direction in lib_cells[name]["pins"].items() if direction == "output"}
-        if lib_outputs != set(outputs):
-            raise ToolError("cell %s outputs %s differ from its Liberty output pins %s" % (name, outputs, sorted(lib_outputs)))
+            raise ToolError("cell %s LEF must carry power pins %s (the factory normalizes this)" % (name, ", ".join(PG_PINS)))
+        if name in lib_cells:
+            claimed = set(lib_cells[name]["pins"])
+            if claimed != set(inputs + outputs):
+                raise ToolError("cell %s claimed Liberty pins %s differ from the recipe %s" % (name, sorted(claimed), sorted(inputs + outputs)))
     report = recipe.get("report") or {}
     rel_under(roots, report.get("findings"), prefix)
     rel_under(roots, report.get("usage"), prefix)
-    datasheets = report.get("datasheets") or []
-    for rel in datasheets:
-        rel_under(roots, rel, prefix)
-    sheet_names = {PurePosixPath(rel).stem for rel in datasheets}
-    lacking = [cell["name"] for cell in new_cells if cell["name"] not in sheet_names]
-    if lacking:
-        raise ToolError("one datasheet per new cell is required (datasheets/<cell>.md); missing: %s" % ", ".join(lacking))
+    if new_cells:
+        rel_under(roots, report.get("library"), prefix)
     if not isinstance(recipe.get("hypothesis"), str) or not recipe["hypothesis"].strip():
         raise ToolError("hypothesis must say what this round expects and why")
     claim = recipe.get("agentClaim")
@@ -784,8 +890,8 @@ def cmd_compare(ws):
         "controlMatchesBaseline": matches,
         "agentClaimGainPct": claim_gain, "claimDeltaPct": claim_delta,
         "reason": reason,
-        "cells": [{"name": cell["name"], "origin": cell["origin"], "outputs": cell["outputs"], "layout": cell["layout"],
-                   "timingModel": cell.get("timingModel"), "adopted": adopted_by_cell.get(cell["name"], 0)} for cell in cells],
+        "cells": library_rows(ws, recipe, adopted_by_cell),
+        "characterization": characterization_summary(ws, recipe),
         "topPathsCustom": (custom.get("topPaths") or [])[:5],
         "topPathsControl": (control.get("topPaths") or [])[:5],
         "report": recipe.get("report"),
@@ -794,7 +900,7 @@ def cmd_compare(ws):
     write_json(state_dir(ws) / "round.json", record)
     lesson = {key: record[key] for key in ("round", "periodNs", "method", "hypothesis", "comparisonValid", "roundGainPct",
                                             "roundImproved", "customAdopted", "reason", "cells", "functionVerified",
-                                            "agentClaimGainPct", "claimDeltaPct", "controlMatchesBaseline")}
+                                            "agentClaimGainPct", "claimDeltaPct", "controlMatchesBaseline", "characterization")}
     lesson["recipeSha256"] = recipe_sha
     lesson["customFmaxMhz"] = custom.get("fmaxMhz")
     lesson["controlFmaxMhz"] = control.get("fmaxMhz")
@@ -808,15 +914,99 @@ def cmd_compare(ws):
             "schema": "hima-cellfmax-best/1", "round": k, "recipeSha256": recipe_sha, "periodNs": recipe["periodNs"],
             "customFmaxMhz": custom["fmaxMhz"], "controlFmaxMhz": control["fmaxMhz"], "gainPct": gain,
             "library": {"lib": recipe["library"].get("lib"), "lef": recipe["library"].get("lef"),
+                        "measuredLib": (record["characterization"] or {}).get("measuredLib"),
                         "cells": [{"name": c["name"], "origin": c["origin"], "files": c["files"], "sha256": c["sha256"],
-                                   "outputs": c["outputs"], "layout": c["layout"], "timingModel": c.get("timingModel"),
-                                   "function": c.get("function")} for c in cells]},
+                                   "inputs": c.get("inputs"), "outputs": c["outputs"], "functions": c.get("functions"),
+                                   "compareTo": c.get("compareTo"), "layout": c["layout"]} for c in cells]},
             "synthesis": synthesis,
         })
     render_cell_images(ws, k, cells)
     write_text(ws / "derived" / ("round-%d.md" % k), round_markdown(record))
     print("round %d: valid=%s gain=%s%% improved=%s adopted=%s" % (k, valid, gain, improved, adopted))
     cmd_finish(ws)
+
+
+def _charcore():
+    sys.path.insert(0, str(FLOW_DIR / "toolbox" / "char"))
+    import charcore  # noqa: E402  (pure Python, shipped in the Pack toolbox)
+    return charcore
+
+
+def _median(values):
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return None
+    mid = len(values) // 2
+    return round(values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2, 4)
+
+
+def _ratios(cc, lib_text, name, ref_text, ref_name):
+    """Median measured/foundry ratio of cell_rise, cell_fall and input capacitance over matching arcs."""
+    try:
+        cell = cc.read_cell(lib_text, name)
+        ref = cc.read_cell(ref_text, ref_name)
+    except Exception:  # a missing or unreadable cell is reported as unknown, never as a number
+        return {}
+    out = {}
+    for quantity in ("cell_rise", "cell_fall"):
+        ratios = []
+        for arc in cell["arcs"]:
+            match = [r for r in ref["arcs"] if r["input"] == arc["input"] and quantity in r["tables"]]
+            if not match or quantity not in arc["tables"]:
+                continue
+            for row, ref_row in zip(arc["tables"][quantity], match[0]["tables"][quantity]):
+                ratios += [a / b for a, b in zip(row, ref_row) if b and b > 0 and a > 0]
+        out[quantity] = _median(ratios)
+    caps = [cell["pins"][p].get("capacitance") / ref["pins"][p]["capacitance"] for p in cell["pins"]
+            if p in ref["pins"] and cell["pins"][p].get("capacitance") and ref["pins"][p].get("capacitance")]
+    out["input_cap"] = _median(caps)
+    return out
+
+
+def characterization_summary(ws, recipe):
+    path = state_dir(ws) / "characterization.json"
+    if not path.is_file():
+        return None
+    record = read_json(path)
+    if record.get("round") != recipe["round"]:
+        return None
+    counts = {status: sum(1 for row in record["cells"] if row["status"] == status) for status in ("measured", "failed", "excluded")}
+    return {"counts": counts, "measuredLib": record.get("measuredLib"), "factors": record.get("factors"),
+            "wallSeconds": record.get("wallSeconds")}
+
+
+def library_rows(ws, recipe, adopted_by_cell):
+    """One row per cell: measured status, adoption, and measured timing against its foundry cell."""
+    ws = Path(ws)
+    cells = (recipe.get("library") or {}).get("cells") or []
+    char_path = state_dir(ws) / "characterization.json"
+    status = {}
+    lib_text = ref_text = claim_text = ""
+    if char_path.is_file():
+        record = read_json(char_path)
+        if record.get("round") == recipe["round"]:
+            status = {row["name"]: row for row in record["cells"]}
+            if record.get("measuredLib"):
+                lib_text = (ws / record["measuredLib"]).read_text(errors="replace")
+    inputs_path = state_dir(ws) / "inputs.json"
+    if inputs_path.is_file() and Path(read_json(inputs_path)["platformLib"]).is_file():
+        ref_text = Path(read_json(inputs_path)["platformLib"]).read_text(errors="replace")
+    if (recipe.get("library") or {}).get("lib") and (ws / recipe["library"]["lib"]).is_file():
+        claim_text = (ws / recipe["library"]["lib"]).read_text(errors="replace")
+    cc = _charcore() if lib_text and ref_text else None
+    rows = []
+    for cell in cells:
+        row = {"name": cell["name"], "origin": cell["origin"], "inputs": cell.get("inputs"), "outputs": cell["outputs"],
+               "functions": cell.get("functions"), "compareTo": cell.get("compareTo"), "layout": cell["layout"],
+               "status": status.get(cell["name"], {}).get("status", "not characterized"),
+               "statusReason": status.get(cell["name"], {}).get("reason"),
+               "adopted": adopted_by_cell.get(cell["name"], 0)}
+        if cc and row["status"] == "measured":
+            row["measuredVsFoundry"] = _ratios(cc, lib_text, cell["name"], ref_text, cell.get("compareTo"))
+            if claim_text and cell["name"] in claim_text:
+                row["claimedVsFoundry"] = _ratios(cc, claim_text, cell["name"], ref_text, cell.get("compareTo"))
+        rows.append(row)
+    return rows
 
 
 def render_cell_images(ws, k, cells):
@@ -862,14 +1052,26 @@ def round_markdown(record):
         "HimaHarness gain (custom vs its own control): %s %%. Agent's own claim: %s %% (difference %s)." % (
             _fmt(record["roundGainPct"]), _fmt(record["agentClaimGainPct"]), _fmt(record["claimDeltaPct"])),
         "Custom instances adopted: %s. Function: %s." % (record["customAdopted"], record["functionVerifiedReason"]),
-        "", "Outcome: %s" % record["reason"], "", "| cell | origin | outputs | layout | adopted | timing model |", "| --- | --- | --- | --- | --- | --- |",
+        "", "Outcome: %s" % record["reason"], "",
     ]
-    for cell in record["cells"]:
-        model = cell.get("timingModel") or {}
-        lines.append("| %s | %s | %s | %s | %d | %s from %s, derate %s: %s |" % (
-            cell["name"], cell["origin"], ",".join(cell["outputs"]), cell["layout"], cell["adopted"],
-            model.get("method"), model.get("base"), json.dumps(model.get("derate")), model.get("reason")))
-    lines += ["", "Custom-cell timing is modelled, not characterized.", ""]
+    summary = record.get("characterization") or {}
+    counts = summary.get("counts") or {}
+    lines += ["Library: %d cell(s); measured by HimaHarness %d, characterization failed %d, excluded %d (not measurable)." % (
+        len(record["cells"]), counts.get("measured", 0), counts.get("failed", 0), counts.get("excluded", 0)), "",
+        "| cell | function | vs foundry | status | adopted | measured rise | measured fall | input cap | claimed rise |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for cell in sorted(record["cells"], key=lambda c: (-c["adopted"], c["name"])):
+        measured = cell.get("measuredVsFoundry") or {}
+        claimed = cell.get("claimedVsFoundry") or {}
+        functions = "; ".join("%s=%s" % kv for kv in (cell.get("functions") or {}).items())
+        status = cell["status"] + (" (%s)" % cell["statusReason"] if cell.get("statusReason") else "")
+        lines.append("| %s | %s | %s | %s | %d | %s | %s | %s | %s |" % (
+            cell["name"], functions, (cell.get("compareTo") or "").replace(CELL_PREFIX, ""), status, cell["adopted"],
+            _fmt(measured.get("cell_rise"), "%.2fx"), _fmt(measured.get("cell_fall"), "%.2fx"),
+            _fmt(measured.get("input_cap"), "%.2fx"), _fmt(claimed.get("cell_rise"), "%.2fx")))
+    lines += ["", "Ratios are medians over the 7x7 tables against the named foundry cell (below 1 = faster or smaller).",
+              "Custom-cell timing is SPICE-characterized by HimaHarness from the extracted layout (ngspice, tt 1.8 V 25 C, "
+              "calibrated against foundry cells); not signoff, not silicon.", ""]
     return "\n".join(lines)
 
 
@@ -919,6 +1121,7 @@ def cmd_finish(ws):
 
 COMMANDS = {
     "bind": (cmd_bind, 6), "baseline": (cmd_baseline, 3), "recipe": (cmd_recipe, 1), "precheck": (cmd_precheck, 3),
+    "characterize": (cmd_characterize, 2),
     "arm": (cmd_arm, 3), "compare": (cmd_compare, 1), "finish": (cmd_finish, 1),
 }
 

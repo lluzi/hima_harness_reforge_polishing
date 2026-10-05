@@ -1,14 +1,16 @@
-# Baseline once, then rounds of: resident engineer -> two matched ORFS arms in parallel -> compare ->
+# Baseline once, then rounds of: resident engineer (a library of cells) -> HimaHarness measures every
+# cell (ngspice from the extracted layout) -> two matched ORFS arms in parallel -> compare ->
 # Reader -> judges -> next round. The owner starts and collects each engineering task and decides
 # next-round; everything between is self-driving. The round record is read twice: once for the
 # adoption/improvement verdicts (check-round) and once, fresh, for the constraint/Goal judge that
 # the next-round chooser weighs (an explore node needs exactly one judge after a fresh reading).
 id: custom-cell-fmax-sky130-demo
-version: "0.1.0"
+version: "0.2.0"
 entry: bind-inputs
 autopilot:
   - { from: [bind-inputs], until: [engineer, blocked] }
-  - { fork: engineer }
+  - { from: [characterize], until: [arm-custom, arm-control] }
+  - { fork: characterize }
   - { from: [arms-joined], until: [next-round, blocked] }
 
 nodes:
@@ -39,6 +41,12 @@ nodes:
     kind: act
     parameters:
       tool: engineer
+  - id: characterize
+    kind: act
+    parameters:
+      tool: characterize
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: armTimeoutMin }
   - id: arm-custom
     kind: act
     parameters:
@@ -96,8 +104,9 @@ edges:
   - { from: check-baseline, to: engineer, outcome: PASS }
   - { from: check-baseline, to: blocked, outcome: FAIL }
   - { from: check-baseline, to: blocked, outcome: UNDETERMINED }
-  - { from: engineer, to: arm-custom }
-  - { from: engineer, to: arm-control }
+  - { from: engineer, to: characterize }
+  - { from: characterize, to: arm-custom }
+  - { from: characterize, to: arm-control }
   - { from: arm-custom, to: read-arm-custom }
   - { from: arm-control, to: read-arm-control }
   - { from: read-arm-custom, to: arms-joined }
