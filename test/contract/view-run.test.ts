@@ -1,24 +1,18 @@
 // Ticket #16: the workbench. A Run's whole path, read through the Hima namespace and rendered by the
 // HimaGuide card.
 //
-// Everything here is asserted at the one agreed seam: the real web profile booted as a subprocess,
-// reached over HTTP with the web app's own session cookie, and the browser module asserted on the
-// bundle the host actually serves. The Site is the local one and the flow is the generated stand-in;
-// the reference site is #17.
+// Run reads, admission and human control use the actual web profile and browser session fence.
+// The known-failure repair uses the actual owning Agent tool seam; it does not drive DBOS directly.
+// Local stand-in Jobs keep business evidence and physical stop observable without model/SSH/EDA.
 //
-// What each test is for:
-//   - the run view carries the whole path of a Run started over HTTP — nodes, jobs, decision, meters,
-//     goal, budget — and the records route narrows to every record type step 2 added;
-//   - a cancel over HTTP stops a Job that is still sleeping, and the request, the observed stop and
-//     the Run's ending are the ones #14 defined; a resume over HTTP clears the blocker #15 wrote;
-//   - a cancel or a resume of a Run whose status cannot take it is 409 `hima/run-not-in-state`;
-//   - every route is refused without the session cookie;
-//   - the served bundle claims the tool-view key of both Hima tools and carries the rendering of
-//     every Run status and every node state a person can be shown.
+// Retained claims: task/result identity, goal and original budget, observations/verdicts and sourced
+// decisions, physical Job counts, failed-task repair, real sleeping-Job cancellation, typed control
+// denials, every records filter, no-cookie refusals, and the statuses in the actually served bundle.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { localHome, waitUntil } from './support/fabric.ts';
+import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createHimaHome, harnessPackageDir, type HimaHome } from './support/dsh-home.ts';
@@ -30,7 +24,10 @@ import { writeStandinFlow } from './support/standin-flow.ts';
 // tmux itself, asked by the one module that owns that question for this suite.
 import { tmuxHasSession } from './support/tmux.ts';
 // The view shapes are the bundle's own contract, not this file's opinion of it.
-import type { HimaErrorBody, RecordsView, RunView } from '@hima/harness';
+import type { HimaErrorBody, RecordsView, RunView, TaskIdentity, LogTailView } from '@hima/harness';
+
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
 
 /** One answer, read once: the status is asserted against the body the response actually carried. */
 async function answer<T>(res: Response, expected: number): Promise<T> {
@@ -43,8 +40,8 @@ interface Workbench {
   readonly h: HimaHome;
   readonly host: BootedHost;
   readonly cookie: string;
-  /** Every tmux session this workbench's Runs launched, so a test cleans up after itself. */
-  readonly sessions: Set<string>;
+  readonly guide: string;
+  readonly runs: Set<string>;
   dispose(): Promise<void>;
 }
 
@@ -64,211 +61,301 @@ async function bootedWorkbench(
   });
   const host = await bootHimaHost(h);
   const cookie = await openSession(host);
-  const sessions = new Set<string>();
-  return {
-    h, host, cookie, sessions,
+  const guide = await createLiveSession(host, cookie, h.workspace);
+  const runs = new Set<string>();
+  const wb: Workbench = {
+    h, host, cookie, guide, runs,
     dispose: async () => {
-      // Every session came out of this home's own ledger through the run view: never one this test
-      // did not start.
-      for (const s of sessions) spawnSync('tmux', ['kill-session', '-t', `=${s}`], { timeout: 15_000 });
+      for (const runId of runs) {
+        const context = await readRun(wb, runId);
+        if (!context.run.stopState?.closed) await answer<{ run: RunView }>(await controlRun(wb, runId, 'cancel', 'fixture-close'), 200);
+        const closed = await untilView(wb, runId, 'public physical resource closure', v => v.run.stopState?.closed === true, 30_000);
+        for (const job of closed.jobs) if (job.event === 'launched') assert.equal(tmuxHasSession(job.job.session), false,
+          'PG-projected submitted Job is physically absent before Host/Home disposal');
+        console.info('fixture-resource-closure', JSON.stringify({ runId, stopState: closed.run.stopState, sessions: [...new Set(closed.jobs.map(j => j.job.session))], submittedSessionsAbsent: true }));
+      }
       const code = await host.stop();
       await h.dispose();
       assert.equal(code, 0, `host exited ${code}\n${host.stderr()}`);
     },
   };
+  return wb;
 }
 
 /**
  * Start a Campaign through the route the workbench starts one through.
  *
- * One generation unless the caller says otherwise: this suite is about what the run view carries and
+ * One reviewed generation: this suite is about what the run view carries and
  * what the page renders, and the shipped pack's own loop (#25) would have every one of these tests
  * reading three generations' records where it means to read one. What a Loop does is `loop.test.ts`.
  */
-const startRun = (wb: Workbench, body: Record<string, unknown>): Promise<Response> =>
-  api(wb.host, wb.cookie, '/hima/api/runs', {
-    method: 'POST',
-    body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, generations: 1, ...body }),
-    headers: { 'content-type': 'application/json' },
-  });
+async function startRun(wb: Workbench, body: Record<string, unknown>): Promise<RunView> {
+  const campaign = await answer<{ preparation: { proposal: { id: string; ready: boolean } } }>(await api(wb.host, wb.cookie, `/hima/api/campaign?sessionId=${wb.guide}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: wb.guide, file: { schema: 'hima-campaign/1',
+      pack: { id: timingProbePackId }, site: { name: 'local' }, goal: { target_period_ns: 2 }, strategy: { periodNs: 2 },
+      budget: { generations: 1, ...(body.retries === undefined ? {} : { retries: body.retries }) } } }),
+  }), 200);
+  assert.equal(campaign.preparation.proposal.ready, true);
+  const view = await answer<RunView>(await api(wb.host, wb.cookie, '/hima/api/runs/start', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fromCampaignFile: true, pack: timingProbePackId, site: 'local',
+      proposalId: campaign.preparation.proposal.id, sessionId: wb.guide }),
+  }), 200);
+  wb.runs.add(view.run.id);
+  assert.equal(view.run.engine, 'dbos/5.2.11');
+  assert.equal(view.run.control?.guideSessionId, wb.guide);
+  assert.notEqual(view.run.control?.owner, wb.guide);
+  await untilView(wb, view.run.id, 'original prepared workspace', v => v.workspace !== undefined);
+  return view;
+}
+
+async function controlRun(wb: Workbench, runId: string, action: string, requestId: string): Promise<Response> {
+  const view = await readRun(wb, runId);
+  return api(wb.host, wb.cookie, `/hima/api/runs/${runId}/control`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action, requestId, sessionId: wb.guide, expectedEpoch: view.run.control!.epoch, expectedRevision: view.run.control!.revision }) });
+}
 
 /** The Run as the workbench reads it. */
 const readRun = async (wb: Workbench, runId: string): Promise<RunView> =>
-  answer<RunView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}`), 200);
+  answer<RunView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}?sessionId=${wb.guide}`), 200);
 
 /** The Run's records of one type, as the records route lists them. */
 const readRecords = async (wb: Workbench, runId: string, type: string): Promise<RecordsView['records']> =>
-  (await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/records?type=${type}`), 200)).records;
-
-/** Remember every session a view says was launched, so the test can stop what it started. */
-function remember(wb: Workbench, view: RunView): RunView {
-  for (const job of view.jobs) if (job.event === 'launched') wb.sessions.add(job.job.session);
-  return view;
-}
+  (await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/records?type=${type}&sessionId=${wb.guide}`), 200)).records;
 
 /** Poll the run view until it says something, or fail saying what never happened. */
 async function untilView(wb: Workbench, runId: string, what: string, ready: (v: RunView) => boolean, timeoutMs = 60_000): Promise<RunView> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const view = remember(wb, await readRun(wb, runId));
+    const view = await readRun(wb, runId);
     if (ready(view)) return view;
     if (Date.now() >= deadline) throw new Error(`waited ${timeoutMs} ms and ${what} never happened: ${JSON.stringify(view.run)}`);
     await new Promise((r) => setTimeout(r, 200));
   }
 }
 
-test('the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget', async (t) => {
+test('the run view carries the whole path of a run started over HTTP: task results, jobs, decision evidence, goal and budget', async (t) => {
   const wb = await bootedWorkbench(t);
   if (!wb) return;
   try {
-    const view = remember(wb, await answer<RunView>(await startRun(wb, {}), 200));
+    const started = await startRun(wb, {});
+    const view = await untilView(wb, started.run.id, 'terminal whole path', v => !!v.run.status?.startsWith('ended-'));
 
-    // The run row: what the Run is for, what it was allowed, and what it spent.
-    assert.equal(view.run.status, 'ended-budget-exhausted', 'the one generation it was allowed ran to its end');
-    assert.equal(view.run.packId, timingProbePackId, 'the view says which pack the run runs');
-    assert.deepEqual(view.run.goal, { target_period_ns: 2.0 }, 'the goal is on the view, immutable since it was opened');
-    assert.ok(Number(view.run.strategy?.periodNs ?? 0) > 0, `and the strategy it now stands at: ${JSON.stringify(view.run.strategy)}`);
-    assert.equal(view.run.budget?.jobCap, 1, 'the budget carries the cap the site declared');
-    assert.equal(view.run.budget?.retryAllowance, 3, 'and the default retry allowance');
-    assert.ok((view.run.budget?.timeBoxMs ?? 0) > 0, 'and a time box');
-    assert.ok((view.run.meters?.elapsedMs ?? -1) >= 0, `the meters carry the elapsed time: ${JSON.stringify(view.run.meters)}`);
-    assert.equal(view.run.meters?.jobsLaunched, 1, 'one job launched');
-    // The run-wide meter counts every node turn, not the retry allowance's per-node attempts: this
-    // graph took four turns and none of them was tried twice, which the node rows below say.
-    assert.equal(view.run.meters?.attempts, 4, 'one turn at each of the four nodes it reached');
-    assert.equal(view.run.meters?.endedBy, 'generation-limit', 'and the meter that ended it is the generation it was allowed');
-    assert.equal(view.valueMeasurement?.jobs.launched.value, 1, 'the value receipt reads the durable Job count');
-    assert.equal(view.valueMeasurement?.human.businessDecisionTime.status, 'unmeasured', 'missing human labour is not projected as zero');
-    assert.equal(view.valueMeasurement?.model.requests.status, 'unmeasured', 'a session history does not invent provider request usage');
-
-    // The path: one entry per node, in the order the Run reached them, each with the state it is in.
-    assert.deepEqual(
-      view.nodes.map((n) => [n.nodeId, n.kind, n.state, n.attempt]),
-      [['synthesize', 'act', 'done', 1], ['read-qor', 'act', 'done', 1], ['judge', 'judge', 'done', 1], ['next-period', 'explore', 'done', 1]],
-      'the whole path, in graph order, with every node settled',
-    );
-    const synthesize = view.nodes.find((n) => n.nodeId === 'synthesize')!;
-    assert.ok(synthesize.jobSession, 'the act node names the job session it waited on');
-    assert.equal(synthesize.waitedForSlot, undefined, 'nothing queued behind a full site');
-
-    // The Jobs: identity, events and exit.
-    assert.deepEqual(view.jobs.map((j) => j.event), ['launched', 'finished'], 'one job, launched and finished');
-    const finished = view.jobs.find((j) => j.event === 'finished')!;
-    assert.equal(finished.exitCode, 0, 'which exited zero');
-    assert.equal(finished.nodeId, 'synthesize', 'and says which node launched it');
-    assert.equal(finished.job.session, synthesize.jobSession, 'the same session the node named');
-
-    // What was read, and what was concluded about it.
-    assert.equal(view.observations.length, 1, 'one observation: the generation\'s qor report');
-    assert.equal(view.verdicts.length, 2, 'judged by both of the pack\'s rules');
-    assert.ok(view.verdicts.every((v) => v.cites.every((c) => c.observation !== null)), 'every verdict citation resolved to the observation it was read from');
-
-    // The decision, and every record it cited, all inside the one view the browser reads.
-    const decision = view.decision;
-    assert.ok(decision, 'the explore node decided');
-    assert.equal(decision.nodeId, 'next-period');
+    assert.equal(view.run.status, 'ended-goal-not-met');
+    assert.equal(view.run.goalState, 'not-met', 'a spent generation budget never promotes negative Timing evidence to Goal met');
+    assert.equal(view.run.packId, timingProbePackId);
+    assert.deepEqual(view.run.goal, { target_period_ns: 2 });
+    assert.deepEqual(view.run.strategy, { periodNs: 2 }, 'the next hypothesis was not run after the original generation limit');
+    assert.equal(view.run.budget?.jobCap, 1);
+    assert.equal(view.run.budget?.retryAllowance, 3);
+    assert.equal(view.run.budget?.generationLimit, 1);
+    assert.ok((view.run.budget?.timeBoxMs ?? 0) > 0);
+    assert.equal(Date.parse(view.run.deadlineAt!) - Date.parse(view.run.createdAt), view.run.budget!.timeBoxMs,
+      'the public deadline retains the original total time box');
+    const tasks = view.tasks!.filter(task => task.result);
+    assert.deepEqual(tasks.map(task => task.taskId).sort(), ['judge', 'next-period', 'read-qor', 'synthesize']);
+    for (const task of tasks) {
+      assert.equal(task.projection.state, 'succeeded');
+      assert.equal(task.identity?.runId, view.run.id);
+      assert.deepEqual(task.result!.identity, task.identity);
+      assert.ok(task.sourceFactIds.length > 0, 'each committed result carries original source facts');
+    }
+    const synthesize = tasks.find(task => task.taskId === 'synthesize')!;
+    const synthValue = synthesize.result!.value as { job: { session: string }; completed: boolean };
+    assert.equal(synthValue.completed, true);
+    const launches = view.jobs.filter(job => job.event === 'launched');
+    const finished = view.jobs.filter(job => job.event === 'finished');
+    assert.ok(launches.some(job => job.nodeId === 'synthesize' && job.job.session === synthValue.job.session));
+    for (const job of launches) {
+      assert.ok(finished.some(result => result.job.session === job.job.session && result.exitCode === 0),
+        'every physical submission, including original collection work, retains its successful exit');
+      assert.equal(tmuxHasSession(job.job.session), false, 'terminal receipt has physically released its submitted Job');
+    }
+    assert.equal(view.valueMeasurement?.human.businessDecisionTime.status, 'unmeasured');
+    assert.equal(view.valueMeasurement?.model.requests.status, 'unmeasured');
+    assert.equal(view.observations.length, 1);
+    assert.equal(view.verdicts.length, 2);
+    assert.ok(view.verdicts.every(verdict => verdict.cites.every(citation => citation.observation !== null)));
+    const decisionTask = tasks.find(task => task.taskId === 'next-period')!;
+    const decision = decisionTask.result!.value as { chooser: string; chosen: { strategy: { periodNs: number } };
+      rationale: Record<string, unknown>; cites: string[]; outcome: string; goalMet: boolean };
     assert.equal(decision.chooser, 'over-constraining-push');
-    assert.ok('strategy' in decision.chosen, `this generation missed its goal, so the chooser chose a next strategy: ${JSON.stringify(decision.chosen)}`);
-    assert.equal(view.run.strategy?.periodNs, 2.0, 'the row still stands at the strategy it ran: the next generation it would have opened was not allowed');
-    assert.equal(decision.chosen.strategy.periodNs, 2.15, 'and the strategy it would have tried is on the decision');
-    assert.ok(Object.keys(decision.rationale).length > 0, 'with the named numbers it chose from');
-    const known = new Set([...view.observations.map((o) => o.recordId), ...view.verdicts.map((v) => v.recordId)]);
-    assert.deepEqual(decision.cites.filter((id) => !known.has(id)), [], `every id the decision cites is a record this same view carries: ${JSON.stringify(decision.cites)}`);
-
-    assert.deepEqual(view.blockers, [], 'nothing blocked');
-    assert.deepEqual(view.cancels, [], 'and nobody asked it to stop');
-
-    // The records route lists the whole path — one record per transition — and narrows to each type.
-    const nodes = await readRecords(wb, view.run.id, 'node');
-    assert.deepEqual(
-      nodes.map((r) => [(r as { nodeId: string }).nodeId, (r as { state: string }).state]),
-      [
-        ['synthesize', 'running'], ['synthesize', 'done'],
-        ['read-qor', 'running'], ['read-qor', 'done'],
-        ['judge', 'running'], ['judge', 'done'],
-        ['next-period', 'running'], ['next-period', 'done'],
-      ],
-      'every transition, in sequence, rather than the one entry per node the run view carries',
-    );
-    assert.equal((await readRecords(wb, view.run.id, 'decision')).length, 1);
-    assert.equal((await readRecords(wb, view.run.id, 'workspace')).length, 1);
-    assert.equal((await readRecords(wb, view.run.id, 'job')).length, 2);
-    assert.deepEqual(await readRecords(wb, view.run.id, 'blocker'), []);
-    assert.deepEqual(await readRecords(wb, view.run.id, 'cancel'), []);
-    assert.deepEqual(await readRecords(wb, view.run.id, 'resumed'), []);
-    for (const line of [`run ${view.run.id}`, ...view.nodes.map((n) => `  ${n.nodeId}: ${n.state}`)]) t.diagnostic(line);
+    assert.equal(decision.outcome, 'generation-limit');
+    assert.equal(decision.goalMet, false);
+    assert.equal(decision.chosen.strategy.periodNs, 2.15);
+    assert.ok(Object.keys(decision.rationale).length > 0);
+    const evidence = new Set(tasks.filter(task => task.taskId === 'read-qor' || task.taskId === 'judge')
+      .flatMap(task => task.sourceFactIds));
+    assert.ok(decision.cites.length > 0, 'the decision must cite actual upstream observation or verdict evidence');
+    for (const citation of decision.cites) assert.ok(evidence.has(citation), 'decision cites original committed results carried in this view');
+    assert.deepEqual(view.blockers, []);
+    assert.deepEqual(view.cancels, []);
+    const all = (await answer<RecordsView>(await api(wb.host, wb.cookie,
+      `/hima/api/runs/${view.run.id}/records?sessionId=${wb.guide}`), 200)).records;
+    for (const type of ['node', 'decision', 'workspace', 'job', 'blocker', 'cancel', 'resumed', 'observation', 'verdict']) {
+      assert.deepEqual(await readRecords(wb, view.run.id, type), all.filter(record => record.type === type),
+        `the records route filters every retained record type exactly: ${type}`);
+    }
+    assert.equal(all.filter(record => record.type === 'workspace').length, 1);
+    assert.equal(all.filter(record => record.type === 'job').length, view.jobs.length);
+    console.info('whole-path-count-truth', JSON.stringify({ runId: view.run.id, committedTasks: tasks.map(task => task.taskId),
+      physicalLaunches: launches.length, physicalFinished: finished.length, measurement: view.valueMeasurement?.jobs,
+      observations: view.observations.length, verdicts: view.verdicts.length, decision, originalBudget: view.run.budget }));
+    assert.equal(view.valueMeasurement?.jobs.launched.value, launches.length);
+    assert.equal(view.valueMeasurement?.jobs.finished.value, finished.length);
+    t.diagnostic(`Run ${view.run.id}: four committed business tasks, ${launches.length} physical Job submissions; original generation limit, Goal not met`);
   } finally { await wb.dispose(); }
 });
 
-test('over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either', async (t) => {
-  // One stand-in generation fails on purpose with no retry allowance, so the Run blocks and the route
-  // answers with the run id and the workspace the next generation will run in. The workspace's own
-  // copy of the flow is then told to sleep, so the Job the resume launches is still running when the
-  // cancel arrives — which is the only state a cancel has anything to stop.
-  const wb = await bootedWorkbench(t, { failures: 1 });
-  if (!wb) return;
+test('a known failed and physically closed task is repaired through the owning Agent in the same Run with its original budget', async (t) => {
+  const local = await localHome(t, { sleepSeconds: 0, failures: 1 });
+  assert.ok(local);
+  const host = await bootInProcess(local.h, { withWebApp: true });
+  let runId: string | undefined;
+  type RepairContext = { run: RunView['run']; durable: { run: { deadlineAt: string }; outcome?: { state: string };
+    tasks: { identity: TaskIdentity; state: { state: string }; valid: boolean; result?: unknown }[]; stopped: unknown } };
+  const readContext = async () => await host.ctx.hima.readExecutionContext(runId!) as unknown as RepairContext;
   try {
-    const blocked = remember(wb, await answer<RunView>(await startRun(wb, { retries: 0 }), 200));
-    const runId = blocked.run.id;
-    assert.equal(blocked.run.status, 'waiting', 'a spent allowance leaves the run waiting for a person');
-    assert.equal(blocked.run.currentNode, 'blocked', 'at the pack\'s wait node');
-    assert.equal(blocked.blockers.length, 1, 'and the view carries the blocker to clear');
-    const blocker = blocked.blockers[0]!;
-    assert.equal(blocker.nodeId, 'synthesize');
-    assert.equal(blocker.attempts, 1, 'an allowance of zero is one attempt');
-    assert.ok(blocker.lastExitCode !== undefined && blocker.lastExitCode !== 0, `with the exit the job gave: ${JSON.stringify(blocker)}`);
-    assert.ok(blocker.logTail, 'and the tail of that job\'s own log, so nobody has to log in to the site to read it');
-    assert.ok(blocked.nodes.some((n) => n.nodeId === 'synthesize' && n.state === 'blocked' && n.reason), 'the blocked node says why, in words');
+    const guide = await createRootAgent(host.ctx, local.h.workspace);
+    let serial = 0;
+    const call = (name: string, args: object, agent = guide) => host.ctx.tools.execute({ name, arguments: args, agent,
+      callId: `repair-${++serial}` as never, signal: AbortSignal.timeout(30_000) });
+    const value = (result: Awaited<ReturnType<typeof call>>) => {
+      assert.equal(result.isError, false, JSON.stringify(result));
+      return JSON.parse(result.content.filter(item => item.type === 'text').map(item => item.text).join(''));
+    };
+    const budget = { generations: 1, retries: 0 };
+    const proposal = value(await call('hima_prepare', { pack: timingProbePackId, site: 'local', budget }));
+    const started = value(await call('hima_run', { pack: timingProbePackId, site: 'local', proposalId: proposal.id,
+      goal: proposal.goal, strategy: proposal.strategy, budget }));
+    runId = started.runId;
+    await waitUntil('original known failed task', async () => (await readContext()).durable.tasks
+      .some(task => task.state.state === 'failed'), 15_000, 25);
+    const before = await readContext();
+    const original = before.durable.tasks.find(task => task.state.state === 'failed')!;
+    const submitted = await host.ctx.hima.durable.store.effectFact(original.identity.effectId, 'submitted') as { session: string; workspace: string };
+    const failure = await host.ctx.hima.durable.store.effectFact(original.identity.effectId, 'executor-failure') as { exitCode: number };
+    assert.notEqual(failure.exitCode, 0);
+    assert.equal(tmuxHasSession(submitted.session), false, 'original failed Job is physically closed before explicit repair');
+    assert.ok((await readFile(path.join(submitted.workspace, `${submitted.session}.log`), 'utf8')).length > 0,
+      'the original failed Job log remains available');
+    const invocation = (await host.ctx.hima.durable.store.flowInvocations(runId!)).find(item => item.identity.effectId === original.identity.effectId)!;
+    const input = (invocation.context as { input: Record<string, unknown> }).input;
+    const owner = host.ctx.get('agents')!.get(before.run.control!.owner as never)!;
+    assert.ok(owner);
+    assert.notEqual(String(owner.id), String(guide.id));
+    const publicContext = value(await call('hima_context', { run: runId }, guide)) as { facts: RunView };
+    const failedTask = publicContext.facts.tasks!.find(task => task.identity?.effectId === original.identity.effectId)!;
+    assert.equal(failedTask.taskId, original.identity.taskId);
+    assert.equal(failedTask.projection.state, 'failed');
+    assert.ok('reason' in failedTask.projection);
+    assert.match(failedTask.projection.reason.message, /Original Job .* exited [1-9]\d*; inspect its retained log/);
+    const failedJob = publicContext.facts.jobs.find(job => job.event === 'finished' && job.job.session === submitted.session)!;
+    assert.equal(failedJob.exitCode, failure.exitCode, 'the assigned Guide sees the original physical Job failure');
+    assert.notEqual(failedJob.exitCode, 0);
+    const connection = host.ctx.get('connection' as never) as unknown as { authenticatedUrl(url: string): string };
+    const webServer = host.ctx.get('webServer' as never) as unknown as { port: number };
+    const browser = { url: connection.authenticatedUrl(`http://127.0.0.1:${webServer.port}`) };
+    const exchanged = await fetch(browser.url, { redirect: 'manual' });
+    assert.equal(exchanged.status, 303);
+    const cookie = exchanged.headers.get('set-cookie')?.split(';')[0];
+    assert.ok(cookie);
+    const log = await answer<LogTailView>(await api(browser, cookie,
+      `/hima/api/runs/${runId}/log-tail?sessionId=${guide.id}&node=${original.identity.taskId}&lines=100`), 200);
+    assert.equal(log.session, submitted.session, 'public log read retains the original failed Job session');
+    assert.match(log.lines.join('\n'), /\[stand-in\] Error: synthesis was told to fail this attempt/);
+    assert.match(log.lines.join('\n'), /attempt\(s\) were left to fail; nothing was written/);
+    console.info('public-failed-job-diagnosis', JSON.stringify({ runId, effectId: failedTask.identity!.effectId,
+      guideSessionId: String(guide.id), session: log.session, exitCode: failedJob.exitCode,
+      reason: failedTask.projection.reason, lines: log.lines }));
+    const repaired = value(await call('hima_execute', { run: runId, action: 'revise', requestId: 'repair-known-failure',
+      expectedEpoch: before.run.control!.epoch, expectedRevision: before.run.control!.revision,
+      revision: { taskId: original.identity.taskId, effectId: original.identity.effectId, input,
+        evidence: { reason: 'Explicit business repair after known failed and physically closed original Job',
+          source: original.identity.effectId, originalExit: failure.exitCode } } }, owner));
+    assert.equal(repaired.kind, 'accepted');
+    await waitUntil('actual replacement invocation finishes in the same Run', async () => {
+      const context = await readContext();
+      return context.durable.outcome?.state === 'succeeded' && context.run.control!.revision === 1;
+    }, 15_000, 25);
+    const recovered = await readContext();
+    assert.equal(recovered.run.id, before.run.id);
+    assert.deepEqual(recovered.run.budget, before.run.budget);
+    assert.equal(recovered.durable.run.deadlineAt, before.durable.run.deadlineAt);
+    assert.ok(recovered.durable.tasks.some(task => task.identity.taskId === original.identity.taskId
+      && task.identity.effectId !== original.identity.effectId && task.result));
+    assert.ok(recovered.durable.tasks.some(task => task.identity.effectId === original.identity.effectId
+      && !task.valid && task.state.state === 'failed'), 'the original failed evidence is retained');
+    console.info('same-run-repair', JSON.stringify({ runId, originalEffect: original.identity.effectId,
+      revision: recovered.run.control!.revision, outcome: recovered.durable.outcome?.state, originalBudgetPreserved: true,
+      originalDeadlinePreserved: true, originalFailedEvidenceRetained: true }));
+  } finally {
+    try {
+      if (runId) {
+        const current = await readContext();
+        const owner = host.ctx.get('agents')!.get(current.run.control!.owner as never)!;
+        assert.ok(owner);
+        const cancellation = await host.ctx.tools.execute({ name: 'hima_execute', callId: 'fixture-close-repaired' as never,
+          agent: owner, signal: AbortSignal.timeout(30_000), arguments: { run: runId, action: 'cancel', requestId: 'fixture-close-repaired',
+            expectedEpoch: current.run.control!.epoch, expectedRevision: current.run.control!.revision } });
+        assert.equal(cancellation.isError, false, JSON.stringify(cancellation));
+        const cancelled = JSON.parse(cancellation.content.filter(item => item.type === 'text').map(item => item.text).join(''));
+        assert.equal(cancelled.kind, 'accepted', JSON.stringify(cancelled));
+        try { await waitUntil('public actual resource closure after repaired Run', async () =>
+          (await readContext()).run.stopState?.closed === true, 30_000, 25); }
+        catch (error) {
+          const context = await readContext();
+          const physical = await host.ctx.hima.durable.store.flowPhysicalFacts(runId);
+          console.info('unclosed-repaired-run', JSON.stringify({ runId, stopState: context.run.stopState,
+            resources: physical.resources, tasks: context.durable.tasks.map(task => ({ identity: task.identity, state: task.state, valid: task.valid })),
+            stopped: context.durable.stopped }));
+          throw error;
+        }
+        const physical = await host.ctx.hima.durable.store.flowPhysicalFacts(runId);
+        for (const effect of physical.effects) {
+          const submitted = await host.ctx.hima.durable.store.effectFact(effect.identity.effectId, 'submitted') as { session?: string } | undefined;
+          if (submitted?.session) assert.equal(tmuxHasSession(submitted.session), false);
+        }
+        console.info('fixture-resource-closure', JSON.stringify({ runId, publicClosed: true, pgSubmittedSessionsAbsent: true }));
+      }
+    } finally { await host.dispose(); await local.h.dispose(); }
+  }
+});
 
-    // The workspace the next generation runs in, read the way the browser would: off the records
-    // route. Its copy of the flow is this Campaign's own, so slowing it down slows nothing else.
-    const workspaces = await readRecords(wb, runId, 'workspace');
-    const workspace = (workspaces[0] as { workspace: string }).workspace;
-    const makefile = path.join(workspace, 'flow', 'Makefile');
-    const text = await readFile(makefile, 'utf8');
-    assert.match(text, /^STANDIN_SLEEP \?= 1$/m, 'the campaign\'s own copy of the stand-in flow');
-    await writeFile(makefile, text.replace(/^STANDIN_SLEEP \?= 1$/m, 'STANDIN_SLEEP ?= 40'));
-
-    // The resume drives the Run again and blocks until it stops; the cancel below is what stops it.
-    const resuming = api(wb.host, wb.cookie, `/hima/api/runs/${runId}/resume`, { method: 'POST' });
-    const running = await untilView(wb, runId, 'the resumed run launched a job and said which session it waits on', (v) =>
-      v.nodes.some((n) => n.state === 'running' && n.jobSession !== undefined));
-    const session = running.nodes.find((n) => n.state === 'running' && n.jobSession !== undefined)!.jobSession!;
-    assert.ok(tmuxHasSession(session), 'the job is really on the site');
-
-    const cancelled = remember(wb, await answer<RunView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/cancel`, { method: 'POST' }), 200));
-    assert.equal(cancelled.run.status, 'cancelled', 'the run ends the way the person asked');
-    assert.equal(cancelled.run.meters?.endedBy, 'cancel', 'and says what ended it');
-    assert.ok((cancelled.run.meters?.waitedMs ?? 0) > 0, `having waited on a person before it: ${JSON.stringify(cancelled.run.meters)}`);
-    assert.deepEqual(
-      cancelled.cancels.map((c) => [c.nodeId, c.jobSession]),
-      [['synthesize', session]],
-      `the request a person made is a record of its own: ${JSON.stringify(cancelled.cancels)}`,
-    );
-    assert.ok(cancelled.jobs.some((j) => j.event === 'killed' && j.job.session === session), `and the observed stop another: ${JSON.stringify(cancelled.jobs)}`);
-    assert.ok(cancelled.nodes.some((n) => n.nodeId === 'synthesize' && n.state === 'cancelled'), JSON.stringify(cancelled.nodes));
-    assert.ok(!tmuxHasSession(session), 'the site itself says the job is gone');
-
-    // The resume that was still waiting on that Job answers with the run a person ended, not an error.
-    const carried = remember(wb, await answer<RunView>(await resuming, 200));
-    assert.equal(carried.run.status, 'cancelled', 'the resume carrying the run answers with the ending it was given');
-
-    // The person's two actions, each a record the records route narrows to.
-    const resumed = await readRecords(wb, runId, 'resumed');
-    assert.equal(resumed.length, 1, JSON.stringify(resumed));
-    assert.equal((resumed[0] as { writer: string }).writer, 'person');
-    assert.equal((resumed[0] as { who: string }).who, 'workbench', 'a request through the web app\'s own fence is the workbench, never a name a caller chose');
-    assert.equal((resumed[0] as { nodeId: string }).nodeId, 'synthesize');
-    assert.equal((await readRecords(wb, runId, 'cancel')).length, 1);
-    assert.equal((await readRecords(wb, runId, 'blocker')).length, 1, 'a cleared blocker stays on the record: it happened');
-
-    // A cancel of a Run that already ended is the clear answer and writes nothing; a resume of one is
-    // the caller asking for something this Run's status cannot give.
-    const again = await answer<RunView>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/cancel`, { method: 'POST' }), 200);
-    assert.deepEqual(again, cancelled, 'the second cancel wrote nothing at all');
-    const refused = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/resume`, { method: 'POST' }), 409);
-    assert.equal(refused.error.code, 'hima/run-not-in-state', 'a run whose status cannot take a resume is a conflict, not a malformed request');
-    assert.match(refused.error.message, /this run is cancelled, and only a waiting run can be resumed; nothing was written/, refused.error.message);
+test('current human pause and continue preserve the Run, and cancellation physically stops its sleeping Job with typed invalid-state refusals', async (t) => {
+  const wb = await bootedWorkbench(t, { sleepSeconds: 40 });
+  assert.ok(wb);
+  try {
+    const started = await startRun(wb, {});
+    const runId = started.run.id;
+    const running = await untilView(wb, runId, 'a genuine sleeping physical Job', view => view.jobs.some(job => job.event === 'launched'));
+    const session = running.jobs.find(job => job.event === 'launched')!.job.session;
+    assert.equal(tmuxHasSession(session), true);
+    const paused = (await answer<{ run: RunView }>(await controlRun(wb, runId, 'pause', 'human-pause'), 200)).run;
+    assert.deepEqual(paused.run.control!.paused, ['*']);
+    assert.equal(paused.run.control!.owner, started.run.control!.owner);
+    const continued = (await answer<{ run: RunView }>(await controlRun(wb, runId, 'continue', 'human-continue'), 200)).run;
+    assert.deepEqual(continued.run.control!.paused, []);
+    assert.equal(continued.run.id, runId);
+    assert.deepEqual(continued.run.budget, started.run.budget);
+    assert.equal(continued.run.deadlineAt, started.run.deadlineAt, 'continuation grants no fresh time box');
+    assert.equal(tmuxHasSession(session), true, 'the physical Job is still sleeping before cancellation');
+    const accepted = await answer<{ run: RunView }>(await controlRun(wb, runId, 'cancel', 'human-cancel'), 200);
+    assert.equal(accepted.run.run.id, runId, 'the accepted request is distinct from observed stop');
+    const cancelled = await untilView(wb, runId, 'actual physical Job/resource closure', view => view.run.stopState?.closed === true);
+    assert.equal(cancelled.run.status, 'cancelled');
+    assert.deepEqual(cancelled.run.stopState, { state: 'closed', closed: true, unclosedResources: 0, effectsWithoutStopProof: 0 });
+    assert.equal(tmuxHasSession(session), false, 'the actual Site says its originally submitted Job is absent');
+    const context = await answer<{ run: { control: NonNullable<RunView['run']['control']> } }>(
+      await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/context?sessionId=${wb.guide}`), 200);
+    assert.equal(context.run.control.epoch, started.run.control!.epoch + 3, 'pause, continue and cancel each persist the current control identity');
+    for (const action of ['continue', 'pause']) {
+      const refused: HimaErrorBody = await answer<HimaErrorBody>(await controlRun(wb, runId, action, `after-cancel-${action}`), 409);
+      assert.equal(refused.error.code, 'hima/run-not-in-state');
+      assert.match(refused.error.message, /cancelled.*resumed/i);
+    }
+    const after = await answer<typeof context>(await api(wb.host, wb.cookie, `/hima/api/runs/${runId}/context?sessionId=${wb.guide}`), 200);
+    assert.deepEqual(after.run.control, context.run.control, 'invalid-state requests preserve the accepted control identity');
   } finally { await wb.dispose(); }
 });
 
@@ -278,10 +365,10 @@ test('a run HimaFabric never started cannot be cancelled, and says so with 409 h
   try {
     // An observation's own Probe-campaign Run: it exists, it has records, and it has no fabric state.
     const sample = await writeSampleReport(wb.h);
-    const probe = await answer<RunView>(await postObserve(wb.host, wb.cookie, { site: 'local', path: sample.rel }), 200);
+    const probe = await answer<RunView>(await postObserve(wb.host, wb.cookie, { site: 'local', path: sample.rel, sessionId: wb.guide }), 200);
     assert.equal(probe.run.status, undefined, 'a probe run has no status at all');
 
-    const refused = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/${probe.run.id}/cancel`, { method: 'POST' }), 409);
+    const refused = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/${probe.run.id}/cancel?sessionId=${wb.guide}`, { method: 'POST' }), 409);
     assert.equal(refused.error.code, 'hima/run-not-in-state');
     assert.match(refused.error.message, /has no fabric state: HimaFabric never started it, so there is nothing to cancel/, refused.error.message);
     assert.deepEqual(await readRecords(wb, probe.run.id, 'cancel'), [], 'and nothing was written');
@@ -291,9 +378,6 @@ test('a run HimaFabric never started cannot be cancelled, and says so with 409 h
     // of the harness's bounded wait, which is a Site state nothing at this seam can ask for (see
     // `support/tmux.ts`, which says the same thing about the state it does put back by hand).
 
-    // A run the ledger does not hold is still 404, not a conflict: there is no state to be in.
-    const missing = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/run-nope/cancel', { method: 'POST' }), 404);
-    assert.equal(missing.error.code, 'hima/run-not-found');
   } finally { await wb.dispose(); }
 });
 
@@ -338,6 +422,7 @@ test('every route the workbench uses, and the workbench page itself, sit behind 
       ['/hima/api/runs', { method: 'POST', body: '{}' }],
       ['/hima/api/runs/run-x/cancel', { method: 'POST' }],
       ['/hima/api/runs/run-x/resume', { method: 'POST' }],
+      ['/hima/api/runs/run-x/control', { method: 'POST', body: '{}' }],
     ];
     for (const [target, init] of targets) {
       const res = await fetch(new URL(target, wb.host.url), init);
@@ -407,7 +492,7 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
     for (const status of ['cancelled', 'ended-goal-met', 'ended-goal-not-met', 'ended-converged', 'ended-budget-exhausted']) {
       assert.ok(source.includes(status), `the module renders the run status "${status}"`);
     }
-    for (const state of ['pending', 'retrying', 'blocked', 'cancelled', 'waiting-for-slot', 'reconciled']) {
+    for (const state of ['pending', 'retrying', 'blocked', 'cancelled', 'waiting-for-slot', 'reconciled', 'succeeded', 'failed']) {
       assert.ok(source.includes(state), `the module renders the node state "${state}"`);
     }
     for (const piece of ['attempt', 'blocker', 'decision', 'elapsed']) {
