@@ -12,6 +12,7 @@ import path from 'node:path';
 import type { Site, SshTarget } from './sites.js';
 import type { PathResolver } from './shell.js';
 import { SiteUnreadableError } from './errors.js';
+import { processTableProbe } from './interactive-job.js';
 
 /** What running one command on a Site produced. A non-zero exit is an answer, not a fault: the job
  *  operations ask questions whose "no" is a non-zero code (`tmux has-session` on a session that
@@ -152,7 +153,7 @@ export async function discoverSiteFacts(on: Channel, toolCommands: readonly stri
  * Site's tmux 3.4 `run-shell` printed nothing, and a liveness question read through it answered ""
  * for the rest of the Run.
  */
-export const processProbes: ReadonlySet<string> = new Set(['kill']);
+export const processProbes: ReadonlySet<string> = new Set(['kill', 'ps']);
 const processProbeShape = (argv: readonly string[]): boolean =>
   argv.length === 5 && argv[1] === '-s' && argv[2] === '0' && argv[3] === '--' && /^-[1-9][0-9]{0,9}$/.test(argv[4] ?? '');
 
@@ -190,13 +191,17 @@ function admit(argv: readonly string[], siteName: string): void {
     if (argv.length === 7 && argv[1]?.startsWith('/') && argv.slice(2).join(' ') === '-maxdepth 33 -mindepth 1 -print0') return;
     throw new Error('checkpoint inventory permits only find <absolute-root> -maxdepth 33 -mindepth 1 -print0');
   }
+  if (verb === 'ps') {
+    if (argv.length === processTableProbe.length && argv.every((arg, index) => arg === processTableProbe[index])) return;
+    throw new Error(`refusing to run "${argv.join(' ')}" on site ${siteName}: the process table read is only "${processTableProbe.join(' ')}"`);
+  }
   if (processProbes.has(verb)) {
     if (processProbeShape(argv)) return;
     throw new Error(`refusing to run "${argv.join(' ')}" on site ${siteName}: the process probe is only "kill -s 0 -- -<process group>", which sends no signal`);
   }
   if (channelVerbs.has(verb)) return;
   throw new Error(
-    `refusing to run "${verb}" on site ${siteName}: HimaChannel runs only its own verbs — the read-only probes (${listed(readOnlyProbes)}), the job plumbing (${listed(jobPlumbing)}), the workspace plumbing (${listed(workspacePlumbing)}), and the process probe (kill -s 0)`,
+    `refusing to run "${verb}" on site ${siteName}: HimaChannel runs only its own verbs — the read-only probes (${listed(readOnlyProbes)}), the job plumbing (${listed(jobPlumbing)}), the workspace plumbing (${listed(workspacePlumbing)}), and the process probes (kill -s 0, ps -A -o pgid=,stat=)`,
   );
 }
 

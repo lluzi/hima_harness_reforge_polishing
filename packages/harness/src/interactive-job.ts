@@ -677,11 +677,36 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
 export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
   const asked = await on.exec(['kill', '-s', '0', '--', `-${String(pid)}`]);
-  if (asked.code === 0) return true;
+  if (asked.code === 0) return !await onlyZombies(on, pid);
   const said = asked.stderr.trim();
-  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
+  // macOS answers "not permitted" for a group whose only members are unreaped zombies.
+  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return !await onlyZombies(on, pid);
   if (asked.code === 1 && /no such process/i.test(said)) return false;
   throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
+}
+
+/** The process table read that tells a zombie-only group from a running one: every process's group
+ *  and state, one fixed read-only shape the Site channel admits verbatim, no caller-chosen option. */
+export const processTableProbe: readonly string[] = ['ps', '-A', '-o', 'pgid=,stat='];
+
+/**
+ * `kill -s 0` also succeeds on a group whose members have all exited but were never reaped: a
+ * zombie runs nothing and holds no seat, and only its parent (on a Site, a shared tmux server) can
+ * reap it. Such a group is closed. Only a process table that lists the group with every member in
+ * state Z (and no live threads, `l`) says so; a live member, a missing row or an unanswered table
+ * keeps the group alive. A member hidden from this login's process table (a `hidepid` /proc and a
+ * member of another uid) cannot be seen here; the Job's own launch never creates one.
+ */
+async function onlyZombies(on: InteractiveChannel, pid: number): Promise<boolean> {
+  const table = await on.exec(processTableProbe);
+  if (table.code !== 0) return false;
+  const states: string[] = [];
+  for (const line of Buffer.from(table.stdout).toString('utf8').split('\n')) {
+    const row = /^\s*(\d+)\s+(\S+)\s*$/.exec(line);
+    if (row && Number(row[1]) === pid) states.push(row[2]!);
+  }
+  // Linux procps shows `Zl` for a zombie leader whose other threads still run: that is live work.
+  return states.length > 0 && states.every((state) => state.startsWith('Z') && !state.includes('l'));
 }
 
 /**
