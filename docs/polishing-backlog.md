@@ -19,7 +19,7 @@
 | U6 / [#89](https://github.com/lluzi/hima_harness_reforge_polishing/issues/89) | 组合执行、控制及恢复 | U3、U4、U5 |
 | U7 / [#90](https://github.com/lluzi/hima_harness_reforge_polishing/issues/90) | App、Guide、执行视图与退出共用事实 | U6 |
 | U8 / [#91](https://github.com/lluzi/hima_harness_reforge_polishing/issues/91) | 当前 ATCS 完整 dry 路径 | U5、U6、U7 |
-| U9 / [#92](https://github.com/lluzi/hima_harness_reforge_polishing/issues/92) | 历史切换、备份及 macOS/Linux 原生交付 | U2、U3、U7、U8 |
+| U9 / [#92](https://github.com/lluzi/hima_harness_reforge_polishing/issues/92) | 历史切换、备份及 Mac 原生交付（本轮 Linux 要求移除） | U2、U3、U7、U8 |
 | U10 / [#93](https://github.com/lluzi/hima_harness_reforge_polishing/issues/93) | 冻结新版 App 的实际 ATCS 验收 | U4、U6、U8、U9 |
 
 按单元记录通过、失败、跳过和未运行；新 Run 统一走 DBOS、旧 Run 可读而不热转换。

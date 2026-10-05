@@ -303,5 +303,25 @@
     "scope": "current-code changed-surface complete ATCS qualification bound by exact compiled bytes + Mac11 lifecycle; not a new real-model/EDA GUI run",
     "releaseSeal": "development candidate only; no fabricated VERSION",
     "linux": "deferred by directuser scope update"
+  },
+  "issueCloseoutRules": {
+    "date": "2026-10-05",
+    "authority": "direct user conditional authorization",
+    "U9": {
+      "scope": "Mac only",
+      "developmentAndTechnicalQualification": "COMPLETE",
+      "closeAuthorized": true,
+      "linuxRequirements": "removed from checklist and closure criteria"
+    },
+    "U10": {
+      "scope": "Mac App/ATCS only",
+      "linuxRequirements": "removed from checklist and closure criteria",
+      "state": "OPEN",
+      "remaining": [
+        "ordinary App/Pack publication seal",
+        "final acceptance record"
+      ],
+      "originalTimingGoal": "NOT_MET unchanged"
+    }
   }
 }

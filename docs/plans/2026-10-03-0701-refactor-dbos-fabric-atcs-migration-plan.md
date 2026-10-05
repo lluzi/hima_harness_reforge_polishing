@@ -54,7 +54,7 @@ execution: code
 
 **Execution and composition**
 
-- R1. App、编排、持久化及恢复在本地 Linux/macOS 运行，不依赖 DBOS Cloud、Conductor 或厂商激活；现有经授权的模型 API 与 Site 工具连接继续可用。
+- R1. 本轮 App、编排、持久化及恢复在本地 macOS 运行，不依赖 DBOS Cloud、Conductor 或厂商激活；现有经授权的模型 API 与 Site 工具连接继续可用。
 - R2. 命令、内部调用模型的程序、完整 AI 工程任务使用同一任务协议，明确输入、输出、有限执行状态及失败原因。
 - R3. 支持顺序、选择、并行汇合和有界重复，以及声明位置内的动态附加任务；动态任务使用相同语义并有明确返回位置。
 - R4. 已验证结果完成持久交接及必要资源收束后自动推进，不要求 owner 为机械步骤逐次 begin/work/release/complete；任务完成、工程目标达成与物理采用范围分别表达。
@@ -449,7 +449,7 @@ U1 冻结共同合同；U2 与 U5 可并行；U3 → U4 → U6 构成运行链�
   5. common R1 的保存/重开状态由有来源的 stand-in 模拟并验证，不能用理想化固定正 slack 掩盖错误。
 - **Verification:** 当前完整 dry route 有 PASS 正例和诚实 Goal-false 例；旧六分支例仅保留其历史/兼容用途。
 
-### U9. Cut over safely and package both platforms
+### U9. Cut over safely and package the Mac App
 
 - **Goal / Requirements:** 客户能安装、升级、保留资产并在故障时恢复；R1、R8–R10、R13。
 - **Dependencies:** U2, U3, U7, U8。
@@ -461,14 +461,14 @@ U1 冻结共同合同；U2 与 U5 可并行；U3 → U4 → U6 构成运行链�
   2. 不兼容 engine/helper 或 PG major 不直接打开旧 checkpoint/PGDATA；保留原 App 与可操作的收束/恢复说明。
   3. 冷备份包含 DBOS、应用、datasource、outbox 及引用文件；断途中止不产生“完整备份”标签。
   4. 备份后原 Run 接受新的动态决定并启动 Job B，随后原 Home 丢失；恢复不能仅因备份内已知 Job 核对成功而解除 KTD9 的 hold，模型和新增 Job 调用均为零。补齐完整较新记录后方能按原身份核对继续；原 Home 和恢复 Home 不能同时成为写者。
-  5. 两个平台的新非管理员账户、搬移安装目录、无开发 checkout/全局 Node/PG 时完成启动和 reopen。
+  5. 当前 Mac 的普通非 root 用户在搬移目录、使用包内 Node/PG、不依赖开发 checkout 时完成启动、退出和 reopen；额外账户按已授权范围留作后续。
   6. 禁止工作流厂商网络访问时本地机制仍运行；模型/获准 Site 流量单独声明；SBOM、通知和实际依赖一致。
-- **Verification:** Mac arm64、Linux x64 各有安装与升级证据；完整分发物的许可核查完成，不能以核心 MIT 代替依赖审查。
+- **Verification / closure:** 只要求当前 Mac 的原生包、生命周期、切换/历史保持、冷备份/恢复和完整依赖材料技术核查。Linux 全部要求移出 U9；Mac 开发与这些技术验证完成、提交同步后可关单。普通 App/Pack 发布封板及最终业务验收由 U10 继续承担。
 
 ### U10. Prove the frozen App with real ATCS
 
 - **Goal / Requirements:** 用真实产品与当前业务结果证明迁移；R11–R14。
-- **Dependencies:** U4, U6, U8, U9 的相关资格全部通过。
+- **Dependencies:** U4, U6, U8 与 U9 的 Mac 技术资格通过；不要求其他平台资格。
 - **Files:** 复用 `test/contract/resident-engineering.live.test.ts`、`test/contract/resident-engineering-release.live.test.ts` 的改变面资格；必要时补低层失败回归。新增 `docs/assessment/dbos-atcs-migration/README.md`、`docs/assessment/dbos-atcs-migration/candidate-manifest.json`、`docs/assessment/dbos-atcs-migration/acceptance.json` 及证据索引；更新 Pack `packs/agentic-timing-closure-system/TEST.md`、按实际测试/发布资格新增 `packs/agentic-timing-closure-system/VERSION.yml`，更新 App 发布记录。
 - **Approach:** 依 Verification Contract 冻结一次候选，独立操作员只收到普通用户任务、入口、已声明 Site/输入/权限与可见预期，不接收源码地图、旧 ECO 答案、预期 benchmark 数字或内部救援动作。工程 Agent 从 Pack 正常取得专业知识。先完成一次完整运行，再根据实际缺陷做最近安全边界修复与必要再验收。
 - **Patterns to follow:** `docs/specs/resident-engineering-agent/issue83-acceptance.md`、`docs/agents/codex-claude-coordination.md` 及 fast-convergence 原则。
@@ -479,6 +479,7 @@ U1 冻结共同合同；U2 与 U5 可并行；U3 → U4 → U6 构成运行链�
   4. 工程交付通过合同后自行进入评估/报告/归档/明确终态，用户能打开 checkpoint、ECO、脚本、原始 Timing 和复现说明。
   5. 正常结束与退出后核实本次所属本地/远端进程；实际未知收束不能记录为 PASS。
 - **Verification:** 四项验收分别下结论，真实样本与 candidate digest 一一对应；失败保留并成为最低层回归，不修改旧运行结论。
+- **Closure:** 仅以 Mac App/ATCS 实际路径、交付与关闭、必要改变面复验、四项诚实结论，以及本单的普通发布封板/最终验收记录关单；Linux 构建、安装、升级、平台报告、硬件与桌面要求全部移出 U10。U9 开发关单不代替 U10，也不把 Goal false 改为 Timing PASS。
 
 ---
 
@@ -491,7 +492,7 @@ U1 冻结共同合同；U2 与 U5 可并行；U3 → U4 → U6 构成运行链�
 | L0 | U1–U9；现有 `check:node`、`check:seams`、`check:boundary`、`build`、`typecheck`，测试清单核对 | 新构建、声明、类型及架构边界正确 |
 | L1/L2 | U1–U6；真实函数、PG、Host 子进程、可查询本地 Job，`test:local` 精确文件组 | 合同/事务/控制/恢复与不重复效果成立 |
 | Current ATCS dry | U8；`test/contract/atcs-dry-path.host.test.ts` 当前方法完整路径与 Python Reader 测试 | 新编排连线完整；不证明模型研究和 EDA 效果 |
-| L3 | U7/U9；`test:desktop` 精确组，两平台安装/退出/reopen | 用户能实际操作并取得一致事实 |
+| L3 | U7/U9；`test:desktop` 精确组，当前 Mac 安装/退出/reopen | 用户能实际操作并取得一致事实 |
 | L4 | U4/U8 改变的 native/model seam；已有 live-site/live-model 入口 | 真实协议、认证、wrapper 与产物格式资格 |
 | L5 | U10；同一冻结候选的实际新 App + 当前完整 ATCS | 本次真实业务和产品路径证据 |
 
@@ -527,7 +528,7 @@ U1 冻结共同合同；U2 与 U5 可并行；U3 → U4 → U6 构成运行链�
 本次现场使用已存在验收协议的六小时外层上限、至少十五分钟 closing reserve，由正常配置冻结；不改变 Pack 默认预算、不加固定模型/工程轮数配额、不静默续期。
 
 真实验收使用专用空 Home/Workspace，只允许事先声明的模型认证和一次站点配置；不复制旧 Ledger、Campaign 或成功结果。
-桌面操作遵守 Catsights 副屏要求，一次只运行一个 App/窗口/GUI 操作员，实际本地 Linux 安装验证使用其声明的隔离桌面环境并记录与 macOS 的区别。
+桌面操作遵守 Catsights 副屏要求，一次只运行一个 Mac App/窗口/GUI 操作员；其他平台不在本轮 U9/U10 验收内。
 现场缺陷交由开发者在低层复现；不把内部 completion 命令、schema 补丁或已知 ECO 答案交给操作员营救当前结果。
 
 ### Acceptance Verdicts
