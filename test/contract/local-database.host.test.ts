@@ -286,6 +286,103 @@ test('a raw positive receipt cannot confirm shutdown without native finalization
   finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
 });
 
+// This provider qualifies the launcher protocol only. Actual DBOS/PG ownership stays
+// covered by host-lifecycle.host.test.ts; the child owns each protocol transition.
+async function nativeExitProvider(behavior: 'ready' | 'never' | 'late' | 'replaced' | 'wrong-finalization', accepted = false) {
+  const folder = await mkdtemp(path.join(tmpdir(), 'hima-native-exit-'));
+  const entry = path.join(folder, 'fake.mjs'), eventsFile = path.join(folder, 'events.json');
+  await writeFile(entry, `import {createServer} from 'node:http';import {writeFileSync} from 'node:fs';
+    const behavior=${JSON.stringify(behavior)},events=[],record=event=>{events.push(event);writeFileSync(${JSON.stringify(eventsFile)},JSON.stringify(events));};
+    let state=${accepted ? "{requestId:'original-drain',mode:'drain',ready:false}" : '{ready:false}'},reads=0,finalized=false;
+    const server=createServer(async(req,res)=>{
+      if(req.url!=='/hima/api/lifecycle/exit'){res.writeHead(401);res.end('{}');return;}
+      if(req.headers['x-hima-desktop-control']!==process.env.HIMA_DESKTOP_CONTROL_TOKEN){res.writeHead(403);res.end('{}');return;}
+      const answer=()=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(state));};
+      if(req.method==='POST'){
+        let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);record({kind:'post',...body});
+        if(body.mode==='finish-exit'){
+          if(!state.ready||body.requestId!==state.requestId){res.writeHead(409);res.end('{}');return;}
+          finalized=true;state={...state,finalized:true};
+          if(behavior==='wrong-finalization')state={...state,requestId:'different-request'};
+        }else if(!state.requestId){state={requestId:body.requestId,mode:body.mode,ready:false};}
+        else {res.writeHead(409);res.end('{}');return;}
+        answer();return;
+      }
+      if(state.requestId){reads++;if(behavior!=='never'&&behavior!=='late'&&reads>=2)state={...state,ready:true};
+        if(behavior==='replaced'&&reads>=2)state={requestId:'different-request',mode:'stop-jobs',ready:true};}
+      record({kind:'get',...state});
+      if(behavior==='late'&&state.requestId){setTimeout(()=>{state={...state,ready:true};answer();},250);return;}
+      answer();
+    });
+    process.on('SIGTERM',()=>{record({kind:'signal',finalized,...state});
+      if(!finalized){server.close(()=>process.exit(2));return;}
+      process.stderr.write('hima: resource shutdown confirmed; pid='+process.pid+'\\n',()=>server.close(()=>process.exit(0)));
+    });
+    server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=fake'));
+  `);
+  const host = await launchHimaHost({ dshEntry: entry, node: process.execPath, cwd: folder, env: { ...process.env, DSH_HOME: folder }, profile: 'hima' });
+  return { host, events: async () => JSON.parse(await readFile(eventsFile, 'utf8')) as {kind:string;requestId?:string;mode?:string;ready?:boolean;finalized?:boolean}[],
+    dispose: async () => { if(host.child.exitCode===null&&host.child.signalCode===null){const closed=new Promise(resolve=>host.child.once('close',resolve));host.child.kill('SIGKILL');await closed;}await rm(folder,{recursive:true,force:true}); } };
+}
+
+test('native stop awaits the original accepted exit boundary before finalization and normal signal', async () => {
+  for (const accepted of [false, true]) {
+    const fixture = await nativeExitProvider('ready', accepted);
+    try {
+      assert.equal(await fixture.host.stop(2000), 0);
+      const events = await fixture.events(), posts = events.filter(event => event.kind === 'post');
+      const requestId = accepted ? 'original-drain' : posts[0]!.requestId;
+      assert.ok(requestId);
+      assert.deepEqual(posts.map(event => event.mode), accepted ? ['finish-exit'] : ['keep-jobs','finish-exit']);
+      assert.ok(posts.every(event => event.requestId === requestId), 'accepted exit identity is never replaced');
+      const boundary = events.findIndex(event => event.kind === 'get' && event.ready === true);
+      const finish = events.findIndex(event => event.mode === 'finish-exit');
+      assert.ok(boundary >= 0 && boundary < finish, 'finalization follows observed actual readiness');
+      assert.equal(events.at(-1)!.kind, 'signal');
+      assert.equal(events.at(-1)!.finalized, true);
+      assert.equal(events.at(-1)!.mode, accepted ? 'drain' : 'keep-jobs');
+      assert.ok(fixture.host.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${fixture.host.child.pid}`));
+    } finally { await fixture.dispose(); }
+  }
+});
+
+test('native stop grace expires without signaling or replacing an exit that never becomes ready', async () => {
+  const fixture = await nativeExitProvider('never', true);
+  try {
+    const started = performance.now();
+    await assert.rejects(fixture.host.stop(180), /resource shutdown unconfirmed/);
+    assert.ok(performance.now() - started >= 150, 'stop waits for its caller grace rather than immediately refusing');
+    const events = await fixture.events();
+    assert.ok(events.length >= 2);
+    assert.ok(events.every(event => event.kind === 'get' && event.requestId === 'original-drain' && event.mode === 'drain'));
+    assert.equal(fixture.host.child.exitCode, null); assert.equal(fixture.host.child.signalCode, null);
+    assert.equal(fixture.host.stderr().includes('resource shutdown confirmed'), false);
+  } finally { await fixture.dispose(); }
+});
+
+test('native stop cannot finalize or signal from readiness returned after its caller grace', async () => {
+  const fixture = await nativeExitProvider('late', true);
+  try {
+    await assert.rejects(fixture.host.stop(100), /resource shutdown unconfirmed/);
+    assert.ok((await fixture.events()).every(event => event.kind === 'get'));
+    assert.equal(fixture.host.child.exitCode, null); assert.equal(fixture.host.child.signalCode, null);
+  } finally { await fixture.dispose(); }
+});
+
+test('native stop refuses a changed accepted request or mismatching finalization identity', async () => {
+  for (const behavior of ['replaced', 'wrong-finalization'] as const) {
+    const fixture = await nativeExitProvider(behavior, true);
+    try {
+      await assert.rejects(fixture.host.stop(2000), /resource shutdown unconfirmed/);
+      const events = await fixture.events();
+      assert.equal(events.some(event => event.kind === 'signal'), false);
+      assert.ok(events.filter(event => event.kind === 'post').every(event => event.requestId === 'original-drain' && event.mode === 'finish-exit'));
+      if (behavior === 'replaced') assert.equal(events.some(event => event.kind === 'post'), false);
+      assert.equal(fixture.host.child.exitCode, null); assert.equal(fixture.host.child.signalCode, null);
+    } finally { await fixture.dispose(); }
+  }
+});
+
 test('a Host stopped before readiness cannot confirm resources from a zero exit without a receipt', async () => {
   const folder = await mkdtemp(path.join(tmpdir(), 'hima-host-boot-stop-'));
   const entry = path.join(folder, 'host.mjs');

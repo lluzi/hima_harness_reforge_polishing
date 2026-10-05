@@ -236,13 +236,20 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     child,
     stop: (graceMs=30_000) => {
       stopping??=(async()=>{
+        const deadline=Date.now()+graceMs;
+        const remaining=():number=>{
+          const milliseconds=deadline-Date.now();
+          if(milliseconds<=0)throw new Error(`Host shutdown was not confirmed within ${graceMs} ms; the accepted exit and original resources were preserved.`);
+          return milliseconds;
+        };
         if(servingOrigin&&child.exitCode===null&&child.signalCode===null) {
           const request=async(body?:object):Promise<{requestId?:string;ready:boolean;finalized?:boolean}>=>{
             const response=await fetch(new URL('/hima/api/lifecycle/exit',servingOrigin),{
               method:body?'POST':'GET',redirect:'error',headers:{'content-type':'application/json','x-hima-desktop-control':controlToken},
-              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(graceMs)});
+              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(remaining())});
             const answer=await response.json() as {requestId?:string;ready:boolean;finalized?:boolean;error?:{message:string}};
             if(!response.ok)throw new Error(answer.error?.message??`Host exit HTTP ${response.status}`);
+            remaining();
             return answer;
           };
           try {
@@ -251,17 +258,25 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
               try {state=await request({requestId:`native-keep-${randomUUID()}`,mode:'keep-jobs'});}
               catch(error){state=await request();if(!state.requestId)throw error;}
             }
-            if(!state.ready&&state.requestId!==finalizingRequestId)throw new Error('The accepted Host exit has not reached its actual boundary; its mode and original resources were preserved.');
-            finalizingRequestId=state.requestId;
-            const finalized=await request({requestId:state.requestId,mode:'finish-exit'});
-            if(!finalized.finalized)throw new Error('Host owned resource finalization was not confirmed');
+            const requestId=state.requestId;
+            if(!requestId)throw new Error('Host exit acceptance identity was not confirmed');
+            // Acceptance fences admission while existing work reaches its real boundary.
+            // Wait on that request, never replace its mode or manufacture readiness.
+            while(!state.ready&&requestId!==finalizingRequestId) {
+              await new Promise(resolve=>setTimeout(resolve,Math.min(100,remaining())));
+              state=await request();
+              if(state.requestId!==requestId)throw new Error('The accepted Host exit changed while awaiting its actual boundary');
+            }
+            finalizingRequestId=requestId;
+            const finalized=await request({requestId,mode:'finish-exit'});
+            if(!finalized.finalized||finalized.requestId!==requestId)throw new Error('Host owned resource finalization was not confirmed for the accepted exit');
           } catch(error) {
             // A failed/timed-out finalization does not authorize a native signal. Preserve
             // the accepted mode and original ownership; a repeat can await the same closer.
             throw new Error(`Host resource shutdown unconfirmed: ${String(error)}`,{cause:error});
           }
         }
-        await stopChild(child,graceMs);
+        await stopChild(child,remaining());
         const code=await closed;
         const receipts=err.split('\n');
         const confirmed=receipts.lastIndexOf(`hima: resource shutdown confirmed; pid=${child.pid}`);
