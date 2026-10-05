@@ -8,7 +8,7 @@ import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, sayAsUser } from './support/boot-inprocess.ts';
 import { localHome } from './support/fabric.ts';
 import { bootHimaHost } from './support/boot-host.ts';
-import { api, openSession } from './support/hima-api.ts';
+import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
 import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
@@ -903,6 +903,8 @@ test('a listed optional material must be verified unless its absence is explicit
 test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host', async () => {
   const f = await fixture();
   try {
+    const projectSession = await createRootAgent(f.host.ctx, f.h.workspace);
+    await f.deps.ledger.advanceRun(f.run.id, { control: { mode: 'agent', owner: String(projectSession.id), epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
     const writtenAt = '2026-09-01T12:00:00.000Z';
     const old: ExperienceJson = { schema: 'hima-experience/1', runId: f.run.id, campaignId: f.run.campaignId,
       pack: { id: 'recorded-method', version: 'historical' }, site: 'local', ending: { status: 'cancelled', reason: 'original wording' },
@@ -936,7 +938,9 @@ test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write
     await f.close();
     const next = await bootHimaHost(f.h);
     try {
-      const response = await api(next, await openSession(next), `/hima/api/runs/${f.run.id}/experience`);
+      const cookie = await openSession(next);
+      const sessionId = await createLiveSession(next, cookie, f.h.workspace);
+      const response = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience?sessionId=${encodeURIComponent(sessionId)}`);
       assert.equal(response.status, 200);
       const read = await response.json() as ExperienceAnswer;
       assert.equal(read.markdown, markdown); assert.deepEqual(read.report, old);
@@ -947,9 +951,11 @@ test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write
   } finally { await f.close(); await f.h.dispose(); }
 });
 
-test('failure between the two report writes leaves no record; the next Host completes and verifies both files', async () => {
+test('an incomplete historical report stays unavailable across Host restart and preserves its partial bytes', async () => {
   const f = await fixture();
   try {
+    const projectSession = await createRootAgent(f.host.ctx, f.h.workspace);
+    await f.deps.ledger.advanceRun(f.run.id, { control: { mode: 'agent', owner: String(projectSession.id), epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
     await f.deps.ledger.appendWorkspace(f.run.id, { event: 'prepared', campaignId: f.run.campaignId, packId: 'recorded-method', packVersion: 'fixture',
       workspace: f.h.workspace, flowRoot: '/declared/flow', design: 'declared-design', containerName: 'declared-container', copied: [], preparedAt: f.run.createdAt });
     const dir = path.join(f.h.workspace, EXPERIENCE_DIR);
@@ -957,7 +963,10 @@ test('failure between the two report writes leaves no record; the next Host comp
     const jsonPath = path.join(dir, `${f.run.id}.json`);
     await mkdir(jsonPath); // tee can write Markdown, then refuses the directory occupying JSON.
     await assert.rejects(() => writeExperience(f.deps, f.run.id), /tee|write/);
-    assert.ok((await readFile(path.join(dir, `${f.run.id}.md`), 'utf8')).startsWith('# Campaign'));
+    const mdPath = path.join(dir, `${f.run.id}.md`);
+    const partial = await readFile(mdPath);
+    const partialSha256 = createHash('sha256').update(partial).digest('hex');
+    assert.ok(partial.toString('utf8').startsWith('# Campaign'));
     assert.equal(f.deps.ledger.records({ runId: f.run.id, type: 'experience' }).length, 0);
     assert.equal((await readExperience(f.deps, f.run.id)).kind, 'none');
     await rm(jsonPath, { recursive: true });
@@ -965,22 +974,28 @@ test('failure between the two report writes leaves no record; the next Host comp
     const next = await bootHimaHost(f.h);
     try {
       const cookie = await openSession(next);
-      let result: Response | undefined;
-      for (let i = 0; i < 50; i++) {
-        result = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience`);
-        if (result.status === 200) break;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      assert.equal(result?.status, 200);
-      const read = await result!.json() as ExperienceAnswer;
-      assert.equal(read.report.schema, 'hima-experience/4');
-      if (read.report.schema !== 'hima-experience/4') throw new Error('newly recovered report uses schema 4');
-      assert.equal(read.report.research.environment.declaredDesign, 'declared-design');
-      assert.equal(read.report.research.environment.toolVersions, 'not recorded');
-      assert.equal(hash(read.markdown), read.experience.markdown.sha256);
-      assert.equal(hash(await readFile(jsonPath, 'utf8')), read.experience.json.sha256);
-      const records = await api(next, cookie, `/hima/api/runs/${f.run.id}/records?type=experience`);
-      assert.equal((await records.json() as { records: unknown[] }).records.length, 1);
+      const sessionId = await createLiveSession(next, cookie, f.h.workspace);
+      const scoped = `sessionId=${encodeURIComponent(sessionId)}`;
+      const detail = await api(next, cookie, `/hima/api/runs/${f.run.id}?${scoped}`);
+      assert.equal(detail.status, 200, await detail.clone().text());
+      const view = await detail.json() as RunView;
+      assert.equal(view.run.id, f.run.id);
+      assert.equal(view.run.status, 'cancelled', 'restart preserves the ended historical Run');
+      assert.equal(view.experience, undefined);
+      const result = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience?${scoped}`);
+      assert.equal(result.status, 404, await result.clone().text());
+      const unavailable = await result.json() as { error: { code: string; message: string } };
+      assert.equal(unavailable.error.code, 'hima/record-not-found', 'the existing Run has no complete report, rather than an unknown Run or foreign project');
+      assert.match(unavailable.error.message, /both report files have not been recorded as written/);
+      const records = await api(next, cookie, `/hima/api/runs/${f.run.id}/records?${scoped}`);
+      assert.equal(records.status, 200, await records.clone().text());
+      const history = (await records.json() as { records: { type: string; delivery?: string }[] }).records;
+      assert.equal(history.filter(record => record.type === 'experience').length, 0);
+      assert.equal(history.filter(record => record.type === 'archive' && record.delivery === 'complete').length, 0);
+      await assert.rejects(() => stat(jsonPath), { code: 'ENOENT' }, 'restart does not generate missing legacy JSON');
+      const retained = await readFile(mdPath);
+      assert.deepEqual(retained, partial, 'the original partial Markdown bytes stay untouched');
+      assert.equal(createHash('sha256').update(retained).digest('hex'), partialSha256);
     } finally { assert.equal(await next.stop(), 0, next.stderr()); }
   } finally { await f.close(); await f.h.dispose(); }
 });
