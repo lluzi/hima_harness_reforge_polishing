@@ -7,6 +7,8 @@ import { taskIdentity, taskJsonValue, taskResult, taskToolOutput, validateTaskIn
 import type { JsonValue, TaskIdentity, TaskResult } from './task-contract.js';
 import { flowTaskBranches, flowRevisionConsumers, flowTaskCountsExperiment, flowInvocationKey, flowInvocationRevision, flowRevisionApplies, flowExtensionKey, type CompiledFlow, type FlowBranch, type FrozenFlowFragment, type FlowRevisionRule, type FlowInvocationPath, type FlowExtensionScope } from './flow-definition.js';
 import type { ResearchWriteAdmission, ResearchWriteRequest } from './budget.js';
+import { humanEffortMeasurement } from './value-measurement.js';
+import type { RunRecord } from './ledger.js';
 import { migrateRunStore } from './run-store-migrations.js';
 
 function canonical(value: JsonValue): string {
@@ -199,6 +201,43 @@ export class RunStore {
       return run;
     }, 'hima.createRun');
   }
+  /** A human stopwatch is an immutable business fact, never a scheduler command. */
+  async measureHumanEffort(request: {runId:string;requestId:string;actor:string;origin?:string;epoch:number;revision:number;measurement:unknown}):Promise<{duplicate:boolean;request:NonNullable<RunRecord['control']>['requests'][string]}> {
+    if(request.origin!=='human')throw new Error('value-study human effort can be recorded only by an authenticated human control request');
+    if(!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(request.requestId))throw new Error('request identity must be a bounded plain identifier');
+    const parsed=humanEffortMeasurement.safeParse(request.measurement);
+    if(!parsed.success)throw new Error(`value-study measurement needs category, startedAt, endedAt and evidenceRef: ${parsed.error.message}`);
+    const digest=jsonDigest(request),name=`human-measurement:${request.requestId}`;
+    return this.transaction(async client=>{
+      await this.#assertHostAdmission(client);
+      const run=await this.#run(client,request.runId,true);
+      const opening=run.opening.data as unknown as {run:RunRecord};
+      if((request.actor!==run.owner&&request.actor!==opening.run.control?.guideSessionId)||request.epoch!==run.epoch||request.revision!==run.revision)throw new Error('Control owner/epoch/revision is stale; refresh this Run');
+      if((await client.query('SELECT 1 FROM hima.commands WHERE run_id=$1 AND command_id=$2',[run.runId,request.requestId])).rowCount)mismatch('Command');
+      const previous=(await client.query<{value:NonNullable<RunRecord['control']>['requests'][string]}>('SELECT value FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,name])).rows[0]?.value;
+      if(previous){if(previous.digest!==digest)mismatch('Human measurement');return {duplicate:true,request:previous};}
+      if(Date.parse(parsed.data.startedAt)<Date.parse(opening.run.createdAt))throw new Error('value-study human effort cannot start before this Run');
+      if(Date.parse(parsed.data.endedAt)>Date.now())throw new Error('value-study human effort cannot end in the future');
+      const held:NonNullable<RunRecord['control']>['requests'][string]={digest,actor:request.actor,epoch:run.epoch,revision:run.revision,origin:'human',at:new Date().toISOString(),state:'done',receipt:{requestId:request.requestId,action:'measure-value',data:parsed.data}};
+      await this.#putFlowFact(client,run.runId,name,held as unknown as JsonValue);
+      return {duplicate:false,request:held};
+    },'hima.humanMeasurement');
+  }
+  /** Original human control admissions and stopwatch receipts share the existing reader book.
+   * A done control receipt proves command admission, never physical effect/resource closure. */
+  async humanRequests(runId:string):Promise<NonNullable<RunRecord['control']>['requests']> {
+    const rows=(await this.#pool.query<{name:string;value:NonNullable<RunRecord['control']>['requests'][string]}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND left(name,18)='human-measurement:' ORDER BY name",[runId])).rows;
+    const commands=(await this.#pool.query<{commandId:string;digest:string;command:DurableCommand;receipt:DurableRun;factId:string;at:Date}>(`SELECT c.command_id AS "commandId",c.digest,c.command,c.receipt,o.fact_id AS "factId",o.at
+      FROM hima.commands c JOIN hima.outbox o ON o.run_id=c.run_id AND o.kind='control' AND o.payload->>'commandId'=c.command_id
+      WHERE c.run_id=$1 AND c.command->>'origin'='human' ORDER BY c.command_id`,[runId])).rows;
+    const requests:NonNullable<RunRecord['control']>['requests']={};
+    for(const row of commands) {
+      if(row.factId!==factIdentity('control',runId,row.commandId)||row.digest!==jsonDigest(row.command))throw new Error('Human control provenance differs from its original persisted command');
+      requests[row.commandId]={digest:row.digest,actor:row.command.actor??row.command.owner,epoch:row.command.epoch,revision:row.command.revision,origin:'human',at:new Date(row.at).toISOString(),state:'done',receipt:{requestId:row.commandId,action:row.command.action,data:row.receipt as unknown as JsonValue}};
+    }
+    for(const row of rows)requests[row.name.slice(18)]=row.value;
+    return requests;
+  }
   async command(command: DurableCommand): Promise<DurableRun> {
     assertName(command.commandId);
     if(command.origin!==undefined&&!['human','agent'].includes(command.origin))throw new Error('Control origin must be supplied by the Host as human or agent');
@@ -206,6 +245,7 @@ export class RunStore {
     const digest = jsonDigest(command);
     return this.transaction(async client => {
       const run = await this.#run(client, command.runId, true);
+      if((await client.query('SELECT 1 FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,`human-measurement:${command.commandId}`])).rowCount)mismatch('Command');
       const previous = (await client.query<{digest:string;receipt:DurableRun}>('SELECT digest,receipt FROM hima.commands WHERE run_id=$1 AND command_id=$2',[command.runId,command.commandId])).rows[0];
       if (previous) { if (previous.digest !== digest) mismatch('Command'); return readRun(previous.receipt); }
       if (command.owner !== run.owner || command.epoch !== run.epoch || command.revision !== run.revision) throw new Error('Control owner/epoch/revision is stale; refresh this Run');

@@ -2037,9 +2037,13 @@ export async function readExecutionContext(deps:FabricDeps,runId:string):Promise
 export async function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
   if(await knownDurableRun(deps,req.runId)) {
     const context = await readDurableExecutionContext(deps,req.runId);
-    if (!['pause','continue','cancel','handoff','revise','grow','respond','engineering'].includes(req.action)) return {kind:'unsupported',context,reason:'DBOS executes the frozen Pack method automatically; only explicit business intervention and control are accepted'};
+    if (!['pause','continue','cancel','handoff','revise','grow','respond','engineering','measure-value'].includes(req.action)) return {kind:'unsupported',context,reason:'DBOS executes the frozen Pack method automatically; only explicit business intervention and control are accepted'};
     try {
       if(req.origin!=='human' && !deps.host?.get('agents')?.list().some(agent=>String(agent.id)===req.actor)) return {kind:'refused',context,reason:'Control actor must be a live conversation on this Host'};
+      if(req.action==='measure-value') {
+        const data=await durableRuntimeOf(deps).store.measureHumanEffort({runId:req.runId,requestId:req.requestId,actor:req.actor,origin:req.origin,epoch:req.expectedEpoch,revision:req.expectedRevision,measurement:req.measurement});
+        return {kind:data.duplicate?'duplicate':'accepted',context:await readDurableExecutionContext(deps,req.runId),data:data.request.receipt.data,receipt:data.request.receipt};
+      }
       if(req.action==='engineering') {
         const operation=engineeringRequest.parse(req.engineering);
         if(operation.operation!=='message'||!req.executionId)throw new Error('Tasks start, collect and close automatically; send a message to an existing execution, or inspect/control its current facts');

@@ -12,7 +12,7 @@ import { open, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { taskResult as taskResultSchema, taskProjection, type JsonValue, type TaskIdentity, type TaskResult, type TaskProjection } from './task-contract.js';
 import { factIdentity, jsonDigest } from './run-store.js';
-import { durableRunView, knownDurableRun, readDurableExecutionContext, readFrozenProductMethod, type DurableExecutionContext } from './durable-fabric.js';
+import { readDurableRunView, knownDurableRun, readDurableExecutionContext, readFrozenProductMethod, type DurableExecutionContext } from './durable-fabric.js';
 import type { DurableTaskView } from './record-views.js';
 import { packWords, type Pack } from './packs.js';
 import { runView, runHeadView, type RunView } from './remote.js';
@@ -44,7 +44,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     const original=await knownDurableRun(deps,runId);
     if(!original)return deps.ledger.run(runId);
     const store=deps.durable!.store,prepared=await store.flowFact(runId,'preparation') as unknown as import('./workspace.js').WorkspaceFilesResult|null, outcome=await store.flowFact(runId,`outcome:${original.revision}`);
-    return original.cancelled ? (await readDurableExecutionContext(deps,runId)).run : durableRunView(original,prepared,outcome);
+    return original.cancelled ? (await readDurableExecutionContext(deps,runId)).run : await readDurableRunView(deps.durable!,original,prepared,outcome);
   }
   async function readRunRecords(runId: string, type?: LedgerRecord['type']): Promise<readonly LedgerRecord[]> {
     const original = await knownDurableRun(deps,runId);
@@ -310,7 +310,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
   async function listRunHeads() {
     return Promise.all((await deps.durable?.store.runs()??[]).map(async run=>{
       const store=deps.durable!.store, sourceRevision=await store.sourceRevision(run.runId), prepared=await store.flowFact(run.runId,'preparation') as unknown as import('./workspace.js').WorkspaceFilesResult|null, outcome=await store.flowFact(run.runId,`outcome:${run.revision}`);
-      const current=run.cancelled?(await readDurableExecutionContext(deps,run.runId)).run:durableRunView(run,prepared,outcome),pack=await readFrozenProductMethod(deps.durable!,run);
+      const current=run.cancelled?(await readDurableExecutionContext(deps,run.runId)).run:await readDurableRunView(deps.durable!,run,prepared,outcome),pack=await readFrozenProductMethod(deps.durable!,run);
       return {...runHeadView(current,pack.contract.version,packWords(pack)),engine:run.engine,goalState:current.goalState,...(current.stopState?{stopState:current.stopState}:{}),sourceRevision,historyPendingFacts:await store.pendingFactCount(run.runId),deadlineAt:run.deadlineAt};
     }));
   }

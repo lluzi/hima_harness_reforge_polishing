@@ -59,10 +59,15 @@ export function durableRunView(run: DurableRun, prepared?: WorkspaceFilesResult 
   return { ...data.run, engine: durableEngine, goalState, ...(status ? { status } : {}), control: { ...data.run.control!, owner: run.owner, epoch: run.epoch, revision: run.revision,
     paused: run.hold ? ['*'] : [] } };
 }
+/** Project durable human provenance into the existing measurement reader contract. */
+export async function readDurableRunView(runtime:DurableRuntime,run:DurableRun,prepared?:WorkspaceFilesResult|null,outcome?:JsonValue|null):Promise<DurableRunView> {
+  const view=durableRunView(run,prepared,outcome);
+  return {...view,control:{...view.control!,requests:{...view.control!.requests,...await runtime.store.humanRequests(run.runId)}}};
+}
 export async function durableStartResult(runtime: DurableRuntime, run: DurableRun) {
   const prepared = await runtime.store.flowFact(run.runId,'preparation') as unknown as WorkspaceFilesResult | null;
   const outcome = await runtime.store.flowFact(run.runId,`outcome:${run.revision}`);
-  const view = durableRunView(run,prepared,outcome), workspace = dataOf(run).product.workspace;
+  const view = await readDurableRunView(runtime,run,prepared,outcome), workspace = dataOf(run).product.workspace;
   if (!prepared) return { kind: 'preparing' as const, run: view, workspace };
   if (prepared.kind !== 'prepared' && prepared.kind !== 'reused') return { kind: 'unprepared' as const, run: view, prepared };
   return { kind: 'ran' as const, run: view, workspace: prepared.file.workspace };
@@ -221,7 +226,7 @@ export async function readDurableExecutionContext(deps: FabricDeps, runId: strin
   const preparationWorkflow = await DBOS.getWorkflowStatus(`hima-prepare:${runId}`);
   const prepared = await runtime.store.flowFact(runId,'preparation') as unknown as WorkspaceFilesResult | null;
   const outcome = await runtime.store.flowFact(runId,`outcome:${flow.run.revision}`);
-  let run = durableRunView(flow.run,prepared,outcome);
+  let run = await readDurableRunView(runtime,flow.run,prepared,outcome);
   const revisionFact=await runtime.store.flowFact(runId,`revision:${flow.run.revision}`) as {evidence?:JsonValue}|null;
   let revisionPreparation:Awaited<ReturnType<typeof DBOS.getWorkflowStatus>> = null;
   const revisionControl=revisionFact?flow.controls.find(value=>(value as {action?:string;change?:{evidence?:JsonValue}}).action==='revise'&&jsonDigest((value as {change:{evidence:JsonValue}}).change.evidence)===jsonDigest(revisionFact.evidence)):undefined;
