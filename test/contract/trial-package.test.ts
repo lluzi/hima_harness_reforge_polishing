@@ -718,3 +718,112 @@ test('packaged Mac and Linux modules reject forged legacy and interactive fixtur
     }
   } finally { await rm(directory,{recursive:true,force:true}); }
 });
+
+
+test('final technical-obligation report binds real evidence to immutable artifact bytes', async () => {
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-final-obligations-'));
+  const app = path.join(output, 'HimaHarness');
+  const sha = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
+  const files: Record<string, string> = {};
+  const put = async (file: string, data: unknown, bundled = false) => {
+    const bytes = typeof data === 'string' ? data : JSON.stringify(data);
+    const at = path.join(bundled ? app : output, file);
+    await mkdir(path.dirname(at), {recursive: true}); await writeFile(at, bytes);
+    if (bundled) files[file] = sha(bytes);
+    return {file: at, sha256: sha(bytes)};
+  };
+  const resource = 'resources/app';
+  const finding = '@img/sharp-libvips-linux-x64@1.3.3 at node_modules/vips/lib: LGPL native binary and embedded libraries require exact upstream license/copyright disclosures, corresponding-source/build material, and verified library replacement or relinking terms before commercial distribution';
+  const run = (report = path.join(output, 'final-native-obligations.json')) => spawnSync(process.execPath, [path.join(repoRoot, 'scripts/package-trial.mjs'),
+    '--finalize-native-obligations', app, '--native-evidence', path.join(output, 'evidence.json'),
+    '--report', report], {cwd: repoRoot, encoding: 'utf8', timeout: 10000});
+  try {
+    await put('HimaHarness', 'actual-consumer', true);
+    await put('libffmpeg.so', 'original ffmpeg', true);
+    await put(`${resource}/node_modules/vips/lib/libvips-cpp.so.8.18.6`, 'original vips', true);
+    const patches = [];
+    for (const name of ['ffmpeg', 'vips']) {
+      const file = `reconstruction/${name}-u9-source-modification.patch`;
+      const ref = await put(`${resource}/third-party/corresponding-source/${file}`, `diff: ${name}-hima-u9-source-modified`, true);
+      patches.push({file, sha256: ref.sha256});
+    }
+    const source = await put(`${resource}/third-party/corresponding-source/manifest.json`, {
+      format: 'hima-corresponding-source/1', components: {electron: '44.2.0', sharpLibvips: '1.3.3'}, files: patches,
+      qualification: 'declaration must not close replacement obligations'}, true);
+    const rights = await put(`${resource}/third-party/RIGHTS.md`, 'Recipients may modify and replace libraries and reverse engineer for debugging; source available.', true);
+    const license = await put('vips-LICENSE', 'LGPL upstream license and original copyrights');
+    await put(`${resource}/third-party/upstream/_img_sharp-libvips-linux-x64-1.3.3/vips-LICENSE`, 'LGPL upstream license and original copyrights', true);
+    const notice = await put('notices.json', {format: 'hima-notice-materials/1', packages: [{name: '@img/sharp-libvips-linux-x64', version: '1.3.3', npmIntegrity: 'pinned', files: [{file: 'vips-LICENSE', sha256: license.sha256}]}]});
+    const sbom = await put(`${resource}/third-party/SBOM.json`, {format: 'hima-distribution-sbom/1', platform: 'linux-x64', noticeMaterialsSha256: notice.sha256,
+      electron: {version: '44.2.0'}, npm: [{name: '@img/sharp-libvips-linux-x64', version: '1.3.3', path: 'node_modules/vips', source: {integrity: 'pinned'}, supplementalLicenseFiles: [{file: 'third-party/upstream/_img_sharp-libvips-linux-x64-1.3.3/vips-LICENSE', sha256: license.sha256}]}],
+      nativeLinks: [{file: 'HimaHarness'}, {file: 'libffmpeg.so'}, {file: `${resource}/node_modules/vips/lib/libvips-cpp.so.8.18.6`}], unresolved: [finding]}, true);
+    const ordered = Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    for (const file of Object.keys(files)) delete files[file];
+    Object.assign(files, Object.fromEntries(ordered));
+    const digest = () => sha(JSON.stringify(files));
+    const tested = await put('tested-manifest.json', {platform: 'linux-x64', files: {...files}, artifactDigest: digest()});
+    const runtime = await put('runtime.json', {sourceArtifactDigest: digest(), status: 'pass', ffmpegSourceMarker: 'ffmpeg-hima-u9-source-modified',
+      vipsSourceMarker: 'vips-hima-u9-source-modified', actualElectronLoaderMappedReplacement: true,
+      headlessHost: {status: 'pass', actualHostMappedModifiedVips: true, sharpImage: {width: 8, height: 8, format: 'png'}, hostExit: 0, stopReceiptConfirmed: true}, remainingOwnedProcesses: []});
+    const components = [];
+    for (const [component, library] of [['ffmpeg', 'libffmpeg.so'], ['sharp-libvips', `${resource}/node_modules/vips/lib/libvips-cpp.so.8.18.6`]]) {
+      const marker = `${component === 'ffmpeg' ? 'ffmpeg' : 'vips'}-hima-u9-source-modified`;
+      const rebuilt = await put(`rebuilt-${component}`, `source compiled ${marker}`);
+      await put(`replacement/${library}`, `source compiled ${marker}`);
+      const build = await put(`build-${component}.json`, {status: 'source-rebuild-pass', wholeLibrarySourceRebuild: true, sourceCount: 314,
+        sourceRevision: 'pinned-revision', sourceModification: 'diagnostic C source change', sha256: rebuilt.sha256, av_version_info: marker, modifiedSymbol: marker});
+      const abi = await put(`abi-${component}.json`, {interfaceStatus: 'pass', interfaceStaticStatus: 'pass', allActualConsumerInterfaceImportsPresent: true,
+        consumerRequired: 45, consumerRequiredMissing: [], consumerMissingFromDependencyClosure: [], sha256: rebuilt.sha256});
+      components.push({component, library, build, interface: abi, rebuiltLibrary: rebuilt,
+        sourceChange: patches[component === 'ffmpeg' ? 0 : 1]});
+    }
+    const packet = {format: 'hima-native-replacement-evidence/1', platform: 'linux-x64', testedManifest: tested,
+      replacementApp: path.join(output, 'replacement'), runtime, sourceSha256: source.sha256, rightsSha256: rights.sha256,
+      noticeMaterials: notice, components};
+    await put('evidence.json', packet);
+    const seal = async () => put('trial-manifest.json', {format: 2, status: 'structurally-verified trial candidate', platform: 'linux-x64', files, artifactDigest: digest(),
+      runtimeInputs: {sbom: {file: 'third-party/SBOM.json', sha256: sbom.sha256}, correspondingSource: {file: 'third-party/corresponding-source/manifest.json', sha256: source.sha256}}});
+    await seal();
+    const before = JSON.stringify(files);
+    const good = run(); assert.equal(good.status, 0, good.stderr);
+    const report = JSON.parse(await readFile(path.join(output, 'final-native-obligations.json'), 'utf8'));
+    assert.equal(report.qualification, 'technical-obligations-qualified-for-stated-scope');
+    assert.deepEqual(report.rawUnresolved, [finding]); assert.deepEqual(report.effectiveUnresolved, []);
+    assert.equal(report.resolvedObligationIds.length, 2); assert.equal(report.legalClearance, 'not claimed');
+    assert.equal(report.identities.artifactDigest, digest());
+    assert.equal(JSON.stringify(files), before);
+    for (const [file, hash] of Object.entries(files)) assert.equal(sha(await readFile(path.join(app, file), 'utf8')), hash, file);
+    assert.equal(report.applicableStagedNotices, 1);
+    const existingReport = await readFile(path.join(output, 'final-native-obligations.json'), 'utf8');
+    const repeat = run(); assert.notEqual(repeat.status, 0); assert.match(repeat.stderr, /EEXIST/);
+    assert.equal(await readFile(path.join(output, 'final-native-obligations.json'), 'utf8'), existingReport);
+    const manifestBytes = await readFile(path.join(output, 'trial-manifest.json'), 'utf8');
+    const aliases = await import('node:fs/promises');
+    const outputSymlink = path.join(output, 'source-output-alias.json');
+    await aliases.symlink(source.file, outputSymlink);
+    const outputHardlink = path.join(output, 'manifest-output-alias.json');
+    await aliases.link(path.join(output, 'trial-manifest.json'), outputHardlink);
+    for (const alias of [outputSymlink, outputHardlink]) {
+      const refused = run(alias); assert.notEqual(refused.status, 0); assert.match(refused.stderr, /EEXIST/);
+    }
+    assert.equal(await readFile(path.join(output, 'trial-manifest.json'), 'utf8'), manifestBytes);
+    const parentAlias = path.join(output, 'artifact-parent-alias');
+    await (await import('node:fs/promises')).symlink(app, parentAlias, 'dir');
+    const aliased = run(path.join(parentAlias, 'sidecar.json'));
+    assert.notEqual(aliased.status, 0, 'an external-looking parent must not write into the frozen artifact');
+    assert.match(aliased.stderr, /report.*external/);
+    assert.equal(existsSync(path.join(app, 'sidecar.json')), false);
+    for (const [file, hash] of Object.entries(files)) assert.equal(sha(await readFile(path.join(app, file), 'utf8')), hash, file);
+
+    for (const file of ['libffmpeg.so', 'HimaHarness']) {
+      const prior = await readFile(path.join(app, file), 'utf8');
+      await put(file, 'changed covered native or consumer', true); await seal();
+      const bad = run(); assert.notEqual(bad.status, 0); assert.match(bad.stderr, /evidence bridge.*differ/);
+      await put(file, prior, true); await seal();
+    }
+    await put('evidence.json', {...packet, runtime: undefined});
+    const missing = run(); assert.notEqual(missing.status, 0); assert.match(missing.stderr, /actual replacement runtime evidence missing/);
+    await put('evidence.json', {...packet, components: []});
+    const declared = run(); assert.notEqual(declared.status, 0); assert.match(declared.stderr, /actual build.*replacement evidence/);
+  } finally { await (await import('node:fs/promises')).rm(output, {recursive: true, force: true}); }
+});

@@ -262,7 +262,7 @@ test('terminal A history survives B backup and restore; pending A and unfinished
     assert.equal((await backup.qualifyHeldRestore({newHome:target,retiredBackup:archived.backup,harnessRoot})).state,'qualified');
     const database=await gate.startLocalDatabase({home:target,runtimeDirectory});
     const {createRequire}=await import('node:module');
-    const {Pool}=createRequire(path.join(process.env.HIMA_DBOS_TEST_LIB!,'../package.json'))('pg');
+    const {Pool}=createRequire(await realpath(path.join(process.env.HIMA_DBOS_TEST_LIB!,'../package.json')))('pg');
     const application=new Pool(database.application),system=new Pool(database.system);
     try {
       assert.equal(database.identity,archived.manifest.identity);

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 import { packagePostgres } from './package-postgres.mjs';
-import { nativeLayout, stageRuntimeNotices, auditDistribution, stageCorrespondingSource, hashFile } from './package-native-audit.mjs';
+import { nativeLayout, stageRuntimeNotices, auditDistribution, stageCorrespondingSource, hashFile, finalizeNativeObligations } from './package-native-audit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const node24 = process.env.HIMA_NODE || process.execPath;
@@ -686,7 +686,21 @@ async function smokeVersionIsolatedTrialHome(app) {
   } finally { rmSync(userData, { recursive: true, force: true }); }
 }
 
-if (args[0] === '--verify-desktop') {
+if (args[0] === '--finalize-native-obligations') {
+  const app = path.resolve(value('--finalize-native-obligations') ?? fail('finalization needs an artifact path'));
+  const evidenceFile = value('--native-evidence'); const reportFile = value('--report');
+  if (!evidenceFile || !reportFile) fail('finalization needs --native-evidence <support packet.json> and --report <new external sidecar.json>');
+  const requestedReport = path.resolve(reportFile);
+  const realApp = realpathSync(app);
+  const manifestFile = path.join(path.dirname(app), 'trial-manifest.json');
+  const reportAt = path.join(realpathSync(path.dirname(requestedReport)), path.basename(requestedReport));
+  if (reportAt === realApp || reportAt.startsWith(realApp + path.sep) || reportAt === realpathSync(manifestFile)) fail('final report must be external to the immutable artifact and manifest');
+  const report = finalizeNativeObligations({app, manifestFile, actualFiles: collect(app), evidenceFile: path.resolve(evidenceFile)});
+  // A final report is a new sidecar. Existing files, symlinks and hardlinks must
+  // never be overwritten after evidence verification, including support inputs.
+  writeFileSync(reportAt, `${JSON.stringify(report, null, 2)}\n`, {flag: 'wx'});
+  process.stdout.write(`package-trial: ${report.qualification}; final report ${reportAt}\n`);
+} else if (args[0] === '--verify-desktop') {
   const app = value('--verify-desktop');
   if (!app) fail('--verify-desktop needs the frozen native artifact path');
   await verify(path.resolve(app));
@@ -694,7 +708,7 @@ if (args[0] === '--verify-desktop') {
 } else if (args[0] === '--check-platform-layout') {
   process.stdout.write(`${JSON.stringify(nativeLayout(args[1]))}\n`);
 } else if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --verify <native artifact> | --verify-desktop <native artifact>\n');
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --finalize-native-obligations <native artifact> --native-evidence <support packet.json> --report <new external sidecar.json> | --verify <native artifact> | --verify-desktop <native artifact>\n');
 } else if (args[0] === '--check-interactive-bindings') {
   const file = value('--check-interactive-bindings');
   if (!file) fail('--check-interactive-bindings needs an absolute administrator file');

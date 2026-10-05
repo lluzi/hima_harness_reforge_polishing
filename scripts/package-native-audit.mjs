@@ -213,3 +213,173 @@ export function stageCorrespondingSource({ resource, sourceMaterials }) {
   return { status:'source materials retained; actual modified-library rebuild/replacement evidence remains separate',
     file:'third-party/corresponding-source/manifest.json', sha256:createHash('sha256').update(bytes).digest('hex'), files:manifest.files.length };
 }
+
+// Compare only the already admitted ad-hoc route: body and signing policy, not
+// incidental signature bytes. No codesign invocation or artifact mutation.
+function adHocBody(file) {
+  const bytes = Buffer.from(readFileSync(file));
+  if (bytes.readUInt32LE(0) !== 0xfeedfacf) fail(`evidence bridge needs a thin Mach-O: ${file}`);
+  let command = 32; let signature;
+  for (let index = 0; index < bytes.readUInt32LE(16); index++) {
+    const size = bytes.readUInt32LE(command + 4);
+    if (size < 8 || command + size > bytes.length) fail('invalid Mach-O evidence command');
+    if (bytes.readUInt32LE(command) === 0x1d) {
+      signature = { offset: bytes.readUInt32LE(command + 8), size: bytes.readUInt32LE(command + 12) };
+      bytes.fill(0, command + 8, command + 16);
+    }
+    command += size;
+  }
+  if (!signature || signature.offset + signature.size !== bytes.length) fail('evidence bridge requires a trailing ad-hoc signature');
+  const signed = bytes.subarray(signature.offset);
+  if (signed.readUInt32BE(0) !== 0xfade0cc0) fail('unsupported signature evidence');
+  let flags; let entitlements = false;
+  for (let index = 0; index < signed.readUInt32BE(8); index++) {
+    const type = signed.readUInt32BE(12 + index * 8); const offset = signed.readUInt32BE(16 + index * 8);
+    if (type === 0) flags = signed.readUInt32BE(offset + 12);
+    if (type === 5 || type === 7) entitlements = true;
+  }
+  if (flags !== 2 || entitlements) fail('evidence bridge signing policy is not the admitted ad-hoc route');
+  return { sha256: createHash('sha256').update(bytes.subarray(0, signature.offset)).digest('hex'), bytes: signature.offset,
+    signatureBytes: signature.size, flags, entitlements };
+}
+
+/** Bind admitted, available reconstruction records to an already verified final inventory.
+ * actualFiles comes from the packager's full read-only collect(), after final signing.
+ * This report never changes the embedded raw SBOM or grants legal clearance.
+ */
+export function finalizeNativeObligations({ app, manifestFile, actualFiles, evidenceFile }) {
+  const readJson = file => JSON.parse(readFileSync(file, 'utf8'));
+  const manifest = readJson(manifestFile);
+  const digest = files => createHash('sha256').update(JSON.stringify(files)).digest('hex');
+  if (manifest.status === 'building' || JSON.stringify(actualFiles) !== JSON.stringify(manifest.files)
+      || digest(actualFiles) !== manifest.artifactDigest) fail('final artifact inventory or digest differs from manifest');
+  const layout = nativeLayout(manifest.platform); const resource = layout.resource;
+  const proofIdentities = [];
+  const reference = (ref, role) => {
+    if (!ref?.file || !/^[a-f0-9]{64}$/.test(ref.sha256) || !existsSync(ref.file) || hashFile(ref.file) !== ref.sha256)
+      fail(`actual ${role} evidence missing or bytes differ: ${ref?.file ?? 'no file'}`);
+    proofIdentities.push({role, file: ref.file, sha256: ref.sha256});
+    return ref.file;
+  };
+  const bundled = (file, sha256, role) => {
+    const relative = `${resource}/${file}`;
+    if (actualFiles[relative] !== sha256 || hashFile(path.join(app, relative)) !== sha256) fail(`${role} bytes differ from final inventory: ${relative}`);
+    return path.join(app, relative);
+  };
+  const sbomRef = manifest.runtimeInputs?.sbom;
+  const sbomFile = bundled(sbomRef?.file, sbomRef?.sha256, 'raw SBOM'); const sbom = readJson(sbomFile);
+  if (sbom.platform !== layout.platform) fail('raw SBOM platform differs from final artifact');
+  const packet = readJson(evidenceFile);
+  if (packet.format !== 'hima-native-replacement-evidence/1' || packet.platform !== layout.platform
+      || !Array.isArray(packet.components) || packet.components.length !== 2
+      || !['ffmpeg', 'sharp-libvips'].every(name => packet.components.filter(row => row.component === name).length === 1))
+    fail('actual build/interface/runtime replacement evidence required for FFmpeg and sharp-libvips');
+  proofIdentities.push({role: 'admitted evidence bindings', file: evidenceFile, sha256: hashFile(evidenceFile)});
+  const sourceRef = manifest.runtimeInputs?.correspondingSource;
+  const sourceFile = bundled(sourceRef?.file, sourceRef?.sha256, 'corresponding source'); const source = readJson(sourceFile);
+  const rightsFile = bundled('third-party/RIGHTS.md', packet.rightsSha256, 'recipient RIGHTS');
+  if (packet.sourceSha256 !== sourceRef.sha256 || source.format !== 'hima-corresponding-source/1'
+      || source.components?.electron !== sbom.electron?.version
+      || sbom.npm.some(row => row.name.startsWith('@img/sharp-libvips-') && row.version !== source.components?.sharpLibvips)
+      || !Array.isArray(source.files) || !source.files.length) fail('source identities do not cover final native components');
+  for (const entry of source.files) bundled(`third-party/corresponding-source/${entry.file}`, entry.sha256, 'source material');
+  const noticeFile = reference(packet.noticeMaterials, 'notice materials'); const notices = readJson(noticeFile);
+  if (notices.format !== 'hima-notice-materials/1' || packet.noticeMaterials.sha256 !== sbom.noticeMaterialsSha256) fail('notice input differs from raw SBOM');
+  let stagedNotices = 0;
+  for (const row of sbom.npm) {
+    const supplemental = notices.packages.find(entry => entry.name === row.name && entry.version === row.version);
+    if (!supplemental) continue;
+    if (supplemental.npmIntegrity !== row.source?.integrity) fail(`notice package integrity differs: ${row.name}`);
+    for (const entry of supplemental.files) {
+      const relative = `third-party/upstream/${row.name.replace(/[^a-zA-Z0-9.-]/g, '_')}-${row.version}/${entry.file}`;
+      if (!row.supplementalLicenseFiles?.some(item => item.file === relative && item.sha256 === entry.sha256)) fail(`raw SBOM omits applicable notice: ${relative}`);
+      reference({file: path.resolve(path.dirname(noticeFile), entry.file), sha256: entry.sha256}, 'upstream notice input');
+      bundled(relative, entry.sha256, 'applicable staged notice'); stagedNotices++;
+    }
+  }
+  const testedFile = reference(packet.testedManifest, 'tested artifact manifest'); const tested = readJson(testedFile);
+  if (tested.platform !== layout.platform || digest(tested.files) !== tested.artifactDigest) fail('tested artifact manifest identity differs');
+  const runtimeFile = reference(packet.runtime, 'actual replacement runtime'); const runtime = readJson(runtimeFile);
+  const mac = layout.platform === 'darwin-arm64';
+  if ((mac ? runtime.canonicalArtifactDigest : runtime.sourceArtifactDigest) !== tested.artifactDigest) fail('runtime proof identifies another tested artifact');
+  const host = mac ? runtime : runtime.headlessHost;
+  const image = mac ? runtime.bundledSharpImageOperation : host?.sharpImage;
+  if (runtime.status !== 'pass' || host?.actualHostMappedModifiedVips !== true || image?.format !== 'png' || image.width !== 8 || image.height !== 8
+      || (mac ? runtime.actualAppMappedReplacement !== true || runtime.appExit !== 0 || runtime.ownedHomeTeardownPass !== true
+        : runtime.actualElectronLoaderMappedReplacement !== true || host.status !== 'pass' || host.hostExit !== 0 || host.stopReceiptConfirmed !== true)
+      || !Array.isArray(runtime.remainingOwnedProcesses) || runtime.remainingOwnedProcesses.length) fail('actual replacement mapping/operation/teardown proof is incomplete');
+  const bridge = [];
+  for (const native of sbom.nativeLinks) {
+    const original = tested.files[native.file]; const final = actualFiles[native.file];
+    if (!original || !final) fail(`evidence bridge native inventory missing: ${native.file}`);
+    if (original === final) bridge.push({file: native.file, testedSha256: original, finalSha256: final, equivalence: 'identical bytes'});
+    else if (mac && native.file === layout.executable) {
+      const prior = reference({file: path.join(packet.testedApp ?? '', native.file), sha256: original}, 'tested outer executable');
+      const oldBody = adHocBody(prior); const finalBody = adHocBody(path.join(app, native.file));
+      if (JSON.stringify(oldBody) !== JSON.stringify(finalBody)) fail(`evidence bridge body/signing differs: ${native.file}`);
+      bridge.push({file: native.file, testedSha256: original, finalSha256: final, equivalence: 'identical Mach-O body and ad-hoc policy', body: finalBody});
+    } else fail(`evidence bridge native/consumer bytes differ: ${native.file}`);
+  }
+  if (!sbom.nativeLinks.some(row => row.file === layout.executable)
+      || !sbom.nativeLinks.some(row => /node\/bin\/node$/.test(row.file)) && actualFiles[`${resource}/node/bin/node`]
+      || !sbom.nativeLinks.some(row => /sharp.*\.node$/.test(row.file)) && Object.keys(actualFiles).some(file => /sharp.*\.node$/.test(file)))
+    fail('evidence bridge omits actual native consumers');
+  const signing = mac ? readJson(reference(packet.signatures, 'ad-hoc modified-library signatures')) : undefined;
+  if (mac && signing.signaturePass !== true) fail('modified-library ad-hoc signing not verified');
+  const evaluated = [];
+  for (const row of packet.components) {
+    if (!sbom.nativeLinks.some(entry => entry.file === row.library) || !tested.files[row.library]) fail(`covered native library absent: ${row.library}`);
+    const build = readJson(reference(row.build, `${row.component} whole-source build`));
+    const abi = readJson(reference(row.interface, `${row.component} consumer interface`));
+    const preSign = reference(row.rebuiltLibrary, `${row.component} actual rebuilt library`);
+    if (hashFile(preSign) !== build.sha256) fail(`${row.component} build result differs from actual compiled library`);
+    const ffmpeg = row.component === 'ffmpeg';
+    const marker = ffmpeg ? build.av_version_info : build.modifiedSymbol;
+    if (typeof marker !== 'string' || !marker.includes('hima-u9-source-modified')
+        || (ffmpeg ? build.status !== 'source-rebuild-pass' || !build.sourceModification || !(build.sourceCount > 0) || !build.sourceRevision : build.wholeLibrarySourceRebuild !== true))
+      fail(`${row.component} actual modified whole-source build evidence incomplete`);
+    if (build.sha256 === tested.files[row.library] || !readFileSync(preSign).includes(Buffer.from(marker)))
+      fail(`${row.component} actual rebuilt library does not contain the source-change marker`);
+    const patch = source.files.find(entry => entry.file === row.sourceChange?.file && entry.sha256 === row.sourceChange?.sha256);
+    if (!patch || !/source-modification\.patch$/.test(patch.file)
+        || !readFileSync(path.join(app, resource, 'third-party/corresponding-source', patch.file), 'utf8').includes('hima-u9-source-modified'))
+      fail(`${row.component} actual source-change bytes absent from source material`);
+    if (mac ? abi.status !== 'pass' || !(abi.consumerRequiredCount > 0) || abi.consumerRequiredMissing?.length !== 0
+      : ffmpeg ? abi.interfaceStaticStatus !== 'pass' || abi.allActualConsumerInterfaceImportsPresent !== true || !(abi.consumerRequired > 0) || abi.consumerRequiredMissing?.length !== 0
+        : abi.interfaceStatus !== 'pass' || !(abi.consumerRequired > 0) || abi.consumerMissingFromDependencyClosure?.length !== 0) fail(`${row.component} actual consumer interface compatibility not established`);
+    if ((abi.wholeLibrarySourceRebuildSha256 ?? abi.sha256 ?? build.sha256) !== build.sha256) fail(`${row.component} interface evidence uses another rebuild`);
+    const runtimeMarker = mac ? ffmpeg ? runtime.modifiedSymbol : runtime.modifiedVipsSymbol : ffmpeg ? runtime.ffmpegSourceMarker : runtime.vipsSourceMarker;
+    const replacementHash = mac ? ffmpeg ? runtime.scratchLibrarySha256 : runtime.vipsSha256 : build.sha256;
+    if (runtimeMarker !== marker || mac && (ffmpeg ? signing.ffmpegSha256 : signing.libvipsSha256) !== replacementHash) fail(`${row.component} runtime source/signing stages differ`);
+    reference({file: path.join(packet.replacementApp, row.library), sha256: replacementHash}, `${row.component} actual runtime replacement library`);
+    evaluated.push({id: `${layout.platform}:${row.component}:source-notice-replacement`, component: row.component,
+      nativeFile: row.library, originalSha256: tested.files[row.library], finalSha256: actualFiles[row.library],
+      rebuiltPreSignSha256: build.sha256, runtimeReplacementSha256: replacementHash, sourceChange: patch,
+      buildStatus: build.status, interfaceStatus: mac ? abi.status : ffmpeg ? abi.interfaceStaticStatus : abi.interfaceStatus,
+      historicalStrictExportEquality: abi.ownOriginalExportEquality ?? abi.strictOriginalExportEquality ?? null,
+      sourceMarker: marker});
+  }
+  const resolvedRaw = sbom.unresolved.filter(finding => sbom.npm.some(row => row.name.startsWith('@img/sharp-libvips-')
+    && finding === `${row.name}@${row.version} at ${row.path}/lib: LGPL native binary and embedded libraries require exact upstream license/copyright disclosures, corresponding-source/build material, and verified library replacement or relinking terms before commercial distribution`));
+  const effectiveUnresolved = sbom.unresolved.filter(finding => !resolvedRaw.includes(finding));
+  return {format: 'hima-final-native-obligations/1', platform: layout.platform,
+    qualification: effectiveUnresolved.length ? 'unresolved obligations remain' : 'technical-obligations-qualified-for-stated-scope',
+    identities: {artifactDigest: manifest.artifactDigest, manifestSha256: hashFile(manifestFile), sourceSha: manifest.source?.sha ?? null,
+      sbomSha256: hashFile(sbomFile), sourceSha256: hashFile(sourceFile), noticeMaterialsSha256: hashFile(noticeFile), rightsSha256: hashFile(rightsFile)},
+    rawUnresolved: sbom.unresolved, resolvedRawFindings: resolvedRaw, resolvedObligationIds: evaluated.map(row => row.id), effectiveUnresolved,
+    evaluatedObligations: evaluated, proofIdentities, applicableStagedNotices: stagedNotices, sourceFiles: source.files.length,
+    evidenceBridge: {testedArtifactDigest: tested.artifactDigest, testedManifestSha256: packet.testedManifest.sha256, finalArtifactDigest: manifest.artifactDigest, nativeObjects: bridge},
+    replacementRuntime: {proofSha256: packet.runtime.sha256, testedArtifactDigest: tested.artifactDigest,
+      actualElectronMappedReplacement: mac ? runtime.actualAppMappedReplacement : runtime.actualElectronLoaderMappedReplacement,
+      actualHostMappedModifiedVips: host.actualHostMappedModifiedVips, imageOperation: image,
+      hostOrAppExit: mac ? runtime.appExit : host.hostExit, remainingOwnedProcesses: runtime.remainingOwnedProcesses,
+      ...(mac ? {adHocSignaturePass: signing.signaturePass, ownedHomeTeardownPass: runtime.ownedHomeTeardownPass}
+        : {stopReceiptConfirmed: host.stopReceiptConfirmed, desktopVisualQualification: runtime.desktopVisualQualification ?? 'not qualified'})},
+    legalClearance: 'not claimed', commercialSigning: 'not qualified', originalDeliveryQualification: manifest.commercialDistribution ?? manifest.qualification ?? null,
+    originalSourceQualification: source.qualification ?? null, originalSigning: manifest.signing ?? layout.signing,
+    limits: ['Technical closure applies only to enumerated source/notice/interface/replacement obligations and exact bound bytes.',
+      'No patent/codec clearance, zero legal risk, future contract or commercial signing approval.',
+      'No fresh macOS non-administrator installation, Linux native hardware/Desktop or human final acceptance.',
+      ...(mac ? ['Replacement runtime proof used an earlier candidate and local ad-hoc signing; final native body/policy equivalence recorded.']
+        : ['Runtime proof used emulated Ubuntu 22.04 and headless Host; ordinary Desktop blocked by absent X server/DISPLAY.'])]};
+}
