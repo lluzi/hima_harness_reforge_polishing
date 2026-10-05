@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-05T08:17:15.717492+00:00",
+  "candidateSource": "489a63c4a6c72b35b996bf90d94230e2841a93c8",
+  "productSourceDigest": "7df1f745b6c3110c8dabd27e430d7a60f1997c2ed28b2f351507d30d2185ac38",
+  "artifactDigest": "fb601ae14662d13223d27e7ba3d39d8ff50edcc748aaf7d3da5c54c445700276",
+  "pairedManifestSha256": "c9986b45cbc67c122a08beb689b2dcfe2e00b07793a2d53a4c233efe4a66f143",
+  "buildAndRelocatedHostSmoke": "PASS",
+  "desktopVerification": {
+    "exitCode": 0,
+    "elapsedSeconds": null,
+    "scope": "existing isolatedHome/oldHome-refusal/local preparation/normalquit/reopen",
+    "operator": "Root fixed script",
+    "secondsNotMeasured": true
+  },
+  "nativeObligationsReport": {
+    "path": ".hima-tmp/dbos-migration/u9/candidate-mac-11/final-native-obligations.json",
+    "sha256": "ffd669797f11a09e281c2d9ee58ea36688a1e3114c7b9c753f773f4bf8c857f0",
+    "qualification": "technical-obligations-qualified-for-stated-scope",
+    "rawUnresolvedCount": 1,
+    "effectiveUnresolvedCount": 0,
+    "scope": "same accepted exact native bytes/source/notice/replacement evidence, no formal legalclearance"
+  },
+  "exactCandidateExecutableProcessProbe": {
+    "pids": [],
+    "scope": "executables beneath exact App path; not separately retained transientHome PG identities"
+  },
+  "newATCSOrModelOrEDA": false,
+  "nonAdministratorOrHumanAcceptance": "NOT_PROVEN",
+  "originalBusinessProof": "source32a Mac08 immutable realATCS evidence"
+}

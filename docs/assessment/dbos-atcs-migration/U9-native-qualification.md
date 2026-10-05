@@ -82,3 +82,11 @@ node scripts/package-trial.mjs --finalize-native-obligations /actual/native/arti
 最终原生义务报告 raw1/effective0，按此前已接受的原生字节、源码/通知、实际修改库重建与替换证据核对新产物；没有重复构建未变化的第三方库，也不声明正式法律意见。报告路径 `candidate-mac-10/final-native-obligations.json`，摘要与身份见 [mac10-root-qualification.json](actual-run/mac10-root-qualification.json)。真实 ATCS 仍对应 source32a Mac08；本次没有调用产品模型或 EDA。Linux 新候选资格单列，不能借用此 Mac 结论。
 
 随后 Guide 的真实 Host 夹具复现了另一条退出竞态：已接受的原生 keep-jobs 请求在报告写入期间返回 ready:false，`host-launch.ts` 立即拒绝而未等待边界。这不改写上述已测检查的 PASS；该场景及后续修复的分发资格仍待完成。原失败见 `u9/guide-read-fixtures/evidence/failed-native-closure.json`。
+
+## Mac11 已修复源码分发
+
+Mac11 source `489a63c4a6c72b35b996bf90d94230e2841a93c8` 包含当前知识读取、原生退出等待、人工计时/真实请求统计和 Job 事实序号修复。artifactDigest `fb601ae14662d13223d27e7ba3d39d8ff50edcc748aaf7d3da5c54c445700276`，paired manifest SHA256 `c9986b45cbc67c122a08beb689b2dcfe2e00b07793a2d53a4c233efe4a66f143`。位置 `.hima-tmp/dbos-migration/u9/candidate-mac-11/HimaHarness.app`，仍为内部候选。后续 `25901a05` 仅改测试。
+
+打包和实际搬移 Host 验证、隔离 Home/旧 Home 拒绝/本地准备/正常退出与重开均 exit0；未单独计时。最终原生报告 raw1/effective0，消费相同原生字节与此前已接受的源码/通知/实际重建替换材料，不重复未变化的库重建；不代表正式法律意见或商业签名。退出后精确候选路径可执行进程为零，临时 Home 的各 PG 身份未另存。见 [mac11-root-qualification.json](actual-run/mac11-root-qualification.json)。没有新的产品模型、EDA 或 ATCS Run，原 source32a 的业务证据不变。
+
+同期 Linux source4e9 内部构建及实际搬移 Host smoke 已通过（artifactDigest `90c070e52ed74fb07f7e1caede88fd597e8a7e2edf3b1634ac17d0119aaa1909`），UID10042 的 Ubuntu22 x64 用户空间仍运行在 Mac 模拟环境；构建所属进程已结束。它不包含随后修复，最终 Linux 源码分发、外部原生义务报告/桌面资格待完成，不能继承 Mac11 结论。

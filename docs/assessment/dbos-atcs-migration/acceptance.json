@@ -202,16 +202,58 @@
     "original954BaselineUnchanged": true
   },
   "updatedMacDistribution": {
-    "source": "d02c7d0f9024a39a560375bc17a9d3f7525dbf43",
-    "artifactDigest": "cdedf9e5d5b55748ed244acb203e94abd34244bdd777e12b478617bf0267c97a",
-    "manifestSha256": "ba9269b2eb04771a1da5eb8ec9346ef4847506b1dc3ecffb2b0a28c573cf3812",
+    "source": "489a63c4a6c72b35b996bf90d94230e2841a93c8",
+    "artifactDigest": "fb601ae14662d13223d27e7ba3d39d8ff50edcc748aaf7d3da5c54c445700276",
+    "manifestSha256": "c9986b45cbc67c122a08beb689b2dcfe2e00b07793a2d53a4c233efe4a66f143",
     "desktopExitCode": 0,
     "desktopSeconds": null,
     "desktopSecondsNotMeasured": true,
     "nativeTechnicalUnresolved": 0,
     "newAtcsRun": false,
     "originalSource32aBusinessEvidenceSeparate": true,
-    "qualificationReceipt": "actual-run/mac10-root-qualification.json",
-    "includesCurrentCampaignKnowledgeFix": "5cca505d49e90915fef2aa98b2b3356a5db49491"
+    "qualificationReceipt": "actual-run/mac11-root-qualification.json",
+    "includesCurrentFixes": [
+      "5cca505d currentCampaignKnowledge",
+      "d03c74b1 nativeexitreadiness",
+      "5de5bb91 humanmeasurement/provenance",
+      "489a63c4 actualJobcountboundary"
+    ]
+  },
+  "currentSourceContractFollowups": {
+    "campaign": {
+      "commit": "d02c7d0f",
+      "pass": 21,
+      "seconds": 65.565
+    },
+    "reportWriteInterruption": {
+      "commit": "55e4ec94",
+      "pass": 4,
+      "seconds": 26.917
+    },
+    "nativeExitReadiness": {
+      "commit": "d03c74b1",
+      "pass": 11,
+      "seconds": 21.122,
+      "review": "ACCEPT"
+    },
+    "guideProjectFences": {
+      "commit": "6d3ff730",
+      "pass": 3,
+      "seconds": 9.83
+    },
+    "humanMeasurement": {
+      "commit": "5de5bb91",
+      "publicPass": 7,
+      "nearestPass": 10,
+      "humanControlCount": 2,
+      "review": "ACCEPT"
+    },
+    "runViewAndKnownFailureRepair": {
+      "commit": "25901a05",
+      "pass": 7,
+      "seconds": 29.301,
+      "review": "ACCEPT"
+    },
+    "fullOriginalCorpus": "954/713PASS/238FAIL/3SKIP unchanged original run; not relabeled"
   }
 }
