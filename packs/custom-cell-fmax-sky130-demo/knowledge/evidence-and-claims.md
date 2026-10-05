@@ -1,29 +1,31 @@
 # Evidence and claims
 
-## Real in this demo
+## Measured by HimaHarness (the only numbers that count)
 
-- The cell layouts you build with LibreCell, and their KLayout DRC and Netgen LVS results.
-- Whether OpenROAD's resizer (or an `emap` remap) actually uses your cells: instance counts in the
-  final routed netlist `6_final.v`.
+- Every DRC/LVS-clean custom cell's timing: HimaHarness extracts nothing itself, it simulates the
+  Magic-extracted netlist you deliver with ngspice (sky130 tt, 1.8 V, 25 °C) on the foundry 7×7
+  slew/load grid, plus input capacitance, and calibrates the method per edge against foundry cells
+  extracted and simulated the same way (calibration residual within 15 % p90). This measured
+  Liberty is the only custom timing the measured arms load.
+- Whether the flow uses a cell: instance counts in the custom arm's final routed netlist `6_final.v`.
 - ORFS timing, area, power and route DRC of both arms, read by the Pack Readers from ORFS files.
-- The matched control: same recipe, same merged library, your cells forbidden.
+- The matched control: same recipe and measured library, every custom cell forbidden.
 
-## Modelled
+## Not measured
 
-- The Liberty timing of every custom cell. It is estimated from foundry `sky130_fd_sc_hd` tables
-  (`estimate_lib.py`, `skew_lib.py`, `model_fused_cell.py`) with a stated derate and a physical
-  reason per cell. Its magnitude drives the measured gain: a less optimistic derate gives a smaller
-  win. Label: "custom-cell timing modelled, not characterized".
-- Any `emap` window without an equivalence log is "function not verified".
+- Cells without a DRC/LVS-clean layout and an extracted netlist ("abstract"): excluded from the
+  arms, listed with the reason.
+- Your own Liberty, derates and trial numbers: claims, shown beside the measurement.
+- An `emap` window without an equivalence log: "function not verified".
 
 ## Never claimed
 
-- Signoff, silicon, or characterized (SPICE-measured) cell timing.
-- Your own trial numbers as results. They are `agentClaim`, shown next to the Harness number.
+- Signoff, silicon, other corners, or full characterization (no power tables, one corner).
 - A gain from a cross-library or cross-clock comparison. Only the round's own control arm counts.
 
 ## Claim boundary (shown verbatim in the summary)
 
-> Custom-cell timing is modelled from foundry tables (estimate_lib, derate stated per cell), not
-> characterized. Layouts marked drc-lvs-clean passed KLayout DRC and Netgen LVS. Results are
-> open-source ORFS timing on SKY130 under these models; not signoff, not silicon.
+> Custom-cell timing is SPICE-characterized by HimaHarness from each cell's Magic-extracted layout
+> (ngspice, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90), not signed
+> off; only DRC/LVS-clean cells are measured and used. Results are open-source ORFS timing on SKY130
+> under these measured models; not signoff, not silicon.

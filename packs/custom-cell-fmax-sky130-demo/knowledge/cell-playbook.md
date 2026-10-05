@@ -1,79 +1,71 @@
 # Custom-cell playbook for aes on sky130hd
 
-Measured lessons from the celluzi project (July 2026, same ORFS, same container, same design).
-Read `state/lessons.json` first: it holds every earlier round of this Campaign. Do not repeat a
-failed idea without a new, stated reason.
+Your delivery is a cell library. Cells are cheap for you to make and HimaHarness measures every one,
+so try many ideas each round and let measurement and the flow decide. Read `state/lessons.json`
+first: every earlier round with each cell's measured timing against its foundry cell, whether the
+flow adopted it, the matched gain and the remaining top paths. Do not repeat a failed idea without a
+new reason; do repeat what worked with variations.
 
 ## How HimaHarness measures you
 
-- Two matched ORFS arms per round, same recipe, same merged Liberty and LEF, same clock. They differ
-  only in whether your cells may be used (control: your cells are added to the full platform
-  dont-use list). Round gain = custom-arm Fmax / control-arm Fmax − 1. The Goal reads the best
-  valid round gain.
-- Fmax = 1000 / (period − worst setup slack) at ORFS `finish`.
-- A round improves only when the comparison is valid, its gain is positive and its custom Fmax beats
-  the best custom Fmax so far. Two rounds in a row without improvement end the Campaign.
-- Your own trial numbers go in `agentClaim`; they are shown next to the Harness number, never used.
+- It characterizes every DRC/LVS-clean extracted cell itself (calibrated ngspice). Your own Liberty
+  or derates never reach the measured arms. A cell that is not DRC/LVS-clean is not measured and
+  cannot win.
+- Two matched ORFS arms per round, same recipe and measured library, custom cells allowed versus
+  forbidden. Round gain = custom-arm Fmax / control-arm Fmax − 1; the Goal reads the best valid gain.
+  Fmax = 1000 / (period − worst setup slack) at ORFS `finish`.
+- The round report lists every cell: measured rise, fall and input capacitance against the foundry
+  cell you named in `compareTo`, and how many instances the flow used.
 
-## What worked and what did not
+## What measurement has shown so far (linglong, 2026-10-04)
 
-- **Cross-library comparisons are invalid.** Synthesis is deterministic but library-sensitive: adding
-  cells, even dont-use ones, can change the netlist. Only matched arms count.
-- **ORFS is σ = 0 deterministic.** The same inputs give byte-identical results; any arm difference is
-  real (given the models).
-- **The one positive result: `NOR3_PU2`.** A rise-skewed nor3 with a doubled pull-up (two parallel
-  PMOS fingers), real DRC/LVS-clean layout, Liberty from foundry `nor3_1` tables with rise ×0.6. The
-  timing-driven resizer adopted 14 instances voluntarily, replacing every `nor3_2`; global-route WNS
-  went −0.37 → −0.13 ns against a valid control identical to golden.
-- **Adoption needs a real modelled advantage.** In a derate sweep the resizer started using the cell
-  at about 2.5 % modelled rise improvement and never at 1.000. It satisfices: it takes the weakest
-  variant that fixes each path, so a fine ladder of variants gives a weaker result than one good cell.
-- **Fused cells failed (−5 % Fmax).** 188 fused instances were never upsized: each fused function was a
-  singleton (nothing to swap to) and had no `cell_footprint`, while ORFS runs
-  `repair_design -match_cell_footprint`. The resizer buffered around them. If you build a fused cell,
-  give it drive variants that share a footprint, or expect it to be stranded at minimum drive.
-- **15 real cells, 52 adopted, ~0 gain** at 3.6 ns with a commercial flow: the deficit there was
-  broad and structural. Custom cells pay off only near closure on a few dominant cones.
-- **Drive is load-dependent.** Foundry `_2` versus `_1` ratios show `nor2`/`nor4` rise at `_2` is
-  slower than `_1` at light load. "5 % faster everywhere" is physically impossible. Every derate must
-  follow the topology (a doubled pull-up speeds the rise edge, not the fall edge).
-- **Area costs.** `NOR3_PU2` is 2.3× `nor3_1` (LibreCell packing plus the extra fingers). A cell that
-  is much larger than the foundry cell it replaces can lose on wire and placement.
-- **LEF power pins must match Liberty `pg_pin`s** (VPWR, VGND, VPB, VNB) or the cell loads but is never
-  used. Use `fix_lef_sky130hd.py`. A modelled LEF without obstructions lets the router cross the
-  cell interior; real LibreCell LEFs carry obstructions.
-- **Loaded ≠ adopted.** Count instances in `6_final.v`, not cells in the library.
-- **Invalid-control trap.** `DONT_USE_CELLS=X` on the make command line wipes the platform's 36
-  lpflow/probe exclusions. The Harness arms pass the full list; do the same in your own trials.
+- Skew is a trade, not a free speed-up. NOR3_PU2 (every PMOS finger doubled on nor3_1's pull-down)
+  measured rise 0.56–0.73× nor3_1 but fall up to 1.2× slower and input capacitance +44–74 %. Against
+  the foundry nor3_2 it is a real trade-off cell: 5–11 % faster rise, 21 % less input capacitance,
+  44–71 % slower fall. Cells win where their strong edge is the critical edge and their extra input
+  load is cheap; the resizer decides that from the measured tables.
+- The foundry library already has strength ladders (_1/_2/_4). A useful custom cell fills a gap the
+  ladder does not: a different pull-up/pull-down ratio, a per-input skew (fast input on the late
+  arriving pin), a footprint-compatible variant, a fused function, or a multi-output cell.
+- celluzi July: matched arms only; ORFS is σ = 0 deterministic; fused cells without drive variants
+  were stranded at minimum drive (the resizer swaps only within a footprint and function), so give
+  fused cells strength variants; the resizer satisfices and takes the weakest cell that fixes a path.
+- LEF power pins must match the Liberty pg_pins (the factory normalizes this). Loaded ≠ adopted.
+- Invalid-control trap: `DONT_USE_CELLS=X` on the make command line wipes the 36 platform
+  exclusions; pass the full list in your own trials.
 
-## Multi-output cells
+## Making a cell usable by the flow (measured 2026-10-04)
 
-- Global mapping with multi-output cells mainly saves area (EPFL `emap`: −7.5 % area, −0.5 % delay).
-  Use them on local windows of critical cones, not the whole design.
-- sky130hd already has `fa_*`, `ha_*`, `maj3_*`. `emap` may pick those even without your cells; the
-  control arm runs the same `emap` pass with your cells removed, so only your cells' effect counts.
-- Measured in this Pack's dry run (2026-10-04): an `emap` delay remap of a 122-cell window around
-  the 5 worst baseline paths (stock library, equivalence PASS) improved the endpoints inside the
-  window (−0.25 → −0.03…−0.19 ns) but the design got worse at finish (WNS −0.249 → −0.628 ns,
-  236.5 MHz): the worst path moved to a cone outside the window (`sa00_sr[5]` → `sa00_sr[6]`, a
-  1.2 ns `mux2i_2` stage) and placement/repair shifted across the design. In delay mode emap chose
-  no stock fa/ha. A window remap must cover the whole near-critical cone set, or it just moves the
-  worst path; check the remaining top paths before spending an arm on it.
-- A multi-output cell enters only through an `emap-window` round (the resizer cannot create one).
-  Cut windows at flops or clearly critical nets. An equivalence check is recommended; without one the
-  round is shown as "function not verified".
+OpenROAD's resizer only swaps a cell for another it treats as equivalent: same pin names and
+directions, the same timing-arc structure, the same `cell_footprint` (ORFS repairs with
+`-match_cell_footprint`) and the same `function` **text** — OpenSTA compares function expressions
+structurally, so `!(A|B|C)` and `(!A&!B&!C)` are never equivalent. A first measured NOR3_PU2 was
+adopted 0 times only because of this. HimaHarness handles the drop-in case for you: when your cell
+has the same pins and logic as its `compareTo` foundry cell, the measured Liberty takes that cell's
+footprint and function text verbatim. For your own families (fused or new functions), give every
+member the same `footprint` value in the recipe and write the same function string for each, or the
+resizer cannot size within the family. Yosys/ABC maps only from the stock and measured libraries at
+synthesis; a new function enters there or through `emap`.
+
+## Generating ideas in volume
+
+- Start from the cells on the top paths (lessons `remainingTopPaths`, `runs/*/top-paths.txt`): for
+  each slow stage, make several variants — pull-up and pull-down ratios (×1.5, ×2, ×3), per-input
+  skews, and a fused version with the next stage.
+- Add families, not singletons: a function in two or three strengths with one shared footprint lets
+  the resizer size it.
+- Multi-output cells for shared-input cones (AES is full of XOR/XNOR pairs and adder-like
+  clusters): build them in the factory like any other cell; they enter the design only through an
+  `emap-window` remap of the near-critical cone set (cover all near-critical cones, not 5 paths: a
+  first 122-cell window on aes improved its own endpoints but moved the worst path outside and made
+  the design 9 % slower). Equivalence check recommended.
+- Keep every best-library cell byte-identical; new cells go under `cells/r<k>/`.
 
 ## Planning a round
 
-1. Read lessons and best. Look at the remaining top paths of the best round (or the baseline).
-2. Analyse before running anything long: where do the top 20 paths spend time (cell types, edges,
-   fanout, wire)? Which foundry cells sit on them at minimum drive? Write your scripts down under
-   `cells/r<k>/`.
-3. Prefer few strong cells with a clear physical reason over many weak ones (at most 10 per round).
-4. An ORFS trial of aes takes 8–20 min with `NUM_CORES=8`; run at most two at once, and leave time
-   for the Harness's own two arms (same length) inside the round.
-5. Keep every cell of `best.json` byte-identical in your recipe; add new cells under `cells/r<k>/`.
-6. Choose the clock. When the last round met timing (positive slack), tighten the period; the
-   control arm is re-measured at the new clock, so a harder clock alone is never credited to you.
-7. Write `findings.md` (what you analysed, what you found and rejected and why, what the lessons
-   changed), one datasheet per new cell and `usage-guide.md`.
+1. Analyse the paths (minutes), then generate a large batch of specs and run the factory (parallel).
+2. Optionally characterize your clean cells yourself (`flow/toolbox/char`) to prune hopeless ones and
+   to write a meaningful `agentClaim` trial. An ORFS trial takes 15–25 min with `NUM_CORES=8`; at most
+   two at once. Leave time for HimaHarness's characterize step and its two arms.
+3. Choose the clock: tighten it when the last round met timing.
+4. Write findings.md, library.md (one row per new cell) and usage-guide.md, run the precheck, deliver.

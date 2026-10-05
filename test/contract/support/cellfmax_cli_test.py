@@ -593,3 +593,22 @@ class MeasuredLibraryTest(unittest.TestCase):
         self.assertAlmostEqual(ratios["cell_rise"], 0.7, places=3)   # 0.14 / 0.20
         self.assertAlmostEqual(ratios["cell_fall"], 1.2, places=3)   # 0.06 / 0.05
         self.assertAlmostEqual(ratios["input_cap"], 1.6, places=3)   # 0.0040 / 0.0025
+
+
+class FootprintTest(unittest.TestCase):
+    REF = ('library (x) {\n cell ("sky130_fd_sc_hd__nor3_1") { cell_footprint : "sky130_fd_sc_hd__nor3"; area : 5.0;\n'
+           ' pin ("A") { direction : "input"; } pin ("B") { direction : "input"; } pin ("C") { direction : "input"; }\n'
+           ' pin ("Y") { direction : "output"; function : "(!A&!B&!C)"; } }\n}\n')
+
+    def test_drop_in_variants_join_the_foundry_footprint_family(self):
+        cell = {"name": "NOR3_PU2", "inputs": ["A", "B", "C"], "outputs": ["Y"], "functions": {"Y": "!(A|B|C)"},
+                "compareTo": "sky130_fd_sc_hd__nor3_1"}
+        self.assertEqual(cli.resizer_footprint(cell, self.REF)[0], "sky130_fd_sc_hd__nor3")
+        # OpenSTA compares function expressions structurally, so the foundry text is taken verbatim.
+        self.assertEqual(cell["_foundryFunctions"], {"Y": "(!A&!B&!C)"})
+        other = dict(cell, functions={"Y": "!(A&B&C)"})
+        footprint, why = cli.resizer_footprint(other, self.REF)
+        self.assertEqual(footprint, "NOR3_PU2")
+        self.assertIn("function differs", why)
+        fused = dict(cell, inputs=["A", "B", "C", "D"], functions={"Y": "!(A|B|C|D)"}, footprint="FUSE_NOR4")
+        self.assertEqual(cli.resizer_footprint(fused, self.REF)[0], "FUSE_NOR4")

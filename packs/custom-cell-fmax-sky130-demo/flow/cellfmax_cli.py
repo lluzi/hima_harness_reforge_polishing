@@ -366,6 +366,35 @@ def lef_macros_raw(text):
     return {m.group(1): m.group(0) for m in re.finditer(r"(?ms)^\s*MACRO\s+(\S+)\s*$.*?^\s*END\s+\1\s*$", text)}
 
 
+def resizer_footprint(cell, ref_text):
+    """The footprint a measured cell gets, so OpenROAD's footprint-matched resizer can use it.
+
+    A drop-in variant of its compareTo foundry cell (same pin names, logically equivalent function)
+    joins that cell's footprint family; any other cell keeps the family the engineer names
+    (`footprint`) or its own name."""
+    cc = _charcore()
+    try:
+        ref = cc.read_cell(ref_text, cell["compareTo"])
+    except Exception:
+        return cell.get("footprint") or cell["name"], "compareTo cell not in the platform Liberty"
+    m = re.search(r'cell_footprint\s*:\s*"?([^";]+)"?', cc.find_cell_text(ref_text, cell["compareTo"]))
+    ref_inputs = sorted(p for p, v in ref["pins"].items() if v.get("direction") == "input")
+    ref_outputs = {p: v.get("function") for p, v in ref["pins"].items() if v.get("direction") == "output"}
+    if not m or ref_inputs != sorted(cell["inputs"]) or set(ref_outputs) != set(cell["outputs"]):
+        return cell.get("footprint") or cell["name"], "not a drop-in variant of %s (pins differ)" % cell["compareTo"]
+    names = sorted(cell["inputs"])
+    for bits in range(1 << len(names)):
+        env = {name: bool(bits >> i & 1) for i, name in enumerate(names)}
+        for out, ref_function in ref_outputs.items():
+            if not ref_function or cc.eval_function(cc.parse_function(ref_function.strip('"')), env) != \
+                    cc.eval_function(cc.parse_function(cell["functions"][out]), env):
+                return cell.get("footprint") or cell["name"], "not a drop-in variant of %s (function differs)" % cell["compareTo"]
+    # OpenSTA groups equivalent cells by the function expression's structure, so a drop-in variant
+    # also takes the foundry cell's function text verbatim (!(A|B|C) and (!A&!B&!C) never match).
+    cell["_foundryFunctions"] = {out: function.strip('"') for out, function in ref_outputs.items()}
+    return m.group(1).strip(), "drop-in variant of %s" % cell["compareTo"]
+
+
 def load_characterization(ws, recipe):
     path = state_dir(ws) / "characterization.json"
     if not path.is_file():
@@ -389,7 +418,7 @@ def cmd_characterize(ws, timeout_min):
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True)
     lef_text = (ws / library["lef"]).read_text(errors="replace") if cells else ""
-    rows, job = [], []
+    rows, job, footprints = [], [], {}
     for cell in cells:
         files = cell.get("files") or {}
         if cell.get("layout") != "drc-lvs-clean" or not files.get("ext"):
@@ -403,10 +432,12 @@ def cmd_characterize(ws, timeout_min):
         names = ports.group(1).split()
         power = "VPWR" if "VPWR" in names else "VDD"
         ground = "VGND" if "VGND" in names else "GND"
+        footprint, footprint_reason = resizer_footprint(cell, Path(inputs["platformLib"]).read_text(errors="replace"))
+        footprints[cell["name"]] = {"footprint": footprint, "why": footprint_reason}
         job.append({"name": cell["name"], "spice": str(spice), "subckt": cell["name"],
                     "pins": {"power": power, "ground": ground, "inputs": cell["inputs"], "outputs": cell["outputs"]},
-                    "functions": cell["functions"], "area_um2": _lef_area(lef_text, cell["name"]),
-                    "lef": str((ws / files["lef"]).resolve()), "index_ref": cell["compareTo"], "footprint": cell["name"]})
+                    "functions": cell.pop("_foundryFunctions", None) or cell["functions"], "area_um2": _lef_area(lef_text, cell["name"]),
+                    "lef": str((ws / files["lef"]).resolve()), "index_ref": cell["compareTo"], "footprint": footprint})
     write_json(run_dir / "job.json", {"cells": job})
     started = time.time()
     rc, tail = 0, []
@@ -438,7 +469,8 @@ def cmd_characterize(ws, timeout_min):
             entry = by_name.get(cell["name"], {})
             ok = entry.get("status") == "ok"
             rows.append({"name": cell["name"], "status": "measured" if ok else "failed",
-                         "reason": None if ok else (entry.get("reason") or "no characterization result")})
+                         "reason": None if ok else (entry.get("reason") or "no characterization result"),
+                         "footprint": footprints[cell["name"]]["footprint"], "footprintWhy": footprints[cell["name"]]["why"]})
     measured_names = [row["name"] for row in rows if row["status"] == "measured"]
     lib = run_dir / "custom.measured.lib"
     record = {
