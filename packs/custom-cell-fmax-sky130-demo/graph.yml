@@ -1,5 +1,6 @@
-# Baseline once, then rounds of: resident engineer (a library of cells) -> HimaHarness measures every
-# cell (ngspice from the extracted layout) -> two matched ORFS arms in parallel -> compare ->
+# Baseline once, then rounds of: resident engineer (a library of cells) -> HimaHarness characterizes
+# every cell (ngspice: modelled pre-layout for abstract cells, measured from extraction for clean
+# layouts) -> two matched ORFS arms in parallel -> compare ->
 # Reader -> judges -> next round. The owner starts and collects each engineering task and decides
 # next-round; everything between is self-driving. The round record is read twice: once for the
 # adoption/improvement verdicts (check-round) and once, fresh, for the constraint/Goal judge that
