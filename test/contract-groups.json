@@ -96,6 +96,7 @@
     "test/contract/pack-readers.host.test.ts",
     "test/contract/pack-test-admission.host.test.ts",
     "test/contract/pack.test.ts",
+    "test/contract/read-permit.test.ts",
     "test/contract/pipeline-checkpoint.test.ts",
     "test/contract/pipeline-finalize.test.ts",
     "test/contract/pipeline-stages.host.test.ts",

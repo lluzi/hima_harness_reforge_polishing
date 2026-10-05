@@ -31,7 +31,14 @@ export async function decideRead(site: Site, requested: string, on: PathResolver
   } catch (err) {
     return { ok: false, reason: `cannot resolve ${candidate}: ${(err as Error).message}` };
   }
+  // Literal containment only orders candidates; authorization still resolves each root freshly.
+  // Keep alias roots in the remaining candidates: their real paths may authorize this file too.
+  const preferred: string[] = [];
+  const remaining: string[] = [];
   for (const root of site.permitRules.allowedReadRoots) {
+    (within(real, p.normalize(root), p) ? preferred : remaining).push(root);
+  }
+  for (const root of [...preferred, ...remaining]) {
     let realRoot: string;
     try { realRoot = await on.realpath(root); } catch { continue; }
     if (within(real, realRoot, p)) return { ok: true, absPath: real };
