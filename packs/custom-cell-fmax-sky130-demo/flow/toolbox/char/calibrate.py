@@ -3,7 +3,11 @@
 custom cell, characterize them with the same method, compare every table point with the shipped
 Liberty, and write per-quantity factors and the residual spread after them.
 
-    python3 calibrate.py --reference-lib REF.lib --out OUTDIR [--jobs 16] [--tolerance 0.15]
+    python3 calibrate.py --reference-lib REF.lib --out OUTDIR [--jobs 16] [--tolerance 0.15] [--netlist pre-layout]
+
+`--netlist pre-layout` characterizes the foundry cells' schematic netlists from the PDK instead of
+their Magic extractions, so the factors also absorb the missing layout parasitics on average. It
+calibrates the modelled (pre-layout) path used for abstract-layout cells; keep its OUTDIR separate.
 
 Writes OUTDIR/calibration.json (read by characterize.py --calibration), calibration.md and
 calibration-points.csv. Exit 0 when every quantity's p90 residual is within the tolerance, 3 otherwise
@@ -13,6 +17,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -24,6 +29,7 @@ import characterize as ch  # noqa: E402
 DEFAULT_CELLS = ["inv_1", "nand2_1", "nor2_1", "nor3_1", "nor3_2", "xor2_1", "xnor2_1", "a21oi_1",
                  "o21ai_1", "mux2i_1", "ha_1", "fa_1"]
 PREFIX = "sky130_fd_sc_hd__"
+SCHEMATIC = "/foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/spice/sky130_fd_sc_hd.spice"
 GDS = "/foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/gds/sky130_fd_sc_hd.gds"
 MAGICRC = "/foss/pdks/sky130A/libs.tech/magic/sky130A.magicrc"
 # The same Magic sequence as flow/toolbox/celluzi/generate/extract_cell.sh (cthresh 0: all caps).
@@ -53,6 +59,19 @@ def extract(cell, out_dir, gds=GDS, magicrc=MAGICRC):
                        stdout=log, stderr=subprocess.STDOUT, timeout=600)
     if not os.path.isfile(spice):
         raise cc.CharError("Magic did not write %s (see magic.log)" % spice)
+    return spice
+
+
+def schematic(cell, out_dir, spice_lib=SCHEMATIC):
+    """The foundry cell's pre-layout (schematic) subckt from the PDK SPICE, written on its own."""
+    os.makedirs(out_dir, exist_ok=True)
+    text = open(spice_lib).read()
+    match = re.search(r"(?ims)^\.subckt\s+%s\s.*?^\.ends\b[^\n]*" % re.escape(cell), text)
+    if not match:
+        raise cc.CharError("%s has no .subckt %s" % (spice_lib, cell))
+    spice = os.path.join(os.path.abspath(out_dir), cell + ".sp")
+    with open(spice, "w") as handle:
+        handle.write(cc.add_prelayout_parasitics(match.group(0) + "\n", cell))
     return spice
 
 
@@ -94,6 +113,8 @@ def main(argv=None):
     parser.add_argument("--tolerance", type=float, default=0.15, help="max p90 |residual| per quantity after factors")
     parser.add_argument("--ngspice", default="ngspice")
     parser.add_argument("--full-models", action="store_true")
+    parser.add_argument("--netlist", choices=("extracted", "pre-layout"), default="extracted",
+                        help="calibrate on Magic extractions (measured path) or PDK schematics (modelled path)")
     args = parser.parse_args(argv)
     args.out = os.path.abspath(args.out)
     os.makedirs(args.out, exist_ok=True)
@@ -103,9 +124,12 @@ def main(argv=None):
     for short in [c.strip() for c in args.cells.split(",") if c.strip()]:
         name = short if short.startswith(PREFIX) else PREFIX + short
         refs[name] = cc.read_cell(lib_text, name)
-        spice = extract(name, os.path.join(args.out, "extract", name))
+        if args.netlist == "pre-layout":
+            spice = schematic(name, os.path.join(args.out, "schematic"))
+        else:
+            spice = extract(name, os.path.join(args.out, "extract", name))
         cells.append(job_cell(refs[name], spice))
-    print("extracted %d foundry cells in %.0f s" % (len(cells), time.time() - started))
+    print("prepared %d foundry %s netlists in %.0f s" % (len(cells), args.netlist, time.time() - started))
     results, sim_wall = ch.characterize(cells, lib_text, args.out, args.jobs, args.ngspice, cc.METHOD, args.full_models)
     rows, failures = [], {}
     for name, result in results.items():
@@ -127,7 +151,10 @@ def main(argv=None):
     passed = passed and all(cc.FACTOR_BOUNDS[0] <= f <= cc.FACTOR_BOUNDS[1] for f in factors.values())
     calibration = {
         "schema": "hima-cellchar-calibration/1", "method": cc.METHOD, "methodFingerprint": cc.method_fingerprint(),
-        "referenceLib": args.reference_lib, "extraction": EXTRACT_TCL.format(gds=GDS, cell="<cell>", out="<cell>.ext.spice"),
+        "referenceLib": args.reference_lib, "netlistKind": args.netlist,
+        "extraction": EXTRACT_TCL.format(gds=GDS, cell="<cell>", out="<cell>.ext.spice") if args.netlist == "extracted" else None,
+        "schematicSource": SCHEMATIC if args.netlist == "pre-layout" else None,
+        "prelayoutParasitics": cc.PRELAYOUT_PARASITICS if args.netlist == "pre-layout" else None,
         "cells": sorted(refs), "failures": failures, "points": len(rows),
         "factors": factors, "residual": residual, "perCellP90": per_cell_p90,
         "tolerance": {"p90AbsResidual": args.tolerance}, "pass": passed,
@@ -144,8 +171,8 @@ def main(argv=None):
             resid = row[7] * factors[row[1]] / row[8] - 1 if row[8] else ""
             writer.writerow(list(row) + [ratio, resid])
     lines = ["# Characterizer calibration", "",
-             "Method %s (%s); %d foundry cells, %d points; tolerance p90 |residual| <= %.0f%%; **%s**." % (
-                 cc.METHOD["version"], cc.method_fingerprint(), len(refs), len(rows), 100 * args.tolerance,
+             "Method %s (%s), %s netlists; %d foundry cells, %d points; tolerance p90 |residual| <= %.0f%%; **%s**." % (
+                 cc.METHOD["version"], cc.method_fingerprint(), args.netlist, len(refs), len(rows), 100 * args.tolerance,
                  "PASS" if passed else "FAIL"), "",
              "| quantity | factor (ref/sim) | raw p90 | p50 | p90 | max | bias |", "| --- | --- | --- | --- | --- | --- | --- |"]
     for q in cc.QUANTITIES + cc.CAP_QUANTITIES:

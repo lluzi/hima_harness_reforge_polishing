@@ -144,6 +144,41 @@ cell_rise but not for the transitions. **The tolerance is ±15 % p90 per quantit
 
 Rerun `calibrate.py` after any change to `METHOD`.
 
+## Pre-layout (modelled) path for abstract cells
+
+`calibrate.py --netlist pre-layout --out cal-pre` calibrates on the 12 foundry cells' schematic
+netlists from the PDK (`sky130_fd_sc_hd.spice`) instead of their extractions;
+`characterize.py ... --netlist-kind pre-layout --calibration cal-pre/calibration.json` then
+characterizes pre-layout netlists and writes `custom.modelled.lib`, every cell with the banner
+`MODELLED: SPICE-characterized from the pre-layout netlist (no layout parasitics) ...`. It refuses an
+extracted calibration and a calibration made with another parasitic estimate.
+
+Both sides get the same estimate (`charcore.PRELAYOUT_PARASITICS`, `prelayout-3`), added to every
+MOSFET that has no `ad/as/pd/ps` and to every signal net:
+
+- diffusion as in the Magic extractions of the foundry cells: a diffusion shared by exactly two
+  devices of one type is 0.14 um long (`ad = 0.14 W`, `pd = W + 0.28`), any other diffusion 0.265 um
+  (`ad = 0.265 W`, `pd = 2 (W + 0.265)`);
+- a grounded wiring capacitance of 0.1 fF per device terminal on the net; on input pins it is
+  multiplied by `max(1, devices / 6) ** 0.65`, because an input that drives gates across a bigger
+  cell has longer wires.
+
+Without the estimate, flat factors leave p90 17–31 %; without the input scaling, fa_1 and ha_1
+inputs read 20–30 % low, which would flatter big fused and multi-output cells. Result for
+`prelayout-3` (2026-10-05, linglong, mock-dev/cal-pre), **PASS**:
+
+| quantity | factor | p90 before | p50 after | p90 after | max after |
+| --- | --- | --- | --- | --- | --- |
+| cell_rise | 1.0291 | 13.2 % | 5.1 % | 12.4 % | 41.4 % |
+| cell_fall | 1.1594 | 19.2 % | 3.1 % | 8.6 % | 83.0 % |
+| rise_transition | 1.0208 | 12.2 % | 4.7 % | 12.5 % | 30.5 % |
+| fall_transition | 1.1562 | 17.8 % | 3.0 % | 8.5 % | 35.8 % |
+| rise_capacitance | 1.0414 | 10.0 % | 4.2 % | 9.9 % | 11.3 % |
+| fall_capacitance | 0.9565 | 17.7 % | 3.8 % | 13.3 % | 19.4 % |
+
+This is a model of the layout a cell would get, not a measurement of one: the calibration says how
+well the method reproduces foundry cells on average, not how a particular custom layout would come out.
+
 ## Runtime (linglong, `--cpus=16 --jobs 16`, 2026-10-04)
 
 | run | cells | units | wall |

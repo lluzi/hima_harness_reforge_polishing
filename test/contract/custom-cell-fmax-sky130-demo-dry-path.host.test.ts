@@ -48,10 +48,11 @@ import { writeLocalSite } from './support/site.ts';
 const packId = 'custom-cell-fmax-sky130-demo';
 const fixture = path.join(repoRoot, 'test/fixtures/cellfmax-dry-path');
 const IMAGE_ID = 'c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667';
-const CLAIM_BOUNDARY = 'Custom-cell timing is SPICE-characterized by HimaHarness from each cell\'s Magic-extracted layout '
-  + '(ngspice, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90), not signed '
-  + 'off; only DRC/LVS-clean cells are measured and used. Results are open-source ORFS timing on SKY130 '
-  + 'under these measured models; not signoff, not silicon.';
+const CLAIM_BOUNDARY = 'Custom-cell timing is SPICE-characterized by HimaHarness (ngspice, sky130 tt 1.8 V 25 C, calibrated '
+  + 'against foundry cells to within 15 % p90): MEASURED from the Magic-extracted layout for DRC/LVS-clean '
+  + 'cells, MODELLED from the pre-layout netlist plus a parasitic estimate for abstract-layout cells '
+  + '(foundry-derived abstract LEF, no GDS, not tape-out ready). Results are open-source ORFS timing on '
+  + 'SKY130 under these models; not signoff, not silicon.';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -318,16 +319,16 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
     const names = expected.map(([name]) => name);
     const record = JSON.parse(await readFile(path.join(workspace, 'state/characterization.json'), 'utf8'));
     assert.equal(record.round, k);
-    assert.deepEqual(record.measuredNames, names, `round ${k}: the characterize step measured the round's cells`);
+    assert.deepEqual(record.characterizedNames, names, `round ${k}: the characterize step measured the round's cells`);
     assert.deepEqual(record.cells.map((row: any) => [row.name, row.status, row.footprint]),
       expected.map(([name, footprint]) => [name, 'measured', footprint]));
-    assert.equal(record.measuredLib, `runs/r${k}/char/custom.measured.lib`);
-    const job = JSON.parse(await readFile(path.join(workspace, `runs/r${k}/char/job.json`), 'utf8'));
+    assert.equal(record.characterizedLib, `runs/r${k}/char/custom.characterized.lib`);
+    const job = JSON.parse(await readFile(path.join(workspace, `runs/r${k}/char/extracted/job.json`), 'utf8'));
     assert.deepEqual(job.cells.map((cell: any) => [cell.name, cell.footprint, cell.functions.Y]), expected,
       `round ${k}: drop-in variants take the foundry footprint and function text`);
     const armCustom = JSON.parse(await readFile(path.join(workspace, 'state/arm-custom.json'), 'utf8'));
     assert.deepEqual(armCustom.customCells, names, `round ${k}: the custom arm ran the measured cells`);
-    assert.equal(armCustom.sources['custom.measured.lib'], sha(await readFile(path.join(workspace, record.measuredLib))),
+    assert.equal(armCustom.sources['custom.characterized.lib'], sha(await readFile(path.join(workspace, record.characterizedLib))),
       `round ${k}: the custom arm merged the measured Liberty`);
     return [...new Set(since.map((rec: any) => rec.branchId as string | undefined).filter((id) => id !== undefined))].sort();
   };
@@ -477,7 +478,7 @@ test('cellfmax dry path: two rounds drive the whole graph and end goal-met at a 
     assert.equal(calls.filter((argv) => argv[0] === 'image').length, 1);
     assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('/characterize.py'))).length, 2, 'one characterize container a round');
     const calibration = JSON.parse(await readFile(path.join(r.workspace, 'runs/calibration/calibration.json'), 'utf8'));
-    assert.match(calibration.firstJob, /\/runs\/r1\/char\/job\.json$/, 'calibrated once, in round 1');
+    assert.match(calibration.firstJob, /\/runs\/r1\/char\/extracted\/job\.json$/, 'calibrated once, in round 1');
     assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('klayout'))).length, 2, 'one KLayout image per new cell');
     t.diagnostic(`round gains ${g1} % then ${g2} %; run ${r.runId} ended ${r.run().status}`);
   } finally {

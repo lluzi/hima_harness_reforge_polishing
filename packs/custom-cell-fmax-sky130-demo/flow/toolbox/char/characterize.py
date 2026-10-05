@@ -231,6 +231,8 @@ def main(argv=None):
     parser.add_argument("--ngspice", default="ngspice")
     parser.add_argument("--full-models", action="store_true", help="load the whole sky130 tt library (slow)")
     parser.add_argument("--library-name", default="custom_measured")
+    parser.add_argument("--netlist-kind", choices=("extracted", "pre-layout"), default="extracted",
+                        help="pre-layout: abstract-layout cells; needs a pre-layout calibration and writes custom.modelled.lib")
     args = parser.parse_args(argv)
     args.out = os.path.abspath(args.out)
     os.makedirs(args.out, exist_ok=True)
@@ -259,6 +261,11 @@ def main(argv=None):
                                   "tolerance": calibration.get("tolerance")}
         if reason:
             return refuse(reason)
+        if calibration.get("netlistKind", "extracted") != args.netlist_kind:
+            return refuse("calibration %s is for %s netlists, this job is %s" % (
+                args.calibration, calibration.get("netlistKind", "extracted"), args.netlist_kind))
+        if args.netlist_kind == "pre-layout" and calibration.get("prelayoutParasitics") != cc.PRELAYOUT_PARASITICS:
+            return refuse("calibration %s used another pre-layout parasitic estimate; rerun calibrate.py --netlist pre-layout" % args.calibration)
         factors = calibration["factors"]
     try:
         with open(args.job) as handle:
@@ -268,6 +275,19 @@ def main(argv=None):
         return refuse("job %s: %s" % (args.job, error))
     if not cells:
         return refuse("job %s lists no cells" % args.job)
+    if args.netlist_kind == "pre-layout":
+        # schematic netlists get the same parasitic estimate the pre-layout calibration used
+        os.makedirs(os.path.join(args.out, "prelayout"), exist_ok=True)
+        for cell in cells:
+            target = os.path.join(args.out, "prelayout", cell["name"] + ".sp")
+            try:
+                with open(cell["spice"]) as handle:
+                    text = cc.add_prelayout_parasitics(handle.read(), cell["subckt"], cell["inputs"])
+            except (OSError, cc.CharError) as error:
+                return refuse("cell %s: %s" % (cell["name"], error))
+            with open(target, "w") as handle:
+                handle.write(text)
+            cell["spice"] = target
     names = [c["name"] for c in cells]
     if len(set(names)) != len(names):
         return refuse("job lists a cell name twice")
@@ -275,6 +295,9 @@ def main(argv=None):
         lib_text = handle.read()
     started = time.time()
     results, sim_wall = characterize(cells, lib_text, args.out, args.jobs, args.ngspice, cc.METHOD, args.full_models)
+    prelayout = args.netlist_kind == "pre-layout"
+    banner = (cc.BANNER_PRELAYOUT if prelayout else cc.BANNER) if factors else cc.BANNER_RAW
+    summary["netlistKind"] = args.netlist_kind
     groups = []
     for cell in cells:
         result = results[cell["name"]]
@@ -292,12 +315,12 @@ def main(argv=None):
             comment = "cellchar %s method %s; netlist sha256 %s" % (cc.METHOD["version"], cc.method_fingerprint(),
                                                                     result["spiceSha256"][:16])
             groups.append(cc.liberty_cell(cell, arcs_cal or arcs_raw, caps_cal or caps_raw, result["index_1"],
-                                          result["index_2"], cc.BANNER if factors else cc.BANNER_RAW, comment))
+                                          result["index_2"], banner, comment))
         summary["cells"].append(entry)
     if groups:
-        stem = "custom.measured" if factors else "custom.uncalibrated"
+        stem = ("custom.modelled" if prelayout else "custom.measured") if factors else "custom.uncalibrated"
         with open(os.path.join(args.out, stem + ".lib"), "w") as handle:
-            handle.write("/* %s; cell groups only: merge into the platform Liberty */\n\n" % (cc.BANNER if factors else cc.BANNER_RAW))
+            handle.write("/* %s; cell groups only: merge into the platform Liberty */\n\n" % banner)
             handle.write("\n".join(groups))
         with open(os.path.join(args.out, stem + ".standalone.lib"), "w") as handle:
             handle.write(cc.standalone_library(args.library_name, groups))

@@ -8,14 +8,15 @@ new reason; do repeat what worked with variations.
 
 ## How HimaHarness measures you
 
-- It characterizes every DRC/LVS-clean extracted cell itself (calibrated ngspice). Your own Liberty
-  or derates never reach the measured arms. A cell that is not DRC/LVS-clean is not measured and
-  cannot win.
-- Two matched ORFS arms per round, same recipe and measured library, custom cells allowed versus
+- It characterizes every cell itself with calibrated ngspice: abstract cells are modelled from
+  their pre-layout netlist, DRC/LVS-clean layouts are measured from extraction. Your own Liberty or
+  derates never reach the arms.
+- Two matched ORFS arms per round, same recipe and characterized library, custom cells allowed versus
   forbidden. Round gain = custom-arm Fmax / control-arm Fmax − 1; the Goal reads the best valid gain.
   Fmax = 1000 / (period − worst setup slack) at ORFS `finish`.
-- The round report lists every cell: measured rise, fall and input capacitance against the foundry
-  cell you named in `compareTo`, and how many instances the flow used.
+- The round report lists every cell: its status (modelled or measured), rise, fall and input
+  capacitance against the foundry cell you named in `compareTo`, and how many instances the flow
+  used.
 
 ## What measurement has shown so far (linglong, 2026-10-04)
 
@@ -41,7 +42,7 @@ directions, the same timing-arc structure, the same `cell_footprint` (ORFS repai
 `-match_cell_footprint`) and the same `function` **text** — OpenSTA compares function expressions
 structurally, so `!(A|B|C)` and `(!A&!B&!C)` are never equivalent. A first measured NOR3_PU2 was
 adopted 0 times only because of this. HimaHarness handles the drop-in case for you: when your cell
-has the same pins and logic as its `compareTo` foundry cell, the measured Liberty takes that cell's
+has the same pins and logic as its `compareTo` foundry cell, the characterized Liberty takes that cell's
 footprint and function text verbatim. For your own families (fused or new functions), give every
 member the same `footprint` value in the recipe and write the same function string for each, or the
 resizer cannot size within the family. Yosys/ABC maps only from the stock and measured libraries at
@@ -55,7 +56,8 @@ synthesis; a new function enters there or through `emap`.
 - Add families, not singletons: a function in two or three strengths with one shared footprint lets
   the resizer size it.
 - Multi-output cells for shared-input cones (AES is full of XOR/XNOR pairs and adder-like
-  clusters): build them in the factory like any other cell; they enter the design only through an
+  clusters): build them with `layoutFrom` (two foundry cells side by side, inputs shared); they
+  enter the design only through an
   `emap-window` remap of the near-critical cone set (cover all near-critical cones, not 5 paths: a
   first 122-cell window on aes improved its own endpoints but moved the worst path outside and made
   the design 9 % slower). Equivalence check recommended.
@@ -63,7 +65,9 @@ synthesis; a new function enters there or through `emap`.
 
 ## Planning a round
 
-1. Analyse the paths (minutes), then generate a large batch of specs and run the factory (parallel).
+1. Analyse the paths (minutes), then generate a large batch of specs and build them with
+   `flow/toolbox/abstract` (seconds for hundreds of cells; the factory only for cells you want
+   measured from a real layout).
 2. Optionally characterize your clean cells yourself (`flow/toolbox/char`) to prune hopeless ones and
    to write a meaningful `agentClaim` trial. An ORFS trial takes 15–25 min with `NUM_CORES=8`; at most
    two at once. Leave time for HimaHarness's characterize step and its two arms.

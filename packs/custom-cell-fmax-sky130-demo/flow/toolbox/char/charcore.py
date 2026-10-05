@@ -69,6 +69,8 @@ PG_PINS_TEXT = """        pg_pin ("VGND") {
 """
 
 BANNER = "SPICE-characterized from extracted layout, tt 1.8V 25C, calibrated"
+BANNER_PRELAYOUT = ("MODELLED: SPICE-characterized from the pre-layout netlist (no layout parasitics), "
+                    "tt 1.8V 25C, calibrated against foundry schematics")
 BANNER_RAW = "SPICE-characterized from extracted layout, tt 1.8V 25C, UNCALIBRATED (not for measured arms)"
 
 
@@ -335,6 +337,72 @@ def sanitize_netlist(text, subckt, power, ground):
     report = {"floatingCommentsStripped": stripped, "tied": dict(sorted(ties.items())),
               "selfLoopElementsDropped": dropped, "ports": ports}
     return "\n".join(out) + "\n", report
+
+
+# Pre-layout parasitic estimate for schematic netlists (no layout). Diffusion geometry follows the
+# Magic extractions of the foundry sky130_fd_sc_hd cells: a diffusion shared by exactly two devices
+# of one type (a series node) is 0.14 um long per side, any other diffusion (rails, outputs, parallel
+# nodes) 0.265 um; plus a grounded wiring capacitance per signal net and terminal. On input pins it
+# grows with the cell's device count: an input that drives gates across a bigger cell has longer wires
+# (fa_1/ha_1 inputs read 20-30 % low without this). The pre-layout calibration absorbs what this leaves
+# out on average.
+PRELAYOUT_PARASITICS = {"version": "prelayout-3", "sharedDiffUm": 0.14, "endDiffUm": 0.265,
+                        "wireCapFfPerTerminal": 0.1, "inputSizeRefDevices": 6, "inputSizeExponent": 0.65}
+
+
+_SI = {"meg": 1e6, "k": 1e3, "m": 1e-3, "u": 1e-6, "n": 1e-9, "p": 1e-12, "f": 1e-15}
+
+
+def _spice_number(text):
+    """A SPICE number with an optional SI suffix, in netlist units (650000u -> 0.65)."""
+    match = re.match(r"(?i)([0-9.]+(?:e[+-]?[0-9]+)?)(meg|k|m|u|n|p|f)?", text)
+    return float(match.group(1)) * (_SI[match.group(2).lower()] if match.group(2) else 1.0)
+
+
+def add_prelayout_parasitics(text, subckt, inputs=None, rails=("VPWR", "VGND", "VPB", "VNB"), model=PRELAYOUT_PARASITICS):
+    """Add ad/as/pd/ps to every MOSFET that lacks them and a grounded wiring cap per signal net.
+
+    `inputs` names the input pins; when omitted, every port that only drives gates counts as one."""
+    lines = _join_continuations(text.splitlines())
+    start = next((i for i, l in enumerate(lines) if l.split()[:2] and l.split()[0].lower() == ".subckt"
+                  and len(l.split()) > 1 and l.split()[1] == subckt), None)
+    if start is None:
+        raise CharError("subckt %s not found in the netlist" % subckt)
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].split()[:1] and lines[i].split()[0].lower() == ".ends")
+    devices = []
+    for i in range(start + 1, end):
+        tok = lines[i].split()
+        if tok and tok[0][0].upper() in "XM" and len([t for t in tok[1:] if "=" not in t]) >= 5:
+            nodes = [t for t in tok[1:] if "=" not in t]
+            kind = "p" if "pfet" in nodes[4].lower() or "pmos" in nodes[4].lower() else "n"
+            devices.append((i, tok, nodes, kind))
+    diff = {}
+    for _i, _tok, nodes, kind in devices:
+        for node in (nodes[0], nodes[2]):
+            diff.setdefault(node, []).append(kind)
+    terminals = {}
+    for _i, _tok, nodes, _kind in devices:
+        for node in nodes[:3]:
+            terminals[node] = terminals.get(node, 0) + 1
+    for i, tok, nodes, kind in devices:
+        params = {t.split("=", 1)[0].lower() for t in tok[1:] if "=" in t}
+        if {"ad", "as", "pd", "ps"} & params:
+            continue
+        w = _spice_number(re.search(r"(?i)\bw=(\S+)", lines[i]).group(1))
+        extra = []
+        for key, node in (("d", nodes[0]), ("s", nodes[2])):
+            shared = node not in rails and diff.get(node) in (["n", "n"], ["p", "p"])
+            length = model["sharedDiffUm"] if shared else model["endDiffUm"]
+            perimeter = w + 2 * length if shared else 2 * (w + length)
+            extra += ["a%s=%.5g" % (key, w * length), "p%s=%.5g" % (key, perimeter)]
+        lines[i] = lines[i] + " " + " ".join(extra)
+    if inputs is None:
+        ports = lines[start].split()[2:]
+        inputs = [p for p in ports if p not in rails and p not in diff]
+    scale = max(1.0, len(devices) / model["inputSizeRefDevices"]) ** model["inputSizeExponent"]
+    caps = ["Cpre_%d %s %s %.4gf" % (k, net, rails[1], model["wireCapFfPerTerminal"] * count * (scale if net in inputs else 1.0))
+            for k, (net, count) in enumerate(sorted(terminals.items())) if net not in rails]
+    return "\n".join(lines[:end] + caps + lines[end:]) + "\n"
 
 
 def netlist_devices(text):

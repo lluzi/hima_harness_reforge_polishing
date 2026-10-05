@@ -54,7 +54,31 @@ cells are in `state/inputs.json` → `platformDontUse`. Merge your cells into th
 A cell without GDS needs `GDS_ALLOW_EMPTY=<name|name>`. Run at most two trials at once. One run
 takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__setup__ws`.
 
-## Build cells in volume: the cell factory
+## Build cells in volume: abstract cells (seconds)
+
+```sh
+A=<campaign>/flow/toolbox/abstract
+python3 $A/abstract_cells.py spec.json <k> "$PWD" --jobs 16 --out cells.json
+```
+
+Same spec format as the factory below, plus `compareTo` (required) and, for a cell whose pins differ
+from its foundry cell (multi-output, fused), `layoutFrom`: a list of `{"cell": "nand2_1", "pins":
+{foundry pin: your pin or null}}` placed side by side (a `null` pin's shapes become obstruction).
+Per cell it writes the sized SPICE netlist (bool2cmos + the variant, switch-level checked) and an
+abstract LEF: the foundry cells' pin, rail and obstruction geometry, so the router reaches every
+pin as it reaches the foundry cell's, widened by whole sites when your transistors are wider. The
+recipe entries come out with `layout: abstract`; HimaHarness models their timing from the netlist.
+236 cells take about 4 s; HimaHarness's characterization of them takes about 4–5 min. No GDS: the
+arms set `GDS_ALLOW_EMPTY` for these cells.
+
+```json
+{"name": "MO_NAND2_NOR2", "inputs": ["A", "B"], "outputs": {"Y1": "!(A&B)", "Y2": "!(A|B)"},
+ "compareTo": "sky130_fd_sc_hd__nand2_1",
+ "layoutFrom": [{"cell": "nand2_1", "pins": {"A": "A", "B": "B", "Y": "Y1"}},
+                {"cell": "nor2_1", "pins": {"A": "A", "B": "B", "Y": "Y2"}}]}
+```
+
+## Real layouts: the cell factory (minutes; measured, not modelled)
 
 `flow/toolbox/factory/README.md` has the full spec format. In short:
 
@@ -84,9 +108,12 @@ python3 $F/to_recipe.py factory-out spec.json <k> "$PWD" --out cells.json
 
 ## Measure before you deliver (optional)
 
-HimaHarness characterizes every clean cell itself after delivery. To prune hopeless cells or to
-back your `agentClaim`, run the same characterizer (`flow/toolbox/char/README.md`): write a job
-from your clean cells (spice = the `.ext.spice`, functions, `index_ref` = compareTo) and run
+HimaHarness characterizes every cell itself after delivery. To prune hopeless cells or to back your
+`agentClaim`, run the same characterizer (`flow/toolbox/char/README.md`). Abstract cells: spice =
+the `.sp`, add `--netlist-kind pre-layout` and use `<campaign>/runs/calibration-prelayout/`
+(`calibrate.py --netlist pre-layout` before the first characterize step, about 1 min). Clean
+layouts: write a job from your clean cells (spice = the `.ext.spice`, functions, `index_ref` =
+compareTo) and run
 `python3 flow/toolbox/char/characterize.py job.json --reference-lib $ORFS_ROOT/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib --calibration <campaign>/runs/calibration/calibration.json --out mychar --jobs 16`
 (the Campaign's calibration exists after the first characterize step; before that, run
 `calibrate.py` into your workspace, about 50 s). `compare_lib.py` prints point ratios against a

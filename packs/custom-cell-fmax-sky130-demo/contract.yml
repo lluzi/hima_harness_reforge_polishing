@@ -1,5 +1,5 @@
 id: custom-cell-fmax-sky130-demo
-version: "0.2.0"
+version: "0.3.0"
 title: Custom standard cells for a faster aes on open-source SKY130 (demo)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -46,15 +46,16 @@ outputs:
     reader: cellfmax-recipe
     description: >-
       The resident engineer's round delivery (hima-cellfmax-round-recipe/1): clock, synthesis method,
-      cumulative custom library (per cell: inputs, outputs, functions, nearest foundry cell, layout,
-      SPICE, GDS, LEF, Magic-extracted netlist, SHA-256), findings report, library table, usage guide
-      and the agent's own trial claim. Support files live under cells/r<k>/.
+      cumulative custom library (per cell: inputs, outputs, functions, nearest foundry cell, layout
+      abstract or drc-lvs-clean, SPICE and LEF, plus GDS and Magic-extracted netlist for a clean
+      layout, SHA-256), findings report, library table, usage guide and the agent's own trial claim.
+      Support files live under cells/r<k>/.
   - name: characterizationState
     path: state/characterization.json
     description: >-
-      HimaHarness's measurement of this round's library: every DRC/LVS-clean extracted cell
-      characterized with ngspice (calibrated against foundry cells), with measured, failed and
-      excluded cells and their reasons.
+      HimaHarness's characterization of this round's library with calibrated ngspice: measured
+      (DRC/LVS-clean cells, from the extracted layout), modelled (abstract cells, from the pre-layout
+      netlist with a parasitic estimate), failed and excluded cells with their reasons.
   - name: armCustom
     path: state/arm-custom.json
     reader: cellfmax-arm
@@ -101,17 +102,19 @@ tools:
     file: flow/cellfmax_cli.py
     description: >-
       Own one round of custom-cell library work on aes/sky130hd; the new library is the delivery.
-      Read the baseline facts, lessons.json (every earlier round: which cells HimaHarness measured,
+      Read the baseline facts, lessons.json (every earlier round: which cells HimaHarness characterized,
       how they compared with their foundry cells, which the flow adopted, the matched gain and the
       remaining top paths) and best.json (the best cumulative library). Find where the critical paths
       spend time, then generate many ideas, not a few: skew and strength variants of the gates on
       those paths (per-input and per-edge pull-up/pull-down sizing), fused single-output cells,
       and multi-output cells for shared-input cones (XOR/XNOR and adder-like clusters of AES).
-      Cell generation is cheap: build them in volume with the cell factory (flow/toolbox/factory:
-      bool2cmos SPICE, LibreCell layout, DRC, LVS, Magic extraction, LEF) and keep every cell the
-      factory makes clean. HimaHarness characterizes every DRC/LVS-clean extracted cell itself with
-      calibrated ngspice and only that measured timing enters the measured arms; your own Liberty or
-      derates are claims at most. Multi-output cells are used only through an emap-window remap of
+      Cell generation is cheap: build hundreds of cells in seconds with flow/toolbox/abstract
+      (bool2cmos SPICE with the sizing variant, abstract LEF composed from foundry pin geometry,
+      widened by transistor width); the slower cell factory (flow/toolbox/factory: real LibreCell
+      layout, DRC, LVS, Magic extraction) stays available for cells you want measured from layout.
+      HimaHarness characterizes every cell itself with calibrated ngspice (abstract cells from their
+      pre-layout netlist: modelled; clean layouts from extraction: measured) and only that timing
+      enters the arms; your own Liberty or derates are claims at most. Multi-output cells are used only through an emap-window remap of
       the near-critical cone set (flow/toolbox/emap). Do your own discovery and trial flows in your
       private workspace (at most two at once, NUM_CORES=8; you may run flow/toolbox/char yourself to
       measure before delivering). Choose the round's clock (tighten it when the last round met
@@ -136,11 +139,11 @@ tools:
   - id: characterize
     file: flow/cellfmax_cli.py
     description: >-
-      Measure this round's library: calibrate once per Campaign against foundry cells, then
-      characterize every DRC/LVS-clean Magic-extracted custom cell with ngspice into a measured
-      Liberty (tt 1.8 V 25 C, 7x7 delay and slew tables, input capacitance). Abstract cells and
-      cells that fail characterization are excluded with their reason; only measured cells enter the
-      arms. Writes state/characterization.json.
+      Characterize this round's library with ngspice (tt 1.8 V 25 C, 7x7 delay and slew tables, input
+      capacitance), each path calibrated once per Campaign against foundry cells to within 15 % p90:
+      DRC/LVS-clean cells are measured from their Magic-extracted netlist; abstract cells are modelled
+      from their pre-layout netlist plus a parasitic estimate. Cells that fail are excluded with their
+      reason; only characterized cells enter the arms. Writes state/characterization.json.
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', characterize, '${WORKSPACE}', '${TIMEOUT_MIN}']
 
@@ -148,7 +151,7 @@ tools:
     file: flow/cellfmax_cli.py
     description: >-
       Measured arm with custom cells allowed: ORFS of aes with the round recipe (platform Liberty
-      merged with HimaHarness's measured custom Liberty, LEF of the measured cells, round SDC,
+      merged with HimaHarness's characterized custom Liberty, LEF of the characterized cells, round SDC,
       optional emap netlist) into runs/r<k>/custom/; write state/arm-custom.json.
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', arm, '${WORKSPACE}', custom, '${TIMEOUT_MIN}']
@@ -156,7 +159,7 @@ tools:
   - id: arm-control
     file: flow/cellfmax_cli.py
     description: >-
-      Matched control arm: same recipe, same merged measured Liberty and LEF, every measured custom
+      Matched control arm: same recipe, same merged characterized Liberty and LEF, every characterized custom
       cell added to the full platform dont-use list (and the stock emap netlist on emap rounds), into
       runs/r<k>/control/; write state/arm-control.json.
     inputs: [WORKSPACE, TIMEOUT_MIN]

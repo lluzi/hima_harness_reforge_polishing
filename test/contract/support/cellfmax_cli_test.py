@@ -118,16 +118,18 @@ class Workspace:
         (self.root / "state" / "round-recipe.json").write_text(json.dumps(body))
         return body
 
-    def characterized(self, k=1, measured=("NOR3_PU2",), lib=CELL_LIB):
-        """What the characterize step writes: the measured Liberty and the per-cell outcome."""
+    def characterized(self, k=1, measured=("NOR3_PU2",), lib=CELL_LIB, modelled=()):
+        """What the characterize step writes: the characterized Liberty and the per-cell outcome."""
         d = self.root / "runs" / ("r%d" % k) / "char"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "custom.measured.lib").write_text(lib)
+        (d / "custom.characterized.lib").write_text(lib)
+        names = list(measured) + list(modelled)
         (self.root / "state" / "characterization.json").write_text(json.dumps({
-            "schema": "hima-cellfmax-characterization/1", "round": k,
-            "measuredLib": "runs/r%d/char/custom.measured.lib" % k if measured else None,
-            "measuredNames": list(measured),
-            "cells": [{"name": n, "status": "measured", "reason": None} for n in measured]}))
+            "schema": "hima-cellfmax-characterization/2", "round": k,
+            "characterizedLib": "runs/r%d/char/custom.characterized.lib" % k if names else None,
+            "characterizedNames": names,
+            "cells": [{"name": n, "status": "measured", "basis": "extracted", "reason": None} for n in measured]
+                     + [{"name": n, "status": "modelled", "basis": "pre-layout", "reason": None} for n in modelled]}))
 
     def arm(self, kind, k=1, period=3.6, wns=-0.1, finished=True, custom=14, forbidden=0, drc=0, recipe_sha=None, instances=37900, tns=-1.0):
         record = {"schema": "hima-cellfmax-arm/1", "arm": kind, "round": k, "periodNs": period, "finished": finished,
@@ -554,7 +556,7 @@ class MeasuredLibraryTest(unittest.TestCase):
         self.assertTrue(kept.startswith("VERSION 5.7 ;"))
         self.assertTrue(kept.rstrip().endswith("END LIBRARY"))
 
-    def test_arms_load_only_measured_cells(self):
+    def test_arms_load_only_characterized_cells(self):
         root = self.ws.root
         (root / "orfs").mkdir()
         (root / "orfs" / "platform.lib").write_text("library (x) {\n}\n")
@@ -562,6 +564,7 @@ class MeasuredLibraryTest(unittest.TestCase):
         inputs = {"sdc": str(root / "orfs" / "constraint.sdc"), "platformLib": str(root / "orfs" / "platform.lib"),
                   "platformDontUse": ["sky130_fd_sc_hd__probe_p_8"]}
         abstract = dict(self.ws.cell(), name="ABSTRACT1", layout="abstract")
+        abstract["files"] = {key: value for key, value in abstract["files"].items() if key in ("sp", "lef")}
         body = self.ws.recipe()
         body["library"]["cells"].append(abstract)
         self.ws.characterized(measured=("NOR3_PU2",))
@@ -569,9 +572,16 @@ class MeasuredLibraryTest(unittest.TestCase):
         self.assertEqual(names, ["NOR3_PU2"])
         self.assertIn("NOR3_PU2", variables["DONT_USE_CELLS"].split())
         self.assertNotIn("ABSTRACT1", variables["DONT_USE_CELLS"].split())
-        self.assertIn("custom.measured.lib", sources)
+        self.assertIn("custom.characterized.lib", sources)
+        self.assertNotIn("GDS_ALLOW_EMPTY", variables)
         merged = (root / "runs" / "r1" / "control" / "inputs" / "merged.lib").read_text()
         self.assertIn("NOR3_PU2", merged)
+        # A modelled abstract cell joins the arms; it has no GDS, so the final stream allows it empty.
+        self.ws.characterized(measured=("NOR3_PU2",), modelled=("ABSTRACT1",))
+        variables, _, names = cli.prepare_run(root, inputs, root / "runs" / "r1" / "control", 3.6, body, "control")
+        self.assertEqual(names, ["NOR3_PU2", "ABSTRACT1"])
+        self.assertIn("ABSTRACT1", variables["DONT_USE_CELLS"].split())
+        self.assertEqual(variables["GDS_ALLOW_EMPTY"], "(ABSTRACT1)$")
         # No measured cell: the arms run the stock library (an honest zero round, never a stall).
         self.ws.characterized(measured=())
         variables, _, names = cli.prepare_run(root, inputs, root / "runs" / "r1" / "custom", 3.6, body, "custom")
@@ -589,7 +599,7 @@ class MeasuredLibraryTest(unittest.TestCase):
         rows = cli.library_rows(root, body, {"NOR3_PU2": 14})
         self.assertEqual(rows[0]["status"], "measured")
         self.assertEqual(rows[0]["adopted"], 14)
-        ratios = rows[0]["measuredVsFoundry"]
+        ratios = rows[0]["vsFoundry"]
         self.assertAlmostEqual(ratios["cell_rise"], 0.7, places=3)   # 0.14 / 0.20
         self.assertAlmostEqual(ratios["cell_fall"], 1.2, places=3)   # 0.06 / 0.05
         self.assertAlmostEqual(ratios["input_cap"], 1.6, places=3)   # 0.0040 / 0.0025

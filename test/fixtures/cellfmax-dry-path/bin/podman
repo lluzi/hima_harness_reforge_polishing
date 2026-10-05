@@ -8,16 +8,17 @@ Answers exactly the calls flow/cellfmax_cli.py makes:
       writes the ORFS outputs the Pack reads (6_report.json, 5_2_route.json, 6_final.v,
       top-paths.txt) under <dir> for the CELLFMAX_VARIANT it was given, and exits 0
   podman run ... -c '<script calling flow/toolbox/char/characterize.py>'
-      the characterize step: creates runs/calibration/calibration.json when the script would
-      calibrate (it is missing), then writes <out>/characterization.json (every job cell `ok`) and
-      <out>/custom.measured.lib with one minimal cell group per job cell (the job's pins, footprint
+      the characterize step, per characterize.py call (extracted and/or pre-layout): creates the
+      calibration when the script would calibrate (it is missing), then writes <out>/characterization.json
+      (every job cell `ok`) and <out>/custom.measured.lib (custom.modelled.lib for --netlist-kind
+      pre-layout) with one minimal cell group per job cell (the job's pins, footprint
       and functions, which characterize took from the foundry cell for a drop-in variant); exit 0
   podman run ... klayout ...                       no-op, exit 0 (cell image rendering)
   podman stop ...                                  exit 0
 
 The worst setup slack is a function of how many custom cells the run may use: a custom cell is
-usable when the run's custom LEF (/work/inputs/custom.lef: the Pack writes only the measured
-cells into it, the same cells its merged measured Liberty adds) declares it, it is not in the run's
+usable when the run's custom LEF (/work/inputs/custom.lef: the Pack writes only the characterized
+cells into it, the same cells its merged characterized Liberty adds) declares it, it is not in the run's
 DONT_USE_CELLS, and its name does not contain `_SLOW` (a cell the placer never picks, which is how
 the convergence scenario's rounds add nothing). 0 usable cells give the stock -0.249301 ns, 1 gives
 -0.10 ns, 2 or more give 0.0 ns, so every round gain is hand-computable from 1000 / (3.6 - WNS).
@@ -116,31 +117,38 @@ def measured_cell(cell):
 
 
 def run_characterize(script):
+    """Every characterize.py call of the script (extracted and/or pre-layout), each with its own job."""
     words = shlex.split(script)
-    at = next((i for i, w in enumerate(words) if w.endswith("/characterize.py")), None)
-    # The calibrate.py call before it has its own --out (the calibration directory).
-    tail = words[at + 1:] if at is not None else []
-    job_path = tail[0] if tail else None
-    out, calibration = _after(tail, "--out"), _after(tail, "--calibration")
-    if job_path is None or out is None or calibration is None:
-        print("podman stand-in: characterize script without job, --out or --calibration: %r" % script, file=sys.stderr)
+    starts = [i for i, w in enumerate(words) if w.endswith("/characterize.py")]
+    if not starts:
+        print("podman stand-in: characterize script without characterize.py: %r" % script, file=sys.stderr)
         return 125
-    calibration = Path(calibration)
-    if any(w.endswith("/calibrate.py") for w in words) and not calibration.is_file():
-        calibration.parent.mkdir(parents=True, exist_ok=True)
-        calibration.write_text(json.dumps({"schema": "stand-in-calibration", "firstJob": job_path}) + "\n")
-    job = json.loads(Path(job_path).read_text())
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    cells = job.get("cells", [])
-    (out / "custom.measured.lib").write_text(
-        "library (cellfmax_measured) {\n    delay_model : \"table_lookup\";\n    time_unit : \"1ns\";\n"
-        + "".join(measured_cell(cell) for cell in cells) + "}\n")
-    (out / "characterization.json").write_text(json.dumps({
-        "cells": [{"name": cell["name"], "status": "ok", "reason": None} for cell in cells],
-        "method": "podman stand-in (no ngspice)", "calibration": str(calibration), "factors": None,
-    }))
-    print("== podman stand-in characterize %d cell(s)" % len(cells))
+    for n, at in enumerate(starts):
+        # each call ends where the next calibrate/characterize begins; its calibrate.py precedes it
+        tail = words[at + 1:starts[n + 1] if n + 1 < len(starts) else len(words)]
+        job_path = tail[0] if tail else None
+        out, calibration = _after(tail, "--out"), _after(tail, "--calibration")
+        kind = _after(tail, "--netlist-kind") or "extracted"
+        if job_path is None or out is None or calibration is None:
+            print("podman stand-in: characterize call without job, --out or --calibration: %r" % script, file=sys.stderr)
+            return 125
+        calibration = Path(calibration)
+        if any(w.endswith("/calibrate.py") for w in words) and not calibration.is_file():
+            calibration.parent.mkdir(parents=True, exist_ok=True)
+            calibration.write_text(json.dumps({"schema": "stand-in-calibration", "netlistKind": kind, "firstJob": job_path}) + "\n")
+        job = json.loads(Path(job_path).read_text())
+        out = Path(out)
+        out.mkdir(parents=True, exist_ok=True)
+        cells = job.get("cells", [])
+        stem = "custom.modelled" if kind == "pre-layout" else "custom.measured"
+        (out / (stem + ".lib")).write_text(
+            "library (cellfmax_characterized) {\n    delay_model : \"table_lookup\";\n    time_unit : \"1ns\";\n"
+            + "".join(measured_cell(cell) for cell in cells) + "}\n")
+        (out / "characterization.json").write_text(json.dumps({
+            "cells": [{"name": cell["name"], "status": "ok", "reason": None} for cell in cells], "netlistKind": kind,
+            "method": "podman stand-in (no ngspice)", "calibration": str(calibration), "refused": None,
+        }))
+        print("== podman stand-in characterize %d %s cell(s)" % (len(cells), kind))
     return 0
 
 

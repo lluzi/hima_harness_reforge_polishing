@@ -323,6 +323,68 @@ class CalibrationMath(unittest.TestCase):
             self.assertIn("cell_rise p90 40.0%", result["refused"])
             self.assertFalse((out / "custom.measured.lib").exists())
 
+    def test_prelayout_netlist_needs_a_prelayout_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cal = Path(tmp, "cal.json")
+            cal.write_text(json.dumps(self.calibration()))          # an extracted-layout calibration
+            job = Path(tmp, "job.json")
+            job.write_text(json.dumps({"cells": []}))
+            out = Path(tmp, "out")
+            code = ch.main([str(job), "--reference-lib", str(job), "--calibration", str(cal), "--out", str(out),
+                            "--netlist-kind", "pre-layout"])
+            self.assertEqual(code, 2)
+            self.assertIn("is for extracted netlists, this job is pre-layout",
+                          json.loads((out / "characterization.json").read_text())["refused"])
+            stale = dict(self.calibration(), netlistKind="pre-layout", prelayoutParasitics={"version": "old"})
+            cal.write_text(json.dumps(stale))
+            code = ch.main([str(job), "--reference-lib", str(job), "--calibration", str(cal), "--out", str(out),
+                            "--netlist-kind", "pre-layout"])
+            self.assertEqual(code, 2)
+            self.assertIn("another pre-layout parasitic estimate",
+                          json.loads((out / "characterization.json").read_text())["refused"])
+
+
+class PrelayoutParasitics(unittest.TestCase):
+    NAND2 = """.subckt NAND2_X A B Y VGND VNB VPB VPWR
+X0 Y A VPWR VPB sky130_fd_pr__pfet_01v8_hvt w=1e+06u l=150000u
+X1 Y B VPWR VPB sky130_fd_pr__pfet_01v8_hvt w=1e+06u l=150000u
+X2 Y A n1 VNB sky130_fd_pr__nfet_01v8 w=0.65 l=0.15
+X3 n1 B VGND VNB sky130_fd_pr__nfet_01v8 w=0.65 l=0.15
+.ends
+"""
+
+    def devices(self, text):
+        return {line.split()[0]: dict(t.split("=", 1) for t in line.split()[6:]) for line in text.splitlines()
+                if line.startswith("X")}
+
+    def test_diffusion_follows_the_foundry_extraction(self):
+        devs = self.devices(cc.add_prelayout_parasitics(self.NAND2, "NAND2_X"))
+        # 1e+06u = 1 um; output and rail diffusions are end diffusions: 0.265 um long, 2*(W + 0.265) perimeter
+        self.assertAlmostEqual(float(devs["X0"]["ad"]), 0.265)
+        self.assertAlmostEqual(float(devs["X0"]["pd"]), 2.53)
+        # n1 joins exactly two nfets: a shared diffusion, 0.14 um long, W + 2 * 0.14 perimeter
+        self.assertAlmostEqual(float(devs["X2"]["as"]), 0.65 * 0.14)
+        self.assertAlmostEqual(float(devs["X2"]["ps"]), 0.93)
+        self.assertAlmostEqual(float(devs["X2"]["ad"]), 0.65 * 0.265)
+
+    def test_wire_cap_per_terminal_and_bigger_cells_load_their_inputs_more(self):
+        text = cc.add_prelayout_parasitics(self.NAND2, "NAND2_X", ["A", "B"])
+        caps = {line.split()[1]: line.split()[3] for line in text.splitlines() if line.startswith("Cpre_")}
+        # 4 devices < 6: no size scaling. Y touches 3 drains -> 0.3 fF, A two gates -> 0.2 fF, n1 two diffusions
+        self.assertEqual(caps, {"A": "0.2f", "B": "0.2f", "Y": "0.3f", "n1": "0.2f"})
+        big = self.NAND2.replace(".ends", "\n".join("X%d Y A VPWR VPB sky130_fd_pr__pfet_01v8_hvt w=1 l=0.15" % i
+                                                   for i in range(10, 18)) + "\n.ends")
+        caps = {line.split()[1]: line.split()[3] for line in cc.add_prelayout_parasitics(big, "NAND2_X", ["A", "B"]).splitlines()
+                if line.startswith("Cpre_")}
+        # 12 devices: inputs scale by (12/6)**0.65 = 1.569; A has 10 gates -> 1.569 fF; Y (not an input) stays 1.1 fF
+        self.assertEqual(caps["A"], "1.569f")
+        self.assertEqual(caps["Y"], "1.1f")
+
+    def test_existing_geometry_is_kept(self):
+        extracted = self.NAND2.replace("w=0.65 l=0.15\nX3", "w=0.65 l=0.15 ad=0.1 pd=1 as=0.1 ps=1\nX3")
+        devs = self.devices(cc.add_prelayout_parasitics(extracted, "NAND2_X"))
+        self.assertEqual(devs["X2"]["ad"], "0.1")
+
 
 if __name__ == "__main__":
     unittest.main()

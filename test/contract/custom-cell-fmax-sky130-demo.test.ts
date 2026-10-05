@@ -109,7 +109,7 @@ test('the resident capability points at the installed v2 wrapper and the no-entr
 });
 
 test('the Pack tool, Reader, characterizer and cell-factory unit suites pass (python3 -m unittest)', () => {
-  for (const suite of ['test/contract/support/cellfmax_cli_test.py', 'test/contract/support/cellfmax_char_test.py', 'test/contract/support/cellfmax_factory_test.py']) {
+  for (const suite of ['test/contract/support/cellfmax_cli_test.py', 'test/contract/support/cellfmax_char_test.py', 'test/contract/support/cellfmax_factory_test.py', 'test/contract/support/cellfmax_abstract_test.py']) {
     const run = spawnSync('python3', ['-m', 'unittest', suite], { cwd: repoRoot, encoding: 'utf8' });
     assert.equal(run.status, 0, `${suite}\n${run.stdout}\n${run.stderr}`);
   }
