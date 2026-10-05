@@ -16,7 +16,7 @@ import { realpathSync } from 'node:fs';
 import { assertRunProject } from './guide-context.js';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
-import { knownDurableRun } from './durable-fabric.js';
+import { bindDurableKnowledge, clearDurableKnowledge, recordDurableDocumentKnowledge, knownDurableRun } from './durable-fabric.js';
 import { createDurableViewReaders } from './durable-views.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, readExecutionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
@@ -439,7 +439,7 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * and this module has nothing to say about that.
  */
 export function himaTools(deps: FabricDeps, author?: (request: import('./authoring.js').AuthoringRequest, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
-  prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string },
+  prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string; retainedMaterialsDir?: string },
   sites?: {
     readonly list: () => readonly SiteHeadView[];
     /** The tool's own discover/rediscover never passes `save` — a Site or Permit is written only
@@ -483,7 +483,9 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
         const source = args.source === 'pack' ? 'pack' : 'current';
-        const attachedRun = args.run === undefined ? undefined : deps.ledger.run(args.run);
+        if(args.run !== undefined) await assertProjectAccess(deps,execution.agent,args.run);
+        const attachedRun = args.run === undefined ? undefined : (await readExecutionContext(deps,args.run)).run;
+        const durable = args.run === undefined ? undefined : await knownDurableRun(deps,args.run);
         const currentScope = productKnowledgeScope(args.scope, attachedRun?.proposalId);
         if (args.action === 'import') {
           if (source !== 'current' || currentScope === undefined || !args.file || !execution.agent) throw new Error('import requires current source, a prepared Campaign scope, a file and a live Agent');
@@ -499,8 +501,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           if (source !== 'current' || currentScope === undefined || !args.documentId || !args.run || !execution.agent) {
             throw new Error('clear requires current source, an active owning Campaign, its proposal scope and documentId');
           }
-          writableCampaignKnowledgeExecution(deps, args.run, execution.agent, currentScope);
-          return toolJson({ cleared: await clearCurrentKnowledge(knowledge.root, currentScope, args.documentId) });
+          const clear=()=>clearCurrentKnowledge(knowledge.root,currentScope,args.documentId!);
+          const cleared=durable ? await clearDurableKnowledge(deps,await bindDurableKnowledge(deps,args.run,String(execution.agent.id),currentScope),clear)
+            : (writableCampaignKnowledgeExecution(deps,args.run,execution.agent,currentScope),await clear());
+          return toolJson({cleared});
         }
         if (args.action === 'search') {
           if (!args.query) throw new Error('search requires query');
@@ -513,10 +517,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           return toolJson({ hits: await searchPackKnowledge(loadPack(deps.packsDir, args.pack), args.query, limit) });
         }
         if (!args.documentId || !args.chunkId) throw new Error('read requires documentId and chunkId');
-        const attached = args.run === undefined ? undefined : (() => {
+        const attached = args.run === undefined ? undefined : await (async () => {
           if (!execution.agent) throw new Error('a Campaign knowledge read requires a live conversational Agent');
           if (currentScope === undefined) throw new Error('a Campaign knowledge read requires the Campaign proposal scope');
-          return writableCampaignKnowledgeExecution(deps, args.run, execution.agent, currentScope);
+          return durable ? bindDurableKnowledge(deps,args.run!,String(execution.agent.id),currentScope) : writableCampaignKnowledgeExecution(deps,args.run!,execution.agent,currentScope);
         })();
         const hit = source === 'current'
           ? currentScope === undefined ? undefined : await readCurrentKnowledge(knowledge.root, currentScope, args.documentId, args.chunkId)
@@ -525,6 +529,13 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         if (args.run !== undefined) {
           const binding = attached!;
           const agent = execution.agent!;
+          if(durable) {
+            if(!knowledge.retainedMaterialsDir) throw new Error('Campaign knowledge retained material root is unavailable');
+            const recorded=await recordDurableDocumentKnowledge(deps,binding as Awaited<ReturnType<typeof bindDurableKnowledge>>,
+              {ledger:deps.ledger,runId:args.run,nodeId:binding.execution.nodeId,attempt:binding.execution.attempt,sessionId:String(agent.id),workshop:'knowledge',hit,root:knowledge.root,
+                origin:source==='current'?'current':'document',...(binding.execution.branchId===undefined?{}:{branchId:binding.execution.branchId})},knowledge.retainedMaterialsDir,String(execution.callId));
+            return toolJson({...recorded.hit,recordId:recorded.recordId});
+          }
           const record = await recordDocumentKnowledgeRead({ ledger: deps.ledger, packsDir: deps.packsDir, runId: args.run,
             nodeId: binding.execution.nodeId, attempt: binding.execution.attempt, sessionId: String(agent.id), workshop: 'knowledge', hit,
             root: knowledge.root,

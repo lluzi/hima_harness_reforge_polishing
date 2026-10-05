@@ -610,3 +610,40 @@ function revisionPreparationWorkflowDefinition(options:{readonly sitesDir:string
     return {state:'prepared',controlWorkflowId:control.workflowID,revision:receipt.revision};
   }};
 }
+
+/** Capture current PG authority once; source I/O never refreshes its actor/control boundary. */
+export async function bindDurableKnowledge(deps:FabricDeps,runId:string,owner:string,scope:string) {
+  const context=await readDurableExecutionContext(deps,runId),runtime=durableRuntimeOf(deps);
+  const {campaignKnowledgeScope}=await import('./workshop.js');
+  if(context.run.status!=='running'||context.budget.phase!=='active'||context.budget.attemptLimitSpent) throw new Error('Campaign knowledge evidence requires an active writable Campaign');
+  if(context.run.control?.owner!==owner) throw new Error('Campaign knowledge evidence belongs to the current owning Campaign Agent');
+  if(!context.run.proposalId||campaignKnowledgeScope(context.run.proposalId)!==scope) throw new Error('current knowledge scope does not belong to this Campaign proposal');
+  const projection=await runtime.store.flowProjection(runId);
+  const tasks=projection.tasks as unknown as {identity:TaskIdentity;version:number;valid:boolean;iterations:{repeatId:string;iteration:number}[];branches:FlowBranch[];state:{state:string};result:unknown}[];
+  const active=tasks.filter(task=>task.valid&&!task.result&&['running','waiting'].includes(task.state.state));
+  if(active.length!==1) throw new Error('Campaign knowledge evidence requires exactly one currently admitted node execution');
+  const task=active[0]!,loop=task.iterations.at(-1),branch=task.branches.at(-1);
+  if(context.holds?.some(hold=>hold.scope==='*'||hold.scope===task.identity.taskId)) throw new Error('Campaign knowledge evidence requires an active writable Campaign');
+  const execution:NodeExecution={id:task.identity.effectId,nodeId:task.identity.taskId,kind:context.nodes.find(node=>node.id===task.identity.taskId)?.kind??'act',
+    methodDigest:task.identity.packSha256,inputDigest:task.identity.inputSha256,phase:'begun',attempt:task.version+1,generation:(loop?.iteration??0)+1,
+    ...(loop?{loopId:loop.repeatId,loopGeneration:loop.iteration+1}:{}),...(branch?{branchId:branch.branch}:{})};
+  return {identity:task.identity,execution,scope,admission:{runId,effectId:task.identity.effectId,owner,epoch:context.run.control!.epoch,revision:context.run.control!.revision}};
+}
+export type DurableKnowledgeBinding=Awaited<ReturnType<typeof bindDurableKnowledge>>;
+/** A bounded filesystem operation executes under the same Run lock as its captured control. */
+export async function clearDurableKnowledge(deps:FabricDeps,binding:DurableKnowledgeBinding,clear:()=>Promise<boolean>):Promise<boolean> {
+  return durableRuntimeOf(deps).store.externalEffectTransaction(binding.identity,{admission:binding.admission,permit:async()=>true,soleCurrentInvocation:true},async()=>clear());
+}
+export async function recordDurableDocumentKnowledge(deps:FabricDeps,binding:DurableKnowledgeBinding,input:Parameters<typeof import('./workshop.js').prepareDocumentKnowledgeRead>[0],retainedMaterialsDir:string,callId:string) {
+  if(!callId) throw new Error('Campaign knowledge evidence requires its actual DSH tool call identity');
+  const {prepareDocumentKnowledgeRead}=await import('./workshop.js'),{retainNativeMaterial}=await import('./native-task-adapters.js');
+  const prepared=await prepareDocumentKnowledgeRead(input);
+  const retainedPath=await retainNativeMaterial(retainedMaterialsDir,prepared.bytes,prepared.data.sha256);
+  const data={...prepared.data,retainedPath,generation:binding.execution.generation,
+    ...(binding.execution.loopId?{loopId:binding.execution.loopId,loopGeneration:binding.execution.loopGeneration}:{}),toolCallId:callId};
+  const phase=`knowledge:document:${jsonDigest([input.sessionId,callId])}`,store=durableRuntimeOf(deps).store;
+  await store.externalEffectTransaction(binding.identity,{admission:binding.admission,permit:async()=>true,soleCurrentInvocation:true},async(_run,_facts,record)=>record(phase,json(data)));
+  const id=factIdentity('effect-fact',binding.identity.effectId,`native:${phase}`),fact=await store.fact(id);
+  if(!fact) throw new Error('Campaign knowledge source fact is unavailable');
+  return {hit:prepared.hit,recordId:id};
+}

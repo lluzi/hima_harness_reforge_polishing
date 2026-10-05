@@ -1321,14 +1321,14 @@ export async function readPackKnowledge(pack: Pack, documentId: string, chunkId:
   return { ...chunk, text, sha256: hash(text), document: index.document, score: 0 };
 }
 
-/** Record the exact excerpt that reached a Campaign Agent. Search hits alone are never evidence. */
-export async function recordDocumentKnowledgeRead(input: {
+/** Rebuild and verify the exact bounded excerpt before either authoritative writer accepts it. */
+export async function prepareDocumentKnowledgeRead(input: {
   readonly ledger: Ledger; readonly packsDir?: string; readonly runId: string; readonly nodeId: string;
   readonly attempt: number; readonly sessionId: string; readonly workshop: string;
   /** Required for current documents: the Hima-owned root that selected this read. */
   readonly root?: string;
   readonly hit: KnowledgeSearchHit | KnowledgeSearchCandidate; readonly origin: 'document' | 'current'; readonly branchId?: string;
-}): Promise<KnowledgeRecord> {
+}) {
   const verified = input.hit.document.source === 'current'
     ? input.root === undefined ? (() => { throw new Error('current knowledge evidence requires its Hima-owned root'); })()
       : await readCurrentKnowledge(input.root, input.hit.document.scope, input.hit.document.id, input.hit.id)
@@ -1338,11 +1338,9 @@ export async function recordDocumentKnowledgeRead(input: {
   }
   const bytes = Buffer.from(verified.text, 'utf8');
   const sha256 = hash(bytes);
-  const retainedPath = input.packsDir === undefined ? undefined
-    : await retainRunMaterial({ ledger: input.ledger, packsDir: input.packsDir }, input.runId, bytes, sha256);
-  return input.ledger.appendKnowledge(input.runId, {
+  const data: Parameters<Ledger['appendKnowledge']>[1] = {
     ...(input.branchId === undefined ? {} : { branchId: input.branchId }), origin: input.origin,
-    ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: bytes.byteLength,
+    exposedBytes: bytes.byteLength,
     nodeId: input.nodeId, attempt: input.attempt, sessionId: input.sessionId, workshop: input.workshop,
     file: path.basename(verified.document.sourcePath), purpose: verified.document.title,
     path: verified.document.sourcePath, sha256, bytes: bytes.byteLength,
@@ -1354,7 +1352,22 @@ export async function recordDocumentKnowledgeRead(input: {
       `Background knowledge selected for node ${input.nodeId}; current Campaign conclusions still require current execution evidence.`,
       `Source scope ${verified.document.scope}; document ${verified.document.id}${verified.document.version === undefined ? '' : ` version ${verified.document.version}`}.`,
     ],
-  });
+  };
+  return { hit: verified, bytes, data };
+}
+
+/** Historical callers retain their original Ledger record format and bytes. */
+export async function recordDocumentKnowledgeRead(input: {
+  readonly ledger: Ledger; readonly packsDir?: string; readonly runId: string; readonly nodeId: string;
+  readonly attempt: number; readonly sessionId: string; readonly workshop: string;
+  /** Required for current documents: the Hima-owned root that selected this read. */
+  readonly root?: string;
+  readonly hit: KnowledgeSearchHit | KnowledgeSearchCandidate; readonly origin: 'document' | 'current'; readonly branchId?: string;
+}): Promise<KnowledgeRecord> {
+  const prepared = await prepareDocumentKnowledgeRead(input);
+  const retainedPath = input.packsDir === undefined ? undefined
+    : await retainRunMaterial({ ledger: input.ledger, packsDir: input.packsDir }, input.runId, prepared.bytes, prepared.data.sha256);
+  return input.ledger.appendKnowledge(input.runId, { ...prepared.data, ...(retainedPath === undefined ? {} : { retainedPath }) });
 }
 
 /** Rebuild the requested Pack chunk from its source before accepting it as Campaign evidence. */

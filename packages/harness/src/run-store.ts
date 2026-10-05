@@ -557,7 +557,7 @@ export class RunStore {
   /** Only a short native callback's fact reservation. No arbitrary SQL, long I/O, nested Store
    * transaction or lease call is exposed/allowed: those could deadlock the held Run lock.
    * Acquire Site leases separately (Site advisory -> Run), then recheck at actual dispatch. */
-  async externalEffectTransaction<T>(identity:TaskIdentity,options:{readonly admission?:EffectAdmission;readonly permit:()=>Promise<boolean>},
+  async externalEffectTransaction<T>(identity:TaskIdentity,options:{readonly admission?:EffectAdmission;readonly permit:()=>Promise<boolean>;readonly soleCurrentInvocation?:true},
     body:(run:DurableRun,facts:Readonly<Record<string,JsonValue>>,record:(phase:string,fact:JsonValue)=>Promise<void>)=>Promise<T>):Promise<T> {
     taskIdentity.parse(identity);
     return this.#externalTransaction(async client=>{
@@ -570,6 +570,22 @@ export class RunStore {
         if(admission.runId!==identity.runId||admission.effectId!==identity.effectId)throw new Error('Native callback admission belongs to another effect');
         if(run.cancelled||(run.hold&&!collecting)||run.owner!==admission.owner||run.epoch!==admission.epoch||!await this.#effectRevisionMatches(client,run,admission)||Date.parse(run.deadlineAt)<=Date.now())throw new Error('Effect admission blocked by current owner, hold, deadline or version; refresh Run authority');
         await this.#assertBusinessEffectOpen(client,identity.runId,identity.effectId);
+      }
+      if(options.soleCurrentInvocation) {
+        const rules = await this.#revisionRules(client, run.runId);
+        const candidates = (await client.query<{invocation:FlowInvocationRecord}>(`SELECT i.invocation FROM hima.flow_invocations i
+          WHERE i.run_id=$1 AND NOT EXISTS(SELECT 1 FROM hima.results r WHERE r.effect_id=i.effect_id)
+          AND (SELECT o.payload->'state'->>'state' FROM hima.outbox o WHERE o.run_id=i.run_id AND o.kind='flow-state'
+            AND o.payload->>'effectId'=i.effect_id ORDER BY o.seq DESC LIMIT 1) IN ('running','waiting')`,[run.runId])).rows
+          .map(row=>row.invocation).filter(invocation=>flowInvocationRevision(rules,invocationPath(invocation),invocation.consumedVersions).version===invocation.version);
+        if(candidates.length!==1 || jsonDigest(candidates[0]!.identity)!==jsonDigest(identity)) throw new Error('Campaign knowledge evidence requires exactly one currently admitted node execution');
+        if(run.revision!==admission?.revision) throw new Error('Campaign knowledge control revision changed during source I/O');
+        const budget=run.opening.data as {budget?:{closingReserveMs?:number;attemptLimit?:number}};
+        if(budget.budget?.attemptLimit!==undefined) {
+          const used=Number((await client.query<{count:string}>(`SELECT count(*) FROM hima.effect_dispatches d JOIN hima.flow_invocations i USING(effect_id) WHERE i.run_id=$1 AND d.dispatch_id='submit' AND ${countedInvocation}`,[run.runId])).rows[0]!.count);
+          if(used>=budget.budget.attemptLimit) throw new Error('Campaign knowledge evidence requires an active writable Campaign');
+        }
+        if(Date.now()>=Date.parse(run.deadlineAt)-(budget.budget?.closingReserveMs??0)) throw new Error('Campaign knowledge evidence requires an active writable Campaign');
       }
       if(!await options.permit())throw new Error('Native callback is blocked by current Site Permit');
       if(admission)await client.query('UPDATE hima.effects SET admitted_at=COALESCE(admitted_at,clock_timestamp()) WHERE effect_id=$1',[identity.effectId]);
@@ -627,6 +643,8 @@ export class RunStore {
       await this.#run(client,identity.runId,true);
       const effect = (await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1 FOR UPDATE',[identity.effectId])).rows[0];
       if (!effect || jsonDigest(effect.identity) !== jsonDigest(identity)) mismatch('Effect');
+      if(phase.startsWith('native:knowledge:document:') && (await client.query(`SELECT 1 FROM hima.effect_facts f JOIN hima.effects e USING(effect_id)
+        WHERE e.run_id=$1 AND f.phase=$2 AND f.effect_id<>$3 LIMIT 1`,[identity.runId,phase,identity.effectId])).rowCount) mismatch('Campaign knowledge call invocation');
       const held=(await client.query<{fact:JsonValue}>('SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',[identity.effectId,phase])).rows[0];
       if(held) { if(jsonDigest(held.fact)!==jsonDigest(fact)) mismatch('Effect fact'); return; }
       await client.query('INSERT INTO hima.effect_facts VALUES($1,$2,$3)',[identity.effectId,phase,JSON.stringify(fact)]);

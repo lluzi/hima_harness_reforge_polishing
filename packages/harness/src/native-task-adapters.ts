@@ -136,6 +136,22 @@ export async function readNativeTaskTurn(ctx: Context, sessionId: string): Promi
         return {state:'ended',sessionId,turn:data.turn!,endSeq:end.seq,reason:data.reason.kind,text,successfulWriteCalls:writes};
     } catch(error) {return {state:'unknown',sessionId};}
 }
+/** Content-addressed retained bytes shared by native producers and Campaign knowledge. */
+export async function retainNativeMaterial(root: string, bytes: Uint8Array, sha256: string): Promise<string> {
+    if (createHash('sha256').update(bytes).digest('hex') !== sha256) throw new Error('Retained source identity differs from its bytes');
+    await mkdir(root, { recursive: true });
+    const directory = await lstat(root);
+    if (!directory.isDirectory() || directory.isSymbolicLink() || await realpath(root) !== path.resolve(root)) throw new Error('Retained material ancestor is not a plain directory');
+    const at = path.join(root, sha256);
+    try { await writeFile(at, bytes, { flag: 'wx', mode: 0o600 }); }
+    catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const { readDurableSourceBytes } = await import('./durable-views.js');
+    await readDurableSourceBytes(root, 'staged', { runId: 'staged', type: 'knowledge', retainedPath: at, sha256, bytes: bytes.byteLength });
+    return at;
+}
+
 /** Immutable source facts survive the model Host. Returned Knowledge bytes have a retained copy. */
 export function nativeWorkshopAuthority(options: NativeOptions, root: string): WorkshopAuthority {
     const record = (kind: string, data: unknown) => options.store.recordExternalEffectFact(options.request.identity, `${kind}:${digest(data)}`, json(data));
@@ -150,24 +166,7 @@ export function nativeWorkshopAuthority(options: NativeOptions, root: string): W
                 throw new Error('Native Workshop write requires its actual DSH tool call identity');
             await options.store.recordExternalEffectFact(options.request.identity, `code:${callId}`, json({ ...data, toolCallId: callId }));
         }, appendKnowledge: data => record('knowledge', data), appendRefusal: data => record('refusal', data),
-        async retain(bytes, sha256) {
-            const at = path.join(root, sha256);
-            await mkdir(root, { recursive: true });
-            try {
-                await writeFile(at, bytes, { flag: 'wx', mode: 0o600 });
-            }
-            catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
-                    throw error;
-                const info = await lstat(at);
-                if (!info.isFile() || info.isSymbolicLink() || info.size !== bytes.byteLength)
-                    throw new Error('Retained native source is not the original plain file');
-                const held = await readFile(at);
-                if (createHash('sha256').update(held).digest('hex') !== sha256)
-                    throw new Error('Retained native source bytes changed');
-            }
-            return at;
-        },
+        retain: (bytes, sha256) => retainNativeMaterial(root, bytes, sha256),
         async beforeWrite(at, bytes, callId, kind = 'file') {
             if (!callId)
                 throw new Error('Native Workshop write requires its actual DSH tool call identity');

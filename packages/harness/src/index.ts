@@ -784,7 +784,7 @@ export default class Hima extends Service {
       (pack, site, overrides) => {
         const loadedPack = loadPack(this.config.packsDir, pack);
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
-      }, { root: this.config.knowledgeDir },
+      }, { root: this.config.knowledgeDir, retainedMaterialsDir: this.retainedMaterialsDir },
       { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
       (request) => this.startGuidedRun(request),
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
