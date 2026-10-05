@@ -236,6 +236,10 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 2026-10-05 用户更新集成方式：内置 Data Insight 直接呈现 LibInsight 自有的全部数据页面，不再另开网页；
 LibInsight 在其仓库继续升级，HimaHarness 固定所用 commit 并在其完成后小幅更新。见
 [ADR-0019](adr/0019-data-insight-frames-the-libinsight-app.md)。
+同日用户进一步明确：Guide 主导 QuaLib API 提取与用户定制分析，由驻场工程 Agent 在 linglong 执行，配套
+playbook 与知识；定制分析结果在 LibInsight 内以新页面呈现。见
+[ADR-0020](adr/0020-guide-conducts-libinsight-through-the-resident-agent.md) 与
+[实施规格](specs/libinsight-resident/spec.zh-CN.md)。
 
 2026-09-29 访谈进一步明确：LibInsight 的两类入口是 **Library 输入**与 **Design 输入**。
 Library 输入包括 Library 及相关 PDK 中的库信息；Design 输入包括 DEF、设计使用的 Liberty、Netlist、
