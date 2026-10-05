@@ -6,7 +6,7 @@ factory (`../factory`) builds real layouts in minutes per batch, with DRC/LVS-cl
 
 ```sh
 python3 abstract_cells.py spec.json <round> <workspace> [--jobs 16] [--out cells.json]
-  [--platform-lef <sky130_fd_sc_hd_merged.lef>]   # default: from <workspace>/state/inputs.json
+  [--platform-lef <sky130_fd_sc_hd_merged.lef>]   # default: $ORFS_ROOT/flow/platforms/..., else state/inputs.json
   [--pdk-spice <sky130_fd_sc_hd.spice>]           # default: the PDK in the IIC-OSIC-TOOLS image
 ```
 

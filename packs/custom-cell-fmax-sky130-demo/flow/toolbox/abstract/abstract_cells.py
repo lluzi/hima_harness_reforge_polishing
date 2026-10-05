@@ -249,7 +249,8 @@ def main(argv=None):
     parser.add_argument("spec")
     parser.add_argument("round", type=int)
     parser.add_argument("workspace")
-    parser.add_argument("--platform-lef", help="sky130_fd_sc_hd merged LEF (default: <orfsRoot>/flow/" + PLATFORM_LEF + " from state/inputs.json)")
+    parser.add_argument("--platform-lef", help="sky130_fd_sc_hd merged LEF (default: $ORFS_ROOT/flow/" + PLATFORM_LEF
+                        + ", else orfsRoot from <workspace>/state/inputs.json)")
     parser.add_argument("--pdk-spice", default=PDK_SPICE)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--out")
@@ -267,8 +268,14 @@ def main(argv=None):
         print("cells need compareTo (the nearest foundry cell): %s" % ", ".join(missing), file=sys.stderr)
         return 2
     lef_path = args.platform_lef
+    if not lef_path and os.environ.get("ORFS_ROOT"):
+        lef_path = os.path.join(os.environ["ORFS_ROOT"], "flow", PLATFORM_LEF)
     if not lef_path:
-        with open(os.path.join(ws, "state", "inputs.json")) as handle:
+        inputs = os.path.join(ws, "state", "inputs.json")
+        if not os.path.isfile(inputs):
+            print("no platform LEF: pass --platform-lef or set ORFS_ROOT", file=sys.stderr)
+            return 2
+        with open(inputs) as handle:
             lef_path = os.path.join(json.load(handle)["orfsRoot"], "flow", PLATFORM_LEF)
     with open(lef_path) as handle:
         lef_text = handle.read()
