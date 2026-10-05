@@ -84,8 +84,9 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     if(!type||type==='job')for(const effect of (await store.flowPhysicalFacts(runId)).effects) {
       const submitted=jobIdentity.safeParse(await store.effectFact(effect.identity.effectId,'submitted'));
       if(!submitted.success)continue; // Native envelopes are not batch Job completion receipts.
-      for(const [phase,event,exitCode] of [['submitted','launched',undefined],['executor-ready','finished',0],['executor-failure','finished',undefined]] as const) {
+      for(const [phase,event] of [['submitted','launched'],['executor-ready','finished'],['executor-failure','finished']] as const) {
         const value=await store.effectFact(effect.identity.effectId,phase);if(!value)continue;
+        const exitCode=phase==='executor-ready'?0:phase==='executor-failure'&&typeof object(value).exitCode==='number'?object(value).exitCode:undefined;
         const job=jobIdentity.safeParse(phase==='executor-failure'?object(value).receipt:value);
         if(!job.success||job.data.session!==submitted.data.session)continue;
         const id=factIdentity('effect-fact',effect.identity.effectId,phase),source=await store.fact(id);

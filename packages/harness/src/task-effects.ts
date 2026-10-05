@@ -20,7 +20,7 @@ export interface TaskEffectRequest {
 }
 export type EffectObservation = {readonly state:'ready';readonly receipt:JsonValue}
   | {readonly state:'running'|'unknown';readonly reason:string}
-  | {readonly state:'failed';readonly reason:string;readonly receipt?:JsonValue};
+  | {readonly state:'failed';readonly reason:string;readonly receipt?:JsonValue;readonly exitCode?:number};
 export type EffectClosure={readonly closed:true;readonly proof:JsonValue}|{readonly closed:false;readonly reason:string};
 /** Host composition is still collecting the original effect; this is never producer output. */
 export interface TaskCollectionPending { readonly pending:true; readonly state:'running'|'waiting'; readonly reason:TaskDiagnostic }
@@ -110,12 +110,12 @@ export async function executeTaskEffect(store:RunStore,request:TaskEffectRequest
   }
   if(retained===undefined) {
     let observed:EffectObservation;
-    const failure=snapshot.facts['executor-failure'] as {reason:string;receipt?:JsonValue}|undefined;
+    const failure=snapshot.facts['executor-failure'] as {reason:string;receipt?:JsonValue;exitCode?:number}|undefined;
     const ready=adapter.settledResources?snapshot.facts['executor-ready']:undefined;
     try {observed=failure?{state:'failed',...failure}:ready?{state:'ready',receipt:ready}:await external('hima.effect.reconcile',()=>adapter.reconcile(prepared!,receipt));}
     catch(error) {return reason('waiting','effect-unknown',`Query the original task session: ${errorText(error)}`);}
     if(observed.state==='failed') {
-      if(!failure)await store.recordEffectFact(identity,'executor-failure',{reason:observed.reason,...(observed.receipt===undefined?{}:{receipt:observed.receipt})});
+      if(!failure)await store.recordEffectFact(identity,'executor-failure',{reason:observed.reason,...(observed.receipt===undefined?{}:{receipt:observed.receipt}),...(observed.exitCode===undefined?{}:{exitCode:observed.exitCode})});
       const closure=await external('hima.effect.failed.release',async()=>{
         if(!await adapter.permit(prepared!,'release'))throw new Error('Current Site Permit cannot close the original failed task resources');
         return adapter.release(prepared!,observed.receipt??prepared!,(id,input)=>store.claimEffectCleanup(identity,()=>adapter.permit(prepared!,'release'),`cleanup:${id}`,jsonDigest(input)));
@@ -248,7 +248,7 @@ export function commandTaskAdapter(options:CommandTaskAdapterOptions):TaskEffect
     async reconcile(prepared,receipt) {
       const original=await reconnectRetainedJob(current(),job(receipt??prepared));
       const state=await retainedJobState(current(),original);
-      if(state.state==='finished') return state.exitCode===0?{state:'ready',receipt:original as unknown as JsonValue}:{state:'failed',receipt:original as unknown as JsonValue,reason:`Original Job ${original.session} exited ${state.exitCode}; inspect its retained log`};
+      if(state.state==='finished') return state.exitCode===0?{state:'ready',receipt:original as unknown as JsonValue}:{state:'failed',receipt:original as unknown as JsonValue,...(state.exitCode===undefined?{}:{exitCode:state.exitCode}),reason:`Original Job ${original.session} exited ${state.exitCode}; inspect its retained log`};
       return {state:state.state==='running'?'running':'unknown',reason:`Original Job ${original.session} is ${state.state}; reconnect it without launching another Job`};
     },
     collect:(_prepared,receipt,request)=>options.collect(current(),job(receipt),request),

@@ -64,3 +64,12 @@ test('completed task archive stays readable when Site transport cannot answer ex
  const result=new Promise<any>((resolve,reject)=>{child.once('message',resolve);child.once('error',reject);child.once('exit',code=>{if(code)reject(new Error(output));});});
  try{const observed=await result;assert.equal(observed.ok,true,JSON.stringify(observed)+'\n'+output);}finally{if(child.exitCode===null){child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),5000);try{await new Promise(resolve=>child.once('exit',resolve));}finally{clearTimeout(timer);}}await cleanDbosHome(home);}
 });
+
+
+test('known command exit survives durable Job projection while historical exit stays unknown',{timeout:90000},async()=>{
+ const home=await dbosHome();
+ const child=spawn(process.execPath,[fileURLToPath(new URL('./support/durable-views-worker.ts',import.meta.url)),home,'exit-projection'],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
+ let output='';child.stdout!.on('data',value=>output+=String(value));child.stderr!.on('data',value=>output+=String(value));
+ const result=new Promise<any>((resolve,reject)=>{child.once('message',resolve);child.once('error',reject);child.once('exit',code=>{if(code)reject(new Error(output));});});
+ try{const observed=await result;assert.equal(observed.ok,true,JSON.stringify(observed)+'\n'+output);}finally{if(child.exitCode===null){child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),5000);try{await new Promise(resolve=>child.once('exit',resolve));}finally{clearTimeout(timer);}}await cleanDbosHome(home);}
+});

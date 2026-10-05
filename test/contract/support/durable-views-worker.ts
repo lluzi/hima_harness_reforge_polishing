@@ -24,6 +24,7 @@ if(fresh){
   let script=`import json,pathlib,sys\ni,o,w=sys.argv[1:4]\nx=json.loads(pathlib.Path(i).read_text())\np=pathlib.Path(w)\np.joinpath('program-calls').open('a').write('original\\n')\np.joinpath('delivery.txt').write_text('verified task delivery')\np.joinpath('package.bin').write_bytes(bytes([0,255,1,128,10]))\nv={'strict':x['strict'],'period':x['period']}\nif x['target']!=0.5:v['goalMet']=x['period']<=x['target']\npathlib.Path(o).write_text(json.dumps({'schemaVersion':'1','value':v,'artifacts':[{'name':'delivery','path':'delivery.txt','mediaType':'text/plain'},{'name':'arbitrary-binary','path':'package.bin','mediaType':'application/octet-stream'}],'diagnostics':[]}))\n`;
   if(mode==='delivery-revision')script=script.replace("write_text('verified task delivery')","write_text('verified task delivery '+str(x['period']))");
   if(mode==='delivery-generated-rename')script=script.replace("'artifacts':[{'name':'delivery','path':'delivery.txt','mediaType':'text/plain'},{'name':'arbitrary-binary','path':'package.bin','mediaType':'application/octet-stream'}]","'artifacts':[]").replace("v={'strict':", "p.joinpath('hima-experience').symlink_to(p.parent.parent/'refused-report',target_is_directory=True)\nv={'strict':");
+  if(mode==='exit-projection')script=script.replace("p=pathlib.Path(w)\n","p=pathlib.Path(w)\nif x['period']==7:sys.exit(7)\n");
   await writeFile(path.join(packDir,'flow/produce.py'),script);
   await writeFile(path.join(packDir,'contract.yml'),stringify({id:'facade-fixture',version:'1',title:'Frozen normal facade method',inputs:[{name:'workspaceRoot'}],outputs:[],words:{periodNs:{label:'Period',unit:'ns'}},goal:{periodNs:{type:'number',unit:'ns',min:0.1,max:10,default:1}},strategy:{periodNs:{type:'number',unit:'ns',min:0.1,max:10,default:2}},tools:[{id:'produce',file:'flow/produce.py',inputs:['FLOW','TASK_INPUT','TASK_OUTPUT','WORKSPACE'],argv:['/usr/bin/python3','${FLOW}/produce.py','${TASK_INPUT}','${TASK_OUTPUT}','${WORKSPACE}']}],environment:{wrappers:['/usr/bin/python3']},workspace:{source:'pack',copy:['produce.py']}}));
   const schema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties:{strict:{type:'boolean'},period:{type:'number'},target:{type:'number'}},required:['strict','period','target']}};
@@ -43,7 +44,50 @@ try {
   const project=service.ledger.projectDurableFact.bind(service.ledger),historyBarrier=new Promise<void>(resolve=>{resumeHistory=resolve;});
   service.ledger.projectDurableFact=async(...args:any[])=>{await historyBarrier;return project(...args);};
   const dependencies={ledger:service.ledger,judge:service.judge,sitesDir,packsDir,host:host.ctx,durable:runtime,durableModelSelection:host.ctx.get('agentDefaultModel').currentSelection()};
-  if(mode==='delivery-generated-restart') {
+  if(mode==='exit-projection') {
+    const owner=await createRootAgent(host.ctx,workspace);
+    const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
+    const url=host.ctx.connection.authenticatedUrl(`http://127.0.0.1:${host.ctx.webServer.port}`);
+    const first=await fetch(url,{redirect:'manual'}),cookie=first.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie);
+    const get=async(route:string)=>{
+      const response=await fetch(new URL(`/hima/api${route}${route.includes('?')?'&':'?'}sessionId=${encodeURIComponent(String(owner.id))}`,url),{headers:{cookie}});
+      assert.equal(response.status,200,await response.clone().text());return response.json() as Promise<any>;
+    };
+    const record=runtime.store.recordEffectFact.bind(runtime.store);
+    const observed=[];
+    for(const [label,period,expected] of [['known',7,7],['ready',2,0],['historical',7,undefined]] as const) {
+      // Emulate the old writer's exact failure fact shape; retain its real original Job receipt
+      // and text (including exit 7) to prove that readers never parse a historical reason.
+      runtime.store.recordEffectFact=async(identity:any,phase:string,value:any)=>{
+        if(label==='historical'&&phase==='executor-failure'){const {exitCode:_exit,...legacy}=value;return record(identity,phase,legacy);}
+        return record(identity,phase,value);
+      };
+      const opened=await service.startRun({pack:'facade-fixture',site:'local',goal:{periodNs:1},strategy:{periodNs:period},ownerSessionId:String(owner.id)});
+      const runId=opened.run.id;let effects:any[]=[];
+      for(let i=0;i<200;i++) {
+        effects=(await runtime.store.flowPhysicalFacts(runId)).effects.filter((effect:any)=>effect.identity.taskId==='produce');
+        const task=(await runtime.store.flowProjection(runId)).tasks.find((item:any)=>item.identity.taskId==='produce');
+        if(effects.length&&(await runtime.store.effectSnapshot(effects[0].identity)).resourcesReleased&&task?.state.state===(label==='ready'?'succeeded':'failed'))break;
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      assert.equal(effects.length,1,'one original command effect');const identity=effects[0].identity;
+      const snapshot=await runtime.store.effectSnapshot(identity);assert.equal(snapshot.resourcesReleased,true);
+      const submitted=await runtime.store.effectFact(identity.effectId,'submitted');assert.ok(submitted);
+      const failure=await runtime.store.effectFact(identity.effectId,'executor-failure');
+      if(label==='ready'){assert.equal(failure,undefined);assert.ok(await runtime.store.effectFact(identity.effectId,'executor-ready'));}
+      else {assert.ok(failure);assert.equal(failure.exitCode,expected,'stored observed exit metadata');assert.deepEqual(failure.receipt,submitted);assert.equal('exitCode' in failure.receipt,false,'receipt remains strict JobIdentity');assert.match(failure.reason,/exited 7/);}
+      const records=await readers.readRunRecords(runId,'job');
+      const finished=records.filter((item:any)=>item.event==='finished');assert.equal(finished.length,1);
+      assert.equal(finished[0].exitCode,expected,'PG Job record retains only observed numeric exit');assert.deepEqual(finished[0].job,submitted);
+      const detail=await get(`/runs/${runId}`),publicRecords=await get(`/runs/${runId}/records?type=job`),context=await get(`/runs/${runId}/context`);
+      assert.equal(detail.jobs.find((item:any)=>item.event==='finished').exitCode,expected,'public Run Job view');
+      assert.equal(publicRecords.records.find((item:any)=>item.event==='finished').exitCode,expected,'public Job history');
+      assert.equal(context.tasks.find((item:any)=>item.identity?.effectId===identity.effectId).projection.state,label==='ready'?'succeeded':'failed','public context retains task outcome independently of numeric exit');
+      observed.push({label,exitCode:expected??null,session:submitted.session});
+    }
+    runtime.store.recordEffectFact=record;
+    process.send!({ok:true,observed,productModelCalls:0});
+  } else if(mode==='delivery-generated-restart') {
     const expected=JSON.parse(await readFile(path.join(home,'accepted.json'),'utf8'));
     const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
     let facts:any[]=[];
