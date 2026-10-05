@@ -222,6 +222,19 @@ test('Data Insight shows the LibInsight pages in place and keeps them across a m
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="libinsight-frame"]').dataset.testMark`), 'kept');
     const status = await (await api(host, cookie, `/hima/api/libinsight?sessionId=${encodeURIComponent(guide ?? '')}`)).json() as { state: string; dataFolder: string };
     assert.equal(status.state, 'ready'); assert.equal(status.dataFolder, data);
+    // "Data folder…" always leads somewhere: when the shell's picker answers nothing (trial.38 found
+    // this as a click with no effect), the typed path is offered, and a typed folder moves the viewer.
+    const other = path.join(home.h.home, 'libinsight-test', 'other', 'data');
+    await mkdir(other, { recursive: true });
+    await writeFile(path.join(other, 'app.json'), JSON.stringify({ data_root: 'data', kits: [{ id: 'second-kit', manifest: 'kits/second-kit.json' }] }));
+    assert.ok((await d.click('libinsight-choose-data')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="libinsight-data-folder"]')`, 10_000);
+    await browser.evaluate(`(() => { const input=document.querySelector('[data-hima-control="libinsight-data-folder"]'); const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; set.call(input, ${JSON.stringify(other)}); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await browser.markText('button', 'Open', 'libinsight-open-folder');
+    assert.ok((await d.click('libinsight-open-folder')).ok);
+    await browser.wait(`(document.querySelector('[data-hima-region="libinsight"] header')?.textContent ?? '').includes('other/data') && document.querySelector('[data-hima-region="libinsight"]').getAttribute('data-hima-state-viewer') === 'ready'`, 30_000);
+    const moved = await (await api(host, cookie, `/hima/api/libinsight?sessionId=${encodeURIComponent(guide ?? '')}`)).json() as { state: string; dataFolder: string; kits: string[] };
+    assert.equal(moved.dataFolder, other); assert.deepEqual(moved.kits, ['second-kit']);
     const refused = await api(host, cookie, '/hima/api/libinsight?sessionId=not-a-session');
     assert.equal(refused.status, 403, 'only a live conversation may ask where the viewer is');
     const runs = await (await api(host, cookie, `/hima/api/runs?sessionId=${guide}`)).json() as { runs: unknown[] };

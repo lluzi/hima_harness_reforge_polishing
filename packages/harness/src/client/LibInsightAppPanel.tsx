@@ -49,8 +49,11 @@ export function LibInsightAppPanel({ sessionId, hidden, pickFolder, onShowReport
     return () => clearInterval(timer);
   }, [hidden, sessionId, readyUrl]);
 
+  // The shell's picker answers null when it has no workspace picker to offer (or the person closed
+  // it), so a typed path is always the way that remains, never a click that does nothing.
   const choose = async () => {
-    if (pickFolder) { const picked = await pickFolder().catch(() => null); if (picked) await open({ dataFolder: picked }); return; }
+    const picked = pickFolder ? await pickFolder().catch(() => null) : null;
+    if (picked) { await open({ dataFolder: picked }); return; }
     setChoosing(true);
   };
   const submit = (event: FormEvent) => { event.preventDefault(); if (draft.trim() !== '') void open({ dataFolder: draft.trim() }); };
