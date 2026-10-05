@@ -1,0 +1,10 @@
+{
+  "schema": "hima-libinsight-pin/1",
+  "source": "lib_insight",
+  "commit": "d463b8e9bf6f35977dec0249bdd5bcd19c745b72",
+  "paths": [
+    "app",
+    "libinsight"
+  ],
+  "note": "Data Insight frames this LibInsight web app (ADR-0019). Update by changing commit and repackaging with --libinsight-source <lib_insight checkout>."
+}

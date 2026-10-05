@@ -233,6 +233,9 @@ R3/Q17 确认：EDA Operator 可以在已授权工具、设计工作副本和预
 算法、检查体系和交互为功能参考，保留原型只读；源码与合成测试核查见
 [原型能力清单](package-development/library-intelligence-platform/research/prototype-capabilities.zh-CN.md)。
 其实现与证据范围需在 HimaHarness 中独立验证，不能用已有有界报告切片代替全部原型能力。
+2026-10-05 用户更新集成方式：内置 Data Insight 直接呈现 LibInsight 自有的全部数据页面，不再另开网页；
+LibInsight 在其仓库继续升级，HimaHarness 固定所用 commit 并在其完成后小幅更新。见
+[ADR-0019](adr/0019-data-insight-frames-the-libinsight-app.md)。
 
 2026-09-29 访谈进一步明确：LibInsight 的两类入口是 **Library 输入**与 **Design 输入**。
 Library 输入包括 Library 及相关 PDK 中的库信息；Design 输入包括 DEF、设计使用的 Liberty、Netlist、

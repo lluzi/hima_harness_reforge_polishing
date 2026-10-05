@@ -150,6 +150,15 @@ export function postgresRuntimeDirectory(env: NodeJS.ProcessEnv = process.env): 
   return env.HIMA_POSTGRES_RUNTIME?.trim() ? path.resolve(env.HIMA_POSTGRES_RUNTIME) : path.join(checkoutRoot(), 'postgres');
 }
 
+/** LibInsight's own web app, which Data Insight frames (ADR-0019): the copy this App carries, or the
+ * checkout a source deployment names through HIMA_LIBINSIGHT_ROOT. Neither means Data Insight says
+ * LibInsight is not installed; nothing is searched for. */
+export function libInsightCodeDirectory(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env.HIMA_LIBINSIGHT_ROOT?.trim()) return path.resolve(env.HIMA_LIBINSIGHT_ROOT);
+  const bundled = path.join(checkoutRoot(), 'libinsight');
+  return existsSync(path.join(bundled, 'app', 'server.py')) ? bundled : undefined;
+}
+
 /** The three things in this checkout a hima home is made out of. */
 export interface HimaHomeSources {
   /** `profiles/hima`: the profile manifest and the privacy overlay, copied whole. */

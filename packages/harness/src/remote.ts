@@ -710,6 +710,8 @@ export interface RemoteOperations {
   experienceCandidates?(sessionId:string,runId:string):Promise<object>;
   correctExperience?(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>): Promise<object>;
   readSessionContext?(request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number}):Promise<object>;
+  /** The LibInsight pages Data Insight frames (ADR-0019): the Host's one local viewer process. */
+  libInsight?(request: { readonly action: 'status' } | { readonly action: 'open'; readonly dataFolder?: string; readonly restart?: boolean }): Promise<import('./libinsight-viewer.js').LibInsightViewerStatus>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
@@ -1762,6 +1764,22 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     const input=z.strictObject({sessionId:z.string(),runId:z.string(),action:z.enum(['create','followup','cancel','result','adopt']),requestId:z.string(),expectedEpoch:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative(),delegationId:z.string().optional(),resultRecordId:z.string().optional(),contract:z.unknown().optional(),recipe:z.strictObject({teamId:z.string(),version:z.string(),memberId:z.string(),executionId:z.string()}).optional(),text:z.string().max(8000).optional()}).parse(await readJsonBody(req));
     if(!ops.validateSession?.(input.sessionId))return failure(403,'hima/not-authorized','Choose a live project conversation.');
     return ok(await ops.delegate({...input,actor:input.sessionId,origin:'human'}));
+  }
+
+  // Data Insight's LibInsight pages (ADR-0019). A live conversation is the viewer, as for every
+  // other workbench read; the answer is where the local viewer is and whether it is up, never data.
+  if (rest === '/libinsight') {
+    if (!ops.libInsight) return failure(503, 'hima/internal', 'This Host has no LibInsight viewer.');
+    if (method === 'GET') {
+      if (!ops.validateSession?.(url.searchParams.get('sessionId') ?? '')) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+      return ok(await ops.libInsight({ action: 'status' }));
+    }
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
+    const parsed = z.strictObject({ sessionId: z.string(), action: z.literal('open'), dataFolder: z.string().min(1).max(4096).optional(), restart: z.boolean().optional() }).safeParse(await readJsonBody(req));
+    if (!parsed.success) throw new BadRequest(zodSentence(parsed.error));
+    const body = parsed.data;
+    if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    return ok(await ops.libInsight({ action: 'open', ...(body.dataFolder === undefined ? {} : { dataFolder: body.dataFolder }), ...(body.restart === undefined ? {} : { restart: body.restart }) }));
   }
 
   if (rest === '/observe') {

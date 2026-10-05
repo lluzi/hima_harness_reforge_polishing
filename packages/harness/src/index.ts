@@ -59,6 +59,7 @@ import { readMaterial, readReportMaterial, readRunAssets, readArchivedMaterial, 
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
+import { createLibInsightViewer, libInsightViewerOptions } from './libinsight-viewer.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { createDurableViewReaders } from './durable-views.js';
 import { previewPackTransfer, applyPackTransfer, loadRunPack, releasePackFromRuntime } from './release.js';
@@ -208,6 +209,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 // them by hand, where a drift in the host's answer would go unnoticed until a person read the JSON.
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
 export { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, POSTGRES_VERSION } from './local-database.js';
+export { createLibInsightViewer, libInsightViewerOptions, type LibInsightViewer, type LibInsightViewerStatus } from './libinsight-viewer.js';
 export type { LocalDatabase, LocalDatabaseConnection } from './local-database.js';
 export { pickOwnedRun, isOwner, recordEndedSeenAt } from './run-ownership.js';
 export type {
@@ -671,9 +673,13 @@ export default class Hima extends Service {
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.
     // A headless host has no web server and no browser session to guard it with, and still works.
     this.ctx.inject(['webServer', 'connection'], (webCtx) => {
+      // Data Insight's LibInsight pages (ADR-0019): started on the first look, stopped with the face.
+      const libInsight = createLibInsightViewer(libInsightViewerOptions(localDatabaseHome()));
+      webCtx.effect(() => () => libInsight.stop(), 'hima: the LibInsight viewer process');
       webCtx.effect(
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
+          libInsight: request => request.action === 'status' ? libInsight.status() : libInsight.open(request),
           readRunView: runId=>this.viewReaders().readRunView(runId),
           listRunHeads: ()=>this.viewReaders().listRunHeads(),
           readRunRecord: recordId=>this.viewReaders().readRunRecord(recordId),

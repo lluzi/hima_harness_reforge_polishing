@@ -234,6 +234,51 @@ async function stageBundledPacks(fromPacks, resource) {
   return staged;
 }
 
+/**
+ * Copy the pinned LibInsight web app (ADR-0019) out of a LibInsight git checkout into the App: only the
+ * pinned commit's `app/` and `libinsight/`, never the checkout's working tree or its git-ignored data.
+ * The copy names its commit and its files' hashes, which the Host shows and --verify checks.
+ */
+const libInsightPinFile = path.join(root, 'packages/desktop/libinsight.pin.json');
+function stageLibInsight(sourceCheckout, resource) {
+  const pin = JSON.parse(readFileSync(libInsightPinFile, 'utf8'));
+  if (pin.schema !== 'hima-libinsight-pin/1' || !/^[0-9a-f]{40}$/.test(pin.commit ?? '') || !Array.isArray(pin.paths) || !pin.paths.length) fail('packages/desktop/libinsight.pin.json is not a hima-libinsight-pin/1 with a full commit');
+  const checkout = path.resolve(sourceCheckout);
+  run('git', ['-C', checkout, 'cat-file', '-e', `${pin.commit}^{commit}`]);
+  const tree = spawnSync('git', ['-C', checkout, 'archive', '--format=tar', pin.commit, '--', ...pin.paths], { maxBuffer: 256 * 1024 * 1024 });
+  if (tree.status !== 0) fail(`git archive of LibInsight ${pin.commit} failed\n${tree.stderr}`);
+  const target = path.join(resource, 'libinsight');
+  if (existsSync(target)) fail(`refusing to stage LibInsight over ${target}`);
+  mkdirSync(target, { recursive: true });
+  const unpacked = spawnSync('tar', ['-x', '-C', target], { input: tree.stdout });
+  if (unpacked.status !== 0) fail(`unpacking LibInsight failed\n${unpacked.stderr}`);
+  if (!existsSync(path.join(target, 'app/server.py'))) fail(`LibInsight ${pin.commit} has no app/server.py`);
+  const files = {};
+  const walk = (folder) => { for (const name of readdirSync(folder).sort()) { const at = path.join(folder, name); const stat = lstatSync(at);
+    if (stat.isSymbolicLink()) fail(`LibInsight ${relative(target, at)} is a symbolic link`);
+    if (stat.isDirectory()) walk(at); else files[relative(target, at)] = hash(at); } };
+  walk(target);
+  writeFileSync(path.join(target, 'LIBINSIGHT-SOURCE.json'), `${JSON.stringify({ schema: 'hima-libinsight-source/1', source: pin.source, commit: pin.commit, paths: pin.paths, files }, null, 2)}\n`);
+  return { source: pin.source, commit: pin.commit, fileCount: Object.keys(files).length, sourceSha256: hash(path.join(target, 'LIBINSIGHT-SOURCE.json')) };
+}
+
+/** --verify's half for the LibInsight copy: the recorded commit, and every copied file at its hash. */
+function verifyLibInsight(resource, recorded) {
+  const present = existsSync(path.join(resource, 'libinsight'));
+  if (recorded === undefined || typeof recorded === 'string') {
+    if (present) fail('the App carries LibInsight code its manifest does not record');
+    return;
+  }
+  const at = path.join(resource, 'libinsight/LIBINSIGHT-SOURCE.json');
+  if (!existsSync(at) || hash(at) !== recorded.sourceSha256) fail('bundled LibInsight identity differs from the release manifest');
+  const source = JSON.parse(readFileSync(at, 'utf8'));
+  if (source.commit !== recorded.commit) fail('bundled LibInsight commit differs from the release manifest');
+  for (const [file, sha] of Object.entries(source.files)) {
+    if (hash(path.join(resource, 'libinsight', file)) !== sha) fail(`bundled LibInsight file ${file} differs from its recorded hash`);
+  }
+  process.stdout.write(`package-trial: libinsight ${source.source} ${source.commit} (${Object.keys(source.files).length} files)\n`);
+}
+
 async function inspectInteractiveBindings(file, packsRoot, evidenceRoot, atcsOnly = false) {
   if (!path.isAbsolute(file) || !existsSync(file) || !lstatSync(file).isFile()) {
     fail('--interactive-bindings must name an absolute regular administrator file');
@@ -364,6 +409,7 @@ async function verifyBundleIdentity(app, manifest) {
   if (postgres.version !== '16.15' || postgres.platform !== layoutFor(manifest).platform) fail('bundled PostgreSQL version/platform is incompatible');
   if (manifest.runtimeInputs?.sbom && manifest.runtimeInputs.sbom.sha256 !== hash(path.join(resource, manifest.runtimeInputs.sbom.file))) fail('bundled SBOM identity differs from the release manifest');
   if (manifest.runtimeInputs?.node?.binarySha256 && manifest.runtimeInputs.node.binarySha256 !== hash(path.join(resource, 'node/bin/node'))) fail('bundled Node binary identity differs from the release manifest');
+  verifyLibInsight(resource, manifest.runtimeInputs?.libinsight);
   const packsRoot = path.join(resource, 'packs');
   const recorded = manifest.runtimeInputs?.packs;
   if (!Array.isArray(recorded)) fail('manifest records no bundled Pack identities');
@@ -708,7 +754,7 @@ if (args[0] === '--finalize-native-obligations') {
 } else if (args[0] === '--check-platform-layout') {
   process.stdout.write(`${JSON.stringify(nativeLayout(args[1]))}\n`);
 } else if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] | --finalize-native-obligations <native artifact> --native-evidence <support packet.json> --report <new external sidecar.json> | --verify <native artifact> | --verify-desktop <native artifact>\n');
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] [--libinsight-source <LibInsight git checkout>] | --finalize-native-obligations <native artifact> --native-evidence <support packet.json> --report <new external sidecar.json> | --verify <native artifact> | --verify-desktop <native artifact>\n');
 } else if (args[0] === '--check-interactive-bindings') {
   const file = value('--check-interactive-bindings');
   if (!file) fail('--check-interactive-bindings needs an absolute administrator file');
@@ -841,6 +887,9 @@ if (args[0] === '--finalize-native-obligations') {
     symlinkSync('../node_modules/@hima/harness', path.join(resource, 'packages/harness'));
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
     cpSync(node24, path.join(resource, 'node/bin/node'));
+    const libInsightSource = value('--libinsight-source');
+    if (args.includes('--libinsight-source') && !libInsightSource) fail('--libinsight-source needs a LibInsight git checkout');
+    const libinsight = libInsightSource ? stageLibInsight(libInsightSource, resource) : 'absent: no --libinsight-source; Data Insight says LibInsight is not installed';
     const postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
     const nodeIdentity = stageRuntimeNotices({ resource, electronDist, nodeBinary: node24, nodeManifest: nodeBuildManifest, nodeArchive, electronManifest: electronBuildManifest, electronArchive });
@@ -878,7 +927,7 @@ if (args[0] === '--finalize-native-obligations') {
       runtimeInputs: { node: nodeIdentity, sbom, correspondingSource, harnessVersion: JSON.parse(readFileSync(path.join(resource, 'node_modules/@hima/harness/package.json'), 'utf8')).version, dbosVersion: JSON.parse(readFileSync(path.resolve(path.dirname(createRequire(realpathSync(path.join(resource, 'node_modules/@hima/harness/package.json'))).resolve('@dbos-inc/dbos-sdk')), '../../package.json'), 'utf8')).version, electron: nodeIdentity.electron, ledgerSchema: runtimeLedger.ledgerSpec.version,
         postgres: { version: postgres.version, platform: postgres.platform, source: postgres.source,
           manifestSha256: hash(path.join(resource, 'postgres/postgres-runtime.json')) },
-        bundledPacks: bundledPackIds, packs, atcsSite,
+        bundledPacks: bundledPackIds, packs, atcsSite, libinsight,
         atcsBinding: atcsBindingIds.length ? atcsBindingIds : atcsBindingNone,
         trialPack: { id: trialPackId, version: trialPack.version, methodDigest: trialPack.methodDigest,
           testRun: trialPack.testRun },

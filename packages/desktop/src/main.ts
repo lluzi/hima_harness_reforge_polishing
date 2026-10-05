@@ -20,7 +20,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, libInsightCodeDirectory, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
@@ -443,6 +443,19 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
     event.preventDefault();
     openOutside(url);
   });
+  // Sub-frames are fenced too. The one frame the workbench shows is Data Insight's LibInsight viewer
+  // (ADR-0019), a loopback page on a port the host chose; it may move within loopback HTTP and
+  // nowhere else, and a link out of it opens in the person's browser like any other.
+  // The host's own origin is never a frame target: a frame there would be same-origin with the workbench.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) return;
+    const target = new URL(details.url, 'http://invalid.invalid');
+    const host = allowedOrigin();
+    if (target.protocol === 'about:' || (target.protocol === 'http:' && (target.hostname === 'localhost' || target.hostname === '127.0.0.1')
+      && (host === undefined || new URL(host).port !== target.port))) return;
+    details.preventDefault();
+    openOutside(details.url);
+  });
   // The remote page gets no permission it has to be granted: nothing here asks for one.
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false); });
 }
@@ -553,6 +566,8 @@ async function start(): Promise<void> {
   const env = hostEnvironment();
   env.HIMA_DESKTOP_CONTROL_TOKEN = desktopExitToken;
   env.HIMA_POSTGRES_RUNTIME = postgresRuntimeDirectory(env);
+  const libInsight = libInsightCodeDirectory(env);
+  if (libInsight !== undefined) env.HIMA_LIBINSIGHT_ROOT = libInsight;
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
   // into a prepared home explicitly, which is how pilot validation is run.
   if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {

@@ -11,6 +11,7 @@ import type { WorkMemoryRead, WorkMemoryScope, WorkMemorySummary, RunKnowledgeCa
 import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
+import type { LibInsightViewerStatus } from '../libinsight-viewer.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -126,6 +127,14 @@ export const fetchSessionChildren = (body: { sessionId: string; parentSessionId:
 
 export const resolveReportAddress = (body: { sessionId: string; reportRef: string }, signal?: AbortSignal): Promise<HimaResult<Extract<TargetAddress, { kind: 'report' }>>> =>
   runRequest('/hima/api/context/report-address', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+/** Where Data Insight's LibInsight pages are served from, and whether the viewer is up (ADR-0019). */
+export const fetchLibInsightViewer = (sessionId: string, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
+  runRequest(`/hima/api/libinsight?sessionId=${encodeURIComponent(sessionId)}`, { signal });
+
+/** Start (or keep) the viewer; a data folder is the person's own choice and is remembered by the Host. */
+export const openLibInsightViewer = (body: { sessionId: string; dataFolder?: string; restart?: boolean }, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
+  runRequest('/hima/api/libinsight', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'open' }) });
 
 type MemoryEvidence = Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
 export type MemoryAnswer = WorkMemoryRead & { readonly scope: WorkMemoryScope } & Partial<MemoryEvidence>;

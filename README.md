@@ -58,6 +58,16 @@ DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
 
+Data Insight 默认内嵌 LibInsight 自有页面（[ADR-0019](docs/adr/0019-data-insight-frames-the-libinsight-app.md)）。源码运行时用环境变量指向 LibInsight checkout 和数据文件夹（含 `app.json`；也可在 Data Insight 的 “Data folder…” 中选择，Host 会记住）；需要本机 Python ≥ 3.9 与 numpy：
+
+```sh
+HIMA_LIBINSIGHT_ROOT=/Users/lluzi/code/lib_insight \
+HIMA_LIBINSIGHT_DATA=/Users/lluzi/code/lib_insight/data \
+pnpm run desktop
+```
+
+打包的 App 只携带 `packages/desktop/libinsight.pin.json` 固定 commit 的 `app/` 与 `libinsight/`：打包时加 `--libinsight-source /Users/lluzi/code/lib_insight`。LibInsight 升级后，把 pin 的 `commit` 改为新的完整 SHA、提交并重新打包即可。
+
 Ledger 版本为 26；旧版本 home 仍会被明确拒绝，不会自动改写。完整离线版本 19～25 的 `storages/hima_ledger.json` 快照可显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
 
 ```sh

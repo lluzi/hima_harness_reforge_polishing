@@ -168,6 +168,67 @@ test('Guide keeps its conversation while Campaign and Data Insight remain peer m
   } finally { await finish(d, browser); await home.h.dispose(); }
 });
 
+test('Data Insight shows the LibInsight pages in place and keeps them across a mode switch (ADR-0019)', async t => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  // A stand-in LibInsight checkout and data folder: the Host starts its server.py exactly as it starts
+  // the real one, and the dock frames whatever page that server answers.
+  const code = path.join(home.h.home, 'libinsight-test', 'code'), data = path.join(home.h.home, 'libinsight-test', 'checkout', 'data');
+  await mkdir(path.join(code, 'app'), { recursive: true });
+  await writeFile(path.join(code, 'app', 'server.py'), await readFile(path.join(repoRoot, 'test/fixtures/libinsight-viewer/app/server.py')));
+  await mkdir(data, { recursive: true });
+  await writeFile(path.join(data, 'app.json'), JSON.stringify({ data_root: 'data', kits: [{ id: 'fixture-kit', manifest: 'kits/fixture-kit.json' }] }));
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port, window: { width: 1440, height: 960 },
+    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1', HIMA_LIBINSIGHT_ROOT: code, HIMA_LIBINSIGHT_DATA: data } });
+  if (!d) { await home.h.dispose(); return; }
+  let browser: Inspector | undefined;
+  try {
+    browser = await inspectWindow(port);
+    const { host, cookie } = await prepareSession(d, browser);
+    const studio = await d.read('studio'); assert.ok(studio.ok);
+    const guide = studio.state.session;
+    assert.ok((await d.click('studio-mode-insight')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="libinsight"]')?.getAttribute('data-hima-state-viewer') === 'ready'`, 30_000);
+    const src = await browser.evaluate(`document.querySelector('[data-hima-control="libinsight-frame"]').src`) as string;
+    assert.match(src, /^http:\/\/localhost:\d+\/$/);
+    // The frame's own document, read through its own Chromium target: the page really rendered in
+    // the dock (no frame block, no blank), and its requests carry no Host session cookie.
+    let frame: Inspector | undefined;
+    for (let i = 0; i < 40 && frame === undefined; i += 1) {
+      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; url: string }[];
+      if (targets.some(entry => entry.type === 'iframe' && entry.url.startsWith(src))) frame = await inspectWindow(port, entry => entry.type === 'iframe' && entry.url.startsWith(src));
+      else await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert.ok(frame, 'the LibInsight frame is its own rendered document');
+    try {
+      await frame.wait(`document.body.innerText.includes('LibInsight fixture')`, 10_000);
+      const headers = await frame.evaluate(`fetch('/headers').then(r => r.json())`) as Record<string, string>;
+      assert.equal(Object.keys(headers).find(name => name.toLowerCase() === 'cookie'), undefined, 'the Host cookie never reaches the viewer');
+    } finally { frame.close(); }
+    // The frame really loads inside the dock: its own document is cross-origin, so the load is
+    // observed from outside and the element is marked, then must survive a trip to Campaign.
+    await browser.evaluate(`(() => { const f=document.querySelector('[data-hima-control="libinsight-frame"]'); f.dataset.testMark='kept'; return true; })()`);
+    await browser.wait(`(() => { const f=document.querySelector('[data-hima-control="libinsight-frame"]'); const r=f.getBoundingClientRect(); return r.width > 400 && r.height > 300; })()`, 10_000);
+    await capture(d, browser, 'data-insight-libinsight');
+    assert.ok((await d.click('studio-mode-campaign')).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="libinsight"]').hidden`), true);
+    assert.ok((await d.click('studio-mode-insight')).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="libinsight-frame"]').dataset.testMark`), 'kept', 'switching modes does not reload LibInsight');
+    // Retained reports stay one click away and lead back again.
+    assert.ok((await d.click('insight-show-reports')).ok);
+    assert.ok((await d.wait('studio', 'Choose retained data to inspect', 5000)).ok);
+    assert.ok((await d.click('insight-show-libinsight')).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="libinsight-frame"]').dataset.testMark`), 'kept');
+    const status = await (await api(host, cookie, `/hima/api/libinsight?sessionId=${encodeURIComponent(guide ?? '')}`)).json() as { state: string; dataFolder: string };
+    assert.equal(status.state, 'ready'); assert.equal(status.dataFolder, data);
+    const refused = await api(host, cookie, '/hima/api/libinsight?sessionId=not-a-session');
+    assert.equal(refused.status, 403, 'only a live conversation may ask where the viewer is');
+    const runs = await (await api(host, cookie, `/hima/api/runs?sessionId=${guide}`)).json() as { runs: unknown[] };
+    assert.equal(runs.runs.length, 0, 'browsing LibInsight creates no Campaign');
+  } finally { await finish(d, browser); await home.h.dispose(); }
+});
+
 test('ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });
   if (!home) return;
