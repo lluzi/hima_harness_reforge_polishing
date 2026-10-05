@@ -54,48 +54,51 @@ cells are in `state/inputs.json` → `platformDontUse`. Merge your cells into th
 A cell without GDS needs `GDS_ALLOW_EMPTY=<name|name>`. Run at most two trials at once. One run
 takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__setup__ws`.
 
-## Build a cell
+## Build cells in volume: the cell factory
 
-1. **SPICE.** Write the transistor netlist yourself or generate it with bool2cmos (verified):
-   `PYTHONPATH=/data/eda/project/bool2cmos:$PYTHONPATH python3 -m bool2cmos --function "!(A|B|C)" --inputs A,B,C --output Y --pdk sky130 --cell-name MY_NOR3 --out my_nor3.sp`
-   (several `--function ... --output ...` pairs make one multi-output cell; pins come out as
-   `A B C Y VGND VNB VPB VPWR`; check the printed `symbolic check = PASS`). Size devices yourself
-   for skewed variants. Examples: `flow/toolbox/celluzi/generate/lclayout_cells/*.sp`
-   (NOR3_PU2, INV2X, fused cells), LVS references in `generate/lvs_ref/`.
-2. **Layout (LibreCell).** The venv's `lclayout` script has a shebang for the celluzi mount, so call
-   its entry point through the venv Python (verified on linglong: NOR3_PU2 in 22 s):
-
-   ```sh
-   $CELLUZI_ROOT/tools/librecell_venv/bin/python3 -c 'import sys; from lclayout.standalone import main; sys.argv=["lclayout"]+sys.argv[1:]; main()' \
-     --cell <NAME> --netlist <cell.sp> --tech $CELLUZI_ROOT/pdk/librecell_sky130_tech.py --output-dir <dir>
-   ```
-
-   `PYTHONPATH` (set in your sandbox) supplies numpy. `<NAME>.gds` and `<NAME>.lef` are written first;
-   a trailing `KeyError: 'metal2_label'` from the Magic writer comes after them and does not affect
-   them. Do not use `--ignore-lvs`. Large cells can take much longer.
-3. **Post-process and checks.** A raw LibreCell GDS is not DRC-clean (NOR3_PU2 raw: 14 violations,
-   li.6, m1.6, via1.5a, m2.5, m1.2); the earlier clean cells went through the post-processing below. `generate/postprocess_cell.py`, Magic extraction (`extract_cell.sh`),
-   Netgen LVS (`run_lvs.sh`), KLayout DRC with the full sky130A deck (`run_drc_cell.sh <gds> <top> <report.xml>`).
-   A cell is `drc-lvs-clean` only when both passed; otherwise mark it `abstract` and say why.
-4. **LEF.** `python3 flow/toolbox/celluzi/scripts/fix_lef_sky130hd.py <in.lef> --inputs A,B,C --output Y -o <out.lef>`
-   renames VDD/GND to VPWR/VGND and adds VPB/VNB; `fix_lef_obs.py` adds obstructions.
-5. **Modelled Liberty.** `python3 flow/toolbox/celluzi/scripts/estimate_lib.py enhance ...` scales the
-   edge of a base foundry cell (`--edge rise|fall|both --derate 0.6`); `merge` composes fused cells;
-   `skew_lib.py` and `model_fused_cell.py` are the earlier variants. Run each with `-h` first. State
-   the base cell, the derate and the physical reason in the recipe. Every Liberty cell must declare
-   `pg_pin`s VPWR, VGND, VPB, VNB, and its output pins must equal the recipe `outputs`.
-
-Check your delivery before you request it (the same validator HimaHarness runs on delivery; your
-workspace is `<campaign>/.hima-engineering/<task>/workspace`, so the Campaign is three levels up):
+`flow/toolbox/factory/README.md` has the full spec format. In short:
 
 ```sh
-python3 <campaign>/flow/cellfmax_cli.py precheck <campaign> "$PWD" cells/r<k>/round-recipe.json
+F=<campaign>/flow/toolbox/factory
+python3 $F/factory.py check spec.json                       # < 1 s, validates every spec
+python3 $F/factory.py run spec.json --out factory-out --jobs 16 --attempts 3
+python3 $F/to_recipe.py factory-out spec.json <k> "$PWD" --out cells.json
 ```
 
-It prints `precheck PASS` or the exact change needed. The recipe validator refuses: a missing file, a SHA-256 that differs, Liberty and LEF signal pins
-that differ, missing power pins, a changed or dropped best-library cell, a support file outside
-`cells/r<k>/`, more than 10 new cells, a multi-output cell without `emap-window`, and a missing
-findings report, datasheet or usage guide. The message says exactly what to change.
+- A spec cell: `{"name", "outputs": {pin: function}, "inputs": [...], "variant": "PU2" | "ND2" |
+  "PU1.5" | {"pullup": {pin|"all"|"out:<net>": factor}, "pulldown": {...}}, "compareTo":
+  "sky130_fd_sc_hd__nor3_1", "footprint"?, "notes"?}`. Several outputs make one multi-output cell.
+- Use the foundry cell's own pin names (A, B, C / A1, A2, B1 ...) and logic for drop-in variants:
+  HimaHarness then gives the measured cell the foundry footprint and function text, so the resizer
+  can swap it in. Give your own families one shared `footprint` and identical function strings.
+- A clean cell takes about 10–15 s of one CPU (16 in parallel). "Clean" = Netgen LVS match and zero
+  violations in two KLayout decks (sky130A_mr.drc FEOL/BEOL/offgrid and sky130A.lydrc with FEOL).
+  Magic additionally reports licon.9/psdm.5a on every LibreCell gate contact; that is a documented
+  waiver, not checked by either KLayout deck.
+- Measured yield on linglong (24 diverse specs): NAND/NOR/AOI/OAI skew variants mostly clean;
+  skewed XNOR2/XOR2/MUX2I (15–18 devices) often fail routing; dense multi-output cells (XOR2+XNOR2,
+  half adder, XOR3+MAJ3) fail diffusion spacing; a plain two-output {nand2, nor2} is clean. Failed
+  cells are left out of the recipe by `to_recipe.py`; their outcome stays in library.md.
+- `to_recipe.py` copies every clean cell's `.sp`, `.gds`, `.lef`, `.ext.spice` into `cells/r<k>/lib/`,
+  writes `cells/r<k>/library.lef` and `library.md`, and emits the recipe `library` object with SHA-256.
+
+## Measure before you deliver (optional)
+
+HimaHarness characterizes every clean cell itself after delivery. To prune hopeless cells or to
+back your `agentClaim`, run the same characterizer (`flow/toolbox/char/README.md`): write a job
+from your clean cells (spice = the `.ext.spice`, functions, `index_ref` = compareTo) and run
+`python3 flow/toolbox/char/characterize.py job.json --reference-lib $ORFS_ROOT/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib --calibration <campaign>/runs/calibration/calibration.json --out mychar --jobs 16`
+(the Campaign's calibration exists after the first characterize step; before that, run
+`calibrate.py` into your workspace, about 50 s). `compare_lib.py` prints point ratios against a
+foundry cell.
+
+## Single-cell tools (the factory wraps these)
+
+bool2cmos (`PYTHONPATH=/data/eda/project/bool2cmos:$PYTHONPATH python3 -m bool2cmos ...`), LibreCell
+(`$CELLUZI_ROOT/tools/librecell_venv/bin/python3 -c 'import sys; from lclayout.standalone import main; ...'`),
+Magic extraction, Netgen LVS and the KLayout decks are all on the sandbox `PATH`; the celluzi copies in
+`flow/toolbox/celluzi/` are the older single-cell scripts (their `/foss/designs/celluzi` paths are
+`$CELLUZI_ROOT` here). Prefer the factory.
 
 ## Images for datasheets
 

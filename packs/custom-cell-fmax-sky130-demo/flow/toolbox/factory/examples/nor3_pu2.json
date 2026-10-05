@@ -1,0 +1,7 @@
+{
+  "jobs": 1,
+  "cells": [
+    {"name": "NOR3_PU2", "outputs": {"Y": "!(A|B|C)"}, "inputs": ["A", "B", "C"],
+     "variant": {"pullup": {"all": 2}}, "notes": "celluzi NOR3_PU2: nor3_1 with doubled pull-up"}
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "jobs": 16,
+  "cells": [
+    {"name": "NOR2_PU2",   "outputs": {"Y": "!(A|B)"},  "variant": "PU2"},
+    {"name": "NOR2_PUA2",  "outputs": {"Y": "!(A|B)"},  "variant": {"pullup": {"A": 2}}, "notes": "per-input skew: A fast rise"},
+    {"name": "NOR3_PU2",   "outputs": {"Y": "!(A|B|C)"}, "variant": "PU2"},
+    {"name": "NOR3_ND2",   "outputs": {"Y": "!(A|B|C)"}, "variant": "ND2"},
+    {"name": "NAND2_ND2",  "outputs": {"Y": "!(A&B)"},  "variant": "ND2"},
+    {"name": "NAND2_PU2",  "outputs": {"Y": "!(A&B)"},  "variant": "PU2"},
+    {"name": "NAND3_ND2",  "outputs": {"Y": "!(A&B&C)"}, "variant": "ND2"},
+    {"name": "NAND3_NDA2", "outputs": {"Y": "!(A&B&C)"}, "variant": {"pulldown": {"A": 2}}},
+    {"name": "A21OI_PU2",  "outputs": {"Y": "!((A1&A2)|B1)"}, "variant": "PU2"},
+    {"name": "A21OI_NDB2", "outputs": {"Y": "!((A1&A2)|B1)"}, "variant": {"pulldown": {"B1": 2}}},
+    {"name": "O21AI_ND2",  "outputs": {"Y": "!((A1|A2)&B1)"}, "variant": "ND2"},
+    {"name": "O21AI_PU2",  "outputs": {"Y": "!((A1|A2)&B1)"}, "variant": "PU2"},
+    {"name": "A22OI_PU2",  "outputs": {"Y": "!((A1&A2)|(B1&B2))"}, "variant": "PU2"},
+    {"name": "A211OI_PU2", "outputs": {"Y": "!((A1&A2)|B1|C1)"}, "variant": "PU2"},
+    {"name": "XNOR2_PU2",  "outputs": {"Y": "!(A^B)"}, "variant": "PU2"},
+    {"name": "XOR2_ND2",   "outputs": {"X": "A^B"}, "variant": "ND2"},
+    {"name": "XOR2_OPU2",  "outputs": {"X": "A^B"}, "variant": {"pullup": {"out:X": 2}}, "notes": "only the output stage pull-up doubled"},
+    {"name": "MUX2I_PU2",  "outputs": {"Y": "!((A0&!S)|(A1&S))"}, "inputs": ["A0", "A1", "S"], "variant": "PU2"},
+    {"name": "MUX2I_ND2",  "outputs": {"Y": "!((A0&!S)|(A1&S))"}, "inputs": ["A0", "A1", "S"], "variant": "ND2"},
+    {"name": "MO_XOR2_XNOR2", "outputs": {"X": "A^B", "XN": "!(A^B)"}, "inputs": ["A", "B"]},
+    {"name": "MO_HA",      "outputs": {"S": "A^B", "CO": "A&B"}, "inputs": ["A", "B"]},
+    {"name": "MO_HAN",     "outputs": {"SN": "!(A^B)", "CON": "!(A&B)"}, "inputs": ["A", "B"]},
+    {"name": "MO_NAND2_NOR2", "outputs": {"Y1": "!(A&B)", "Y2": "!(A|B)"}, "inputs": ["A", "B"]},
+    {"name": "MO_XOR3_MAJ3", "outputs": {"X": "A^B^C", "M": "(A&B)|(B&C)|(A&C)"}, "inputs": ["A", "B", "C"]}
+  ]
+}

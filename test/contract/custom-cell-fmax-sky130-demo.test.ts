@@ -108,8 +108,8 @@ test('the resident capability points at the installed v2 wrapper and the no-entr
   assert.ok(!JSON.stringify(capability).includes('tsmc28'), 'no TSMC28 roots in the SKY130 sandbox');
 });
 
-test('the Pack tool, Reader and characterizer unit suites pass (python3 -m unittest)', () => {
-  for (const suite of ['test/contract/support/cellfmax_cli_test.py', 'test/contract/support/cellfmax_char_test.py']) {
+test('the Pack tool, Reader, characterizer and cell-factory unit suites pass (python3 -m unittest)', () => {
+  for (const suite of ['test/contract/support/cellfmax_cli_test.py', 'test/contract/support/cellfmax_char_test.py', 'test/contract/support/cellfmax_factory_test.py']) {
     const run = spawnSync('python3', ['-m', 'unittest', suite], { cwd: repoRoot, encoding: 'utf8' });
     assert.equal(run.status, 0, `${suite}\n${run.stdout}\n${run.stderr}`);
   }
