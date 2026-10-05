@@ -3,6 +3,7 @@
 // start route can confirm straight from it, and both hima_* tools apply it. Real Host (a subprocess
 // for the HTTP routes, an in-process host for the tools) and local files only; no model, Desktop or
 // SSH is started.
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
@@ -20,7 +21,12 @@ import { writeStandinFlow } from './support/standin-flow.ts';
 // and `sources/${design}` has nothing to copy. A second call onto the same root adds a second design's
 // directories beside the site's own bound one, so an override has something real to point at.
 import { writeStandinFlow as generateStandinDesign } from '../../packages/desktop/src/local-site.ts';
+import { loadSite } from '@hima/harness';
+import { waitUntil } from './support/fabric.ts';
 import { CAMPAIGN_SCHEMA, writeCampaignFile } from '@hima/harness';
+
+const { resolveDurableTaskAdapter } = await import(new URL('../../packages/harness/lib/durable-task-adapters.js', import.meta.url).href) as typeof import('../../packages/harness/lib/types/durable-task-adapters.js');
+const { reconnectRetainedJob } = await import(new URL('../../packages/harness/lib/jobs.js', import.meta.url).href) as typeof import('../../packages/harness/lib/types/jobs.js');
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -158,7 +164,17 @@ test('Case 5: POST /hima/api/runs/start confirms straight from the Campaign file
     const body = await res.json() as any;
     assert.equal(res.status, 200, JSON.stringify(body));
     assert.equal(body.run.goal.target_period_ns, 2.3, JSON.stringify(body.run.goal));
-    assert.equal(body.workspace?.design, 'guide', JSON.stringify(body.workspace));
+    assert.equal(body.run.engine, 'dbos/5.2.11');
+    let view: any;
+    await waitUntil('the public prepared workspace binding', async () => {
+      const response = await api(f.host, f.cookie, `/hima/api/runs/${body.run.id}?sessionId=${f.sessionId}`);
+      assert.equal(response.status, 200);
+      view = await response.json();
+      return view.workspace?.bindings?.design === 'guide';
+    }, 30_000, 25);
+    assert.equal(view.workspace.bindings.design, 'guide');
+    assert.notEqual(view.run.control?.owner, f.sessionId);
+    assert.equal(view.run.control?.guideSessionId, f.sessionId);
     const records = await (await api(f.host, f.cookie, `/hima/api/runs/${body.run.id}/records?type=workspace&sessionId=${f.sessionId}`)).json() as any;
     const workspaceRecord = (records.records ?? records).find((r: any) => r.type === 'workspace');
     assert.ok(workspaceRecord, JSON.stringify(records));
@@ -190,6 +206,14 @@ test('Case 6: editing the Goal after confirming refuses a second start with the 
 interface ToolResult { readonly isError: boolean; readonly content: readonly { readonly type: string; readonly text?: string }[] }
 const jsonOf = (result: ToolResult): Record<string, any> =>
   JSON.parse(result.content.find((item) => item.type === 'text')?.text ?? '{}') as Record<string, any>;
+
+async function preparedContext(host: InProcessHost, runId: string) {
+  await waitUntil('the public durable preparation fact', async () => {
+    const context = await host.ctx.hima.readExecutionContext(runId);
+    return ['prepared', 'reused'].includes(context.durable?.preparation?.kind ?? '');
+  }, 30_000, 25);
+  return host.ctx.hima.readExecutionContext(runId);
+}
 
 test('Case 7: hima_prepare applies this Agent workspace\'s own Campaign file by default, and can be told not to', async (t) => {
   const h = await createHimaHome();
@@ -282,10 +306,12 @@ test('Case 8: hima_run confirms a file that sets a Strategy knob and a Budget ov
     });
     assert.equal(started.isError, false, JSON.stringify(started));
     const startedJson = jsonOf(started as unknown as ToolResult);
-    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
+    assert.equal(startedJson.kind, 'preparing', JSON.stringify(startedJson));
     assert.equal(startedJson.strategy?.periodNs, 3.5, JSON.stringify(startedJson));
-    const run = host.ctx.hima.ledger.run(startedJson.runId as string);
-    assert.ok(run, 'the run exists in the ledger');
+    const context = await preparedContext(host, startedJson.runId as string);
+    const run = context.run;
+    assert.notEqual(run.control?.owner, String(agent.id), 'the Guide remains distinct from the Campaign owner');
+    assert.equal(run.control?.guideSessionId, String(agent.id));
     assert.equal(run!.budget!.timeBoxMs, 90_000, JSON.stringify(run!.budget));
   } finally { await host.dispose(); await h.dispose(); }
 });
@@ -324,15 +350,17 @@ test('Case 8b: a time box and generation limit asked for in the conversation rea
       goal: prepared.goal });
     assert.equal(without.isError, true, JSON.stringify(without));
     assert.match(JSON.stringify(without.content), /Campaign preparation changed|budget/i);
-    assert.equal(host.ctx.hima.ledger.runs().length, 0, 'no Run was created by a confirmation of another budget');
+    assert.equal((await host.ctx.hima.durable.store.runs()).length, 0, 'no Run was created by a confirmation of another budget');
 
     const started = await call('run-asked-budget', 'hima_run', { proposalId: prepared.id, pack: campaignFilePackId, site: 'local',
       goal: prepared.goal, budget });
     assert.equal(started.isError, false, JSON.stringify(started));
     const startedJson = jsonOf(started);
-    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
-    const run = host.ctx.hima.ledger.run(startedJson.runId as string);
-    assert.ok(run, 'the run exists in the ledger');
+    assert.equal(startedJson.kind, 'preparing', JSON.stringify(startedJson));
+    const context = await preparedContext(host, startedJson.runId as string);
+    const run = context.run;
+    assert.notEqual(run.control?.owner, String(agent.id), 'the Guide remains distinct from the Campaign owner');
+    assert.equal(run.control?.guideSessionId, String(agent.id));
     assert.equal(run!.budget!.timeBoxMs, 150 * 60_000, JSON.stringify(run!.budget));
     assert.equal(run!.budget!.generationLimit, 6, JSON.stringify(run!.budget));
   } finally { await host.dispose(); await h.dispose(); }
@@ -536,7 +564,11 @@ test('Case 16: a malformed Campaign file does not throw out of hima_prepare or h
     const startedJson = jsonOf(started as unknown as ToolResult);
     assert.equal(startedJson.campaignFile?.applied, false, JSON.stringify(startedJson));
     assert.match(startedJson.campaignFile?.error ?? '', /goal/i, JSON.stringify(startedJson));
-    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
+    assert.equal(startedJson.kind, 'preparing', JSON.stringify(startedJson));
+    const context = await preparedContext(host, startedJson.runId as string);
+    assert.equal(context.run.goal?.target_period_ns, 2.3);
+    assert.notEqual(context.run.control?.owner, String(agent.id));
+    assert.equal(context.run.control?.guideSessionId, String(agent.id));
   } finally { await host.dispose(); await h.dispose(); }
 });
 
@@ -647,65 +679,127 @@ test('Case 19: PUT with an unknown top-level body field answers 400 naming it', 
 // `inputInnovusDatabase` override (workspace record, workspace.json), but its first Job was built
 // from the Site file re-read at execution time and staged the Site's own default instead. The
 // recorded Run input bindings are the one source of every Job's inputs.
-test('Case 20: a Campaign-file input override reaches the owner-driven Job\'s command line, and a Job whose inputs differ from the Run\'s recorded ones is refused before launch', async (t) => {
-  const { waitUntil, sessionsOf, killSessions } = await import('./support/fabric.ts');
+test('Case 20: a Campaign-file input override reaches the automatic Job\'s command line, and its original prepared command is refused after a real input revision', async (t) => {
   const h = await createHimaHome();
   const flow = await writeStandinFlow(t, h, { sleepSeconds: 0.01 });
   assert.ok(flow, 'the stand-in flow is written');
   await installPack(h);
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow!.root], allowedWriteRoots: [h.workspace],
     bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace } });
-  await addOverrideDesign(flow!.root, 'guide');
+  await generateStandinDesign({ root: flow!.root, design: 'guide', sleepSeconds: 30 });
   assert.notEqual(flow!.design, 'guide');
   const host = await bootInProcess(h);
   const runIds: string[] = [];
   try {
-    const owner = await createRootAgent(host.ctx, h.workspace); const actor = String(owner.id);
-    const start = async () => {
-      const started = await host.ctx.hima.startRun({ pack: 'opene902-timing-probe', site: 'local', goal: { target_period_ns: 2 },
-        ownerSessionId: actor, inputs: { design: 'guide' } });
-      assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') throw new Error('unreachable');
-      runIds.push(started.run.id);
-      return started.run;
+    const guide = await createRootAgent(host.ctx, h.workspace);
+    writeCampaignFile(h.workspace, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: 'opene902-timing-probe' }, site: { name: 'local' },
+      inputs: { design: 'guide' }, goal: { target_period_ns: 2 }, strategy: {}, budget: {}, knowledge: [], notes: '',
+    });
+    const invoke = async (name: string, arguments_: Record<string, unknown>) => {
+      const answer = await host.ctx.tools.execute({ name, callId: `input-${crypto.randomUUID()}` as never,
+        arguments: arguments_, agent: guide, signal: AbortSignal.timeout(20_000) });
+      assert.equal(answer.isError, false, JSON.stringify(answer));
+      return jsonOf(answer as unknown as ToolResult);
     };
-    let serial = 0;
-    const act = (runId: string, action: 'begin' | 'work', fields: { nodeId?: string; executionId?: string }) => {
-      const control = host.ctx.hima.ledger.run(runId)!.control!;
-      return host.ctx.hima.executionAction({ runId, actor, action, ...fields, expectedEpoch: control.epoch,
-        expectedRevision: control.revision, requestId: `override-${++serial}` });
-    };
-
-    const run = await start();
-    const recorded = host.ctx.hima.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
-    assert.equal(recorded?.type === 'workspace' ? recorded.bindings?.design : undefined, 'guide', 'preparation recorded the override');
-    const begun = await act(run.id, 'begin', { nodeId: run.currentNode! });
-    assert.equal(begun.kind, 'accepted', JSON.stringify(begun.reason ?? begun));
-    const worked = await act(run.id, 'work', { executionId: begun.receipt!.executionId! });
-    assert.equal(worked.kind, 'accepted', JSON.stringify(worked.reason ?? worked));
-    await waitUntil('the first Job is launched', () => host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).some((record) => record.type === 'job' && record.event === 'launched'), 30_000, 25);
-    const launched = host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).find((record) => record.type === 'job' && record.event === 'launched');
-    const wire = launched?.type === 'job' ? launched.job.wire : '';
+    const proposal = await invoke('hima_prepare', { pack: 'opene902-timing-probe', site: 'local' });
+    assert.equal(proposal.ready, true, JSON.stringify(proposal));
+    const started = await invoke('hima_run', { pack: 'opene902-timing-probe', site: 'local', proposalId: proposal.id,
+      goal: proposal.goal, strategy: proposal.strategy });
+    assert.equal(started.kind, 'preparing', JSON.stringify(started));
+    const runId = started.runId as string;
+    runIds.push(runId);
+    const context = await preparedContext(host, runId);
+    assert.notEqual(context.run.control?.owner, String(guide.id));
+    assert.equal(context.run.control?.guideSessionId, String(guide.id));
+    assert.equal(context.durable?.preparation?.kind === 'prepared' ? context.durable.preparation.file.design : undefined, 'guide');
+    let launched: any;
+    await waitUntil('the original automatic Pack command Job', async () => {
+      for (const effect of (await host.ctx.hima.durable.store.flowPhysicalFacts(runId)).effects) {
+        const receipt = await host.ctx.hima.durable.store.effectFact(effect.identity.effectId, 'submitted') as any;
+        if (receipt?.wire?.includes('DESIGN=guide')) launched = receipt;
+      }
+      return launched !== undefined;
+    }, 30_000, 25);
+    const wire = launched.wire;
     assert.match(wire, /DESIGN=guide(\s|'|$)/, `the Job's command line carries the Campaign file's design: ${wire}`);
-    assert.doesNotMatch(wire, new RegExp(`DESIGN=${flow!.design}(\\s|'|$)`), 'never the Site file\'s own design');
+    assert.doesNotMatch(wire, new RegExp(`DESIGN=${flow!.design}(\\s|'|$)`), 'never the Site file own design');
 
-    // The Run's recorded inputs move after an execution was admitted: its Job is refused before launch.
-    await host.ctx.hima.cancelRun(run.id); killSessions(sessionsOf(host, run.id));
-    const second = await start();
-    const secondBegun = await act(second.id, 'begin', { nodeId: second.currentNode! });
-    assert.equal(secondBegun.kind, 'accepted', JSON.stringify(secondBegun.reason ?? secondBegun));
-    const prepared = host.ctx.hima.ledger.records({ runId: second.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
-    assert.ok(prepared?.type === 'workspace');
-    const { id: _id, runId: _runId, siteId: _siteId, seq: _seq, at: _at, writer: _writer, generation: _generation, type: _type, ...fields } = prepared as any;
-    await host.ctx.hima.ledger.appendWorkspace(second.id, { ...fields, event: 'reused', bindings: { ...prepared.bindings, design: flow!.design } });
-    const refused = await act(second.id, 'work', { executionId: secondBegun.receipt!.executionId! });
-    const execution = () => host.ctx.hima.ledger.run(second.id)!.control!.executions[secondBegun.receipt!.executionId!]!;
-    await waitUntil('the mismatched launch settles', () => refused.kind !== 'accepted' || execution().result !== undefined || execution().phase !== 'begun', 30_000, 25);
-    assert.equal(host.ctx.hima.ledger.records({ runId: second.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, 0,
-      'nothing was launched with inputs the Run no longer records');
-    assert.match(JSON.stringify({ refused, execution: execution() }), /recorded input bindings|recorded "?design/i,
-      `the refusal names the recorded input mismatch: ${JSON.stringify({ refused, execution: execution() })}`);
+    // Keep the actual first Job's seat until the second original automatic invocation has
+    // prepared its command. Revising that invocation changes current inputs through DBOS;
+    // the old command's actual launch callback must refuse before spawning its Job.
+    const secondProposal = await invoke('hima_prepare', { pack: 'opene902-timing-probe', site: 'local' });
+    const second = await invoke('hima_run', { pack: 'opene902-timing-probe', site: 'local', proposalId: secondProposal.id,
+      goal: secondProposal.goal, strategy: secondProposal.strategy });
+    assert.equal(second.kind, 'preparing');
+    runIds.push(second.runId);
+    await preparedContext(host, second.runId);
+    const runtime = host.ctx.hima.durable;
+    let invocation: any; let preparedJob: any;
+    await waitUntil('the second original prepared command awaiting the occupied Site seat', async () => {
+      invocation = (await runtime.store.flowInvocations(second.runId)).find(item => item.identity.taskId === 'synthesize');
+      if (!invocation) return false;
+      preparedJob = await runtime.store.effectFact(invocation.identity.effectId, 'prepared');
+      return preparedJob !== undefined && preparedJob !== null;
+    }, 30_000, 25);
+    assert.equal(await runtime.store.effectFact(invocation.identity.effectId, 'submitted'), undefined);
+    const original = invocation.context;
+    const authority = await runtime.store.run(second.runId);
+    const request = { identity: invocation.identity, input: original.input,
+      contract: original.flow.tasks[original.taskId].contract, localSchemas: original.flow.localSchemas,
+      admission: { runId: second.runId, effectId: invocation.identity.effectId, owner: authority.owner,
+        epoch: authority.epoch, revision: authority.revision } };
+    const adapter = await resolveDurableTaskAdapter({ runtime, flow: original.flow, task: original.flow.tasks[original.taskId], request,
+      invocation: { iterations: original.iterations, branches: original.branches, extensions: original.extensions, revision: invocation.version },
+      committed: original.committed, extensionResults: original.extensionResults, namedResults: original.namedResults,
+      bindings: { runInput: original.runInput, goal: original.goal, strategy: original.strategy, carry: original.carry } },
+      { ctx: host.ctx, sitesDir: path.join(h.home, 'hima/sites'), retainedMaterialsDir: path.join(h.home, 'hima/run-assets/dbos') });
+    assert.ok('submit' in adapter, 'the same original automatic command adapter is materialized');
+    if (!('submit' in adapter)) throw new Error('original command adapter unavailable');
+    assert.match(preparedJob.wire, /DESIGN=guide(\s|'|$)/);
+    assert.match(preparedJob.wire, /CLOCK_PERIOD_NS=2.3(\s|'|$)/);
+    const changedInput = { ...original.input, PERIOD_NS: 3.5 };
+    assert.notDeepEqual(changedInput, original.input);
+    await runtime.store.command({ runId: second.runId, commandId: `input-revision-${crypto.randomUUID()}`, action: 'revise',
+      owner: authority.owner, epoch: authority.epoch, revision: authority.revision,
+      change: { taskId: original.taskId, effectId: invocation.identity.effectId, input: changedInput,
+        evidence: { reason: 'The reviewed Strategy changes the command input; the old prepared invocation must not launch' } } });
+    assert.equal((await runtime.store.run(second.runId)).revision, authority.revision + 1);
+    let actualCallbackCalls = 0;
+    await assert.rejects(adapter.submit(preparedJob, async () => {
+      actualCallbackCalls++;
+      if (!await runtime.store.claimEffectDispatch(request.admission, () => adapter.permit(preparedJob, 'submit'),
+        'submit', request.identity.inputSha256)) throw new Error('Original dispatch is already retained');
+    }), /stale|superseded|current|revision|admission/i);
+    assert.equal(actualCallbackCalls, 1, 'the stale input refusal reached the actual command launch boundary');
+    assert.equal(await runtime.store.effectFact(invocation.identity.effectId, 'submitted'), undefined);
+    const recovered = await reconnectRetainedJob(loadSite(path.join(h.home, 'hima/sites'), 'local'), preparedJob);
+    assert.equal(recovered.pid, undefined, 'zero physical Job launched for the superseded input invocation');
+    assert.equal(spawnSync('tmux', ['has-session', '-t', `=${preparedJob.session}`], { timeout: 5000 }).status, 1,
+      'the original wrong-input command has no actual tmux Job session');
   } finally {
-    for (const runId of runIds) { try { await host.ctx.hima.cancelRun(runId); } catch { /* ended */ } finally { killSessions(sessionsOf(host, runId)); } }
-    await host.dispose(); await h.dispose();
+    try {
+      for (const runId of runIds) {
+        const effects = (await host.ctx.hima.durable.store.flowPhysicalFacts(runId)).effects;
+        const sessions = new Set<string>();
+        for (const effect of effects) {
+          const receipt = await host.ctx.hima.durable.store.effectFact(effect.identity.effectId, 'submitted') as { session?: string } | undefined;
+          if (receipt?.session) sessions.add(receipt.session);
+        }
+        try {
+          await host.ctx.hima.cancelRun(runId);
+          await waitUntil('the cancelled Run has actual resource closure proof', async () => {
+            const context = await host.ctx.hima.readExecutionContext(runId);
+            return (context.run as typeof context.run & { stopState?: { closed: boolean } }).stopState?.closed === true;
+          }, 30_000, 25);
+          for (const session of sessions) assert.equal(spawnSync('tmux', ['has-session', '-t', `=${session}`], { timeout: 5000 }).status, 1,
+            'the original submitted Job session is physically absent before Host disposal');
+        } finally {
+          // A failed closure assertion remains a failure. Emergency cleanup is scoped to
+          // the actual PG-recorded Jobs of this fixture, never historical Ledger sessions.
+          for (const session of sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 5000 });
+        }
+      }
+    } finally { await host.dispose(); await h.dispose(); }
   }
 });
