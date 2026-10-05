@@ -36,7 +36,7 @@ BASE_W = {"n": 0.65, "p": 1.0}          # bool2cmos sky130 profile = sky130_fd_s
 MIN_W = 0.42                            # lclayout tech minimum_gate_width_{n,p}fet
 NMOS_MODEL = "sky130_fd_pr__nfet_01v8"
 PMOS_MODEL = "sky130_fd_pr__pfet_01v8_hvt"
-STAGES = ("netlist", "layout", "postprocess", "extract", "lvs", "drc", "lef")
+STAGES = ("netlist", "layout", "postprocess", "extract", "lvs", "drc", "lef", "pinaccess")
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 PIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,15}$")
 
@@ -54,6 +54,16 @@ DRC_DECKS = {
                 "sky130A.lydrc exactly as celluzi ran it (FEOL off: BEOL+OFFGRID only) -- comparison only"),
 }
 DEFAULT_DECKS = "mr,lydrc-feol"
+
+# LibreCell tech profiles: override files appended to the base tech (librecell_sky130_tech.py).
+# "-m1": routing in li1 + met1 only (met2 free for the router's pin access, see tech_m1_overrides.py).
+PROFILES = {
+    "strict-m1": ("tech_m1_overrides.py",),
+    "relaxed-m1": ("tech_relaxed_overrides.py", "tech_m1_overrides.py"),
+    "strict": (),
+    "relaxed": ("tech_relaxed_overrides.py",),
+}
+DEFAULT_PROFILES = "strict-m1,relaxed-m1,strict,relaxed"
 
 
 def merge_drc(by_deck):
@@ -635,6 +645,11 @@ def classify_failure(stage, detail):
     if stage == "drc":
         rules = sorted(json.loads(d).keys()) if d.startswith("{") else [d]
         return "drc:" + "+".join(rules)
+    if stage == "lef" and d.startswith("edge-margin"):
+        return "lef:edge-margin"
+    if stage == "pinaccess":
+        return ("pinaccess:no-access-point" if "no access point" in d else
+                "pinaccess:no-access-pattern" if "DRT-0085" in d else "pinaccess:tool")
     return "%s:%s" % (stage, (d.split(":")[0] or "error")[:40])
 
 
@@ -675,6 +690,46 @@ def snap_lef_width(text, dx_nm):
             x2 = w1
         return "RECT %.3f %.3f %.3f %.3f" % (x1, y1, x2, y2)
     return re.sub(r"RECT\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", fix, text)
+
+
+def shift_lef_x(text, dx_nm):
+    """Mirror the post-processor's edge-margin move in the LEF: every RECT moves right by dx_nm, rects
+    that spanned the old width (rails) are re-anchored at x = 0, SIZE grows by dx_nm."""
+    if not dx_nm:
+        return text
+    m = re.search(r"SIZE\s+([\d.]+)\s+BY\s+([\d.]+)", text)
+    if not m:
+        return text
+    w0, dx = float(m.group(1)), dx_nm / 1000.0
+    text = text[:m.start()] + "SIZE %.3f BY %s" % (w0 + dx, m.group(2)) + text[m.end():]
+
+    def fix(mm):
+        x1, y1, x2, y2 = (float(v) for v in mm.groups())
+        full = x1 <= 1e-6 and abs(x2 - w0) < 1e-6
+        return "RECT %.3f %.3f %.3f %.3f" % (0.0 if full else x1 + dx, y1, x2 + dx, y2)
+    return re.sub(r"RECT\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", fix, text)
+
+
+# Half the minimum spacing (um): metal this close to the left/right cell edge can short or violate
+# spacing against the abutted cell (sky130_fd_sc_hd keeps all 440 core cells clear of it).
+EDGE_MARGIN_UM = {"li1": 0.085, "met1": 0.07, "met2": 0.07}
+
+
+def lef_edge_violations(text, margins=None, rails=(0.24, 2.48)):
+    """[(layer, rect)] of li1/met1/met2 rects between the rails that come closer than the margin to the
+    left or right cell edge."""
+    margins = margins or EDGE_MARGIN_UM
+    m = re.search(r"SIZE\s+([\d.]+)\s+BY", text)
+    if not m:
+        return []
+    w = float(m.group(1))
+    out = []
+    for layer, r in _lef_rects(text):
+        if layer not in margins or r[3] <= rails[0] + 1e-6 or r[1] >= rails[1] - 1e-6:
+            continue
+        if r[0] < margins[layer] - 1e-6 or r[2] > w - margins[layer] + 1e-6:
+            out.append((layer, r))
+    return out
 
 
 LEF_LAYER = {"li1": "li1", "met1": "met1", "met2": "met2", "67/20": "li1", "68/20": "met1", "69/20": "met2"}
@@ -782,6 +837,52 @@ def augment_lef(text, by_layer):
     return text
 
 
+def absorb_pin_obs(text):
+    """Move OBS rects that touch a signal PIN's port rect on the same layer into that pin, repeated
+    until nothing moves. In a DRC-clean cell touching metal is one net, so such a rect is pin metal
+    that only the LEF calls an obstruction; left in OBS it sits flush against the pin and the router
+    rejects every access point next to it (DRT-0073). A rect touching two pins stays in OBS.
+    Returns (text, {pin: moved rect count})."""
+    pins = {m.group(1): m for m in re.finditer(r"(?ms)^[ \t]*PIN\s+(\S+)\s*\n(.*?)^[ \t]*END\s+\1\s*$", text)}
+    pin_rects = {n: _lef_rects(m.group(2)) for n, m in pins.items() if n not in POWER_PINS}
+    om = re.search(r"(?ms)^([ \t]*OBS\s*\n)(.*?)(^[ \t]*END\s*$)", text)
+    if not om or not pin_rects:
+        return text, {}
+    obs = _lef_rects(om.group(2))
+    owner = [None] * len(obs)
+    changed = True
+    while changed:
+        changed = False
+        for i, (layer, r) in enumerate(obs):
+            if owner[i]:
+                continue
+            hits = {n for n, prs in pin_rects.items() if any(pl == layer and _touch(r, pr) for pl, pr in prs)}
+            if len(hits) == 1:
+                owner[i] = hits.pop()
+                pin_rects[owner[i]].append((layer, r))
+                changed = True
+    moved = {}
+    for i, n in enumerate(owner):
+        if n:
+            moved.setdefault(n, {}).setdefault(obs[i][0], []).append(list(obs[i][1]))
+    if not moved:
+        return text, {}
+    keep = {}
+    for i, (layer, r) in enumerate(obs):
+        if not owner[i]:
+            keep.setdefault(layer, []).append(r)
+    obs_body = "".join("    LAYER %s ;\n" % layer + "".join("     RECT %.3f %.3f %.3f %.3f ;\n" % r for r in rs)
+                       for layer, rs in keep.items())
+    text = text[:om.start(2)] + obs_body + text[om.end(2):] if keep else text[:om.start()] + text[om.end():]
+    for n, by in moved.items():   # insert before the END of the pin's last PORT (as augment_lef)
+        m = re.search(r"(?ms)^([ \t]*)PIN\s+%s\s*\n.*?^([ \t]*)END\s*$(?=.*?^[ \t]*END\s+%s\s*$)" % (
+            re.escape(n), re.escape(n)), text)
+        lines = "".join("       LAYER %s ;\n" % layer + "".join("        RECT %.3f %.3f %.3f %.3f ;\n" % tuple(r)
+                                                                for r in rs) for layer, rs in sorted(by.items()))
+        text = text[:m.start(2)] + lines + text[m.start(2):]
+    return text, {n: sum(len(v) for v in by.values()) for n, by in moved.items()}
+
+
 # ------------------------------------------------------------------------------------------------
 # Tool runner (impure)
 # ------------------------------------------------------------------------------------------------
@@ -792,9 +893,23 @@ class Env:
         self.pdk_root = os.environ.get("PDK_ROOT", "/foss/pdks")
         self.pdk = os.environ.get("PDK", "sky130A")
         self.tech = args.tech or os.path.join(HERE, "librecell_sky130_tech.py")
-        self.techs = {"strict": self.tech, "relaxed": None}    # relaxed is built in run_batch
-        self.relaxed_overrides = os.path.join(HERE, "tech_relaxed_overrides.py")
         self.profiles = [x for x in args.profiles.split(",") if x]
+        for x in self.profiles:
+            if x not in PROFILES:
+                raise SystemExit("unknown profile %r (choose from %s)" % (x, ", ".join(PROFILES)))
+        self.techs = {"strict": self.tech}       # the others are written by run_batch
+        # pin access (OpenROAD): ORFS platform tech LEF and tracks
+        plat = os.environ.get("ORFS_PLATFORM_DIR",
+                              os.path.join(self.celluzi, "OpenROAD-flow-scripts/flow/platforms/sky130hd"))
+        self.pa_tech_lef = args.pa_tech_lef or os.path.join(plat, "lef/sky130_fd_sc_hd.tlef")
+        self.pa_tracks = args.pa_tracks or os.path.join(plat, "make_tracks.tcl")
+        self.pa_platform_lef = args.pa_platform_lef or os.path.join(plat, "lef/sky130_fd_sc_hd_merged.lef")
+        self.pa_check = os.path.normpath(os.path.join(HERE, "..", "pinaccess", "check.py"))
+        if not os.path.isfile(self.pa_check):
+            raise SystemExit("pin-access check not found: %s (copy toolbox/pinaccess next to factory/)" % self.pa_check)
+        for f in (self.pa_tech_lef, self.pa_tracks, self.pa_platform_lef):
+            if not os.path.isfile(f):
+                raise SystemExit("pin-access input missing: %s (set ORFS_PLATFORM_DIR or --pa-*)" % f)
         self.site_nm = args.site_nm
         self.attempts = max(1, args.attempts)
         self.cell_budget = args.cell_budget
@@ -806,10 +921,11 @@ class Env:
         self.deck = ",".join(self.decks)
         self.deck_dir = None
         self.timeouts = {"netlist": 120, "layout": args.layout_timeout, "postprocess": 120,
-                         "extract": 300, "lvs": 300, "drc": 600, "lef": 60}
+                         "extract": 300, "lvs": 300, "drc": 600, "lef": 60, "pinaccess": 300}
         # One rung per seed: successful cells route in <= ~25 pathfinder iterations, so a 60-iteration
         # cap over 3 placement candidates fails fast; a new seed (next attempt) is a new layout.
-        self.ladder = [["--placer", "meta", "--place-max-candidates", "2", "--route-max-iter", "60"]]
+        self.ladder = [["--placer", "meta", "--place-max-candidates", str(args.place_candidates),
+                        "--route-max-iter", str(args.route_max_iter)]]
 
     def attempt_plan(self):
         """(profile, seed) per attempt: profiles interleaved, seeds 0,1,2,..."""
@@ -877,11 +993,13 @@ DELIVER = (".gds", ".raw.gds", ".lef", ".raw.lef", ".ext.spice", ".magic.spice",
 
 
 def attempt_rank(stages):
-    """Lower is better: (not clean, LVS failed, DRC count)."""
+    """Lower is better: (not clean, LVS failed, DRC count, pins without router access, no layout)."""
     lvs = stages.get("lvs", {}).get("ok", False)
     drc = stages.get("drc", {}).get("count")
-    clean = all(stages.get(k, {}).get("ok", False) for k in ("layout", "postprocess", "extract", "lvs", "drc", "lef"))
+    pa = stages.get("pinaccess", {})
+    clean = all(stages.get(k, {}).get("ok", False) for k in STAGES[1:])
     return (0 if clean else 1, 0 if lvs else 1, drc if drc is not None else 10 ** 6,
+            0 if pa.get("ok") else len(pa.get("noAccess", [])) or 10 ** 3,
             0 if stages.get("layout", {}).get("ok") else 1)
 
 
@@ -943,7 +1061,7 @@ def physical(cell, w, env, seed, profile="strict"):
         return stages, extra
     pp_rep = json.load(open(pp_json))
     done("postprocess", True, secs, "", gateContactsFixed=pp_rep["gate_contacts_fixed"],
-         siteSnapNm=pp_rep.get("site_snap_nm", 0), nonPinLabelsDropped=pp_rep.get("nonpin_labels_dropped", 0),
+         siteSnapNm=pp_rep.get("site_snap_nm", 0), shiftNm=pp_rep.get("shift_nm", 0), nonPinLabelsDropped=pp_rep.get("nonpin_labels_dropped", 0),
          enclosurePads=len(pp_rep.get("enclosure_added", [])), gapFills=len(pp_rep.get("gap_filled", [])),
          padTrims=len(pp_rep.get("pad_trimmed", [])), minAreaGrown=len(pp_rep["min_area_added"]),
          unfixed=len(pp_rep.get("enclosure_unfixed", [])) + len(pp_rep["min_area_unfixed"]))
@@ -1050,6 +1168,7 @@ def physical(cell, w, env, seed, profile="strict"):
         done("lef", False, round(time.time() - t0, 1), "lef normalize failed: %s" % tail(log("lef"), 6))
     else:
         text = open(os.path.join(obs_dir, name + ".lef")).read()
+        text = shift_lef_x(text, pp_rep.get("shift_nm", 0))
         text = snap_lef_width(text, pp_rep.get("site_snap_nm", 0))
         strips = {}
         for t_ in pp_rep.get("pad_trimmed", []):
@@ -1057,13 +1176,35 @@ def physical(cell, w, env, seed, profile="strict"):
                 strips.setdefault(LEF_LAYER.get(t_["layer"], t_["layer"]), []).append(t_["strip_um"])
         text = trim_lef_rects(text, strips)
         text = augment_lef(text, lef_added_rects(pp_rep))
+        text, absorbed = absorb_pin_obs(text)
         with open(os.path.join(w, name + ".lef"), "w") as fh:
             fh.write(text)
         lpins = set(re.findall(r"^\s*PIN\s+(\S+)", text, re.M))
         want = set(cell["inputs"]) | set(cell["outputs"]) | set(POWER_PINS)
-        ok = lpins == want
-        done("lef", ok, round(time.time() - t0, 1), "" if ok else "pins %s != %s" % (sorted(lpins), sorted(want)))
+        edge = lef_edge_violations(text)
+        ok = lpins == want and not edge
+        detail = ("pins %s != %s" % (sorted(lpins), sorted(want)) if lpins != want else
+                  "edge-margin: %d rect(s) closer than half the spacing to the cell edge, e.g. %s %s"
+                  % (len(edge), edge[0][0], list(edge[0][1])) if edge else "")
+        done("lef", ok, round(time.time() - t0, 1), detail, obsMovedToPin=absorbed,
+             shiftNm=pp_rep.get("shift_nm", 0), edgeViolations=len(edge))
     shutil.rmtree(lef_tmp, ignore_errors=True)
+
+    # ---- pin access (OpenROAD detailed router, as ORFS runs it before global route) ----------------
+    if stages.get("lef", {}).get("ok"):
+        pa_json = os.path.join(w, "pinaccess.json")
+        rc, secs = run([sys.executable, env.pa_check, "--tech-lef", env.pa_tech_lef, "--tracks", env.pa_tracks,
+                        "--platform-lef", env.pa_platform_lef, "--lef", os.path.join(w, name + ".lef"), "--cells", name, "--out", pa_json,
+                        "--jobs", "1", "--work", os.path.join(w, "pinaccess")], w, log("pinaccess"),
+                       env.timeouts["pinaccess"])
+        try:
+            v = json.load(open(pa_json))["cells"][name]
+        except (OSError, ValueError, KeyError):
+            v = {"ok": False, "error": "tool: check.py rc=%s %s" % (rc, tail(log("pinaccess"), 6))}
+        pins = v.get("pins", {})
+        done("pinaccess", bool(v.get("ok")), secs, "" if v.get("ok") else v.get("error", "?"),
+             accessPoints={p: x.get("accessPoints") for p, x in pins.items()},
+             noAccess=sorted(p for p, x in pins.items() if not x.get("accessPoints")))
     return stages, extra
 
 
@@ -1178,10 +1319,13 @@ def build_cell(cell, outdir, env):
 
 def factory_hash(env):
     h = hashlib.sha256()
-    for f in ("factory.py", "postprocess_cell.py", "fix_lef_sky130hd.py", "fix_lef_obs.py"):
+    for f in ("factory.py", "postprocess_cell.py", "fix_lef_sky130hd.py", "fix_lef_obs.py",
+              "../pinaccess/check.py", "../pinaccess/pa_openroad.py"):
         h.update(open(os.path.join(HERE, f), "rb").read())
-    for t in sorted(env.techs.values()):
+    for t in sorted(set(env.techs.values())):
         h.update(open(t, "rb").read())
+    for f in (env.pa_tech_lef, env.pa_tracks, env.pa_platform_lef):
+        h.update(open(f, "rb").read() if os.path.isfile(f) else f.encode())
     h.update(",".join(env.profiles).encode())
     h.update(("%s|%d|%s" % (env.deck, env.site_nm, env.ladder)).encode())
     return h.hexdigest()[:16]
@@ -1191,14 +1335,30 @@ def run_batch(cells, outdir, jobs, env, force=False):
     os.makedirs(outdir, exist_ok=True)
     env.deck_dir = os.path.join(outdir, ".factory")
     os.makedirs(env.deck_dir, exist_ok=True)
-    relaxed = os.path.join(env.deck_dir, "librecell_sky130_tech_relaxed.py")
-    text = open(env.tech).read() + "\n\n" + open(env.relaxed_overrides).read()
-    tmp = relaxed + ".%d.tmp" % os.getpid()
-    with open(tmp, "w") as fh:
-        fh.write(text)
-    os.replace(tmp, relaxed)
-    env.techs["relaxed"] = relaxed
+    for prof in env.profiles:
+        if not PROFILES[prof]:
+            env.techs[prof] = env.tech
+            continue
+        path = os.path.join(env.deck_dir, "librecell_sky130_tech_%s.py" % prof)
+        text = open(env.tech).read() + "".join("\n\n" + open(os.path.join(HERE, f)).read() for f in PROFILES[prof])
+        tmp = path + ".%d.tmp" % os.getpid()
+        with open(tmp, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+        env.techs[prof] = path
     env.fhash = factory_hash(env)
+    # Pin-access preflight on a foundry cell: a broken OpenROAD setup must stop the batch here, not
+    # turn into one "pinaccess" failure per cell.
+    pre = os.path.join(env.deck_dir, "pinaccess-preflight")
+    rc, _ = run([sys.executable, env.pa_check, "--tech-lef", env.pa_tech_lef, "--tracks", env.pa_tracks,
+                 "--platform-lef", env.pa_platform_lef, "--cells", "sky130_fd_sc_hd__inv_1",
+                 "--out", pre + ".json", "--jobs", "1", "--work", pre], env.deck_dir, pre + ".log", 300)
+    try:
+        ok = json.load(open(pre + ".json"))["cells"]["sky130_fd_sc_hd__inv_1"]["ok"]
+    except (OSError, ValueError, KeyError):
+        ok = False
+    if not ok:
+        raise SystemExit("pin-access preflight failed (rc=%s), see %s.log" % (rc, pre))
     for deck in env.decks:
         env.deck_path(deck)
     results, todo = {}, []
@@ -1235,7 +1395,9 @@ def run_batch(cells, outdir, jobs, env, force=False):
     man = {"schema": FACTORY_VERSION, "finished": datetime.datetime.now().isoformat(timespec="seconds"),
            "wallSeconds": wall, "jobs": jobs, "drcDeck": env.deck, "drcDeckDescription": {k: DRC_DECKS[k][3] for k in env.decks},
            "cleanPolicy": "clean = Magic extraction with all signal ports + netgen 'Circuits match uniquely' "
-                          "+ zero DRC items in the deck above + LEF pins == spec pins + power pins",
+                          "+ zero DRC items in the deck above + LEF pins == spec pins + power pins "
+                          "+ OpenROAD pin_access finds an access point on every signal pin (pinaccess/check.py)",
+           "profiles": env.profiles,
            "summary": summarize(ordered),
            "cells": [{"name": s["name"], "state": s.get("state"), "seconds": s.get("seconds"),
                       "reused": s.get("reused", False),
@@ -1243,6 +1405,8 @@ def run_batch(cells, outdir, jobs, env, force=False):
                       "drcByRule": s.get("stages", {}).get("drc", {}).get("byRule"),
                       "magicDrcCount": s.get("magicDrcCount"),
                       "lvs": s.get("stages", {}).get("lvs", {}).get("verdict"),
+                      "pinAccess": s.get("stages", {}).get("pinaccess", {}).get("ok"),
+                      "profile": (s.get("bestTry") or {}).get("profile"),
                       "devices": s.get("stages", {}).get("netlist", {}).get("devices"),
                       "failure": s.get("failure")} for s in ordered]}
     with open(os.path.join(outdir, "manifest.json"), "w") as fh:
@@ -1275,7 +1439,16 @@ def main(argv=None):
     r.add_argument("--tech", help="LibreCell tech file (default: factory/librecell_sky130_tech.py, 0.48 um gate pitch)")
     r.add_argument("--site-nm", type=int, default=460, help="snap cell width up to this site (0 = off)")
     r.add_argument("--attempts", type=int, default=6, help="layout attempts (profile x seed) until a cell is clean")
-    r.add_argument("--profiles", default="strict,relaxed", help="LibreCell tech profiles to interleave")
+    r.add_argument("--profiles", default=DEFAULT_PROFILES,
+                   help="LibreCell tech profiles to interleave (%s)" % ", ".join(PROFILES))
+    r.add_argument("--pa-tech-lef", help="tech LEF for the pin-access check "
+                   "(default: $ORFS_PLATFORM_DIR/lef/sky130_fd_sc_hd.tlef)")
+    r.add_argument("--pa-tracks", help="make_tracks Tcl for the pin-access check "
+                   "(default: $ORFS_PLATFORM_DIR/make_tracks.tcl)")
+    r.add_argument("--pa-platform-lef", help="platform cell LEF with the foundry neighbours of the check "
+                   "(default: $ORFS_PLATFORM_DIR/lef/sky130_fd_sc_hd_merged.lef)")
+    r.add_argument("--route-max-iter", type=int, default=60, help="LibreCell pathfinder iterations per placement")
+    r.add_argument("--place-candidates", type=int, default=2, help="LibreCell placement candidates per attempt")
     r.add_argument("--cell-budget", type=int, default=300,
                    help="seconds after which no new layout attempt starts for a cell")
     c = sub.add_parser("check", help="validate a spec file")

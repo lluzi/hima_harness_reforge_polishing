@@ -7,7 +7,7 @@ results, and a per-batch manifest. No hand work: write a spec, run one command, 
 
 Pipeline per cell: bool2cmos (function -> transistors) -> sizing variant -> switch-level check ->
 LibreCell layout -> post-process fixes -> Magic extraction -> Netgen LVS -> KLayout DRC (two decks)
--> LEF normalization. A cell that fails is retried with another layout (up to 6 attempts) and the
+-> LEF normalization -> OpenROAD pin access (`../pinaccess/check.py`). A cell that fails is retried with another layout (up to 6 attempts) and the
 best attempt is kept.
 
 ## Run it
@@ -24,8 +24,14 @@ python3 $F/factory.py summarize cells/r<k>/factory             # yield table aga
 `run` exits 0 when every cell is clean, 3 when some are not, 2 on spec errors. Re-running into the
 same `--out` reuses every cell that is already clean with the same spec and the same factory
 version (`--force` rebuilds). `--only NAME,NAME` builds a subset. Other flags: `--attempts N`
-(default 6), `--profiles strict,relaxed`, `--drc-deck mr,lydrc-feol`, `--layout-timeout S` (per
-LibreCell run, default 240), `--site-nm 460`.
+(default 6), `--profiles strict-m1,relaxed-m1,strict,relaxed`, `--drc-deck mr,lydrc-feol`,
+`--layout-timeout S` (per LibreCell run, default 240), `--site-nm 460`, `--route-max-iter 60`,
+`--place-candidates 2`, `--pa-tech-lef`, `--pa-tracks`.
+
+The pin-access stage needs `openroad` on `PATH`, `toolbox/pinaccess/` next to `factory/`, and the ORFS
+sky130hd platform: `$ORFS_PLATFORM_DIR` [`$CELLUZI_ROOT/OpenROAD-flow-scripts/flow/platforms/sky130hd`]
+for `lef/sky130_fd_sc_hd.tlef`, `lef/sky130_fd_sc_hd_merged.lef` (foundry neighbours) and
+`make_tracks.tcl`.
 
 Environment the factory reads (defaults in brackets): `CELLUZI_ROOT` [/data/eda/project/celluzi]
 for the LibreCell venv, `BOOL2CMOS_ROOT` [/data/eda/project/bool2cmos], `PDK_ROOT` [/foss/pdks],
@@ -97,7 +103,7 @@ per cell (state, seconds, DRC count and rules, Magic DRC count, LVS verdict, dev
 | --- | --- |
 | `NAME.sp` | sized source netlist, sky130 primitives (`sky130_fd_pr__nfet_01v8`, `__pfet_01v8_hvt`), pins `<inputs> <outputs> VGND VNB VPB VPWR` |
 | `NAME.gds` | final layout (post-processed); `NAME.raw.gds` is LibreCell's output |
-| `NAME.lef` | sky130hd abstract: pins `VPWR`/`VGND` (USE POWER/GROUND), `VPB`/`VNB` on the rails, inputs `DIRECTION INPUT`, outputs `DIRECTION OUTPUT`, OBS without pin metal; width snapped to the site; metal the post-processor added is in its pin (if it touches one) or in OBS |
+| `NAME.lef` | sky130hd abstract: pins `VPWR`/`VGND` (USE POWER/GROUND), `VPB`/`VNB` on the rails, inputs `DIRECTION INPUT`, outputs `DIRECTION OUTPUT`, OBS without pin metal (an OBS rect touching a signal pin's port on its layer is moved into the pin); width snapped to the site; metal the post-processor added is in its pin (if it touches one) or in OBS |
 | `NAME.ext.spice` | Magic RC extraction for characterization: `.subckt NAME <inputs> <outputs> VGND VNB VPB VPWR`, all coupling and substrate capacitors (`cthresh 0`), `**FLOATING` removed. The cells are tapless (like sky130_fd_sc_hd): Magic sees the n-well and the substrate as floating nodes; they are renamed to `VPB` and `VNB` here, original names in `status.json` -> `wellNodes` (`nwellNodes`, e.g. `w_n11_257#`; `substrateNodes`, `VSUBS`) |
 | `NAME.magic.spice` | Magic's RC netlist unchanged (rails `VDD`/`GND`, port order as Magic wrote it) |
 | `NAME.lvs.spice`, `NAME.lvs.log` | device-only extraction and the Netgen report |
@@ -107,14 +113,18 @@ per cell (state, seconds, DRC count and rules, Magic DRC count, LVS verdict, dev
 | `status.json` | `state`, `stages` (ok, seconds, details per stage), `attempts` (profile, seed, LVS, DRC per try), `bestTry`, `failure`, `wellNodes`, `files`, `specHash` |
 | `tryK/` | every attempt with its logs (`layout.log`, `postprocess.log`, `extract.log`, `lvs.log`, `drc.log`, `lef.log`) |
 
-`state`: `clean`, `layout-not-clean` (a layout exists but LVS, DRC, extraction or LEF failed; do not
-deliver it as a real cell), `failed` (no layout).
+`state`: `clean`, `layout-not-clean` (a layout exists but LVS, DRC, extraction, LEF or pin access
+failed; do not deliver it as a real cell), `failed` (no layout). `tryK/pinaccess.json` is the
+pin-access report of each attempt (`../pinaccess/README.md`); `status.json` -> `stages.pinaccess`
+has `accessPoints` per pin and `noAccess`.
 
 ## What "clean" means
 
 `clean` = Magic extraction has every signal pin as a port, Netgen says `Circuits match uniquely`
 (pins compared; only pins that every output function is symmetric in are declared permutable), the
-LEF has exactly the spec pins plus the four power pins, and **both** KLayout decks report zero items:
+LEF has exactly the spec pins plus the four power pins, OpenROAD's detailed router finds an access
+point on every signal pin (`pinaccess`, see "Router pin access"), and **both** KLayout decks report
+zero items:
 
 1. `mr`: `$PDK_ROOT/sky130A/libs.tech/klayout/drc/sky130A_mr.drc` with `feol=true beol=true
    offgrid=true` (seal ring and floating-metal checks off: not meaningful for one cell).
@@ -159,10 +169,43 @@ change is recorded in `postprocess.json`.
 | pin-purpose shapes clipped to the final metal | m1.2 under `lydrc-feol` |
 
 Attempts: LibreCell is deterministic per `PYTHONHASHSEED`, and another seed gives another layout.
-Attempts interleave two profiles, `strict` (tech enclosures above) and `relaxed` (celluzi enclosures,
-easier to route; post-processing adds the pads where they fit), seeds 0, 1, 2. The first clean
-attempt wins; otherwise the best by (LVS ok, fewest DRC items). No new attempt starts once a cell has
+Attempts interleave four profiles, seed by seed: `strict-m1` and `relaxed-m1` (LibreCell routes in li1
+and met1 only, see "Router pin access"), then `strict` and `relaxed` (li1, met1 and met2). `strict`
+uses the tech enclosures above and `relaxed` the celluzi enclosures (easier to route;
+post-processing adds the pads where they fit). With `--attempts 3` that is strict-m1, relaxed-m1 and
+strict at seed 0. The first clean attempt wins; otherwise the best by (LVS ok, fewest DRC items,
+fewest pins without access). No new attempt starts once a cell has
 spent `--cell-budget` seconds (default 300).
+
+## Router pin access
+
+Stage `pinaccess` runs `../pinaccess/check.py` on the attempt's LEF: OpenROAD `pin_access` (what ORFS
+runs before global routing) on copies of the cell in all four orientations, isolated and abutted to
+mirrored copies and to foundry cells. A cell is `clean` only if every signal pin of every copy has an
+access point. `status.json` -> `stages.pinaccess.accessPoints` is the count per pin, summed over the
+four orientations.
+
+Why: the 2026-10-04 dry run (ws-f, 149 cells clean by DRC/LVS) aborted at `5_1_grt` with DRT-0073
+twice (16 cell types, then 8 more after those were removed). `check.py` finds 90 of the 149 without
+access, including every pin both ORFS logs name. Two causes, both falsified one at a time on that LEF:
+
+1. **met2 above the pins.** OpenROAD reaches a met1 pin of a standard cell by a via1 to met2.
+   LibreCell routed inside the cell on met2 too, in vertical wires between the gate columns; the met1
+   pin squares of adjacent inputs sit 0.21 um apart on one met1 track with such a wire 0.03-0.07 um
+   beside them, so no via1 (met2 pad 0.26 x 0.32, met2 spacing 0.14) fits and no met1 wire can leave
+   sideways. Deleting the met2 OBS from the LEF (a probe, not a fix) leaves 9 failing cells instead of 90.
+   Fix: the `-m1` profiles (`tech_m1_overrides.py`) route in li1 and met1 only, like sky130_fd_sc_hd,
+   and are tried first. Every `-m1` layout of the rebuild had pin access; met2 layouts are kept only when
+   the check passes.
+2. **Pin metal in OBS.** Some met1 rects of a pin's net were written to OBS flush against the pin
+   (rect decomposition and post-process trims), e.g. `C_NOR2_NDB2/Y`; the router treats them as foreign
+   metal touching the pin. `absorb_pin_obs` moves every OBS rect that touches exactly one signal pin on
+   its layer into that pin (touching metal is one net in a DRC-clean cell). With both fixes applied to
+   the ws-f LEF the probe passes 149/149; with only this one, 72/149.
+
+Pins stay met1 squares on the 1.19 um track (LibreCell's pin layer), not li1 shapes like the foundry
+cells: most pins get 1-2 access points per orientation (foundry: at least 3). `check.py
+--min-access-points` can demand more; the factory uses the router's own threshold (1).
 
 ## Timing and yield (linglong, 2026-10-04, `examples/batch24.json`, --jobs 16)
 

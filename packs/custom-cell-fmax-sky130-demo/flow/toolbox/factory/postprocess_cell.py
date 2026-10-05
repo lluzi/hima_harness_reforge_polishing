@@ -1,5 +1,5 @@
 # Factory copy of celluzi generate/postprocess_cell.py (source + sha256 in factory/SOURCES.md).
-# Factory additions are marked "FACTORY": 0 (site snap), 3b (label filter), 4a (contact enclosure
+# Factory additions are marked "FACTORY": 0 (edge margin + site snap), 3b (label filter), 4a (contact enclosure
 # pads), 4 (min-area repair) and the JSON report.
 # Run: klayout -b -rd gds=<file> [-rd report=<pp.json>] [-rd pins=A,B,Y,VDD,GND] [-rd site=460]
 #      [-rd minarea=0] [-rd enclosure=0] -r postprocess_cell.py
@@ -20,39 +20,68 @@ def put(reg, l, d):
 def add(reg, l, d):
     reg.merge(); top.shapes(ly.layer(l, d)).insert(reg)
 
-# ---- 0. FACTORY: snap the cell width to the sky130hd site (0.46 um) -----------------------------
-# The factory tech uses a 0.48 um gate pitch (two 0.27 um gate-contact pads on a 0.46 um pitch are
-# 0.19 apart < poly.2 0.21), so lclayout's width (n+1)*0.48 is generally not a site multiple. Extend
-# every full-width shape (rails, rail pins, n-well, boundary) at its right edge by the difference.
+# ---- 0. FACTORY: keep metal off the cell edge, snap the cell width to the sky130hd site (0.46 um) ----
+# Abutment: LibreCell routes on the x = 0 grid column, so li1/met1 can sit on (or past) the left edge
+# and touch the next cell's metal. Like sky130_fd_sc_hd, every li1 / met1 / met2 / poly shape between
+# the rails keeps half its layer's spacing from the left and right edges (li 0.085, met1/met2 0.07,
+# poly 0.105): the layout is moved right by what the left edge lacks (rounded up to 5 nm) and the width
+# is grown so the right edge has its margin too. The factory tech uses a 0.50 um gate pitch, so
+# lclayout's width is generally not a site multiple either. Every full-width shape (rails, rail pins,
+# n-well, boundary) is extended at both edges to the new outline.
 site = int(globals().get("site", "460"))
+EDGE_MARGIN = {(67, 20): 85, (68, 20): 70, (69, 20): 70, (66, 20): 105}
 _bnd = pya.Region(top.begin_shapes_rec(ly.layer(235, 4))).bbox()
 snap_dx = 0
+shift_dx = 0
+
+
+def _extend_full_width(x_lo, x_hi, new_lo, new_hi):
+    """Extrude every shape spanning [x_lo, x_hi] to [new_lo, new_hi] (profile taken at each edge)."""
+    for li_ in ly.layer_indexes():
+        shapes = top.shapes(li_)
+        ext = []
+        for sh in shapes.each():
+            if sh.is_text():
+                continue
+            b = sh.bbox()
+            if b.left <= x_lo and b.right >= x_hi:
+                if new_hi > b.right:
+                    edge = pya.Region(sh.polygon) & pya.Region(pya.Box(x_hi - 5, b.bottom - 1, x_hi, b.top + 1))
+                    ext += [pya.Box(e.bbox().left, e.bbox().bottom, new_hi, e.bbox().top) for e in edge.each()]
+                if new_lo < b.left:
+                    edge = pya.Region(sh.polygon) & pya.Region(pya.Box(x_lo, b.bottom - 1, x_lo + 5, b.top + 1))
+                    ext += [pya.Box(new_lo, e.bbox().bottom, e.bbox().right, e.bbox().top) for e in edge.each()]
+        for e in ext:
+            shapes.insert(e)
+        if ext:
+            texts = [t.text for t in shapes.each() if t.is_text()]      # pya.Text objects
+            reg = pya.Region(shapes)
+            reg.merge(); shapes.clear(); shapes.insert(reg)
+            for t in texts:
+                shapes.insert(t)
+
+
 if site > 0 and not _bnd.empty():
     W0 = _bnd.right
-    W1 = -(-W0 // site) * site
-    snap_dx = W1 - W0
-    if snap_dx:
+    band = pya.Box(_bnd.left - 2000, 240, _bnd.right + 2000, 2480)     # between the rails
+    lo_need, hi_edge = 0, W0
+    for (l_, d_), m_ in EDGE_MARGIN.items():
+        reg = pya.Region(top.begin_shapes_rec(ly.layer(l_, d_))) & pya.Region(band)
+        if reg.is_empty():
+            continue
+        bb = reg.bbox()
+        lo_need = max(lo_need, m_ - (bb.left - _bnd.left))
+        hi_edge = max(hi_edge, bb.right + m_)
+    if lo_need > 0:
+        shift_dx = -(-lo_need // 5) * 5
         for li_ in ly.layer_indexes():
-            shapes = top.shapes(li_)
-            ext = []
-            for sh in shapes.each():
-                if sh.is_text():
-                    continue
-                b = sh.bbox()
-                if b.left <= _bnd.left and b.right >= W0:
-                    # profile of the shape just inside the old outline, extruded to the new right edge
-                    edge = pya.Region(sh.polygon) & pya.Region(pya.Box(W0 - 5, b.bottom - 1, W0, b.top + 1))
-                    for e in edge.each():
-                        eb = e.bbox()
-                        ext.append(pya.Box(eb.left, eb.bottom, b.right + snap_dx, eb.top))
-            for e in ext:
-                shapes.insert(e)
-            if ext:
-                reg = pya.Region(shapes); texts = [t.text for t in shapes.each() if t.is_text()]
-                reg.merge(); shapes.clear(); shapes.insert(reg)
-                for t in texts:
-                    shapes.insert(t)
-    print("site snap: width %d -> %d (+%d nm)" % (W0, W1, snap_dx))
+            top.shapes(li_).transform(pya.Trans(shift_dx, 0))
+        _extend_full_width(_bnd.left + shift_dx, W0 + shift_dx, _bnd.left, W0 + shift_dx)
+    W1 = -(-(hi_edge + shift_dx) // site) * site
+    snap_dx = W1 - (W0 + shift_dx)
+    if snap_dx:
+        _extend_full_width(_bnd.left, W0 + shift_dx, _bnd.left, W1)
+    print("edge margin: moved right %d nm; site snap: width %d -> %d (+%d nm)" % (shift_dx, W0, W1, W1 - W0))
 
 diff  = R(65, 20)
 nwell = R(64, 20)
@@ -533,7 +562,7 @@ print("min_area: grew %d polygon(s), %d left unfixed" % (len(added), len(unfixed
 if "report" in globals() and report:
     with open(report, "w") as _fh:
         _json.dump({"gate_contacts_fixed": int(bad_pc.size()), "labels_stripped": int(before),
-                    "site_snap_nm": int(snap_dx), "nonpin_labels_dropped": int(dropped_labels),
+                    "site_snap_nm": int(snap_dx), "shift_nm": int(shift_dx), "nonpin_labels_dropped": int(dropped_labels),
                     "enclosure_added": enc_added, "enclosure_unfixed": enc_unfixed,
                     "pad_trimmed": trimmed, "pad_trim_failed": trim_failed,
                     "gap_filled": gap_filled, "gap_unfilled": gap_unfilled,
