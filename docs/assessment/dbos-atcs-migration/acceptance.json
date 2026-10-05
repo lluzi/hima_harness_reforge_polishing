@@ -200,5 +200,14 @@
     "canonical": "4PASS, 5.8105s, 3 in-process Host boots, SSH0/model0",
     "activeDbosKnowledgeEffectRecovery": "NOT_PROVEN_BY_THIS_CASE",
     "original954BaselineUnchanged": true
+  },
+  "updatedMacDistribution": {
+    "source": "afcc4d8ab3f7794140dec7ec0849d42afef6fc3c",
+    "artifactDigest": "aa1fc26730e23874a88ea40accf90e4a294d1ccd9ab2c1442064b328a06dd3b3",
+    "desktopExitCode": 0,
+    "desktopSeconds": 18.17,
+    "nativeTechnicalUnresolved": 0,
+    "newAtcsRun": false,
+    "originalSource32aBusinessEvidenceSeparate": true
   }
 }

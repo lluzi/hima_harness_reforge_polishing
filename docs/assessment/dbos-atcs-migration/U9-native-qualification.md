@@ -62,3 +62,13 @@ node scripts/package-trial.mjs --finalize-native-obligations /actual/native/arti
 证据：`.hima-tmp/dbos-migration/u9/packaging/`、`backup/`、`license-binding/`及
 `licenses/final-binding-judgment.md`。两个外部报告位于`candidate-mac-08/`和
 `packaging/final-linux/`的`final-native-obligations.json`。
+
+## 2026-10-05 Mac09 源码修复分发
+
+新增不可变 Mac09：source `afcc4d8ab3f7794140dec7ec0849d42afef6fc3c`，包含许可根探测与真实命令退出码修复；后续 `78c44807` 仅修改测试。artifactDigest `aa1fc26730e23874a88ea40accf90e4a294d1ccd9ab2c1442064b328a06dd3b3`，paired manifest SHA256 `638f9c505ee4a427f203d79289bd6a6ac78f7fe4690edb98c779d266d0745a11`。App 位于 `.hima-tmp/dbos-migration/u9/candidate-mac-09/HimaHarness.app`，版本仍为内部 `0.3.0-trial.35`，不能用版本名替代精确源/产物身份。
+
+同一既有打包入口重建并核验原生完整清单、实际 relocated Host、Pack/PDF。既有 `--verify-desktop` 在 Catsights 执行 version-isolated Home、旧 Home 拒绝、local preparation、normal quit/reopen 检查，exit0，18.17秒。该固定操作派给 Luna，实际派工为 `gpt-6-luna / low`；子报告写的 minimal/actual model 不具备服务端回执，Root 记录为未核实。日志没有单独的进程收束 PASS 标记，Root 精确候选路径探测无进程；临时 Home 的 PG IDs 没有另行保留，不将其补写成独立物理审计。
+
+使用原已审查 native support packet 产生新的外部 `final-native-obligations.json`：raw1/effective0，1275对应源码文件，完整原生文件桥接核验通过。未重复改源码重建库，未改动任何 App/manifest 字节。技术资格不声明 legal clearance、商业签名或新非管理员安装。
+
+本次没有调用产品模型、EDA 或新 ATCS Campaign。实际工程与普通 App 交付证明仍对应原 source32a Mac08；Mac09 的行为增量由定点 Host/PG/权限检查和上述分发验证覆盖。Linux 最新已测分发物仍为 source32a，不把 Mac09 资格移用到 Linux。证据：`packaging/mac09.log`、`mac09-desktop.log`、`mac09-root-qualification.json` 及候选 paired manifest/外部报告。

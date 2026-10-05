@@ -53,6 +53,11 @@
       "bytes": 911
     },
     {
+      "path": "actual-run/mac09-root-qualification.json",
+      "sha256": "66bff3d920829114245e6de7d5a0ae2d40138d2fdea241bb33baa169c77be78e",
+      "bytes": 1431
+    },
+    {
       "path": "actual-run/operator-report.md",
       "sha256": "dd23c98ca2e73f00a635a2cc93c6d2606020a9900ce2f6e473c6435aec81e408",
       "bytes": 14582
