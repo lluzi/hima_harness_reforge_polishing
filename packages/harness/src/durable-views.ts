@@ -146,10 +146,11 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
   }
   async function readRunView(runId: string): Promise<RunView|undefined> {
     const original=await knownDurableRun(deps,runId);if(!original)return undefined;
-    const runtime=deps.durable!, sourceRevision=await runtime.store.sourceRevision(runId), context=await readDurableExecutionContext(deps,runId),pack=await readFrozenProductMethod(runtime,original);
-    const records=await revisionRecords(runId,await readRunRecords(runId),original.revision), base=runView({records:()=>[...records]},context.run,packWords(pack));
-    const views=await taskViews(context,pack);
-    return {...base,run:{...runHeadView(context.run,pack.contract.version,packWords(pack)),engine:original.engine,goalState:context.run.goalState,...(context.run.stopState?{stopState:context.run.stopState}:{}),sourceRevision,historyPendingFacts:await runtime.store.pendingFactCount(runId),deadlineAt:original.deadlineAt},tasks:views,sources:[factIdentity('run-opened',runId),...records.map(record=>record.id)],
+    const runtime=deps.durable!, context=await readDurableExecutionContext(deps,runId),pack=await readFrozenProductMethod(runtime,original);
+    const records=await revisionRecords(runId,await readRunRecords(runId),original.revision), views=await taskViews(context,pack);
+    const sourceRevision=await runtime.store.sourceRevision(runId), current={...context.run,nextSeq:sourceRevision+1};
+    const base=runView({records:()=>[...records]},current,packWords(pack));
+    return {...base,run:{...runHeadView(current,pack.contract.version,packWords(pack)),engine:original.engine,goalState:context.run.goalState,...(context.run.stopState?{stopState:context.run.stopState}:{}),sourceRevision,historyPendingFacts:await runtime.store.pendingFactCount(runId),deadlineAt:original.deadlineAt},tasks:views,sources:[factIdentity('run-opened',runId),...records.map(record=>record.id)],
       ...(context.durable.preparation&&(context.durable.preparation.kind==='prepared'||context.durable.preparation.kind==='reused')?{workspace:{flowRoot:context.durable.preparation.file.flowRoot,containerName:context.durable.preparation.file.containerName,bindings:(original.opening.data as unknown as {product:{bindings:Record<string,string>}}).product.bindings}}:{})};
   }
   async function assignedGuide(viewerSessionId:string,parentSessionId:string,childSessionId?:string):Promise<boolean> {

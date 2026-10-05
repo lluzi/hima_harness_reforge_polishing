@@ -81,6 +81,10 @@ try {
       assert.equal(finished[0].exitCode,expected,'PG Job record retains only observed numeric exit');assert.deepEqual(finished[0].job,submitted);
       const detail=await get(`/runs/${runId}`),publicRecords=await get(`/runs/${runId}/records?type=job`),context=await get(`/runs/${runId}/context`);
       assert.equal(detail.jobs.find((item:any)=>item.event==='finished').exitCode,expected,'public Run Job view');
+      assert.equal(detail.valueMeasurement.jobs.launched.value,1,'the measured count includes the actual original PG Job launch');
+      assert.equal(detail.valueMeasurement.jobs.finished.value,1,'the measured count includes its actual finish even on failure');
+      assert.ok(detail.valueMeasurement.throughSeq>=Math.max(...publicRecords.records.map((item:any)=>item.seq)),
+        'the measurement boundary includes the original Job facts it reports');
       assert.equal(publicRecords.records.find((item:any)=>item.event==='finished').exitCode,expected,'public Job history');
       assert.equal(context.tasks.find((item:any)=>item.identity?.effectId===identity.effectId).projection.state,label==='ready'?'succeeded':'failed','public context retains task outcome independently of numeric exit');
       observed.push({label,exitCode:expected??null,session:submitted.session});
