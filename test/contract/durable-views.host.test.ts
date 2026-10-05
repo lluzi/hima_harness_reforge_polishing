@@ -73,3 +73,21 @@ test('known command exit survives durable Job projection while historical exit s
  const result=new Promise<any>((resolve,reject)=>{child.once('message',resolve);child.once('error',reject);child.once('exit',code=>{if(code)reject(new Error(output));});});
  try{const observed=await result;assert.equal(observed.ok,true,JSON.stringify(observed)+'\n'+output);}finally{if(child.exitCode===null){child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),5000);try{await new Promise(resolve=>child.once('exit',resolve));}finally{clearTimeout(timer);}}await cleanDbosHome(home);}
 });
+
+// The worker acknowledges only after the real Markdown write and before the JSON tee executes.
+test('DBOS automatically recovers report interruption after Markdown before JSON',{timeout:120000},async(t)=>{
+ const home=await dbosHome();
+ async function run(mode:string){
+  const child=spawn(process.execPath,[fileURLToPath(new URL('./support/durable-views-worker.ts',import.meta.url)),home,mode],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
+  let output='';child.stdout!.on('data',value=>output+=String(value));child.stderr!.on('data',value=>output+=String(value));
+  const ended=new Promise(resolve=>child.once('exit',resolve));
+  const result=new Promise<any>((resolve,reject)=>{child.once('message',resolve);child.once('error',reject);child.once('exit',()=>reject(new Error(output||'Worker exited before checkpoint')));});
+  try{const observed=await result;assert.equal(observed.ok,true,JSON.stringify(observed)+'\n'+output);return observed;}
+  finally{if(child.exitCode===null&&child.signalCode===null){child.kill(mode==='delivery-two-file-interrupted'?'SIGKILL':'SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),5000);try{await ended;}finally{clearTimeout(timer);}}}
+ }
+ try{const before=await run('delivery-two-file-interrupted');assert.equal(before.markdownPublished,true);assert.equal(before.jsonAbsent,true);assert.equal(before.noCompletedDelivery,true);
+  const after=await run('delivery-two-file-restart');assert.equal(after.automaticTwoFileRecovery,true);
+  for(const field of ['runId','effectId','markdownSha','jsonSha'])assert.equal(after[field],before[field]);
+  t.diagnostic(JSON.stringify({before,after}));
+ }finally{await cleanDbosHome(home);}
+});

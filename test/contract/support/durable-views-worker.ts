@@ -87,6 +87,67 @@ try {
     }
     runtime.store.recordEffectFact=record;
     process.send!({ok:true,observed,productModelCalls:0});
+  } else if(mode==='delivery-two-file-interrupted') {
+    const {LocalChannel}=await load('channel'),originalExec=LocalChannel.prototype.exec;
+    const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
+    let markdownPath:string|undefined,heldJSON:{target:string;bytes:Buffer}|undefined;
+    LocalChannel.prototype.exec=async function(argv:any,options:any){
+      try {
+      const target=String(argv.at(-1));
+      if(argv[0]==='tee'&&target.includes('/hima-experience/')) {
+        if(target.endsWith('.json')) {
+          assert.equal(markdownPath,target.slice(0,-5)+'.md','actual Markdown tee completed before JSON tee');
+          heldJSON={target,bytes:Buffer.from(options.stdin)};
+          await new Promise(()=>{});
+        }
+        const result=await originalExec.call(this,argv,options);
+        if(target.endsWith('.md')){assert.equal(result.code,0);markdownPath=target;}
+        return result;
+      }
+      return originalExec.call(this,argv,options);
+      } catch(error) {process.send!({ok:false,error:String(error),stack:(error as Error).stack});await new Promise(()=>{});throw error;}
+    };
+    const owner=await createRootAgent(host.ctx,workspace);
+    await service.startRun({pack:'facade-fixture',site:'local',goal:{periodNs:1},strategy:{periodNs:2},ownerSessionId:String(owner.id)});
+    // Read PG facts outside the DBOS delivery step while the real tee stays held.
+    for(let i=0;i<400&&!heldJSON;i++)await new Promise(resolve=>setTimeout(resolve,25));
+    assert.ok(heldJSON,'actual JSON tee reached pre-execution barrier');
+    const target=heldJSON.target;
+    assert.equal(markdownPath,target.slice(0,-5)+'.md');
+    const markdown=await readFile(markdownPath!);assert.ok(markdown.length);
+    assert.equal(await exists(target),false,'JSON tee has not executed');
+    const runId=path.basename(target,'.json'),view=await readers.readRunView(runId);
+    const task=view.tasks.find((item:any)=>item.result);assert.ok(task);
+    assert.equal(task.projection.state,'succeeded');assert.equal(view.run.goalState,'not-met');
+    const records=await readers.readRunRecords(runId);
+    assert.equal(records.filter((record:any)=>record.type==='experience').length,0);
+    assert.equal(records.filter((record:any)=>record.type==='archive'&&record.delivery==='complete').length,0);
+    const taskWorkspace=(await runtime.store.run(runId)).opening.data.product.workspace;
+    assert.equal(await readFile(path.join(taskWorkspace,'program-calls'),'utf8'),'original\n');
+    const expected={runId,markdownPath,jsonPath:target,markdownBase64:markdown.toString('base64'),markdownSha:createHash('sha256').update(markdown).digest('hex'),jsonSha:createHash('sha256').update(heldJSON!.bytes).digest('hex'),taskIdentity:task.identity,taskResult:task.result,goalState:view.run.goalState,workspace:taskWorkspace};
+    await writeFile(path.join(home,'accepted.json'),JSON.stringify(expected));
+    process.send!({ok:true,markdownPublished:true,jsonAbsent:true,noCompletedDelivery:true,runId,effectId:task.identity.effectId,markdownSha:expected.markdownSha,jsonSha:expected.jsonSha});
+    await new Promise(()=>{});
+  } else if(mode==='delivery-two-file-restart') {
+    const expected=JSON.parse(await readFile(path.join(home,'accepted.json'),'utf8'));
+    const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
+    let archive:any;
+    for(let i=0;i<200;i++){archive=await readers.readRunAssets(expected.runId);if(archive.kind==='read')break;await new Promise(resolve=>setTimeout(resolve,50));}
+    assert.equal(archive.kind,'read','restart automatically completes the interrupted two-file delivery');
+    const view=await readers.readRunView(expected.runId),task=view.tasks.find((item:any)=>item.identity?.effectId===expected.taskIdentity.effectId);
+    assert.ok(task);assert.deepEqual(task.identity,expected.taskIdentity);assert.deepEqual(task.result,expected.taskResult);
+    assert.equal(task.projection.state,'succeeded');assert.equal(view.run.goalState,expected.goalState);
+    const markdown=await readFile(expected.markdownPath),json=await readFile(expected.jsonPath);
+    assert.deepEqual(markdown,Buffer.from(expected.markdownBase64,'base64'),'original Markdown bytes survive recovery');
+    assert.equal(createHash('sha256').update(markdown).digest('hex'),expected.markdownSha);
+    assert.equal(createHash('sha256').update(json).digest('hex'),expected.jsonSha,'JSON matches the original held tee payload');
+    const experience=await readers.readExperience(expected.runId);assert.equal(experience.kind,'read');
+    assert.equal(experience.record.markdown.sha256,expected.markdownSha);assert.equal(experience.record.json.sha256,expected.jsonSha);
+    const records=await readers.readRunRecords(expected.runId);
+    assert.equal(records.filter((record:any)=>record.type==='experience').length,1);
+    assert.equal(records.filter((record:any)=>record.type==='archive'&&record.delivery==='complete').length,1);
+    assert.equal(await readFile(path.join(expected.workspace,'program-calls'),'utf8'),'original\n','completed Task is executed exactly once');
+    process.send!({ok:true,automaticTwoFileRecovery:true,identitiesStable:true,originalMarkdownPreserved:true,jsonHashPreserved:true,noTaskRerun:true,runId:expected.runId,effectId:expected.taskIdentity.effectId,markdownSha:expected.markdownSha,jsonSha:expected.jsonSha});
   } else if(mode==='delivery-generated-restart') {
     const expected=JSON.parse(await readFile(path.join(home,'accepted.json'),'utf8'));
     const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
