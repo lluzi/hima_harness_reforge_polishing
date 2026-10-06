@@ -8,7 +8,6 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
-import { cancelSessions } from './record-views.js';
 import { semanticSlug, semanticValue } from './semantics.js';
 import { licenceName } from './sites.js';
 
@@ -687,20 +686,6 @@ export const cancelRecord = z.object({
   jobSession: z.string().optional(),
   jobSessions: z.array(z.string()).optional(),
 });
-
-/**
- * **Is this Job one that cancel stopped?** Asked through the one reading of a cancel's sessions
- * (`cancelSessions`, `record-views.ts`), because the face that writes it and the loop that reads it
- * must not come to two answers about one Job (#29).
- *
- * By name only. A launch can be on record ahead of a `cancel` the cancel never saw — it reads what
- * the Run has open and appends afterwards — so "a cancel landed after my launch" is not the same
- * fact as "a cancel stopped me", and inside a fork the difference is a whole branch's Job left
- * running with the Run already final. `jobSession` is read as well as `jobSessions` so that a record
- * written before the list existed is still read the one way.
- */
-export const cancelStopped = (cancel: CancelRecord, session: string): boolean =>
-  cancelSessions(cancel).includes(session);
 
 /**
  * How a drill-down Loop ended (#28), and the only labels an opening Explore node's outgoing edges
@@ -2098,33 +2083,6 @@ export class Ledger {
     return out.sort((a, b) => a.seq - b.seq);
   }
 
-  /**
-   * The Jobs one Site is holding right now, as the ledger knows them: every Job with a `launched`
-   * record and neither a `finished` nor a `killed` one, across every Run of that Site. This is what
-   * every one of the Site's caps is counted over — its parallel job count (D25) and each licence it
-   * declares (#21) — so the question is asked across Runs and not within one: a cap of one means one
-   * Job on the Site, not one Job per Campaign, and one seat means one seat.
-   *
-   * Keyed on the tmux session, which is the Job's identity: a session name is offered only after the
-   * Site has been asked whether it is free, so two Jobs on one Site never share one.
-   *
-   * This is the ledger's answer and only the ledger's: a Job that ended without anyone asking, and a
-   * Job whose session vanished without writing an exit status, both still have a `launched` record
-   * and no other, so both are counted here. Deciding which of them is really holding a slot on the
-   * Site takes the Site itself, and is `heldJobSlots` in `job-cap.ts` — the one place the cap is
-   * counted, by every face that launches.
-   */
-  openJobsOn(siteId: string): JobRecord[] {
-    const launched: JobRecord[] = [];
-    const settled = new Set<string>();
-    for (const [, r] of this.#domain.table('records').entries()) {
-      if (r.type !== 'job' || r.siteId !== siteId) continue;
-      if (r.event === 'launched') launched.push(r);
-      else settled.add(r.job.session);
-    }
-    return launched.filter((r) => !settled.has(r.job.session)).sort((a, b) => a.seq - b.seq);
-  }
-
   async appendObservation(runId: string, data: Omit<ObservationRecord, keyof typeof base | 'type'>): Promise<ObservationRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'observation', ...data }));
   }
@@ -2144,51 +2102,6 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'node', ...data }));
   }
 
-  /** A node whose Retry allowance is spent, appended by the executor with the whole of the failure. */
-  async appendBlocker(runId: string, data: Omit<BlockerRecord, keyof typeof base | 'type'>): Promise<BlockerRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'blocker', ...data }));
-  }
-
-  /** A person clearing a blocked Run. The one appender that does not write as the executor: this
-   *  record exists to say a person acted, and the executor may not sign a person's name. */
-  async appendResumed(runId: string, data: Omit<ResumedRecord, keyof typeof base | 'type'>): Promise<ResumedRecord> {
-    return this.#append(runId, 'person', (h) => ({ ...h, type: 'resumed', ...data }));
-  }
-
-  /**
-   * The Harness's own restart of one self-driving branch at its Workshop (ADR-0016), after the Pack's
-   * Reader refused what the Workshop wrote: the same `restart` shape a person's is, and its
-   * `invalidates` takes the refused reading out of the current evidence, but written by the executor,
-   * because no person asked for it.
-   */
-  async appendAutopilotRestart(runId: string, data: { readonly nodeId: string; readonly requestId: string; readonly invalidates: readonly string[] }): Promise<ResumedRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'resumed', nodeId: data.nodeId, who: 'hima autopilot',
-      requestId: data.requestId, kind: 'restart' as const, invalidates: [...data.invalidates] }));
-  }
-
-  /** What an Explore node's chooser decided, appended by the executor. Never a verdict: D7 stands. */
-  async appendDecision(runId: string, data: Omit<DecisionRecord, keyof typeof base | 'type'>): Promise<DecisionRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'decision', ...data }));
-  }
-
-  /** That a person asked this Run to stop, appended by the executor before anything is stopped. */
-  async appendCancel(runId: string, data: Omit<CancelRecord, keyof typeof base | 'type'>): Promise<CancelRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'cancel', ...data }));
-  }
-
-  /**
-   * That a drill-down Loop opened, or closed, appended by the executor (#28).
-   *
-   * `loopId` is the record's own and not the header's stamp, so that both halves of the pair name
-   * the Loop whatever the row said at the moment each was written: the `opened` record is written
-   * before the Run moves into the Loop, and the `closed` record before it moves out, which is the
-   * order every other record of a move in this harness is written in — the record is the authority
-   * and the row follows it.
-   */
-  async appendLoop(runId: string, data: LoopData): Promise<LoopRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'loop', ...data }));
-  }
-
   /**
    * That this Run's technical report was written on the Site, and where (#30).
    *
@@ -2203,10 +2116,6 @@ export class Ledger {
   /** Delivery fact for Pack-local customer assets; a failure names no false completion. */
   async appendArchive(runId: string, data: Omit<ArchiveRecord, keyof typeof base | 'type'>): Promise<ArchiveRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'archive', ...data }));
-  }
-
-  async appendAnalysis(runId: string, data: Omit<AnalysisRecord, keyof typeof base | 'type'>): Promise<AnalysisRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'analysis', ...data }));
   }
 
   /**
@@ -2233,11 +2142,6 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'code', ...data }));
   }
 
-  /** Charge one writer call before any Site effect. */
-  async appendResearchWrite(runId: string, data: Omit<ResearchWriteRecord, keyof typeof base | 'type'>): Promise<ResearchWriteRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'research-write', ...data }));
-  }
-
   /** Record only a successful, byte-identified Pack knowledge read. */
   async appendKnowledge(runId: string, data: Omit<KnowledgeRecord, keyof typeof base | 'type'>): Promise<KnowledgeRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
@@ -2246,18 +2150,9 @@ export class Ledger {
   async appendDelegation(runId:string,data:Omit<DelegationRecord,keyof typeof base|'type'>):Promise<DelegationRecord> {
     return this.#append(runId,'executor',h=>({...h,type:'delegation',...data}));
   }
-  async appendInteractive(runId:string,data:Omit<InteractiveRecord,keyof typeof base|'type'>):Promise<InteractiveRecord> {
-    return this.#append(runId,'executor',h=>({...h,type:'interactive',...data}));
-  }
 
   async appendExperienceAdoption(runId: string, data: Omit<ExperienceAdoptionRecord, keyof typeof base | 'type'>): Promise<ExperienceAdoptionRecord> {
     return this.#append(runId, 'person', (h) => ({ ...h, type: 'experience-adoption', ...data }));
-  }
-
-  /** Append one immutable growth fact. Fabric owns validation and ordering; Ledger owns identity,
-   * sequence, time and writer exactly as for every other execution record. */
-  async appendGrowth(runId: string, data: Omit<GrowthRecord, keyof typeof base | 'type'>): Promise<GrowthRecord> {
-    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'growth', ...data }));
   }
 
   /** Append one immutable revision lifecycle/validity fact. */
@@ -2348,33 +2243,6 @@ export function retainedRecordMaterial(records: readonly LedgerRecord[], recordI
   const asset = revision?.assets?.find((item) => item.path === path && item.beforeSha256 === sha256);
   return revision === undefined || asset === undefined ? undefined
     : { path: asset.beforeVersionPath, sha256, bytes, revisionId: revision.revisionId, version: revision.version };
-}
-
-/**
- * Write one node transition: an absent key, never an undefined one, so a record round-trips as
- * written.
- *
- * Beside the appender it wraps because every writer of a node record wants exactly this shape — the
- * driver moving a Run through its graph, the job cap announcing a Site that is full, the cancel and
- * the reconciliation settling a node on a Run they hold no drive of — and the "absent, never
- * undefined" rule is the ledger's own, stated here once for all of them.
- */
-export async function recordNode(
-  ledger: Ledger,
-  runId: string,
-  node: { readonly id: string; readonly kind: NodeKind },
-  state: NodeState,
-  attempt: number,
-  extra: { outcome?: VerdictOutcome; jobSession?: string; reason?: string; branchId?: string; logTail?: string } = {},
-): Promise<NodeRecord> {
-  const head = { nodeId: node.id, kind: node.kind, state, attempt };
-  const withOutcome = extra.outcome === undefined ? head : { ...head, outcome: extra.outcome };
-  const withSession = extra.jobSession === undefined ? withOutcome : { ...withOutcome, jobSession: extra.jobSession };
-  // The branch a fork's drive is writing this transition for (#29), stated by that drive and by
-  // nothing else: a node outside every fork carries no key at all.
-  const withBranchId = extra.branchId === undefined ? withSession : { ...withSession, branchId: extra.branchId };
-  const withReason = extra.reason === undefined ? withBranchId : { ...withBranchId, reason: extra.reason };
-  return ledger.appendNode(runId, extra.logTail === undefined ? withReason : { ...withReason, logTail: extra.logTail });
 }
 
 // Offline import is deliberately outside Ledger's live write path. A version gate is still a
