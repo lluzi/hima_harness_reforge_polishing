@@ -395,11 +395,16 @@
         },
         "PREPARED": {
           "$ref": "#/$defs/prepare-request-output"
+        },
+        "TARGET_ADMITTED": {
+          "type": "number",
+          "const": 1
         }
       },
       "required": [
         "ADMISSION",
-        "PREPARED"
+        "PREPARED",
+        "TARGET_ADMITTED"
       ],
       "additionalProperties": false
     },

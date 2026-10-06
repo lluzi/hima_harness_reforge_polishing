@@ -214,7 +214,7 @@ class Route(unittest.TestCase):
         self.assertFalse(value["admitted"])
         self.assertIn("licence service unavailable", value["reason"])
         self.assertFalse(os.path.exists(self.library))
-        delivered, _ = tasks.deliver_task(self.workspace, {"ADMISSION": value, "PREPARED": inputs["PREPARED"]})
+        delivered, _ = tasks.deliver_task(self.workspace, {"ADMISSION": value, "PREPARED": inputs["PREPARED"], "TARGET_ADMITTED": 1})
         self.assertFalse(delivered["goalMet"])
         with open(os.path.join(self.workspace, inputs["DOMAIN_REPORT"]["path"]), "a") as stream:
             stream.write(" ")
@@ -224,7 +224,7 @@ class Route(unittest.TestCase):
     def test_deliver_reports_the_admitted_analysis(self):
         inputs = self.deliver_once()
         admission = library.admit_task(self.workspace, inputs)
-        value, artifacts = tasks.deliver_task(self.workspace, {"ADMISSION": admission, "PREPARED": inputs["PREPARED"]})
+        value, artifacts = tasks.deliver_task(self.workspace, {"ADMISSION": admission, "PREPARED": inputs["PREPARED"], "TARGET_ADMITTED": 1})
         self.assertTrue(value["goalMet"])
         self.assertEqual(value["libraryPath"], admission["path"])
         self.assertEqual([a["name"] for a in artifacts], ["final-report-json", "final-report", "analysis-result"])

@@ -138,6 +138,17 @@ tools:
   - ${TASK_OUTPUT}
 rules:
 - analysis-delivery-ready
+goal:
+  admitted_analyses:
+    type: number
+    unit: count
+    min: 1
+    max: 1
+    default: 1
+words:
+  admitted_analyses:
+    label: Reader-accepted analyses admitted into the library
+    unit: count
 knowledge:
 - file: custom-analysis-contract.md
   purpose: The exact hima-libinsight-analysis/1 delivery, a complete valid example, the Reader's rejection list,

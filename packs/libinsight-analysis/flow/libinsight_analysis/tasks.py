@@ -60,6 +60,9 @@ def _markdown(value, doc):
 
 def deliver_task(workspace, inputs):
     admission, prepared = inputs["ADMISSION"], inputs["PREPARED"]
+    target = inputs["TARGET_ADMITTED"]
+    if not common.finite_number(target) or target != 1:
+        raise LiaError("invalid-input", "the admitted_analyses Goal of this Pack is exactly 1")
     if admission.get("requestId") != prepared.get("requestId"):
         raise LiaError("identity-mismatch", "admission and prepared request belong to different requests")
     ref = admission["domainReport"]
@@ -69,11 +72,11 @@ def deliver_task(workspace, inputs):
         raise LiaError("identity-mismatch", "retained domain-report changed after admission")
     doc, _ = delivery.load_result(report)
     if admission["admitted"]:
-        target = admission["path"]
-        if common.sha256_file(os.path.join(target, "analysis-result.json")) != admission["resultSha256"]:
+        admitted_at = admission["path"]
+        if common.sha256_file(os.path.join(admitted_at, "analysis-result.json")) != admission["resultSha256"]:
             raise LiaError("identity-mismatch", "the admitted library result changed after admission")
     value = {
-        "goalMet": bool(admission["admitted"]),
+        "goalMet": (1 if admission["admitted"] else 0) >= target,
         "requestId": prepared["requestId"],
         "question": prepared["question"],
         "admitted": bool(admission["admitted"]),

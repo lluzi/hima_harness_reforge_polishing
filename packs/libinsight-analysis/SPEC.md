@@ -2,8 +2,9 @@
 
 ## Goal template
 
-No numeric Goal parameter. The terminal `deliver` value carries `goalMet: true` exactly when an
-accepted analysis was admitted into the library; a blocked or cancelled resident outcome ends with
+One fixed Goal parameter, `admitted_analyses` = 1 (count; min = max = default = 1), because a Run
+must state a Goal. `deliver` consumes it: `goalMet` is true exactly when one Reader-accepted
+analysis was admitted into the library; a blocked or cancelled resident outcome ends with
 `goalMet: false` and the reason.
 
 ## Constraints

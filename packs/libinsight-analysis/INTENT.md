@@ -34,7 +34,8 @@ shown honestly and is not admitted.
 - An analysis id/version is immutable once admitted; a change is a new version.
 - Additional sources found by the resident are allowed only with identical before/after hashes that
   the Reader re-hashes on the Site.
-- No numeric Goal: the Run's goalMet means "an accepted analysis was admitted".
+- The Goal is fixed at one admitted analysis (`admitted_analyses` = 1): the Run's goalMet means
+  "an accepted analysis was admitted".
 
 ## Knowledge applied
 

@@ -125,6 +125,10 @@ flow:
         source: committedOutput
         taskId: prepare-request
         path: []
+      TARGET_ADMITTED:
+        source: goal
+        path:
+        - admitted_analyses
     contract:
       input:
         version: '1'
