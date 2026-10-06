@@ -215,7 +215,10 @@ async function readerAdapter(m:Materialization,declared:ContractOutput,request=m
   }
   const declaration=own.declaration,script=m.pack.folder.files.get(declaration.file);if(!script)throw new Error(`Frozen Reader script ${declaration.file} is unavailable`);
   const p=pathsOf(m.site),directory=p.join(m.product.workspace,'hima-readers',sha(request.identity.effectId).slice(0,32)),ship=p.join(directory,p.basename(declaration.file)),out=p.join(directory,'values.json'),source=p.join(directory,'report.json'),retainedReport=p.join(directory,'input-report');
-  const argv=declaration.argv.map(word=>substitute(word,{READER:ship,REPORT:retainedReport,OUT:out,WORKSPACE:m.product.workspace},`reader ${name}`));
+  // ${REPORT} is the output the contract pointed at, where it lies, so a Reader may read the evidence
+  // beside it (pack-anatomy). The retained copy stays the identity record; collection refuses a report
+  // whose bytes changed while the Reader ran.
+  const argv=declaration.argv.map(word=>substitute(word,{READER:ship,REPORT:report,OUT:out,WORKSPACE:m.product.workspace},`reader ${name}`));
   return commandTaskAdapter({sitesDir:m.deps.sitesDir,siteId:m.site.name,workspace:m.product.workspace,name:`reader-${name}`,argv,licences:{},
     async stage(site) {
       const on=channelFor(site),read=await decideRead(site,report,on);if(!read.ok)throw new Error(read.reason);
@@ -230,6 +233,7 @@ async function readerAdapter(m:Materialization,declared:ContractOutput,request=m
       const parsed=JSON.parse(Buffer.from(bytes).toString('utf8'));if(!parsed||!Array.isArray(parsed.values))throw new Error(`Reader ${name} must produce one JSON object containing values`);
       const seen=JSON.parse(Buffer.from(await on.readFile(source)).toString('utf8')) as {path:string;contentSha256:string;bytes:number;retainedPath:string};
       if(sha(await readFile(seen.retainedPath))!==seen.contentSha256)throw new Error('Original Reader report source changed');
+      const now=await decideRead(site,report,on);if(!now.ok||now.absPath!==seen.path||sha(await on.readFile(now.absPath))!==seen.contentSha256)throw new Error(`Reader ${name} report ${report} changed while it was read`);
       return observationOutput(m,req,{...seen,reader:{id:declaration.id,version:declaration.version,reportKind:declaration.reportKind,emits:declaration.emits,file:declaration.file,sha256:sha(script)},values:parsed.values,...(branch?{branchId:branch}:{})},seen.retainedPath,declared.name,p.relative(m.product.workspace,retainedReport));
     })});
 }

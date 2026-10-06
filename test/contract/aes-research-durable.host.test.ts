@@ -50,13 +50,8 @@ const sample = { schema: 'aes-path-motifs/1', budget: 2, paths: [
 ] };
 const corrected = `import hashlib,json,pathlib,sys\nw=pathlib.Path(sys.argv[1]); s=json.loads((w/'sample.json').read_text()); used=set(); chosen=[]\nfor c in sorted(s['candidates'],key=lambda x:(-len(x['cells'])*len({o['path'] for o in x['occurrences']}),x['id'])):\n if len(chosen)<s['budget'] and not used.intersection(c['cells']): chosen.append(c['id']); used.update(c['cells'])\n(w/'selection.json').write_text(json.dumps({'sampleSha256':hashlib.sha256((w/'sample.json').read_bytes()).hexdigest(),'selected':chosen}))\n`;
 
-// The DBOS Pack-Reader adapter hands ${REPORT} as hima-readers/<effect>/input-report; read-selection.py
-// derives its score from `report.parent / "sample.json"`, which is not staged there.
-const readerStaging = 'DBOS Pack Reader stages ${REPORT} as hima-readers/<effect>/input-report without sibling files; '
-  + 'read-selection.py reads report.parent/sample.json and cannot find it (suspected regression, reported)';
-
 test('DBOS two-generation research Workshop turns a measured overlap FAIL into PASS (synthetic finite data)',
-  { timeout: 150_000, todo: readerStaging }, async (t) => {
+  { timeout: 150_000 }, async (t) => {
   const home = await localHome(t, { sleepSeconds: 0, parallelJobs: 1 });
   assert.ok(home);
   const packDir = path.join(home.h.home, 'hima/packs/aes-timing-research');

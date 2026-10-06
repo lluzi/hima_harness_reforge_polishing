@@ -39,15 +39,9 @@ ib=json.dumps(ident)
 (f/'probe.json').write_text(json.dumps({'effectiveIdentity':ident,'identity':{'path':'probe-inputs.json','sha256':hashlib.sha256(ib.encode()).hexdigest()},'format':'aes-probe/2','toolExit':0,'askedPeriodNs':a.period,'evidence':{'metrics':{'path':'metrics.tsv','sha256':hashlib.sha256(raw.encode()).hexdigest()}}}))
 `;
 
-// The DBOS Pack-Reader adapter hands ${REPORT} as a staged copy (`hima-readers/<effect>/input-report`)
-// without the report's sibling evidence. The released AES reader resolves `probe-inputs.json` and
-// `metrics.tsv` beside the report (report.parent), as it did on the retired route, and exits 1 there.
-const readerStaging = 'DBOS Pack Reader stages ${REPORT} as hima-readers/<effect>/input-report without its sibling evidence; '
-  + 'the released AES read-probe.py resolves probe-inputs.json/metrics.tsv beside the report and exits 1 (suspected regression, reported)';
-
 for (const variant of ['goal-met', 'goal-missed', 'missing-measurement'] as const) {
   test(`released v2 AES probe through DBOS: ${variant} (synthetic EDA measurement)`,
-    { timeout: 120_000, ...(variant === 'missing-measurement' ? {} : { todo: readerStaging }) }, async (t) => {
+    { timeout: 120_000 }, async (t) => {
     const home = await localHome(t, { sleepSeconds: 0 });
     assert.ok(home);
     const packDir = path.join(home.h.home, 'hima/packs/aes-tsmc28-dtco');

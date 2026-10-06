@@ -57,14 +57,8 @@ async function recordsOf(host: InProcessHost, home: string, runId: string) {
   return await readers.readRunRecords(runId) as any[];
 }
 
-// Every stage Reader (tools/read-stage.py) locates its workspace as report.parents[3] and raw.json
-// beside the report; the probe Reader reads probe-inputs.json beside it. DBOS hands ${REPORT} as a
-// staged copy hima-readers/<effect>/input-report, so the first Reader (read-probe) already exits 1.
-const readerStaging = 'DBOS Pack Reader stages ${REPORT} as hima-readers/<effect>/input-report without sibling files; '
-  + 'AES read-probe.py/read-stage.py resolve evidence beside the report and exit 1 (suspected regression, reported)';
-
 test('DBOS drives the complete AES graph from the probe loop through six Workshop branches to a goal-met ending',
-  { timeout: 600_000, todo: readerStaging }, async (t) => {
+  { timeout: 600_000 }, async (t) => {
   const home = await localHome(t, { sleepSeconds: 0, parallelJobs: 1, licences: { 'Library-Compiler': 1, 'Design-Compiler': 1, Innovus: 1 } });
   assert.ok(home);
   const fixture = await createAesDomainFixture();
