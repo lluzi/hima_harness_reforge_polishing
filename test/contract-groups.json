@@ -6,6 +6,7 @@
     "test/contract/aes-mining-view.test.ts",
     "test/contract/aes-probe-durable.host.test.ts",
     "test/contract/aes-probe.test.ts",
+    "test/contract/aes-research-durable.host.test.ts",
     "test/contract/aes-selection-template.test.ts",
     "test/contract/aes-timing-research-reader.test.ts",
     "test/contract/agent-controls.host.test.ts",
