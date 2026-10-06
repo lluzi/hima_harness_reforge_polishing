@@ -4,7 +4,7 @@
 [ADR-0019](../../adr/0019-data-insight-frames-the-libinsight-app.md)、
 [ADR-0017](../../adr/0017-resident-engineering-agent-owns-engineering-execution.md)、
 [LibInsight 功能规格](../libinsight/spec.zh-CN.md)、[QuaLib 2026 资格](../../package-development/library-intelligence-platform/qualification/2026-09-24-qualib-2026.md)。
-状态：2026-10-05 用户确认方向与四项选择；尚未实施。
+状态：2026-10-05 用户确认方向与四项选择；同日追加“驻场分析”标签页与实施授权（见文末修订），按修订切片实施。
 
 ## 用户场景
 
@@ -115,3 +115,57 @@ S1 与 S2 可并行；S3 依赖 S2；S5 依赖 S2/S3；S6 依赖 LibInsight 扩�
 ## 回滚
 
 Pack 与 Site 为新增文件，可整体移除；Data Insight 的 viewer 不依赖本 Pack。各切片独立提交。
+
+## 2026-10-05 修订：Data Insight 的“驻场分析”标签页
+
+用户追加：在 Data Insight 中为驻场 OpenCode 开一个标签页做定制图表；驻场 OpenCode 带 QuaLib API playbook，
+可以在 linglong 上基于它做 QuaLib API 编程与开发。同日确认：可在 linglong 做一次性准备并运行真实 QuaLib 与
+模型任务；LibInsight 仓库保持不动（视图通知与 LibInsight 内页面等其自身会话实现）。
+
+### 用户路径
+
+1. Data Insight 顶栏新增 **Resident analyses**（与 LibInsight pages、Retained reports 并列）。用户输入问题，
+   可选列出 linglong 上的 `.lib` 路径与要沿用的已登记分析。
+2. Host 把请求写入 Site 上的请求文件，按 Pack `libinsight-analysis` 与 Site `linglong-libinsight` 做一次准备，
+   标签页显示有界方案卡（问题、源、Site、Pack 版本、预算）；用户点 Confirm 即一次确认，由当前会话作为 Guide
+   经 `startGuidedRun` 启动普通 durable Run。不经过 Campaign 配置页。
+3. 驻场 OpenCode 按 playbook 在私有工作区写代码、在 linglong 运行（可直接调用 QuaLib API），交付分析包；Pack
+   Reader 校验后，`admit-analysis` 把代码与结果登记进 Site 的分析库，后续请求可在其上继续开发。
+4. 标签页列出每次请求的状态与结果，用通用渲染器画出 `table/bar/line/scatter/heatmap`，并显示摘要、假设、
+   限制、源 hash 与主脚本代码。结果来自 Host 保留的 Reader 输入字节，不另读 Site。
+
+每次请求是一个任务局部 Run（ADR-0017 Q5），不是常驻会话；连续开发依靠 Site 分析库与 `buildsOn`。
+
+### 合同
+
+- 请求 `hima-libinsight-request/1`（Host 写入）：`requestId`、`question`（≤4000 字）、`sources[]`（Site 绝对路径，
+  可空）、`buildsOn[]`（已登记分析 `id@version`，可空）、`createdAt`。
+- `prepare-request` 输出 `hima-libinsight-prepared-request/1`：请求原文、每个源的 `sha256/bytes`、分析库目录
+  （已登记分析的 id、version、问题、路径）。
+- 交付 `hima-libinsight-analysis/1`：`id`（slug）、`version`（正整数）、`question`、`summary`、`sources[]`
+  （`path`、`sha256Before`、`sha256After`）、`datasets{name:{columns[{name,type,unit?}],rows[][]}}`、
+  `plots[]`（`id,title,kind,dataset,x,y,series?,value?`）、`code{main{path,sha256,text},files[]}`、
+  `run{command,exitCode,elapsedSeconds,usedQualib}`、`assumptions[]`、`limits[]`。
+  Reader 拒绝：schema 不符、非有限数、缺失值写成 0 的声明冲突（列声明 `nullMeans` 才允许 null）、源 hash 前后
+  不一致或与准备清单不符、代码 hash 与交付树不符、超出大小上限（每数据集 ≤ 20000 行、结果 ≤ 4 MiB）。
+- 登记 `hima-libinsight-admission/1`：`id`、`version`、库内路径、结果与代码 hash。
+
+### Site `linglong-libinsight`
+
+工作根 `/data/eda/project/hima_harness/libinsight-runs`（`campaigns/`、`requests/`、`library/`）；读根加入
+QuaLib API、`qualib-libapi-2026-py37`、`/data/eda/pdk/saed14`、`/data/eda/project/techlib/tsmc28`；驻场
+capability 复用已安装的 `resident-engineering-v1` wrapper 与 edarunner 镜像，新增本 Site 的 capability 文件；
+QuaLib 进程逐个运行，每进程 `EMPYREAN_LICENSE_FILE=59099@localhost`，不改任何许可证配置。已知限制：跨 Site
+的 XTop 与 QuaLib 并发不由 Host 互斥（同 library-intelligence 的说明）。
+
+### 切片（替代上表的执行顺序）
+
+| 切片 | 内容 | 最低测试 |
+| --- | --- | --- |
+| R1 Pack + Site + playbook | `packs/libinsight-analysis`、`sites/linglong-libinsight`、QuaLib playbook 与知识、Reader/工具及反例 | Pack Python 单测（Reader 反例）；L2 durable Host 用 ACP 替身走完整图 |
+| R2 Host 操作 | `index.ts`/`remote.ts`：propose、confirm、list；保留结果投影 | L2 HTTP：坏会话 403、方案与启动、列表含已登记结果 |
+| R3 标签页 | `LibInsightResidentPanel`、图表渲染、Data Insight 第三个视图 | L1 渲染投影；L3 桌面：方案卡、确认、结果图 |
+| R4 真实验证 | linglong 一次性准备；SAED14 单文件真实定制图（真实模型 + QuaLib） | L4，打包 App 在 Catsights 操作 |
+
+原 S2/S3（提取并交付 Kit 到 LibInsight 数据文件夹）与 S1/S6（依赖 LibInsight 接口）不在本轮；S4 的 Guide
+对话入口在标签页之后评估。
