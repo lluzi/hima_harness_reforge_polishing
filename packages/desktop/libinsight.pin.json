@@ -1,7 +1,7 @@
 {
   "schema": "hima-libinsight-pin/1",
   "source": "lib_insight",
-  "commit": "d463b8e9bf6f35977dec0249bdd5bcd19c745b72",
+  "commit": "55e27bfaf4470f0f38010e8bfdaf8a284064f612",
   "paths": [
     "app",
     "libinsight"
