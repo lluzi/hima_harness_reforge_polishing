@@ -15,9 +15,22 @@ modelled Liberty; superseded by 0.2.0/0.3.0, where HimaHarness characterizes eve
 - Wiring Run `run-1a52e6fd-3a4d-482d-8156-03f73deebf70` (1 generation).
 - Live Run `run-f42706a0-d392-44a5-8f54-085b2c95d2b1` (up to 4 generations).
 
-Pack 0.3.0 has no GUI Run yet; its server dry runs are under
-`/data/eda/project/hima_harness/cellfmax-runs/dryrun-20261004/` (`ws-f`: 149 factory cells, `ws-m`:
-236 abstract cells with modelled timing).
+Pack 0.3.0 GUI Run `run-b38106d8-5020-4a87-bb25-037e34717141` (round 1 delivered and judged; left
+in round 2 at the user's pause). Pack 0.4.0 (mock layout and mock characterization) has no GUI Run
+yet. Server dry runs are under `/data/eda/project/hima_harness/cellfmax-runs/dryrun-20261004/`
+(`ws-f`: 149 factory cells; `ws-m`: 236 abstract cells with pre-layout SPICE timing; `ws-x`: the 227
+round-1 cells of run-b38106d8 re-characterized with the 0.4.0 mock, then both arms on real ORFS).
+
+Round 1 of run-b38106d8, the same recipe (emap window, equivalence log passed), three timing bases:
+
+| characterization of the 227 cells | time | custom arm | control arm | matched gain | adopted |
+| --- | --- | --- | --- | --- | --- |
+| pre-layout ngspice, Pack 0.3.0 (GUI Run) | 1470 s | 268.85 MHz | 268.28 MHz | +0.22 % | 534 of 54 types |
+| mock, Pack 0.4.0 (`ws-x`, 2026-10-06) | 3 s | 269.82 MHz (WNS −0.106 ns, DRC 0) | 268.28 MHz (WNS −0.128 ns, DRC 0) | +0.58 % | 548 of 53 types |
+| engineer's own trial (claim) | — | 273.61 MHz | 268.28 MHz | +1.99 % | 506 of 54 types |
+
+The control arm is identical in all three (no custom cell). No multi-output cell was adopted in
+either characterization. Arms took 916 s and 890 s in parallel.
 
 ## Ending
 
@@ -36,8 +49,9 @@ Pack 0.3.0 has no GUI Run yet; its server dry runs are under
 ## Code
 
 Local: `test/contract/custom-cell-fmax-sky130-demo.test.ts` 6/6 (Pack load, graph shape, Site fit,
-argv binding, capability identity, the four Python suites: CLI 35, characterizer 27, factory 36,
-abstract 6); `cellfmax-dry` Host group 2/2 (goal-met in two rounds; converged).
+argv binding, capability identity, the five Python suites: CLI 35, characterizer 27, factory 36,
+abstract 6, mock 10); `cellfmax-dry` Host group 2/2 on abstract cells with mock characterization
+(goal-met in two rounds; converged).
 
 ## Refusals
 

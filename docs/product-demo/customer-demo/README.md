@@ -31,6 +31,7 @@ the table below so it can be ported after the migration.
 | Engineer `precheck` (same validator as the delivery Reader, on the private workspace) | `ce61d508` | Demo-only (Pack) | A Reader refusal reaches only the Job log, not the owner or engineer (Harness gap, below) |
 | No-entrypoint image `localhost/iic-osic-celluzi-hima:2026.06` for the resident sandbox | Site README | Demo Site config | The IIC-OSIC VNC entrypoint swallows the wrapper's command; no wrapper change |
 | No-model Host dry path of the demo graph (group `cellfmax-dry`) | `63cbac16`, `2e0cfc26` | Demo-only test | Intermittent fork-round launch stall on the Mac (below) |
+| Custom-cell Pack 0.4.0: mock layout (abstract LEF) and mock characterization (RC model anchored to foundry tables, no SPICE) | `2fecfda8` | Demo-only (Pack) | 227 cells in 3 s instead of 26 min; same round on real ORFS +0.58 % (SPICE-modelled +0.22 %); error in `flow/toolbox/char/mock-fit.json` |
 
 ## Build and launch
 
