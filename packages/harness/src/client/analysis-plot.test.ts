@@ -130,3 +130,30 @@ test('a declaration that cannot be drawn says why instead of throwing', () => {
   const g = projectPlot({ datasets: { nf: { columns: datasets.bad!.columns, rows: [['a', Number.NaN]] } } }, plot({ kind: 'bar', dataset: 'nf', x: { column: 'k' }, y: { column: 'v' } }));
   assert.equal(g.kind === 'cannot-draw' ? g.reason : g.kind, 'row 1 of nf has NaN in v; y needs a finite number');
 });
+
+test('numeric bands and series are keyed by the exact number, not its rounded label', () => {
+  const close: Datasets[string] = { columns: [{ name: 'a', type: 'number' }, { name: 'b', type: 'number' }, { name: 'v', type: 'number' }], rows: [[0.1, 1, 5], [0.1000001, 1, 7]] };
+  const g = projectPlot({ datasets: { close } }, plot({ kind: 'heatmap', dataset: 'close', x: { column: 'a' }, y: { column: 'b' }, value: { column: 'v' } }));
+  assert.equal(g.kind, 'heatmap');
+  if (g.kind !== 'heatmap') return;
+  assert.equal(g.x.categories.length, 2);
+  assert.deepEqual(g.cells.map(c => c.x), [0, 1]);
+  assert.ok(!g.notes.some(note => note.includes('repeat')), 'two different numbers are two cells');
+  const s = projectPlot({ datasets: { close } }, plot({ kind: 'scatter', dataset: 'close', x: { column: 'b' }, y: { column: 'v' }, series: { column: 'a' } }));
+  assert.equal(s.kind === 'scatter' ? s.series.length : 0, 2);
+});
+
+test('20 000 distinct values project in well under a second', () => {
+  const n = 20_000;
+  const wide: Datasets[string] = { columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'string' }, { name: 'v', type: 'number' }], rows: Array.from({ length: n }, (_, i) => [i * 1.5, `r${String(i)}`, i]) };
+  const started = performance.now();
+  const heat = projectPlot({ datasets: { wide } }, plot({ kind: 'heatmap', dataset: 'wide', x: { column: 'x' }, y: { column: 'y' }, value: { column: 'v' } }));
+  const bar = projectPlot({ datasets: { wide } }, plot({ kind: 'bar', dataset: 'wide', x: { column: 'y' }, y: { column: 'v' }, series: { column: 'x' } }));
+  const line = projectPlot({ datasets: { wide } }, plot({ kind: 'line', dataset: 'wide', x: { column: 'v' }, y: { column: 'x' }, series: { column: 'y' } }));
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 200, `three projections took ${elapsed.toFixed(0)} ms`);
+  assert.equal(heat.kind === 'heatmap' ? heat.x.categories.length : 0, n);
+  assert.equal(heat.kind === 'heatmap' ? heat.cells.length : 0, plotLimits.points);
+  assert.ok(bar.kind === 'bar' && bar.notes.some(note => note.startsWith(`${String(n - 8)} more series`)));
+  assert.ok(line.kind === 'line' && line.series.length === 8);
+});

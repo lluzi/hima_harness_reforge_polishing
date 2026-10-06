@@ -119,14 +119,21 @@ function requireNumeric(dataset: AnalysisDataset, datasetName: string, role: str
 }
 
 const categoryText = (value: Cell): string => value === null ? '(missing)' : typeof value === 'number' ? formatValue(value) : value;
+/** A cell's identity: the exact number or text, never its rounded display, so 0.1 and 0.1000001 stay apart. */
+const cellKey = (value: Cell): string => value === null ? 'null' : typeof value === 'number' ? `n:${String(value)}` : `s:${value}`;
+function extent(values: readonly number[]): [number, number] {
+  let min = Infinity, max = -Infinity;
+  for (const value of values) { if (value < min) min = value; if (value > max) max = value; }
+  return [min, max];
+}
 
-/** Series names in first-appearance order with fixed slots; series past the palette are counted, not repainted. */
+/** Series in first-appearance order with fixed slots; series past the palette are counted, not repainted. */
 function seriesOf(rows: readonly (readonly Cell[])[], index: number | undefined): { keys: SeriesKey[]; slotOf: Map<string, number>; dropped: number } {
-  const names: string[] = [];
-  if (index === undefined) names.push('');
-  else for (const row of rows) { const name = categoryText(row[index] ?? null); if (!names.includes(name)) names.push(name); }
-  const kept = names.slice(0, plotLimits.series);
-  return { keys: kept.map((name, i) => ({ name, slot: i + 1 })), slotOf: new Map(kept.map((name, i) => [name, i])), dropped: names.length - kept.length };
+  const first = new Map<string, string>();
+  if (index === undefined) first.set(cellKey(''), '');
+  else for (const row of rows) { const value = row[index] ?? null, key = cellKey(value); if (!first.has(key)) first.set(key, categoryText(value)); }
+  const kept = [...first].slice(0, plotLimits.series);
+  return { keys: kept.map(([, name], i) => ({ name, slot: i + 1 })), slotOf: new Map(kept.map(([key], i) => [key, i])), dropped: first.size - kept.length };
 }
 
 function missingNote(count: number, column: Column): string | undefined {
@@ -145,27 +152,27 @@ function projectBar(plot: AnalysisPlotSpec, dataset: AnalysisDataset): PlotGeome
   requireNumeric(dataset, plot.dataset, 'y', y);
   const s = plot.series ? columnOf(dataset, plot.dataset, 'series', plot.series) : undefined;
   const { keys, slotOf, dropped } = seriesOf(dataset.rows, s?.index);
-  const categories: string[] = [], seen = new Set<string>(), bars: BarMark[] = [];
+  const categories: string[] = [], categoryAt = new Map<string, number>(), seen = new Set<string>(), bars: BarMark[] = [];
   let missing = 0, repeated = 0, eligible = 0;
   for (const row of dataset.rows) {
     const value = row[y.index] ?? null;
-    const seriesName = s === undefined ? '' : categoryText(row[s.index] ?? null);
-    const series = slotOf.get(seriesName);
+    const seriesCell = s === undefined ? '' : row[s.index] ?? null, seriesName = categoryText(seriesCell);
+    const series = slotOf.get(cellKey(seriesCell));
     if (series === undefined) continue;
     if (value === null) { missing++; continue; }
     eligible++;
     if (bars.length >= plotLimits.points) continue;
-    const category = categoryText(row[x.index] ?? null);
-    const key = JSON.stringify([category, seriesName]);
+    const categoryCell = row[x.index] ?? null, category = categoryText(categoryCell), categoryKey = cellKey(categoryCell);
+    const key = `${categoryKey}\u0000${cellKey(seriesCell)}`;
     if (seen.has(key)) { repeated++; continue; }
     seen.add(key);
-    let at = categories.indexOf(category);
-    if (at < 0) { at = categories.length; categories.push(category); }
+    let at = categoryAt.get(categoryKey);
+    if (at === undefined) { at = categories.length; categories.push(category); categoryAt.set(categoryKey, at); }
     bars.push({ category: at, series, value: value as number, tip: `${category}${s === undefined ? '' : ` · ${seriesName}`}: ${withUnit(formatValue(value as number), y.column.unit)}` });
   }
   if (bars.length === 0) throw new CannotDraw(`dataset ${plot.dataset} has no ${y.column.name} values to draw`);
-  const values = bars.map(bar => bar.value);
-  const scale = niceScale(Math.min(0, ...values), Math.max(0, ...values));
+  const [low, high] = extent(bars.map(bar => bar.value));
+  const scale = niceScale(Math.min(0, low), Math.max(0, high));
   return { kind: 'bar', id: plot.id, title: plot.title, x: { kind: 'band', ...x.axis, categories }, y: { kind: 'linear', ...y.axis, ...scale }, series: s === undefined ? [] : keys, bars,
     notes: notes(missingNote(missing, y.column), seriesNote(dropped), capNote(plotLimits.points, eligible, 'bars'),
       repeated === 0 ? undefined : `${String(repeated)} row${repeated === 1 ? '' : 's'} repeat a ${x.column.name}${s === undefined ? '' : ` and ${s.column.name}`}; the first is drawn`) };
@@ -179,8 +186,8 @@ function projectXY(plot: AnalysisPlotSpec, dataset: AnalysisDataset, kind: 'line
   const lines = keys.map((_, series) => ({ series, points: [] as PointMark[] }));
   let missing = 0, eligible = 0, drawn = 0;
   for (const row of dataset.rows) {
-    const seriesName = s === undefined ? '' : categoryText(row[s.index] ?? null);
-    const series = slotOf.get(seriesName);
+    const seriesCell = s === undefined ? '' : row[s.index] ?? null, seriesName = categoryText(seriesCell);
+    const series = slotOf.get(cellKey(seriesCell));
     if (series === undefined) continue;
     const xv = row[x.index] ?? null, yv = row[y.index] ?? null;
     if (xv === null || yv === null) { missing++; continue; }
@@ -192,20 +199,24 @@ function projectXY(plot: AnalysisPlotSpec, dataset: AnalysisDataset, kind: 'line
   if (drawn === 0) throw new CannotDraw(`dataset ${plot.dataset} has no rows with both ${x.column.name} and ${y.column.name}`);
   if (kind === 'line') for (const line of lines) line.points.sort((a, b) => a.x - b.x);
   const xs = lines.flatMap(line => line.points.map(point => point.x)), ys = lines.flatMap(line => line.points.map(point => point.y));
-  return { kind, id: plot.id, title: plot.title, x: { kind: 'linear', ...x.axis, ...niceScale(Math.min(...xs), Math.max(...xs)) }, y: { kind: 'linear', ...y.axis, ...niceScale(Math.min(...ys), Math.max(...ys)) },
+  return { kind, id: plot.id, title: plot.title, x: { kind: 'linear', ...x.axis, ...niceScale(...extent(xs)) }, y: { kind: 'linear', ...y.axis, ...niceScale(...extent(ys)) },
     series: s === undefined ? [] : keys, lines: lines.filter(line => line.points.length > 0),
     notes: notes(missing === 0 ? undefined : `${String(missing)} row${missing === 1 ? '' : 's'} missing ${x.column.name} or ${y.column.name} (${y.column.nullMeans ?? x.column.nullMeans ?? 'missing'}) not drawn`, seriesNote(dropped), capNote(plotLimits.points, eligible, 'points')) };
 }
 
-/** Band categories: numbers ascending (left to right, and bottom to top on y), text in first-appearance order. */
-function bandOf(rows: readonly (readonly Cell[])[], at: { index: number; column: Column }, axis: 'x' | 'y'): string[] {
-  const values: Cell[] = [];
-  for (const row of rows) { const value = row[at.index] ?? null; if (value !== null && !values.includes(value)) values.push(value); }
-  if (at.column.type === 'number') {
-    const numbers = (values.filter(isNumber)).sort((a, b) => a - b);
-    return (axis === 'y' ? numbers.reverse() : numbers).map(formatValue);
+/**
+ * Band categories keyed by the exact value: numbers ascending (left to right, and bottom to top on
+ * y), text in first-appearance order. `at` places a cell's value on the band.
+ */
+function bandOf(rows: readonly (readonly Cell[])[], column: { index: number; column: Column }, axis: 'x' | 'y'): { names: string[]; at: Map<string, number> } {
+  const values = new Map<string, Cell>();
+  for (const row of rows) { const value = row[column.index] ?? null; if (value !== null) { const key = cellKey(value); if (!values.has(key)) values.set(key, value); } }
+  let ordered = [...values.values()];
+  if (column.column.type === 'number') {
+    ordered = ordered.filter(isNumber).sort((a, b) => a - b);
+    if (axis === 'y') ordered.reverse();
   }
-  return values.map(categoryText);
+  return { names: ordered.map(categoryText), at: new Map(ordered.map((value, i) => [cellKey(value), i])) };
 }
 
 function projectHeatmap(plot: AnalysisPlotSpec, dataset: AnalysisDataset): PlotGeometry {
@@ -218,24 +229,23 @@ function projectHeatmap(plot: AnalysisPlotSpec, dataset: AnalysisDataset): PlotG
   for (const row of dataset.rows) {
     const xv = row[x.index] ?? null, yv = row[y.index] ?? null;
     if (xv === null || yv === null) { unplaced++; continue; }
-    const xName = categoryText(xv), yName = categoryText(yv);
     eligible++;
     if (raw.length >= plotLimits.points) continue;
-    const key = JSON.stringify([xName, yName]);
+    const xKey = cellKey(xv), yKey = cellKey(yv), key = `${xKey}\u0000${yKey}`;
     if (seen.has(key)) { repeated++; continue; }
     seen.add(key);
-    raw.push({ x: xs.indexOf(xName), y: ys.indexOf(yName), value: (row[v.index] ?? null) as number | null, xName, yName });
+    raw.push({ x: xs.at.get(xKey)!, y: ys.at.get(yKey)!, value: (row[v.index] ?? null) as number | null, xName: categoryText(xv), yName: categoryText(yv) });
   }
   const values = raw.map(cell => cell.value).filter((value): value is number => value !== null);
   if (values.length === 0) throw new CannotDraw(`dataset ${plot.dataset} has no ${v.column.name} values to draw`);
-  const min = Math.min(...values), max = Math.max(...values), count = plotLimits.sequentialSteps;
+  const [min, max] = extent(values), count = plotLimits.sequentialSteps;
   const width = (max - min) / count;
   const steps = Array.from({ length: count }, (_, i) => ({ from: min + i * width, to: i === count - 1 ? max : min + (i + 1) * width }));
   const stepOf = (value: number) => max === min ? Math.floor(count / 2) : Math.min(count - 1, Math.floor((value - min) / (max - min) * count));
   const missing = raw.filter(cell => cell.value === null).length;
   const cells: HeatCell[] = raw.map(cell => ({ x: cell.x, y: cell.y, value: cell.value, ...(cell.value === null ? {} : { step: stepOf(cell.value) }),
     tip: `${x.axis.label} ${withUnit(cell.xName, x.column.unit)} · ${y.axis.label} ${withUnit(cell.yName, y.column.unit)}: ${cell.value === null ? v.column.nullMeans ?? 'missing' : withUnit(formatValue(cell.value), v.column.unit)}` }));
-  return { kind: 'heatmap', id: plot.id, title: plot.title, x: { kind: 'band', ...x.axis, categories: xs }, y: { kind: 'band', ...y.axis, categories: ys },
+  return { kind: 'heatmap', id: plot.id, title: plot.title, x: { kind: 'band', ...x.axis, categories: xs.names }, y: { kind: 'band', ...y.axis, categories: ys.names },
     value: { ...v.axis, domain: [min, max], steps }, cells,
     notes: notes(missing === 0 ? undefined : `${String(missing)} cell${missing === 1 ? '' : 's'} with no ${v.column.name} (${v.column.nullMeans ?? 'missing'}) shown hatched`,
       unplaced === 0 ? undefined : `${String(unplaced)} row${unplaced === 1 ? '' : 's'} missing ${x.column.name} or ${y.column.name} not drawn`,
