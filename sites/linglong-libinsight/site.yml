@@ -1,0 +1,24 @@
+name: linglong-libinsight
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/libinsight-runs/campaigns
+permit: ./permit.yml
+bindings:
+  # Every Run overrides analysisRequest with <analysisRequests>/<requestId>.json; this default only
+  # keeps the contract input bound for checkPack and fails prepare-request clearly if not overridden.
+  analysisRequest: /data/eda/project/hima_harness/libinsight-runs/requests/unset.json
+  analysisRequests: /data/eda/project/hima_harness/libinsight-runs/requests
+  analysisLibrary: /data/eda/project/hima_harness/libinsight-runs/library
+  factsCorpus: /data/eda/project/hima_harness/library-intelligence-prototypes/claude-libint-20260923-01/canonical
+  licenceModeFile: /data/eda/env/empyrean-license-mode
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-libinsight-v1.json
+  workspaceRoot: /data/eda/project/hima_harness/libinsight-runs/campaigns
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 16
+  memoryGiB: 64
+  parallelJobs: 2
+  licences:
+    QuaLib-2026-new-59099: 1
