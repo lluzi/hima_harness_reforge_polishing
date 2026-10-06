@@ -46,6 +46,15 @@ class Knowledge(unittest.TestCase):
         playbook = read(os.path.join(KNOWLEDGE, "qualib-api-playbook.md")).replace("\n  ", " ")
         self.assertIn(request.XTOP_MODE_MESSAGE, playbook)
 
+    def test_linglong_site_source_read_roots_repeat_its_permit(self):
+        site_dir = os.path.join(os.path.dirname(os.path.dirname(synthetic.PACK)), "sites", "linglong-libinsight")
+        if not os.path.isdir(site_dir):
+            self.skipTest("Pack copied outside the repository")
+        bound = re.search(r"^  sourceReadRoots: (\S+)$", read(os.path.join(site_dir, "site.yml")), re.M).group(1)
+        permit = read(os.path.join(site_dir, "permit.yml"))
+        roots = re.findall(r"^  - (\S+)$", permit.split("allowedReadRoots:")[1].split("allowedWriteRoots:")[0], re.M)
+        self.assertEqual(bound.split(":"), roots)
+
     def test_every_declared_knowledge_file_exists(self):
         contract = read(os.path.join(synthetic.PACK, "contract.yml"))
         for name in re.findall(r"^- file: (\S+)$", contract, re.M):

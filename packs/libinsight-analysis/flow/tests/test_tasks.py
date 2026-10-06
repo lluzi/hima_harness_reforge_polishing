@@ -42,11 +42,11 @@ class Route(unittest.TestCase):
         with open(self.mode_file, "w") as stream:
             stream.write(word + "\n")
 
-    def prepare(self, sources, builds=(), capability=""):
+    def prepare(self, sources, builds=(), capability="", roots=None):
         return tasks.prepare_task(self.workspace, {
             "ANALYSIS_REQUEST": self.write_request(sources, builds), "ANALYSIS_LIBRARY": self.library,
             "FACTS_CORPUS": os.path.dirname(self.corpus), "ENGINEERING_CAPABILITIES": capability,
-            "LICENCE_MODE_FILE": self.mode_file})
+            "LICENCE_MODE_FILE": self.mode_file, "SOURCE_READ_ROOTS": self.base if roots is None else roots})
 
     def deliver_once(self, version=1, summary=None):
         """prepare -> real example script -> Host materialization -> Reader script; returns task inputs."""
@@ -150,6 +150,21 @@ class Route(unittest.TestCase):
         self.prepare([self.lib])
         prepared = common.read_json_file(os.path.join(self.workspace, common.PREPARED_PATH), "prepared")
         self.assertEqual(prepared["licence"]["liveQualibRequiredFor"], [self.lib])
+
+    def test_prepare_bounds_sources_to_the_site_read_roots_without_a_podman_capability(self):
+        self.prepare([self.facts], roots=os.path.dirname(self.corpus) + ":/unused/root")
+        prepared = common.read_json_file(os.path.join(self.workspace, common.PREPARED_PATH), "prepared")
+        self.assertEqual(prepared["readRoots"], [os.path.dirname(self.corpus), "/unused/root"])
+        with self.assertRaises(common.LiaError) as raised:
+            self.prepare([self.lib], roots=os.path.dirname(self.corpus))
+        self.assertIn("outside the Site read roots", raised.exception.detail)
+        with self.assertRaises(common.LiaError) as raised:
+            self.prepare([self.facts], roots=self.corpus + "-sibling")
+        self.assertIn("outside the Site read roots", raised.exception.detail)
+        for bad in ("", "relative/root", ":"):
+            with self.assertRaises(common.LiaError) as raised:
+                self.prepare([self.facts], roots=bad)
+            self.assertIn("sourceReadRoots", raised.exception.detail)
 
     def test_prepare_refuses_malformed_requests(self):
         for change, fragment in ((lambda d: d.update(question=""), "question"),
@@ -258,7 +273,7 @@ class Route(unittest.TestCase):
         with open(task_input, "w") as stream:
             json.dump({"ANALYSIS_REQUEST": self.write_request([self.facts]), "ANALYSIS_LIBRARY": self.library,
                        "FACTS_CORPUS": os.path.dirname(self.corpus), "ENGINEERING_CAPABILITIES": "",
-                       "LICENCE_MODE_FILE": self.mode_file}, stream)
+                       "LICENCE_MODE_FILE": self.mode_file, "SOURCE_READ_ROOTS": self.base}, stream)
         output = os.path.join(self.base, "output.json")
         cli = os.path.join(self.workspace, "flow", "libinsight_cli.py")
         completed = subprocess.run([sys.executable, cli, "task-prepare-request", self.workspace, task_input, output])

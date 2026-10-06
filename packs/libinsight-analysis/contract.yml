@@ -30,6 +30,10 @@ inputs:
   description: The Site's one-word Empyrean licence mode file (`new` serves the QuaLib Liberty API, `old` serves
     XTop). prepare-request refuses a request that needs live QuaLib while the mode is not `new`; the Pack never
     changes it.
+- name: sourceReadRoots
+  description: The Site Permit's read roots as absolute directories separated by ':'. prepare-request refuses a
+    request source outside them, and the Reader refuses an additional delivered source outside them. Pack tools
+    run on the Site and cannot read the Permit, so the Site states the same roots here.
 - name: workspaceRoot
   description: Campaign-private output root allowed by the Site Permit.
 outputs:

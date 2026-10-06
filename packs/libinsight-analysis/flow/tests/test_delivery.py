@@ -120,6 +120,7 @@ class RealFixture(unittest.TestCase):
         def unknown_extra(doc):
             doc["sources"].append({"path": "/elsewhere/x.lib", "kind": "liberty", "sha256Before": "3" * 64,
                                    "sha256After": "3" * 64})
+        self.prepared["readRoots"] = ["/elsewhere"]
         self.assertRejected(self.mutated(unknown_extra), "cannot be re-hashed")
         self.hashes["/elsewhere/x.lib"] = "4" * 64
         self.assertRejected(self.mutated(unknown_extra), "now hashes")
@@ -128,12 +129,27 @@ class RealFixture(unittest.TestCase):
         self.hashes[self.doc["sources"][0]["path"]] = "5" * 64
         self.assertRejected(self.problems(), "now hashes")
 
+    def test_additional_sources_must_lie_under_the_prepared_read_roots(self):
+        def extra(doc):
+            doc["sources"].append({"path": "/elsewhere/x.lib", "kind": "liberty", "sha256Before": "3" * 64,
+                                   "sha256After": "3" * 64})
+        self.hashes["/elsewhere/x.lib"] = "3" * 64
+        self.assertRejected(self.mutated(extra), "outside the prepared read roots")
+        self.prepared["readRoots"] = ["/data/eda/pdk"]
+        self.assertRejected(self.mutated(extra), "outside the prepared read roots")
+        self.prepared["readRoots"] = ["/elsewhere/x"]
+        self.assertRejected(self.mutated(extra), "outside the prepared read roots")
+        self.prepared["readRoots"] = ["/elsewhere"]
+        self.assertEqual(self.mutated(extra), [])
+
     def test_empty_sources_need_builds_on(self):
         self.assertRejected(self.mutated(lambda d: d.update(sources=[])), "sources is empty")
         prepared = copy.deepcopy(self.prepared)
         prepared["buildsOn"] = [{"ref": "x-y@1"}]
         doc = copy.deepcopy(self.doc)
         doc["sources"] = []
+        self.assertRejected(self.problems(doc, prepared=prepared), "is not covered by the delivery")
+        prepared["sources"] = []
         self.assertEqual(self.problems(doc, prepared=prepared), [])
 
     def test_code_hashes(self):
@@ -175,6 +191,52 @@ class RealFixture(unittest.TestCase):
     def test_run_must_have_succeeded(self):
         self.assertRejected(self.mutated(lambda d: d["run"].update(exitCode=3)), "run.exitCode is 3")
         self.assertRejected(self.mutated(lambda d: d["run"].update(usedQualib="no")), "usedQualib")
+
+
+class PreparedSourceCoverage(unittest.TestCase):
+    """Every prepared source is answered by the delivery: the same path, or for a prepared .lib a facts
+    entry whose libertySha256 is that exact Liberty's sha256."""
+
+    LIB_SHA = "4c" * 32
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.base)
+        self.root = os.path.join(self.base, "campaign")
+        os.makedirs(os.path.join(self.root, "analysis"))
+        shutil.copy(os.path.join(FIXTURE, "analysis", "inv_drive_delay.py"), os.path.join(self.root, "analysis"))
+        self.doc = load("analysis-result.json")
+        self.lib = os.path.join(self.base, "pdk", "cells.lib")
+        self.same = synthetic.write_facts(os.path.join(self.base, "same.json.gz"), liberty_path=self.lib, liberty_sha=self.LIB_SHA)
+        self.other = synthetic.write_facts(os.path.join(self.base, "other.json.gz"), liberty_path="/pdk/other.lib",
+                                           liberty_sha="5d" * 32)
+        self.prepared = {"sources": [{"path": self.lib, "kind": "liberty", "sha256": self.LIB_SHA, "bytes": 1,
+                                      "factsAlternatives": [self.same]}],
+                         "buildsOn": [], "readRoots": [self.base]}
+
+    def entry(self, path, liberty_sha):
+        digest = common.sha256_file(path)
+        return {"path": path, "kind": "facts", "sha256Before": digest, "sha256After": digest, "libertySha256": liberty_sha}
+
+    def problems(self, sources, prepared=None):
+        doc = copy.deepcopy(self.doc)
+        doc["sources"] = sources
+        return delivery.problems(doc, self.root, self.prepared if prepared is None else prepared, 1000)
+
+    def test_facts_alternative_of_the_exact_prepared_liberty_is_accepted(self):
+        self.assertEqual(self.problems([self.entry(self.same, self.LIB_SHA)]), [])
+
+    def test_facts_alternative_of_another_liberty_is_rejected(self):
+        found = self.problems([self.entry(self.other, "5d" * 32)])
+        self.assertTrue(any("prepared source %s" % self.lib in line and "is not covered" in line for line in found), found)
+
+    def test_unrelated_facts_file_cannot_replace_a_prepared_facts_source(self):
+        prepared = {"sources": [{"path": self.same, "kind": "facts", "sha256": common.sha256_file(self.same),
+                                 "bytes": 1, "liberty": {"path": self.lib, "sha256": self.LIB_SHA}}],
+                    "buildsOn": [], "readRoots": [self.base]}
+        self.assertEqual(self.problems([self.entry(self.same, self.LIB_SHA)], prepared), [])
+        found = self.problems([self.entry(self.other, "5d" * 32)], prepared)
+        self.assertTrue(any("prepared source %s" % self.same in line and "is not covered" in line for line in found), found)
 
 
 class LiveQualibFixture(unittest.TestCase):

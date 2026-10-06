@@ -13,7 +13,8 @@ def _artifact(name, path, media="application/json"):
 def prepare_task(workspace, inputs):
     prepared, target = request.prepare(
         workspace, inputs["ANALYSIS_REQUEST"], inputs["ANALYSIS_LIBRARY"], inputs.get("FACTS_CORPUS") or "",
-        inputs.get("ENGINEERING_CAPABILITIES") or "", inputs.get("LICENCE_MODE_FILE") or "")
+        inputs.get("ENGINEERING_CAPABILITIES") or "", inputs.get("LICENCE_MODE_FILE") or "",
+        inputs["SOURCE_READ_ROOTS"])
     req = prepared["request"]
     value = {
         "requestId": req["requestId"],

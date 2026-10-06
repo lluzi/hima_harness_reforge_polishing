@@ -10,6 +10,8 @@ bindings:
   analysisLibrary: /data/eda/project/hima_harness/libinsight-runs/library
   factsCorpus: /data/eda/project/hima_harness/library-intelligence-prototypes/claude-libint-20260923-01/canonical
   licenceModeFile: /data/eda/env/empyrean-license-mode
+  # The Permit's allowedReadRoots, joined with ':' (keep in step with permit.yml).
+  sourceReadRoots: /data/eda/env:/data/eda/software/eda_tools/empyrean:/data/eda/venvs/qualib-libapi-2026-py37:/data/eda/pdk/saed14:/data/eda/project/techlib/tsmc28:/data/eda/project/hima_harness/operator-admin/resident-engineering-v1:/data/eda/project/hima_harness/library-intelligence-prototypes/claude-libint-20260923-01/canonical:/data/eda/project/hima_harness/libinsight-runs
   engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-libinsight-v1.json
   workspaceRoot: /data/eda/project/hima_harness/libinsight-runs/campaigns
 ssh:

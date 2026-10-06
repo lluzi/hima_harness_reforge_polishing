@@ -58,9 +58,10 @@ def _sources(doc, prepared, current_sha, out):
     builds = (prepared or {}).get("buildsOn", [])
     if not sources and not builds:
         out.append("sources is empty: name every Liberty or facts file the datasets were computed from, with sha256Before/sha256After")
-    seen = set()
+    seen, covered, liberties = set(), set(), set()
     for index, source in enumerate(sources):
         at = "sources[%d]" % index
+        before_problems = len(out)
         if not isinstance(source, dict):
             out.append("%s must be an object" % at)
             continue
@@ -100,8 +101,14 @@ def _sources(doc, prepared, current_sha, out):
                 out.append("%s libertySha256 %s differs from the facts file's embedded source.sha256 %s" % (
                     at, source["libertySha256"], bound["liberty"]["sha256"]))
         else:
-            # An additional source the resident found itself is allowed only with identical before/after
-            # hashes that still match the file now; facts sources must also carry their embedded identity.
+            # An additional source the resident found itself is allowed only under the Site read roots the
+            # prepared request recorded, with identical before/after hashes that still match the file now;
+            # facts sources must also carry their embedded identity.
+            roots = (prepared or {}).get("readRoots")
+            if not isinstance(roots, list) or not roots or not common.inside(path, roots):
+                out.append("%s additional source %s is outside the prepared read roots %s; use only files the Site "
+                           "read roots cover" % (at, path, roots))
+                continue
             if kind == "facts":
                 try:
                     header = common.facts_header(path)
@@ -118,6 +125,20 @@ def _sources(doc, prepared, current_sha, out):
             continue
         if now != before:
             out.append("%s %s now hashes %s, not the delivered %s" % (at, path, now, before))
+        if len(out) == before_problems:
+            covered.add(path)
+            if kind == "facts":
+                liberties.add(source["libertySha256"])
+    # Every prepared source must be answered: the same path, or for a prepared Liberty file a facts
+    # record extracted from exactly those Liberty bytes.
+    for bound in sorted(prepared_sources.values(), key=lambda item: item["path"]):
+        if bound["path"] in covered:
+            continue
+        if bound["kind"] == "liberty" and bound["sha256"] in liberties:
+            continue
+        hint = (" or a facts file whose libertySha256 is %s" % bound["sha256"]) if bound["kind"] == "liberty" else ""
+        out.append("prepared source %s is not covered by the delivery: list it in sources with sha256 %s%s" % (
+            bound["path"], bound["sha256"], hint))
 
 
 def _datasets(doc, out):
