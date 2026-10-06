@@ -29,18 +29,124 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 import type {} from '@deepseek-ai/dsh-skill';
 import { bootInProcess, createRootAgent, injectedSkills, saidByModel, sayAsUser, toolCalls, toolResults, type InProcessHost } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
+import { repoRoot } from './support/dsh-home.ts';
+import { homePatchFile, prepareHimaHome, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { localHome } from './support/fabric.ts';
 import { packsDirOf, timingProbePackId } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
-import { authoredPackFolder, authoredPackId, changedBetween, committedRecord, digestTrees, GRILL_ANSWERS, GRILL_RESOLUTION, replayStage, sectionsOf } from './support/pipeline.ts';
-import { FILE_WRITING_TOOLS, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE, HIMA_SKILLS, HIMA_SKILL_PROVIDER, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, SHELL_TOOL, himaSkillsDir, installedPacks, packFiles, readingDocument, loadPack, readSemanticsFile, semanticValue, validateReading, freezeFlowFragment } from '@hima/harness';
+import { authoredPackFolder, authoredPackId, changedBetween, committedRecord, digestTrees, QUIET_TITLE_ROW, GRILL_ANSWERS, GRILL_RESOLUTION, replayStage, sectionsOf } from './support/pipeline.ts';
+import { FILE_WRITING_TOOLS, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE, HIMA_SKILLS, HIMA_SKILL_PROVIDER, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, SHELL_TOOL, himaSkillsDir, installedPacks, packFiles, readingDocument, loadPack, packDigestOf, readSemanticsFile, semanticValue, validateReading, freezeFlowFragment } from '@hima/harness';
+
+test('installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it', { timeout: 180_000 }, async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  const { h } = home;
+  const fixture = path.join(repoRoot, 'test/fixtures/pipeline/workshop');
+  const installed = path.join(h.profileDir, 'node_modules/@hima/harness');
+  let host: InProcessHost | undefined;
+  try {
+    await prepareHimaHome({ home: h.home, bundleMode: 'installed' });
+    assert.equal(await realpath(installed), path.resolve(await realpath(h.profileDir), 'node_modules/@hima/harness'));
+    assert.equal(existsSync(path.join(installed, 'src')), false);
+    await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+    const inputBefore = await digestTrees([home.flow.root], path.join(h.home, 'excluded'));
+    await writeReplayOverlay(h.home, { file: path.join(fixture, 'session.jsonl'), overrideFile: path.join(fixture, 'author.override.json') });
+    await appendFile(homePatchFile(h.home), QUIET_TITLE_ROW);
+    host = await bootInProcess(h);
+    const ordinary = await createRootAgent(host.ctx, h.workspace);
+    const opened = await host.ctx.tools.execute({ name: 'hima_author', arguments: { pack: 'authored-workshop', create: true }, agent: ordinary,
+      callId: 'call-installed-author' as never, signal: AbortSignal.timeout(20_000) });
+    assert.equal(opened.isError, false, JSON.stringify(opened));
+    const value = (opened as unknown as { value: { folder: string; sessionId: string } }).value;
+    const author = host.ctx.agents.get(value.sessionId as never)!;
+    const list = await host.ctx.skills.list({ cwd: value.folder });
+    for (const name of HIMA_SKILLS) {
+      const skill = await host.ctx.skills.get(name, { cwd: value.folder });
+      assert.ok(list.some((s) => s.name === name));
+      assert.ok(skill?.path?.startsWith(await realpath(installed)), `installed ${name}: ${skill?.path}`);
+    }
+    for (const file of [...HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE]) assert.ok((await readFile(path.join(installed, 'skills/knowledge', file), 'utf8')).length > 0);
+    // Admission calls and source lookups both traverse the real tool guard. The replay is a
+    // mechanism fixture; it cannot silently read a developer checkout to fill documentation gaps.
+    const unguard = host.ctx.tools.guard((execution) => {
+      if (execution.agent?.session.id !== author.session.id) return undefined;
+      const file = (execution.arguments as { file_path?: string }).file_path;
+      if (file && path.isAbsolute(file) && file.startsWith(repoRoot)) return 'development checkout access is unavailable in this installed authoring check';
+      return undefined;
+    });
+    const denied = await host.ctx.tools.execute({ name: 'read', arguments: { file_path: path.join(repoRoot, 'packages/harness/src/packs.ts') }, agent: author,
+      callId: 'call-source-denied' as never, signal: AbortSignal.timeout(10_000) });
+    assert.equal(denied.isError, true);
+    await sayAsUser(author, '/hima-fabric Compile the supplied numeric Workshop fixture on site local.');
+    assert.ok(injectedSkills(author).includes('hima-fabric'));
+    assert.equal(toolResults(author).filter((r) => r.failed).length, 0, JSON.stringify(toolResults(author)));
+    const checked = await himaCommand(host, value.folder, '/hima pack check authored-workshop --site local', 20_000, author);
+    assert.equal(checked.kind, 'success', checked.text);
+    const contractAt = path.join(value.folder, 'contract.yml');
+    const validContract = await readFile(contractAt, 'utf8');
+    for (const [what, altered, expected] of [
+      ['reader', validContract.replace(', reader: sum-file', ''), /declares no reader/],
+      ['wrapper', validContract.replace("argv: [sh,", "argv: [undeclared,"), /environment.wrappers does not declare/],
+    ] as const) {
+      const changed: { isError?: boolean } = await host.ctx.tools.execute({ name: 'write', arguments: { file_path: contractAt, content: altered }, agent: author,
+        callId: `call-invalid-${what}` as never, signal: AbortSignal.timeout(10_000) });
+      assert.equal(changed.isError, false, JSON.stringify(changed));
+      const refused = await himaCommand(host, value.folder, '/hima pack check authored-workshop --site local', 20_000, author);
+      assert.equal(refused.kind, 'error', refused.text);
+      assert.match(refused.text, expected);
+      assert.equal(existsSync(path.join(value.folder, 'TEST.md')), false);
+      assert.equal(existsSync(path.join(value.folder, 'VERSION.yml')), false);
+    }
+    await writeFile(contractAt, validContract);
+    const digest = packDigestOf(value.folder);
+    unguard();
+    await host.dispose(); host = undefined;
+    await writeReplayOverlay(h.home, { file: path.join(fixture, 'session.jsonl'), overrideFile: path.join(fixture, 'run.override.json') });
+    await appendFile(homePatchFile(h.home), QUIET_TITLE_ROW);
+    host = await bootInProcess(h);
+    // The current DBOS start route: the confirmed owner session starts the authored Pack as a TEST Run.
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 },
+      strategy: { scale: 2 }, generationLimit: 1, retryAllowance: 1, timeBoxMs: 60_000, test: true, ownerSessionId: String(owner.id) });
+    assert.ok(started.kind === 'preparing' || started.kind === 'ran', JSON.stringify(started));
+    if (started.kind !== 'preparing' && started.kind !== 'ran') throw new Error('TEST Run admission failed');
+    const runId = started.run.id;
+    let context = await host.ctx.hima.readExecutionContext(runId);
+    for (const until = Date.now() + 120_000; !context.run.status?.startsWith('ended-') && Date.now() < until;) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      context = await host.ctx.hima.readExecutionContext(runId);
+    }
+    assert.match(context.run.status ?? '', /^ended-/, JSON.stringify({ status: context.run.status, outcome: (context.durable as any)?.outcome,
+      tasks: ((context.durable as any)?.tasks ?? []).map((task: any) => ({ id: task.identity?.taskId, state: task.state, reason: task.reason ?? task.projection?.reason })) }));
+    assert.equal(context.run.purpose, 'test');
+    assert.equal(context.run.packDigest, digest);
+    const { createDurableViewReaders } = await import(pathToFileURL(path.join(repoRoot, 'packages/harness/lib/durable-views.js')).href);
+    const service = host.ctx.hima;
+    const readers = createDurableViewReaders({ ledger: service.ledger, judge: service.judge, durable: service.durable,
+      host: host.ctx, sitesDir: path.join(h.home, 'hima/sites'), packsDir: path.join(h.home, 'hima/packs') });
+    const records = await readers.readRunRecords(runId) as any[];
+    const observations = records.filter((record) => record.type === 'observation');
+    assert.ok(observations.some((record) => record.values.some((v: any) => v.type === 'scaled_sum' && v.value === 42)), JSON.stringify({ status: context.run.status, observations }));
+    assert.ok(records.some((record) => record.type === 'code'), 'real executable source was recorded');
+    assert.ok(records.some((record) => record.type === 'verdict' && record.outcome === 'PASS'), 'reader output was judged');
+    t.diagnostic(JSON.stringify({
+      fixture: 'pipeline/workshop (handwritten replay)', runId, packDigest: context.run.packDigest, status: context.run.status,
+      inputSha256: inputBefore.get(path.join(home.flow.root, 'numbers.txt')),
+      code: records.filter((record) => record.type === 'code'), observations,
+    }));
+    assert.deepEqual(changedBetween(inputBefore, await digestTrees([home.flow.root], path.join(h.home, 'excluded'))), []);
+    assert.equal(existsSync(path.join(value.folder, 'TEST.md')), false, 'a run does not fabricate an author test report');
+    assert.equal(existsSync(path.join(value.folder, 'VERSION.yml')), false, 'a run does not fabricate a release seal');
+  } finally { if (host) await host.dispose(); await h.dispose(); }
+});
 
 test('from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding', async () => {
   const h = await createHimaHome();
