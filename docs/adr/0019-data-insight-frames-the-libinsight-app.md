@@ -37,3 +37,7 @@ status: accepted
 - 打包 App（trial.38 发现选择器返回空时按钮无反应，trial.39 修复）：真实 `lib_insight/data`（TSMC28 180a 等）
   的 Health/Overall map、Capability、Working range heatmap 在 Data Insight 内呈现，退出 App 后 viewer 进程随之结束。
   截图在 `.hima-tmp/libinsight-embed/kit-li-*/screenshots/`（不入 Git）。
+- 2026-10-05 pin 升级到 LibInsight UX round 1 预览版 `55e27bfa`（`feat/ux-r1`）：其 `app/server.py` 启动参数、
+  Host 守卫与 `/api/kits` 未变，无新增第三方依赖；其 server/lens/access 测试在 Python 3.9 + numpy 2.0.2 上通过
+  （135 passed）。打包 App trial.40 在 Data Insight 内呈现新版 Health、Table accuracy 的 Arc × condition 矩阵、
+  Design-specific 的 Operating points（逐级估算），退出 App 后 viewer 进程结束（`kit-li-03`）。
