@@ -41,6 +41,8 @@ class Knowledge(unittest.TestCase):
     def test_playbook_embeds_the_live_script_and_the_licence_refusal(self):
         live = os.path.join(synthetic.TESTS, "fixtures", "qualib-live", "analysis", "qualib_inv_tables.py")
         self.assertEqual(embedded("qualib-api-playbook.md", "qualib_inv_tables.py", "python"), read(live))
+        second = os.path.join(os.path.dirname(live), "live_inv_delivery.py")
+        self.assertEqual(embedded("qualib-api-playbook.md", "live_inv_delivery.py", "python"), read(second))
         playbook = read(os.path.join(KNOWLEDGE, "qualib-api-playbook.md")).replace("\n  ", " ")
         self.assertIn(request.XTOP_MODE_MESSAGE, playbook)
 

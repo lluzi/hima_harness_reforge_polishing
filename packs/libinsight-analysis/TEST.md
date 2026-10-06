@@ -5,8 +5,9 @@
 Development Pack, not released. Real verification used linglong (`luzi@192.168.50.41`) under
 `/data/eda/project/hima_harness/libinsight-runs/dev/claude-r1-20261005` on 2026-10-05: facts mode
 with `/usr/bin/python3` 3.12.3 on the host and `python3` 3.6.8 inside the edarunner image with the
-resident sandbox's mount shape; live QuaLib once inside the same image (null handle, licence mode
-`old`). Host integration used a private local Site with the unchanged resident wrapper, sandbox
+resident sandbox's mount shape; live QuaLib inside the same image, once in licence mode `old` (null
+handle, exit 3) and, after the user's switch, in mode `new` (45 cells, tables equal to the facts,
+delivery accepted by the Reader). Host integration used a private local Site with the unchanged resident wrapper, sandbox
 `none` and an ACP stand-in.
 
 ## Run

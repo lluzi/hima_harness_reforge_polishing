@@ -56,6 +56,9 @@ Nothing else is installed: no new wrapper, image, Python package or licence chan
 
 Facts mode: the Pack's worked example ran on the SAED14 RVT TT facts file with `/usr/bin/python3`
 3.12.3 on the host and with python3 3.6.8 inside the edarunner image (sandbox mount shape); both
-deliveries passed `check-delivery`, the Reader, admission and deliver. Live QuaLib: one probe inside
-the same image returned a null handle (FlexNet -15,570, licence mode `old`) and exited 3 without
-touching the source. Evidence directory: `/data/eda/project/hima_harness/libinsight-runs/dev/claude-r1-20261005`.
+deliveries passed `check-delivery`, and the host delivery passed the Reader, admission and deliver.
+Live QuaLib, inside the same image: in licence mode `old` the probe got a null handle (FlexNet
+-15,570) and exited 3; after the user switched to `new`, the playbook command (licence from
+`EDA_INIT`, no override) read SAED14 RVT TT in 0.79 s, its 92 inverter delay tables equal the corpus
+facts exactly, and the live delivery passed `check-delivery` and the Reader. Every run left the source
+sha256 unchanged. Evidence directory: `/data/eda/project/hima_harness/libinsight-runs/dev/claude-r1-20261005`.

@@ -15,8 +15,9 @@ All Pack Python runs on Python 3.6 through 3.12.
 
 No Host change was needed. The Reader cannot return its problems through the Host's rejection
 message (the Host reports only the Reader Job's exit), so it also writes them to
-`state/analysis-result.problems.txt`, which the resident reads read-only. Live QuaLib is verified up
-to the null-handle path only; the successful-handle branch awaits a run in licence mode `new`.
+`state/analysis-result.problems.txt`, which the resident reads read-only. Live QuaLib and facts mode
+are both verified on linglong in the sandbox image shape; neither has yet run under a real model in a
+product Run (slice R4).
 
 ## Reviews
 

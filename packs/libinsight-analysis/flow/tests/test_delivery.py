@@ -177,5 +177,23 @@ class RealFixture(unittest.TestCase):
         self.assertRejected(self.mutated(lambda d: d["run"].update(usedQualib="no")), "usedQualib")
 
 
+class LiveQualibFixture(unittest.TestCase):
+    """The live QuaLib 2026 delivery produced on linglong in licence mode `new` (2026-10-05)."""
+
+    def test_live_delivery_is_accepted(self):
+        root = os.path.join(synthetic.TESTS, "fixtures", "qualib-live")
+        with open(os.path.join(root, "analysis-result.json"), "rb") as stream:
+            data = stream.read()
+        doc = json.loads(data.decode("utf-8"))
+        with open(os.path.join(root, "prepared-request.json"), "rb") as stream:
+            prepared = json.loads(stream.read().decode("utf-8"))
+        hashes = dict((s["path"], s["sha256"]) for s in prepared["sources"])
+        self.assertEqual(delivery.problems(doc, root, prepared, len(data), lambda path: hashes[path]), [])
+        self.assertTrue(doc["run"]["usedQualib"])
+        self.assertEqual(doc["sources"][0]["sha256Before"], "49962e1b61d08eae063633ba32ab76fc002c405d40e391e181e92ff445442571")
+        self.assertEqual(prepared["licence"]["mode"], "new")
+        self.assertEqual(len(doc["datasets"]["live_mid_grid"]["rows"]), 46)
+
+
 if __name__ == "__main__":
     unittest.main()
