@@ -25,6 +25,18 @@ for(const mode of ['clean','repair'])test(`libinsight-analysis durable route adm
  finally{if(child.exitCode===null){const term=setTimeout(()=>child.kill('SIGTERM'),10000),kill=setTimeout(()=>child.kill('SIGKILL'),15000);try{await exited;}finally{clearTimeout(term);clearTimeout(kill);}}await closeOwnedNative(home);await cleanDbosHome(home);}
 });
 
+// L2: Data Insight's Resident analyses route (ADR-0020) — HTTP propose writes the request onto the
+// Site and prepares; confirm starts a Guide-confirmed Run; the list returns the Reader-accepted result.
+test('Resident analyses route proposes, confirms once and lists the admitted result',{timeout:150000},async(t)=>{
+ const home=await dbosHome();
+ const child=spawn(process.execPath,[fileURLToPath(new URL('./support/libinsight-analyses-http-worker.ts',import.meta.url)),home],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
+ const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));
+ let output='';child.stdout!.on('data',bytes=>output+=String(bytes));child.stderr!.on('data',bytes=>output+=String(bytes));
+ const result=new Promise<any>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`analyses worker exceeded 120s: ${output}`)),120000);child.once('message',proof=>{clearTimeout(timer);resolve(proof);});child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('exit',()=>{clearTimeout(timer);reject(new Error(`analyses child exited without result: ${output}`));});});
+ try{const proof=await result;t.diagnostic(JSON.stringify(proof));assert.equal(proof.ok,true,JSON.stringify(proof,null,1)+'\n'+output.slice(-4000));assert.equal(proof.plots,5);}
+ finally{if(child.exitCode===null){const term=setTimeout(()=>child.kill('SIGTERM'),10000),kill=setTimeout(()=>child.kill('SIGKILL'),15000);try{await exited;}finally{clearTimeout(term);clearTimeout(kill);}}await closeOwnedNative(home);await cleanDbosHome(home);}
+});
+
 /** Close only native wrapper descendants that belong to this fixture Home (as the ATCS dry test does). */
 async function closeOwnedNative(home:string){
  const ownedHome=await realpath(home),root=fileURLToPath(new URL('../../',import.meta.url));

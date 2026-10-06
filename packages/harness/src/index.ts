@@ -1020,7 +1020,6 @@ export default class Hima extends Service {
       startGuidedRun: request => this.startGuidedRun(request),
       listRunHeads: () => this.viewReaders().listRunHeads(),
       readRunView: runId => this.viewReaders().readRunView(runId),
-      readRunRecords: (runId, type) => this.viewReaders().readRunRecords(runId, type),
       readRetained: (runId, record, maxBytes) => readDurableSourceBytes(this.retainedMaterialsDir, runId, record, maxBytes),
       authorize: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
     });

@@ -14,7 +14,6 @@ import type { PreparationOverrides } from './campaign-file.js';
 import type { PreparationView } from './workbench.js';
 import type { StartRunRequest, StartRunResult } from './fabric.js';
 import type { RunHeadView, RunView } from './remote.js';
-import type { LedgerRecord } from './ledger.js';
 
 export const libInsightAnalysisDefaults = { pack: 'libinsight-analysis', site: 'linglong-libinsight', requestBinding: 'analysisRequests', requestInput: 'analysisRequest', resultOutput: 'analysisResult' } as const;
 const requestSchema = 'hima-libinsight-request/1';
@@ -86,7 +85,6 @@ export interface LibInsightAnalysesDeps {
   startGuidedRun(request: StartRunRequest): Promise<StartRunResult>;
   listRunHeads(): Promise<readonly RunHeadView[]>;
   readRunView(runId: string): Promise<RunView | undefined>;
-  readRunRecords(runId: string, type: 'observation'): Promise<readonly LedgerRecord[]>;
   readRetained(runId: string, record: { runId: string; bytes: number; retainedPath?: string; type: 'observation'; contentSha256: string }, maxBytes: number): Promise<Buffer>;
   authorize(sessionId: string, runId: string): Promise<unknown>;
   /** Writes a new file on the Site; tests may replace it. */
@@ -166,7 +164,9 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     const requestPath = pathsOf(site).join(folder, `${requestId}.json`);
     const body = { schema: requestSchema, requestId, question: parsed.data.question, sources: parsed.data.sources, buildsOn: parsed.data.buildsOn, createdAt: at.toISOString() };
     await (deps.writeSiteFile ?? writeNewSiteFile)(site, requestPath, Buffer.from(`${JSON.stringify(body, null, 2)}\n`));
-    const overrides: PreparationOverrides = { inputs: { [libInsightAnalysisDefaults.requestInput]: requestPath } };
+    // A preparation with overrides fills no Goal from defaults; this Pack's Goal is its own declared one.
+    const goal = Object.fromEntries(Object.entries(pack.contract.goal ?? {}).map(([name, declared]) => [name, declared.default]));
+    const overrides: PreparationOverrides = { goal, inputs: { [libInsightAnalysisDefaults.requestInput]: requestPath } };
     const proposal = deps.preparation(pack, site, overrides);
     const row: IndexRow = { requestId, question: body.question, sources: body.sources, buildsOn: body.buildsOn, requestPath, createdAt: body.createdAt };
     for (const [id, held] of pending) if (held.sessionId === sessionId) pending.delete(id);
@@ -188,12 +188,15 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     return { runId: started.run.id, kind: started.kind };
   }
 
-  async function resultOf(runId: string): Promise<Pick<LibInsightAnalysisEntry, 'result' | 'resultUnavailable'>> {
-    const observation = (await deps.readRunRecords(runId, 'observation')).findLast(record =>
-      record.type === 'observation' && (record as { outputName?: string }).outputName === libInsightAnalysisDefaults.resultOutput);
-    if (!observation || observation.type !== 'observation') return {};
+  async function resultOf(runId: string, view: RunView | undefined): Promise<Pick<LibInsightAnalysisEntry, 'result' | 'resultUnavailable'>> {
+    // The Reader's observation, as the resident task committed it, names its output and the retained bytes.
+    const observation = (view?.tasks ?? []).filter(task => task.current !== false).flatMap(task => {
+      const value = task.result?.value as { observations?: unknown } | undefined;
+      return Array.isArray(value?.observations) ? value.observations as { type?: string; outputName?: string; runId: string; bytes: number; retainedPath?: string; contentSha256: string }[] : [];
+    }).findLast(record => record.type === 'observation' && record.outputName === libInsightAnalysisDefaults.resultOutput);
+    if (!observation) return {};
     try {
-      const bytes = await deps.readRetained(runId, observation as never, maxResultBytes);
+      const bytes = await deps.readRetained(runId, { ...observation, type: 'observation' }, maxResultBytes);
       const value = JSON.parse(bytes.toString('utf8')) as LibInsightAnalysisResult;
       if (value?.schema !== analysisSchema || !Array.isArray(value.plots) || typeof value.datasets !== 'object') return { resultUnavailable: 'The admitted result is not a recognised analysis document.' };
       return { result: value };
@@ -214,7 +217,7 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       analyses.push({ runId: head.id, createdAt: head.createdAt, ...(byRun.get(head.id) ? { question: byRun.get(head.id)!.question } : {}),
         ...(head.status ? { status: head.status } : {}),
         ...(projection ? { task: { state: projection.state, ...('reason' in projection ? { reason: projection.reason.message } : {}) } } : {}),
-        ...await resultOf(head.id) });
+        ...await resultOf(head.id, view) });
     }
     analyses.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return { status: status(), analyses };
