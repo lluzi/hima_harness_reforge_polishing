@@ -304,7 +304,7 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       if (args.proposalId === undefined) throw new LibInsightAnalysisError('bad-request', 'confirm needs the proposalId that propose returned');
       const started = await confirm(sessionId, args.proposalId);
       return { action: 'confirm', ...started, page: page(started.runId),
-        next: 'Tell the person the analysis has started and that its page (the Open analysis page button on this card) fills in as it runs. The Host notifies you when it ends; then call result.' };
+        next: 'Tell the person the analysis has started and that its page, opened with the Open analysis page button on this card, fills in as it runs. Do not paste the page path: it is not a link in the conversation. The Host notifies you when it ends; then call result.' };
     }
     if (args.action === 'list') {
       const answer = await list(sessionId);
@@ -320,7 +320,7 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       ...(result ? { question: result.question, summary: result.summary, assumptions: result.assumptions, limits: result.limits,
         plots: result.plots.map(plot => ({ title: plot.title, kind: plot.kind, dataset: plot.dataset })),
         datasets: boundedDatasets(result.datasets), sources: result.sources, run: result.run } : {}),
-      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: point the person to the Open analysis page button on this result.'
+      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: point the person to the Open analysis page button on this result, and do not paste the page path, which is not a link in the conversation.'
         : 'Explain where the analysis stands or why it was not admitted, from these facts; do not present an unadmitted result as established.' };
   }
 

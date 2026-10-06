@@ -116,3 +116,14 @@ test('model-authored text is escaped everywhere', () => {
   const message = analysisPageMessage(evil, `${evil} & more`);
   assert.ok(!message.includes('<script') && message.includes('&amp; more') && message.startsWith('<!doctype html>'));
 });
+
+test('a long specification-style question is headed by its first sentence, with the whole text one click away', () => {
+  const { headlineOf } = subject;
+  assert.equal(headlineOf('Short question?'), 'Short question?');
+  const long = 'At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT. For each drive strength pair the variants and plot leakage against delay, evaluated at one fixed input transition and output load.';
+  assert.equal(headlineOf(long), 'At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT.');
+  const html = analysisPage({ ...admitted, detail: { ...admitted.detail, result: { ...admitted.detail.result!, question: long } } });
+  assert.ok(html.includes('<h1>At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT.</h1>'));
+  assert.ok(html.includes('<summary>Full question</summary>') && html.includes('output load.</p></details>'));
+  assert.ok(headlineOf('x'.repeat(400)).length <= 141, 'no sentence: cut to a heading length');
+});

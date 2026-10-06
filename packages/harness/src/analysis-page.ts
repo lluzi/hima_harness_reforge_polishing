@@ -47,6 +47,7 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-s
 .mark{font-size:19px;letter-spacing:-.01em}.mark b{font-weight:700}.mark span{font-weight:300}
 .eyebrow{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
 h1{font-size:clamp(26px,3.2vw,40px);line-height:1.18;letter-spacing:-.02em;font-weight:650;margin:0 0 18px;max-width:30em;overflow-wrap:anywhere}
+details.question{margin:-6px 0 18px;max-width:60em}details.question p{margin:10px 0 0;color:var(--ink-2);line-height:1.55}
 h2{font-size:13px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
 h3{font-size:17px;font-weight:620;margin:0;letter-spacing:-.005em;overflow-wrap:anywhere}
 .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:14px;color:var(--ink-2)}
@@ -143,6 +144,16 @@ function statusOf({ entry, detail, refreshSeconds }: AnalysisPageInput): { tone:
 // Page
 // ---------------------------------------------------------------------------------------------
 
+/** A heading-sized question: the whole of a short one, else its first sentence, else its first words. */
+export function headlineOf(question: string): string {
+  const text = question.trim().replace(/\s+/gu, ' ');
+  if (text.length <= 140) return text;
+  const first = /^(.{20,180}?[.?!])(\s|$)/u.exec(text)?.[1];
+  if (first !== undefined) return first;
+  const cut = text.slice(0, 140);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 80))}…`;
+}
+
 export function analysisPage(input: AnalysisPageInput): string {
   const { runId, entry, detail, refreshSeconds } = input, result = detail.result;
   const question = result?.question ?? entry?.question ?? 'Library analysis';
@@ -150,7 +161,10 @@ export function analysisPage(input: AnalysisPageInput): string {
   const meta = [`<span class="pill" data-tone="${state.tone}">${esc(state.text)}</span>`, `<span>Run <code>${esc(runId)}</code></span>`];
   if (entry?.createdAt) meta.push(`<span>${esc(when(entry.createdAt))}</span>`);
   if (result !== undefined) meta.push(`<span>${plural(result.plots.length, 'plot')} · ${plural(Object.keys(result.datasets ?? {}).length, 'dataset')}</span>`);
-  let body = `<h1>${esc(question)}</h1><div class="meta">${meta.join('')}</div>`;
+  // A Guide often restates the question as a full specification; the heading is its first sentence and
+  // the whole text stays one click away.
+  const heading = headlineOf(question);
+  let body = `<h1>${esc(heading)}</h1>${heading === question ? '' : `<details class="question"><summary>Full question</summary><p>${esc(question)}</p></details>`}<div class="meta">${meta.join('')}</div>`;
   if (state.reason !== undefined) body += `<p class="reason">${esc(state.reason)}</p>`;
   if (state.unfinished) {
     const reload = refreshSeconds === undefined ? 'Reload this page to see the latest state.' : `This page reloads itself every ${plural(Math.max(1, Math.round(refreshSeconds)), 'second')} until the analysis settles.`;
@@ -160,7 +174,7 @@ export function analysisPage(input: AnalysisPageInput): string {
   if (detail.resultUnavailable !== undefined) body += `<div class="card alert" role="alert">${esc(detail.resultUnavailable)}</div>`;
   else if (result !== undefined) body += resultBody(result);
   if (entry?.analysis?.resultSha256) body += `<footer>Shown from the bytes the Pack Reader accepted (result SHA-256 <code title="${esc(entry.analysis.resultSha256)}">${esc(entry.analysis.resultSha256)}</code>).</footer>`;
-  return shell(question, body, refreshSeconds);
+  return shell(heading, body, refreshSeconds);
 }
 
 function resultBody(result: LibInsightAnalysisResult): string {
