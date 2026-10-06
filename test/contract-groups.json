@@ -2,8 +2,11 @@
   "local": [
     "test/contract/aes-analysis.test.ts",
     "test/contract/aes-domain-stages.test.ts",
+    "test/contract/aes-full-graph-durable.host.test.ts",
     "test/contract/aes-mining-view.test.ts",
+    "test/contract/aes-probe-durable.host.test.ts",
     "test/contract/aes-probe.test.ts",
+    "test/contract/aes-research-durable.host.test.ts",
     "test/contract/aes-selection-template.test.ts",
     "test/contract/aes-timing-research-reader.test.ts",
     "test/contract/agent-controls.host.test.ts",
@@ -41,6 +44,7 @@
     "test/contract/experience-report.test.ts",
     "test/contract/fabric-licences.test.ts",
     "test/contract/flow-compiler.test.ts",
+    "test/contract/fork-join-judge-durable.host.test.ts",
     "test/contract/generic-workspace.host.test.ts",
     "test/contract/growth.host.test.ts",
     "test/contract/growth.test.ts",
@@ -140,6 +144,7 @@
     "test/contract/ssh.live.test.ts"
   ],
   "atcs-dry": [
+    "test/contract/atcs-known-collateral-durable.host.test.ts",
     "test/contract/atcs-resident-durable.host.test.ts",
     "test/contract/libinsight-resident-durable.host.test.ts"
   ],
