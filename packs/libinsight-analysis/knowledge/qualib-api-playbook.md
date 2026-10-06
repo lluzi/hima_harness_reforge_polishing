@@ -41,7 +41,7 @@ Prefer facts mode. The prepared request lists every facts file in the corpus wit
 sha256 of the Liberty source it was extracted from (`factsCorpus.files[].liberty`). A request
 source that is a `.json.gz` is a facts source; a `.lib` source is a Liberty source. When the user
 named a `.lib` and the corpus has a facts file whose `liberty.sha256` equals that source's sha256,
-the facts file is the same library: you may add it as an additional `facts` source (section 6).
+the facts file is the same library: you may add it as an additional `facts` source (section 7).
 
 ## 3. Licence rules (read before any live QuaLib call)
 
@@ -55,6 +55,9 @@ the facts file is the same library: you may add it as an additional `facts` sour
   word in `/data/eda/env/empyrean-license-mode`. In mode `new`, sourcing `EDA_INIT` sets
   `QUALIB_HOME=.../qualib-2026.06.sp1` and `EMPYREAN_LICENSE_FILE=59099@localhost`; in mode `old` it
   sets `59001@localhost`.
+- `prepared-request.json` records the mode at preparation in `licence` (`mode`,
+  `liveQualibAvailable`, `liveQualibRequiredFor`) and, for each `.lib` source, the corpus facts files
+  of the same Liberty bytes in `factsAlternatives`.
 - **Check the mode before any live QuaLib call:** `cat /data/eda/env/empyrean-license-mode`. If it
   is not `new`, do not call QuaLib. Answer in facts mode if the facts exist, otherwise deliver a
   blocked status analysis (section 8) whose `stopReason` and `limits` say exactly:
@@ -164,8 +167,9 @@ python3 analysis/<your_script>.py --prepared <campaignWorkspace>/state/prepared-
 
 Verified 2026-10-05: `example-custom-analysis.md` ran this with `/usr/bin/python3` 3.12.3 on
 linglong (1.46 s) and with `python3` 3.6.8 inside the edarunner image with the sandbox mount
-shape (1.72 s) on the 20 MB SAED14 facts file; both deliveries passed `check-delivery`, the Pack
-Reader, `admit-analysis` and `deliver`. Facts layout: `facts-schema.md`.
+shape (1.72 s) on the 20 MB SAED14 facts file; both deliveries passed `check-delivery`, and the
+host delivery then passed the Pack Reader, `admit-analysis` and `deliver`. Facts layout:
+`facts-schema.md`.
 
 ## 7. Hashing and sources
 
