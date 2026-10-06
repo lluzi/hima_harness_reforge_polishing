@@ -6,6 +6,46 @@ one, so try many ideas each round and let its characterization and the flow deci
 flow adopted it, the matched gain and the remaining top paths. Do not repeat a failed idea without a
 new reason; do repeat what worked with variations.
 
+## Where the time goes, and what can move it (baseline report, 2026-10-06)
+
+Measured from the stock baseline's ORFS top-path report at 3.6 ns (`runs/baseline/top-paths.txt`;
+read it yourself, the same numbers come out):
+
+- The 20 failing setup paths lie within 0.23 ns of each other (slack −0.249 … −0.020 ns). That is a
+  wall, not one path: a 5 % gain over a stock-like control needs the worst slack near −0.07 ns, so
+  the 11 worst paths must each gain 0.01–0.18 ns at once. Fixing one path only exposes the next.
+- Each failing path's 3.4–3.7 ns data path splits into:
+  - 3–7 placement and rebuffer buffers (buf_4 … buf_12), 0.57–1.17 ns in total, about a quarter of the path;
+  - one xnor3 stage, 0.32–0.72 ns, on 19 of the 20 paths: the slowest single cell;
+  - xor2/xnor2/mux2i stages, up to 0.6 ns;
+  - flop clock-to-Q, 0.33–0.56 ns (dfxtp_2 driving a buffer);
+  - about 9–10 small logic stages, 1.9–2.6 ns in total.
+- Skewing small gates acts on that last bucket at a few ps per stage. It cannot reach 0.18 ns, which
+  is why run-b38106d8 measured +0.22 % (SPICE) and +0.58 % (mock) with 500+ adopted skew cells.
+
+Levers big enough to matter:
+
+1. **Remove buffer stages.** The buffers sit after strong-fanout drivers: xnor2_4, xor2_4,
+   mux2i_4, xnor3_2 and the flops. A driver strong enough for its fanout needs no buffer.
+   - sky130hd stops at _4 for these functions; build the top of the ladder that it lacks: ×2 and ×3
+     of the _4 cells, and xnor3 above _4.
+   - Make them drop-in variants with `compareTo` = the _4 cell, so they take its footprint and
+     function text and the resizer can size up into them.
+   - Add fused "logic + output stage" cells.
+   - Check in a trial that the buffers on the worst paths go away (count buf/rebuffer instances on
+     `top-paths.txt`), not only WNS.
+2. **A faster XNOR3.** It costs 0.3–0.7 ns on almost every failing path.
+   - Try other topologies and per-input variants: put the latest-arriving input on the fastest leg,
+     since the A, B and C arcs differ.
+   - Try an xnor3 fused with its fanout buffer.
+3. **Fewer stages across the whole cone.** An `orfs-abc` round lets synthesis map your single-output
+   cells across the whole design. An `emap-window` replaces synthesis with a local remap and
+   reached only 3–9 custom cell types in earlier rounds.
+
+Flops are sequential, and the mock characterizes combinational cells only, so the clock-to-Q bucket
+is out of scope. Judge each idea by the bucket it attacks: one trial pair per idea, comparing buffer
+counts and xnor3 delays on the worst 20 paths, not only WNS.
+
 ## How HimaHarness judges you
 
 - It characterizes every cell itself: abstract (mock-layout) cells get MOCK timing in seconds, an
