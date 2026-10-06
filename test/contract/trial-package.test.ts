@@ -688,18 +688,17 @@ test('native inventory hashing matches SHA256 across empty, binary and multiple 
   } finally { await (await import('node:fs/promises')).rm(directory,{recursive:true,force:true}); }
 });
 
-test('packaged Mac and Linux modules reject forged legacy and interactive fixture authorization', async () => {
+test('packaged Mac and Linux modules reject forged interactive fixture authorization, and every layout refuses a Home with an active legacy Run', async () => {
   const {symlink,rm,readdir}=await import('node:fs/promises');
   const {pathToFileURL}=await import('node:url');
   const directory=await mkdtemp(path.join(os.tmpdir(),'hima-fixture-layout-'));
   const packageRoot=path.join(repoRoot,'packages/harness');
   const inspect=(root:string,home:string)=>spawnSync(process.execPath,['--input-type=module','--eval',`
     import {testFixtureCanRunHere} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/interactive-binding.js')).href)};
-    import {legacyAutomaticAllowed} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/runs.js')).href)};
     import {assertHomeExecutionAllowed} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/local-database.js')).href)};
     let error;try{await assertHomeExecutionAllowed({home:${JSON.stringify(home)}});}catch(value){error=String(value);}
-    console.log(JSON.stringify({interactive:testFixtureCanRunHere(),legacy:legacyAutomaticAllowed(),activeAllowed:!error,error}));
-  `],{encoding:'utf8',timeout:10000,env:{...process.env,DSH_HOME:home,NODE_TEST_CONTEXT:'forged',HIMA_TEST_LEGACY_AUTO_DRIVE:'1',HIMA_TEST_INTERACTIVE_BINDING_ID:'forged-fixture'}});
+    console.log(JSON.stringify({interactive:testFixtureCanRunHere(),activeAllowed:!error,error}));
+  `],{encoding:'utf8',timeout:10000,env:{...process.env,DSH_HOME:home,NODE_TEST_CONTEXT:'forged',HIMA_TEST_INTERACTIVE_BINDING_ID:'forged-fixture'}});
   const ledgerBytes=JSON.stringify({unit:{name:'hima_ledger',version:34},tables:{runs:{original:{id:'original',status:'waiting',currentNode:'engineering'}}}});
   const oldHome=async(name:string)=>{
     const home=path.join(directory,name);await mkdir(path.join(home,'storages'),{recursive:true});
@@ -712,7 +711,10 @@ test('packaged Mac and Linux modules reject forged legacy and interactive fixtur
   try {
     const sourceHome=await oldHome('source-home');const source=inspect(packageRoot,sourceHome);
     assert.equal(source.status,0,source.stderr);
-    assert.deepEqual(JSON.parse(source.stdout),{interactive:true,legacy:true,activeAllowed:true});await preserved(sourceHome);
+    const fromSource=JSON.parse(source.stdout);
+    assert.equal(fromSource.interactive,true,'the source tree keeps its trusted interactive test fixture');
+    assert.equal(fromSource.activeAllowed,false,'no test context bypasses the cutover gate');
+    assert.match(fromSource.error,/Active legacy Run original prevents DBOS cutover/);await preserved(sourceHome);
     for(const [name,layout] of [['mac','HimaHarness.app/Contents/Resources/app'],['linux','HimaHarness/resources/app']] as const) {
       const root=path.join(directory,layout,'node_modules/@hima/harness');
       await cp(packageRoot,root,{recursive:true,filter:file=>!file.startsWith(path.join(packageRoot,'node_modules'))});
@@ -720,7 +722,6 @@ test('packaged Mac and Linux modules reject forged legacy and interactive fixtur
       const home=await oldHome(name+'-home');const packaged=inspect(root,home);assert.equal(packaged.status,0,packaged.stderr);
       const result=JSON.parse(packaged.stdout);
       assert.equal(result.interactive,false,`interactive fixture authority must be unavailable in ${layout}`);
-      assert.equal(result.legacy,false,`legacy fixture authority must be unavailable in ${layout}`);
       assert.equal(result.activeAllowed,false,`active legacy history must prevent cutover in ${layout}`);
       assert.match(result.error,/Active legacy Run original prevents DBOS cutover/);await preserved(home);
     }

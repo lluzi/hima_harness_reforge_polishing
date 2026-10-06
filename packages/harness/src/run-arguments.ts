@@ -152,20 +152,6 @@ export function strategyFrom(
 }
 
 /**
- * Why a Run that is not waiting was not resumed, in the one sentence all three faces say it in.
- *
- * Here for the reason the table above is here: `/hima resume`, the `hima_resume` tool and
- * `POST /hima/api/runs/<id>/resume` are three faces onto one operation, and three faces onto one
- * operation must refuse the same thing for the same reason and say so in the same words. Built three
- * times, they had already drifted — one of them alone told the caller that nothing had been written,
- * which is the half of the answer that decides whether they have anything to undo.
- *
- * @param status - where the Run stands, or undefined for a Run HimaFabric never started.
- */
-export const notWaitingToResume = (status: string | undefined): string =>
-  `this run is ${status ?? 'not a run HimaFabric started'}, and only a waiting run can be resumed; nothing was written`;
-
-/**
  * Why a Run that is waiting could not be re-entered anyway, in the one sentence all three faces say
  * it in: HimaFabric's own reason, closed with the half that says nothing was written.
  *

@@ -26,46 +26,12 @@ import type { Context } from '@deepseek-ai/cordis';
 // Nothing is imported at runtime, so a host composed without a browser surface never loads them.
 import type {} from '@deepseek-ai/dsh-host-webserver';
 import type {} from '@deepseek-ai/dsh-client-connection';
-import type {
-  BlockerRecord,
-  CancelRecord,
-  CodeRecord,
-  DecisionChoice,
-  DecisionRecord,
-  ExperienceRecord,
-  JobIdentity,
-  JobRecord,
-  KnowledgeRecord,
-  Ledger,
-  LedgerRecord,
-  NodeKind,
-  NodeRecord,
-  NodeState,
-  ObservationRecord,
-  PackDataOrigin,
-  ReaderRef,
-  RevisionRecord,
-  RefusalRecord,
-  ResearchWriteRecord,
-  ResumedRecord,
-  RunBudget,
-  RunLoop,
-  RunFork,
-  RunMeters,
-  RunPurpose,
-  RunRecord,
-  RunStatus,
-  RunStrategy,
-  SessionRecord,
-  VerdictRecord,
-  WorkspaceRecord,
-} from './ledger.js';
+import type { BlockerRecord, CancelRecord, CodeRecord, DecisionChoice, DecisionRecord, ExperienceRecord, JobRecord, KnowledgeRecord, Ledger, LedgerRecord, ObservationRecord, PackDataOrigin, RefusalRecord, ResearchWriteRecord, ResumedRecord, RunBudget, RunLoop, RunFork, RunMeters, RunPurpose, RunRecord, RunStatus, RunStrategy, VerdictRecord, WorkspaceRecord } from './ledger.js';
 import type { GenerationView, RevisionHistoryView } from './generations.js';
 import { generationsOf } from './generations.js';
 // Type-only, like every other shape here: this module is bundled into the browser half as well, and
 // `channel.ts` reaches for ssh and the filesystem. What the audit routes answer comes through
 // `RemoteOperations`, from the host that has the audit.
-import type { RemoteCommand } from './channel.js';
 // The three record-to-view mappings a branch row reads too, so both folds are one description
 // (`record-views.ts`). Re-exported below, because a face reading a Run reads them from here.
 import { codeView, jobView, knowledgeView, nodeView, observationView, standingWorkshop } from './record-views.js';
@@ -80,9 +46,9 @@ import type { CancelResult } from './recovery.js';
 // Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
 // bundled into the browser half, where a runtime import of it would ship the seam to every browser.
 import type { MomentOnNode } from './moments.js';
-import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
+import { numericValue, allowsRunArgument, badRunArgument, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
 import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
-import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
+import { messagePage, type StartChoices } from './workbench.js';
 // Type-only, and erased: the ladder's rung names, declared where a pack folder is read.
 import type { PackStageOrRefusal } from './packs.js';
 // The one place the form's mark for a pack folder's stage is decided, beside every other word a
@@ -545,22 +511,6 @@ export interface RecordsView { readonly records: readonly LedgerRecord[] }
 
 /** One ledger record by id, exactly as the ledger holds it. */
 export interface RecordView { readonly record: LedgerRecord }
-
-/**
- * What this host process has asked Sites to run: HimaChannel's own audit, as the audit routes answer
- * it.
- *
- * `commands` is every command since the last drain, oldest first — Hima's own verbs and the Job
- * command lines alike, each with the argv it was decided on and the string the wire received.
- * `windowFilled` says whether the rolling window (`remoteCommandWindow` entries) has been full since
- * that drain: `true` and the list is no longer everything, so a caller claiming "every command" must
- * either drain more often or stop claiming it. The two travel together because neither is worth
- * reading without the other.
- */
-export interface AuditView {
-  readonly commands: readonly RemoteCommand[];
-  readonly windowFilled: boolean;
-}
 
 /** What `POST /hima/api/observe` accepts: the observe operation, as the command and the tool take it. */
 export interface ObserveBody extends ObserveRequest {
@@ -1532,14 +1482,6 @@ async function cancelOperation(ops: RemoteOperations, runId: string): Promise<An
   if (result.kind === 'not-started') {
     throw new NotInState(`run ${runId} has no fabric state: HimaFabric never started it, so there is nothing to cancel`);
   }
-  // A kill that did not take is nobody's request and not a Run view: the Run is not cancelled, and
-  // answering 200 with it would say a Job stopped that is still running. It is not a 500 either —
-  // nothing inside HimaHarness failed; the Site was asked to stop a Job and still has it, which is a
-  // fact about the Site with a code of its own. Its message names the session and is also on the
-  // Run's own blocked node, which this same fenced caller can fetch through this namespace.
-  if (result.kind === 'not-stopped') {
-    return failure(409, 'hima/run-not-stopped', `run ${runId} was not cancelled: its job was ${result.reason}`);
-  }
   if (result.kind === 'stopping') return { status: 202, body: { run: await runAnswer(ops, result.run), reason: result.reason } };
   return ok(await runAnswer(ops, result.run));
 }
@@ -1551,23 +1493,12 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
   try {
     result = await ops.resumeRun(runId, 'workbench');
   } catch (err) {
-    if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof RunReferenceError) {
-      throw new BadRequest(`cannot resume run ${runId}: ${err.message}`);
-    }
-    // A fault mid-drive is ours, and carries its own message for the same reason starting a Run does:
-    // it is already on this Run's blocked node, which the same caller can fetch through this namespace.
-    if (err instanceof RunFaultError) return failure(500, 'hima/internal', err.message);
+    if (err instanceof RunReferenceError) throw new BadRequest(`cannot resume run ${runId}: ${err.message}`);
     throw err;
   }
-  if (result.kind === 'not-waiting') {
-    throw new NotInState(`cannot resume run ${runId}: ${notWaitingToResume(result.run.status)}`);
-  }
-  // Not the conflict code: a Run that is waiting and still cannot be re-entered is not in the wrong
-  // state for a resume — it is a Run this machine cannot rebuild, because its workspace record, its
-  // node or its pack is missing. Re-reading the Run would tell the caller nothing new, which is what
-  // separates the two answers.
-  if (result.kind === 'unresumable') throw new BadRequest(`cannot resume run ${runId}: ${unresumableReason(result.reason)}`);
-  return ok(await runAnswer(ops, result.run));
+  // Not the conflict code: no Run can be re-entered here, so re-reading it would tell the caller
+  // nothing new.
+  throw new BadRequest(`cannot resume run ${runId}: ${unresumableReason(result.reason)}`);
 }
 
 /**

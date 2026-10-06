@@ -62,7 +62,7 @@ async function task(check: LiveCheck): Promise<void> {
   const delegate = async (body: Record<string, unknown>) => {
     const control = context().run.control!;
     return host.ctx.hima.delegate({ runId, actor: ownerId, expectedEpoch: control.epoch,
-      expectedRevision: control.revision, ...body } as never, AbortSignal.timeout(45_000)) as Promise<Record<string, any>>;
+      expectedRevision: control.revision, ...body } as never) as Promise<Record<string, any>>;
   };
   const coding = await delegate({ action: 'create', requestId: 'create-coding', contract: { delegationId: 'coding', role: 'coding',
     task: `Create ${path.join(privateCoding, 'candidate.ts')} containing one exported function summarize(values: number[]): number that returns the sum. Use the write tool, then report the exact file and that this is candidate output pending owner verification.`,

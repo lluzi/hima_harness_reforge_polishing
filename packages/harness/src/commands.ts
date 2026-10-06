@@ -11,26 +11,23 @@
 // status` must describe one Run the one way.
 import { createRequire } from 'node:module';
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands';
-import { hasEnded, type BlockerRecord, type CancelRecord, type CodeRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type LedgerRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type SessionRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
+import { type BlockerRecord, type CancelRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
 import { cancelSessions, chosenAs, standingWorkshop } from './record-views.js';
 import { assertRunProject } from './guide-context.js';
-import { observe, type ObserveResult } from './observe.js';
-import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
-import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
-import { loadSite } from './sites.js';
+import { jobKill, jobStatus, jobTail, type JobKillResult, type JobStatusResult } from './jobs.js';
 import { checkInstalledPackFromRuntime, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
 import { releasePackFromRuntime } from './release.js';
 import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult, type WorkspaceFilesResult } from './workspace.js';
-import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { resumeRun, type FabricDeps } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
-import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName } from './run-arguments.js';
+import { numericValue, unresumableReason } from './run-arguments.js';
 // Type-only: the shape a pack's words travel in, declared with the rest of the run view.
 import type { RunWords } from './remote.js';
 import { bannerLines, branchSaid, branchesIn, convergedSaid, experienceFileSaid, meterLines, readerSaid, runPurposeMark, strategySaid, workshopSaid } from './card-labels.js';
 import { generationsOf } from './generations.js';
 import { counted } from './words.js';
-import { PackFolderError, PackNotFoundError, RunFaultError, RunReferenceError, RunStartError, SiteNotFoundError, SiteUnreadableError } from './errors.js';
+import { PackFolderError, PackNotFoundError, RunReferenceError, SiteNotFoundError, SiteUnreadableError } from './errors.js';
 
 /** What `/hima` says it is, in the one line a person sees in the host's command list. Here with the
  *  handlers it describes, so a verb added below is a verb named here. */
@@ -47,46 +44,12 @@ export function versionLine(): string {
   return `HimaHarness ${bundleVersion} on DeepSeek Harness ${hostVersion} (Node ${process.version})`;
 }
 
-/** One observe result as a person reads it: what was read or refused, and where it was recorded. */
-function describeObserveResult(result: ObserveResult): string {
-  const runId = result.run.id;
-  if (result.kind === 'observed') {
-    const { record } = result;
-    return `observed ${record.path} on ${record.siteId}: sha256 ${record.contentSha256} (${record.bytes} bytes), reader ${readerSaid(record.reader)}, record ${record.id} in ${runId}`;
-  }
-  const { record } = result;
-  return `refused ${record.path} on ${record.siteId}: ${record.reason}; recorded as ${record.id} in ${runId}`;
-}
-
 /** One verdict as a person reads it: outcome, rule identity and version, what it cited, why if undetermined. */
 function describeVerdict(v: VerdictRecord): string {
   const cited = v.cites.length > 0 ? `cites ${v.cites.join(', ')}` : 'cites nothing';
   const bound = v.boundParameters ? Object.entries(v.boundParameters).map(([k, n]) => `${k}=${n}`).join(', ') : undefined;
   const why = v.reason ? `: ${v.reason}` : '';
   return `${v.outcome} ${v.ruleId}@${v.ruleVersion}${bound ? ` (${bound})` : ''}, recorded as ${v.id}, ${cited}${why}`;
-}
-
-/**
- * Why a launch was refused by the Site's cap, as a person reads it: which of the Site's slots had no
- * room, what is in them right now, and what to do about it. Which slot it was comes from the claim
- * step itself, in its own words, so this face and the node that waits cannot say different things
- * about one full Site. The Jobs are named — session and Run — because "the site is full" without
- * saying what is filling it leaves a person with nothing to act on but a guess.
- */
-function describeAtCap(site: string, full: FullSlot, holding: readonly JobRecord[]): string {
-  const held = holding.map((r) => `"${r.job.name}" in tmux session ${r.job.session} of ${r.runId}`).join('; ');
-  const what = held === '' ? 'jobs the ledger cannot name' : held;
-  return `refused to launch on ${site}: the site ${fullSaid(full)}, held by ${what}; wait for one to end, or stop one with /hima job kill`;
-}
-
-/** One launch as a person reads it: what was launched, where, as what, and where it was recorded. */
-function describeLaunch(result: LaunchResult): string {
-  if (result.kind === 'launched') {
-    const { job } = result.record;
-    return `launched "${job.name}" on ${result.record.siteId} as tmux session ${job.session} (pid ${job.pid}) in ${job.workspace}: ${job.wire}; recorded as ${result.record.id} in ${result.run.id}`;
-  }
-  const { record } = result;
-  return `refused to launch ${record.path} on ${record.siteId}: ${record.reason}; recorded as ${record.id} in ${result.run.id}`;
 }
 
 /** One status as a person reads it. Starts with the state itself, so an eye and a test find it first. */
@@ -455,16 +418,7 @@ function describeCancel(deps: FabricDeps, result: CancelResult): string {
   if (result.kind === 'ended') {
     return [`run ${runId} already ended as ${result.run.status}; nothing was stopped and nothing was recorded`, describeRun(deps, result.run)].join('\n');
   }
-  if (result.kind === 'not-stopped') {
-    return [`run ${runId} was NOT cancelled: its job was ${result.reason}`, describeRun(deps, result.run)].join('\n');
-  }
-  // Said of the moment the request was read, not of the Run for all time: a cancel that crossed a
-  // launch it could not see is answered here while the loop that made that launch is still stopping
-  // the Job, and this sentence has to be as true a minute later as it was when it was composed.
-  const stopped = ('engine' in result.run && result.run.engine === 'dbos/5.2.11') ? 'original owned resources have confirmed closure' : result.stopped
-    ? `stopped its job "${result.stopped.job.name}" in tmux session ${result.stopped.job.session}, recorded as ${result.stopped.id}`
-    : 'no job of this run was open when the request was read';
-  return [`cancelled run ${runId}: ${stopped}`, describeRun(deps, result.run)].join('\n');
+  return [`cancelled run ${runId}: original owned resources have confirmed closure`, describeRun(deps, result.run)].join('\n');
 }
 
 /** One kill as a person reads it: what was stopped, or why nothing was. */
@@ -511,74 +465,6 @@ function parseNamedNumbers(flags: readonly string[], flag: string): { params: Re
 /** `--param <name>=<value>`, repeatable: what binds a rule's declared parameter at judge time. */
 const parseParamFlags = (flags: readonly string[]): { params: Record<string, number> } | { error: string } => parseNamedNumbers(flags, '--param');
 
-/**
- * `--set <knob>=<value>`, repeatable: what a Run's Strategy is set to at the start (#58).
- *
- * The pair is parsed here and the value is not: what a knob may be is the *pack's* declaration, and
- * this face has not opened the pack. A value is carried as the person typed it, `startRun` reads it
- * as the knob's own kind — a number parsed for a number knob, the word as given for a choice knob —
- * and a value no declaration allows is refused there, in the words every face says it in.
- */
-function parseSetFlags(flags: readonly string[]): { strategy: Record<string, string> } | { error: string } {
-  const strategy: Record<string, string> = Object.create(null);
-  for (let i = 0; i < flags.length; i++) {
-    if (flags[i] !== '--set') continue;
-    const raw = flags[i + 1];
-    const eq = raw?.indexOf('=') ?? -1;
-    if (raw === undefined || eq <= 0 || eq === raw.length - 1) return { error: `invalid --set "${raw ?? ''}"; expected --set <knob>=<value>` };
-    const name = raw.slice(0, eq);
-    if (Object.hasOwn(strategy, name)) return { error: `duplicate --set parameter "${name}"` };
-    strategy[name] = raw.slice(eq + 1);
-  }
-  return { strategy };
-}
-
-/**
- * Every word of a flag list this command did not consume, in words (#64).
- *
- * A flag face that reads the flags it knows and ignores the rest answers *something* for every
- * spelling a person can get wrong, and the answer is silence: `--test false` starts a test run and
- * leaves `false` lying there, `--test=false` is not `--test` at all and starts an ordinary Campaign,
- * and a misspelled `--generation 2` runs to the default limit. None of those is a refusal, and every
- * one of them is a Campaign the person did not ask for.
- *
- * @param flags - the words after the positional arguments.
- * @param takesAValue - the options that swallow the word after them.
- * @param bare - the options that say one thing and take no value.
- * @returns the refusal, naming the first word nothing consumed, or undefined when every word was.
- */
-function unconsumedArgument(
-  flags: readonly string[],
-  takesAValue: readonly string[],
-  bare: readonly string[],
-): string | undefined {
-  const seen = new Set<string>();
-  for (let i = 0; i < flags.length; i++) {
-    const word = flags[i]!;
-    if (seen.has(word) && !['--goal', '--param', '--set'].includes(word)) return `duplicate option "${word}"`;
-    seen.add(word);
-    if (takesAValue.includes(word)) { i += 1; continue; }
-    if (bare.includes(word)) continue;
-    // `--anything` this command does not declare, including `--test=false`, which is one word and is
-    // not the flag `--test`; and a bare word left over, which is what `--test false` leaves behind.
-    return word.startsWith('-') ? `unknown option "${word}"` : `unexpected argument "${word}"`;
-  }
-  return undefined;
-}
-
-/**
- * One numeric flag of a Run, validated against what `runArguments` says it may be. `absent` when the
- * flag was not typed at all; an error when it was typed with no value, a non-number, or a number
- * this flag cannot mean — a flag typed wrongly never reads as "not given".
- */
-function numericFlag(flags: readonly string[], name: RunArgumentName, spelling: string): { value: number | undefined } | { error: string } {
-  if (!flagPresent(flags, spelling)) return { value: undefined };
-  const raw = flagValue(flags, spelling);
-  const value = numericValue(raw) ?? Number.NaN;
-  if (raw === undefined || !allowsRunArgument(name, value)) return { error: badRunArgument(name, spelling, raw ?? '') };
-  return { value };
-}
-
 export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: CommandInvocation): Promise<CommandResult> {
   const [sub = '', ...rest] = rawInput.trim().split(/\s+/).filter(Boolean);
   if (sub === '' || sub === 'version') return { kind: 'success', text: versionLine() };
@@ -612,46 +498,20 @@ function handleRun(): CommandResult {
 }
 
 /**
- * The `/hima resume` face: clear a waiting Run and carry it on. The person who typed it is who the
- * ledger records — a Hard blocker is by definition something the harness could not clear itself,
- * so the record says whose session cleared it.
- *
- * The answer is the Run as `/hima status` shows it, and success means the same thing it means for
- * `/hima run`: a Run that ended, whichever way it ended — a cancel a person asked for from another
- * face while this command was still waiting included, because that cancel did exactly what it was
- * asked. A Run that could not be resumed, or that blocked again, is an error — it still needs a
- * person.
+ * The `/hima resume` face. Current Runs continue through their owner's explicit control and historical
+ * Runs are never driven again, so the answer is always why this Run cannot be resumed here.
  */
 async function handleResume(deps: FabricDeps, rest: readonly string[], who: string): Promise<CommandResult> {
   const [runId] = rest;
   if (!runId || rest.length > 1) return { kind: 'error', text: 'usage: /hima resume <runId>' };
-  let result: ResumeResult;
   try {
-    result = await resumeRun(deps, { runId, who });
+    const result = await resumeRun(deps, { runId, who });
+    return { kind: 'error', text: `cannot resume ${runId}: ${unresumableReason(result.reason)}` };
   } catch (err) {
-    // A run or a pack the caller got wrong is theirs to fix and nothing was written; a fault
-    // mid-drive is already recorded against the Run and is shown with the Run it stopped.
-    if (err instanceof RunReferenceError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof SiteNotFoundError) {
-      return { kind: 'error', text: `/hima resume ${runId}: ${err.message}` };
-    }
-    if (err instanceof RunFaultError) {
-      const stopped = deps.ledger.run(err.runId);
-      return { kind: 'error', text: stopped ? [err.message, describeRun(deps, stopped)].join('\n') : err.message };
-    }
-    // As `/hima run`: ours, not the caller's, and nothing was written (#18).
-    if (err instanceof SiteUnreadableError) return { kind: 'error', text: `/hima resume ${runId}: ${err.message}` };
+    // A run the caller got wrong is theirs to fix and nothing was written.
+    if (err instanceof RunReferenceError) return { kind: 'error', text: `/hima resume ${runId}: ${err.message}` };
     throw err;
   }
-  if (result.kind === 'not-waiting') {
-    return { kind: 'error', text: `cannot resume ${runId}: ${notWaitingToResume(result.run.status)}` };
-  }
-  if (result.kind === 'unresumable') return { kind: 'error', text: `cannot resume ${runId}: ${unresumableReason(result.reason)}` };
-  const text = [`resumed ${runId} at node ${result.nodeId}; recorded as ${result.record.id}`, describeRun(deps, result.run)].join('\n');
-  // The same final states `/hima run` counts as an ending, and for the same reason: `cancelled` is
-  // now reachable from a drive this command is waiting on — a person resumes a blocked Run and then
-  // stops it from another face — and answering that as an error would have one event told two ways
-  // by two faces of one harness.
-  return { kind: result.run.control || hasEnded(result.run.status) ? 'success' : 'error', text };
 }
 
 /** The `/hima status` face: where a Run stands, read from its records and nothing else. */

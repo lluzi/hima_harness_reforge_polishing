@@ -11,11 +11,11 @@ import { randomBytes } from 'node:crypto';
 import { channelFor, mustRun, quote, type Channel } from './channel.js';
 import { loadSite, type Site } from './sites.js';
 import { decideLaunch } from './shell.js';
-import { existingRun, runFor } from './runs.js';
+import { existingRun } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
-import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
+import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
-import { endJobProcessGroup, jobProcessGroupAlive, openInteractiveJob, parseInteractiveRecord, startInteractiveJob, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
+import { endJobProcessGroup, jobProcessGroupAlive, type InteractiveCloseGrace } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -23,48 +23,6 @@ const defaultJobName = 'job';
 /** How long `kill` waits for the session to actually be gone before saying it is not. */
 const killWaitMs = 10_000;
 const killPollMs = 100;
-
-/**
- * How often something waiting on a Job asks the Site what became of it, and for how long it asks that
- * often.
- *
- * Each look costs two remote commands (`test -f`, then `tmux has-session`). Asked twice a second,
- * one 150-second opene902 generation is about 600 of them against a channel audit that holds 500 —
- * enough to evict the `tmux new-session` line that is the whole point of the audit. So: half a
- * second for the first five, while a stand-in or a tool that fails at once is likely to end, and
- * three seconds after that, which is a rounding error against two and a half minutes of Design
- * Compiler and cuts that generation to some fifty looks.
- *
- * Stated here, beside the `jobStatus` each look is, because two things wait on this Site by it: a
- * node waiting for its own Job, and a node waiting for one of the Site's job slots to come free.
- *
- * All three numbers are on the bundle's surface because a test that holds a Site unreadable and then
- * asserts the waiter kept asking has to hold it for longer than one of them, and an interval written
- * out again in the test is a number that goes stale the day this one is tuned — the test would then
- * pass while asserting nothing, which is the one failure a test cannot report (#18). How long the
- * fast phase lasts is on the surface for that reason and one more: a test that has to open a known
- * gap between two looks — the cancel race of #61, where a reader's Job must finish inside one — waits
- * the fast phase out first, because a gap the length of the slow interval is only a gap once the
- * waiter has started asking at the slow interval.
- */
-export const jobPollFastMs = 500;
-export const jobPollSlowMs = 3_000;
-export const jobPollFastForMs = 5_000;
-
-/** How long to wait before the next look, given when the waiting began. */
-export const pollAfter = (waitingSince: number): number =>
-  (Date.now() - waitingSince < jobPollFastForMs ? jobPollFastMs : jobPollSlowMs);
-
-/** An interruptible Host wait: stopping observation never kills the detached Site Job. */
-export async function waitForNextPoll(waitingSince: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return;
-  await new Promise<void>((resolve) => {
-    const done = (): void => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); };
-    const timer = setTimeout(done, pollAfter(waitingSince));
-    signal?.addEventListener('abort', done, { once: true });
-    if (signal?.aborted) done();
-  });
-}
 
 /** How many lines of a Job's log a tail shows when the caller does not say. */
 const defaultTailLines = 40;
@@ -204,58 +162,6 @@ async function sessionProbe(on: Channel, session: string): Promise<SessionProbe>
   if (r.code === 1 && saysNoSession(said)) return { answer: 'absent' };
   if (r.code === 1 && saysNoSocket(said)) return { answer: 'no-socket', said };
   throw new SiteUnreadableError(on.siteName, cannotTell(on, `whether tmux session ${session} is there`, 'tmux', r));
-}
-
-export interface InteractiveLaunchReservationResult {
-  readonly runId: string; readonly toolSessionId: string; readonly state: 'job-recorded' | 'released';
-}
-
-const interactivePayloads = (ledger: Ledger, runId: string): { ledger: LedgerInteractiveRecord; payload: ProtocolRecord }[] =>
-  ledger.records({ runId, type: 'interactive' }).filter((item): item is LedgerInteractiveRecord => item.type === 'interactive')
-    .map((item) => ({ ledger: item, payload: parseInteractiveRecord(item.payload) }));
-const interactiveOutcomeBase = (record: ProtocolRecord) => ({ runId: record.runId, executionId: record.executionId,
-  nodeId: record.nodeId, toolSessionId: record.toolSessionId, requestId: record.requestId,
-  actor: record.actor, ownerEpoch: record.ownerEpoch, controlRevision: record.controlRevision,
-  callerDigest: record.callerDigest, operationDigest: record.operationDigest, at: record.at });
-
-/**
- * Fail-closed probe for a crash after `tmux new-session` but before the ordinary Job record.
- * Called inside the existing Site claim chain; it does not claim a slot or enter another Site lock.
- */
-export async function reconcileInteractiveLaunchReservations(deps: JobDeps, siteName: string): Promise<readonly InteractiveLaunchReservationResult[]> {
-  const site = loadSite(deps.sitesDir, siteName); const on = channelFor(site);
-  const results: InteractiveLaunchReservationResult[] = [];
-  for (const run of deps.ledger.runs().filter((candidate) => candidate.siteId === siteName)) {
-    const records = interactivePayloads(deps.ledger, run.id);
-    for (const candidate of records.filter((item) => item.payload.event === 'open-intent')) {
-      const intent = candidate.payload;
-      if (intent.event !== 'open-intent') continue;
-      const later = records.filter((item) => item.ledger.seq > candidate.ledger.seq && item.payload.toolSessionId === intent.toolSessionId);
-      if (later.some((item) => item.payload.event === 'open-released')) continue;
-      const job = deps.ledger.records({ runId: run.id, type: 'job' })
-        .find((record): record is JobRecord => record.type === 'job' && record.event === 'launched' && record.job.session === intent.toolSessionId);
-      if (job) { results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'job-recorded' }); continue; }
-      let probe: SessionProbe;
-      try { probe = await sessionProbe(on, intent.toolSessionId); }
-      catch (error) {
-        throw new Error(`interactive launch reservation ${intent.toolSessionId} of Run ${run.id} has no Job record and the Site probe is ambiguous: ${error instanceof Error ? error.message : String(error)}. Do not resend or invent PID/wire; an administrator must inspect and stop/adopt this exact session before recovery.`);
-      }
-      if (probe.answer !== 'absent') {
-        const diagnostic = probe.answer === 'there' ? 'the exact tmux session is live' : probe.said;
-        throw new Error(`interactive launch reservation ${intent.toolSessionId} of Run ${run.id} has no Job record and cannot release a Site slot: ${diagnostic}. Do not resend or invent PID/wire; an administrator must inspect and stop/adopt this exact session before recovery.`);
-      }
-      const jobAfter = deps.ledger.records({ runId: run.id, type: 'job' })
-        .some((record) => record.type === 'job' && record.event === 'launched' && record.job.session === intent.toolSessionId);
-      if (jobAfter) { results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'job-recorded' }); continue; }
-      const outcome = parseInteractiveRecord({ ...interactiveOutcomeBase(intent), event: 'open-released',
-        jobSession: intent.toolSessionId, reason: 'The exact retained tmux session was verified absent before the next Site slot claim.',
-        at: new Date().toISOString() });
-      await deps.ledger.appendInteractive(run.id, { executionId: intent.executionId, toolSessionId: intent.toolSessionId,
-        requestId: intent.requestId, event: outcome.event, payload: outcome as never });
-      results.push({ runId: run.id, toolSessionId: intent.toolSessionId, state: 'released' });
-    }
-  }
-  return results;
 }
 
 /**
@@ -529,128 +435,6 @@ export interface LaunchRequest {
   readonly attempt?: number;
 }
 
-export type LaunchResult =
-  | { readonly kind: 'launched'; readonly run: RunRecord; readonly record: JobRecord }
-  | { readonly kind: 'refused'; readonly run: RunRecord; readonly record: RefusalRecord };
-
-/** Launch a Job under the Site's Permit and record it. A refusal is a record, never a silent no. */
-export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<LaunchResult> {
-  const site = loadSite(deps.sitesDir, req.site);
-  const run = await runFor(deps.ledger, site, req.run, req.projectSessionId);
-  const name = tmuxSafe(req.name ?? defaultJobName);
-  // One channel for the whole operation: the permit decision resolves the workspace where it lives,
-  // then the same warm channel launches into it.
-  const channel = channelFor(site);
-  const decision = await decideLaunch(site, req.workspace, req.argv, channel);
-  if (!decision.ok) {
-    return { kind: 'refused', run, record: await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason }) };
-  }
-  // An absent key, never an undefined one: a Job belonging to no node, or holding no licence of the
-  // Site, says so by omission.
-  const belongs = req.nodeId === undefined ? {} : { nodeId: req.nodeId };
-  const inBranch = req.branchId === undefined ? {} : { branchId: req.branchId };
-  const holds = req.licences === undefined || Object.keys(req.licences).length === 0 ? {} : { licences: { ...req.licences } };
-  // What a reader's launch decided, as the one nested block the record keeps it in: a read-back needs
-  // every member of it and has nowhere else to get one, which is why it is stored whole (#61).
-  const reads = req.reading === undefined ? {} : { reading: req.reading };
-  // And the same for a workshop's Job (#62): the entry it runs with the hash the launch verified, and
-  // the attempt it belongs to — both written here, where they are true, and both absent from a Job
-  // that is neither a workshop's nor a fabric node's.
-  const runs = req.workshop === undefined ? {} : { workshop: req.workshop };
-  const numbered = req.attempt === undefined ? {} : { attempt: req.attempt };
-  const metadata = { ...belongs, ...inBranch, ...holds, ...reads, ...runs, ...numbered };
-  const job = await launchInSession(channel, {
-    runId: run.id, workspace: decision.workspace, argv: req.argv, name,
-    ...(req.beforeLaunch === undefined ? {} : {
-      beforeLaunch: (job: Omit<JobIdentity, 'pid'>) => req.beforeLaunch!({ runId: run.id, siteId: site.name, job, ...metadata }),
-    }),
-  });
-  return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...metadata }) };
-}
-
-export interface InteractiveLaunchRequest {
-  readonly site: string;
-  readonly run: string;
-  readonly executionId: string;
-  readonly nodeId: string;
-  readonly requestId: string;
-  readonly callerDigest: string;
-  readonly actor: string;
-  readonly ownerEpoch: number;
-  readonly controlRevision: number;
-  readonly workspace: string;
-  readonly argv: readonly string[];
-  readonly name?: string;
-  readonly sessionDeadlineAt: string;
-  readonly startupWaitMs: number;
-  readonly closeGrace?: InteractiveCloseGrace;
-}
-
-export interface InteractiveJobLaunchResult {
-  readonly run: RunRecord;
-  readonly result: InteractiveOpenResult;
-  /**
-   * Present when the launch was asked to stop at the tool's startup (`readiness: 'after-claim'`) and
-   * the tool was started: `result` is then only provisional, and this waits for the ready line and
-   * records `opened`. The caller calls it after releasing the Site claim and the Run's admission
-   * queue, never inside them (#64 D-T02-3).
-   */
-  readonly ready?: () => Promise<InteractiveOpenResult>;
-}
-
-/**
- * Open an interactive process through the same Site Permit and Channel as a batch Job.
- * The authority callback appends the ordinary Job launch record returned by the lower layer;
- * this function neither invents a second process identity nor bypasses Fabric ownership.
- */
-export async function launchInteractiveJob(deps: JobDeps, req: InteractiveLaunchRequest, authority: InteractiveAuthority,
-  options: { readonly readiness?: 'inline' | 'after-claim' } = {}): Promise<InteractiveJobLaunchResult> {
-  const run = existingRun(deps.ledger, req.run);
-  const site = loadSite(deps.sitesDir, req.site);
-  if (site.name !== run.siteId) return { run, result: { status: 'refused', reason: `run ${run.id} belongs to site ${run.siteId}, not ${site.name}` } };
-  const channel = channelFor(site);
-  const decision = await decideLaunch(site, req.workspace, req.argv, channel);
-  if (!decision.ok) {
-    await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason });
-    return { run, result: { status: 'refused', reason: decision.reason } };
-  }
-  const request = {
-    siteName: site.name, runId: run.id, executionId: req.executionId, nodeId: req.nodeId,
-    requestId: req.requestId, callerDigest: req.callerDigest, actor: req.actor, ownerEpoch: req.ownerEpoch, controlRevision: req.controlRevision,
-    workspace: decision.workspace, argv: req.argv,
-    name: req.name ?? defaultJobName, sessionDeadlineAt: req.sessionDeadlineAt, startupWaitMs: req.startupWaitMs,
-    ...(req.closeGrace === undefined ? {} : { closeGrace: req.closeGrace }),
-  };
-  if (options.readiness !== 'after-claim') return { run, result: await openInteractiveJob(channel, request, authority) };
-  const started = await startInteractiveJob(channel, request, authority);
-  return started.kind === 'answered' ? { run, result: started.result }
-    : { run, result: { status: 'uncertain', reason: 'the interactive Job is started and its ready line is still awaited' }, ready: started.finish };
-}
-
-export type ReconciledLaunch =
-  | { readonly kind: 'existing' | 'reconciled'; readonly run: RunRecord; readonly record: JobRecord }
-  | { readonly kind: 'uncertain'; readonly run: RunRecord; readonly reason: string };
-
-/** Recover a missing launch receipt only from the exact session or its valid exit file.
- * Absence is ambiguous: the host may have died before launch, or the Job may have vanished. Neither
- * permits a second launch. The pane PID from a lost response stays absent rather than invented. */
-export async function reconcileLaunchIntent(deps: JobDeps, intent: LaunchIntent): Promise<ReconciledLaunch> {
-  const run = existingRun(deps.ledger, intent.runId);
-  if (run.siteId !== intent.siteId) throw new RunReferenceError(`launch intent site ${intent.siteId} does not belong to run ${run.id}`);
-  const previous = launchedRecord(deps, run, intent.job.session);
-  if (previous) return { kind: 'existing', run, record: previous };
-  let state: JobState;
-  try {
-    state = await jobState(channelFor(loadSite(deps.sitesDir, intent.siteId)), intent.job);
-  } catch (err) {
-    return { kind: 'uncertain', run, reason: `cannot confirm launch ${intent.job.session}: ${(err as Error).message}` };
-  }
-  if (state.state === 'gone') return { kind: 'uncertain', run, reason: `session ${intent.job.session} has no live session or valid exit file; whether it launched is unknown` };
-  const { runId: _runId, siteId: _siteId, ...launch } = intent;
-  const record = await deps.ledger.appendJob(run.id, { event: 'launched', ...launch });
-  return { kind: 'reconciled', run, record };
-}
-
 export interface JobStatusResult {
   readonly run: RunRecord;
   /** The Job the Run launched under this session name, or undefined when it launched none. */
@@ -676,33 +460,6 @@ export async function jobStatus(deps: JobDeps, req: { readonly run: string; read
     return { run, job, state, record: undefined };
   }
   return { run, job, state, record: await deps.ledger.appendJob(run.id, { event: 'finished', job, exitCode: state.exitCode, ...belongsTo(deps, run, req.session) }) };
-}
-
-/**
- * Is the tmux session a Job was launched into still on the Site?
- *
- * The narrowest question there is about a Job, and the only one worth asking about a launch that will
- * never write another record of its own: no exit file is read and nothing is appended, so a caller
- * that only wants to know whether something of this Run is still on the Site does not have to move
- * the Run's history to find out. `jobStatus` is the question to ask about a Job whose ending is still
- * to be settled — it reads the exit file the launch wrote and records what it finds.
- *
- * A Job this Run never launched is not this Run's to ask about, and is answered `false`: the ledger
- * knows of no such session, and the workspace its identity would have named is what a Site question
- * would need. A Site that cannot be asked throws, exactly as every other job operation does — nothing
- * here turns "the site did not answer" into "the job is gone".
- *
- * @param deps - the ledger and where sites are installed.
- * @param req - the Run the Job belongs to and the tmux session it was launched into.
- * @returns whether the Site still has that session.
- * @throws RunReferenceError when the ledger holds no such Run.
- * @throws SiteUnreadableError when the Site could not be asked (#18).
- */
-export async function jobSessionThere(deps: JobDeps, req: { readonly run: string; readonly session: string }): Promise<boolean> {
-  const run = existingRun(deps.ledger, req.run);
-  const job = launchedJob(deps, run, req.session);
-  if (!job) return false;
-  return sessionThere(channelFor(loadSite(deps.sitesDir, run.siteId)), job.session);
 }
 
 export interface JobTailResult { readonly run: RunRecord; readonly job: JobIdentity; readonly text: string }

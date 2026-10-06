@@ -13,29 +13,15 @@ import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
-import { killSessions } from './support/fabric.ts';
 import { installPack, packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite, type LocalSite } from './support/site.ts';
 import { writeStandinFlow, type StandinFlow } from './support/standin-flow.ts';
 import { discoverSshSite, loadSite, nodeLogTail, saveDiscoveredSite, SiteUnreadableError, type Channel } from '@hima/harness';
-import type { JobDeps, LogTailView, RunView, SiteHeadView } from '@hima/harness';
+import type { JobDeps, SiteHeadView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 
-/**
- * A pack variant of the shipped timing probe whose `synth` tool carries make's own `-w` flag beside
- * its ordinary arguments (#41 task 4): `-w` makes make print "Entering directory" to its own stdout
- * the instant it starts, before the stand-in's sleep — the shipped tool's Makefile writes its own
- * diagnostics into a file under the flow, never to the Job's own captured output, so a case 4
- * verifying the *content* of a live tail needs a Job that writes something of its own. `-w` changes
- * nothing about what `synth` does; it only asks make to say where it is doing it.
- */
-const logTailPackId = 'log-tail-probe';
 const discoveryRequirementsPackId = 'discovery-requirements-probe';
-async function installLogTailPack(h: HimaHome): Promise<void> {
-  await installPack(h);
-  await writePackVariant(packsDirOf(h), logTailPackId, [['EDA_CONTAINER_NAME=hima-${CAMPAIGN}', 'EDA_CONTAINER_NAME=hima-${CAMPAIGN}\n      - -w']]);
-}
 
 async function installDiscoveryRequirementsPack(h: HimaHome): Promise<void> {
   await installPack(h);
@@ -288,74 +274,6 @@ test('Case 3: hima_site list lists every saved Site through the tool, without an
       assert.equal(body.sites.find((s) => s.name === 'local')?.readiness, 'ready');
     } finally { await host.dispose(); }
   } finally { await h.dispose(); }
-});
-
-test('Case 4: GET /hima/api/runs/<id>/log-tail reads the currently running node without owning an execution, and answers empty for a node with no Job open', async (t) => {
-  const f = await bootedFixture(t, { sleepSeconds: 5, pack: installLogTailPack });
-  if (!f) return;
-  const sessions = new Set<string>();
-  try {
-    const startPromise = api(f.host, f.cookie, '/hima/api/runs', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pack: logTailPackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, generations: 1 }),
-    });
-    // Attached immediately so an early assertion failure below (which abandons awaiting this
-    // request) never surfaces as a separate unhandled rejection once teardown stops the host out
-    // from under it; the real result is still read through `await startPromise` further down.
-    startPromise.catch(() => undefined);
-    // The ledger creates the Run row before the auto-drive's first Job finishes; find its id while
-    // that first generation is still under way.
-    let runId: string | undefined;
-    {
-      const deadline = Date.now() + 20_000;
-      while (runId === undefined) {
-        const list = await (await api(f.host, f.cookie, '/hima/api/runs')).json() as { runs: { id: string }[] };
-        if (list.runs.length > 0) runId = list.runs[0]!.id;
-        else if (Date.now() > deadline) throw new Error('the run never appeared in the ledger');
-        else await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-    // Poll the one node that ever launches a Job until its record says running with a session and
-    // the Job has actually written something to its log: a session appears the instant tmux starts
-    // it, before `make` has produced a single line.
-    let tail: LogTailView | undefined;
-    {
-      const deadline = Date.now() + 20_000;
-      for (;;) {
-        const res = await api(f.host, f.cookie, `/hima/api/runs/${runId}/log-tail?node=synthesize&lines=1`);
-        const body = await res.json() as LogTailView;
-        assert.equal(res.status, 200, JSON.stringify(body));
-        if (body.session !== undefined && body.lines.length > 0) { tail = body; break; }
-        if (Date.now() > deadline) throw new Error(`the synthesize node never reported a running Job with log content: ${JSON.stringify(body)}`);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-    assert.equal(tail!.nodeId, 'synthesize');
-    assert.equal(tail!.lines.length, 1, JSON.stringify(tail));
-    assert.ok(tail!.session);
-
-    // A node that never launches a Job (judge only evaluates rules) has none open, before or after.
-    const noJob = await (await api(f.host, f.cookie, `/hima/api/runs/${runId}/log-tail?node=judge`)).json() as LogTailView;
-    assert.deepEqual(noJob.lines, []);
-    assert.equal(noJob.session, undefined);
-    assert.equal(noJob.truncated, false);
-
-    // Let the auto-drive finish and confirm the read-tail session was the very Job it launched.
-    const finalRes = await startPromise;
-    const finalView = await finalRes.json() as RunView;
-    assert.equal(finalRes.status, 200, JSON.stringify(finalView));
-    for (const job of finalView.jobs) if (job.event === 'launched') sessions.add(job.job.session);
-    assert.ok(sessions.has(tail!.session!), `the log-tail session ${tail!.session} is one of this run's own launched Jobs: ${[...sessions].join(', ')}`);
-
-    // A missing run answers 404; an out-of-range lines value is a caller mistake, not a fault.
-    const missing = await api(f.host, f.cookie, '/hima/api/runs/run-does-not-exist/log-tail?node=synthesize');
-    assert.equal(missing.status, 404);
-    const tooMany = await api(f.host, f.cookie, `/hima/api/runs/${runId}/log-tail?node=synthesize&lines=101`);
-    assert.equal(tooMany.status, 400);
-  } finally {
-    killSessions([...sessions]);
-    await teardown(f);
-  }
 });
 
 // Final whole-branch review, H11: split into two named tests. The original Case 5 asserted two

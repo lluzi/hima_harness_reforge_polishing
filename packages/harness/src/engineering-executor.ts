@@ -15,8 +15,6 @@ import { channelFor, mustRun, type Channel } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
 import { outputPath, packKnowledgeDir, toolArgv, type EngineeringOutsourcing, type Pack, type PackTool } from './packs.js';
 import { pathsOf, type Site } from './sites.js';
-import { jobKill, jobStatus, jobTail, launchJob, type JobDeps, type LaunchIntent } from './jobs.js';
-import { claimSlot, claimSlotAndLaunch, type Claim } from './job-cap.js';
 import type { NodeExecution, RunRecord } from './ledger.js';
 
 export const engineeringProtocol = 'hima-resident-engineering/1' as const;
@@ -269,31 +267,6 @@ function requestBody(taskId: string, requestId: string, operation: EngineeringOp
   return framed({ schema: engineeringProtocol, taskId, requestId, operation, payload });
 }
 
-/** Materialize immutable task/envelope/start files and launch the fixed wrapper as an ordinary Job. */
-export async function launchEngineeringTask(
-  deps: JobDeps,
-  identity: EngineeringTaskIdentity,
-  plan: EngineeringTaskPlan,
-  requestId: string,
-  request: Extract<EngineeringRequest, { operation: 'start' }>,
-  waitedMs: number,
-  beforeLaunch: (intent: LaunchIntent) => Promise<void>,
-): Promise<Claim> {
-  return claimSlotAndLaunch(deps, {
-    site: identity.site, run: identity.run, workspace: identity.workspace,
-    node: { id: identity.execution.nodeId, kind: identity.execution.kind }, attempt: identity.execution.attempt,
-    argv: [...plan.capability.wrapper.argv, '--task-dir', plan.taskDir], licences: identity.licences, waitedMs,
-    nonblocking: true, beforeLaunch: async (intent) => {
-      // Persist the ordinary launch intent before the first task-file write. An at-cap answer never
-      // reaches this boundary and therefore leaves no filesystem task that a retry could conflict
-      // with; a fault after this point is correctly uncertain and remains fenced by that intent.
-      await beforeLaunch(intent);
-      await stageEngineeringTask(identity,plan,requestId,request);
-    }, jobName: `engineering-${identity.execution.nodeId}`,
-    ...(identity.execution.branchId === undefined ? {} : { branchId: identity.execution.branchId }),
-  });
-}
-
 /** The same immutable filesystem preparation is shared with DBOS Job effects. It never starts
  * a native session; the actual Job callback remains the current-admission boundary. */
 export async function stageEngineeringTask(identity:EngineeringTaskIdentity,plan:EngineeringTaskPlan,requestId:string,
@@ -371,88 +344,6 @@ export async function readEngineeringOwned(site: Site, taskDir: string, taskId: 
   const owned = await readFramed(site, pathsOf(site).join(taskDir, 'native', 'owned.json'), engineeringOwned);
   if (owned !== undefined && owned.taskId !== taskId) throw new Error('engineering ownership facts belong to another task');
   return owned;
-}
-
-async function readEngineeringTaskEnvelopeIdentity(site: Site, taskDir: string, taskId: string, executionId: string): Promise<string> {
-  const at = pathsOf(site).join(taskDir, 'task.json');
-  const found = await decidedBytes(site, channelFor(site), at, 'engineering task envelope');
-  const document = JSON.parse(Buffer.from(found.bytes).toString('utf8')) as Record<string, unknown>;
-  const claimed = document.sha256;
-  if (typeof claimed !== 'string' || !/^[0-9a-f]{64}$/.test(claimed)) throw new Error('engineering task envelope has no valid digest');
-  const { sha256: _claimed, ...body } = document;
-  if (sha256(canonicalWrapperJson(body)) !== claimed) throw new Error('engineering task envelope digest is invalid');
-  if (body.schema !== engineeringProtocol || body.taskId !== taskId || body.executionId !== executionId) {
-    throw new Error('engineering task envelope identity differs from the retained execution');
-  }
-  return claimed;
-}
-
-export type EngineeringReconcileResult =
-  | { readonly status: 'stopped'; readonly session: string; readonly state: EngineeringState; readonly owned: EngineeringOwned }
-  | { readonly status: 'at-cap' | 'unknown'; readonly reason: string; readonly session?: string };
-
-/**
- * Run the fixed same-task cleanup mode as one ordinary Job. It starts no native session and replays
- * no request; the signed owned/state files plus the recovery Job's actual exit are the authority.
- */
-export async function reconcileEngineeringTask(
-  deps: JobDeps,
-  identity: EngineeringTaskIdentity,
-  taskId: string,
-  beforeLaunch: (intent: LaunchIntent) => Promise<void>,
-): Promise<EngineeringReconcileResult> {
-  const loaded = await loadEngineeringCapability(identity.site);
-  if (!identity.siteIdentityMatches) return { status: 'unknown', reason: 'the Site identity changed since engineering start; recovery was not dispatched' };
-  if (identity.expectedCapabilitySha256 === undefined || loaded.sha256 !== identity.expectedCapabilitySha256) {
-    return { status: 'unknown', reason: 'the engineering capability identity changed since start; recovery was not dispatched' };
-  }
-  const taskDir = engineeringTaskDirectory(identity.site, identity.workspace, taskId);
-  if (identity.expectedTaskEnvelopeSha256 === undefined
-      || await readEngineeringTaskEnvelopeIdentity(identity.site, taskDir, taskId, identity.execution.id) !== identity.expectedTaskEnvelopeSha256) {
-    return { status: 'unknown', reason: 'the engineering task/material identity changed since start; recovery was not dispatched' };
-  }
-  const slots = {
-    name: identity.site.name,
-    jobs: identity.run.budget?.jobCap ?? identity.site.capacity.parallelJobs,
-    licences: identity.run.budget?.licences ?? identity.site.capacity.licences,
-  };
-  const claimed = await claimSlot(deps, {
-    site: slots, holds: {}, launch: () => launchJob(deps, {
-      site: identity.site.name, run: identity.run.id, workspace: identity.workspace,
-      argv: [...loaded.capability.wrapper.argv, '--task-dir', taskDir, '--reconcile'],
-      name: `engineering-reconcile-${identity.execution.nodeId}`, nodeId: identity.execution.nodeId,
-      attempt: identity.execution.attempt,
-      ...(identity.execution.branchId === undefined ? {} : { branchId: identity.execution.branchId }),
-      beforeLaunch,
-    }),
-  });
-  if (claimed.kind === 'unreadable') return { status: 'unknown', reason: claimed.error.message };
-  if (claimed.kind === 'at-cap') return { status: 'at-cap', reason: `site ${identity.site.name} has no free recovery Job slot` };
-  if (claimed.launched.kind !== 'launched') return { status: 'unknown', reason: claimed.launched.record.reason };
-  const session = claimed.launched.record.job.session;
-  const deadline = Date.now() + Math.ceil((loaded.capability.stopGraceSeconds + 5) * 1000);
-  let actual = await jobStatus(deps, { run: identity.run.id, session });
-  while (actual.state.state === 'running' && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    actual = await jobStatus(deps, { run: identity.run.id, session });
-  }
-  if (actual.state.state === 'running') {
-    await jobKill(deps, { run: identity.run.id, session });
-    return { status: 'unknown', session, reason: 'the bounded engineering reconciliation Job did not finish; orphan quiescence is unknown' };
-  }
-  const state = await readEngineeringState(identity.site, taskDir, taskId);
-  const owned = await readEngineeringOwned(identity.site, taskDir, taskId);
-  // The original wrapper signal handler and the bounded reconciler can race to the same signed final
-  // facts. Those facts, not which process returned zero first, are the ownership authority.
-  if (state?.phase === 'stopped' && owned?.quiescent === true) return { status: 'stopped', session, state, owned };
-  if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) {
-    const tail = await jobTail(deps, { run: identity.run.id, session, lines: 20 }).catch(() => undefined);
-    return { status: 'unknown', session, reason: `engineering reconciliation Job ${session} did not confirm cleanup${tail?.text.trim() ? `: ${tail.text.trim()}` : ''}` };
-  }
-  if (state?.phase !== 'stopped' || owned?.quiescent !== true) {
-    return { status: 'unknown', session, reason: 'engineering reconciliation exited without signed stopped/quiescent facts' };
-  }
-  return { status: 'stopped', session, state, owned };
 }
 
 async function decidedDigest(site: Site, channel: Channel, at: string, label: string): Promise<{ readonly path: string; readonly sha256: string }> {

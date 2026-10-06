@@ -11,7 +11,6 @@ import { promisify } from 'node:util';
 import { importLegacyLedger, type LedgerRecord, type RunRecord } from '@hima/harness';
 import { createHimaHome, repoRoot, type HimaHome } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { himaProfileDir, prepareHimaHome } from '../../packages/desktop/src/hima-home.ts';
 
@@ -49,12 +48,11 @@ before(async () => {
   const report = await writeSampleReport(oldHome);
   const host = await bootInProcess(oldHome);
   try {
-    const first = await himaCommand(host, oldHome.workspace, `/hima observe local ${report.rel}`);
-    assert.equal(first.kind, 'success', first.text);
-    assert.ok(first.runId);
-    runId = first.runId;
-    const second = await himaCommand(host, oldHome.workspace, `/hima observe local ${report.rel} --run ${runId}`);
-    assert.equal(second.kind, 'success', second.text);
+    const first = await host.ctx.hima.observe({ site: 'local', path: report.rel });
+    if (first.kind !== 'observed') throw new Error(`the history fixture was not observed: ${JSON.stringify(first)}`);
+    runId = first.run.id;
+    const second = await host.ctx.hima.observe({ site: 'local', path: report.rel, run: runId });
+    assert.equal(second.kind, 'observed', JSON.stringify(second));
     // A second real Run keeps cross-Run corruption distinguishable from an unknown id.
     await host.ctx.hima.ledger.createRun({ campaignId: 'import-empty-history', siteId: 'local' });
     assert.equal(host.ctx.hima.ledger.records({ runId }).length, 2);

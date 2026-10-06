@@ -673,7 +673,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const delegate = (body: Record<string, unknown>) => {
     const control = host.ctx.hima.executionContext(confirmed.run.id).run.control!;
     return host.ctx.hima.delegate({ runId: confirmed.run.id, actor: ownerId,
-      expectedEpoch: control.epoch, expectedRevision: control.revision, ...body } as never, AbortSignal.timeout(90_000)) as Promise<any>;
+      expectedEpoch: control.epoch, expectedRevision: control.revision, ...body } as never) as Promise<any>;
   };
   const research = await delegate({ action: 'create', requestId: 'wave4-create-research', contract: {
     delegationId: 'wave4-pack-research', role: 'researcher',
