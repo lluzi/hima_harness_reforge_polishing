@@ -56,7 +56,7 @@ try {
         // Never the person's real ~/.hima lineage authority: one interrupted claim there holds every Home.
         HIMA_TEST_LINEAGE_DIR: path.join(temporary, 'lineages'),
         HIMA_TEST_BOOT_LOG: path.join(temporary, 'boots.txt'),
-        HIMA_TEST_LEGACY_AUTO_DRIVE: process.env.HIMA_TEST_LEGACY_AUTO_DRIVE ?? '1',
+        HIMA_TEST_LEGACY_AUTO_DRIVE: process.env.HIMA_TEST_LEGACY_AUTO_DRIVE ?? '0',
         HIMA_TEST_SILENT_AGENT: process.env.HIMA_TEST_SILENT_AGENT ?? '1',
       };
       const sshLog = path.join(temporary, 'ssh-attempts.jsonl');
