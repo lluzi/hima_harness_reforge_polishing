@@ -2346,13 +2346,19 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
       const url = new URL(req.url ?? '/', 'http://hima.invalid');
       try {
         if ((req.method ?? 'GET') !== 'GET') { sendPage(res, 405, messagePage(`${req.method} ${url.pathname}; this page answers GET`)); return; }
-        const runId = decodeURIComponent(url.pathname.slice(HIMA_ANALYSIS_PAGE_PREFIX.length).replace(/\/+$/u, ''));
+        let runId: string;
+        try { runId = decodeURIComponent(url.pathname.slice(HIMA_ANALYSIS_PAGE_PREFIX.length).replace(/\/+$/u, '')); }
+        catch { sendPage(res, 404, messagePage('No such analysis.')); return; }
         const sessionId = url.searchParams.get('session') ?? '';
         if (!ops.analysisPage) { sendPage(res, 503, messagePage('This Host has no library analyses.')); return; }
         if (!/^[A-Za-z0-9._-]{1,128}$/u.test(runId)) { sendPage(res, 404, messagePage('No such analysis.')); return; }
         if (!ops.validateSession?.(sessionId)) { sendPage(res, 403, messagePage('Open this page from a live HimaHarness conversation.')); return; }
         const answer = await ops.analysisPage(sessionId, runId);
-        sendPage(res, answer.status, answer.html);
+        // The page shows model- and resident-written text on this origin: it may load nothing, run
+        // nothing and be framed by nothing, whatever its escaping.
+        res.writeHead(answer.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+        res.end(answer.html);
       } catch (err) {
         ctx.logger.error(err);
         sendPage(res, 500, messagePage(`${url.pathname} failed inside HimaHarness; the reason is in the host log`));

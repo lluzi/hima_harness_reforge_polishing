@@ -398,8 +398,9 @@ function installMenu(win: BrowserWindow): void {
           void win.webContents.executeJavaScript(`document.querySelector('button[data-hima-control="open-workbench"]')?.click()`);
         } },
         { type: 'separator' },
-        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { win.webContents.reload(); } },
-        { label: 'Toggle Developer Tools', accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { win.webContents.toggleDevTools(); } },
+        // The focused window: an analysis page (ADR-0021) reloads itself, not the workbench behind it.
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { (BrowserWindow.getFocusedWindow() ?? win).webContents.reload(); } },
+        { label: 'Toggle Developer Tools', accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { (BrowserWindow.getFocusedWindow() ?? win).webContents.toggleDevTools(); } },
         { type: 'separator' },
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
         ...(process.platform === 'darwin' ? [] : [{ type: 'separator' as const }, { role: 'quit' as const }]),
@@ -486,7 +487,7 @@ function openPageWindow(opener: BrowserWindow, url: string, allowedOrigin: () =>
   });
   fenceNavigation(page, allowedOrigin);
   // The page's own title names the analysis; the product name stays in front of it.
-  page.on('page-title-updated', (event, title) => { event.preventDefault(); page.setTitle(title.startsWith(APP_NAME) ? title : `${APP_NAME} · ${title}`); });
+  page.on('page-title-updated', (event, title) => { event.preventDefault(); page.setTitle(title.includes(APP_NAME) ? title : `${title} · ${APP_NAME}`); });
   page.once('ready-to-show', () => { page.show(); });
   void page.loadURL(url);
 }
@@ -572,6 +573,7 @@ async function start(): Promise<void> {
       webSecurity: true,
     },
   });
+  mainWindow = win;
   installMenu(win);
   fenceNavigation(win, () => host?.origin);
   // The window is HimaHarness's, whatever the page inside it calls itself. Left alone, Chromium
@@ -782,8 +784,10 @@ function watchHostExit(win: BrowserWindow, running: LaunchedHost): void {
 }
 
 app.on('window-all-closed', () => { app.quit(); });
+/** The workbench window. Analysis pages open further windows (ADR-0021), so "the first window" is not it. */
+let mainWindow: BrowserWindow | undefined;
 app.on('activate', () => {
-  const [open] = BrowserWindow.getAllWindows();
+  const open = mainWindow;
   if (open && !quitting) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
 });
 // Quitting waits for the host: a SIGTERM sent as the process is exiting is a SIGTERM that may not
@@ -806,7 +810,7 @@ async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:strin
 }
 
 async function finishAppExit():Promise<void> {
-  const win=BrowserWindow.getAllWindows()[0];
+  const win=mainWindow;
   let requestId=`desktop-${randomUUID()}`;
   try {
     const child = (host ?? spawnedHost)?.child;
@@ -861,7 +865,7 @@ app.on('before-quit',event=>{
   if(quitting)return;
   event.preventDefault();
   if(exitPending){
-    if(!driver){const win=BrowserWindow.getAllWindows()[0];if(win)void dialog.showMessageBox(win,{type:'question',message:'Work is still reaching its exit boundary.',buttons:['Keep waiting','Quit and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:0}).then(({response})=>{if(response===1)requestedExitMode='keep-jobs';if(response===2)requestedExitMode='stop-jobs';if(response===3)cancelExitRequested=true;});}
+    if(!driver){const win=mainWindow;if(win)void dialog.showMessageBox(win,{type:'question',message:'Work is still reaching its exit boundary.',buttons:['Keep waiting','Quit and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:0}).then(({response})=>{if(response===1)requestedExitMode='keep-jobs';if(response===2)requestedExitMode='stop-jobs';if(response===3)cancelExitRequested=true;});}
     return;
   }
   exitPending=true;void finishAppExit();
@@ -876,7 +880,7 @@ if (!driver && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const [open] = BrowserWindow.getAllWindows();
+    const open = mainWindow;
     if (open) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
   });
   app.whenReady().then(start).catch((err: unknown) => {

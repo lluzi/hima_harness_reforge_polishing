@@ -22,6 +22,8 @@ status: accepted
   - `propose`：把用户的问题、`.lib` 源与 `buildsOn` 写成 Site 上的请求文件，并对分析 Pack 做一次准备，
     返回有界方案。方案包括问题、源、沿用的分析、Pack 版本、Site、时间盒，以及未就绪原因。
   - `confirm`：只在用户于对话中明确同意后由 Guide 调用，经 `startGuidedRun` 启动普通 durable Run。
+    Host 强制这一点：方案之后，该对话必须收到至少一条用户本人输入的消息（来源为 user，不含插件通知、
+    工具结果与模型自身文字）。否则 `confirm` 被拒绝，因此 Guide 不能在提出方案的同一轮里自行确认。
   - `list`：列出本项目中的分析 Run 及其状态、登记情况。
   - `result`：返回已接纳结果的摘要、假设、限制、图表标题和独立网页地址。
   这四个动作与原标签页共用 `libinsight-analyses.ts` 的 `propose/confirm/list/detail`：同一准备身份、
@@ -36,8 +38,11 @@ status: accepted
   - 问题、状态（运行中、Reader 已接纳、已登记为 `id@version`，或未登记及原因）；
   - 摘要、全部图表（SVG）与数据表、假设与限制；
   - 源 hash、运行命令与主脚本。
-  数据只取自 Host 保留的 Reader 输入字节。页面不含脚本，运行中按固定间隔自刷新。桌面 App 在新窗口中打开该
-  页面，不替换主窗口。
+  数据只取自 Host 保留的 Reader 输入字节。页面不含脚本，并带 `default-src 'none'` 的 CSP。运行中每 10 秒
+  自刷新，等待人工时每 60 秒刷新。桌面 App 在新窗口中打开该页面，不替换主窗口。
+- 对话中的结果以卡片按钮打开网页：dsh 对话只把绝对 http(s) 地址渲染为链接，而网页地址是 Host 相对路径。
+- `result` 返回给 Guide 的数据集有上限：每个数据集最多 40 行，单元格最多 200 字符，总量约 24 KiB。
+  完整数据在网页上。
 - **移除标签页。** Data Insight 只保留 LibInsight pages 与 Retained reports，删除 Resident analyses 标签页
   及其 `propose/confirm` HTTP 路由，`/libinsight/analyses` 只保留只读的列表与详情。
 

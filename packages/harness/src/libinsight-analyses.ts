@@ -96,13 +96,16 @@ export interface LibInsightAnalysesDeps {
   readRunView(runId: string): Promise<RunView | undefined>;
   readRetained(runId: string, record: { runId: string; bytes: number; retainedPath?: string; type: 'observation'; contentSha256: string }, maxBytes: number): Promise<Buffer>;
   authorize(sessionId: string, runId: string): Promise<unknown>;
+  /** How many messages a person typed have reached this conversation (ADR-0021): a confirmation needs one
+   *  after the proposal, so a Guide cannot confirm its own proposal in the turn that made it. */
+  humanMessages?(sessionId: string): number;
   /** Writes a new file on the Site; tests may replace it. */
   writeSiteFile?(site: Site, at: string, bytes: Uint8Array): Promise<string>;
   now?(): Date;
 }
 
 interface IndexRow { readonly requestId: string; readonly question: string; readonly sources: readonly string[]; readonly buildsOn: readonly string[]; readonly requestPath: string; readonly createdAt: string; readonly runId?: string }
-interface Pending { readonly sessionId: string; readonly pack: string; readonly site: string; readonly overrides: PreparationOverrides; readonly proposal: PreparationView; readonly row: IndexRow }
+interface Pending { readonly sessionId: string; readonly pack: string; readonly site: string; readonly overrides: PreparationOverrides; readonly proposal: PreparationView; readonly row: IndexRow; readonly humanMessages?: number }
 
 export class LibInsightAnalysisError extends Error {
   constructor(readonly code: 'unavailable' | 'bad-request' | 'stale', message: string) { super(message); }
@@ -188,7 +191,8 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     const proposal = deps.preparation(pack, site, overrides);
     const row: IndexRow = { requestId, question: body.question, sources: body.sources, buildsOn: body.buildsOn, requestPath, createdAt: body.createdAt };
     for (const [id, held] of pending) if (held.sessionId === sessionId) pending.delete(id);
-    pending.set(proposal.id, { sessionId, pack: packId, site: siteName, overrides, proposal, row });
+    const heard = deps.humanMessages?.(sessionId);
+    pending.set(proposal.id, { sessionId, pack: packId, site: siteName, overrides, proposal, row, ...(heard === undefined ? {} : { humanMessages: heard }) });
     return { proposalId: proposal.id, ready: proposal.ready, requestId, question: body.question, sources: body.sources, buildsOn: body.buildsOn,
       pack: { id: pack.contract.id, version: pack.contract.version }, site: siteName, timeBoxMinutes: proposal.budget.timeBoxMinutes.value,
       unknowns: proposal.unknowns, nextActions: proposal.nextActions };
@@ -198,6 +202,9 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     const held = pending.get(proposalId);
     if (!held || held.sessionId !== sessionId) throw new LibInsightAnalysisError('stale', 'This analysis proposal is no longer current in this conversation; ask again.');
     if (!held.proposal.ready) throw new LibInsightAnalysisError('bad-request', 'This analysis proposal is not ready; resolve what it lists first.');
+    if (held.humanMessages !== undefined && (deps.humanMessages?.(sessionId) ?? 0) <= held.humanMessages) {
+      throw new LibInsightAnalysisError('bad-request', 'The person has not answered this proposal yet. Show it to them and confirm only after they agree in this conversation.');
+    }
     const started = await deps.startGuidedRun({ ownerSessionId: sessionId, proposalId, pack: held.pack, site: held.site,
       goal: held.proposal.goal, strategy: held.proposal.strategy, inputs: held.overrides.inputs, overrides: held.overrides } as StartRunRequest);
     if (started.kind === 'unfit') throw new LibInsightAnalysisError('bad-request', 'The Site cannot run this analysis Pack; open the Pack check for details.');
@@ -275,7 +282,7 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     try {
       const bytes = await deps.readRetained(runId, { ...observation, type: 'observation' }, maxResultBytes);
       const value = JSON.parse(bytes.toString('utf8')) as LibInsightAnalysisResult;
-      if (value?.schema !== analysisSchema || !Array.isArray(value.plots) || typeof value.datasets !== 'object') return { ...answer, resultUnavailable: 'The accepted result is not a recognised analysis document.' };
+      if (value?.schema !== analysisSchema || !Array.isArray(value.plots) || typeof value.datasets !== 'object' || value.datasets === null) return { ...answer, resultUnavailable: 'The accepted result is not a recognised analysis document.' };
       return { ...answer, result: value };
     } catch (error) {
       return { ...answer, resultUnavailable: `The accepted result cannot be read: ${(error as Error).message}` };
@@ -290,14 +297,14 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       if (args.question === undefined) throw new LibInsightAnalysisError('bad-request', 'propose needs the person\'s question');
       const proposal = await propose(sessionId, { question: args.question, sources: [...args.sources ?? []], buildsOn: [...args.buildsOn ?? []] });
       return { action: 'propose', ...proposal,
-        next: proposal.ready ? 'Show this proposal to the person in your own words and ask whether to start it. Call confirm with this proposalId only after they explicitly agree in this conversation.'
+        next: proposal.ready ? 'Show this proposal to the person in your own words, ask whether to start it, and end your turn. Call confirm with this proposalId only after they explicitly agree in their next message.'
           : 'This proposal is not ready; tell the person what it lists and what would resolve it. Do not confirm it.' };
     }
     if (args.action === 'confirm') {
       if (args.proposalId === undefined) throw new LibInsightAnalysisError('bad-request', 'confirm needs the proposalId that propose returned');
       const started = await confirm(sessionId, args.proposalId);
       return { action: 'confirm', ...started, page: page(started.runId),
-        next: 'Tell the person the analysis has started and that its page fills in as it runs. The Host notifies you when it ends; then call result.' };
+        next: 'Tell the person the analysis has started and that its page (the Open analysis page button on this card) fills in as it runs. The Host notifies you when it ends; then call result.' };
     }
     if (args.action === 'list') {
       const answer = await list(sessionId);
@@ -312,16 +319,28 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       ...(read.resultUnavailable ? { resultUnavailable: read.resultUnavailable } : {}),
       ...(result ? { question: result.question, summary: result.summary, assumptions: result.assumptions, limits: result.limits,
         plots: result.plots.map(plot => ({ title: plot.title, kind: plot.kind, dataset: plot.dataset })),
-        datasets: Object.fromEntries(Object.entries(result.datasets).map(([name, data]) => [name, { columns: data.columns, rowCount: data.rows.length, rows: data.rows.slice(0, toolRows), ...(data.rows.length > toolRows ? { truncated: true } : {}) }])),
-        sources: result.sources, run: result.run } : {}),
-      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them), name its limits, and give the person the page link.'
+        datasets: boundedDatasets(result.datasets), sources: result.sources, run: result.run } : {}),
+      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: point the person to the Open analysis page button on this result.'
         : 'Explain where the analysis stands or why it was not admitted, from these facts; do not present an unadmitted result as established.' };
   }
 
   return { status, propose, confirm, list, summary, detail, tool };
 }
 
-const toolRows = 40;
+/** What one result answer may put into a conversation: rows, cell text and total serialized size. */
+const toolRows = 40, toolCellChars = 200, toolDatasetBytes = 24 * 1024;
+
+/** The datasets for a conversation: leading rows with short cells, shrunk until they fit the budget.
+ *  The page has every row; `truncated` says where the conversation saw less. */
+function boundedDatasets(datasets: LibInsightAnalysisResult['datasets']) {
+  const cell = (value: number | string | null) => typeof value === 'string' && value.length > toolCellChars ? `${value.slice(0, toolCellChars - 1)}…` : value;
+  for (const rows of [toolRows, 20, 10, 5, 0]) {
+    const shown = Object.fromEntries(Object.entries(datasets).map(([name, data]) => [name, { columns: data.columns, rowCount: data.rows.length,
+      rows: data.rows.slice(0, rows).map(row => row.map(cell)), ...(data.rows.length > rows ? { truncated: true } : {}) }]));
+    if (JSON.stringify(shown).length <= toolDatasetBytes || rows === 0) return shown;
+  }
+  return {};
+}
 const finalTask = new Set(['succeeded', 'failed', 'cancelled']);
 
 /**

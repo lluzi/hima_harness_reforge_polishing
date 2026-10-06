@@ -212,7 +212,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
 export { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, POSTGRES_VERSION } from './local-database.js';
 export { createLibInsightViewer, libInsightViewerOptions, type LibInsightViewer, type LibInsightViewerStatus } from './libinsight-viewer.js';
-export { createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses, type LibInsightAnalysisEntry, type LibInsightAnalysisDetail } from './libinsight-analyses.js';
+export { analysisSettled, createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses, type LibInsightAnalysisEntry, type LibInsightAnalysisDetail } from './libinsight-analyses.js';
 export type { LocalDatabase, LocalDatabaseConnection } from './local-database.js';
 export { pickOwnedRun, isOwner, recordEndedSeenAt } from './run-ownership.js';
 export type {
@@ -699,7 +699,9 @@ export default class Hima extends Service {
             try {
               const entry = await analyses.summary(sessionId, runId);
               const detail = await analyses.detail(sessionId, runId);
-              return { status: 200, html: analysisPage({ runId, entry, detail, ...(analysisSettled(entry) ? {} : { refreshSeconds: 10 }) }) };
+              // A Run waiting on a person may wait long; its page looks again less often.
+              const refreshSeconds = analysisSettled(entry) ? undefined : entry.status === 'waiting' ? 60 : 10;
+              return { status: 200, html: analysisPage({ runId, entry, detail, ...(refreshSeconds === undefined ? {} : { refreshSeconds }) }) };
             } catch (error) {
               if (error instanceof LibInsightAnalysisError) return { status: 404, html: analysisPageMessage('Analysis unavailable', error.message) };
               throw error;
@@ -1039,6 +1041,13 @@ export default class Hima extends Service {
       readRunView: runId => this.viewReaders().readRunView(runId),
       readRetained: (runId, record, maxBytes) => readDurableSourceBytes(this.retainedMaterialsDir, runId, record, maxBytes),
       authorize: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
+      // Only what a person typed counts: plugin notices, tool results and the model's own words do not.
+      humanMessages: sessionId => {
+        const agent = this.ctx.get('agents')?.get(sessionId as never);
+        if (!agent) return 0;
+        return [...agent.session.deriveMessages(), ...agent.inbox.nextTurn, ...agent.inbox.nextStep]
+          .filter(message => message.role === 'user' && (message.source as { kind?: string }).kind === 'user').length;
+      },
     });
   }
 

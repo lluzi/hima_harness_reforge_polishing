@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
-import {bootInProcess,createRootAgent} from './boot-inprocess.ts';
+import {bootInProcess,createRootAgent,steerAsUser} from './boot-inprocess.ts';
 import type {StartRunResult} from '@hima/harness';
 import {prepareHimaHome,himaHomeSources} from '../../../packages/desktop/src/hima-home.ts';
 import {repoRoot} from './dsh-home.ts';
@@ -92,7 +92,17 @@ try {
  assert.deepEqual({schema:written.schema,requestId:written.requestId,question:written.question,sources:written.sources,buildsOn:written.buildsOn},{schema:'hima-libinsight-request/1',requestId:proposal.requestId,question,sources:[facts],buildsOn:[]});
  // Another conversation cannot confirm this proposal.
  const other=await createRootAgent(host.ctx,workspace);
- assert.equal((await tool(other,{action:'confirm',proposalId:proposal.proposalId})).isError,true);
+ const foreign=await tool(other,{action:'confirm',proposalId:proposal.proposalId});
+ assert.equal(foreign.isError,true);assert.match(foreign.text,/no longer current/);
+ // The Guide cannot confirm its own proposal before the person has answered it.
+ const unanswered=await tool(guide,{action:'confirm',proposalId:proposal.proposalId});
+ assert.equal(unanswered.isError,true);assert.match(unanswered.text,/has not answered this proposal/);
+ assert.deepEqual((await tool(guide,{action:'list'})).json.analyses,[],'no Run started without the person');
+ // The person answers; the steered message passes from the inbox into the session as the turn opens.
+ steerAsUser(guide,'Yes, start it.');
+ const heard=()=>[...guide.session.deriveMessages(),...guide.inbox.nextTurn,...guide.inbox.nextStep].filter((m:any)=>m.role==='user'&&m.source?.kind==='user').length;
+ for(let i=0;i<50&&heard()===0;i++)await new Promise(resolve=>setTimeout(resolve,100));
+ assert.ok(heard()>0,'the person\'s reply reached the conversation');
  const confirmed=await tool(guide,{action:'confirm',proposalId:proposal.proposalId});
  assert.equal(confirmed.isError,false,confirmed.text);runId=confirmed.json.runId;assert.ok(runId);
  assert.equal(confirmed.json.page,`/hima/analysis/${encodeURIComponent(runId!)}?session=${encodeURIComponent(sessionId)}`);
@@ -101,11 +111,15 @@ try {
  // The page exists from the start, behind the browser fence and a live conversation, and refreshes itself while running.
  assert.equal((await page(confirmed.json.page,false)).status,401);
  assert.equal((await page(`/hima/analysis/${encodeURIComponent(runId!)}?session=not-a-session`)).status,403);
+ assert.equal((await page(`/hima/analysis/%E0%A4?session=${encodeURIComponent(sessionId)}`)).status,404,'a malformed escape is no such analysis');
  const early=await page(confirmed.json.page);
  assert.equal(early.status,200,early.html.slice(0,400));assert.ok(early.html.includes(question.slice(0,40)));
+ const headers=await bounded<Response>('analysis page headers',fetch(new URL(confirmed.json.page,base),{headers:{cookie}}));
+ assert.match(headers.headers.get('content-security-policy')??'',/default-src 'none'/);assert.equal(headers.headers.get('x-content-type-options'),'nosniff');
  let listed:any;
  await until('the admitted analysis is listed',async()=>{listed=(await tool(guide,{action:'list'})).json;lastListed=listed;return listed?.analyses?.[0]?.analysis?.admitted===true;});
  const entry=listed.analyses[0];
+ assert.equal(listed.analyses.length,1,'exactly one Run was started');
  assert.equal(entry.runId,runId);assert.equal(entry.question,question);assert.equal(entry.task.state,'succeeded');assert.equal(entry.page,confirmed.json.page);
  assert.equal(entry.result,undefined,'the list carries summaries, never whole results');
  assert.deepEqual({id:entry.analysis.id,version:entry.analysis.version,plotCount:entry.analysis.plotCount,admitted:entry.analysis.admitted},{id:'saed14-inv-drive-delay',version:1,plotCount:5,admitted:true});

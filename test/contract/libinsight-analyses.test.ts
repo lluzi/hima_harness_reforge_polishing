@@ -87,3 +87,42 @@ test('an unreadable index still lists every Run, and an unreachable Site is a cl
     await assert.rejects(f.analyses.propose('s', { question: 'q' }), (error: unknown) => error instanceof LibInsightAnalysisError && error.code === 'unavailable' && /could not be written/.test(error.message));
   } finally { await f.cleanup(); }
 });
+
+// ADR-0021: what the Guide's tool reads back into a conversation, and the page's notion of settled.
+test('a result read for the Guide is bounded however wide the accepted datasets are, and names its page', async () => {
+  const wide = { schema: 'hima-libinsight-analysis/1', id: 'a', version: 1, question: 'q', summary: 's', assumptions: [], limits: [], plots: [{ id: 'p', title: 'P', kind: 'table', dataset: 'd0' }],
+    sources: [], code: { main: { path: 'm.py', sha256: sha('c'), text: '' }, files: [] }, run: { command: 'python3 m.py', exitCode: 0, elapsedSeconds: 1, usedQualib: false },
+    datasets: Object.fromEntries(Array.from({ length: 16 }, (_, d) => [`d${String(d)}`, { columns: Array.from({ length: 64 }, (_, c) => ({ name: `c${String(c)}`, type: 'string' })),
+      rows: Array.from({ length: 300 }, () => Array.from({ length: 64 }, () => 'x'.repeat(1000))) }])) };
+  const f = await fixture({ 'run-ok': view({ value: { admitted: true, id: 'a', version: 1, resultSha256: sha('a') } }) },
+    { readRetained: async () => Buffer.from(JSON.stringify(wide)) });
+  try {
+    const answer = await f.analyses.tool('guide-1', { action: 'result', runId: 'run-ok' }) as Record<string, any>;
+    assert.equal(answer.page, '/hima/analysis/run-ok?session=guide-1');
+    assert.equal(answer.analysis, 'a@1');
+    assert.ok(JSON.stringify(answer.datasets).length <= 24 * 1024 + 8 * 1024, `datasets bounded (${String(JSON.stringify(answer.datasets).length)} chars)`);
+    assert.equal(answer.datasets.d0.rowCount, 300);assert.equal(answer.datasets.d0.truncated, true);
+    assert.match(answer.next, /Open analysis page button/);
+    await assert.rejects(f.analyses.tool('guide-1', { action: 'confirm' }), /proposalId/);
+  } finally { await f.cleanup(); }
+});
+
+test('one Run\'s summary is scoped to the project like the list', async () => {
+  const f = await fixture({ 'run-ok': view({ value: { admitted: true, id: 'a', version: 1, resultSha256: sha('a') } }) },
+    { authorize: async (sessionId: string) => { if (sessionId !== 'mine') throw new Error('other project'); } });
+  try {
+    assert.equal((await f.analyses.summary('mine', 'run-ok')).analysis?.admitted, true);
+    await assert.rejects(f.analyses.summary('theirs', 'run-ok'), /not available in the selected project/);
+    await assert.rejects(f.analyses.summary('mine', 'run-missing'), /not a library analysis/);
+  } finally { await f.cleanup(); }
+});
+
+test('an analysis page stops refreshing only once its Run has ended or was cancelled', async () => {
+  const { analysisSettled } = await import('@hima/harness');
+  assert.equal(analysisSettled({ status: 'running', task: { state: 'succeeded' } }), false, 'admission still runs after the resident task');
+  assert.equal(analysisSettled({ status: 'waiting' }), false);
+  assert.equal(analysisSettled({ status: 'ended-goal-met' }), true);
+  assert.equal(analysisSettled({ status: 'cancelled' }), true);
+  assert.equal(analysisSettled({ task: { state: 'failed' } }), true);
+  assert.equal(analysisSettled({}), true, 'knowing nothing, waiting changes nothing');
+});

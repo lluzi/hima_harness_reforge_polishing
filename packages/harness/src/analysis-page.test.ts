@@ -55,7 +55,7 @@ test('an admitted result renders every plot, its data, and its provenance as one
   for (const title of ['Rise by cell', 'Rise versus drive', 'Rise scatter', 'Rise grid', 'All cells']) assert.ok(html.includes(`<h3>${title}</h3>`), title);
   assert.equal(count(html, '<svg viewBox='), 4, 'one chart per drawable plot');
   assert.ok(html.includes('data-plot="table"') && html.includes('<th scope="col" data-type="number">rise (ns)</th>'));
-  assert.equal(count(html, '<summary>Data table · '), 4, 'a data table under every chart');
+  assert.equal(count(html, '<summary>Data table · '), Object.keys(admitted.detail.result!.datasets).length, 'each dataset once, however many plots draw it');
   assert.ok(html.includes('Data table · grid'));
   assert.ok(html.includes('0.03415') && !html.includes('0.0341500006616'), 'values are formatted, not raw float noise');
   assert.ok(html.includes('<ul class="legend"') && html.includes('>INVS</li>'), 'the two-series line has a legend');

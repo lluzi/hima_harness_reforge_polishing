@@ -167,6 +167,10 @@ function resultBody(result: LibInsightAnalysisResult): string {
   let out = result.summary ? `<p class="lead">${esc(result.summary)}</p>` : '';
   const plots = Array.isArray(result.plots) ? result.plots : [];
   if (plots.length > 0) out += `<section><h2>Plots</h2><div class="plots">${plots.map((plot, i) => plotCard(result, plot, i)).join('')}</div></section>`;
+  // Each dataset once, however many plots draw it, so no value depends on reading a chart.
+  const datasets = Object.entries(result.datasets ?? {}).filter(([, data]) => data !== null && typeof data === 'object' && Array.isArray(data.rows));
+  if (datasets.length > 0) out += `<section><h2>Data</h2><div class="card">${datasets.map(([name, data]) =>
+    `<details><summary>Data table · ${esc(name)} · ${plural(data.rows.length, 'row')}</summary>${dataTable(projectTable(data))}</details>`).join('')}</div></section>`;
   const list = (title: string, items: readonly string[] | undefined) => `<div class="card"><h2>${title}</h2>${items === undefined || items.length === 0 ? '<p class="notes">None stated.</p>' : `<ul>${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`}</div>`;
   out += `<section class="pair">${list('Assumptions', result.assumptions)}${list('Limits', result.limits)}</section>`;
   return out + provenance(result);
@@ -191,7 +195,7 @@ function provenance(result: LibInsightAnalysisResult): string {
 // ---------------------------------------------------------------------------------------------
 
 function plotCard(result: LibInsightAnalysisResult, plot: AnalysisPlotSpec, index: number): string {
-  const g = projectPlot(result, plot), dataset = result.datasets?.[plot.dataset];
+  const g = projectPlot(result, plot);
   let inner = `<h3>${esc(g.title)}</h3>`;
   if (g.kind === 'cannot-draw') inner += `<p class="cannot" role="status">Cannot draw this plot: ${esc(g.reason)}.</p>`;
   else if (g.kind === 'table') inner += dataTable(g.table);
@@ -200,7 +204,6 @@ function plotCard(result: LibInsightAnalysisResult, plot: AnalysisPlotSpec, inde
     inner += `<div class="chart">${g.kind === 'bar' ? barChart(g) : g.kind === 'heatmap' ? heatmapChart(g, index) : xyChart(g)}</div>`;
     if (g.notes.length > 0) inner += `<ul class="notes">${g.notes.map(note => `<li>${esc(note)}</li>`).join('')}</ul>`;
   }
-  if (g.kind !== 'table' && dataset !== undefined && Array.isArray(dataset.rows)) inner += `<details><summary>Data table · ${esc(plot.dataset)}</summary>${dataTable(projectTable(dataset))}</details>`;
   return `<figure class="card${g.kind === 'table' ? ' wide' : ''}" data-plot="${esc(g.kind)}">${inner}</figure>`;
 }
 
@@ -212,7 +215,8 @@ function legend(series: readonly SeriesKey[], kind: 'bar' | 'line' | 'scatter'):
 
 function dataTable(table: TableProjection): string {
   const head = table.columns.map(column => `<th scope="col" data-type="${esc(column.type)}">${esc(column.header)}</th>`).join('');
-  const rows = table.rows.map(row => `<tr>${row.map((cell, j) => `<td data-type="${esc(table.columns[j]?.type ?? 'string')}">${esc(cell)}</td>`).join('')}</tr>`).join('');
+  const clip = (cell: string) => cell.length > 300 ? `${cell.slice(0, 299)}…` : cell;
+  const rows = table.rows.map(row => `<tr>${row.map((cell, j) => `<td data-type="${esc(table.columns[j]?.type ?? 'string')}">${esc(clip(cell))}</td>`).join('')}</tr>`).join('');
   const more = table.shownRows < table.totalRows ? `<p class="notes">Showing the first ${String(table.shownRows)} of ${table.totalRows.toLocaleString('en-US')} rows.</p>` : '';
   return `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${more}`;
 }
