@@ -600,7 +600,7 @@ async function start(): Promise<void> {
     // the user and are never replaced just because the App version changed.
     if (app.isPackaged) {
       const {installPackMethod}:Pick<typeof import('@hima/harness'),'installPackMethod'> = await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/release.js')).href);
-      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure']) {
+      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'libinsight-analysis']) {
         const source = path.join(checkoutRoot(), 'packs', id);
         const destination = path.join(prepared.home, 'hima/packs', id);
         if (!existsSync(destination)) {

@@ -225,9 +225,17 @@ test('trial packager refuses a candidate Pack with no contract or a manifest who
     assert.equal(missingFlow.status, 1);
     assert.match(missingFlow.stderr, /ATCS Pack agentic-timing-closure-system is missing flow\/atcs_cli\.py/);
     await writeFile(path.join(atcs, 'flow/atcs_cli.py'), '# fixture\n');
+    const missingAnalysis = check();
+    assert.equal(missingAnalysis.status, 1);
+    assert.match(missingAnalysis.stderr, /analysis Pack libinsight-analysis is missing contract\.yml/);
+    const analysis = path.join(packs, 'libinsight-analysis');
+    await mkdir(path.join(analysis, 'tools'), { recursive: true }); await mkdir(path.join(analysis, 'flow'), { recursive: true });
+    await writeFile(path.join(analysis, 'contract.yml'), 'id: libinsight-analysis\nversion: "0.1.0"\nstatus: development\n');
+    await writeFile(path.join(analysis, 'graph.yml'), 'id: libinsight-analysis\nversion: "0.1.0"\n');
+    await writeFile(path.join(analysis, 'tools/read-analysis.py'), '# fixture\n'); await writeFile(path.join(analysis, 'flow/libinsight_cli.py'), '# fixture\n');
     const complete = check();
     assert.equal(complete.status, 0, complete.stderr);
-    assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure, opene902-timing-probe and agentic-timing-closure-system assets/);
+    assert.match(complete.stdout, /checked custom-cell-fmax-dtco, xtop-timing-closure, opene902-timing-probe, agentic-timing-closure-system and libinsight-analysis assets/);
     await writeTimingSeal('run-00000000-0000-4000-8000-000000000002');
     const wrongTimingRun = check();
     assert.equal(wrongTimingRun.status, 1);
@@ -254,7 +262,7 @@ const packagerRun = (...args: string[]) => spawnSync(process.execPath, [packager
   { cwd: repoRoot, encoding: 'utf8', timeout: 60_000 });
 /** --check-pack-assets prints one line of text, then the Pack identities as JSON. */
 const identitiesFrom = (stdout: string) => JSON.parse(stdout.slice(stdout.indexOf('\n') + 1));
-const bundledPackIds = ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'opene902-timing-probe', 'agentic-timing-closure-system'];
+const bundledPackIds = ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'opene902-timing-probe', 'agentic-timing-closure-system', 'libinsight-analysis'];
 
 test('the trial App stages the ATCS Pack at its exact source digest and its verifier refuses a changed byte', async () => {
   const { packDigestOf } = await import('@hima/harness');

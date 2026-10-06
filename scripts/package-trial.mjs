@@ -22,9 +22,11 @@ const demoPackId = 'opene902-timing-probe';
 const demoPackRelative = path.join('packs', demoPackId);
 const atcsPackId = 'agentic-timing-closure-system';
 const atcsPackRelative = path.join('packs', atcsPackId);
+const libInsightPackId = 'libinsight-analysis';
+const libInsightPackRelative = path.join('packs', libInsightPackId);
 const atcsSiteId = 'linglong-atcs28';
 const atcsSiteRelative = path.join('sites', atcsSiteId);
-const bundledPackIds = [trialPackId, timingPackId, demoPackId, atcsPackId];
+const bundledPackIds = [trialPackId, timingPackId, demoPackId, atcsPackId, libInsightPackId];
 const atcsBindingNone = 'none, kit installs it';
 const qualificationRelative = 'operator-qualification';
 const bindingsRelative = `${qualificationRelative}/interactive-bindings.json`;
@@ -190,6 +192,7 @@ async function packIdentities(packsRoot, allowDevelopment = internalCandidate) {
   const timing = await assertTimingPackAssets(packsRoot);
   assertDemoPackAssets(packsRoot);
   const atcs = await assertAtcsPackAssets(packsRoot, allowDevelopment);
+  assertLibInsightPackAssets(packsRoot);
   const { packDigestOf } = await harness('pack-folder.js');
   const { packStage } = await harness('packs.js');
   const seals = { [trialPackId]: trial, [timingPackId]: timing, [atcsPackId]: atcs };
@@ -220,7 +223,7 @@ const copyMethod = (from, to) => cpSync(from, to, { recursive: true, filter: (so
   return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
 } });
 
-/** Copy the four bundled Packs into an App's resource tree and prove each landed at its source digest. */
+/** Copy the five bundled Packs into an App's resource tree and prove each landed at its source digest. */
 async function stageBundledPacks(fromPacks, resource) {
   if (existsSync(path.join(resource, 'packs'))) fail(`refusing to stage over existing Packs in ${resource}`);
   const source = await packIdentities(fromPacks);
@@ -229,6 +232,7 @@ async function stageBundledPacks(fromPacks, resource) {
   copyMethod(path.join(fromPacks, timingPackId), path.join(resource, timingPackRelative));
   cpSync(path.join(fromPacks, demoPackId), path.join(resource, demoPackRelative), { recursive: true });
   copyMethod(path.join(fromPacks, atcsPackId), path.join(resource, atcsPackRelative));
+  copyMethod(path.join(fromPacks, libInsightPackId), path.join(resource, libInsightPackRelative));
   const staged = await packIdentities(path.join(resource, 'packs'));
   if (JSON.stringify(staged) !== JSON.stringify(source)) fail('a bundled Pack differs from its source identity after staging');
   return staged;
@@ -352,6 +356,15 @@ async function inspectInteractiveBindings(file, packsRoot, evidenceRoot, atcsOnl
   });
   return { file: bindingsRelative, sha256: hash(file), bindings,
     installation: 'administrator config required; station-scoped absolute environment paths; not portable' };
+}
+
+/** The Resident analyses Pack (ADR-0020) is a development method: present, self-identified, with its Reader. */
+function assertLibInsightPackAssets(packsRoot) {
+  const pack = path.join(packsRoot, libInsightPackId);
+  for (const file of ['contract.yml', 'graph.yml', 'tools/read-analysis.py', 'flow/libinsight_cli.py']) {
+    if (!existsSync(path.join(pack, file)) || !lstatSync(path.join(pack, file)).isFile()) fail(`analysis Pack ${libInsightPackId} is missing ${file}`);
+  }
+  if (!new RegExp(`^id: ${libInsightPackId}$`, 'm').test(readFileSync(path.join(pack, 'contract.yml'), 'utf8'))) fail(`analysis Pack ${libInsightPackId} contract identity differs`);
 }
 
 function assertDemoPackAssets(packsRoot) {
@@ -771,7 +784,7 @@ if (args[0] === '--finalize-native-obligations') {
   const site = value('--site');
   const identities = { packs: await packIdentities(path.resolve(packs)),
     ...(site ? { atcsSite: atcsSiteIdentity(path.resolve(site)) } : {}) };
-  process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId}, ${demoPackId} and ${atcsPackId} assets\n`);
+  process.stdout.write(`package-trial: checked ${trialPackId}, ${timingPackId}, ${demoPackId}, ${atcsPackId} and ${libInsightPackId} assets\n`);
   process.stdout.write(`${JSON.stringify(identities, null, 2)}\n`);
 } else if (args[0] === '--stage-packs') {
   const [from, resource] = [args[1], args[2]];
