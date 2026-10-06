@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
 import test from 'node:test';
+
+// The card imports `../question-headline.js` (the built name); under type stripping the source is `.ts`.
+registerHooks({ resolve(specifier, context, next) {
+  try { return next(specifier, context); }
+  catch (error) { if (specifier.startsWith('.') && specifier.endsWith('.js')) return next(`${specifier.slice(0, -3)}.ts`, context); throw error; }
+} });
 
 const { readInsightAnalysisCard }: typeof import('./insight-analysis-card.js') = await import(`./insight-analysis-card.${'ts'}`);
 const block = (value: unknown, extra: { kind?: string; isError?: boolean } = { kind: 'result' }) =>
@@ -40,4 +47,10 @@ test('a list names each analysis with its page; pending, failed and unreadable c
     { kind: 'text', text: 'Library analyses are unavailable on this Host.', error: true });
   assert.deepEqual(readInsightAnalysisCard(block('not json')), { kind: 'text', text: 'not json', error: false });
   assert.equal(readInsightAnalysisCard(block({ action: 'confirm' })).kind, 'text', 'a start without a Run and page is shown as text, not as a button to nowhere');
+});
+
+test('a long Guide-written question is shown on the card by its first sentence', () => {
+  const long = 'At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT. For each drive strength pair the variants and plot leakage against delay, evaluated at one fixed input transition and output load.';
+  const card = readInsightAnalysisCard(block({ action: 'result', runId: 'run-1', page, status: 'ended-goal-met', admission: { admitted: true }, analysis: 'a@3', question: long }));
+  assert.equal(card.kind === 'result' && card.question, 'At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT.');
 });

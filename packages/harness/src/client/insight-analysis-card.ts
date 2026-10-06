@@ -2,6 +2,7 @@
 // answer, read back from its text, as a proposal, a started Run, a result or a list. Pure and
 // React-free; anything it cannot read stays the tool's own text.
 import type { ToolBlock } from './HimaRunCard.js';
+import { headlineOf } from '../question-headline.js';
 
 export interface CardProposal {
   readonly kind: 'proposal';
@@ -59,7 +60,7 @@ export function readInsightAnalysisCard(block: ToolBlock): InsightAnalysisCard {
   switch (value.action) {
     case 'propose': {
       const pack = value.pack as { id?: unknown; version?: unknown } | undefined;
-      return { kind: 'proposal', ready: value.ready === true, question: text(value.question) ?? '', sources: strings(value.sources), buildsOn: strings(value.buildsOn),
+      return { kind: 'proposal', ready: value.ready === true, question: headlineOf(text(value.question) ?? ''), sources: strings(value.sources), buildsOn: strings(value.buildsOn),
         ...(typeof pack?.id === 'string' ? { pack: `${pack.id}${typeof pack.version === 'string' ? ` ${pack.version}` : ''}` } : {}),
         ...(text(value.site) ? { site: String(value.site) } : {}),
         ...(typeof value.timeBoxMinutes === 'number' ? { timeBoxMinutes: value.timeBoxMinutes } : {}),
@@ -68,7 +69,7 @@ export function readInsightAnalysisCard(block: ToolBlock): InsightAnalysisCard {
     case 'confirm':
       return runId && page ? { kind: 'started', runId, page } : { kind: 'text', text: raw, error: false };
     case 'result':
-      return runId && page ? { kind: 'result', runId, page, ...stateOf(value), ...(text(value.question) ? { question: String(value.question) } : {}),
+      return runId && page ? { kind: 'result', runId, page, ...stateOf(value), ...(text(value.question) ? { question: headlineOf(String(value.question)) } : {}),
         ...(text(value.summary) ? { summary: String(value.summary) } : {}), ...(Array.isArray(value.plots) ? { plotCount: value.plots.length } : {}) } : { kind: 'text', text: raw, error: false };
     case 'list': {
       const rows = (Array.isArray(value.analyses) ? value.analyses as Record<string, unknown>[] : []).flatMap(entry => {
@@ -77,7 +78,7 @@ export function readInsightAnalysisCard(block: ToolBlock): InsightAnalysisCard {
         const analysis = entry.analysis as { id?: unknown; version?: unknown; admitted?: unknown } | undefined;
         const said = analysis?.admitted === true && typeof analysis.id === 'string' ? `Admitted as ${analysis.id}@${String(analysis.version)}`
           : ended(entry.status) ? String(entry.status) : 'Running';
-        return [{ runId: id, page: at, said, ...(text(entry.question) ? { question: String(entry.question) } : {}) }];
+        return [{ runId: id, page: at, said, ...(text(entry.question) ? { question: headlineOf(String(entry.question)) } : {}) }];
       });
       return { kind: 'list', rows };
     }

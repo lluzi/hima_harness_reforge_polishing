@@ -5,6 +5,7 @@
 // mark carries a <title> tooltip, two or more series carry a legend, and every chart has its data one
 // click away, so no value depends on colour or on hovering.
 import type { LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisResult } from './libinsight-analyses.js';
+import { headlineOf } from './question-headline.js';
 import { formatTick, formatValue, plotLimits, projectPlot, projectTable, scaleLinear, type AnalysisPlotSpec, type BandAxis, type LinearAxis, type PlotGeometry, type SeriesKey, type TableProjection } from './analysis-plot.js';
 
 export interface AnalysisPageInput {
@@ -144,15 +145,7 @@ function statusOf({ entry, detail, refreshSeconds }: AnalysisPageInput): { tone:
 // Page
 // ---------------------------------------------------------------------------------------------
 
-/** A heading-sized question: the whole of a short one, else its first sentence, else its first words. */
-export function headlineOf(question: string): string {
-  const text = question.trim().replace(/\s+/gu, ' ');
-  if (text.length <= 140) return text;
-  const first = /^(.{20,180}?[.?!])(\s|$)/u.exec(text)?.[1];
-  if (first !== undefined) return first;
-  const cut = text.slice(0, 140);
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 80))}…`;
-}
+export { headlineOf };
 
 export function analysisPage(input: AnalysisPageInput): string {
   const { runId, entry, detail, refreshSeconds } = input, result = detail.result;
