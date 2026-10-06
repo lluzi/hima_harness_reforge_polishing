@@ -58,6 +58,7 @@
     "test/contract/fabric.test.ts",
     "test/contract/flow-compiler.test.ts",
     "test/contract/fork-interactive-team.host.test.ts",
+    "test/contract/fork-join-judge-durable.host.test.ts",
     "test/contract/generic-workspace.host.test.ts",
     "test/contract/growth.host.test.ts",
     "test/contract/growth.test.ts",
