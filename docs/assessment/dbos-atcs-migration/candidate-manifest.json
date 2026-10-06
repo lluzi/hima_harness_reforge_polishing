@@ -1,0 +1,78 @@
+{
+  "schema": "hima.dbos-atcs-candidate/1",
+  "frozenAt": "2026-10-05T00:12:45.975Z",
+  "appBuildSourceSha": "32a03eb4d8b31454d64525d3465566a17768b72e",
+  "qualificationToolSourceSha": "b8f63256e45f4b91f769603dd8423f5123c8649e",
+  "artifactDigest": "f3761080797de7cc6d2d85f11eae2f1309514ca68a236d9847b6e043ef92e9a1",
+  "applicationVersion": "hima-ca185d9fe7ba98c6237f0940c7c782ad6313a7f8aa76b6bf7e7dfd9afcb42dad",
+  "runtime": {
+    "node": "24.20.0",
+    "postgres": "16.15",
+    "dbos": "5.2.11",
+    "harness": "0.3.0",
+    "app": "0.3.0-trial.35"
+  },
+  "siteInputLocalHashes": {
+    "designStateManifest-postroute-final.json": "b3b9893ee3506f5fd2ee41445f7e1980cc820a4a07d25f9e8d2f95a4803e3fdc",
+    "nativeTimingContext-v1.json": "ff620f4d7aa64482a91f65a5f49bc78a6b1ab5ebbedf5f9eb04a851980e09a0c",
+    "siteCapabilities-v5.json": "6502316f15df2d6cdd7d7b9a2b92a91a708a7ab44a430a822ec662fa3868b41a"
+  },
+  "technicalObligationReportSha256": "34744e794f236947bbe7b3b10fcbb33b3c0edef1c3ca69ba6bf03097f995eeda",
+  "effectiveUnresolved": [],
+  "remoteInputHashes": {
+    "/data/eda/project/hima_harness/atcs-inputs/designStateManifest-postroute-final.json": "b3b9893ee3506f5fd2ee41445f7e1980cc820a4a07d25f9e8d2f95a4803e3fdc",
+    "/data/eda/project/hima_harness/atcs-inputs/nativeTimingContext-v1.json": "ff620f4d7aa64482a91f65a5f49bc78a6b1ab5ebbedf5f9eb04a851980e09a0c",
+    "/data/eda/project/hima_harness/atcs-inputs/siteCapabilities-v5.json": "6502316f15df2d6cdd7d7b9a2b92a91a708a7ab44a430a822ec662fa3868b41a",
+    "/data/eda/project/hima_harness/atcs-inputs/analysisContract/corners.json": "ae35ee8aeec65b2b454e4a8c4c90776a67317cdf14c0c833b90a2f76bd7857b6",
+    "/data/eda/project/hima_harness/atcs-inputs/analysisContract/policy.json": "e6c8d46ae1de2759367c0850f90b0d96b1456e938d39add2fee190daa47e9cb0",
+    "/data/eda/project/hima_harness/atcs-inputs/analysisContract/query-spec.json": "cad5be22c7e7cb7ba0d645b3a01f26d99d5ce654d610fc439a9530017bb34b1a",
+    "/data/eda/project/hima_harness/atcs-inputs/analysisContract/recheck.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "/data/eda/project/hima_harness/atcs-inputs/analysisContract/scenarios.json": "557060dbf3f3ea6b9d3b8605cba54d5b126f855a078dcff8a8eacf133b6ebe96"
+  },
+  "artifactPath": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u9/candidate-mac-08/HimaHarness.app",
+  "pack": {
+    "id": "agentic-timing-closure-system",
+    "version": "0.4.0",
+    "digest": "ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e"
+  },
+  "flow": {
+    "schema": "hima-flow-ir/1",
+    "packId": "agentic-timing-closure-system",
+    "version": "0.4.0",
+    "packSha256": "ede79ecaf59981fa8107962298b5c2c12ce01bb00b8862118b4738a177f3c83e",
+    "irSha256": "dd87b72cd7aba6e6aa6fa1719bed778a892736affc6f4b05ac6c4299322e42b4"
+  },
+  "flowIdentityEvidence": "deterministic reread of unchanged installed frozen Pack after normal quit; flow compiler source unchanged from32a through e7, no Host/model/Site call",
+  "siteHashes": {
+    "linglong-atcs28.yml": "5d0fe095d2c2125aed62506a9fa05339d7f0e3b09600bde1d73a26f08a4e478d",
+    "permit.yml": "876ebc133c14e9106f2018a69af5b48fbace547c4ed0b3a64b129d4d4bde9ec9"
+  },
+  "remoteEnvironment": {
+    "wrapperSha256": "85d64ee8002b265cda473c85cb840235a2eff234f520f5fca75500a42149e799",
+    "capabilitySha256": "82d30597daf315170c4190fe5dd3c276ee53665269b3b9195036054e1d9a7000",
+    "nativeVersion": "1.18.34",
+    "imageId": "7d651dc8f1ab7d423b9d61be83fc3f5d608996ed7b91fa6588c3ed16daccfd54"
+  },
+  "productModel": {
+    "wireId": "deepseek-flash",
+    "credentialSource": "existing DEEPSEEK_API_KEY inherited environment",
+    "credentialValueIncluded": false
+  },
+  "operator": {
+    "requestedModel": "gpt-6.1-sol",
+    "requestedEffort": "medium",
+    "externalClaude": false,
+    "context": "ordinary task and App/Pack/Site entry only; no coordinator source map, benchmark answers or internal rescue"
+  },
+  "executedRun": "run-e7ed880e-5d24-44b8-9b92-0e72bd63129d",
+  "campaign": "agentic-timing-closure-system-20261005-002400-ad70",
+  "actualOwner": "hima-campaign-20118fa417fc8a9298ceba20c9b21001",
+  "budget": {
+    "timeBoxMs": 7200000,
+    "closingReserveMs": 900000,
+    "newWorkCutoff": "2026-10-05T02:09:00.312Z",
+    "hardDeadline": "2026-10-05T02:24:00.312Z"
+  },
+  "sourceBoundary": "This manifest is the actual source32a frozen App. Later source fixes are separately qualified and are not represented as having run in this App.",
+  "humanFinalAcceptance": false
+}

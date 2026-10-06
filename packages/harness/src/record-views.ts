@@ -510,3 +510,21 @@ export function chosenAs(decision: { readonly chosen: DecisionChoice }): Chosen 
 
 /** Which kind of choice this was, for a reader that wants the word and not the payload. */
 export const chosenKind = (decision: { readonly chosen: DecisionChoice }): ChosenKind => chosenAs(decision).kind;
+
+/** A recorded invocation or a declared task that has not yet acquired an effect identity. */
+export interface DurableTaskView {
+  readonly taskId: string;
+  readonly projection: import('./task-contract.js').TaskProjection;
+  readonly identity?: import('./task-contract.js').TaskIdentity;
+  readonly tool?:string;
+  readonly rootFlow?:boolean;
+  readonly iterations?:readonly {readonly repeatId:string;readonly iteration:number}[];
+  readonly contract?: import('./task-contract.js').TaskContract;
+  readonly input?: import('./task-contract.js').JsonValue;
+  readonly result?: import('./task-contract.js').TaskResult;
+  /** Contract-checked delivery retained before resource closure and durable workflow handoff. */
+  readonly retainedResult?: import('./task-contract.js').TaskResult;
+  /** This invocation still belongs to the accepted method revision, independently of output success. */
+  readonly current?: boolean;
+  readonly sourceFactIds: readonly string[];
+}

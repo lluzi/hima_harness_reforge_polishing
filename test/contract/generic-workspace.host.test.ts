@@ -1,13 +1,15 @@
 // Generic Pack workspace persistence through the real Host; no model, Electron or EDA.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { parse, stringify } from 'yaml';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
-import { importLegacyLedger, prepareWorkspace, type ExecutionActionRequest } from '@hima/harness';
+import { importLegacyLedger, prepareWorkspace } from '@hima/harness';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -23,7 +25,21 @@ async function numericHome(declareDesign = false, siteDesign?: string) {
     const contractFile = path.join(packDir, 'contract.yml');
     const contract = await readFile(contractFile, 'utf8');
     assert.ok(contract.includes('  - { name: design, description: Input set }\n'));
-    if (!declareDesign) await writeFile(contractFile, contract.replace('  - { name: design, description: Input set }\n', ''));
+    const declared=parse(contract);
+    if(!declareDesign)declared.inputs=declared.inputs.filter((input:{name:string})=>input.name!=='design');
+    declared.workshops=[];
+    declared.workspace.copy.push('numeric.sh');
+    declared.tools=[{id:'numeric',file:'flow/numeric.sh',inputs:['WORKSPACE','TASK_OUTPUT','SCALE'],argv:['sh','${WORKSPACE}/flow/numeric.sh','${WORKSPACE}','${TASK_OUTPUT}','${SCALE}']}];
+    await writeFile(contractFile,stringify(declared));
+    const script=`set -eu
+sum=$(awk -v scale="$3" '{sum+=$1} END {print sum*scale}' "$1/flow/numbers.txt")
+printf 'once\\n' >> "$1/program-calls"
+printf '{"schemaVersion":"1","value":{"sum":%s},"artifacts":[],"diagnostics":[]}\\n' "$sum" > "$2"
+`;
+    await mkdir(path.join(packDir,'flow'),{recursive:true});
+    await writeFile(path.join(flowRoot,'numeric.sh'),script);await writeFile(path.join(packDir,'flow/numeric.sh'),script);
+    const schema=(properties:Record<string,unknown>,required:string[])=>({version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties,required}});
+    await writeFile(path.join(packDir,'graph.yml'),stringify({schema:'hima-flow/1',id:'authored-workshop',version:'1',flow:{kind:'task',id:'calculate',tool:'numeric',inputs:{SCALE:{source:'strategy',path:['scale']}},contract:{input:schema({SCALE:{type:'number'}},['SCALE']),output:schema({sum:{type:'number'}},['sum'])}}}));
     await writeFile(path.join(packDir, 'PACK.md'), '# Generic numeric persistence fixture\n');
     await writeLocalSite(h, { allowedReadRoots: [h.workspace, flowRoot], allowedWriteRoots: [h.workspace],
       bindings: { flowRoot, workspaceRoot: h.workspace, ...(siteDesign === undefined ? {} : { design: siteDesign }) } });
@@ -31,68 +47,67 @@ async function numericHome(declareDesign = false, siteDesign?: string) {
   } catch (error) { await h.dispose(); throw error; }
 }
 
-function ownerActions(host: InProcessHost, runId: string, actor: string) {
-  let next = 0;
-  return (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
-    const control = host.ctx.hima.ledger.run(runId)!.control!;
-    return host.ctx.hima.executionAction({ runId, actor, expectedEpoch: control.epoch,
-      expectedRevision: control.revision, requestId: `numeric-${++next}`, action, ...fields });
-  };
-}
+test('durable workspace preparation fences Site writes and reuses the same verified files', async () => {
+  const h = await numericHome();
+  try {
+    const module = (name: string) => import(pathToFileURL(path.join(process.env.HIMA_U6_FACADE_PACKAGE ?? path.join(repoRoot, 'packages/harness'), 'lib', `${name}.js`)).href);
+    const { prepareWorkspaceFiles } = await module('workspace');
+    const { loadSite } = await module('sites');
+    const { loadPack } = await module('packs');
+    const site = loadSite(path.join(h.home, 'hima/sites'), 'local');
+    const folder = loadPack(path.join(h.home, 'hima/packs'), 'authored-workshop').folder;
+    const options = { site, folder, campaignId: 'durable-workspace' };
+    await assert.rejects(prepareWorkspaceFiles({ ...options, beforeWrite: async () => { throw new Error('paused before actual write'); } }), /paused before actual write/);
+    await assert.rejects(access(path.join(h.workspace, options.campaignId)), /ENOENT/);
+    let writes = 0;
+    const targets: string[] = [];
+    const prepared = await prepareWorkspaceFiles({ ...options, beforeWrite: async (target: string) => { writes++; targets.push(target); } });
+    assert.equal(prepared.kind, 'prepared');
+    assert.ok(writes > 0);
+    assert.ok(targets.every(target => target === prepared.file.workspace || target.startsWith(prepared.file.workspace + path.sep)));
+    assert.equal(await readFile(path.join(prepared.file.workspace, 'flow/numbers.txt'), 'utf8'), '3\n7\n11\n');
+    const priorWrites = writes;
+    const reused = await prepareWorkspaceFiles({ ...options, beforeWrite: async (target: string) => { writes++; targets.push(target); } });
+    assert.equal(reused.kind, 'reused');
+    assert.deepEqual(reused.file, prepared.file);
+    assert.equal(writes, priorWrites);
+    const partial = path.join(h.workspace, 'durable-partial');
+    await mkdir(partial);
+    await writeFile(path.join(partial, 'retained.txt'), 'unknown original bytes');
+    const unknown = await prepareWorkspaceFiles({ ...options, campaignId: 'durable-partial', beforeWrite: async () => { writes++; } });
+    assert.equal(unknown.kind, 'occupied');
+    assert.equal(await readFile(path.join(partial, 'retained.txt'), 'utf8'), 'unknown original bytes');
+    assert.equal(writes, priorWrites, 'an unknown partial workspace is read without any overwrite');
 
-async function analyze(host: InProcessHost, runId: string, actor: string) {
-  const act = ownerActions(host, runId, actor);
-  const begun = await act('begin', { nodeId: 'analyze' });
-  const executionId = begun.receipt?.executionId;
-  assert.ok(executionId);
-  const script = 'set -eu\nmkdir -p "$2/research/analysis"\nawk -v scale="$3" \'{sum+=$1} END {print sum*scale}\' "$2/flow/numbers.txt" > "$2/research/analysis/result.txt"\n';
-  assert.equal((await act('write', { executionId, path: 'entry.sh', content: script })).kind, 'accepted');
-  assert.equal((await act('work', { executionId })).kind, 'accepted');
-  await waitUntil('numeric analysis Job is ready', () => host.ctx.hima.executionContext(runId).executions.some((item) => item.id === executionId && item.phase === 'ready'));
-  assert.equal((await act('complete', { executionId })).kind, 'accepted');
-  return act;
+  } finally { await h.dispose(); }
+});
+
+async function completed(host:InProcessHost,runId:string) {
+  let context=await host.ctx.hima.readExecutionContext(runId);
+  await waitUntil('the automatic numeric task completes',async()=>{context=await host.ctx.hima.readExecutionContext(runId);return context.durable?.workflow?.status==='SUCCESS';});
+  assert.equal((context.durable?.outcome as {state?:string})?.state,'succeeded',JSON.stringify(context.durable));
+  return context;
 }
 
 test('a generic Pack without design reopens its completed Run without rewriting workspace facts', async () => {
-  const h = await numericHome();
-  let host: InProcessHost | undefined;
+  const h=await numericHome();let host:InProcessHost|undefined;
   try {
-    host = await bootInProcess(h);
-    const owner = await createRootAgent(host.ctx, h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local',
-      goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
-    assert.equal(started.kind, 'ran');
-    if (started.kind !== 'ran') return;
-    const act = await analyze(host, started.run.id, String(owner.id));
-    for (const nodeId of ['read-analysis', 'judge']) {
-      const begun = await act('begin', { nodeId });
-      const executionId = begun.receipt?.executionId;
-      assert.ok(executionId);
-      assert.equal((await act('work', { executionId })).kind, 'accepted');
-      await waitUntil(`${nodeId} is ready`, () => host!.ctx.hima.executionContext(started.run.id).executions.some((item) => item.id === executionId && item.phase === 'ready'));
-      assert.equal((await act('complete', { executionId })).kind, 'accepted');
-    }
-    // This fixture checks a fixed sum but binds no Goal rule; its honest ending is goal-not-met.
-    assert.equal(host.ctx.hima.ledger.run(started.run.id)?.status, 'ended-goal-not-met');
-    assert.ok(host.ctx.hima.ledger.records({ runId: started.run.id, type: 'observation' }).some((record) => record.type === 'observation' && record.values.some((value) => value.type === 'scaled_sum' && value.value === 42)));
-    const original = host.ctx.hima.ledger.records({ runId: started.run.id, type: 'workspace' });
-    assert.equal(original.length, 1);
-    assert.equal(Object.hasOwn(original[0]!, 'design'), false);
-    const metadata = await readFile(path.join(started.workspace, 'workspace.json'), 'utf8');
-    assert.equal(Object.hasOwn(JSON.parse(metadata), 'design'), false);
-    await host.dispose();
-    host = undefined;
-    const storageFile = path.join(h.home, 'storages/hima_ledger.json');
-    const stored = await readFile(storageFile);
-    assert.equal(JSON.parse(stored.toString()).unit.version, 31);
-    host = await bootInProcess(h);
-    await host.ctx.hima.reconciled;
-    assert.equal(host.ctx.hima.ledger.run(started.run.id)?.status, 'ended-goal-not-met');
-    assert.deepEqual(host.ctx.hima.ledger.records({ runId: started.run.id, type: 'workspace' }), original);
-    assert.equal(await readFile(path.join(started.workspace, 'workspace.json'), 'utf8'), metadata);
-    assert.deepEqual(await readFile(storageFile), stored, 'cold open leaves the stored ledger bytes unchanged');
-    assert.equal(await readFile(path.join(h.home, 'numeric-flow/numbers.txt'), 'utf8'), '3\n7\n11\n');
-  } finally { await host?.dispose(); await h.dispose(); }
+    host=await bootInProcess(h);const owner=await createRootAgent(host.ctx,h.workspace);
+    const started=await host.ctx.hima.startRun({pack:'authored-workshop',site:'local',goal:{target_period_ns:2},ownerSessionId:String(owner.id)});
+    assert.ok(started.kind==='preparing'||started.kind==='ran',JSON.stringify(started));
+    const current=await completed(host,started.run.id);assert.equal(current.engine,'dbos/5.2.11');
+    const outcome=current.durable!.outcome as unknown as {committed:Record<string,{value:{sum:number}}>};assert.equal(outcome.committed.calculate!.value.sum,42);
+    assert.equal('goalState' in current.run&&current.run.goalState,'unknown','A completed numeric tool with no Goal claim does not invent a Goal result');
+    const original=await host.ctx.hima.durable.store.flowFact(started.run.id,'preparation');
+    const metadata=await readFile(path.join(started.workspace,'workspace.json'),'utf8');assert.equal(Object.hasOwn(JSON.parse(metadata),'design'),false);
+    assert.equal(await readFile(path.join(started.workspace,'program-calls'),'utf8'),'once\n');
+    await host.dispose();host=undefined;host=await bootInProcess(h);await host.ctx.hima.reconciled;
+    const reopened=await completed(host,started.run.id);assert.equal('goalState' in reopened.run&&reopened.run.goalState,'unknown');
+    assert.deepEqual(await host.ctx.hima.durable.store.flowFact(started.run.id,'preparation'),original);
+    assert.equal(await readFile(path.join(started.workspace,'workspace.json'),'utf8'),metadata);
+    assert.equal(await readFile(path.join(started.workspace,'program-calls'),'utf8'),'once\n','Reopen never launches another actual program');
+    assert.equal(await readFile(path.join(h.home,'numeric-flow/numbers.txt'),'utf8'),'3\n7\n11\n');
+  }finally{await host?.dispose();await h.dispose();}
 });
 
 test('an undeclared Site design is neither bound nor invented when generic workspace metadata is reused', async () => {
@@ -136,66 +151,40 @@ for (const design of [undefined, 'declared-numbers']) test(`a Pack declaring des
       assert.equal(host.ctx.hima.ledger.runs().length, 0);
       return;
     }
-    assert.equal(started.kind, 'ran');
-    if (started.kind !== 'ran') return;
-    await host.ctx.hima.cancelRun(started.run.id);
-    const original = host.ctx.hima.ledger.records({ runId: started.run.id, type: 'workspace' });
-    assert.equal(original[0]?.type === 'workspace' && original[0].design, design);
+    assert.ok(started.kind==='preparing'||started.kind==='ran',JSON.stringify(started));
+    await completed(host,started.run.id);
+    const original=await host.ctx.hima.durable.store.flowFact(started.run.id,'preparation');
+    assert.equal((original as unknown as {file:{design:string}}).file.design,design);
     const metadata = await readFile(path.join(started.workspace, 'workspace.json'));
     assert.equal(JSON.parse(metadata.toString()).design, design);
     await host.dispose();
     host = undefined;
     host = await bootInProcess(h);
     await host.ctx.hima.reconciled;
-    assert.deepEqual(host.ctx.hima.ledger.records({ runId: started.run.id, type: 'workspace' }), original);
+    assert.deepEqual(await host.ctx.hima.durable.store.flowFact(started.run.id,'preparation'),original);
     assert.deepEqual(await readFile(path.join(started.workspace, 'workspace.json')), metadata);
   } finally { await host?.dispose(); await h.dispose(); }
 });
 
-test('generic recovery and explicit adoption preserve absent design while rejecting changed metadata and invalid v19 input', async () => {
-  const h = await numericHome();
-  let host: InProcessHost | undefined;
+test('generic legacy workspace history stays readable without hot adoption and invalid v19 input stays unchanged',async()=>{
+  const h=await numericHome();let host:InProcessHost|undefined;
   try {
-    host = await bootInProcess(h);
-    const owner = await createRootAgent(host.ctx, h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local',
-      goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
-    assert.equal(started.kind, 'ran');
-    if (started.kind !== 'ran') return;
-    await analyze(host, started.run.id, String(owner.id));
-    // A private historical fixture at a real collected Job boundary; no original home is used.
-    await host.ctx.hima.ledger.advanceRun(started.run.id, { control: undefined });
-    const original = host.ctx.hima.ledger.records({ runId: started.run.id });
-    await host.dispose();
-    host = undefined;
-    const stored = JSON.parse(await readFile(path.join(h.home, 'storages/hima_ledger.json'), 'utf8'));
-    stored.unit.version = 19;
-    for (const record of Object.values<{ type: string; packDigest?: string }>(stored.tables.records)) {
-      if (record.type === 'workspace') delete record.packDigest;
-    }
-    const sourceFile = path.join(h.home, 'invalid-v19.json');
-    const source = JSON.stringify(stored);
-    await writeFile(sourceFile, source);
-    await assert.rejects(importLegacyLedger({ sourceFile, home: path.join(h.home, 'must-not-import') }), /design/);
-    assert.equal(await readFile(sourceFile, 'utf8'), source, 'v19 design requirement and source bytes remain unchanged');
-    host = await bootInProcess(h);
-    await host.ctx.hima.reconciled;
-    assert.equal(host.ctx.hima.ledger.run(started.run.id)?.currentNode, 'read-analysis');
-    assert.deepEqual(host.ctx.hima.ledger.records({ runId: started.run.id }), original);
-    const nextOwner = await createRootAgent(host.ctx, h.workspace);
-    const request = { runId: started.run.id, actor: String(nextOwner.id), expectedEpoch: 0, expectedRevision: 0,
-      requestId: 'adopt-generic', action: 'adopt' as const };
-    const metadataFile = path.join(started.workspace, 'workspace.json');
-    const metadata = await readFile(metadataFile, 'utf8');
-    await writeFile(metadataFile, JSON.stringify({ ...JSON.parse(metadata), design: 'injected-design' }));
-    const refused = await host.ctx.hima.executionAction(request);
-    assert.equal(refused.kind, 'refused');
-    assert.match(refused.reason ?? '', /workspace\/input metadata|input bindings/);
-    await writeFile(metadataFile, metadata);
-    const adopted = await host.ctx.hima.executionAction(request);
-    assert.equal(adopted.kind, 'accepted', adopted.reason);
-    assert.deepEqual(host.ctx.hima.ledger.records({ runId: started.run.id }), original);
-    assert.equal(await readFile(metadataFile, 'utf8'), metadata);
-    await host.ctx.hima.cancelRun(started.run.id);
-  } finally { await host?.dispose(); await h.dispose(); }
+    host=await bootInProcess(h);
+    // Build only historical record data through the legacy projection helper; no legacy engine,
+    // owner turn, model or Job executes. New production startRun is qualified above through DBOS.
+    const deps={ledger:host.ctx.hima.ledger,packsDir:path.join(h.home,'hima/packs'),sitesDir:path.join(h.home,'hima/sites')};
+    const prepared=await prepareWorkspace(deps,{pack:'authored-workshop',site:'local',campaign:'retained-generic-history'});
+    assert.equal(prepared.kind,'prepared');if(prepared.kind!=='prepared')throw new Error('Historical fixture preparation failed');
+    const original=host.ctx.hima.ledger.records({runId:prepared.run.id});
+    const metadataFile=path.join(prepared.file.workspace,'workspace.json'),metadata=await readFile(metadataFile,'utf8');assert.equal(Object.hasOwn(JSON.parse(metadata),'design'),false);
+    await host.dispose();host=undefined;
+    const storageFile=path.join(h.home,'storages/hima_ledger.json'),storedBytes=await readFile(storageFile),stored=JSON.parse(storedBytes.toString());
+    stored.unit.version=19;for(const record of Object.values<{type:string;packDigest?:string}>(stored.tables.records))if(record.type==='workspace')delete record.packDigest;
+    const sourceFile=path.join(h.home,'invalid-v19.json'),source=JSON.stringify(stored);await writeFile(sourceFile,source);
+    await assert.rejects(importLegacyLedger({sourceFile,home:path.join(h.home,'must-not-import')}),/design/);assert.equal(await readFile(sourceFile,'utf8'),source);
+    host=await bootInProcess(h);await host.ctx.hima.reconciled;
+    assert.deepEqual(host.ctx.hima.ledger.records({runId:prepared.run.id}),original);
+    assert.deepEqual(await host.ctx.hima.durable.store.runs(),[],'History reading creates no durable Run and performs no hot conversion');
+    assert.equal(await readFile(metadataFile,'utf8'),metadata);assert.deepEqual(await readFile(storageFile),storedBytes);
+  }finally{await host?.dispose();await h.dispose();}
 });

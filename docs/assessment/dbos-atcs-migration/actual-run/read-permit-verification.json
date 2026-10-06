@@ -1,0 +1,67 @@
+{
+  "scope": "canonical focused verification after U10 normal App quit and zero-owned-process witness",
+  "source_base": "b8f63256e45f4b91f769603dd8423f5123c8649e",
+  "production_source_sha256": "ac3f8a9a0b2f4c60c61a5269373727104b9a77d6110591a81b547b334067022b",
+  "final_test_sha256": "5d0709b98217300159dea027ea80ab62499834b210b26c10ab6e3ab0aa4c66a7",
+  "build": {
+    "command": "node24 node_modules/typescript/bin/tsc -p packages/harness/tsconfig.json",
+    "exitCode": 0,
+    "seconds": 4.3043
+  },
+  "initial_typecheck": {
+    "exitCode": 2,
+    "seconds": 9.21887,
+    "reason": "new test type imports source modules under erasableSyntaxOnly; TS1294 for existing parameter properties"
+  },
+  "final_typecheck": {
+    "command": "PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verify-deps-before-run=warn run typecheck",
+    "exitCode": 0,
+    "seconds": 8.86946
+  },
+  "initial_boundary_command": {
+    "command": "node24 scripts/check-boundaries.mjs",
+    "exitCode": 1,
+    "reason": "incorrect plural filename MODULE_NOT_FOUND; no check performed"
+  },
+  "boundary": {
+    "command": "node24 scripts/check-boundary.mjs",
+    "exitCode": 0
+  },
+  "seams": {
+    "exitCode": 0
+  },
+  "inventory": {
+    "files": 170,
+    "assignedExactlyOnce": true
+  },
+  "diff_check": {
+    "exitCode": 0
+  },
+  "focused_tests": {
+    "command": "node24 scripts/run-contract-tests.mjs local --files test/contract/read-permit.test.ts test/contract/ssh.test.ts",
+    "first": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "seconds": 1.035
+    },
+    "final_after_type_import_fix": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "seconds": 0.806
+    },
+    "host_process": 0,
+    "host_inprocess": 0,
+    "electron": 0,
+    "ssh_attempts": 0,
+    "product_model_calls": 0,
+    "eda_jobs": 0
+  },
+  "review": "review.json ACCEPT including final test type-only followup; no repeat broad review",
+  "limits": [
+    "actual new remote handoff latency not measured",
+    "original completed U10 App remains source32a; this source increment is not that frozen App",
+    "original broad954 baseline is not reclassified as PASS"
+  ]
+}

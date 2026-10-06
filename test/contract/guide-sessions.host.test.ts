@@ -117,17 +117,18 @@ test('a terminal Campaign boundary reaches its original Guide once without chang
   process.env.HIMA_TEST_SILENT_AGENT='0';const host=await bootInProcess(h.h);
   try {
     const guide=await createRootAgent(host.ctx,h.h.workspace),owner=await createRootAgent(host.ctx,h.h.workspace);
-    const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:String(owner.id),guideSessionId:String(guide.id)});assert.equal(started.kind,'ran');if(started.kind!=='ran')return;
-    const runId=started.run.id;const c=host.ctx.hima.executionContext(runId).run.control!;
+    const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:String(owner.id),guideSessionId:String(guide.id)});assert.ok(started.kind==='preparing'||started.kind==='ran',JSON.stringify(started));if(started.kind!=='ran'&&started.kind!=='preparing')throw new Error('Run admission failed');
+    const runId=started.run.id;await waitUntil('original Run preparation',async()=>['prepared','reused'].includes((await host.ctx.hima.readExecutionContext(runId)).durable?.preparation?.kind??''));const c=(await host.ctx.hima.readExecutionContext(runId)).run.control!;
     const req={runId,actor:String(guide.id),origin:'human' as const,action:'cancel' as const,requestId:'human-guide-stop',expectedEpoch:c.epoch,expectedRevision:c.revision};
     assert.equal((await host.ctx.hima.executionAction(req)).kind,'accepted');
-    await waitUntil('terminal facts reach original Guide',()=>JSON.stringify(guide.session.deriveMessages()).includes('Hima Guide boundary'));
+    await waitUntil('terminal facts reach original Guide',()=>JSON.stringify([...guide.session.deriveMessages(),...guide.inbox.nextTurn,...guide.inbox.nextStep]).includes('Hima durable boundary'));
     await guide.whenIdle();await owner.whenIdle();
-    assert.equal(host.ctx.hima.ledger.run(runId)?.status,'cancelled');
-    assert.equal(host.ctx.hima.ledger.run(runId)?.control?.owner,String(owner.id));
+    assert.ok(JSON.stringify(guide.session.deriveMessages()).includes('Hima durable boundary'), 'native followup is retained in the original Guide transcript');
+    await waitUntil('original Run closes actual resources',async()=>(await host.ctx.hima.readExecutionContext(runId)).run.status==='cancelled');
+    assert.equal((await host.ctx.hima.readExecutionContext(runId)).run.control?.owner,String(owner.id));
     const before=guide.session.deriveMessages().length;
     await host.ctx.hima.executionAction(req);await guide.whenIdle();
     assert.equal(guide.session.deriveMessages().length,before,'repeated control does not repeat the Guide notice');
-    assert.equal(host.ctx.hima.ledger.runs().length,1);
+    assert.equal((await host.ctx.hima.durable.store.runs()).length,1);
   }finally{process.env.HIMA_TEST_SILENT_AGENT='1';await host.dispose();await h.h.dispose();}
 });

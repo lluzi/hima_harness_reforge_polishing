@@ -23,11 +23,12 @@ transition/capacitance/fanout/legality never becomes zero, and a known regressio
 and must prevent an unqualified adoption/signoff claim. A Timing goal can be met while broader
 closure remains unknown or failed. Preserve those facts and the original input identities.
 
-After Reader-verified delivery and release, the Hima Campaign owner (not this native executor)
-completes `finish-engineering` through the existing cited Explore decision: `goal-met` only when
-all required rules of `check-engineering-goal` passed, otherwise an honest `stop` with the retained
-best result and residuals. Do not rerun engineering merely to obtain a prettier ending. The separate
-collateral Judge remains visible and is not rewritten by that narrow Timing decision.
+After Reader-verified delivery and release, the durable flow executes evaluate-timing and deliver.
+The evaluation consumes that committed Reader result and records explicit goalMet from raw setup/hold
+counts and WNS. Delivery preserves best effort, residuals, collateral UNKNOWN and known regressions
+in reports and the engineering package. Do not rerun engineering merely to obtain a prettier ending.
+This replaces the owner-driven finish-engineering Explore in the current Pack; historical endings
+retain their original meaning.
 
 ## Working method
 

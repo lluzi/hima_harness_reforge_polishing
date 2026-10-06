@@ -196,6 +196,8 @@ export interface DelegationRuntimePolicy {
   readonly toolsAllowed: boolean;
   /** Human pause may keep observation tools while freezing mutations. */
   readonly writesAllowed: boolean;
+  /** Explicit current continuation scope for native operation operands; the grant retains lineage. */
+  readonly admittedAuthority?:{readonly owner:string;readonly epoch:number;readonly revision:number};
   readonly reason?: string;
 }
 
@@ -502,7 +504,7 @@ export function delegationTaskPrompt(contract: DelegationContract, effective: Ef
 }
 
 export async function createDelegation(ctx: Context, contract: DelegationContract, authority: DelegationAuthority, signal: AbortSignal,
-  operatorGrant?: OperatorDelegationGrant): Promise<DelegationResult> {
+  operatorGrant?: OperatorDelegationGrant, beforeNative?:()=>Promise<void>): Promise<DelegationResult> {
   try { assertContract(contract); } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { status: 'refused', artifacts: [], unknowns: [], reason };
@@ -545,6 +547,7 @@ export async function createDelegation(ctx: Context, contract: DelegationContrac
   }
   let nativeAccepted: { readonly childId: string; readonly messageId: string };
   try {
+    await beforeNative?.();
     const started = await subagents.startContinuable({
       provider: 'spawn', label, childId: childSessionId,
       request: { parent, prompt: [{ type: 'text', text: delegationTaskPrompt(contract, proposed) }],
@@ -576,7 +579,7 @@ export async function createDelegation(ctx: Context, contract: DelegationContrac
 }
 
 export async function followupDelegation(ctx: Context, request: { readonly parentSessionId: string; readonly childSessionId: string;
-  readonly requestId: string; readonly message: string }, authority: DelegationAuthority, signal: AbortSignal): Promise<DelegationResult> {
+  readonly requestId: string; readonly message: string }, authority: DelegationAuthority, signal: AbortSignal, beforeNative?:()=>Promise<void>): Promise<DelegationResult> {
   if (!idPattern.test(request.requestId) || request.message.trim() === '' || request.message.length > 8_000) return { status: 'refused', artifacts: [], unknowns: [], reason: 'A bounded request id and non-empty follow-up are required.' };
   let native: ReturnType<typeof requireNative>;
   try { native = requireNative(ctx); } catch (error) {
@@ -590,7 +593,7 @@ export async function followupDelegation(ctx: Context, request: { readonly paren
   if (admitted.kind === 'refused') return { status: 'refused', artifacts: [], unknowns: [], reason: admitted.reason };
   if (admitted.kind === 'duplicate') return { status: admitted.uncertain ? 'uncertain' : 'duplicate', receipt: { requestDigest: digest, childSessionId: request.childSessionId, initialMessageId: admitted.messageId }, artifacts: [], unknowns: admitted.uncertain ? ['Prior delivery has no confirmed native inbox receipt.'] : [] };
   let messageId: string;
-  try { messageId = String(await subagents.sendMessage(parent, request.childSessionId, [{ type: 'text', text: request.message }], { signal })); }
+  try { await beforeNative?.(); messageId = String(await subagents.sendMessage(parent, request.childSessionId, [{ type: 'text', text: request.message }], { signal })); }
   catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     try { await authority.recordFollowup({ ...request, requestDigest: digest, reservationId: admitted.reservationId, outcome: 'uncertain', reason }); } catch { /* preserve native failure */ }
@@ -861,6 +864,8 @@ export async function readDelegationResult(ctx: Context, address: { readonly eff
   if (String(log.session.id) !== childSessionId || String(log.session.parentSession) !== effective.parentSessionId
       || !sameWorkspace) return unavailable('The retained native Session lineage or workspace differs from the effective delegation.');
   const lastEnd = log.events.findLast(event => event.type === 'turn/end');
+  const latestStart=log.events.findLast(event=>event.type==='turn/start');
+  if(latestStart && (!lastEnd || latestStart.seq>lastEnd.seq))return unavailable('The latest native child turn is still pending; its prior completed output is not a current candidate.');
   const ended = lastEnd?.data as { turn?: unknown; reason?: { kind?: unknown } } | undefined;
   if (lastEnd && Number.isSafeInteger(ended?.turn) && typeof ended?.reason?.kind === 'string' && ended.reason.kind !== 'completed') {
     // #66 H2b: an ended turn that did not complete (for example `max-tokens` inside its reasoning) holds no result.
@@ -963,4 +968,78 @@ export function registerDelegationGuard(ctx: Context, lookup: DelegationPolicyLo
       return limit === undefined ? config : { ...config, maxTokens: limit };
     });
   return () => { disposeRequest(); disposeGuard(); };
+}
+
+/** PG-backed native children need an uncached policy lookup on each actual tool/request callback. */
+export function registerAsyncDelegationGuard(ctx:Context,lookup:(childSessionId:string)=>Promise<DelegationRuntimePolicy|undefined>):()=>void {
+  const disposeGuard=ctx.on('tools/execute',async (execution,next)=>{
+    if(execution.agent){
+      const childId=String(execution.agent.id),policy=await lookup(childId);
+      const denied=delegationToolDenial(id=>id===childId?policy:undefined,execution);
+      if(denied) throw new Error(denied);
+    }
+    return next();
+  });
+  const disposeRequest=(ctx as unknown as {on(name:'agent/request',listener:(payload:{agent:Agent},next:()=>Promise<{maxTokens?:number}>)=>Promise<{maxTokens?:number}>):()=>void})
+    .on('agent/request',async({agent},next)=>{
+      const config=await next(),policy=await lookup(String(agent.id));
+      if(!policy) return config;
+      if(!policy.writesAllowed) throw new Error(policy.reason??'Native task has no current prompt admission');
+      if(agent.options.provider!==policy.effective.model.provider||agent.options.model!==policy.effective.model.model)throw new Error('Native child model route differs from its frozen grant');
+      const limit=policy.effective.model.maxTokensPerTurn;
+      return limit===undefined?config:{...config,maxTokens:Math.min(config.maxTokens??limit,limit)};
+    });
+  const disposePrompt=(ctx as unknown as {on(name:'system-prompt/assemble',listener:(assembly:{contexts:{name:string;text:string}[]},context:{agent?:Agent},next:()=>Promise<{contexts:{name:string;text:string}[]}>)=>Promise<{contexts:{name:string;text:string}[]}>):()=>void})
+    .on('system-prompt/assemble',async(_assembly,context,next)=>{
+      const assembled=await next();if(!context.agent)return assembled;
+      const policy=await lookup(String(context.agent.id));if(!policy)return assembled;
+      const inventory=assembled.contexts.find(item=>item.name==='hima:inventory');
+      if(inventory)inventory.text=JSON.stringify({role:policy.effective.role,runRef:policy.effective.runRef,inputRefs:policy.effective.inputRefs,grant:policy.effective,admittedAuthority:policy.admittedAuthority,toolsAllowed:policy.toolsAllowed,writesAllowed:policy.writesAllowed,reason:policy.reason,source:'hima-postgresql',note:'Work inside this native child purpose and grant. Use admittedAuthority for operation owner/epoch/revision; grant.runRef retains original lineage. Return sourced candidate results to the recorded recipient.'});
+      return assembled;
+    });
+  return ()=>{disposePrompt();disposeRequest();disposeGuard();};
+}
+
+/** Reconnect a lost message ACK from this original native session, never by sending it again. */
+export async function readNativeMessageReceipt(ctx:Context,sessionId:string,marker:string):Promise<{sessionId:string;messageId:string}|undefined> {
+  const query=ctx.get('sessionQuery' as never) as SessionQuery|undefined;if(!query)return undefined;
+  let log:Awaited<ReturnType<SessionQuery['readSession']>>;try{log=await query.readSession(sessionId);}catch{return undefined;}
+  if(String(log.session.id)!==sessionId)throw new Error('Native message session identity changed');
+  function messageId(value:unknown):string|undefined {
+    if(!value||typeof value!=='object'||Array.isArray(value))return undefined;
+    const message=value as {id?:unknown;role?:unknown;content?:unknown};
+    if(message.role!=='user'||typeof message.id!=='string'||!Array.isArray(message.content))return undefined;
+    return message.content.some(block=>block&&typeof block==='object'&&(block as {type?:string;text?:string}).type==='text'&&(block as {text:string}).text.endsWith(marker))?message.id:undefined;
+  }
+  for(const event of log.events){
+    let found:string|undefined;
+    if(event.type==='user/message')found=messageId(event.data);
+    if(event.type==='agent/inbox/spliced'&&(event.data as {outcome?:string})?.outcome!=='canceled'){
+      const inserted=(event.data as {inserted?:unknown})?.inserted;
+      if(Array.isArray(inserted))for(const message of inserted){found=messageId(message);if(found)break;}
+    }
+    if(found)return {sessionId,messageId:found};
+  }
+  return undefined;
+}
+
+/** Each actual accepted inbox message must have been consumed by a completed persisted turn.
+ * A live idle agent is insufficient proof, including the gap before a queued turn starts. */
+export async function nativeMessagesCompletedThrough(ctx:Context,sessionId:string,messageIds:readonly string[],throughSeq:number):Promise<boolean> {
+  const query=ctx.get('sessionQuery' as never) as SessionQuery|undefined;if(!query)return false;
+  let log:Awaited<ReturnType<SessionQuery['readSession']>>;try{log=await query.readSession(sessionId);}catch{return false;}
+  if(String(log.session.id)!==sessionId)throw new Error('Native completion proof names another session');
+  let turn:number|undefined;
+  const consumed=new Map<string,number>(),completed=new Set<number>();
+  for(const event of log.events){
+    if(event.seq>throughSeq){
+      if(event.type==='turn/start'||event.type==='user/message'||event.type==='agent/inbox/spliced'&&(event.data as {outcome?:string})?.outcome!=='canceled')return false;
+      continue;
+    }
+    const data=event.data as {turn?:number;reason?:{kind?:string};id?:string;role?:string}|undefined;
+    if(event.type==='turn/start' && Number.isSafeInteger(data?.turn))turn=data!.turn;
+    if(event.type==='user/message'&&data?.role==='user'&&typeof data.id==='string'&&turn!==undefined)consumed.set(data.id,turn);
+    if(event.type==='turn/end'&&Number.isSafeInteger(data?.turn)&&data?.reason?.kind==='completed')completed.add(data!.turn!);
+  }
+  return messageIds.every(id=>{const turn=consumed.get(id);return turn!==undefined&&completed.has(turn);});
 }

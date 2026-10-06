@@ -19,10 +19,10 @@ import { observe, type ObserveResult } from './observe.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
 import { loadSite } from './sites.js';
-import { checkInstalledPack, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
-import { releasePack } from './release.js';
+import { checkInstalledPackFromRuntime, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
+import { releasePackFromRuntime } from './release.js';
 import type { PackDataOrigin } from './ledger.js';
-import { campaignIdIssue, prepareWorkspace, type PrepareResult } from './workspace.js';
+import { campaignIdIssue, prepareWorkspace, type PrepareResult, type WorkspaceFilesResult } from './workspace.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName } from './run-arguments.js';
@@ -230,8 +230,13 @@ export const packCheckStage = (result: PackCheckResult): PackStage =>
   (result.kind === 'checked' ? result.check.stage : result.stage);
 
 /** One preparation as a person reads it: what was prepared or found, where, and what it holds. */
-export function describePrepare(result: PrepareResult): string {
+export function describePrepare(result: PrepareResult | WorkspaceFilesResult): string {
   if (result.kind === 'unfit') return describePackCheck(result.check);
+  if (!('run' in result)) {
+    if (result.kind === 'refused') return `refused to prepare ${result.path}: ${result.reason}`;
+    if (result.kind === 'occupied') return `cannot prepare ${result.workspace}: ${result.reason}`;
+    return `${result.kind === 'prepared' ? 'prepared' : 'already prepared'} ${result.file.workspace} for campaign ${result.file.campaign}`;
+  }
   if (result.kind === 'refused') {
     const { record } = result;
     return `refused to prepare ${record.path} on ${record.siteId}: ${record.reason}; recorded as ${record.id} in ${result.run.id}`;
@@ -444,6 +449,7 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
  */
 function describeCancel(deps: FabricDeps, result: CancelResult): string {
   const runId = result.run.id;
+  if (result.kind === 'stopping') return `run ${runId}: ${result.reason}`;
   if (result.kind === 'not-started') {
     return `run ${runId} has no fabric state: HimaFabric never started it, so there is nothing to cancel`;
   }
@@ -456,7 +462,7 @@ function describeCancel(deps: FabricDeps, result: CancelResult): string {
   // Said of the moment the request was read, not of the Run for all time: a cancel that crossed a
   // launch it could not see is answered here while the loop that made that launch is still stopping
   // the Job, and this sentence has to be as true a minute later as it was when it was composed.
-  const stopped = result.stopped
+  const stopped = ('engine' in result.run && result.run.engine === 'dbos/5.2.11') ? 'original owned resources have confirmed closure' : result.stopped
     ? `stopped its job "${result.stopped.job.name}" in tmux session ${result.stopped.job.session}, recorded as ${result.stopped.id}`
     : 'no job of this run was open when the request was read';
   return [`cancelled run ${runId}: ${stopped}`, describeRun(deps, result.run)].join('\n');
@@ -578,10 +584,9 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
   const [sub = '', ...rest] = rawInput.trim().split(/\s+/).filter(Boolean);
   if (sub === '' || sub === 'version') return { kind: 'success', text: versionLine() };
   if (!legacyAutomaticAllowed()) {
+    if (sub === 'observe' || sub === 'job' && rest[0] === 'launch') return { kind: 'error', text: 'New execution uses a declared DBOS Task. Choose a Pack and start a Campaign; standalone legacy observe/job launch cannot create a Run.' };
     const namedRun = ['status', 'resume', 'cancel', 'judge'].includes(sub) ? rest[0]
-      : sub === 'observe' ? flagValue(rest.slice(2), '--run')
-      : sub === 'job' ? rest[0] === 'launch' ? flagValue(rest.slice(1, rest.indexOf('--') < 0 ? undefined : rest.indexOf('--')), '--run') : rest[1]
-      : undefined;
+      : sub === 'job' ? rest[1] : undefined;
     if (namedRun) {
       try { await assertRunProject(deps, String(agent.id), agent.session.header.cwd, namedRun); }
       catch { return { kind: 'error', text: 'This Run is not linked to the current project.' }; }
@@ -664,7 +669,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSession
   let result: StartRunResult;
   try {
     result = await startRun(deps, {
-      ownerSessionId: legacyAutomaticAllowed() ? undefined : ownerSessionId,
+      ownerSessionId,
       pack,
       site,
       goal: goal.params,
@@ -700,6 +705,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSession
   if (result.kind === 'unprepared') {
     return { kind: 'error', text: [describePrepare(result.prepared), describeRun(deps, result.run)].join('\n') };
   }
+  if (result.kind === 'preparing') return { kind: 'success', text: `Run ${result.run.id} is preparing ${result.workspace}. Work continues automatically; inspect the Run for current progress.` };
   const text = describeRun(deps, result.run);
   // A Run that reached a final state is a success, whichever one: `ended-goal-not-met` is a real
   // result, so is a spent time box, and so is a Run a person cancelled from another face while this
@@ -774,7 +780,7 @@ async function handleCancel(deps: FabricDeps, rest: readonly string[]): Promise<
     if (deps.ledger.run(runId)?.control) return { kind: 'error', text: 'use hima_context then hima_execute cancel with current owner epoch and revision' };
     const result = await cancelRun(deps, runId);
     const text = describeCancel(deps, result);
-    return { kind: result.kind === 'cancelled' || result.kind === 'ended' ? 'success' : 'error', text };
+    return { kind: result.kind === 'cancelled' || result.kind === 'ended' || result.kind === 'stopping' ? 'success' : 'error', text };
   } catch (err) {
     // A run the caller got wrong is theirs to fix and nothing was written; every other fault
     // propagates as it always has.
@@ -807,7 +813,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[], projectSess
   if (verb === 'release') {
     if (flags.length > 0) return wrong;
     try {
-      const released = releasePack(deps, { pack });
+      const released = await releasePackFromRuntime(deps, { pack });
       if (released.kind === 'refused') return { kind: 'error', text: released.reason };
       const { sealed } = released;
       return {
@@ -834,7 +840,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[], projectSess
   }
   try {
     if (verb === 'check') {
-      const result = checkInstalledPack(deps, { pack, site });
+      const result = await checkInstalledPackFromRuntime(deps, { pack, site });
       return { kind: packCheckFit(result) ? 'success' : 'error', text: describePackCheckResult(result) };
     }
     const result = await prepareWorkspace(deps, { pack, site, campaign, projectSessionId });

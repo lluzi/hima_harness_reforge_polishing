@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "runId",
+        "taskId",
+        "effectId",
+        "name",
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "engineering": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "outcome",
+        "summary",
+        "stopReason"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-request-input": {
+      "type": "object",
+      "properties": {
+        "ANALYSIS_REQUEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ANALYSIS_LIBRARY": {
+          "type": "string",
+          "minLength": 1
+        },
+        "FACTS_CORPUS": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ENGINEERING_CAPABILITIES": {
+          "type": "string",
+          "minLength": 1
+        },
+        "LICENCE_MODE_FILE": {
+          "type": "string",
+          "minLength": 1
+        },
+        "SOURCE_READ_ROOTS": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ANALYSIS_REQUEST",
+        "ANALYSIS_LIBRARY",
+        "FACTS_CORPUS",
+        "ENGINEERING_CAPABILITIES",
+        "LICENCE_MODE_FILE",
+        "SOURCE_READ_ROOTS"
+      ],
+      "additionalProperties": false
+    },
+    "prepare-request-output": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^req-[0-9]{14}-[a-z0-9]{6}$"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "preparedPath": {
+          "type": "string",
+          "const": "state/prepared-request.json"
+        },
+        "preparedSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "liberty",
+                  "facts"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "path",
+              "kind",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "buildsOn": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}@[1-9][0-9]{0,8}$"
+          }
+        },
+        "libraryAnalyses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "requestId",
+        "question",
+        "preparedPath",
+        "preparedSha256",
+        "sources",
+        "buildsOn",
+        "libraryAnalyses",
+        "goal"
+      ],
+      "additionalProperties": false
+    },
+    "custom-analysis-input": {
+      "type": "object",
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "REQUEST_ID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "QUESTION": {
+          "type": "string",
+          "minLength": 1
+        },
+        "PREPARED_REQUEST": {
+          "type": "string",
+          "minLength": 1
+        },
+        "PREPARED_SHA256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "goal",
+        "REQUEST_ID",
+        "QUESTION",
+        "PREPARED_REQUEST",
+        "PREPARED_SHA256"
+      ],
+      "additionalProperties": false
+    },
+    "custom-analysis-output": {
+      "type": "object",
+      "properties": {
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "contentSha256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "unit": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "unknownReason": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "mode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "unit",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "contentSha256",
+              "values"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "engineering": {
+          "$ref": "#/$defs/engineering"
+        }
+      },
+      "required": [
+        "observations",
+        "engineering"
+      ],
+      "additionalProperties": false
+    },
+    "admit-analysis-input": {
+      "type": "object",
+      "properties": {
+        "READER_VALUE": {
+          "$ref": "#/$defs/custom-analysis-output"
+        },
+        "DOMAIN_REPORT": {
+          "$ref": "#/$defs/artifactRef"
+        },
+        "PREPARED": {
+          "$ref": "#/$defs/prepare-request-output"
+        },
+        "ANALYSIS_LIBRARY": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "READER_VALUE",
+        "DOMAIN_REPORT",
+        "PREPARED",
+        "ANALYSIS_LIBRARY"
+      ],
+      "additionalProperties": false
+    },
+    "admit-analysis-output": {
+      "type": "object",
+      "properties": {
+        "admitted": {
+          "type": "boolean"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stopReason": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainReport": {
+          "$ref": "#/$defs/artifactRef"
+        },
+        "readerObservation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "string",
+          "const": "hima-libinsight-admission/1"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resultSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "codeSha256s": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "required": [
+        "admitted",
+        "requestId",
+        "outcome",
+        "stopReason",
+        "summary",
+        "domainReport",
+        "readerObservation",
+        "id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "deliver-input": {
+      "type": "object",
+      "properties": {
+        "ADMISSION": {
+          "$ref": "#/$defs/admit-analysis-output"
+        },
+        "PREPARED": {
+          "$ref": "#/$defs/prepare-request-output"
+        },
+        "TARGET_ADMITTED": {
+          "type": "number",
+          "const": 1
+        }
+      },
+      "required": [
+        "ADMISSION",
+        "PREPARED",
+        "TARGET_ADMITTED"
+      ],
+      "additionalProperties": false
+    },
+    "deliver-output": {
+      "type": "object",
+      "properties": {
+        "goalMet": {
+          "type": "boolean"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "admitted": {
+          "type": "boolean"
+        },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "plots": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "datasets": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "summary",
+            "plots",
+            "datasets"
+          ],
+          "additionalProperties": false
+        },
+        "libraryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainReport": {
+          "$ref": "#/$defs/artifactRef"
+        },
+        "reportPath": {
+          "type": "string",
+          "const": "delivery/REPORT.md"
+        },
+        "resultPath": {
+          "type": "string",
+          "const": "delivery/analysis-result.json"
+        }
+      },
+      "required": [
+        "goalMet",
+        "requestId",
+        "question",
+        "admitted",
+        "analysis",
+        "libraryPath",
+        "reason",
+        "outcome",
+        "domainReport",
+        "reportPath",
+        "resultPath"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

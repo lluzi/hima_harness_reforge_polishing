@@ -62,6 +62,7 @@ import {
   readSemanticsFile,
   semanticValue,
   validateReading,
+  freezeFlowFragment,
 } from '@hima/harness';
 
 test('installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it', async (t) => {
@@ -995,7 +996,7 @@ test('every skeleton in the pack anatomy reference is a file this harness accept
   try {
     const blocks = fencedBlocksByHeading(await readFile(path.join(himaSkillsDir(), 'knowledge', HIMA_PACK_ANATOMY_FILE), 'utf8'));
     const contract = theBlock(blocks, '`contract.yml`', 'yaml');
-    const graph = theBlock(blocks, '`graph.yml`', 'yaml');
+    const graph = theBlock(blocks, 'Legacy `graph.yml`', 'yaml');
     const semantics = theBlock(blocks, '`semantics.yml`', 'yaml');
     const rule = theBlock(blocks, '`rules/<id>.yml`', 'yaml');
     const chooser = theBlock(blocks, '`choosers/<id>.yml`', 'yaml');
@@ -1012,7 +1013,7 @@ test('every skeleton in the pack anatomy reference is a file this harness accept
     const chooserId = (parse(chooser) as { id: string }).id;
     const readerDeclaration = parse(reader) as { id: string; file: string; emits: string[] };
     const knowledgeFile = (parse(contract) as { knowledge: { file: string }[] }).knowledge[0]!.file;
-    const toolFile = (parse(contract) as { tools: { file: string }[] }).tools[0]!.file;
+    const toolFiles = (parse(contract) as { tools: { file: string }[] }).tools.map(tool => tool.file);
 
     const dir = path.join(packsDirOf(h), id);
     await mkdir(dir, { recursive: true });
@@ -1024,12 +1025,26 @@ test('every skeleton in the pack anatomy reference is a file this harness accept
       [`choosers/${chooserId}.yml`, chooser],
       [`readers/${readerDeclaration.id}.yml`, reader],
       [readerDeclaration.file, readerScript],
-      [toolFile, '#!/bin/sh\n# The tool the contract declares, holding the command line it declares.\nexit 0\n'],
+      ...toolFiles.map(file => [file, '#!/bin/sh\n# Shape-only fixture: actual command execution is qualified separately.\nexit 0\n'] as const),
       [`knowledge/${knowledgeFile}`, knowledge],
     ] as const) {
       await mkdir(path.dirname(path.join(dir, at)), { recursive: true });
       await writeFile(path.join(dir, at), body);
     }
+
+    // Validate the new source and its documented detour through the same loader/compiler too.
+    const versioned = parse(theBlock(blocks, '`graph.yml`', 'yaml'));
+    await mkdir(path.join(dir, 'schemas'), { recursive: true });
+    await writeFile(path.join(dir, 'schemas/measurement.json'), theBlock(blocks, 'Local schema files', 'json'));
+    await writeFile(path.join(dir, packFiles.graph), JSON.stringify(versioned));
+    const strict = loadPack(packsDirOf(h), id);
+    assert.equal(strict.flow?.source, 'flow');
+    const slot = parse(theBlock(blocks, 'Diagnostic extension slot', 'yaml'));
+    await writeFile(path.join(dir, packFiles.graph), JSON.stringify({ ...versioned, ...slot }));
+    const extensible = loadPack(packsDirOf(h), id);
+    const fragment = parse(theBlock(blocks, 'Diagnostic fragment value', 'yaml'));
+    assert.equal(freezeFlowFragment(extensible.flow!, 'diagnostic', fragment).returnTo, 'deliver');
+    await writeFile(path.join(dir, packFiles.graph), graph);
 
     // A Site that binds what this contract asks for and declares the seats its one tool holds. The
     // pack is the thing under test; a Site is what any customer's would be.

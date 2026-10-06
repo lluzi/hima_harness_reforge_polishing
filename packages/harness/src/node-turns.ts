@@ -96,6 +96,9 @@ import { libraryQualificationObservationRefusal } from './adapters/library-quali
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and
  *  re-exported from `fabric.ts` so a caller finds it beside `startRun`. */
 export interface FabricDeps {
+  /** Single Host-owned local execution authority for every new Run. */
+  readonly durable?: import('./durable-runtime.js').DurableRuntime;
+  readonly durableModelSelection?: { readonly provider: string; readonly model: string };
   /** Original native project identity; a Site name does not establish a project. */
   readonly projectOfRun?: (runId: string) => Promise<string | undefined>;
   readonly beforeSlotClaim?: JobDeps['beforeSlotClaim'];

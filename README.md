@@ -20,7 +20,11 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 
 2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；四项已完成验收：完整 local 377/377、安装态作者只读终检11/11通过，原始失败与适用边界见 [验收记录](docs/assessment/2026-09-12/pls-next/README.md)。该历史批次当时完成12/26个PLS，当时依赖前沿为 PLS-23、PLS-24、PLS-10、PLS-14。
 
-开始 Campaign 会准备一个持久 Run 并绑定当前可见的 Campaign Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。用户可以在同一产品中新开 Side Talk 继续普通对话或 Coding，切换会话不改变 Campaign owner；显式 handoff 才转移执行。暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。
+当前 DBOS 迁移候选用冻结的 Task 输入、输出和声明式组合推进新 Run。业务执行继续复用
+Site/Channel、工具、模型任务和驻场工程；DBOS 负责持久执行与恢复，应用数据库保存权限、
+结果和交接事实，Ledger 保留历史投影。暂停、取消和消息先持久记录，再由实际 effect 核对。
+旧活动 Run 不热迁移；本地安装、退出、备份与恢复边界见[本地运行说明](docs/operations/local-runtime.md)。
+本轮已生成 [Mac 普通试用发布候选](docs/assessment/dbos-atcs-migration/mac-trial-release.md)与 ATCS 0.4 方法封板。真实 ATCS 已完成业务与交付，Timing 仍有 Setup 残余；最终用户签收待取得。历史发布不代表本轮资格。
 
 ## 本地准备
 
@@ -53,6 +57,16 @@ HIMA_USER_DATA="$PWD/.hima-tmp/pls20-dev/electron" \
 DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
+
+Data Insight 默认内嵌 LibInsight 自有页面（[ADR-0019](docs/adr/0019-data-insight-frames-the-libinsight-app.md)）。源码运行时用环境变量指向 LibInsight checkout 和数据文件夹（含 `app.json`；也可在 Data Insight 的 “Data folder…” 中选择，Host 会记住）；需要本机 Python ≥ 3.9 与 numpy：
+
+```sh
+HIMA_LIBINSIGHT_ROOT=/Users/lluzi/code/lib_insight \
+HIMA_LIBINSIGHT_DATA=/Users/lluzi/code/lib_insight/data \
+pnpm run desktop
+```
+
+打包的 App 只携带 `packages/desktop/libinsight.pin.json` 固定 commit 的 `app/` 与 `libinsight/`：打包时加 `--libinsight-source /Users/lluzi/code/lib_insight`。LibInsight 升级后，把 pin 的 `commit` 改为新的完整 SHA、提交并重新打包即可。
 
 Ledger 版本为 26；旧版本 home 仍会被明确拒绝，不会自动改写。完整离线版本 19～25 的 `storages/hima_ledger.json` 快照可显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
 

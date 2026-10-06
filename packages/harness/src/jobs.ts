@@ -9,13 +9,13 @@
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { channelFor, mustRun, quote, type Channel } from './channel.js';
-import { loadSite } from './sites.js';
+import { loadSite, type Site } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
 import { currentRecordsIn } from './ledger.js';
 import type { InteractiveRecord as LedgerInteractiveRecord, JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
-import { endJobProcessGroup, openInteractiveJob, parseInteractiveRecord, startInteractiveJob, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
+import { endJobProcessGroup, jobProcessGroupAlive, openInteractiveJob, parseInteractiveRecord, startInteractiveJob, type InteractiveCloseGrace, type InteractiveAuthority, type InteractiveOpenResult, type InteractiveRecord as ProtocolRecord } from './interactive-job.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -289,12 +289,12 @@ const exitFileExists = (on: Channel, job: JobIdentity): Promise<boolean> =>
  */
 async function launchInSession(
   on: Channel,
-  req: { readonly runId: string; readonly workspace: string; readonly argv: readonly string[]; readonly name: string; readonly beforeLaunch?: (job: Omit<JobIdentity, 'pid'>) => Promise<void> },
+  req: { readonly runId: string; readonly workspace: string; readonly argv: readonly string[]; readonly name: string; readonly retainedJob?: Omit<JobIdentity, 'pid'>; readonly beforeLaunch?: (job: Omit<JobIdentity, 'pid'>) => Promise<void> },
 ): Promise<JobIdentity> {
   const { workspace, name } = req;
   // The session is chosen first because the log and the exit file are named after it: this launch's
   // output and this launch's exit status, belonging to no other attempt at the same Job.
-  let session = '';
+  let session = req.retainedJob?.session ?? '';
   for (let attempt = 0; attempt < 20 && session === ''; attempt += 1) {
     const candidate = candidateSession(req.runId, name);
     // Ticket #18: the one caller for which a socket that is not there is an answer, and the answer is
@@ -305,8 +305,8 @@ async function launchInSession(
     if ((await sessionProbe(on, candidate)).answer !== 'there') session = candidate;
   }
   if (session === '') throw new Error(`no free tmux session name for job "${name}" of ${req.runId} on this site`);
-  const wire = wrapperScript(req.argv, logPath({ workspace, session }), exitPath({ workspace, session }));
-  const startedAt = new Date().toISOString();
+  const wire = req.retainedJob?.wire ?? wrapperScript(req.argv, logPath({ workspace, session }), exitPath({ workspace, session }));
+  const startedAt = req.retainedJob?.startedAt ?? new Date().toISOString();
   const intent = { session, workspace, name, startedAt, wire };
   // Durable identity must exist before the only command that can create this Job. A failed append
   // leaves no session; a lost launch response can later be reconciled by this exact identity.
@@ -327,6 +327,44 @@ async function launchInSession(
     throw new Error(`tmux launched job "${name}" as session ${session} but reported "${printed.trim()}" as its pane pid, not a process id`);
   }
   return { ...intent, pid };
+}
+
+/** Process leaves shared by historical Ledger Jobs and DBOS effects. The caller owns durable
+ * identity/admission/capacity; this layer continues to own Permit, Channel and actual processes. */
+export function prepareRetainedJob(runId:string,workspace:string,argv:readonly string[],name:string,session:string,startedAt:string):Omit<JobIdentity,'pid'> {
+  if(!/^hima-[A-Za-z0-9_-]+$/.test(session)) throw new Error('Retained Job needs a stable tmux-safe session');
+  return {session,workspace,name:tmuxSafe(name),startedAt,wire:retainedWrapperScript(argv,workspace,session)};
+}
+const retainedPidPath=(job:Pick<JobIdentity,'workspace'|'session'>)=>p.join(job.workspace,`${job.session}.pid`);
+function retainedWrapperScript(argv:readonly string[],workspace:string,session:string):string {
+  return `printf '%s\\n' "$$" > ${quote(retainedPidPath({workspace,session}))}; ${wrapperScript(argv,logPath({workspace,session}),exitPath({workspace,session}))}`;
+}
+export async function launchRetainedJob(site:Site,runId:string,argv:readonly string[],job:Omit<JobIdentity,'pid'>,beforeSubmit:()=>Promise<void>):Promise<JobIdentity> {
+  const on=channelFor(site);
+  const decision=await decideLaunch(site,job.workspace,argv,on);
+  if(!decision.ok) throw new Error(`Site Permit refused retained Job: ${decision.reason}`);
+  if(decision.workspace!==job.workspace || job.wire!==retainedWrapperScript(argv,job.workspace,job.session)) throw new Error('Retained Job command/workspace identity changed');
+  return launchInSession(on,{runId,workspace:job.workspace,argv,name:job.name,retainedJob:job,beforeLaunch:beforeSubmit});
+}
+export const retainedJobState=(site:Site,job:JobIdentity)=>jobState(channelFor(site),job);
+export const retainedJobTail=(site:Site,job:JobIdentity,lines=40)=>tailLog(channelFor(site),job,lines);
+export const stopRetainedJob=(site:Site,job:JobIdentity,grace?:InteractiveCloseGrace)=>killSession(channelFor(site),job,grace);
+export async function reconnectRetainedJob(site:Site,job:JobIdentity):Promise<JobIdentity> {
+  if(job.pid!==undefined) return job;
+  const on=channelFor(site);
+  if(await on.absent(retainedPidPath(job))) return job;
+  const pid=Number((await mustRun(on,['cat','--',retainedPidPath(job)],'read original retained Job process identity')).trim());
+  if(!Number.isSafeInteger(pid) || pid<=0) throw new Error('Original Job PID receipt is malformed');
+  return {...job,pid};
+}
+export async function retainedJobResourcesClosed(site:Site,job:JobIdentity):Promise<boolean> {
+  const on=channelFor(site);
+  // A valid exit file is a completion receipt, but the tmux pane/process group may still exist.
+  const probe=await sessionProbe(on,job.session);
+  if(probe.answer==='there') return false;
+  if(probe.answer==='no-socket' && !(await finishedState(on,job))) throw new SiteUnreadableError(site.name,'Job closure is unknown: tmux socket and exit receipt are absent');
+  const retained=await reconnectRetainedJob(site,job);
+  return retained.pid!==undefined && !await jobProcessGroupAlive(on,retained.pid);
 }
 
 /**

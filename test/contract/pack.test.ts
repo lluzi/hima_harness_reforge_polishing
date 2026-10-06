@@ -74,6 +74,11 @@ test('the shipped pack is a folder of plain files whose graph is act, act, judge
     edges: { from: string; to: string; outcome?: string; revisit?: true }[];
   };
   assert.equal(graph.entry, 'synthesize');
+  const compiled = loadPack(shippedPacksDir, timingProbePackId).flow!;
+  assert.equal(compiled.source, 'legacy');
+  assert.equal(compiled.packSha256, packDigestOf(dir));
+  assert.equal(compiled.tasks.synthesize!.tool, 'synth');
+  assert.ok(Object.isFrozen(compiled.tasks.synthesize));
   assert.deepEqual(
     graph.nodes.map((n) => [n.id, n.kind]),
     [['synthesize', 'act'], ['read-qor', 'act'], ['judge', 'judge'], ['next-period', 'explore'], ['blocked', 'wait']],
@@ -221,10 +226,10 @@ ontology:
     assert.equal(preview.contract.tools[0]?.recommendedVersion, 'S-2024.03');
     assert.deepEqual(preview.contract.ontology.aliases, { target_period_ns: ['clock target', 'timing target'] });
 
-    await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 0.3.0`]]);
+    await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 9.0.0`]]);
     const tooNew = checkPack(loadPack(packsDir, 'metadata-too-new'), site);
     assert.equal(tooNew.fit, false);
-    assert.match(tooNew.errors.join('\n'), new RegExp(`requires HimaHarness 0\\.3\\.0 or later, but this Harness is ${harnessVersion.replace(/\./g, '\\.')}`));
+    assert.match(tooNew.errors.join('\n'), new RegExp(`requires HimaHarness 9\\.0\\.0 or later, but this Harness is ${harnessVersion.replace(/\./g, '\\.')}`));
   } finally {
     await dispose();
   }
@@ -1549,6 +1554,33 @@ test('a folder the pipeline has only grilled is checked as the stage it is, not 
     await dispose();
   }
 });
+
+test('the normal Host reports a no-knob method as specified before contract and graph authoring', async (t) => {
+  const local = await localPackHome(t);
+  if (!local) return;
+  const { h, host, dispose } = local;
+  try {
+    const id = 'single-task-probe', dir = path.join(packsDirOf(h), id);
+    await mkdir(dir, { recursive: true });
+    await writePackFiles(dir, {
+      'INTENT.md': recordHolding(HIMA_INTENT_SECTIONS, 'Measure the declared design once and retain its result.'),
+      'SPEC.md': recordHolding(HIMA_SPEC_SECTIONS, 'One task returns a measurement. No Strategy knobs or Explore are needed.'),
+    });
+    assert.equal(existsSync(path.join(dir, 'contract.yml')), false);
+    assert.equal(existsSync(path.join(dir, 'graph.yml')), false);
+    assert.equal(packStageOf(packsDirOf(h), id)?.stage, 'specified');
+    const checked = await himaCommand(host, h.workspace, `/hima pack check ${id} --site local`);
+    assert.equal(checked.kind, 'error', checked.text);
+    assert.equal(checked.text, [
+      `pack ${id} on site local: unfit — not compiled`,
+      'stage: specified (INTENT.md, SPEC.md validate); next: compiled — contract.yml, graph.yml and FABRIC.md, written by /hima-fabric',
+    ].join('\n'));
+    assert.doesNotMatch(checked.text, /strategy.*declares no knob|unknown pack/);
+  } finally {
+    await dispose();
+  }
+});
+
 
 test('a record holding a heading that is not one of its sections does not validate, and the check names the first deviation', async (t) => {
   const local = await localPackHome(t);

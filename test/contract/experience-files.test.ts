@@ -8,7 +8,7 @@ import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, sayAsUser } from './support/boot-inprocess.ts';
 import { localHome } from './support/fabric.ts';
 import { bootHimaHost } from './support/boot-host.ts';
-import { api, openSession } from './support/hima-api.ts';
+import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
 import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
@@ -641,6 +641,146 @@ test('concurrent delivery calls publish one directory and one completion record'
   } finally { await f.close(); await f.h.dispose(); }
 });
 
+test('archive publication survives reordered persisted material keys and retains exact identity checks', async () => {
+  const f = await fixture();
+  let packDir = '';
+  try {
+    packDir = (await installPack(f.h)).dir;
+    const run = await f.deps.ledger.createRun({ campaignId: 'material-key-order', siteId: 'local', status: 'cancelled', packId: timingProbePackId });
+    // JSONB may reorder object keys without changing values or material-array order.
+    // Project only real records created by the writer through that persistence boundary.
+    let variant: 'equal' | 'source' | 'hash' | 'size' | 'membership' | 'order' | 'field' = 'equal';
+    const ledger = new Proxy(f.deps.ledger, { get(target, property) {
+      if (property !== 'records') { const value = Reflect.get(target, property, target); return typeof value === 'function' ? value.bind(target) : value; }
+      return (...args: Parameters<typeof target.records>) => target.records(...args).map(record => {
+        if (record.type !== 'archive' || record.delivery === 'failed') return record;
+        const materials = record.materials.map(material => Object.fromEntries(Object.entries(material).reverse()));
+        if (variant === 'source') materials[0]!.source = 'another-source';
+        if (variant === 'hash') materials[0]!.sha256 = 'a'.repeat(64);
+        if (variant === 'size') materials[0]!.bytes = Number(materials[0]!.bytes) + 1;
+        if (variant === 'membership') materials.pop();
+        if (variant === 'order') materials.reverse();
+        if (variant === 'field') materials[0]!.extra = true;
+        return { ...record, materials };
+      });
+    } });
+    const deps = { ...f.deps, ledger };
+    await chmod(packDir, 0o555);
+    assert.equal((await writeRunAssets(deps, run.id)).kind, 'failed');
+    await chmod(packDir, 0o755);
+    const published = await writeRunAssets(deps, run.id);
+    assert.equal(published.kind, 'written', published.kind === 'failed' ? published.why : JSON.stringify(published));
+    assert.equal((await writeRunAssets(deps, run.id)).kind, 'already');
+    assert.equal((await readRunAssets(deps, run.id)).kind, 'read');
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).filter(record => record.type === 'archive' && record.delivery === 'pending').length, 1);
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).filter(record => record.type === 'archive' && record.delivery === 'complete').length, 1);
+    for (const changed of ['source', 'hash', 'size', 'membership', 'order', 'field'] as const) {
+      variant = changed;
+      assert.equal((await readRunAssets(deps, run.id)).kind, 'unreadable', `persisted ${changed} differs from the published identity`);
+      assert.equal((await writeRunAssets(deps, run.id)).kind, 'failed', `different ${changed} cannot reuse a completed publication`);
+    }
+    variant = 'equal';
+    assert.equal((await readRunAssets(deps, run.id)).kind, 'read');
+  } finally {
+    if (packDir !== '') await chmod(packDir, 0o755).catch(() => undefined);
+    await f.close(); await f.h.dispose();
+  }
+});
+
+test('recovery reserves the original published manifest bytes across parsed revision key order', async () => {
+  const f = await fixture();
+  try {
+    await installPack(f.h);
+    const run = await f.deps.ledger.createRun({ campaignId: 'published-manifest-key-order', siteId: 'local', status: 'cancelled', packId: timingProbePackId });
+    await f.deps.ledger.appendWorkspace(run.id, { event: 'prepared', campaignId: run.campaignId, packId: timingProbePackId, packVersion: '2',
+      workspace: f.h.workspace, flowRoot: '/declared/flow', design: 'declared-design', containerName: 'declared-container', copied: [], preparedAt: run.createdAt });
+    const { runView } = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+    let interruptCompletion = true;
+    const ledger = new Proxy(f.deps.ledger, { get(target, property) {
+      if (property === 'appendArchive') return (...args: Parameters<typeof target.appendArchive>) => {
+        if (interruptCompletion && args[1].delivery === 'complete') throw new Error('fixture interrupted after publication');
+        return target.appendArchive(...args);
+      };
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const deps = { ...f.deps, ledger, deliveryRevision: 0, deliveryWrittenAt: run.createdAt,
+      sourceView: async () => runView(f.deps.ledger, f.deps.ledger.run(run.id)!) };
+    await writeExperience(deps, run.id);
+    const pending = f.deps.ledger.records({ runId: run.id, type: 'archive' }).find(record => record.type === 'archive' && record.delivery === 'pending');
+    assert.ok(pending?.type === 'archive');
+    const original = await readFile(path.join(pending.directory, 'manifest.json'));
+    assert.equal(createHash('sha256').update(original).digest('hex'), pending.manifestSha256);
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).filter(record => record.type === 'archive' && record.delivery === 'complete').length, 0);
+    interruptCompletion = false;
+    const recovered = await writeRunAssets(deps, run.id);
+    assert.equal(recovered.kind, 'already', recovered.kind === 'failed' ? recovered.why : JSON.stringify(recovered));
+    assert.deepEqual(await readFile(path.join(pending.directory, 'manifest.json')), original, 'recovery preserves exact published bytes');
+    assert.equal((await readRunAssets(deps, run.id)).kind, 'read');
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).filter(record => record.type === 'archive' && record.delivery === 'pending').length, 1);
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).filter(record => record.type === 'archive' && record.delivery === 'complete').length, 1);
+  } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('generated publication recovery holds frozen report bytes time and complete sources without a Site record', async () => {
+  const f = await fixture();
+  try {
+    await installPack(f.h);
+    const run = await f.deps.ledger.createRun({campaignId:'generated-source-recovery',siteId:'local',status:'cancelled',packId:timingProbePackId});
+    const {runView} = await import(new URL('../../packages/harness/lib/remote.js',import.meta.url).href),view=runView(f.deps.ledger,run);
+    let interrupted=true;
+    const ledger=new Proxy(f.deps.ledger,{get(target,key){if(key==='appendArchive')return (...args:Parameters<typeof target.appendArchive>)=>{if(interrupted&&args[1].delivery==='complete')throw new Error('after publication');return target.appendArchive(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const deps={...f.deps,ledger,sourceView:async()=>view,deliveryWrittenAt:'2026-09-01T12:00:00.000Z'};
+    assert.equal((await writeRunAssets(deps,run.id)).kind,'failed');
+    assert.equal(f.deps.ledger.records({runId:run.id,type:'experience'}).length,0);
+    const pending=f.deps.ledger.records({runId:run.id,type:'archive'}).find(record=>record.type==='archive'&&record.delivery==='pending');assert.ok(pending?.type==='archive');
+    const manifestPath=path.join(pending.directory,'manifest.json'),original=await readFile(manifestPath,'utf8'),manifest=JSON.parse(original);
+    const mdPath=path.join(pending.directory,'experience.md'),markdown=await readFile(mdPath);
+    interrupted=false;
+    for(const variant of ['source','time','missing','extra','bytes']) {
+      const changed=JSON.parse(original);
+      if(variant==='source')changed.materials[0].source='generated:wrong';
+      if(variant==='time')changed.createdAt=run.createdAt;
+      if(variant==='missing')changed.materials.pop();
+      if(variant==='extra'){changed.materials.push({...changed.materials[0],path:'extra.md'});await writeFile(path.join(pending.directory,'extra.md'),markdown);}
+      if(variant==='bytes'){const forged='self-consistent forged report';await writeFile(mdPath,forged);changed.materials[0].sha256=hash(forged);changed.materials[0].bytes=Buffer.byteLength(forged);}
+      await writeFile(manifestPath,JSON.stringify(changed,null,2)+'\n');assert.equal((await writeRunAssets(deps,run.id)).kind,'failed',variant);
+      assert.equal(f.deps.ledger.records({runId:run.id,type:'archive'}).some(record=>record.type==='archive'&&record.delivery==='complete'),false,variant);
+      await writeFile(mdPath,markdown);
+    }
+    await writeFile(manifestPath,original);assert.equal((await writeRunAssets(deps,run.id)).kind,'already');
+    assert.equal(await readFile(manifestPath,'utf8'),original);assert.equal(manifest.createdAt,deps.deliveryWrittenAt);
+    assert.equal(f.deps.ledger.records({runId:run.id,type:'experience'}).length,0,'recovery never fabricates a Site report record');
+  } finally {await f.close();await f.h.dispose();}
+});
+
+test('offline report request verifies unrelated binary materials once and still refuses changed bytes', async () => {
+  const f = await fixture();
+  const { default: fs } = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const originalOpen = fs.promises.open;
+  try {
+    await installPack(f.h);
+    const run = await f.deps.ledger.createRun({ campaignId: 'offline-report-scan', siteId: 'local', status: 'cancelled', packId: timingProbePackId });
+    await f.deps.ledger.appendWorkspace(run.id, { event: 'prepared', campaignId: run.campaignId, packId: timingProbePackId, packVersion: '2',
+      workspace: f.h.workspace, flowRoot: '/declared/flow', design: 'declared-design', containerName: 'declared-container', copied: [], preparedAt: run.createdAt });
+    const { runView } = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+    const deps = { ...f.deps, sourceView: async () => runView(f.deps.ledger, run),
+      taskAssets: async () => [{ path: 'materials/unrelated-binary.dat', source: 'task-artifact:fixture:binary', recordId: 'fixture-source', bytes: Buffer.from([0,255,128,10]) }] };
+    assert.equal((await writeExperience(deps, run.id)).kind, 'written');
+    const archive = await readRunAssets(deps, run.id);assert.equal(archive.kind, 'read');if(archive.kind !== 'read')throw new Error(JSON.stringify(archive));
+    const report = f.deps.ledger.records({runId:run.id,type:'experience'}).find(record=>record.type==='experience');assert.ok(report?.type==='experience');
+    await rm(report.markdown.path);await rm(report.json.path);
+    const binary = path.join(archive.directory,'materials/unrelated-binary.dat');let reads = 0;
+    fs.promises.open = (async (...args: Parameters<typeof originalOpen>) => {if(String(args[0])===binary)reads++;return originalOpen(...args);}) as typeof originalOpen;syncBuiltinESMExports();
+    assert.equal((await readExperience(deps,run.id)).kind,'read');assert.equal(reads,1,'one report request traverses the unrelated binary once');
+    assert.equal((await readExperience(deps,run.id)).kind,'read');assert.equal(reads,2,'each request verifies again without a cache');
+    await writeFile(binary,Buffer.from([1,255,128,10]));assert.notEqual((await readArchivedMaterial(deps,run.id,'experience.md')).kind,'read','standalone material read verifies all archive members');
+    await writeFile(binary,Buffer.from([0,255,128,10]));
+    await writeFile(path.join(archive.directory,'experience.md'),'changed report');assert.notEqual((await readExperience(deps,run.id)).kind,'read','changed report bytes remain refused');
+  } finally {fs.promises.open=originalOpen;syncBuiltinESMExports();await f.close();await f.h.dispose();}
+});
+
 test('restart completes an exact reserved directory published before the prior Host could append completion', async () => {
   const f = await fixture();
   let packDir = '';
@@ -763,6 +903,8 @@ test('a listed optional material must be verified unless its absence is explicit
 test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host', async () => {
   const f = await fixture();
   try {
+    const projectSession = await createRootAgent(f.host.ctx, f.h.workspace);
+    await f.deps.ledger.advanceRun(f.run.id, { control: { mode: 'agent', owner: String(projectSession.id), epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
     const writtenAt = '2026-09-01T12:00:00.000Z';
     const old: ExperienceJson = { schema: 'hima-experience/1', runId: f.run.id, campaignId: f.run.campaignId,
       pack: { id: 'recorded-method', version: 'historical' }, site: 'local', ending: { status: 'cancelled', reason: 'original wording' },
@@ -796,7 +938,9 @@ test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write
     await f.close();
     const next = await bootHimaHost(f.h);
     try {
-      const response = await api(next, await openSession(next), `/hima/api/runs/${f.run.id}/experience`);
+      const cookie = await openSession(next);
+      const sessionId = await createLiveSession(next, cookie, f.h.workspace);
+      const response = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience?sessionId=${encodeURIComponent(sessionId)}`);
       assert.equal(response.status, 200);
       const read = await response.json() as ExperienceAnswer;
       assert.equal(read.markdown, markdown); assert.deepEqual(read.report, old);
@@ -807,9 +951,11 @@ test('schema 1 saved bytes and hashes survive a new renderer, repeat read, write
   } finally { await f.close(); await f.h.dispose(); }
 });
 
-test('failure between the two report writes leaves no record; the next Host completes and verifies both files', async () => {
+test('an incomplete historical report stays unavailable across Host restart and preserves its partial bytes', async () => {
   const f = await fixture();
   try {
+    const projectSession = await createRootAgent(f.host.ctx, f.h.workspace);
+    await f.deps.ledger.advanceRun(f.run.id, { control: { mode: 'agent', owner: String(projectSession.id), epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
     await f.deps.ledger.appendWorkspace(f.run.id, { event: 'prepared', campaignId: f.run.campaignId, packId: 'recorded-method', packVersion: 'fixture',
       workspace: f.h.workspace, flowRoot: '/declared/flow', design: 'declared-design', containerName: 'declared-container', copied: [], preparedAt: f.run.createdAt });
     const dir = path.join(f.h.workspace, EXPERIENCE_DIR);
@@ -817,7 +963,10 @@ test('failure between the two report writes leaves no record; the next Host comp
     const jsonPath = path.join(dir, `${f.run.id}.json`);
     await mkdir(jsonPath); // tee can write Markdown, then refuses the directory occupying JSON.
     await assert.rejects(() => writeExperience(f.deps, f.run.id), /tee|write/);
-    assert.ok((await readFile(path.join(dir, `${f.run.id}.md`), 'utf8')).startsWith('# Campaign'));
+    const mdPath = path.join(dir, `${f.run.id}.md`);
+    const partial = await readFile(mdPath);
+    const partialSha256 = createHash('sha256').update(partial).digest('hex');
+    assert.ok(partial.toString('utf8').startsWith('# Campaign'));
     assert.equal(f.deps.ledger.records({ runId: f.run.id, type: 'experience' }).length, 0);
     assert.equal((await readExperience(f.deps, f.run.id)).kind, 'none');
     await rm(jsonPath, { recursive: true });
@@ -825,22 +974,28 @@ test('failure between the two report writes leaves no record; the next Host comp
     const next = await bootHimaHost(f.h);
     try {
       const cookie = await openSession(next);
-      let result: Response | undefined;
-      for (let i = 0; i < 50; i++) {
-        result = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience`);
-        if (result.status === 200) break;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      assert.equal(result?.status, 200);
-      const read = await result!.json() as ExperienceAnswer;
-      assert.equal(read.report.schema, 'hima-experience/4');
-      if (read.report.schema !== 'hima-experience/4') throw new Error('newly recovered report uses schema 4');
-      assert.equal(read.report.research.environment.declaredDesign, 'declared-design');
-      assert.equal(read.report.research.environment.toolVersions, 'not recorded');
-      assert.equal(hash(read.markdown), read.experience.markdown.sha256);
-      assert.equal(hash(await readFile(jsonPath, 'utf8')), read.experience.json.sha256);
-      const records = await api(next, cookie, `/hima/api/runs/${f.run.id}/records?type=experience`);
-      assert.equal((await records.json() as { records: unknown[] }).records.length, 1);
+      const sessionId = await createLiveSession(next, cookie, f.h.workspace);
+      const scoped = `sessionId=${encodeURIComponent(sessionId)}`;
+      const detail = await api(next, cookie, `/hima/api/runs/${f.run.id}?${scoped}`);
+      assert.equal(detail.status, 200, await detail.clone().text());
+      const view = await detail.json() as RunView;
+      assert.equal(view.run.id, f.run.id);
+      assert.equal(view.run.status, 'cancelled', 'restart preserves the ended historical Run');
+      assert.equal(view.experience, undefined);
+      const result = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience?${scoped}`);
+      assert.equal(result.status, 404, await result.clone().text());
+      const unavailable = await result.json() as { error: { code: string; message: string } };
+      assert.equal(unavailable.error.code, 'hima/record-not-found', 'the existing Run has no complete report, rather than an unknown Run or foreign project');
+      assert.match(unavailable.error.message, /both report files have not been recorded as written/);
+      const records = await api(next, cookie, `/hima/api/runs/${f.run.id}/records?${scoped}`);
+      assert.equal(records.status, 200, await records.clone().text());
+      const history = (await records.json() as { records: { type: string; delivery?: string }[] }).records;
+      assert.equal(history.filter(record => record.type === 'experience').length, 0);
+      assert.equal(history.filter(record => record.type === 'archive' && record.delivery === 'complete').length, 0);
+      await assert.rejects(() => stat(jsonPath), { code: 'ENOENT' }, 'restart does not generate missing legacy JSON');
+      const retained = await readFile(mdPath);
+      assert.deepEqual(retained, partial, 'the original partial Markdown bytes stay untouched');
+      assert.equal(createHash('sha256').update(retained).digest('hex'), partialSha256);
     } finally { assert.equal(await next.stop(), 0, next.stderr()); }
   } finally { await f.close(); await f.h.dispose(); }
 });
@@ -901,4 +1056,13 @@ test('Host candidate refresh and restart retain disabled identity, reject anothe
     const latest=await host.ctx.hima.experienceCandidates(reopenedId,current.run.id) as Listed;
     assert.equal(latest.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,readopted.id);
   }finally{await host.dispose();await home.h.dispose();}
+});
+
+test('legacy startup skips an unpublished archive reservation without reports or Site IO',async()=>{
+ const f=await fixture();
+ try{const pack=await installPack(f.h),run=await f.deps.ledger.createRun({campaignId:'unpublished-reservation',siteId:'missing-site',status:'cancelled',packId:timingProbePackId}),directory=path.join(pack.dir,'run-assets',run.id);
+ await f.deps.ledger.appendArchive(run.id,{delivery:'pending',directory,manifestSha256:'a'.repeat(64),materials:[]});
+ await f.close();const next=await bootInProcess(f.h);
+ try{await next.ctx.hima.reconciled;const records=next.ctx.hima.ledger.records({runId:run.id});assert.equal(records.filter(record=>record.type==='archive'&&record.delivery==='complete').length,0);assert.equal(records.filter(record=>record.type==='experience').length,0);assert.equal(next.ctx.hima.ledger.run(run.id)?.status,'cancelled');await assert.rejects(stat(directory),{code:'ENOENT'});}finally{await next.dispose();}
+ }finally{await f.close();await f.h.dispose();}
 });

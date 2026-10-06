@@ -1,0 +1,32 @@
+{
+  "observedAt": "2026-10-05T02:34:47.721Z",
+  "scope": "ONE read-only complete retained signed manifest identity and file digest verification; no App, Run, model, EDA or artifact mutation",
+  "sourceSha": "e7a777e70b67372b3b39074b5f17f2f49d785e91",
+  "sourceFileSha256": "1b69e6ef531b02ee3d890d81f4a9911cf0c2ee412ee17a91923eb2f44f9637e6",
+  "originalSiteAndPermitBytesUnchanged": true,
+  "transportOnlyOverride": {
+    "controlPersistSeconds": 1,
+    "reason": "separate bounded control socket expires after observation; no shared master cleanup"
+  },
+  "controlPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-ssh-ffabea80d8b1ae15",
+  "artifactCount": 218,
+  "manifestSha256": "4a4f3d2275e3c3af2742479322a359fc249fd65b285ddc61e93b6464e97b4b30",
+  "candidateSha256": "eefe7601586245f804c07a69c0d8fbc1b216de87a9e3b15a73b96cb67366fa00",
+  "elapsedSeconds": 13.612059458,
+  "remoteCommandCount": 658,
+  "counts": {
+    "test": 1,
+    "realpath": 438,
+    "cat": 1,
+    "sha256sum": 218
+  },
+  "auditLoss": false,
+  "verdict": "PASS",
+  "productModelCalls": 0,
+  "edaJobs": 0,
+  "limits": [
+    "one observation, not p95",
+    "not a new full Campaign or modified frozen App qualification",
+    "original 289.276s scan used earlier rejected-format manifest with the same218-file topology; not a controlled benchmark"
+  ]
+}

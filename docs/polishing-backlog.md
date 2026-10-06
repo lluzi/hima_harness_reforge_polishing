@@ -1,5 +1,35 @@
 # HimaHarness 下一阶段总体任务清单
 
+## 当前执行前沿：本地 DBOS 迁移（2026-10-03）
+
+2026-10-05 用户收窄本轮交付：优先重点业务在 Mac App 正常运行，Linux 版延后；旧语料不整体阻塞本轮交付，相关真实可靠性/资产缺口继续处理。最新边界见实施计划顶部调整。
+
+U10 已于 2026-10-05 依用户决定关闭：在最新 DBOS 版 App（trial.36，修复僵尸进程组收束 `fcd019ff`）上完成英文与中文对话的真实 ATCS 演示录制，见[演示记录](product-demo/dbos-atcs/README.md)。Timing Goal 仍为 not met，collateral 仍为 UNKNOWN；原独立真实 ATCS 与 Mac11 资格保持原身份。
+
+用户已授权[完整实施计划](plans/2026-10-03-0701-refactor-dbos-fabric-atcs-migration-plan.md)，
+责任决定见 [ADR-0018](adr/0018-dbos-owns-durable-execution.md)。这一前沿优先于下文历史规划
+的“无新数据库”与 owner/autopilot 机械推进描述；Guide、业务 owner、Site、Job、权限、
+总预算与历史保留的约束继续成立。旧清单与证据不因迁移变为当前实现或测试结论。
+
+| 单元 | 交付范围 | 依赖 |
+| --- | --- | --- |
+| U1 / [#84](https://github.com/lluzi/hima_harness_reforge_polishing/issues/84) | 任务输入/输出、binding、Runtime 身份、六个投影状态及责任文档 | 无；合同冻结不代表迁移验收 |
+| U2 / [#85](https://github.com/lluzi/hima_harness_reforge_polishing/issues/85) | App 私有本地 PostgreSQL 与 Host 生命周期 | U1 |
+| U3 / [#86](https://github.com/lluzi/hima_harness_reforge_polishing/issues/86) | DBOS 与事务业务事实、历史投影 | U1、U2 |
+| U4 / [#87](https://github.com/lluzi/hima_harness_reforge_polishing/issues/87) | 工具/模型/驻场工程的同身份执行与交接 | U3 |
+| U5 / [#88](https://github.com/lluzi/hima_harness_reforge_polishing/issues/88) | Pack 编译、冻结 IR 与作者入口 | U1 |
+| U6 / [#89](https://github.com/lluzi/hima_harness_reforge_polishing/issues/89) | 组合执行、控制及恢复 | U3、U4、U5 |
+| U7 / [#90](https://github.com/lluzi/hima_harness_reforge_polishing/issues/90) | App、Guide、执行视图与退出共用事实 | U6 |
+| U8 / [#91](https://github.com/lluzi/hima_harness_reforge_polishing/issues/91) | 当前 ATCS 完整 dry 路径 | U5、U6、U7 |
+| U9 / [#92](https://github.com/lluzi/hima_harness_reforge_polishing/issues/92) | 历史切换、备份及 Mac 原生交付（本轮 Linux 要求移除） | U2、U3、U7、U8 |
+| U10 / [#93](https://github.com/lluzi/hima_harness_reforge_polishing/issues/93) | 冻结新版 App 的实际 ATCS 验收 | U4、U6、U8、U9 |
+
+按单元记录通过、失败、跳过和未运行；新 Run 统一走 DBOS、旧 Run 可读而不热转换。
+任务完成、迁移、产品路径、Timing Goal 和采用范围分别取得证据。真实 GUI/模型/EDA
+及用户最终签收不能由 U1 合同或已有工程成果接回资格代替。
+
+## 历史总体规划（2026-09-23）
+
 更新：2026-09-23，第二次归并。源码基线：`bfa59f0f9b81b23bb4727419eaf2c2753e29a400`。
 
 本轮增加用户提出的两项要求：**提示词与上下文表达更符合人的直觉；Session/Campaign 的 memory 能支撑长时间任务。** 它们与 Guide、上下文、恢复、研究经验存在重叠，因此先合并职责，再具体化可并行的工作，不增加新的架构层。

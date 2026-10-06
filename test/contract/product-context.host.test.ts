@@ -44,8 +44,10 @@ test('the shared product context stays role-neutral and sends bounded children t
   assert.match(HIMA_PRODUCT_CONTEXT, /current role, task, inputs, tools, budget and recipient/i);
   assert.match(HIMA_PRODUCT_CONTEXT, /Do not search product source code/i);
   assert.match(HIMA_PRODUCT_CONTEXT, /Guide serves the person.*Campaign owner coordinates.*bounded child performs/i);
-  assert.match(HIMA_PRODUCT_CONTEXT, /Start one execution only once/i);
-  assert.match(HIMA_PRODUCT_CONTEXT, /status reply is one current snapshot.*yield instead of busy-polling/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /workflow starts the Site executor.*collects its contract-checked delivery.*closes its resources automatically/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Campaign owner may use hima_execute engineering message.*business steering.*hima_context to inspect current facts/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /never repeat an effect whose outcome is uncertain/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /status reply is one snapshot.*yield instead of busy-polling/i);
   assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /You are HimaGuide/i);
   assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /Fmax (?:improved|increased)|ready to run/i);
 });

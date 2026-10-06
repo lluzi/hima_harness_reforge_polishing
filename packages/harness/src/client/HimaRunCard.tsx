@@ -20,7 +20,7 @@ import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationV
 import type { BlockerView, CancelView, Citation, CodeView, DecisionView, ExperienceView, KnowledgeView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
-import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
+import { taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 import { HIMA_STYLE } from './workbench-style.js';
@@ -86,17 +86,20 @@ function Section({ title, region, state, children }: { title: string; region?: s
  */
 function StatusBanner({ view }: { view: RunView }): ReactElement {
   const { run } = view;
-  const status = run.status === undefined ? undefined : labelled(runStatusLabel, run.status);
+  const status = runStatusSaid(run);
   const lines = bannerLines(view.run);
   return (
     <div className="hima-run-card-section" data-hima-region="run-status" {...(run.status === undefined ? {} : { 'data-hima-state-status': run.status })}>
       <div>
         {status === undefined
           ? <span className="hima-muted">{NO_FABRIC_STATE}</span>
-          : <span className="hima-state-word" data-state={run.status}>{status.said}</span>}
+          : <span className="hima-state-word" data-state={run.goalState ?? run.status}>{status.said}</span>}
         {run.packId === undefined ? null : <span className="hima-muted hima-mono"> · {run.packId}</span>}
         {runPurposeMark(run.purpose) === undefined ? null : <span className="hima-muted" data-hima-state-purpose={run.purpose}> · {runPurposeMark(run.purpose)}</span>}
       </div>
+      {run.control?.stop?.status === 'requested' ? <div>Stop request received</div> : null}
+      {run.stopState === undefined ? null : <div data-hima-region="run-stop-state">Stop: {run.stopState.state}{run.stopState.unclosedResources ? ` · unclosed resources: ${run.stopState.unclosedResources}` : ''}{run.stopState.effectsWithoutStopProof ? ` · effects without stop proof: ${run.stopState.effectsWithoutStopProof}` : ''}</div>}
+      {run.historyPendingFacts ? <details className="hima-muted" data-hima-region="history-projection"><summary>History sync pending · {run.historyPendingFacts} records</summary>Current task and control facts remain available while history catches up.</details> : null}
       {[lines.goal, lines.strategy, lines.generation].filter((l): l is string => l !== undefined).map((line) => <div key={line} className="hima-muted">{line}</div>)}
     </div>
   );
@@ -400,13 +403,81 @@ export function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: 
   );
 }
 
+/** Reuse the archive asset route and preview shape with the durable artifact's recorded identity. */
+function TaskArtifactMaterial({ artifact, runId }: { artifact: import('../task-contract.js').TaskArtifact; runId: string }): ReactElement {
+  const viewer = useViewerSession();
+  const [reading, setReading] = useState<{ loading?: boolean; error?: string; asset?: import('./api.js').ArchiveAnswer['asset'] }>({});
+  const request = useRef<AbortController>();
+  useEffect(() => {
+    request.current?.abort(); setReading({});
+    return () => request.current?.abort();
+  }, [runId, viewer, artifact.effectId, artifact.name, artifact.sha256]);
+  const selection = { effect: artifact.effectId, artifact: artifact.name };
+  const open = () => {
+    request.current?.abort(); const own = new AbortController(); request.current = own;
+    setReading({ loading: true });
+    void fetchArchive(runId, undefined, own.signal, viewer, selection).then(result => {
+      if (own.signal.aborted || request.current !== own) return;
+      setReading(result.ok ? { asset: result.value.asset } : { error: result.error.message });
+    });
+  };
+  const asset = reading.asset;
+  return <div data-hima-region="task-artifact">
+    <button type="button" className="hima-button hima-run-card-archive-row" data-hima-control={`task-artifact-${artifact.effectId}-${artifact.name}`} onClick={open} disabled={reading.loading} title={artifact.sha256}>{artifact.name} · {artifact.path}</button>
+    <p className="hima-muted">SHA256 {artifact.sha256}</p>
+    {reading.loading ? <p>Reading and checking recorded content hash…</p> : null}
+    {reading.error ? <p role="alert" className="hima-run-card-error">{reading.error}</p> : null}
+    {asset ? <div data-hima-region="task-artifact-content">
+      <a className="hima-button" data-hima-control="task-artifact-download" href={engineeringAssetDownloadUrl(runId, selection, viewer)} download={asset.ref.path.split('/').at(-1)}>Download verified file</a>
+      {asset.text === undefined ? <p className="hima-muted">Binary file · {asset.ref.bytes} bytes. Download to use it in the engineering tool.</p> : asset.ref.path.endsWith('.md') ? reportBlocks(asset.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre className="hima-logtail">{asset.text}</pre>}
+      {asset.truncated ? <p className="hima-muted">Preview shows the first 1 MiB; the download contains the complete verified file.</p> : null}
+    </div> : null}
+  </div>;
+}
+
+/** Business values are editable only for a recorded wait; protocol identity comes from the Host. */
+export function TaskDetails({ task, view, acting }: { task: import('../remote.js').DurableTaskView; view: RunView; acting?: Acting }): ReactElement {
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string>();
+  const output=task.result??task.retainedResult;
+  const state = task.projection.state;
+  const reason = 'reason' in task.projection ? task.projection.reason : undefined;
+  const respond = () => {
+    if (!task.identity || !task.contract || !acting) return;
+    try {
+      const value: import('../task-contract.js').JsonValue = JSON.parse(draft);
+      setError(undefined);
+      acting.act('respond', task.taskId, { effectId: task.identity.effectId, output: { schemaVersion: task.contract.output.version, value, artifacts: [], diagnostics: [] } });
+    } catch { setError('Enter a valid JSON value matching the recorded output contract.'); }
+  };
+  return <div className="hima-block" data-hima-region="durable-task" data-hima-state-task={task.taskId} data-hima-state-task-status={state}>
+    <p><strong>{task.taskId}</strong>{task.rootFlow===false?' · extension task':''}{task.iterations?.length?` · iteration ${task.iterations.map(step=>step.iteration+1).join('.')}`:''} · {state}{task.current === undefined ? '' : task.current ? ' · current revision' : ' · superseded revision'}</p>
+    {reason ? <p>{reason.message} <span className="hima-muted">({reason.code})</span></p> : null}
+    {task.input === undefined ? null : <details><summary>Input</summary><pre className="hima-logtail">{JSON.stringify(task.input, null, 2)}</pre></details>}
+    {output===undefined?null:<details><summary>{task.result?'Output':'Contract-checked output · handoff pending'}</summary><pre className="hima-logtail">{JSON.stringify(output.value,null,2)}</pre></details>}
+    {task.contract === undefined ? null : <details><summary>Input / output contract</summary><pre className="hima-logtail">{JSON.stringify(task.contract, null, 2)}</pre></details>}
+    {(output?.artifacts ?? []).map(artifact => <TaskArtifactMaterial key={`${artifact.effectId}:${artifact.name}`} artifact={artifact} runId={view.run.id} />)}
+    <details><summary>Recorded identity and sources</summary><pre className="hima-logtail">{JSON.stringify({ identity: task.identity, sourceFactIds: task.sourceFactIds }, null, 2)}</pre></details>
+    {(task.tool==='builtin/human-wait'||reason?.code==='human-response') && task.identity && task.contract && acting?.sessionId ? <div>
+      <label>Response JSON value<textarea className="hima-input" data-hima-control={`task-response-${task.identity.effectId}`} value={draft} readOnly={task.current===false||output!==undefined||!runCanControl(view.run)} onChange={event => setDraft(event.target.value)} /></label>
+      <button type="button" className="hima-button" data-hima-control={`task-respond-${task.identity.effectId}`} disabled={!taskCanRespond(task,view.run)||acting.inFlight !== undefined || draft.trim() === ''} onClick={respond}>Send response</button>
+      {error ? <p role="alert">{error}</p> : null}
+    </div> : null}
+  </div>;
+}
+
+export function TaskSection({ view, acting }: { view: RunView; acting?: Acting }): ReactElement | null {
+  if (!view.tasks?.length) return null;
+  return <Section title="Tasks" region="run-tasks">{view.tasks.map(task => <TaskDetails key={task.identity?.effectId ?? `${view.run.id}:${task.taskId}`} task={task} view={view} acting={acting} />)}</Section>;
+}
+
 /** What the card's controls need: which one is in flight, why the last one was refused, and how to act. */
 export interface Acting {
-  readonly inFlight?: 'cancel' | 'resume' | 'pause' | 'continue';
+  readonly inFlight?: 'cancel' | 'resume' | 'pause' | 'continue' | 'respond';
   readonly sessionId?: string;
   readonly refusal?: HimaFailure;
   readonly notice?: string;
-  act(action: 'cancel' | 'resume' | 'pause' | 'continue', nodeId?: string): void;
+  act(action: 'cancel' | 'resume' | 'pause' | 'continue' | 'respond', nodeId?: string, response?: { readonly effectId: string; readonly output: import('../task-contract.js').TaskToolOutput }): void;
 }
 
 /** One action owner for both presentations. Cancel may supersede a long-running Resume reply. */
@@ -421,11 +492,11 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
       const active = pending.current;
       if (active !== undefined && active.runId === runId) { active.controller.abort(); pending.current = undefined; }
     };
-  }, [runId]);
+  }, [runId, sessionId]);
   return {
     ...(state.runId === runId ? state : {}),
     sessionId,
-    act: (kind, nodeId) => {
+    act: (kind, nodeId, response) => {
       if (runId === undefined) return;
       const prior = pending.current;
       if (prior && !(prior.kind === 'resume' && kind === 'cancel')) return;
@@ -434,14 +505,15 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
       pending.current = own; setState({ runId, inFlight: kind });
       const current = latest.current;
       const action: Promise<HimaResult<{ readonly view: RunView; readonly notice?: string }>> = current.view?.run.control
-        ? current.sessionId ? controlRun(current.view, current.sessionId, kind === 'resume' ? 'continue' : kind, nodeId, own.controller.signal)
+        ? current.sessionId ? controlRun(current.view, current.sessionId, kind === 'resume' ? 'continue' : kind, nodeId, own.controller.signal, response)
           .then((result) => result.ok ? { ok: true as const, value: { view: result.value.run, notice: result.value.notification.message } } : result)
           : Promise.resolve({ ok: false as const, error: { code: 'hima/not-authorized' as const, message: 'Open the owning conversation in Live Run to control this Run.' } })
-        : kind === 'pause' || kind === 'continue' ? Promise.resolve({ ok: false as const, error: { code: 'hima/run-not-in-state' as const, message: 'This historical Run requires explicit ownership migration.' } })
+        : kind === 'pause' || kind === 'continue' || kind === 'respond' ? Promise.resolve({ ok: false as const, error: { code: 'hima/run-not-in-state' as const, message: 'This historical Run requires explicit ownership migration.' } })
           : actOnRun(runId, kind, own.controller.signal, sessionId).then((result) => result.ok ? { ok: true as const, value: { view: result.value } } : result);
       void action.then((result) => {
-        if (own.controller.signal.aborted || pending.current !== own || latest.current.runId !== runId) return;
+        if (own.controller.signal.aborted || pending.current !== own || latest.current.runId !== runId || latest.current.sessionId !== current.sessionId) return;
         pending.current = undefined;
+        if (result.ok && latest.current.view && runSnapshotOlder(result.value.view, latest.current.view)) { setState({ runId }); return; }
         setState(result.ok ? { runId, ...(result.value.notice === undefined ? {} : { notice: result.value.notice }) } : { runId, refusal: result.error });
         if (result.ok) {
           latest.current.onChanged(result.value.view, kind, nodeId);
@@ -465,17 +537,17 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
   if (control) {
     const owner = control.owner === acting.sessionId;
     const humanGuide = control.guideSessionId === acting.sessionId;
-    const active = view.run.status === 'running' || view.run.status === 'waiting';
+    const active = runCanControl(view.run);
     return <div className="hima-run-card-control-row" data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
       {showDiagnostics ? <span className="hima-muted">Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
-      <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : 'New work requires this conversation’s explicit Agent action.'}</span>
+      <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : view.run.engine === 'dbos/5.2.11' ? 'Verified output advances automatically. The Campaign Agent handles business decisions.' : 'New work requires this conversation’s explicit Agent action.'}</span>
       <div className="hima-run-card-control-buttons">
         {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
         {active && owner && view.run.currentNode ? <button type='button' className="hima-button" data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
         {active && (owner || humanGuide) ? control.paused.map((scope) => <button key={scope} type='button' className="hima-button" data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
-        {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
+        {runCanControl(view.run, 'cancel') && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
       </div>
-      {!owner ? <span className="hima-muted">{humanGuide ? 'Guide remains available. Your controls are delivered to this task; its execution conversation remains the owner.' : 'Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.'}</span> : null}
+      {!owner ? <span className="hima-muted">{humanGuide ? 'Guide remains available. Your controls are delivered to this task; its execution conversation remains the owner.' : 'Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or discuss business decisions.'}</span> : null}
       {acting.notice ? <span role='status' data-hima-region='control-notification'>{acting.notice}</span> : null}
       {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
         {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span className="hima-mono">{execution.id}</span>
@@ -485,7 +557,7 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
   }
   const shown: ('cancel' | 'resume')[] = [
     ...(showsCancel(view.run.status) ? ['cancel' as const] : []),
-    ...(showsResume(view.run.status) ? ['resume' as const] : []),
+    ...(runCanControl(view.run) && showsResume(view.run.status) ? ['resume' as const] : []),
   ];
   return (
     <div className="hima-run-card-control-buttons">
@@ -848,6 +920,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
     <>
       <StatusBanner view={view} />
       <MetersSection view={view} />
+      <TaskSection view={view} acting={acting} />
       <RunControls view={view} acting={acting} />
       {view.generations.length === 0
         ? null
@@ -944,7 +1017,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
   const identity = JSON.stringify([sessionId, runId]);
   const [stored, setStored] = useState<{ identity: string; view?: RunView; error?: HimaFailure }>({ identity });
   const state: { view?: RunView; error?: HimaFailure } = stored.identity === identity ? stored : {};
-  const setState = (next: { view?: RunView; error?: HimaFailure }) => setStored({ identity, ...next });
+  const setState = (next: { view?: RunView; error?: HimaFailure }) => setStored(previous => previous.identity === identity && previous.view && next.view && runSnapshotOlder(next.view, previous.view) ? previous : { identity, ...next });
   const acting = useRunActions(runId, (view) => setState({ view }), sessionId, state.view);
 
   useEffect(() => {
@@ -983,7 +1056,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
     );
   }
   const status = state.view?.run.status;
-  const statusWord = status === undefined ? NO_FABRIC_STATE : labelled(runStatusLabel, status).said;
+  const statusWord = state.view === undefined ? NO_FABRIC_STATE : runStatusSaid(state.view.run)?.said ?? NO_FABRIC_STATE;
   const notice = acting.refusal?.message ?? acting.notice ?? 'Nothing further to report for this run.';
   return (
     <div className="hima-run-card hima-root" title={runId}>
@@ -995,7 +1068,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
             <div className="hima-run-card-receipt-line">
               <span className="hima-mono">{toolName ?? 'hima'}</span>
               <span className="hima-muted">·</span>
-              <span className="hima-state-word" data-state={status ?? ''}>{statusWord}</span>
+              <span className="hima-state-word" data-state={state.view.run.goalState ?? status ?? ''}>{statusWord}</span>
               {state.view.run.currentNode === undefined ? null : <><span className="hima-muted">·</span><span className="hima-mono">{state.view.run.currentNode}</span></>}
             </div>
             <div className="hima-run-card-receipt-notice">{notice}</div>

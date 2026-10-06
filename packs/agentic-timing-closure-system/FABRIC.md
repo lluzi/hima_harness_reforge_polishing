@@ -1,45 +1,41 @@
-# ATCS 0.3 Fabric record
+# ATCS 0.4 Fabric record
 
 ## Files written
 
-contract.yml and graph.yml declare retained native input, common R1 and a single fix-timing task.
-flow/atcs_cli.py prepares/verifies native context and uses initial AutoFix to establish the actual
-engineering starting state. Native AutoFix remains available as a repair tactic. The serial
-reference generator is retained only as a historical/external evaluation helper; it is absent from
-production graph/tools/outsourcing inputs. The benchmark comparator lives in flow/tests and is not
-copied into the Campaign flow. No reference file or superiority verdict is a product prerequisite.
-readers/atcs-engineering-result.yml, tools/read-atcs.py, semantics.yml and the
-engineering rules validate delivery, narrow Timing Goal and separate broader-check facts. resident-timing-playbook.md supplies the
-complete engineering and delivery method. legacy/0.2.10 preserves the prior method records.
+The Pack upgrades the existing resident method to five business Tasks in one `hima-flow/1` sequence.
+It requires Harness 0.3.0. Runtime owns durable task execution, recovery, lifecycle and artifact
+ownership. The Pack owns timing business values, schemas, evaluation and engineering package.
+Historical records and active legacy methods are not converted.
 
-All lifecycle authority stays in existing Fabric execution, Site Job, Channel, Ledger and Reader
-paths. fix-timing is an ordinary act node. The owning Campaign Agent begins it and uses hima_execute
-engineering operations. Work and engineering are mutually exclusive for that execution.
+`contract.yml`, `graph.yml` and `schemas/tasks.json` declare explicit Run/Goal/strategy/committed-output
+and artifactRef bindings. `flow/atcs_cli.py` routes program ABI commands to
+`atcs/business_tasks.py`, which aggregates unchanged binding/readiness/baseline/native/common-R1
+helpers and writes each actual intermediate with `core.write_artifact`. Native auth, EDA algorithms
+and task-scoped engineering wrapper stay in their existing responsibilities.
 
-The owner finishes at the existing finish-engineering Explore node after narrow Timing and broader
-collateral checks have been recorded separately. Goal-met still requires all actual required Judge
-verdicts; an honest stop is available for best effort. No new Runtime component or verdict rewrite.
+The existing resident adapter invokes the existing Pack Reader once. evaluate-timing consumes its
+committed observations and explicit domain-report reference. It emits raw timing and broader
+remaining/regression/UNKNOWN separately. deliver verifies retained digests and produces actual
+Markdown/JSON reports plus a tar package containing selected checkpoint/support files, scripts,
+ECO, raw reports, native trace and reproduction instructions. Workspace package production does
+not itself prove the Host's final archive integration; that seam is tested by the root integration.
 
 ## Gaps
 
-Every Site must publish verified same-design nativeTimingContext, source reports, constraints,
-manifest digest and producer identity. Missing or placeholder data blocks that Site. Issue83 retained
-0.3.1 field evidence establishes native Timing improvement on its own inputs; it does not establish
-physical signoff, a perfect original journey, or a new 0.3.3 engineering experiment. The responsibility correction and explicit ending changes are verified at Reader/Host seams without repeating expensive repair.
 
-Local deterministic tests do not prove real model research quality, real XTop effectiveness, final
-physical signoff or superiority over AutoFix on the production design.
+The private Python checks reuse admitted Reader/native fixtures and the existing native Tcl
+stand-in. Preparation executes emitted common-R1 Tcl and materializes native reports and saved
+checkpoint instead of prewriting baseline/common state. The stand-in retains negative timing and
+save/reopen behavior; it proves wiring, not commercial XTop effectiveness. Program tests cover
+Goal true with broader UNKNOWN, honest best effort, raw regression with empty model lists,
+changed report/checkpoint refusal, CLI ABI and usable final package contents. Existing Reader tests
+retain forged timing/hash/identity/scenario/script/checkpoint counterexamples. See TEST.md.
+
+Public Host complete dry route and archive integration passed for clear and residual cases; the retained release test also proves the residual route.
+No model, commercial EDA, GUI or independent benchmark is needed for private schema/program proofs.
+Live evidence from earlier Pack versions keeps its original identity and scope; it is not a new
+0.4 engineering experiment or physical signoff qualification.
 
 ## Reviews
 
-The Pack-local Reader requires exactly one Host delivery manifest, current task/execution identity,
-parseable raw native timing/fail-reason reports and hashed engineering artifacts. It derives
-remaining/regression facts independently of model lists. Bounded fail-reason findings provide only
-a positive lower bound and remain unknown as global checks; zero and unsupported formats cannot
-PASS. Best-effort Goal-false, no-op, contradictory model/raw evidence, missing script and
-tampered report cases are covered. The public Host dry path
-uses the production resident wrapper and real Pack Reader, and launches no PT/Innovus/StarRC.
-
-The 0.2.10 six-branch and owner-lead tests install the explicit legacy method snapshot. Legacy helper
-defaults remain summary 10,000, detail 1,000 and metadata 1,000; only the 0.3 route binds broader
-nativeReportPaths explicitly.
+The Pack-owned Python suites passed 16 Reader, 3 context and 10 business checks. Integration findings and independent review are recorded by the U8 assessment. Current Host archive integration and the original real U10 journey have separate evidence; human acceptance remains pending.

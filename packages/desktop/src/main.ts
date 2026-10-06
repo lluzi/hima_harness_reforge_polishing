@@ -15,14 +15,13 @@
 // host is ready, no IPC for the remote page. The launch, readiness and stop patterns are in
 // `host-launch.ts`, which the contract suite boots hosts with too.
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type Session } from 'electron';
-import type { ChildProcess } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
-import { launchHimaHost, HostLaunchError, stopChild, type LaunchedHost } from './host-launch.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, libInsightCodeDirectory, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
+import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
 
@@ -186,8 +185,8 @@ interface WindowBounds { width: number; height: number; x?: number; y?: number }
 const defaultBounds: WindowBounds = { width: 1280, height: 860 };
 
 let host: LaunchedHost | undefined;
-/** The dsh child from the moment it is spawned, which is before the host is ready to be loaded. */
-let hostChild: ChildProcess | undefined;
+/** The owned child and resource stop are available before the host is ready to be loaded. */
+let spawnedHost: SpawnedHost | undefined;
 let stopping: Promise<number | null> | undefined;
 
 /**
@@ -399,8 +398,9 @@ function installMenu(win: BrowserWindow): void {
           void win.webContents.executeJavaScript(`document.querySelector('button[data-hima-control="open-workbench"]')?.click()`);
         } },
         { type: 'separator' },
-        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { win.webContents.reload(); } },
-        { label: 'Toggle Developer Tools', accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { win.webContents.toggleDevTools(); } },
+        // The focused window: an analysis page (ADR-0021) reloads itself, not the workbench behind it.
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { (BrowserWindow.getFocusedWindow() ?? win).webContents.reload(); } },
+        { label: 'Toggle Developer Tools', accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { (BrowserWindow.getFocusedWindow() ?? win).webContents.toggleDevTools(); } },
         { type: 'separator' },
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
         ...(process.platform === 'darwin' ? [] : [{ type: 'separator' as const }, { role: 'quit' as const }]),
@@ -432,10 +432,13 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
     if (/^https?:$/u.test(new URL(target, 'http://invalid.invalid').protocol)) void shell.openExternal(target);
   };
   win.webContents.setWindowOpenHandler(({ url }) => {
-    // A `target="_blank"` inside dsh's own app is still the workbench asking to go somewhere in the
-    // workbench: this window is the only surface there is, so a permitted URL navigates it rather
-    // than being dropped on the floor, which is what returning `deny` alone used to do.
-    if (permitted(url)) void win.loadURL(url);
+    // A library analysis page (ADR-0021) is a page of its own, beside the workbench: it opens in a new
+    // window behind this same fence and never replaces the conversation.
+    if (permitted(url) && analysisPage(url, allowedOrigin())) openPageWindow(win, url, allowedOrigin);
+    // Any other `target="_blank"` inside dsh's own app is still the workbench asking to go somewhere in
+    // the workbench: this window is that surface, so a permitted URL navigates it rather than being
+    // dropped on the floor, which is what returning `deny` alone used to do.
+    else if (permitted(url)) void win.loadURL(url);
     else openOutside(url);
     return { action: 'deny' };
   });
@@ -444,8 +447,49 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
     event.preventDefault();
     openOutside(url);
   });
+  // Sub-frames are fenced too. The one frame the workbench shows is Data Insight's LibInsight viewer
+  // (ADR-0019), a loopback page on a port the host chose; it may move within loopback HTTP and
+  // nowhere else, and a link out of it opens in the person's browser like any other.
+  // The host's own origin is never a frame target: a frame there would be same-origin with the workbench.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) return;
+    const target = new URL(details.url, 'http://invalid.invalid');
+    const host = allowedOrigin();
+    if (target.protocol === 'about:' || (target.protocol === 'http:' && (target.hostname === 'localhost' || target.hostname === '127.0.0.1')
+      && (host === undefined || new URL(host).port !== target.port))) return;
+    details.preventDefault();
+    openOutside(details.url);
+  });
   // The remote page gets no permission it has to be granted: nothing here asks for one.
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false); });
+}
+
+/** Is this a Host-served library analysis page (ADR-0021)? Origins are parsed, never prefixed. */
+function analysisPage(target: string, allowedOrigin: string | undefined): boolean {
+  try {
+    const parsed = new URL(target);
+    return allowedOrigin !== undefined && parsed.origin === allowedOrigin && parsed.pathname.startsWith('/hima/analysis/');
+  } catch { return false; }
+}
+
+/**
+ * A secondary window for one Host page: the main window's session partition (so the browser session
+ * cookie is the same), the same renderer limits and the same navigation fence. It sits just offset
+ * from the window that opened it, on the same display, and closes like any ordinary window.
+ */
+function openPageWindow(opener: BrowserWindow, url: string, allowedOrigin: () => string | undefined): void {
+  const at = opener.getBounds();
+  const page = new BrowserWindow({
+    x: at.x + 48, y: at.y + 36, width: Math.max(960, at.width - 96), height: Math.max(720, at.height - 72),
+    title: APP_NAME, backgroundColor: '#0f1115', show: false,
+    icon: path.join(packageDir, 'assets/icon.png'),
+    webPreferences: { partition: SESSION_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true },
+  });
+  fenceNavigation(page, allowedOrigin);
+  // The page's own title names the analysis; the product name stays in front of it.
+  page.on('page-title-updated', (event, title) => { event.preventDefault(); page.setTitle(title.includes(APP_NAME) ? title : `${title} · ${APP_NAME}`); });
+  page.once('ready-to-show', () => { page.show(); });
+  void page.loadURL(url);
 }
 
 /**
@@ -493,16 +537,14 @@ function fenceVerdict(target: string, allowedOrigin: string | undefined): { read
 /**
  * Stop the host, once, however the app is ending.
  *
- * The child, not `host`: a boot takes seconds and can take the whole timeout, and a person who
- * closes the window inside that window would otherwise leave a dsh running with nothing left to stop
- * it — holding the home's session lock, so the *next* launch fails for a reason its message cannot
- * explain. `launchHimaHost` hands the child over the instant it is spawned, and that is what this
- * stops: SIGTERM, four seconds, then SIGKILL, the same way whichever end of the boot we are at.
+ * A boot takes seconds and can take the whole timeout. `launchHimaHost` publishes the child and
+ * its receipt-aware stop before readiness, so explicit Quit during boot has the same ordered
+ * resource confirmation as Quit after readiness.
  */
 function stopHost(): Promise<number | null> {
-  const child = host?.child ?? hostChild;
-  if (child === undefined) return Promise.resolve(null);
-  stopping ??= stopChild(child);
+  const lifecycle = host ?? spawnedHost;
+  if (lifecycle === undefined) return Promise.resolve(null);
+  stopping ??= lifecycle.stop().catch(error => { stopping = undefined; throw error; });
   return stopping;
 }
 
@@ -531,6 +573,7 @@ async function start(): Promise<void> {
       webSecurity: true,
     },
   });
+  mainWindow = win;
   installMenu(win);
   fenceNavigation(win, () => host?.origin);
   // The window is HimaHarness's, whatever the page inside it calls itself. Left alone, Chromium
@@ -555,6 +598,9 @@ async function start(): Promise<void> {
   // support code. Now they are one module, this runs them, and it says what it did on the way past.
   const env = hostEnvironment();
   env.HIMA_DESKTOP_CONTROL_TOKEN = desktopExitToken;
+  env.HIMA_POSTGRES_RUNTIME = postgresRuntimeDirectory(env);
+  const libInsight = libInsightCodeDirectory(env);
+  if (libInsight !== undefined) env.HIMA_LIBINSIGHT_ROOT = libInsight;
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
   // into a prepared home explicitly, which is how pilot validation is run.
   if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {
@@ -562,8 +608,9 @@ async function start(): Promise<void> {
     env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
   }
   try {
-    const bundledRuntime = app.isPackaged ? await import('@hima/harness') : undefined;
-    if (bundledRuntime) {
+    // Schema preflight must not import the Host entry point or run its Home gate.
+    const bundledLedger:Pick<typeof import('@hima/harness'),'ledgerSpec'>|undefined = app.isPackaged ? await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/ledger.js')).href) : undefined;
+    if (bundledLedger) {
       const selected = resolveDshHome(env);
       const ledgerFile = path.join(selected, 'storages/hima_ledger.json');
       const existing = lstatSync(ledgerFile, { throwIfNoEntry: false });
@@ -574,8 +621,8 @@ async function start(): Promise<void> {
         let stored: { unit?: { name?: unknown; version?: unknown } };
         try { stored = JSON.parse(readFileSync(ledgerFile, 'utf8')) as typeof stored; }
         catch { throw new Error('The selected Hima Home has an unreadable Ledger. It was not modified.'); }
-        if (stored.unit?.name !== 'hima_ledger' || stored.unit.version !== bundledRuntime.ledgerSpec.version) {
-          throw new Error(`The selected Hima Home needs Ledger schema ${bundledRuntime.ledgerSpec.version}; it was not modified. Use this App's own versioned home, or review an explicit offline import into a new home.`);
+        if (stored.unit?.name !== 'hima_ledger' || stored.unit.version !== bundledLedger.ledgerSpec.version) {
+          throw new Error(`The selected Hima Home needs Ledger schema ${bundledLedger.ledgerSpec.version}; it was not modified. Use this App's own versioned home, or review an explicit offline import into a new home.`);
         }
       }
     }
@@ -585,8 +632,8 @@ async function start(): Promise<void> {
     // existing Pack, its historical snapshots and its customer assets belong to
     // the user and are never replaced just because the App version changed.
     if (app.isPackaged) {
-      const installPackMethod = bundledRuntime!.installPackMethod;
-      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure']) {
+      const {installPackMethod}:Pick<typeof import('@hima/harness'),'installPackMethod'> = await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/release.js')).href);
+      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'libinsight-analysis']) {
         const source = path.join(checkoutRoot(), 'packs', id);
         const destination = path.join(prepared.home, 'hima/packs', id);
         if (!existsSync(destination)) {
@@ -627,7 +674,7 @@ async function start(): Promise<void> {
       env,
       profile: HIMA_PROFILE,
       // Published the moment it is spawned, not when it is ready: see `stopHost`.
-      onSpawn: (child) => { hostChild = child; },
+      onSpawn: (_child, lifecycle) => { spawnedHost = lifecycle; },
     });
   } catch (err) {
     // Quitting mid-boot ends the child, which ends the launch in here: that is the person leaving,
@@ -636,7 +683,7 @@ async function start(): Promise<void> {
     // A host that failed to boot says why *in the window*. Its stderr in a console nobody opened is
     // the failure mode this shell exists to avoid: the window is the only surface there is.
     const said = err instanceof HostLaunchError ? `${err.reason}\n\n--- stdout ---\n${err.stdout}\n--- stderr ---\n${err.stderr}` : String(err);
-    await showFailure(win, 'The hima profile did not start', 'Nothing is running. This is what dsh said:', said);
+    await showFailure(win, 'The hima profile did not start', 'Startup was not confirmed. The original Home and database state are preserved. This is what dsh said:', said);
     return;
   }
   watchHostExit(win, host);
@@ -691,7 +738,7 @@ async function start(): Promise<void> {
 async function showFailure(win: BrowserWindow, heading: string, lead: string, said: string): Promise<void> {
   if (driver) {
     process.stderr.write(`hima-desktop: ${heading}\n${said}\n`);
-    await stopHost();
+    await stopHost().catch(error => { process.stderr.write(`hima-desktop: ${String(error)}\n`); });
     app.exit(EXIT_FAILED);
     return;
   }
@@ -701,6 +748,7 @@ async function showFailure(win: BrowserWindow, heading: string, lead: string, sa
     `${APP_NAME} — ${heading.toLowerCase()}`,
     `<h1>${escapeHtml(heading)}</h1><p>${escapeHtml(lead)}</p><pre>${escapeHtml(said)}</pre>`,
   ));
+  if (!win.isDestroyed()) win.showInactive();
 }
 
 /** The tail of what a process said, which is the part that explains why it stopped. */
@@ -736,8 +784,10 @@ function watchHostExit(win: BrowserWindow, running: LaunchedHost): void {
 }
 
 app.on('window-all-closed', () => { app.quit(); });
+/** The workbench window. Analysis pages open further windows (ADR-0021), so "the first window" is not it. */
+let mainWindow: BrowserWindow | undefined;
 app.on('activate', () => {
-  const [open] = BrowserWindow.getAllWindows();
+  const open = mainWindow;
   if (open && !quitting) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
 });
 // Quitting waits for the host: a SIGTERM sent as the process is exiting is a SIGTERM that may not
@@ -747,47 +797,75 @@ let exitPending = false;
 let requestedExitMode: 'drain'|'keep-jobs'|'stop-jobs' = 'drain';
 let cancelExitRequested=false;
 
-async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string}):Promise<{ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]}> {
+type NativeExitStatus={requestId?:string;mode?:typeof requestedExitMode;finalized?:boolean;ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]};
+async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string;expectedRequestId?:string}):Promise<NativeExitStatus> {
   if(!host)return {ready:true,runs:[],agents:[]};
   let cookies=await win.webContents.session.cookies.get({url:host.origin});
   let cookie=cookies.filter(c=>c.name.startsWith(HOST_COOKIE_PREFIX)).map(c=>`${c.name}=${c.value}`).join('; ');
   if(!cookie){const opened=await fetch(host.url,{redirect:'manual',signal:AbortSignal.timeout(5000)});cookie=opened.headers.get('set-cookie')?.split(';')[0]??'';}
-  const response=await fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',headers:{cookie,'content-type':'application/json','x-hima-desktop-control':desktopExitToken},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20_000)});
-  const answer=await response.json() as {ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[];error?:{message:string}};
+  const response=await fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',redirect:'error',headers:{cookie,'content-type':'application/json','x-hima-desktop-control':desktopExitToken},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20_000)});
+  const answer=await response.json() as NativeExitStatus&{error?:{message:string}};
   if(!response.ok)throw new Error(answer.error?.message??`Exit status HTTP ${response.status}`);
   return answer;
 }
 
 async function finishAppExit():Promise<void> {
-  const win=BrowserWindow.getAllWindows()[0];if(!win||!host){quitting=true;await stopHost();app.quit();return;}
+  const win=mainWindow;
   let requestId=`desktop-${randomUUID()}`;
   try {
+    const child = (host ?? spawnedHost)?.child;
+    // A dead origin cannot supply job state. Still check retained resource receipts, then offer
+    // an honest exit if closure is unknown instead of retrying HTTP against the dead Host.
+    if (!win || !host || (child && (child.exitCode !== null || child.signalCode !== null))) {
+      quitting=true;await stopHost();app.quit();return;
+    }
     let appliedMode=requestedExitMode;
-    let state=await exitRequest(win,{requestId,mode:appliedMode});
+    let state=await exitRequest(win);
+    if(state.requestId) {
+      requestId=state.requestId;
+      if(state.finalized!==undefined) {
+        // A lost HTTP acknowledgement does not create a new quit intent or reopen pools.
+        // Reuse the exact accepted mode and the same resource finalizer, even after PG closed.
+        appliedMode=state.mode??appliedMode;requestedExitMode=appliedMode;
+        await exitRequest(win,{requestId,mode:'finish-exit'});
+        quitting=true;await stopHost();app.quit();return;
+      }
+      if(state.mode!==appliedMode) {
+        const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;
+        state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});
+      }
+    } else state=await exitRequest(win,{requestId,mode:appliedMode});
     if(!state.ready&&!driver){
       const choice=await dialog.showMessageBox(win,{type:'question',title:'Finish current work',message:'The App is preparing to exit.',detail:'New Campaign work is fenced. Wait for current work to reach a recoverable boundary, or choose what happens to existing jobs. Keeping jobs does not keep the Agent running.',buttons:['Wait and quit','Quit now and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:3});
-      if(choice.response===3){await exitRequest(win,{requestId,mode:'cancel-exit'});exitPending=false;return;}
-      if(choice.response===1||choice.response===2){requestedExitMode=choice.response===1?'keep-jobs':'stop-jobs';appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+      if(choice.response===3){await exitRequest(win,{requestId,mode:'cancel-exit'});exitPending=false;requestedExitMode='drain';return;}
+      if(choice.response===1||choice.response===2){requestedExitMode=choice.response===1?'keep-jobs':'stop-jobs';appliedMode=requestedExitMode;const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});}
     }
     while(!state.ready){
       win.setTitle(`${APP_NAME} — waiting for a recoverable boundary`);
       await new Promise(resolve=>setTimeout(resolve,300));
       state=await exitRequest(win);
       if(cancelExitRequested){await exitRequest(win,{requestId,mode:'cancel-exit'});cancelExitRequested=false;exitPending=false;requestedExitMode='drain';win.setTitle(APP_NAME);return;}
-      if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode});}
+      if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});}
     }
+    await exitRequest(win,{requestId,mode:'finish-exit'});
     quitting=true;await stopHost();app.quit();
   } catch(error) {
-    exitPending=false;requestedExitMode='drain';
-    if(driver){process.stderr.write(`hima-desktop: exit could not verify job state: ${String(error)}\n`);quitting=true;await stopHost();app.exit(EXIT_FAILED);return;}
-    await dialog.showMessageBox(win,{type:'error',message:'Exit could not verify the current work.',detail:`${String(error)}\nThe Host remains open. Some Jobs may already have stopped; inspect their actual receipts before trying Quit again.`});
+    quitting=false;exitPending=false;
+    // Retain the person's accepted mode across a transport failure; a fresh Quit reads
+    // and reuses its durable request instead of silently selecting a different disposition.
+    if(driver){process.stderr.write(`hima-desktop: exit could not verify job or resource state: ${String(error)}\n`);quitting=true;await stopHost().catch(()=>undefined);app.exit(EXIT_FAILED);return;}
+    const child = (host ?? spawnedHost)?.child;
+    const ended = child !== undefined && (child.exitCode !== null || child.signalCode !== null);
+    if (!win) { process.stderr.write(`hima-desktop: exit resource state is unknown: ${String(error)}\n`);quitting=true;app.exit(EXIT_FAILED);return; }
+    const answer = await dialog.showMessageBox(win,{type:'error',message:'Exit could not verify the current work and resources.',detail:`${String(error)}\nThe original Home and database state are preserved. Some Jobs may already have stopped; inspect their actual receipts before reopening.${ended ? '\nThe Host has ended. Closing the App does not confirm resource shutdown.' : '\nThe Host may still be running; inspect it before trying Quit again.'}`,buttons:ended?['Close App','Keep App open']:['OK'],defaultId:ended?1:0,cancelId:ended?1:0});
+    if (ended && answer.response===0) { quitting=true;app.exit(EXIT_FAILED); }
   }
 }
 app.on('before-quit',event=>{
   if(quitting)return;
   event.preventDefault();
   if(exitPending){
-    if(!driver){const win=BrowserWindow.getAllWindows()[0];if(win)void dialog.showMessageBox(win,{type:'question',message:'Work is still reaching its exit boundary.',buttons:['Keep waiting','Quit and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:0}).then(({response})=>{if(response===1)requestedExitMode='keep-jobs';if(response===2)requestedExitMode='stop-jobs';if(response===3)cancelExitRequested=true;});}
+    if(!driver){const win=mainWindow;if(win)void dialog.showMessageBox(win,{type:'question',message:'Work is still reaching its exit boundary.',buttons:['Keep waiting','Quit and keep jobs','Stop jobs and quit','Stay in App'],defaultId:0,cancelId:0}).then(({response})=>{if(response===1)requestedExitMode='keep-jobs';if(response===2)requestedExitMode='stop-jobs';if(response===3)cancelExitRequested=true;});}
     return;
   }
   exitPending=true;void finishAppExit();
@@ -802,7 +880,7 @@ if (!driver && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const [open] = BrowserWindow.getAllWindows();
+    const open = mainWindow;
     if (open) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
   });
   app.whenReady().then(start).catch((err: unknown) => {

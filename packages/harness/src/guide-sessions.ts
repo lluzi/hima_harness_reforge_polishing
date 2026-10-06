@@ -1,6 +1,7 @@
 // @hima-seam agent wrapped
 // Independent execution sessions are ordinary DSH roots; only Fabric grants Campaign ownership.
 import { createHash } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-tools';
@@ -55,15 +56,16 @@ async function verifiedChild(ctx: Context, viewerSessionId: string, parentSessio
   const persistence = ctx.get('sessionPersistence') as Persistence | undefined;
   if (!persistence) throw new GuideSessionError('hima/guide-session-unavailable', 'This Host has no public session persistence service.');
   const [parent, child] = await Promise.all([persistence.stat(parentSessionId), persistence.stat(childSessionId)]);
-  if (!parent || !child || parent.header.cwd !== workspace || child.header.cwd !== workspace || child.header.parentSession !== parentSessionId) {
+  if (!parent || !child || !parent.header.cwd || !child.header.cwd || await realpath(parent.header.cwd) !== await realpath(workspace) || await realpath(child.header.cwd) !== await realpath(workspace) || child.header.parentSession !== parentSessionId) {
     throw new GuideSessionError('hima/guide-session-missing', 'The requested child is not a workspace-visible child of the requested parent.');
   }
   return { persistence, child, workspace };
 }
 
 /** Read bounded native child metadata only; transcript/context remain in the original DSH session UI. */
-export async function readChildSessionView(ctx: Context, request: { readonly viewerSessionId: string; readonly parentSessionId: string; readonly childSessionId: string }): Promise<ChildSessionView> {
+export async function readChildSessionView(ctx: Context, request: { readonly viewerSessionId: string; readonly parentSessionId: string; readonly childSessionId: string; readonly assignedGuide?: (viewer:string,parent:string,child?:string)=>Promise<boolean> }): Promise<ChildSessionView> {
   await verifiedChild(ctx, request.viewerSessionId, request.parentSessionId, request.childSessionId);
+  if(request.viewerSessionId!==request.parentSessionId && request.viewerSessionId!==request.childSessionId && !await request.assignedGuide?.(request.viewerSessionId,request.parentSessionId,request.childSessionId)) throw new GuideSessionError('hima/guide-session-missing','Only the parent, child, or its recorded Guide may inspect this child.');
   const live = ctx.get('agents')?.get(request.childSessionId as never);
   const entries = await (ctx.get('subagents') as { listChildren(parent: string): Promise<readonly { id: string; mode?: string }[]> } | undefined)?.listChildren(request.parentSessionId) ?? [];
   const native = entries.find((entry) => entry.id === request.childSessionId);
@@ -76,15 +78,16 @@ export async function readChildSessionView(ctx: Context, request: { readonly vie
     ...(nativeAddress === undefined ? {} : { nativeAddress }) };
 }
 
-export async function listSessionChildren(ctx: Context, request: { readonly viewerSessionId: string; readonly parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }> {
+export async function listSessionChildren(ctx: Context, request: { readonly viewerSessionId: string; readonly parentSessionId: string; readonly assignedGuide?: (viewer:string,parent:string,child?:string)=>Promise<boolean> }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }> {
   const workspace = viewerWorkspace(ctx, request.viewerSessionId);
   const persistence = ctx.get('sessionPersistence') as Persistence | undefined;
   if (!persistence) throw new GuideSessionError('hima/guide-session-unavailable', 'This Host has no public session persistence service.');
   const parent = await persistence.stat(request.parentSessionId);
   if (!parent || parent.header.cwd !== workspace) throw new GuideSessionError('hima/guide-session-missing', 'The requested parent is not visible in this workspace.');
   const matches = (await persistence.list()).filter((item) => item.header.cwd === workspace && item.header.parentSession === request.parentSessionId).slice(0, 101);
+  const visible = request.viewerSessionId===request.parentSessionId ? matches : (await Promise.all(matches.map(async item => await request.assignedGuide?.(request.viewerSessionId,request.parentSessionId,String((item.header as {id?:string}).id ?? '')) ? item : undefined))).filter((item):item is PersistedSession=>item!==undefined);
   const agents = ctx.get('agents');
-  return { children: matches.slice(0, 100).map((item) => ({ childSessionId: String((item.header as { id?: string }).id ?? ''), nativeOpen: agents?.get((item.header as { id?: string }).id as never) !== undefined })), hasMore: matches.length > 100 };
+  return { children: visible.slice(0, 100).map((item) => ({ childSessionId: String((item.header as { id?: string }).id ?? ''), nativeOpen: agents?.get((item.header as { id?: string }).id as never) !== undefined })), hasMore: visible.length > 100 };
 }
 
 /** Create or reopen one deterministic, empty-context ordinary session for an actual live Guide. */

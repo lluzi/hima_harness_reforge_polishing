@@ -22,7 +22,7 @@ const protocolToken = z.string().regex(/^[A-Za-z0-9_-]{32,128}$/);
 const common = {
   runId: z.string().min(1), executionId: z.string().min(1), nodeId: z.string().min(1),
   toolSessionId: z.string().min(1), requestId: plainId, actor: z.string().min(1),
-  ownerEpoch: z.number().int().positive(), controlRevision: z.number().int().nonnegative(),
+  ownerEpoch: z.number().int().nonnegative(), controlRevision: z.number().int().nonnegative(),
   callerDigest: sha256, operationDigest: sha256, at: z.string(),
 };
 const qualification = z.strictObject({
@@ -97,6 +97,10 @@ export interface InteractiveAuthority {
   record(record: InteractiveRecord): Promise<void>;
   /** Append the ordinary existing Job launched fact before the tool process is started. */
   recordJobLaunch(job: InteractiveJobIdentity): Promise<void>;
+  /** PG transport retains the exact Job before native creation, including a lost launch ACK. */
+  recordJobIntent?(job: InteractiveJobIdentity): Promise<void>;
+  /** Fresh cleanup Permit for the original owned Job at each physical stop boundary. */
+  beforeCleanup?(job: InteractiveJobIdentity): Promise<void>;
   /** Append the ordinary existing Job killed fact only after a live session is observed gone. */
   recordJobStop(job: InteractiveJobIdentity, outcome: { readonly wasRunning: boolean; readonly observedGone: boolean }): Promise<void>;
 }
@@ -143,6 +147,8 @@ export interface OpenInteractiveRequest extends InteractiveAddress {
   readonly name: string; readonly sessionDeadlineAt: string; readonly startupWaitMs: number;
   /** How long a failed open's cleanup waits for the Job's process group; the default when absent. */
   readonly closeGrace?: InteractiveCloseGrace;
+  /** Host-retained PG identity; model requests cannot choose a native session. */
+  readonly retainedJobSession?: string;
 }
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -179,6 +185,9 @@ async function interactiveSessionThere(on: InteractiveChannel, session: string, 
   if (probe.code === 1 && (absent || missingSocketIsAbsent && noSocket)) return false;
   throw new Error(`cannot tell whether interactive tmux session ${session} exists: tmux exited ${String(probe.code)}${said ? `: ${said}` : ''}`);
 }
+/** Read-only query of the original native session; never admits a replacement. */
+export const interactiveSessionExists = (on: InteractiveChannel, session: string): Promise<boolean> => interactiveSessionThere(on, session, true);
+
 const recordBase = (request: InteractiveAddress & { readonly callerDigest: string }, toolSessionId: string, operationDigest: string) => ({
   runId: request.runId, executionId: request.executionId, nodeId: request.nodeId,
   requestId: request.requestId, actor: request.actor, ownerEpoch: request.ownerEpoch,
@@ -186,7 +195,7 @@ const recordBase = (request: InteractiveAddress & { readonly callerDigest: strin
 });
 
 function sameQualification(a: InteractiveQualification, b: InteractiveQualification): boolean {
-  return a.bindingDigest === b.bindingDigest && JSON.stringify(a) === JSON.stringify(b);
+  return a.bindingDigest === b.bindingDigest && JSON.stringify(qualification.parse(a)) === JSON.stringify(qualification.parse(b));
 }
 
 function assertQualificationStable(admitted: InteractiveQualification, dispatch: InteractiveQualification): void {
@@ -222,7 +231,10 @@ export async function startInteractiveJob(on: InteractiveChannel, request: OpenI
   const answered = (result: InteractiveOpenResult): InteractiveOpenStart => ({ kind: 'answered', result });
   if (request.argv.length === 0 || request.argv.some((word) => word.includes('\0'))) return answered({ status: 'refused', reason: 'interactive Job argv must contain non-NUL words' });
   if (!Number.isSafeInteger(request.startupWaitMs) || request.startupWaitMs < 0 || request.startupWaitMs > 60_000) return answered({ status: 'refused', reason: 'startupWaitMs must be 0..60000' });
-  const allocated = await allocateInteractiveJobSession(on, request.runId, request.name);
+  if (request.retainedJobSession !== undefined && !plainId.safeParse(request.retainedJobSession).success) return answered({ status: 'refused', reason: 'retained interactive Job identity is invalid' });
+  const allocated = request.retainedJobSession === undefined
+    ? await allocateInteractiveJobSession(on, request.runId, request.name)
+    : { session: request.retainedJobSession, name: safeJobName(request.name) };
   const transcriptPath = jobLogPath({ workspace: request.workspace, session: allocated.session });
   const exitPath = jobExitPath({ workspace: request.workspace, session: allocated.session });
   const toolStartup = `${request.argv.map(quote).join(' ')}; hima_status=$?; printf '%s\\n' "$hima_status" > ${quote(exitPath)}; exit "$hima_status"`;
@@ -251,9 +263,10 @@ export async function startInteractiveJob(on: InteractiveChannel, request: OpenI
         if (wasRunning) {
           // The same process-group stop as a close (#64 review I2): never a bare kill-session.
           const stopped = await endJobProcessGroup(on, { session: job.session, pid: job.pid, dir: path.posix.dirname(exitPath) }, `open-cleanup-${request.requestId}`,
-            request.closeGrace ?? defaultInteractiveCloseGrace);
+            request.closeGrace ?? defaultInteractiveCloseGrace, () => authority.beforeCleanup?.(job!) ?? Promise.resolve());
           if (stopped.kind === 'survived') reason += `; cleanup: process-survived: process group ${String(stopped.pid)} outlived hangup and TERM and still holds this slot`;
           else if (await interactiveSessionThere(on, job.session, true)) {
+            await authority.beforeCleanup?.(job);
             const leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(job.session)]);
             if (leftover.code !== 0 && leftover.code !== 1) reason += `; cleanup kill exited ${String(leftover.code)}${leftover.stderr.trim() ? `: ${leftover.stderr.trim()}` : ''}`;
           }
@@ -272,6 +285,10 @@ export async function startInteractiveJob(on: InteractiveChannel, request: OpenI
   };
   let session: InteractiveSession;
   try {
+    await authority.recordJobIntent?.({ session: allocated.session, workspace: request.workspace, name: allocated.name, startedAt: now(), wire: startup });
+    const creationAuthorized = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
+    if (creationAuthorized.kind === 'refused') throw new Error(creationAuthorized.reason);
+    assertQualificationStable(admitted.qualification, creationAuthorized.qualification);
     const printed = await mustRun(on, ['tmux', 'new-session', '-d', '-P', '-F', '#{pane_pid}', '-s', allocated.session,
       '-c', request.workspace, '/bin/sh'], `open interactive job ${allocated.name} in ${request.workspace}`);
     const pid = Number(printed.trim());
@@ -589,8 +606,19 @@ async function panePid(on: InteractiveChannel, session: string): Promise<number>
   return pid;
 }
 
+/** Physical closure of this exact interactive Job; a missing tmux socket alone is insufficient. */
+export async function interactiveJobResourcesClosed(on: InteractiveChannel, job: InteractiveJobIdentity): Promise<boolean> {
+  return !await interactiveSessionThere(on, job.session, true) && job.pid !== undefined && !await jobProcessGroupAlive(on, job.pid);
+}
+
+/** Reconnect the original interactive pane after a lost native creation ACK. No new process. */
+export async function recoverInteractiveJobIdentity(on: InteractiveChannel, job: InteractiveJobIdentity): Promise<InteractiveJobIdentity> {
+  if (job.pid !== undefined || !await interactiveSessionThere(on, job.session, true)) return job;
+  return { ...job, pid: await panePid(on, job.session) };
+}
+
 /** The Job a process-group stop acts on: its tmux session, its recorded pane pid (the group), and
- *  the directory its launch writes its exit file in, where the stop's receipt is written too. */
+ * the directory its launch writes its exit file in, where the stop receipt is written too. */
 export interface JobProcessTarget { readonly session: string; readonly pid?: number; readonly dir: string }
 export type JobProcessGroupStop = { readonly kind: 'absent' | 'gone' } | { readonly kind: 'survived'; readonly pid: number };
 
@@ -602,7 +630,7 @@ export type JobProcessGroupStop = { readonly kind: 'absent' | 'gone' } | { reado
  * `survived` names the group that outlived hangup and TERM, whose session the watcher keeps.
  */
 export async function endJobProcessGroup(on: InteractiveChannel, target: JobProcessTarget, key: string,
-  grace: InteractiveCloseGrace = defaultInteractiveCloseGrace): Promise<JobProcessGroupStop> {
+  grace: InteractiveCloseGrace = defaultInteractiveCloseGrace, beforeStop?: () => Promise<void>): Promise<JobProcessGroupStop> {
   let group = target.pid;
   if (group === undefined) {
     if (!await interactiveSessionThere(on, target.session, true)) return { kind: 'absent' };
@@ -611,6 +639,7 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
   const receipt = path.posix.join(target.dir, `${target.session}.close-${createHash('sha256').update(key).digest('hex').slice(0, 16)}`);
   const hangup = graceSeconds(grace.hangupMs); const term = graceSeconds(grace.terminateMs);
   const watcher = `exec /bin/sh -c ${quote(closeWatcher)} hima-close ${String(group)} ${quote(receipt)} ${String(hangup)} ${String(term)}`;
+  await beforeStop?.();
   const respawned = await on.exec(['tmux', 'respawn-pane', '-k', '-t', jobPane(target.session), watcher]);
   if (respawned.code !== 0) {
     // The session ended between the caller's look and this stop: nothing is left to hang up.
@@ -648,11 +677,36 @@ export async function endJobProcessGroup(on: InteractiveChannel, target: JobProc
 export async function jobProcessGroupAlive(on: InteractiveChannel, pid: number): Promise<boolean> {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`invalid process group ${String(pid)}`);
   const asked = await on.exec(['kill', '-s', '0', '--', `-${String(pid)}`]);
-  if (asked.code === 0) return true;
+  if (asked.code === 0) return !await onlyZombies(on, pid);
   const said = asked.stderr.trim();
-  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return true;
+  // macOS answers "not permitted" for a group whose only members are unreaped zombies.
+  if (asked.code === 1 && /not permitted|permission denied/i.test(said)) return !await onlyZombies(on, pid);
   if (asked.code === 1 && /no such process/i.test(said)) return false;
   throw new Error(`cannot tell whether process group ${String(pid)} still runs: kill exited ${String(asked.code)}${said ? `: ${said}` : ''}`);
+}
+
+/** The process table read that tells a zombie-only group from a running one: every process's group
+ *  and state, one fixed read-only shape the Site channel admits verbatim, no caller-chosen option. */
+export const processTableProbe: readonly string[] = ['ps', '-A', '-o', 'pgid=,stat='];
+
+/**
+ * `kill -s 0` also succeeds on a group whose members have all exited but were never reaped: a
+ * zombie runs nothing and holds no seat, and only its parent (on a Site, a shared tmux server) can
+ * reap it. Such a group is closed. Only a process table that lists the group with every member in
+ * state Z (and no live threads, `l`) says so; a live member, a missing row or an unanswered table
+ * keeps the group alive. A member hidden from this login's process table (a `hidepid` /proc and a
+ * member of another uid) cannot be seen here; the Job's own launch never creates one.
+ */
+async function onlyZombies(on: InteractiveChannel, pid: number): Promise<boolean> {
+  const table = await on.exec(processTableProbe);
+  if (table.code !== 0) return false;
+  const states: string[] = [];
+  for (const line of Buffer.from(table.stdout).toString('utf8').split('\n')) {
+    const row = /^\s*(\d+)\s+(\S+)\s*$/.exec(line);
+    if (row && Number(row[1]) === pid) states.push(row[2]!);
+  }
+  // Linux procps shows `Zl` for a zombie leader whose other threads still run: that is live work.
+  return states.length > 0 && states.every((state) => state.startsWith('Z') && !state.includes('l'));
 }
 
 /**
@@ -675,7 +729,11 @@ export async function closeInteractiveJob(on: InteractiveChannel, request: Inter
     const wasRunning = await interactiveSessionThere(on, request.session.toolSessionId);
     if (wasRunning) {
       const ended = await endJobProcessGroup(on, { session: request.session.toolSessionId, pid: request.session.job.pid,
-        dir: path.posix.dirname(request.session.exitPath) }, request.requestId, request.grace ?? defaultInteractiveCloseGrace);
+        dir: path.posix.dirname(request.session.exitPath) }, request.requestId, request.grace ?? defaultInteractiveCloseGrace, async () => {
+          const latest = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
+          if (latest.kind === 'refused') throw new Error(latest.reason);
+          assertQualificationStable(admitted.qualification, latest.qualification);
+        });
       if (ended.kind === 'survived') {
         const reason = `process-survived: process group ${String(ended.pid)} of interactive Job ${request.session.toolSessionId} outlived hangup and TERM;`
           + ' the Job stays open and holds its Site slot until that group ends';
@@ -683,12 +741,22 @@ export async function closeInteractiveJob(on: InteractiveChannel, request: Inter
           event: 'process-survived', pid: ended.pid, reason }));
         return { status: 'process-survived', pid: ended.pid, reason };
       }
-      const leftover = await interactiveSessionThere(on, request.session.toolSessionId, true)
-        ? await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]) : undefined;
+      let leftover: Awaited<ReturnType<InteractiveChannel['exec']>> | undefined;
+      if (await interactiveSessionThere(on, request.session.toolSessionId, true)) {
+        const latest = await authority.authorizeBeforeDispatch({ reservationId: admitted.reservationId, operationDigest });
+        if (latest.kind === 'refused') throw new Error(latest.reason);
+        assertQualificationStable(admitted.qualification, latest.qualification);
+        leftover = await on.exec(['tmux', 'kill-session', '-t', exactJobSession(request.session.toolSessionId)]);
+      }
       if (leftover !== undefined && leftover.code !== 0 && leftover.code !== 1) throw new Error(`tmux kill-session exited ${String(leftover.code)}: ${leftover.stderr}`);
     }
     const observedGone = !await interactiveSessionThere(on, request.session.toolSessionId, true);
     if (!observedGone) throw new Error('interactive tmux session remained after close request');
+    if (request.session.job.pid !== undefined && await jobProcessGroupAlive(on, request.session.job.pid)) {
+      const reason = 'Original interactive process group remains live after its tmux session disappeared; resources remain held';
+      await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'process-survived', pid: request.session.job.pid, reason }));
+      return { status: 'process-survived', pid: request.session.job.pid, reason };
+    }
     await authority.recordJobStop(request.session.job, { wasRunning, observedGone });
     await authority.record(parseInteractiveRecord({ ...recordBase(request, request.session.toolSessionId, operationDigest), event: 'closed' }));
     return { status: 'closed', process: 'exited' };

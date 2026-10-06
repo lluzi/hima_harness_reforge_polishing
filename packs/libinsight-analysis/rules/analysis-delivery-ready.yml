@@ -1,0 +1,6 @@
+id: analysis-delivery-ready
+version: "1"
+title: The resident delivered a complete, hash-verified custom analysis
+requires: [{ type: li_analysis_error_count }]
+subject: { type: li_analysis_error_count }
+predicate: { op: eq, threshold: 0, unit: count }

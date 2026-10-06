@@ -1,0 +1,13 @@
+values:
+  li_analysis_error_count:
+    unit: count
+    description: Delivery contract problems found by the libinsight-analysis Reader. It is emitted only as 0, because any problem fails the Reader closed and returns the problems to the same resident task.
+  li_analysis_plot_count:
+    unit: count
+    description: Plots declared by the accepted hima-libinsight-analysis/1 delivery.
+  li_analysis_dataset_count:
+    unit: count
+    description: Typed datasets in the accepted delivery.
+  li_analysis_row_count:
+    unit: count
+    description: Total dataset rows in the accepted delivery (at most 20000 per dataset).

@@ -11,6 +11,7 @@ import type { WorkMemoryRead, WorkMemoryScope, WorkMemorySummary, RunKnowledgeCa
 import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
+import type { LibInsightViewerStatus } from '../libinsight-viewer.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -54,7 +55,7 @@ export function fetchMaterial(runId: string, recordId: string, signal?: AbortSig
   return runRequest(scoped(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, sessionId), { signal });
 }
 
-export interface EngineeringAssetSelection { execution: string; delivery: string; artifact: string; tree?: string }
+export type EngineeringAssetSelection = { execution: string; delivery: string; artifact: string; tree?: string } | { effect: string; artifact: string };
 export interface ArchiveAnswer {
   manifest?: import('../experience-report.js').RunAssetManifest;
   deliveries?: readonly import('../engineering-executor.js').EngineeringDeliveryView[];
@@ -127,7 +128,15 @@ export const fetchSessionChildren = (body: { sessionId: string; parentSessionId:
 export const resolveReportAddress = (body: { sessionId: string; reportRef: string }, signal?: AbortSignal): Promise<HimaResult<Extract<TargetAddress, { kind: 'report' }>>> =>
   runRequest('/hima/api/context/report-address', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-type MemoryEvidence = Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
+/** Where Data Insight's LibInsight pages are served from, and whether the viewer is up (ADR-0019). */
+export const fetchLibInsightViewer = (sessionId: string, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
+  runRequest(`/hima/api/libinsight?sessionId=${encodeURIComponent(sessionId)}`, { signal });
+
+/** Start (or keep) the viewer; a data folder is the person's own choice and is remembered by the Host. */
+export const openLibInsightViewer = (body: { sessionId: string; dataFolder?: string; restart?: boolean }, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
+  runRequest('/hima/api/libinsight', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'open' }) });
+
+type MemoryEvidence =Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
 export type MemoryAnswer = WorkMemoryRead & { readonly scope: WorkMemoryScope } & Partial<MemoryEvidence>;
 export type MemorySourcesAnswer = { readonly kind: 'sources'; readonly scope: WorkMemoryScope } & MemoryEvidence;
 export type MemorySummaryInput = Pick<WorkMemorySummary, 'subject' | 'decisions' | 'openQuestions' | 'todo' | 'references' | 'sources' | 'nativeSources'>;
@@ -178,13 +187,14 @@ export interface ControlRunResult {
   readonly notification: { readonly status: 'queued' | 'inactive' | 'owner-unavailable' | 'failed' | 'not-repeated' | 'not-requested'; readonly message: string };
 }
 
-export function controlRun(view: RunView, sessionId: string, action: 'pause' | 'continue' | 'cancel', nodeId?: string, signal?: AbortSignal): Promise<HimaResult<ControlRunResult>> {
+export function controlRun(view: RunView, sessionId: string, action: 'pause' | 'continue' | 'cancel' | 'respond', nodeId?: string, signal?: AbortSignal, response?: { readonly effectId: string; readonly output: import('../task-contract.js').TaskToolOutput }): Promise<HimaResult<ControlRunResult>> {
   const control = view.run.control;
   if (!control) return Promise.resolve({ ok: false, error: { code: 'hima/run-not-in-state', message: 'This Run has no conversational owner.' } });
   return runRequest(`${runPath(view.run.id)}/control`, { method: 'POST', signal,
     headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, action,
       expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `ui-${crypto.randomUUID()}`,
       ...(nodeId === undefined ? {} : { nodeId }),
+      ...(response === undefined ? {} : { response }),
     }),
   });
 }

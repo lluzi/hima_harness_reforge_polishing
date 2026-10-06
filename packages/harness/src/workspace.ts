@@ -18,7 +18,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
-import { loadSite, pathsOf } from './sites.js';
+import { loadSite, pathsOf, type Site } from './sites.js';
 import {
   boundInputs,
   checkPack,
@@ -282,28 +282,52 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
   // this second check re-reads nothing at all.
   const check = checkPack(pack, site);
   if (!check.fit) return { kind: 'unfit', check };
-  const bindings = boundInputs(pack, site);
   const named = req.run === undefined ? undefined : await runFor(deps.ledger, site, req.run);
   const campaignId = req.campaign ?? named?.campaignId ?? campaignIdFor(pack, new Date());
   const issue = campaignIdIssue(campaignId);
   if (issue) throw new Error(issue);
   const run = named ?? (await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.projectSessionId ? { projectSessionId: req.projectSessionId } : {}) }));
 
+  const result = await prepareWorkspaceFiles({ site, folder, campaignId });
+  if (result.kind === 'unfit') return result;
+  if (result.kind === 'refused') return { kind: 'refused', run,
+    record: await deps.ledger.appendRefusal(run.id, { path: result.path, reason: result.reason }) };
+  if (result.kind === 'occupied') return { ...result, run };
+  return { ...result, run, record: await deps.ledger.appendWorkspace(run.id, { event: result.kind, ...recordOf(result.file) }) };
+}
+
+export type WorkspaceFilesResult =
+  | { readonly kind: 'prepared' | 'reused'; readonly file: WorkspaceFile }
+  | { readonly kind: 'refused'; readonly path: string; readonly reason: string }
+  | { readonly kind: 'occupied'; readonly workspace: string; readonly reason: string }
+  | { readonly kind: 'unfit'; readonly check: PackCheck };
+
+/** Existing file preparation without a Ledger writer. The durable caller owns its original Run
+ * identity and receipts; beforeWrite rechecks current admission at each actual Site write. */
+export async function prepareWorkspaceFiles({ site, folder, campaignId, beforeWrite }: {
+  readonly site: Site; readonly folder: PackFolderSnapshot; readonly campaignId: string;
+  readonly beforeWrite?: (target: string) => Promise<void>;
+}): Promise<WorkspaceFilesResult> {
+  const issue = campaignIdIssue(campaignId);
+  if (issue) throw new Error(issue);
+  const pack = loadPackFrom(folder), check = checkPack(pack, site);
+  if (!check.fit) return { kind: 'unfit', check };
+  const bindings = boundInputs(pack, site);
   const p = pathsOf(site);
   // One channel for the whole operation: every permit decision resolves its path on the Site, and the
   // same warm connection then carries the commands those decisions allowed.
   const channel = channelFor(site);
-  const refuse = async (refused: string, reason: string): Promise<PrepareResult> => ({
-    kind: 'refused',
-    run,
-    record: await deps.ledger.appendRefusal(run.id, { path: refused, reason }),
-  });
+  const write = async (argv: readonly string[], purpose: string, options?: Parameters<typeof mustRun>[3]) => {
+    await beforeWrite?.(argv.at(-1)!);
+    return mustRun(channel, argv, purpose, options);
+  };
+  const refuse = (path: string, reason: string): WorkspaceFilesResult => ({ kind: 'refused', path, reason });
 
   /** One directory, decided and then created. Returns where it actually is on the Site. */
   const mkdirAt = async (target: string): Promise<string> => {
     const decision = await decideWrite(site, target, channel);
     if (!decision.ok) throw new Refusal(decision.refused, decision.reason);
-    await mustRun(channel, ['mkdir', '-p', '--', decision.absPath], `create ${decision.absPath} on site ${site.name}`);
+    await write(['mkdir', '-p', '--', decision.absPath], `create ${decision.absPath} on site ${site.name}`);
     return decision.absPath;
   };
 
@@ -343,19 +367,16 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     if (already.kind === 'unreadable') {
       return {
         kind: 'occupied',
-        run,
         workspace,
         reason: `its ${workspaceFileName} cannot be read as one (${already.why}): it was left half-prepared. Nothing here removes a path on a Site — move or remove it yourself, then prepare again`,
       };
     }
     if (already.kind === 'file') {
       const elsewhere = belongsElsewhere(already.file, identity);
-      if (elsewhere) return { kind: 'occupied', run, workspace, reason: elsewhere };
+      if (elsewhere) return { kind: 'occupied', workspace, reason: elsewhere };
       return {
         kind: 'reused',
-        run,
         file: already.file,
-        record: await deps.ledger.appendWorkspace(run.id, { event: 'reused', ...recordOf(already.file) }),
       };
     }
 
@@ -366,13 +387,12 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     if (rootDecision.exists) {
       return {
         kind: 'occupied',
-        run,
         workspace,
         reason: `it is already there but carries no ${workspaceFileName}: it was left half-prepared. Nothing here removes a path on a Site — move or remove it yourself, then prepare again`,
       };
     }
     // Already decided, two lines above, and nothing has changed since: create it.
-    await mustRun(channel, ['mkdir', '-p', '--', workspace], `create ${workspace} on site ${site.name}`);
+    await write(['mkdir', '-p', '--', workspace], `create ${workspace} on site ${site.name}`);
     const flowDir = await mkdirAt(p.join(workspace, flowDirName));
     const copied: string[] = [];
     for (const rel of askedCopy) {
@@ -387,7 +407,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
           if (parent !== flowDir) await mkdirAt(parent);
           const destination = await decideWrite(site, target, channel);
           if (!destination.ok) throw new Refusal(destination.refused, destination.reason);
-          await mustRun(channel, ['tee', '--', destination.absPath], `deploy ${name} into ${flowDir}`, { stdin: bytes });
+          await write(['tee', '--', destination.absPath], `deploy ${name} into ${flowDir}`, { stdin: bytes });
           const landed = await channel.readFile(destination.absPath);
           if (createHash('sha256').update(landed).digest('hex') !== createHash('sha256').update(bytes).digest('hex')) {
             throw new Error(`deployed Pack flow file failed read-back identity: ${destination.absPath}`);
@@ -406,7 +426,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       if (!destination.ok) throw new Refusal(destination.refused, destination.reason);
       // The full destination path, never the parent directory: `cp` into an existing directory would
       // mean one thing for a piece already there and another for one that is not.
-      await mustRun(channel, ['cp', '-R', '--', source.absPath, destination.absPath], `copy ${rel} into ${flowDir}`);
+      await write(['cp', '-R', '--', source.absPath, destination.absPath], `copy ${rel} into ${flowDir}`);
       copied.push(rel);
     }
 
@@ -429,15 +449,13 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     if (!marker.ok) throw new Refusal(marker.refused, marker.reason);
     // `tee` writes what it is given on standard input to the file it names. The content travels the
     // connection, not the command line, so a wire that stays a command carries a payload of any shape.
-    await mustRun(channel, ['tee', '--', marker.absPath], `record ${workspaceFileName} in ${workspace}`, {
+    await write(['tee', '--', marker.absPath], `record ${workspaceFileName} in ${workspace}`, {
       stdin: Buffer.from(`${JSON.stringify(file, null, 2)}\n`, 'utf8'),
     });
 
     return {
       kind: 'prepared',
-      run,
       file,
-      record: await deps.ledger.appendWorkspace(run.id, { event: 'prepared', ...recordOf(file) }),
     };
   } catch (err) {
     if (err instanceof Refusal) return refuse(err.refused, err.why);
@@ -508,7 +526,7 @@ export async function verifyWorkspaceRevisionSources(site: ReturnType<typeof loa
 /** Preserve both byte versions and apply only workspace-scoped changes. Workshop history is never
  * overwritten; node-turns copies its accepted after-version into each new execution directory. */
 export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, workspace: string, revisionId: string,
-  changes: readonly WorkspaceRevisionChange[]): Promise<WorkspaceRevisionAsset[]> {
+  changes: readonly WorkspaceRevisionChange[], options: { readonly retainOnly?: boolean; readonly beforeWrite?: (target:string)=>Promise<void> } = {}): Promise<WorkspaceRevisionAsset[]> {
   const channel = channelFor(site);
   const p = pathsOf(site);
   const root = p.join(workspace, '.hima', 'revisions', revisionId);
@@ -545,9 +563,11 @@ export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, 
     const parent = p.dirname(at);
     const dir = await decideWrite(site, parent, channel);
     if (!dir.ok) throw new Error(dir.reason);
+    await options.beforeWrite?.(dir.absPath);
     await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create revision directory ${dir.absPath}`);
     const output = await decideWrite(site, at, channel);
     if (!output.ok) throw new Error(output.reason);
+    await options.beforeWrite?.(output.absPath);
     await mustRun(channel, ['tee', '--', output.absPath], `preserve revision bytes at ${output.absPath}`, { stdin: Buffer.from(bytes) });
     if (sha256Of(await channel.readFile(output.absPath)) !== expected) throw new Error(`retained revision version ${output.absPath} did not verify`);
     return output.absPath;
@@ -557,10 +577,11 @@ export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, 
     const afterSha256 = sha256Of(item.after);
     const beforeVersionPath = await writeVersion(p.join(root, 'before', item.change.logicalPath), item.before, item.change.beforeSha256);
     const afterVersionPath = await writeVersion(p.join(root, 'after', item.change.logicalPath), item.after, afterSha256);
-    if (item.change.scope === 'workspace') {
+    if (item.change.scope === 'workspace' && !options.retainOnly) {
       const output = await decideWrite(site, item.target, channel);
       if (!output.ok) throw new Error(output.reason);
       if (sha256Of(await channel.readFile(output.absPath)) !== afterSha256) {
+        await options.beforeWrite?.(output.absPath);
         await mustRun(channel, ['tee', '--', output.absPath], `apply revision ${revisionId} to ${output.absPath}`, { stdin: Buffer.from(item.after) });
       }
       if (sha256Of(await channel.readFile(output.absPath)) !== afterSha256) throw new Error(`applied revision target ${output.absPath} did not verify`);
@@ -575,21 +596,42 @@ export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, 
 /** Copy accepted Workshop algorithm bytes into a new execution's private directory. Returns the
  * verified bytes of each copy so the caller can retain them before the pathname is edited in place. */
 export async function materializeWorkshopRevision(site: ReturnType<typeof loadSite>, assets: readonly WorkspaceRevisionAsset[],
-  targetRoot: string): Promise<{ readonly asset: WorkspaceRevisionAsset; readonly bytes: Uint8Array }[]> {
+  targetRoot: string, beforeWrite?: (target:string)=>Promise<void>): Promise<{ readonly asset: WorkspaceRevisionAsset; readonly bytes: Uint8Array }[]> {
   const channel = channelFor(site); const p = pathsOf(site);
   const copied: { readonly asset: WorkspaceRevisionAsset; readonly bytes: Uint8Array }[] = [];
   for (const asset of assets.filter((item) => item.scope === 'workshop')) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(asset.logicalPath) || asset.logicalPath.split('/').some(part => part === '..' || part === '.' || part === '')) throw new Error('Workshop revision asset must stay in its normalized private relative path');
     const source = await decideRead(site, asset.afterVersionPath, channel);
     if (!source.ok) throw new Error(`retained Workshop revision is unavailable: ${source.reason}`);
     const bytes = await channel.readFile(source.absPath);
     if (sha256Of(bytes) !== asset.afterSha256) throw new Error(`retained Workshop revision ${source.absPath} has changed`);
     const target = p.join(targetRoot, asset.logicalPath); const parent = p.dirname(target);
     const dir = await decideWrite(site, parent, channel); if (!dir.ok) throw new Error(dir.reason);
+    await beforeWrite?.(dir.absPath);
     await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create revised Workshop directory ${dir.absPath}`);
     const output = await decideWrite(site, target, channel); if (!output.ok) throw new Error(output.reason);
+    await beforeWrite?.(output.absPath);
     await mustRun(channel, ['tee', '--', output.absPath], `materialize revised Workshop file ${output.absPath}`, { stdin: Buffer.from(bytes) });
     if (sha256Of(await channel.readFile(output.absPath)) !== asset.afterSha256) throw new Error(`materialized Workshop file ${output.absPath} did not verify`);
     copied.push({ asset, bytes });
   }
   return copied;
+}
+
+/** Apply accepted immutable shared inputs through one admitted writer. */
+export async function materializeWorkspaceRevision(site:ReturnType<typeof loadSite>,assets:readonly WorkspaceRevisionAsset[],workspace:string,
+  options:{readonly beforeWrite:(target:string)=>Promise<void>}):Promise<void> {
+  const on=channelFor(site),p=pathsOf(site);
+  for(const asset of assets.filter(item=>item.scope==='workspace')) {
+    if(!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(asset.logicalPath)||asset.logicalPath.split('/').some(part=>part==='..'||part==='.'||part==='')||asset.logicalPath==='workspace.json'||asset.logicalPath.startsWith('.hima/'))throw new Error('Workspace revision asset must stay outside Harness metadata in a normalized relative file');
+    const retained=await decideRead(site,asset.afterVersionPath,on);if(!retained.ok)throw new Error(retained.reason);
+    const bytes=await on.readFile(retained.absPath);if(sha256Of(bytes)!==asset.afterSha256)throw new Error('Accepted workspace revision bytes changed');
+    const target=p.join(workspace,asset.logicalPath),read=await decideRead(site,target,on);if(!read.ok)throw new Error(read.reason);
+    const current=sha256Of(await on.readFile(read.absPath));if(current===asset.afterSha256)continue;
+    if(current!==asset.beforeSha256)throw new Error(`Workspace revision source ${target} changed from its admitted before-version`);
+    const write=await decideWrite(site,target,on);if(!write.ok)throw new Error(write.reason);
+    await options.beforeWrite(write.absPath);
+    await mustRun(on,['tee','--',write.absPath],'apply accepted workspace revision',{stdin:Buffer.from(bytes)});
+    if(sha256Of(await on.readFile(write.absPath))!==asset.afterSha256)throw new Error('Accepted workspace revision did not verify after mutation');
+  }
 }

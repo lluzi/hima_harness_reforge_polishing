@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -83,10 +84,15 @@ const closeCases: readonly {
 ];
 
 for (const scenario of closeCases) test(`agent transport close honors the ${scenario.label} contract`, async (t) => {
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 1, licences: { fixture: 1 } });
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   const run = await host.ctx.hima.ledger.createRun({ campaignId: 'typed-close', siteId: 'local',
     packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
@@ -168,10 +174,15 @@ test('interactive runtime derives authority from Run/Ledger, preserves single-wr
     action: 'open', runId: 'run-1', executionId: 'execution-1', nodeId: 'manual', requestId: 'open-1',
     ownerEpoch: 1, controlRevision: 0, ...injected,
   }, 'actual-host-agent'), /unrecognized|Unrecognized|invalid/i);
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 1, licences: { fixture: 1 } });
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   const makeRun = async (campaignId: string, executionId: string) => host.ctx.hima.ledger.createRun({
     campaignId, siteId: 'local', packId: 'fixture-pack', packDigest: digest('a'), status: 'running', currentNode: 'manual', generation: 1,
@@ -585,10 +596,15 @@ test('an idle deadline moved later by completed commands is the one timer that f
 test('interactive close waits for the wrapper\'s own shutdown, and a surviving tool is recorded and refused by the retry', async (t) => {
   const { existsSync } = await import('node:fs');
   const { mkdir, writeFile } = await import('node:fs/promises');
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   // The stand-in wrapper owns one slot lock for its tool's lifetime, as XTop's `.cdslck` files are:
   // a start refuses while the lock exists, and only the wrapper's own shutdown path releases it.
@@ -740,7 +756,7 @@ test('interactive close waits for the wrapper\'s own shutdown, and a surviving t
 test('a survivor\'s process group is asked through the Site channel, so a silent tmux run-shell neither refuses a freed slot nor admits a live one', async (t) => {
   const { chmod, mkdir, writeFile } = await import('node:fs/promises');
   const { existsSync } = await import('node:fs');
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
   const realTmux = spawnSync('sh', ['-c', 'command -v tmux'], { encoding: 'utf8' }).stdout.trim();
@@ -754,7 +770,12 @@ test('a survivor\'s process group is asked through the Site channel, so a silent
   t.after(() => { process.env.PATH = priorPath; });
   assert.equal(spawnSync('tmux', ['start-server', ';', 'run-shell', 'echo alive'], { encoding: 'utf8' }).stdout, '',
     'the stand-in tmux answers run-shell with nothing, as tmux 3.4 did on the Site');
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   const slot = path.join(home.workspace, 'slot'); await mkdir(slot, { recursive: true });
   const wrapper = path.join(home.workspace, 'stubborn-wrapper.sh');
@@ -831,10 +852,15 @@ test('a survivor\'s process group is asked through the Site channel, so a silent
 // when it is not, and the whole of it is waited through before a group is called a survivor.
 test('a close waits through the declared close grace: a tool that ends 30 s after TERM is closed under the default and survives a declared 10 s', { timeout: 240_000 }, async (t) => {
   const { mkdir, writeFile } = await import('node:fs/promises');
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 2, licences: { fixture: 2 } });
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   // Hangup is ignored; TERM starts a shutdown that takes 30 s, as a container stop of a tool that ignores TERM does.
   const wrapper = path.join(home.workspace, 'slow-stop-wrapper.sh');
@@ -900,10 +926,15 @@ test('a close waits through the declared close grace: a tool that ends 30 s afte
 // default, and the lease refusal names the command to observe.
 test('an input without waitMs records a completion printed within the call wait, and a held lease names the command to observe (review I1)', async (t) => {
   const { writeFile } = await import('node:fs/promises');
-  const home = await createHimaHome(); t.after(() => home.dispose());
+  const home = await createHimaHome();
   const site = await writeLocalSite(home, { allowedReadRoots: [home.workspace], allowedWriteRoots: [home.workspace],
     allowedWrappers: ['sh'], parallelJobs: 1, licences: { fixture: 1 } });
-  const host = await bootInProcess(home); t.after(() => host.dispose());
+  const host = await bootInProcess(home); t.after(async () => {
+    await host.dispose();
+    assert.equal(existsSync(path.join(home.home, 'hima/database/host-owner')), false,
+      'Keep the original Home if Host resource closure is unconfirmed');
+    await home.dispose();
+  });
   const parent = await createRootAgent(host.ctx, home.workspace);
   const wrapper = path.join(home.workspace, 'plain-wrapper.sh');
   await writeFile(wrapper, ['node=$1; repl=$2', '"$node" "$repl" fixture-repl 1', ''].join('\n'));

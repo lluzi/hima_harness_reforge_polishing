@@ -1,5 +1,18 @@
 # 开发模型与 Effort 分配
 
+## DBOS 迁移本轮分配（2026-10-04 用户更新）
+
+本轮 U8–U10 优先采用以下分工，覆盖下文较早的固定 high/Claude 默认规则：
+
+- 主力编码：`gpt-6.1-sol / medium`，fresh context、明确文件所有权。
+- 架构、独立 review、复杂故障诊断：`gpt-6.1-sol / high`。
+- 非常简单的操作测试：可用 `gpt-6-luna`，只执行已明确的步骤和断言；领域判断及复杂故障交回 Sol。
+- 独立 App/ATCS 操作继续使用 Codex；外部 Claude review 与实操均已取消。
+- 产品模型仍为 DeepSeek 4.1 Flash。模型认证从既有环境变量取得，密钥不进入日志或证据。
+
+每次派工记录实际模型、Effort、理由和最低测试层级。普通等待或失败不触发模型升级；
+只有工作内容属于上面的架构、review 或复杂问题时使用 high。
+
 用户于 2026-09-30 更新。适用于 polishing 的 Codex、Claude Code 与产品内 HimaHarness
 Agent。各梯队使用固定模型，不因成本、等待或普通失败自行降级。
 

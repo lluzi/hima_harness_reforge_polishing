@@ -64,6 +64,17 @@ tools:
       - DESIGN=${DESIGN}
       - measure
       - STEP_MS=${STEP_MS}
+  # JSON-native commands: the Golden Flow must implement these explicit operands.
+  - id: measure-json
+    file: tools/measure-json.sh
+    description: Measure from the business JSON input and write the declared JSON output.
+    inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+    argv: [sh, '${WORKSPACE}/flow/tools/measure-json.sh', '${TASK_INPUT}', '${TASK_OUTPUT}']
+  - id: deliver-json
+    file: tools/deliver-json.sh
+    description: Deliver the committed sample without recomputing it.
+    inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+    argv: [sh, '${WORKSPACE}/flow/tools/deliver-json.sh', '${TASK_INPUT}', '${TASK_OUTPUT}']
 
 rules:                       # the judge rules this pack may apply, by id: this folder's rules/ first,
   - measurement-within-bound #   the bundle's second
@@ -72,7 +83,10 @@ knowledge:                   # optional: this pack's own domain knowledge, one e
   - file: the-step-method.md
     purpose: why this pack changes the step the way it does
 
-strategy:                    # what a run is set to for one generation; at least one knob, each whole
+goal:
+  measurement_at_most: {type: number, unit: ms, min: 0.5, max: 10, default: 2}
+
+strategy:                    # actual method knobs; optional for versioned flows that need none
   stepMs: { type: number, unit: ms, min: 0.5, max: 10, default: 2 }
   shape: { type: choice, options: [plain, dense], default: plain }
 
@@ -82,8 +96,202 @@ words:                       # what a person reads each number under: one entry 
   shape: { label: shape }    # a choice states no unit: a choice is measured in nothing
 ```
 
-## Workshop declaration and graph binding
+## `graph.yml` — versioned tasks and compositions for new methods
 
+Keep the existing `contract.yml` Site, tool, output, knowledge, budget and display declarations.
+A versioned flow that never chooses a Strategy can omit `strategy` or use `{}`; declare actual
+knobs when the method needs them. Existing four-kind graphs retain their nonempty Strategy contract.
+The graph uses `schema: hima-flow/1`, the same Pack id/version, and one `flow`. Every task and
+composition has a unique id. A task's `tool` names a declared contract tool; a command, a program
+using a model and a complete outsourced engineering task share the same data contract. The builtin
+`builtin/human-wait` task waits for a durable human response.
+
+Tasks default to `budget: work`: new work stops at the original Run deadline minus
+`closingReserveMs` and consumes the original attempt allowance. Declare `budget: closing` on
+evaluation or delivery tasks that consume retained results during that reserve. They use no new
+work attempt, but retain the same hard deadline, Site Permit, resource and human-control checks.
+Keep engineering and fresh experiments as work tasks; a closing declaration grants no extra time.
+An extension can declare closing tasks only when its slot's `afterTask` already has `budget: closing`;
+a model-generated diagnostic cannot grant itself access to the reserve.
+
+This strict graph uses the JSON-native `measure-json` and `deliver-json` tools declared above.
+The legacy `measure` command remains an example for the legacy graph later in this file. The task adapter returns the
+business value described by its output schema; Runtime fills identity and commits the envelope.
+The `sample` binding reads the predecessor's value, rather than guessing where a file was written.
+
+```yaml
+schema: hima-flow/1
+id: example-probe
+version: '1'
+flow:
+  kind: sequence
+  id: measure-and-deliver
+  steps:
+    - kind: task
+      id: measure
+      tool: measure-json
+      inputs:
+        design: {source: runInput, path: [design]}
+        step: {source: strategy, path: [stepMs]}
+        target: {source: goal, path: [measurement_at_most]}
+      contract:
+        input:
+          version: '1'
+          schema:
+            $schema: https://json-schema.org/draft/2020-12/schema
+            type: object
+            properties:
+              design: {type: string}
+              step: {type: number}
+              target: {type: number}
+            required: [design, step, target]
+        output: &measurement-result
+          version: '1'
+          schema:
+            $schema: https://json-schema.org/draft/2020-12/schema
+            $ref: schemas/measurement.json
+    - kind: task
+      id: deliver
+      tool: deliver-json
+      inputs:
+        sample: {source: committedOutput, taskId: measure, path: []}
+      contract:
+        input:
+          version: '1'
+          schema:
+            $schema: https://json-schema.org/draft/2020-12/schema
+            type: object
+            properties:
+              sample: {$ref: schemas/measurement.json}
+            required: [sample]
+        output: *measurement-result
+```
+
+## Command input and output
+
+A new JSON-native command explicitly declares `TASK_OUTPUT` in its tool `inputs` and uses it in
+`argv`. Runtime supplies a task-private output filename. Structured input uses an explicitly
+declared `TASK_INPUT` operand: Runtime writes the resolved business input object as immutable
+JSON and supplies its filename. Those files contain business data, not platform ledger fields.
+The Golden Flow command or its approved wrapper must implement these operands; declaring them
+does not make an existing command understand JSON.
+
+For scalar operands, a task input key must exactly match the name declared in `tools[].inputs`;
+strings, numbers and booleans become their string argv values. There is no `step` to `STEP_MS`
+translation. Runtime owns WORKSPACE, FLOW_ROOT, DESIGN, CAMPAIGN and the task file operands.
+Legacy `parameters.arguments` continue to bind their declared Goal/Strategy names through the
+legacy adapter. A new command without TASK_OUTPUT needs an explicitly registered native/Reader
+collector; Runtime refuses a missing collector before launching work and never guesses stdout.
+
+The command writes this producer shape to TASK_OUTPUT (illustrative fixture values only):
+
+```json
+{"schemaVersion":"1","value":{"route":"stop","measurement":2},"artifacts":[],"diagnostics":[]}
+```
+
+`value` must satisfy the task's output schema. To retain a file, an artifact declaration has
+`name`, a workspace-relative `path`, and optional `mediaType`. Runtime verifies the actual file,
+retains immutable bytes, and supplies SHA256 and Run/task/effect identity. A diagnostic has `code`,
+`message` and a concrete `source`. Producers never fabricate platform IDs or artifact hashes.
+Existing domain Readers still establish business meaning; JSON validity does not establish timing
+closure or a Goal. A valid result can say the business Goal was not met.
+
+## Local schema files
+
+`schemas/measurement.json` is an ordinary method file, included in method digest, seal and history:
+
+```json
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"route":{"type":"string","enum":["continue","stop"]},"measurement":{"type":"number"}},"required":["route","measurement"]}
+```
+
+Schema references resolve inside this Pack. A local schema's `child.json` resolves beside that
+schema, and `#/$defs/name` resolves in its owning document. Supply each referenced file. Validation
+uses synchronous JSON Schema 2020-12 with no network resolution, custom executable keyword, value
+coercion, default insertion or field removal. A schema accepts data shape; the declared Reader and
+Judge establish engineering meaning. Successful task execution, Goal achievement and adoption
+limits remain distinct facts.
+
+## Input bindings and compositions
+
+Input bindings use exact string-array paths. `[]` selects the whole value. The declared sources are
+`literal` with `value`, `runInput`, `goal`, `strategy`, `carry`, `committedOutput` with `taskId`, and
+`artifactRef` with `taskId` and `name`. `carry` is available only inside the repeat that declares its
+first path key. Artifact references select already committed immutable artifact metadata.
+
+The four composition forms are:
+
+- `sequence`: ordered `steps`; later tasks may consume committed earlier outputs.
+- `choice`: `select: {taskId, path}` and `cases: {enumValue: flow}`. The producer schema must declare
+  a string enum at that path, and every value has exactly one case. Cases contain the same grammar;
+  expression strings and evaluation are absent.
+- `parallel`: `branches: {name: {flow, required}}` and
+  `results: {name: {output: {taskId, path}, required}}`. Branch names execute in stable sorted order
+  for identity while branches may run concurrently. Every branch is scheduled. `required: false`
+  permits its failure or missing result at the join; use `choice` or a diagnostic extension when
+  work should run only conditionally. A branch reads predecessors outside the
+  parallel, not an uncommitted sibling. A later task consuming an optional producer lists the
+  corresponding input key in `optionalInputs`; absent optional values omit that key, and the
+  consumer's input schema must accept the result.
+- `repeat`: `body`, positive `maxIterations`, `budget: original-run`,
+  `carry: {key: {initial: inputBinding, next: {taskId, path}}}` and
+  `stop: {output: {taskId, path}, equals: enumValue}`. First-iteration carry uses `initial`; later
+  iterations use the committed body output `next`. Body input `source: carry, path: [key, ...]`
+  selects that value without modifying original Run input or Strategy. Stop reads a body task's
+  committed named enum. Nested/parallel repeats share the original Run deadline and budget.
+
+## Diagnostic extension slot
+
+For an allowed diagnostic detour, add this slot to the same strict graph:
+
+```yaml
+extensions:
+  - id: diagnostic
+    afterTask: measure
+    fragmentPath: [extra]
+    returnTo: deliver
+```
+
+## Diagnostic fragment value
+
+The producer commits a fragment value at that path with the same `flow` grammar and an explicit
+return output. For example:
+
+```yaml
+flow:
+  kind: task
+  id: diagnostic-check
+  tool: measure-json
+  inputs:
+    design: {source: runInput, path: [design]}
+    step: {source: strategy, path: [stepMs]}
+    target: {source: goal, path: [measurement_at_most]}
+    original: {source: committedOutput, taskId: measure, path: []}
+  contract:
+    input:
+      version: '1'
+      schema: {$schema: https://json-schema.org/draft/2020-12/schema, type: object}
+    output:
+      version: '1'
+      schema: {$schema: https://json-schema.org/draft/2020-12/schema, type: object}
+return: {taskId: diagnostic-check, path: []}
+```
+
+The committed fragment is validated and frozen with its own digest before it can execute. It can
+consume committed predecessors visible at the slot, uses new task/composition ids, returns a result
+produced on every successful path, and resumes at `returnTo`. The base method and original budget
+remain fixed. A slot grants no new Site Permit, tool, budget or owner authority.
+
+Existing Act tool/observe/Workshop, every Judge rule, Explore chooser/goal/stop/convergence, Wait,
+Team recipe, fork/join, loop, growth and revision declarations compile into the same finite IR.
+Their original business declarations remain immutable adapter data. Revisit entries name the next
+body and each exit's carry/stop binding; original generation limits are Run meter defaults. No
+legacy graph scheduler is implied by compilation. Original methods and historical Runs keep their
+bytes and recorded identities, and a method upgrade starts a new invocation version.
+
+## Legacy Workshop declaration and graph binding
+
+This section applies to legacy declarations. A new versioned flow has no native Workshop binding;
+record that requirement as an unsupported binding rather than inserting these nodes into `flow`.
 A Workshop is an existing `act` node variant. Its input reports are contract `outputs` produced by
 earlier nodes; scalar `inputs` are bound by the node. Knowledge files also appear in the contract's
 `knowledge`. The following is an additional block within `contract.yml`, not a separate file:
@@ -156,7 +364,7 @@ above `WORKSHOP`. The example supplies file shape, not permission to replace the
 Reader scripts have their own argv: below `$1` is `${REPORT}` and `$2` is `${OUT}`. These are argv
 arrays; shell commands, pipes and redirections belong inside scripts.
 
-## `graph.yml` — the four node kinds, the outcomes the edges are taken on, and the one edge back
+## Legacy `graph.yml` — four node kinds, outcome edges and revisit
 
 The block illustrates node and edge syntax. For an executable Explore method, supply the actual
 constraint and Goal rules from the spec: the preceding Judge needs at least two ordered rules,

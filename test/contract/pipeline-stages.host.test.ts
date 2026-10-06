@@ -221,6 +221,9 @@ test('through a booted host with the replay stand-in: /hima-fabric reads every s
     const pack = loadPack(packsDirOf(h), authoredPackId);
     assert.equal(pack.contract.id, authoredPackId, 'the contract declares the folder it is in');
     assert.equal(pack.graph.entry, 'synthesize', 'and the graph starts at the node that runs the tool');
+    assert.equal(pack.flow!.source, 'legacy');
+    assert.equal(pack.flow!.packSha256, packDigestOf(packDir));
+    assert.ok(Object.isFrozen(pack.flow), 'normal author compilation provides the immutable execution IR');
 
     const checked = await packCheck(h);
     assert.equal(checked.kind, 'success', checked.text);
@@ -538,4 +541,43 @@ test('through a booted host with the replay stand-in: /hima-test runs the compil
     }
     await h.dispose();
   }
+});
+
+
+test('normal author-stage Pack check accepts versioned flow and names a broken input before execution', async t => {
+  const home = await localHome(t);
+  if (!home) return;
+  const { h } = home;
+  try {
+    await writePackVariant(packsDirOf(h), authoredPackId, [], []);
+    const dir = path.join(packsDirOf(h), authoredPackId);
+    const original = loadPack(packsDirOf(h), authoredPackId);
+    const schema = { version: '1', schema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' } };
+    const graph = {
+      schema: 'hima-flow/1', id: authoredPackId, version: original.contract.version,
+      flow: { kind: 'sequence', id: 'method', steps: [
+        { kind: 'task', id: 'measure', tool: 'synth', inputs: { target: { source: 'goal', path: ['target_period_ns'] } }, contract: { input: schema, output: schema } },
+        { kind: 'task', id: 'deliver', tool: 'synth', inputs: { value: { source: 'committedOutput', taskId: 'measure', path: [] } }, contract: { input: schema, output: schema } },
+      ] },
+    };
+    await writePackFiles(dir, {
+      'INTENT.md': await committedRecord('grill', pipelineFiles.intent, home.flow.root),
+      'SPEC.md': await committedRecord('spec', pipelineFiles.spec, home.flow.root),
+      'FABRIC.md': '## Files written\n\ncontract.yml, graph.yml\n\n## Gaps\n\nnone\n\n## Reviews\n\napproved\n',
+      'graph.yml': JSON.stringify(graph),
+    });
+    // The old reference graph inferred Goal names; the versioned graph declares each source.
+    const contractFile = path.join(dir, 'contract.yml');
+    await writeFile(contractFile, `${await readFile(contractFile, 'utf8')}\ngoal:\n  target_period_ns: {type: number, unit: ns, min: 0.5, max: 10, default: 2}\n`);
+    const compiled = loadPack(packsDirOf(h), authoredPackId);
+    assert.equal(compiled.flow!.source, 'flow');
+    const checked = await packCheck(h);
+    assert.equal(checked.kind, 'success', checked.text);
+    assert.match(checked.text, /^stage: compiled \(/m);
+    graph.flow.steps[1]!.inputs.value!.taskId = 'missing';
+    await writePackFiles(dir, { 'graph.yml': JSON.stringify(graph) });
+    const refused = await packCheck(h);
+    assert.equal(refused.kind, 'error', refused.text);
+    assert.match(refused.text, /inputs\/value.*unknown task missing/);
+  } finally { await h.dispose(); }
 });

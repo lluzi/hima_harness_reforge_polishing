@@ -288,24 +288,26 @@ export async function launchEngineeringTask(
       // reaches this boundary and therefore leaves no filesystem task that a retry could conflict
       // with; a fault after this point is correctly uncertain and remains fenced by that intent.
       await beforeLaunch(intent);
-      const channel = channelFor(identity.site);
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'requests'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'receipts'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'events'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'delivery'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'knowledge'));
-      await ensureDirectory(identity.site, channel, path.posix.join(plan.taskDir, 'method'));
-      for (const item of plan.knowledge) await writeVerified(identity.site, channel, item.path, item.bytes);
-      for (const item of plan.methodFiles) {
-        await ensureDirectory(identity.site, channel, path.posix.dirname(item.path));
-        await writeVerified(identity.site, channel, item.path, item.bytes);
-      }
-      await writeVerified(identity.site, channel, path.posix.join(plan.taskDir, 'task.json'), Buffer.from(`${canonicalEngineeringJson(plan.envelope)}\n`));
-      const start = requestBody(plan.taskId, requestId, 'start', { goal: request.goal, ...(request.context === undefined ? {} : { context: request.context }), envelopeSha256: plan.envelope.sha256 });
-      await writeVerified(identity.site, channel, path.posix.join(plan.taskDir, 'requests', `${requestId}.json`), Buffer.from(`${canonicalEngineeringJson(start)}\n`));
+      await stageEngineeringTask(identity,plan,requestId,request);
     }, jobName: `engineering-${identity.execution.nodeId}`,
     ...(identity.execution.branchId === undefined ? {} : { branchId: identity.execution.branchId }),
   });
+}
+
+/** The same immutable filesystem preparation is shared with DBOS Job effects. It never starts
+ * a native session; the actual Job callback remains the current-admission boundary. */
+export async function stageEngineeringTask(identity:EngineeringTaskIdentity,plan:EngineeringTaskPlan,requestId:string,
+  request:Extract<EngineeringRequest,{operation:'start'}>):Promise<void> {
+  const channel=channelFor(identity.site);
+  for(const directory of ['requests','receipts','events','delivery','knowledge','method']) await ensureDirectory(identity.site,channel,path.posix.join(plan.taskDir,directory));
+  for(const item of plan.knowledge) await writeVerified(identity.site,channel,item.path,item.bytes);
+  for(const item of plan.methodFiles) {
+    await ensureDirectory(identity.site,channel,path.posix.dirname(item.path));
+    await writeVerified(identity.site,channel,item.path,item.bytes);
+  }
+  await writeVerified(identity.site,channel,path.posix.join(plan.taskDir,'task.json'),Buffer.from(`${canonicalEngineeringJson(plan.envelope)}\n`));
+  const start=requestBody(plan.taskId,requestId,'start',{goal:request.goal,...(request.context===undefined?{}:{context:request.context}),envelopeSha256:plan.envelope.sha256});
+  await writeVerified(identity.site,channel,path.posix.join(plan.taskDir,'requests',`${requestId}.json`),Buffer.from(`${canonicalEngineeringJson(start)}\n`));
 }
 
 export async function writeEngineeringRequest(identity: EngineeringTaskIdentity, taskId: string, requestId: string, request: Exclude<EngineeringRequest, { operation: 'start' }>, payloadOverride?: Readonly<Record<string, unknown>>): Promise<{ readonly frame: Record<string, unknown> & { readonly sha256: string }; readonly taskDir: string }> {
@@ -590,7 +592,7 @@ async function plainEngineeringDirectories(site: Site, channel: Channel, anchor:
   }
 }
 
-async function readEngineeringBytes(site: Site, at: string, root: string, expected: string, size?: number, anchor = root): Promise<Buffer> {
+export async function readRetainedAssetBytes(site: Site, at: string, root: string, expected: string, size?: number, anchor = root): Promise<Buffer> {
   const channel = channelFor(site), p = pathsOf(site);
   await plainEngineeringDirectories(site, channel, anchor, p.dirname(at));
   const realRoot = await plainDirectory(channel, root, 'retained engineering root');
@@ -630,7 +632,7 @@ export async function readRetainedEngineeringAsset(identity: EngineeringTaskIden
   const artifactRoot = p.join(taskDir, manifest.artifactRoot);
   const resultArtifact = manifest.artifacts.find(artifact => artifact.kind === 'result');
   if (!resultArtifact || manifest.artifacts.filter(artifact => artifact.kind === 'result').length !== 1) throw new Error('verified delivery needs one result');
-  const resultBytes = await readEngineeringBytes(site, p.join(artifactRoot, resultArtifact.path), artifactRoot, resultArtifact.sha256, undefined, identity.workspace);
+  const resultBytes = await readRetainedAssetBytes(site, p.join(artifactRoot, resultArtifact.path), artifactRoot, resultArtifact.sha256, undefined, identity.workspace);
   const prefix = identity.outsourcing.artifactPrefix;
   if (!prefix) throw new Error('retained method has no engineering artifact prefix');
   // Use the original content-addressed task envelope, not mutable current native configuration.
@@ -690,13 +692,13 @@ export async function readRetainedEngineeringAsset(identity: EngineeringTaskIden
   if (declared && treeId === undefined) {
     const held = manifest.artifacts.find(artifact => artifact.path === declared.path && artifact.sha256 === declared.sha256);
     if (!held) throw new Error('artifact is absent from the retained verified manifest');
-    const bytes = held === resultArtifact ? resultBytes : await readEngineeringBytes(site, p.join(artifactRoot, held.path), artifactRoot, held.sha256, undefined, identity.workspace);
+    const bytes = held === resultArtifact ? resultBytes : await readRetainedAssetBytes(site, p.join(artifactRoot, held.path), artifactRoot, held.sha256, undefined, identity.workspace);
     return fileAnswer({ ...declared, kind: 'file' }, bytes);
   }
   const ref = references.find(item => item.id === (treeId ?? requestedId));
   if (!ref) throw new Error('requested artifact is not a retained result reference');
   const at = p.join(identity.workspace, ref.path), root = inputRoots.get(ref.id) ?? rootFor(at)!;
-  if (ref.kind === 'file' && treeId === undefined) return fileAnswer(ref, await readEngineeringBytes(site, at, root, ref.sha256!, undefined, identity.workspace));
+  if (ref.kind === 'file' && treeId === undefined) return fileAnswer(ref, await readRetainedAssetBytes(site, at, root, ref.sha256!, undefined, identity.workspace));
   if (ref.kind !== 'directory') throw new Error('requested member has no checkpoint directory');
   await plainEngineeringDirectories(site, channel, identity.workspace, at);
   const read = await decideRead(site, at, channel);
@@ -736,7 +738,7 @@ export async function readRetainedEngineeringAsset(identity: EngineeringTaskIden
       const contents = path.join(scratch, 'contents'); await mkdir(contents);
       for (let index = 0; index < entries.length; index++) {
         const entry = entries[index]!, member = members[index]!;
-        const bytes = await readEngineeringBytes(site, p.join(identity.workspace, member.path), root, entry.sha256, entry.size, identity.workspace);
+        const bytes = await readRetainedAssetBytes(site, p.join(identity.workspace, member.path), root, entry.sha256, entry.size, identity.workspace);
         const target = path.join(contents, ...entry.path.split('/'));
         await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, bytes, { flag: 'wx', mode: 0o600 });
       }
@@ -749,5 +751,5 @@ export async function readRetainedEngineeringAsset(identity: EngineeringTaskIden
   }
   const member = members.find(item => item.id === requestedId);
   if (!member) throw new Error('requested file is not a verified checkpoint member');
-  return fileAnswer(member, await readEngineeringBytes(site, p.join(identity.workspace, member.path), root, member.sha256, member.bytes, identity.workspace));
+  return fileAnswer(member, await readRetainedAssetBytes(site, p.join(identity.workspace, member.path), root, member.sha256, member.bytes, identity.workspace));
 }

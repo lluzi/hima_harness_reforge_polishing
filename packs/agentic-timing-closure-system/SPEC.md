@@ -1,97 +1,84 @@
-# ATCS 0.3.3 run contract
+# ATCS 0.4.0 run contract
 
 ## Goal template
 
-The declared Goal is raw-verified target setup/hold clearance under the unchanged input problem.
-The product executes ATCS Fix Timing; it does not conduct or judge an external benchmark. Targets
-are 0 ns setup WNS and 0 ns hold WNS. A complete best-effort improvement may still leave this Goal
-false. Global transition/capacitance/fanout/legality and broader no-regression/adoption remain separate
-checks: UNKNOWN is never zero, and known regression must stay visible and block an unqualified
-broader-quality or adoption claim. Meeting this narrow Goal is not physical signoff.
+The declared Goal is raw-verified setup/hold clearance under the unchanged input problem. Targets
+are 0 ns setup WNS and 0 ns hold WNS with zero native violations. A complete best-effort delivery
+can leave Goal false. Global transition/capacitance/fanout/legality and broader regression/adoption
+remain separate facts. UNKNOWN stays unknown; known regression remains visible. Timing Goal success
+is prediction-only and does not establish physical signoff or approve adoption.
 
 ## Constraints
 
-The staged design, common R1, constraints, libraries and ordered scenarios are fixed. No model or
-script may change them to improve numbers. Native XTop results are prediction-only with respect to
-final physical signoff and never emit tc_final facts. There is no fixed seat plan, mutation count,
-model-step count, design object list or method deadline; Runtime/Site budget remains authoritative.
+The staged design, common R1, constraints, libraries and ordered scenarios stay fixed. Retained
+nativeTimingContext supplies same-design timing data, source reports, SDC hashes, ordered scenarios
+and producer provenance. Preparation launches no PrimeTime. Common R1 is produced by actual initial
+AutoFix, with saved native state and before/after reports. NativeReportPaths controls evidence breadth
+from 1,000 to 100,000 paths; it does not limit repair techniques or iterations.
+
+The resident opens verified R1 and may research, code, use ordinary AutoFix, resize/VT, buffering,
+insert/split/remove, placement, routing/detour and supported combinations. It measures candidates,
+undoes regressions and returns the best actual state under Runtime/Site budget. There is no fixed
+seat plan, mutation count, model-step count or hard-coded design object list. Full professional
+method and admitted engineering document shape remain in resident-timing-playbook.md.
 
 ## Run contract
 
-designStateManifest is staged and hashed as baselineState. nativeTimingContext identifies retained
-same-design timing data, source reports, SDC hashes, ordered scenarios and producer provenance.
-prepare-native-context copies and re-hashes those bytes and current Site libraries without launching
-PrimeTime. The route produces actual common R1 through initial AutoFix as a useful repair step,
-then delegates whole-engineering repair. The resident opens the verified saved R1 and works from
-its actual measured state; it may use AutoFix alongside other supported techniques. No separately
-run serial control, benchmark document or superiority verdict is required. The Campaign owner uses engineering
-start/message/status/delivery/release. After delivery, the graph reads the result and judges delivery
-then broader checks and the narrow Timing Goal. The owner records a cited goal-met or honest stop
-at finish-engineering; a dead-end Judge is not an explicit Goal decision.
+`graph.yml` declares one `hima-flow/1` sequence:
 
-The Site must publish nativeTimingContext as real data. A template or absent file blocks preparation.
-nativeReportPaths controls common raw evidence breadth from 1,000 to 100,000 paths; it does not limit
-repair techniques or iterations.
+| Task | Input sources | Work and committed output |
+| --- | --- | --- |
+| prepare-inputs | Run designStateManifest, siteCapabilities, nativeTimingContext | Verify retained native identity and existing readiness; return the three input paths and readinessId. |
+| prepare-baseline | Committed preparation paths; strategy nativeReportPaths | Stage/hash baseline, copy/re-hash retained native context, execute native common initial AutoFix and save R1; return baselineStateId, nativeContextId, commonStateId and worklistId. |
+| fix-timing | Committed Site/native paths; Run setup/hold Goal | Existing task-scoped resident engineering adapter and task-local wrapper execute the whole repair method. Existing Pack Reader validates exactly one delivery; commit observations and engineering outcome/summary/stopReason plus domain-report artifact. |
+| evaluate-timing | Committed Reader value; explicit domain-report artifactRef; Run Goal | Verify report/reading identity, consume raw setup/hold WNS/TNS/counts and before metrics, retain broader remaining/regression/UNKNOWN Measures; emit explicit goalMet. No additional Reader Job. |
+| deliver | Committed evaluation; explicit domain-report artifactRef | Recheck retained evidence, package full checkpoint/support tree and all scripts/ECO/reproduction/native trace/raw reports, and emit Markdown/JSON reports with goalMet and engineering package references. |
+
+The four program Tasks use existing TASK_INPUT/TASK_OUTPUT command ABI. Input is the bound JSON
+business value; output is `{schemaVersion, value, artifacts, diagnostics}`. Artifact entries declare
+name/path/mediaType only; Runtime supplies ownership IDs and hashes. All five input/output schemas
+are JSON Schema 2020-12 declared through Pack-local `schemas/tasks.json` references. No author
+supplies platform Run/effect metadata. The resident delivery's existing task identity remains the
+Reader's technical evidence boundary.
+
+The five Tasks share the original two-hour hard deadline and fifteen-minute closing reserve. The Pack declares `budget: closing` on evaluation and delivery so they can consume verified results during that reserve. New engineering work is refused at the work cutoff. Site permissions, human controls, resource closure and the original hard Run limit apply to every Task.
 
 ## Semantics
 
-atcs-engineering-result emits raw-verified common-R1/selected setup/hold counts, WNS and TNS,
-timing-only remaining count, result-error count, broader remaining/regression facts and required
-collateral unknown count. Its regression thresholds use the method's fixed 0 ns setup/hold targets,
-not a goal read from an external experiment. It emits no external-reference/effect measurements.
-Independent benchmark evaluation lives only in test/evaluation materials and cannot change these
-product facts or the Campaign ending.
+The existing Reader binds the engineering result to exactly one Host delivery manifest and current
+task/run/execution/node identity. It re-hashes raw reports, recomputes WNS/TNS/counts, verifies the
+common-R1 starting measurements and re-hashes scripts, logical/physical ECO, checkpoint,
+reproduction and native trace. Missing/tampered identity or evidence refuses delivery. Empty model
+remaining/regressed lists cannot erase measured failures.
 
-The Reader binds the primary result to exactly one signed Host delivery manifest and current
-task/run/execution/node identity. It re-hashes raw reports, parses their WNS/TNS/count, and re-hashes
-scripts, logical/physical ECO, checkpoint, reproduction and native trace. Missing or tampered
-identity/evidence refuses the result rather than producing zero.
-
-Collateral evidence names before/after state, scenario scope and a hashed native XTop source report.
-The Reader parses known XTop fail-reason tables itself and derives a positive blocker lower bound
-plus witnessed regressions. That timing-fix scope remains unknown for each required global
-transition, capacitance, fanout and legality check even when it finds blockers; it can never prove
-global zero. An unsupported native format is also unknown. Model-authored counts and lists never
-drive Goal values. A future all-clear path requires a separately admitted real native global report
-and parser; no synthetic or model-normalized document can create that PASS.
+Collateral fail-reason tables supply positive blocker lower bounds and witnessed regressions.
+Their bounded timing-fix scope stays UNKNOWN for global transition/capacitance/fanout/legality,
+including zero or unsupported formats. A global all-clear path still requires separately admitted
+real native global reports and parsers. No synthetic/model-normalized document can create PASS.
 
 ## Judge rules
 
-engineering-delivery-ready requires a fully verified result. engineering-setup-goal and
-engineering-hold-goal compare actual native WNS to the Run targets. engineering-timing-clear requires
-zero setup/hold violations from verified raw reports. There is no beats-AutoFix completion criterion.
-The separate check-engineering-collateral records engineering-no-remaining (timing plus global
-collateral) and engineering-no-regression without changing their unknown/positive semantics. Every
-outcome remains visible before proceeding to the narrow Goal; broader FAIL/UNKNOWN is not adoption
-approval and is not erased by a Timing PASS.
+The existing Reader and rule files retain their technical meaning for compatibility. The new flow consumes committed Reader values in evaluate-timing and declares no separate Judge nodes.
 
 ## Choosers
 
-atcs-engineering-ending supports the existing owner-driven Explore completion. The owner may record
-only a cited goal-met backed by every required last-Judge rule, or a cited stop preserving best effort
-and limitations. It is an ending, not another experiment or native strategy loop. The resident still
-chooses engineering tactics; Hima does not reproduce its internal team. Historical method snapshots, endings and
-verdicts are never recomputed or rewritten by this method upgrade.
+The current sequence has no chooser or Explore step. Its final delivery value states goalMet explicitly; historical ending helpers retain their original meaning.
 
 ## Endings
 
-Input or delivery failure reaches wait-for-person. A verified result reaches the terminal Goal Judge.
-PASS ends goal-met. FAIL or UNDETERMINED ends honestly without claiming Goal success. Budget and
-cancel endings retain normal Runtime meaning. A no-op is valid only with equal actual before/after
-metrics and real hashed no-op script/ECO exports.
+A valid engineering delivery proceeds through evaluation and delivery even when Goal is false.
+Final `goalMet` is explicit in committed delivery output. Missing inputs/evidence remain actionable
+Task failures; cancellation/budget and durable recovery are Runtime responsibilities. A no-op remains
+valid only with equal measured before/after metrics and hashed no-op scripts/ECO exports.
+
+Legacy CLI handlers, legacy snapshots, historical endings and verdicts retain their prior meaning.
+Compatibility Reader/rules remain available; Judge/Explore/checklist/Reader are not separate nodes
+in this new five-Task route. Independent serial AutoFix comparisons are external evaluation only.
 
 ## Workshops
 
-None. fix-timing is one ordinary act node with optional outsourcing. Its tool description and
-resident-timing-playbook.md form the complete task. The resident may research, code, operate any
-authorized XTop technique, measure candidates, undo regressions and return the best actual state.
+There is no fixed internal Workshop or seat plan. The resident task owns research and private engineering code within the supplied task and Site boundary.
 
 ## Knowledge
 
-resident-timing-playbook.md defines whole-task autonomy, one persistent XTop session, input-branch
-margin analysis, buffer-versus-delay selection, reset/IO port-net regeneration, legalization,
-coupled Hold-clean/setup compensation, best-state selection and the admitted result shape. These
-methods carry source hashes and retained-case scope; they do not prescribe historical objects or an
-ECO answer. xtop-capabilities.md describes native mechanics without prescribing a
-design answer. state-and-evidence.md keeps actual, predicted, unknown and final-signoff meanings
-separate. Version 0.2.10's contract, graph, semantics and method records remain under legacy/0.2.10.
+resident-timing-playbook.md carries the complete task and admitted delivery shape; xtop-capabilities.md describes native operations; state-and-evidence.md keeps source identity and adoption limits explicit.

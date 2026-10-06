@@ -9,13 +9,14 @@ import { Diagnostics } from './Diagnostics.js';
 import { useRunActions } from './HimaRunCard.js';
 import { campaignEvents, isOwner as isOwnerOf, useRunsList } from './owned-run.js';
 import { PackOwnerPanel } from './PackOwnerPanel.js';
-import { runPurposeMark } from '../card-labels.js';
+import { runSnapshotOlder, runPurposeMark } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
 import { shortTime } from './time.js';
 import { HIMA_STYLE } from './workbench-style.js';
 import { runIdForWorkbenchAddress, workbenchAddressKey, workbenchAddressOf, type WorkbenchAddress } from './workbench-address.js';
 import { ChildSessionPanel } from './ChildSessionPanel.js';
 import { InsightView, type AvailableInsightReport } from './InsightView.js';
+import { LibInsightAppPanel } from './LibInsightAppPanel.js';
 import { TeamPanel } from './TeamPanel.js';
 import { WorkMemoryPanel } from './WorkMemoryPanel.js';
 import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbench-state.js';
@@ -44,7 +45,7 @@ export interface WorkbenchProps {
 }
 
 /** Serial, abortable reads. Failed reads retain an explicitly stale snapshot of the same identity. */
-function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<HimaResult<T>>, active: boolean) {
+function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<HimaResult<T>>, active: boolean, older?: (incoming: T, current: T) => boolean) {
   const [snapshot, setSnapshot] = useState<{ key: string; value?: T; error?: string; at?: number }>({ key });
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -55,13 +56,13 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
       const result = await read(controller.signal);
       if (controller.signal.aborted) return;
       setSnapshot((previous) => result.ok
-        ? { key, value: result.value, at: Date.now() }
+        ? previous.key === key && previous.value !== undefined && older?.(result.value, previous.value) ? previous : { key, value: result.value, at: Date.now() }
         : { ...(previous.key === key ? previous : { key }), error: result.error.message });
       timer = setTimeout(() => { void poll(); }, 2000);
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [key, read, active, revision]);
+  }, [key, read, active, revision, older]);
   const current = snapshot.key === key ? snapshot : { key };
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
@@ -80,6 +81,12 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const [confirming, setConfirming] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [memoryDrafts, setMemoryDrafts] = useState<Readonly<Record<string, MemoryDraft>>>({});
+  // Data Insight opens on the LibInsight pages (ADR-0019); retained reports stay one click away. The
+  // frame is mounted on the first look and then only hidden, so a person's place in LibInsight
+  // survives a trip to Campaign and back. Custom library analyses are asked of the Guide in the
+  // conversation and shown on their own page (ADR-0021), not here.
+  const [insightSurface, setInsightSurface] = useState<'libinsight' | 'reports'>('libinsight');
+  const [libInsightSeen, setLibInsightSeen] = useState(false);
   // Bug 3 fix: the top-level "Refresh Run data" button used to only bump `snapshot`/`list`, both of
   // which this page never reads while no Run is selected (`selected === undefined`, exactly the
   // state `ConfigurationPage` renders in) — so on the Configuration page that click was a no-op, and
@@ -89,9 +96,9 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const list = useRunsList(activeSessionId);
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal, activeSessionId), [selected, activeSessionId]);
   const runReadKey = JSON.stringify([activeSessionId, selected ?? '']);
-  const snapshot = usePollingRead(runReadKey, read, selected !== undefined && tab.visible);
+  const snapshot = usePollingRead(runReadKey, read, selected !== undefined && tab.visible, runSnapshotOlder);
   const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal, activeSessionId), [selected, activeSessionId]);
-  const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible);
+  const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible, runSnapshotOlder);
   const view = snapshot.value;
   const retainedReportRef = view?.experience?.recordId;
   const visibleInsightReports: readonly AvailableInsightReport[] = view === undefined ? [] : [
@@ -101,7 +108,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       detail: `Observation candidate · ${observation.reader.reportKind} · ${observation.contentSha256}. The Host still validates whether its retained bytes are a supported Insight report.`,
     })),
   ];
-  const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
+  const acting = useRunActions(selected, () => { snapshot.refresh(); execution.refresh(); list.refresh(); }, activeSessionId, view);
   const isOwner = isOwnerOf(view?.run.control, activeSessionId);
   const [childCheck, setChildCheck] = useState<{ key: string; ready: boolean; error?: string; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' } }>({ key: '', ready: false });
   const [childRefresh, setChildRefresh] = useState(0);
@@ -131,11 +138,15 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     setAddress(requestedAddress);
   }, [tab.navigation.revision, workbenchAddressKey(requestedAddress)]);
 
+  const showingLibInsight = !managingPack && address.kind === 'insight' && address.reportRef === undefined && insightSurface === 'libinsight';
+  useEffect(() => { if (showingLibInsight && tab.visible) setLibInsightSeen(true); }, [showingLibInsight, tab.visible]);
+
   const chooseCampaign = (next: WorkbenchAddress) => {
     lastCampaignAddress.current = next;
     setAddress(next);
   };
   const chooseInsight = (next: Extract<WorkbenchAddress, { readonly kind: 'insight' }>) => {
+    if (next.reportRef !== undefined) setInsightSurface('reports');
     lastInsightAddress.current = next;
     setAddress(next);
   };
@@ -215,7 +226,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'insight'
-        ? <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} />
+        ? showingLibInsight ? null : <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} onShowLibInsight={() => { setInsightSurface('libinsight'); chooseInsight({ kind: 'insight' }); }} />
         : address.kind === 'child'
           ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined
@@ -228,6 +239,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         : <div className='hima-workbench-body'><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
             <TeamPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} view={view} onChanged={() => { snapshot.refresh(); execution.refresh(); list.refresh(); }} onInspect={entry => setAddress({ kind: 'child', parentSessionId: entry.parentSessionId, childSessionId: entry.childSessionId })}/>
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} draft={memoryDrafts[memoryScopeKey(activeSessionId, selected)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId, selected)]: draft }))}/></div>}
+    {libInsightSeen ? <LibInsightAppPanel sessionId={activeSessionId} hidden={!showingLibInsight} pickFolder={pickFolder} onShowReports={() => setInsightSurface('reports')} /> : null}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
   </div></HimaViewerSession>;
 }

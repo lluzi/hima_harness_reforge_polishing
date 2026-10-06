@@ -1,97 +1,157 @@
-# ATCS repairs Timing and delivers measured results. External benchmarking is not a Campaign step.
+schema: hima-flow/1
 id: agentic-timing-closure-system
-version: "0.3.3"
-entry: bind-inputs
-autopilot:
-  - { from: [bind-inputs], until: [fix-timing, wait-for-person] }
-  - { from: [read-engineering-result], until: [check-engineering-goal, wait-for-person] }
-
-nodes:
-  - id: bind-inputs
-    kind: act
-    parameters:
-      tool: bind-inputs
-      arguments:
-        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-        NATIVE_TIMING_CONTEXT: { from: input, name: nativeTimingContext }
-  - id: read-readiness
-    kind: act
-    parameters: { observes: inputReadiness }
-  - id: check-inputs
-    kind: judge
-    parameters: { rules: [inputs-ready] }
-  - id: baseline
-    kind: act
-    parameters:
-      tool: baseline
-      arguments:
-        DESIGN_STATE_MANIFEST: { from: input, name: designStateManifest }
-  - id: prepare-native-context
-    kind: act
-    parameters:
-      tool: prepare-native-context
-      arguments:
-        NATIVE_TIMING_CONTEXT: { from: input, name: nativeTimingContext }
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-  - id: common-autofix
-    kind: act
-    parameters:
-      tool: common-autofix
-      arguments:
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-        NATIVE_REPORT_PATHS: { from: strategy, name: nativeReportPaths }
-  - id: fix-timing
-    kind: act
-    parameters:
-      tool: fix-timing
-      arguments:
-        SITE_CAPABILITIES: { from: input, name: siteCapabilities }
-        NATIVE_TIMING_CONTEXT: { from: input, name: nativeTimingContext }
-        TARGET_SETUP_NS: { from: goal, name: target_setup_wns_ns }
-        TARGET_HOLD_NS: { from: goal, name: target_hold_wns_ns }
-  - id: read-engineering-result
-    kind: act
-    parameters: { observes: engineeringResult }
-  - id: check-engineering-delivery
-    kind: judge
-    parameters: { rules: [engineering-delivery-ready] }
-  - id: check-engineering-collateral
-    kind: judge
-    parameters:
-      rules: [engineering-no-remaining, engineering-no-regression]
-  - id: check-engineering-goal
-    kind: judge
-    parameters:
-      rules: [engineering-delivery-ready, engineering-timing-clear, engineering-setup-goal, engineering-hold-goal]
-      bind:
-        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
-        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
-  - id: finish-engineering
-    kind: explore
-    parameters:
-      chooser: atcs-engineering-ending
-  - id: wait-for-person
-    kind: wait
-    parameters: { blocker: scope-input-or-engineering-delivery-required }
-
-edges:
-  - { from: bind-inputs, to: read-readiness }
-  - { from: read-readiness, to: check-inputs }
-  - { from: check-inputs, to: baseline, outcome: PASS }
-  - { from: check-inputs, to: wait-for-person, outcome: FAIL }
-  - { from: check-inputs, to: wait-for-person, outcome: UNDETERMINED }
-  - { from: baseline, to: prepare-native-context }
-  - { from: prepare-native-context, to: common-autofix }
-  - { from: common-autofix, to: fix-timing }
-  - { from: fix-timing, to: read-engineering-result }
-  - { from: read-engineering-result, to: check-engineering-delivery }
-  - { from: check-engineering-delivery, to: check-engineering-collateral, outcome: PASS }
-  - { from: check-engineering-delivery, to: wait-for-person, outcome: FAIL }
-  - { from: check-engineering-delivery, to: wait-for-person, outcome: UNDETERMINED }
-  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: PASS }
-  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: FAIL }
-  - { from: check-engineering-collateral, to: check-engineering-goal, outcome: UNDETERMINED }
-  - { from: check-engineering-goal, to: finish-engineering, outcome: PASS }
-  - { from: check-engineering-goal, to: finish-engineering, outcome: FAIL }
-  - { from: check-engineering-goal, to: finish-engineering, outcome: UNDETERMINED }
+version: 0.4.0
+flow:
+  kind: sequence
+  id: timing-closure
+  steps:
+  - kind: task
+    id: prepare-inputs
+    tool: prepare-inputs
+    inputs:
+      DESIGN_STATE_MANIFEST:
+        source: runInput
+        path:
+        - designStateManifest
+      SITE_CAPABILITIES:
+        source: runInput
+        path:
+        - siteCapabilities
+      NATIVE_TIMING_CONTEXT:
+        source: runInput
+        path:
+        - nativeTimingContext
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-inputs-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-inputs-output
+  - kind: task
+    id: prepare-baseline
+    tool: prepare-baseline
+    inputs:
+      DESIGN_STATE_MANIFEST:
+        source: committedOutput
+        taskId: prepare-inputs
+        path:
+        - DESIGN_STATE_MANIFEST
+      SITE_CAPABILITIES:
+        source: committedOutput
+        taskId: prepare-inputs
+        path:
+        - SITE_CAPABILITIES
+      NATIVE_TIMING_CONTEXT:
+        source: committedOutput
+        taskId: prepare-inputs
+        path:
+        - NATIVE_TIMING_CONTEXT
+      NATIVE_REPORT_PATHS:
+        source: strategy
+        path:
+        - nativeReportPaths
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-baseline-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-baseline-output
+  - kind: task
+    id: fix-timing
+    tool: fix-timing
+    inputs:
+      SITE_CAPABILITIES:
+        source: committedOutput
+        taskId: prepare-baseline
+        path:
+        - SITE_CAPABILITIES
+      NATIVE_TIMING_CONTEXT:
+        source: committedOutput
+        taskId: prepare-baseline
+        path:
+        - NATIVE_TIMING_CONTEXT
+      TARGET_SETUP_NS:
+        source: goal
+        path:
+        - target_setup_wns_ns
+      TARGET_HOLD_NS:
+        source: goal
+        path:
+        - target_hold_wns_ns
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/fix-timing-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/fix-timing-output
+  - kind: task
+    id: evaluate-timing
+    budget: closing
+    tool: evaluate-timing
+    inputs:
+      READER_VALUE:
+        source: committedOutput
+        taskId: fix-timing
+        path: []
+      DOMAIN_REPORT:
+        source: artifactRef
+        taskId: fix-timing
+        name: domain-report
+      TARGET_SETUP_NS:
+        source: goal
+        path:
+        - target_setup_wns_ns
+      TARGET_HOLD_NS:
+        source: goal
+        path:
+        - target_hold_wns_ns
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/evaluate-timing-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/evaluate-timing-output
+  - kind: task
+    id: deliver
+    budget: closing
+    tool: deliver
+    inputs:
+      EVALUATION:
+        source: committedOutput
+        taskId: evaluate-timing
+        path: []
+      DOMAIN_REPORT:
+        source: artifactRef
+        taskId: fix-timing
+        name: domain-report
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/deliver-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/deliver-output

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  closeInteractiveJob, interactiveCommandMarker, jobProcessGroupAlive, openInteractiveJob, observeInteractiveCommand,
+  LocalChannel, closeInteractiveJob, interactiveCommandMarker, jobProcessGroupAlive, openInteractiveJob, observeInteractiveCommand,
   parseInteractiveRecord, readInteractiveTranscript, sendInteractiveInput, signalInteractiveJob,
   type InteractiveAuthority, type InteractiveIntent, type InteractiveQualification, type InteractiveReceipt,
   type InteractiveChannel, type InteractiveRecord, type InteractiveSession,
@@ -25,6 +25,7 @@ class LocalTestChannel implements InteractiveChannel {
   realpath(pathname: string) { return realpath(pathname); }
   async absent(pathname: string) { try { await lstat(pathname); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true; throw error; } }
   exec(argv: readonly string[], options: { readonly stdin?: Uint8Array } = {}): Promise<{ code: number; stdout: Uint8Array; stderr: string }> {
+    if (argv.length === 5 && argv[0] === 'kill' && argv[1] === '-s' && argv[2] === '0' && argv[3] === '--' && /^-[1-9][0-9]*$/.test(argv[4]!)) return new LocalChannel(this.siteName).exec(argv, options);
     if (!['tmux', 'tail', 'wc'].includes(argv[0] ?? '')) throw new Error(`test channel refuses ${argv[0] ?? ''}`);
     return new Promise((resolve, reject) => {
       const child = spawn(argv[0]!, argv.slice(1), { stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
@@ -195,7 +196,7 @@ test('one durable tmux Job preserves REPL state, single-writer receipts, transcr
     await new Promise((resolve) => setTimeout(resolve, 50));
     const closed = await closeInteractiveJob(on, { runId: 'run-interactive', executionId: 'execution-1', nodeId: 'manual', requestId: 'close-1',
       actor: 'owner-session', ownerEpoch: 1, controlRevision: 0, callerDigest: hash('b'), session }, authority);
-    assert.equal(closed.status, 'closed');
+    assert.equal(closed.status, 'closed', 'reason' in closed ? closed.reason : undefined);
     assert.deepEqual(authority.jobStop, { wasRunning: false, observedGone: true }, 'normal adapter exit is not rewritten as a killed Job');
 
     const uncertain = await sendInteractiveInput(on, input(session, 'request-after-close', 'lost-1', { op: 'set', key: 'lost', value: 1 }, gap.cursor.end), authority);
@@ -213,13 +214,65 @@ test('one durable tmux Job preserves REPL state, single-writer receipts, transcr
 // "not permitted" is a live group this login may not signal; everything else is unknown.
 test('the process probe reads only "no such process" as gone; a usage error or silence is unknown', async () => {
   const answering = (code: number, stderr: string): InteractiveChannel => ({ siteName: 'probe',
-    exec: async (argv) => { assert.deepEqual(argv, ['kill', '-s', '0', '--', '-4242']); return { code, stdout: new Uint8Array(), stderr }; } });
+    exec: async (argv) => {
+      if (argv[0] === 'ps') return { code: 0, stdout: Buffer.from('4242 S\n'), stderr: '' };
+      assert.deepEqual(argv, ['kill', '-s', '0', '--', '-4242']); return { code, stdout: new Uint8Array(), stderr };
+    } });
   assert.equal(await jobProcessGroupAlive(answering(0, ''), 4242), true);
-  assert.equal(await jobProcessGroupAlive(answering(1, 'kill: (-4242) - Operation not permitted'), 4242), true);
+  assert.equal(await jobProcessGroupAlive(answering(1, 'kill: (-4242) - Operation not permitted'), 4242), true, 'a live group of another login stays alive');
   for (const said of ['bash: kill: (-4242) - No such process', 'kill: kill -4242 failed: no such process', 'kill: -4242: No such process']) {
     assert.equal(await jobProcessGroupAlive(answering(1, said), 4242), false, said);
   }
   for (const [code, said] of [[1, 'kill: Illegal option -s'], [1, ''], [1, 'Usage: kill [-s sigspec] pid'], [127, 'kill: not found'], [255, 'ssh: connect']] as const) {
     await assert.rejects(jobProcessGroupAlive(answering(code, said), 4242), /cannot tell whether process group 4242 still runs/, `${code} ${said}`);
+  }
+});
+
+// U10 live ZH Run d529a082: the evaluate-timing Job exited 0 and its tmux session ended, but the
+// shared Site tmux server never reaped the Job shell. `kill -s 0` succeeds on a group holding only
+// that zombie, so resource closure waited forever. A zombie runs nothing and holds no seat; only
+// its parent can reap it. A group whose every member is a zombie is closed. Anything the process
+// table does not answer keeps the conservative "alive".
+test('a process group holding only zombies is closed; any live member or an unanswered table is alive', async () => {
+  const asked: string[][] = [];
+  const table = (code: number, stdout: string): InteractiveChannel => ({ siteName: 'probe',
+    exec: async (argv) => {
+      asked.push([...argv]);
+      if (argv[0] === 'kill') { assert.deepEqual(argv, ['kill', '-s', '0', '--', '-2704775']); return { code: 0, stdout: new Uint8Array(), stderr: '' }; }
+      assert.deepEqual(argv, ['ps', '-A', '-o', 'pgid=,stat=']);
+      return { code, stdout: Buffer.from(stdout), stderr: '' };
+    } });
+  // The retained live shape: the Job shell is the group leader and a zombie; another group runs on.
+  assert.equal(await jobProcessGroupAlive(table(0, '      1 Ss  \n2259228 Ss\n2704775 Zs  \n2704775 Z\n 27047750 S\n'), 2704775), false);
+  assert.deepEqual(asked.at(-1), ['ps', '-A', '-o', 'pgid=,stat=']);
+  assert.equal(await jobProcessGroupAlive(table(0, '2704775 Zs\n2704775 Sl\n'), 2704775), true, 'one live member keeps the group alive');
+  assert.equal(await jobProcessGroupAlive(table(0, '2704775 D\n'), 2704775), true, 'uninterruptible sleep is still running work');
+  assert.equal(await jobProcessGroupAlive(table(0, '2704775 Zl\n'), 2704775), true, 'a zombie leader with live threads still runs');
+  assert.equal(await jobProcessGroupAlive(table(0, '1 Ss\n'), 2704775), true, 'a group kill still found but the table no longer lists is asked again later');
+  assert.equal(await jobProcessGroupAlive(table(1, ''), 2704775), true, 'an unanswered process table never closes a group');
+  assert.equal(await jobProcessGroupAlive(table(0, 'garbage\n'), 2704775), true);
+});
+
+// Review I1: the real kernel answers, not a fake. macOS refuses `kill -0` on a zombie-only group with
+// "not permitted"; Linux answers 0. Both must read as closed, and a live group as alive.
+test('an unreaped zombie group is closed and a live group is alive on this machine', async () => {
+  const on = new LocalChannel('local-test');
+  const group = async (code: string) => {
+    const parent = spawn('perl', ['-e', `$| = 1; my $p = fork(); if (!$p) { setpgrp(0, 0); ${code} } print "$p\\n"; sleep 30;`], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const pid = await new Promise<number>((resolve, reject) => {
+      parent.stdout!.once('data', (chunk: Buffer) => resolve(Number(chunk.toString('utf8').trim())));
+      parent.once('error', reject);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return { pid, stop: () => parent.kill('SIGKILL') };
+  };
+  const zombie = await group('exit 0;');
+  const live = await group('sleep 60; exit 0;');
+  try {
+    assert.equal(await jobProcessGroupAlive(on, zombie.pid), false, 'a group holding only its unreaped leader is closed');
+    assert.equal(await jobProcessGroupAlive(on, live.pid), true, 'a running group is alive');
+  } finally {
+    zombie.stop(); live.stop();
+    try { process.kill(-live.pid, 'SIGKILL'); } catch { /* already gone */ }
   }
 });

@@ -334,7 +334,14 @@ test('the channel runs its own verbs and refuses everything else, on a local sit
       ['kill', '-s', '0', '--', '-1', '-4242'], ['kill', '-s', '0', '--', '-0']]) {
       await assert.rejects(() => channel.exec(argv), /the process probe is only "kill -s 0 -- -<process group>"/, JSON.stringify(argv));
     }
+    // The process table read is one fixed, read-only shape; no caller chooses its options.
+    for (const argv of [['ps'], ['ps', '-A'], ['ps', '-A', '-o', 'pgid=,stat=,args='], ['ps', '-ef'], ['ps', '-A', '-o', 'pgid=,stat=', '-p', '1']]) {
+      await assert.rejects(() => channel.exec(argv), /the process table read is only "ps -A -o pgid=,stat="/, JSON.stringify(argv));
+    }
     assert.deepEqual(remoteCommands(), [], 'a refused command is never run');
+    const table = await channel.exec(['ps', '-A', '-o', 'pgid=,stat=']);
+    assert.equal(table.code, 0);
+    assert.match(Buffer.from(table.stdout).toString('utf8'), /^\s*\d+\s+\S+\s*$/m, 'every row is a process group and a state (macOS pads the state column)');
     const gone = await channel.exec(['kill', '-s', '0', '--', '-2147483000']);
     assert.equal(gone.code, 1, 'a group with no process answers no, and nothing was signalled');
   } finally {

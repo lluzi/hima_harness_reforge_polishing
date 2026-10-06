@@ -1,0 +1,146 @@
+schema: hima-flow/1
+id: libinsight-analysis
+version: 0.1.0
+flow:
+  kind: sequence
+  id: custom-analysis-route
+  steps:
+  - kind: task
+    id: prepare-request
+    tool: prepare-request
+    inputs:
+      ANALYSIS_REQUEST:
+        source: runInput
+        path:
+        - analysisRequest
+      ANALYSIS_LIBRARY:
+        source: runInput
+        path:
+        - analysisLibrary
+      FACTS_CORPUS:
+        source: runInput
+        path:
+        - factsCorpus
+      ENGINEERING_CAPABILITIES:
+        source: runInput
+        path:
+        - engineeringCapabilities
+      LICENCE_MODE_FILE:
+        source: runInput
+        path:
+        - licenceModeFile
+      SOURCE_READ_ROOTS:
+        source: runInput
+        path:
+        - sourceReadRoots
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-request-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/prepare-request-output
+  - kind: task
+    id: custom-analysis
+    tool: custom-analysis
+    inputs:
+      goal:
+        source: committedOutput
+        taskId: prepare-request
+        path:
+        - goal
+      REQUEST_ID:
+        source: committedOutput
+        taskId: prepare-request
+        path:
+        - requestId
+      QUESTION:
+        source: committedOutput
+        taskId: prepare-request
+        path:
+        - question
+      PREPARED_REQUEST:
+        source: committedOutput
+        taskId: prepare-request
+        path:
+        - preparedPath
+      PREPARED_SHA256:
+        source: committedOutput
+        taskId: prepare-request
+        path:
+        - preparedSha256
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/custom-analysis-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/custom-analysis-output
+  - kind: task
+    id: admit-analysis
+    budget: closing
+    tool: admit-analysis
+    inputs:
+      READER_VALUE:
+        source: committedOutput
+        taskId: custom-analysis
+        path: []
+      DOMAIN_REPORT:
+        source: artifactRef
+        taskId: custom-analysis
+        name: domain-report
+      PREPARED:
+        source: committedOutput
+        taskId: prepare-request
+        path: []
+      ANALYSIS_LIBRARY:
+        source: runInput
+        path:
+        - analysisLibrary
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/admit-analysis-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/admit-analysis-output
+  - kind: task
+    id: deliver
+    budget: closing
+    tool: deliver
+    inputs:
+      ADMISSION:
+        source: committedOutput
+        taskId: admit-analysis
+        path: []
+      PREPARED:
+        source: committedOutput
+        taskId: prepare-request
+        path: []
+      TARGET_ADMITTED:
+        source: goal
+        path:
+        - admitted_analyses
+    contract:
+      input:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/deliver-input
+      output:
+        version: '1'
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $ref: schemas/tasks.json#/$defs/deliver-output

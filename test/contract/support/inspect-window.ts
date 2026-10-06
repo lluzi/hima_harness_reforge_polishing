@@ -2,10 +2,10 @@
 // It never creates another browser or changes production state behind the Host's interfaces.
 import assert from 'node:assert/strict';
 
-export async function inspectWindow(port: number) {
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
-  const target = targets.find((entry) => entry.type === 'page');
-  assert.ok(target, 'the test driver has a page');
+export async function inspectWindow(port: number, pick: (entry: { type: string; url: string }) => boolean = (entry) => entry.type === 'page') {
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; url: string; webSocketDebuggerUrl: string }[];
+  const target = targets.find(pick);
+  assert.ok(target, 'the test driver has the requested target');
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise<void>((resolve, reject) => { socket.addEventListener('open', () => resolve(), { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let seq = 0;

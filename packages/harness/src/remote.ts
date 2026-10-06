@@ -1,3 +1,4 @@
+import { taskToolOutput } from './task-contract.js';
 // @hima-seam webserver wrapped
 // @hima-seam client-connection wrapped
 // The Hima remote interface: one namespace, `/hima/api/`, on the host's web server. It is what
@@ -88,7 +89,7 @@ import type { PackStageOrRefusal } from './packs.js';
 // The one place the form's mark for a pack folder's stage is decided, beside every other word a
 // person reads off this harness.
 import { packStageMark } from './card-labels.js';
-import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
+import { HIMA_ANALYSIS_PAGE_PREFIX, HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
 // Type-only: this module reaches no filesystem of its own (see `RemoteOperations.readCampaignFile`/
 // `writeCampaignFile` below) and is bundled into the browser half through `client/api.ts`, where a
 // runtime import of `campaign-file.ts` would ship `node:fs` to every browser.
@@ -316,8 +317,17 @@ export interface RunWords {
   readonly strategy: Readonly<Record<string, RunWord>>;
 }
 
+export type { DurableTaskView } from './record-views.js';
+import type { DurableTaskView } from './record-views.js';
+
 /** The Run row itself: its identity, and the fabric state a Run HimaFabric started also carries. */
 export interface RunHeadView {
+  readonly engine?: 'dbos/5.2.11' | 'legacy';
+  readonly goalState?: 'met' | 'not-met' | 'unknown';
+  readonly stopState?: import('./durable-fabric.js').DurableRunView['stopState'];
+  readonly sourceRevision?: number;
+  readonly historyPendingFacts?:number;
+  readonly deadlineAt?: string;
   readonly control?: RunRecord['control'];
   readonly id: string;
   readonly campaignId: string;
@@ -381,6 +391,8 @@ export interface RunHeadView {
 
 /** A whole Run as HimaGuide shows it. Every operation that answers with a Run answers with this. */
 export interface RunView {
+  readonly tasks?: readonly DurableTaskView[];
+  readonly sources?: readonly string[];
   readonly analyses?: readonly AnalysisView[];
   readonly archive?: { readonly recordId: string; readonly delivery: 'pending' | 'complete' | 'failed'; readonly directory: string; readonly reason?: string };
   readonly run: RunHeadView;
@@ -680,25 +692,40 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  readRunView?(runId: string): Promise<RunView | undefined>;
+  listRunHeads?(): Promise<readonly RunHeadView[]>;
+  readRunRecord?(recordId: string): Promise<LedgerRecord | undefined>;
+  readRunRecords?(runId: string, type?: LedgerRecord['type']): Promise<readonly LedgerRecord[]>;
   readonly interactive?:(sessionId:string,request:unknown)=>Promise<object>;
   readonly interactiveSessions?:(sessionId:string,runId:string)=>Promise<object>;
   delegations?(sessionId:string,runId:string):Promise<object>;
   delegate?(request:import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
   prepareExit?(request: import('./host-exit.js').HostExitRequest): Promise<import('./host-exit.js').HostExitStatus>;
+  finishExit?(requestId:string):Promise<import('./host-exit.js').HostExitStatus>;
   cancelExit?(requestId:string):Promise<import('./host-exit.js').HostExitStatus>;
-  exitStatus?(): import('./host-exit.js').HostExitStatus;
+  exitStatus?(): import('./host-exit.js').HostExitStatus | Promise<import('./host-exit.js').HostExitStatus>;
   authorizeDesktopExit?(token: string | undefined): boolean;
   authorizeRunAccess?(sessionId: string, runId: string): Promise<unknown>;
   workMemory?(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
   experienceCandidates?(sessionId:string,runId:string):Promise<object>;
   correctExperience?(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>): Promise<object>;
   readSessionContext?(request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number}):Promise<object>;
+  /** The LibInsight pages Data Insight frames (ADR-0019): the Host's one local viewer process. */
+  libInsight?(request: { readonly action: 'status' } | { readonly action: 'open'; readonly dataFolder?: string; readonly restart?: boolean }): Promise<import('./libinsight-viewer.js').LibInsightViewerStatus>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
+  /** Custom library analyses (ADR-0020, ADR-0021), read only: the Guide alone proposes and starts them. */
+  libInsightAnalyses?: {
+    list(sessionId: string): Promise<object>;
+    detail(sessionId: string, runId: string): Promise<object>;
+  };
+  /** One library analysis as its own page (ADR-0021), for a live conversation of its project. */
+  analysisPage?(sessionId: string, runId: string): Promise<{ readonly status: number; readonly html: string }>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
-  readRunAssets?(runId: string): Promise<import('./experience.js').ReadRunAssetsResult>;
+  readRunAssets?(runId: string,revision?:number): Promise<import('./experience.js').ReadRunAssetsResult>;
+  readTaskArtifact?(runId:string,effectId:string,name:string):Promise<import('./engineering-executor.js').EngineeringAssetRead>;
   readEngineeringAsset?(runId: string, executionId: string, requestId: string, artifactId: string, treeId?: string, download?: boolean): Promise<import('./engineering-executor.js').EngineeringAssetRead>;
-  readArchivedMaterial?(runId: string, relative: string): Promise<import('./experience.js').ReadArchivedMaterialResult>;
+  readArchivedMaterial?(runId: string, relative: string,revision?:number): Promise<import('./experience.js').ReadArchivedMaterialResult>;
   /** Browser-session owner review only; not an Agent confirmation tool. */
   packTransfer?(request: PackTransferBody): import('./release.js').PackTransferReview;
   readonly ledger: Ledger;
@@ -735,7 +762,7 @@ export interface RemoteOperations {
    * `session` absent when that node has no Job open right now.
    */
   jobLogTail?(runId: string, nodeId: string, lines: number): Promise<LogTailView>;
-  executionContext?(runId: string): ExecutionContext;
+  executionContext?(runId: string): ExecutionContext | Promise<ExecutionContext>;
   executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;
   /** Ask HimaJudge to rule; the verdicts it wrote are read back from the ledger, not from here. */
@@ -749,7 +776,7 @@ export interface RemoteOperations {
   /** Read a Campaign's technical report back off its Site, holding both files against the hashes the
    *  `experience` record keeps. Here rather than done in this module, for the reason `installed` is:
    *  this namespace reaches no Site and opens no file of its own. */
-  readExperience(runId: string): Promise<ReadExperienceResult>;
+  readExperience(runId: string,revision?:number): Promise<ReadExperienceResult>;
   /** Read one code/knowledge/input-provenance record only within its Run, held to its content hash. */
   readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult>;
   /**
@@ -880,7 +907,7 @@ function decisionView(record: DecisionRecord, run: RunRecord): DecisionView {
 }
 
 /** The run row as the view carries it, with the fabric fields a Run HimaFabric started also has. */
-function runHeadView(run: RunRecord, packVersion?: string, words?: RunWords): RunHeadView {
+export function runHeadView(run: RunRecord, packVersion?: string, words?: RunWords): RunHeadView {
   const head: RunHeadView = { id: run.id, campaignId: run.campaignId, siteId: run.siteId, createdAt: run.createdAt };
   // Each optional field is added only when the Run has one, so a Probe-campaign Run's view carries
   // no empty fabric state and the client can tell "not started" from "started and at zero".
@@ -929,7 +956,7 @@ export const experienceView = (record: ExperienceRecord): ExperienceView => ({
  *                in rather than resolved here because a pack is a directory on disk and this module
  *                opens none: `RemoteOperations.runWords` is what reads it, once per answer.
  */
-export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunView {
+export function runView(ledger: Pick<Ledger, 'records'>, run: RunRecord, words?: RunWords): RunView {
   const records = ledger.records({ runId: run.id });
   const observations = records.filter((r): r is ObservationRecord => r.type === 'observation').map(observationView);
   const byId = new Map(observations.map((o) => [o.recordId, o]));
@@ -1019,7 +1046,9 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
  * through one of them without its words would be a card that said the same Campaign two ways
  * depending on which button a person had pressed last.
  */
-const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView => {
+const runAnswer = async (ops: RemoteOperations, run: RunRecord): Promise<RunView> => {
+  const authoritative = await ops.readRunView?.(run.id);
+  if (authoritative) return authoritative;
   // A compound operation such as observe+judge can append records after its service returned the
   // Run row it started from. Every projection must use one current ledger snapshot; otherwise the
   // observations/verdicts are current while valueMeasurement.throughSeq still describes the stale
@@ -1027,6 +1056,16 @@ const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView => {
   const current = ops.ledger.run(run.id) ?? run;
   return runView(ops.ledger, current, ops.runWords(current));
 };
+
+async function hasRun(ops: RemoteOperations, runId: string): Promise<boolean> {
+  return !!(await ops.readRunView?.(runId) ?? ops.ledger.run(runId));
+}
+async function runHeads(ops: RemoteOperations): Promise<readonly RunHeadView[]> {
+  const durable = await ops.listRunHeads?.() ?? [];
+  const ids = new Set(durable.map(run => run.id));
+  return [...durable, ...ops.ledger.runs().filter(run => !ids.has(run.id)).map(run => runHeadView(run))]
+    .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+}
 
 const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code', 'revision']);
 
@@ -1234,7 +1273,7 @@ async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Pr
       throw err;
     }
   }
-  return ok(runAnswer(ops, result.run));
+  return ok(await runAnswer(ops, result.run));
 }
 
 /**
@@ -1348,8 +1387,8 @@ async function startFromCampaignFileOperation(ops: RemoteOperations, request: St
   } catch (err) {
     return startThrew(request, err);
   }
-  if (result.kind !== 'ran') return startedNothing(request, result);
-  return ok(runAnswer(ops, result.run));
+  if (result.kind !== 'ran' && result.kind !== 'preparing') return startedNothing(request, result);
+  return ok(await runAnswer(ops, result.run));
 }
 
 /** Both public start routes prepare and return context without starting a business node. */
@@ -1384,8 +1423,8 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
   } catch (err) {
     return startThrew(request, err);
   }
-  if (result.kind !== 'ran') return startedNothing(request, result);
-  return ok(runAnswer(ops, result.run));
+  if (result.kind !== 'ran' && result.kind !== 'preparing') return startedNothing(request, result);
+  return ok(await runAnswer(ops, result.run));
 }
 
 /** Goal and Strategy are shallow, scalar contract values.  Sort their names so object insertion
@@ -1437,7 +1476,7 @@ function startThrew(request: StartRunBody, err: unknown): Answer {
  * this Campaign's — so both reach them as their request's fault rather than as a 500 that says
  * nothing, and in the words `/hima run` uses for them.
  */
-function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, { kind: 'ran' }>): never {
+function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, { kind: 'ran' | 'preparing' }>): never {
   if (result.kind === 'unfit') {
     throw new BadRequest(`site ${request.site} cannot host pack ${request.pack}: ${result.check.errors.join('; ')}`);
   }
@@ -1465,17 +1504,23 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
     catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
   }
   const action = requiredString(body, 'action');
-  if (action !== 'pause' && action !== 'continue' && action !== 'cancel' && action !== 'measure-value') throw new BadRequest('native control permits pause, continue, cancel or a value-study measurement only; the conversational Agent owns node work');
+  if (action !== 'pause' && action !== 'continue' && action !== 'cancel' && action !== 'measure-value' && action !== 'respond') throw new BadRequest('native control permits pause, continue, cancel, respond or a value-study measurement only; the conversational Agent owns node work');
   for (const field of ['expectedEpoch', 'expectedRevision'] as const) {
     if (typeof body[field] !== 'number' || !Number.isSafeInteger(body[field]) || body[field] < 0) throw new BadRequest(`${field} must be a nonnegative integer from the Run context`);
   }
+  const response = action === 'respond'
+    ? z.strictObject({ effectId: z.string().min(1), output: taskToolOutput }).safeParse(body.response)
+    : undefined;
+  if (response && !response.success) throw new BadRequest(`Invalid response: ${response.error.issues.slice(0, 5)
+    .map(issue => `${['response', ...issue.path].join('.')}: ${issue.message}`).join('; ').slice(0, 1500)}`);
   const result = await ops.executionAction({ runId, actor: sessionId, origin: 'human', action,
     expectedEpoch: body.expectedEpoch as number, expectedRevision: body.expectedRevision as number,
     requestId: requiredString(body, 'requestId'), ...(body.nodeId === undefined ? {} : { nodeId: requiredString(body, 'nodeId') }),
     ...(action !== 'measure-value' ? {} : { measurement: body.measurement }),
+    ...(response?.success ? { response: response.data } : {}),
   });
   if (result.kind === 'refused' || result.kind === 'unsupported') return failure(409, 'hima/run-not-in-state', result.reason ?? result.kind);
-  return ok({ run: runAnswer(ops, result.context.run), notification: result.notification ?? {
+  return ok({ run: await runAnswer(ops, result.context.run), notification: result.notification ?? {
     status: 'not-requested', message: 'This accepted action did not request a Campaign Agent notification.' },
   });
 }
@@ -1486,13 +1531,13 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
  * of it, rather than out of a shape invented for this one route.
  */
 async function cancelOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
-  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
   let result: CancelResult;
   try {
+    if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
     result = await ops.cancelRun(runId);
   } catch (err) {
-    // A Run this ledger does not hold is the same 404 the read route gives for it; every other fault
-    // is ours and goes to the internal-error path.
+    // Both the current context read and cancellation can refuse an unknown reference. Preserve
+    // that typed 404; database, transport and other faults keep the internal-error path.
     if (err instanceof RunReferenceError) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
     throw err;
   }
@@ -1510,12 +1555,13 @@ async function cancelOperation(ops: RemoteOperations, runId: string): Promise<An
   if (result.kind === 'not-stopped') {
     return failure(409, 'hima/run-not-stopped', `run ${runId} was not cancelled: its job was ${result.reason}`);
   }
-  return ok(runAnswer(ops, result.run));
+  if (result.kind === 'stopping') return { status: 202, body: { run: await runAnswer(ops, result.run), reason: result.reason } };
+  return ok(await runAnswer(ops, result.run));
 }
 
 /** Legacy resume refuses owned Runs; the versioned control endpoint is their continuation path. */
 async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
-  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run continuation requires the control endpoint with current owner epoch and revision');
+  if ((await ops.executionContext?.(runId))?.run.control ?? ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run continuation requires the control endpoint with current owner epoch and revision');
   let result: ResumeResult;
   try {
     result = await ops.resumeRun(runId, 'workbench');
@@ -1536,7 +1582,7 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
   // node or its pack is missing. Re-reading the Run would tell the caller nothing new, which is what
   // separates the two answers.
   if (result.kind === 'unresumable') throw new BadRequest(`cannot resume run ${runId}: ${unresumableReason(result.reason)}`);
-  return ok(runAnswer(ops, result.run));
+  return ok(await runAnswer(ops, result.run));
 }
 
 /**
@@ -1551,9 +1597,14 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
  * The Run is looked up here first so a Run this ledger does not hold is the same 404 every other
  * read route gives for it, and only then is the Site asked anything at all.
  */
-async function experienceOperation(ops: RemoteOperations, runId: string, asMarkdown: boolean): Promise<Answer> {
-  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
-  const read = await ops.readExperience(runId);
+function reportRevision(url:URL):number|undefined {
+  const raw=url.searchParams.get('revision');if(raw===null)return undefined;
+  const revision=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(revision)||revision<0)throw new BadRequest('Report revision must be a nonnegative integer');return revision;
+}
+
+async function experienceOperation(ops: RemoteOperations, runId: string, asMarkdown: boolean,revision?:number): Promise<Answer> {
+  if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  const read = await ops.readExperience(runId,revision);
   if (read.kind === 'none') {
     return failure(404, 'hima/record-not-found', read.why ?? `run ${runId} has no experience record: a campaign's technical report is written when its run ends`);
   }
@@ -1580,7 +1631,7 @@ async function experienceOperation(ops: RemoteOperations, runId: string, asMarkd
 }
 
 async function materialOperation(ops: RemoteOperations, runId: string, recordId: string): Promise<Answer> {
-  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
   const read = await ops.readMaterial(runId, recordId);
   if (read.kind === 'none') return failure(404, 'hima/record-not-found', read.why);
   if (read.kind === 'changed') return failure(409, 'hima/material-changed', `recorded material ${read.path} now hashes to sha256 ${read.found}, not recorded sha256 ${read.recorded}; historical content is unavailable`);
@@ -1614,7 +1665,7 @@ async function momentOperation(ops: RemoteOperations, runId: string, req: Incomi
   // The Run before the body, as every other route of this namespace does it: a request naming a Run
   // this ledger does not hold is answered 404 whatever else is wrong with it, so a caller with a
   // stale Run id is told the one thing that is actually true of its request.
-  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
   const body = await readJsonBody(req);
   const instructions = requiredString(body, 'instructions');
   let moment: MomentOnNode;
@@ -1667,7 +1718,7 @@ function auditOperation(ops: RemoteOperations, drain: boolean): Answer {
 /** Why a Campaign got no workspace. `unfit` is answered before a Run exists, so it cannot arrive here. */
 function unpreparedReason(prepared: Extract<StartRunResult, { kind: 'unprepared' }>['prepared']): string {
   if (prepared.kind === 'occupied') return prepared.reason;
-  if (prepared.kind === 'refused') return prepared.record.reason;
+  if (prepared.kind === 'refused') return 'record' in prepared ? prepared.record.reason : prepared.reason;
   return 'the pack does not fit this site';
 }
 
@@ -1694,9 +1745,10 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
       return failure(403, 'hima/not-authorized', 'Global App exit belongs to the native Desktop process.');
     }
     if (!ops.prepareExit || !ops.exitStatus) return failure(503,'hima/internal','This Host has no App exit boundary.');
-    if (method === 'GET') return ok(ops.exitStatus());
+    if (method === 'GET') return ok(await ops.exitStatus());
     if (method !== 'POST') return failure(405,'hima/bad-request','App exit requires POST.');
-    const body = z.strictObject({requestId:z.string().min(1).max(120),mode:z.enum(['drain','keep-jobs','stop-jobs','cancel-exit'])}).parse(await readJsonBody(req));
+    const body = z.strictObject({requestId:z.string().min(1).max(120),mode:z.enum(['drain','keep-jobs','stop-jobs','cancel-exit','finish-exit']),expectedRequestId:z.string().min(1).max(120).optional()}).parse(await readJsonBody(req));
+    if(body.mode==='finish-exit')return ops.finishExit?ok(await ops.finishExit(body.requestId)):failure(503,'hima/internal','Exit resource finalization is unavailable');
     if(body.mode==='cancel-exit')return ops.cancelExit?ok(await ops.cancelExit(body.requestId)):failure(503,'hima/internal','Exit cancellation is unavailable');
     return ok(await ops.prepareExit({...body,mode:body.mode}));
   }
@@ -1721,6 +1773,33 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return ok(await ops.delegate({...input,actor:input.sessionId,origin:'human'}));
   }
 
+  // Data Insight's LibInsight pages (ADR-0019). A live conversation is the viewer, as for every
+  // other workbench read; the answer is where the local viewer is and whether it is up, never data.
+  if (rest === '/libinsight') {
+    if (!ops.libInsight) return failure(503, 'hima/internal', 'This Host has no LibInsight viewer.');
+    if (method === 'GET') {
+      if (!ops.validateSession?.(url.searchParams.get('sessionId') ?? '')) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+      return ok(await ops.libInsight({ action: 'status' }));
+    }
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
+    const parsed = z.strictObject({ sessionId: z.string(), action: z.literal('open'), dataFolder: z.string().min(1).max(4096).optional(), restart: z.boolean().optional() }).safeParse(await readJsonBody(req));
+    if (!parsed.success) throw new BadRequest(zodSentence(parsed.error));
+    const body = parsed.data;
+    if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    return ok(await ops.libInsight({ action: 'open', ...(body.dataFolder === undefined ? {} : { dataFolder: body.dataFolder }), ...(body.restart === undefined ? {} : { restart: body.restart }) }));
+  }
+
+  // Custom library analyses (ADR-0020, ADR-0021), read only. They are proposed and started from the
+  // Guide conversation (`hima_insight_analysis`); no browser route starts one.
+  if (rest === '/libinsight/analyses') {
+    if (!ops.libInsightAnalyses) return failure(503, 'hima/internal', 'This Host has no library analyses.');
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET; analyses are started from the Guide conversation`);
+    const sessionId = url.searchParams.get('sessionId') ?? '';
+    if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    const runId = url.searchParams.get('runId');
+    return ok(runId === null ? await ops.libInsightAnalyses.list(sessionId) : await ops.libInsightAnalyses.detail(sessionId, runId));
+  }
+
   if (rest === '/observe') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
     return observeOperation(ops, req);
@@ -1732,9 +1811,9 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
         const sessionId = url.searchParams.get('sessionId');
         if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before listing tasks.');
       }
-      const visible: RunRecord[] = [];
-      for (const run of ops.ledger.runs().reverse()) if (await authorize(run.id) === undefined) visible.push(run);
-      return ok({ runs: visible.map(run => runHeadView(run)) });
+      const visible: RunHeadView[] = [];
+      for (const run of await runHeads(ops)) if (await authorize(run.id) === undefined) visible.push(run);
+      return ok({ runs: visible });
     }
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
     return startRunOperation(ops, req);
@@ -1849,7 +1928,18 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (archive) {
     if (method !== 'GET' || !ops.readRunAssets || !ops.readArchivedMaterial) return failure(405, 'hima/bad-request', 'archive reads require GET on a supporting Host');
     const runId = decoded(archive[1]!, 'run id');
-    if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId}`);
+    if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId}`);
+    const taskEffect=url.searchParams.get('effect');
+    if(taskEffect!==null) {
+      const name=url.searchParams.get('artifact');
+      if(!ops.readTaskArtifact||!name)return failure(400,'hima/bad-request','Task artifact needs its recorded effect and name');
+      try {
+        const asset=await ops.readTaskArtifact(runId,taskEffect,name);
+        if(asset.kind==='directory')return ok({asset});
+        if(url.searchParams.get('format')==='download')return {status:200,body:asset.bytes,media:'application/octet-stream',filename:asset.ref.path.split('/').at(-1)};
+        const {bytes:_bytes,...preview}=asset;return ok({asset:preview});
+      } catch(error) {return failure(409,'hima/material-changed',(error as Error).message);}
+    }
     const artifactId = url.searchParams.get('artifact');
     if (artifactId !== null) {
       const executionId = url.searchParams.get('execution'), requestId = url.searchParams.get('delivery');
@@ -1863,14 +1953,14 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
       } catch (error) { return failure(409, 'hima/material-changed', (error as Error).message); }
     }
     const relative = url.searchParams.get('material');
-    const result = relative === null ? await ops.readRunAssets(runId) : await ops.readArchivedMaterial(runId, relative);
+    const result = relative === null ? await ops.readRunAssets(runId,reportRevision(url)) : await ops.readArchivedMaterial(runId, relative,reportRevision(url));
     if (result.kind === 'read') return ok(result);
     return failure(result.kind === 'none' ? 404 : 409, 'hima/material-changed', `archive is ${result.kind}: ${'why' in result ? result.why : 'path' in result ? result.path : 'required materials unavailable'}`);
   }
   if (execution) {
     const runId = decoded(execution[1]!, 'run id');
-    if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
-    if (execution[2] === 'context' && method === 'GET' && ops.executionContext) return ok(ops.executionContext(runId));
+    if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+    if (execution[2] === 'context' && method === 'GET' && ops.executionContext) return ok(await ops.executionContext(runId));
     if (execution[2] === 'control' && method === 'POST') return controlOperation(ops, runId, req);
     return failure(405, 'hima/bad-request', 'execution context is GET; human control is POST');
   }
@@ -1909,7 +1999,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   const experience = /^\/runs\/([^/]+)\/experience(\.md)?$/.exec(rest);
   if (experience) {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
-    return experienceOperation(ops, decoded(experience[1]!, 'run id'), experience[2] !== undefined);
+    return experienceOperation(ops, decoded(experience[1]!, 'run id'), experience[2] !== undefined,reportRevision(url));
   }
 
   const material = /^\/runs\/([^/]+)\/material\/([^/]+)$/.exec(rest);
@@ -1926,10 +2016,11 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     // The caller's own request is checked before anything is looked up, so a malformed query is
     // reported as malformed whether or not the run it names exists.
     const type = wantsRecords ? recordType(url.searchParams.get('type')) : undefined;
+    const view = await ops.readRunView?.(runId);
     const record = ops.ledger.run(runId);
-    if (!record) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
-    if (!wantsRecords) return ok(runAnswer(ops, record));
-    return ok({ records: ops.ledger.records(type === undefined ? { runId } : { runId, type }) } satisfies RecordsView);
+    if (!record && !view) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+    if (!wantsRecords) return ok(view ?? await runAnswer(ops, record!));
+    return ok({ records: await ops.readRunRecords?.(runId, type) ?? ops.ledger.records(type === undefined ? { runId } : { runId, type }) } satisfies RecordsView);
   }
 
   const byId = /^\/records\/([^/]+)$/.exec(rest);
@@ -1938,7 +2029,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     // A record id holds a `#`, so it always arrives percent-encoded; decoding it is the same
     // caller-fault case as a run id's.
     const recordId = decoded(byId[1]!, 'record id');
-    const record = ops.ledger.record(recordId);
+    const record = ops.readRunRecord ? await ops.readRunRecord(recordId) : ops.ledger.record(recordId);
     if (!record) return failure(404, 'hima/record-not-found', `no record ${recordId} in the HimaLedger`);
     const denied = await authorize(record.runId);
     if (denied) return denied;
@@ -2121,7 +2212,7 @@ async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessag
  * same way its owner does, with no owned execution of their own.
  */
 async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: URL): Promise<Answer> {
-  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  if (!await hasRun(ops, runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
   if (ops.jobLogTail === undefined) return failure(500, 'hima/internal', 'the Job log tail is unavailable on this Host');
   const nodeId = url.searchParams.get('node');
   if (!nodeId) throw new BadRequest('"node" is required as a query parameter');
@@ -2146,7 +2237,7 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
     // before #41 task 3's owner model existed) or an uninstalled pack: neither is a reference graph
     // this route can hold a node id against, so an empty list refuses nothing here — only a
     // *non-empty* one that plainly does not name this node id is the caller's mistake.
-    const nodes = ops.executionContext?.(runId).nodes;
+    const nodes = (await ops.executionContext?.(runId))?.nodes;
     if (nodes !== undefined && nodes.length > 0 && !nodes.some((node) => node.id === nodeId)) {
       throw new BadRequest(`node "${nodeId}" is not in this Run's method`);
     }
@@ -2161,15 +2252,16 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
  * what the page itself asks for when a person changes the selection (#58). A Run the ledger does not
  * hold is a 404 page saying so; a method other than GET a 405 page.
  */
-function workbenchPage(ops: RemoteOperations, req: IncomingMessage, url: URL): { readonly status: number; readonly html: string } {
+async function workbenchPage(ops: RemoteOperations, req: IncomingMessage, url: URL): Promise<{ readonly status: number; readonly html: string }> {
   if (!legacyAutomaticAllowed()) return { status: 200, html: messagePage('Open the native HimaHarness workspace to select a project and inspect its tasks.') };
   const method = req.method ?? 'GET';
   if (method !== 'GET') return { status: 405, html: messagePage(`${method} ${url.pathname}; this page answers GET`) };
   const runId = url.searchParams.get('run');
-  if (runId === null) return { status: 200, html: runsPage(ops.ledger.runs().reverse().map((r) => runHeadView(r)), startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site'))) };
+  if (runId === null) return { status: 200, html: runsPage(await runHeads(ops), startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site'))) };
+  const view = await ops.readRunView?.(runId);
   const record = ops.ledger.run(runId);
-  if (!record) return { status: 404, html: messagePage(`no run ${runId} in the HimaLedger`) };
-  return { status: 200, html: runPage(runAnswer(ops, record)) };
+  if (!record && !view) return { status: 404, html: messagePage(`no run ${runId} in the HimaLedger`) };
+  return { status: 200, html: runPage(view ?? await runAnswer(ops, record!)) };
 }
 
 /**
@@ -2186,7 +2278,7 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
   const page = ctx.webServer.register({
     kind: 'exact',
     path: HIMA_WORKBENCH_PATH,
-    handler: (req, res) => {
+    handler: async (req, res) => {
       const rejection = ctx.connection.requestRejection(req);
       if (rejection !== undefined) {
         sendPage(res, rejection, messagePage(rejection === 401 ? 'no browser session; open the workbench URL first' : 'this origin may not reach the Hima workbench'));
@@ -2194,7 +2286,7 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
       }
       const url = new URL(req.url ?? '/', 'http://hima.invalid');
       try {
-        const answer = workbenchPage(ops, req, url);
+        const answer = await workbenchPage(ops, req, url);
         sendPage(res, answer.status, answer.html);
       } catch (err) {
         ctx.logger.error(err);
@@ -2206,12 +2298,17 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
     kind: 'prefix',
     path: HIMA_API_PREFIX,
     handler: async (req, res) => {
-      const rejection = ctx.connection.requestRejection(req);
+      const url = new URL(req.url ?? '/', 'http://hima.invalid');
+      const token=req.headers['x-hima-desktop-control'];
+      // Only the exact lifecycle endpoint accepts the process-owned capability without a
+      // browser cookie. A supplied Origin continues through the ordinary browser guard.
+      const nativeExit=url.pathname===`${HIMA_API_PREFIX}/lifecycle/exit`&&req.headers.origin===undefined&&
+        ops.authorizeDesktopExit?.(typeof token==='string'?token:undefined)===true;
+      const rejection = nativeExit?undefined:ctx.connection.requestRejection(req);
       if (rejection !== undefined) {
         send(res, failure(rejection, 'hima/not-authorized', rejection === 401 ? 'no browser session; open the workbench URL first' : 'this origin may not reach the Hima namespace'));
         return;
       }
-      const url = new URL(req.url ?? '/', 'http://hima.invalid');
       try {
         send(res, await route(ops, req, url));
       } catch (err) {
@@ -2234,5 +2331,39 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
       }
     },
   });
-  return () => { api(); page(); };
+  // A library analysis's own page (ADR-0021): `/hima/analysis/<runId>?session=<id>`, behind the same
+  // browser fence as the workbench, for a live conversation of the Run's project.
+  const analysis = ctx.webServer.register({
+    kind: 'prefix',
+    // The server's prefixes are segment-matched (`<path>` or `<path>/…`), so the slash is not part of it.
+    path: HIMA_ANALYSIS_PAGE_PREFIX.slice(0, -1),
+    handler: async (req, res) => {
+      const rejection = ctx.connection.requestRejection(req);
+      if (rejection !== undefined) {
+        sendPage(res, rejection, messagePage(rejection === 401 ? 'no browser session; open HimaHarness first' : 'this origin may not reach HimaHarness'));
+        return;
+      }
+      const url = new URL(req.url ?? '/', 'http://hima.invalid');
+      try {
+        if ((req.method ?? 'GET') !== 'GET') { sendPage(res, 405, messagePage(`${req.method} ${url.pathname}; this page answers GET`)); return; }
+        let runId: string;
+        try { runId = decodeURIComponent(url.pathname.slice(HIMA_ANALYSIS_PAGE_PREFIX.length).replace(/\/+$/u, '')); }
+        catch { sendPage(res, 404, messagePage('No such analysis.')); return; }
+        const sessionId = url.searchParams.get('session') ?? '';
+        if (!ops.analysisPage) { sendPage(res, 503, messagePage('This Host has no library analyses.')); return; }
+        if (!/^[A-Za-z0-9._-]{1,128}$/u.test(runId)) { sendPage(res, 404, messagePage('No such analysis.')); return; }
+        if (!ops.validateSession?.(sessionId)) { sendPage(res, 403, messagePage('Open this page from a live HimaHarness conversation.')); return; }
+        const answer = await ops.analysisPage(sessionId, runId);
+        // The page shows model- and resident-written text on this origin: it may load nothing, run
+        // nothing and be framed by nothing, whatever its escaping.
+        res.writeHead(answer.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+        res.end(answer.html);
+      } catch (err) {
+        ctx.logger.error(err);
+        sendPage(res, 500, messagePage(`${url.pathname} failed inside HimaHarness; the reason is in the host log`));
+      }
+    },
+  });
+  return () => { api(); page(); analysis(); };
 }

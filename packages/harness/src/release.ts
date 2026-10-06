@@ -211,6 +211,26 @@ function plainFileBytes(file: string): Buffer {
  * @returns what was sealed, or why nothing was.
  * @throws {PackNotFoundError} when no folder of that name is installed, or the id is not a pack id.
  */
+/** Host publication reads new Runs from the application facts, and historical Runs from Ledger. */
+export async function releasePackFromRuntime(deps:import('./fabric.js').FabricDeps,req:{readonly pack:string}):Promise<ReleaseResult> {
+  let folder:PackFolderSnapshot|undefined;
+  try { folder=installedPackFolder(deps.packsDir,req.pack); }
+  catch { return releasePack(deps,req); } // Preserve the existing structured filesystem refusal.
+  const text=folder?.text(pipelineFiles.test);
+  const named=text===undefined?undefined:runNamedByTestRecord(text);
+  if(!deps.durable || named?.kind!=='named')return releasePack(deps,req);
+  const {knownDurableRun}=await import('./durable-fabric.js');
+  if(!await knownDurableRun(deps,named.run))return releasePack(deps,req);
+  return deps.durable.store.withRunReadBoundary(named.run,async()=>{
+    const {createDurableViewReaders}=await import('./durable-views.js');
+    const readers=createDurableViewReaders(deps);
+    const run=await readers.readRun(named.run),records=await readers.readRunRecords(named.run);
+    // If TEST.md changes during the async read, the synchronous release refuses its new Run id.
+    const lookup={run:(id:string)=>id===named.run?run:undefined,records:({runId}:{runId:string})=>runId===named.run?records:[]};
+    return releasePack({...deps,ledger:lookup},req);
+  });
+}
+
 export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): ReleaseResult {
   if (!packId.safeParse(req.pack).success) throw new PackNotFoundError(`unknown pack "${req.pack}": not a pack id`);
   const dir = path.resolve(deps.packsDir, req.pack);
@@ -524,7 +544,9 @@ export function exportPackMethod(req: { readonly from: string; readonly to: stri
   return { dir, files: Object.keys(manifest.files), digest: manifest.digest };
 }
 
-/** Preserve the actual bytes an identified Run used. Old rows with no digest receive no invented identity. */
+/** Preserve the actual bytes an identified Run used, including graph.yml and every local schema.
+ * Compilation remains derived data: method snapshots never replace declarations with generated IR.
+ * Old rows with no digest receive no invented identity. */
 export function preservePackMethod(folder: PackFolderSnapshot): string {
   return preserveMethodAt(folder, folder.dir);
 }

@@ -573,12 +573,20 @@ export const resumedRecord = v29ResumedRecord.extend({
  * number for a number knob, one of the declared options for a choice knob, and nothing else — a
  * value of some third kind is a knob no declaration could have produced.
  *
- * Never empty: a pack declares at least one knob, so a Run of one is set to at least one thing.
+ * Never empty where a Strategy is chosen: a decision for a next generation names at least one knob.
  */
 export const runStrategy = z
   .record(z.string().min(1), z.union([z.number(), z.string().min(1)]))
   .refine((s) => Object.keys(s).length > 0, { error: 'a strategy carries at least one knob, because a pack declares at least one' });
 export type RunStrategy = z.infer<typeof runStrategy>;
+
+/**
+ * What a Run itself is set to. Empty when its Pack declares no knob: a resident-agent Pack such as a
+ * library analysis (ADR-0017, ADR-0020) has a Goal and a method but nothing to tune, and its Run is
+ * recorded with `{}`. A stored Run must load whatever its Pack declared, or one such Run makes the
+ * whole Home unbootable.
+ */
+export const runStrategySetting = z.record(z.string().min(1), z.union([z.number(), z.string().min(1)]));
 
 /**
  * What an Explore node chose: the next strategy to try, that the Goal is met and there is nothing to
@@ -1611,7 +1619,7 @@ export const runRecord = z.object({
   goal: z.record(z.string(), z.number()).optional(),
   budget: runBudget.optional(),
   currentNode: z.string().optional(),
-  strategy: runStrategy.optional(),
+  strategy: runStrategySetting.optional(),
   /**
    * The Strategy this Run was started with, written once by the call that opens the row and never
    * again — the only part of this row that is a fact about the Campaign's start rather than about
@@ -1627,7 +1635,7 @@ export const runRecord = z.object({
    *
    * Optional for the reason every other fabric field is: a Run no fabric started was set to nothing.
    */
-  firstStrategy: runStrategy.optional(),
+  firstStrategy: runStrategySetting.optional(),
   /**
    * Which Generation of its Loop this Run is in, counted from one: set to 1 when HimaFabric starts
    * the Run, and incremented by the one write that follows a revisit edge. Absent on a Run no fabric
@@ -1971,6 +1979,32 @@ export class Ledger {
     this.#verdictWriter = new VerdictWriter(mintedByLedger, (runId, data) =>
       this.#append(runId, 'judge', (h) => ({ ...h, type: 'verdict', ...data })),
     );
+  }
+
+  /** PostgreSQL outbox projection only. The fact's sequence and time come from the application
+   * authority; this method neither advances a workflow nor makes admission decisions. Existing
+   * interactive records carry the immutable fact without growing the legacy storage format. */
+  async projectDurableFact(fact: { readonly factId: string; readonly runId: string; readonly seq: number;
+    readonly at: string; readonly kind: string; readonly payload: unknown }, opening: RunOpening): Promise<InteractiveRecord> {
+    const id = recordKey(fact.runId, fact.seq);
+    const projected = interactiveRecord.parse({ id, runId: fact.runId, siteId: opening.siteId, seq: fact.seq,
+      at: fact.at, writer: 'executor', type: 'interactive', executionId: fact.runId,
+      toolSessionId: 'dbos-history', requestId: fact.factId, event: `durable:${fact.kind}`, payload: fact.payload });
+    const existing = this.records({ runId: fact.runId, type: 'interactive' }).find(record => record.type === 'interactive' && record.requestId === fact.factId) ?? this.record(id);
+    if (existing) {
+      if (!isDeepStrictEqual(existing, projected)) throw new Error(`durable fact ${fact.factId} conflicts with retained history`);
+      return existing as InteractiveRecord;
+    }
+    const retained = this.run(fact.runId);
+    if (retained?.status !== undefined || retained?.control !== undefined || retained?.currentNode !== undefined) throw new Error('Durable history cannot carry legacy scheduler state');
+    if (retained && this.records({ runId: fact.runId }).some(record => record.type !== 'interactive' || record.toolSessionId !== 'dbos-history')) {
+      throw new Error('A DBOS history projection cannot overwrite a legacy Run');
+    }
+    const { status: _status, control: _control, currentNode: _currentNode, ...historyOpening } = opening;
+    if (!retained) await this.#domain.table('runs').put(fact.runId, { ...historyOpening, id: fact.runId, createdAt: fact.at, nextSeq: fact.seq + 1 });
+    else if (retained.nextSeq <= fact.seq) await this.#domain.table('runs').update(fact.runId, row => ({ ...row, nextSeq: fact.seq + 1 }));
+    await this.#domain.table('records').put(id, projected);
+    return projected;
   }
 
   /**

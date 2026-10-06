@@ -133,7 +133,7 @@ export type InteractiveOperateRequest = InteractiveAddress & ({
 
 const requestIdentityFields = {
   runId: z.string().min(1), executionId: z.string().min(1), nodeId: z.string().min(1),
-  requestId: z.string().regex(idPattern), ownerEpoch: z.number().int().positive(),
+  requestId: z.string().regex(idPattern), ownerEpoch: z.number().int().nonnegative(),
   controlRevision: z.number().int().nonnegative(),
 };
 /** Model/HTTP input: Host actor, argv, workspace and qualification are deliberately absent. */
@@ -238,7 +238,7 @@ function validateBindingShape(run: RunRecord, execution: NodeExecution, derived:
   return undefined;
 }
 
-async function effectiveQualification(deps: InteractiveRuntimeDeps, derived: DerivedInteractiveOperation): Promise<InteractiveQualification> {
+export async function qualifyInteractiveOperation(deps: Pick<InteractiveRuntimeDeps, 'verifyAdminBinding' | 'trustedTestQualification'>, derived: DerivedInteractiveOperation): Promise<InteractiveQualification> {
   const binding = derived.binding;
   if (binding.source.kind === 'trusted-test-fixture') {
     if (!testFixtureCanRunHere() || deps.trustedTestQualification?.bindingId !== binding.id
@@ -288,13 +288,13 @@ const outcomeBase = (record: ProtocolRecord) => ({ runId: record.runId, executio
   actor: record.actor, ownerEpoch: record.ownerEpoch, controlRevision: record.controlRevision,
   callerDigest: record.callerDigest, operationDigest: record.operationDigest, at: record.at });
 
-function lastEvent(records: ReturnType<typeof protocolRecords>, events: readonly string[]): ProtocolRecord | undefined {
+function lastEvent(records: readonly { readonly payload: ProtocolRecord }[], events: readonly string[]): ProtocolRecord | undefined {
   return records.findLast((item) => events.includes(item.payload.event))?.payload;
 }
 
-function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionView[] {
-  const records = protocolRecords(ledger, runId);
-  const jobs = ledger.records({ runId, type: 'job' }).filter((item): item is JobRecord => item.type === 'job');
+export function foldInteractiveSessions(runId: string, payloads: readonly ProtocolRecord[],
+  jobs: readonly { readonly event: string; readonly job: InteractiveJobIdentity }[]): InteractiveSessionView[] {
+  const records = payloads.map(payload => ({ payload }));
   const sessions = new Map<string, InteractiveSessionView>();
   for (const item of records) {
     const record = item.payload;
@@ -352,20 +352,21 @@ function reconstructSessions(ledger: Ledger, runId: string): InteractiveSessionV
 }
 
 export const listInteractiveSessions = (ledger: Ledger, runId: string, executionId?: string): InteractiveSessionView[] =>
-  reconstructSessions(ledger, runId).filter((session) => executionId === undefined || session.executionId === executionId);
+  foldInteractiveSessions(runId, protocolRecords(ledger, runId).map(item => item.payload),
+    ledger.records({ runId, type: 'job' }).filter((item): item is JobRecord => item.type === 'job')).filter((session) => executionId === undefined || session.executionId === executionId);
 
-function nativeSession(view: InteractiveSessionView): InteractiveSession | undefined {
+export function nativeInteractiveSession(view: InteractiveSessionView): InteractiveSession | undefined {
   return view.job && view.qualification && view.transcriptPath && view.exitPath && view.sessionDeadlineAt
     ? { job: view.job, toolSessionId: view.toolSessionId, qualification: view.qualification,
       transcriptPath: view.transcriptPath, exitPath: view.exitPath, sessionDeadlineAt: view.sessionDeadlineAt } : undefined;
 }
 
-function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protocolRecords>, view?: InteractiveSessionView): InteractiveReceipt {
+export function interactiveDuplicateReceipt(kind: AdmissionKind, records: readonly { readonly payload: ProtocolRecord }[], view?: InteractiveSessionView): InteractiveReceipt {
   if (kind === 'open') {
     const outcome = records.findLast((item) => ['opened', 'open-uncertain', 'open-released'].includes(item.payload.event))?.payload;
     if (outcome?.event === 'open-uncertain') return { status: 'uncertain', reason: outcome.reason ?? 'native open outcome is uncertain' };
     if (outcome?.event === 'open-released') return { status: 'uncertain', reason: outcome.reason };
-    const session = view && nativeSession(view);
+    const session = view && nativeInteractiveSession(view);
     return session && outcome?.event === 'opened'
       ? { status: 'duplicate', session, readiness: outcome.readiness ?? 'starting' }
       : { status: 'uncertain', reason: 'open intent has no complete native Job/session receipt' };
@@ -375,7 +376,7 @@ function duplicateReceipt(kind: AdmissionKind, records: ReturnType<typeof protoc
     const completed = lastEvent(records, ['command-completed', 'command-failed']);
     const uncertain = lastEvent(records, ['input-uncertain']);
     const sent = lastEvent(records, ['input-sent']);
-    return uncertain || !sent && !completed ? { status: 'outcome-unknown', commandId: intent.commandId, inputDigest: intent.inputDigest,
+    return uncertain && !completed || !sent && !completed ? { status: 'outcome-unknown', commandId: intent.commandId, inputDigest: intent.inputDigest,
       reason: uncertain?.event === 'input-uncertain' ? uncertain.reason ?? 'dispatch outcome is unknown' : 'input intent has no durable dispatch outcome' }
       : { status: 'duplicate', commandId: intent.commandId, inputDigest: intent.inputDigest,
         outcome: completed?.event === 'command-failed' ? 'failed' : completed?.event === 'command-completed' ? 'completed' : 'sent',
@@ -434,7 +435,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         if (!original || original.actor !== this.request.actor || original.callerDigest !== this.callerDigest
             || original.event !== intent.record.event) return { kind: 'refused', reason: 'request identity was reused with different action, target, actor or command intent' };
         const view = listInteractiveSessions(this.deps.fabric.ledger, run.id).find((item) => item.toolSessionId === original.toolSessionId);
-        return { kind: 'duplicate', receipt: duplicateReceipt(intent.action, prior, view) };
+        return { kind: 'duplicate', receipt: interactiveDuplicateReceipt(intent.action, prior, view) };
       }
       const effect = intent.action === 'input' ? intent.record.effect : undefined;
       const refused = validateControl(run, this.request, intent.action, effect);
@@ -449,7 +450,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
       const shape = validateBindingShape(run, freshExecution, fresh);
       if (shape) return { kind: 'refused', reason: shape };
       let qualification: InteractiveQualification;
-      try { qualification = await effectiveQualification(this.deps, fresh); }
+      try { qualification = await qualifyInteractiveOperation(this.deps, fresh); }
       catch (error) { return { kind: 'refused', reason: error instanceof Error ? error.message : String(error) }; }
       if (identityOf(qualification) !== identityOf(this.qualification)) return { kind: 'refused', reason: 'interactive qualification changed since the operation was resolved' };
       const view = listInteractiveSessions(this.deps.fabric.ledger, run.id).find((item) => item.toolSessionId === intent.record.toolSessionId);
@@ -509,7 +510,7 @@ class RunInteractiveAuthority implements InteractiveAuthority {
         if (nowOf(this.deps) >= Date.parse(intent.commandDeadlineAt)) return { kind: 'refused', reason: 'interactive command deadline is exhausted' };
       }
       let current: InteractiveQualification;
-      try { current = await effectiveQualification(this.deps, this.derived); }
+      try { current = await qualifyInteractiveOperation(this.deps, this.derived); }
       catch (error) { return { kind: 'refused', reason: error instanceof Error ? error.message : String(error) }; }
       return identityOf(current) === identityOf(this.qualification) ? { kind: 'authorized', qualification: current }
         : { kind: 'refused', reason: 'interactive adapter/environment qualification changed before dispatch' };
@@ -599,7 +600,7 @@ async function resolved(deps: InteractiveRuntimeDeps, request: InteractiveAddres
   if (!derived) return { reason: 'the retained Pack declares no interactive operation for this execution' };
   const shape = validateBindingShape(run, execution, derived);
   if (shape) return { reason: shape };
-  try { return { run, execution, derived, qualification: await effectiveQualification(deps, derived) }; }
+  try { return { run, execution, derived, qualification: await qualifyInteractiveOperation(deps, derived) }; }
   catch (error) { return { reason: error instanceof Error ? error.message : String(error) }; }
 }
 
@@ -688,7 +689,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     }
     const view = listInteractiveSessions(deps.fabric.ledger, request.runId)
       .find((item) => item.toolSessionId === original.toolSessionId);
-    return duplicateReceipt(operation, retained, view);
+    return interactiveDuplicateReceipt(operation, retained, view);
   }
   // Typed input resolves the retained adapter under read-only admission first; the encoder then
   // classifies the exact command and the locked intent admission enforces its actual effect.
@@ -722,7 +723,7 @@ export async function operateInteractive(deps: InteractiveRuntimeDeps, request: 
     return claimed.launched.ready ? claimed.launched.ready() : claimed.launched.result;
   }
   const view = sessionFor(deps.fabric.ledger, request);
-  const session = view && nativeSession(view);
+  const session = view && nativeInteractiveSession(view);
   if (!view || !session) return { status: 'refused', reason: 'interactive session is absent, incomplete or not owned by this execution' };
   // The Host's own stop of a session (a deadline, or an Operator lost to a restart) acts on the Job
   // itself; it is not the owner typing into the Operator's session (#64 D-T02-5).
@@ -811,7 +812,7 @@ export async function reconcileInteractiveState(deps: InteractiveRuntimeDeps): P
         try { derived = execution ? await deps.resolveOperation(run, execution) : undefined; } catch { derived = undefined; }
         if (!derived) continue;
         let qualified: InteractiveQualification;
-        try { qualified = await effectiveQualification(deps, derived); } catch { continue; }
+        try { qualified = await qualifyInteractiveOperation(deps, derived); } catch { continue; }
         outcome = parseInteractiveRecord({ ...outcomeBase(intent), event: 'open-uncertain', jobSession: intent.jobSession,
           qualification: qualified, reason: 'Host restarted with an open intent lacking a confirmed native receipt', at: new Date(nowOf(deps)).toISOString() });
       } else if (intent.event === 'input-intent') {

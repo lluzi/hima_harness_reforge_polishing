@@ -6,7 +6,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import type { ExecutionContext } from '../fabric.js';
 import type { RunView } from '../remote.js';
-import { duration, labelled, runPurposeMark, runStatusLabel } from '../card-labels.js';
+import { duration, runStatusSaid, runPurposeMark } from '../card-labels.js';
 
 /** The Budget standing, in the one word the mockup's own sub-line uses beside the elapsed figure —
  *  read from `ExecutionContext.budget.phase` (`budgetStanding`'s own live computation), because
@@ -47,7 +47,7 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
   const status = run?.status;
   const ticking = status === 'running' && !stale && !reducedMotion;
   useTick(ticking);
-  const said = status === undefined ? undefined : labelled(runStatusLabel, status);
+  const said = run === undefined ? undefined : runStatusSaid(run);
   const elapsedBase = run?.meters?.elapsedMs;
   const elapsedMs = elapsedBase === undefined ? undefined : elapsedBase + (ticking && readAt !== undefined ? Math.max(0, Date.now() - readAt) : 0);
   // One elapsed figure, not two: `elapsed <now> of a time box of <bound>`, both sides through the
@@ -73,7 +73,9 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
         <p className="hima-masthead-sub">
           {said === undefined
             ? (view === undefined ? null : <span className="hima-masthead-seal">No Fabric state recorded</span>)
-            : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said.said}</span>}
+            : <span className={`hima-masthead-seal hima-masthead-seal-${run?.goalState ?? status ?? 'unknown'}`}>{said.said}</span>}
+          {run?.control?.stop?.status === 'requested' ? <span> · stop request received</span> : null}
+          {run?.stopState === undefined ? null : <span data-hima-region="run-stop-state"> · stop {run.stopState.state} · {run.stopState.unclosedResources} unclosed resources · {run.stopState.effectsWithoutStopProof} effects without stop proof</span>}
           {run?.currentNode === undefined ? null : <span> · {run.currentNode}</span>}
           {run?.generation === undefined ? null : <span> · gen {run.generation}</span>}
           {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}

@@ -3,6 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { copyFile, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -68,13 +70,17 @@ test('current knowledge rejects symlink ancestors and index/source tampering bef
 test('Campaign-attached document evidence is bound to one owner execution and its reviewed proposal scope', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });
   if (!home) return;
-  const host = await bootInProcess(home.h);
+  await writeFile(path.join(packsDirOf(home.h), timingProbePackId, 'graph.yml'), `id: ${timingProbePackId}\nversion: '2'\nentry: review-knowledge\nnodes:\n  - id: review-knowledge\n    kind: wait\n    parameters: { blocker: Review current knowledge before business work }\nedges: []\n`);
+  const contractPath = path.join(packsDirOf(home.h), timingProbePackId, 'contract.yml');
+  await writeFile(contractPath, (await readFile(contractPath, 'utf8')).replace('  target_period_ns: { label: clock period at most, unit: ns }\n', ''));
+  let host = await bootInProcess(home.h);
+  const originalPackDigest=packDigestOf(path.join(packsDirOf(home.h),timingProbePackId));
   try {
     const owner = await createRootAgent(host.ctx, home.h.workspace);
     const other = await createRootAgent(host.ctx, home.h.workspace);
     let serial = 0;
-    const invoke = async (agent: typeof owner, args: Record<string, unknown>) => host.ctx.tools.execute({
-      name: 'hima_knowledge', arguments: args, agent, callId: `bound-knowledge-${++serial}` as never, signal: AbortSignal.timeout(20_000),
+    const invoke = async (agent: typeof owner, args: Record<string, unknown>, callId = `bound-knowledge-${++serial}`) => host.ctx.tools.execute({
+      name: 'hima_knowledge', arguments: args, agent, callId: callId as never, signal: AbortSignal.timeout(20_000),
     });
     const product = async (name: 'hima_prepare' | 'hima_run', args: Record<string, unknown>) => host.ctx.tools.execute({
       name, arguments: args, agent: owner, callId: `bound-product-${++serial}` as never, signal: AbortSignal.timeout(20_000),
@@ -93,38 +99,176 @@ test('Campaign-attached document evidence is bound to one owner execution and it
     const started = await product('hima_run', { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: proposal.goal, strategy: proposal.strategy });
     assert.equal(started.isError, false, JSON.stringify(started));
     const run = JSON.parse(started.content.filter((item) => item.type === 'text').map((item) => item.text).join('')) as Record<string, any>;
-    assert.equal(run.kind, 'ran', JSON.stringify(run));
+    assert.equal(run.kind, 'preparing', JSON.stringify(run));
+    let context = await host.ctx.hima.readExecutionContext(run.runId);
+    const readyDeadline = Date.now() + 12_000;
+    while (!context.executions.some(item => item.nodeId === 'review-knowledge') && Date.now() < readyDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+      context = await host.ctx.hima.readExecutionContext(run.runId);
+    }
+    assert.equal(context.run.status, 'running');
+    assert.equal(context.executions.length, 1);
+    assert.equal(context.budget.phase, 'active');
+    assert.equal(context.run.currentNode, undefined, 'PG authority never invents a legacy currentNode');
     const laterPreparation = await product('hima_prepare', { pack: timingProbePackId, site: 'local' });
     const laterProposal = JSON.parse(laterPreparation.content.filter((item) => item.type === 'text').map((item) => item.text).join('')) as Record<string, any>;
     assert.notEqual(laterProposal.id, proposal.id, 'a later Campaign with the same facts has a distinct current-knowledge scope');
     const crossCampaignSearch = await invoke(owner, { action: 'search', source: 'current', scope: laterProposal.id, query: 'final routed database' });
     assert.equal(crossCampaignSearch.isError, false, JSON.stringify(crossCampaignSearch));
     assert.deepEqual(JSON.parse(crossCampaignSearch.content.filter((item) => item.type === 'text').map((item) => item.text).join('')).hits, []);
-    const control = host.ctx.hima.ledger.run(run.runId)!.control!;
+    const control = context.run.control!;
     const executionOwner = host.ctx.get('agents')!.get(control.owner as never)!;
     assert.notEqual(String(executionOwner.id), String(owner.id));
     assert.equal(control.guideSessionId, String(owner.id));
-    const begun = await host.ctx.hima.executionAction({ runId: run.runId, actor: String(executionOwner.id), expectedEpoch: control.epoch,
-      expectedRevision: control.revision, requestId: 'knowledge-begin', action: 'begin', nodeId: host.ctx.hima.ledger.run(run.runId)!.currentNode });
-    assert.equal(begun.kind, 'accepted');
-    const execution = begun.context.executions.find((item) => item.id === begun.receipt?.executionId)!;
+    const execution = context.executions[0]!;
     const readArgs = { action: 'read', source: 'current', scope: proposal.id, run: run.runId,
       documentId: imported.document.id, chunkId: searched.hits[0].id };
-    const read = await invoke(executionOwner, readArgs);
+    const read = await invoke(executionOwner, readArgs,'knowledge-idempotent');
     assert.equal(read.isError, false, JSON.stringify(read));
-    const record = host.ctx.hima.ledger.records({ runId: run.runId, type: 'knowledge' }).find((item) => item.type === 'knowledge');
+    const returned=JSON.parse(read.content.filter(item=>item.type==='text').map(item=>item.text).join(''));
+    const recorded=await host.ctx.hima.readMaterial(run.runId,returned.recordId);
+    assert.ok(recorded.kind==='read');
+    const record=recorded.record;
+    assert.equal(recorded.text,returned.text);
+    assert.match(record.id,/^hima-fact:/);
     assert.ok(record?.type === 'knowledge');
     assert.equal(record.attempt, execution.attempt);
     assert.equal(record.generation, execution.generation);
     assert.equal(record.nodeId, execution.nodeId);
     assert.ok(record.conditions?.some((condition) => /current Campaign conclusions still require current execution evidence/.test(condition)));
+    const store=host.ctx.hima.durable.store;
+    const originalInvocation=(await store.flowInvocations(run.runId)).find(item=>item.identity.effectId===execution.id)!;
+    const fact=await store.fact(record.id);
+    assert.ok(fact && fact.kind==='effect-fact');
+    assert.equal((fact.payload as any).identity.effectId,execution.id);
+    assert.equal((fact.payload as any).fact.generation,execution.generation);
+    const knowledgeFacts=async()=> (await store.orderedExternalEffectFacts(originalInvocation.identity,'knowledge:')).length;
+    assert.equal(await knowledgeFacts(),1);
+    const repeated=await invoke(executionOwner,readArgs,'knowledge-idempotent');
+    assert.equal(repeated.isError,false,JSON.stringify(repeated));
+    assert.equal(JSON.parse(repeated.content.filter(item=>item.type==='text').map(item=>item.text).join('')).recordId,record.id);
+    assert.equal(await knowledgeFacts(),1,'same DSH call retains one immutable PG fact');
+    const alternateSource=path.join(home.h.workspace,'different-knowledge.txt');
+    await writeFile(alternateSource,'Another exact background excerpt from a different current document.');
+    const alternateAnswer=await invoke(owner,{action:'import',scope:proposal.id,run:run.runId,file:alternateSource});
+    assert.equal(alternateAnswer.isError,false,JSON.stringify(alternateAnswer));
+    const alternate=JSON.parse(alternateAnswer.content.filter(item=>item.type==='text').map(item=>item.text).join(''));
+    const alternateSearch=await invoke(owner,{action:'search',scope:proposal.id,run:run.runId,query:'Another exact'});
+    assert.equal(alternateSearch.isError,false,JSON.stringify(alternateSearch));
+    const alternateHits=JSON.parse(alternateSearch.content.filter(item=>item.type==='text').map(item=>item.text).join('')).hits;
+    assert.ok(alternateHits.length>0);
+    const conflict=await invoke(executionOwner,{...readArgs,documentId:alternate.document.id,chunkId:alternateHits[0]!.id},'knowledge-idempotent');
+    assert.equal(conflict.isError,true,JSON.stringify(conflict));
+    assert.match(JSON.stringify(conflict.content),/Effect fact identity/);
+    assert.equal(await knowledgeFacts(),1);
+    const wrongProposal=await invoke(executionOwner,{...readArgs,scope:laterProposal.id});
+    assert.equal(wrongProposal.isError,true);
+    assert.match(JSON.stringify(wrongProposal.content),/does not belong to this Campaign proposal/);
+    const foreignWorkspace=path.join(home.h.home,'foreign-project');
+    await mkdir(foreignWorkspace);
+    const outsider=await createRootAgent(host.ctx,foreignWorkspace);
+    const wrongProject=await invoke(outsider,readArgs);
+    assert.equal(wrongProject.isError,true);
+    assert.match(JSON.stringify(wrongProject.content),/project|workspace/i);
     const nonowner = await invoke(other, readArgs);
     assert.equal(nonowner.isError, true);
     assert.match(JSON.stringify(nonowner.content), /owning Campaign Agent/);
     const crossScope = await invoke(executionOwner, { ...readArgs, scope: '0'.repeat(64) });
     assert.equal(crossScope.isError, true);
     assert.match(JSON.stringify(crossScope.content), /full, current HimaGuide Campaign proposal token/);
-    await host.ctx.hima.ledger.advanceRun(run.runId, { status: 'ended-goal-met' });
+    // Hold the real asynchronous retention mkdir, then change PG authority before final append.
+    let releaseRetention!:()=>void,enteredRetention!:()=>void;
+    const heldRetention=new Promise<void>(resolve=>{releaseRetention=resolve;});
+    const retentionEntered=new Promise<void>(resolve=>{enteredRetention=resolve;});
+    const originalMkdir=fs.promises.mkdir;
+    const retainedRoot=path.dirname(record.retainedPath!);
+    const mkdirMock=t.mock.method(fs.promises,'mkdir',async(...args:any[])=>{
+      if(String(args[0])===retainedRoot){enteredRetention();await heldRetention;}
+      return (originalMkdir as any)(...args);
+    });
+    syncBuiltinESMExports();
+    const racingRead=invoke(executionOwner,readArgs,'knowledge-handoff-race');
+    try {
+      let retentionTimer:NodeJS.Timeout|undefined;
+      try { await Promise.race([retentionEntered,new Promise((_,reject)=>{retentionTimer=setTimeout(()=>reject(new Error('retention gate not reached')),5000);})]); }
+      finally {clearTimeout(retentionTimer);}
+      const handoff=await host.ctx.hima.executionAction({runId:run.runId,actor:String(executionOwner.id),expectedEpoch:control.epoch,expectedRevision:control.revision,requestId:'knowledge-handoff',action:'handoff',targetOwner:String(other.id)});
+      assert.equal(handoff.kind,'accepted',JSON.stringify(handoff));
+    } finally {releaseRetention();mkdirMock.mock.restore();syncBuiltinESMExports();}
+    const raced=await racingRead;
+    assert.equal(raced.isError,true,JSON.stringify(raced));
+    assert.match(JSON.stringify(raced.content),/current owner|admission/);
+    assert.equal(await knowledgeFacts(),1,'handoff during retained I/O appends no Knowledge fact');
+    assert.equal(JSON.stringify(raced.content).includes(returned.text),false,'failed final fence exposes no excerpt');
+    const staleClear=await invoke(executionOwner,{action:'clear',scope:proposal.id,run:run.runId,documentId:imported.document.id});
+    assert.equal(staleClear.isError,true);
+    // Clear owns the Run lock through the real exact-directory rm; newer pause waits behind it.
+    let clearEntered!:()=>void,clearRelease!:()=>void;
+    const clearGate=new Promise<void>(resolve=>{clearEntered=resolve;}),clearHold=new Promise<void>(resolve=>{clearRelease=resolve;});
+    const originalRm=fs.promises.rm;
+    const rmMock=t.mock.method(fs.promises,'rm',async(...args:any[])=>{
+      if(String(args[0])===path.dirname(imported.document.sourcePath)){clearEntered();await clearHold;}
+      return (originalRm as any)(...args);
+    });syncBuiltinESMExports();
+    const clearRequest=invoke(other,{action:'clear',scope:proposal.id,run:run.runId,documentId:imported.document.id});
+    let pauseRequest:Promise<any>|undefined,pauseSettled=false;
+    try {
+      let clearTimer:NodeJS.Timeout|undefined;
+      try {await Promise.race([clearGate,new Promise((_,reject)=>{clearTimer=setTimeout(()=>reject(new Error('clear rm gate not reached')),5000);})]);}
+      finally {clearTimeout(clearTimer);}
+      const beforePause=(await store.run(run.runId));
+      pauseRequest=host.ctx.hima.executionAction({runId:run.runId,actor:String(other.id),expectedEpoch:beforePause.epoch,expectedRevision:beforePause.revision,requestId:'knowledge-clear-pause',action:'pause'}).then(result=>{pauseSettled=true;return result;});
+      await new Promise(resolve=>setTimeout(resolve,25));
+      assert.equal(pauseSettled,false,'new control cannot commit across the clear transaction');
+      assert.equal((await store.run(run.runId)).revision,beforePause.revision);
+    } finally {clearRelease();rmMock.mock.restore();syncBuiltinESMExports();}
+    const cleared=await clearRequest;
+    assert.equal(cleared.isError,false,JSON.stringify(cleared));
+    assert.equal(JSON.parse(cleared.content.filter(item=>item.type==='text').map(item=>item.text).join('')).cleared,true);
+    const paused=await pauseRequest!;
+    assert.equal(paused.kind,'accepted');
+    const heldRead=await invoke(other,{...readArgs,documentId:alternate.document.id,chunkId:alternateHits[0]!.id});
+    assert.equal(heldRead.isError,true);
+    assert.match(JSON.stringify(heldRead.content),/active writable Campaign/);
+    const heldClear=await invoke(other,{action:'clear',scope:proposal.id,run:run.runId,documentId:alternate.document.id});
+    assert.equal(heldClear.isError,true);
+    const resume=await host.ctx.hima.executionAction({runId:run.runId,actor:String(other.id),expectedEpoch:paused.context.run.control!.epoch,expectedRevision:paused.context.run.control!.revision,requestId:'knowledge-clear-continue',action:'continue'});
+    assert.equal(resume.kind,'accepted');
+    const clearedAgain=await invoke(other,{action:'clear',scope:proposal.id,run:run.runId,documentId:imported.document.id});
+    assert.equal(clearedAgain.isError,false);
+    assert.equal(JSON.parse(clearedAgain.content.filter(item=>item.type==='text').map(item=>item.text).join('')).cleared,false);
+    assert.equal((await host.ctx.hima.readMaterial(run.runId,record.id) as any).text,returned.text);
+    const currentControl=(await host.ctx.hima.readExecutionContext(run.runId)).run.control!;
+    let cancelRelease!:()=>void,cancelEntered!:()=>void;
+    const cancelHold=new Promise<void>(resolve=>{cancelRelease=resolve;}),cancelGate=new Promise<void>(resolve=>{cancelEntered=resolve;});
+    const cancelMkdir=t.mock.method(fs.promises,'mkdir',async(...args:any[])=>{
+      if(String(args[0])===retainedRoot){cancelEntered();await cancelHold;}
+      return (originalMkdir as any)(...args);
+    });syncBuiltinESMExports();
+    const cancelRead=invoke(other,{...readArgs,documentId:alternate.document.id,chunkId:alternateHits[0]!.id},'knowledge-cancel-race');
+    try {
+      let cancelTimer:NodeJS.Timeout|undefined;
+      try {await Promise.race([cancelGate,new Promise((_,reject)=>{cancelTimer=setTimeout(()=>reject(new Error('cancel retention gate not reached')),5000);})]);}
+      finally {clearTimeout(cancelTimer);}
+      const cancel=await host.ctx.hima.executionAction({runId:run.runId,actor:String(other.id),expectedEpoch:currentControl.epoch,expectedRevision:currentControl.revision,requestId:'knowledge-cancel',action:'cancel'});
+      assert.equal(cancel.kind,'accepted');
+    } finally {cancelRelease();cancelMkdir.mock.restore();syncBuiltinESMExports();}
+    const cancelledRead=await cancelRead;
+    assert.equal(cancelledRead.isError,true,JSON.stringify(cancelledRead));
+    assert.equal(await knowledgeFacts(),1,'cancel during retained I/O appends no Knowledge fact');
+
+    const closedDeadline=Date.now()+12_000;
+    let closed=await host.ctx.hima.readExecutionContext(run.runId);
+    while(closed.run.status!=='cancelled'&&Date.now()<closedDeadline) {await new Promise(resolve=>setTimeout(resolve,25));closed=await host.ctx.hima.readExecutionContext(run.runId);}
+    assert.equal(closed.run.status,'cancelled');
+    assert.equal((closed.run as any).stopState.unclosedResources,0);
+    assert.equal((closed.run as any).stopState.effectsWithoutStopProof,0);
+    assert.equal((closed.run as any).stopState.closed,true);
+    console.log('KNOWLEDGE_CLOSURE',JSON.stringify({runId:run.runId,status:closed.run.status,stopState:(closed.run as any).stopState,goalState:(closed.run as any).goalState,knowledgeFacts:await knowledgeFacts()}));
+    assert.equal((closed.run as any).goalState,'unknown');
+    const material=await host.ctx.hima.readMaterial(run.runId,record.id);
+    assert.ok(material.kind==='read');
+    assert.equal(material.text,JSON.parse(read.content.filter(item=>item.type==='text').map(item=>item.text).join('')).text);
     const ended = await invoke(executionOwner, readArgs);
     assert.equal(ended.isError, true);
     assert.match(JSON.stringify(ended.content), /active writable Campaign/);
@@ -132,21 +276,31 @@ test('Campaign-attached document evidence is bound to one owner execution and it
       documentId: imported.document.id });
     assert.equal(endedClear.isError, true);
     assert.match(JSON.stringify(endedClear.content), /active writable Campaign/);
+    assert.equal(packDigestOf(path.join(packsDirOf(home.h),timingProbePackId)),originalPackDigest);
+    await host.dispose();
+    host=await bootInProcess(home.h);
+    const afterRestart=await host.ctx.hima.readMaterial(run.runId,record.id);
+    assert.ok(afterRestart.kind==='read');
+    assert.equal(afterRestart.text,returned.text,'PG recorded exact excerpt survives clear and Host restart');
+    assert.equal((await host.ctx.hima.readExecutionContext(run.runId)).run.status,'cancelled');
   } finally { await host.dispose(); await home.h.dispose(); }
 });
 
-test('current knowledge survives Host restart, records the excerpt that reached a Campaign, clears explicitly, and never changes the Pack digest', async () => {
+test('current knowledge and recorded excerpts survive Host restart for an ended historical Run, clear explicitly, and never change the Pack digest', async () => {
   const h = await createHimaHome();
   const root = path.join(h.home, 'hima/current-knowledge');
   await installPack(h);
   const before = packDigestOf(path.join(packsDirOf(h), timingProbePackId));
   const imported = await importCurrentKnowledge({ root, scope: 'campaign-proposal', file: fixture, title: 'EDA Timing Preparation Guide', version: '1' });
   assert.equal(packDigestOf(path.join(packsDirOf(h), timingProbePackId)), before);
+  let history: { runId: string; record: Awaited<ReturnType<typeof recordDocumentKnowledgeRead>>; excerpt: string } | undefined;
   let host = await bootInProcess(h);
   try {
-    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'knowledge-fixture', siteId: 'local', packId: timingProbePackId, status: 'running' });
+    // Seed an already-ended historical Run: this proves retained knowledge, not active DBOS execution recovery.
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'knowledge-fixture', siteId: 'local', packId: timingProbePackId, status: 'cancelled' });
     const [hit] = await searchCurrentKnowledge(root, 'campaign-proposal', 'clock uncertainty baseline custom-cell arm');
     assert.ok(hit);
+    const excerpt = await readCurrentKnowledge(root, 'campaign-proposal', imported.document.id, hit.id);
     const record = await recordDocumentKnowledgeRead({ ledger: host.ctx.hima.ledger, packsDir: packsDirOf(h), runId: run.id,
       nodeId: 'prepare', attempt: 1, sessionId: 'session-current-knowledge', workshop: 'analysis', root, hit: hit!, origin: 'current' });
     assert.equal(record.origin, 'current');
@@ -154,14 +308,35 @@ test('current knowledge survives Host restart, records the excerpt that reached 
     assert.equal(record.chunkId, hit?.id);
     assert.equal(record.page, 1);
     assert.equal(record.sourceMaterialSha256, imported.document.sha256);
+    assert.equal(record.sha256, excerpt.sha256);
+    assert.equal(record.bytes, Buffer.byteLength(excerpt.text));
+    assert.equal(record.exposedBytes, Buffer.byteLength(excerpt.text));
+    assert.equal(record.knowledgeScope, 'campaign-proposal');
+    assert.match(excerpt.text, /clock uncertainty/i);
+    history = { runId: run.id, record, excerpt: excerpt.text };
   } finally { await host.dispose(); }
 
   host = await bootInProcess(h);
   try {
-    assert.deepEqual((await listCurrentKnowledge(root, 'campaign-proposal')).map((item) => item.id), [imported.document.id]);
+    assert.ok(history);
+    assert.equal(host.ctx.hima.ledger.run(history.runId)?.status, 'cancelled');
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId: history.runId, type: 'knowledge' }), [history.record]);
+    const retained = await host.ctx.hima.readMaterial(history.runId, history.record.id);
+    assert.equal(retained.kind, 'read');
+    assert.ok(retained.kind === 'read');
+    assert.deepEqual(retained.record, history.record);
+    assert.equal(retained.text, history.excerpt);
+    assert.deepEqual(await listCurrentKnowledge(root, 'campaign-proposal'), [imported.document]);
+    const current = await readCurrentKnowledge(root, 'campaign-proposal', history.record.documentId!, history.record.chunkId!);
+    assert.equal(current.text, history.excerpt);
+    assert.equal(current.sha256, history.record.sha256);
     assert.equal(await clearCurrentKnowledge(root, 'campaign-proposal', imported.document.id), true);
     assert.deepEqual(await listCurrentKnowledge(root, 'campaign-proposal'), []);
     assert.equal(await clearCurrentKnowledge(root, 'campaign-proposal', imported.document.id), false);
+    const retainedAfterClear = await host.ctx.hima.readMaterial(history.runId, history.record.id);
+    assert.equal(retainedAfterClear.kind, 'read');
+    assert.ok(retainedAfterClear.kind === 'read');
+    assert.equal(retainedAfterClear.text, history.excerpt, 'clearing current knowledge preserves the recorded historical excerpt');
     assert.equal(packDigestOf(path.join(packsDirOf(h), timingProbePackId)), before);
   } finally { await host.dispose(); await h.dispose(); }
 });

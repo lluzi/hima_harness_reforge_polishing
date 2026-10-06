@@ -67,6 +67,14 @@ export type AppendedReading =
   | { readonly kind: 'observed'; readonly record: ObservationRecord }
   | { readonly kind: 'refused'; readonly record: RefusalRecord };
 
+/** The same domain validation gate for durable results and historical Ledger observations. */
+export function validateDomainReading(reading: Reading, semantics: Semantics): { readonly ok: true; readonly values: import('./semantics.js').SemanticValue[] } | { readonly ok: false; readonly reason: string } {
+  const shaped = semanticValue.array().safeParse(reading.values);
+  if (!shaped.success) return { ok: false, reason: shaped.error.issues.map((issue) => `reader "${reading.reader.id}" produced something that is not a value: ${valueSaid(reading.values, issue.path)}: ${issue.message}`).join('; ') };
+  const failures = validateReading({ id: reading.reader.id, emits: reading.reader.emits }, shaped.data, semantics);
+  return failures.length ? { ok: false, reason: failures.join('; ') } : { ok: true, values: shaped.data };
+}
+
 /**
  * **Validate one reading and write it.** The one gate between a reader and HimaLedger (#61).
  *
@@ -96,14 +104,8 @@ export async function appendReading(ledger: Ledger, runId: string, reading: Read
   // storage domain does not validate on `put`. So every reading meets `semanticValue` here, on both
   // paths and in one place: a pack script's JSON, which arrives parsed only as far as "a document
   // with a values array", and a bundled reader's own objects, which meet no schema anywhere else.
-  const shaped = semanticValue.array().safeParse(reading.values);
-  if (!shaped.success) {
-    return refuse(shaped.error.issues.map((issue) => `reader "${reading.reader.id}" produced something that is not a value: ${valueSaid(reading.values, issue.path)}: ${issue.message}`).join('; '));
-  }
-  const failures = validateReading({ id: reading.reader.id, emits: reading.reader.emits }, shaped.data, semantics);
-  if (failures.length > 0) {
-    return refuse(failures.join('; '));
-  }
+  const shaped = validateDomainReading(reading, semantics);
+  if (!shaped.ok) return refuse(shaped.reason);
   // An absent key, never an undefined one: a reading taken outside every fork says so by omission.
   const inBranch = reading.branchId === undefined ? {} : { branchId: reading.branchId };
   let retainedPath: string | undefined;
@@ -122,7 +124,7 @@ export async function appendReading(ledger: Ledger, runId: string, reading: Read
       ...(retainedPath === undefined ? {} : { retainedPath }),
       bytes: reading.bytes,
       reader: reading.reader,
-      values: shaped.data,
+      values: shaped.values,
     }),
   };
 }

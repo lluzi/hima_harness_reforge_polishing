@@ -53,6 +53,7 @@ export function existingRun(ledger: Ledger, runId: string): RunRecord {
  */
 export const driving = (run: RunRecord): boolean => run.status === 'running';
 
-/** The old driver exists only as an explicitly opted-in Node regression fixture. */
+/** The old driver exists only in standalone/source Node regression fixtures, never a native App. */
 export const legacyAutomaticAllowed = (): boolean =>
-  process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_LEGACY_AUTO_DRIVE === '1';
+  process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_LEGACY_AUTO_DRIVE === '1'
+    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(decodeURIComponent(new URL(import.meta.url).pathname));

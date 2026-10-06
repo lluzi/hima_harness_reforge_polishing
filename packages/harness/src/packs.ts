@@ -42,6 +42,9 @@ import { packDigestExcludes, packFilePath, packId, pipelineFiles, snapshotPackFo
 // the ladder — and neither reads a value of the other's while it is being evaluated: every use is
 // inside a function, which is what keeps the pair loadable in either order.
 import { loadRunPack, releaseIssue } from './release.js';
+import { flowSource, type FlowSource, type CompiledFlow } from './flow-definition.js';
+import { compilePackFlow, compileLegacyFlow, projectFlowGraph } from './flow-compiler.js';
+import type { TaskInputBinding } from './task-contract.js';
 
 // Re-exported so a caller of `loadPack` finds the error it can throw right beside it.
 export { PackNotFoundError };
@@ -798,6 +801,9 @@ export const packContract = z.strictObject({
   words: z.record(declaredName, packWord).default({}),
 });
 export type PackContract = z.infer<typeof packContract>;
+// A strict versioned task flow may have no Strategy to choose. The public legacy parser keeps
+// its original Loop contract; the normal loader selects this data shape from graph.yml's schema.
+const flowPackContract = packContract.extend({ strategy: z.record(declaredName, strategyKnob).default({}) });
 export type PackTool = z.infer<typeof packTool>;
 export type ContractOutput = z.infer<typeof contractOutput>;
 
@@ -832,7 +838,7 @@ export const packKnowledgeManifest = z.strictObject({
 export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
-export const harnessVersion = '0.2.2';
+export const harnessVersion = '0.3.0';
 
 export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
 
@@ -1110,6 +1116,10 @@ export interface Pack {
   readonly dir: string;
   readonly contract: PackContract;
   readonly graph: PackGraph;
+  /** Immutable execution IR derived from this method snapshot. Old stored records are not rewritten. */
+  readonly flow?: CompiledFlow;
+  /** Present only for the versioned composition source; graph is its existing-face projection. */
+  readonly flowSource?: FlowSource;
   /**
    * **The one reading of the folder this pack was parsed out of** (#64).
    *
@@ -1665,6 +1675,15 @@ export function validateGrowthGraph(pack: Pack, candidate: unknown): GrowthGraph
  */
 export function goalParametersOf(pack: Pack): string[] {
   const found = new Set<string>();
+  if (pack.flowSource && pack.flow) {
+    for (const task of Object.values(pack.flow.tasks)) for (const binding of Object.values(task.inputs)) {
+      if (binding.source === 'goal') {
+        if (binding.path.length) found.add(binding.path[0]!);
+        else Object.keys(pack.contract.goal ?? {}).forEach(name => found.add(name));
+      }
+    }
+    return [...found];
+  }
   for (const { graph } of graphsOf(pack)) {
     for (const node of graph.nodes) {
       const references = node.kind === 'judge'
@@ -1922,8 +1941,12 @@ export function loadPackFrom(folder: PackFolderSnapshot): Pack {
   }
   const graphText = folder.text(packFiles.graph);
   if (graphText === undefined) throw new Error(`pack ${id} has a ${packFiles.contract} but no ${packFiles.graph} beside it`);
-  const contract = packContract.parse(parse(contractText));
-  const graph = packGraph.parse(parse(graphText));
+  const graphDocument: unknown = parse(graphText);
+  const versioned = typeof graphDocument === 'object' && graphDocument !== null && 'schema' in graphDocument;
+  const contract = (versioned ? flowPackContract : packContract).parse(parse(contractText));
+  const declaration = versioned ? flowSource.parse(graphDocument) : undefined;
+  const graph = declaration ? projectFlowGraph(declaration) : packGraph.parse(graphDocument);
+  const compiled = declaration ? compilePackFlow(declaration, folder, contract) : undefined;
   // Where the ids this pack names resolve from, computed once and carried on the pack (#57): its own
   // folder first, the bundle's second. Every caller that resolves a rule or a chooser at run time
   // takes these lists off the pack, so no two of them can come to disagree about which file a
@@ -1933,13 +1956,14 @@ export function loadPackFrom(folder: PackFolderSnapshot): Pack {
     dir,
     contract,
     graph,
+    ...(declaration ? { flowSource: declaration, flow: compiled } : {}),
     folder,
     ruleDirs: [path.join(dir, packDataDirs.rules), shippedRulesDir],
     chooserDirs: [path.join(dir, packDataDirs.choosers), shippedChoosersDir],
   };
   validatePack(folder, pack);
   packKnowledgeManifestOf(pack);
-  return pack;
+  return compiled ? pack : { ...pack, flow: compileLegacyFlow(graph, contract, folder.digest(packDigestExcludes)) };
 }
 
 /**
@@ -2004,7 +2028,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   if (graph.id !== id) broken(packFiles.graph, `declares id "${graph.id}", not "${id}"`);
   if (graph.version !== contract.version) broken(packFiles.graph, `is version ${graph.version} while ${packFiles.contract} is version ${contract.version}`);
 
-  if (contract.goal !== undefined) {
+  if (contract.goal !== undefined && pack.flowSource === undefined) {
     const used = goalParametersOf(pack);
     for (const name of used) if (!Object.hasOwn(contract.goal, name)) broken(packFiles.graph, `references undeclared Goal parameter "${name}"`);
     for (const name of Object.keys(contract.goal)) if (!used.includes(name)) broken(packFiles.contract, `Goal parameter "${name}" is not bound by the graph`);
@@ -2079,6 +2103,25 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   for (const w of wrappers) if (!declaredWrappers.has(w)) broken(packFiles.contract, `a tool runs "${w}", which environment.wrappers does not declare`);
 
   validateWorkshops(pack, broken);
+  if (pack.flowSource !== undefined) {
+    const inputDeclarations = Object.fromEntries(contract.inputs.map(input => [input.name, input]));
+    // Source composition and references were checked by compilePackFlow. The projection does not
+    // invent legacy routing edges, a chooser or a generation loop just to satisfy old validators.
+    const checkBinding = (binding: TaskInputBinding, at: string): void => {
+      const declarations = binding.source === 'runInput' ? inputDeclarations
+        : binding.source === 'strategy' ? contract.strategy : binding.source === 'goal' ? contract.goal ?? {} : undefined;
+      if (declarations && 'path' in binding && binding.path.length
+        && !Object.hasOwn(declarations, binding.path[0]!)) broken(packFiles.graph, `${at} references undeclared ${binding.source} field "${binding.path[0]}"; declare it in contract.yml`);
+    };
+    for (const task of Object.values(pack.flow!.tasks)) for (const [name, binding] of Object.entries(task.inputs)) {
+      checkBinding(binding, `task "${task.id}" input "${name}"`);
+    }
+    for (const block of Object.values(pack.flow!.blocks)) if (block.kind === 'repeat') {
+      for (const [key, carry] of Object.entries(block.carry)) checkBinding(carry.initial, `repeat "${block.id}" carry/${key}/initial`);
+    }
+    validateAgentTeams(pack, new Map(graph.nodes.map(node => [node.id, 'its flow'])), broken);
+    return;
+  }
 
   // A node id is unique across the whole pack — its graph and every loop — because a node record, a
   // Job, an attempt and a run row all name a node by that id and nothing else (#28). Two graphs each
@@ -4361,4 +4404,36 @@ export function checkInstalledPack(deps: ReleaseDeps & { readonly sitesDir: stri
   // The check, and then the one fact it cannot reach on its own: whether the Run this folder's test
   // record names is in this host's ledger and ran these very files.
   return { kind: 'checked', check: withTestRecord(checkPack(loaded, site), loaded, deps.ledger) };
+}
+
+/** Host checks use current application facts for DBOS TEST Runs. Released customer Packs retain
+ * their portable seal, and historical TEST Runs retain the synchronous Ledger check. */
+export async function checkInstalledPackFromRuntime(
+  deps: import('./fabric.js').FabricDeps,
+  req: { readonly pack: string; readonly site: string },
+): Promise<PackCheckResult> {
+  if (!deps.durable) return checkInstalledPack(deps, req);
+  // Preserve the existing Site-first errors, including for incomplete authoring folders.
+  loadSite(deps.sitesDir, req.site);
+  const folder = installedPackFolder(deps.packsDir, req.pack);
+  if (folder === undefined || packStageFrom(folder).stage !== 'tested') {
+    return checkInstalledPack(deps, req);
+  }
+  const text = folder.text(pipelineFiles.test);
+  const named = text === undefined ? undefined : runNamedByTestRecord(text);
+  if (named?.kind !== 'named') return checkInstalledPack(deps, req);
+  const { knownDurableRun } = await import('./durable-fabric.js');
+  if (!await knownDurableRun(deps, named.run)) return checkInstalledPack(deps, req);
+  return deps.durable.store.withRunReadBoundary(named.run, async () => {
+    const { createDurableViewReaders } = await import('./durable-views.js');
+    const readers = createDurableViewReaders(deps);
+    const run = await readers.readRun(named.run);
+    const records = await readers.readRunRecords(named.run);
+    // As in publication, a changed TEST Run id cannot borrow the selected Run's facts.
+    const lookup: RunLookup = {
+      run: id => id === named.run ? run : undefined,
+      records: ({ runId }) => runId === named.run ? records : [],
+    };
+    return checkInstalledPack({ ...deps, ledger: lookup }, req);
+  });
 }

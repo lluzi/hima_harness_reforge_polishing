@@ -1,0 +1,25 @@
+allowedReadRoots:
+  - /data/eda/env
+  - /data/eda/software/eda_tools/empyrean
+  - /data/eda/venvs/qualib-libapi-2026-py37
+  - /data/eda/pdk/saed14
+  - /data/eda/project/techlib/tsmc28
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
+  - /data/eda/project/hima_harness/library-intelligence-prototypes/claude-libint-20260923-01/canonical
+  - /data/eda/project/hima_harness/libinsight-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/libinsight-runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py
+  - /usr/bin/python3
+  - python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

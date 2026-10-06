@@ -1,0 +1,77 @@
+{
+  "beforeTiming": {
+    "hold": {
+      "tnsNs": {
+        "value": -4.7021
+      },
+      "violations": {
+        "value": 109
+      },
+      "wnsNs": {
+        "value": -0.1523
+      }
+    },
+    "setup": {
+      "tnsNs": {
+        "value": -0.2306
+      },
+      "violations": {
+        "value": 28
+      },
+      "wnsNs": {
+        "value": -0.038
+      }
+    }
+  },
+  "collateral": {
+    "regression": {
+      "unknown": "required collateral comparison unknown: capacitance, fanout, legality, transition"
+    },
+    "remaining": {
+      "value": 18
+    },
+    "unknown": {
+      "value": 4
+    }
+  },
+  "domainReport": {
+    "effectId": "hima-effect:572bcd533826b9e95b321f6675a4a988c6d18008a56a6227b5d47045da9e1d55",
+    "name": "domain-report",
+    "path": "hima-readers/1d9afa794f573f5336512d1a54244119/input-report",
+    "runId": "run-e7ed880e-5d24-44b8-9b92-0e72bd63129d",
+    "sha256": "5950b651ea9c628f7566b4d8cfe6ffb167954b8240ad9dbf924b8f0d3cb46cd5",
+    "taskId": "fix-timing"
+  },
+  "engineering": {
+    "outcome": "best-effort",
+    "stopReason": "Protected setup AutoFix passes and further manual sizing produced no change beyond setup 18 / -0.0237 / -0.0973 while hold is 0 / 0 / 0 in every required scenario; available XTop mechanisms plateaued and the best measured state was retained.",
+    "summary": "Resident XTop repair of the common R1: hold cleared to 0/0/0 in all four scenarios; setup reduced from 28 to 18 violations (WNS -0.0380 -> -0.0237 ns). Selected checkpoint, INNOVUS logical/physical ECO, all scripts, raw before/after native reports and native trace are listed by path and sha256."
+  },
+  "engineeringPackagePath": "delivery/engineering-artifacts.tar.gz",
+  "goalMet": false,
+  "reportPath": "delivery/REPORT.md",
+  "timing": {
+    "hold": {
+      "tnsNs": {
+        "value": 0
+      },
+      "violations": {
+        "value": 0
+      },
+      "wnsNs": {
+        "value": 0
+      }
+    },
+    "setup": {
+      "tnsNs": {
+        "value": -0.0973
+      },
+      "violations": {
+        "value": 18
+      },
+      "wnsNs": {
+        "value": -0.0237
+      }
+    }
+  }
+}

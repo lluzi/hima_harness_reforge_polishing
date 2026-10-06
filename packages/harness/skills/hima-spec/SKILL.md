@@ -16,7 +16,9 @@ pack folder, and it is the only place you write. You edit no other file — `INT
    fill a gap yourself and never overwrite a record a person has edited.
 3. **Read the Golden Flow at the pointers the record gives you**, where it lies. Read it, never copy
    it.
-4. **Read the six knowledge files**, relative to this skill's base directory:
+4. **Read the versioned task/composition section of `knowledge/pack-anatomy.md`.** For a method
+   that measures or optimizes an engineering target, also read these six domain-method references,
+   relative to this skill's base directory:
    - `knowledge/over-constrain-and-read-the-violation.md`
    - `knowledge/end-honestly-in-more-than-one-way.md`
    - `knowledge/assert-the-checker-options.md`
@@ -31,26 +33,52 @@ holds a heading of its own, holds one of these twice, or puts them in another or
 validate, and the stage that compiles it refuses it. Every section is in the pack's
 own words — the author's vocabulary for this business, not generic prose — and every section says
 which knowledge file shaped it, by file name. A section no knowledge shaped says so plainly.
+A section the business does not need says `none` and why. Required headings do not require extra
+Goal parameters, Strategy knobs, Readers, Judge rules, Choosers, Workshops or knowledge files.
+A task-only protocol method can return its business payload and finish without a numeric Goal;
+that is a complete method, and no missing-Goal gap is implied.
+
+For a diagnostic detour, choose the spec's one mechanism: either an ordinary exhaustive choice or
+a declared dynamic extension slot. A dynamic extension carries its fragment in a committed task
+output and returns to the named successor. Describe it once; do not also add the same work as a
+fixed branch. `required: false` on a parallel result permits an absent result after branch failure;
+it does not conditionally skip that branch.
 
 - `## Goal template` — the primary target and its parameters, each with its unit and what it means.
 - `## Constraints` — every constraint the Goal carries, typed and checkable, with the options the
   measurement was made under.
 - `## Run contract` — inputs, outputs, wrappers, tools and budget: what a Site must bind and allow,
   which source identity each input has, and what bounds new attempts or generations.
+  For a versioned flow, declare each task's business input/output schema versions, JSON Schema
+  2020-12 fields and local schema files; name committed producers and exact field paths. State
+  sequence order, exhaustive choice enums, named parallel results and whether each is required,
+  repeat carry/stop and the original Run budget. A dynamic diagnostic fragment needs a declared
+  producer position and a return task; use the same task and composition grammar.
   For each engineering tool eligible for outsourcing, state its full task goal, input/output and
   knowledge references, permitted work, delivery location and completion evidence. The Site supplies
   the concrete Resident Engineering Agent executor; the method declares the engineering role.
-- `## Semantics` — every typed value the readers will produce: name, unit, source and what it
-  measures. One entry per value, its zero/absence meaning, and no value the readers do not produce.
-- `## Judge rules` — the rules over those values that decide how a node continues, and what each
-  verdict cites.
+- `## Semantics` — what the declared business fields mean, including units, source and the
+  distinction between zero and absence. Reference the task schemas already in `Run contract`;
+  JSON fields do not require a separate Reader. When the method uses report Readers, name each
+  typed value those Readers actually produce. A section with no additional meaning to define
+  can say `none` and point to the Run contract.
+- `## Judge rules` — only the business judgments the author requested, with their evidence.
+  Runtime already validates every task input/output against its declared JSON schema. Ordinary
+  payload validation stays inside that task contract and does not create a Judge task, Reader,
+  Wait, or person-clearance stage. A protocol-only method writes `none` here.
+  For a versioned method that needs a business judgment, name the declared executable tool task
+  producing it. Legacy rule files alone do not bind an executable task in the new grammar.
 - `## Choosers` — each chooser, what it reads, what it sets, and the knowledge behind the move it
   makes.
-- `## Endings` — every way a Campaign of this pack ends, in words. Goal met, converged, and the
-  endings this pack declares for itself.
+- `## Endings` — the outcomes this business actually declares and the paths that reach them.
+  A terminal task can deliver a valid business payload with Goal false. Protocol errors are task
+  failures with repair information; they need a human-wait task only if the author requested human
+  clearance. Include Goal met or convergence only when this business has such an outcome.
 - `## Workshops` — where the AI may write code at run time: the purpose, the inputs it is given, and
   the semantics of what it must produce.
-  Distinguish a Workshop from a complete engineering task outsourced through an act/tool node.
+  Distinguish a native Workshop binding from a complete engineering task outsourced through a
+  declared tool. Native Workshop graph bindings currently belong to legacy declarations; mark a
+  new-method requirement for that binding explicitly so FABRIC can report the support gap.
 - `## Knowledge` — the pack's own knowledge files to write, by name and purpose. These are the files
   that will sit in the pack folder's `knowledge/` and be named by its contract; they are the domain
   knowledge a Model moment may read.
@@ -62,8 +90,10 @@ refuses the whole file naming the section and quoting the line when it finds one
 draft against those same six first, in these words, and rewrite it until it passes. A spec that fails
 its own check is never handed on.
 
-- A value a `Judge rules` entry or a `Choosers` entry reads that `Semantics` does not declare.
-- An `Endings` entry no judge rule's outcome and no chooser's decision can reach.
+- A value a `Judge rules` entry or a `Choosers` entry reads with no declared task input/output
+  source, or no Reader value in `Semantics` when a legacy rule requires one.
+- An `Endings` entry no declared path can reach: a versioned flow names its terminal task and
+  business result; a legacy graph names its judge outcome or chooser decision.
 - A tool the `Run contract` names with no wrapper that section declares.
 - A `Workshops` entry whose output is not one of the values `Semantics` declares.
 - A `Knowledge` file the spec declares and no section of it names as being for anything.
@@ -75,8 +105,9 @@ Two of those six are where a spec fails in practice, so check them by walking th
 than by reading over them:
 
 **Every ending is reached by something.** Take each `Endings` entry and name, in the spec itself,
-what reaches it. There are exactly three shapes, and an ending with none of them is an ending a
-Campaign can never end at:
+what reaches it. In a versioned flow, a terminal task states its business result and the declared
+path that reaches it; successful execution and Goal achievement are separate. For an existing
+four-kind graph, use the following three declared shapes:
 
 - **goal met** — a `Choosers` entry with a clause that states the goal is met, on the PASS of the
   rule that judges the goal. An `Endings` section that says "the goal is met when the period closes"
@@ -87,10 +118,10 @@ Campaign can never end at:
 - **a blocker this pack declares** — a judge rule whose FAIL routes to the wait node, which is where
   a Campaign stops for a person. Name the rule.
 
-**Every value a rule or a chooser reads is declared.** Take each name in `Judge rules` and `Choosers`
-and find it in `Semantics`. A rule that reads a value nothing declares is the contradiction the next
-stage refuses first, and it is always a `Semantics` section written before the rules rather than with
-them.
+**Every decision reads declared data.** For a versioned flow, trace the decision task's input
+bindings to declared sources and the output enum to the choice cases. Runtime schema validation is
+already part of the handoff. For a legacy rule or chooser, trace every value name to the Reader and
+`Semantics` declaration it consumes. A JSON business field does not become a Reader obligation.
 
 If holding the draft up this way shows a gap — an ending nothing reaches, a value nothing produces —
 the fix is the spec, not a note about the spec: rewrite the section so what it states is reachable,
@@ -119,7 +150,7 @@ what is here, and what is here is theirs.
 ## Rules that do not bend
 
 - **One file.** `SPEC.md`, in this folder. Nothing else is created, edited or deleted.
-- **Nothing invented.** Every value in `Semantics` is one some reader will actually produce. Every
+- **Nothing invented.** Every value in `Semantics` has a declared task or Reader source. Every
   ending in `Endings` is one some value can detect. A spec that names a number nobody reads is a
   spec the next stage cannot compile.
 - **It passes its own check.** The six contradictions above are the ones `/hima-fabric` refuses the
