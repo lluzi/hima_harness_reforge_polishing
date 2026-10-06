@@ -713,6 +713,12 @@ export interface RemoteOperations {
   /** The LibInsight pages Data Insight frames (ADR-0019): the Host's one local viewer process. */
   libInsight?(request: { readonly action: 'status' } | { readonly action: 'open'; readonly dataFolder?: string; readonly restart?: boolean }): Promise<import('./libinsight-viewer.js').LibInsightViewerStatus>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
+  /** Data Insight's Resident analyses (ADR-0020): a request becomes one Guide-confirmed Run of the analysis Pack. */
+  libInsightAnalyses?: {
+    list(sessionId: string): Promise<object>;
+    propose(sessionId: string, request: { readonly question: string; readonly sources?: readonly string[]; readonly buildsOn?: readonly string[] }): Promise<object>;
+    confirm(sessionId: string, proposalId: string): Promise<object>;
+  };
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
   readRunAssets?(runId: string,revision?:number): Promise<import('./experience.js').ReadRunAssetsResult>;
@@ -1780,6 +1786,27 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     const body = parsed.data;
     if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
     return ok(await ops.libInsight({ action: 'open', ...(body.dataFolder === undefined ? {} : { dataFolder: body.dataFolder }), ...(body.restart === undefined ? {} : { restart: body.restart }) }));
+  }
+
+  // Resident analyses beside the LibInsight pages (ADR-0020). Proposing writes the request onto the
+  // Site and prepares; only a confirmation starts a Run, owned like any Guide-confirmed Campaign.
+  if (rest === '/libinsight/analyses') {
+    if (!ops.libInsightAnalyses) return failure(503, 'hima/internal', 'This Host has no Resident analyses.');
+    if (method === 'GET') {
+      const sessionId = url.searchParams.get('sessionId') ?? '';
+      if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+      return ok(await ops.libInsightAnalyses.list(sessionId));
+    }
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
+    const parsed = z.discriminatedUnion('action', [
+      z.strictObject({ sessionId: z.string(), action: z.literal('propose'), question: z.string().min(1).max(4000), sources: z.array(z.string().max(4096)).max(32).optional(), buildsOn: z.array(z.string().max(80)).max(8).optional() }),
+      z.strictObject({ sessionId: z.string(), action: z.literal('confirm'), proposalId: z.string().min(1).max(512) }),
+    ]).safeParse(await readJsonBody(req));
+    if (!parsed.success) throw new BadRequest(zodSentence(parsed.error));
+    const body = parsed.data;
+    if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    if (body.action === 'confirm') return ok(await ops.libInsightAnalyses.confirm(body.sessionId, body.proposalId));
+    return ok(await ops.libInsightAnalyses.propose(body.sessionId, { question: body.question, ...(body.sources ? { sources: body.sources } : {}), ...(body.buildsOn ? { buildsOn: body.buildsOn } : {}) }));
   }
 
   if (rest === '/observe') {

@@ -61,7 +61,8 @@ import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { createLibInsightViewer, libInsightViewerOptions } from './libinsight-viewer.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
-import { createDurableViewReaders } from './durable-views.js';
+import { createDurableViewReaders, readDurableSourceBytes } from './durable-views.js';
+import { createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses } from './libinsight-analyses.js';
 import { previewPackTransfer, applyPackTransfer, loadRunPack, releasePackFromRuntime } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
@@ -676,10 +677,20 @@ export default class Hima extends Service {
       // Data Insight's LibInsight pages (ADR-0019): started on the first look, stopped with the face.
       const libInsight = createLibInsightViewer(libInsightViewerOptions(localDatabaseHome()));
       webCtx.effect(() => () => libInsight.stop(), 'hima: the LibInsight viewer process');
+      const analyses = this.libInsightAnalyses();
+      const asked = <T,>(work: () => Promise<T>): Promise<T> => work().catch((error: unknown) => {
+        if (error instanceof LibInsightAnalysisError) throw new BadRequest(error.message);
+        throw error;
+      });
       webCtx.effect(
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
           libInsight: request => request.action === 'status' ? libInsight.status() : libInsight.open(request),
+          libInsightAnalyses: {
+            list: sessionId => asked(() => analyses.list(sessionId)),
+            propose: (sessionId, request) => asked(() => analyses.propose(sessionId, { question: request.question, sources: [...request.sources ?? []], buildsOn: [...request.buildsOn ?? []] })),
+            confirm: (sessionId, proposalId) => asked(() => analyses.confirm(sessionId, proposalId)),
+          },
           readRunView: runId=>this.viewReaders().readRunView(runId),
           listRunHeads: ()=>this.viewReaders().listRunHeads(),
           readRunRecord: recordId=>this.viewReaders().readRunRecord(recordId),
@@ -997,6 +1008,23 @@ export default class Hima extends Service {
 
   readExecutionContext(runId: string) { return readExecutionContext(this.deps(), runId); }
   controlDurableRun(command: DurableCommand) { return controlDurableRun(this.deps(), command); }
+
+  /** Data Insight's Resident analyses (ADR-0020): Pack and Site names may be overridden for another Home. */
+  private libInsightAnalyses(): LibInsightAnalyses {
+    return createLibInsightAnalyses({
+      packsDir: this.config.packsDir, sitesDir: this.config.sitesDir,
+      indexFile: path.join(localDatabaseHome(), 'libinsight-analyses.json'),
+      ...(process.env.HIMA_LIBINSIGHT_ANALYSIS_PACK ? { pack: process.env.HIMA_LIBINSIGHT_ANALYSIS_PACK } : {}),
+      ...(process.env.HIMA_LIBINSIGHT_ANALYSIS_SITE ? { site: process.env.HIMA_LIBINSIGHT_ANALYSIS_SITE } : {}),
+      preparation: (pack, site, overrides) => this.preparation(pack, site, overrides),
+      startGuidedRun: request => this.startGuidedRun(request),
+      listRunHeads: () => this.viewReaders().listRunHeads(),
+      readRunView: runId => this.viewReaders().readRunView(runId),
+      readRunRecords: (runId, type) => this.viewReaders().readRunRecords(runId, type),
+      readRetained: (runId, record, maxBytes) => readDurableSourceBytes(this.retainedMaterialsDir, runId, record, maxBytes),
+      authorize: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
+    });
+  }
 
   private viewReaders() {
     return createDurableViewReaders(this.deps(),{retainedMaterialsDir:this.retainedMaterialsDir});
