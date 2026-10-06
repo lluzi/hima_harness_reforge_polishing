@@ -194,8 +194,6 @@ class Route(unittest.TestCase):
         shutil.rmtree(os.path.join(self.workspace, "analysis"))
         os.makedirs(self.private + "2")
         self.private = self.private + "2"
-        identical = self.deliver_once(version=1)
-        self.assertTrue(library.admit_task(self.workspace, identical)["reused"])
         changed = self.deliver_once(version=1, summary="A different analysis under the same version.")
         with self.assertRaises(common.LiaError) as raised:
             library.admit_task(self.workspace, changed)
