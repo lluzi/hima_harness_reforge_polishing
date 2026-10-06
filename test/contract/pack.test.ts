@@ -1776,8 +1776,9 @@ test('packStageOf answers absence only for a folder that is not there, and throw
 
 // ---------------------------------------------------------------------------------------------
 // The three rungs #64 made real: what a fabric record, a test record and a version file must be for
-// a folder to stand on them. The stages that write them are `pipeline-stages.test.ts`; what is here
-// is the rungs' own words, on the cases those stages do not reach.
+// a folder to stand on them. The stages that write them are exercised in `pipeline-stages.host.test.ts`
+// (fabric) and `pack-test-admission.host.test.ts` (test and release); what is here is the rungs' own
+// words, on the cases those stages do not reach.
 // ---------------------------------------------------------------------------------------------
 
 test('a fabric record missing a section leaves the folder at specified, and the check names the section', async (t) => {

@@ -60,10 +60,10 @@ export const QUIET_TITLE_ROW = [
  * What the author answers the grill stage's three questions with, as a second message of their own,
  * and how they settle the one place their words and the Golden Flow disagree.
  *
- * Here rather than in one test file because two files send them now: `skills.test.ts`, whose subject
- * is the grill stage itself, and `pipeline-stages.test.ts`, which runs the whole pipeline through in
- * one session. Two copies of what a person said would be two authors, and the day one is corrected
- * the two runs would be authoring different packs.
+ * Here rather than in one test file so that every test replaying the grill stage sends the same
+ * words; `skills.test.ts`, whose subject is the grill stage itself, is the one that sends them now.
+ * Two copies of what a person said would be two authors, and the day one is corrected the two runs
+ * would be authoring different packs.
  */
 export const GRILL_ANSWERS = [
   'Answers, in order.',

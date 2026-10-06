@@ -130,7 +130,6 @@
     "test/contract/strategy.test.ts",
     "test/contract/window.test.ts",
     "test/contract/unified-workbench.test.ts",
-    "test/contract/pipeline-stages.test.ts",
     "test/contract/agent-execution.desktop.test.ts",
     "test/contract/display-placement.desktop.test.ts",
     "test/contract/runtime-info.desktop.test.ts",
