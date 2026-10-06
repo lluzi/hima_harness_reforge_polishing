@@ -127,8 +127,15 @@ async function ownHome(root: string): Promise<() => Promise<void>> {
   };
 }
 
-/** The lineage authority survives loss of either Home and is never selected by DSH_HOME. */
-export function localLineageDirectory(): string { return path.join(homedir(), '.hima', 'database-lineages'); }
+/** The lineage authority survives loss of either Home and is never selected by DSH_HOME. Source
+ * regression runs name their own throwaway authority, so they neither read nor leave records in the
+ * person's real one; a native App never honours that name. */
+export function localLineageDirectory(): string {
+  const testAuthority = process.env.HIMA_TEST_LINEAGE_DIR;
+  if (testAuthority !== undefined && testAuthority !== '' && process.env.NODE_TEST_CONTEXT !== undefined
+    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(decodeURIComponent(new URL(import.meta.url).pathname))) return path.resolve(testAuthority);
+  return path.join(homedir(), '.hima', 'database-lineages');
+}
 export interface DatabaseLineage {
   format: 'hima-database-lineage/1'; identity: string; machine: string; epoch: number;
   currentHome: string; retainedMaterialsDir: string; retiredHomes: string[]; retiredManifest?: string;

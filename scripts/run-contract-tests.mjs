@@ -53,6 +53,8 @@ try {
         DSH_HOME: path.join(temporary, 'dsh'), DSH_AGENTS_HOME: path.join(temporary, 'agents'),
         HIMA_USER_DATA: path.join(temporary, 'electron'), DSH_TELEMETRY_DISABLED: '1',
         HIMA_TEST_GROUP: group, HIMA_TEST_TMPDIR: temporary,
+        // Never the person's real ~/.hima lineage authority: one interrupted claim there holds every Home.
+        HIMA_TEST_LINEAGE_DIR: path.join(temporary, 'lineages'),
         HIMA_TEST_BOOT_LOG: path.join(temporary, 'boots.txt'),
         HIMA_TEST_LEGACY_AUTO_DRIVE: process.env.HIMA_TEST_LEGACY_AUTO_DRIVE ?? '1',
         HIMA_TEST_SILENT_AGENT: process.env.HIMA_TEST_SILENT_AGENT ?? '1',
