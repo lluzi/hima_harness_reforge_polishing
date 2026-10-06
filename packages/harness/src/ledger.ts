@@ -573,12 +573,20 @@ export const resumedRecord = v29ResumedRecord.extend({
  * number for a number knob, one of the declared options for a choice knob, and nothing else — a
  * value of some third kind is a knob no declaration could have produced.
  *
- * Never empty: a pack declares at least one knob, so a Run of one is set to at least one thing.
+ * Never empty where a Strategy is chosen: a decision for a next generation names at least one knob.
  */
 export const runStrategy = z
   .record(z.string().min(1), z.union([z.number(), z.string().min(1)]))
   .refine((s) => Object.keys(s).length > 0, { error: 'a strategy carries at least one knob, because a pack declares at least one' });
 export type RunStrategy = z.infer<typeof runStrategy>;
+
+/**
+ * What a Run itself is set to. Empty when its Pack declares no knob: a resident-agent Pack such as a
+ * library analysis (ADR-0017, ADR-0020) has a Goal and a method but nothing to tune, and its Run is
+ * recorded with `{}`. A stored Run must load whatever its Pack declared, or one such Run makes the
+ * whole Home unbootable.
+ */
+export const runStrategySetting = z.record(z.string().min(1), z.union([z.number(), z.string().min(1)]));
 
 /**
  * What an Explore node chose: the next strategy to try, that the Goal is met and there is nothing to
@@ -1611,7 +1619,7 @@ export const runRecord = z.object({
   goal: z.record(z.string(), z.number()).optional(),
   budget: runBudget.optional(),
   currentNode: z.string().optional(),
-  strategy: runStrategy.optional(),
+  strategy: runStrategySetting.optional(),
   /**
    * The Strategy this Run was started with, written once by the call that opens the row and never
    * again — the only part of this row that is a fact about the Campaign's start rather than about
@@ -1627,7 +1635,7 @@ export const runRecord = z.object({
    *
    * Optional for the reason every other fabric field is: a Run no fabric started was set to nothing.
    */
-  firstStrategy: runStrategy.optional(),
+  firstStrategy: runStrategySetting.optional(),
   /**
    * Which Generation of its Loop this Run is in, counted from one: set to 1 when HimaFabric starts
    * the Run, and incremented by the one write that follows a revisit edge. Absent on a Run no fabric

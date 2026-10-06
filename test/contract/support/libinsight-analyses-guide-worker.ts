@@ -144,6 +144,13 @@ try {
  assert.equal(/http-equiv="refresh"/i.test(done.html),false);assert.equal(/<script/i.test(done.html),false);
  await writeFile(path.join(evidence,'analysis-page.html'),done.html);
  assert.equal((await page(`/hima/analysis/run-not-a-run?session=${encodeURIComponent(sessionId)}`)).status,404);
+ // The Home boots again after an analysis Run (found live on trial.45): its Pack declares no Strategy
+ // knob, the Run is stored with an empty Strategy, and the Ledger must load it.
+ await host.dispose();host=undefined;
+ host=await bounded('reboot Host on the same Home',bootInProcess(h,{withWebApp:true}),45000);
+ const again=await createRootAgent(host.ctx,workspace);
+ const relisted=(await tool(again,{action:'list'})).json;
+ assert.equal(relisted?.analyses?.[0]?.runId,runId,'the analysis is still listed after a restart');assert.equal(relisted.analyses[0].analysis?.admitted,true);
  const proof={ok:true,runId,requestId:proposal.requestId,plots:detail.result.plots.length,elapsedMs:Date.now()-startedAt};
  await writeFile(path.join(evidence,'guide-proof.json'),JSON.stringify(proof,null,2));
  process.send?.(proof);
