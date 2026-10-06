@@ -763,16 +763,6 @@ export default class Hima extends Service {
           // context (#59). Handed in like every other operation, so `remote.ts` stays a module a
           // browser bundle can read the types of.
           openMoment: (runId, instructions) => this.openMoment(runId, instructions),
-          // The audit is this process's, so it is read here and not handed in: `remoteCommands` and
-          // `clearRemoteCommands` are the module-level pair `channel.ts` keeps, and the drain reads
-          // and clears with nothing awaited between the two, so no command can be sent unrecorded in
-          // the gap.
-          remoteCommandAudit: () => ({ commands: remoteCommands(), windowFilled: remoteCommandWindowFilled() }),
-          drainRemoteCommandAudit: () => {
-            const answer = { commands: remoteCommands(), windowFilled: remoteCommandWindowFilled() };
-            clearRemoteCommands();
-            return answer;
-          },
           // Read each time the page is rendered rather than once at boot: a pack or a Site installed
           // while the window is open is one the form offers on the next look, and neither directory
           // is big enough for that to be worth caching against a person reloading a page.

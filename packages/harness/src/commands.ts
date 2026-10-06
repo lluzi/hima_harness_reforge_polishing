@@ -10,7 +10,6 @@
 // here because they are read by a person and not by a caller, and because `/hima run` and `/hima
 // status` must describe one Run the one way.
 import { createRequire } from 'node:module';
-import { legacyAutomaticAllowed } from './runs.js';
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands';
 import { hasEnded, type BlockerRecord, type CancelRecord, type CodeRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type LedgerRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type SessionRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
 import { cancelSessions, chosenAs, standingWorkshop } from './record-views.js';
@@ -583,45 +582,12 @@ function numericFlag(flags: readonly string[], name: RunArgumentName, spelling: 
 export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: CommandInvocation): Promise<CommandResult> {
   const [sub = '', ...rest] = rawInput.trim().split(/\s+/).filter(Boolean);
   if (sub === '' || sub === 'version') return { kind: 'success', text: versionLine() };
-  if (!legacyAutomaticAllowed()) {
-    if (sub === 'observe' || sub === 'job' && rest[0] === 'launch') return { kind: 'error', text: 'New execution uses a declared DBOS Task. Choose a Pack and start a Campaign; standalone legacy observe/job launch cannot create a Run.' };
-    const namedRun = ['status', 'resume', 'cancel', 'judge'].includes(sub) ? rest[0]
-      : sub === 'job' ? rest[1] : undefined;
-    if (namedRun) {
-      try { await assertRunProject(deps, String(agent.id), agent.session.header.cwd, namedRun); }
-      catch { return { kind: 'error', text: 'This Run is not linked to the current project.' }; }
-    }
-  }
-  if (sub === 'observe') {
-    const [site, path, ...flags] = rest;
-    const usage = 'usage: /hima observe <site> <path> [--reader <id>] [--run <runId>] [--judge <id,id,...>] [--param <name>=<value>]...';
-    if (!site || !path) return { kind: 'error', text: usage };
-    const reader = flagValue(flags, '--reader');
-    const run = flagValue(flags, '--run');
-    const rules = flagValue(flags, '--judge');
-    // Validate flags before touching the ledger: a flag typed with no value must never read as "not given".
-    if (flagPresent(flags, '--reader') && !reader) return { kind: 'error', text: usage };
-    if (flagPresent(flags, '--run') && !run) return { kind: 'error', text: usage };
-    if (flagPresent(flags, '--judge') && !rules) return { kind: 'error', text: usage };
-    const parsedParams = parseParamFlags(flags);
-    if ('error' in parsedParams) return { kind: 'error', text: `${usage}\n${parsedParams.error}` };
-    let result: ObserveResult;
-    try {
-      if (run && deps.ledger.run(run)?.control) return { kind: 'error', text: 'Agent-owned Run observations require hima_execute with an admitted execution' };
-      result = await observe(deps, { site, path, reader, run, projectSessionId: String(agent.id) });
-    } catch (err) {
-      // A run reference the caller got wrong is theirs to fix and nothing was written; every other
-      // fault propagates as it always has.
-      if (err instanceof RunReferenceError) return { kind: 'error', text: `cannot observe ${path} on ${site}: ${err.message}` };
-      throw err;
-    }
-    if (result.kind !== 'observed') return { kind: 'error', text: describeObserveResult(result) };
-    if (!rules) return { kind: 'success', text: describeObserveResult(result) };
-    // One invocation: read, ledger, judge.
-    const ruled = await judged(deps, result.run.id, rules, parsedParams.params);
-    return ruled.kind === 'success'
-      ? { kind: 'success', text: [describeObserveResult(result), ruled.text].join('\n') }
-      : { kind: 'error', text: [describeObserveResult(result), ruled.text].join('\n') };
+  if (sub === 'observe' || sub === 'job' && rest[0] === 'launch') return { kind: 'error', text: 'New execution uses a declared DBOS Task. Choose a Pack and start a Campaign; standalone legacy observe/job launch cannot create a Run.' };
+  const namedRun = ['status', 'resume', 'cancel', 'judge'].includes(sub) ? rest[0]
+    : sub === 'job' ? rest[1] : undefined;
+  if (namedRun) {
+    try { await assertRunProject(deps, String(agent.id), agent.session.header.cwd, namedRun); }
+    catch { return { kind: 'error', text: 'This Run is not linked to the current project.' }; }
   }
   if (sub === 'judge') {
     const [runId, ...flags] = rest;
@@ -631,86 +597,18 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
     if ('error' in parsedParams) return { kind: 'error', text: parsedParams.error };
     return judged(deps, runId, rules, parsedParams.params);
   }
-  if (sub === 'job') return handleJob(deps, rest, String(agent.id));
+  if (sub === 'job') return handleJob(deps, rest);
   if (sub === 'pack') return handlePack(deps, rest, String(agent.id));
-  if (sub === 'run') return handleRun(deps, rest, String(agent.id));
+  if (sub === 'run') return handleRun();
   if (sub === 'resume') return handleResume(deps, rest, String(agent.id));
   if (sub === 'status') return handleStatus(deps, rest);
   if (sub === 'cancel') return handleCancel(deps, rest);
   return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare|release, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>. Ask HimaGuide to prepare and start a Campaign.` };
 }
 
-/** Prepare a Campaign for this actual command conversation; business nodes remain Agent-owned. */
-async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSessionId: string): Promise<CommandResult> {
-  if (!legacyAutomaticAllowed()) return { kind: 'error', text: '/hima run is a legacy test interface. Ask HimaGuide to prepare the Campaign, review its proposal, then confirm once.' };
-  const [pack = '', ...flags] = rest;
-  const usage = 'usage: /hima run <pack> --site <site> --goal <name>=<value>... [--set <knob>=<value>]... [--test] [--time-box <minutes>] [--retries <n>] [--generations <n>]';
-  const wrong = { kind: 'error', text: usage } as const;
-  const site = flagValue(flags, '--site');
-  if (!pack || pack.startsWith('--') || !site) return wrong;
-  // Before anything is parsed out of them, every word of the flag list is one this command consumes
-  // (#64). `--test` is the reason: a bare flag beside five that take values is exactly where a
-  // person writes `--test false`, and a Campaign marked as a test when they asked for the opposite
-  // is a Run whose whole meaning is wrong and which said nothing about it.
-  const leftOver = unconsumedArgument(flags, ['--site', '--goal', '--set', '--time-box', '--retries', '--generations'], ['--test']);
-  if (leftOver !== undefined) return { kind: 'error', text: `${usage}\n${leftOver}` };
-  const goal = parseNamedNumbers(flags, '--goal');
-  if ('error' in goal) return { kind: 'error', text: `${usage}\n${goal.error}` };
-  if (Object.keys(goal.params).length === 0) return wrong;
-  const set = parseSetFlags(flags);
-  if ('error' in set) return { kind: 'error', text: `${usage}\n${set.error}` };
-  const timeBox = numericFlag(flags, 'timeBox', '--time-box');
-  if ('error' in timeBox) return { kind: 'error', text: `${usage}\n${timeBox.error}` };
-  const retries = numericFlag(flags, 'retries', '--retries');
-  if ('error' in retries) return { kind: 'error', text: `${usage}\n${retries.error}` };
-  const generations = numericFlag(flags, 'generations', '--generations');
-  if ('error' in generations) return { kind: 'error', text: `${usage}\n${generations.error}` };
-
-  let result: StartRunResult;
-  try {
-    result = await startRun(deps, {
-      ownerSessionId,
-      pack,
-      site,
-      goal: goal.params,
-      strategy: set.strategy,
-      // A bare flag, because it says one thing and has no value to get wrong (#64): a Run of a pack
-      // this person is authoring is a test run whether or not they say so, and this is how they say
-      // so of a released pack they want to exercise without it counting as a Campaign.
-      ...(flagPresent(flags, '--test') ? { test: true } : {}),
-      timeBoxMs: timeBox.value === undefined ? undefined : Math.round(timeBox.value * 60_000),
-      retryAllowance: retries.value,
-      generationLimit: generations.value,
-    });
-  } catch (err) {
-    // A pack, a Site or a request the caller got wrong is theirs to fix; every other fault
-    // propagates as it always has.
-    if (err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof SiteNotFoundError || err instanceof RunStartError || err instanceof RunReferenceError) {
-      return { kind: 'error', text: `/hima run ${pack}: ${err.message}` };
-    }
-    // A fault mid-drive is already recorded against the Run: the message, and the Run as it now
-    // stands, which is what a person needs to see what the generation did get as far as.
-    if (err instanceof RunFaultError) {
-      const stopped = deps.ledger.run(err.runId);
-      return { kind: 'error', text: stopped ? [err.message, describeRun(deps, stopped)].join('\n') : err.message };
-    }
-    // A Site that could not be asked is ours and not the caller's, and nothing was written for it
-    // (#18): the message names the Site and says what could not be asked, which is where a person
-    // goes next. No Run is shown with it, precisely because the Run's row is untouched — the Job
-    // this harness launched may still be running there, and the next boot asks again.
-    if (err instanceof SiteUnreadableError) return { kind: 'error', text: `/hima run ${pack}: ${err.message}` };
-    throw err;
-  }
-  if (result.kind === 'unfit') return { kind: 'error', text: describePackCheck(result.check) };
-  if (result.kind === 'unprepared') {
-    return { kind: 'error', text: [describePrepare(result.prepared), describeRun(deps, result.run)].join('\n') };
-  }
-  if (result.kind === 'preparing') return { kind: 'success', text: `Run ${result.run.id} is preparing ${result.workspace}. Work continues automatically; inspect the Run for current progress.` };
-  const text = describeRun(deps, result.run);
-  // A Run that reached a final state is a success, whichever one: `ended-goal-not-met` is a real
-  // result, so is a spent time box, and so is a Run a person cancelled from another face while this
-  // command waited for it. What is an error is a Run that stopped needing a person.
-  return { kind: result.run.control || hasEnded(result.run.status) ? 'success' : 'error', text };
+/** `/hima run` was the pre-DBOS test interface; a Campaign starts from a confirmed Guide proposal. */
+function handleRun(): CommandResult {
+  return { kind: 'error', text: '/hima run is a legacy test interface. Ask HimaGuide to prepare the Campaign, review its proposal, then confirm once.' };
 }
 
 /**
@@ -858,56 +756,19 @@ async function handlePack(deps: FabricDeps, rest: readonly string[], projectSess
 }
 
 /**
- * The `/hima job` face: launch a Job on a Site, ask what became of it, read its log, stop it. Every
- * form but launch names the Run the Job belongs to and the tmux session it runs in, which is what
- * the launch's own record says — a Job is found again through the ledger, never through a handle.
+ * The `/hima job` face: ask what became of a retained Job, read its log, stop it. Every form names
+ * the Run the Job belongs to and the tmux session it runs in, which is what the launch's own record
+ * says — a Job is found again through the ledger, never through a handle.
  */
-async function handleJob(deps: FabricDeps, rest: readonly string[], projectSessionId?: string): Promise<CommandResult> {
+async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<CommandResult> {
   const [verb = '', ...args] = rest;
   const usage = [
-    'usage: /hima job launch <site> <workspace> [--run <runId>] [--name <n>] -- <command...>',
-    '       /hima job status <runId> <session>',
+    'usage: /hima job status <runId> <session>',
     '       /hima job tail <runId> <session> [--lines <n>]',
     '       /hima job kill <runId> <session>',
   ].join('\n');
   const wrong = { kind: 'error', text: usage } as const;
   try {
-    if (verb === 'launch') {
-      // Everything after `--` is the command; the words before it are this face's own. The command's
-      // words are separated by whitespace, as every other argument of this command face is.
-      const at = args.indexOf('--');
-      if (at < 0) return wrong;
-      const [siteName, workspace, ...flags] = args.slice(0, at);
-      const argv = args.slice(at + 1);
-      if (!siteName || !workspace || argv.length === 0) return wrong;
-      const run = flagValue(flags, '--run');
-      if (run && deps.ledger.run(run)?.control) return { kind: 'error', text: 'Agent-owned Run Jobs require hima_execute with an admitted execution' };
-      const name = flagValue(flags, '--name');
-      // A flag typed with no value must never read as "not given".
-      if (flagPresent(flags, '--run') && !run) return wrong;
-      if (flagPresent(flags, '--name') && !name) return wrong;
-      // The Site's cap governs this face too, through the one claim-and-launch step in `job-cap.ts`,
-      // which states why. What is this face's own is what it does with a full Site: refuse, and name
-      // what is filling it.
-      const site = loadSite(deps.sitesDir, siteName);
-      const claimed = await claimSlot(deps, {
-        // The Site as it names itself, never the name as typed, for the reason `claimSlot` states.
-        site: { name: site.name, jobs: site.capacity.parallelJobs, licences: site.capacity.licences },
-        // A Job launched by hand runs a command line a person typed, which no pack's contract
-        // describes: nothing says what it would hold, so it reserves nothing and is counted against
-        // the Site's job slots alone.
-        holds: {},
-        launch: () => launchJob(deps, { site: site.name, workspace, argv, name, run, projectSessionId }),
-      });
-      if (claimed.kind === 'at-cap') return { kind: 'error', text: describeAtCap(site.name, claimed.full, claimed.holding) };
-      // The Site would not say how many Jobs it is running, so nothing was launched and nothing was
-      // written (#18). This face has no Run to wait for a slot on — there is only the launch a person
-      // asked for — so it refuses by raising, and the handler's own catch below answers it in the
-      // Site's own words.
-      if (claimed.kind === 'unreadable') throw claimed.error;
-      const text = describeLaunch(claimed.launched);
-      return claimed.launched.kind === 'launched' ? { kind: 'success', text } : { kind: 'error', text };
-    }
     if (verb === 'status' || verb === 'kill') {
       const [runId, session] = args;
       if (!runId || !session || args.length > 2) return wrong;
