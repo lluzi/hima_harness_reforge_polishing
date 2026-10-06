@@ -4,6 +4,7 @@
     "test/contract/aes-domain-stages.test.ts",
     "test/contract/aes-full-graph.host.test.ts",
     "test/contract/aes-mining-view.test.ts",
+    "test/contract/aes-probe-durable.host.test.ts",
     "test/contract/aes-probe.test.ts",
     "test/contract/aes-selection-template.test.ts",
     "test/contract/aes-timing-research-reader.test.ts",
