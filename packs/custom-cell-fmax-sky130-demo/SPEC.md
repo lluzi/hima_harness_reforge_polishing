@@ -72,7 +72,7 @@ One resident engineering Workshop per round (`engineer`, role `resident-engineer
 `inputsState`, `baselineState`, `lessons`, `best`; knowledge `cell-playbook.md`, `toolbox.md`,
 `evidence-and-claims.md`; artifacts under `cells/`). It analyses the critical paths, generates many
 cell ideas, builds them as abstract (mock-layout) cells (`flow/toolbox/abstract`, seconds),
-optionally mock-characterizes them itself (seconds) and runs at most one trial pair, writes findings,
+may mock-characterize them and run its own trials, writes findings,
 library table and usage guide, prechecks and delivers one `hima-cellfmax-round-recipe/1`. A refused
 delivery is repaired in the same task.
 

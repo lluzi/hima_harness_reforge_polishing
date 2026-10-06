@@ -26,6 +26,15 @@ new reason; do repeat what worked with variations.
   the foundry nor3_2 it is a real trade-off cell: 5–11 % faster rise, 21 % less input capacitance,
   44–71 % slower fall. Cells win where their strong edge is the critical edge and their extra input
   load is cheap; the resizer decides that from the characterized tables.
+- An earlier Campaign's round 1 (run-b38106d8, 2026-10-05; same aes, 3.6 ns): 227 abstract cells
+  (140 drop-in skew/strength variants of xnor3, xor2, mux2i, xnor2, nand2, a21oi, o21ai, a211oi,
+  nor2, o31ai; 45 fused cells in 3 drives; 42 multi-output cells) through an emap window of 381
+  cells. The emap remap alone lifted the control arm from 259.79 to 268.28 MHz, which counts for
+  neither arm. The custom arm reached 269.82 MHz with mock timing: +0.58 % matched (+0.22 % with
+  pre-layout SPICE). The resizer adopted 548 instances of 53 types, led by XNOR2_PU3 77, NOR2_PU2A
+  60, XOR2_OPU2 44, XOR2_PU3 35, XNOR2_OPU2 28, O21AI_ND3 26, NAND2_PU3 24; emap chose only 3 fused
+  cells and no multi-output cell. The worst path stayed in the XOR/XNOR/MUX chains. A 5 % gain
+  needs something that run did not try or did not reach.
 - The foundry library already has strength ladders (_1/_2/_4). A useful custom cell fills a gap the
   ladder does not: a different pull-up/pull-down ratio, a per-input skew (fast input on the late
   arriving pin), a footprint-compatible variant, a fused function, or a multi-output cell.
@@ -69,9 +78,9 @@ synthesis; a new function enters there or through `emap`.
 1. Analyse the paths (minutes), then generate a large batch of specs and build them with
    `flow/toolbox/abstract` (seconds for hundreds of cells). This demo mocks layout and
    characterization; do not use the factory.
-2. Optionally mock-characterize your cells yourself (`flow/toolbox/char`, `--netlist-kind mock`,
-   seconds) to prune hopeless ones. An ORFS trial takes 15–25 min with `NUM_CORES=8` (at most two at
-   once); in this demo deliver promptly: one trial pair at most, or none with `agentClaim: null`.
-   HimaHarness's characterize step takes seconds and its two arms about 20 min.
+2. Tools and their cost: mock characterization (`flow/toolbox/char`, `--netlist-kind mock`, the
+   model HimaHarness uses) takes seconds; an ORFS trial takes 15–25 min with `NUM_CORES=8`, at
+   most two at once. HimaHarness's characterize step takes seconds and its two arms about 15 min.
+   More rounds or more time do not raise the gain by themselves; the ideas do.
 3. Choose the clock: tighten it when the last round met timing.
 4. Write findings.md, library.md (one row per new cell) and usage-guide.md, run the precheck, deliver.

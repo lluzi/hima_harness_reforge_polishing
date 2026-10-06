@@ -1,5 +1,5 @@
 id: custom-cell-fmax-sky130-demo
-version: "0.4.0"
+version: "0.4.1"
 title: Custom standard cells for a faster aes on open-source SKY130 (demo)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -116,9 +116,9 @@ tools:
       the foundry tables) and only that timing enters the arms; your own Liberty or derates are
       claims at most. Multi-output cells are used only through an emap-window remap of
       the near-critical cone set (flow/toolbox/emap). Do your own discovery and trial flows in your
-      private workspace (at most two at once, NUM_CORES=8; one trial pair at most in this demo, or
-      none with agentClaim null; you may run flow/toolbox/char --netlist-kind mock yourself in
-      seconds before delivering). Choose the round's clock (tighten it when the last round met
+      private workspace (at most two ORFS runs at once, NUM_CORES=8; flow/toolbox/char
+      --netlist-kind mock gives you HimaHarness's own timing model in seconds). How you reach the
+      Goal is yours to work out. Choose the round's clock (tighten it when the last round met
       timing). Write findings.md (what you analysed, what you tried and why), library.md (one row per
       new cell: idea, function, foundry cell it competes with, layout) and usage-guide.md.
       Put your own trial comparison in agentClaim. Deliver one hima-cellfmax-round-recipe/1 as the

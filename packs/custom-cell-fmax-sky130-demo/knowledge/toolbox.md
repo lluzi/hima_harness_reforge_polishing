@@ -51,6 +51,8 @@ make DESIGN_CONFIG=./designs/sky130hd/aes/config.mk WORK_HOME=$PWD_OF_YOUR_WORKS
 cells are in `state/inputs.json` → `platformDontUse`. Merge your cells into the platform Liberty with
 `python3 flow/toolbox/celluzi/scripts/merge_lib.py <platform.lib> <custom.lib> <merged.lib>`
 (platform Liberty: `$ORFS_ROOT/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib`).
+Use your mock characterization's `custom.mock.lib` as `<custom.lib>`: then your trial sees the
+timing HimaHarness's arms will use, and your claim should land close to its matched gain.
 A cell without GDS needs `GDS_ALLOW_EMPTY=<name|name>`. Run at most two trials at once. One run
 takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__setup__ws`.
 
@@ -113,7 +115,8 @@ python3 $F/to_recipe.py factory-out spec.json <k> "$PWD" --out cells.json
 
 ## Check your cells before you deliver (optional, seconds)
 
-HimaHarness characterizes every cell itself after delivery. To prune hopeless cells or to back your
+HimaHarness characterizes every cell itself after delivery, with the same mock model. To prune
+hopeless cells, to run your own trials with the timing HimaHarness will use, or to back your
 `agentClaim`, run the same mock characterizer on your abstract cells: write a job (`flow/toolbox/char/README.md`;
 per cell `spice` = the `.sp`, `functions`, `index_ref` = compareTo, `anchors` =
 `[[compareTo, {pin: pin}]]` plus one `[foundry cell, pins]` per `layoutFrom` source) and run
