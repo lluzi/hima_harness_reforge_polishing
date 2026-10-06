@@ -61,11 +61,6 @@ export const runLogTailPath = (runId: string): string => `${runPath(runId)}/log-
  *  against its recorded hash on the way through (#30). */
 export const experienceMarkdownPath = (runId: string): string => `${runPath(runId)}/experience.md`;
 
-/** Where the workbench shows one Run: the page's own path with the Run named on it, which is where
- *  the run list's links and the start form's landing both go. */
-export const runCardPath = (runId: string): string => `${HIMA_WORKBENCH_PATH}?run=${encodeURIComponent(runId)}`;
-
-
 /** A contract output is relative to its Campaign, before Permit resolves the real filesystem. */
 export function campaignRelativePath(value: string, what: string): string {
   if (!value || /^(?:\/|[A-Za-z]:|\\)/.test(value) || value.split('/').some((segment) => segment === '..')) {
