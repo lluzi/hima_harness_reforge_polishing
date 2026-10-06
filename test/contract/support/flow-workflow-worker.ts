@@ -46,7 +46,7 @@ async function main() {
   await writeFile(path.join(sitesDir,'local.yml'),stringify({name:'local',kind:'local',workspaceRoot:workspace,permit:'./local.permit.yml',bindings:{workspaceRoot:workspace},capacity:{cores:4,memoryGiB:1,parallelJobs:mode==='reader-pending'?1:8,licences:{}}}));
   const executableFiles=['flow-workflow','flow-compiler','flow-definition','run-store','run-store-migrations','task-effects','task-contract','durable-runtime'];
   const files=Object.fromEntries(await Promise.all(executableFiles.map(async name=>[name,createHash('sha256').update(await readFile(path.join(lib,`${name}.js`))).digest('hex')])));
-  const manifest={files,adapters:{'task-effect':'hima-task-effect/1'}};
+  const manifest={files,adapters:{'task-effect':'hima-task-effect/2'}};
   const schema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object'}};
   const task=(id:string,inputs:any={},output:any=schema)=>({kind:'task',id,tool:'local-job',inputs,contract:{input:schema,output}});
   const seq=(id:string,...steps:any[])=>({kind:'sequence',id,steps});

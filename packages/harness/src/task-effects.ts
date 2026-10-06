@@ -13,7 +13,10 @@ import { createTaskResult, validateTaskInput, taskJsonValue, taskDiagnostic, typ
 import { jsonDigest, type EffectAdmission, type EffectResourceClaim, type RunStore } from './run-store.js';
 import { canonicalEngineeringJson, planEngineeringTask, stageEngineeringTask, writeEngineeringRequest, waitEngineeringReceipt, readEngineeringState, readEngineeringOwned, readEngineeringDelivery, materializeEngineeringResult, type EngineeringTaskIdentity, type EngineeringTaskPlan, type EngineeringRequest, type EngineeringDelivery } from './engineering-executor.js';
 
-export const taskEffectAdapterVersion='hima-task-effect/1';
+/** Frozen in every task-effect identity. Bump it whenever an adapter's invocation or collection
+ * changes (ADR-0018). /2: Pack Readers get the real report path as ${REPORT}, and collection refuses
+ * a report whose bytes changed while it was read. */
+export const taskEffectAdapterVersion='hima-task-effect/2';
 export interface TaskEffectRequest {
   readonly identity:TaskIdentity; readonly admission:EffectAdmission;
   readonly input:JsonValue; readonly contract:TaskContract; readonly localSchemas?:TaskLocalSchemas;

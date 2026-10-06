@@ -73,6 +73,7 @@
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",
     "test/contract/native-task-effects.host.test.ts",
+    "test/contract/pack-reader-report.host.test.ts",
     "test/contract/observe-ledger.test.ts",
     "test/contract/observe-readers.test.ts",
     "test/contract/observe.test.ts",
