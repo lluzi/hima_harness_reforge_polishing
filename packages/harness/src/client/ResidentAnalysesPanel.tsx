@@ -1,29 +1,21 @@
 // Data Insight's Resident analyses (ADR-0020, 2026-10-05 revision): a person asks a library question,
 // the Host prepares one bounded Run of the analysis Pack, and one confirmation starts it. This panel
 // is the whole surface: the composer, the proposal card, the list of this conversation's analyses and
-// the admitted result of the selected one. Facts come from the Host's `/hima/api/libinsight/analyses`
-// answer alone; the panel keeps only the draft and the selection, and is hidden rather than unmounted
-// so both survive a trip to another Data Insight surface.
-import { useCallback, useEffect, useState, type FormEvent, type ReactElement } from 'react';
-import type { LibInsightAnalysesStatus, LibInsightAnalysisEntry, LibInsightAnalysisProposal, LibInsightAnalysisResult } from '../libinsight-analyses.js';
-import { confirmResidentAnalysis, fetchResidentAnalyses, proposeResidentAnalysis } from './api.js';
+// the Reader-accepted result of the selected one. Facts come from the Host's
+// `/hima/api/libinsight/analyses` answers alone: the list is summaries, and the selected Run's result
+// is read once per result hash and kept, so polling neither refetches nor re-projects it. The panel
+// keeps only the draft and the selection, and is hidden rather than unmounted so both survive a trip
+// to another Data Insight surface.
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import type { LibInsightAnalysesStatus, LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisProposal, LibInsightAnalysisResult } from '../libinsight-analyses.js';
+import { confirmResidentAnalysis, fetchResidentAnalyses, fetchResidentAnalysis, proposeResidentAnalysis } from './api.js';
 import { AnalysisPlot } from './AnalysisPlot.js';
+import { admittedAnalysisRefs, analysisFinished, analysisState as stateOf, rememberDetail } from './resident-analyses-view.js';
 
 const POLL_MS = 10_000;
-const FINAL_RUN = new Set(['cancelled', 'ended-goal-met', 'ended-goal-not-met', 'ended-converged', 'ended-budget-exhausted']);
-const FINAL_TASK = new Set(['succeeded', 'failed', 'cancelled']);
-
-/** An analysis whose Run ended, or (for a Run with no status) whose task or result is settled. */
-export const analysisFinished = (entry: LibInsightAnalysisEntry): boolean => entry.status !== undefined
-  ? FINAL_RUN.has(entry.status)
-  : entry.result !== undefined || entry.resultUnavailable !== undefined || FINAL_TASK.has(entry.task?.state ?? '');
-/** The chip word: a final Run status wins over a task projection that may lag it. */
-const stateOf = (entry: LibInsightAnalysisEntry): string =>
-  entry.status !== undefined && FINAL_RUN.has(entry.status) ? entry.status : entry.task?.state ?? entry.status ?? 'unknown';
+type DetailRead = { readonly sha: string; readonly detail?: LibInsightAnalysisDetail; readonly error?: string };
 const when = (at: string) => { const date = new Date(at); return Number.isNaN(date.getTime()) ? at : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
 const shortSha = (sha: string) => sha.slice(0, 12);
-const admittedOf = (analyses: readonly LibInsightAnalysisEntry[]): string[] =>
-  [...new Set(analyses.flatMap(entry => entry.result === undefined ? [] : [`${entry.result.id}@${String(entry.result.version)}`]))];
 
 export function ResidentAnalysesPanel({ sessionId, hidden, tabVisible = true, onShowLibInsight, onShowReports }: {
   readonly sessionId: string; readonly hidden: boolean; readonly tabVisible?: boolean; onShowLibInsight(): void; onShowReports(): void;
@@ -37,6 +29,9 @@ export function ResidentAnalysesPanel({ sessionId, hidden, tabVisible = true, on
   const [actionError, setActionError] = useState<string>();
   const [busy, setBusy] = useState<'prepare' | 'confirm'>();
   const [selected, setSelected] = useState<string>();
+  const [read, setRead] = useState<DetailRead>();
+  const [retry, setRetry] = useState(0);
+  const details = useRef(new Map<string, LibInsightAnalysisDetail>());
   const active = !hidden && tabVisible;
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -80,9 +75,28 @@ export function ResidentAnalysesPanel({ sessionId, hidden, tabVisible = true, on
   };
 
   const analyses = data?.analyses ?? [];
-  const admitted = admittedOf(analyses);
+  const admitted = admittedAnalysisRefs(analyses);
   const shown = selected === undefined ? analyses[0] : analyses.find(entry => entry.runId === selected);
   const status = data?.status;
+
+  // The selected Run's result, read only when its Reader-accepted hash is one not read before.
+  const shownRun = shown?.runId, shownSha = shown?.analysis?.resultSha256;
+  useEffect(() => {
+    if (shownRun === undefined || shownSha === undefined) return;
+    const cached = details.current.get(shownSha);
+    if (cached !== undefined) { setRead({ sha: shownSha, detail: cached }); return; }
+    if (!active) return;
+    const controller = new AbortController();
+    setRead({ sha: shownSha });
+    void fetchResidentAnalysis(sessionId, shownRun, controller.signal).then(answer => {
+      if (controller.signal.aborted) return;
+      if (!answer.ok) { setRead({ sha: shownSha, error: answer.error.message }); return; }
+      rememberDetail(details.current, shownSha, answer.value);
+      setRead({ sha: shownSha, detail: answer.value });
+    });
+    return () => controller.abort();
+  }, [sessionId, shownRun, shownSha, active, retry]);
+  const shownRead = read !== undefined && read.sha === shownSha ? read : undefined;
 
   return <section className='hima-resident' data-hima-region='resident-analyses' data-hima-state-available={status === undefined ? 'loading' : String(status.available)} hidden={hidden}>
     <header className='hima-libinsight-bar'>
@@ -118,7 +132,7 @@ export function ResidentAnalysesPanel({ sessionId, hidden, tabVisible = true, on
             return <li key={entry.runId}>
               <button type='button' className='hima-resident-item' aria-current={shown?.runId === entry.runId} data-hima-state-run={entry.runId} onClick={() => setSelected(entry.runId)}>
                 <span className='hima-resident-question'>{entry.question ?? '(question not recorded)'}</span>
-                <span className='hima-resident-meta'><span className='hima-resident-chip' data-state={state}>{state}</span><span className='hima-small'>{when(entry.createdAt)}</span></span>
+                <span className='hima-resident-meta'><span className='hima-resident-chip' data-state={state}>{state}</span><span className='hima-small'>{when(entry.createdAt)}</span>{entry.analysis !== undefined && !entry.analysis.admitted ? <span className='hima-resident-flag'>not admitted</span> : null}</span>
                 {reason === undefined ? null : <span className='hima-resident-reason'>{reason}</span>}
               </button>
             </li>;
@@ -129,7 +143,7 @@ export function ResidentAnalysesPanel({ sessionId, hidden, tabVisible = true, on
         {shown === undefined
           ? selected === undefined ? <p className='hima-resident-empty'>Ask a question to start a resident analysis; its result appears here.</p>
             : <p className='hima-resident-empty' role='status'>Analysis {selected} has started; it appears here on the next read.</p>
-          : <AnalysisDetail entry={shown} />}
+          : <AnalysisDetail entry={shown} read={shownRead} onRetry={() => setRetry(value => value + 1)} />}
       </div>
     </div>
   </section>;
@@ -158,19 +172,26 @@ function ProposalCard({ proposal, busy, onConfirm, onDiscard }: { readonly propo
   </article>;
 }
 
-function AnalysisDetail({ entry }: { readonly entry: LibInsightAnalysisEntry }): ReactElement {
-  const state = stateOf(entry), result = entry.result;
-  return <article className='hima-resident-detail' data-hima-control='resident-detail' data-hima-state-run={entry.runId} data-hima-state-status={state}>
+function AnalysisDetail({ entry, read, onRetry }: { readonly entry: LibInsightAnalysisEntry; readonly read?: DetailRead; onRetry(): void }): ReactElement {
+  const state = stateOf(entry), analysis = entry.analysis, detail = read?.detail, result = detail?.result;
+  // Admission is the detail's word when it has been read, the summary's until then.
+  const admitted = detail?.admission.admitted ?? analysis?.admitted;
+  const notAdmitted = detail?.admission.reason ?? analysis?.notAdmittedReason ?? 'reason not recorded';
+  const ref = analysis?.id !== undefined && analysis.version !== undefined ? `${analysis.id}@${String(analysis.version)}` : undefined;
+  return <article className='hima-resident-detail' data-hima-control='resident-detail' data-hima-state-run={entry.runId} data-hima-state-status={state} data-hima-state-admitted={admitted === undefined ? '' : String(admitted)}>
     <header>
       <h3>{result?.question ?? entry.question ?? '(question not recorded)'}</h3>
-      <p className='hima-small'><span className='hima-resident-chip' data-state={state}>{state}</span><span>Run <code>{entry.runId}</code></span><span>{when(entry.createdAt)}</span>{result === undefined ? null : <span>Analysis <code>{result.id}@{result.version}</code></span>}</p>
+      <p className='hima-small'><span className='hima-resident-chip' data-state={state}>{state}</span><span>Run <code>{entry.runId}</code></span><span>{when(entry.createdAt)}</span>{ref === undefined ? null : <span>Analysis <code>{ref}</code></span>}</p>
     </header>
     {entry.task?.reason === undefined ? null : <p className='hima-resident-reason' role='status'>{entry.task.reason}</p>}
-    {entry.resultUnavailable === undefined ? null : <p className='hima-notice' role='alert'>{entry.resultUnavailable}</p>}
-    {result !== undefined ? <ResultBody result={result} />
-      : entry.resultUnavailable !== undefined ? null
-      : analysisFinished(entry) ? <p className='hima-small'>This analysis ended without an admitted result.</p>
-      : <p className='hima-small'>The resident agent is still working; this view reads again every 10 seconds while it is open.</p>}
+    {analysis !== undefined && admitted === false ? <p className='hima-resident-not-admitted' role='status' data-hima-control='resident-not-admitted'>Reader-accepted, not admitted: {notAdmitted}</p> : null}
+    {analysis === undefined
+      ? analysisFinished(entry) ? <p className='hima-small'>This analysis ended without a Reader-accepted result.</p>
+        : <p className='hima-small'>The resident agent is still working; this view reads again every 10 seconds while it is open.</p>
+      : read?.error !== undefined ? <div className='hima-notice' role='alert'>The result could not be read: {read.error} <button type='button' className='hima-button' data-hima-control='resident-detail-retry' onClick={onRetry}>Try again</button></div>
+      : detail === undefined ? <p className='hima-small'>Reading the result{analysis.plotCount === undefined ? '' : ` (${String(analysis.plotCount)} plot${analysis.plotCount === 1 ? '' : 's'})`}…</p>
+      : result !== undefined ? <ResultBody result={result} />
+      : <p className='hima-notice' role='alert'>{detail.resultUnavailable ?? 'The Host returned no result for this analysis.'}</p>}
   </article>;
 }
 

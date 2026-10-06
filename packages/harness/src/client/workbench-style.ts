@@ -517,6 +517,8 @@ export const HIMA_STYLE = `
 .hima-resident-summary{margin:0;max-width:760px;line-height:var(--hima-lh-body)}
 .hima-resident-facts h4{margin:var(--hima-sp-2) 0 var(--hima-sp-1);font-size:var(--hima-fs-label);font-weight:650}
 .hima-resident-facts>ul{font-size:var(--hima-fs-label)}
+.hima-resident-not-admitted{margin:0;padding:var(--hima-sp-2) var(--hima-sp-3);border-left:3px solid var(--hima-warn);background:var(--hima-soft);color:var(--hima-ink);font-size:var(--hima-fs-label);overflow-wrap:anywhere}
+.hima-resident-flag{font-size:var(--hima-fs-eyebrow);font-weight:600;color:var(--hima-warn)}
 .hima-resident-changed{color:var(--hima-warn);font-size:var(--hima-fs-eyebrow);font-weight:600}
 .hima-resident-code{margin-top:var(--hima-sp-3)}.hima-resident-code summary{cursor:pointer;font-size:var(--hima-fs-label)}
 .hima-resident-code pre{margin:var(--hima-sp-2) 0 0;padding:var(--hima-sp-3);max-height:480px;overflow:auto;background:var(--hima-soft);border-radius:var(--hima-r-s);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);white-space:pre}

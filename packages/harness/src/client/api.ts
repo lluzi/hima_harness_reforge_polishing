@@ -12,7 +12,7 @@ import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
 import type { LibInsightViewerStatus } from '../libinsight-viewer.js';
-import type { LibInsightAnalysesStatus, LibInsightAnalysisEntry, LibInsightAnalysisProposal } from '../libinsight-analyses.js';
+import type { LibInsightAnalysesStatus, LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisProposal } from '../libinsight-analyses.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -140,6 +140,10 @@ export const openLibInsightViewer = (body: { sessionId: string; dataFolder?: str
 /** Data Insight's Resident analyses this conversation may see, newest first, and whether its Pack and Site are installed (ADR-0020). */
 export const fetchResidentAnalyses = (sessionId: string, signal?: AbortSignal): Promise<HimaResult<{ readonly status: LibInsightAnalysesStatus; readonly analyses: readonly LibInsightAnalysisEntry[] }>> =>
   runRequest(`/hima/api/libinsight/analyses?sessionId=${encodeURIComponent(sessionId)}`, { signal });
+
+/** One analysis's Reader-accepted result and whether admission put it in the Site library; read for the selected Run only. */
+export const fetchResidentAnalysis = (sessionId: string, runId: string, signal?: AbortSignal): Promise<HimaResult<LibInsightAnalysisDetail>> =>
+  runRequest(`/hima/api/libinsight/analyses?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId)}`, { signal });
 
 /** Write the question onto the Site and prepare one bounded analysis Run; nothing starts until it is confirmed. */
 export const proposeResidentAnalysis = (sessionId: string, request: { question: string; sources?: readonly string[]; buildsOn?: readonly string[] }, signal?: AbortSignal): Promise<HimaResult<LibInsightAnalysisProposal>> =>
