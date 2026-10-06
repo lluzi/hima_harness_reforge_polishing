@@ -65,9 +65,17 @@ export interface LibInsightAnalysisEntry {
   readonly status?: RunHeadView['status'];
   /** The resident task's own projection, so a waiting or failed analysis says why. */
   readonly task?: { readonly state: string; readonly reason?: string };
+  /** What the Reader accepted and whether admission put it in the Site library; the result itself is
+   *  read once per Run through `detail`, never on every look at the list. */
+  readonly analysis?: { readonly id?: string; readonly version?: number; readonly plotCount?: number; readonly admitted: boolean; readonly notAdmittedReason?: string; readonly resultSha256: string };
+}
+
+export interface LibInsightAnalysisDetail {
+  readonly runId: string;
   readonly result?: LibInsightAnalysisResult;
-  /** Present when the admitted result exists but cannot be shown, with the reason. */
+  /** Present when the Reader-accepted result exists but cannot be shown, with the reason. */
   readonly resultUnavailable?: string;
+  readonly admission: { readonly admitted: boolean; readonly reason?: string };
 }
 
 export type LibInsightAnalysesStatus =
@@ -100,6 +108,14 @@ export class LibInsightAnalysisError extends Error {
 }
 
 async function writeNewSiteFile(site: Site, at: string, bytes: Uint8Array): Promise<string> {
+  try { return await writeRequestFile(site, at, bytes); }
+  catch (error) {
+    if (error instanceof LibInsightAnalysisError) throw error;
+    throw new LibInsightAnalysisError('unavailable', `The request could not be written on the Site ${site.name}: ${(error as Error).message}`);
+  }
+}
+
+async function writeRequestFile(site: Site, at: string, bytes: Uint8Array): Promise<string> {
   const on = channelFor(site);
   const directory = await decideWrite(site, pathsOf(site).dirname(at), on);
   if (!directory.ok) throw new LibInsightAnalysisError('unavailable', directory.reason);
@@ -123,7 +139,8 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       const parsed = JSON.parse(await readFile(deps.indexFile, 'utf8')) as { schema?: string; requests?: IndexRow[] };
       return parsed.schema === 'hima-libinsight-analyses/1' && Array.isArray(parsed.requests) ? parsed.requests : [];
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      // The index only names each Run's question; a missing or unreadable one never hides the Runs.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError) return [];
       throw error;
     }
   }
@@ -184,25 +201,30 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       goal: held.proposal.goal, strategy: held.proposal.strategy, inputs: held.overrides.inputs, overrides: held.overrides } as StartRunRequest);
     if (started.kind === 'unfit') throw new LibInsightAnalysisError('bad-request', 'The Site cannot run this analysis Pack; open the Pack check for details.');
     pending.delete(proposalId);
-    await recordRun(held.row, started.run.id);
+    // The Run has started; failing to remember its question must not report it as not started.
+    await recordRun(held.row, started.run.id).catch(() => undefined);
     return { runId: started.run.id, kind: started.kind };
   }
 
-  async function resultOf(runId: string, view: RunView | undefined): Promise<Pick<LibInsightAnalysisEntry, 'result' | 'resultUnavailable'>> {
-    // The Reader's observation, as the resident task committed it, names its output and the retained bytes.
-    const observation = (view?.tasks ?? []).filter(task => task.current !== false).flatMap(task => {
-      const value = task.result?.value as { observations?: unknown } | undefined;
-      return Array.isArray(value?.observations) ? value.observations as { type?: string; outputName?: string; runId: string; bytes: number; retainedPath?: string; contentSha256: string }[] : [];
-    }).findLast(record => record.type === 'observation' && record.outputName === libInsightAnalysisDefaults.resultOutput);
-    if (!observation) return {};
-    try {
-      const bytes = await deps.readRetained(runId, { ...observation, type: 'observation' }, maxResultBytes);
-      const value = JSON.parse(bytes.toString('utf8')) as LibInsightAnalysisResult;
-      if (value?.schema !== analysisSchema || !Array.isArray(value.plots) || typeof value.datasets !== 'object') return { resultUnavailable: 'The admitted result is not a recognised analysis document.' };
-      return { result: value };
-    } catch (error) {
-      return { resultUnavailable: `The admitted result cannot be read: ${(error as Error).message}` };
-    }
+  type Observation = { type?: string; outputName?: string; runId: string; bytes: number; retainedPath?: string; contentSha256: string; values?: readonly { type?: string; value?: unknown }[] };
+  const committed = (view: RunView | undefined, taskId: string) => view?.tasks?.find(task => task.taskId === taskId && task.current !== false && task.result)?.result?.value as Record<string, unknown> | undefined;
+  /** The Reader's observation, as the resident task committed it: it names its output and the retained bytes. */
+  function observationOf(view: RunView | undefined): Observation | undefined {
+    const value = committed(view, 'custom-analysis') as { observations?: unknown } | undefined;
+    return (Array.isArray(value?.observations) ? value.observations as Observation[] : [])
+      .findLast(record => record.type === 'observation' && record.outputName === libInsightAnalysisDefaults.resultOutput);
+  }
+  /** Admitted only when admission committed this very result: the same bytes the Reader accepted. */
+  function admissionOf(view: RunView | undefined, observation: Observation): { admitted: boolean; reason?: string; id?: string; version?: number } {
+    const admission = committed(view, 'admit-analysis');
+    const task = view?.tasks?.find(row => row.taskId === 'admit-analysis' && row.current !== false);
+    const id = typeof admission?.id === 'string' ? admission.id : undefined, version = typeof admission?.version === 'number' ? admission.version : undefined;
+    const named = { ...(id ? { id } : {}), ...(version ? { version } : {}) };
+    if (admission?.admitted === true && admission.resultSha256 === observation.contentSha256) return { admitted: true, ...named };
+    if (admission?.admitted === true) return { admitted: false, reason: 'admission recorded different result bytes than the Reader accepted', ...named };
+    if (admission) return { admitted: false, reason: typeof admission.reason === 'string' ? admission.reason : 'admission declined it', ...named };
+    if (task?.projection.state === 'failed') return { admitted: false, reason: task.projection.reason.message };
+    return { admitted: false, reason: 'admission has not finished' };
   }
 
   async function list(sessionId: string): Promise<{ readonly status: LibInsightAnalysesStatus; readonly analyses: readonly LibInsightAnalysisEntry[] }> {
@@ -212,17 +234,40 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     for (const head of heads) {
       try { await deps.authorize(sessionId, head.id); } catch { continue; }
       const view = await deps.readRunView(head.id).catch(() => undefined);
-      const resident = view?.tasks?.find(task => task.taskId === 'custom-analysis' || task.tool === 'custom-analysis');
-      const projection = resident?.projection;
+      const projection = view?.tasks?.find(task => task.taskId === 'custom-analysis' && task.current !== false)?.projection;
+      const observation = observationOf(view);
+      const admission = observation ? admissionOf(view, observation) : undefined;
+      const plotCount = observation?.values?.find(value => value.type === 'li_analysis_plot_count')?.value;
       analyses.push({ runId: head.id, createdAt: head.createdAt, ...(byRun.get(head.id) ? { question: byRun.get(head.id)!.question } : {}),
         ...(head.status ? { status: head.status } : {}),
         ...(projection ? { task: { state: projection.state, ...('reason' in projection ? { reason: projection.reason.message } : {}) } } : {}),
-        ...await resultOf(head.id, view) });
+        ...(observation && admission ? { analysis: { ...(admission.id ? { id: admission.id } : {}), ...(admission.version ? { version: admission.version } : {}),
+          ...(typeof plotCount === 'number' ? { plotCount } : {}), admitted: admission.admitted,
+          ...(admission.reason ? { notAdmittedReason: admission.reason } : {}), resultSha256: observation.contentSha256 } } : {}) });
     }
     analyses.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return { status: status(), analyses };
   }
 
-  return { status, propose, confirm, list };
+  async function detail(sessionId: string, runId: string): Promise<LibInsightAnalysisDetail> {
+    try { await deps.authorize(sessionId, runId); }
+    catch { throw new LibInsightAnalysisError('bad-request', 'This analysis is not available in the selected project.'); }
+    const view = await deps.readRunView(runId);
+    if (view?.run.packId !== packId) throw new LibInsightAnalysisError('bad-request', 'This Run is not a Resident analysis.');
+    const observation = observationOf(view);
+    if (!observation) return { runId, admission: { admitted: false, reason: 'no Reader-accepted result yet' } };
+    const admission = admissionOf(view, observation);
+    const answer = { runId, admission: { admitted: admission.admitted, ...(admission.reason ? { reason: admission.reason } : {}) } };
+    try {
+      const bytes = await deps.readRetained(runId, { ...observation, type: 'observation' }, maxResultBytes);
+      const value = JSON.parse(bytes.toString('utf8')) as LibInsightAnalysisResult;
+      if (value?.schema !== analysisSchema || !Array.isArray(value.plots) || typeof value.datasets !== 'object') return { ...answer, resultUnavailable: 'The accepted result is not a recognised analysis document.' };
+      return { ...answer, result: value };
+    } catch (error) {
+      return { ...answer, resultUnavailable: `The accepted result cannot be read: ${(error as Error).message}` };
+    }
+  }
+
+  return { status, propose, confirm, list, detail };
 }
 export type LibInsightAnalyses = ReturnType<typeof createLibInsightAnalyses>;

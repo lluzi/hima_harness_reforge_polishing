@@ -211,6 +211,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
 export { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, POSTGRES_VERSION } from './local-database.js';
 export { createLibInsightViewer, libInsightViewerOptions, type LibInsightViewer, type LibInsightViewerStatus } from './libinsight-viewer.js';
+export { createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses, type LibInsightAnalysisEntry, type LibInsightAnalysisDetail } from './libinsight-analyses.js';
 export type { LocalDatabase, LocalDatabaseConnection } from './local-database.js';
 export { pickOwnedRun, isOwner, recordEndedSeenAt } from './run-ownership.js';
 export type {
@@ -688,6 +689,7 @@ export default class Hima extends Service {
           libInsight: request => request.action === 'status' ? libInsight.status() : libInsight.open(request),
           libInsightAnalyses: {
             list: sessionId => asked(() => analyses.list(sessionId)),
+            detail: (sessionId, runId) => asked(() => analyses.detail(sessionId, runId)),
             propose: (sessionId, request) => asked(() => analyses.propose(sessionId, { question: request.question, sources: [...request.sources ?? []], buildsOn: [...request.buildsOn ?? []] })),
             confirm: (sessionId, proposalId) => asked(() => analyses.confirm(sessionId, proposalId)),
           },

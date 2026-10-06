@@ -716,6 +716,7 @@ export interface RemoteOperations {
   /** Data Insight's Resident analyses (ADR-0020): a request becomes one Guide-confirmed Run of the analysis Pack. */
   libInsightAnalyses?: {
     list(sessionId: string): Promise<object>;
+    detail(sessionId: string, runId: string): Promise<object>;
     propose(sessionId: string, request: { readonly question: string; readonly sources?: readonly string[]; readonly buildsOn?: readonly string[] }): Promise<object>;
     confirm(sessionId: string, proposalId: string): Promise<object>;
   };
@@ -1795,7 +1796,8 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     if (method === 'GET') {
       const sessionId = url.searchParams.get('sessionId') ?? '';
       if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
-      return ok(await ops.libInsightAnalyses.list(sessionId));
+      const runId = url.searchParams.get('runId');
+      return ok(runId === null ? await ops.libInsightAnalyses.list(sessionId) : await ops.libInsightAnalyses.detail(sessionId, runId));
     }
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
     const parsed = z.discriminatedUnion('action', [
