@@ -155,8 +155,9 @@ Pack 与 Site 为新增文件，可整体移除；Data Insight 的 viewer 不依
 工作根 `/data/eda/project/hima_harness/libinsight-runs`（`campaigns/`、`requests/`、`library/`）；读根加入
 QuaLib API、`qualib-libapi-2026-py37`、`/data/eda/pdk/saed14`、`/data/eda/project/techlib/tsmc28`；驻场
 capability 复用已安装的 `resident-engineering-v1` wrapper 与 edarunner 镜像，新增本 Site 的 capability 文件；
-QuaLib 进程逐个运行，每进程 `EMPYREAN_LICENSE_FILE=59099@localhost`，不改任何许可证配置。已知限制：跨 Site
-的 XTop 与 QuaLib 并发不由 Host 互斥（同 library-intelligence 的说明）。
+实时 QuaLib 需要 linglong 的 Empyrean 许可证模式为 `new`（用户以 `empyrean-license new|old` 切换，XTop 需 `old`）；
+QuaLib 命令经 EDA 初始化脚本取得当前模式的许可证，进程逐个运行。facts 模式不需要许可证。已知限制：跨 Site 的
+XTop 与 QuaLib 并发不由 Host 互斥，模式切换由操作员串行（同 library-intelligence 的说明）。
 
 ### 切片（替代上表的执行顺序）
 

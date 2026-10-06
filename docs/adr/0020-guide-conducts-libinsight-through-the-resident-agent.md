@@ -43,5 +43,8 @@ status: accepted
   `buildsOn`，不建立常驻会话。
 - 在 LibInsight 提供扩展点之前，定制图表在 HimaHarness 标签页内用通用渲染器呈现，数据取自 Host 保留的 Reader
   输入字节；它不是 LibInsight 页面，也不改写 LibInsight 的数据文件夹。这替代上文“以 Retained reports 过渡”。
-- QuaLib 进程逐个运行并逐进程选择 `59099@localhost` 许可证，不改许可证配置；跨 Site 与 XTop 的并发互斥仍未由
-  Host 保证，作为已知限制保留。
+- linglong 同一时间只提供一种 Empyrean 许可证服务：XTop 用 `old`，QuaLib 2026 API 用 `new`（端口 59099）。
+  用户同日决定按工作负载切换：由用户在 linglong 上运行 `empyrean-license new` / `empyrean-license old`（需 sudo）。
+  驻场 Agent 与 Pack 只读取模式文件，从不切换；需要实时 QuaLib 而模式不是 `new` 时如实拒绝并给出切换命令。
+  基于已提取 facts 的分析不需要许可证。QuaLib 进程逐个运行；Host 不在 Site 间互斥 XTop 与 QuaLib，模式切换是
+  操作员的串行点，作为已知限制保留。

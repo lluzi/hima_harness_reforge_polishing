@@ -175,8 +175,9 @@ function ProposalCard({ proposal, busy, onConfirm, onDiscard }: { readonly propo
 function AnalysisDetail({ entry, read, onRetry }: { readonly entry: LibInsightAnalysisEntry; readonly read?: DetailRead; onRetry(): void }): ReactElement {
   const state = stateOf(entry), analysis = entry.analysis, detail = read?.detail, result = detail?.result;
   // Admission is the detail's word when it has been read, the summary's until then.
-  const admitted = detail?.admission.admitted ?? analysis?.admitted;
-  const notAdmitted = detail?.admission.reason ?? analysis?.notAdmittedReason ?? 'reason not recorded';
+  // Admission comes from the summary, refreshed on every poll; a cached detail may predate admission.
+  const admitted = analysis?.admitted ?? detail?.admission.admitted;
+  const notAdmitted = analysis?.notAdmittedReason ?? detail?.admission.reason ?? 'reason not recorded';
   const ref = analysis?.id !== undefined && analysis.version !== undefined ? `${analysis.id}@${String(analysis.version)}` : undefined;
   return <article className='hima-resident-detail' data-hima-control='resident-detail' data-hima-state-run={entry.runId} data-hima-state-status={state} data-hima-state-admitted={admitted === undefined ? '' : String(admitted)}>
     <header>

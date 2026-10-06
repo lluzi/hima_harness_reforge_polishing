@@ -5,10 +5,12 @@ const subject: typeof import('./resident-analyses-view.js') = await import(`./re
 const { analysisFinished, analysisState, admittedAnalysisRefs, rememberDetail } = subject;
 type Detail = Parameters<typeof rememberDetail>[2];
 
-test('an analysis is settled once its Run ends, its task settles, or the Host knows nothing more', () => {
+test('an analysis is settled once its Run ends, its task settles without a Run status, or the Host knows nothing more', () => {
   assert.equal(analysisFinished({}), true, 'no status and no task never polls forever');
   for (const status of ['ended-goal-met', 'ended-goal-not-met', 'ended-converged', 'ended-budget-exhausted', 'cancelled'] as const) assert.equal(analysisFinished({ status }), true, status);
-  for (const state of ['succeeded', 'failed', 'cancelled']) assert.equal(analysisFinished({ status: 'running', task: { state } }), true, state);
+  // Admission and delivery follow the resident task: a running Run keeps polling until it ends (review N1).
+  for (const state of ['succeeded', 'failed', 'cancelled']) assert.equal(analysisFinished({ status: 'running', task: { state } }), false, state);
+  for (const state of ['succeeded', 'failed', 'cancelled']) assert.equal(analysisFinished({ task: { state } }), true, state);
   assert.equal(analysisFinished({ status: 'running' }), false);
   assert.equal(analysisFinished({ status: 'waiting', task: { state: 'waiting', reason: 'needs a person' } }), false);
   assert.equal(analysisFinished({ task: { state: 'pending' } }), false);

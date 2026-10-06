@@ -6,13 +6,13 @@ import type { LibInsightAnalysisDetail, LibInsightAnalysisEntry } from '../libin
 const FINAL_TASK = new Set(['succeeded', 'failed', 'cancelled']);
 
 /**
- * Settled: the Run ended or was cancelled, the resident task succeeded, failed or was cancelled, or
- * the Host knows neither a status nor a task (nothing will change it by waiting).
+ * Settled: a Run with a status is settled only when it ended or was cancelled — admission and delivery
+ * run after the resident task, so its success alone settles nothing. Without a Run status, a final
+ * resident task, or knowing neither (nothing will change it by waiting), settles it.
  */
 export function analysisFinished(entry: Pick<LibInsightAnalysisEntry, 'status' | 'task'>): boolean {
-  if (entry.status === undefined && entry.task === undefined) return true;
-  if (entry.status !== undefined && (entry.status.startsWith('ended') || entry.status.startsWith('cancelled'))) return true;
-  return FINAL_TASK.has(entry.task?.state ?? '');
+  if (entry.status !== undefined) return entry.status.startsWith('ended') || entry.status.startsWith('cancelled');
+  return entry.task === undefined || FINAL_TASK.has(entry.task.state);
 }
 
 /** The chip word: a settled Run status wins over a task projection that may lag it. */
