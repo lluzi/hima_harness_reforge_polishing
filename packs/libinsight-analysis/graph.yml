@@ -29,6 +29,10 @@ flow:
         source: runInput
         path:
         - licenceModeFile
+      SOURCE_READ_ROOTS:
+        source: runInput
+        path:
+        - sourceReadRoots
     contract:
       input:
         version: '1'

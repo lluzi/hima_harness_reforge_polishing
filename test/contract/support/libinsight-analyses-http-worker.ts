@@ -45,7 +45,7 @@ await writeFile(path.join(sitesDir,'local.permit.yml'),stringify({allowedReadRoo
  allowedWrappers:['python3','/usr/bin/python3',wrapper],forbidden:['services','network','downloads','deletions','licences']}));
 await writeFile(path.join(sitesDir,'local.yml'),stringify({name:'local',kind:'local',workspaceRoot:path.join(workspace,'campaigns'),permit:'./local.permit.yml',
  bindings:{workspaceRoot:path.join(workspace,'campaigns'),analysisRequest:path.join(requests,'unset.json'),analysisRequests:requests,analysisLibrary:library,
-  factsCorpus:corpus,engineeringCapabilities:capability,licenceModeFile:modeFile},
+  factsCorpus:corpus,engineeringCapabilities:capability,licenceModeFile:modeFile,sourceReadRoots:workspace},
  capacity:{cores:2,memoryGiB:1,parallelJobs:2,licences:{'QuaLib-2026-new-59099':1}}}));
 process.env.HIMA_LIBINSIGHT_ANALYSIS_SITE='local';process.env.HIMA_TEST_SILENT_AGENT='1';process.env.HIMA_TEST_LEGACY_AUTO_DRIVE='0';process.env.HIMA_RESIDENT_TESTING='1';
 const sources={...himaHomeSources(repoRoot),harnessPackage:packageDir,presets:path.join(packageDir,'presets')};

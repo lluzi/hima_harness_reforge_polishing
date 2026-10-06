@@ -91,6 +91,25 @@ def plain_file(path, label):
     return path
 
 
+def inside(path, roots):
+    """True when `path` resolves to one of `roots` or beneath it (both sides resolved)."""
+    real = os.path.realpath(path)
+    for root in roots:
+        base = os.path.realpath(root)
+        if real == base or real.startswith(base.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def read_roots(value):
+    """Parse the Site's `sourceReadRoots` binding: absolute directories separated by ':'."""
+    roots = [part for part in (value or "").split(":") if part]
+    if not roots or any(not os.path.isabs(root) for root in roots):
+        raise LiaError("invalid-input", "sourceReadRoots must list the Site Permit read roots as absolute paths "
+                       "separated by ':' (got %r)" % (value,))
+    return roots
+
+
 def read_json_file(path, label):
     plain_file(path, label)
     with open(path, "rb") as stream:

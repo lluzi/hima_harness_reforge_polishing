@@ -49,20 +49,14 @@ def source_kind(path):
     raise LiaError("invalid-input", "source %s is neither a Liberty .lib file nor a lib-insight-facts/1 .json.gz file" % path)
 
 
-def _inside(path, roots):
-    real = os.path.realpath(path)
-    for root in roots:
-        base = os.path.realpath(root)
-        if real == base or real.startswith(base.rstrip("/") + "/"):
-            return True
-    return False
-
-
-def describe_source(path, readable_roots=None):
+def describe_source(path, readable_roots=None, site_roots=None):
     """{path, kind, sha256, bytes[, liberty]} for one plain source file."""
     common.plain_file(path, "source")
     kind = source_kind(path)
-    if readable_roots is not None and not _inside(path, readable_roots):
+    if site_roots is not None and not common.inside(path, site_roots):
+        raise LiaError("invalid-input", "source %s is outside the Site read roots %s; name a file the Site "
+                       "Permit lets this Site read" % (path, site_roots))
+    if readable_roots is not None and not common.inside(path, readable_roots):
         raise LiaError("invalid-input", "source %s is outside the resident sandbox read-only roots %s; "
                        "the resident could not read it" % (path, readable_roots))
     described = {"path": path, "kind": kind, "sha256": common.sha256_file(path), "bytes": os.path.getsize(path)}
@@ -169,10 +163,11 @@ def licence_mode(path):
     return words[0] if words else None
 
 
-def prepare(workspace, request_path, library, corpus, capability_path, mode_file=""):
+def prepare(workspace, request_path, library, corpus, capability_path, mode_file="", source_roots=None):
     request = validate_request(common.read_json_file(request_path, "analysis request"))
+    site_roots = common.read_roots(source_roots)
     roots = readable_roots(capability_path)
-    sources = [describe_source(path, roots) for path in request["sources"]]
+    sources = [describe_source(path, roots, site_roots) for path in request["sources"]]
     corpus_files = facts_corpus(corpus)
     by_liberty = {}
     for entry in corpus_files:
@@ -210,6 +205,7 @@ def prepare(workspace, request_path, library, corpus, capability_path, mode_file
         "library": {"path": library, "analyses": analyses, "invalid": invalid},
         "factsCorpus": {"path": corpus, "files": corpus_files},
         "licence": licence,
+        "readRoots": site_roots,
         "sandboxReadOnlyRoots": roots,
     }
     target = os.path.join(workspace, common.PREPARED_PATH)

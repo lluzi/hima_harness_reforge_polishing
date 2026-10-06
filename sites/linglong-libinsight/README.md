@@ -17,6 +17,10 @@ resident engineering agent answers custom library-analysis questions on linglong
 The `analysisRequest` binding is a placeholder (`requests/unset.json`) that keeps the contract input
 bound for `checkPack`; prepare-request fails clearly when a Run does not override it.
 
+`sourceReadRoots` repeats the Permit's `allowedReadRoots` joined with `:` because Pack tools run on
+the Site and cannot read the Permit; prepare-request and the Reader bound every source to it. Change
+both files together.
+
 The Permit writes only under `libinsight-runs`. Read roots add the QuaLib API, the vendor venv,
 the SAED14 PDK, `techlib/tsmc28`, the facts corpus and the resident admin directory.
 

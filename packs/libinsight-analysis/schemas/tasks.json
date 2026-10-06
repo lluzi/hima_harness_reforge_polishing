@@ -88,6 +88,10 @@
         "LICENCE_MODE_FILE": {
           "type": "string",
           "minLength": 1
+        },
+        "SOURCE_READ_ROOTS": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -95,7 +99,8 @@
         "ANALYSIS_LIBRARY",
         "FACTS_CORPUS",
         "ENGINEERING_CAPABILITIES",
-        "LICENCE_MODE_FILE"
+        "LICENCE_MODE_FILE",
+        "SOURCE_READ_ROOTS"
       ],
       "additionalProperties": false
     },

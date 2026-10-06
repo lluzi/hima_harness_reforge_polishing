@@ -78,11 +78,16 @@ Limits: ≤ 20000 rows per dataset; the result file ≤ 4 MiB. Aggregate instead
 - A path from the prepared request must carry exactly its prepared kind and sha256, with
   `sha256Before == sha256After`; a `facts` source's `libertySha256` must equal the prepared
   `liberty.sha256`.
-- An additional path you found yourself (for example the facts file of a requested `.lib`) is
-  allowed when `sha256Before == sha256After` and the Reader's own re-hash of the file on the Site
-  gives the same digest; a facts file must also be a readable `lib-insight-facts/1` whose embedded
-  `source.sha256` equals your `libertySha256`.
-- `sources` may be empty only when the request builds on admitted analyses (`buildsOn`).
+- **Every prepared source must be answered.** List it under its own path, or — for a prepared
+  `.lib` only — list a facts file of exactly those Liberty bytes: a `facts` entry whose
+  `libertySha256` equals the prepared `.lib` sha256 (the prepared request names such files in
+  `factsAlternatives`). A facts file of any other Liberty does not answer the `.lib`.
+- An additional path you found yourself (for example that facts file) must lie under the prepared
+  `readRoots` (the Site's read roots), with `sha256Before == sha256After`, and the Reader's own
+  re-hash of the file on the Site must give the same digest; a facts file must also be a readable
+  `lib-insight-facts/1` whose embedded `source.sha256` equals your `libertySha256`.
+- `sources` may be empty only when the request has no sources and builds on admitted analyses
+  (`buildsOn`).
 
 ## What the Reader rejects (each line is sent back to you verbatim)
 
@@ -91,6 +96,8 @@ Limits: ≤ 20000 rows per dataset; the result file ≤ 4 MiB. Aggregate instead
 - `null` in a column without `nullMeans`;
 - a source whose `sha256Before != sha256After`, that differs from the prepared request, that now
   hashes differently on the Site, or whose `libertySha256` differs from the facts identity;
+- a prepared source the delivery does not answer (not listed, and for a `.lib` no facts entry with
+  its exact sha256 as `libertySha256`), or an additional source outside the prepared `readRoots`;
 - `code.main.sha256 != sha256(code.main.text)`, a code file missing from the delivered tree or
   hashing differently, a code path outside `analysis/`;
 - more than 20000 rows in a dataset, or a result over 4 MiB;

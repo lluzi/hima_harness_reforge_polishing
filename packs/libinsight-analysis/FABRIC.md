@@ -19,6 +19,18 @@ message (the Host reports only the Reader Job's exit), so it also writes them to
 are both verified on linglong in the sandbox image shape; neither has yet run under a real model in a
 product Run (slice R4).
 
+Source bounds: Pack tools run on the Site and cannot read the Host-side Permit, so the Site binds
+`sourceReadRoots` (the Permit's `allowedReadRoots` joined with `:`; kept in step by hand, see the
+Site README). prepare-request refuses a source outside it whatever the sandbox kind, records it as
+`readRoots`, and the Reader refuses an additional delivered source outside it.
+
+Licence claim (review M8): `custom-analysis` holds `QuaLib-2026-new-59099: 1` even for a facts-only
+analysis, which serialises facts-only runs on the Site. Pack `licences` are a static per-tool map
+(`packs.ts` packTool), so the claim cannot depend on the request's mode, and the resident may decide
+mid-task that it needs live QuaLib. Keeping one seat per resident analysis is the honest bound; a
+facts-only tool without the claim would need a second outsourced tool and a choice node, which this
+small Pack does not take on.
+
 ## Reviews
 
 Pack Python suites cover the real SAED14 delivery and every Reader rejection, prepare-request

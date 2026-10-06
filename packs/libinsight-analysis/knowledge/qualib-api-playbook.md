@@ -186,8 +186,10 @@ host delivery then passed the Pack Reader, `admit-analysis` and `deliver`. Facts
   compare the before hash with `prepared-request.json`. Record each in `sources[]` with
   `sha256Before`/`sha256After`; a facts source also carries `libertySha256` = its embedded
   `source.sha256`.
-- A source not in the prepared request is allowed only when both hashes are equal and the file
-  still hashes the same when the Reader re-hashes it on the Site.
+- Answer every prepared source: list it, or for a `.lib` list a facts file from its
+  `factsAlternatives` (a facts entry whose `libertySha256` is that `.lib`'s sha256).
+- A source not in the prepared request is allowed only under the prepared `readRoots`, when both
+  hashes are equal and the file still hashes the same when the Reader re-hashes it on the Site.
 
 ## 8. Delivering
 
