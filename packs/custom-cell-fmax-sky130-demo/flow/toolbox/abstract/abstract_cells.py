@@ -241,6 +241,7 @@ def build(raw, cell, ws, k, lef_text, pdk_text):
         handle.write(macro)
     return {"macro": macro, "width": width, "height": height, "devices": len(sized["devices"]),
             "deviceWidthUm": round(w_cell, 3), "sourceWidthUm": round(w_src, 3), "sources": [n for n, _ in sources],
+            "layoutFrom": [{"cell": n, "pins": pins} for n, pins in sources],
             "files": {"sp": sp, "lef": lef}}
 
 
@@ -308,6 +309,8 @@ def main(argv=None):
         entry = {"name": cell["name"], "origin": "r%d" % k, "inputs": cell["inputs"], "outputs": list(cell["outputs"]),
                  "functions": dict(cell["outputs"]), "compareTo": raw["compareTo"], "layout": "abstract",
                  "files": files, "sha256": {key: sha(path) for key, path in res["files"].items()}}
+        if raw.get("layoutFrom"):
+            entry["layoutFrom"] = res["layoutFrom"]  # foundry anchors for mock characterization
         if raw.get("footprint"):
             entry["footprint"] = raw["footprint"]
         entries.append(entry)

@@ -1,12 +1,12 @@
 # Baseline once, then rounds of: resident engineer (a library of cells) -> HimaHarness characterizes
-# every cell (ngspice: modelled pre-layout for abstract cells, measured from extraction for clean
-# layouts) -> two matched ORFS arms in parallel -> compare ->
+# every cell (mock timing in seconds for abstract mock-layout cells; ngspice from extraction for
+# clean layouts) -> two matched ORFS arms in parallel -> compare ->
 # Reader -> judges -> next round. The owner starts and collects each engineering task and decides
 # next-round; everything between is self-driving. The round record is read twice: once for the
 # adoption/improvement verdicts (check-round) and once, fresh, for the constraint/Goal judge that
 # the next-round chooser weighs (an explore node needs exactly one judge after a fresh reading).
 id: custom-cell-fmax-sky130-demo
-version: "0.3.0"
+version: "0.4.0"
 entry: bind-inputs
 autopilot:
   - { from: [bind-inputs], until: [engineer, blocked] }

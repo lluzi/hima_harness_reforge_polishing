@@ -37,11 +37,11 @@ ROUND_SCHEMA = "hima-cellfmax-round/1"
 MAX_NEW_CELLS = 400
 NUM_CORES = 8
 CLAIM_BOUNDARY = (
-    "Custom-cell timing is SPICE-characterized by HimaHarness (ngspice, sky130 tt 1.8 V 25 C, calibrated "
-    "against foundry cells to within 15 % p90): MEASURED from the Magic-extracted layout for DRC/LVS-clean "
-    "cells, MODELLED from the pre-layout netlist plus a parasitic estimate for abstract-layout cells "
-    "(foundry-derived abstract LEF, no GDS, not tape-out ready). Results are open-source ORFS timing on "
-    "SKY130 under these models; not signoff, not silicon."
+    "Custom-cell timing is characterized by HimaHarness. DRC/LVS-clean cells are MEASURED: ngspice on the "
+    "Magic-extracted layout, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90. "
+    "Abstract-layout cells (MOCK layout: foundry-derived abstract LEF, no GDS, not tape-out ready) have MOCK "
+    "timing: an RC model of the sized netlist anchored to the foundry tables, no SPICE (mock-fit.json records "
+    "its error). Results are open-source ORFS timing on SKY130 under these models; not signoff, not silicon."
 )
 FLOW_DIR = Path(__file__).resolve().parent
 EMPTY_BEST = {"schema": "hima-cellfmax-best/1", "round": 0, "customFmaxMhz": None, "library": {"cells": []}}
@@ -410,15 +410,28 @@ def load_characterization(ws, recipe):
     return record
 
 
-CHAR_STATUSES = ("measured", "modelled", "failed", "excluded")
+CHAR_STATUSES = ("measured", "mock", "failed", "excluded")
+
+
+def mock_anchors(cell):
+    """[(foundry cell, {foundry pin: cell pin})]: the recipe's layoutFrom sources, then compareTo."""
+    anchors = []
+    for source in cell.get("layoutFrom") or []:
+        if isinstance(source, dict) and isinstance(source.get("cell"), str):
+            name = source["cell"] if source["cell"].startswith(CELL_PREFIX) else CELL_PREFIX + source["cell"]
+            anchors.append([name, {str(a): (b if isinstance(b, str) else None) for a, b in (source.get("pins") or {}).items()}])
+    pins = list(cell["inputs"]) + list(cell["outputs"])
+    anchors.append([cell["compareTo"], {p: p for p in pins}])
+    return anchors
 
 
 def cmd_characterize(ws, timeout_min):
-    """Characterize every custom cell with ngspice for this round, calibrated against foundry cells.
+    """Characterize every custom cell for this round.
 
-    DRC/LVS-clean cells are MEASURED from their Magic-extracted netlist. Abstract-layout cells are
-    MODELLED from their pre-layout netlist plus a parasitic estimate, against a separate pre-layout
-    calibration. Both gates are 15 % p90; the record and every Liberty banner say which is which."""
+    DRC/LVS-clean cells are MEASURED with ngspice from their Magic-extracted netlist, calibrated against
+    foundry cells within 15 % p90. Abstract-layout cells get MOCK timing in seconds: the RC model of
+    their sized netlist, anchored to the foundry tables of their compareTo/layoutFrom cells
+    (toolbox/char/mockcore.py). The record and every Liberty banner say which is which."""
     ws = Path(ws).resolve()
     inputs = load_inputs(ws)
     recipe, recipe_sha = validate_recipe(ws, rerun=True)
@@ -431,10 +444,10 @@ def cmd_characterize(ws, timeout_min):
     run_dir.mkdir(parents=True)
     lef_text = (ws / library["lef"]).read_text(errors="replace") if cells else ""
     ref_text = Path(inputs["platformLib"]).read_text(errors="replace")
-    rows, jobs, footprints, kind_of = [], {"extracted": [], "pre-layout": []}, {}, {}
+    rows, jobs, footprints, kind_of = [], {"extracted": [], "mock": []}, {}, {}
     for cell in cells:
         files = cell.get("files") or {}
-        kind = "extracted" if cell.get("layout") == "drc-lvs-clean" else "pre-layout"
+        kind = "extracted" if cell.get("layout") == "drc-lvs-clean" else "mock"
         spice = (ws / (files["ext"] if kind == "extracted" else files["sp"])).resolve()
         ports = re.search(r"(?mi)^\.subckt\s+%s\s+(.*)$" % re.escape(cell["name"]), spice.read_text(errors="replace"))
         if not ports:
@@ -446,29 +459,37 @@ def cmd_characterize(ws, timeout_min):
         footprint, footprint_reason = resizer_footprint(cell, ref_text)
         footprints[cell["name"]] = {"footprint": footprint, "why": footprint_reason}
         kind_of[cell["name"]] = kind
-        jobs[kind].append({"name": cell["name"], "spice": str(spice), "subckt": cell["name"],
-                           "pins": {"power": power, "ground": ground, "inputs": cell["inputs"], "outputs": cell["outputs"]},
-                           "functions": cell.pop("_foundryFunctions", None) or cell["functions"], "area_um2": _lef_area(lef_text, cell["name"]),
-                           "lef": str((ws / files["lef"]).resolve()), "index_ref": cell["compareTo"], "footprint": footprint})
+        job = {"name": cell["name"], "spice": str(spice), "subckt": cell["name"],
+               "pins": {"power": power, "ground": ground, "inputs": cell["inputs"], "outputs": cell["outputs"]},
+               "functions": cell.pop("_foundryFunctions", None) or cell["functions"], "area_um2": _lef_area(lef_text, cell["name"]),
+               "lef": str((ws / files["lef"]).resolve()), "index_ref": cell["compareTo"], "footprint": footprint}
+        if kind == "mock":
+            job["anchors"] = mock_anchors(cell)
+        jobs[kind].append(job)
     started = time.time()
     rc, results, calibrations = 0, {}, {}
     ref = inputs["platformLib"]
     char = ws / "flow" / "toolbox" / "char"
     steps = []
-    for kind, stem, cal_name in (("extracted", "custom.measured", "calibration"), ("pre-layout", "custom.modelled", "calibration-prelayout")):
+    for kind in ("extracted", "mock"):
         if not jobs[kind]:
             continue
         out = run_dir / kind
         out.mkdir()
         write_json(out / "job.json", {"cells": jobs[kind]})
-        cal = ws / "runs" / cal_name
+        if kind == "mock":
+            steps.append("python3 %s/characterize.py %s/job.json --reference-lib %s --out %s --netlist-kind mock; "
+                         "r=$?; [ $r -le 1 ] || exit $r" % (char, out, ref, out))
+            continue
+        cal = ws / "runs" / "calibration"
         steps.append("( [ -f %s/calibration.json ] || python3 %s/calibrate.py --reference-lib %s --out %s --jobs 16 --netlist %s ) && "
                      "python3 %s/characterize.py %s/job.json --reference-lib %s --calibration %s/calibration.json --out %s --jobs 16 "
                      "--netlist-kind %s; r=$?; [ $r -le 1 ] || exit $r" % (cal, char, ref, cal, kind, char, out, ref, cal, out, kind))
     if steps:
         script = "export PATH=/foss/tools/bin:/usr/bin:/bin; cd %s && %s" % (run_dir, "; ".join(steps))
         orfs = inputs["orfsRoot"]
-        argv = ["podman", "run", "--rm", "--entrypoint", "/bin/bash", "--userns=keep-id", "--cpus=16",
+        argv = ["podman", "run", "--rm", "--entrypoint", "/bin/bash", "--userns=keep-id",
+                "--cpus=%d" % (16 if jobs["extracted"] else 2),
                 "-v", "%s:%s:rw" % (ws.resolve(), ws.resolve()), "-v", "%s:%s:ro" % (orfs, orfs),
                 inputs["containerImageId"], "-c", script]
         log_path = run_dir / "char.log"
@@ -478,20 +499,21 @@ def cmd_characterize(ws, timeout_min):
             except subprocess.TimeoutExpired:
                 rc = "timeout"
         tail = log_path.read_text(errors="replace").splitlines()[-30:]
-        for kind in ("extracted", "pre-layout"):
+        for kind in ("extracted", "mock"):
             if jobs[kind] and not (run_dir / kind / "characterization.json").is_file():
                 rc = rc or "missing"
         if rc not in (0, 1):
             raise ToolError("characterization refused or failed (exit %s): %s" % (rc, " | ".join(tail[-6:])))
-        for kind in ("extracted", "pre-layout"):
+        for kind in ("extracted", "mock"):
             if jobs[kind]:
                 result = read_json(run_dir / kind / "characterization.json")
                 if result.get("refused"):
                     raise ToolError("%s characterization refused: %s" % (kind, result["refused"]))
                 results.update({c.get("name"): c for c in result.get("cells", [])})
-                calibrations[kind] = {"calibration": result.get("calibration"), "method": result.get("method")}
+                calibrations[kind] = ({"mockFit": result.get("mockFit"), "method": result.get("method")} if kind == "mock"
+                                      else {"calibration": result.get("calibration"), "method": result.get("method")})
     groups = []
-    for kind, stem, status in (("extracted", "custom.measured", "measured"), ("pre-layout", "custom.modelled", "modelled")):
+    for kind, stem, status in (("extracted", "custom.measured", "measured"), ("mock", "custom.mock", "mock")):
         for cell in jobs[kind]:
             entry = results.get(cell["name"], {})
             ok = entry.get("status") == "ok"
@@ -501,7 +523,7 @@ def cmd_characterize(ws, timeout_min):
         lib_file = run_dir / kind / (stem + ".lib")
         if jobs[kind] and lib_file.is_file():
             groups.append(lib_file.read_text(errors="replace"))
-    names = [row["name"] for row in rows if row["status"] in ("measured", "modelled")]
+    names = [row["name"] for row in rows if row["status"] in ("measured", "mock")]
     lib = run_dir / "custom.characterized.lib"
     if names and groups:
         write_text(lib, "\n".join(groups))
@@ -529,7 +551,7 @@ def _merge_liberty(base, custom, out):
             end = _group_end(custom_text, match.end() - 1)
             groups.append(custom_text[match.start():end + 1])
     closing = base_text.rstrip().rfind("}")
-    write_text(out, base_text[:closing] + "\n  /* ---- custom-cell-fmax demo cells, characterized by HimaHarness (see each cell's banner: measured or MODELLED) ---- */\n"
+    write_text(out, base_text[:closing] + "\n  /* ---- custom-cell-fmax demo cells, characterized by HimaHarness (see each cell's banner: measured or MOCK) ---- */\n"
                + "\n".join(groups) + "\n" + base_text[closing:])
 
 
@@ -1064,7 +1086,7 @@ def library_rows(ws, recipe, adopted_by_cell):
                "status": status.get(cell["name"], {}).get("status", "not characterized"),
                "statusReason": status.get(cell["name"], {}).get("reason"),
                "adopted": adopted_by_cell.get(cell["name"], 0)}
-        if cc and row["status"] in ("measured", "modelled"):
+        if cc and row["status"] in ("measured", "mock"):
             row["vsFoundry"] = _ratios(cc, lib_text, cell["name"], ref_text, cell.get("compareTo"))
             if claim_text and cell["name"] in claim_text:
                 row["claimedVsFoundry"] = _ratios(cc, claim_text, cell["name"], ref_text, cell.get("compareTo"))
@@ -1119,9 +1141,9 @@ def round_markdown(record):
     ]
     summary = record.get("characterization") or {}
     counts = summary.get("counts") or {}
-    lines += ["Library: %d cell(s) characterized by HimaHarness: measured from extracted layout %d, modelled from "
-              "pre-layout netlist %d, failed %d, excluded %d." % (
-        len(record["cells"]), counts.get("measured", 0), counts.get("modelled", 0), counts.get("failed", 0),
+    lines += ["Library: %d cell(s) characterized by HimaHarness: measured from extracted layout %d, mock timing for "
+              "abstract (mock-layout) cells %d, failed %d, excluded %d." % (
+        len(record["cells"]), counts.get("measured", 0), counts.get("mock", 0), counts.get("failed", 0),
         counts.get("excluded", 0)), "",
         "| cell | function | vs foundry | status | adopted | rise vs foundry | fall vs foundry | input cap | claimed rise |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
@@ -1135,9 +1157,9 @@ def round_markdown(record):
             _fmt(ratios.get("cell_rise"), "%.2fx"), _fmt(ratios.get("cell_fall"), "%.2fx"),
             _fmt(ratios.get("input_cap"), "%.2fx"), _fmt(claimed.get("cell_rise"), "%.2fx")))
     lines += ["", "Ratios are medians over the 7x7 tables against the named foundry cell (below 1 = faster or smaller).",
-              "Status `measured`: SPICE-characterized by HimaHarness from the extracted layout. Status `modelled`: "
-              "from the pre-layout netlist with a parasitic estimate and an abstract layout. Both ngspice, tt 1.8 V "
-              "25 C, calibrated against foundry cells; not signoff, not silicon.", ""]
+              "Status `measured`: ngspice on the extracted layout, tt 1.8 V 25 C, calibrated against foundry cells. "
+              "Status `mock`: abstract layout and MOCK timing, an RC model of the sized netlist anchored to the foundry "
+              "tables, no SPICE (error in toolbox/char/mock-fit.json). Not signoff, not silicon.", ""]
     return "\n".join(lines)
 
 

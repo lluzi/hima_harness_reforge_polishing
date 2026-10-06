@@ -12,9 +12,10 @@ default 60, per ORFS run) and `engineeringRevision` (count, the round counter th
   licence, no commercial tool. The ORFS, celluzi and bool2cmos trees are read-only bindings.
 - A Campaign writes only under the Site's `workspaceRoot`; containers run with `--cpus` limits (8 per
   ORFS arm, 16 for characterization); at most three Site jobs at once.
-- Cell timing in the arms is only HimaHarness's own ngspice characterization, calibrated against
-  foundry cells within 15 % p90: modelled from the pre-layout netlist for `abstract` cells, measured
-  from the Magic extraction for `drc-lvs-clean` cells. The engineer's Liberty is a claim.
+- Cell timing in the arms is only HimaHarness's own characterization: MOCK for `abstract` cells (RC
+  model of the sized netlist anchored to foundry tables, no SPICE, error in
+  `flow/toolbox/char/mock-fit.json`), ngspice calibrated within 15 % p90 for `drc-lvs-clean` cells.
+  The engineer's Liberty is a claim.
 - At most 400 new cells per round; every best-library cell stays byte-identical in later recipes.
 - Gains count only between the two arms of one round (same recipe, clock and characterized library).
 
@@ -70,19 +71,19 @@ a measured fact.
 One resident engineering Workshop per round (`engineer`, role `resident-engineering-agent`, reads
 `inputsState`, `baselineState`, `lessons`, `best`; knowledge `cell-playbook.md`, `toolbox.md`,
 `evidence-and-claims.md`; artifacts under `cells/`). It analyses the critical paths, generates many
-cell ideas, builds them as abstract cells (`flow/toolbox/abstract`, seconds) or real layouts
-(`flow/toolbox/factory`, minutes), optionally characterizes them itself, writes findings, library
-table and usage guide, prechecks and delivers one `hima-cellfmax-round-recipe/1`. A refused delivery
-is repaired in the same task.
+cell ideas, builds them as abstract (mock-layout) cells (`flow/toolbox/abstract`, seconds),
+optionally mock-characterizes them itself (seconds) and runs at most one trial pair, writes findings,
+library table and usage guide, prechecks and delivers one `hima-cellfmax-round-recipe/1`. A refused
+delivery is repaired in the same task.
 
 ## Knowledge
 
 - `knowledge/cell-playbook.md`: how HimaHarness judges cells, what measurement has shown (skew is a
   trade), resizer equivalence rules (footprint and function text), volume generation and round
   planning.
-- `knowledge/toolbox.md`: sandbox tools, trial ORFS runs, abstract cells, the factory, own
-  characterization, emap.
-- `knowledge/evidence-and-claims.md`: measured versus modelled versus claimed, and the verbatim
-  claim boundary.
+- `knowledge/toolbox.md`: sandbox tools, trial ORFS runs, abstract (mock-layout) cells, own mock
+  characterization, emap; the factory, marked as not part of this demo.
+- `knowledge/evidence-and-claims.md`: mock versus measured versus claimed, the mock's recorded
+  error, and the verbatim claim boundary.
 - Design record: `docs/superpowers/specs/2026-10-04-custom-cell-fmax-sky130-demo-design.md`; the
   graph differs from it as recorded in FABRIC.md `Gaps`.

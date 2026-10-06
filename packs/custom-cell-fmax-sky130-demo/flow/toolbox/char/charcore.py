@@ -508,6 +508,7 @@ def normalize_cell(cell):
         "index_ref": cell.get("index_ref"),
         "index_1": cell.get("index_1"),
         "index_2": cell.get("index_2"),
+        "anchors": cell.get("anchors") or [],
     }
 
 

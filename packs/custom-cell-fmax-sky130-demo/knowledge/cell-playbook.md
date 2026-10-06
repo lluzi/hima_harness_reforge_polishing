@@ -1,20 +1,21 @@
 # Custom-cell playbook for aes on sky130hd
 
-Your delivery is a cell library. Cells are cheap for you to make and HimaHarness measures every one,
-so try many ideas each round and let measurement and the flow decide. Read `state/lessons.json`
-first: every earlier round with each cell's measured timing against its foundry cell, whether the
+Your delivery is a cell library. Cells are cheap for you to make and HimaHarness characterizes every
+one, so try many ideas each round and let its characterization and the flow decide. Read
+`state/lessons.json` first: every earlier round with each cell's timing against its foundry cell, whether the
 flow adopted it, the matched gain and the remaining top paths. Do not repeat a failed idea without a
 new reason; do repeat what worked with variations.
 
-## How HimaHarness measures you
+## How HimaHarness judges you
 
-- It characterizes every cell itself with calibrated ngspice: abstract cells are modelled from
-  their pre-layout netlist, DRC/LVS-clean layouts are measured from extraction. Your own Liberty or
-  derates never reach the arms.
+- It characterizes every cell itself: abstract (mock-layout) cells get MOCK timing in seconds, an
+  RC model of your sized netlist anchored to the foundry tables (see evidence-and-claims.md); real
+  DRC/LVS-clean layouts would be measured with ngspice. Your own Liberty or derates never reach the
+  arms.
 - Two matched ORFS arms per round, same recipe and characterized library, custom cells allowed versus
   forbidden. Round gain = custom-arm Fmax / control-arm Fmax − 1; the Goal reads the best valid gain.
   Fmax = 1000 / (period − worst setup slack) at ORFS `finish`.
-- The round report lists every cell: its status (modelled or measured), rise, fall and input
+- The round report lists every cell: its status (mock or measured), rise, fall and input
   capacitance against the foundry cell you named in `compareTo`, and how many instances the flow
   used.
 
@@ -24,7 +25,7 @@ new reason; do repeat what worked with variations.
   measured rise 0.56–0.73× nor3_1 but fall up to 1.2× slower and input capacitance +44–74 %. Against
   the foundry nor3_2 it is a real trade-off cell: 5–11 % faster rise, 21 % less input capacitance,
   44–71 % slower fall. Cells win where their strong edge is the critical edge and their extra input
-  load is cheap; the resizer decides that from the measured tables.
+  load is cheap; the resizer decides that from the characterized tables.
 - The foundry library already has strength ladders (_1/_2/_4). A useful custom cell fills a gap the
   ladder does not: a different pull-up/pull-down ratio, a per-input skew (fast input on the late
   arriving pin), a footprint-compatible variant, a fused function, or a multi-output cell.
@@ -66,10 +67,11 @@ synthesis; a new function enters there or through `emap`.
 ## Planning a round
 
 1. Analyse the paths (minutes), then generate a large batch of specs and build them with
-   `flow/toolbox/abstract` (seconds for hundreds of cells; the factory only for cells you want
-   measured from a real layout).
-2. Optionally characterize your clean cells yourself (`flow/toolbox/char`) to prune hopeless ones and
-   to write a meaningful `agentClaim` trial. An ORFS trial takes 15–25 min with `NUM_CORES=8`; at most
-   two at once. Leave time for HimaHarness's characterize step and its two arms.
+   `flow/toolbox/abstract` (seconds for hundreds of cells). This demo mocks layout and
+   characterization; do not use the factory.
+2. Optionally mock-characterize your cells yourself (`flow/toolbox/char`, `--netlist-kind mock`,
+   seconds) to prune hopeless ones. An ORFS trial takes 15–25 min with `NUM_CORES=8` (at most two at
+   once); in this demo deliver promptly: one trial pair at most, or none with `agentClaim: null`.
+   HimaHarness's characterize step takes seconds and its two arms about 20 min.
 3. Choose the clock: tighten it when the last round met timing.
 4. Write findings.md, library.md (one row per new cell) and usage-guide.md, run the precheck, deliver.

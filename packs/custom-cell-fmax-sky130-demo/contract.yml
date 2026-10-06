@@ -1,5 +1,5 @@
 id: custom-cell-fmax-sky130-demo
-version: "0.3.0"
+version: "0.4.0"
 title: Custom standard cells for a faster aes on open-source SKY130 (demo)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -53,9 +53,9 @@ outputs:
   - name: characterizationState
     path: state/characterization.json
     description: >-
-      HimaHarness's characterization of this round's library with calibrated ngspice: measured
-      (DRC/LVS-clean cells, from the extracted layout), modelled (abstract cells, from the pre-layout
-      netlist with a parasitic estimate), failed and excluded cells with their reasons.
+      HimaHarness's characterization of this round's library: mock (abstract cells: the RC model
+      of the sized netlist anchored to foundry tables, no SPICE), measured (DRC/LVS-clean cells,
+      calibrated ngspice on the extracted layout), failed and excluded cells with their reasons.
   - name: armCustom
     path: state/arm-custom.json
     reader: cellfmax-arm
@@ -109,24 +109,24 @@ tools:
       those paths (per-input and per-edge pull-up/pull-down sizing), fused single-output cells,
       and multi-output cells for shared-input cones (XOR/XNOR and adder-like clusters of AES).
       Cell generation is cheap: build hundreds of cells in seconds with flow/toolbox/abstract
-      (bool2cmos SPICE with the sizing variant, abstract LEF composed from foundry pin geometry,
-      widened by transistor width); the slower cell factory (flow/toolbox/factory: real LibreCell
-      layout, DRC, LVS, Magic extraction) stays available for cells you want measured from layout.
-      HimaHarness characterizes every cell itself with calibrated ngspice (abstract cells from their
-      pre-layout netlist: modelled; clean layouts from extraction: measured) and only that timing
-      enters the arms; your own Liberty or derates are claims at most. Multi-output cells are used only through an emap-window remap of
+      (bool2cmos SPICE with the sizing variant and the demo's MOCK layout: an abstract LEF composed
+      from foundry pin geometry, widened by transistor width). This demo mocks layout and
+      characterization; do not use the LibreCell factory. HimaHarness characterizes every cell
+      itself (abstract cells: MOCK timing in seconds, an RC model of the sized netlist anchored to
+      the foundry tables) and only that timing enters the arms; your own Liberty or derates are
+      claims at most. Multi-output cells are used only through an emap-window remap of
       the near-critical cone set (flow/toolbox/emap). Do your own discovery and trial flows in your
-      private workspace (at most two at once, NUM_CORES=8; you may run flow/toolbox/char yourself to
-      measure before delivering). Choose the round's clock (tighten it when the last round met
+      private workspace (at most two at once, NUM_CORES=8; one trial pair at most in this demo, or
+      none with agentClaim null; you may run flow/toolbox/char --netlist-kind mock yourself in
+      seconds before delivering). Choose the round's clock (tighten it when the last round met
       timing). Write findings.md (what you analysed, what you tried and why), library.md (one row per
-      new cell: idea, function, foundry cell it competes with, factory status) and usage-guide.md.
+      new cell: idea, function, foundry cell it competes with, layout) and usage-guide.md.
       Put your own trial comparison in agentClaim. Deliver one hima-cellfmax-round-recipe/1 as the
       result with every support file under cells/r<k>/ (k is the number of rounds in lessons.json
       plus one); keep every best-library cell byte-identical. Before delivering, run
       `python3 <campaign>/flow/cellfmax_cli.py precheck <campaign> $PWD <your recipe>` (your
       workspace is <campaign>/.hima-engineering/<task>/workspace) and fix every refusal it prints.
-      Do not run the measured arms, change the Goal, present modelled timing as measured, or invent
-      metrics.
+      Do not run the arms, change the Goal, present mock timing as measured, or invent metrics.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', recipe, '${WORKSPACE}']
     outsourcing:
@@ -139,10 +139,12 @@ tools:
   - id: characterize
     file: flow/cellfmax_cli.py
     description: >-
-      Characterize this round's library with ngspice (tt 1.8 V 25 C, 7x7 delay and slew tables, input
-      capacitance), each path calibrated once per Campaign against foundry cells to within 15 % p90:
-      DRC/LVS-clean cells are measured from their Magic-extracted netlist; abstract cells are modelled
-      from their pre-layout netlist plus a parasitic estimate. Cells that fail are excluded with their
+      Characterize this round's library (tt 1.8 V 25 C, 7x7 delay and slew tables, input
+      capacitance). Abstract (mock-layout) cells get MOCK timing in seconds: an RC model of the sized
+      netlist, anchored to the foundry table of the compareTo/layoutFrom cell wherever one
+      corresponds, no SPICE (toolbox/char/mock-fit.json records its error against foundry and SPICE
+      tables). DRC/LVS-clean cells are measured with ngspice from their Magic-extracted netlist,
+      calibrated against foundry cells to within 15 % p90. Cells that fail are excluded with their
       reason; only characterized cells enter the arms. Writes state/characterization.json.
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/cellfmax_cli.py', characterize, '${WORKSPACE}', '${TIMEOUT_MIN}']
@@ -188,7 +190,7 @@ knowledge:
   - file: toolbox.md
     purpose: Every cell, layout, timing-model, analysis and emap tool available to the engineer, with exact commands, inputs, outputs, run time and failure modes.
   - file: evidence-and-claims.md
-    purpose: What is real, what is modelled and what is never claimed in this demo.
+    purpose: What is measured, what is mock and what is never claimed in this demo.
 
 goal:
   target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 50, default: 5, precision: 2 }

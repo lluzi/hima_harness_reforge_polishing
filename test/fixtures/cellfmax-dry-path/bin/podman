@@ -8,10 +8,10 @@ Answers exactly the calls flow/cellfmax_cli.py makes:
       writes the ORFS outputs the Pack reads (6_report.json, 5_2_route.json, 6_final.v,
       top-paths.txt) under <dir> for the CELLFMAX_VARIANT it was given, and exits 0
   podman run ... -c '<script calling flow/toolbox/char/characterize.py>'
-      the characterize step, per characterize.py call (extracted and/or pre-layout): creates the
-      calibration when the script would calibrate (it is missing), then writes <out>/characterization.json
-      (every job cell `ok`) and <out>/custom.measured.lib (custom.modelled.lib for --netlist-kind
-      pre-layout) with one minimal cell group per job cell (the job's pins, footprint
+      the characterize step, per characterize.py call (extracted and/or mock): creates the
+      calibration when the script would calibrate (it is missing; a mock call takes none), then writes
+      <out>/characterization.json (every job cell `ok`) and <out>/custom.measured.lib (custom.mock.lib
+      for --netlist-kind mock) with one minimal cell group per job cell (the job's pins, footprint
       and functions, which characterize took from the foundry cell for a drop-in variant); exit 0
   podman run ... klayout ...                       no-op, exit 0 (cell image rendering)
   podman stop ...                                  exit 0
@@ -117,7 +117,7 @@ def measured_cell(cell):
 
 
 def run_characterize(script):
-    """Every characterize.py call of the script (extracted and/or pre-layout), each with its own job."""
+    """Every characterize.py call of the script (extracted and/or mock), each with its own job."""
     words = shlex.split(script)
     starts = [i for i, w in enumerate(words) if w.endswith("/characterize.py")]
     if not starts:
@@ -128,25 +128,26 @@ def run_characterize(script):
         tail = words[at + 1:starts[n + 1] if n + 1 < len(starts) else len(words)]
         job_path = tail[0] if tail else None
         out, calibration = _after(tail, "--out"), _after(tail, "--calibration")
-        kind = _after(tail, "--netlist-kind") or "extracted"
-        if job_path is None or out is None or calibration is None:
-            print("podman stand-in: characterize call without job, --out or --calibration: %r" % script, file=sys.stderr)
+        kind = (_after(tail, "--netlist-kind") or "extracted").rstrip(";")
+        if job_path is None or out is None or (calibration is None) != (kind == "mock"):
+            print("podman stand-in: characterize call without job or --out, or with the wrong calibration: %r" % script,
+                  file=sys.stderr)
             return 125
-        calibration = Path(calibration)
-        if any(w.endswith("/calibrate.py") for w in words) and not calibration.is_file():
+        calibration = Path(calibration) if calibration else None
+        if calibration and any(w.endswith("/calibrate.py") for w in words) and not calibration.is_file():
             calibration.parent.mkdir(parents=True, exist_ok=True)
             calibration.write_text(json.dumps({"schema": "stand-in-calibration", "netlistKind": kind, "firstJob": job_path}) + "\n")
         job = json.loads(Path(job_path).read_text())
         out = Path(out)
         out.mkdir(parents=True, exist_ok=True)
         cells = job.get("cells", [])
-        stem = "custom.modelled" if kind == "pre-layout" else "custom.measured"
+        stem = "custom.mock" if kind == "mock" else "custom.measured"
         (out / (stem + ".lib")).write_text(
             "library (cellfmax_characterized) {\n    delay_model : \"table_lookup\";\n    time_unit : \"1ns\";\n"
             + "".join(measured_cell(cell) for cell in cells) + "}\n")
         (out / "characterization.json").write_text(json.dumps({
             "cells": [{"name": cell["name"], "status": "ok", "reason": None} for cell in cells], "netlistKind": kind,
-            "method": "podman stand-in (no ngspice)", "calibration": str(calibration), "refused": None,
+            "method": "podman stand-in (no ngspice)", "calibration": calibration and str(calibration), "refused": None,
         }))
         print("== podman stand-in characterize %d %s cell(s)" % (len(cells), kind))
     return 0

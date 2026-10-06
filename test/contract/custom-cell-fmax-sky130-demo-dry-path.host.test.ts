@@ -17,10 +17,10 @@
 // - EDA: `test/fixtures/cellfmax-dry-path/bin/podman`, first on the Host's PATH (set before the
 //   Host boots and before this file's private tmux server starts, because a local Job's environment
 //   is the tmux server's). It answers `image inspect` with the image id the Site binds, the
-//   characterize container by measuring every job cell `ok` into a minimal measured Liberty (and
-//   calibrating once per Campaign), and an ORFS `run` by writing the metric files, final netlist and
-//   top-paths report the Pack reads, with a WNS fixed by how many measured custom cells the run may
-//   use (see the stand-in's docstring).
+//   characterize container (the abstract cells' mock characterization) by writing every job cell
+//   `ok` into a minimal Liberty, and an ORFS `run` by writing the metric files, final netlist and
+//   top-paths report the Pack reads, with a WNS fixed by how many characterized custom cells the run
+//   may use (see the stand-in's docstring).
 // - ORFS checkout: `test/fixtures/cellfmax-dry-path/orfs` (Makefile, aes config and SDC, sky130hd
 //   config with a DONT_USE_CELLS block, a minimal Liberty holding the foundry nor3_1 and nand2_1 the
 //   cells compare to, with their footprints and functions), copied into the home; empty celluzi and
@@ -48,11 +48,11 @@ import { writeLocalSite } from './support/site.ts';
 const packId = 'custom-cell-fmax-sky130-demo';
 const fixture = path.join(repoRoot, 'test/fixtures/cellfmax-dry-path');
 const IMAGE_ID = 'c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667';
-const CLAIM_BOUNDARY = 'Custom-cell timing is SPICE-characterized by HimaHarness (ngspice, sky130 tt 1.8 V 25 C, calibrated '
-  + 'against foundry cells to within 15 % p90): MEASURED from the Magic-extracted layout for DRC/LVS-clean '
-  + 'cells, MODELLED from the pre-layout netlist plus a parasitic estimate for abstract-layout cells '
-  + '(foundry-derived abstract LEF, no GDS, not tape-out ready). Results are open-source ORFS timing on '
-  + 'SKY130 under these models; not signoff, not silicon.';
+const CLAIM_BOUNDARY = 'Custom-cell timing is characterized by HimaHarness. DRC/LVS-clean cells are MEASURED: ngspice on the '
+  + 'Magic-extracted layout, sky130 tt 1.8 V 25 C, calibrated against foundry cells to within 15 % p90. '
+  + 'Abstract-layout cells (MOCK layout: foundry-derived abstract LEF, no GDS, not tape-out ready) have MOCK '
+  + 'timing: an RC model of the sized netlist anchored to the foundry tables, no SPICE (mock-fit.json records '
+  + 'its error). Results are open-source ORFS timing on SKY130 under these models; not signoff, not silicon.';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -100,10 +100,9 @@ const cellLef = (cell: Cell) => [
   ...['VPWR:POWER', 'VGND:GROUND', 'Y:SIGNAL', ...cell.inputs.map((pin) => `${pin}:SIGNAL`), 'VPB:POWER', 'VNB:GROUND']
     .flatMap((entry) => { const [pin, use] = entry.split(':'); return [`  PIN ${pin}`, `    USE ${use} ;`, `  END ${pin}`]; }),
   `END ${cell.name}`, ''].join('\n');
-/** The cell factory's files: SPICE, GDS, LEF and the Magic-extracted netlist HimaHarness characterizes. */
+/** An abstract (mock-layout) cell's files: the sized netlist HimaHarness mock-characterizes and the abstract LEF. */
 const cellFiles = (cell: Cell): Record<string, string> => ({
-  sp: `.subckt ${cell.name} ${cell.inputs.join(' ')} Y VPWR VGND\n.ends\n`, gds: `GDSII ${cell.name}\n`, lef: cellLef(cell),
-  ext: `.subckt ${cell.name} VPWR VGND Y ${cell.inputs.join(' ')}\n.ends\n`,
+  sp: `.subckt ${cell.name} ${cell.inputs.join(' ')} Y VPWR VGND\n.ends\n`, lef: cellLef(cell),
 });
 const sha = (text: string | Buffer) => createHash('sha256').update(text).digest('hex');
 
@@ -129,7 +128,7 @@ function roundDelivery(k: number, cells: readonly Cell[], { omitUsage = false, c
     if (cell.origin === `r${k}`) for (const key of Object.keys(files)) support[files[key]!] = bytes[key]!;
     return {
       name: cell.name, inputs: [...cell.inputs], outputs: ['Y'], functions: { Y: cell.function }, compareTo: cell.compareTo,
-      origin: cell.origin, layout: 'drc-lvs-clean',
+      origin: cell.origin, layout: 'abstract',
       files, sha256: Object.fromEntries(Object.keys(files).map((key) => [key, sha(bytes[key]!)])),
     };
   });
@@ -138,8 +137,8 @@ function roundDelivery(k: number, cells: readonly Cell[], { omitUsage = false, c
   support[`${prefix}/findings.md`] = `# Round ${k} findings\n\nStand-in findings.\n`;
   if (!omitUsage) support[`${prefix}/usage-guide.md`] = `# Round ${k} usage\n\nStand-in usage guide.\n`;
   const fresh = cells.filter((cell) => cell.origin === `r${k}`);
-  support[`${prefix}/library.md`] = ['| cell | function | vs foundry | factory |', '| --- | --- | --- | --- |',
-    ...fresh.map((cell) => `| ${cell.name} | Y=${cell.function} | ${cell.compareTo} | drc-lvs-clean |`), ''].join('\n');
+  support[`${prefix}/library.md`] = ['| cell | function | vs foundry | layout |', '| --- | --- | --- | --- |',
+    ...fresh.map((cell) => `| ${cell.name} | Y=${cell.function} | ${cell.compareTo} | abstract |`), ''].join('\n');
   const recipe = {
     schema: 'hima-cellfmax-round-recipe/1', round: k, periodNs: 3.6, synthesis: { method: 'orfs-abc' },
     library: { lib: `${prefix}/custom.lib`, lef: `${prefix}/custom.lef`, cells: recipeCells },
@@ -319,17 +318,20 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
     const names = expected.map(([name]) => name);
     const record = JSON.parse(await readFile(path.join(workspace, 'state/characterization.json'), 'utf8'));
     assert.equal(record.round, k);
-    assert.deepEqual(record.characterizedNames, names, `round ${k}: the characterize step measured the round's cells`);
+    assert.deepEqual(record.characterizedNames, names, `round ${k}: the characterize step mock-characterized the round's cells`);
     assert.deepEqual(record.cells.map((row: any) => [row.name, row.status, row.footprint]),
-      expected.map(([name, footprint]) => [name, 'measured', footprint]));
+      expected.map(([name, footprint]) => [name, 'mock', footprint]));
     assert.equal(record.characterizedLib, `runs/r${k}/char/custom.characterized.lib`);
-    const job = JSON.parse(await readFile(path.join(workspace, `runs/r${k}/char/extracted/job.json`), 'utf8'));
+    const job = JSON.parse(await readFile(path.join(workspace, `runs/r${k}/char/mock/job.json`), 'utf8'));
     assert.deepEqual(job.cells.map((cell: any) => [cell.name, cell.footprint, cell.functions.Y]), expected,
       `round ${k}: drop-in variants take the foundry footprint and function text`);
+    for (const cell of job.cells) {
+      assert.deepEqual(cell.anchors.at(-1)[0], cell.index_ref, `round ${k}: ${cell.name} is anchored to its compareTo cell`);
+    }
     const armCustom = JSON.parse(await readFile(path.join(workspace, 'state/arm-custom.json'), 'utf8'));
-    assert.deepEqual(armCustom.customCells, names, `round ${k}: the custom arm ran the measured cells`);
+    assert.deepEqual(armCustom.customCells, names, `round ${k}: the custom arm ran the characterized cells`);
     assert.equal(armCustom.sources['custom.characterized.lib'], sha(await readFile(path.join(workspace, record.characterizedLib))),
-      `round ${k}: the custom arm merged the measured Liberty`);
+      `round ${k}: the custom arm merged the characterized Liberty`);
     return [...new Set(since.map((rec: any) => rec.branchId as string | undefined).filter((id) => id !== undefined))].sort();
   };
 
@@ -469,17 +471,18 @@ test('cellfmax dry path: two rounds drive the whole graph and end goal-met at a 
     const lessons = JSON.parse(await readFile(path.join(r.workspace, 'state/lessons.json'), 'utf8'));
     assert.deepEqual(lessons.rounds.map((round: any) => [round.round, round.roundGainPct, round.roundImproved]), [[1, g1, true], [2, g2, true]]);
     // Every EDA call went to the stand-in through the Jobs' PATH: one image check, one characterize
-    // container a round (calibrating only in round 1), three ORFS runs a round pair (baseline, then
-    // custom and control each round) and one cell image per new cell.
+    // container a round (mock characterization: no calibration), three ORFS runs a round pair
+    // (baseline, then custom and control each round) and no cell image (abstract cells have no GDS).
     const calls = (await readFile(home.podmanLog, 'utf8')).trim().split('\n').map((line) => JSON.parse(line) as string[]);
     const variants = calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('orfs_arm.sh')))
       .map((argv) => argv.find((w) => w.startsWith('CELLFMAX_VARIANT='))).sort();
     assert.deepEqual(variants, ['CELLFMAX_VARIANT=base', 'CELLFMAX_VARIANT=control', 'CELLFMAX_VARIANT=control', 'CELLFMAX_VARIANT=custom', 'CELLFMAX_VARIANT=custom']);
     assert.equal(calls.filter((argv) => argv[0] === 'image').length, 1);
     assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('/characterize.py'))).length, 2, 'one characterize container a round');
-    const calibration = JSON.parse(await readFile(path.join(r.workspace, 'runs/calibration/calibration.json'), 'utf8'));
-    assert.match(calibration.firstJob, /\/runs\/r1\/char\/extracted\/job\.json$/, 'calibrated once, in round 1');
-    assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('klayout'))).length, 2, 'one KLayout image per new cell');
+    const charScripts = calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('/characterize.py')));
+    assert.ok(charScripts.every((argv) => argv.some((w) => w.includes('--netlist-kind mock')) && !argv.some((w) => w.includes('calibrate.py'))),
+      'abstract cells are mock-characterized, never calibrated or simulated');
+    assert.equal(calls.filter((argv) => argv[0] === 'run' && argv.some((w) => w.includes('klayout'))).length, 0, 'no cell image without GDS');
     t.diagnostic(`round gains ${g1} % then ${g2} %; run ${r.runId} ended ${r.run().status}`);
   } finally {
     await host.dispose(); await home.h.dispose();

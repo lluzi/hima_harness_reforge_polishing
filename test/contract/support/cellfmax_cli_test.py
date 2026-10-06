@@ -118,18 +118,18 @@ class Workspace:
         (self.root / "state" / "round-recipe.json").write_text(json.dumps(body))
         return body
 
-    def characterized(self, k=1, measured=("NOR3_PU2",), lib=CELL_LIB, modelled=()):
+    def characterized(self, k=1, measured=("NOR3_PU2",), lib=CELL_LIB, mock=()):
         """What the characterize step writes: the characterized Liberty and the per-cell outcome."""
         d = self.root / "runs" / ("r%d" % k) / "char"
         d.mkdir(parents=True, exist_ok=True)
         (d / "custom.characterized.lib").write_text(lib)
-        names = list(measured) + list(modelled)
+        names = list(measured) + list(mock)
         (self.root / "state" / "characterization.json").write_text(json.dumps({
             "schema": "hima-cellfmax-characterization/2", "round": k,
             "characterizedLib": "runs/r%d/char/custom.characterized.lib" % k if names else None,
             "characterizedNames": names,
             "cells": [{"name": n, "status": "measured", "basis": "extracted", "reason": None} for n in measured]
-                     + [{"name": n, "status": "modelled", "basis": "pre-layout", "reason": None} for n in modelled]}))
+                     + [{"name": n, "status": "mock", "basis": "mock", "reason": None} for n in mock]}))
 
     def arm(self, kind, k=1, period=3.6, wns=-0.1, finished=True, custom=14, forbidden=0, drc=0, recipe_sha=None, instances=37900, tns=-1.0):
         record = {"schema": "hima-cellfmax-arm/1", "arm": kind, "round": k, "periodNs": period, "finished": finished,
@@ -576,8 +576,8 @@ class MeasuredLibraryTest(unittest.TestCase):
         self.assertNotIn("GDS_ALLOW_EMPTY", variables)
         merged = (root / "runs" / "r1" / "control" / "inputs" / "merged.lib").read_text()
         self.assertIn("NOR3_PU2", merged)
-        # A modelled abstract cell joins the arms; it has no GDS, so the final stream allows it empty.
-        self.ws.characterized(measured=("NOR3_PU2",), modelled=("ABSTRACT1",))
+        # A mock-timed abstract cell joins the arms; it has no GDS, so the final stream allows it empty.
+        self.ws.characterized(measured=("NOR3_PU2",), mock=("ABSTRACT1",))
         variables, _, names = cli.prepare_run(root, inputs, root / "runs" / "r1" / "control", 3.6, body, "control")
         self.assertEqual(names, ["NOR3_PU2", "ABSTRACT1"])
         self.assertIn("ABSTRACT1", variables["DONT_USE_CELLS"].split())

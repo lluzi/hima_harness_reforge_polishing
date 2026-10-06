@@ -11,8 +11,56 @@ modelled Liberty (a foundry table times a derate) may not.
 | `characterize.py` | Job → `custom.measured.lib`, `characterization.json`, `<cell>.timing.csv` |
 | `calibrate.py` | Extracts foundry cells with Magic, characterizes them, compares them with the shipped Liberty and writes `calibration.json` |
 | `compare_lib.py` | Point-by-point ratio of one cell between two Liberty files |
+| `mockcore.py` | Mock characterization: RC model of a sized netlist, anchored to foundry tables (no SPICE) |
+| `fit_mock.py` | Fits the mock model to the foundry Liberty and scores it; writes `mock-fit.json` |
+| `mock-fit.json` | The fitted mock model, its fingerprint and its errors against foundry and SPICE tables |
 
-Unit tests (no ngspice needed): `python3 -m unittest test/contract/support/cellfmax_char_test.py`.
+Unit tests (no ngspice needed): `python3 -m unittest test/contract/support/cellfmax_char_test.py`
+and `test/contract/support/cellfmax_mock_test.py`.
+
+## Mock characterization (`--netlist-kind mock`, abstract cells, seconds)
+
+The demo's volume path. HimaHarness's characterize step uses it for every `layout: abstract` cell;
+an engineer may run it in the sandbox too:
+
+```sh
+python3 flow/toolbox/char/characterize.py job.json --reference-lib $REF --netlist-kind mock --out OUT \
+  [--foundry-spice /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/spice/sky130_fd_sc_hd.spice]
+```
+
+No calibration and no ngspice. Each job cell may carry `anchors`: `[[foundry cell, {foundry pin:
+cell pin or null}], ...]` in priority order (the CLI writes the recipe's `layoutFrom` sources, then
+`compareTo` with identical pins). Per arc:
+
+- The model (`mockcore.py`) splits the netlist into channel-connected stages, takes the worst
+  pull-up and pull-down series resistance through each gate input (L/W per device, parallel folds
+  merged), sums node capacitance (gate width, diffusion width × `diffOverGate`), and predicts each
+  NLDM entry from nine features of the worst stage path (stage count, internal R·C per edge,
+  last-stage R·C with the load, slew and two slew/RC blends), with coefficients per quantity.
+- Anchored arc (a foundry arc with the mapped pins and sense exists): foundry table × model(cell) /
+  model(foundry cell), entry by entry. The foundry netlist reproduces the foundry table exactly.
+- Model-only arc (no counterpart, e.g. a fused function): the model times its fitted median bias.
+- Every row is made non-decreasing in load; transitions are floored at 2 ps. Input capacitance is
+  `cgPfPerUm × gate width + c0Pf`.
+
+Outputs: `custom.mock.lib` and `custom.mock.standalone.lib` (banner `MOCK: RC model ...`, each cell
+naming the model fingerprint and how many arcs are anchored), `characterization.json` (`netlistKind:
+mock`, `mockFit` with the fit's scores, per cell `anchoredArcs` and `modelOnlyArcs`). 227 cells take
+about 3 s.
+
+Refit (about 70 s, pure Python) when the method changes:
+
+```sh
+python3 fit_mock.py --spice sky130_fd_sc_hd.spice --lib $REF \
+  --check-lib <a SPICE Liberty of real cells> --check-netlists <their .sp dir> --check-recipe <recipe> \
+  --check-label "<what the check library is>" --out mock-fit.json
+```
+
+The shipped fit (fingerprint in `mock-fit.json`) was trained on 345 combinational foundry cells and
+checked against the calibrated SPICE pre-layout tables of the 227 round-1 cells of run-b38106d8.
+Error is |mock − reference| / max(|reference|, 20 ps): anchored arcs p50 8–13 %, p90 29–48 %;
+model-only arcs p50 13–20 %, p90 37–50 %; signed bias at the table middle −5 % to +4 %; input
+capacitance p50 9 %, p90 21 %. The largest errors sit at the smallest loads and largest slews.
 
 ## Run (inside the IIC-OSIC-TOOLS container)
 
@@ -144,7 +192,7 @@ cell_rise but not for the transitions. **The tolerance is ±15 % p90 per quantit
 
 Rerun `calibrate.py` after any change to `METHOD`.
 
-## Pre-layout (modelled) path for abstract cells
+## Pre-layout (modelled) SPICE path for abstract cells (superseded in the demo by the mock)
 
 `calibrate.py --netlist pre-layout --out cal-pre` calibrates on the 12 foundry cells' schematic
 netlists from the PDK (`sky130_fd_sc_hd.spice`) instead of their extractions;

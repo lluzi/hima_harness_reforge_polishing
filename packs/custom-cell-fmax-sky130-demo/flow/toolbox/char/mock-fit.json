@@ -1,0 +1,171 @@
+{
+ "schema": "hima-mockchar-fit/1",
+ "model": {
+  "version": "mockchar/1",
+  "cgPfPerUm": 0.00120785,
+  "c0Pf": 0.00044292,
+  "diffOverGate": 0.5,
+  "wirePerNode": 0.0,
+  "coef": {
+   "cell_rise": [
+    0.03354175,
+    0.00470096,
+    0.01390668,
+    0.00316381,
+    0.00879512,
+    -0.08508234,
+    0.0121687,
+    0.31887068,
+    0.01837061
+   ],
+   "cell_fall": [
+    0.0138136,
+    0.03728882,
+    0.0158544,
+    0.00046751,
+    0.00142848,
+    0.00156296,
+    0.04572207,
+    -0.07377063,
+    -0.06466556
+   ],
+   "rise_transition": [
+    0.01610719,
+    -0.01063342,
+    0.00106628,
+    0.00033617,
+    0.01205,
+    -1.31716052,
+    0.00468777,
+    1.33577508,
+    1.31929348
+   ],
+   "fall_transition": [
+    0.01087146,
+    -0.00699721,
+    0.00205589,
+    0.00014597,
+    0.0026621,
+    -0.01027467,
+    0.00836331,
+    0.02837718,
+    -0.00549645
+   ]
+  },
+  "bias": {
+   "cell_rise": 1.0702,
+   "cell_fall": 1.1143,
+   "rise_transition": 1.0312,
+   "fall_transition": 1.0916
+  },
+  "floorNs": 0.002
+ },
+ "fingerprint": "7130b8b039dd1db9",
+ "trainingSource": "sky130_fd_sc_hd__tt_025C_1v80.lib (ORFS platform) + sky130_fd_sc_hd.spice schematics",
+ "errorMetric": "|mock - reference| / max(|reference|, 0.02 ns); capacitance relative",
+ "trainingCells": 345,
+ "training": {
+  "capacitance": {
+   "n": 1069,
+   "p50": 0.0307,
+   "p90": 0.0831
+  },
+  "cell_fall": {
+   "n": 54439,
+   "p50": 0.1739,
+   "p90": 0.5057
+  },
+  "cell_rise": {
+   "n": 54439,
+   "p50": 0.1352,
+   "p90": 0.3775
+  },
+  "fall_transition": {
+   "n": 54439,
+   "p50": 0.1386,
+   "p90": 0.425
+  },
+  "rise_transition": {
+   "n": 54439,
+   "p50": 0.1279,
+   "p90": 0.3677
+  }
+ },
+ "check": {
+  "lib": "SPICE pre-layout Liberty (ngspice, calibrated within 13.3 % p90 against foundry) of the 227 round-1 cells of run-b38106d8, 2026-10-05",
+  "cells": 227,
+  "failures": {},
+  "anchored": {
+   "cell_fall": {
+    "n": 32242,
+    "p50": 0.1241,
+    "p90": 0.4431
+   },
+   "cell_rise": {
+    "n": 32242,
+    "p50": 0.1273,
+    "p90": 0.484
+   },
+   "fall_transition": {
+    "n": 32242,
+    "p50": 0.1206,
+    "p90": 0.3575
+   },
+   "rise_transition": {
+    "n": 32242,
+    "p50": 0.0849,
+    "p90": 0.2943
+   }
+  },
+  "model": {
+   "cell_fall": {
+    "n": 17395,
+    "p50": 0.1987,
+    "p90": 0.4952
+   },
+   "cell_rise": {
+    "n": 17395,
+    "p50": 0.1377,
+    "p90": 0.4625
+   },
+   "fall_transition": {
+    "n": 17395,
+    "p50": 0.1597,
+    "p90": 0.4318
+   },
+   "rise_transition": {
+    "n": 17395,
+    "p50": 0.1257,
+    "p90": 0.3698
+   }
+  },
+  "capacitance": {
+   "n": 633,
+   "p50": 0.0856,
+   "p90": 0.2098
+  },
+  "midPointSigned": {
+   "cell_fall": {
+    "median": 0.0414,
+    "p10": -0.1748,
+    "p90": 0.2404
+   },
+   "cell_rise": {
+    "median": -0.0091,
+    "p10": -0.2742,
+    "p90": 0.3536
+   },
+   "fall_transition": {
+    "median": 0.0291,
+    "p10": -0.16,
+    "p90": 0.279
+   },
+   "rise_transition": {
+    "median": -0.0545,
+    "p10": -0.2197,
+    "p90": 0.1769
+   }
+  }
+ },
+ "wallSeconds": 67.2
+}

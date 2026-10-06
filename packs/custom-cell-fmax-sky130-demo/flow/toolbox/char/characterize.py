@@ -24,8 +24,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import charcore as cc  # noqa: E402
+import mockcore as mc  # noqa: E402
 
 DEFAULT_INDEX_REF = "sky130_fd_sc_hd__inv_1"
+FOUNDRY_SPICE = "/foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/spice/sky130_fd_sc_hd.spice"
 SPICEINIT = "set num_threads=1\nset ngbehavior=hsa\nset ng_nomodcheck\n"
 
 
@@ -223,7 +225,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("job")
     parser.add_argument("--reference-lib", required=True)
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument("--calibration", help="calibration.json from calibrate.py (required for a measured Liberty)")
     group.add_argument("--uncalibrated", action="store_true", help="diagnostics only: write custom.uncalibrated.lib")
     parser.add_argument("--out", required=True)
@@ -231,8 +233,10 @@ def main(argv=None):
     parser.add_argument("--ngspice", default="ngspice")
     parser.add_argument("--full-models", action="store_true", help="load the whole sky130 tt library (slow)")
     parser.add_argument("--library-name", default="custom_measured")
-    parser.add_argument("--netlist-kind", choices=("extracted", "pre-layout"), default="extracted",
-                        help="pre-layout: abstract-layout cells; needs a pre-layout calibration and writes custom.modelled.lib")
+    parser.add_argument("--netlist-kind", choices=("extracted", "pre-layout", "mock"), default="extracted",
+                        help="pre-layout: abstract-layout cells; needs a pre-layout calibration and writes custom.modelled.lib. "
+                             "mock: no SPICE; the RC model of mockcore.py anchored to foundry tables, writes custom.mock.lib")
+    parser.add_argument("--foundry-spice", default=FOUNDRY_SPICE, help="foundry schematic netlists (mock anchors)")
     args = parser.parse_args(argv)
     args.out = os.path.abspath(args.out)
     os.makedirs(args.out, exist_ok=True)
@@ -248,6 +252,10 @@ def main(argv=None):
         print("REFUSED: %s" % reason, file=sys.stderr)
         return 2
 
+    if args.netlist_kind == "mock":
+        return mock_main(args, summary, refuse)
+    if not args.calibration and not args.uncalibrated:
+        return refuse("a SPICE characterization needs --calibration (or --uncalibrated for diagnostics)")
     factors = None
     if args.calibration:
         try:
@@ -334,6 +342,73 @@ def main(argv=None):
         json.dump(summary, handle, indent=2)
     print("characterized %d/%d cells in %.1f s (%d workers) -> %s" % (ok, len(cells), summary["wallSeconds"], args.jobs,
                                                                       summary["liberty"] or "no Liberty"))
+    return 0 if ok == len(cells) else 1
+
+
+def mock_main(args, summary, refuse):
+    """Mock characterization: no SPICE, seconds for hundreds of cells (see mockcore.py)."""
+    if args.calibration or args.uncalibrated:
+        return refuse("--netlist-kind mock takes no calibration: its fit is mock-fit.json")
+    try:
+        fit = mc.load_model()
+        with open(args.job) as handle:
+            cells = [cc.normalize_cell(c) for c in (json.load(handle).get("cells") or [])]
+        with open(args.reference_lib) as handle:
+            lib_text = handle.read()
+        with open(args.foundry_spice) as handle:
+            spice_text = handle.read()
+    except (OSError, ValueError, cc.CharError) as error:
+        return refuse("mock characterization inputs: %s" % error)
+    if not cells:
+        return refuse("job %s lists no cells" % args.job)
+    names = [c["name"] for c in cells]
+    if len(set(names)) != len(names):
+        return refuse("job lists a cell name twice")
+    model = fit["model"]
+    started = time.time()
+    summary.update({"netlistKind": "mock", "method": {"version": model["version"]},
+                    "methodFingerprint": mc.model_fingerprint(model),
+                    "mockFit": {"file": mc.FIT_FILE, "fingerprint": fit.get("fingerprint"),
+                                "errorMetric": fit.get("errorMetric"), "training": fit.get("training"),
+                                "checkAgainstSpice": {k: (fit.get("check") or {}).get(k)
+                                                      for k in ("lib", "cells", "anchored", "model", "capacitance")}}})
+    ref_cells, ref_cache, groups = {}, {}, []
+    for cell in cells:
+        entry = {"name": cell["name"], "status": "failed"}
+        try:
+            for source, _ in cell["anchors"]:
+                if source not in ref_cells:
+                    ref_cells[source] = mc.foundry_stages(spice_text, lib_text, source)
+            index_1, index_2 = resolve_index(cell, lib_text, ref_cache)
+            with open(cell["spice"]) as handle:
+                text = handle.read()
+            arcs, caps, basis = mc.mock_cell(cell, text, index_1, index_2,
+                                             {k: v for k, v in ref_cells.items() if v}, cell["anchors"], model)
+        except (OSError, cc.CharError, KeyError, ValueError) as error:
+            entry["reason"] = str(error)
+            summary["cells"].append(entry)
+            continue
+        entry.update({"status": "ok", "spiceSha256": sha256(cell["spice"]), "capacitance": caps,
+                      "arcs": [{"output": a["output"], "input": a["input"], "timing_sense": a["sense"]} for a in arcs],
+                      "anchoredArcs": basis["anchored"], "modelOnlyArcs": basis["model"],
+                      "warnings": check_tables(arcs)})
+        comment = "mockchar %s model %s; %d of %d arcs anchored to foundry tables; netlist sha256 %s" % (
+            model["version"], mc.model_fingerprint(model)[:16], len(basis["anchored"]), len(arcs), entry["spiceSha256"][:16])
+        groups.append(cc.liberty_cell(cell, arcs, caps, index_1, index_2, mc.BANNER_MOCK, comment))
+        summary["cells"].append(entry)
+    if groups:
+        with open(os.path.join(args.out, "custom.mock.lib"), "w") as handle:
+            handle.write("/* %s; cell groups only: merge into the platform Liberty */\n\n" % mc.BANNER_MOCK)
+            handle.write("\n".join(groups))
+        with open(os.path.join(args.out, "custom.mock.standalone.lib"), "w") as handle:
+            handle.write(cc.standalone_library(args.library_name, groups))
+        summary["liberty"] = "custom.mock.lib"
+    ok = sum(1 for c in summary["cells"] if c["status"] == "ok")
+    summary.update({"wallSeconds": round(time.time() - started, 1), "ok": ok, "failed": len(cells) - ok})
+    with open(os.path.join(args.out, "characterization.json"), "w") as handle:
+        json.dump(summary, handle, indent=2)
+    print("mock-characterized %d/%d cells in %.1f s -> %s" % (ok, len(cells), summary["wallSeconds"],
+                                                              summary["liberty"] or "no Liberty"))
     return 0 if ok == len(cells) else 1
 
 

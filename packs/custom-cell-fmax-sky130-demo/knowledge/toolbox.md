@@ -54,7 +54,7 @@ cells are in `state/inputs.json` → `platformDontUse`. Merge your cells into th
 A cell without GDS needs `GDS_ALLOW_EMPTY=<name|name>`. Run at most two trials at once. One run
 takes about 8–20 min. Metrics: `logs/.../6_report.json` → `finish__timing__setup__ws`.
 
-## Build cells in volume: abstract cells (seconds)
+## Build cells in volume: abstract cells, the mock layout (seconds)
 
 ```sh
 A=<campaign>/flow/toolbox/abstract
@@ -66,10 +66,12 @@ from its foundry cell (multi-output, fused), `layoutFrom`: a list of `{"cell": "
 {foundry pin: your pin or null}}` placed side by side (a `null` pin's shapes become obstruction).
 Per cell it writes the sized SPICE netlist (bool2cmos + the variant, switch-level checked) and an
 abstract LEF: the foundry cells' pin, rail and obstruction geometry, so the router reaches every
-pin as it reaches the foundry cell's, widened by whole sites when your transistors are wider. The
-recipe entries come out with `layout: abstract`; HimaHarness models their timing from the netlist.
-236 cells take about 4 s; HimaHarness's characterization of them takes about 4–5 min. No GDS: the
-arms set `GDS_ALLOW_EMPTY` for these cells.
+pin as it reaches the foundry cell's, widened by whole sites when your transistors are wider. This
+is the demo's MOCK layout: it stands in for LibreCell layout. The recipe entries come out with
+`layout: abstract` (and the `layoutFrom` sources, which anchor the mock timing of each output);
+HimaHarness gives them MOCK timing from the netlist (`knowledge/evidence-and-claims.md`). 236 cells
+take about 4 s to build and about 3 s to mock-characterize. No GDS: the arms set `GDS_ALLOW_EMPTY`
+for these cells.
 
 ```json
 {"name": "MO_NAND2_NOR2", "inputs": ["A", "B"], "outputs": {"Y1": "!(A&B)", "Y2": "!(A|B)"},
@@ -78,8 +80,11 @@ arms set `GDS_ALLOW_EMPTY` for these cells.
                 {"cell": "nor2_1", "pins": {"A": "A", "B": "B", "Y": "Y2"}}]}
 ```
 
-## Real layouts: the cell factory (minutes; measured, not modelled)
+## Real layouts: the cell factory (not in this demo)
 
+This demo mocks layout and characterization so a round takes minutes of cell work; deliver abstract
+cells. The factory (real LibreCell layout, DRC, LVS, extraction, SPICE measurement) stays in the
+toolbox for a later, measured study and is documented here only for that.
 `flow/toolbox/factory/README.md` has the full spec format. In short:
 
 ```sh
@@ -106,18 +111,14 @@ python3 $F/to_recipe.py factory-out spec.json <k> "$PWD" --out cells.json
 - `to_recipe.py` copies every clean cell's `.sp`, `.gds`, `.lef`, `.ext.spice` into `cells/r<k>/lib/`,
   writes `cells/r<k>/library.lef` and `library.md`, and emits the recipe `library` object with SHA-256.
 
-## Measure before you deliver (optional)
+## Check your cells before you deliver (optional, seconds)
 
 HimaHarness characterizes every cell itself after delivery. To prune hopeless cells or to back your
-`agentClaim`, run the same characterizer (`flow/toolbox/char/README.md`). Abstract cells: spice =
-the `.sp`, add `--netlist-kind pre-layout` and use `<campaign>/runs/calibration-prelayout/`
-(`calibrate.py --netlist pre-layout` before the first characterize step, about 1 min). Clean
-layouts: write a job from your clean cells (spice = the `.ext.spice`, functions, `index_ref` =
-compareTo) and run
-`python3 flow/toolbox/char/characterize.py job.json --reference-lib $ORFS_ROOT/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib --calibration <campaign>/runs/calibration/calibration.json --out mychar --jobs 16`
-(the Campaign's calibration exists after the first characterize step; before that, run
-`calibrate.py` into your workspace, about 50 s). `compare_lib.py` prints point ratios against a
-foundry cell.
+`agentClaim`, run the same mock characterizer on your abstract cells: write a job (`flow/toolbox/char/README.md`;
+per cell `spice` = the `.sp`, `functions`, `index_ref` = compareTo, `anchors` =
+`[[compareTo, {pin: pin}]]` plus one `[foundry cell, pins]` per `layoutFrom` source) and run
+`python3 flow/toolbox/char/characterize.py job.json --reference-lib $ORFS_ROOT/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib --netlist-kind mock --out mychar`
+(about 3 s for 200+ cells). `compare_lib.py` prints point ratios against a foundry cell.
 
 ## Single-cell tools (the factory wraps these)
 
@@ -125,7 +126,7 @@ bool2cmos (`PYTHONPATH=/data/eda/project/bool2cmos:$PYTHONPATH python3 -m bool2c
 (`$CELLUZI_ROOT/tools/librecell_venv/bin/python3 -c 'import sys; from lclayout.standalone import main; ...'`),
 Magic extraction, Netgen LVS and the KLayout decks are all on the sandbox `PATH`; the celluzi copies in
 `flow/toolbox/celluzi/` are the older single-cell scripts (their `/foss/designs/celluzi` paths are
-`$CELLUZI_ROOT` here). Prefer the factory.
+`$CELLUZI_ROOT` here). Not needed for abstract cells.
 
 ## Images for datasheets
 
