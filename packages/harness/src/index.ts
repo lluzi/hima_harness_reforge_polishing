@@ -44,11 +44,8 @@ import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } fr
 import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
 import { registerDelegationGuard, registerAsyncDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
-import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
+import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
 import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
-import { Autopilot } from './autopilot.js';
-/** How often the Host re-kicks a Run standing idle on a self-driving node (#64 D-T04-1). */
-const autopilotSweepMs = 15_000;
 import { autopilotDrives } from './packs.js';
 import { claimSlot } from './job-cap.js';
 import { readDurableHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
@@ -101,7 +98,6 @@ export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discover
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
 export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
-export { WORKSHOP_ENTRY_SCHEMA } from './autopilot.js';
 export { autopilotOf, autopilotSegmentOf, autopilotDrives } from './packs.js';
 export * from './interactive-job.js';
 export * from './interactive-runtime.js';
@@ -536,9 +532,6 @@ export default class Hima extends Service {
   private factProjection:Promise<void>=Promise.resolve();
   private factNotifications:Promise<void>=Promise.resolve();
   private readonly notifiedSourceRevisions=new Map<string,number>();
-  /** The Harness's own driver of Pack-declared autopilot regions (ADR-0016). */
-  private autopilot: Autopilot | undefined;
-  private autopilotStopped = false;
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
   private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
@@ -664,9 +657,7 @@ export default class Hima extends Service {
       this.pendingProgressNotifications.clear();
       for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
       this.interactiveTimers?.dispose();
-      this.autopilotStopped = true;
       this.factStop.abort();
-      await this.autopilot?.drain();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
       await Promise.all([this.factProjection,this.factNotifications]);
@@ -1000,11 +991,8 @@ export default class Hima extends Service {
 
   startRun(request: StartRunRequest): Promise<StartRunResult> {
     if (this.exitRequest) return Promise.reject(new Error('the App is closing; no new Campaign may start'));
-    return startRun(this.deps(), request).then(started => { if (started.kind === 'ran') this.autopilot?.kick(started.run.id); return started; });
+    return startRun(this.deps(), request);
   }
-
-  /** What the autopilot told each Run's owner, oldest first (ADR-0016); for inspection and tests. */
-  autopilotNotices(runId: string): readonly string[] { return this.autopilot?.notices(runId) ?? []; }
 
   /** Whether the Pack's autopilot drives this node of this Run. */
   private autopilotNode(runId: string, nodeId: string): boolean {
@@ -1699,7 +1687,7 @@ export default class Hima extends Service {
     // Only the Host's own driver acts as the autopilot; no caller of this service may.
     if(request.origin==='autopilot')return {kind:'refused',context:await this.readExecutionContext(request.runId),reason:'Callers cannot take scheduler turns; inspect the current Run facts'};
     const result=await executionAction(this.deps(),request);
-    if(result.kind==='accepted'){this.notifyGuideBoundary(request.runId);this.autopilot?.kick(request.runId);}
+    if(result.kind==='accepted')this.notifyGuideBoundary(request.runId);
     return result;
   }
 

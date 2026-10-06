@@ -14,7 +14,6 @@
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/agent-workshop.host.test.ts",
     "test/contract/agentic-timing-closure-system.test.ts",
-    "test/contract/atcs-expert-operator.host.test.ts",
     "test/contract/boot.test.ts",
     "test/contract/boundary.test.ts",
     "test/contract/branch-autopilot.host.test.ts",
@@ -171,11 +170,9 @@
     "test/contract/resident-engineering.live.test.ts",
     "test/contract/jobs.live.test.ts",
     "test/contract/pack.live.test.ts",
-    "test/contract/ssh.live.test.ts",
-    "test/contract/atcs-operator-qualification.live.test.ts"
+    "test/contract/ssh.live.test.ts"
   ],
   "atcs-dry": [
-    "test/contract/atcs-dry-path.host.test.ts",
     "test/contract/atcs-resident-durable.host.test.ts",
     "test/contract/libinsight-resident-durable.host.test.ts"
   ],
