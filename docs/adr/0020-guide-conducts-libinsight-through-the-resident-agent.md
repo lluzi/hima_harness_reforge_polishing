@@ -27,3 +27,21 @@ status: accepted
   接口未就绪前，HimaHarness 侧以 Retained reports 呈现同一结果作为过渡，不伪称已在 LibInsight 内呈现。
 
 实施规格见 [LibInsight 驻场分析](../specs/libinsight-resident/spec.zh-CN.md)。
+
+## 2026-10-05 修订：Data Insight 的 Resident analyses 标签页
+
+用户同日追加：在 Data Insight 里为驻场 OpenCode 开一个标签页做定制图表，驻场 OpenCode 带 QuaLib API playbook，
+可在 linglong 上做 QuaLib API 编程与开发；授权 linglong 一次性准备与真实 QuaLib/模型任务；LibInsight 仓库保持
+不动。
+
+决定：
+
+- 标签页中的“Prepare”由 Host 把请求写入 Site 并对分析 Pack 做一次准备，“Confirm and start”即用户的一次确认，
+  由当前会话作为 Guide 经 `startGuidedRun` 启动普通 durable Run。这是 Guide 提案路径的直接入口，不是第二个
+  启动面：同一准备身份、同一 Run 所有权与 Pack Reader 判定，仍不经过 Campaign 配置页。
+- 每个请求是一个任务局部 Run（ADR-0017 Q5）。连续开发依靠 Site 上由 `admit-analysis` 写入的分析库与请求的
+  `buildsOn`，不建立常驻会话。
+- 在 LibInsight 提供扩展点之前，定制图表在 HimaHarness 标签页内用通用渲染器呈现，数据取自 Host 保留的 Reader
+  输入字节；它不是 LibInsight 页面，也不改写 LibInsight 的数据文件夹。这替代上文“以 Retained reports 过渡”。
+- QuaLib 进程逐个运行并逐进程选择 `59099@localhost` 许可证，不改许可证配置；跨 Site 与 XTop 的并发互斥仍未由
+  Host 保证，作为已知限制保留。
