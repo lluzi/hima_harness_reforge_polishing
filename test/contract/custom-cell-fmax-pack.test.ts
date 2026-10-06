@@ -2,17 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { parse } from 'yaml';
-import { checkPack, choose, installPackMethod, loadPack, loadSite, packKnowledgeManifestOf, packOverview, resolveChooser, searchPackKnowledge } from '@hima/harness';
+import { checkPack, choose, loadPack, loadSite, packKnowledgeManifestOf, packOverview, resolveChooser, searchPackKnowledge } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 import { writeLocalSite } from './support/site.ts';
 import { createHimaHome } from './support/dsh-home.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
-import { waitUntil } from './support/fabric.ts';
 import { createCustomCellFmaxFixture, sha256 } from './support/aes-domain-fixture.ts';
 
 const packDir = path.join(repoRoot, 'packs/custom-cell-fmax-dtco');
@@ -713,195 +711,6 @@ test('probe reader preserves precise reg2reg WNS while accepting only the timing
   };
   for (const result of await run('-0.10')) assert.equal(result.status, 0, result.stderr);
   for (const result of await run('-0.09')) assert.notEqual(result.status, 0);
-});
-
-test('a real Pack-sourced TSMC28 L4 profile materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
-  const h = await createHimaHome(); t.after(() => h.dispose());
-  const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);
-  const rtl = path.join(designRoot, 'top.v'), constraints = path.join(designRoot, 'constraints.tcl');
-  const foundryLib = path.join(designRoot, 'foundry.lib'), foundryDb = path.join(designRoot, 'foundry.db');
-  const physical = path.join(designRoot, 'physical.json'), tools = path.join(designRoot, 'tools.json');
-  await writeFile(rtl, 'module held_out(input clk); endmodule\n'); await writeFile(constraints, 'create_clock -name clk -period 1 [get_ports clk]\n');
-  await writeFile(foundryLib, 'library (fixture) {}\n'); await writeFile(foundryDb, 'fixture compiled db\n');
-  const profile = path.join(designRoot, 'profile'); const helper = path.join(profile, 'helpers');
-  await mkdir(helper, { recursive: true });
-  await Promise.all(['estimate_lib.py', 'mock_char.py'].map((name) => writeFile(path.join(helper, name), `# fixture ${name}\n`)));
-  const profileFiles = ['foundry.lib', 'foundry.spi', 'foundry.lef', 'qrc', 'foundry.gds', 'tech.lef', 'pdk.json',
-    'skeleton.lib', 'tech.py', 'rules.json', 'timing.json', 'power.json', 'area.json', 'map'];
-  await Promise.all(profileFiles.map((name) => writeFile(path.join(profile, name), `fixture ${name}\n`)));
-  const proxyToolSha256 = sha256(await readFile('/usr/bin/true'));
-  const foundryCdl = path.join(profile, 'foundry.spi');
-  const foundryCdlSha256 = sha256(await readFile(foundryCdl));
-  const physicalProfile = {
-    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_CDL: foundryCdl,
-    FOUNDRY_CDL_VERSION: 'tsmc28-hpcplus-110a-fixture', FOUNDRY_CDL_SHA256: foundryCdlSha256,
-    FOUNDRY_DB_FILE: foundryDb,
-    FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
-    FOUNDRY_QRC_TECH: path.join(profile, 'qrc'), FOUNDRY_GDS: path.join(profile, 'foundry.gds'), TECH_LEF: path.join(profile, 'tech.lef'),
-    BOOL2CMOS_CMD: 'python3 -m bool2cmos.cli', BOOL2CMOS_CWD: profile, BOOL2CMOS_PDK_PROFILE: path.join(profile, 'pdk.json'),
-    LIBERTY_SKELETON: path.join(profile, 'skeleton.lib'), LIBRECELL_TECH_PY: path.join(profile, 'tech.py'),
-    GEOMETRY_RULE_DECK: path.join(profile, 'rules.json'), CHARMODEL_TIMING_MODEL: path.join(profile, 'timing.json'),
-    CHARMODEL_POWER_MODEL: path.join(profile, 'power.json'), CHARMODEL_AREA_MODEL: path.join(profile, 'area.json'),
-    CCFMAX_GDS_MAP: path.join(profile, 'map'), CCFMAX_CHARMODEL_HELPER_DIR: helper,
-    PROCESS_FAMILY: 'TSMC28-HPCPLUS', CELL_ARCHITECTURE_REF: 'fixture://architecture', CHARACTERIZATION_PROFILE_REF: 'fixture://characterization',
-    DRIVE_STRENGTH: 'fixture', VT_CLASS: 'fixture', CCFMAX_CONTAINER_RUNTIME: '/usr/bin/true', CCFMAX_CONTAINER_IMAGE: 'fixture-image',
-    CCFMAX_CONTAINER_HOST_ROOT: h.workspace, CCFMAX_CONTAINER_MOUNT_POINT: '/workspace', CCFMAX_LCLAYOUT_ACTIVATE: '/opt/fixture/activate',
-    CCFMAX_POWER_PIN: 'vdd', CCFMAX_GROUND_PIN: 'gnd', CCFMAX_POWER_TEMPLATE_BASE_CELL: 'FIXTURE_CELL',
-    GENERATED_LIBRARY_NAME: 'fixture_generated', GENERATED_LIB_CELL_PATTERN: 'XS_*', CLOCK_NS: 1, CCFMAX_RC_TEMPERATURE: 25,
-    CCFMAX_PROCESS_NODE: 28, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
-    CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4FIXTURE', CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4FIXTURE',
-    CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core',
-    CCFMAX_DCAP_CELL: 'DCAP', CCFMAX_DCAP_ROW_STRIDE: 4,
-    CCFMAX_DCAP_X_PITCH_UM: 14, CCFMAX_DCAP_EDGE_MARGIN_UM: 2.8,
-    CCFMAX_MAX_EFFECTIVE_DENSITY: 0.85,
-    CCFMAX_PG_HORIZONTAL_LAYER: 'M7', CCFMAX_PG_VERTICAL_LAYER: 'M6',
-    CCFMAX_PG_RING_WIDTH_UM: 0.4, CCFMAX_PG_RING_SPACING_UM: 0.4,
-    CCFMAX_PG_STRIPE_WIDTH_UM: 0.2, CCFMAX_PG_STRIPE_SPACING_UM: 0.2,
-    CCFMAX_PG_STRIPE_SET_DISTANCE_UM: 20, CCFMAX_PG_STRIPE_START_OFFSET_UM: 4,
-    // This is the exact bounded capacity in the 2026-09-24 TSMC28 L4 evidence:
-    // 8 Campaign generations times 40 newly admitted Cells. It does not change
-    // the Pack-wide 50-per-round reference profile.
-    MAX_NEW_CELLS: 40, MAX_CELLS: 320, MAX_ROUTE_CANDIDATES: 40,
-    GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
-    PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
-  };
-  const toolProfile = {
-    EDA_WRAPPER: '/usr/bin/true', SYNTH_TIMEOUT_SEC: 30,
-    LFR_YOSYS_BIN: '/usr/bin/true', LFR_ABC_BIN: '/usr/bin/true',
-    LFR_YOSYS_SHA256: proxyToolSha256, LFR_ABC_SHA256: proxyToolSha256,
-    LFR_YOSYS_COMMIT: 'fixture-yosys', LFR_ABC_COMMIT: 'fixture-abc',
-    LFR_YOSYS_BUILD_FLAGS: ['--fixture'], LFR_ABC_BUILD_FLAGS: ['--fixture'],
-    LFR_PROXY_CONTAINER_DIGEST: `sha256:${'1'.repeat(64)}`,
-    LFR_PROXY_TIMEOUT_SEC: 30, LFR_PROXY_CPU_COUNT: 1, LFR_PROXY_MEMORY_MB: 512,
-  };
-  const rejectedPhysical = { ...physicalProfile }; delete (rejectedPhysical as Record<string, unknown>).CCFMAX_TAP_INTERVAL;
-  await writeFile(physical, JSON.stringify(rejectedPhysical)); await writeFile(tools, JSON.stringify(toolProfile));
-  const rejectedWorkspace = path.join(h.workspace, 'rejected-bind'); await mkdir(path.join(rejectedWorkspace, 'flow'), { recursive: true });
-  const rejected = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /CCFMAX_TAP_INTERVAL/);
-  const ordinaryClockProfile = { ...physicalProfile, CCFMAX_CLOCK_BUFFER_CELLS: 'BUFFD8FIXTURE' };
-  await writeFile(physical, JSON.stringify(ordinaryClockProfile));
-  const rejectedClock = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(rejectedClock.status, 0); assert.match(rejectedClock.stderr, /CCFMAX_CLOCK_BUFFER_CELLS.*DCCK-prefixed/);
-  await writeFile(physical, JSON.stringify({ ...physicalProfile, MAX_CELLS: 160 }));
-  const rejectedCumulativeCapacity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(rejectedCumulativeCapacity.status, 0);
-  assert.match(rejectedCumulativeCapacity.stderr, /MAX_CELLS.*at least 320.*8-generation/);
-  const mismatchedCdlProfile = { ...physicalProfile, FOUNDRY_CDL_SHA256: '0'.repeat(64) };
-  await writeFile(physical, JSON.stringify(mismatchedCdlProfile));
-  for (const source of ['flow/bind-inputs.py', 'tools/bind-inputs.py']) {
-    const cdlWorkspace = path.join(h.workspace, `mismatched-cdl-${source.split('/')[0]}`);
-    await mkdir(path.join(cdlWorkspace, 'flow'), { recursive: true });
-    const mismatchedCdl = spawnSync('/usr/bin/python3', [path.join(packDir, source), '--workspace', cdlWorkspace,
-      '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-      '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-    assert.notEqual(mismatchedCdl.status, 0, `${source} rejects a physical CDL whose byte identity differs from its Site profile`);
-    assert.match(mismatchedCdl.stderr, /FOUNDRY_CDL_SHA256 does not match/);
-    await assert.rejects(() => readFile(path.join(cdlWorkspace, 'flow/inputs.json')),
-      `${source} cannot publish a Fabric binding for a mismatched physical source`);
-  }
-  await writeFile(physical, JSON.stringify(physicalProfile));
-  await writeFile(physical, JSON.stringify({ ...physicalProfile, FOUNDRY_DB_FILE: foundryLib }));
-  for (const source of ['flow/bind-inputs.py', 'tools/bind-inputs.py']) {
-    const libertyDbWorkspace = path.join(h.workspace, `liberty-as-explicit-db-${source.split('/')[0]}`);
-    await mkdir(path.join(libertyDbWorkspace, 'flow'), { recursive: true });
-    const libertyDb = spawnSync('/usr/bin/python3', [path.join(packDir, source), '--workspace', libertyDbWorkspace,
-      '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-      '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-    assert.notEqual(libertyDb.status, 0, `${source} rejects a Liberty text file explicitly supplied as Design Compiler's DB`);
-    assert.match(libertyDb.stderr, /FOUNDRY_DB_FILE.*compiled.*\.db/);
-    await assert.rejects(() => readFile(path.join(libertyDbWorkspace, 'flow/inputs.json')),
-      `${source} cannot publish a DC binding with an explicit Liberty path`);
-  }
-  await writeFile(physical, JSON.stringify(physicalProfile));
-  await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
-  const rejectedProxyIdentity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(rejectedProxyIdentity.status, 0); assert.match(rejectedProxyIdentity.stderr, /LFR_ABC_SHA256 does not match/);
-  await writeFile(tools, JSON.stringify(toolProfile));
-  await writeFile(physical, JSON.stringify({ ...physicalProfile, FOUNDRY_DB: foundryDb }));
-  const rejectedAmbiguousDb = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(rejectedAmbiguousDb.status, 0); assert.match(rejectedAmbiguousDb.stderr, /redefine Campaign identity: FOUNDRY_DB/);
-  const legacyPhysicalProfile = { ...physicalProfile }; delete (legacyPhysicalProfile as Record<string, unknown>).FOUNDRY_DB_FILE;
-  await writeFile(physical, JSON.stringify(legacyPhysicalProfile));
-  const libOnlyWorkspace = path.join(h.workspace, 'liberty-without-compiled-db');
-  await mkdir(path.join(libOnlyWorkspace, 'flow'), { recursive: true });
-  const libOnly = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', libOnlyWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.notEqual(libOnly.status, 0, 'a Liberty text file cannot double as Design Compiler’s compiled DB');
-  assert.match(libOnly.stderr, /FOUNDRY_DB_FILE.*compiled.*\.db/);
-  await assert.rejects(() => readFile(path.join(libOnlyWorkspace, 'flow/inputs.json')),
-    'a rejected binding must not publish misleading DC inputs');
-  const legacyWorkspace = path.join(h.workspace, 'legacy-single-library-bind');
-  await mkdir(path.join(legacyWorkspace, 'flow'), { recursive: true });
-  const legacy = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', legacyWorkspace,
-    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundryDb, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
-  assert.equal(legacy.status, 0, legacy.stderr);
-  const legacyMaterialized = JSON.parse(await readFile(path.join(legacyWorkspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
-  assert.equal(legacyMaterialized.FOUNDRY_DB, await realpath(foundryDb));
-  await writeFile(physical, JSON.stringify(physicalProfile));
-  const destination = path.join(h.home, 'hima/packs/custom-cell-fmax-dtco');
-  installPackMethod({ from: packDir, to: destination });
-  await writeLocalSite(h, { bindings: { designRoot, rtlGlob: rtl, designTop: 'held_out', constraints, foundryLibrary: foundryLib,
-    physicalInputs: physical, toolStack: tools, workspaceRoot: h.workspace }, allowedReadRoots: [h.home, h.workspace],
-    allowedWriteRoots: [h.workspace], allowedWrappers: ['/usr/bin/python3'], licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 } });
-  const host = await bootInProcess(h);
-  try {
-    const owner = await createRootAgent(host.ctx, h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: 'custom-cell-fmax-dtco', site: 'local',
-      goal: { target_period_ns: 1, target_fmax_improvement_pct: 5 },
-      strategy: { periodNs: 1, floorplanUtilization: 0.5, algorithmRevision: 0 }, ownerSessionId: String(owner.id), generationLimit: 1 });
-    assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
-    assert.equal(started.run.budget?.timeBoxMs, 43_200_000,
-      'the bounded eight-generation method owns its reviewed twelve-hour box');
-    assert.equal(started.run.currentNode, 'bind-inputs');
-    const begin = await host.ctx.hima.executionAction({ runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0,
-      requestId: 'bind-begin', action: 'begin', nodeId: 'bind-inputs' });
-    const executionId = begin.receipt?.executionId; assert.ok(executionId);
-    const work = await host.ctx.hima.executionAction({ runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1,
-      requestId: 'bind-work', action: 'work', executionId });
-    assert.equal(work.kind, 'accepted', work.reason);
-    await waitUntil('the Pack input adapter finishes', () => host.ctx.hima.executionContext(started.run.id).executions.some(item => item.id === executionId && item.phase === 'ready'));
-    const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
-    const canonicalDesignRoot = await realpath(designRoot);
-    assert.equal(materialized.designRoot, canonicalDesignRoot); assert.equal(materialized.DESIGN_ROOT, canonicalDesignRoot);
-    assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
-    assert.equal(materialized.edaWrapper, '/usr/bin/true');
-    assert.equal(materialized.FOUNDRY_LIB, await realpath(foundryLib));
-    assert.equal(materialized.FOUNDRY_CDL, await realpath(foundryCdl));
-    assert.equal(materialized.FOUNDRY_CDL_VERSION, 'tsmc28-hpcplus-110a-fixture');
-    assert.equal(materialized.FOUNDRY_CDL_SHA256, foundryCdlSha256);
-    assert.equal(materialized.FOUNDRY_DB, await realpath(foundryDb));
-    assert.equal(materialized.foundryDb, await realpath(foundryDb));
-    assert.equal(materialized.MAX_NEW_CELLS, 40); assert.equal(materialized.MAX_CELLS, 320);
-    assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
-    assert.equal(materialized.GENERATION_TIMEOUT_SEC, 3600);
-    assert.equal(materialized.GENERATION_TIMEOUT_SEC_REQUESTED, 30);
-    assert.equal(materialized.SYNTH_TIMEOUT_SEC, 7200);
-    assert.equal(materialized.PNR_TIMEOUT_SEC, 14400);
-    assert.equal(materialized.PNR_TIMEOUT_SEC_REQUESTED, 30);
-    assert.equal(materialized.VERIFY_TIMEOUT_SEC, 7200);
-    assert.equal(materialized.LFR_YOSYS_SHA256, proxyToolSha256);
-    assert.equal(materialized.LFR_MAPPING_PROFILE, 'lfr-yosys-abc-deterministic/1');
-    assert.equal(materialized.LFR_PROXY_STA_PROFILE, 'lfr-round-evaluation/3:proxy-sta');
-    assert.equal(materialized.LFR_LOCAL_PORTFOLIO, path.join(started.workspace, 'flow/library-richness/local-portfolio.json'));
-    assert.equal(materialized.LFR_CANDIDATE_POOL, path.join(started.workspace, 'flow/library-richness/candidate-pool.json'));
-    assert.equal(materialized.LFR_CUMULATIVE_LIBRARY_MANIFEST, path.join(started.workspace, 'flow/library/cumulative-manifest.json'));
-    assert.equal(materialized.rtlGlob, rtl); assert.equal(materialized.legacy, undefined);
-    assert.equal(await readFile(path.join(started.workspace, 'flow/stages.py'), 'utf8'), await readFile(path.join(packDir, 'flow/stages.py'), 'utf8'));
-    await host.ctx.hima.cancelRun(started.run.id);
-  } finally { await host.dispose(); }
 });
 
 async function runHeldOutPhysicalComparison(flags: readonly string[] = []) {

@@ -21,52 +21,17 @@ import { taskToolOutput } from './task-contract.js';
 import type { ExecutionContext, ExecutionActionRequest, ExecutionActionResult } from './fabric.js';
 import { valueMeasurementReceipt, type ValueMeasurementReceipt } from './value-measurement.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { legacyAutomaticAllowed } from './runs.js';
 import type { Context } from '@deepseek-ai/cordis';
 // Type-only: these load the `ctx.webServer` and `ctx.connection` declaration merges onto Context.
 // Nothing is imported at runtime, so a host composed without a browser surface never loads them.
 import type {} from '@deepseek-ai/dsh-host-webserver';
 import type {} from '@deepseek-ai/dsh-client-connection';
-import type {
-  BlockerRecord,
-  CancelRecord,
-  CodeRecord,
-  DecisionChoice,
-  DecisionRecord,
-  ExperienceRecord,
-  JobIdentity,
-  JobRecord,
-  KnowledgeRecord,
-  Ledger,
-  LedgerRecord,
-  NodeKind,
-  NodeRecord,
-  NodeState,
-  ObservationRecord,
-  PackDataOrigin,
-  ReaderRef,
-  RevisionRecord,
-  RefusalRecord,
-  ResearchWriteRecord,
-  ResumedRecord,
-  RunBudget,
-  RunLoop,
-  RunFork,
-  RunMeters,
-  RunPurpose,
-  RunRecord,
-  RunStatus,
-  RunStrategy,
-  SessionRecord,
-  VerdictRecord,
-  WorkspaceRecord,
-} from './ledger.js';
+import type { BlockerRecord, CancelRecord, CodeRecord, DecisionChoice, DecisionRecord, ExperienceRecord, JobRecord, KnowledgeRecord, Ledger, LedgerRecord, ObservationRecord, PackDataOrigin, RefusalRecord, ResearchWriteRecord, ResumedRecord, RunBudget, RunLoop, RunFork, RunMeters, RunPurpose, RunRecord, RunStatus, RunStrategy, VerdictRecord, WorkspaceRecord } from './ledger.js';
 import type { GenerationView, RevisionHistoryView } from './generations.js';
 import { generationsOf } from './generations.js';
 // Type-only, like every other shape here: this module is bundled into the browser half as well, and
 // `channel.ts` reaches for ssh and the filesystem. What the audit routes answer comes through
 // `RemoteOperations`, from the host that has the audit.
-import type { RemoteCommand } from './channel.js';
 // The three record-to-view mappings a branch row reads too, so both folds are one description
 // (`record-views.ts`). Re-exported below, because a face reading a Run reads them from here.
 import { codeView, jobView, knowledgeView, nodeView, observationView, standingWorkshop } from './record-views.js';
@@ -81,9 +46,9 @@ import type { CancelResult } from './recovery.js';
 // Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
 // bundled into the browser half, where a runtime import of it would ship the seam to every browser.
 import type { MomentOnNode } from './moments.js';
-import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
+import { numericValue, allowsRunArgument, badRunArgument, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
 import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
-import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
+import { messagePage, type StartChoices } from './workbench.js';
 // Type-only, and erased: the ladder's rung names, declared where a pack folder is read.
 import type { PackStageOrRefusal } from './packs.js';
 // The one place the form's mark for a pack folder's stage is decided, beside every other word a
@@ -547,22 +512,6 @@ export interface RecordsView { readonly records: readonly LedgerRecord[] }
 /** One ledger record by id, exactly as the ledger holds it. */
 export interface RecordView { readonly record: LedgerRecord }
 
-/**
- * What this host process has asked Sites to run: HimaChannel's own audit, as the audit routes answer
- * it.
- *
- * `commands` is every command since the last drain, oldest first — Hima's own verbs and the Job
- * command lines alike, each with the argv it was decided on and the string the wire received.
- * `windowFilled` says whether the rolling window (`remoteCommandWindow` entries) has been full since
- * that drain: `true` and the list is no longer everything, so a caller claiming "every command" must
- * either drain more often or stop claiming it. The two travel together because neither is worth
- * reading without the other.
- */
-export interface AuditView {
-  readonly commands: readonly RemoteCommand[];
-  readonly windowFilled: boolean;
-}
-
 /** What `POST /hima/api/observe` accepts: the observe operation, as the command and the tool take it. */
 export interface ObserveBody extends ObserveRequest {
   readonly judge?: readonly string[];
@@ -788,17 +737,6 @@ export interface RemoteOperations {
    * request and the answer; what a moment *is* stays where the seam is.
    */
   openMoment(runId: string, instructions: string): Promise<MomentOnNode>;
-  /** HimaChannel's audit of what this host process has asked Sites to run since the last drain, and
-   *  whether its rolling window has been full. Here rather than read from `channel.ts` for the same
-   *  reason `readExperience` is: that module reaches ssh and this one is bundled into the browser
-   *  too. The host that implements this is the process whose audit it is — a caller could hand this
-   *  namespace some other list, and a list of remote commands nobody can place is not evidence. */
-  remoteCommandAudit(): AuditView;
-  /** The same answer, and the audit cleared, in one step: what a watcher takes so that a window's
-   *  worth of Job polling cannot evict the launch line it is watching for. Its own verb rather than
-   *  a flag on the read above, because a read that emptied what it read would take the evidence away
-   *  from whoever was only looking. */
-  drainRemoteCommandAudit(): AuditView;
   /** The packs installed on this host, by id, and the Sites by name: what the workbench page's start
    *  form offers, so nobody has to know an id by heart to start a Campaign. Read here rather than
    *  from a directory this module opens itself, because where they are installed is the host's
@@ -1233,7 +1171,7 @@ const failure = (status: number, code: HimaErrorCode, message: string): Answer =
 async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
   const sessionId = optionalString(body, 'sessionId');
-  if (!legacyAutomaticAllowed() && (!sessionId || !ops.validateSession?.(sessionId))) return failure(403, 'hima/not-authorized', 'Select a live project conversation before reading a report.');
+  if (!sessionId || !ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live project conversation before reading a report.');
   const request: ObserveBody = {
     site: requiredString(body, 'site'),
     path: requiredString(body, 'path'),
@@ -1242,7 +1180,7 @@ async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Pr
     judge: optionalStrings(body, 'judge'),
     params: optionalNumberRecord(body, 'params'),
   };
-  if (request.run && !legacyAutomaticAllowed()) {
+  if (request.run) {
     if (!ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Project authorization is unavailable.');
     try { await ops.authorizeRunAccess(sessionId!, request.run); }
     catch { return failure(403, 'hima/not-authorized', 'This report belongs to another project.'); }
@@ -1301,7 +1239,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
 /** That request as HimaFabric takes it: the flags' spelling turned into the operation's, with the
  *  time box converted from the minutes every face spells it in to the milliseconds it is stored in. */
 const startRequestOf = (request: StartRunBody): StartRunRequest => ({
-  ownerSessionId: legacyAutomaticAllowed() ? undefined : request.sessionId,
+  ownerSessionId: request.sessionId,
   notifyOwnerOnOpen: true,
   pack: request.pack,
   site: request.site,
@@ -1365,7 +1303,7 @@ async function startFromCampaignFileOperation(ops: RemoteOperations, request: St
     throw new BadRequest('Campaign preparation changed or is no longer ready; inspect the current Campaign file before confirming');
   }
   const startRequest: StartRunRequest = {
-    ownerSessionId: legacyAutomaticAllowed() ? undefined : request.sessionId,
+    ownerSessionId: request.sessionId,
     notifyOwnerOnOpen: true,
     proposalId: request.proposalId,
     pack: request.pack,
@@ -1399,7 +1337,7 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
   // A production Campaign is always the confirmation of one current preparation.  The old
   // automatic fixtures and an explicitly marked Pack test remain narrow escapes: they exercise
   // lower-level Fabric behaviour and are not a second user-facing start path.
-  if (request.proposalId === undefined && !legacyAutomaticAllowed()) {
+  if (request.proposalId === undefined) {
     throw new BadRequest('confirm the current Campaign proposal before starting a Run');
   }
   if (request.proposalId !== undefined) {
@@ -1484,7 +1422,6 @@ function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, {
 }
 
 function validateStartSession(ops: RemoteOperations, request: StartRunBody): void {
-  if (legacyAutomaticAllowed()) return;
   if (!request.sessionId || !ops.validateSession?.(request.sessionId)) throw new BadRequest('select a live conversation on this Host before preparing a Run');
 }
 
@@ -1498,11 +1435,9 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
   const body = await readJsonBody(req);
   const sessionId = requiredString(body, 'sessionId');
   if (!ops.validateSession?.(sessionId)) throw new BadRequest('the selected conversation is not live on this Host');
-  if (!legacyAutomaticAllowed()) {
-    if (!ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Project authorization is unavailable.');
-    try { await ops.authorizeRunAccess(sessionId, runId); }
-    catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
-  }
+  if (!ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Project authorization is unavailable.');
+  try { await ops.authorizeRunAccess(sessionId, runId); }
+  catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
   const action = requiredString(body, 'action');
   if (action !== 'pause' && action !== 'continue' && action !== 'cancel' && action !== 'measure-value' && action !== 'respond') throw new BadRequest('native control permits pause, continue, cancel, respond or a value-study measurement only; the conversational Agent owns node work');
   for (const field of ['expectedEpoch', 'expectedRevision'] as const) {
@@ -1547,14 +1482,6 @@ async function cancelOperation(ops: RemoteOperations, runId: string): Promise<An
   if (result.kind === 'not-started') {
     throw new NotInState(`run ${runId} has no fabric state: HimaFabric never started it, so there is nothing to cancel`);
   }
-  // A kill that did not take is nobody's request and not a Run view: the Run is not cancelled, and
-  // answering 200 with it would say a Job stopped that is still running. It is not a 500 either —
-  // nothing inside HimaHarness failed; the Site was asked to stop a Job and still has it, which is a
-  // fact about the Site with a code of its own. Its message names the session and is also on the
-  // Run's own blocked node, which this same fenced caller can fetch through this namespace.
-  if (result.kind === 'not-stopped') {
-    return failure(409, 'hima/run-not-stopped', `run ${runId} was not cancelled: its job was ${result.reason}`);
-  }
   if (result.kind === 'stopping') return { status: 202, body: { run: await runAnswer(ops, result.run), reason: result.reason } };
   return ok(await runAnswer(ops, result.run));
 }
@@ -1566,23 +1493,12 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
   try {
     result = await ops.resumeRun(runId, 'workbench');
   } catch (err) {
-    if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof RunReferenceError) {
-      throw new BadRequest(`cannot resume run ${runId}: ${err.message}`);
-    }
-    // A fault mid-drive is ours, and carries its own message for the same reason starting a Run does:
-    // it is already on this Run's blocked node, which the same caller can fetch through this namespace.
-    if (err instanceof RunFaultError) return failure(500, 'hima/internal', err.message);
+    if (err instanceof RunReferenceError) throw new BadRequest(`cannot resume run ${runId}: ${err.message}`);
     throw err;
   }
-  if (result.kind === 'not-waiting') {
-    throw new NotInState(`cannot resume run ${runId}: ${notWaitingToResume(result.run.status)}`);
-  }
-  // Not the conflict code: a Run that is waiting and still cannot be re-entered is not in the wrong
-  // state for a resume — it is a Run this machine cannot rebuild, because its workspace record, its
-  // node or its pack is missing. Re-reading the Run would tell the caller nothing new, which is what
-  // separates the two answers.
-  if (result.kind === 'unresumable') throw new BadRequest(`cannot resume run ${runId}: ${unresumableReason(result.reason)}`);
-  return ok(await runAnswer(ops, result.run));
+  // Not the conflict code: no Run can be re-entered here, so re-reading it would tell the caller
+  // nothing new.
+  throw new BadRequest(`cannot resume run ${runId}: ${unresumableReason(result.reason)}`);
 }
 
 /**
@@ -1688,31 +1604,12 @@ async function momentOperation(ops: RemoteOperations, runId: string, req: Incomi
 }
 
 /**
- * `GET /hima/api/audit` and `POST /hima/api/audit/drain`: what this host has asked Sites to run.
- *
- * Why this is a route at all. HimaChannel's audit is the evidence behind the channel's promise —
- * every command sent to a Site, as the wire received it — and it is *per process*: the array lives
- * in this host's memory and nothing outside this process can see it. A Campaign is driven here, in
- * the host, while whoever wants to check what it sent (an acceptance run, an operator) is somewhere
- * else. Without this route the claim "every command this harness sent" can only be made from inside
- * the host itself, which is the one place with nobody to make it to.
- *
- * Why a drain and not only a read. The window is `remoteCommandWindow` entries and a Job that is
- * waited on costs two commands a look, so a long Campaign overruns it: the `tmux new-session` line
- * that is the whole point of keeping an audit would be evicted by the polling that followed it. A
- * caller therefore drains as the Campaign runs, and what it took is exact — the window carries no
- * sequence numbers, so two overlapping *reads* of a repeating poll could not be aligned with
- * certainty, while two drains simply do not overlap. The host reads and clears in one synchronous
- * step, with nothing awaited between them, so no command can slip in unrecorded between the two.
- *
- * This global command buffer belongs to the explicit legacy test profile. Production callers use
- * scoped Run records and logs; exposing or draining this buffer would cross project boundaries.
+ * `GET /hima/api/audit` and `POST /hima/api/audit/drain`: HimaChannel's process-wide command audit
+ * crosses project boundaries, so no viewer reads or drains it. Production callers use the scoped Run
+ * records and logs.
  */
-function auditOperation(ops: RemoteOperations, drain: boolean): Answer {
-  // This global recorder is a test diagnostic, not a project data surface. Production viewers
-  // use the scoped Run records/log endpoints; they cannot read or drain other projects' commands.
-  if (!legacyAutomaticAllowed()) return failure(403, 'hima/not-authorized', 'Global command audit is available only in the explicit test diagnostic profile. Use this project’s Run records and logs.');
-  return ok(drain ? ops.drainRemoteCommandAudit() : ops.remoteCommandAudit());
+function auditOperation(): Answer {
+  return failure(403, 'hima/not-authorized', 'Global command audit is available only in the explicit test diagnostic profile. Use this project’s Run records and logs.');
 }
 
 /** Why a Campaign got no workspace. `unfit` is answered before a Run exists, so it cannot arrive here. */
@@ -1727,7 +1624,6 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   const rest = url.pathname.slice(HIMA_API_PREFIX.length);
   const method = req.method ?? 'GET';
   const authorize = async (runId: string): Promise<Answer | undefined> => {
-    if (legacyAutomaticAllowed()) return undefined;
     const sessionId = url.searchParams.get('sessionId');
     if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before reading a task.');
     try { await ops.authorizeRunAccess(sessionId, runId); return undefined; }
@@ -1807,10 +1703,8 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
 
   if (rest === '/runs') {
     if (method === 'GET') {
-      if (!legacyAutomaticAllowed()) {
-        const sessionId = url.searchParams.get('sessionId');
-        if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before listing tasks.');
-      }
+      const sessionId = url.searchParams.get('sessionId');
+      if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before listing tasks.');
       const visible: RunHeadView[] = [];
       for (const run of await runHeads(ops)) if (await authorize(run.id) === undefined) visible.push(run);
       return ok({ runs: visible });
@@ -1825,12 +1719,12 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   // away from the one who is watching.
   if (rest === '/audit') {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
-    return auditOperation(ops, false);
+    return auditOperation();
   }
 
   if (rest === '/audit/drain') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
-    return auditOperation(ops, true);
+    return auditOperation();
   }
 
   // Before the run read below, which would otherwise claim `/runs/start` as a run id — a Run's id is
@@ -2245,23 +2139,9 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
   return ok(answer);
 }
 
-/**
- * `GET /hima/`: the workbench page. The start form and the run list under it, newest first, or with
- * `?run=<id>` that Run's card rendered from the very run view `GET /hima/api/runs/<id>` answers
- * with. `?pack=<id>` renders the same page with that pack's own knob fields on the form, which is
- * what the page itself asks for when a person changes the selection (#58). A Run the ledger does not
- * hold is a 404 page saying so; a method other than GET a 405 page.
- */
-async function workbenchPage(ops: RemoteOperations, req: IncomingMessage, url: URL): Promise<{ readonly status: number; readonly html: string }> {
-  if (!legacyAutomaticAllowed()) return { status: 200, html: messagePage('Open the native HimaHarness workspace to select a project and inspect its tasks.') };
-  const method = req.method ?? 'GET';
-  if (method !== 'GET') return { status: 405, html: messagePage(`${method} ${url.pathname}; this page answers GET`) };
-  const runId = url.searchParams.get('run');
-  if (runId === null) return { status: 200, html: runsPage(await runHeads(ops), startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site'))) };
-  const view = await ops.readRunView?.(runId);
-  const record = ops.ledger.run(runId);
-  if (!record && !view) return { status: 404, html: messagePage(`no run ${runId} in the HimaLedger`) };
-  return { status: 200, html: runPage(view ?? await runAnswer(ops, record!)) };
+/** `GET /hima/`: the native App is the workspace; this address only says where to go. */
+function workbenchPage(): { readonly status: number; readonly html: string } {
+  return { status: 200, html: messagePage('Open the native HimaHarness workspace to select a project and inspect its tasks.') };
 }
 
 /**
@@ -2284,14 +2164,8 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
         sendPage(res, rejection, messagePage(rejection === 401 ? 'no browser session; open the workbench URL first' : 'this origin may not reach the Hima workbench'));
         return;
       }
-      const url = new URL(req.url ?? '/', 'http://hima.invalid');
-      try {
-        const answer = await workbenchPage(ops, req, url);
-        sendPage(res, answer.status, answer.html);
-      } catch (err) {
-        ctx.logger.error(err);
-        sendPage(res, 500, messagePage(`${url.pathname} failed inside HimaHarness; the reason is in the host log`));
-      }
+      const answer = workbenchPage();
+      sendPage(res, answer.status, answer.html);
     },
   });
   const api = ctx.webServer.register({

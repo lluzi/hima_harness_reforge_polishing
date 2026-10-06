@@ -54,10 +54,9 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 import { randomUUID } from 'node:crypto';
-import type { Ledger, MomentOutcome, SessionRecord } from './ledger.js';
-import { legacyAutomaticAllowed } from './runs.js';
+import type { Ledger, MomentOutcome } from './ledger.js';
 // The two refusals a moment can arrive with, in the leaf every face recognises errors by type from.
-import { MomentTurnError, NoCurrentNodeError, RunRunningError, RunStartError, WorkshopNodeError } from './errors.js';
+import { MomentTurnError, RunStartError } from './errors.js';
 // The tool names the pack authoring guard governs, which are also the names no moment may be opened
 // with (D48). One list, in the file that states the rule about them; see `openMoment` for why.
 import { GOVERNED_TOOLS } from './authoring.js';
@@ -71,42 +70,6 @@ export const HIMA_MOMENT_PRESET = 'hima-moment';
 
 /** The name of the prompt section a moment's instructions are registered as, for whoever reads one. */
 const INSTRUCTIONS_SECTION = 'hima:moment';
-
-/**
- * **Every session this process has open**, by session id, so that this process's own reconciliation
- * never closes one of them.
- *
- * The invariant `closeInterruptedMoments` keeps is "one close per open, and never two", and it keeps
- * it by reading the ledger: an `opened` with no `closed` beside it belonged to a host that went away.
- * That reading is true of every process but this one. The host serves while its boot reconciliation
- * runs — `reconcileRuns` is started and deliberately not awaited, because a Run resumed there may
- * have an hour of synthesis left in it — so a moment opened through the fenced route during that
- * window has its `opened` on the ledger and is *live in this process*. Reconciliation would write
- * `closed: interrupted` for it, and the moment's own `close()` would then write `closed: completed`:
- * two closes for one open, which is the one thing this pair of functions exists to prevent.
- *
- * A process-local set is the whole of the fix, and it is process-local by nature: a moment lives in
- * one process, the session and the agent are that process's, and neither survives the host that made
- * them. So this says exactly what no ledger can — which of these sessions is still somebody's. An id
- * is taken out again the instant its `closed` record is on the ledger, which is the instant the
- * reading above becomes true of it again, so the set stays the size of what is actually open.
- */
-const openedHere = new Set<string>();
-
-/**
- * The interrupted-close pass this process is running, or has run: what makes the pass single-file,
- * and what the fenced route waits for before it opens anything.
- *
- * Two reasons it is here rather than a promise taken off the fabric. First, `closeInterruptedMoments`
- * reads the ledger and then appends, so two passes overlapping would each see the same `opened` and
- * each write a close for it — chaining them here makes that impossible however many callers there
- * are. Second, a route that waited on the fabric's `reconciled` would wait on the *whole* of
- * reconciliation, which is the one thing that promise is documented never to be waited on for: it
- * carries Runs that may have an hour of synthesis still to come. What the route actually needs is
- * this much and no more — that the boot's interrupted closes are on the ledger before it opens a
- * moment of its own, so the records of one Run read in the order they happened.
- */
-let momentReconciliation: Promise<unknown> = Promise.resolve();
 
 /**
  * Three dsh services this module reads through `ctx.get` rather than through a declaration merge,
@@ -186,7 +149,7 @@ export interface MomentTurn {
 
 /**
  * One open model session. `ask` runs one turn; `close` disposes the session and writes the record
- * that says so. A moment that is never closed is one the next boot closes `interrupted`.
+ * that says so.
  */
 export interface Moment {
   /** dsh's own session id, which is also the agent's: what finds this session's log on this machine. */
@@ -283,15 +246,9 @@ export async function openMoment(deps: {readonly ledger:{appendSession(runId:str
   // An absent key, never an undefined one, and only on the `opened` record: what a moment was opened
   // for is settled when it is composed (#62).
   const forWorkshop = request.workshop === undefined ? {} : { workshop: request.workshop };
-  // Claimed before the `opened` record exists, never after: from the instant that record is on the
-  // ledger this process's own reconciliation could read it as a moment somebody else left open, and
-  // a claim made afterwards would have a window to be too late in.
-  // The fixed native identity is journaled in PG and never enters the legacy Ledger close pass.
-  if(request.sessionId===undefined) openedHere.add(head.sessionId);
   try {
     await ledger.appendSession(request.runId, { ...head, event: 'opened', tools, ...forWorkshop });
   } catch (err) {
-    openedHere.delete(head.sessionId);
     // A session this ledger will not record is a session nothing can ever close: no `opened` record
     // means no reconciliation will find it, and the caller is about to be handed an exception rather
     // than a moment. So it is disposed here, where it is still in hand.
@@ -347,7 +304,6 @@ export async function openMoment(deps: {readonly ledger:{appendSession(runId:str
         // Both after the record is on the ledger, and in this order: until it is there, this process
         // still owns an open session and the close has not happened.
         closed = true;
-        openedHere.delete(head.sessionId);
         if (disposeFailed !== undefined) {
           throw new Error(`the model session ${head.sessionId} is recorded ${outcome} but would not dispose: ${messageOf(disposeFailed)}`, { cause: disposeFailed });
         }
@@ -397,104 +353,6 @@ function whyNothingCame(agent: Agent): string {
   return 'the turn ended without the model being asked anything';
 }
 
-/**
- * Every moment this ledger has open, oldest first: an `opened` record with no `closed` beside it.
- *
- * Paired by session id rather than by order, because two moments of one Run are two sessions and a
- * host that went away during the second left the first one closed.
- */
-export const openMomentsIn = (ledger: Ledger, runId: string): SessionRecord[] => {
-  const opened: SessionRecord[] = [];
-  const closed = new Set<string>();
-  for (const record of ledger.records({ runId, type: 'session' })) {
-    if (record.type !== 'session') continue;
-    if (record.event === 'opened') opened.push(record);
-    else closed.add(record.sessionId);
-  }
-  return opened.filter((record) => !closed.has(record.sessionId));
-};
-
-/**
- * Close every moment a host left open, `interrupted` — exactly one close per open, and never a
- * second one (#59).
- *
- * A moment lives in one process: the session is dsh's, the agent is dsh's, and neither survives the
- * host that made them. So an `opened` record with no `closed` is not a moment that might still be
- * running somewhere — it is a moment that ended when its host did, and the ledger is the only thing
- * left that knows it happened. This writes the close it is missing, with the outcome that says what
- * really became of it, so a Campaign's records never leave a model session hanging open.
- *
- * It is not a retry: nothing is re-asked here. The node the moment belonged to is carried on by the
- * reconciliation of the Run itself, and a moment opened again on that node is the next attempt, with
- * its own session and its own pair of records.
- *
- * **Never a session this process has open.** The host serves while its boot reconciliation runs, so
- * a moment opened through the fenced route in that window is on the ledger and live in this process
- * at the same time; `openedHere` is what tells the two apart, and skipping it is what keeps "one
- * close per open" true against this process as well as against the last one.
- *
- * **One pass at a time.** Each call waits for the pass before it: the walk reads the ledger and then
- * appends, so two overlapping passes would each see the same `opened` and each write a close for it.
- *
- * @param ledger - the ledger to close them in.
- * @returns the `closed` records it wrote, in the order it wrote them.
- */
-export function closeInterruptedMoments(ledger: Ledger): Promise<SessionRecord[]> {
-  const pass = momentReconciliation.then(() => closeInterruptedMomentsNow(ledger), () => closeInterruptedMomentsNow(ledger));
-  // What the next pass and the fenced route wait on. Settled either way: a pass that threw is still a
-  // pass that is over, and nothing here is any caller's to be kept waiting by.
-  momentReconciliation = pass.then(() => undefined, () => undefined);
-  return pass;
-}
-
-/** One pass of the above, once it is this pass's turn. */
-async function closeInterruptedMomentsNow(ledger: Ledger): Promise<SessionRecord[]> {
-  const written: SessionRecord[] = [];
-  for (const run of ledger.runs()) {
-    // The set is consulted in the same tick as the snapshot it guards. Checked per element instead, a
-    // session this process closes during one of the appends below has left the set by the time its
-    // own turn comes, and the stale snapshot would hand it the second close this pass exists to
-    // prevent.
-    for (const open of openMomentsIn(ledger, run.id).filter((o) => !openedHere.has(o.sessionId))) {
-      written.push(await ledger.appendSession(run.id, {
-        event: 'closed',
-        preset: open.preset,
-        sessionId: open.sessionId,
-        model: open.model,
-        nodeId: open.nodeId,
-        attempt: open.attempt,
-        outcome: 'interrupted',
-      }));
-    }
-  }
-  return written;
-}
-
-/**
- * Which moment at this node the Run is about to open: one past the highest attempt any moment of
- * that node has made in the Generation the Run is in.
- *
- * Counted over this node's own `session` records rather than over its node records, because a moment
- * is not a node transition and one node's turn may make several of them. It is `attemptOf`'s
- * question asked about a different kind of attempt, and it is here rather than in `budget.ts` for
- * that reason: what a Retry allowance counts is turns at a node, and a moment spends none of it.
- *
- * Narrowed to the Generation and the drill-down Loop the Run is in, exactly as every other count
- * over a node in this harness is: a node that asks a model once per Generation asks it for the first
- * time each time, and a moment numbered 3 beside a node record numbered 1 would be two answers to
- * one question. Both narrowings read what the ledger already stamped on each record.
- */
-export const nextMomentAttempt = (ledger: Ledger, runId: string, nodeId: string): number => {
-  const run = ledger.run(runId);
-  const generation = run?.loop?.generation ?? run?.generation;
-  return ledger.records({ runId, type: 'session' })
-    .reduce((highest, r) => (
-      r.type === 'session' && r.nodeId === nodeId && r.generation === generation && r.loopId === run?.loop?.id && r.attempt > highest
-        ? r.attempt
-        : highest
-    ), 0) + 1;
-};
-
 /** What opening a moment on a Run's current node answered. */
 export interface MomentOnNode extends MomentTurn {
   readonly sessionId: string;
@@ -506,101 +364,19 @@ export interface MomentOnNode extends MomentTurn {
 }
 
 /**
- * Open one moment on the node a Run stands at, ask it one thing, and close it.
+ * The `POST /hima/api/runs/<id>/moment` route for a Run that is not durable. Every current Run belongs
+ * to its conversation Agent, and historical Runs never open a second execution Agent, so the answer
+ * is always a refusal; nothing is composed or written.
  *
- * The whole of what the `POST /hima/api/runs/<id>/moment` route does, here rather than in `remote.ts`
- * because that module is bundled into the browser half and must reach no dsh seam at all. It is also
- * how the live check asks a real model one question with the owner's key, and the shape #62's
- * workshop node consults one in — the same three steps, with the pack's three tools instead of none.
- *
- * The moment is given **no tools**: what this proves is the mechanism, and a session that can only
- * answer is the one whose tool list can be asserted to be empty. The one string the caller sends is
- * both the session's instructions and the turn it is asked, because a moment's purpose is the whole
- * of what this route has to say to a model and a turn has to be made of something; #62's act node
- * hands the two in separately, which is what the interface above is shaped for.
- *
- * @param deps - the ledger and the host.
- * @param runId - the Run whose current node the moment is opened on.
- * @param instructions - the whole of the session's system prompt.
- * @returns what the model answered, with the session it answered in.
- * @throws MomentTurnError when the turn produced no answer; the moment is closed `failed` first.
+ * @throws RunStartError naming why no moment is opened.
  */
-export async function momentOnCurrentNode(deps: MomentDeps, runId: string, instructions: string): Promise<MomentOnNode> {
-  // The host serves while its boot reconciliation runs, so this route can be asked for a moment
-  // before that reconciliation has written the closes the last host's moments are missing. Waiting
-  // for that one pass — and not for the whole of reconciliation, which may have an hour of synthesis
-  // in it — is what makes a Run's session records read in the order they happened: the interrupted
-  // closes first, then this moment's own pair. It is already settled at every other time.
-  await momentReconciliation;
+export async function momentOnCurrentNode(deps: MomentDeps, runId: string, _instructions: string): Promise<MomentOnNode> {
   const run = deps.ledger.run(runId);
   if (!run) throw new Error(`unknown run ${runId}`);
   if (run.control !== undefined) {
     throw new RunStartError(`run ${runId} is controlled by its conversation Agent; separate model moments are unavailable in every Run state`);
   }
-  // Production historical Runs cannot open a second execution Agent while explicit adoption
-  // verifies their boundary. Standalone moments survive only in the isolated legacy regression.
-  if (!legacyAutomaticAllowed()) {
-    throw new RunStartError('standalone historical model moments are unavailable; use the conversation Agent to inspect this Run');
-  }
-  // Never while somebody is driving this Run (#62). The drive opens its own moments at the node it
-  // is standing on, numbered by that node's attempt; a moment opened here at the same time would
-  // take the number the next retry is about to take, and the node's session records would stop being
-  // one pair per attempt. Refused rather than queued: what the caller wants is a moment on a node
-  // that is standing still, and this Run is not.
-  if (run.status === 'running') {
-    throw new RunRunningError(
-      `run ${runId} is running, so it is opening its own moments at node ${run.currentNode ?? '(none)'}: `
-      + 'a moment opened here at the same time would number its session against that attempt. Ask again once the run has ended or is waiting.',
-    );
-  }
-  const nodeId = run.currentNode;
-  if (nodeId === undefined) throw new NoCurrentNodeError(`run ${runId} stands at no node, so there is nothing to open a moment on`);
-  // And never at a node whose moments are the fabric's (#62). A workshop moment a host went away in
-  // the middle of is reconciled by the next boot, which blocks the node and leaves the Run `waiting`
-  // **at that node** — the rule above sees a Run that is not running and lets it through — and the
-  // attempt after it is the resume's to open, numbered by the node. A moment opened here first would
-  // take that number.
-  //
-  // Not the allowance case: a workshop that spends its Retry allowance leaves the Run at the pack's
-  // own Wait node, where a moment of this route's is numbered against *that* node and collides with
-  // nothing. The state this refusal is about is the one a restart leaves, where the Run stands where
-  // it stood.
-  //
-  // Off the ledger alone, and off the latest **opened** session record at that node: the `workshop`
-  // block is written where a moment is composed, so only an `opened` record carries one (the schema
-  // refuses it on a `closed`), and the latest of them is what the node last opened. A Run waiting
-  // anywhere else — at a tool node, at a pack's own Wait node before a workshop was ever reached —
-  // carries no such record and is not refused.
-  if (run.status === 'waiting') {
-    const opened = deps.ledger.records({ runId, type: 'session' })
-      .findLast((r): r is SessionRecord => r.type === 'session' && r.event === 'opened' && r.nodeId === nodeId);
-    if (opened?.workshop !== undefined) {
-      throw new WorkshopNodeError(
-        `run ${runId} is waiting at node ${nodeId}, which opens workshop "${opened.workshop.id}": `
-        + 'the moments of a workshop node are the fabric\'s, numbered by that node\'s own attempt, and the next one is opened by resuming the run. '
-        + 'A moment opened here would take that attempt\'s number.',
-      );
-    }
-  }
-  const attempt = nextMomentAttempt(deps.ledger, runId, nodeId);
-  const moment = await openMoment(deps, { runId, nodeId, attempt, preset: HIMA_MOMENT_PRESET, instructions, tools: [] });
-  let turn: MomentTurn;
-  try {
-    turn = await moment.ask(instructions);
-  } catch (err) {
-    // What the model did is what the caller asked about, so a close that also fails is said *beside*
-    // that and never in place of it: raising the close's own error here would answer a refused model
-    // with a 500 and lose the model route's words, which are the whole content of a `MomentTurnError`.
-    // The kind is kept too — the route recognises its 502 by type — and the original travels as the
-    // `cause` so nothing is dropped.
-    const alsoFailed = await moment.close('failed').then(() => undefined, (closeErr: unknown) => messageOf(closeErr));
-    if (alsoFailed === undefined) throw err;
-    const said = `${messageOf(err)} (and the session would not close cleanly afterwards: ${alsoFailed})`;
-    throw err instanceof MomentTurnError ? new MomentTurnError(said, { cause: err }) : new Error(said, { cause: err });
-  }
-  await moment.close('completed');
-  return { ...turn, sessionId: moment.sessionId, provider: moment.provider, model: moment.model,
-    tools: moment.tools, nodeId, attempt };
+  throw new RunStartError('standalone historical model moments are unavailable; use the conversation Agent to inspect this Run');
 }
 
 /** Read a completed native moment from the persisted session log, including after Host loss. */

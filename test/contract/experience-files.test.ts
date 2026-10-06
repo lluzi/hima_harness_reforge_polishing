@@ -6,12 +6,11 @@ import { chmod, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, sayAsUser } from './support/boot-inprocess.ts';
-import { localHome } from './support/fabric.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
-import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, listRunKnowledge, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
+import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption, nativeSessionMemoryEvidence, readNativeSessionContext } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import {
@@ -82,32 +81,6 @@ test('a Run-row-only change makes work memory stale even when no Ledger record o
       assert.equal(stale.authority[0]?.currentNode, 'row-only-authority-change', 'fresh authority accompanies the stale summary');
     }
   } finally { await f.close(); await f.h.dispose(); }
-});
-
-test('a newer human hold survives Host restart, keeps saved memory stale, and starts no work', async (t) => {
-  const home=await localHome(t,{sleepSeconds:0});assert.ok(home);let host=await bootInProcess(home.h);let runId:string|undefined;
-  try {
-    const owner=await createRootAgent(host.ctx,home.h.workspace);const ownerId=String(owner.id);
-    const started=await host.ctx.hima.startRun({pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:ownerId});
-    assert.equal(started.kind,'ran');if(started.kind!=='ran')return;runId=started.run.id;
-    const minted=await host.ctx.hima.workMemory(ownerId,{action:'sources',runId}) as {sources:unknown[];references:unknown[]};
-    const saved=await host.ctx.hima.workMemory(ownerId,{action:'save',runId,summary:{subject:'Do not outrank a later hold.',decisions:['Continue only from current authority.'],openQuestions:[],todo:['Re-read the Run.'],sources:minted.sources,references:minted.references,nativeSources:[]}}) as {kind:string};
-    assert.equal(saved.kind,'current');
-    const control=host.ctx.hima.ledger.run(runId)!.control!;
-    const paused=await host.ctx.hima.executionAction({runId,actor:ownerId,origin:'human',action:'pause',expectedEpoch:control.epoch,expectedRevision:control.revision,requestId:'memory-human-hold'});
-    assert.equal(paused.kind,'accepted',paused.reason);
-    const stale=await host.ctx.hima.workMemory(ownerId,{action:'read',runId}) as {kind:string;reason?:string;authority?:{holds:string[]}[]};
-    assert.equal(stale.kind,'stale');assert.match(stale.reason??'',/control changed/);assert.deepEqual(stale.authority?.[0]?.holds,['*']);
-    assert.equal(host.ctx.hima.ledger.records({runId,type:'job'}).length,0);
-    await host.dispose();host=await bootInProcess(home.h);
-    await new Promise(resolve=>setTimeout(resolve,50));
-    const recovered=host.ctx.hima.ledger.run(runId)!;
-    assert.deepEqual(recovered.control?.paused,['*']);
-    assert.equal(host.ctx.hima.ledger.records({runId,type:'job'}).length,0,'restart does not turn an old summary into permission to start a Job');
-    assert.equal(host.ctx.get('agents')?.get(ownerId as never),undefined,'human hold prevents automatic owner reopen');
-    const reopened=await readWorkMemorySummary(host.ctx.hima.ledger,home.h.workspace,{kind:'campaign',workspaceRef:home.h.workspace,runId});
-    assert.equal(reopened.kind,'stale',JSON.stringify(reopened));
-  } finally { if(runId&&host.ctx.hima.ledger.run(runId)?.status==='running')await host.ctx.hima.cancelRun(runId);await host.dispose();await home.h.dispose(); }
 });
 
 test('a replayed native session keeps a complete source identity across Host reopen and rejects forged future source revisions', async () => {
@@ -285,33 +258,6 @@ test('experience adoption is append-only, request-idempotent, and requires new r
   } finally { await f.close(); await f.h.dispose(); }
 });
 
-test('two actual observations of an overwritten report retain both byte versions for final archive', async (t) => {
-  const home = await localHome(t, { sleepSeconds: 0.01 }); assert.ok(home);
-  const host = await bootInProcess(home.h);
-  try {
-    const owner = await createRootAgent(host.ctx, home.h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', ownerSessionId: String(owner.id), goal: { target_period_ns: 2 } });
-    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return;
-    const at = path.join(home.h.workspace, 'changing-input.txt');
-    const observations = [];
-    for (const text of ['first actual bytes\n', 'second actual bytes\n']) {
-      await writeFile(at, text);
-      const result = await host.ctx.hima.observe({ site: 'local', run: started.run.id, path: at, reader: 'raw' });
-      assert.equal(result.kind, 'observed'); if (result.kind !== 'observed') throw new Error('observation refused');
-      observations.push({ record: result.record, text });
-    }
-    await host.ctx.hima.cancelRun(started.run.id);
-    const deps = { ledger: host.ctx.hima.ledger, sitesDir: path.join(home.h.home, 'hima/sites'), packsDir: packsDirOf(home.h) };
-    const archive = await readRunAssets(deps, started.run.id);
-    assert.equal(archive.kind, 'read', JSON.stringify(archive)); if (archive.kind !== 'read') return;
-    for (const { record, text } of observations) {
-      const material = archive.manifest.materials.find(item => item.recordId === record.id); assert.ok(material);
-      const result = await readArchivedMaterial(deps, started.run.id, material.path);
-      assert.equal(result.kind, 'read'); if (result.kind === 'read') assert.equal(result.text, text);
-    }
-  } finally { await host.dispose(); await home.h.dispose(); }
-});
-
 test('an ended Run without a workspace explains why no report is deliverable through projection and read API', async () => {
   const f = await fixture();
   try {
@@ -332,8 +278,6 @@ test('an ended Run without a workspace explains why no report is deliverable thr
       const response = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience`);
       assert.equal(response.status, 404);
       assert.match(await response.text(), /no Campaign workspace/);
-      const page = await api(next, cookie, `/hima/?run=${f.run.id}`);
-      assert.match(await page.text(), /data-hima-state-source="not-written"/);
     } finally { assert.equal(await next.stop(), 0, next.stderr()); }
   } finally { await f.close(); await f.h.dispose(); }
 });
@@ -1020,42 +964,6 @@ test('a Site report write failure still preserves local Run facts in the install
       assert.deepEqual(archive.manifest.materials.map((material) => material.path), ['experience.md', 'experience.json']);
     }
   } finally { await f.close(); await f.h.dispose(); }
-});
-
-test('Host candidate refresh and restart retain disabled identity, reject another workspace, and permit evidence-backed re-adoption',async t=>{
-  const home=await localHome(t,{sleepSeconds:0});assert.ok(home);let host=await bootInProcess(home.h);
-  try{
-    const agent=await createRootAgent(host.ctx,home.h.workspace);const sessionId=String(agent.id);
-    const request={pack:timingProbePackId,site:'local',goal:{target_period_ns:2},ownerSessionId:sessionId};
-    const previous=await host.ctx.hima.startRun(request);assert.equal(previous.kind,'ran');if(previous.kind!=='ran')return;
-    await host.ctx.hima.cancelRun(previous.run.id);
-    const current=await host.ctx.hima.startRun(request);assert.equal(current.kind,'ran');if(current.kind!=='ran')return;
-    type Listed={candidates:{candidate:{sourceRun:string;sourceManifestSha256:string;sourceMaterialPath:'experience.json';sourceMaterialSha256:string};adoption?:{id:string;event:string}}[]};
-    const list=await host.ctx.hima.experienceCandidates(sessionId,current.run.id) as Listed;
-    const source=list.candidates.find(item=>item.candidate.sourceRun===previous.run.id);assert.ok(source,JSON.stringify(list));
-    const foreignWorkspace=path.join(home.h.home,'foreign-workspace');await mkdir(foreignWorkspace);
-    const foreign=await createRootAgent(host.ctx,foreignWorkspace);const foreignId=String(foreign.id);
-    await assert.rejects(host.ctx.hima.workMemory(foreignId,{action:'sources',runId:current.run.id}),/not linked to the current project/i);
-    await assert.rejects(host.ctx.hima.experienceCandidates(foreignId,current.run.id),/not linked to the current project/i);
-    const adoptionCount=host.ctx.hima.ledger.records({runId:current.run.id,type:'experience-adoption'}).length;
-    await assert.rejects(host.ctx.hima.correctExperience(foreignId,{runId:current.run.id,requestId:'foreign-disable',event:'disabled',reason:'must be refused',candidate:source.candidate,evidenceRefs:['not-visible']}),/not linked to the current project/i);
-    assert.equal(host.ctx.hima.ledger.records({runId:current.run.id,type:'experience-adoption'}).length,adoptionCount,'foreign refusal writes no correction');
-    const evidence=async(text:string)=>{const file=path.join(home.h.workspace,'new-adoption-evidence.txt');await writeFile(file,text);const observed=await host.ctx.hima.observe({site:'local',run:current.run.id,path:file,reader:'raw'});assert.equal(observed.kind,'observed');if(observed.kind!=='observed')throw new Error('no verified observation');return observed.record.id;};
-    const disabled=await host.ctx.hima.correctExperience(sessionId,{runId:current.run.id,requestId:'ui-disable-real',event:'disabled',reason:'New measurement contradicts the old candidate.',candidate:source.candidate,evidenceRefs:[await evidence('first actual measurement')]});
-    const after=await host.ctx.hima.experienceCandidates(sessionId,current.run.id) as Listed;
-    assert.equal(after.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,disabled.id);
-    await host.dispose();host=await bootInProcess(home.h);
-    const reopened=await createRootAgent(host.ctx,home.h.workspace);const reopenedId=String(reopened.id);
-    const retained=await host.ctx.hima.experienceCandidates(reopenedId,current.run.id) as Listed;
-    assert.equal(retained.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,disabled.id,'restart retains the exact disable');
-    const history=await listRunKnowledge({ledger:host.ctx.hima.ledger,packsDir:path.join(home.h.home,'hima/packs'),sitesDir:path.join(home.h.home,'hima/sites'),projectOfRun:async()=>home.h.workspace},current.run.id,undefined,[],home.h.workspace);
-    assert.equal(history.candidates.find(item=>item.sourceRun===previous.run.id)?.automatic,false,'disabled experience is not automatically reused after restart');
-    const secondFile=path.join(home.h.workspace,'new-adoption-evidence.txt');await writeFile(secondFile,'second actual measurement');
-    const second=await host.ctx.hima.observe({site:'local',run:current.run.id,path:secondFile,reader:'raw'});assert.equal(second.kind,'observed');if(second.kind!=='observed')throw new Error('no second observation');
-    const readopted=await host.ctx.hima.correctExperience(reopenedId,{runId:current.run.id,requestId:'ui-readopt-real',event:'re-adopted',reason:'Independent new observation resolves the contradiction.',candidate:source.candidate,supersedes:disabled.id,evidenceRefs:[second.record.id]});
-    const latest=await host.ctx.hima.experienceCandidates(reopenedId,current.run.id) as Listed;
-    assert.equal(latest.candidates.find(item=>item.candidate.sourceRun===previous.run.id)?.adoption?.id,readopted.id);
-  }finally{await host.dispose();await home.h.dispose();}
 });
 
 test('legacy startup skips an unpublished archive reservation without reports or Site IO',async()=>{

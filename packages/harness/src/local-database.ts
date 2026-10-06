@@ -386,9 +386,6 @@ export async function startLocalDatabase(options: { readonly home: string; reado
 }
 
 async function legacyCutoverReceipt(home: string) {
-  // This standalone source module also serves offline inspection; do not import the Harness graph.
-  if (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_LEGACY_AUTO_DRIVE === '1'
-    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(fileURLToPath(import.meta.url))) return;
   const file = path.join(home, 'storages/hima_ledger.json');
   let bytes: Buffer;
   try {

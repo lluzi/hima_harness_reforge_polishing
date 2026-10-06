@@ -19,10 +19,8 @@ import type { DecisionChoice, LoopOutcome, NodeKind, NodeState, ReaderRef, RunBu
 import type { PackNode, PackStageOrRefusal } from './packs.js';
 import type { CancelView, DecisionView, ExperienceFileView, ExperienceView, RunHeadView, RunView, RunWord, RunWords } from './remote.js';
 import type { SemanticValue } from './semantics.js';
-import { legacyPeriodGoal, type GoalParameter } from './run-arguments.js';
 import { experienceMarkdownPath } from './paths.js';
-import { cancelSessions, chosenAs, chosenKind, type ChosenKind, type CodeView, type ConvergedChoice, type WorkshopState, type WorkshopView } from './record-views.js';
-import { runArguments, strategyKnobWhat, type StrategyKnob } from './run-arguments.js';
+import { cancelSessions, chosenAs, type CodeView, type ConvergedChoice, type WorkshopState, type WorkshopView } from './record-views.js';
 import { counted } from './words.js';
 
 /** The card's four colours, as dsh's design tokens with a fallback for a page that has none. */
@@ -30,8 +28,6 @@ export const good = 'var(--dsw-alias-state-success-primary, #1a7f37)';
 export const bad = 'var(--dsw-alias-state-error-primary, #b42318)';
 export const warn = 'var(--dsw-alias-state-warn-primary, #a15c07)';
 export const plain = 'var(--dsw-alias-label-secondary, #374151)';
-
-export const outcomeColour: Readonly<Record<string, string>> = { PASS: good, FAIL: bad, UNDETERMINED: warn };
 
 /** What a state is called on screen, and the colour it is said in. */
 export interface StateLabel { readonly said: string; readonly colour: string }
@@ -464,25 +460,6 @@ export function chosenSaid(decision: { readonly chosen: DecisionChoice }, words?
 export const convergedSaid = (converged: ConvergedChoice): string =>
   `converged: ${converged.read} moved by less than ${String(converged.band)} over `
   + `${counted(converged.generations, 'generation')}, at ${converged.values.map(String).join(' then ')}`;
-
-/**
- * The colour each kind of choice is said in, keyed by every kind there is for the reason the status
- * table is: a kind the ledger gains cannot reach a person in a colour nobody chose.
- *
- * Converged is the plain colour and not the success colour. The success colour is what the card says
- * the Goal met in, and converged is precisely the Goal *not* met — the exploration stopped learning
- * — which the banner beside it already says in the warning colour. Said in green, the sentence and
- * the banner above it would be the card saying two things about one ending.
- */
-const chosenColour: Readonly<Record<ChosenKind, string>> = {
-  'goal-met': good,
-  converged: plain,
-  'next-strategy': good,
-  stopped: plain,
-};
-
-/** The colour the card says this decision in, on both of its mounts. */
-export const decisionColour = (decision: DecisionView): string => chosenColour[chosenKind(decision)];
 
 /**
  * What a decision's state attributes say: which kind of choice, and the whole Strategy when it chose
@@ -1422,77 +1399,6 @@ export function cancelAsked(cancel: CancelView): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The workbench's start form (#26)
-// ---------------------------------------------------------------------------------------------
-
-/** One field of the start form: the control a person fills, what it is called, and the sentence
- *  under it saying what may go in it. */
-export interface StartField extends ControlLabel { readonly hint: string }
-
-/**
- * The start form's words, here with the card's for the same reason the card's are here: one place
- * for what a person reads, so the page's structure and its wording change separately.
- *
- * Three of the hints are the shared validator's own sentence (`run-arguments.ts`), not a second
- * wording of it, and so is every knob field's (`strategyKnobWhat`, through `startKnobField` below).
- * Three faces onto one operation must refuse the same values for the same reason and say so in the
- * same words — and a form whose hint promised something its own route then refused would be the
- * fourth face doing exactly what that table exists to prevent.
- *
- * The form itself lives on the workbench page only: a chat has `/hima run`.
- */
-export const startForm: Readonly<Record<'pack' | 'site' | 'timeBox' | 'retries' | 'generations', StartField>> = {
-  pack: { control: 'start-pack', said: 'pack', hint: 'the HimaPack this campaign runs, as it is installed here' },
-  site: { control: 'start-site', said: 'site', hint: 'the Site its jobs run on' },
-  timeBox: { control: 'start-time-box', said: 'time box (minutes)', hint: runArguments.timeBox.what },
-  retries: { control: 'start-retries', said: 'retry allowance', hint: runArguments.retries.what },
-  // The Loop's own bound, beside the box and the allowance because all three are the Budget (#27):
-  // a Campaign started from the window is bounded in generations as well as in time, and a person
-  // who leaves it empty gets the pack's own `converge.generationLimit`.
-  generations: { control: 'start-generations', said: 'generations', hint: runArguments.generations.what },
-};
-
-/**
- * One field of the start form for one knob the selected pack declares (#58): its control, the pack's
- * own word for it, and the sentence under it saying what may go in it.
- *
- * The words are the pack's and the sentence is the shared validator's, which is the whole of what
- * this function is for: the harness owns no knob, so a form that labelled one would be the harness
- * saying what a pack's Strategy is — and a hint written here rather than taken from
- * `strategyKnobWhat` would be a fourth face promising something the start route then refused.
- *
- * A knob the pack declares no words for is shown under its own name, exactly as every other value a
- * pack says nothing about is (#42). `/hima pack check` refuses such a pack, so a person meets that
- * before a Campaign — but a form that would not render is a worse answer than a name.
- *
- * @param name - the knob, as the contract declares it and the wire carries it.
- * @param knob - what the pack declared it to be.
- * @param word - what the pack calls it, where it says.
- */
-export const startKnobField = (name: string, knob: StrategyKnob, word: RunWord | undefined): StartField => ({
-  control: `start-knob-${name}`,
-  said: word === undefined ? name : (knob.type === 'number' && word.unit !== undefined ? `${word.label} (${word.unit})` : word.label),
-  hint: strategyKnobWhat(knob),
-});
-
-/** Goal fields use the same declaration and units as final Campaign admission. */
-export const startGoalField = (name: string, parameter: GoalParameter, word: RunWord | undefined): StartField => ({
-  control: name === legacyPeriodGoal.name ? 'start-target' : `start-goal-${name}`,
-  said: `${word?.label ?? name} (${parameter.unit})`,
-  hint: `${strategyKnobWhat(parameter)}; immutable for this Campaign`,
-});
-
-/** The control that submits the form, and the heading above it. */
-export const startControl: ControlLabel = { control: 'start', said: 'start campaign' };
-export const START_HEADING = 'start a campaign';
-export const LOCAL_DEMO_SOURCE = 'The built-in local demo uses simulated synthesis reports. Establish the source of a particular Run from its inputs and original reports.';
-export const START_STATIC_LIMIT = 'Connections, available licences and tools have not been tested. Starting a Campaign checks these declarations again. ' + LOCAL_DEMO_SOURCE;
-export const START_STATIC_FIT = 'Static declarations match.';
-export const START_STATIC_UNFIT = 'The selected Pack and Site do not match. Site owner: check bindings, allowed wrappers and declared capacity. Pack owner: check rules, readers and chooser declarations.';
-export const START_NO_PACK = 'No HimaPack is installed. Ask the Pack owner to install a Pack, then reload this page.';
-export const START_NO_SITE = 'No Site is configured. Ask the Site owner to prepare the Site bindings and Permit, then reload this page.';
-
-// ---------------------------------------------------------------------------------------------
 // The workbench page's own headline board and its path table (#41)
 // ---------------------------------------------------------------------------------------------
 
@@ -1512,16 +1418,6 @@ export const factQuestions: Readonly<Record<'exploring' | 'standing' | 'spent' |
   todo: 'what a person must do',
 };
 
-/** What the fourth question answers when no control is offered, keyed by why none is. Two sentences
- *  and not one blank cell: an empty answer to "what must a person do" is the one answer a person
- *  cannot act on. */
-export const NOTHING_TO_DO_ENDED = 'nothing — this campaign has ended';
-export const NOTHING_TO_DO_NO_FABRIC = 'nothing — no campaign was started on this run';
-
-/** A fact the ledger does not hold for this Run, said rather than left blank — the honesty the prior
- *  product carried and the one habit worth keeping wholesale. */
-export const NOT_RECORDED = 'not recorded';
-
 /**
  * The path table's column heads, in the order the table shows them: which node, what kind of node it
  * is, where it stands, which attempt, and what was recorded about it.
@@ -1538,54 +1434,6 @@ export const pathColumns: Readonly<Record<'index' | 'node' | 'kind' | 'state' | 
   attempt: 'attempt',
   said: 'what was recorded',
 };
-
-/** The run list's column heads on the workbench page: one Run per row, newest first. */
-export const runColumns: Readonly<Record<'run' | 'status' | 'pack' | 'started' | 'generation', string>> = {
-  run: 'run',
-  status: 'status',
-  pack: 'pack',
-  started: 'started',
-  generation: 'generation',
-};
-
-/** What the run list says when the HimaLedger holds no Run at all. */
-export const NO_RUNS = 'no runs in the HimaLedger yet';
-
-/**
- * A period written on the convergence plot itself, beside the mark it belongs to: the number with
- * its unit, because a value drawn on a picture is read where it stands and not against the column
- * head one band below it.
- */
-export const plotValue = (ns: number): string => `${String(ns)} ns`;
-
-/**
- * The convergence plot's caption and its keys: what the two lanes draw, and against what.
- *
- * `inLoop` is the key of the span a drill-down Loop's own generations are drawn in (#28), shown only
- * on a Campaign that opened one — a key for a mark that is not on the picture is a legend for
- * something else. `branches` is the same for a fork's own readings (#29b), which are drawn at the
- * generation that forked them because that is when they were read.
- */
-export const plotLabels: Readonly<Record<'caption' | 'period' | 'target' | 'slackOk' | 'slackBad' | 'inLoop' | 'branches', string>> = {
-  caption: 'period per generation against the goal\'s target period, and setup slack against zero',
-  period: 'clock period, ns',
-  target: 'target period, ns',
-  slackOk: 'setup slack ≥ 0, ns',
-  slackBad: 'setup slack < 0, ns',
-  inLoop: 'inside a drill-down loop',
-  branches: 'a fork\'s branches, at the generation they ran in',
-};
-
-/**
- * One branch's own reading, labelled on the plot beside the point that draws it: which branch, and
- * what it measured.
- *
- * Labelled at all because a fork's branches share one place on the axis — they ran in one generation
- * — so two points sit above one another with nothing but this to tell them apart. Written in the
- * HTML over the drawing, as the plot's other two values are, so the picture scales with the band
- * without a letter of it scaling too.
- */
-export const branchPointSaid = (branch: BranchView, ns: number): string => `${branch.id} ${plotValue(ns)}`;
 
 /** How many lines of the failed Job's own log the blocker carried, said above the well that holds
  *  them — a tail with no range on it is a tail a person cannot tell from a whole log. */

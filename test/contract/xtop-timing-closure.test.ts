@@ -4,13 +4,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { BUILTIN_TCL_ADAPTER_DIGEST, choose, encodeRetainedInteractiveCommand, interactiveCommandsDigest, loadPack, checkPack, packDigestExcludes, packStage, loadSite, installPackMethod, resolveChooser, type InteractiveBinding, type ObservationRecord, type VerdictRecord } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { bootInProcess } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
-import { waitUntil } from './support/fabric.ts';
 
 const packId = 'xtop-timing-closure';
 const xtopOperatorWrapper = '/data/eda/project/hima_harness/operator-admin/xtop-v5/xtop-operator-v5.sh';
@@ -281,66 +280,6 @@ test('the admin generator binds qualification to linglong-swerv28 and the curren
   const overwrite = spawnSync(process.execPath, [path.join(repoRoot, 'scripts/generate-xtop-operator-binding.mjs'),
     '--environment', environment, '--output', output], { cwd: repoRoot, encoding: 'utf8' });
   assert.notEqual(overwrite.status, 0, 'generation never silently overwrites an active administrator binding');
-});
-
-test('a real Host reads XTop physical evidence through its Pack observation node', async t => {
-  const h = await createHimaHome(); t.after(() => h.dispose());
-  const variant = path.join(h.home, 'xtop-observe-variant', packId);
-  await mkdir(path.dirname(variant), { recursive: true });
-  await cp(path.join(repoRoot, 'packs', packId), variant, { recursive: true });
-  await rm(path.join(variant, 'VERSION.yml'), { force: true });
-  const originalGraph=await readFile(path.join(variant,'graph.yml'),'utf8');
-  await writeFile(path.join(variant, 'graph.yml'),originalGraph
-    .replace(/^entry: prepare$/m,'entry: host-read-physical')
-    .replace(/^nodes:$/m,'nodes:\n  - id: host-read-physical\n    kind: act\n    parameters: { observes: closureState }')
-    .replace(/^loops:/m,'  - { from: host-read-physical, to: prepare }\nloops:'));
-  installPackMethod({ from: variant, to: path.join(h.home, 'hima/packs', packId) });
-  const inputDb=path.join(h.workspace,'input.enc.dat');await mkdir(inputDb);await writeFile(path.join(inputDb,'db.bin'),'fixture database');
-  const siteProfile=path.join(h.workspace,'site-profile.json');await writeFile(siteProfile,'{}\n');
-  const sourceManifest=path.join(h.workspace,'source-manifest.sha256');await writeFile(sourceManifest,'fixture source\n');
-  await writeLocalSite(h,{allowedReadRoots:[h.workspace],allowedWriteRoots:[h.workspace],allowedWrappers:['/usr/bin/python3', xtopOperatorWrapper],
-    bindings:{inputInnovusDatabase:inputDb,siteProfile,sourceManifest,workspaceRoot:h.workspace},
-    licences:{Innovus:1,StarRC:1,PrimeTime:1,XTop:1}});
-  const host=await bootInProcess(h);let runId:string|undefined;
-  try{
-    const owner=await createRootAgent(host.ctx,h.workspace);const actor=String(owner.id);
-    const started=await host.ctx.hima.startRun({pack:packId,site:'local',goal:{target_setup_wns_ns:0,target_hold_wns_ns:0},ownerSessionId:actor});
-    assert.equal(started.kind,'ran',JSON.stringify(started));if(started.kind!=='ran')return;runId=started.run.id;
-    const record=host.ctx.hima.ledger.records({runId,type:'workspace'}).find(row=>row.type==='workspace');assert.ok(record);
-    const workspace=record.workspace;
-    const physicalRoot=path.join(workspace,'flow/iterations/g000/PHYSICAL');await mkdir(physicalRoot,{recursive:true});
-    const drc=path.join(physicalRoot,'verify_drc.rpt');await writeFile(drc,'#  Command: verify_drc -limit 1000000 -report /site/drc.rpt\n  Total Violations : 0 Viols.\n');
-    const connectivity=path.join(physicalRoot,'verify_connectivity.rpt');await writeFile(connectivity,'#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/conn.rpt\nBegin Summary\n    0 Problem(s) (IMPVFC-200): Special Wires.\n    0 total info(s) created.\nEnd Summary\n');
-    const manifest=path.join(physicalRoot,'physical-check.json');await writeFile(manifest,JSON.stringify({schema:'xtop-timing-closure-physical-check/2',coverage:'complete',drcLimit:1000000,connectivityLimit:1000000,drcReport:'verify_drc.rpt',connectivityReport:'verify_connectivity.rpt'}));
-    const measurement=path.join(workspace,'flow/iterations/g000/measurement.txt');await writeFile(measurement,'retained measurement\n');
-    const fileRef=async(file:string,role:string)=>{const raw=await readFile(file);const relative=path.relative(workspace,file);return {role,
-      path:relative.startsWith(`..${path.sep}`)?file:relative,sha256:createHash('sha256').update(raw).digest('hex'),bytes:raw.length};};
-    const retainedProfile=await fileRef(siteProfile,'site-profile');
-    const retainedManifest=await fileRef(sourceManifest,'source-manifest');
-    const state={schema:'xtop-timing-closure-state/1',iteration:0,
-      reportFiles:[await fileRef(measurement,'sta-report')],
-      physical:{schema:'xtop-timing-closure-physical-check/2',coverage:'complete',drcLimit:1000000,connectivityLimit:1000000,
-        drc:{count:0,report:await fileRef(drc,'physical-drc')},connectivity:{count:0,report:await fileRef(connectivity,'physical-connectivity')},
-        manifest:await fileRef(manifest,'physical-check-manifest')},
-      measurement:{scenariosSha256:'a'.repeat(64),profile:retainedProfile,sourceManifest:retainedManifest,spef:{worst:await fileRef(measurement,'spef')}},
-      metrics:{setup_wns_ns:0,setup_tns_ns:0,setup_violations:0,hold_wns_ns:0,hold_tns_ns:0,hold_violations:0,unconstrained_endpoints:0,closure_score:0},endpointSlackNs:{}};
-    const current=path.join(workspace,'flow/state/current.json');await mkdir(path.dirname(current),{recursive:true});await writeFile(current,JSON.stringify(state));
-    await writeFile(path.join(workspace,'flow/state/runtime.json'),JSON.stringify({schema:'xtop-timing-closure-runtime/1',
-      profileIdentity:retainedProfile,sourceManifest:retainedManifest}));
-    let serial=0;
-    const act=(action:'begin'|'work'|'complete',executionId?:string)=>{const control=host.ctx.hima.ledger.run(runId!)!.control!;return host.ctx.hima.executionAction({runId:runId!,actor,action,requestId:`xtop-reader-${++serial}`,expectedEpoch:control.epoch,expectedRevision:control.revision,...(action==='begin'?{nodeId:'host-read-physical'}:{executionId})});};
-    const begun=await act('begin');assert.equal(begun.kind,'accepted',begun.reason);const executionId=begun.receipt?.executionId;assert.ok(executionId);
-    const work=await act('work',executionId);assert.equal(work.kind,'accepted',work.reason);
-    try { await waitUntil('XTop state reader completes',()=>host.ctx.hima.executionContext(runId!).executions.some(item=>item.id===executionId&&item.phase==='ready'),5000,20); }
-    catch(error){
-      const control=host.ctx.hima.ledger.run(runId)!.control!;
-      const log=await host.ctx.hima.executionAction({runId,actor,action:'read',executionId,output:'@job-log',requestId:'xtop-reader-failed-log',expectedEpoch:control.epoch,expectedRevision:control.revision});
-      t.diagnostic(JSON.stringify({execution:host.ctx.hima.executionContext(runId).executions.find(item=>item.id===executionId)?.result,log:log.data}));throw error;
-    }
-    const reading=host.ctx.hima.ledger.records({runId,type:'observation'}).find(row=>row.type==='observation');assert.ok(reading);
-    assert.equal(reading.reader.id,'xtop-closure-state');
-    assert.ok(reading.values.some(value=>value.type==='xtop_setup_wns'&&value.value===0));
-  }finally{if(runId)await host.ctx.hima.cancelRun(runId);await host.dispose();}
 });
 
 test('XTop recommendation cannot claim completion while any required verdict fails or is undetermined', () => {

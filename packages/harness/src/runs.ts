@@ -42,18 +42,3 @@ export function existingRun(ledger: Ledger, runId: string): RunRecord {
   return run;
 }
 
-/**
- * Is this Run still one a drive may move? Asked of a row a caller is already holding.
- *
- * Here, beside the row every caller reads it from, because three modules ask it — the driver before
- * each turn, a fork's branches before each of their own writes, and the claim step before it says on
- * the row that a branch is queued — and a Run that is "still going" in two spellings is two rules.
- * A Run that has ended does not say `running`, and neither does one another face moved to `waiting`,
- * so this one test is the whole of it.
- */
-export const driving = (run: RunRecord): boolean => run.status === 'running';
-
-/** The old driver exists only in standalone/source Node regression fixtures, never a native App. */
-export const legacyAutomaticAllowed = (): boolean =>
-  process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_LEGACY_AUTO_DRIVE === '1'
-    && !/\/(?:[^/]+\.app\/Contents\/Resources|resources)\/app\//.test(decodeURIComponent(new URL(import.meta.url).pathname));

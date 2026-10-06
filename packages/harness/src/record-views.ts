@@ -467,13 +467,6 @@ export interface CancelSessions {
 export const cancelSessions = (cancel: CancelSessions): readonly string[] =>
   cancel.jobSessions ?? (cancel.jobSession === undefined ? [] : [cancel.jobSession]);
 
-/**
- * **Which of the three things an Explore node can decide this decision was**, as the one word every
- * reader keys on: the card's colour and its state attribute, the words both mounts say it in, and
- * the ending HimaFabric writes when it acts on it.
- */
-export type ChosenKind = 'goal-met' | 'converged' | 'next-strategy' | 'stopped';
-
 /** What an Explore node decided when it decided the exploration had stopped learning. */
 export type ConvergedChoice = Extract<DecisionChoice, { converged: unknown }>['converged'];
 
@@ -507,9 +500,6 @@ export function chosenAs(decision: { readonly chosen: DecisionChoice }): Chosen 
   if ('converged' in decision.chosen) return { kind: 'converged', converged: decision.chosen.converged };
   return { kind: 'next-strategy', strategy: decision.chosen.strategy };
 }
-
-/** Which kind of choice this was, for a reader that wants the word and not the payload. */
-export const chosenKind = (decision: { readonly chosen: DecisionChoice }): ChosenKind => chosenAs(decision).kind;
 
 /** A recorded invocation or a declared task that has not yet acquired an effect identity. */
 export interface DurableTaskView {

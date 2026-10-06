@@ -224,7 +224,7 @@ try {
     expectedEpoch: control.epoch, expectedRevision: control.revision, contract: { delegationId: 'library-memory-handoff', role: 'researcher',
       task: `Read exact report record ${reportRecord.id}. Return a concise candidate handoff that preserves the same-source zero-delta limit and unknown design impact.`,
       inputRefs: [reportRecord.id], allowedTools: ['hima_delegation_input'], budgetShare: { maxElapsedMs: 45_000, maxFollowups: 1, maxTokensPerTurn: 1800 },
-      dependencyIds: [], recipient: { kind: 'run-owner', sessionId: ownerId } } } as never, AbortSignal.timeout(60_000)) as any;
+      dependencyIds: [], recipient: { kind: 'run-owner', sessionId: ownerId } } } as never) as any;
   assert.equal(child.status, 'created', JSON.stringify(child)); childId = child.receipt.childSessionId;
   assert.equal(typeof childId, 'string'); const childSessionId = childId!;
   const childAgent = host.ctx.get('agents')!.get(childSessionId as never)!;

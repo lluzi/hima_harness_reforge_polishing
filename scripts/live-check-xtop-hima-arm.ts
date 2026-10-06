@@ -251,7 +251,7 @@ await runLive(NAME, 40, async (check: LiveCheck) => {
       const delegate = async (body: Record<string, unknown>) => {
         const control = host.ctx.hima.executionContext(runId).run.control!;
         return host.ctx.hima.delegate({ runId, actor: ownerId, expectedEpoch: control.epoch,
-          expectedRevision: control.revision, ...body } as never, AbortSignal.timeout(90_000)) as Promise<Record<string, any>>;
+          expectedRevision: control.revision, ...body } as never) as Promise<Record<string, any>>;
       };
       const materialize = (memberId: string, requestId: string) => delegate({ action: 'create', requestId,
         recipe: { teamId: 'timing-eco-team', version: '1', memberId, executionId: begunOperator.id } });

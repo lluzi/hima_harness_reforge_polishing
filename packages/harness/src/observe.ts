@@ -159,23 +159,6 @@ export async function observe(deps: ObserveDeps, req: ObserveRequest): Promise<O
   return read(deps, req, bundleSemantics().values);
 }
 
-/**
- * **The same operation inside a Run of a pack**, against the value types *that pack* resolves (#61):
- * its own `semantics.yml` first, the bundle's second.
- *
- * The same reading, the same bundled reader, the same record — and a different question asked of the
- * values, because a pack may declare that a name the bundle also declares means something else in
- * its method (D46), and a reading taken at one of its nodes is a reading of that method. Held apart
- * from `observe` above rather than expressed as a field of `ObserveRequest`, because which semantics
- * are in force is not something a *caller* of the observe face may choose: it follows from whether
- * there is a pack, and the one caller that has one is the fabric's own observe node.
- *
- * @param semantics - the resolved value types, the pack's ahead of the bundle's.
- */
-export async function observeForPack(deps: ObserveDeps, req: ObserveRequest, semantics: Semantics): Promise<ObserveResult> {
-  return read(deps, req, semantics);
-}
-
 async function read(deps: ObserveDeps, req: ObserveRequest, semantics: Semantics): Promise<ObserveResult> {
   const site = loadSite(deps.sitesDir, req.site);
   const run = await runFor(deps.ledger, site, req.run, req.projectSessionId);

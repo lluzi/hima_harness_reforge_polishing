@@ -15,7 +15,6 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { assertRunProject } from './guide-context.js';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
-import { legacyAutomaticAllowed } from './runs.js';
 import { bindDurableKnowledge, clearDurableKnowledge, recordDurableDocumentKnowledge, knownDurableRun } from './durable-fabric.js';
 import { createDurableViewReaders } from './durable-views.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
@@ -29,14 +28,13 @@ import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from
 import type { SiteDiscoveryResult } from './sites.js';
 import type { PreparationView } from './workbench.js';
 import { CAMPAIGN_FILE_RELATIVE, CampaignFileError, overridesOf, readCampaignFile, type PreparationOverrides } from './campaign-file.js';
-import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
+import { unresumableReason, type StrategyValue } from './run-arguments.js';
 
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
 
 async function assertProjectAccess(deps: FabricDeps, agent: Agent | undefined, runId: string): Promise<void> {
-  if (legacyAutomaticAllowed()) return;
   if (!agent) throw new Error('reading a task requires a live project conversation');
   await assertRunProject(deps, String(agent.id), agentWorkspaceOf(agent), runId);
 }
@@ -264,13 +262,6 @@ export function guideTools(operations: {
   })];
 }
 
-/** One numeric argument of a tool call, validated the same way. Absent is absent; wrong is refused. */
-function toolNumber(name: RunArgumentName, given: number | undefined): number | undefined {
-  if (given === undefined) return undefined;
-  if (!allowsRunArgument(name, given)) throw new Error(badRunArgument(name, name, given));
-  return given;
-}
-
 /**
  * Every entry of a caller-supplied `params` object, validated the way `--param` and the POST body
  * already do: a value that is not a finite number is the caller's mistake, named and returned as an
@@ -410,9 +401,7 @@ function cancelToolValue(result: CancelResult): CancelToolValue {
   const head: CancelToolValue = { kind: result.kind, runId: result.run.id };
   const withStatus = result.run.status === undefined ? head : { ...head, status: result.run.status };
   if (result.kind === 'stopping') return { ...withStatus, reason: result.reason };
-  if (result.kind === 'not-stopped') return { ...withStatus, stoppedSession: result.session, reason: result.reason };
-  if (result.kind !== 'cancelled' || !result.stopped) return withStatus;
-  return { ...withStatus, stoppedSession: result.stopped.job.session, recordId: result.stopped.id };
+  return withStatus;
 }
 
 interface ResumeToolValue {
@@ -432,15 +421,7 @@ interface ResumeToolValue {
  *  never an undefined one, so a tool value is lossless JSON. */
 function resumeToolValue(result: ResumeResult): ResumeToolValue {
   const head: ResumeToolValue = { kind: result.kind, runId: result.run.id };
-  const status = result.run.status;
-  if (result.kind === 'unresumable') return { ...head, reason: unresumableReason(result.reason) };
-  if (result.kind === 'not-waiting') {
-    const said = notWaitingToResume(status);
-    return status === undefined ? { ...head, reason: said } : { ...head, status, reason: said };
-  }
-  const withStatus = status === undefined ? head : { ...head, status };
-  const withNode = result.run.currentNode === undefined ? withStatus : { ...withStatus, currentNode: result.run.currentNode };
-  return { ...withNode, nodeId: result.nodeId, recordId: result.record.id };
+  return { ...head, reason: unresumableReason(result.reason) };
 }
 
 /**
@@ -705,7 +686,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       execute: async (args, execution) => {
-        if (!legacyAutomaticAllowed() && !execution.agent) throw new Error('a Probe needs a live project conversation');
+        if (!execution.agent) throw new Error('a Probe needs a live project conversation');
         if (args.run) await assertProjectAccess(deps, execution.agent, args.run);
         // Validated before anything is read: a bad `params` entry must leave no observation and
         // no verdict behind, the same as a malformed `--param` on the command line.
@@ -759,12 +740,6 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false confirms plainly, ignoring any Campaign file present.' },
         budget: { type: 'object', additionalProperties: false, description: 'The same budget object passed to the hima_prepare call that returned this proposalId, when one was passed. The Run is created with exactly that Budget; a different or missing budget is a different proposal and is refused.',
           properties: { timeBoxMinutes: { type: 'number' }, generations: { type: 'integer' }, retries: { type: 'integer' } } },
-        ...(legacyAutomaticAllowed() ? {
-          test: { type: 'boolean', description: 'Contract-test purpose only.' },
-          timeBox: { type: 'number', description: 'Contract-test budget only.' },
-          retries: { type: 'integer', description: 'Contract-test budget only.' },
-          generations: { type: 'integer', description: 'Contract-test budget only.' },
-        } : {}),
       },
       output: {
         schema: {
@@ -791,6 +766,9 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         if (args.proposalId === undefined) {
           throw new Error('confirm the current Campaign proposal returned by hima_prepare before starting a Run');
         }
+        // Arguments the schema does not declare still arrive as given: a Pack test purpose is carried
+        // to the same admission `startRun` applies, and an explicit Budget is refused below.
+        const undeclared = args as { readonly test?: boolean; readonly timeBox?: unknown; readonly retries?: unknown; readonly generations?: unknown };
         const goal = strategyArgument(args.goal, 'goal') ?? {};
         const strategy = strategyArgument(args.strategy);
         // The same file `hima_prepare` applied by default, applied here the same way (#41 task 3),
@@ -808,13 +786,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           if (!samePreparedFacts(current.goal, goal) || !samePreparedFacts(current.strategy, strategy ?? current.strategy)) {
             throw new Error('the submitted Goal or Strategy differs from the reviewed Campaign proposal; prepare the edited Campaign again before confirming');
           }
-          if (args.timeBox !== undefined || args.retries !== undefined || args.generations !== undefined) {
+          if (undeclared.timeBox !== undefined || undeclared.retries !== undefined || undeclared.generations !== undefined) {
             throw new Error('a confirmed Campaign uses the reviewed Pack budget; budget overrides require a new preparation and are unavailable in this product path');
           }
         }
-        // The same checks the command face and the route make, from the same tables: a tool call is
-        // a caller like any other, and a time box no person could type must not be one a model can.
-        const timeBox = toolNumber('timeBox', args.timeBox);
         // The confirmation already held this Agent's own Strategy to the reviewed proposal's above
         // (`samePreparedFacts`), which tolerates an omitted `args.strategy` because it already equals
         // `current.strategy` — but the *actual* Run must still start at that same Strategy, not
@@ -830,14 +805,10 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
           strategy: strategy ?? overrides?.strategy,
           ...(overrides?.inputs === undefined ? {} : { inputs: overrides.inputs }),
           ...(overrides === undefined ? {} : { overrides }),
-          // An absent key, never an undefined one, as everywhere else a request is composed here:
-          // the schema above has already held it to a boolean, so a caller that said nothing has
-          // said nothing and the pack folder decides.
-          ...(args.test === undefined ? {} : { test: args.test }),
-          timeBoxMs: timeBox !== undefined ? Math.round(timeBox * 60_000)
-            : overrides?.budget?.timeBoxMinutes !== undefined ? Math.round(overrides.budget.timeBoxMinutes * 60_000) : undefined,
-          retryAllowance: toolNumber('retries', args.retries) ?? overrides?.budget?.retries,
-          generationLimit: toolNumber('generations', args.generations) ?? overrides?.budget?.generations,
+          ...(undeclared.test === undefined ? {} : { test: undeclared.test }),
+          timeBoxMs: overrides?.budget?.timeBoxMinutes !== undefined ? Math.round(overrides.budget.timeBoxMinutes * 60_000) : undefined,
+          retryAllowance: overrides?.budget?.retries,
+          generationLimit: overrides?.budget?.generations,
         });
         return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' || result.kind === 'preparing' ? { context: toolJson(await createDurableViewReaders(deps).executionContext(result.run.id)) } : {}) };
       },

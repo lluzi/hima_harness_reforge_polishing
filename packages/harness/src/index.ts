@@ -38,19 +38,13 @@ import type {} from '@deepseek-ai/dsh-commands';
 import { hasEnded, Ledger, ledgerSpec, recordValidityOf, currentRecordsIn, type RunRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { convergeOf, newCampaignProposalId, resumeRun, startRun, preparationWorkflowDefinitions, recoverDurablePreparations, readExecutionContext, controlDurableRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
-import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs, ownedWaitedMs, timeBoxRemainingMs } from './budget.js';
-import { readEngineeringAsset, controlling, identityOf, drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
-import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operatorInteractiveAuthority, settleStrandedTeamExecutions, unreservedDelegationMs, type RunDelegationRequest } from './delegation-runtime.js';
-import { registerDelegationGuard, registerAsyncDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
+import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
+import { readEngineeringAsset, identityOf, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
+import { cancelRun, type CancelResult } from './recovery.js';
+import { runDelegations, delegationRuntimePolicy, type RunDelegationRequest } from './delegation-runtime.js';
+import { registerDelegationGuard, registerAsyncDelegationGuard, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
-import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
-import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
-import { Autopilot } from './autopilot.js';
-/** How often the Host re-kicks a Run standing idle on a self-driving node (#64 D-T04-1). */
-const autopilotSweepMs = 15_000;
-import { autopilotDrives } from './packs.js';
-import { claimSlot } from './job-cap.js';
+import { parseInteractiveRequest, listInteractiveSessions } from './interactive-runtime.js';
 import { readDurableHostExitStatus, type HostExitRequest, type HostExitStatus } from './host-exit.js';
 import { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, recordHomeCutover, assertHomeExecutionAllowed, resolveRetainedMaterialsDirectory, type LocalDatabase } from './local-database.js';
 import { nativeSessionMemoryEvidence } from './native-session-memory.js';
@@ -100,9 +94,8 @@ export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
-export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
-export { WORKSHOP_ENTRY_SCHEMA } from './autopilot.js';
-export { autopilotOf, autopilotSegmentOf, autopilotDrives } from './packs.js';
+export { runDelegations, delegationRuntimePolicy } from './delegation-runtime.js';
+export { autopilotOf } from './packs.js';
 export * from './interactive-job.js';
 export * from './interactive-runtime.js';
 export * from './interactive-binding.js';
@@ -110,7 +103,6 @@ export * from './library-insight-report.js';
 export * from './generation-feedback-report.js';
 export { readReportMaterial } from './experience.js';
 export { batchToolRefusal } from './packs.js';
-export { launchInteractiveJob } from './jobs.js';
 export { nativeSessionMemoryEvidence } from './native-session-memory.js';
 export type { NativeSessionMemoryEvidence, NativeSessionMemoryReader } from './experience.js';
 export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, WorkMemoryAuthority, ExperienceAdoptionRequest } from './experience.js';
@@ -176,26 +168,23 @@ export type { PrepareRequest, PrepareResult, WorkspaceFile, WorkspaceRevisionCha
 // because the acceptance script and the contract suite start runs the same way the faces do.
 export { versionLine, packStageSaid } from './commands.js';
 export { readEngineeringAsset, startRun, resumeRun, executionAction, executionContext, revisionImpactOf, authenticCampaignProposalId } from './fabric.js';
-export { cancelRun, reconcileRuns } from './recovery.js';
+export { cancelRun } from './recovery.js';
 // Model moments (#59): the one generic element a model needs, on the surface because the contract
 // suite and the live check both open one, and because the acceptance record names the preset.
-export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
+export { openMoment, momentOnCurrentNode, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
-export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
-export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
+export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge } from './experience.js';
+export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
 export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
 export { humanEffortMeasurement, valueMeasurementReceipt, VALUE_MEASUREMENT_SCHEMA } from './value-measurement.js';
 export type { HumanEffortMeasurement, ValueMeasurementReceipt, MeasuredCount, MeasuredDuration, SeatTimeMeasurement, UnmeasuredValue } from './value-measurement.js';
-// `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
-// attempt a Job belongs to when the host that launched it died before the node record naming its
-// session was written. The contract suite asserts that reading at the ledger object (#62).
-export { defaultTimeBoxMs, defaultRetryAllowance, defaultAttemptLimit, attemptOfSession, budgetStandingAt, budgetStanding, experimentBudgetSpentAt, experimentBudgetSpent, attemptLimitSpent, researchWriteTotals, reserveResearchWrite } from './budget.js';
+export { defaultTimeBoxMs, defaultRetryAllowance, defaultAttemptLimit, budgetStandingAt, budgetStanding } from './budget.js';
 export type { BudgetPhase, BudgetStanding, ResearchWriteRequest, ResearchWriteAdmission } from './budget.js';
 export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult, ExecutionActionRequest, ExecutionActionResult, ExecutionContext, RevisionProposal } from './fabric.js';
-export type { CancelResult, ReconcileOutcome } from './recovery.js';
-export { runArguments, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason } from './run-arguments.js';
+export type { CancelResult } from './recovery.js';
+export { runArguments, allowsRunArgument, badRunArgument, unresumableReason } from './run-arguments.js';
 export type { RunArgumentName } from './run-arguments.js';
 // What a Strategy's knobs may be, and the one sentence every face refuses a value in (#58): the
 // contract suite and the acceptance script hold the window's words against these, exactly as they
@@ -233,7 +222,6 @@ export type {
   RunView,
   RecordsView,
   RecordView,
-  AuditView,
   ObserveBody,
   StartRunBody,
   ExperienceView,
@@ -336,19 +324,11 @@ export type {
   RunStrategy,
   RunMeters,
 } from './ledger.js';
-// The Job poll's cadence — its two intervals and how long the fast one lasts — on the surface for
-// the reason `jobs.ts` states: a test that holds a Site unreadable and asserts the waiter kept asking
-// must hold it for longer than one of them, and an interval spelled out again in the test goes stale
-// the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
-// the same reason: how long it has is which interval the waiter has settled into (#61).
-export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
-export { launchJob, reconcileLaunchIntent, jobStatus, jobKill, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
-export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch, NodeLogTailResult } from './jobs.js';
-export { claimSlot, claimSlotAndLaunch } from './job-cap.js';
-export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
-export type { Driving, ResolvedWorkshop, ExploreRecommendation } from './node-turns.js';
-export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs } from './workshop.js';
-export type { WorkshopScope, WriteAnswer, ReadAnswer, KnowledgeAnswer, CapturedWorkshopInput } from './workshop.js';
+export { jobStatus, jobKill, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
+export type { LaunchIntent, JobDeps, LaunchRequest, NodeLogTailResult } from './jobs.js';
+export type { Driving } from './node-turns.js';
+export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop } from './workshop.js';
+export type { WorkshopScope, WriteAnswer, ReadAnswer, KnowledgeAnswer } from './workshop.js';
 export type { JobState, KillOutcome } from './jobs.js';
 export type { AnalysisMode, PathScope, SemanticDeclaration, Semantics, SemanticsFile, SemanticValue } from './semantics.js';
 // The value types a reading is held to, and the one validator every reader's output passes through
@@ -424,12 +404,6 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
 }
 
-/** The tool an act node of `pack` runs, when `nodeId` names one. */
-function nodeTool(pack: import('./packs.js').Pack, nodeId: string): import('./packs.js').PackTool | undefined {
-  const node = pack.graph.nodes.find(item => item.id === nodeId);
-  return node?.kind === 'act' && node.parameters.tool ? pack.contract.tools.find(item => item.id === node.parameters.tool) : undefined;
-}
-
 /**
  * `SiteHeadView.readiness`, and the one rule `Hima.preparation`'s own site readiness calls this to
  * compute too, so the two answers cannot disagree: `local` is always ready; an `ssh` Site with no
@@ -503,13 +477,11 @@ export default class Hima extends Service {
   ledger!: Ledger;
   judge!: Judge;
   /**
-   * The reconciliation this host started when it opened the ledger: every Run the last process left
-   * in flight, picked up again and carried on. It is a promise rather than an awaited step of
-   * initialisation because a Run resumed here waits for a Job that may have an hour of synthesis left
-   * in it, and a workbench that would not serve until then is a workbench nobody could cancel from.
-   * It never rejects — a Run this machine cannot rebuild is reported, not thrown.
+   * The recovery this host started when it opened the ledger: DBOS preparations resumed, ended
+   * historical archives reconciled and the previous exit boundary released. A promise rather than
+   * an awaited step of initialisation, so the Host serves while it runs.
    */
-  reconciled!: Promise<ReconcileOutcome[]>;
+  reconciled!: Promise<void>;
   /** DBOS owns new durable workflows; its store is the application fact authority. */
   durable!: DurableRuntime;
   private releaseDurableAdapters!: () => void;
@@ -521,11 +493,8 @@ export default class Hima extends Service {
   private exitFinalization:Promise<HostExitStatus>|undefined;
   private finalizationRequestId:string|undefined;
   private finalExitStatus:HostExitStatus|undefined;
-  private interactiveRuntime:InteractiveRuntimeDeps|undefined;
   private taskInteractiveRuntime:TaskInteractiveDeps|undefined;
-  private interactiveTimers:InteractiveTimerController|undefined;
   private readonly recoveredOwners = new Set<string>();
-  private readonly delegationTimers = new Map<string,ReturnType<typeof setTimeout>>();
   ownerRecovery: Promise<void> = Promise.resolve();
   /** One ordinary execution-fact wake-up per owner/Run while it is still pending in dsh's inbox.
    *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
@@ -536,9 +505,6 @@ export default class Hima extends Service {
   private factProjection:Promise<void>=Promise.resolve();
   private factNotifications:Promise<void>=Promise.resolve();
   private readonly notifiedSourceRevisions=new Map<string,number>();
-  /** The Harness's own driver of Pack-declared autopilot regions (ADR-0016). */
-  private autopilot: Autopilot | undefined;
-  private autopilotStopped = false;
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
   private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
@@ -662,12 +628,7 @@ export default class Hima extends Service {
       if(!observersClosed) {
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
-      for(const timer of this.delegationTimers.values())clearTimeout(timer);this.delegationTimers.clear();
-      this.interactiveTimers?.dispose();
-      this.autopilotStopped = true;
       this.factStop.abort();
-      await this.autopilot?.drain();
-      await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
       await Promise.all([this.factProjection,this.factNotifications]);
         observersClosed = true;
@@ -763,16 +724,6 @@ export default class Hima extends Service {
           // context (#59). Handed in like every other operation, so `remote.ts` stays a module a
           // browser bundle can read the types of.
           openMoment: (runId, instructions) => this.openMoment(runId, instructions),
-          // The audit is this process's, so it is read here and not handed in: `remoteCommands` and
-          // `clearRemoteCommands` are the module-level pair `channel.ts` keeps, and the drain reads
-          // and clears with nothing awaited between the two, so no command can be sent unrecorded in
-          // the gap.
-          remoteCommandAudit: () => ({ commands: remoteCommands(), windowFilled: remoteCommandWindowFilled() }),
-          drainRemoteCommandAudit: () => {
-            const answer = { commands: remoteCommands(), windowFilled: remoteCommandWindowFilled() };
-            clearRemoteCommands();
-            return answer;
-          },
           // Read each time the page is rendered rather than once at boot: a pack or a Site installed
           // while the window is open is one the form offers on the next look, and neither directory
           // is big enough for that to be worth caching against a person reloading a page.
@@ -883,17 +834,12 @@ export default class Hima extends Service {
       if(parent&&this.ledger.runs().some(r=>r.control?.owner===String(parent))&&!delegationRuntimePolicy(this.deps(),String(agent.id)))return 'A child of a Campaign owner needs a recorded Hima delegation contract.';
       if(this.ledger.runs().some(r=>r.control?.owner===String(agent.id))&&['subagent','subagent_fork'].includes(execution.name))return 'Use hima_delegate so this Run owns the child budget and write grant.';
     }),'hima: native child creation does not bypass Run delegation');
-    this.syncDelegationDeadlines();
-    // Last, and deliberately not awaited: every Run the last process left in flight is picked up
-    // again from the ledger and carried on. The host serves while that happens — a Run resumed here
-    // may have an hour of synthesis still to wait for, and a workbench that would not answer until
-    // then is one nobody could cancel from.
+    // Last, and deliberately not awaited: DBOS resumes its own workflows; the Host serves meanwhile.
     this.reconciled = this.durableAdaptersReady.then(() => recoverDurablePreparations(this.durable)).then(async () => {
       const pgRuns=new Set((await this.durable.store.runs()).map(run=>run.runId));
       for(const run of this.ledger.runs())if(!pgRuns.has(run.id)&&hasEnded(run.status))await reconcilePublishedLegacyArchive(this.deps(),run.id);
       const previous=await this.durable.store.hostExit();
       if(previous)await this.durable.store.releaseHostExit(previous.requestId,true);
-      return [];
     });
     void this.reconciled.catch(error => this.ctx.logger.warn(`Durable preparation recovery remains unavailable: ${String(error)}`));
     this.ctx.inject(['sessionController'], nativeCtx => {
@@ -906,45 +852,6 @@ export default class Hima extends Service {
     this.releaseDurableAdapters();
     this.factProjection=this.observeDurableFacts('history',()=>this.projectDurableHistory());
     this.factNotifications=this.observeDurableFacts('notifications',()=>this.deliverDurableBoundaries());
-  }
-
-  /**
-   * An interactive session whose Operator no longer holds its authority — its delegation expired,
-   * was cancelled, completed or never became live — has nobody left who may type into it, and holds
-   * its Site slot and licence seats until something stops it (#64 D-T02-5: w04–w06 of attempt 2 stayed
-   * open for an hour after the App relaunch). Such a session is closed once, through the same
-   * process-group close any close takes, under a request id derived from the session, so a later
-   * pass or a later restart finds that close's receipt and does nothing again; the Job's own records
-   * settle its execution and the owner is told once. A session whose Operator still holds its
-   * authority is re-attached as it stands: its deadlines are projected again and the Host's own
-   * deadline stop ends it if nobody drives it. A session the owner opened itself belongs to the
-   * recovered owner. A `process-survived` session is a person's blocker and is not touched again.
-   * Asked when a Host starts and each time an Operator's delegation deadline is recorded.
-   */
-  private async closeUndrivableInteractiveSessions(runId?:string):Promise<void> {
-    const runtime=this.interactiveDeps();
-    const closes:Promise<void>[]=[];
-    for(const run of this.ledger.runs()) {
-      if(runId!==undefined&&run.id!==runId)continue;
-      const control=run.control;if(!control||(run.status!=='running'&&run.status!=='waiting'))continue;
-      for(const session of listInteractiveSessions(this.ledger,run.id)) {
-        if(session.status==='closed'||session.status==='intent'||session.job===undefined||session.survivedPid!==undefined)continue;
-        if(session.operatorSessionId===control.owner)continue;
-        if(operatorInteractiveAuthority(this.deps(),session.operatorSessionId,{runId:run.id,nodeId:session.nodeId,executionId:session.executionId})!==undefined)continue;
-        const requestId=`operator-ended-close-${session.toolSessionId}`.slice(0,160);
-        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))continue;
-        closes.push((async()=>{
-          const result=await operateInteractive(runtime,{runId:run.id,executionId:session.executionId,nodeId:session.nodeId,toolSessionId:session.toolSessionId,
-            actor:control.owner,ownerEpoch:control.epoch,controlRevision:control.revision,requestId,hostStop:'recovery',action:'close'});
-          this.ctx.logger.info(`hima: interactive session ${session.toolSessionId} of ${run.id} without a live Operator: ${JSON.stringify(result)}`);
-          if(result.status==='duplicate'||this.autopilotNode(run.id,session.nodeId))return;
-          this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
-            ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it, and the Host could not close it: ${result.reason}`
-            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
-        })().catch(error=>this.ctx.logger.warn(`hima: closing interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
-      }
-    }
-    await Promise.all(closes);
   }
 
   /** Persisted ancestry carries Campaign responsibility through raw descendants and reopening.
@@ -1010,17 +917,7 @@ export default class Hima extends Service {
 
   startRun(request: StartRunRequest): Promise<StartRunResult> {
     if (this.exitRequest) return Promise.reject(new Error('the App is closing; no new Campaign may start'));
-    return startRun(this.deps(), request).then(started => { if (started.kind === 'ran') this.autopilot?.kick(started.run.id); return started; });
-  }
-
-  /** What the autopilot told each Run's owner, oldest first (ADR-0016); for inspection and tests. */
-  autopilotNotices(runId: string): readonly string[] { return this.autopilot?.notices(runId) ?? []; }
-
-  /** Whether the Pack's autopilot drives this node of this Run. */
-  private autopilotNode(runId: string, nodeId: string): boolean {
-    const run = this.ledger.run(runId);
-    if (!run?.control) return false;
-    try { return autopilotDrives(executionPack(this.deps(), run), nodeId); } catch { return false; }
+    return startRun(this.deps(), request);
   }
 
   readExecutionContext(runId: string) { return readExecutionContext(this.deps(), runId); }
@@ -1196,38 +1093,6 @@ export default class Hima extends Service {
     return {candidates:history.candidates.map(item=>({candidate:{sourceRun:item.sourceRun,sourceManifestSha256:item.sourceManifestSha256,sourceMaterialPath:item.sourceMaterialPath,sourceMaterialSha256:item.sourceMaterialSha256},title:item.sourceRun,adoption:item.adoption,availableEvidence})),unavailable:history.unavailable};
   }
 
-  private interactiveDeps():InteractiveRuntimeDeps {
-    if(this.interactiveRuntime)return this.interactiveRuntime;
-    const bridge=createInteractiveBindingBridge({packsDir:this.config.packsDir,sitesDir:this.config.sitesDir,interactiveBindingsFile:this.config.interactiveBindingsFile});
-    const runtime:InteractiveRuntimeDeps={fabric:this.deps(),
-      ...(testFixtureCanRunHere()&&process.env.HIMA_TEST_INTERACTIVE_BINDING_ID?{trustedTestQualification:{bindingId:process.env.HIMA_TEST_INTERACTIVE_BINDING_ID}}:{}),
-      resolveOperation:async(run,execution)=>{
-        const driving=interactiveDriving(this.deps(),run,execution);
-        return bridge.resolve({pack:driving.pack,run,execution,site:driving.site,workspace:driving.workspace,bindings:driving.bindings});
-      },verifyAdminBinding:binding=>bridge.verifyAdminBinding(binding),encodeCommand:(binding,request)=>bridge.encodeCommand(binding,request),
-      claimJobSlot:async request=>{
-        if(!request.run.budget)return {kind:'stopped',reason:'Original Run budget is unavailable.'};
-        const result=await claimSlot(this.deps(),{site:{name:request.site,jobs:request.run.budget.jobCap,licences:request.run.budget.licences},holds:request.licences,launch:request.launch});
-        return result.kind==='claimed'?result:{kind:result.kind,reason:result.kind==='at-cap'?'The Site Job or licence cap is full.':result.error.message};
-      },
-      onDeadline:async deadline=>{
-        const run=this.ledger.run(deadline.runId);if(!run?.control)return;
-        const requestId=`deadline-${identityOf(deadline).slice(0,40)}`;
-        // One stop and one notice per deadline (#64 D-T02-5): a deadline whose stop is already in the
-        // Ledger — this Host's, or one before a restart — is not stopped or announced again.
-        if(this.ledger.records({runId:run.id,type:'interactive'}).some(record=>record.type==='interactive'&&record.requestId===requestId))return;
-        const common={runId:run.id,executionId:deadline.executionId,nodeId:deadline.nodeId,toolSessionId:deadline.toolSessionId,actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,requestId,hostStop:'deadline' as const};
-        const result=await operateInteractive(runtime,deadline.kind==='command'?{...common,action:'signal',signal:'interrupt'}:{...common,action:'close'});
-        this.ctx.logger.info(`Interactive ${deadline.kind} deadline: ${JSON.stringify(result)}`);
-        // ADR-0016: an autopilot node's deadline is a Ledger fact the driver acts on, never a person's notice.
-        if(this.autopilotNode(run.id,deadline.nodeId))return;
-        this.deps().notify?.(run.control.owner,run.id,deadline.executionId,result.status==='refused'
-          ?`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached, and the Host could not stop it: ${result.reason}`
-          :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`);
-      },
-    };
-    this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
-  }
   private taskInteractiveDeps():TaskInteractiveDeps {
     if (this.taskInteractiveRuntime) return this.taskInteractiveRuntime;
     const bridge = createInteractiveBindingBridge({ packsDir: this.config.packsDir, sitesDir: this.config.sitesDir,
@@ -1241,57 +1106,11 @@ export default class Hima extends Service {
     if (await this.durable.store.nativeSessionEffect(sessionId)) {
       return operateTaskInteractive(this.taskInteractiveDeps(), sessionId, raw);
     }
-    let request=parseInteractiveRequest(raw,sessionId);
-    const run=this.ledger.run(request.runId);
-    const delegated=run?.control&&run.control.owner!==sessionId?operatorInteractiveAuthority(this.deps(),sessionId,request):undefined;
-    if(!delegated)await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
-    if(run?.control?.owner===sessionId&&request.action==='open') {
-      const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:request.nodeId,
-        executionId:request.executionId,actor:sessionId,ownerEpoch:request.ownerEpoch,controlRevision:request.controlRevision});
-      if(!('reason' in qualification)&&!qualification.testOnly)return {status:'refused',
-        reason:'A production-qualified interactive execution must be operated by a recorded Operator child. Use hima_delegate to create role operator for this exact freshly begun node execution; the Run owner adopts its retained candidate result.'};
-    }
-    if(run?.control&&run.control.owner!==sessionId) {
-      if(!delegated)return {status:'refused',reason:'This conversation has no active Operator delegation for the exact Run execution.'};
-      // A reviewed scope is enforced at runtime admission against the Run's retained Pack classification.
-      const reviewedScope=delegated.reviewedAction?.mode==='scope'?{...delegated.reviewedAction.scope,
-        planHashArgument:delegated.reviewedAction.planHashArgument,planSha256:delegated.reviewedAction.planSha256}:undefined;
-      if(request.action==='input'&&delegated.reviewedAction!==undefined&&delegated.reviewedAction.mode!=='scope') {
-        const command=request.command;
-        if(command.name===delegated.reviewedAction.command
-            &&identityOf(command.args)!==identityOf(delegated.reviewedAction.arguments))return {status:'refused',reason:'The Operator mutation differs from the immutable owner-adopted reviewed action.'};
-        if(!run.packId||!request.nodeId)return {status:'refused',reason:'The Operator target Pack/node identity is unavailable.'};
-        const tool=nodeTool(loadPack(this.config.packsDir,run.packId),request.nodeId);
-        const mutations=new Set(tool?.interactive?.commands.mutate??[]);
-        if(mutations.has(command.name)&&command.name!==delegated.reviewedAction.command)return {status:'refused',reason:'The Operator requested a different mutation than the immutable owner-adopted reviewed action.'};
-      }
-      request={...request,ownerEpoch:run.control.epoch,controlRevision:run.control.revision,...delegated,
-        ...(reviewedScope===undefined?{}:{reviewedScope})};
-    }
-    if(this.factStop.signal.aborted)return {status:'refused',reason:'The Host is stopping.'};
-    const result=await operateInteractive(this.interactiveDeps(),request);
-    await reconcileInteractiveExecution(this.deps(),request.runId,request.executionId);
-    await this.interactiveTimers!.reconcile();
-    const context=this.executionContext(request.runId);
-    const execution=context.executions.find((entry)=>entry.id===request.executionId);
-    const delegation=runDelegations(this.deps(),request.runId).find((entry)=>entry.childSessionId===sessionId);
-    const taskDeadline=delegation?.reservation.deadlineAt;
-    const taskRemainingMs=taskDeadline===undefined?undefined:Math.max(0,Date.parse(taskDeadline)-Date.now());
-    const mutationLimit=request.reviewedScope?.maxMutations;
-    const mutationsUsed=this.ledger.records({runId:request.runId,type:'interactive'}).filter((record)=>record.type==='interactive'
-      && (record.payload as {event?:string;executionId?:string;actor?:string;scopeMutation?:boolean}).event==='input-intent'
-      && (record.payload as {executionId?:string}).executionId===request.executionId
-      && (record.payload as {actor?:string}).actor===sessionId
-      && (record.payload as {scopeMutation?:boolean}).scopeMutation===true).length;
-    return {...result,context:{
-      run:{id:context.run.id,status:context.run.status,currentNode:context.run.currentNode,generation:context.run.generation},
-      execution:execution===undefined?undefined:{id:execution.id,nodeId:execution.nodeId,phase:execution.phase,attempt:execution.attempt},
-      budget:context.budget,
-      operator:{mutationsUsed,...(mutationLimit===undefined?{}:{mutationLimit,mutationsRemaining:Math.max(0,mutationLimit-mutationsUsed)}),
-        ...(taskDeadline===undefined?{}:{taskDeadline,taskRemainingMs,taskState:delegation?.state})},
-      ...(context.reason===undefined?{}:{reason:context.reason}),
-      asOf:new Date().toISOString(),
-    }};
+    // A historical interactive execution is terminal and read-only; only a retained native task
+    // grant may operate a qualified tool session.
+    const request=parseInteractiveRequest(raw,sessionId);
+    await authorizeProjectRun(this.guideDeps(),sessionId,request.runId);
+    return {status:'refused',reason:'This conversation has no retained native task grant; historical interactive sessions are read-only.'};
   }
   async interactiveSessions(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
@@ -1322,344 +1141,15 @@ export default class Hima extends Service {
       return fits(answer) ? answer : { ...base, kind: 'unavailable', truncated: true, viewLimitBytes,
         reason: 'The durable input exceeds the native view; select its JSON fields with path, offset and limit.' };
     }
-    const policy=delegationRuntimePolicy(this.deps(),sessionId);
-    const entry=runDelegations(this.deps(),request.runId).find(item=>item.childSessionId===sessionId);
-    if(!policy||!('toolsAllowed' in policy)||policy.toolsAllowed!==true||!entry||entry.effective.runRef?.runId!==request.runId||!entry.contract.inputRefs.includes(request.recordId))throw new BadRequest('This child has no current grant for that exact input reference.');
-    const record=this.ledger.record(request.recordId);
-    if(!record||record.runId!==request.runId||!recordValidityOf(this.ledger.records({runId:request.runId}),record.id).valid)throw new BadRequest('The delegated input is missing or invalidated.');
-    const base={runId:request.runId,recordId:record.id,recordType:record.type};
-    // DSH's native spill-policy caps model-facing plain-text results at 50,000 UTF-8
-    // bytes. Bound the complete envelope below that ceiling, not just report text.
-    const viewLimitBytes=40000;
-    const viewBytes=(value:object)=>Buffer.byteLength(JSON.stringify(value),'utf8');
-    const bounded=(value:object,handoffSource?:{outputIdentity:string;contractRecordId:string}):object=>viewBytes(value)<=viewLimitBytes?value:{...base,kind:'unavailable',
-      truncated:true,viewLimitBytes,
-      ...(handoffSource===undefined?{}:{...handoffSource,source:'durable-ledger-child-handoff',identityEncoding:'sha256-native-assistant-output'}),
-      ...(record.type==='observation'?{contentSha256:record.contentSha256,bytes:record.bytes}
-        :record.type==='code'||record.type==='knowledge'?{sha256:record.sha256,bytes:record.bytes}:{}),
-      reason:'The typed input exceeds the bounded native child view; read it in bounded parts with path, offset and limit, or delegate smaller verified material.'};
-    // #64 T05 w03: a selection reads one window of the input's retained material, under this same grant,
-    // record identity and content hash, inside the same bounded view.
-    if(delegationInputSelected(request)) {
-      if(!['observation','code','knowledge'].includes(record.type))throw new BadRequest(`A bounded selection reads the retained material of an observation, code or knowledge input; this record is ${record.type}.`);
-      const hash=record.type==='observation'?{contentSha256:record.contentSha256}:{sha256:(record as {sha256:string}).sha256};
-      const material=await readReportMaterial(this.deps(),request.runId,record.id);
-      if(material.kind!=='read')return {...base,kind:'unavailable',...hash,reason:`Recorded material is unavailable; nothing of it is delivered: ${material.why}`};
-      const answer=(value:unknown,window:object)=>({...base,kind:'selection',...hash,bytes:(record as {bytes:number}).bytes,path:request.path??'',window,value});
-      const selected=selectDelegationInput(material.text,request,(value,window)=>viewBytes(answer(value,window))<=viewLimitBytes);
-      if(!selected.ok)throw new BadRequest(`${selected.reason} Record ${record.id}; select a dotted field path or JSON pointer that exists in it, with offset and limit.`);
-      return answer(selected.value,selected.window);
-    }
-    if(record.type==='code'||record.type==='knowledge') {
-      if(record.bytes>1024*1024)return {...base,kind:'unavailable',reason:'This material exceeds the bounded child input view; delegate a smaller verified source.'};
-      const material=await readMaterial(this.deps(),request.runId,record.id);
-      if(material.kind!=='read')return {...base,kind:'unavailable',reason:`Recorded material is ${material.kind}; original bytes were not delivered.`};
-      return bounded({...base,kind:'material',sha256:record.sha256,bytes:record.bytes,text:material.text,
-        returnedBytes:Buffer.byteLength(material.text,'utf8'),truncated:false});
-    }
-    if(record.type==='delegation'&&record.event==='result-observed') {
-      const source=runDelegations(this.deps(),request.runId).find(item=>item.delegationId===record.delegationId);
-      if(!source)return {...base,kind:'unavailable',reason:'The child result source is missing.'};
-      let observed:ReturnType<typeof parseDelegationResultObservedPayload>;
-      try {observed=parseDelegationResultObservedPayload(record.payload);} catch {return {...base,kind:'unavailable',reason:'This observed child result predates or fails the durable handoff schema.'};}
-      const handoff=observed.handoff;
-      const contractRecord=this.ledger.record(handoff.contract.recordId);
-      if(source.contractRecordId!==handoff.contract.recordId||source.requestDigest!==handoff.contract.requestDigest
-          ||!contractRecord||contractRecord.type!=='delegation'||contractRecord.event!=='create-intent'
-          ||contractRecord.runId!==request.runId||contractRecord.delegationId!==record.delegationId
-          ||contractRecord.requestDigest!==handoff.contract.requestDigest
-          ||!recordValidityOf(this.ledger.records({runId:request.runId}),contractRecord.id).valid) {
-        return {...base,kind:'unavailable',reason:'The exact recorded delegation contract for this child handoff is missing or invalidated.'};
-      }
-      return bounded({...base,kind:'record-fact',payload:{candidateOnly:true,outputIdentity:handoff.outputIdentity,
-        contractRecordId:contractRecord.id,task:source.contract.task,inputRefs:source.contract.inputRefs,
-        text:handoff.output.text,content:handoff.output.content,truncated:handoff.output.truncated,
-        completedTurn:handoff.completedTurn,unknowns:handoff.unknowns,evidence:handoff.evidence,
-        artifacts:handoff.evidence.artifactRefs.map(({path:_path,...artifact})=>artifact),limitations:handoff.evidence.limitations},
-        source:'durable-ledger-child-handoff',identity:handoff.outputIdentity,identityEncoding:'sha256-native-assistant-output'},
-        {outputIdentity:handoff.outputIdentity,contractRecordId:contractRecord.id});
-    }
-    let observationMaterial:{text:string;returnedBytes:number;truncated:boolean}|undefined;
-    let observationJson:unknown;
-    if(record.type==='observation') {
-      const retained=await readReportMaterial(this.deps(),request.runId,record.id);
-      if(retained.kind==='read') {
-        observationMaterial={text:retained.text,returnedBytes:Buffer.byteLength(retained.text,'utf8'),truncated:false};
-        try { observationJson=JSON.parse(retained.text); } catch { /* non-JSON reports retain the bounded text projection */ }
-      }
-    }
-    let payload:unknown=record.type==='observation'?{reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
-        ...(observationMaterial===undefined?{materialUnavailable:'No bounded retained report bytes are available.'}:{material:observationMaterial})}
-      :record.type==='verdict'?{outcome:record.outcome,ruleId:record.ruleId,ruleVersion:record.ruleVersion,cites:record.cites,valuesAsRead:record.valuesAsRead,reason:record.reason}
-      :record.type==='analysis'?{analysis:record.analysis}:undefined;
-    if(payload===undefined)return {...base,kind:'unavailable',reason:'This record type has no bounded delegated material projection.'};
-    if(viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes&&record.type==='observation'&&observationJson!==undefined) {
-      payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
-        material:{encoding:'json',value:observationJson,returnedBytes:Buffer.byteLength(JSON.stringify(observationJson),'utf8'),truncated:false}};
-    }
-    if(record.type==='observation'&&observationMaterial!==undefined
-        &&viewBytes({...base,kind:'record-fact',payload,identity:'0'.repeat(64),identityEncoding:'canonical-ledger-projection'})>viewLimitBytes) {
-      payload={reader:record.reader,contentSha256:record.contentSha256,bytes:record.bytes,values:record.values,
-        material:{encoding:observationJson===undefined?'text':'json',truncated:true,returnedBytes:0,
-          reason:`Complete material exceeds the bounded native view limit (${viewLimitBytes} bytes); only typed reader values are delivered. Read it in bounded parts: path (a dotted field path or JSON pointer, such as candidate.targets), offset and limit.`}};
-    }
-    return bounded({...base,kind:'record-fact',payload,identity:identityOf(payload),identityEncoding:'canonical-ledger-projection'});
+    // Historical delegations are terminal: their children hold no current grant.
+    throw new BadRequest('This child has no current grant for that exact input reference.');
   }
 
-  async delegate(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<object> {
-    // Only the Host's own driver acts as the autopilot; no caller of this service may.
-    if(request.origin==='autopilot')return {unknowns:[],status:'refused',artifacts:[],reason:'only the Harness takes autopilot turns'};
-    return this.runDelegation(request,signal);
-  }
-
-  private async runDelegation(request:RunDelegationRequest,signal:AbortSignal=AbortSignal.timeout(30000)):Promise<Record<string,unknown>> {
+  /** `hima_delegate`: delegation of a current Run is a declared Pack task whose native child DBOS
+   *  records itself; historical Runs are terminal. Nothing is created or written. */
+  async delegate(request:RunDelegationRequest):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),request.actor,request.runId);
-    let normalizedRequest=request;
-    let materializedFromRecipe=false;
-    let operatorGrant:import('./delegation.js').OperatorDelegationGrant|undefined;
-    if(request.action==='create'&&request.recipe!==undefined) {
-      if(request.contract!==undefined||request.text!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'A Pack Agent Team recipe supplies its own task and contract; caller contract/text is not accepted.'};
-      const run=this.ledger.run(request.runId);
-      if(!run?.control)return {unknowns:[],status:'refused',artifacts:[],reason:'Agent Team materialization requires a controlled Run.'};
-      if(!run.packId)return {unknowns:[],status:'refused',artifacts:[],reason:'The controlled Run has no retained Pack identity.'};
-      if(!run.packDigest)return {unknowns:[],status:'refused',artifacts:[],reason:'The controlled Run has no retained Pack digest.'};
-      const pack=loadRunPack(this.config.packsDir,run.packId,run.packDigest);
-      const team=pack.contract.agentTeams.find(item=>item.id===request.recipe!.teamId&&item.version===request.recipe!.version);
-      const member=team?.members.find(item=>item.id===request.recipe!.memberId);
-      if(!team||!member)return {unknowns:[],status:'refused',artifacts:[],reason:'The retained Pack does not declare that Agent Team recipe/member version.'};
-      const execution=run.control.executions[request.recipe.executionId];
-      if(!execution||execution.nodeId!==member.node||execution.supersededBy||execution.phase!=='begun')return {unknowns:[],status:'refused',artifacts:[],reason:'The recipe member requires its exact freshly begun target execution.'};
-      if(team.triggerNode!==execution.nodeId)return {unknowns:[],status:'refused',artifacts:[],reason:'The recipe trigger node differs from the requested execution.'};
-      const records=currentRecordsIn(this.ledger.records({runId:run.id}));
-      const recipeSite=loadSite(this.config.sitesDir,run.siteId);
-      const inputRefs:string[]=[];const outputRecords=new Map<string,Extract<(typeof records)[number],{type:'observation'}>>();
-      for(const name of member.inputs) {
-        const output=pack.contract.outputs.find(item=>item.name===name)!;
-        const expectedPath=outputPath(output,recipeSite.bindings);
-        const matches=records.filter((item):item is Extract<typeof item,{type:'observation'}>=>item.type==='observation'
-          &&item.generation===execution.generation&&item.reader.id===output.reader
-          &&(item.path===expectedPath||item.path.endsWith(`/${expectedPath}`)));
-        if(matches.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe input ${name} needs one current Reader observation; found ${matches.length}.`};
-        inputRefs.push(matches[0]!.id);outputRecords.set(name,matches[0]!);
-      }
-      const existing=runDelegations(this.deps(),run.id);const dependencyIds:string[]=[];
-      for(const dependency of member.dependencyRoles) {
-        const found=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
-          &&row.effective.recipe.memberId===dependency&&row.effective.recipe.executionId===execution.id);
-        if(!found?.resultRecordId)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe dependency ${dependency} has no exact observed candidate result.`};
-        const source=team.members.find(item=>item.id===dependency)!;
-        if(source.ownerAdoption==='required'&&!found.adoptedRecordId)return {unknowns:[],status:'refused',artifacts:[],reason:`Recipe dependency ${dependency} requires explicit owner adoption.`};
-        dependencyIds.push(found.delegationId);inputRefs.push(found.resultRecordId);
-      }
-      let inlinePayload:import('./delegation.js').TeamRecipeBinding['inlinePayload'];
-      let reviewOutput:import('./delegation.js').TeamRecipeBinding['reviewOutput'];
-      const operatorConsumer=team.members.find(item=>item.reviewedAction!==undefined&&item.reviewedAction.mode!=='request-scope'&&item.reviewedAction.fromRole===member.id);
-      if(operatorConsumer?.reviewedAction?.mode==='scope') {
-        const reviewed=operatorConsumer.reviewedAction;
-        const tool=nodeTool(pack,operatorConsumer.node);
-        if(reviewed.commands.some(command=>!tool?.interactive?.arguments[command]))return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
-        reviewOutput={mode:'scope',scopeField:reviewed.scopeField,commands:reviewed.commands,maxMutations:reviewed.maxMutations};
-      } else if(operatorConsumer?.reviewedAction&&operatorConsumer.reviewedAction.mode!=='request-scope') {
-        const tool=nodeTool(pack,operatorConsumer.node);
-        const declaration=tool?.interactive?.arguments[operatorConsumer.reviewedAction.command];
-        if(!declaration)return {unknowns:[],status:'refused',artifacts:[],reason:'The Pack Reviewer output contract has no matching typed Operator command.'};
-        reviewOutput={command:operatorConsumer.reviewedAction.command,
-          arguments:declaration.filter(item=>item.name!==operatorConsumer.reviewedAction!.hostPlanHashArgument).map(item=>item.name)};
-      }
-      if(member.reviewedAction?.mode==='request-scope') {
-        // ADR-0016: the admitted request is the Operator's scope. The Host reads it out of the exact
-        // Reader-backed bytes, holds it to the Pack recipe and binds every mutation to that reading.
-        const reviewed=member.reviewedAction;
-        const planRecord=outputRecords.get(reviewed.planInput);
-        if(!planRecord)return {unknowns:[],status:'refused',artifacts:[],reason:'The request scope plan input has no current Reader observation.'};
-        const retainedPlan=await readReportMaterial(this.deps(),run.id,planRecord.id);
-        if(retainedPlan.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact request scope bytes are unavailable: ${retainedPlan.why}`};
-        let plan:unknown;try{plan=JSON.parse(retainedPlan.text);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The request scope plan bytes are not JSON.'};}
-        let scope:unknown=plan;
-        for(const key of reviewed.scopePath)scope=scope!==null&&typeof scope==='object'&&!Array.isArray(scope)?(scope as Record<string,unknown>)[key]:undefined;
-        const problem=reviewedScopeProblem(scope,reviewed);
-        if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`The admitted request's ${reviewed.scopePath.join('.')} is not a scope the Pack recipe allows: ${problem}.`};
-        const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
-        inlinePayload={mode:'scope',sourceResultRecordId:planRecord.id,adoptionRecordId:planRecord.id,planSha256:planRecord.contentSha256,
-          planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
-      } else if(member.reviewedAction) {
-        const reviewedFrom=member.reviewedAction.fromRole;
-        const source=existing.find(row=>row.effective.recipe?.teamId===team.id&&row.effective.recipe.version===team.version
-          &&row.effective.recipe.memberId===reviewedFrom&&row.effective.recipe.executionId===execution.id)!;
-        const result=this.ledger.record(source.resultRecordId!);if(!result||result.type!=='delegation'||result.event!=='result-observed')return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action result record is unavailable.'};
-        let observed:ReturnType<typeof parseDelegationResultObservedPayload>;try{observed=parseDelegationResultObservedPayload(result.payload);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action handoff is malformed.'};}
-        let payload:Record<string,unknown>;try{payload=JSON.parse(observed.handoff.output.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action must be one JSON object.'};}
-        if(payload===null||typeof payload!=='object'||Array.isArray(payload))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action must be one JSON object.'};
-        const sourceMember=team.members.find(item=>item.id===reviewedFrom)!;
-        {const missing=sourceMember.resultSchema.required.filter(field=>!(field in payload));if(payload.schema!==sourceMember.resultSchema.id||missing.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed action does not satisfy Pack result schema ${JSON.stringify(sourceMember.resultSchema.id)}: ${[payload.schema===sourceMember.resultSchema.id?'':`its schema field is ${payload.schema===undefined?'absent':JSON.stringify(payload.schema)}, not ${JSON.stringify(sourceMember.resultSchema.id)}`,missing.length===0?'':`missing required field(s): ${missing.join(', ')}`].filter(Boolean).join('; ')}.`};}
-        if(member.reviewedAction.mode==='scope') {
-          const reviewed=member.reviewedAction;
-          const planHash=payload[reviewed.planHashField];const scope=payload[reviewed.scopeField];
-          if(typeof planHash!=='string'||planHash!==outputRecords.get(reviewed.planInput)?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed scope plan SHA-256 differs from the current reader-backed plan.'};
-          // Second guard: the Reviewer result gate already refused this; a Ledger result that bypassed it still cannot pass.
-          const problem=reviewedScopeProblem(scope,reviewed);
-          if(problem!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:`${problem[0]!.toUpperCase()}${problem.slice(1)}.`};
-          const {commands,maxMutations}=scope as {commands:string[];maxMutations:number};
-          const tool=nodeTool(pack,member.node);
-          const untyped=commands.filter(command=>!tool?.interactive?.commands.mutate.includes(command)
-            ||!tool.interactive.arguments[command]?.some(item=>item.name===reviewed.hostPlanHashArgument&&item.type==='string'));
-          if(untyped.length>0)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed scope names commands that are not hash-bearing mutations of the Operator tool: ${untyped.join(', ')}.`};
-          inlinePayload={mode:'scope',sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,
-            planHashArgument:reviewed.hostPlanHashArgument,scope:{commands,maxMutations}};
-        } else {
-        const planHash=payload[member.reviewedAction.planHashField];const command=payload[member.reviewedAction.commandField];const args=payload[member.reviewedAction.argumentsField];
-        const planRecord=outputRecords.get(member.reviewedAction.planInput);
-        if(typeof planHash!=='string'||planHash!==planRecord?.contentSha256)return {unknowns:[],status:'refused',artifacts:[],reason:`The reviewed action plan SHA-256 ${typeof planHash==='string'?JSON.stringify(planHash):'(absent)'} differs from the current reader-backed fix plan ${planRecord?.contentSha256===undefined?'(unavailable)':JSON.stringify(planRecord.contentSha256)}.`};
-        if(typeof command!=='string'||!args||typeof args!=='object'||Array.isArray(args))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command or arguments are malformed.'};
-        const tool=nodeTool(pack,member.node);
-        const declaration=tool?.interactive?.arguments[command];if(command!==member.reviewedAction.command||!declaration||!Object.values(tool!.interactive!.commands).flat().includes(command))return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action command is not the Pack recipe mutation.'};
-        const values=args as Record<string,unknown>;const actionDeclaration=declaration.filter(item=>item.name!==member.reviewedAction!.hostPlanHashArgument);
-        if(new Set([...Object.keys(values),...actionDeclaration.map(item=>item.name)]).size!==actionDeclaration.length)return {unknowns:[],status:'refused',artifacts:[],reason:'The reviewed action arguments differ from the typed Pack command.'};
-        for(const item of actionDeclaration){const value=values[item.name];if(typeof value!==item.type||item.choices&&!item.choices.includes(value as never)||typeof value==='number'&&(item.minimum!==undefined&&value<item.minimum||item.maximum!==undefined&&value>item.maximum))return {unknowns:[],status:'refused',artifacts:[],reason:`Reviewed argument ${item.name} violates the typed Pack command.`};}
-        const retainedPlan=await readReportMaterial(this.deps(),run.id,planRecord.id);
-        if(retainedPlan.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact reviewed plan bytes are unavailable: ${retainedPlan.why}`};
-        let plan:Record<string,unknown>;try{plan=JSON.parse(retainedPlan.text) as Record<string,unknown>;}catch{return {unknowns:[],status:'refused',artifacts:[],reason:'The exact reviewed plan bytes are not JSON.'};}
-        const candidates=plan[member.reviewedAction.actionListField];
-        if(!Array.isArray(candidates))return {unknowns:[],status:'refused',artifacts:[],reason:`The owner-adopted reviewed action cannot be matched: the reviewed plan declares no action list at ${JSON.stringify(member.reviewedAction.actionListField)}.`};
-        if(!candidates.some(candidate=>candidate&&typeof candidate==='object'
-            &&actionDeclaration.every(item=>(candidate as Record<string,unknown>)[item.name]===values[item.name]))){
-          const adopted=actionDeclaration.map(item=>`${item.name}=${JSON.stringify(values[item.name])}`).join(', ');
-          return {unknowns:[],status:'refused',artifacts:[],reason:`The owner-adopted reviewed action (${adopted}) is not one action in the exact reader-backed fix plan at ${JSON.stringify(member.reviewedAction.actionListField)}; the adopted argument values match no plan entry.`};
-        }
-        const effectiveArguments={...values,[member.reviewedAction.hostPlanHashArgument]:planHash} as Record<string,string|number|boolean>;
-        inlinePayload={sourceResultRecordId:result.id,adoptionRecordId:source.adoptedRecordId!,planSha256:planHash,command,arguments:effectiveArguments};
-        }
-      }
-      const delegationId=`team-${team.id}-${member.id}-${identityOf({runId:run.id,executionId:execution.id}).slice(0,16)}`;
-      const priorRecipe=existing.find(row=>row.delegationId===delegationId);
-      const recipeDigest=identityOf({packDigest:run.packDigest,team,member});
-      // #64 M-T03-1: the exact Reader-backed bytes of each declared task input, embedded, so the member
-      // works from the request itself and never from a record id it cannot read.
-      const embedded:string[]=[];
-      for(const wanted of member.taskInputs) {
-        const reading=outputRecords.get(wanted.input);
-        if(!reading)return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} has no current Reader observation.`};
-        const bytes=await readReportMaterial(this.deps(),run.id,reading.id);
-        if(bytes.kind!=='read')return {unknowns:[],status:'refused',artifacts:[],reason:`The exact bytes of task input ${wanted.input} are unavailable: ${bytes.why}`};
-        let text=bytes.text;
-        if(wanted.fields!==undefined) {
-          let value:unknown;try{value=JSON.parse(bytes.text);}catch{return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} is not JSON, so its fields cannot be picked.`};}
-          if(value===null||typeof value!=='object'||Array.isArray(value))return {unknowns:[],status:'refused',artifacts:[],reason:`Task input ${wanted.input} is not one JSON object.`};
-          text=JSON.stringify(Object.fromEntries(wanted.fields.filter(field=>field in (value as object)).map(field=>[field,(value as Record<string,unknown>)[field]])));
-        }
-        embedded.push(`Exact input ${wanted.input} (Reader observation ${reading.id}, content SHA-256 ${reading.contentSha256}${wanted.fields===undefined?'':`, fields ${wanted.fields.join(', ')}`}):\n${text}`);
-      }
-      const task=[member.taskTemplate,`Runtime inputs: ${inputRefs.join(', ')}.`,inlinePayload?`${inlinePayload.mode==='scope'?'Immutable reviewed scope':'Immutable reviewed action'}: ${JSON.stringify(inlinePayload)}.`:'',...embedded].filter(Boolean).join('\n');
-      normalizedRequest={...request,recipe:undefined,...(priorRecipe?.reservation.admittedRevision===undefined?{}:{expectedRevision:priorRecipe.reservation.admittedRevision}),contract:{delegationId,role:member.role,task,inputRefs,nodeRef:member.node,
-        allowedTools:member.allowedTools,budgetShare:member.budgetShare,dependencyIds,recipient:{kind:'run-owner',sessionId:run.control.owner},
-        recipe:{teamId:team.id,version:team.version,memberId:member.id,executionId:execution.id,recipeDigest,resultSchema:member.resultSchema,...(inlinePayload?{inlinePayload}:{})}}};
-      if(reviewOutput) normalizedRequest={...normalizedRequest,contract:{...(normalizedRequest.contract as object),recipe:{...((normalizedRequest.contract as {recipe:object}).recipe),reviewOutput}}};
-      materializedFromRecipe=true;
-    }
-    request=normalizedRequest;
-    if(request.action==='create'&&request.contract&&typeof request.contract==='object'
-        &&(request.contract as Record<string,unknown>).recipe!==undefined&&!materializedFromRecipe) {
-      return {unknowns:[],status:'refused',artifacts:[],reason:'Delegation recipe provenance is Host-materialized and cannot be supplied in a manual contract.'};
-    }
-    if(request.action==='create'&&request.contract&&typeof request.contract==='object'
-        &&(request.contract as {role?:unknown}).role==='operator') {
-      const raw=request.contract as Record<string,unknown>;
-      const declaredNodeRef=typeof raw.nodeRef==='string'?raw.nodeRef:undefined;
-      const nodeIdAlias=typeof raw.nodeId==='string'?raw.nodeId:undefined;
-      if(declaredNodeRef!==undefined&&nodeIdAlias!==undefined&&declaredNodeRef!==nodeIdAlias)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract nodeId and nodeRef name different nodes.'};
-      const nodeRef=declaredNodeRef??nodeIdAlias;
-      if(nodeRef===undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract requires nodeRef; nodeId is accepted as its owner-facing alias.'};
-      const requestedExecutionId=typeof raw.executionId==='string'?raw.executionId:undefined;
-      const legacyFull=typeof raw.delegationId==='string'&&typeof raw.nodeRef==='string'&&typeof raw.task==='string'
-        &&Array.isArray(raw.inputRefs)&&Array.isArray(raw.allowedTools)&&raw.budgetShare!==null
-        &&typeof raw.budgetShare==='object'&&!Array.isArray(raw.budgetShare)&&Array.isArray(raw.dependencyIds)
-        &&raw.recipient!==null&&typeof raw.recipient==='object';
-      if(requestedExecutionId===undefined&&!legacyFull)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract requires the exact executionId; only the complete legacy nodeRef contract may resolve the unique begun execution.'};
-      const run=this.ledger.run(request.runId);
-      if(!run?.control)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires a controlled Run.'};
-      if(!materializedFromRecipe&&run.packId&&run.packDigest) {
-        const retained=loadRunPack(this.config.packsDir,run.packId,run.packDigest);
-        const required=retained.contract.agentTeams.some(team=>team.members.some(member=>member.role==='operator'&&member.node===nodeRef));
-        if(required)return {unknowns:[],status:'refused',artifacts:[],reason:'This Pack declares an Operator Agent Team recipe for the execution; materialize that recipe after its required Reviewer adoption.'};
-      }
-      const delegationId=typeof raw.delegationId==='string'?raw.delegationId:`operator-${requestedExecutionId!}`;
-      const existingDelegations=runDelegations(this.deps(),request.runId);
-      const prior=existingDelegations.find(row=>row.delegationId===delegationId);
-      let targetExecutionId=requestedExecutionId;
-      if(prior?.effective.operator) {
-        const retained=prior.effective.operator;
-        targetExecutionId??=retained.executionId;
-        if(retained.runId!==run.id||retained.nodeId!==nodeRef||retained.executionId!==targetExecutionId
-            ||prior.effective.role!=='operator')return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation identity belongs to a different Run, node or execution.'};
-      } else {
-        const executions=Object.values(run.control.executions).filter(entry=>entry.nodeId===nodeRef&&!entry.supersededBy&&entry.phase==='begun');
-        if(executions.length!==1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires exactly one freshly begun interactive execution at its declared node.'};
-        if(targetExecutionId!==undefined&&executions[0]!.id!==targetExecutionId)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator contract executionId differs from the exact freshly begun execution.'};
-        targetExecutionId=executions[0]!.id;
-      }
-      const task=typeof raw.task==='string'&&raw.task.trim()!==''?raw.task:typeof request.text==='string'&&request.text.trim()!==''?request.text:undefined;
-      if(task===undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation requires a bounded task in contract.task or text.'};
-      if(raw.budgetShare!==undefined&&(raw.budgetShare===null||typeof raw.budgetShare!=='object'||Array.isArray(raw.budgetShare)))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation budgetShare must be an object.'};
-      const suppliedBudget=raw.budgetShare===undefined?{}:raw.budgetShare as Record<string,unknown>;
-      if(suppliedBudget.maxTotalTokens!==undefined||suppliedBudget.maxCost!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no enforceable task-total token or cost cap; omit maxTotalTokens and maxCost.'};
-      for(const [name,allowZero] of [['maxElapsedMs',false],['maxFollowups',true],['maxTokensPerTurn',false]] as const) {
-        const value=suppliedBudget[name];
-        if(value!==undefined&&(typeof value!=='number'||!Number.isSafeInteger(value)||(allowZero?value<0:value<=0)))return {unknowns:[],status:'refused',artifacts:[],reason:`Operator delegation budget ${name} is invalid.`};
-      }
-      if(raw.readScope!==undefined||raw.writeScope!==undefined)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation cannot receive generic readScope or writeScope.'};
-      const stringArray=(value:unknown,name:string):readonly string[]|{readonly reason:string}=>value===undefined?[]:Array.isArray(value)&&value.every(item=>typeof item==='string')?value:{reason:`Operator delegation ${name} must be an array of record identities.`};
-      const inputRefs=stringArray(raw.inputRefs,'inputRefs');if('reason' in inputRefs)return {unknowns:[],status:'refused',artifacts:[],reason:inputRefs.reason};
-      const dependencyIds=stringArray(raw.dependencyIds,'dependencyIds');if('reason' in dependencyIds)return {unknowns:[],status:'refused',artifacts:[],reason:dependencyIds.reason};
-      if(raw.allowedTools!==undefined&&(!Array.isArray(raw.allowedTools)||!raw.allowedTools.every(item=>typeof item==='string')||!raw.allowedTools.includes('hima_interactive')))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation allowedTools must include hima_interactive.'};
-      if(raw.recipient!==undefined&&((raw.recipient as {kind?:unknown;sessionId?:unknown}).kind!=='run-owner'
-          ||(raw.recipient as {sessionId?:unknown}).sessionId!==run.control.owner))return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation recipient must be the current Run owner.'};
-      const workspaceRef=raw.workspaceRef===undefined?undefined:typeof raw.workspaceRef==='string'?raw.workspaceRef:null;
-      if(workspaceRef===null)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation workspaceRef must be a string.'};
-      let budgetCeiling:number;
-      let budgetDefault:import('./delegation.js').DelegationBudgetShare;
-      if(prior) {
-        budgetDefault=prior.contract.budgetShare;budgetCeiling=budgetDefault.maxElapsedMs;
-      } else {
-        // The same delegation time the admission charges: lane time not held by a live child or spent by an ended one.
-        const unreservedMs=unreservedDelegationMs(this.deps(),run,existingDelegations);
-        const totalAvailableMs=unreservedMs===undefined?20*60_000:Math.max(0,unreservedMs);
-        const remainingMs=timeBoxRemainingMs(run,ownedWaitedMs(run))??20*60_000;
-        // Leave admission-time clock drift outside the child share; authority re-reads the deadline.
-        // #66 H2a: a recipe Operator's share is the Pack's Team member share, held only to the lane and
-        // the time box; the 20-minute, one-follow-up, 5000-token ceiling is the Host's manual default.
-        budgetCeiling=Math.min(materializedFromRecipe?Number.POSITIVE_INFINITY:20*60_000,totalAvailableMs,Math.max(0,remainingMs-1_000));
-        if(budgetCeiling<1)return {unknowns:[],status:'refused',artifacts:[],reason:'Operator delegation has no remaining Run time budget.'};
-        budgetDefault=materializedFromRecipe
-          ?{maxElapsedMs:budgetCeiling,maxFollowups:(suppliedBudget.maxFollowups as number|undefined)??1,maxTokensPerTurn:(suppliedBudget.maxTokensPerTurn as number|undefined)??5_000}
-          :{maxElapsedMs:budgetCeiling,maxFollowups:1,maxTokensPerTurn:5_000};
-      }
-      // #64 T05 w03: a Pack recipe Operator may also read its exact recorded inputs in bounded windows
-      // (packs.ts admits only these two tools for it); a manual Operator contract stays interactive-only.
-      const operatorTools=materializedFromRecipe&&Array.isArray(raw.allowedTools)&&raw.allowedTools.includes('hima_delegation_input')
-        ?['hima_interactive','hima_delegation_input']:['hima_interactive'];
-      const normalizedContract={delegationId,role:'operator' as const,task,inputRefs,nodeRef,allowedTools:operatorTools,
-        ...(workspaceRef===undefined?{}:{workspaceRef}),
-        budgetShare:{maxElapsedMs:suppliedBudget.maxElapsedMs===undefined?budgetDefault.maxElapsedMs:Math.min(suppliedBudget.maxElapsedMs as number,budgetCeiling),
-          maxFollowups:suppliedBudget.maxFollowups===undefined?budgetDefault.maxFollowups:Math.min(suppliedBudget.maxFollowups as number,budgetDefault.maxFollowups),
-          maxTokensPerTurn:suppliedBudget.maxTokensPerTurn===undefined?budgetDefault.maxTokensPerTurn:Math.min(suppliedBudget.maxTokensPerTurn as number,budgetDefault.maxTokensPerTurn??5_000)},
-        dependencyIds,recipient:{kind:'run-owner' as const,sessionId:run.control.owner},
-        ...(!materializedFromRecipe||raw.recipe===undefined?{}:{recipe:raw.recipe})};
-      normalizedRequest={...request,...(prior?.reservation.admittedRevision===undefined?{}:{expectedRevision:prior.reservation.admittedRevision}),contract:normalizedContract};
-      if(prior?.effective.operator) operatorGrant=prior.effective.operator;
-      else {
-        const qualification=await interactiveDelegationGrant(this.interactiveDeps(),{runId:run.id,nodeId:nodeRef as string,executionId:targetExecutionId!,
-          actor:run.control.owner,ownerEpoch:run.control.epoch,controlRevision:run.control.revision});
-        if('reason' in qualification)return {unknowns:[],status:'refused',artifacts:[],reason:qualification.reason};
-        operatorGrant={runId:run.id,nodeId:nodeRef as string,executionId:targetExecutionId!,...qualification};
-      }
-    }
-    const result=await operateRunDelegation(this.ctx,this.deps(),normalizedRequest,signal,{operatorGrant});this.syncDelegationDeadlines();
-    await this.settleStrandedTeams(request.runId);return {'unknowns':[],...result};
-  }
-  /** A delegation fact never fails the call that recorded it; the next trigger or restart settles again. */
-  private settleStrandedTeams(runId:string):Promise<void> {
-    return controlling(this.deps(),runId,async()=>{await settleStrandedTeamExecutions(this.deps(),runId);})
-      .catch(error=>this.ctx.logger.warn(`hima: Team execution settlement for ${runId} remains pending: ${String(error)}`));
+    return {unknowns:[],status:'refused',artifacts:[],reason:'Run delegation is a declared Pack task: DBOS creates and records its native child. Historical Runs are read-only.'};
   }
   async delegations(sessionId:string,runId:string):Promise<object> {
     await authorizeProjectRun(this.guideDeps(),sessionId,runId);
@@ -1671,17 +1161,6 @@ export default class Hima extends Service {
     const evidence=(last.payload as {evidence?:import('./delegation.js').DelegationCandidateResult['evidence']}).evidence;
     return evidence&&Array.isArray(evidence.artifactRefs)&&Array.isArray(evidence.diffRefs)&&Array.isArray(evidence.testRefs)&&Array.isArray(evidence.limitations)?evidence:undefined;
   }
-  private syncDelegationDeadlines():void {
-    for(const run of this.ledger.runs())for(const row of runDelegations(this.deps(),run.id)) {
-      const key=row.childSessionId;if(this.delegationTimers.has(key)||!['intent','accepted'].includes(row.state))continue;
-      const timer=setTimeout(()=>{
-        this.delegationTimers.delete(key);
-        this.ctx.get('agents')?.get(key as never)?.cancel({kind:'hook',reason:'The recorded delegation deadline expired.'});
-        void controlling(this.deps(),run.id,async()=>{const latest=runDelegations(this.deps(),run.id).find(d=>d.childSessionId===key);if(!latest||!['intent','accepted'].includes(latest.state))return;await this.ledger.appendDelegation(run.id,{delegationId:row.delegationId,parentSessionId:row.parentSessionId,childSessionId:key,requestId:`deadline:${row.delegationId}`,requestDigest:identityOf({deadlineAt:row.reservation.deadlineAt}),event:'deadline',payload:{reason:'Original child time allocation expired; new work is fenced.',stopObserved:this.ctx.get('agents')?.get(key as never)?.status==='idle'}});}).then(()=>this.settleStrandedTeams(run.id)).then(()=>this.closeUndrivableInteractiveSessions(run.id)).catch(error=>this.ctx.logger.warn(String(error)));
-      },Math.max(1,Date.parse(row.reservation.deadlineAt)-Date.now()));timer.unref();this.delegationTimers.set(key,timer);
-    }
-  }
-
   /** A confirmed Guide proposal starts in an independent native session. Fabric still owns Run admission. */
   async startGuidedRun(request: StartRunRequest): Promise<StartRunResult> {
     if(this.exitRequest)throw new BadRequest('the App is closing; no new task may start');
@@ -1703,13 +1182,14 @@ export default class Hima extends Service {
     return this.startRun({ ...request, ownerSessionId: task.sessionId, guideSessionId: request.ownerSessionId, notifyOwnerOnOpen: true });
   }
 
+  /** The synchronous Ledger reader of a historical Run's execution context. */
   executionContext(runId: string): ExecutionContext { return executionContext(this.deps(), runId); }
 
   async executionAction(request: ExecutionActionRequest): Promise<ExecutionActionResult> {
     // Only the Host's own driver acts as the autopilot; no caller of this service may.
     if(request.origin==='autopilot')return {kind:'refused',context:await this.readExecutionContext(request.runId),reason:'Callers cannot take scheduler turns; inspect the current Run facts'};
     const result=await executionAction(this.deps(),request);
-    if(result.kind==='accepted'){this.notifyGuideBoundary(request.runId);this.autopilot?.kick(request.runId);}
+    if(result.kind==='accepted')this.notifyGuideBoundary(request.runId);
     return result;
   }
 
@@ -2052,7 +1532,6 @@ export default class Hima extends Service {
       // moment is composed out of this context, and every other operation reaches no host at all.
       host: this.ctx,
       stopSignal: this.factStop.signal,
-      beforeSlotClaim:(siteName)=>reconcileExecutionIntents(this.deps(),siteName),
       log: (line) => this.ctx.logger.info(line),
       notify: (owner, runId, executionId, detail) => {
         this.notifyGuideBoundary(runId);

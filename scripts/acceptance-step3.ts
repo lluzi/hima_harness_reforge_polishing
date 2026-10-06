@@ -72,8 +72,8 @@ import {
   resolveChooser,
   roundNs,
   versionLine,
-  type AuditView,
   type Channel,
+  type RemoteCommand,
   type DecisionRecord,
   type ExperienceAnswer,
   type GenerationView,
@@ -90,6 +90,8 @@ import {
   type VerdictRecord,
   type WorkspaceRecord,
 } from '@hima/harness';
+/** What the retired `/hima/api/audit` routes answered; they now always refuse. */
+type AuditView = { readonly commands: readonly RemoteCommand[]; readonly windowFilled: boolean };
 
 // ---------------------------------------------------------------------------------------------
 // What this run was asked for.

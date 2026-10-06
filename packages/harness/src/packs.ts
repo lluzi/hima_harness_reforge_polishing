@@ -13,13 +13,13 @@
 // decision that later refuses it.
 import { campaignRelativePath } from './paths.js';
 import { REVIEWED_SCOPE_MAX_MUTATIONS } from './delegation.js';
-import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { loadRuleFrom, shippedRulesDir, type Rule } from './rules.js';
 import { loadChooserFrom, namesIn, shippedChoosersDir, type Chooser } from './choosers.js';
-import { hasEnded, loopOutcome, packReaderFilePath, runIdPattern, verdictOutcome, type PackDataOrigin, type ReaderRef, type RunRecord, type VerdictOutcome } from './ledger.js';
+import { loopOutcome, packReaderFilePath, runIdPattern, verdictOutcome, type PackDataOrigin, type RunRecord, type VerdictOutcome } from './ledger.js';
 import { dataInReading, dataOnDisk, packDataDirs, readDataFile, type DataPlace } from './pack-data.js';
 import { readerNamed } from './readers.js';
 import { bundleSemantics, readSemanticsFile, resolveSemantics, semanticsFileName, semanticSlug, semanticsFromText, type Semantics, type SemanticsFile } from './semantics.js';
@@ -36,7 +36,7 @@ import { literalArgument, strategyValue, legacyPeriodGoal, type GoalDeclaration,
 import { PackFolderError, PackNotFoundError } from './errors.js';
 // The one reading of a pack folder every answer about that folder is derived from (#64), and the
 // names and grammars that reading is defined in terms of.
-import { packDigestExcludes, packFilePath, packId, pipelineFiles, snapshotPackFolder, snapshotPackFolderIfThere, type PackFolderSnapshot } from './pack-folder.js';
+import { packDigestExcludes, packId, pipelineFiles, snapshotPackFolder, snapshotPackFolderIfThere, type PackFolderSnapshot } from './pack-folder.js';
 // The seal, which the ladder's top rung and the check both hold a released folder against. The two
 // modules name each other — this one climbs the ladder for the release, that one reads the seal for
 // the ladder — and neither reads a value of the other's while it is being evaluated: every use is
@@ -1526,19 +1526,6 @@ export function positionOf(pack: Pack, nodeId: string | undefined): { node: Pack
   return undefined;
 }
 
-/**
- * The Workshop act nodes whose Workshop declares that it produces the named contract output, in
- * every graph a Run can stand in (#64 D2). What a Reader of that output is waiting on when the file
- * is not there: new work at one of these nodes, and never a second read of the same missing path.
- */
-export function workshopProducersOf(pack: Pack, output: string): readonly { readonly nodeId: string; readonly workshop: string }[] {
-  const producing = new Set(pack.contract.workshops.filter((workshop) => workshop.produces === output).map((workshop) => workshop.id));
-  if (producing.size === 0) return [];
-  return runGraphsOf(pack).flatMap(({ graph }) => graph.nodes.flatMap((node) =>
-    node.kind === 'act' && node.parameters.workshop !== undefined && producing.has(node.parameters.workshop)
-      ? [{ nodeId: node.id, workshop: node.parameters.workshop }] : []));
-}
-
 export type GrowthGraphValidation =
   | { readonly ok: true; readonly proposal: GrowthProposal; readonly graph: GrowthGraph }
   | { readonly ok: false; readonly reason: string };
@@ -2823,19 +2810,11 @@ export function autopilotOf(pack: Pick<Pack, 'graph'>): AutopilotPlan {
   return plan;
 }
 
-/** Which declared segment this node belongs to, if any. */
-export const autopilotSegmentOf = (pack: Pick<Pack, 'graph'>, nodeId: string | undefined): AutopilotPlan['segments'][number] | undefined =>
-  nodeId === undefined ? undefined : autopilotOf(pack).segments.find((segment) => segment.nodes.has(nodeId));
-
 /** The self-driving fork a branch node belongs to, if any. */
 export function autopilotForkOfNode(pack: Pick<Pack, 'graph'>, nodeId: string): (ForkAutopilot & { readonly branches: readonly ForkBranch[]; readonly join: string }) | undefined {
   for (const fork of autopilotOf(pack).forks.values()) if (fork.branches.some((branch) => branch.nodes.includes(nodeId))) return fork;
   return undefined;
 }
-
-/** Whether the Harness, not the owner, drives this node (ADR-0016). */
-export const autopilotDrives = (pack: Pick<Pack, 'graph'>, nodeId: string): boolean =>
-  autopilotSegmentOf(pack, nodeId) !== undefined || autopilotForkOfNode(pack, nodeId) !== undefined;
 
 /**
  * What an autopilot declaration may say (ADR-0016), held at load. A fork is one the graph draws. A
