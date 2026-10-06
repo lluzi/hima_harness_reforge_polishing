@@ -48,3 +48,19 @@ status: accepted
   驻场 Agent 与 Pack 只读取模式文件，从不切换；需要实时 QuaLib 而模式不是 `new` 时如实拒绝并给出切换命令。
   基于已提取 facts 的分析不需要许可证。QuaLib 进程逐个运行；Host 不在 Site 间互斥 XTop 与 QuaLib，模式切换是
   操作员的串行点，作为已知限制保留。
+
+## 验证（2026-10-05）
+
+- L1/L2：Pack Python 33 项（Reader 反例：源未覆盖、facts 非同一 Liberty、越出读根、代码 hash、非有限数等）；
+  `test/contract/libinsight-resident-durable.host.test.ts` 3 项（干净交付、Reader 拒绝后同任务修复、标签页 HTTP
+  路由：坏会话/越界源/他会话确认/重复确认被拒，列表摘要与详情字节等于 Reader 接受并登记的字节）；
+  `libinsight-analyses.test.ts` 3 项（未登记/冲突/字节不符不显示为已登记、项目范围、Site 不可达）；客户端 L1 28 项。
+- 独立复核：无 Critical；4 项 Important 与新发现 N1 均已修复并复核。
+- L4（打包 App trial.42，Catsights，`kit-li-05`）：Settings 中完成 linglong-libinsight 发现后，在 Resident analyses
+  中提问 SAED14 RVT 反相器 ss0p72v125c 相对 tt0p8v25c 的 delay 比值，一次确认启动；真实 DeepSeek 驱动的驻场
+  OpenCode 在 linglong 按 playbook 用实时 QuaLib（许可证模式 `new`）读取 ss 库、用同一 tt `.lib` 的 facts 读取 tt，
+  约 2 分钟交付，Reader 首次接受，登记为 `saed14-inv-ss-tt-delay-ratio@1`，Run `ended-goal-met`；标签页呈现散点、
+  折线、表格、假设、限制、源 hash（前后一致）、运行命令与主脚本，build-on 选择器提供该已登记分析；退出 App 后
+  无本 Run 的 Job 或容器残留。截图在 `.hima-tmp/libinsight-embed/kit-li-05/screenshots/`（不入 Git）。
+- 现场发现并修复：轴标题单位重复、表格浮点噪声。未覆盖：L3 自动化桌面用例、Guide 对话入口（S4）、提取并交付
+  Kit 到 LibInsight 数据文件夹（S2/S3）、LibInsight 侧接口（S1/S6）。

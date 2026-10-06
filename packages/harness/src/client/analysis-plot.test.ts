@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const subject: typeof import('./analysis-plot.js') = await import(`./analysis-plot.${'ts'}`);
-const { niceScale, formatTick, formatValue, projectPlot, projectTable, plotLimits, scaleLinear } = subject;
+const { niceScale, formatTick, formatValue, projectPlot, projectTable, plotLimits, scaleLinear, withUnitTitle } = subject;
 type Plot = Parameters<typeof projectPlot>[1];
 type Datasets = Parameters<typeof projectPlot>[0]['datasets'];
 
@@ -156,4 +156,16 @@ test('20 000 distinct values project in well under a second', () => {
   assert.equal(heat.kind === 'heatmap' ? heat.cells.length : 0, plotLimits.points);
   assert.ok(bar.kind === 'bar' && bar.notes.some(note => note.startsWith(`${String(n - 8)} more series`)));
   assert.ok(line.kind === 'line' && line.series.length === 8);
+});
+
+test('a label that already names its unit is not given it twice, and table numbers drop float noise', () => {
+  // Seen live (trial.42): label "drive (x)" with unit "x" read "drive (x) (x)"; 0.17759999632835388 in a table.
+  assert.equal(withUnitTitle('drive (x)', 'x'), 'drive (x)');
+  assert.equal(withUnitTitle('drive', 'x'), 'drive (x)');
+  assert.equal(withUnitTitle('area', 'library area'), 'area (library area)');
+  assert.equal(withUnitTitle('ratio', undefined), 'ratio');
+  const t = projectTable({ columns: [{ name: 'cell', type: 'string' }, { name: 'area', type: 'number' }, { name: 'leak', type: 'number', unit: 'nW', nullMeans: 'not characterised' }],
+    rows: [['INV_1', 0.17759999632835388, null], ['INV_2', 12, 3.5e-9]] });
+  assert.deepEqual(t.rows, [['INV_1', '0.1776', 'not characterised'], ['INV_2', '12', '3.5e-9']]);
+  assert.deepEqual(t.columns.map(column => column.header), ['cell', 'area', 'leak (nW)']);
 });

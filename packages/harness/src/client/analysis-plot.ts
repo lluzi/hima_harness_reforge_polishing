@@ -100,13 +100,17 @@ const withUnit = (value: string, unit?: string) => unit === undefined || unit ==
 
 class CannotDraw extends Error {}
 
+/** `label (unit)`, unless the label already ends with that unit in parentheses (a delivery may name it so). */
+export const withUnitTitle = (label: string, unit?: string): string =>
+  unit === undefined || unit === '' || label.trimEnd().endsWith(`(${unit})`) ? label : `${label} (${unit})`;
+
 function columnOf(dataset: AnalysisDataset, datasetName: string, role: string, ref: { readonly column: string; readonly label?: string } | undefined): { index: number; column: Column; axis: AxisTitle } {
   if (ref === undefined || typeof ref.column !== 'string' || ref.column === '') throw new CannotDraw(`the plot names no ${role} column`);
   const index = dataset.columns.findIndex(column => column.name === ref.column);
   if (index < 0) throw new CannotDraw(`dataset ${datasetName} has no column ${ref.column} for ${role}`);
   const column = dataset.columns[index]!;
   const label = ref.label !== undefined && ref.label !== '' ? ref.label : column.name;
-  return { index, column, axis: { column: column.name, label, title: column.unit ? `${label} (${column.unit})` : label, ...(column.unit ? { unit: column.unit } : {}) } };
+  return { index, column, axis: { column: column.name, label, title: withUnitTitle(label, column.unit), ...(column.unit ? { unit: column.unit } : {}) } };
 }
 
 function requireNumeric(dataset: AnalysisDataset, datasetName: string, role: string, at: { index: number; column: Column }): void {
@@ -254,10 +258,11 @@ function projectHeatmap(plot: AnalysisPlotSpec, dataset: AnalysisDataset): PlotG
 
 /** The dataset as a table: units in the headers, null as the column's own `nullMeans`, the first rows only. */
 export function projectTable(dataset: AnalysisDataset, limit: number = plotLimits.tableRows): TableProjection {
-  const columns = dataset.columns.map(column => ({ name: column.name, header: column.unit ? `${column.name} (${column.unit})` : column.name, type: column.type }));
+  const columns = dataset.columns.map(column => ({ name: column.name, header: withUnitTitle(column.name, column.unit), type: column.type }));
+  // Numbers read like the chart labels (six significant digits): a delivery's float noise is not data.
   const rows = dataset.rows.slice(0, limit).map(row => dataset.columns.map((column, i) => {
     const value = row[i] ?? null;
-    return value === null ? column.nullMeans ?? 'missing' : String(value);
+    return value === null ? column.nullMeans ?? 'missing' : typeof value === 'number' ? formatValue(value) : String(value);
   }));
   return { columns, rows, totalRows: dataset.rows.length, shownRows: rows.length };
 }
