@@ -7,7 +7,7 @@ import { fetchLibInsightViewer, openLibInsightViewer } from './api.js';
 
 const folderName = (folder: string) => folder.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || folder;
 
-export function LibInsightAppPanel({ sessionId, hidden, pickFolder, onShowReports }: { readonly sessionId: string; readonly hidden: boolean; readonly pickFolder?: () => Promise<string | null>; onShowReports(): void }): ReactElement {
+export function LibInsightAppPanel({ sessionId, hidden, pickFolder, onShowReports, onShowResident }: { readonly sessionId: string; readonly hidden: boolean; readonly pickFolder?: () => Promise<string | null>; onShowReports(): void; onShowResident(): void }): ReactElement {
   const [status, setStatus] = useState<LibInsightViewerStatus>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -69,6 +69,7 @@ export function LibInsightAppPanel({ sessionId, hidden, pickFolder, onShowReport
         <button type='button' className='hima-button' data-hima-control='libinsight-choose-data' disabled={busy || status?.state === 'unavailable' && code === undefined} onClick={() => { void choose(); }}>Data folder…</button>
         <button type='button' className='hima-button' data-hima-control='libinsight-reload' disabled={status?.state !== 'ready'} onClick={() => setReload(value => value + 1)}>Reload pages</button>
         <button type='button' className='hima-button' data-hima-control='libinsight-restart' disabled={busy || code === undefined || folder === undefined} onClick={() => { void open({ restart: true }); }}>Restart viewer</button>
+        <button type='button' className='hima-button' data-hima-control='insight-show-resident' onClick={onShowResident}>Resident analyses</button>
         <button type='button' className='hima-button' data-hima-control='insight-show-reports' onClick={onShowReports}>Retained reports</button>
       </div>
     </header>
