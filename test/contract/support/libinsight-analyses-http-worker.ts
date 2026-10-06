@@ -86,14 +86,22 @@ try {
  // A confirmation is used once.
  assert.equal((await call('POST',{sessionId,action:'confirm',proposalId:proposal.proposalId})).status,400);
  let listed:any;
- await until('the admitted result is listed',async()=>{listed=(await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}`)).json;lastListed=listed;return Boolean(listed.analyses?.[0]?.result);});
+ await until('the admitted analysis is listed',async()=>{listed=(await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}`)).json;lastListed=listed;return listed.analyses?.[0]?.analysis?.admitted===true;});
  const entry=listed.analyses[0];
  assert.equal(entry.runId,runId);assert.equal(entry.question,question);assert.equal(entry.task.state,'succeeded');
- assert.equal(entry.result.schema,'hima-libinsight-analysis/1');assert.equal(entry.result.id,'saed14-inv-drive-delay');assert.equal(entry.result.plots.length,5);
+ assert.equal(entry.result,undefined,'the list carries summaries, never whole results');
+ assert.deepEqual({id:entry.analysis.id,version:entry.analysis.version,plotCount:entry.analysis.plotCount,admitted:entry.analysis.admitted},{id:'saed14-inv-drive-delay',version:1,plotCount:5,admitted:true});
+ const detail=(await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId!)}`)).json;
+ assert.deepEqual(detail.admission,{admitted:true});
+ assert.equal(detail.result.schema,'hima-libinsight-analysis/1');assert.equal(detail.result.plots.length,5);
  const observation=(await readers.readRunView(runId)).tasks.find((task:any)=>task.taskId==='custom-analysis'&&task.result).result.value.observations.find((record:any)=>record.outputName==='analysisResult');
- assert.deepEqual(entry.result,JSON.parse(await readFile(observation.retainedPath,'utf8')),'the tab shows exactly the Reader-accepted bytes the Host retained');
+ assert.equal(entry.analysis.resultSha256,observation.contentSha256);
+ assert.deepEqual(detail.result,JSON.parse(await readFile(observation.retainedPath,'utf8')),'the tab shows exactly the Reader-accepted bytes the Host retained');
+ assert.deepEqual(await readFile(path.join(library,'saed14-inv-drive-delay','v1','analysis-result.json')),await readFile(observation.retainedPath),'and those are the bytes admitted into the Site library');
+ // A Run of another Pack is not an analysis, and a detail request is scoped like the list.
+ assert.equal((await call('GET',undefined,`?sessionId=not-a-session&runId=${encodeURIComponent(runId!)}`)).status,403);
  await until('Run ended',async()=>String((await readers.readRunView(runId))?.run.status).startsWith('ended'));
- const proof={ok:true,runId,requestId:proposal.requestId,plots:entry.result.plots.length,elapsedMs:Date.now()-startedAt};
+ const proof={ok:true,runId,requestId:proposal.requestId,plots:detail.result.plots.length,elapsedMs:Date.now()-startedAt};
  await writeFile(path.join(evidence,'http-proof.json'),JSON.stringify(proof,null,2));
  process.send?.(proof);
 } catch(error){
