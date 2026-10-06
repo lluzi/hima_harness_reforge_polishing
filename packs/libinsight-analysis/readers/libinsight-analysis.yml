@@ -1,0 +1,10 @@
+id: libinsight-analysis
+version: "1"
+file: tools/read-analysis.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-libinsight-analysis/1
+emits:
+  - li_analysis_error_count
+  - li_analysis_plot_count
+  - li_analysis_dataset_count
+  - li_analysis_row_count

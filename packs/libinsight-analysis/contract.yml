@@ -1,0 +1,155 @@
+id: libinsight-analysis
+version: 0.1.0
+title: LibInsight resident custom analysis
+status: development
+minimumHarnessVersion: 0.3.0
+ontology:
+  aliases:
+    analysisResult:
+    - custom library analysis
+    - resident analysis delivery
+budget:
+  timeBoxMs: 2700000
+  closingReserveMs: 300000
+  minimumGenerations: 1
+inputs:
+- name: analysisRequest
+  description: Site path of one hima-libinsight-request/1 JSON file the Host writes for this Run (requestId,
+    question, absolute Liberty .lib or lib-insight-facts/1 .json.gz sources, buildsOn id@version, createdAt).
+    Each Run overrides it with its own request file.
+- name: analysisLibrary
+  description: Site directory of admitted analyses, one <id>/v<version>/ folder each. admit-analysis adds the
+    accepted delivery here; later requests build on it through buildsOn.
+- name: factsCorpus
+  description: Read-only Site directory of QuaLib-extracted lib-insight-facts/1 files that facts-mode analyses
+    read without a QuaLib licence. prepare-request lists it for the resident.
+- name: engineeringCapabilities
+  description: The Site's resident engineering capability. prepare-request reads its sandbox read-only roots to
+    refuse a source the resident could not read.
+- name: licenceModeFile
+  description: The Site's one-word Empyrean licence mode file (`new` serves the QuaLib Liberty API, `old` serves
+    XTop). prepare-request refuses a request that needs live QuaLib while the mode is not `new`; the Pack never
+    changes it.
+- name: workspaceRoot
+  description: Campaign-private output root allowed by the Site Permit.
+outputs:
+- name: preparedRequest
+  path: state/prepared-request.json
+  description: hima-libinsight-prepared-request/1 — the request, every source with sha256/bytes (facts sources
+    also with their embedded Liberty identity), the facts corpus listing and the admitted-analysis catalog.
+- name: analysisResult
+  path: state/analysis-result.json
+  reader: libinsight-analysis
+  description: The resident's hima-libinsight-analysis/1 delivery — typed datasets and plots, hashed sources,
+    the exact main script text and code files, the run command and its exit code, assumptions and limits.
+- name: admission
+  path: state/admission.json
+  description: hima-libinsight-admission/1 — where the accepted delivery was admitted in the analysis library,
+    with result and code hashes, or why it was not admitted.
+- name: finalReport
+  path: delivery/report.json
+  description: Explicit goalMet (the analysis was admitted), the question, the admitted library path and the
+    Markdown report.
+environment:
+  wrappers:
+  - python3
+  - /usr/bin/python3
+workspace:
+  source: pack
+  copy:
+  - libinsight_cli.py
+  - libinsight_analysis
+tools:
+- id: prepare-request
+  file: flow/libinsight_cli.py
+  description: Validate the Host-written request; hash every source; read each facts file's Liberty identity;
+    list the facts corpus and the admitted analyses; resolve buildsOn.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/libinsight_cli.py
+  - task-prepare-request
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: custom-analysis
+  file: flow/libinsight_cli.py
+  description: Own the user's custom library-analysis question as a complete engineering task on this Site.
+    Read the prepared request, the facts corpus and any admitted analyses it builds on; write analysis code in
+    the private workspace under analysis/; run it on the Site, in facts mode with python3 over lib-insight-facts/1
+    files or in live QuaLib mode with the vendor QuaLib 2026 Python runtime when the licence service is up;
+    hash every source before and after. Deliver one hima-libinsight-analysis/1 result with typed datasets,
+    plots, the exact main script text and every code file, and honest assumptions and limits. Check it with
+    check-delivery before writing the delivery candidate. Do not change licences, start or switch licence
+    services, write beside a source, use the network, or present prose in place of computed datasets.
+  inputs:
+  - WORKSPACE
+  licences:
+    QuaLib-2026-new-59099: 1
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/libinsight_cli.py
+  - check-delivery
+  - ${WORKSPACE}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - preparedRequest
+    knowledge:
+    - custom-analysis-contract.md
+    - qualib-api-playbook.md
+    - facts-schema.md
+    - analysis-library.md
+    - example-custom-analysis.md
+    artifactPrefix: analysis
+    produces: analysisResult
+- id: admit-analysis
+  file: flow/libinsight_cli.py
+  description: Re-check the Reader-accepted delivery and copy its result and code into the analysis library as
+    <id>/v<version>/; idempotent for identical content, refused for a different admitted version.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/libinsight_cli.py
+  - task-admit-analysis
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: deliver
+  file: flow/libinsight_cli.py
+  description: Write the final JSON and Markdown report and a copy of the accepted result without restarting
+    the analysis.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/libinsight_cli.py
+  - task-deliver
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+rules:
+- analysis-delivery-ready
+knowledge:
+- file: custom-analysis-contract.md
+  purpose: The exact hima-libinsight-analysis/1 delivery, a complete valid example, the Reader's rejection list,
+    the delivery candidate and the same-task repair rules.
+- file: qualib-api-playbook.md
+  purpose: How to program against the QuaLib 2026 Liberty API on linglong (runtime, licence, null handle,
+    traversal API, units, exit codes), and how to run facts-mode analysis with python3.
+- file: facts-schema.md
+  purpose: The lib-insight-facts/1 record QuaLib extraction writes — library, units, templates, cells, pins,
+    timing and power tables, missing-value semantics.
+- file: analysis-library.md
+  purpose: The admitted-analysis library layout, the prepared catalog and how to build on an admitted analysis
+    through buildsOn with a new id or version.
+- file: example-custom-analysis.md
+  purpose: One verified worked example from question through script to accepted delivery on SAED14 facts.
