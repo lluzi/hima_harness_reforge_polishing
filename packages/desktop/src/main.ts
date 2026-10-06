@@ -431,10 +431,13 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
     if (/^https?:$/u.test(new URL(target, 'http://invalid.invalid').protocol)) void shell.openExternal(target);
   };
   win.webContents.setWindowOpenHandler(({ url }) => {
-    // A `target="_blank"` inside dsh's own app is still the workbench asking to go somewhere in the
-    // workbench: this window is the only surface there is, so a permitted URL navigates it rather
-    // than being dropped on the floor, which is what returning `deny` alone used to do.
-    if (permitted(url)) void win.loadURL(url);
+    // A library analysis page (ADR-0021) is a page of its own, beside the workbench: it opens in a new
+    // window behind this same fence and never replaces the conversation.
+    if (permitted(url) && analysisPage(url, allowedOrigin())) openPageWindow(win, url, allowedOrigin);
+    // Any other `target="_blank"` inside dsh's own app is still the workbench asking to go somewhere in
+    // the workbench: this window is that surface, so a permitted URL navigates it rather than being
+    // dropped on the floor, which is what returning `deny` alone used to do.
+    else if (permitted(url)) void win.loadURL(url);
     else openOutside(url);
     return { action: 'deny' };
   });
@@ -458,6 +461,34 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
   });
   // The remote page gets no permission it has to be granted: nothing here asks for one.
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false); });
+}
+
+/** Is this a Host-served library analysis page (ADR-0021)? Origins are parsed, never prefixed. */
+function analysisPage(target: string, allowedOrigin: string | undefined): boolean {
+  try {
+    const parsed = new URL(target);
+    return allowedOrigin !== undefined && parsed.origin === allowedOrigin && parsed.pathname.startsWith('/hima/analysis/');
+  } catch { return false; }
+}
+
+/**
+ * A secondary window for one Host page: the main window's session partition (so the browser session
+ * cookie is the same), the same renderer limits and the same navigation fence. It sits just offset
+ * from the window that opened it, on the same display, and closes like any ordinary window.
+ */
+function openPageWindow(opener: BrowserWindow, url: string, allowedOrigin: () => string | undefined): void {
+  const at = opener.getBounds();
+  const page = new BrowserWindow({
+    x: at.x + 48, y: at.y + 36, width: Math.max(960, at.width - 96), height: Math.max(720, at.height - 72),
+    title: APP_NAME, backgroundColor: '#0f1115', show: false,
+    icon: path.join(packageDir, 'assets/icon.png'),
+    webPreferences: { partition: SESSION_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true },
+  });
+  fenceNavigation(page, allowedOrigin);
+  // The page's own title names the analysis; the product name stays in front of it.
+  page.on('page-title-updated', (event, title) => { event.preventDefault(); page.setTitle(title.startsWith(APP_NAME) ? title : `${APP_NAME} · ${title}`); });
+  page.once('ready-to-show', () => { page.show(); });
+  void page.loadURL(url);
 }
 
 /**

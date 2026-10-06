@@ -25,11 +25,12 @@ for(const mode of ['clean','repair'])test(`libinsight-analysis durable route adm
  finally{if(child.exitCode===null){const term=setTimeout(()=>child.kill('SIGTERM'),10000),kill=setTimeout(()=>child.kill('SIGKILL'),15000);try{await exited;}finally{clearTimeout(term);clearTimeout(kill);}}await closeOwnedNative(home);await cleanDbosHome(home);}
 });
 
-// L2: Data Insight's Resident analyses route (ADR-0020) — HTTP propose writes the request onto the
-// Site and prepares; confirm starts a Guide-confirmed Run; the list returns the Reader-accepted result.
-test('Resident analyses route proposes, confirms once and lists the admitted result',{timeout:150000},async(t)=>{
+// L2: custom library analyses from the Guide conversation (ADR-0021) — the Guide tool proposes (the
+// request lands on the Site), confirms once as a Guide-confirmed Run and reads the Reader-accepted
+// result; the analysis page shows those same bytes behind the browser fence and a live conversation.
+test('Guide tool proposes, confirms once, reads the admitted result and its page shows it',{timeout:150000},async(t)=>{
  const home=await dbosHome();
- const child=spawn(process.execPath,[fileURLToPath(new URL('./support/libinsight-analyses-http-worker.ts',import.meta.url)),home],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
+ const child=spawn(process.execPath,[fileURLToPath(new URL('./support/libinsight-analyses-guide-worker.ts',import.meta.url)),home],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
  const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));
  let output='';child.stdout!.on('data',bytes=>output+=String(bytes));child.stderr!.on('data',bytes=>output+=String(bytes));
  const result=new Promise<any>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`analyses worker exceeded 120s: ${output}`)),120000);child.once('message',proof=>{clearTimeout(timer);resolve(proof);});child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('exit',()=>{clearTimeout(timer);reject(new Error(`analyses child exited without result: ${output}`));});});

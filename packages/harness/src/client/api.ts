@@ -1,7 +1,7 @@
 // The browser side of the Hima remote interface: one fetch wrapper over the `/hima/api/` namespace,
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
-import type { ExecutionContext, StartRunResult } from '../fabric.js';
+import type { ExecutionContext } from '../fabric.js';
 import type { CampaignFile } from '../campaign-file.js';
 import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView, SiteDiscoverBody, SiteHeadView } from '../remote.js';
 import type { SiteDiscoveryResult } from '../sites.js';
@@ -12,7 +12,6 @@ import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
 import type { LibInsightViewerStatus } from '../libinsight-viewer.js';
-import type { LibInsightAnalysesStatus, LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisProposal } from '../libinsight-analyses.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -136,24 +135,6 @@ export const fetchLibInsightViewer = (sessionId: string, signal?: AbortSignal): 
 /** Start (or keep) the viewer; a data folder is the person's own choice and is remembered by the Host. */
 export const openLibInsightViewer = (body: { sessionId: string; dataFolder?: string; restart?: boolean }, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
   runRequest('/hima/api/libinsight', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'open' }) });
-
-/** Data Insight's Resident analyses this conversation may see, newest first, and whether its Pack and Site are installed (ADR-0020). */
-export const fetchResidentAnalyses = (sessionId: string, signal?: AbortSignal): Promise<HimaResult<{ readonly status: LibInsightAnalysesStatus; readonly analyses: readonly LibInsightAnalysisEntry[] }>> =>
-  runRequest(`/hima/api/libinsight/analyses?sessionId=${encodeURIComponent(sessionId)}`, { signal });
-
-/** One analysis's Reader-accepted result and whether admission put it in the Site library; read for the selected Run only. */
-export const fetchResidentAnalysis = (sessionId: string, runId: string, signal?: AbortSignal): Promise<HimaResult<LibInsightAnalysisDetail>> =>
-  runRequest(`/hima/api/libinsight/analyses?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId)}`, { signal });
-
-/** Write the question onto the Site and prepare one bounded analysis Run; nothing starts until it is confirmed. */
-export const proposeResidentAnalysis = (sessionId: string, request: { question: string; sources?: readonly string[]; buildsOn?: readonly string[] }, signal?: AbortSignal): Promise<HimaResult<LibInsightAnalysisProposal>> =>
-  runRequest('/hima/api/libinsight/analyses', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, action: 'propose', question: request.question,
-    ...(request.sources === undefined || request.sources.length === 0 ? {} : { sources: request.sources }),
-    ...(request.buildsOn === undefined || request.buildsOn.length === 0 ? {} : { buildsOn: request.buildsOn }) }) });
-
-/** The one confirmation that starts a prepared analysis as an ordinary Guide-confirmed Run. */
-export const confirmResidentAnalysis = (sessionId: string, proposalId: string, signal?: AbortSignal): Promise<HimaResult<{ readonly runId: string; readonly kind: StartRunResult['kind'] }>> =>
-  runRequest('/hima/api/libinsight/analyses', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, action: 'confirm', proposalId }) });
 
 type MemoryEvidence =Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
 export type MemoryAnswer = WorkMemoryRead & { readonly scope: WorkMemoryScope } & Partial<MemoryEvidence>;

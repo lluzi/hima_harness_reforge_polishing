@@ -240,6 +240,9 @@ LibInsight 在其仓库继续升级，HimaHarness 固定所用 commit 并在其�
 playbook 与知识；定制分析结果在 LibInsight 内以新页面呈现。见
 [ADR-0020](adr/0020-guide-conducts-libinsight-through-the-resident-agent.md) 与
 [实施规格](specs/libinsight-resident/spec.zh-CN.md)。
+同日用户再次明确：Data Insight 内的 LibInsight 页面是默认分析；定制分析由用户在 HimaHarness 对话中向 Guide
+提出，Guide 让驻场 OpenCode 用 QuaLib API 编写并运行代码，结果数据在独立于 Data Insight 标签页的新网页中
+呈现，不使用 Data Insight 内的表单。见 [ADR-0021](adr/0021-guide-chat-starts-library-analyses-shown-on-their-own-page.md)。
 
 2026-09-29 访谈进一步明确：LibInsight 的两类入口是 **Library 输入**与 **Design 输入**。
 Library 输入包括 Library 及相关 PDK 中的库信息；Design 输入包括 DEF、设计使用的 Liberty、Netlist、

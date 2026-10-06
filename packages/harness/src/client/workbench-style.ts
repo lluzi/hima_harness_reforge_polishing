@@ -470,79 +470,22 @@ export const HIMA_STYLE = `
 .hima-mono{font-family:var(--hima-font-mono);font-size:var(--hima-fs-label)}
 .hima-muted{color:var(--hima-ink-2)}
 .hima-small{font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-/* Resident analyses and their plots (ADR-0020). Series slots are the validated categorical order,
-   stepped separately for the dark surface; the sequential steps run from the surface outwards, so
-   the dark ramp is its own selection, not a flip. Text never wears a series colour. */
-.hima-root{--hima-plot-1:#2a78d6;--hima-plot-2:#eb6834;--hima-plot-3:#1baf7a;--hima-plot-4:#eda100;--hima-plot-5:#e87ba4;--hima-plot-6:#008300;--hima-plot-7:#4a3aa7;--hima-plot-8:#e34948;--hima-plot-q0:#cde2fb;--hima-plot-q1:#b7d3f6;--hima-plot-q2:#86b6ef;--hima-plot-q3:#6da7ec;--hima-plot-q4:#3987e5;--hima-plot-q5:#2a78d6;--hima-plot-q6:#1c5cab;--hima-plot-q7:#184f95;--hima-plot-q8:#0d366b;--hima-plot-axis:#c3c2b7;}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .hima-root{--hima-plot-1:#3987e5;--hima-plot-2:#d95926;--hima-plot-3:#199e70;--hima-plot-4:#c98500;--hima-plot-5:#d55181;--hima-plot-6:#008300;--hima-plot-7:#9085e9;--hima-plot-8:#e66767;--hima-plot-q0:#0d366b;--hima-plot-q1:#184f95;--hima-plot-q2:#1c5cab;--hima-plot-q3:#2a78d6;--hima-plot-q4:#3987e5;--hima-plot-q5:#5598e7;--hima-plot-q6:#86b6ef;--hima-plot-q7:#9ec5f4;--hima-plot-q8:#cde2fb;--hima-plot-axis:#4a4844;}}
-:root[data-theme="dark"] .hima-root{--hima-plot-1:#3987e5;--hima-plot-2:#d95926;--hima-plot-3:#199e70;--hima-plot-4:#c98500;--hima-plot-5:#d55181;--hima-plot-6:#008300;--hima-plot-7:#9085e9;--hima-plot-8:#e66767;--hima-plot-q0:#0d366b;--hima-plot-q1:#184f95;--hima-plot-q2:#1c5cab;--hima-plot-q3:#2a78d6;--hima-plot-q4:#3987e5;--hima-plot-q5:#5598e7;--hima-plot-q6:#86b6ef;--hima-plot-q7:#9ec5f4;--hima-plot-q8:#cde2fb;--hima-plot-axis:#4a4844;}
-.hima-plot-c1{--hima-plot-c:var(--hima-plot-1)}.hima-plot-c2{--hima-plot-c:var(--hima-plot-2)}.hima-plot-c3{--hima-plot-c:var(--hima-plot-3)}.hima-plot-c4{--hima-plot-c:var(--hima-plot-4)}.hima-plot-c5{--hima-plot-c:var(--hima-plot-5)}.hima-plot-c6{--hima-plot-c:var(--hima-plot-6)}.hima-plot-c7{--hima-plot-c:var(--hima-plot-7)}.hima-plot-c8{--hima-plot-c:var(--hima-plot-8)}
-.hima-plot-q0{fill:var(--hima-plot-q0)}.hima-plot-q1{fill:var(--hima-plot-q1)}.hima-plot-q2{fill:var(--hima-plot-q2)}.hima-plot-q3{fill:var(--hima-plot-q3)}.hima-plot-q4{fill:var(--hima-plot-q4)}.hima-plot-q5{fill:var(--hima-plot-q5)}.hima-plot-q6{fill:var(--hima-plot-q6)}.hima-plot-q7{fill:var(--hima-plot-q7)}.hima-plot-q8{fill:var(--hima-plot-q8)}
-.hima-resident{flex:1;min-height:0;display:flex;flex-direction:column;container-type:inline-size}.hima-resident[hidden]{display:none}
-.hima-resident-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr)}
-.hima-resident-side{min-height:0;overflow:auto;border-right:1px solid var(--hima-line);padding:var(--hima-sp-4);display:flex;flex-direction:column;gap:var(--hima-sp-3)}
-.hima-resident-main{min-height:0;min-width:0;overflow:auto;padding:var(--hima-sp-4) var(--hima-sp-6)}
-@container (max-width:720px){.hima-resident-body{display:block;overflow:auto}.hima-resident-side{border-right:0;border-bottom:1px solid var(--hima-line);overflow:visible}.hima-resident-main{overflow:visible;padding:var(--hima-sp-4)}}
-.hima-resident-composer{display:flex;flex-direction:column;gap:var(--hima-sp-3)}
-.hima-resident-composer label{display:grid;gap:var(--hima-sp-1);font-size:var(--hima-fs-label)}
-.hima-resident-composer textarea,.hima-resident-composer select{min-width:0;width:100%;padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);color:var(--hima-ink);background:var(--hima-paper);resize:vertical}
-.hima-resident-composer .hima-button{align-self:flex-start}
-.hima-resident-unavailable p{margin:0 0 var(--hima-sp-2);font-size:var(--hima-fs-label)}
-.hima-resident-proposal{border:1px solid var(--hima-line);border-radius:var(--hima-r-m);padding:var(--hima-sp-3);display:flex;flex-direction:column;gap:var(--hima-sp-2);background:var(--hima-paper);box-shadow:var(--hima-shadow)}
-.hima-resident-proposal h3{margin:0;font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);text-transform:uppercase;color:var(--hima-ink-2)}
-.hima-resident-proposal-question{margin:0;font-weight:600;overflow-wrap:anywhere}
-.hima-resident-proposal dl,.hima-resident-facts dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--hima-sp-1) var(--hima-sp-3);margin:0;font-size:var(--hima-fs-label)}
-.hima-resident-proposal dt,.hima-resident-facts dt{color:var(--hima-ink-2)}.hima-resident-proposal dd,.hima-resident-facts dd{margin:0;overflow-wrap:anywhere}
-.hima-resident-proposal ul,.hima-resident-facts ul{margin:0;padding-left:var(--hima-sp-4)}
-.hima-resident-proposal code,.hima-resident-detail code{font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow)}
-.hima-resident-ready{margin:0;font-size:var(--hima-fs-label);color:var(--hima-good)}
-.hima-resident-unready{font-size:var(--hima-fs-label);color:var(--hima-warn)}.hima-resident-unready p{margin:0}
-.hima-resident-actions{display:flex;flex-wrap:wrap;gap:var(--hima-sp-2)}
-.hima-resident-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--hima-line)}
-.hima-resident-list>li{border-bottom:1px solid var(--hima-line)}.hima-resident-list>li.hima-small{padding:var(--hima-sp-2) 0}
-.hima-resident-item{appearance:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--hima-sp-1);width:100%;border:0;background:transparent;color:var(--hima-ink);text-align:left;padding:var(--hima-sp-2);cursor:pointer;border-radius:var(--hima-r-s)}
-.hima-resident-item:hover{background:var(--hima-soft)}.hima-resident-item[aria-current="true"]{background:var(--hima-soft);box-shadow:inset 2px 0 0 var(--hima-accent)}
-.hima-resident-question{font-size:var(--hima-fs-label);font-weight:600;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.hima-resident-meta{display:flex;align-items:center;gap:var(--hima-sp-2)}
-.hima-resident-chip{display:inline-flex;align-items:center;padding:0 var(--hima-sp-2);border:1px solid currentColor;border-radius:999px;font-size:var(--hima-fs-eyebrow);font-weight:600;color:var(--hima-ink-2);white-space:nowrap}
-.hima-resident-chip[data-state="succeeded"],.hima-resident-chip[data-state="ended-goal-met"]{color:var(--hima-good)}
-.hima-resident-chip[data-state="failed"],.hima-resident-chip[data-state="ended-goal-not-met"],.hima-resident-chip[data-state="ended-budget-exhausted"]{color:var(--hima-bad)}
-.hima-resident-chip[data-state="waiting"],.hima-resident-chip[data-state="cancelled"],.hima-resident-chip[data-state="ended-converged"]{color:var(--hima-warn)}
-.hima-resident-chip[data-state="running"],.hima-resident-chip[data-state="pending"]{color:var(--hima-accent)}
-.hima-resident-reason{font-size:var(--hima-fs-label);color:var(--hima-warn);overflow-wrap:anywhere;margin:0}
-.hima-resident-empty{margin:var(--hima-sp-6) 0;color:var(--hima-ink-2);font-size:var(--hima-fs-label);max-width:520px}
-.hima-resident-detail{display:flex;flex-direction:column;gap:var(--hima-sp-3);max-width:1080px}
-.hima-resident-detail>header h3{margin:0 0 var(--hima-sp-1);font-size:var(--hima-fs-title);font-weight:650;overflow-wrap:anywhere}
-.hima-resident-detail>header p{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2)}
-.hima-resident-summary{margin:0;max-width:760px;line-height:var(--hima-lh-body)}
-.hima-resident-facts h4{margin:var(--hima-sp-2) 0 var(--hima-sp-1);font-size:var(--hima-fs-label);font-weight:650}
-.hima-resident-facts>ul{font-size:var(--hima-fs-label)}
-.hima-resident-not-admitted{margin:0;padding:var(--hima-sp-2) var(--hima-sp-3);border-left:3px solid var(--hima-warn);background:var(--hima-soft);color:var(--hima-ink);font-size:var(--hima-fs-label);overflow-wrap:anywhere}
-.hima-resident-flag{font-size:var(--hima-fs-eyebrow);font-weight:600;color:var(--hima-warn)}
-.hima-resident-changed{color:var(--hima-warn);font-size:var(--hima-fs-eyebrow);font-weight:600}
-.hima-resident-code{margin-top:var(--hima-sp-3)}.hima-resident-code summary{cursor:pointer;font-size:var(--hima-fs-label)}
-.hima-resident-code pre{margin:var(--hima-sp-2) 0 0;padding:var(--hima-sp-3);max-height:480px;overflow:auto;background:var(--hima-soft);border-radius:var(--hima-r-s);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);white-space:pre}
-.hima-plot{margin:0;padding:var(--hima-sp-3) 0;border-top:1px solid var(--hima-line);display:flex;flex-direction:column;gap:var(--hima-sp-2);min-width:0}
-.hima-plot-title{font-size:var(--hima-fs-body);font-weight:600}
-.hima-plot-svg{display:block;width:100%;height:auto;overflow:visible}
-.hima-plot-tick{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-3)}
-.hima-plot-axis-title,.hima-plot-direct{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2)}
-.hima-plot-grid{stroke:var(--hima-line);stroke-width:1;shape-rendering:crispEdges}
-.hima-plot-axis{stroke:var(--hima-plot-axis);stroke-width:1;shape-rendering:crispEdges}
-.hima-plot-bar{fill:var(--hima-plot-c)}.hima-plot-bar:hover{opacity:.8}
-.hima-plot-line{fill:none;stroke:var(--hima-plot-c);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.hima-plot-dot{fill:var(--hima-plot-c);stroke:var(--hima-paper);stroke-width:2}
-.hima-plot-hit{fill:transparent;stroke:none}.hima-plot-hit:hover{fill:var(--hima-plot-c);fill-opacity:.18}
-.hima-plot-cell:hover{stroke:var(--hima-ink);stroke-width:1}
-.hima-plot-missing{fill:var(--hima-soft)}.hima-plot-hatch-line{stroke:var(--hima-line-strong);stroke-width:1.5}
-.hima-plot-legend{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-.hima-plot-legend li{display:inline-flex;align-items:center;gap:6px}
-.hima-plot-notes{margin:0;padding-left:var(--hima-sp-4);font-size:var(--hima-fs-label);color:var(--hima-ink-2)}p.hima-plot-notes{padding-left:0;margin-top:var(--hima-sp-1)}
-.hima-plot-cannot{margin:0;padding:var(--hima-sp-2) var(--hima-sp-3);background:var(--hima-soft);color:var(--hima-warn);font-size:var(--hima-fs-label);border-radius:var(--hima-r-s)}
-.hima-plot-data summary{cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-.hima-plot-table-wrap{max-height:360px;overflow:auto;margin-top:var(--hima-sp-2)}
-.hima-plot-table{border-collapse:collapse;font-size:var(--hima-fs-label)}
-.hima-plot-table th,.hima-plot-table td{padding:var(--hima-sp-1) var(--hima-sp-2);border-bottom:1px solid var(--hima-line);text-align:left;vertical-align:top}
-.hima-plot-table th{position:sticky;top:0;background:var(--hima-paper);font-weight:600;color:var(--hima-ink-2)}
-.hima-plot-table [data-type="number"]{text-align:right;font-variant-numeric:tabular-nums}
+/* A custom library analysis in the conversation (ADR-0021); its charts live on its own page. */
+.hima-analysis-card{border:1px solid var(--hima-line);border-radius:var(--hima-r-m);padding:var(--hima-sp-3) var(--hima-sp-4);background:var(--hima-paper);max-width:720px}
+.hima-analysis-card-eyebrow{font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);text-transform:uppercase;color:var(--hima-accent);font-weight:600}
+.hima-analysis-card p{margin:0}
+.hima-analysis-card-question{font-size:var(--hima-fs-body);font-weight:600;overflow-wrap:anywhere}
+.hima-analysis-card-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px var(--hima-sp-3);margin:0}
+.hima-analysis-card-facts dt{color:var(--hima-ink-2)}.hima-analysis-card-facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.hima-analysis-card-facts ul{margin:0;padding:0;list-style:none}
+.hima-analysis-card code{font-family:var(--hima-font-mono);font-size:var(--hima-fs-label)}
+.hima-analysis-card-next{color:var(--hima-ink-2)}
+.hima-analysis-card-unready{color:var(--hima-warn)}.hima-analysis-card-unready ul{margin:0;padding-left:var(--hima-sp-4)}
+.hima-analysis-card-state{font-weight:600}.hima-analysis-card-state[data-state="admitted"]{color:var(--hima-good)}
+.hima-analysis-card-state[data-state="not-admitted"],.hima-analysis-card-state[data-state="unavailable"]{color:var(--hima-warn)}
+.hima-analysis-card-summary{color:var(--hima-ink-2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.hima-analysis-card-open{align-self:flex-start}
+.hima-analysis-card-error{color:var(--hima-bad);white-space:pre-wrap;margin:0}
+.hima-analysis-card-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--hima-sp-1)}
+.hima-analysis-card-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--hima-sp-2);align-items:center}
 `;

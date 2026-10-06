@@ -170,3 +170,23 @@ XTop 与 QuaLib 并发不由 Host 互斥，模式切换由操作员串行（同 
 
 原 S2/S3（提取并交付 Kit 到 LibInsight 数据文件夹）与 S1/S6（依赖 LibInsight 接口）不在本轮；S4 的 Guide
 对话入口在标签页之后评估。
+
+## 2026-10-05 再修订：对话入口与独立结果网页
+
+用户明确：Data Insight 的 LibInsight 页面是默认分析；定制分析从 Guide 对话发起，结果在独立网页呈现；
+不使用 Data Insight 内的表单。决定见 [ADR-0021](../../adr/0021-guide-chat-starts-library-analyses-shown-on-their-own-page.md)。
+上文“驻场分析”标签页的用户路径 1、2、4 由下列路径替代，合同、Site 与 Reader 不变。
+
+1. 用户在对话中提问（可附 linglong 上的 `.lib` 路径或要沿用的已登记分析）。Guide 调用
+   `hima_insight_analysis` `propose`，对话中出现方案卡；Guide 用自然语言复述并询问是否开始。
+2. 用户在对话中同意后，Guide 调用 `confirm` 启动 Run，启动卡给出“Open analysis page”。
+3. Run 结束或受阻时，Guide 收到 Host 的边界通知，调用 `result` 并在对话中汇报结论与网页地址。
+4. 网页 `/hima/analysis/<runId>?session=<id>` 由 Host 服务端渲染，桌面 App 以新窗口打开；运行中自刷新，
+   完成后显示摘要、图表、数据表、假设、限制、源 hash、命令与代码。
+
+| 切片 | 内容 | 最低测试 |
+| --- | --- | --- |
+| G1 结果网页 | `analysis-page.ts` 渲染；`/hima/analysis/` 路由（栅栏、会话、项目授权） | 单测渲染与转义；L2 HTTP：坏会话 403、他项目 Run 拒绝、页面字节来自 Reader 接纳的结果 |
+| G2 Guide 工具与卡片 | `hima_insight_analysis` 四个动作；对话卡片；产品上下文说明 | L2 durable Host：工具 propose→confirm→result 走完整图；客户端卡片投影单测 |
+| G3 移除标签页 | 删除 Resident analyses 标签页及 `propose/confirm` 路由 | 客户端类型检查；L3 Data Insight 回归 |
+| G4 真实验证 | 打包 App，Catsights，中/英文对话各一次真实分析 | L4 |

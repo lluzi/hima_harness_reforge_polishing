@@ -62,7 +62,8 @@ import { createJudge, type Judge } from './judge.js';
 import { createLibInsightViewer, libInsightViewerOptions } from './libinsight-viewer.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { createDurableViewReaders, readDurableSourceBytes } from './durable-views.js';
-import { createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses } from './libinsight-analyses.js';
+import { analysisSettled, createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses } from './libinsight-analyses.js';
+import { analysisPage, analysisPageMessage } from './analysis-page.js';
 import { previewPackTransfer, applyPackTransfer, loadRunPack, releasePackFromRuntime } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
@@ -395,6 +396,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'For a declared resident engineering task, the workflow starts the Site executor, collects its contract-checked delivery and closes its resources automatically. The Campaign owner may use hima_execute engineering message on the recorded execution to give business steering, and hima_context to inspect current facts. A status reply is one snapshot: when no actionable fact changed, explain that work remains active and yield instead of busy-polling. The external engineering session executes this task and does not acquire Run ownership.',
   'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
   'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
+  'Data Insight shows the default library analyses. For a library question those pages do not answer, the Guide uses hima_insight_analysis: propose, show the proposal, confirm only after the person agrees in this conversation, then report the admitted result with its analysis page link.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
@@ -690,8 +692,18 @@ export default class Hima extends Service {
           libInsightAnalyses: {
             list: sessionId => asked(() => analyses.list(sessionId)),
             detail: (sessionId, runId) => asked(() => analyses.detail(sessionId, runId)),
-            propose: (sessionId, request) => asked(() => analyses.propose(sessionId, { question: request.question, sources: [...request.sources ?? []], buildsOn: [...request.buildsOn ?? []] })),
-            confirm: (sessionId, proposalId) => asked(() => analyses.confirm(sessionId, proposalId)),
+          },
+          // A library analysis's own page (ADR-0021): the same summary and Reader-accepted bytes the
+          // Guide's tool reads, refreshing itself until the Run has settled.
+          analysisPage: async (sessionId, runId) => {
+            try {
+              const entry = await analyses.summary(sessionId, runId);
+              const detail = await analyses.detail(sessionId, runId);
+              return { status: 200, html: analysisPage({ runId, entry, detail, ...(analysisSettled(entry) ? {} : { refreshSeconds: 10 }) }) };
+            } catch (error) {
+              if (error instanceof LibInsightAnalysisError) return { status: 404, html: analysisPageMessage('Analysis unavailable', error.message) };
+              throw error;
+            }
           },
           readRunView: runId=>this.viewReaders().readRunView(runId),
           listRunHeads: ()=>this.viewReaders().listRunHeads(),
@@ -813,6 +825,7 @@ export default class Hima extends Service {
       delegate: request=>this.delegate(request),
       delegationInput:(sessionId,request)=>this.delegationInput(sessionId,request),
       interactive:(sessionId,request)=>this.interactive(sessionId,request),
+      insightAnalysis:(sessionId,request)=>this.libInsightAnalyses().tool(sessionId,request),
     })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
@@ -1011,9 +1024,11 @@ export default class Hima extends Service {
   readExecutionContext(runId: string) { return readExecutionContext(this.deps(), runId); }
   controlDurableRun(command: DurableCommand) { return controlDurableRun(this.deps(), command); }
 
-  /** Data Insight's Resident analyses (ADR-0020): Pack and Site names may be overridden for another Home. */
+  /** Custom library analyses (ADR-0020, ADR-0021): one instance, so a proposal the Guide made is the one
+   *  it confirms. Pack and Site names may be overridden for another Home. */
+  private analysesInstance?: LibInsightAnalyses;
   private libInsightAnalyses(): LibInsightAnalyses {
-    return createLibInsightAnalyses({
+    return this.analysesInstance ??= createLibInsightAnalyses({
       packsDir: this.config.packsDir, sitesDir: this.config.sitesDir,
       indexFile: path.join(localDatabaseHome(), 'libinsight-analyses.json'),
       ...(process.env.HIMA_LIBINSIGHT_ANALYSIS_PACK ? { pack: process.env.HIMA_LIBINSIGHT_ANALYSIS_PACK } : {}),

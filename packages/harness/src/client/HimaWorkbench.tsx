@@ -17,7 +17,6 @@ import { runIdForWorkbenchAddress, workbenchAddressKey, workbenchAddressOf, type
 import { ChildSessionPanel } from './ChildSessionPanel.js';
 import { InsightView, type AvailableInsightReport } from './InsightView.js';
 import { LibInsightAppPanel } from './LibInsightAppPanel.js';
-import { ResidentAnalysesPanel } from './ResidentAnalysesPanel.js';
 import { TeamPanel } from './TeamPanel.js';
 import { WorkMemoryPanel } from './WorkMemoryPanel.js';
 import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbench-state.js';
@@ -84,11 +83,10 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const [memoryDrafts, setMemoryDrafts] = useState<Readonly<Record<string, MemoryDraft>>>({});
   // Data Insight opens on the LibInsight pages (ADR-0019); retained reports stay one click away. The
   // frame is mounted on the first look and then only hidden, so a person's place in LibInsight
-  // survives a trip to Campaign and back. Resident analyses (ADR-0020) are the third surface, kept
-  // mounted the same way once seen, so a drafted question and the selected analysis survive too.
-  const [insightSurface, setInsightSurface] = useState<'libinsight' | 'reports' | 'resident'>('libinsight');
+  // survives a trip to Campaign and back. Custom library analyses are asked of the Guide in the
+  // conversation and shown on their own page (ADR-0021), not here.
+  const [insightSurface, setInsightSurface] = useState<'libinsight' | 'reports'>('libinsight');
   const [libInsightSeen, setLibInsightSeen] = useState(false);
-  const [residentSeen, setResidentSeen] = useState(false);
   // Bug 3 fix: the top-level "Refresh Run data" button used to only bump `snapshot`/`list`, both of
   // which this page never reads while no Run is selected (`selected === undefined`, exactly the
   // state `ConfigurationPage` renders in) — so on the Configuration page that click was a no-op, and
@@ -142,8 +140,6 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
 
   const showingLibInsight = !managingPack && address.kind === 'insight' && address.reportRef === undefined && insightSurface === 'libinsight';
   useEffect(() => { if (showingLibInsight && tab.visible) setLibInsightSeen(true); }, [showingLibInsight, tab.visible]);
-  const showingResident = !managingPack && address.kind === 'insight' && address.reportRef === undefined && insightSurface === 'resident';
-  useEffect(() => { if (showingResident && tab.visible) setResidentSeen(true); }, [showingResident, tab.visible]);
 
   const chooseCampaign = (next: WorkbenchAddress) => {
     lastCampaignAddress.current = next;
@@ -230,7 +226,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'insight'
-        ? showingLibInsight || showingResident ? null : <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} onShowLibInsight={() => { setInsightSurface('libinsight'); chooseInsight({ kind: 'insight' }); }} />
+        ? showingLibInsight ? null : <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} onShowLibInsight={() => { setInsightSurface('libinsight'); chooseInsight({ kind: 'insight' }); }} />
         : address.kind === 'child'
           ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined
@@ -243,8 +239,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         : <div className='hima-workbench-body'><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
             <TeamPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} view={view} onChanged={() => { snapshot.refresh(); execution.refresh(); list.refresh(); }} onInspect={entry => setAddress({ kind: 'child', parentSessionId: entry.parentSessionId, childSessionId: entry.childSessionId })}/>
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} draft={memoryDrafts[memoryScopeKey(activeSessionId, selected)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId, selected)]: draft }))}/></div>}
-    {libInsightSeen ? <LibInsightAppPanel sessionId={activeSessionId} hidden={!showingLibInsight} pickFolder={pickFolder} onShowReports={() => setInsightSurface('reports')} onShowResident={() => setInsightSurface('resident')} /> : null}
-    {residentSeen ? <ResidentAnalysesPanel key={activeSessionId} sessionId={activeSessionId} hidden={!showingResident} tabVisible={tab.visible} onShowLibInsight={() => setInsightSurface('libinsight')} onShowReports={() => setInsightSurface('reports')} /> : null}
+    {libInsightSeen ? <LibInsightAppPanel sessionId={activeSessionId} hidden={!showingLibInsight} pickFolder={pickFolder} onShowReports={() => setInsightSurface('reports')} /> : null}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
   </div></HimaViewerSession>;
 }

@@ -3,7 +3,7 @@
 // over its dataset into what a renderer draws: scales with nice ticks, marks with their tooltip text,
 // series with fixed palette slots, and, when the declaration cannot be drawn, the reason in words.
 // Pure and React-free, so the projections are tested apart from the SVG that paints them.
-import type { LibInsightAnalysisResult } from '../libinsight-analyses.js';
+import type { LibInsightAnalysisResult } from './libinsight-analyses.js';
 
 export type AnalysisPlotSpec = LibInsightAnalysisResult['plots'][number];
 export type AnalysisDataset = LibInsightAnalysisResult['datasets'][string];

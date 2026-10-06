@@ -19,6 +19,8 @@ export const HIMA_API_PREFIX = '/hima/api';
 
 /** The workbench page's own path under the host's origin, which is a document and not an operation. */
 export const HIMA_WORKBENCH_PATH = '/hima/';
+/** A library analysis's own page (ADR-0021): `<prefix><runId>?session=<conversation id>`. */
+export const HIMA_ANALYSIS_PAGE_PREFIX = '/hima/analysis/';
 
 /** Where the Runs live: the list, and each Run under it. */
 export const HIMA_RUNS_PATH = `${HIMA_API_PREFIX}/runs`;

@@ -1,6 +1,7 @@
 // @hima-seam agent wrapped
-// Data Insight's Resident analyses route (ADR-0020) end to end over HTTP: propose writes the request onto
-// the Site and prepares, confirm starts a Guide-confirmed durable Run, the list shows the admitted result.
+// Custom library analyses from the Guide conversation (ADR-0021) end to end: the Guide's
+// hima_insight_analysis tool proposes (writing the request onto the Site and preparing), confirms once as
+// a Guide-confirmed durable Run and reads the admitted result; the analysis page shows the same bytes.
 // Only the native ACP engineer is a stand-in (the Pack's verified example script); no model is called.
 import assert from 'node:assert/strict';
 import {mkdir,writeFile,readFile,realpath,cp,readdir} from 'node:fs/promises';
@@ -62,51 +63,79 @@ try {
   const answer=await bounded<Response>(`HTTP ${method} analyses`,fetch(new URL(`/hima/api/libinsight/analyses${query}`,base),{method,headers:{cookie,...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})}));
   return {status:answer.status,json:await answer.json()};
  };
- // A conversation that is not live on this Host sees nothing and starts nothing.
+ const page=async(at:string,withCookie=true):Promise<{status:number;html:string}>=>{
+  const answer=await bounded<Response>('analysis page',fetch(new URL(at,base),{headers:withCookie?{cookie}:{}}));
+  return {status:answer.status,html:await answer.text()};
+ };
+ // The Guide's own tool, called as the conversation's Agent calls it (ADR-0021).
+ const tool=async(agent:any,args:object):Promise<{isError:boolean;json:any;text:string}>=>{
+  const answer=await bounded<any>('hima_insight_analysis',host.ctx.tools.execute({name:'hima_insight_analysis',callId:`analysis-${crypto.randomUUID()}` as never,arguments:args,agent,signal:AbortSignal.timeout(20_000)}));
+  const text=answer.content?.find((item:any)=>item.type==='text')?.text??'';
+  let json:any;try{json=JSON.parse(text);}catch{json=undefined;}
+  return {isError:answer.isError===true,json,text};
+ };
+ // A conversation that is not live on this Host sees nothing; no browser route starts an analysis.
  assert.equal((await call('GET',undefined,'?sessionId=not-a-session')).status,403);
- assert.equal((await call('POST',{sessionId:'not-a-session',action:'propose',question:'x'})).status,403);
- const empty=await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}`);
- assert.equal(empty.status,200,JSON.stringify(empty.json));
+ assert.equal((await call('POST',{sessionId,action:'propose',question:'x'})).status,405);
+ const empty=await tool(guide,{action:'list'});
+ assert.equal(empty.isError,false,empty.text);
  assert.equal(empty.json.status.available,true,JSON.stringify(empty.json.status));assert.deepEqual(empty.json.analyses,[]);
  // A bad request is refused before anything reaches the Site.
- const climbing=await call('POST',{sessionId,action:'propose',question:'q',sources:['/tmp/../etc/passwd']});
- assert.equal(climbing.status,400,JSON.stringify(climbing.json));assert.deepEqual(await readdir(requests),[]);
- const proposed=await call('POST',{sessionId,action:'propose',question,sources:[facts]});
- assert.equal(proposed.status,200,JSON.stringify(proposed.json));
+ const climbing=await tool(guide,{action:'propose',question:'q',sources:['/tmp/../etc/passwd']});
+ assert.equal(climbing.isError,true,climbing.text);assert.deepEqual(await readdir(requests),[]);
+ const proposed=await tool(guide,{action:'propose',question,sources:[facts]});
+ assert.equal(proposed.isError,false,proposed.text);
  const proposal=proposed.json;
- assert.equal(proposal.ready,true,JSON.stringify(proposal));assert.equal(proposal.question,question);assert.equal(proposal.pack.id,packId);assert.equal(proposal.site,'local');
- assert.match(proposal.requestId,/^req-[0-9]{14}-[a-z0-9]{6}$/);
+ assert.equal(proposal.action,'propose');assert.equal(proposal.ready,true,JSON.stringify(proposal));assert.equal(proposal.question,question);assert.equal(proposal.pack.id,packId);assert.equal(proposal.site,'local');
+ assert.match(proposal.requestId,/^req-[0-9]{14}-[a-z0-9]{6}$/);assert.match(proposal.next,/only after they explicitly agree/);
  const written=JSON.parse(await readFile(path.join(requests,`${proposal.requestId}.json`),'utf8'));
  assert.deepEqual({schema:written.schema,requestId:written.requestId,question:written.question,sources:written.sources,buildsOn:written.buildsOn},{schema:'hima-libinsight-request/1',requestId:proposal.requestId,question,sources:[facts],buildsOn:[]});
  // Another conversation cannot confirm this proposal.
  const other=await createRootAgent(host.ctx,workspace);
- assert.equal((await call('POST',{sessionId:String(other.id),action:'confirm',proposalId:proposal.proposalId})).status,400);
- const confirmed=await call('POST',{sessionId,action:'confirm',proposalId:proposal.proposalId});
- assert.equal(confirmed.status,200,JSON.stringify(confirmed.json));runId=confirmed.json.runId;assert.ok(runId);
+ assert.equal((await tool(other,{action:'confirm',proposalId:proposal.proposalId})).isError,true);
+ const confirmed=await tool(guide,{action:'confirm',proposalId:proposal.proposalId});
+ assert.equal(confirmed.isError,false,confirmed.text);runId=confirmed.json.runId;assert.ok(runId);
+ assert.equal(confirmed.json.page,`/hima/analysis/${encodeURIComponent(runId!)}?session=${encodeURIComponent(sessionId)}`);
  // A confirmation is used once.
- assert.equal((await call('POST',{sessionId,action:'confirm',proposalId:proposal.proposalId})).status,400);
+ assert.equal((await tool(guide,{action:'confirm',proposalId:proposal.proposalId})).isError,true);
+ // The page exists from the start, behind the browser fence and a live conversation, and refreshes itself while running.
+ assert.equal((await page(confirmed.json.page,false)).status,401);
+ assert.equal((await page(`/hima/analysis/${encodeURIComponent(runId!)}?session=not-a-session`)).status,403);
+ const early=await page(confirmed.json.page);
+ assert.equal(early.status,200,early.html.slice(0,400));assert.ok(early.html.includes(question.slice(0,40)));
  let listed:any;
- await until('the admitted analysis is listed',async()=>{listed=(await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}`)).json;lastListed=listed;return listed.analyses?.[0]?.analysis?.admitted===true;});
+ await until('the admitted analysis is listed',async()=>{listed=(await tool(guide,{action:'list'})).json;lastListed=listed;return listed?.analyses?.[0]?.analysis?.admitted===true;});
  const entry=listed.analyses[0];
- assert.equal(entry.runId,runId);assert.equal(entry.question,question);assert.equal(entry.task.state,'succeeded');
+ assert.equal(entry.runId,runId);assert.equal(entry.question,question);assert.equal(entry.task.state,'succeeded');assert.equal(entry.page,confirmed.json.page);
  assert.equal(entry.result,undefined,'the list carries summaries, never whole results');
  assert.deepEqual({id:entry.analysis.id,version:entry.analysis.version,plotCount:entry.analysis.plotCount,admitted:entry.analysis.admitted},{id:'saed14-inv-drive-delay',version:1,plotCount:5,admitted:true});
+ const answered=await tool(guide,{action:'result',runId});
+ assert.equal(answered.isError,false,answered.text);
+ assert.deepEqual(answered.json.admission,{admitted:true});assert.equal(answered.json.analysis,'saed14-inv-drive-delay@1');assert.equal(answered.json.plots.length,5);
+ assert.equal(answered.json.page,confirmed.json.page);assert.ok(answered.json.summary.length>0);
+ for(const data of Object.values<any>(answered.json.datasets))assert.ok(data.rows.length<=40&&data.rowCount>=data.rows.length);
  const detail=(await call('GET',undefined,`?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId!)}`)).json;
  assert.deepEqual(detail.admission,{admitted:true});
  assert.equal(detail.result.schema,'hima-libinsight-analysis/1');assert.equal(detail.result.plots.length,5);
  const observation=(await readers.readRunView(runId)).tasks.find((task:any)=>task.taskId==='custom-analysis'&&task.result).result.value.observations.find((record:any)=>record.outputName==='analysisResult');
  assert.equal(entry.analysis.resultSha256,observation.contentSha256);
- assert.deepEqual(detail.result,JSON.parse(await readFile(observation.retainedPath,'utf8')),'the tab shows exactly the Reader-accepted bytes the Host retained');
+ assert.deepEqual(detail.result,JSON.parse(await readFile(observation.retainedPath,'utf8')),'the detail is exactly the Reader-accepted bytes the Host retained');
  assert.deepEqual(await readFile(path.join(library,'saed14-inv-drive-delay','v1','analysis-result.json')),await readFile(observation.retainedPath),'and those are the bytes admitted into the Site library');
- // A Run of another Pack is not an analysis, and a detail request is scoped like the list.
  assert.equal((await call('GET',undefined,`?sessionId=not-a-session&runId=${encodeURIComponent(runId!)}`)).status,403);
  await until('Run ended',async()=>String((await readers.readRunView(runId))?.run.status).startsWith('ended'));
+ // The finished page draws every plot from those bytes and no longer refreshes.
+ const done=await page(confirmed.json.page);
+ assert.equal(done.status,200);assert.ok(done.html.includes('saed14-inv-drive-delay@1'),'the page names the admitted analysis');
+ for(const plot of detail.result.plots)assert.ok(done.html.includes(plot.title.replace(/&/g,'&amp;').replace(/</g,'&lt;')),`the page shows ${plot.title}`);
+ assert.equal(/http-equiv="refresh"/i.test(done.html),false);assert.equal(/<script/i.test(done.html),false);
+ await writeFile(path.join(evidence,'analysis-page.html'),done.html);
+ assert.equal((await page(`/hima/analysis/run-not-a-run?session=${encodeURIComponent(sessionId)}`)).status,404);
  const proof={ok:true,runId,requestId:proposal.requestId,plots:detail.result.plots.length,elapsedMs:Date.now()-startedAt};
- await writeFile(path.join(evidence,'http-proof.json'),JSON.stringify(proof,null,2));
+ await writeFile(path.join(evidence,'guide-proof.json'),JSON.stringify(proof,null,2));
  process.send?.(proof);
 } catch(error){
  const proof:any={ok:false,runId,lastListed,view:runId&&host?await createDurableViewReaders({ledger:host.ctx.hima.ledger,judge:host.ctx.hima.judge,sitesDir,packsDir,host:host.ctx,durable:host.ctx.hima.durable,durableModelSelection:host.ctx.get('agentDefaultModel').currentSelection()}).readRunView(runId).then((v:any)=>({status:v?.run.status,tasks:v?.tasks?.map((t:any)=>({id:t.taskId,p:t.projection}))})).catch((e:any)=>String(e)):undefined,error:String(error),stack:(error as Error).stack,elapsedMs:Date.now()-startedAt};
- await writeFile(path.join(evidence,'http-failure.json'),JSON.stringify(proof,null,2).replace(/([?&]token=)[^\s&]+/g,'$1[redacted]'));
+ await writeFile(path.join(evidence,'guide-failure.json'),JSON.stringify(proof,null,2).replace(/([?&]token=)[^\s&]+/g,'$1[redacted]'));
  process.send?.(proof);process.exitCode=1;
 }
 finally{if(runId)await host?.ctx.hima.cancelRun(runId).catch(()=>{});await host?.dispose();}

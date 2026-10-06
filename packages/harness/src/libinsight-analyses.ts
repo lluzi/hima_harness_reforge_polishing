@@ -1,6 +1,6 @@
-// Data Insight's Resident analyses (ADR-0020, 2026-10-05 revision): a person asks a library question,
-// the Host writes the request onto the Site, prepares one Run of the analysis Pack with that request as
-// its input, and a confirmation starts it as an ordinary Guide-confirmed Run. The admitted result is the
+// Custom library analyses (ADR-0020, ADR-0021): a person asks the Guide a library question in the
+// conversation, the Host writes the request onto the Site, prepares one Run of the analysis Pack with
+// that request as its input, and the person's confirmation starts it as an ordinary Guide-confirmed Run. The admitted result is the
 // Reader's own retained input bytes, read back here hash-checked; nothing is read from the Site to show it.
 import { randomBytes } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
@@ -14,6 +14,7 @@ import type { PreparationOverrides } from './campaign-file.js';
 import type { PreparationView } from './workbench.js';
 import type { StartRunRequest, StartRunResult } from './fabric.js';
 import type { RunHeadView, RunView } from './remote.js';
+import { HIMA_ANALYSIS_PAGE_PREFIX } from './paths.js';
 
 export const libInsightAnalysisDefaults = { pack: 'libinsight-analysis', site: 'linglong-libinsight', requestBinding: 'analysisRequests', requestInput: 'analysisRequest', resultOutput: 'analysisResult' } as const;
 const requestSchema = 'hima-libinsight-request/1';
@@ -227,33 +228,46 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     return { admitted: false, reason: 'admission has not finished' };
   }
 
+  function entryOf(head: RunHeadView, view: RunView | undefined, row: IndexRow | undefined): LibInsightAnalysisEntry {
+    const projection = view?.tasks?.find(task => task.taskId === 'custom-analysis' && task.current !== false)?.projection;
+    const observation = observationOf(view);
+    const admission = observation ? admissionOf(view, observation) : undefined;
+    const plotCount = observation?.values?.find(value => value.type === 'li_analysis_plot_count')?.value;
+    return { runId: head.id, createdAt: head.createdAt, ...(row ? { question: row.question } : {}),
+      ...(head.status ? { status: head.status } : {}),
+      ...(projection ? { task: { state: projection.state, ...('reason' in projection ? { reason: projection.reason.message } : {}) } } : {}),
+      ...(observation && admission ? { analysis: { ...(admission.id ? { id: admission.id } : {}), ...(admission.version ? { version: admission.version } : {}),
+        ...(typeof plotCount === 'number' ? { plotCount } : {}), admitted: admission.admitted,
+        ...(admission.reason ? { notAdmittedReason: admission.reason } : {}), resultSha256: observation.contentSha256 } } : {}) };
+  }
+
   async function list(sessionId: string): Promise<{ readonly status: LibInsightAnalysesStatus; readonly analyses: readonly LibInsightAnalysisEntry[] }> {
     const index = await readIndex(), byRun = new Map(index.filter(r => r.runId).map(r => [r.runId!, r]));
     const heads = (await deps.listRunHeads()).filter(head => head.packId === packId);
     const analyses: LibInsightAnalysisEntry[] = [];
     for (const head of heads) {
       try { await deps.authorize(sessionId, head.id); } catch { continue; }
-      const view = await deps.readRunView(head.id).catch(() => undefined);
-      const projection = view?.tasks?.find(task => task.taskId === 'custom-analysis' && task.current !== false)?.projection;
-      const observation = observationOf(view);
-      const admission = observation ? admissionOf(view, observation) : undefined;
-      const plotCount = observation?.values?.find(value => value.type === 'li_analysis_plot_count')?.value;
-      analyses.push({ runId: head.id, createdAt: head.createdAt, ...(byRun.get(head.id) ? { question: byRun.get(head.id)!.question } : {}),
-        ...(head.status ? { status: head.status } : {}),
-        ...(projection ? { task: { state: projection.state, ...('reason' in projection ? { reason: projection.reason.message } : {}) } } : {}),
-        ...(observation && admission ? { analysis: { ...(admission.id ? { id: admission.id } : {}), ...(admission.version ? { version: admission.version } : {}),
-          ...(typeof plotCount === 'number' ? { plotCount } : {}), admitted: admission.admitted,
-          ...(admission.reason ? { notAdmittedReason: admission.reason } : {}), resultSha256: observation.contentSha256 } } : {}) });
+      analyses.push(entryOf(head, await deps.readRunView(head.id).catch(() => undefined), byRun.get(head.id)));
     }
     analyses.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return { status: status(), analyses };
+  }
+
+  /** One Run's summary, as `list` gives it, for a page or a tool that already knows the Run. */
+  async function summary(sessionId: string, runId: string): Promise<LibInsightAnalysisEntry> {
+    try { await deps.authorize(sessionId, runId); }
+    catch { throw new LibInsightAnalysisError('bad-request', 'This analysis is not available in the selected project.'); }
+    const head = (await deps.listRunHeads()).find(row => row.id === runId);
+    if (head?.packId !== packId) throw new LibInsightAnalysisError('bad-request', 'This Run is not a library analysis.');
+    const row = (await readIndex()).find(r => r.runId === runId);
+    return entryOf(head, await deps.readRunView(runId).catch(() => undefined), row);
   }
 
   async function detail(sessionId: string, runId: string): Promise<LibInsightAnalysisDetail> {
     try { await deps.authorize(sessionId, runId); }
     catch { throw new LibInsightAnalysisError('bad-request', 'This analysis is not available in the selected project.'); }
     const view = await deps.readRunView(runId);
-    if (view?.run.packId !== packId) throw new LibInsightAnalysisError('bad-request', 'This Run is not a Resident analysis.');
+    if (view?.run.packId !== packId) throw new LibInsightAnalysisError('bad-request', 'This Run is not a library analysis.');
     const observation = observationOf(view);
     if (!observation) return { runId, admission: { admitted: false, reason: 'no Reader-accepted result yet' } };
     const admission = admissionOf(view, observation);
@@ -268,6 +282,69 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     }
   }
 
-  return { status, propose, confirm, list, detail };
+  /** What the Guide's `hima_insight_analysis` answers (ADR-0021): every action reads or starts through
+   *  the same functions above, and a result is the Reader-accepted bytes, bounded for a conversation. */
+  async function tool(sessionId: string, args: LibInsightAnalysisToolArgs): Promise<object> {
+    const page = (runId: string) => analysisPagePath(runId, sessionId);
+    if (args.action === 'propose') {
+      if (args.question === undefined) throw new LibInsightAnalysisError('bad-request', 'propose needs the person\'s question');
+      const proposal = await propose(sessionId, { question: args.question, sources: [...args.sources ?? []], buildsOn: [...args.buildsOn ?? []] });
+      return { action: 'propose', ...proposal,
+        next: proposal.ready ? 'Show this proposal to the person in your own words and ask whether to start it. Call confirm with this proposalId only after they explicitly agree in this conversation.'
+          : 'This proposal is not ready; tell the person what it lists and what would resolve it. Do not confirm it.' };
+    }
+    if (args.action === 'confirm') {
+      if (args.proposalId === undefined) throw new LibInsightAnalysisError('bad-request', 'confirm needs the proposalId that propose returned');
+      const started = await confirm(sessionId, args.proposalId);
+      return { action: 'confirm', ...started, page: page(started.runId),
+        next: 'Tell the person the analysis has started and that its page fills in as it runs. The Host notifies you when it ends; then call result.' };
+    }
+    if (args.action === 'list') {
+      const answer = await list(sessionId);
+      return { action: 'list', status: answer.status, analyses: answer.analyses.slice(0, 20).map(entry => ({ ...entry, page: page(entry.runId) })) };
+    }
+    if (args.runId === undefined) throw new LibInsightAnalysisError('bad-request', 'result needs the runId of an analysis');
+    const entry = await summary(sessionId, args.runId);
+    const read = await detail(sessionId, args.runId);
+    const result = read.result;
+    return { action: 'result', runId: args.runId, page: page(args.runId), ...(entry.status ? { status: entry.status } : {}), ...(entry.task ? { task: entry.task } : {}),
+      admission: read.admission, ...(entry.analysis?.id && entry.analysis.version ? { analysis: `${entry.analysis.id}@${String(entry.analysis.version)}` } : {}),
+      ...(read.resultUnavailable ? { resultUnavailable: read.resultUnavailable } : {}),
+      ...(result ? { question: result.question, summary: result.summary, assumptions: result.assumptions, limits: result.limits,
+        plots: result.plots.map(plot => ({ title: plot.title, kind: plot.kind, dataset: plot.dataset })),
+        datasets: Object.fromEntries(Object.entries(result.datasets).map(([name, data]) => [name, { columns: data.columns, rowCount: data.rows.length, rows: data.rows.slice(0, toolRows), ...(data.rows.length > toolRows ? { truncated: true } : {}) }])),
+        sources: result.sources, run: result.run } : {}),
+      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them), name its limits, and give the person the page link.'
+        : 'Explain where the analysis stands or why it was not admitted, from these facts; do not present an unadmitted result as established.' };
+  }
+
+  return { status, propose, confirm, list, summary, detail, tool };
+}
+
+const toolRows = 40;
+const finalTask = new Set(['succeeded', 'failed', 'cancelled']);
+
+/**
+ * Settled: a Run with a status is settled only when it ended or was cancelled — admission and delivery
+ * run after the resident task, so its success alone settles nothing. Without a Run status, a final
+ * resident task, or knowing neither (nothing will change it by waiting), settles it.
+ */
+export function analysisSettled(entry: Pick<LibInsightAnalysisEntry, 'status' | 'task'>): boolean {
+  if (entry.status !== undefined) return entry.status.startsWith('ended') || entry.status.startsWith('cancelled');
+  return entry.task === undefined || finalTask.has(entry.task.state);
+}
+
+/** The page of one analysis, as the conversation links it (ADR-0021). */
+export function analysisPagePath(runId: string, sessionId: string): string {
+  return `${HIMA_ANALYSIS_PAGE_PREFIX}${encodeURIComponent(runId)}?session=${encodeURIComponent(sessionId)}`;
+}
+
+export interface LibInsightAnalysisToolArgs {
+  readonly action: 'propose' | 'confirm' | 'list' | 'result';
+  readonly question?: string;
+  readonly sources?: readonly string[];
+  readonly buildsOn?: readonly string[];
+  readonly proposalId?: string;
+  readonly runId?: string;
 }
 export type LibInsightAnalyses = ReturnType<typeof createLibInsightAnalyses>;

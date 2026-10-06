@@ -69,7 +69,7 @@ test('a detail is scoped to the project and to analysis Runs', async () => {
   });
   try {
     await assert.rejects(f.analyses.detail('s', 'run-foreign'), (error: unknown) => error instanceof LibInsightAnalysisError && /not available/.test(error.message));
-    await assert.rejects(f.analyses.detail('s', 'run-x'), /not a Resident analysis/);
+    await assert.rejects(f.analyses.detail('s', 'run-x'), /not a library analysis/);
   } finally { await f.cleanup(); }
 });
 

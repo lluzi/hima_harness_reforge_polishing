@@ -7,6 +7,7 @@ import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
+import { InsightAnalysisCard } from './InsightAnalysisCard.js';
 import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
@@ -196,6 +197,8 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('tool.call.toolview', () => {
     const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun, toolName: key }) }, HimaRunCard));
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));
+    // A custom library analysis in the conversation (ADR-0021): its proposal, start and result.
+    claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_insight_analysis' }, InsightAnalysisCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };
   });
 }

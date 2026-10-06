@@ -89,7 +89,7 @@ import type { PackStageOrRefusal } from './packs.js';
 // The one place the form's mark for a pack folder's stage is decided, beside every other word a
 // person reads off this harness.
 import { packStageMark } from './card-labels.js';
-import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
+import { HIMA_ANALYSIS_PAGE_PREFIX, HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
 // Type-only: this module reaches no filesystem of its own (see `RemoteOperations.readCampaignFile`/
 // `writeCampaignFile` below) and is bundled into the browser half through `client/api.ts`, where a
 // runtime import of `campaign-file.ts` would ship `node:fs` to every browser.
@@ -713,13 +713,13 @@ export interface RemoteOperations {
   /** The LibInsight pages Data Insight frames (ADR-0019): the Host's one local viewer process. */
   libInsight?(request: { readonly action: 'status' } | { readonly action: 'open'; readonly dataFolder?: string; readonly restart?: boolean }): Promise<import('./libinsight-viewer.js').LibInsightViewerStatus>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
-  /** Data Insight's Resident analyses (ADR-0020): a request becomes one Guide-confirmed Run of the analysis Pack. */
+  /** Custom library analyses (ADR-0020, ADR-0021), read only: the Guide alone proposes and starts them. */
   libInsightAnalyses?: {
     list(sessionId: string): Promise<object>;
     detail(sessionId: string, runId: string): Promise<object>;
-    propose(sessionId: string, request: { readonly question: string; readonly sources?: readonly string[]; readonly buildsOn?: readonly string[] }): Promise<object>;
-    confirm(sessionId: string, proposalId: string): Promise<object>;
   };
+  /** One library analysis as its own page (ADR-0021), for a live conversation of its project. */
+  analysisPage?(sessionId: string, runId: string): Promise<{ readonly status: number; readonly html: string }>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
   readRunAssets?(runId: string,revision?:number): Promise<import('./experience.js').ReadRunAssetsResult>;
@@ -1789,26 +1789,15 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return ok(await ops.libInsight({ action: 'open', ...(body.dataFolder === undefined ? {} : { dataFolder: body.dataFolder }), ...(body.restart === undefined ? {} : { restart: body.restart }) }));
   }
 
-  // Resident analyses beside the LibInsight pages (ADR-0020). Proposing writes the request onto the
-  // Site and prepares; only a confirmation starts a Run, owned like any Guide-confirmed Campaign.
+  // Custom library analyses (ADR-0020, ADR-0021), read only. They are proposed and started from the
+  // Guide conversation (`hima_insight_analysis`); no browser route starts one.
   if (rest === '/libinsight/analyses') {
-    if (!ops.libInsightAnalyses) return failure(503, 'hima/internal', 'This Host has no Resident analyses.');
-    if (method === 'GET') {
-      const sessionId = url.searchParams.get('sessionId') ?? '';
-      if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
-      const runId = url.searchParams.get('runId');
-      return ok(runId === null ? await ops.libInsightAnalyses.list(sessionId) : await ops.libInsightAnalyses.detail(sessionId, runId));
-    }
-    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
-    const parsed = z.discriminatedUnion('action', [
-      z.strictObject({ sessionId: z.string(), action: z.literal('propose'), question: z.string().min(1).max(4000), sources: z.array(z.string().max(4096)).max(32).optional(), buildsOn: z.array(z.string().max(80)).max(8).optional() }),
-      z.strictObject({ sessionId: z.string(), action: z.literal('confirm'), proposalId: z.string().min(1).max(512) }),
-    ]).safeParse(await readJsonBody(req));
-    if (!parsed.success) throw new BadRequest(zodSentence(parsed.error));
-    const body = parsed.data;
-    if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
-    if (body.action === 'confirm') return ok(await ops.libInsightAnalyses.confirm(body.sessionId, body.proposalId));
-    return ok(await ops.libInsightAnalyses.propose(body.sessionId, { question: body.question, ...(body.sources ? { sources: body.sources } : {}), ...(body.buildsOn ? { buildsOn: body.buildsOn } : {}) }));
+    if (!ops.libInsightAnalyses) return failure(503, 'hima/internal', 'This Host has no library analyses.');
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET; analyses are started from the Guide conversation`);
+    const sessionId = url.searchParams.get('sessionId') ?? '';
+    if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    const runId = url.searchParams.get('runId');
+    return ok(runId === null ? await ops.libInsightAnalyses.list(sessionId) : await ops.libInsightAnalyses.detail(sessionId, runId));
   }
 
   if (rest === '/observe') {
@@ -2342,5 +2331,33 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
       }
     },
   });
-  return () => { api(); page(); };
+  // A library analysis's own page (ADR-0021): `/hima/analysis/<runId>?session=<id>`, behind the same
+  // browser fence as the workbench, for a live conversation of the Run's project.
+  const analysis = ctx.webServer.register({
+    kind: 'prefix',
+    // The server's prefixes are segment-matched (`<path>` or `<path>/…`), so the slash is not part of it.
+    path: HIMA_ANALYSIS_PAGE_PREFIX.slice(0, -1),
+    handler: async (req, res) => {
+      const rejection = ctx.connection.requestRejection(req);
+      if (rejection !== undefined) {
+        sendPage(res, rejection, messagePage(rejection === 401 ? 'no browser session; open HimaHarness first' : 'this origin may not reach HimaHarness'));
+        return;
+      }
+      const url = new URL(req.url ?? '/', 'http://hima.invalid');
+      try {
+        if ((req.method ?? 'GET') !== 'GET') { sendPage(res, 405, messagePage(`${req.method} ${url.pathname}; this page answers GET`)); return; }
+        const runId = decodeURIComponent(url.pathname.slice(HIMA_ANALYSIS_PAGE_PREFIX.length).replace(/\/+$/u, ''));
+        const sessionId = url.searchParams.get('session') ?? '';
+        if (!ops.analysisPage) { sendPage(res, 503, messagePage('This Host has no library analyses.')); return; }
+        if (!/^[A-Za-z0-9._-]{1,128}$/u.test(runId)) { sendPage(res, 404, messagePage('No such analysis.')); return; }
+        if (!ops.validateSession?.(sessionId)) { sendPage(res, 403, messagePage('Open this page from a live HimaHarness conversation.')); return; }
+        const answer = await ops.analysisPage(sessionId, runId);
+        sendPage(res, answer.status, answer.html);
+      } catch (err) {
+        ctx.logger.error(err);
+        sendPage(res, 500, messagePage(`${url.pathname} failed inside HimaHarness; the reason is in the host log`));
+      }
+    },
+  });
+  return () => { api(); page(); analysis(); };
 }

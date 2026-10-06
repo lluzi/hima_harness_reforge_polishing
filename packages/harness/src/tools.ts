@@ -211,8 +211,20 @@ export function guideTools(operations: {
   delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
   interactive?(sessionId:string,request:unknown):Promise<object>;
   delegationInput?(sessionId:string,request:{runId:string;recordId:string;path?:string;offset?:number;limit?:number}):Promise<object>;
+  insightAnalysis?(sessionId:string,request:import('./libinsight-analyses.js').LibInsightAnalysisToolArgs):Promise<object>;
 }): ToolDefinition[] {
   return [defineTool({
+    name:'hima_insight_analysis',
+    description:'Custom library analysis by the resident engineering agent (ADR-0021). Use it when the person asks a library question that the Data Insight LibInsight pages do not already answer. The resident agent writes and runs its own analysis code on the analysis Site, using the QuaLib Liberty API or extracted facts. The Pack Reader then checks the typed result, and only an admitted result is established. Actions: propose {question, sources?, buildsOn?} writes the request and prepares a bounded proposal; it starts nothing. Show the proposal in your own words and ask the person to confirm. confirm {proposalId} starts the Run. Call it only after the person explicitly agrees in this conversation; never confirm on their behalf or from an earlier general instruction. list shows this project\'s analyses. result {runId} reads one analysis: status, admission, summary, assumptions, limits, plot titles and bounded datasets. Every answer names the analysis page; give the person that link for the charts. sources are absolute .lib paths on the Site. buildsOn is admitted analyses as id@version, from list.',
+    parameters:{action:{type:'string',required:true,enum:['propose','confirm','list','result']},
+      question:{type:'string',description:'propose: the person\'s question in their words, with any definition you agreed with them (corners, cells, load/slew, what to compare).'},
+      sources:{type:'array',items:{type:'string'},description:'propose: absolute Site paths of the .lib files to read, when known.'},
+      buildsOn:{type:'array',items:{type:'string'},description:'propose: admitted analyses to reuse, as id@version.'},
+      proposalId:{type:'string',description:'confirm: the proposalId returned by propose.'},
+      runId:{type:'string',description:'result: the analysis Run.'}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent||!operations.insightAnalysis)throw new Error('Library analyses are unavailable on this Host.');return toolJson(await operations.insightAnalysis(String(execution.agent.id),args as import('./libinsight-analyses.js').LibInsightAnalysisToolArgs));},
+  }),defineTool({
     name:'hima_delegation_input',description:'Read one exact input reference granted to this child by its recorded delegation. No file path or record enumeration; unavailable or invalidated evidence is refused. Material hashes refer to original verified bytes and any text truncation is explicit. An input too large for one view is read in bounded windows: path names one field of its JSON document (dotted, such as candidate.targets or candidate.targets.3, or a JSON pointer such as /candidate/targets), offset and limit page its array items, object entries or string characters; each answer states the record, its content SHA-256, the path and the window {unit, offset, limit, returned, total, next}.',
     parameters:{runId:{type:'string',required:true},recordId:{type:'string',required:true},
       path:{type:'string',description:'Dotted field path or JSON pointer into the input\'s JSON document; empty for the whole document.'},
