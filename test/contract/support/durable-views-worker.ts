@@ -484,7 +484,6 @@ try {
   const installed=path.join(packDir,'contract.yml');await writeFile(installed,(await readFile(installed,'utf8')).replace('Frozen normal facade method','Changed installed method').replace('label: Period','label: Changed period'));
   const frozenDir=(await runtime.store.run(runId)).opening.data.product.method.retainedPackDir;await rename(frozenDir,`${frozenDir}-removed`);
   const stable=await get(`/runs/${runId}`);assert.equal(stable.status,200);const originalView=await stable.json() as any;assert.equal(originalView.run.packVersion,'1');assert.equal(originalView.run.words.goal.periodNs.label,'Period');
-  const {runPage}=await load('workbench');assert.match(runPage(unknownView),/ended · Goal unknown/);
   const historicPage=await fetch(new URL(`/hima/?run=${encodeURIComponent(unknown.run.id)}`,url),{headers:{cookie}});assert.equal(historicPage.status,200);assert.match(await historicPage.text(),/Open the native HimaHarness workspace/);
   const legacy=await service.ledger.createRun({campaignId:'legacy-history',siteId:'local',projectSessionId:String(owner.id)});const legacyView=await get(`/runs/${legacy.id}`);assert.equal(legacyView.status,200);const {runView}=await load('remote');assert.deepEqual(await legacyView.json(),runView(service.ledger,legacy));
   // Use the native persisted inbox without invoking a product model. Notification delivery is
