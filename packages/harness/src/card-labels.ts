@@ -1517,7 +1517,7 @@ export function taskCanRespond(task: import('./remote.js').DurableTaskView, run:
 
 /** A reference node can have several retained loop/revision invocations. Show current unfinished
  * work before completed history; each invocation remains individually inspectable. */
-export function taskStateForNode(tasks:readonly import('./remote.js').DurableTaskView[]|undefined,nodeId:string):import('./task-contract.js').TaskProjectionState|undefined {
+function currentTaskForNode(tasks:readonly import('./remote.js').DurableTaskView[]|undefined,nodeId:string):import('./remote.js').DurableTaskView|undefined {
   const current=(tasks??[]).filter(task=>task.taskId===nodeId&&task.current!==false&&task.rootFlow!==false);
   const compare=(a:typeof current[number],b:typeof current[number])=>{
     const left=a.iterations??[],right=b.iterations??[];
@@ -1527,5 +1527,30 @@ export function taskStateForNode(tasks:readonly import('./remote.js').DurableTas
   };
   const latest=current.reduce<typeof current[number]|undefined>((chosen,task)=>!chosen||compare(task,chosen)>0?task:chosen,undefined);
   const visible=latest?current.filter(task=>compare(task,latest)===0):[];
-  return (['failed','waiting','running','pending','cancelled','succeeded'] as const).find(state=>visible.some(task=>task.projection.state===state));
+  for(const state of ['failed','waiting','running','pending','cancelled','succeeded'] as const){
+    const task=visible.find(task=>task.projection.state===state);
+    if(task)return task;
+  }
+  return undefined;
+}
+
+export function taskStateForNode(tasks:readonly import('./remote.js').DurableTaskView[]|undefined,nodeId:string):import('./task-contract.js').TaskProjectionState|undefined {
+  return currentTaskForNode(tasks,nodeId)?.projection.state;
+}
+
+/** Explain a live wait using the same current invocation as the graph glyph. */
+export function runWaitingReason(view:import('./remote.js').RunView|undefined):string|undefined {
+  if(view?.run.status!=='waiting')return undefined;
+  const blocker=view.blockers.at(-1);
+  if(blocker)return blocker.reason;
+  const groups=new Map<string,import('./remote.js').DurableTaskView[]>();
+  for(const task of view.tasks??[]){
+    const group=groups.get(task.taskId);
+    if(group)group.push(task);else groups.set(task.taskId,[task]);
+  }
+  for(const [id,tasks] of groups){
+    const task=currentTaskForNode(tasks,id);
+    if(task?.projection.state==='failed'||task?.projection.state==='waiting')return task.projection.reason.message;
+  }
+  return undefined;
 }

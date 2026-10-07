@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type R
 import { centerAt, fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
-import { taskStateForNode, runStatusSaid, runCanControl, goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
+import { taskStateForNode, runWaitingReason, runStatusSaid, runCanControl, goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { NODE_CARD_WIDTH } from '../node-card-layout.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
@@ -402,11 +402,11 @@ export function FabricCanvas({
   // implies `status === 'waiting'`, which is itself active, but the fence check is separate (it reads
   // `context`, not `run.status` directly) and needs its own gate.
   const active = run !== undefined && runCanControl(run);
-  const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
+  const waitingReason = runWaitingReason(view);
   const fenceReason = active && context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
     ? context.reason ?? (context.budget.phase === 'exhausted' ? 'the Budget is exhausted' : 'the Budget is closing')
     : undefined;
-  const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
+  const attention = waitingReason !== undefined ? { kind: 'waiting' as const, reason: waitingReason }
     : fenceReason !== undefined ? { kind: 'fence' as const, reason: fenceReason } : undefined;
 
   return (

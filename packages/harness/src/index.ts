@@ -273,7 +273,7 @@ export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 // has ended, and a node's own caption. On the surface for the reason every other word of the card is:
 // `scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and the
 // contract suite asserts on the same three functions the canvas actually renders from.
-export { taskStateForNode, taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
+export { taskStateForNode, taskCanRespond, runWaitingReason, runStatusSaid, runCanControl, runSnapshotOlder, goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
 
 // The node card's own pure layout and tab-set facts (#41 task 6): on the surface so its L1 tests
 // (`test/contract/canvas-layout.test.ts`) can assert on the same functions `client/NodeCard.tsx`

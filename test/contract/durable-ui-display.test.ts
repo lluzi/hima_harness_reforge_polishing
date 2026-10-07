@@ -1,11 +1,26 @@
 // L1: durable facts supersede legacy display spellings and late network replies.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { taskStateForNode, taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, sceneInputs } from '@hima/harness';
+import { taskStateForNode, taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, runWaitingReason, sceneInputs } from '@hima/harness';
 import type { RunView, RunHeadView } from '@hima/harness';
 
 const run = (extra: Partial<RunHeadView> = {}): RunHeadView => ({ id: 'r1', campaignId: 'c1', siteId: 's1', createdAt: '2026-10-04T00:00:00Z', status: 'running', ...extra });
 const view = (head: RunHeadView): RunView => ({ run: head, nodes: [], generations: [], jobs: [], code: [], knowledge: [], observations: [], verdicts: [], blockers: [], refusals: [], cancels: [], resumes: [], decision: null });
+
+test('waiting attention describes the current task failure and never a superseded iteration or an ended Run', () => {
+  const waiting = view(run({ status: 'waiting', engine: 'dbos/5.2.11' }));
+  const task = (iteration: number, message: string) => ({ taskId: 'produce', current: true, sourceFactIds: [],
+    iterations: [{ repeatId: 'loop', iteration }],
+    projection: { state: 'failed' as const, reason: { code: 'command-failed', message, source: 'runtime' } } });
+  const old = task(0, 'old failure'), current = task(1, 'Current command exited 1');
+  const superseded = { ...task(2, 'superseded work'), current: false };
+  const tasks = [old, superseded, current];
+  assert.equal(runWaitingReason({ ...waiting, tasks }), 'Current command exited 1');
+  assert.equal(runWaitingReason({ ...waiting, tasks: [...tasks].reverse() }), 'Current command exited 1');
+  assert.equal(runWaitingReason({ ...waiting, tasks: [old, { ...current, projection: { state: 'succeeded' } }] }), undefined);
+  assert.equal(runWaitingReason({ ...waiting, tasks: [{ ...current, projection: { state: 'waiting', reason: { code: 'human-response', message: 'Choose a result', source: 'runtime' } } }] }), 'Choose a result');
+  assert.equal(runWaitingReason({ ...waiting, run: run({ status: 'ended-goal-not-met' }), tasks }), undefined);
+});
 
 test('explicit unknown Goal overrides legacy met and not-met spellings', () => {
   assert.equal(runStatusSaid(run({ status: 'ended-goal-met', goalState: 'unknown' }))?.said, 'ended · Goal unknown');
