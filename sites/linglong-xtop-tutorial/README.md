@@ -45,6 +45,8 @@ pre-optimisation report exactly; the common R1 AutoFix left setup 615 / −1.925
 | 0.4.1 (written method) | `run-5c664dee…` | resident delivered after 12 min; App quit with jobs kept before evaluation | 0 | 1 / −1.5 ps |
 | 0.4.2 (written method) | `run-e51a8115…` | ended · Goal not met | 48 / −0.98 ns | 0 |
 | **0.4.4 (executable ladder)** | `run-a4559427-9927-41d0-9105-08dbc5320c37` | **ended · Goal met** | **0** | **0** |
+| 0.4.5 | `run-39cc0ecf-fec8-4572-9975-90d09a683134` | stopped: 0/0 delivered, but string facts were rejected and the repair stalled on a Host materialization refusal | (0) | (0) |
+| **0.4.6 (recorded, Dark)** | `run-fa748240-a511-4067-a1f2-fb80754fc37f` | **ended · Goal met**, first delivery accepted | **0** | **0** |
 
 The 0.4.4 Run started from common R1 615 / −1.9254 / −624.1548 and 372 / −3.0570 / −61.9808, measured as
 the "before". The resident rebuilt from R0 with the Pack's `xtop-closure-ladder.tcl.txt`, closing in about
@@ -53,3 +55,7 @@ the document. The whole Run took 11 min 51 s. Non-fixed placement overlaps were 
 instances were displaced. The Reader keeps collateral UNKNOWN. Recording, stills and README:
 `.hima-tmp/keynote-assets/demo-packs/HimaHarness-demo-07-atcs-xtop-tutorial-100pct-closure`.
 XTop timing only; no signoff.
+
+The 0.4.6 Run (take 5) is the recorded demo: resident 4 min 33 s, whole Run about 8 minutes, Reader
+zero errors, overlaps 0 → 0, transition 2,089 → 45, capacitance 70 → 1. Package:
+`.hima-tmp/keynote-assets/demo-packs/HimaHarness-demo-07-atcs-xtop-tutorial-100pct-closure-v2`.
