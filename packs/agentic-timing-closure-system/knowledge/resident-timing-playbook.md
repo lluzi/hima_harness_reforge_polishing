@@ -499,7 +499,9 @@ The document must contain:
   parses known native fail-reason tables and derives counts/regressions itself;
 - artifacts: at least one generated script, logical ECO, physical ECO, reproduction file and at
   least one native trace, all by workspace-relative path and SHA-256;
-- remaining, regressed, blocked and unknown fact arrays;
+- remaining, regressed, blocked and unknown fact arrays. Every item is a JSON **object**, never a
+  plain string, for example `{"check": "transition", "reason": "32 pre-existing data-pin violations remain"}`.
+  The Reader rejects an array that holds strings;
 - non-empty stopReason, boolean bestEffort, and boolean noOp.
 
 measurements.before must be the supplied common R1 measurement. The Reader independently verifies
@@ -507,6 +509,14 @@ before/after raw evidence and the selected state. It accepts a legitimate no-op 
 that is the best result: set noOp true, keep before and after equal, and provide hashed empty
 logical/physical ECO files plus a reproducible no-op script and real raw reports. Missing reports,
 scripts, identity, measurement or export material is an incomplete delivery, not best effort.
+
+If the Reader rejects a delivery, the Host sends the reason back to this same task. Correct **only**
+`engineering-result.json` (the result artifact) and deliver again. Every other file under
+`engineering/` was already published into the Campaign workspace and is immutable: a support file
+with the same path but different bytes is refused, and the Run then waits with no further message to
+you. Do not rewrite REPRODUCE.md, scripts, reports or the checkpoint during a repair. If a support
+file truly must change, write the new version under a fresh path such as `engineering/rev2/` and
+point the result document at it.
 
 remaining and regressed are explanatory lists only; they do not produce numeric facts. The Reader
 derives those values from raw before/after reports. Put tool/input/permission blockers in blocked and
@@ -571,7 +581,7 @@ with this task's actual facts and recompute all hashes and the canonical id.
     "reproduction": {"path": "engineering/REPRODUCE.md", "sha256": "sha256"},
     "nativeTrace": [{"path": "engineering/native.log", "sha256": "sha256"}]
   },
-  "remaining": [],
+  "remaining": [{"check": "transition", "reason": "replace with each actual remaining fact"}],
   "regressed": [],
   "blocked": [],
   "unknown": [{"check": "legality", "reason": "replace with actual native evidence"}],

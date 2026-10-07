@@ -52,6 +52,8 @@ rule that a picosecond residual is not a floor until the listed residual tactics
 time-box discipline, a step-by-step pipeline-skew procedure and a small-delivery rule. 0.4.4 ships
 the ladder itself as xtop-closure-ladder.tcl.txt, a design-independent procedure library the resident
 runs first, with obligatory legalization and an overlap gate. 0.4.5 fixes the ladder's transition-target
-collection and states that inputIdentity carries exactly its four identity keys.
+collection and states that inputIdentity carries exactly its four identity keys. 0.4.6 states that every
+remaining/regressed/blocked/unknown item is an object and that a Reader repair rewrites only the result
+document, because published support files are immutable.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.
