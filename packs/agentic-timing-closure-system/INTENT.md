@@ -47,6 +47,7 @@ their evidence.
 resident-timing-playbook.md defines the complete autonomous method and delivery shape. Since 0.4.1 it
 adds the full-closure ladder for multi-scenario GBA designs (base choice, measurement of record,
 electrical first, fail-reason-driven next actions, structural classification, clock skew rules,
-protected structures, proof), distilled from a 2026-10-07 study on the XTop vendor tutorial.
+protected structures, proof), distilled from a 2026-10-07 study on the XTop vendor tutorial. 0.4.2 adds the
+rule that a picosecond residual is not a floor until the listed residual tactics were measured.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.

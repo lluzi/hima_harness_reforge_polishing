@@ -322,6 +322,28 @@ dont_touch objects, especially when no power intent is loaded. Filter them out o
 rather than letting `-force` buffer them. Report their pre-existing violations separately, item by
 item against baseline.
 
+### 7b. A few picoseconds is not a floor
+
+When the Goal is total closure and only a handful of endpoints remain within a few tens of
+picoseconds, keep working while the Run budget allows. Stopping 100 minutes early with one endpoint at
+−1.5 ps is a missed Goal, not a floor. Before you claim one, measure each of these on the residual pins
+(name them with `-only_pins` or the violations list):
+
+1. Rerun the hold fixer with a slightly higher target, for example `-hold_target 0.01`, and the full
+   delay-cell list.
+2. Rerun the setup fixer with a positive `-hold_margin` on the coupled endpoints, to buy setup headroom
+   for the hold fix.
+3. Move the min-only delay one stage earlier or later on the branch, or split the load so the
+   min-only branch is isolated.
+4. Swap the VT or size of one cell on the min-only branch only (a slower variant), not on the shared
+   segment.
+5. Delay the launch clock of the short path instead of the capture clock, after checking that the
+   launch element's own capture margin allows it.
+6. Undo the last skew step on that endpoint and re-solve that endpoint with a different delay cell.
+
+Record each attempt in the step table. Only when every applicable one is measured and none improves
+the residual may the stop reason say "floor", with the evidence named.
+
 ### 8. Finish and prove
 
 Run a clean-up loop of setup and hold fixers until nothing changes. Then run a last electrical pass

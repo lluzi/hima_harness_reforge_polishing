@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: agentic-timing-closure-system
-version: 0.4.1
+version: 0.4.2
 flow:
   kind: sequence
   id: timing-closure
