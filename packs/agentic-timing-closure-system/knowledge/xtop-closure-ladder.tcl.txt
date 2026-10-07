@@ -123,9 +123,9 @@ proc ::atcs_ladder::excluded {name} {
     return 0
 }
 proc ::atcs_ladder::transition_targets {} {
-    set out {}
+    set out [create_empty_collection]
     foreach_in_collection p [get_transition_violated_pins -pin_type data] {
-        if {![excluded [get_attribute $p full_name]]} { append_to_collection out $p }
+        if {![excluded [get_attribute $p full_name]]} { append_to_collection -unique out $p }
     }
     return $out
 }

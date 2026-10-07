@@ -485,7 +485,11 @@ omitted.
 The document must contain:
 
 - task: non-empty taskId, runId, executionId, and nodeId fix-timing;
-- inputIdentity: exact baseline, native context, common R1 state and worklist identities;
+- inputIdentity: exactly the four keys baselineStateId, nativeContextId, commonStateId and
+  worklistId, copied verbatim: `id` of state/baseline.json, `id` of state/xtop-context.json, and
+  `stateId` and `worklistId` of state/common-stage.json. The Reader compares the whole object for
+  equality, so any extra key (a hash, a lineage note, a target) is a rejection. Say that the selected
+  state is R0-relative in stopReason instead;
 - selected: a state identity and hashed selected checkpoint directory;
 - actual measurements.before and measurements.after, each with setup/hold WNS, TNS, violation
   count and the hashed raw native report that carries those numbers;

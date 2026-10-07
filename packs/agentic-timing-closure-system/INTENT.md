@@ -51,6 +51,7 @@ protected structures, proof), distilled from a 2026-10-07 study on the XTop vend
 rule that a picosecond residual is not a floor until the listed residual tactics were measured. 0.4.3 adds
 time-box discipline, a step-by-step pipeline-skew procedure and a small-delivery rule. 0.4.4 ships
 the ladder itself as xtop-closure-ladder.tcl.txt, a design-independent procedure library the resident
-runs first, with obligatory legalization and an overlap gate.
+runs first, with obligatory legalization and an overlap gate. 0.4.5 fixes the ladder's transition-target
+collection and states that inputIdentity carries exactly its four identity keys.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.
