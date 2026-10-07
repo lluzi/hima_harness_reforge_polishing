@@ -49,6 +49,8 @@ adds the full-closure ladder for multi-scenario GBA designs (base choice, measur
 electrical first, fail-reason-driven next actions, structural classification, clock skew rules,
 protected structures, proof), distilled from a 2026-10-07 study on the XTop vendor tutorial. 0.4.2 adds the
 rule that a picosecond residual is not a floor until the listed residual tactics were measured. 0.4.3 adds
-time-box discipline, a step-by-step pipeline-skew procedure and a small-delivery rule.
+time-box discipline, a step-by-step pipeline-skew procedure and a small-delivery rule. 0.4.4 ships
+the ladder itself as xtop-closure-ladder.tcl.txt, a design-independent procedure library the resident
+runs first, with obligatory legalization and an overlap gate.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.

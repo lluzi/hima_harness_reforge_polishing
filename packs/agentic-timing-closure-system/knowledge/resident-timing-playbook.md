@@ -198,6 +198,55 @@ the residuals are large, mixed setup/hold, or AutoFix has stalled. Every step is
 setup, hold, transition and capacitance after it and keep a per-step table. No object name below is a
 recipe; discover every pin, net, cell and master from the active state.
 
+### Run the Pack's ladder first
+
+The Pack ships this ladder as code: `xtop-closure-ladder.tcl.txt` in your knowledge folder. It is a
+design-independent procedure library that discovers every object from the loaded state. It applies
+sections 1–8 below:
+- electrical first;
+- GBA-targeted setup and hold ladders;
+- port-net re-drive;
+- sink-first structural skew for direct storage-to-storage walls;
+- the tool's clock ECO;
+- guarded per-flop useful skew;
+- clean-up;
+- a residual-hold pad;
+- a final electrical pass under a timing margin.
+
+Legalization is obligatory throughout, so an ECO that cannot be placed legally fails rather than
+commits. The ladder reports non-fixed overlaps at the start and at the end.
+
+Run it before anything else, from the staged baseline R0. On the XTop tutorial it took 16 s and
+reached setup 0 / hold 0 with no new overlap. From R1 as supplied it left setup 13 / hold 64, because
+R1's early hold padding is in the way.
+
+1. Make a private root, for example `scratch/ladder-r0/`.
+2. Build its load script from the Run's own `research/observe/common-r1/native-stage.tcl`:
+   - keep every line before the first `file mkdir "…/initial-analysis"` line, which is the design
+     load and ECO parameter setup;
+   - set `env(RUN_ROOT)` to your private root;
+   - copy the knowledge file to a `.tcl` file and append:
+
+~~~tcl
+source <your copy>/xtop-closure-ladder.tcl
+set r [atcs_ladder_run {exclude {<patterns of protected structures, e.g. power-switch cells>}}]
+puts "LADDER RESULT $r"
+save_workspace -as <your private root>/ladder-best
+~~~
+
+3. Run it with `xtop -f <script> < /dev/null`. Every `@@` line is one measured step.
+4. If `LADDER RESULT` reports `setup 0 hold 0` and `overlaps_after` ≤ `overlaps_before`, that state is
+   your candidate:
+   - rerun it once in a clean root to confirm it reproduces;
+   - write the ECO exports from it;
+   - report the per-step lines in REPRODUCE.md.
+5. Otherwise, start from the ladder's saved state and work the residual with the sections below.
+   Options such as `window`, `clock_delay`, `skew_max_cells` and `exclude` are listed at the top of the
+   file.
+
+Never switch legalization to non-obligatory to make a fix commit. An overlap that was not in the
+starting state is a regression and must be undone.
+
 ### 0. Pick and prove the base
 
 The supplied common R1 is the measured starting point, and `measurements.before` is always R1. Before

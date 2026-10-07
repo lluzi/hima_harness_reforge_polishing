@@ -1,0 +1,429 @@
+###############################################################################
+# xtop-closure-ladder.tcl -- the ATCS full-closure ladder as one design-independent
+# XTop procedure library (resident-timing-playbook.md, "Full-closure ladder").
+#
+#   (shipped as knowledge file xtop-closure-ladder.tcl.txt; copy it to a .tcl file)
+#   source xtop-closure-ladder.tcl          ;# after the design and timing data are loaded
+#   atcs_ladder_run ?options-dict?          ;# returns {setup <count> hold <count>}
+#
+# Nothing here names a design object: every pin, net, cell and master is discovered
+# from the loaded state. The measurement of record is
+# `summarize_gba_violations -exclude_path -setup|-hold`. Only real netlist, placement
+# and clock-tree ECOs are used; constraints, scenarios, libraries and timing data are
+# never touched. Legalization is obligatory: an ECO that cannot be placed legally
+# fails instead of committing an overlap, and the closing legality gate compares
+# overlaps with the state the ladder started from.
+###############################################################################
+
+namespace eval ::atcs_ladder {
+    variable opt
+    array set opt {
+        target          0.005
+        window          {300t 20t}
+        chain_length    16
+        skew_target     0.01
+        skew_max_cells  12
+        flop_skew_cells 6
+        direct_points   4
+        debug           0
+        launch_guard    0.02
+        exclude         {}
+        clock_delay     {}
+        clock_eco_cell  {}
+        log             {}
+    }
+}
+
+# ---------------------------------------------------------------- measurement
+proc ::atcs_ladder::totals {txt} {
+    set out {}
+    foreach line [split $txt "\n"] {
+        if {[regexp {^\s*total\s+(\d+)\s+(-?[0-9.]+)\s+(-?[0-9.]+)\s*$} $line -> c w t]} { lappend out $c $w $t }
+    }
+    return $out
+}
+proc ::atcs_ladder::measure {} {
+    redirect -variable s {summarize_gba_violations -exclude_path -setup}
+    redirect -variable h {summarize_gba_violations -exclude_path -hold}
+    redirect -variable t {summarize_transition_violations}
+    redirect -variable c {summarize_capacitance_violations}
+    return [list setup [totals $s] hold [totals $h] tran [lindex [totals $t] 0] cap [lindex [totals $c] 0]]
+}
+proc ::atcs_ladder::step {tag} {
+    variable opt
+    set m [measure]
+    set line [format "@@ %-28s setup %s | hold %s | tran %s cap %s overlaps %s" $tag \
+        [join [dict get $m setup] /] [join [dict get $m hold] /] [dict get $m tran] [dict get $m cap] [overlaps]]
+    puts $line
+    if {$opt(log) ne ""} { set fh [open $opt(log) a]; puts $fh $line; close $fh }
+    return $m
+}
+proc ::atcs_ladder::violations {} {
+    set m [measure]
+    return [expr {[lindex [dict get $m setup] 0] + [lindex [dict get $m hold] 0]}]
+}
+proc ::atcs_ladder::overlaps {} {
+    redirect -variable o {check_placement_overlap}
+    set n 0
+    foreach line [split $o "\n"] {
+        if {[regexp {\(non-fixed placement\) Cells Overlaps\s*:\s*(\d+)} $line -> k]} { incr n $k }
+    }
+    return $n
+}
+# scenario names, read from the measurement of record's own per-scenario rows
+proc ::atcs_ladder::scenarios {} {
+    variable scenario_names
+    if {[info exists scenario_names] && $scenario_names ne ""} { return $scenario_names }
+    redirect -variable txt {summarize_gba_violations -exclude_path -setup}
+    set scenario_names {}
+    set in 0
+    foreach line [split $txt "\n"] {
+        if {[regexp {^\s*total\s} $line]} { set in 1; continue }
+        if {$in && [regexp {^\s+(\S+)\s+\d+\s+-?[0-9.]+\s+-?[0-9.]+\s*$} $line -> sc]} { lappend scenario_names $sc }
+    }
+    return $scenario_names
+}
+# worst GBA slack of one pin over every scenario: type max (setup) or min (hold)
+proc ::atcs_ladder::wslack {pin type} {
+    set w 1e9
+    foreach sc [scenarios] {
+        foreach a [list ${type}_rise_gba_slack ${type}_fall_gba_slack] {
+            set v [get_attribute -quiet [get_pins $pin] $a -scenario $sc]
+            if {$v ne "" && $v < $w} { set w $v }
+        }
+    }
+    return $w
+}
+
+# ---------------------------------------------------------------- discovery
+proc ::atcs_ladder::lib_exists {name} { expr {[sizeof_collection [get_lib_cells -quiet */$name]] > 0} }
+# Prefer the fastest-VT twin of each listed buffer when the library has one.
+proc ::atcs_ladder::fast_twins {cells} {
+    set out {}
+    foreach c $cells {
+        set best $c
+        foreach suffix {ULVT LVT} { if {[lib_exists ${c}$suffix]} { set best ${c}$suffix; break } }
+        if {[lsearch $out $best] < 0} { lappend out $best }
+    }
+    return $out
+}
+# Every plain buffer and delay cell the libraries offer for hold padding.
+proc ::atcs_ladder::hold_cells {} {
+    set out [get_parameter eco_buffer_list_for_hold]
+    foreach_in_collection lc [get_lib_cells -quiet {*/DEL* */BUFFD1* */BUFFD2*}] {
+        set n [get_attribute $lc base_name]
+        if {$n eq ""} { set n [lindex [split [get_attribute $lc full_name] /] end] }
+        if {[lsearch $out $n] < 0} { lappend out $n }
+    }
+    return $out
+}
+proc ::atcs_ladder::excluded {name} {
+    variable opt
+    foreach p $opt(exclude) { if {[string match $p $name]} { return 1 } }
+    return 0
+}
+proc ::atcs_ladder::transition_targets {} {
+    set out {}
+    foreach_in_collection p [get_transition_violated_pins -pin_type data] {
+        if {![excluded [get_attribute $p full_name]]} { append_to_collection out $p }
+    }
+    return $out
+}
+proc ::atcs_ladder::clock_pin {cell} {
+    # XTop's foreach_in_collection does not pass `return` through; collect, then return.
+    set found ""
+    foreach_in_collection p [get_pins -quiet -of_objects [get_cells $cell]] {
+        if {$found eq "" && [get_attribute -quiet $p is_clock_pin] in {true 1} && [get_attribute -quiet $p direction] in {in input}} {
+            set found [get_attribute $p full_name]
+        }
+    }
+    if {$found ne ""} { return $found }
+    # Some libraries mark only the macro clock; fall back to the cell's clocked input by name.
+    foreach_in_collection p [get_pins -quiet -of_objects [get_cells $cell]] {
+        set n [lindex [split [get_attribute $p full_name] /] end]
+        if {$found eq "" && [get_attribute -quiet $p direction] in {in input} && [regexp {^(CP|CPN|CK|CKN|CLK|CLKN|C)$} $n]} {
+            set found [get_attribute $p full_name]
+        }
+    }
+    return $found
+}
+proc ::atcs_ladder::cell_of {pin} { get_attribute [get_cells -of_objects [get_pins $pin]] full_name }
+
+# ---------------------------------------------------------------- fixers
+proc ::atcs_ladder::setup_ladder {} {
+    variable opt
+    set t $opt(target)
+    catch {fix_setup_gba_violations -remove_buffer_only -setup_target $t -hold_margin 0.0}
+    catch {fix_setup_gba_violations -methods "size_cell" -effort extreme_high -setup_target $t -hold_margin 0.0}
+    catch {fix_setup_gba_violations -methods "insert_buffer split_net" -effort extreme_high -setup_target $t -hold_margin 0.0}
+    catch {fix_setup_gba_violations -effort extreme_high -setup_target $t -hold_margin 0.0}
+}
+proc ::atcs_ladder::hold_fix {} {
+    variable opt
+    catch {fix_hold_gba_violations -effort extreme_high -hold_target $opt(target) -setup_margin 0.0 \
+        -buffer_list [hold_cells] -max_cluster_loader_count 4}
+}
+
+# Re-drive two-pin port nets whose sink sits behind a bad external slew, so delay can be
+# added near the sink (hold on input-port-to-macro nets with no setup constraint).
+proc ::atcs_ladder::redrive_port_nets {} {
+    set done {}
+    set strong [lindex [fast_twins [get_parameter eco_buffer_list_for_setup]] end-2]
+    foreach_in_collection p [get_transition_violated_pins -pin_type data] {
+        if {[get_attribute -quiet $p is_port] eq "true"} continue
+        if {[get_attribute -quiet $p direction] ni {in input}} continue
+        set n [get_nets -quiet -of_objects $p]
+        if {[sizeof_collection $n] == 0 || [get_attribute $n number_of_leaf_pins] != 2} continue
+        set port [get_attribute $n full_name]
+        set pp [get_pins -quiet $port]
+        if {[sizeof_collection $pp] == 0 || [get_attribute $pp is_port] ne "true"} continue
+        if {[lsearch $done $port] >= 0 || [excluded $port]} continue
+        lappend done $port
+        set loc [lindex [get_attribute $pp location] 0]
+        if {[catch {insert_buffer $p $strong -locations $loc} e]} { puts "LADDER port re-drive refused at $port: $e" }
+    }
+    puts "LADDER re-drove [llength $done] port nets with $strong"
+}
+
+# Structural setup walls (direct Q->D storage pipelines, capture windows shorter than the
+# launching element's clock-to-Q): delay each residual capture element's own clock pin,
+# sink-first. The shift a capture element needs is its own deficit plus the shift of the
+# residual element that launches its critical path, because delaying that launcher's clock
+# also delays its launch.
+# The storage element whose output drives `pin`, walking back through at most four
+# single-input buffers/inverters; "" when the driver is logic, a port or nothing.
+proc ::atcs_ladder::storage_driver {pin} {
+    set cur $pin
+    for {set hop 0} {$hop < 5} {incr hop} {
+        set net [get_nets -quiet -of_objects [get_pins $cur]]
+        if {[sizeof_collection $net] == 0} { return "" }
+        set drv ""
+        foreach_in_collection q [get_pins -quiet -of_objects $net] {
+            if {$drv eq "" && [get_attribute -quiet $q direction] in {out output}} { set drv [get_attribute $q full_name] }
+        }
+        if {$drv eq ""} { return "" }
+        set dc [cell_of $drv]
+        if {[clock_pin $dc] ne ""} { return $dc }
+        set ref [get_attribute [get_cells $dc] ref_name]
+        if {![regexp {^(BUF|INV|CKB|CKN|DEL)} $ref]} { return "" }
+        set ins {}
+        foreach_in_collection q [get_pins -quiet -of_objects [get_cells $dc]] {
+            if {[get_attribute -quiet $q direction] in {in input}} { lappend ins [get_attribute $q full_name] }
+        }
+        if {[llength $ins] != 1} { return "" }
+        set cur [lindex $ins 0]
+    }
+    return ""
+}
+# required clock shift of one residual element: own deficit + target + its launcher's shift
+proc ::atcs_ladder::shift_of {c depth} {
+    variable deficit; variable pred; variable shift; variable opt
+    if {[info exists shift($c)]} { return $shift($c) }
+    set up 0.0
+    if {$depth < 8 && [info exists pred($c)]} {
+        foreach p [lsort -unique $pred($c)] {
+            if {[info exists deficit($p)]} { set up [expr {max($up, [shift_of $p [expr {$depth + 1}]])}] }
+        }
+    }
+    set shift($c) [expr {$deficit($c) + $opt(skew_target) + $up}]
+    return $shift($c)
+}
+proc ::atcs_ladder::structural_skew {} {
+    variable opt
+    set eps [get_setup_gba_violated_pins -exclude_path -endpoint_only]
+    if {[sizeof_collection $eps] == 0} { return 0 }
+    variable deficit; variable pred; variable clk; variable shift
+    array unset deficit; array unset pred; array unset clk; array unset shift
+    array set deficit {}; array set pred {}; array set clk {}; array set shift {}
+    foreach_in_collection ep $eps {
+        set pin [get_attribute $ep full_name]
+        set c [cell_of $pin]
+        set cp [clock_pin $c]
+        if {$opt(debug) && $cp eq ""} { puts "LADDER dbg ep=$pin cell=$c has no clock pin" }
+        if {$cp eq "" || [excluded $c]} continue
+        # only direct storage-to-storage paths: the D pin is driven, through at most a few
+        # buffers or inverters, by another storage element's output (no logic to fix)
+        set launcher [storage_driver $pin]
+        set direct [expr {$launcher ne "" && $launcher ne $c}]
+        if {$opt(debug)} { puts "LADDER dbg ep=$pin cell=$c clk=$cp launcher=$launcher direct=$direct" }
+        if {!$direct} continue
+        set clk($c) $cp
+        set s [wslack $pin max]
+        if {![info exists deficit($c)] || -$s > $deficit($c)} { set deficit($c) [expr {-$s}] }
+        lappend pred($c) $launcher
+    }
+    foreach c [array names deficit] { shift_of $c 0 }
+    set order {}
+    foreach c [array names shift] { lappend order [list $shift($c) $c] }
+    set inserted 0
+    foreach item [lsort -real -decreasing -index 0 $order] {
+        set c [lindex $item 1]
+        set up [expr {$shift($c) - $deficit($c) - $opt(skew_target)}]
+        set need [expr {$opt(skew_target) + $up}]
+        set worst {}
+        foreach_in_collection ep $eps { set pin [get_attribute $ep full_name]; if {[cell_of $pin] eq $c} { lappend worst $pin } }
+        set n 0
+        while {$n < $opt(skew_max_cells)} {
+            set w 1e9
+            foreach pin $worst { set w [expr {min($w, [wslack $pin max])}] }
+            if {$w >= $need} break
+            if {[catch {insert_buffer [get_pins $clk($c)] $opt(clock_delay)} e]} { puts "LADDER skew refused at $clk($c): $e"; break }
+            incr n; incr inserted
+        }
+        puts [format "LADDER skew %-30s +%d x %s (shift needed %.3f ns, launcher shift %.3f ns)" $clk($c) $n $opt(clock_delay) $shift($c) $up]
+    }
+    return $inserted
+}
+
+# Useful skew for the remaining capture flops, guarded by each flop's own launch margin.
+proc ::atcs_ladder::flop_skew {} {
+    variable opt
+    foreach_in_collection ep [get_setup_gba_violated_pins -exclude_path -endpoint_only] {
+        set d [get_attribute $ep full_name]
+        set c [cell_of $d]
+        set cp [clock_pin $c]
+        if {$cp eq "" || [excluded $c]} continue
+        set outs {}
+        foreach_in_collection p [get_pins -quiet -of_objects [get_cells $c]] {
+            if {[get_attribute -quiet $p direction] in {out output}} { lappend outs [get_attribute $p full_name] }
+        }
+        set n 0
+        while {$n < $opt(flop_skew_cells)} {
+            if {[wslack $d max] >= $opt(skew_target)} break
+            if {[catch {insert_buffer [get_pins $cp] $opt(clock_eco_cell)} e]} break
+            incr n
+            set bad 0
+            foreach o $outs { if {[wslack $o max] < $opt(launch_guard)} { set bad 1 } }
+            if {$bad} { undo; incr n -1; break }
+        }
+    }
+}
+
+# Residual hold endpoints that the fixer leaves (tiny deficits with real setup margin):
+# try each hold cell, smallest first, at the endpoint and then one stage back on each of
+# the driver's inputs; keep the first that clears hold in every scenario without taking
+# setup below the target; undo everything else.
+proc ::atcs_ladder::hold_cells_by_size {} {
+    set sized {}
+    foreach c [hold_cells] {
+        set lc [get_lib_cells -quiet */$c]
+        if {[sizeof_collection $lc] == 0} continue
+        set a [get_attribute -quiet [index_collection $lc 0] area]
+        if {$a eq ""} { set a 0 }
+        lappend sized [list $a $c]
+    }
+    set out {}
+    foreach item [lsort -real -index 0 $sized] { lappend out [lindex $item 1] }
+    return $out
+}
+proc ::atcs_ladder::residual_hold {} {
+    variable opt
+    set cells [hold_cells_by_size]
+    set fixed 0
+    foreach_in_collection ep [get_hold_gba_violated_pins -exclude_path -endpoint_only] {
+        set d [get_attribute $ep full_name]
+        if {[wslack $d min] >= 0} continue
+        set sites [list $d]
+        set net [get_nets -quiet -of_objects [get_pins $d]]
+        if {[sizeof_collection $net]} {
+            foreach_in_collection q [get_pins -quiet -of_objects $net] {
+                if {[get_attribute -quiet $q direction] in {out output}} {
+                    foreach_in_collection i [get_pins -quiet -of_objects [get_cells -of_objects $q]] {
+                        if {[get_attribute -quiet $i direction] in {in input} && [get_attribute -quiet $i is_clock_pin] ni {true 1}} {
+                            lappend sites [get_attribute $i full_name]
+                        }
+                    }
+                }
+            }
+        }
+        set done 0
+        foreach site $sites {
+            foreach c $cells {
+                if {$done} break
+                if {[catch {insert_buffer [get_pins $site] $c} e]} continue
+                set m [measure]
+                if {[wslack $d min] >= 0 && [lindex [dict get $m setup] 0] == 0 && [wslack $d max] >= 0} {
+                    set done 1; incr fixed
+                    puts "LADDER residual hold $d: $c at $site"
+                } else { undo }
+            }
+            if {$done} break
+        }
+        if {!$done} { puts "LADDER residual hold $d: no single-cell pad cleared it" }
+    }
+    return $fixed
+}
+
+# Remove the ECO cells an earlier stage inserted (matched by their name prefix), for example
+# a common AutoFix stage run before electrical repair. Returns {removed refused}.
+proc atcs_ladder_peel {pattern} {
+    set ok 0; set bad 0
+    foreach_in_collection c [get_cells -quiet -hier $pattern] {
+        if {[catch {remove_buffer [get_cells [get_attribute $c full_name]]}]} { incr bad } else { incr ok }
+    }
+    puts "LADDER peeled $ok cells matching $pattern ($bad refused)"
+    return [list $ok $bad]
+}
+
+# ---------------------------------------------------------------- the ladder
+proc atcs_ladder_run {{options {}}} {
+    upvar #0 ::atcs_ladder::opt opt
+    foreach {k v} $options { set opt($k) $v }
+    if {$opt(clock_delay) eq ""} {
+        set dels [lsearch -all -inline [::atcs_ladder::fast_twins [get_parameter eco_buffer_list_for_hold]] DEL*]
+        set opt(clock_delay) [lindex $dels [expr {[llength $dels] / 2}]]
+    }
+    if {$opt(clock_eco_cell) eq ""} {
+        set opt(clock_eco_cell) [lindex [lsort [get_attribute [get_lib_cells -quiet */CKBD*HVT] base_name]] 0]
+        if {$opt(clock_eco_cell) eq ""} { set opt(clock_eco_cell) $opt(clock_delay) }
+    }
+    set_parameter eco_buffer_list_for_setup [::atcs_ladder::fast_twins [get_parameter eco_buffer_list_for_setup]]
+    set_parameter eco_max_buffer_chain_length $opt(chain_length)
+    set_placement_constraint -max_displacement $opt(window)
+    set_parameter placement_legalization_mode true
+    set_parameter placement_legalization_obligated true
+    puts "LADDER clock delay cell $opt(clock_delay); clock ECO cell $opt(clock_eco_cell); window $opt(window)"
+    set start_overlaps [::atcs_ladder::overlaps]
+    ::atcs_ladder::step L00_start
+    purge_timing_paths
+    ::atcs_ladder::step L01_purged_paths
+    set tt [::atcs_ladder::transition_targets]
+    if {[sizeof_collection $tt]} { catch {fix_transition_violations $tt} }
+    ::atcs_ladder::step L02_electrical
+    ::atcs_ladder::setup_ladder
+    ::atcs_ladder::step L03_setup_data_path
+    catch {fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target $opt(target) -setup_margin 0.0}
+    ::atcs_ladder::hold_fix
+    ::atcs_ladder::step L04_hold_data_path
+    ::atcs_ladder::redrive_port_nets
+    ::atcs_ladder::hold_fix
+    ::atcs_ladder::step L05_port_nets
+    for {set i 0} {$i < 3} {incr i} {
+        if {[::atcs_ladder::structural_skew] == 0} break
+        ::atcs_ladder::hold_fix
+        ::atcs_ladder::step L06_structural_skew_$i
+    }
+    catch {fix_violations_by_clock_eco -setup -buffer $opt(clock_eco_cell) -count 2 -trace_level 6 -hold_wns_threshold -0.3 -auto_scan}
+    ::atcs_ladder::step L07_tool_clock_eco
+    for {set i 0} {$i < 3} {incr i} {
+        ::atcs_ladder::flop_skew
+        ::atcs_ladder::hold_fix
+        ::atcs_ladder::step L08_flop_skew_$i
+        if {[lindex [dict get [::atcs_ladder::measure] setup] 0] == 0} break
+    }
+    for {set i 0} {$i < 3 && [::atcs_ladder::violations] > 0} {incr i} {
+        ::atcs_ladder::setup_ladder
+        ::atcs_ladder::hold_fix
+        ::atcs_ladder::step L09_cleanup_$i
+    }
+    set tt [::atcs_ladder::transition_targets]
+    if {[sizeof_collection $tt]} { catch {fix_transition_violations -check_timing_margin $tt} }
+    if {[lindex [dict get [::atcs_ladder::measure] hold] 0] > 0} {
+        ::atcs_ladder::residual_hold
+        ::atcs_ladder::step L10_residual_hold
+    }
+    set final [::atcs_ladder::step L11_final]
+    set end_overlaps [::atcs_ladder::overlaps]
+    puts "LADDER legality: non-fixed overlaps $start_overlaps -> $end_overlaps"
+    return [list setup [lindex [dict get $final setup] 0] hold [lindex [dict get $final hold] 0] overlaps_before $start_overlaps overlaps_after $end_overlaps]
+}
