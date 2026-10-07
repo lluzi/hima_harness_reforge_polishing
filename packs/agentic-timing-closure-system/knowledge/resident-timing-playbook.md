@@ -339,7 +339,8 @@ State thin margins, clock-path delay cells and the absence of OCV derates as sig
 ### Provenance of this ladder
 
 This ladder comes from an engineering feasibility study on 2026-10-07 on the ICExplorer-XTop 2025.09
-vendor tutorial design (`cpu`, 4 scenarios), retained under the Site's `explore/fz-closure`.
+vendor tutorial design (`cpu`, 4 scenarios). The study's own scripts are retained outside every
+Campaign read root; this Pack carries only the generic lessons.
 - Vendor scripts and stock AutoFix stalled at setup 605–618 / −1.83 to −1.96 ns and hold 372–391 /
   −3.06 ns.
 - The ordered ladder reached 0/0 in all four scenarios from raw inputs. Transition went from 2663 to
