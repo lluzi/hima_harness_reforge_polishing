@@ -37,3 +37,19 @@ Pack's own `atcs.core` digests:
 `runs/dry-01` with real XTop (25 s). The staged "before" equals the vendor tutorial's own
 pre-optimisation report exactly; the common R1 AutoFix left setup 615 / −1.9254 / −624.1548 and hold
 372 / −3.0570 / −61.9808.
+
+## App demo result (2026-10-07, trial.46)
+
+| Pack | Run | Ending | Setup after | Hold after |
+| --- | --- | --- | --- | --- |
+| 0.4.1 (written method) | `run-5c664dee…` | resident delivered after 12 min; App quit with jobs kept before evaluation | 0 | 1 / −1.5 ps |
+| 0.4.2 (written method) | `run-e51a8115…` | ended · Goal not met | 48 / −0.98 ns | 0 |
+| **0.4.4 (executable ladder)** | `run-a4559427-9927-41d0-9105-08dbc5320c37` | **ended · Goal met** | **0** | **0** |
+
+The 0.4.4 Run started from common R1 615 / −1.9254 / −624.1548 and 372 / −3.0570 / −61.9808, measured as
+the "before". The resident rebuilt from R0 with the Pack's `xtop-closure-ladder.tcl.txt`, closing in about
+5 minutes. The Reader rejected the first delivery's input identity once, and the same task corrected
+the document. The whole Run took 11 min 51 s. Non-fixed placement overlaps were 0 → 0, and 0 original
+instances were displaced. The Reader keeps collateral UNKNOWN. Recording, stills and README:
+`.hima-tmp/keynote-assets/demo-packs/HimaHarness-demo-07-atcs-xtop-tutorial-100pct-closure`.
+XTop timing only; no signoff.
