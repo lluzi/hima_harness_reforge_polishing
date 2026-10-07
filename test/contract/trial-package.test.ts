@@ -302,7 +302,9 @@ test('the trial App stages the ATCS Pack at its exact source digest and its veri
     await writeFile(changed, bytes);
     const refused = packagerRun('--check-bundle-identity', app);
     assert.equal(refused.status, 1);
-    assert.match(refused.stderr, /bundled Pack agentic-timing-closure-system identity differs from the manifest/);
+    assert.match(refused.stderr, sealed
+      ? /ATCS Pack agentic-timing-closure-system native release seal: .*flow\/atcs_cli\.py no longer hashes/
+      : /bundled Pack agentic-timing-closure-system identity differs from the manifest/);
   } finally { await (await import('node:fs/promises')).rm(output, { recursive: true, force: true }); }
 });
 
@@ -473,17 +475,27 @@ test('native candidate layout admits only the two declared targets without touch
 
 
 test('development ATCS is admitted only as an explicit internal candidate and keeps its unreleased identity', async () => {
-  const normal = packagerRun('--check-pack-assets', path.join(repoRoot, 'packs'));
-  assert.equal(normal.status, 1);
-  assert.match(normal.stderr, /carries only one of TEST.md and VERSION.yml/);
-  const checked = packagerRun('--check-pack-assets', path.join(repoRoot, 'packs'), '--internal-candidate');
-  assert.equal(checked.status, 0, checked.stderr);
-  const pack = identitiesFrom(checked.stdout).packs.find((row: { id: string }) => row.id === 'agentic-timing-closure-system');
-  assert.equal(pack.version, '0.4.0');
-  assert.equal(pack.stage, 'development');
-  assert.equal(pack.status, 'development');
-  assert.equal(pack.methodDigest, undefined);
-  assert.equal(pack.testRun, undefined);
+  const { rm } = await import('node:fs/promises');
+  const output = await mkdtemp(path.join(os.tmpdir(), 'hima-development-atcs-'));
+  const packs = path.join(output, 'packs');
+  try {
+    for (const id of bundledPackIds) await cp(path.join(repoRoot, 'packs', id), path.join(packs, id), { recursive: true });
+    const atcs = path.join(packs, 'agentic-timing-closure-system');
+    // Exercise an explicitly unfinished candidate even when the repository Pack is released.
+    await rm(path.join(atcs, 'VERSION.yml'), { force: true });
+    await writeFile(path.join(atcs, 'TEST.md'), 'Unfinished internal candidate test record\n');
+    const normal = packagerRun('--check-pack-assets', packs);
+    assert.equal(normal.status, 1);
+    assert.match(normal.stderr, /carries only one of TEST.md and VERSION.yml/);
+    const checked = packagerRun('--check-pack-assets', packs, '--internal-candidate');
+    assert.equal(checked.status, 0, checked.stderr);
+    const pack = identitiesFrom(checked.stdout).packs.find((row: { id: string }) => row.id === 'agentic-timing-closure-system');
+    assert.equal(pack.version, '0.4.0');
+    assert.equal(pack.stage, 'development');
+    assert.equal(pack.status, 'development');
+    assert.equal(pack.methodDigest, undefined);
+    assert.equal(pack.testRun, undefined);
+  } finally { await rm(output, { recursive: true, force: true }); }
 });
 
 test('Linux bundle identity uses native resources and refuses mismatched PostgreSQL platform', async () => {
@@ -506,7 +518,9 @@ test('Linux bundle identity uses native resources and refuses mismatched Postgre
     await write('linux-x64');
     const valid = packagerRun('--check-bundle-identity', app);
     assert.equal(valid.status, 0, valid.stderr);
-    assert.match(valid.stdout, /stage=development/);
+    for (const pack of packs) {
+      assert.match(valid.stdout, new RegExp(`pack ${pack.id} ${pack.version.replaceAll('.', '\\.')} stage=${pack.stage} packDigest=${pack.packDigest}`));
+    }
     await write('darwin-arm64');
     const wrong = packagerRun('--check-bundle-identity', app);
     assert.equal(wrong.status, 1);

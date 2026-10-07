@@ -50,12 +50,12 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
   ] });
   const ownerReplay = [
     say('Campaign Agent conversation is ready.'),
-    tool('hima_execute', { run: '{{fromRequest:(run-[0-9a-f-]+)}}', action: 'handoff', expectedEpoch: 1, expectedRevision: 0,
+    tool('hima_execute', { run: '{{fromRequest:(run-[0-9a-f-]+)}}', action: 'handoff', expectedEpoch: 0, expectedRevision: 0,
       requestId: 'desktop-side-talk-handoff', targetOwner: '{{fromRequest:target (session-[0-9a-f-]+)}}' }),
     say('Campaign ownership was handed to the requested Side Talk at the safe boundary.'),
-    tool('hima_execute', { run: '{{fromRequest:(run-[0-9a-f-]+)}}', action: 'begin', nodeId: 'bind-inputs', expectedEpoch: 2,
-      expectedRevision: 1, requestId: 'desktop-old-owner-fenced' }),
-    say('The former Campaign Agent was fenced after handoff and did not begin the node.'),
+    tool('hima_execute', { run: '{{fromRequest:(run-[0-9a-f-]+)}}', action: 'pause', expectedEpoch: 1,
+      expectedRevision: 0, requestId: 'desktop-old-owner-fenced' }),
+    say('The former Campaign Agent was fenced after handoff and did not pause the Run.'),
   ];
   // The visible Guide, ordinary Side Talk and independent Campaign Agent are three native roots.
   // Replay binds entries on first model use, so each receives only its own turns.
@@ -134,6 +134,8 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     if (typeof guideSessionId !== 'string' || guideSessionId === '') throw new Error(`Guide studio has no native session identity: ${JSON.stringify(runningStudio)}`);
     const guideView = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guideSessionId)}`)).json() as RunView;
     assert.equal(guideView.run.control?.guideSessionId, guideSessionId);
+    assert.equal(guideView.run.control?.epoch, 0, 'the fresh DBOS Run starts with epoch zero');
+    assert.equal(guideView.run.control?.revision, 0, 'the replay targets the original method revision');
     const executionOwner = guideView.run.control?.owner;
     if (typeof executionOwner !== 'string' || executionOwner === '') throw new Error(`Run has no native execution owner: ${JSON.stringify(guideView.run.control)}`);
     await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
@@ -148,19 +150,14 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.mark('[data-hima-region="campaign-chip"]', 'execution-owner-chip');
     assert.ok((await d.click('execution-owner-chip')).ok);
     await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(executionOwner)}`);
-    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') === 'running'`, 10_000);
-    // The Campaign tab's own dock chip title carries the same identity, short: the running glyph and
-    // the current node rather than "configure".
-    await browser.wait(`document.body.innerText.includes('Campaign · bind-inputs')`, 10_000);
-    // The anchored node card (Facts/Job/Code/Knowledge/Evidence tabs) is a later task's file
-    // (`NodeCard.tsx`); this task's own node is clickable and marks itself selected in its own
-    // region — asserted as a state change the click itself caused, not a fact already true of the
-    // page before it (the node's id was already in `graph.text` at the read above).
-    // The follow rule keeps whichever node is *current* inside the window; a fixed downstream id
-    // (`pnr-foundry`) drifts off-screen once the run has moved past it at this zoom (x≈3393), so the
-    // probe selects the current node instead — wherever the follow camera actually put it.
-    const probeGraph = await d.read('campaign-graph'); assert.ok(probeGraph.ok, JSON.stringify(probeGraph));
-    const probeNode = probeGraph.state.current; assert.ok(probeNode, `campaign-graph names a current node: ${probeGraph.text}`);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') === 'waiting'`, 10_000);
+    // This graph fixture has deliberately incomplete EDA collateral. DBOS attempts bind-inputs
+    // automatically and exposes its failure; opening the owner does not start a legacy node loop.
+    const failedView = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(executionOwner)}`)).json() as RunView;
+    assert.equal(failedView.run.engine, 'dbos/5.2.11');
+    assert.equal(failedView.tasks?.find(task => task.taskId === 'bind-inputs' && task.current)?.projection.state, 'failed');
+    // Select the failed entry task explicitly; DBOS has no serial currentNode pointer.
+    const probeNode = 'bind-inputs';
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-${probeNode}"]')?.getAttribute('data-hima-state-selected')`), 'false');
     assert.ok((await d.click(`node-${probeNode}`)).ok);
     await browser.wait(`document.querySelector('[data-hima-region="campaign-node-${probeNode}"]')?.getAttribute('data-hima-state-selected') === 'true'`, 10_000);
@@ -190,7 +187,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.equal(view.run.control?.guideSessionId, ownerSession);
     assert.notEqual(view.run.control?.owner, ownerSession, 'the visible Guide does not own Campaign execution');
     assert.equal(view.run.control?.owner, executionOwner);
-    assert.equal(view.run.status, 'running', 'opening the Side Talk surface is navigation, not Campaign control');
+    assert.equal(view.run.status, 'waiting', 'Side Talk navigation preserves the failed task waiting state');
     assert.equal((await (await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(ownerSession)}`)).json() as { runs: unknown[] }).runs.length, 1);
     assert.ok((await d.fill('studio-run', runId)).ok);
     await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
@@ -210,16 +207,51 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('send-owner-handoff')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign ownership was handed')`, 15_000);
     const handed = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sideSession)}`)).json() as RunView;
-    assert.equal(handed.run.control?.owner, sideSession); assert.equal(handed.run.control?.epoch, 2);
+    assert.equal(handed.run.control?.owner, sideSession); assert.equal(handed.run.control?.epoch, 1);
+    assert.equal(handed.run.control?.revision, 0, 'handoff changes ownership without revising the method');
     await browser.mark('[contenteditable="true"]', 'old-owner-composer'); assert.ok((await d.click('old-owner-composer')).ok);
-    await browser.send('Input.insertText', { text: `For Run ${runId}, try to begin bind-inputs from this former owner conversation.` });
+    await browser.send('Input.insertText', { text: `For Run ${runId}, try to pause the Campaign from this former owner conversation.` });
     await browser.wait(`!document.querySelector('[aria-label="Send message"]')?.disabled`); await browser.mark('[aria-label="Send message"]', 'send-old-owner');
     assert.ok((await d.click('send-old-owner')).ok);
     await browser.wait(`document.body.innerText.includes('former Campaign Agent was fenced')`, 15_000);
+    // The replay's final sentence is predetermined. Read the real native call/result pair so
+    // current authority metadata isolates actor binding from the independent stale-epoch fence.
+    const nativeEvents: { seq: number; kind: string; text: string }[] = [];
+    let fromSeq = 0;
+    for (;;) {
+      const response = await api(host, cookie, '/hima/api/context/session', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId: executionOwner, targetSessionId: executionOwner, fromSeq }),
+      });
+      assert.equal(response.status, 200, 'the former owner can inspect its own retained native events');
+      const page = await response.json() as { sessionId: string; events: typeof nativeEvents; nextSeq: number; truncated: boolean };
+      assert.equal(page.sessionId, executionOwner);
+      nativeEvents.push(...page.events);
+      if (!page.truncated) break;
+      assert.ok(page.nextSeq > fromSeq, 'native event pagination advances');
+      fromSeq = page.nextSeq;
+    }
+    const pauseCalls = nativeEvents.filter(event => event.kind === 'tool/call').map(event => JSON.parse(event.text) as {
+      callId: string; name: string; arguments: string;
+    }).filter(call => call.name === 'hima_execute' && JSON.parse(call.arguments).requestId === 'desktop-old-owner-fenced');
+    assert.equal(pauseCalls.length, 1, 'the former owner issued exactly one native fencing request');
+    const pauseCall = pauseCalls[0]!;
+    assert.deepEqual(JSON.parse(pauseCall.arguments), {
+      run: runId, action: 'pause', expectedEpoch: 1, expectedRevision: 0, requestId: 'desktop-old-owner-fenced',
+    });
+    const pauseResults = nativeEvents.filter(event => event.kind === 'tool/result').flatMap(event => {
+      const data = JSON.parse(event.text) as { message?: { content?: { type: string; toolCallId?: string; isError?: boolean; content?: { type: string; text?: string }[] }[] } };
+      return data.message?.content?.filter(block => block.type === 'tool-result' && block.toolCallId === pauseCall.callId) ?? [];
+    });
+    assert.equal(pauseResults.length, 1, 'the exact native fencing call has a retained tool result');
+    assert.notEqual(pauseResults[0]!.isError, true, 'the native tool returned a business refusal, not a tool execution error');
+    const refusalText = (pauseResults[0]!.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n');
+    // Session context bounds long text, but the tool's authoritative kind/reason lead its output.
+    assert.match(refusalText, /^\{"runId":"[^"]+","kind":"refused","reason":"[^"]*Control owner\/epoch\/revision is stale; refresh this Run"/);
     const fenced = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sideSession)}`)).json() as RunView;
     assert.equal(fenced.run.control?.owner, sideSession);
-    assert.equal(Object.values(fenced.run.control?.executions ?? {}).some((execution) => execution.nodeId === 'bind-inputs'), false,
-      'the former owner did not admit node work after handoff');
+    assert.deepEqual(fenced.run.control?.paused, [], 'the former owner with current epoch/revision did not pause the Campaign');
+    assert.equal(fenced.run.control?.epoch, 1, 'the refused former owner call did not change authority');
   } catch (error) {
     t.diagnostic(await browser.evaluate<string>('document.body.innerText'));
     t.diagnostic(d.stderr());

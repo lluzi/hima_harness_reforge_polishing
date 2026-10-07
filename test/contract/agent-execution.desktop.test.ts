@@ -118,7 +118,8 @@ test('independent Guide completes a DBOS human wait and real command, preserves 
     await browser.wait(`document.querySelector('[data-hima-region="task-artifact-content"]')?.textContent.includes('Verified desktop delivery')`);
     await browser.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:1250,y:480,deltaY:350,deltaX:0});
     await capture('dbos-normal-reopen');
-    const reopenedHost=await d.host();assert.ok(reopenedHost.ok);const reopened=await api(reopenedHost,await d.cookie(),`/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guide)}`);assert.equal(reopened.status,200);const reopenedView=await reopened.json() as RunView;assert.equal(reopenedView.run.goalState,'unknown');assert.equal(reopenedView.tasks!.find(task=>task.taskId==='produce')!.result!.artifacts[0]!.sha256,artifact.sha256);assert.equal(reopenedView.run.control!.owner,persisted.run.control!.owner);
+    const reopenedSession=nativeReopened.state.session;assert.ok(reopenedSession,'the reopened workbench has a live project conversation');
+    const reopenedHost=await d.host();assert.ok(reopenedHost.ok);const reopened=await api(reopenedHost,await d.cookie(),`/hima/api/runs/${runId}?sessionId=${encodeURIComponent(reopenedSession)}`);assert.equal(reopened.status,200);const reopenedView=await reopened.json() as RunView;assert.equal(reopenedView.run.goalState,'unknown');assert.equal(reopenedView.tasks!.find(task=>task.taskId==='produce')!.result!.artifacts[0]!.sha256,artifact.sha256);assert.equal(reopenedView.run.control!.owner,persisted.run.control!.owner);
     if(process.env.HIMA_UI_ARTIFACTS)await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS,'observed-run.json'),JSON.stringify(reopenedView,null,2));
     browser.close();assert.ok((await d.quit('drain')).ok);assert.equal(await d.exit(),0);
   } catch(error){preserveHome=true;t.diagnostic(`Retained failed Home: ${home.home}`);

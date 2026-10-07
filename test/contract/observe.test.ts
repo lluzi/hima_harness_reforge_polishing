@@ -3,18 +3,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
+import { observeReport } from './support/observe-report.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 // Loads the `ctx.hima` declaration merge onto Context.
 import type {} from '@hima/harness';
 
-test('/hima observe records one observation with provenance in a durable ledger', async () => {
+test('the current Probe service records one observation with provenance in a durable ledger', async () => {
   const h = await createHimaHome();
   await writeLocalSite(h);
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
     assert.equal(kind, 'success', text);
     assert.ok(runId, 'the run identity is reported');
     assert.match(text, new RegExp(report.sha256), 'the content hash is reported');

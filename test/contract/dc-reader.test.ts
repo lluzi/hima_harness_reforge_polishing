@@ -12,8 +12,9 @@ import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { himaCommand } from './support/command.ts';
+import { observeReport } from './support/observe-report.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
-import { openSession, postObserve } from './support/hima-api.ts';
+import { createLiveSession, openSession, postObserve } from './support/hima-api.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
 import { assertReadAsDeclared } from './support/readings.ts';
 // Also loads the `ctx.hima` declaration merge onto Context.
@@ -68,7 +69,7 @@ test('the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     assert.ok(runId, 'a run id is reported');
     const records = host.ctx.hima.ledger.records({ runId: runId! });
@@ -116,7 +117,7 @@ test('the same real report with a hold violation in it reads as a negative hold 
   const rel = await writeWorkspaceFile(h, 'reports/hold-violated.qor.rpt', full.replace(stated, 'Worst Hold Violation:          0.02'));
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -152,7 +153,7 @@ test('a qor report truncated before its first path group yields unknown values w
   const rel = await writeWorkspaceFile(h, 'reports/truncated.qor.rpt', truncated);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
     const rec = records[0]!;
@@ -177,7 +178,7 @@ test('a qor report missing one line inside its one path group leaves only that v
   const rel = await writeWorkspaceFile(h, 'reports/cut-clk-period.qor.rpt', cut);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -229,7 +230,7 @@ test('the real report with a Design Compiler built-in group added that has the w
   const rel = await writeWorkspaceFile(h, 'reports/with-async-default.qor.rpt', full.replace(anchor, builtIn + anchor));
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -288,7 +289,7 @@ test('a qor report whose only path groups are Design Compiler built-ins: the clo
   const rel = await writeWorkspaceFile(h, 'reports/built-ins-only.qor.rpt', synthetic);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -357,7 +358,7 @@ test('two clock path groups: setup WNS is the minimum slack naming its group, se
   const rel = await writeWorkspaceFile(h, 'reports/multi-group.qor.rpt', synthetic);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -430,7 +431,7 @@ test('multiple path groups, one missing its Critical Path Slack line: setup WNS 
   const rel = await writeWorkspaceFile(h, 'reports/multi-group-missing-slack.qor.rpt', synthetic);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -486,7 +487,7 @@ test('the dc-qor-report reader accepts a gzip-compressed report transparently, a
   const rel = await writeWorkspaceFile(h, 'reports/gzipped.qor.rpt.gz', gzipSync(Buffer.from(synthetic, 'utf8')));
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'success', text);
     const rec = host.ctx.hima.ledger.records({ runId: runId! })[0]!;
     const values = (rec.type === 'observation' ? rec.values : []) as Value[];
@@ -501,7 +502,7 @@ test('a report of the wrong kind is refused by the dc-qor-report reader, with no
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --reader dc-qor-report`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: report.rel, reader: 'dc-qor-report' });
     assert.equal(kind, 'error', text);
     assert.match(text, /refused/);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
@@ -513,20 +514,20 @@ test('a report of the wrong kind is refused by the dc-qor-report reader, with no
   } finally { await host.dispose(); await h.dispose(); }
 });
 
-test('the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one', async (t) => {
+test('the Probe services bind clock-period-at-most parameters: FAIL at a tighter target, PASS at a looser one', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'syn/qor.rpt');
   if (fixture === undefined) return;
   const h = await createHimaHome();
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    // Tighter than the report's 2.27 ns clock period: FAIL, citing the observation this very command made.
+    // Tighter than the report's 2.27 ns clock period: FAIL, citing the observation this service call made.
     // (`kind` reports whether the invocation itself ran without error; a FAIL or UNDETERMINED verdict
-    // is a successful judgment, not a failed command — the same distinction the step-1 tests draw.)
-    const failing = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=2.0`);
+    // is a successful judgment, not a failed request — the same distinction the step-1 tests draw.)
+    const failing = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'dc-qor-report', judge: ['clock-period-at-most'], params: { target_period_ns: 2.0 } });
     assert.equal(failing.kind, 'success', failing.text);
-    assert.match(failing.text, /^observed /m, 'the observation is reported');
-    assert.match(failing.text, /FAIL clock-period-at-most@1/);
+    assert.equal(failing.record.type, 'observation');
+    assert.deepEqual(failing.verdicts.map(v => [v.outcome, v.ruleId, v.ruleVersion]), [['FAIL', 'clock-period-at-most', '1']]);
     const failObservationId = host.ctx.hima.ledger.records({ runId: failing.runId!, type: 'observation' })[0]!.id;
     assert.ok(failing.text.includes(failObservationId), 'and the verdict is reported alongside the observation it cites, in the one invocation');
     const [failVerdict] = verdicts(host, failing.runId!);
@@ -536,9 +537,9 @@ test('the acceptance command: /hima observe --reader dc-qor-report --judge clock
     assert.deepEqual(failVerdict.boundParameters, { target_period_ns: 2.0 }, 'the verdict carries the value bound to the parameter');
 
     // Looser than 2.27 ns: PASS.
-    const passing = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=2.3`);
+    const passing = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'dc-qor-report', judge: ['clock-period-at-most'], params: { target_period_ns: 2.3 } });
     assert.equal(passing.kind, 'success', passing.text);
-    assert.match(passing.text, /PASS clock-period-at-most@1/);
+    assert.equal(passing.verdicts[0]!.outcome, 'PASS');
     const passObservationId = host.ctx.hima.ledger.records({ runId: passing.runId!, type: 'observation' })[0]!.id;
     const [passVerdict] = verdicts(host, passing.runId!);
     assert.ok(passVerdict);
@@ -546,10 +547,10 @@ test('the acceptance command: /hima observe --reader dc-qor-report --judge clock
     assert.deepEqual(passVerdict.cites, [passObservationId]);
     assert.deepEqual(passVerdict.boundParameters, { target_period_ns: 2.3 });
 
-    // No --param at all: UNDETERMINED, naming the parameter, never a silent pass or fail.
-    const unbound = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader dc-qor-report --judge clock-period-at-most`);
+    // No bound parameter: UNDETERMINED, naming the parameter, never a silent pass or fail.
+    const unbound = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'dc-qor-report', judge: ['clock-period-at-most'] });
     assert.equal(unbound.kind, 'success', unbound.text);
-    assert.match(unbound.text, /UNDETERMINED clock-period-at-most@1/);
+    assert.equal(unbound.verdicts[0]!.outcome, 'UNDETERMINED');
     const [unboundVerdict] = verdicts(host, unbound.runId!);
     assert.ok(unboundVerdict);
     assert.equal(unboundVerdict.outcome, 'UNDETERMINED');
@@ -558,7 +559,7 @@ test('the acceptance command: /hima observe --reader dc-qor-report --judge clock
   } finally { await host.dispose(); await h.dispose(); }
 });
 
-test('the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome', async (t) => {
+test('the hima_observe tool binds numeric params the same way: judging clock-period-at-most with params target_period_ns yields the same outcome', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'syn/qor.rpt');
   if (fixture === undefined) return;
   const h = await createHimaHome();
@@ -576,7 +577,7 @@ test('the hima_observe tool binds --param the same way: judging clock-period-at-
     assert.equal(result.isError, false, JSON.stringify(result));
     const value = (result as unknown as { value?: { runId: string; verdicts?: { outcome: string; ruleId: string; boundParameters?: Record<string, number> }[] } }).value!;
     assert.equal(value.verdicts?.length, 1);
-    assert.equal(value.verdicts![0]!.outcome, 'FAIL', 'the tool binds the same 2.0 ns target the command line would');
+    assert.equal(value.verdicts![0]!.outcome, 'FAIL', 'the tool binds the same 2.0 ns target as the service');
     assert.deepEqual(value.verdicts![0]!.boundParameters, { target_period_ns: 2.0 });
   } finally { await host.dispose(); await h.dispose(); }
 });
@@ -591,7 +592,7 @@ test('the hima_observe tool rejects a non-numeric params value with an error res
     const agent = await createRootAgent(host.ctx, h.workspace);
     // A prior, well-formed observation on its own run: proves the rejected call below neither adds
     // to it nor creates a run of its own — the params check runs before observe, not after.
-    const { runId } = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader dc-qor-report`);
+    const { runId } = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'dc-qor-report' });
     assert.ok(runId);
     const before = host.ctx.hima.ledger.records({ runId: runId! });
     assert.equal(before.length, 1, 'one observation exists before the rejected call');
@@ -619,7 +620,7 @@ test('the hima_observe tool rejects a non-numeric params value with an error res
   } finally { await host.dispose(); await h.dispose(); }
 });
 
-test('POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give', async (t) => {
+test('POST /hima/api/observe binds params the same way: the run view shows the same outcome the service and the tool give', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'syn/qor.rpt');
   if (fixture === undefined) return;
   const h = await createHimaHome();
@@ -627,7 +628,9 @@ test('POST /hima/api/observe binds params the same way: the run view shows the s
   const host = await bootHimaHost(h);
   try {
     const cookie = await openSession(host);
+    const sessionId = await createLiveSession(host, cookie, h.workspace);
     const res = await postObserve(host, cookie, {
+      sessionId,
       site: 'local',
       path: fixture,
       reader: 'dc-qor-report',
@@ -637,7 +640,7 @@ test('POST /hima/api/observe binds params the same way: the run view shows the s
     const body = await res.json() as RunView;
     assert.equal(res.status, 200, JSON.stringify(body));
     assert.equal(body.verdicts.length, 1);
-    assert.equal(body.verdicts[0]!.outcome, 'PASS', 'the route binds the same 2.3 ns target the command line and the tool would');
+    assert.equal(body.verdicts[0]!.outcome, 'PASS', 'the route binds the same 2.3 ns target the service and the tool bind');
     assert.deepEqual(body.verdicts[0]!.boundParameters, { target_period_ns: 2.3 });
   } finally {
     const code = await host.stop();

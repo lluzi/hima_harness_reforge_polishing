@@ -6,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
+import { observeReport } from './support/observe-report.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 // Loads the `ctx.hima` declaration merge onto Context.
 import { appendReading, bundleSemantics, validateReading } from '@hima/harness';
@@ -19,7 +19,7 @@ test('a read outside the permitted roots is refused before any read, and the ref
   await writeFile(outside, 'secret');
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${outside}`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: outside });
     assert.equal(kind, 'error', text);
     assert.match(text, /refused/);
     assert.ok(runId, 'the refusal still belongs to a run');
@@ -42,7 +42,7 @@ test('a symlink that escapes the permitted roots is refused', async () => {
   await symlink(outside, path.join(h.workspace, 'links/escape.txt'));
   const host = await bootInProcess(h);
   try {
-    const { kind, text } = await himaCommand(host, h.workspace, '/hima observe local links/escape.txt');
+    const { kind, text } = await observeReport(host, h.workspace, { site: 'local', path: 'links/escape.txt' });
     assert.equal(kind, 'error', text);
     assert.match(text, /outside the permitted read roots/);
   } finally { await host.dispose(); await h.dispose(); }
@@ -54,12 +54,12 @@ test('observing the same file twice into one run appends a second record with a 
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const first = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+    const first = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
     assert.equal(first.kind, 'success', first.text);
     assert.ok(first.runId, 'the first observation created a run');
-    // `--run` is what makes a Run span several observations: without it every observe would be its
+    // A structured `run` reference makes a Run span several observations; without it each read has its
     // own run and nothing could ever be appended to an earlier one (D36).
-    const second = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --run ${first.runId!}`);
+    const second = await observeReport(host, h.workspace, { site: 'local', path: report.rel, run: first.runId! });
     assert.equal(second.kind, 'success', second.text);
     assert.equal(second.runId, first.runId, 'the second observation joined the run it named, rather than opening its own');
 
@@ -81,16 +81,12 @@ test('an observe naming a run that does not exist is refused as the caller\'s mi
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const missing = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --run run-does-not-exist`);
-    assert.equal(missing.kind, 'error', missing.text);
-    assert.match(missing.text, /run-does-not-exist/, 'the message names the run that was asked for');
-    assert.equal(host.ctx.hima.ledger.records({ runId: 'run-does-not-exist' }).length, 0, 'nothing was written anywhere');
-
-    // Present but valueless is a usage error, exactly as --reader and --judge are.
-    const valueless = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --run`);
-    assert.equal(valueless.kind, 'error', valueless.text);
-    assert.match(valueless.text, /usage: \/hima observe/);
-    assert.equal(valueless.runId, undefined, 'no run was created for a call that never got past its flags');
+    await assert.rejects(
+      () => observeReport(host, h.workspace, { site: 'local', path: report.rel, run: 'run-does-not-exist' }),
+      /run-does-not-exist/,
+    );
+    assert.deepEqual(host.ctx.hima.ledger.runs(), [], 'no Run was created for an invalid reference');
+    assert.equal(host.ctx.hima.ledger.records({ runId: 'run-does-not-exist' }).length, 0, 'nothing was written');
   } finally { await host.dispose(); await h.dispose(); }
 });
 
@@ -101,7 +97,7 @@ test('records survive a host restart and read back unchanged', async () => {
   let runId: string | undefined; let before: unknown;
   const host1 = await bootInProcess(h);
   try {
-    ({ runId } = await himaCommand(host1, h.workspace, `/hima observe local ${report.rel}`));
+    ({ runId } = await observeReport(host1, h.workspace, { site: 'local', path: report.rel }));
     before = host1.ctx.hima.ledger.records({ runId: runId! });
   } finally { await host1.dispose(); }
   const host2 = await bootInProcess(h);
@@ -198,7 +194,7 @@ test('a reader on a record identifies a pack script by its file and the hash of 
     const host = await bootInProcess(h);
     let runId: string | undefined;
     try {
-      const opened = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+      const opened = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
       assert.equal(opened.kind, 'success', opened.text);
       runId = opened.runId!;
       await host.ctx.hima.ledger.appendObservation(runId, {
@@ -235,7 +231,7 @@ test('the whole pair — the script a pack reader is and the hash of the bytes t
   const hash = 'a'.repeat(64);
   let runId = '';
   try {
-    const opened = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+    const opened = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
     assert.equal(opened.kind, 'success', opened.text);
     runId = opened.runId!;
     const written = await host.ctx.hima.ledger.appendObservation(runId, {
@@ -299,7 +295,7 @@ test('what a reader\'s job was launched to read is one nested block on its launc
     const report = await writeSampleReport(h);
     const host = await bootInProcess(h);
     try {
-      const opened = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+      const opened = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
       assert.equal(opened.kind, 'success', opened.text);
       await host.ctx.hima.ledger.appendJob(opened.runId!, {
         event: 'launched',
@@ -350,7 +346,7 @@ test('the one gate refuses a bundled reader\'s value that carries a key nothing 
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const opened = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
+    const opened = await observeReport(host, h.workspace, { site: 'local', path: report.rel });
     assert.equal(opened.kind, 'success', opened.text);
     const runId = opened.runId!;
     const before = host.ctx.hima.ledger.records({ runId, type: 'observation' }).length;

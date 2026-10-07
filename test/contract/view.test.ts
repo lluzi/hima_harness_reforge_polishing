@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createHimaHome, harnessPackageDir, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
-import { api, openSession, postObserve } from './support/hima-api.ts';
+import { api, createLiveSession, openSession, postObserve } from './support/hima-api.ts';
 import { writeLocalSite, writeSampleReport, writeSiteWithDirPermit } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
 // The view shapes are the bundle's own contract, not this file's opinion of it: retyping them here
@@ -22,7 +22,7 @@ async function answer<T>(res: Response, expected: number): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-interface Workbench { readonly h: HimaHome; readonly host: BootedHost; readonly cookie: string; dispose(): Promise<void> }
+interface Workbench { readonly h: HimaHome; readonly host: BootedHost; readonly cookie: string; readonly sessionId: string; dispose(): Promise<void> }
 
 /** The real web profile, booted with the local site installed and a session already open. */
 async function bootedWorkbench(extraReadRoots: readonly string[] = []): Promise<Workbench> {
@@ -30,8 +30,9 @@ async function bootedWorkbench(extraReadRoots: readonly string[] = []): Promise<
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, ...extraReadRoots] });
   const host = await bootHimaHost(h);
   const cookie = await openSession(host);
+  const sessionId = await createLiveSession(host, cookie, h.workspace);
   return {
-    h, host, cookie,
+    h, host, cookie, sessionId,
     dispose: async () => {
       const code = await host.stop();
       assert.equal(code, 0, `host exited ${code}\n${host.stderr()}`);
@@ -45,7 +46,7 @@ test('the Hima namespace answers a run round-trip over HTTP: observe, judge, and
   if (fixture === undefined) return;
   const wb = await bootedWorkbench([path.dirname(fixture)]);
   try {
-    const created = await postObserve(wb.host, wb.cookie, {
+    const created = await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId,
       site: 'local',
       path: fixture,
       reader: 'innovus-timing-summary',
@@ -56,7 +57,7 @@ test('the Hima namespace answers a run round-trip over HTTP: observe, judge, and
     assert.equal(view.run.siteId, 'local');
 
     // The same run, read back through the read operation, is the same view.
-    const fetched = await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}`);
+    const fetched = await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}?sessionId=${wb.sessionId}`);
     assert.deepEqual(await answer<RunView>(fetched, 200), view, 'the run reads back exactly as the observe operation reported it');
 
     assert.equal(view.observations.length, 1, 'one observation to cite');
@@ -88,15 +89,15 @@ test('the Hima namespace answers a run round-trip over HTTP: observe, judge, and
     assert.deepEqual(r2r.cites.map((c) => c.recordId), [observation.recordId]);
 
     // Records by run: the ledger's own records, in sequence, optionally of one type.
-    const every = await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}/records`), 200);
+    const every = await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}/records?sessionId=${wb.sessionId}`), 200);
     assert.deepEqual(every.records.map((r) => r.type), ['observation', 'verdict', 'verdict'], 'in ledger sequence order');
-    const filtered = await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}/records?type=verdict`), 200);
+    const filtered = await answer<RecordsView>(await api(wb.host, wb.cookie, `/hima/api/runs/${view.run.id}/records?type=verdict&sessionId=${wb.sessionId}`), 200);
     assert.deepEqual(filtered.records.map((r) => r.type), ['verdict', 'verdict']);
 
     // Records by ID: the third ledger read #3 asks for, through the host like the other two. The
     // record ids the ledger mints carry a `#`, so the route has to survive percent-encoding.
     for (const wanted of every.records) {
-      const one = await answer<RecordView>(await api(wb.host, wb.cookie, `/hima/api/records/${encodeURIComponent(wanted.id)}`), 200);
+      const one = await answer<RecordView>(await api(wb.host, wb.cookie, `/hima/api/records/${encodeURIComponent(wanted.id)}?sessionId=${wb.sessionId}`), 200);
       assert.deepEqual(one.record, wanted, `record ${wanted.id} reads back by id exactly as the run listing holds it`);
     }
   } finally { await wb.dispose(); }
@@ -105,7 +106,7 @@ test('the Hima namespace answers a run round-trip over HTTP: observe, judge, and
 test('a refused read is reported as a refusal in the run view, never as an empty pass', async () => {
   const wb = await bootedWorkbench();
   try {
-    const view = await answer<RunView>(await postObserve(wb.host, wb.cookie, { site: 'local', path: '/etc/hosts' }), 200);
+    const view = await answer<RunView>(await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, site: 'local', path: '/etc/hosts' }), 200);
     assert.deepEqual(view.observations, [], 'nothing was observed');
     assert.deepEqual(view.verdicts, [], 'and nothing was judged');
     assert.equal(view.refusals.length, 1, 'the refusal is what the run holds');
@@ -118,35 +119,36 @@ test('a remote error reaches the caller as a coded JSON error, never as an empty
   try {
     const sample = await writeSampleReport(wb.h);
 
-    const notFound = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/run-does-not-exist'), 404);
-    assert.equal(notFound.error.code, 'hima/run-not-found');
-    assert.match(notFound.error.message, /run-does-not-exist/, 'the message names the run that was asked for');
+    const notFound = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/run-does-not-exist?sessionId=${wb.sessionId}`), 403);
+    assert.equal(notFound.error.code, 'hima/not-authorized');
+    assert.doesNotMatch(notFound.error.message, /run-does-not-exist/, 'an unavailable Run identity is not disclosed');
 
-    const badlyEncoded = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/%zz'), 400);
+    const badlyEncoded = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/%zz?sessionId=${wb.sessionId}`), 400);
     assert.equal(badlyEncoded.error.code, 'hima/bad-request', 'a run id that is not validly percent-encoded is a bad request, never an uncaught URIError');
 
-    const badType = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/run-does-not-exist/records?type=nonsense'), 400);
+    const known = await answer<RunView>(await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, site: 'local', path: sample.rel }), 200);
+    const badType = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/${known.run.id}/records?type=nonsense&sessionId=${wb.sessionId}`), 400);
     assert.equal(badType.error.code, 'hima/bad-request', 'a malformed query is malformed whatever it names');
 
-    const noSite = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { path: sample.rel }), 400);
+    const noSite = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, path: sample.rel }), 400);
     assert.equal(noSite.error.code, 'hima/bad-request');
 
-    const unknownSite = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { site: 'no-such-site', path: sample.rel }), 400);
+    const unknownSite = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, site: 'no-such-site', path: sample.rel }), 400);
     assert.equal(unknownSite.error.code, 'hima/bad-request', 'a site name with no site file is the caller\'s mistake');
     assert.match(unknownSite.error.message, /no-such-site/, 'the message names the site that was asked for');
 
-    const unknownRule = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { site: 'local', path: sample.rel, judge: ['no-such-rule'] }), 400);
+    const unknownRule = await answer<HimaErrorBody>(await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, site: 'local', path: sample.rel, judge: ['no-such-rule'] }), 400);
     assert.equal(unknownRule.error.code, 'hima/bad-request', 'an unknown rule is an error, never a silent pass');
     assert.match(unknownRule.error.message, /no-such-rule/);
 
-    const noRecord = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/records/no-such-record'), 404);
+    const noRecord = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/records/no-such-record?sessionId=${wb.sessionId}`), 404);
     assert.equal(noRecord.error.code, 'hima/record-not-found', 'a record id the ledger does not hold has its own code');
     assert.match(noRecord.error.message, /no-such-record/, 'the message names the record that was asked for');
 
-    const nowhere = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/nowhere'), 404);
+    const nowhere = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/nowhere?sessionId=${wb.sessionId}`), 404);
     assert.equal(nowhere.error.code, 'hima/bad-request');
 
-    const wrongMethod = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/observe'), 405);
+    const wrongMethod = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/observe?sessionId=${wb.sessionId}`), 405);
     assert.equal(wrongMethod.error.code, 'hima/bad-request');
   } finally { await wb.dispose(); }
 });
@@ -161,7 +163,7 @@ test('a fault that is not the caller\'s doing — a misconfigured site the calle
     // fixing the request body could have avoided.
     const site = await writeSiteWithDirPermit(wb.h);
 
-    const res = await postObserve(wb.host, wb.cookie, { site: site.name, path: sample.rel });
+    const res = await postObserve(wb.host, wb.cookie, { sessionId: wb.sessionId, site: site.name, path: sample.rel });
     const body = await answer<HimaErrorBody>(res, 500);
     assert.equal(body.error.code, 'hima/internal', 'a fault in the site config the caller did not write is ours, not a bad request');
     // The code is the contract; the raw error text is not. Node's EISDIR message carries the absolute
@@ -180,9 +182,9 @@ test("every /hima/api route sits behind the web app's own session cookie", async
       const refused = await answer<HimaErrorBody>(res, 401);
       assert.equal(refused.error.code, 'hima/not-authorized', `${target} is refused without the session cookie`);
     }
-    // The cookie is what opens them: the same read reaches the handler and gets its coded answer.
-    const withCookie = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, '/hima/api/runs/run-x'), 404);
-    assert.equal(withCookie.error.code, 'hima/run-not-found');
+    // The cookie passes the browser fence; the project fence still hides an unavailable Run.
+    const withCookie = await answer<HimaErrorBody>(await api(wb.host, wb.cookie, `/hima/api/runs/run-x?sessionId=${wb.sessionId}`), 403);
+    assert.equal(withCookie.error.code, 'hima/not-authorized', 'a cookie alone does not disclose an unlinked Run');
   } finally { await wb.dispose(); }
 });
 
@@ -242,8 +244,8 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
     // keys and no others is asserted in `view-run.test.ts`, where the card's own contract lives.
     assert.deepEqual(
       registered,
-      [{ name: 'sidebar.right.pane.tab', key: '@hima/harness/workbench' }, { name: 'sidebar.right.pane.tab.title', key: '@hima/harness/workbench' }, { name: 'sidebar.right.tab.menu.item', id: 'hima-diagnostics' }, { name: 'conversation.session.header.actions', id: 'hima-campaign' }, { name: 'settings.section', id: 'hima' }, { name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'sidebar.brand.mark' }, { name: 'conversation.hero.brand.mark' }, { name: 'sidebar.brand.name' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }, { name: 'tool.call.toolview', key: 'hima_context' }, { name: 'tool.call.toolview', key: 'hima_execute' }, { name: 'tool.call.toolview', key: 'hima_author' }],
-      'the workbench link and the two existing tool views use their declared slots',
+      [{ name: 'sidebar.right.pane.tab', key: '@hima/harness/workbench' }, { name: 'sidebar.right.pane.tab.title', key: '@hima/harness/workbench' }, { name: 'sidebar.right.tab.menu.item', id: 'hima-diagnostics' }, { name: 'conversation.session.header.actions', id: 'hima-campaign' }, { name: 'settings.section', id: 'hima' }, { name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'sidebar.brand.mark' }, { name: 'conversation.hero.brand.mark' }, { name: 'sidebar.brand.name' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }, { name: 'tool.call.toolview', key: 'hima_context' }, { name: 'tool.call.toolview', key: 'hima_execute' }, { name: 'tool.call.toolview', key: 'hima_author' }, { name: 'tool.call.toolview', key: 'hima_insight_analysis' }],
+      'the workbench and current Hima tool views use their declared slots',
     );
     assert.equal(typeof component, 'function', 'with a component to render it');
 

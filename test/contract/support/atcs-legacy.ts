@@ -20,7 +20,10 @@ export async function copyLegacyAtcsPack(targetPacksDir: string): Promise<string
     await access(archived);
     await cp(archived, path.join(target, directory), { recursive: true });
   }
+  // This composite fixture overlays retained 0.2.10 declarations on shared current tooling;
+  // neither the current test record nor its release seal identifies those composite bytes.
   await rm(path.join(target, 'TEST.md'), { force: true });
+  await rm(path.join(target, 'VERSION.yml'), { force: true });
   return target;
 }
 

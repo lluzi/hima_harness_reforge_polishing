@@ -70,8 +70,10 @@ test('a rejected native Pack folder picker opens the manual review path instead 
     await d.open('/');
     await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
     await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await browser.markText('button', 'Configure later', 'pack-picker-models-later'); assert.ok((await d.click('pack-picker-models-later')).ok);
+    await browser.wait(`document.body.innerText.includes('Configure later') || document.body.innerText.includes('Choose a workspace to begin')`);
+    if (await browser.evaluate(`document.body.innerText.includes('Configure later')`)) {
+      await browser.markText('button', 'Configure later', 'pack-picker-models-later'); assert.ok((await d.click('pack-picker-models-later')).ok);
+    }
     const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
     const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
       type: 'client-request', rpcId: 'pack-picker-workspace', method: 'workspace/create', payload: { args: { request: { path: home.workspace } } },

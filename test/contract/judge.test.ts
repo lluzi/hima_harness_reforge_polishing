@@ -12,6 +12,7 @@ import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
+import { observeReport } from './support/observe-report.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
 import { installPack, writePackFiles } from './support/pack.ts';
@@ -23,7 +24,7 @@ type Host = InProcessHost;
 
 /** Observe one report with the Innovus summary reader and return the run and the observation record id. */
 async function observeSummary(host: Host, workspace: string, filePath: string) {
-  const { kind, text, runId } = await himaCommand(host, workspace, `/hima observe local ${filePath} --reader innovus-timing-summary`);
+  const { kind, text, runId } = await observeReport(host, workspace, { site: 'local', path: filePath, reader: 'innovus-timing-summary' });
   assert.equal(kind, 'success', text);
   assert.ok(runId, 'the observation belongs to a run');
   const observations = host.ctx.hima.ledger.records({ runId: runId!, type: 'observation' });
@@ -162,7 +163,7 @@ test('a rule about an analysis pass the report does not state is UNDETERMINED ca
   await writeLocalSite(bare, { allowedReadRoots: [bare.workspace, path.dirname(fixture)] });
   const host2 = await bootInProcess(bare);
   try {
-    const observed = await himaCommand(host2, bare.workspace, `/hima observe local ${fixture} --reader raw`);
+    const observed = await observeReport(host2, bare.workspace, { site: 'local', path: fixture, reader: 'raw' });
     assert.equal(observed.kind, 'success', observed.text);
     const judged = await himaCommand(host2, bare.workspace, `/hima judge ${observed.runId!} --rules hold-wns-all-nonnegative`);
     assert.equal(judged.kind, 'success', judged.text);
@@ -262,26 +263,23 @@ test('only the judge can append a verdict: the ledger hands its capability out o
   } finally { await host.dispose(); await h.dispose(); }
 });
 
-test('one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record', async (t) => {
+test('the Probe service reads and judges through the current services, returning verdicts with their cited record', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'postroute.summary.gz');
   if (fixture === undefined) return;
   const h = await createHimaHome();
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(
-      host,
-      h.workspace,
-      `/hima observe local ${fixture} --reader innovus-timing-summary --judge setup-wns-all-nonnegative,hold-wns-all-nonnegative`,
-    );
+    const { kind, text, runId, record, verdicts: returned } = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'innovus-timing-summary', judge: ['setup-wns-all-nonnegative', 'hold-wns-all-nonnegative'] });
     assert.equal(kind, 'success', text);
     assert.ok(runId);
     const observationId = host.ctx.hima.ledger.records({ runId: runId!, type: 'observation' })[0]!.id;
-    assert.match(text, /^observed /m, 'the observation is reported');
-    assert.ok(text.includes(observationId), 'and named by its record id');
-    assert.match(text, /FAIL setup-wns-all-nonnegative@1/, 'and the verdict with it, in the one invocation');
-    assert.match(text, new RegExp(`cites ${observationId}`));
-    assert.match(text, /UNDETERMINED hold-wns-all-nonnegative@1/, 'a rule this observation cannot answer stays undetermined');
+    assert.equal(record.type, 'observation');
+    assert.equal(record.id, observationId);
+    assert.deepEqual(returned.map(v => [v.outcome, v.ruleId, v.ruleVersion]), [
+      ['FAIL', 'setup-wns-all-nonnegative', '1'], ['UNDETERMINED', 'hold-wns-all-nonnegative', '1'],
+    ]);
+    assert.deepEqual(returned.map(v => v.cites), [[observationId], [observationId]]);
 
     const written = verdicts(host, runId!);
     assert.equal(written.length, 2);
@@ -319,39 +317,7 @@ test('the hima_observe tool judges the rules it is given, in the same invocation
   } finally { await host.dispose(); await h.dispose(); }
 });
 
-test('--judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing', async (t) => {
-  const h = await createHimaHome();
-  await writeLocalSite(h);
-  const report = await writeSampleReport(h);
-  const host = await bootInProcess(h);
-  try {
-    // A trailing `--judge` with nothing after it must not be read as "no --judge given".
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --judge`);
-    assert.equal(kind, 'error', text);
-    assert.match(text, /usage: \/hima observe/, 'a usage message, not a silent success');
-    assert.match(text, /--judge/);
-    assert.equal(runId, undefined, 'no run id appears: the flags are validated before observe ever creates a run');
-
-    // The naive whitespace tokenizer this command uses (`rawInput.split(/\s+/).filter(Boolean)`) drops empty
-    // tokens outright, so a literal `--judge ""` can never surface as flags = [..., '--judge', '']; the only
-    // way this tokenizer can see "present but valueless" is the trailing-flag case exercised above.
-
-    // The same validation guards --reader: present without a value is a usage error too, before any read.
-    const readerCase = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --reader`);
-    assert.equal(readerCase.kind, 'error', readerCase.text);
-    assert.match(readerCase.text, /usage: \/hima observe/);
-    assert.equal(readerCase.runId, undefined, 'no run id appears for this validation error either');
-
-    // A well-formed call right after proves the ledger and site were untouched by the rejected attempts.
-    const good = await himaCommand(host, h.workspace, `/hima observe local ${report.rel}`);
-    assert.equal(good.kind, 'success', good.text);
-    assert.ok(good.runId);
-    const observations = host.ctx.hima.ledger.records({ runId: good.runId!, type: 'observation' });
-    assert.equal(observations.length, 1, 'the first and only record on this run is its own observation');
-  } finally { await host.dispose(); await h.dispose(); }
-});
-
-test('a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written', async (t) => {
+test('a malformed --param is a usage error on /hima judge and writes no verdict', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'postroute.summary.gz');
   if (fixture === undefined) return;
   const h = await createHimaHome();
@@ -370,12 +336,6 @@ test('a malformed --param is a usage error on both /hima judge and /hima observe
 
     assert.deepEqual(verdicts(host, runId), [], 'no rule was judged by either malformed attempt');
 
-    // Same validation on the combined observe+judge command, before the run is even created.
-    const report = await writeSampleReport(h);
-    const combined = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --judge setup-wns-all-nonnegative --param =2.0`);
-    assert.equal(combined.kind, 'error', combined.text);
-    assert.match(combined.text, /--param/);
-    assert.equal(combined.runId, undefined, 'the flags are validated before observe ever creates a run');
   } finally { await host.dispose(); await h.dispose(); }
 });
 
@@ -426,7 +386,7 @@ predicate:
   unit: ns
 `;
 
-test('a run whose pack this machine cannot load is refused by /hima judge, naming the pack and why, rather than judged on the bundle\'s copy of the rule', async (t) => {
+test('a historical run whose pack this machine cannot load is refused by Judge, naming the pack and why, rather than judged on the bundle\'s copy of the rule', async (t) => {
   const h = await createHimaHome();
   await writeLocalSite(h);
   // A pack carrying its own copy of the goal rule, which is the whole reason a Run resolves through
@@ -440,11 +400,16 @@ test('a run whose pack this machine cannot load is refused by /hima judge, namin
     // ...and then the pack stops loading, which is what an editing mistake, a half-finished install or
     // a removed folder looks like to this host.
     await rm(path.join(installed.dir, 'contract.yml'));
-    const judged = await himaCommand(host, h.workspace, `/hima judge ${run.id} --rules clock-period-at-most`);
-    for (const line of judged.text.split('\n')) t.diagnostic(line);
-    assert.equal(judged.kind, 'error', judged.text);
-    assert.ok(judged.text.includes(installed.id), `the refusal names the pack whose rules could not be reached: ${judged.text}`);
-    assert.match(judged.text, /needs method .*no verified original snapshot/, `the missing original method is named, and a different installed rule cannot replace it: ${judged.text}`);
+    await assert.rejects(
+      () => host.ctx.hima.judge.evaluate({ runId: run.id, ruleIds: ['clock-period-at-most'] }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        t.diagnostic(error.message);
+        assert.ok(error.message.includes(installed.id), 'the refusal names the unavailable Pack');
+        assert.match(error.message, /needs method .*no verified original snapshot/, 'a different installed rule cannot replace the missing original method');
+        return true;
+      },
+    );
     assert.deepEqual(
       verdicts(host, run.id),
       [],

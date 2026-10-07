@@ -261,6 +261,9 @@ test('experience adoption is append-only, request-idempotent, and requires new r
 test('an ended Run without a workspace explains why no report is deliverable through projection and read API', async () => {
   const f = await fixture();
   try {
+    const projectSession = await createRootAgent(f.host.ctx, f.h.workspace);
+    await f.deps.ledger.advanceRun(f.run.id, { control: { mode: 'agent', owner: String(projectSession.id),
+      epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
     const written = await writeExperience(f.deps, f.run.id);
     assert.equal(written.kind, 'nothing');
     assert.match(written.kind === 'nothing' ? written.why : '', /no campaign workspace/);
@@ -272,10 +275,19 @@ test('an ended Run without a workspace explains why no report is deliverable thr
     const next = await bootHimaHost(f.h);
     try {
       const cookie = await openSession(next);
-      const view = await (await api(next, cookie, `/hima/api/runs/${f.run.id}`)).json() as RunView;
+      const sessionId = await createLiveSession(next, cookie, f.h.workspace);
+      const foreignWorkspace = path.join(f.h.home, 'foreign-report-project');
+      await mkdir(foreignWorkspace);
+      const foreignSessionId = await createLiveSession(next, cookie, foreignWorkspace);
+      const denied = await api(next, cookie, `/hima/api/runs/${f.run.id}?sessionId=${encodeURIComponent(foreignSessionId)}`);
+      assert.equal(denied.status, 403, 'a foreign project cannot inspect this historical Run');
+      const scoped = `sessionId=${encodeURIComponent(sessionId)}`;
+      const detail = await api(next, cookie, `/hima/api/runs/${f.run.id}?${scoped}`);
+      assert.equal(detail.status, 200, await detail.clone().text());
+      const view = await detail.json() as RunView;
       assert.equal(view.experience, undefined);
       assert.match(view.experienceUnavailable ?? '', /No report file can be delivered/);
-      const response = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience`);
+      const response = await api(next, cookie, `/hima/api/runs/${f.run.id}/experience?${scoped}`);
       assert.equal(response.status, 404);
       assert.match(await response.text(), /no Campaign workspace/);
     } finally { assert.equal(await next.stop(), 0, next.stderr()); }

@@ -1,49 +1,6 @@
-// Ticket #60: the stand-in flow answers the Golden Flow's stages, from mining to the verification
-// session, and every one of them is computed from the Strategy and the arm.
-//
-// The stand-in (`packages/desktop/src/local-site.ts`) used to answer one stage, `synth`. A pack that
-// mines cells, compiles a library and runs two post-route arms has nine targets to drive, and a
-// suite that cannot drive them locally cannot state what such a pack's endings are — the library
-// gate, the zero-adoption terminal, the five-percent Goal — before a Site is reached. So the flow
-// answers all nine, deterministically: it has one number of its own (`ACHIEVABLE_NS`, the period it
-// closes at) and one mechanism (each adopted master buys `GAIN_PER_MASTER` of the critical path),
-// and the profile and the route a mining stage is asked for decide how many candidates there are to
-// adopt.
-//
-// **Driven the way a Job runs**, and not by spawning `make`: every stage below is launched through
-// `/hima job launch <site> <workspace> -- make …`, the one face that puts a command in a detached
-// tmux session on a Site without a Run of a pack behind it. That is what makes the first acceptance
-// criterion checkable rather than asserted — the Permit decides the wrapper and the workspace before
-// anything is launched, and the exit code comes back from the exit file the launch wrote. Spawning
-// `make` here would have proved the arithmetic and nothing at all about the Permit. The words of
-// `/hima job` are what `bootInProcess` is for; there is no job route and no job control in the
-// window, so the shell's driver mode has no face that could launch one.
-//
-// **With one exception, and it is stated where it is used**: the containment test hands `make` a
-// handful of values directly. A chat command's words are separated by whitespace (`commands.ts`
-// splits the whole line on `\s+`), so a value with a space in it cannot be typed on a launch line at
-// all — and every make expression that runs a command needs a space between the function's name and
-// its argument. The property under test there is the makefile's own, the two values that can be
-// typed on a launch line are launched, and everything else in this file goes through the face.
-//
-// **What the assertions read** is what those commands answer and what the stages wrote. The launch
-// answers which tmux session it started, in which workspace, under which wrapper; `/hima job status`
-// answers the exit code; `/hima job tail` answers what the stage said; `/hima observe … --reader`
-// answers which reader read a report, and `--judge` rules on the values that reader read. Nothing
-// here reaches through the booted host into the ledger or the Permit. The one thing no command
-// answers with is the numbers a reader read — `/hima observe` answers the path, the bytes, the
-// reader and the record, and the four shipped rules speak for setup slack, hold slack and the clock
-// period and for nothing else — so a report's exact numbers are read from the report itself, which
-// is a file in the workspace this test made, and what the reader made of them is read from the
-// verdict the same command answers with.
-//
-// The arithmetic, at the 2.05 ns these sequences ask for and the 2.20 ns the flow closes at: a
-// mining profile has a base yield (`narrow` 3, `steady` 12, `broad` 20 a route) and the route's own
-// name adds a factor of 0 to 2 to it, capped by `TOP_N`; a library of at least `ADOPTION_FLOOR`
-// cells is adopted one master per `CELLS_PER_MASTER` cells and `INSTANCES_PER_MASTER` instances of
-// each, and a smaller one is adopted not at all; every adopted master buys 1.5% of the critical
-// path, so the generated arm closes at `2.20 × (1 − 0.015 × masters)` and the foundry arm at 2.20
-// flat.
+// Generated stand-in flow contract: stage arithmetic, local Permit decisions, report Readers and
+// containment. Stages are bounded local fixture processes; they do not prove DBOS durability.
+// Actual DBOS Job/Reader execution is covered by the existing durable Host tests.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -53,8 +10,9 @@ import { existsSync, realpathSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { createEmptyHome, createHimaHome, repoRoot, type HimaHome } from './support/dsh-home.ts';
 import { bootInProcess, type InProcessHost } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
-import { killSession, startSession } from './support/tmux.ts';
+import { observeReport } from './support/observe-report.ts';
+import { channelFor, loadSite } from '@hima/harness';
+import { pathToFileURL } from 'node:url';
 import { writeLocalSite } from './support/site.ts';
 import { writeStandinFlow } from './support/standin-flow.ts';
 import { mustBeInside, seedLocalSite, standinStages } from '../../packages/desktop/src/local-site.ts';
@@ -73,91 +31,36 @@ const FIVE_PERCENT = 0.05;
 /** How long one stage may take before this test gives up on it. Every stage here sleeps nothing. */
 const stageTimeoutMs = 60_000;
 
-/** An isolated home, a booted host, the Run every Job of it belongs to, and the tmux sessions it
- *  started, so `finally` can end one that outlived its stage. */
+/** The generated flow's real Permit and the Host used to read its reports. */
 interface Bench {
   readonly h: HimaHome;
   readonly host: InProcessHost;
-  /** Empty until the first launch opens a Run; every later launch is given it with `--run`. */
   runId: string;
-  readonly sessions: string[];
-  /** What every launch answered, in order: the session, the workspace and the wire it was sent as. */
-  readonly launches: string[];
+  readonly launches: { workspace: string; wrapper: string }[];
 }
-
-/** One launch as `/hima job launch` answers it: the session, the workspace the Permit resolved, and
- *  the first word of the wire, which is the wrapper the Permit decided on. */
-const LAUNCHED = /as tmux session (\S+) \(pid \d+\) in (\S+): ('[^']*')/;
-
-/** One finished Job as `/hima job status` answers it, with the exit code from its exit file. */
-const FINISHED = /^finished \S+ in \S+: exit (-?\d+)\b/;
-
-/** What one stage run left behind: how it was launched, where it ran, and what it exited with. */
 interface StageRun {
   readonly target: string;
-  readonly session: string;
   readonly exitCode: number;
-  /** The launch's own answer, for the wrapper and workspace assertions at the end of a sequence. */
-  readonly launched: string;
+  readonly log: string;
 }
 
-/** The workspace one launch answer names. */
-const workspaceOf = (launched: string): string => LAUNCHED.exec(launched)![2]!;
-
-/** The wrapper one launch answer names: the first word of the wire, as the Permit decided it. */
-const wrapperOf = (launched: string): string => LAUNCHED.exec(launched)![3]!;
-
-/**
- * Run one stage of the stand-in flow as a Job on the local Site and wait for it.
- *
- * The command line is what a person would type: `make -C <flow> <target> VAR=value …`. The Permit
- * decides `make` and the workspace before tmux is asked for anything, so a stage wanting a wrapper
- * this Site does not allow would be refused here rather than run.
- *
- * @param b - the bench the Job belongs to.
- * @param flowDir - the Campaign's own copy of the flow, which is what `-C` names.
- * @param target - the stage.
- * @param vars - the command-line variables the stage takes.
- * @returns the session it ran in and the exit code the launch's exit file held.
- */
 async function runStage(b: Bench, flowDir: string, target: string, vars: readonly string[]): Promise<StageRun> {
-  const named = [target, ...vars.map((v) => v.slice(v.indexOf('=') + 1))].join('-').replace(/[^A-Za-z0-9_-]/g, '-');
-  const runFlag = b.runId === '' ? '' : `--run ${b.runId} `;
-  const line = `/hima job launch local ${b.h.workspace} ${runFlag}--name ${named} -- make -C ${flowDir} ${target} ${vars.join(' ')}`;
-  const launched = await himaCommand(b.host, b.h.workspace, line, stageTimeoutMs);
-  assert.equal(launched.kind, 'success', `launching ${target}: ${launched.text}`);
-  if (b.runId === '') {
-    assert.ok(launched.runId, `the launch names the Run it opened: ${launched.text}`);
-    b.runId = launched.runId;
-  }
-  b.launches.push(launched.text);
-  const said = LAUNCHED.exec(launched.text);
-  assert.ok(said, `the launch says which tmux session it started, where, and as what: ${launched.text}`);
-  const session = said[1]!;
-  b.sessions.push(session);
-
-  const deadline = Date.now() + stageTimeoutMs;
-  for (;;) {
-    const answer = await himaCommand(b.host, b.h.workspace, `/hima job status ${b.runId} ${session}`, stageTimeoutMs);
-    assert.equal(answer.kind, 'success', `status of ${target}: ${answer.text}`);
-    const over = FINISHED.exec(answer.text);
-    if (over) return { target, session, exitCode: Number(over[1]), launched: launched.text };
-    assert.match(answer.text, /^running\b/, `${target} neither ran nor finished: ${answer.text}`);
-    assert.ok(Date.now() < deadline, `${target} in session ${session} never finished: ${answer.text}`);
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-
-/** What a stage said while it ran, for a failure a person would go and read. */
-async function stageLog(b: Bench, run: StageRun): Promise<string> {
-  const tailed = await himaCommand(b.host, b.h.workspace, `/hima job tail ${b.runId} ${run.session} --lines 20`, stageTimeoutMs);
-  return tailed.text;
+  const site = loadSite(path.join(b.h.home, 'hima/sites'), 'local');
+  const { decideLaunch } = await import(pathToFileURL(path.join(repoRoot, 'packages/harness/lib/shell.js')).href);
+  const argv = ['make', '-C', flowDir, target, ...vars];
+  const decision = await decideLaunch(site, b.h.workspace, argv, channelFor(site));
+  assert.equal(decision.ok, true, JSON.stringify(decision));
+  b.launches.push({ workspace: decision.workspace, wrapper: argv[0]! });
+  const ran = spawnSync(argv[0]!, argv.slice(1), { cwd: decision.workspace, encoding: 'utf8', timeout: stageTimeoutMs });
+  assert.ifError(ran.error);
+  assert.notEqual(ran.status, null, `stage ${target} returned no exit status: ${ran.stderr}`);
+  return { target, exitCode: ran.status!, log: `${ran.stdout}${ran.stderr}` };
 }
 
 /** Run a stage and insist it refused, in words a person can act on, having written nothing. */
 async function stageRefused(b: Bench, flowDir: string, target: string, vars: readonly string[], words: RegExp): Promise<void> {
   const run = await runStage(b, flowDir, target, vars);
-  const said = await stageLog(b, run);
+  const said = await run.log;
   assert.notEqual(run.exitCode, 0, `${target} ${vars.join(' ')} was expected to be refused: ${said}`);
   assert.match(said, words, `${target} ${vars.join(' ')} says why it refused: ${said}`);
 }
@@ -166,7 +69,7 @@ async function stageRefused(b: Bench, flowDir: string, target: string, vars: rea
 async function stageOk(b: Bench, flowDir: string, target: string, vars: readonly string[]): Promise<StageRun> {
   const run = await runStage(b, flowDir, target, vars);
   if (run.exitCode !== 0) {
-    assert.fail(`${target} ${vars.join(' ')} exited ${String(run.exitCode)}: ${await stageLog(b, run)}`);
+    assert.fail(`${target} ${vars.join(' ')} exited ${String(run.exitCode)}: ${await run.log}`);
   }
   return run;
 }
@@ -208,30 +111,24 @@ async function listing(root: string): Promise<Record<string, string>> {
   return out;
 }
 
-/**
- * Read one report through the reader named, and — where a shipped rule speaks for what that reader
- * emits — rule on the values it read, so the command's own answer states what the reader made of the
- * report and not only that it read it.
- *
- * @param b - the bench whose Run the reading is appended to.
- * @param file - the report, at the path the stage wrote it to.
- * @param reader - the reader that must read it; one that does not accept the report refuses.
- * @param judge - the rules to rule on the values just read, and what to bind their parameters to.
- * @returns what the command answered, verdict lines and all.
- */
-async function observed(b: Bench, file: string, reader: string, judge?: { readonly rules: string; readonly params?: readonly string[] }): Promise<string> {
-  const ruling = judge === undefined ? '' : ` --judge ${judge.rules}${(judge.params ?? []).map((p) => ` --param ${p}`).join('')}`;
-  const answer = await himaCommand(b.host, b.h.workspace, `/hima observe local ${file} --reader ${reader} --run ${b.runId}${ruling}`, stageTimeoutMs);
-  assert.equal(answer.kind, 'success', `observing ${file} with ${reader}: ${answer.text}`);
-  assert.ok(answer.text.includes(`reader ${reader}@`), `the reader that read it is the one asked for: ${answer.text}`);
-  return answer.text;
+/** Current Probe services read the actual stage report and judge the declared rules. */
+async function observed(b: Bench, file: string, reader: string, judge?: { readonly rules: string; readonly params?: Record<string, number> }) {
+  const params = judge?.params;
+  const result = await observeReport(b.host, b.h.workspace, { site: 'local', path: file, reader,
+    ...(b.runId ? { run: b.runId } : {}),
+    ...(judge ? { judge: judge.rules.split(','), params } : {}),
+  });
+  assert.equal(result.kind, 'success', result.text);
+  assert.equal(result.record.type, 'observation');
+  assert.equal(result.record.type === 'observation' ? result.record.reader.id : undefined, reader);
+  b.runId = result.runId;
+  return result.verdicts;
 }
 
-/** What the judge made of one rule over the values a reader just read. */
-function verdictOf(answer: string, ruleId: string): string {
-  const said = new RegExp(`^(PASS|FAIL|UNDETERMINED) ${ruleId}@`, 'm').exec(answer);
-  assert.ok(said, `the answer rules on ${ruleId}: ${answer}`);
-  return said[1]!;
+function verdictOf(answer: readonly { ruleId: string; outcome: string }[], ruleId: string): string {
+  const verdict = answer.find(v => v.ruleId === ruleId);
+  assert.ok(verdict, `the answer rules on ${ruleId}: ${JSON.stringify(answer)}`);
+  return verdict.outcome;
 }
 
 interface StandinBench {
@@ -242,55 +139,22 @@ interface StandinBench {
   dispose(): Promise<void>;
 }
 
-/**
- * Make a bench: an isolated home with the local Site, a stand-in flow, and a booted host.
- *
- * And one tmux session of the bench's own, holding nothing but a sleep. A tmux server exits the
- * instant its last session ends, and every stage here sleeps nothing, so a Site running one Job at a
- * time would lose its server between a stage's end and the next `/hima job status` — which reaches
- * the client mid-shutdown as `server exited unexpectedly`, a text that is neither "no such session"
- * nor "no server running" and so is a Site that cannot be asked (#18). A real Site's server holds
- * other people's sessions and never empties; this one holds the bench's.
- */
+/** Prepare an isolated generated flow and the real report-reading Host. */
 async function bench(t: TestContext): Promise<StandinBench> {
   const h = await createHimaHome();
-  const keeper = `hima-t60-keeper-${createHash('sha256').update(h.home).digest('hex').slice(0, 8)}`;
-  // Every way out of the preparation disposes the home and whatever of it had started: a throw here
-  // — tmux refusing the keeper as readily as anything later — must leave no directory behind under
-  // `os.tmpdir()` and no session behind on the server. Which is why the keeper is started inside the
-  // guarded block and not before it, and why `started` says whether there is a session to kill.
-  let started = false;
-  let host: InProcessHost;
-  let flow: { readonly root: string; readonly design: string };
   try {
-    startSession(keeper, 900);
-    started = true;
-    const written = await writeStandinFlow(t, h, { sleepSeconds: 0 });
-    assert.ok(written, 'the stand-in flow was generated');
-    flow = written;
+    const flow = await writeStandinFlow(t, h, { sleepSeconds: 0 });
+    assert.ok(flow, 'the stand-in flow was generated');
     await writeLocalSite(h, {
-      allowedReadRoots: [h.workspace, written.root],
-      allowedWriteRoots: [h.workspace],
-      bindings: { flowRoot: written.root, design: written.design, workspaceRoot: h.workspace },
+      allowedReadRoots: [h.workspace, flow.root], allowedWriteRoots: [h.workspace],
+      bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace },
     });
-    host = await bootInProcess(h);
-  } catch (err) {
-    if (started) killSession(keeper);
-    await h.dispose();
-    throw err;
-  }
-  const b: Bench = { h, host, runId: '', sessions: [], launches: [] };
-  return {
-    b,
-    flowRoot: flow.root,
-    design: flow.design,
-    dispose: async () => {
-      for (const session of b.sessions) spawnSync('tmux', ['kill-session', '-t', `=${session}`], { timeout: 15_000 });
-      killSession(keeper);
-      await host.dispose();
-      await h.dispose();
-    },
-  };
+    const host = await bootInProcess(h);
+    const b: Bench = { h, host, runId: '', launches: [] };
+    return { b, flowRoot: flow.root, design: flow.design,
+      dispose: async () => { await host.dispose(); await h.dispose(); },
+    };
+  } catch (error) { await h.dispose(); throw error; }
 }
 
 /** The Campaign's own copy of the flow, which is where every generation of a real Run builds (D19). */
@@ -299,7 +163,7 @@ async function copyOfTheFlow(flowRoot: string, into: string): Promise<string> {
   return into;
 }
 
-test('every stage of the stand-in runs as a Job under the local Permit, writes its report inside the workspace with the inputs it was computed from, and leaves the bound flow root exactly as it was', async (t) => {
+test('every stage of the stand-in runs as a bounded fixture under the local Permit, writes its report inside the workspace with the inputs it was computed from, and leaves the bound flow root exactly as it was', async (t) => {
   const { b, flowRoot, design, dispose } = await bench(t);
   try {
     const before = await listing(flowRoot);
@@ -307,24 +171,20 @@ test('every stage of the stand-in runs as a Job under the local Permit, writes i
     const results = path.join(flow, 'results', design);
     const D = `DESIGN=${design}`;
 
-    // The Permit this Site was written with runs two wrappers and no more, and every stage below is
-    // launched as one of them: a command wanting anything else is refused before tmux is asked for
-    // anything at all.
-    const refused = await himaCommand(
-      b.host,
-      b.h.workspace,
-      `/hima job launch local ${b.h.workspace} --name not-a-wrapper -- perl -e 1`,
-      stageTimeoutMs,
-    );
-    assert.equal(refused.kind, 'error', `a wrapper the Permit does not allow is refused: ${refused.text}`);
-    assert.match(refused.text, /^refused to launch/, refused.text);
+    // A disallowed wrapper is refused by the production Permit before any fixture process starts.
+    const site = loadSite(path.join(b.h.home, 'hima/sites'), 'local');
+    const { decideLaunch } = await import(pathToFileURL(path.join(repoRoot, 'packages/harness/lib/shell.js')).href);
+    const refused = await decideLaunch(site, b.h.workspace, ['perl', '-e', '1'], channelFor(site));
+    assert.equal(refused.ok, false, JSON.stringify(refused));
+    assert.match(refused.reason, /perl.*not an allowed wrapper/, JSON.stringify(refused));
+    assert.equal(b.launches.length, 0, 'no process was started for the refused wrapper');
 
     // 1. Foundry-only synthesis: the stage that was already here, unchanged. 2.05 misses the 2.20 the
     // flow closes at by 0.15, and Design Compiler states a shortfall and never a margin (#54).
     await stageOk(b, flow, 'synth', [D, `CLOCK_PERIOD_NS=${PERIOD_NS}`, 'FORCE_SYNTH=1', 'EDA_CONTAINER_NAME=hima-t60']);
     const foundrySaid = await observed(b, path.join(results, 'syn/report/qor.rpt'), 'dc-qor-report', {
       rules: 'setup-wns-all-nonnegative,clock-period-at-most',
-      params: [`target_period_ns=${PERIOD_NS}`],
+      params: { target_period_ns: Number(PERIOD_NS) },
     });
     assert.equal(verdictOf(foundrySaid, 'setup-wns-all-nonnegative'), 'FAIL', `the foundry-only synthesis missed: ${foundrySaid}`);
     assert.equal(verdictOf(foundrySaid, 'clock-period-at-most'), 'PASS', `and was read at the period it was asked for: ${foundrySaid}`);
@@ -377,7 +237,7 @@ test('every stage of the stand-in runs as a Job under the local Permit, writes i
     // evidence of the failure survives it, and no database is left for the next stage to mistake for
     // a passed gate.
     const failed = await runStage(b, flow, 'lc', [D, 'LC_FAIL=1']);
-    const failedSaid = await stageLog(b, failed);
+    const failedSaid = await failed.log;
     // The Job's exit code is make's own 2, because make reports "a recipe failed" and never the code
     // the recipe left; the stage's own 4 — the gate, and not a stage run out of order, which is 2 —
     // is in what make said about it.
@@ -407,10 +267,10 @@ test('every stage of the stand-in runs as a Job under the local Permit, writes i
     assert.equal(adoption.adoptedInstances, 45, JSON.stringify(adoption));
     const customSaid = await observed(b, path.join(results, 'syn-custom/report/qor.rpt'), 'dc-qor-report', {
       rules: 'setup-wns-all-nonnegative,clock-period-at-most',
-      params: [`target_period_ns=${PERIOD_NS}`],
+      params: { target_period_ns: Number(PERIOD_NS) },
     });
     assert.equal(verdictOf(customSaid, 'setup-wns-all-nonnegative'), 'PASS', `the generated library meets 2.05: ${customSaid}`);
-    assert.equal(verdictOf(customSaid, 'clock-period-at-most'), 'PASS', customSaid);
+    assert.equal(verdictOf(customSaid, 'clock-period-at-most'), 'PASS', JSON.stringify(customSaid));
     const customQor = await readFile(path.join(results, 'syn-custom/report/qor.rpt'), 'utf8');
     assert.match(customQor, /^\s*Critical Path Slack:\s+0\.00$/m, `a met period states no margin: ${customQor}`);
     assert.match(customQor, /^\s*Critical Path Clk Period:\s+2\.05$/m, customQor);
@@ -434,7 +294,7 @@ test('every stage of the stand-in runs as a Job under the local Permit, writes i
       });
       const met = !want.wns.startsWith('-');
       assert.equal(verdictOf(said, 'setup-wns-all-nonnegative'), met ? 'PASS' : 'FAIL', `the ${arm} arm's post-route margin at 2.05: ${said}`);
-      assert.equal(verdictOf(said, 'setup-wns-reg2reg-nonnegative'), met ? 'PASS' : 'FAIL', said);
+      assert.equal(verdictOf(said, 'setup-wns-reg2reg-nonnegative'), met ? 'PASS' : 'FAIL', JSON.stringify(said));
       const summary = await readFile(path.join(results, `pnr-${arm}`, 'postroute.summary'), 'utf8');
       assert.match(summary, new RegExp(`^\\|\\s+WNS \\(ns\\):\\| ${want.wns}\\s+\\| ${want.wns}\\s+\\|$`, 'm'), `the ${arm} arm's two scopes: ${summary}`);
       assert.match(summary, /^Density: 48\.500%$/m, `and the density line the reader folds: ${summary}`);
@@ -467,11 +327,9 @@ test('every stage of the stand-in runs as a Job under the local Permit, writes i
       assert.match(drc, new RegExp(`^#\\s+Inputs:\\s+arm=${arm} librarySet=(true|false) generatedCells=\\d+ violations=0$`, 'm'), `and the report says what it was asked for: ${drc}`);
     }
 
-    // Every stage above was a Job of one Run, launched as `make` and inside the one workspace the
-    // Permit resolved — all of it out of the launches' own answers.
-    assert.deepEqual([...new Set(b.launches.map(wrapperOf))], ["'make'"], `every stage ran under a wrapper the Permit allows: ${JSON.stringify(b.launches)}`);
-    assert.deepEqual([...new Set(b.launches.map(workspaceOf))], [realpathSync(b.h.workspace)], 'all of them in one workspace');
-    assert.equal(b.launches.filter((said) => said.includes(` in ${b.runId}`)).length, b.launches.length, 'and all of them in one Run');
+    // Actual Permit decisions precede every fixture process; DBOS execution is tested elsewhere.
+    assert.deepEqual([...new Set(b.launches.map(item => item.wrapper))], ['make']);
+    assert.deepEqual([...new Set(b.launches.map(item => item.workspace))], [realpathSync(b.h.workspace)]);
 
     // And the flow the Site binds — the one a Campaign copies and never builds in — is byte for byte
     // what it was before any of this ran.
@@ -680,9 +538,8 @@ test('a value make itself would have expanded, a project root of someone else\'s
     // A value make itself would have expanded. Make expands a command-line value the moment it
     // references the variable — before any recipe has run — so a `$(shell …)` in one ran its
     // command before the shell below could look at it at all. These eleven are handed to `make`
-    // directly rather than through `/hima job launch`, for one reason: a chat command's words are
-    // separated by whitespace, so a value with a space in it cannot be typed on a launch line, and
-    // every make expression that runs anything needs one. Each canary is outside the workspace.
+    // directly as argv so whitespace and make expressions reach the generated makefile unchanged.
+    // Each canary is outside the workspace.
     const expanded: readonly (readonly [string, string, readonly string[]])[] = [
       ['route', 'mine', [D, `ROUTE=$(shell touch ${canary('route')})`, 'PROFILE=broad', 'TOP_N=10']],
       ['profile', 'mine', [D, 'ROUTE=r1', `PROFILE=$(shell touch ${canary('profile')})`, 'TOP_N=10']],
@@ -752,8 +609,7 @@ test('the makefile takes the variables it declares and no others, holds each to 
     const results = path.join(flow, 'results', design);
     const D = `DESIGN=${design}`;
 
-    // Every one of these is a word a person can type on a launch line, so every one of them goes
-    // through `/hima job launch` and the Permit, exactly as a stage does. Three kinds are under
+    // Every case uses the production Permit decision before its bounded make fixture. Three kinds are under
     // test at once: a variable this flow keeps for itself (the helper that holds every other value,
     // a path this flow derives, and — the boundary's own two names, which a command line cannot win
     // but must still be told it may not have), a name this flow has never declared, and a value
@@ -792,7 +648,7 @@ test('the makefile takes the variables it declares and no others, holds each to 
     const refused = 'refused, and said which value it would not have';
     for (const [what, vars, words] of refusals) {
       const run = await runStage(b, flow, 'mine', vars);
-      const text = await stageLog(b, run);
+      const text = await run.log;
       said[what] = run.exitCode === 0 ? `ran anyway, exit 0: ${text}` : words.test(text) ? refused : `refused, but said: ${text}`;
     }
     assert.deepEqual(said, Object.fromEntries(refusals.map(([what]) => [what, refused])), 'every one of them is refused in words a person can act on');
@@ -832,7 +688,7 @@ test('what a stage removes is resolved on disk before it is removed: a symlinked
     await stageOk(b, flow, 'mine', [D, 'ROUTE=r1', 'PROFILE=broad', 'TOP_N=2', `CLOCK_PERIOD_NS=${PERIOD_NS}`]);
     symlinkSync(pointedAt, path.join(flow, 'results', design, 'netlist'));
     const redirected = await runStage(b, flow, 'netlist', [D]);
-    const saidOfTheLink = await stageLog(b, redirected);
+    const saidOfTheLink = await redirected.log;
     assert.notEqual(redirected.exitCode, 0, `netlist through a symlinked output directory was expected to be refused: ${saidOfTheLink}`);
     assert.match(saidOfTheLink, /\[stand-in\] netlist: refusing to remove anything through a symlink/, saidOfTheLink);
 
@@ -845,7 +701,7 @@ test('what a stage removes is resolved on disk before it is removed: a symlinked
     // next test gives that branch a path of its own.
     const climbing = path.relative(path.join(flow, 'results'), climbedTo);
     const climbed = await runStage(b, flow, 'netlist', [`DESIGN=${climbing}`, 'standin-hold=']);
-    const saidOfTheClimb = await stageLog(b, climbed);
+    const saidOfTheClimb = await climbed.log;
     assert.notEqual(climbed.exitCode, 0, `netlist with a design climbing to ${climbedTo} was expected to be refused: ${saidOfTheClimb}`);
     assert.match(saidOfTheClimb, /\[stand-in\] this flow takes only the variables it declares/, saidOfTheClimb);
 
@@ -865,10 +721,8 @@ test('the removal guard\'s own ".." refusal fires in its own words when it is wh
   // defence in depth, and this calls the shell this module actually ships (`mustBeInside`,
   // exported for exactly this), directly, with a target no declared surface could produce, so a
   // regression in the branch itself — and not only in what stops the climb case above — is red
-  // here. Spawned directly rather than through `/hima job launch` for the same reason as the
-  // containment test above: this is a unit call on the guard's own shell, not a claim about the
-  // product's launch face, which the tests above already exercise for every value the declared
-  // surface can carry.
+  // here. This is a direct unit call on the guard's own shell; the cases above exercise the
+  // generated flow's declared surface.
   const h = await createEmptyHome();
   try {
     const root = path.join(h.home, 'guard-root');
@@ -950,7 +804,7 @@ test('the library gate fails on request even with an empty candidate set: a posi
     // were to compile: an error count counted off an empty set would have been zero, which reads as
     // a library that compiled cleanly, and a database would have been written on the strength of it.
     const failed = await runStage(b, flow, 'lc', [D, 'LC_FAIL=1']);
-    const said = await stageLog(b, failed);
+    const said = await failed.log;
     assert.equal(failed.exitCode, 2, `the gate stopped the flow: ${said}`);
     assert.match(said, /\[lc\] Error 4/, `and the gate is what stopped it: ${said}`);
     const report = await readFile(path.join(results, 'lc', 'lc.rpt'), 'utf8');

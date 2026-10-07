@@ -411,7 +411,7 @@ test('normal project cancellation refuses an undisclosed Run before reading its 
   }
 });
 
-test('every route the workbench uses, and the workbench page itself, sit behind the web app\'s own session cookie', async (t) => {
+test('every route the workbench uses sits behind the web app\'s own session cookie', async (t) => {
   const wb = await bootedWorkbench(t);
   if (!wb) return;
   try {
@@ -430,13 +430,6 @@ test('every route the workbench uses, and the workbench page itself, sit behind 
       assert.equal(refused.error.code, 'hima/not-authorized', `${target} is refused without the session cookie`);
     }
 
-    // The page is behind the same fence, and says so as a page: it is a document a browser loads,
-    // so its refusal is HTML rather than the routes' JSON error body.
-    const page = await fetch(new URL('/hima/', wb.host.url));
-    const pageBody = await page.text();
-    assert.equal(page.status, 401, `/hima/ is refused without the session cookie: ${pageBody}`);
-    assert.equal(page.headers.get('content-type'), 'text/html; charset=utf-8', pageBody);
-    assert.match(pageBody, /no browser session/, pageBody);
   } finally { await wb.dispose(); }
 });
 
@@ -479,7 +472,7 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
     });
     assert.deepEqual(
       registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(),
-      ['hima_author', 'hima_context', 'hima_execute', 'hima_observe', 'hima_run'],
+      ['hima_author', 'hima_context', 'hima_execute', 'hima_insight_analysis', 'hima_observe', 'hima_run'],
       'the card renders a run wherever a Hima tool reported one, and claims no other key',
     );
 

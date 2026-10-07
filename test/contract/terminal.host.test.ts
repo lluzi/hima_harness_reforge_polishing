@@ -71,8 +71,7 @@ test('a Campaign owner cannot occupy its turn with raw bash or a persistent term
       goal: { target_period_ns: 2 },
       ownerSessionId: String(owner.id),
     });
-    assert.equal(started.kind, 'ran');
-    if (started.kind !== 'ran') return;
+    assert.ok(started.kind === 'preparing' || started.kind === 'ran', JSON.stringify(started));
     runId = started.run.id;
 
     let sequence = 0;
@@ -85,28 +84,28 @@ test('a Campaign owner cannot occupy its turn with raw bash or a persistent term
     });
 
     const ownerBash = await call(owner, 'bash', {
-      command: 'sleep 600',
-      description: 'Attempt to wait for a Campaign Job outside Hima',
+      command: 'printf campaign-shell-probe',
+      description: 'Probe raw shell access outside the Campaign contract',
     });
-    assert.equal(ownerBash.isError, true, 'a Campaign owner cannot hide a long Job wait in raw bash');
-    assert.match(JSON.stringify(ownerBash), /Campaign Agent.*raw (?:shell|terminal)/i);
+    assert.equal(ownerBash.isError, true, 'a Campaign owner cannot acquire raw shell access outside its task contract');
+    assert.match(JSON.stringify(ownerBash), /(?:Campaign Agent.*raw (?:shell|terminal)|retained Campaign.*shell and terminal)/i);
 
     const ownerTerminal = await call(owner, 'terminal_open', { type: 'shell', name: 'campaign-wait' });
     assert.equal(ownerTerminal.isError, true);
-    assert.match(JSON.stringify(ownerTerminal), /Campaign Agent.*raw (?:shell|terminal)/i);
+    assert.match(JSON.stringify(ownerTerminal), /(?:Campaign Agent.*raw (?:shell|terminal)|retained Campaign.*shell and terminal)/i);
 
     const childBash = await call(campaignChild, 'bash', {
-      command: 'sleep 600',
+      command: 'printf campaign-shell-probe',
       description: 'Attempt to bypass Campaign delegation with a raw shell',
     });
     assert.equal(childBash.isError, true);
-    assert.match(JSON.stringify(childBash), /(?:native child Agent.*raw (?:shell|terminal)|needs a recorded Hima delegation)/i);
+    assert.match(JSON.stringify(childBash), /(?:native child Agent.*raw (?:shell|terminal)|needs a recorded (?:Hima|native task) delegation|retained Campaign.*shell and terminal)/i);
 
     const childTerminal = await call(campaignChild, 'terminal_open', { type: 'shell', name: 'campaign-child-wait' });
     assert.equal(childTerminal.isError, true);
-    assert.match(JSON.stringify(childTerminal), /(?:native child Agent.*raw (?:shell|terminal)|needs a recorded Hima delegation)/i);
+    assert.match(JSON.stringify(childTerminal), /(?:native child Agent.*raw (?:shell|terminal)|needs a recorded (?:Hima|native task) delegation|retained Campaign.*shell and terminal)/i);
 
-    const control = host.ctx.hima.ledger.run(runId)!.control!;
+    const control = (await host.ctx.hima.readExecutionContext(runId)).run.control!;
     const handed = await host.ctx.hima.executionAction({
       runId,
       actor: String(owner.id),
@@ -118,11 +117,11 @@ test('a Campaign owner cannot occupy its turn with raw bash or a persistent term
     });
     assert.equal(handed.kind, 'accepted', handed.reason);
     const successorBash = await call(successor, 'bash', {
-      command: 'sleep 600',
+      command: 'printf campaign-shell-probe',
       description: 'Attempt raw shell after an explicit Run handoff',
     });
     assert.equal(successorBash.isError, true);
-    assert.match(JSON.stringify(successorBash), /Campaign Agent.*raw (?:shell|terminal)/i);
+    assert.match(JSON.stringify(successorBash), /(?:Campaign Agent.*raw (?:shell|terminal)|retained Campaign.*shell and terminal)/i);
 
     const sideTalkBash = await call(sideTalk, 'bash', {
       command: 'printf side-talk-ok',

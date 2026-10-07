@@ -13,12 +13,12 @@ import { chmod, mkdir, readFile, realpath, rename, rm, stat, symlink, writeFile 
 import path from 'node:path';
 import { parse } from 'yaml';
 import { createHimaHome, repoRoot, type HimaHome } from './support/dsh-home.ts';
-import { bootInProcess, type InProcessHost } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
 import { graphForLegacyTimingPush, installDrillDown, installPack, packsDirOf, shippedPacksDir, timingProbePackId, versionFileFor, writePackFiles, writePackVariant } from './support/pack.ts';
 import { writeStandinFlow } from './support/standin-flow.ts';
-import { killSessions } from './support/fabric.ts';
+import { killSessions, waitUntil } from './support/fabric.ts';
 import { bundledReaderValues } from './support/readings.ts';
 import { checkPack, clearRemoteCommands, harnessVersion, heldToOneInode, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, jobPlumbing, loadPack, loadSite, packDigestOf, packStageOf, packVersionFile, quote, readOnlyProbes, readSemanticsFile, remoteCommands, shippedSemanticsFile, workspacePlumbing } from '@hima/harness';
 // The bundled reader library's own declarations, which this file holds against the bundle's own
@@ -1914,10 +1914,9 @@ test('a pack folder that is a link out of the packs directory is refused naming 
     const checked = await himaCommand(host, h.workspace, '/hima pack check linked-pack-probe --site local');
     assert.equal(checked.kind, 'error', checked.text);
     assert.match(checked.text, /linked-pack-probe is not a directory: a pack folder is a plain directory under the packs directory/, checked.text);
-    const ran = await himaCommand(host, h.workspace, '/hima run linked-pack-probe --site local --goal target_period_ns=2');
-    assert.equal(ran.kind, 'error', ran.text);
-    assert.match(ran.text, /linked-pack-probe is not a directory: a pack folder is a plain directory under the packs directory/, ran.text);
-    assert.equal(ran.runId, undefined, 'and no Run was opened at all');
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    await assert.rejects(host.ctx.hima.startRun({ pack: 'linked-pack-probe', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) }), /linked-pack-probe is not a directory: a pack folder is a plain directory under the packs directory/);
+    assert.equal((await host.ctx.hima.durable.store.runs()).length, 0, 'no invalid method is admitted as a Run');
   } finally {
     await dispose();
   }
@@ -1996,10 +1995,9 @@ test('a hidden entry that is not a plain file is refused naming it: the digest, 
     assert.equal(released.kind, 'error', released.text);
     assert.match(released.text, /\.linked is not a plain file/, released.text);
     assert.ok(!existsSync(path.join(dir, 'VERSION.yml')), 'and nothing was sealed');
-    const ran = await himaCommand(host, h.workspace, '/hima run hidden-link-probe --site local --goal target_period_ns=2');
-    assert.equal(ran.kind, 'error', ran.text);
-    assert.match(ran.text, /\.linked is not a plain file/, ran.text);
-    assert.equal(ran.runId, undefined, 'and no Run was opened at all');
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    await assert.rejects(host.ctx.hima.startRun({ pack: 'hidden-link-probe', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) }), /\.linked is not a plain file/);
+    assert.equal((await host.ctx.hima.durable.store.runs()).length, 0, 'no invalid method is admitted as a Run');
 
     // A dangling one is the same answer, and it is the one that could not be caught any later: every
     // other read of a pack folder is entitled to take `ENOENT` for "not there".
@@ -2040,10 +2038,9 @@ test('a link under a hidden directory is refused naming it: a namespace nobody m
     assert.equal(released.kind, 'error', released.text);
     assert.match(released.text, /\.state\/outside-link is not a plain file/, released.text);
     assert.ok(!existsSync(path.join(dir, 'VERSION.yml')), 'and nothing was sealed');
-    const ran = await himaCommand(host, h.workspace, '/hima run hidden-subtree-probe --site local --goal target_period_ns=2');
-    assert.equal(ran.kind, 'error', ran.text);
-    assert.match(ran.text, /\.state\/outside-link is not a plain file/, ran.text);
-    assert.equal(ran.runId, undefined, 'and no Run was opened at all');
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    await assert.rejects(host.ctx.hima.startRun({ pack: 'hidden-subtree-probe', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) }), /\.state\/outside-link is not a plain file/);
+    assert.equal((await host.ctx.hima.durable.store.runs()).length, 0, 'no invalid method is admitted as a Run');
 
     // An ordinary file under that same hidden directory is not a fault and is not a file of the
     // pack: inspecting a hidden subtree is not the same as hashing one. The folder goes on hashing,
@@ -2210,10 +2207,9 @@ test('a regular file standing where a pack folder would be is named by the check
     assert.match(checked.text, /misplaced-probe is not a directory: a pack folder is a plain directory under the packs directory/, checked.text);
     // And the same answer from the face that would otherwise start a Campaign of it: a name a person
     // can type is a name every face has to answer the same way.
-    const ran = await himaCommand(host, h.workspace, '/hima run misplaced-probe --site local --goal target_period_ns=2');
-    assert.equal(ran.kind, 'error', ran.text);
-    assert.match(ran.text, /misplaced-probe is not a directory: a pack folder is a plain directory under the packs directory/, ran.text);
-    assert.equal(ran.runId, undefined, 'and no Run was opened at all');
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    await assert.rejects(host.ctx.hima.startRun({ pack: 'misplaced-probe', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) }), /misplaced-probe is not a directory: a pack folder is a plain directory under the packs directory/);
+    assert.equal((await host.ctx.hima.durable.store.runs()).length, 0, 'no invalid method is admitted as a Run');
   } finally {
     await dispose();
   }
@@ -2235,12 +2231,17 @@ test('a test record whose Ending holds two status lines is refused naming the se
     });
     // A real test Run of this folder, because the three bound lines are held against the Run's own
     // records and a record naming a Run this ledger does not hold never reaches them.
-    const ran = await himaCommand(host, h.workspace, '/hima run two-endings-probe --site local --goal target_period_ns=2.3 --set periodNs=2.2 --test --generations 1', 90_000);
-    assert.equal(ran.kind, 'success', ran.text);
-    const runId = ran.runId;
-    assert.ok(runId, `the test run was started and named: ${ran.text}`);
+    const owner = await createRootAgent(host.ctx, h.workspace);
+    const opened = await host.ctx.hima.startRun({ pack: 'two-endings-probe', site: 'local', goal: { target_period_ns: 2.3 },
+      strategy: { periodNs: 2.2 }, test: true, generationLimit: 1, ownerSessionId: String(owner.id) });
+    assert.ok(opened.kind === 'preparing' || opened.kind === 'ran', JSON.stringify(opened));
+    const runId = opened.run.id;
+    await waitUntil('the DBOS test Run has its actual ending', async () =>
+      (await host.ctx.hima.readExecutionContext(runId)).run.status?.startsWith('ended-') === true, 20_000, 25);
     started.push(...recordsOf(host, runId).flatMap((r) => (r.type === 'job' && r.event === 'launched' ? [r.job.session] : [])));
-    const row = host.ctx.hima.ledger.run(runId)!;
+    const row = (await host.ctx.hima.readExecutionContext(runId)).run;
+    assert.equal(row.purpose, 'test');
+    assert.equal(row.status, 'ended-goal-met');
     const recordWith = (ending: string): string => {
       const bound: Readonly<Record<string, string>> = { Run: `run: ${runId}`, Ending: ending, Code: 'none', Refusals: 'none' };
       return HIMA_TEST_SECTIONS.map((section) => `## ${section}\n\n${bound[section] ?? 'what this run recorded'}\n`).join('\n');
@@ -2253,7 +2254,7 @@ test('a test record whose Ending holds two status lines is refused naming the se
     // The same record with a second `status:` line under it, naming another ending: the first still
     // agrees with the ledger, so a check that compared only the line it found first would seal a
     // record that states two different endings of one campaign.
-    const otherEnding = row.status === 'ended-converged' ? 'ended-goal-met' : 'ended-converged';
+    const otherEnding = 'ended-converged';
     assert.notEqual(otherEnding, row.status, 'the second line names an ending this run did not reach');
     await writePackFiles(dir, { 'TEST.md': recordWith(`status: ${String(row.status)}\nstatus: ${otherEnding}`) });
     const twice = await himaCommand(host, h.workspace, '/hima pack check two-endings-probe --site local');

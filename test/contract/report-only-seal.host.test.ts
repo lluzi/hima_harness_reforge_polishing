@@ -19,15 +19,14 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { appendFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parse } from 'yaml';
-import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, checkTestRecord, loadPack, packStage } from '@hima/harness';
+import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, checkTestRecord, loadPack, packStage, packDigestOf, writeRunAssets } from '@hima/harness';
 import { bootInProcess, createRootAgent, sayAsUser, toolCalls, toolResults } from './support/boot-inprocess.ts';
-import { localHome, waitUntil } from './support/fabric.ts';
+import { localHome } from './support/fabric.ts';
 import { packsDirOf, timingProbePackId, writePackFiles } from './support/pack.ts';
 import { QUIET_TITLE_ROW } from './support/pipeline.ts';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { sealEndedTestRun } from '../../scripts/report-only-seal.ts';
 
-process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 
 const packId = timingProbePackId;
@@ -59,7 +58,7 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
   await cp(packDir, path.join(sourcePacksDir, packId), { recursive: true });
 
   // 1. The owner: a root session in the workspace under the App's own permission preset, which opens
-  //    the test Run and sees it end.
+  //    retained historical test Run.
   let runId = ''; let ownerId = '';
   const opening = await bootInProcess(h);
   try {
@@ -70,14 +69,12 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
     presets.set(owner.session, 'workspace-write');
     assert.equal(presets.current(owner.session), 'workspace-write', 'the owner runs under the App\'s workspace-write preset');
     ownerId = String(owner.id);
-    // A three-second time box ends the owned test Run by its budget without a node run: the cheapest
-    // honest ending, and one the report-only seal must record exactly as it is.
-    const started = await opening.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2 },
-      ownerSessionId: ownerId, test: true, timeBoxMs: 3000 });
-    assert.equal(started.kind, 'ran', JSON.stringify(started));
-    if (started.kind !== 'ran') return;
-    assert.equal(started.run.purpose, 'test');
-    runId = started.run.id;
+    // The seal is a historical Ledger operation. Seed its already retained test facts explicitly;
+    // this fixture does not claim to test DBOS execution or automatic budget closure.
+    const run = await opening.ctx.hima.ledger.createRun({ campaignId: 'report-only-historical-test', siteId: 'local',
+      packId, packDigest: packDigestOf(packDir), purpose: 'test', status: 'running', currentNode: 'synthesize',
+      control: { mode: 'agent', owner: ownerId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
+    runId = run.id;
     // What a real Campaign leaves behind and the record must name: refusals and generated code,
     // appended through the Ledger's own typed appenders while the Run is still open.
     const ledger = opening.ctx.hima.ledger;
@@ -87,11 +84,11 @@ test('report-only seal in a desktop-shaped home: the App-made workspace-write ow
     await mkdir(path.dirname(codeAt), { recursive: true }); await writeFile(codeAt, codeBytes);
     await ledger.appendCode(runId, { nodeId: 'synthesize', attempt: 1, sessionId: ownerId, workshop: 'probe-workshop',
       path: codeAt, sha256: createHash('sha256').update(codeBytes).digest('hex'), bytes: codeBytes.length, language: 'python' });
-    await waitUntil('the test Run ends', () => opening.ctx.hima.ledger.run(runId)?.status?.startsWith('ended-') === true, 30_000);
-    // An ended Run is closed by its archive; the live Run the seal is for had delivered its archive.
-    await waitUntil('the ended Run\'s archive is delivered', () => opening.ctx.hima.ledger.records({ runId })
-      .some((r) => r.type === 'archive' && (r as { delivery?: string }).delivery === 'complete'), 30_000)
-      .catch((error: unknown) => { throw new Error(`${String(error)}: ${JSON.stringify(opening.ctx.hima.ledger.records({ runId }).filter((r) => r.type === 'archive'))}`); });
+    await ledger.advanceRun(runId, { status: 'ended-budget-exhausted' });
+    const archive = await writeRunAssets({ ledger, sitesDir: path.join(h.home, 'hima/sites'), packsDir: packsDirOf(h) }, runId);
+    assert.equal(archive.kind, 'written', JSON.stringify(archive));
+    assert.ok(ledger.records({ runId }).some(r => r.type === 'archive' && r.delivery === 'complete'),
+      'the historical test fixture has a verified delivered archive');
     assert.equal(opening.ctx.hima.ledger.run(runId)?.control?.owner, ownerId, 'the Run is the owner\'s');
   } finally { await opening.dispose(); }
 

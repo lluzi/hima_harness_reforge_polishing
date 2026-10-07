@@ -29,9 +29,6 @@ test('the top-level Refresh Run data button re-reads the Campaign file immediate
     await d.open('/');
     await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
     await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await browser.markText('button', 'Configure later', 'campaign-refresh-models-later');
-    assert.ok((await d.click('campaign-refresh-models-later')).ok);
     const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
     const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
       type: 'client-request', rpcId: 'campaign-refresh-workspace', method: 'workspace/create', payload: { args: { request: { path: home.h.workspace } } },

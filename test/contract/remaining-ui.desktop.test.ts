@@ -206,7 +206,10 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     const reportRef = 'experience:fixture';
     await enable(browser, [`*/hima/api/runs/${runId}?*`, '*/hima/api/context/report-address', '*/hima/api/context']);
     const runRead = await next(browser, paused => paused.request.method === 'GET' && paused.request.url.includes(`/runs/${runId}?`));
-    await fulfill(browser, runRead, { ...actualView, experience: { recordId: reportRef, writtenAt: '2026-09-23T12:00:00.000Z', markdown: { path: '/fixture/report.md', sha256: hash('1'), bytes: 80 }, json: { path: '/fixture/report.json', sha256: hash('2'), bytes: 160 } } });
+    // DBOS has advanced while the other panels were exercised. Use the current public projection:
+    // the Workbench correctly refuses the earlier snapshot once its source revision is stale.
+    const reportView = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
+    await fulfill(browser, runRead, { ...reportView, experience: { recordId: reportRef, writtenAt: '2026-09-23T12:00:00.000Z', markdown: { path: '/fixture/report.md', sha256: hash('1'), bytes: 80 }, json: { path: '/fixture/report.json', sha256: hash('2'), bytes: 160 } } });
     await browser.wait(`!!document.querySelector('[data-hima-control="studio-open-retained-insight"]')`);
     assert.ok((await d.click('studio-open-retained-insight')).ok);
     const addressRequest = await next(browser, paused => paused.request.url.endsWith('/context/report-address')); assert.equal(requestBody(addressRequest).reportRef, reportRef);
@@ -228,7 +231,8 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     const wave2Evidence=JSON.parse(await readFile(path.join(wave2Root,'evidence.json'),'utf8'));
     const fixture=JSON.parse(await readFile(path.join(wave2Root,'insight-report.json'),'utf8'));
     const libraryRef=wave2Evidence.reportTarget.reportRef as string;
-    await fulfill(browser,libraryRunRead,{...actualView,experience:{recordId:libraryRef,writtenAt:'2026-09-23T12:00:07.000Z',markdown:{path:'/fixture/library.md',sha256:hash('3'),bytes:80},json:{path:'/fixture/library.json',sha256:hash('4'),bytes:160}}});
+    const libraryView=await (await api(host,cookie,`/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
+    await fulfill(browser,libraryRunRead,{...libraryView,experience:{recordId:libraryRef,writtenAt:'2026-09-23T12:00:07.000Z',markdown:{path:'/fixture/library.md',sha256:hash('3'),bytes:80},json:{path:'/fixture/library.json',sha256:hash('4'),bytes:160}}});
     await browser.wait(`!!document.querySelector('[data-hima-control="studio-open-retained-insight"]')`);
     assert.ok((await d.click('studio-open-retained-insight')).ok);
     const libraryAddress=await next(browser,paused=>paused.request.url.endsWith('/context/report-address'));

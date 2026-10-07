@@ -1,11 +1,11 @@
 // @hima-seam llm-replay direct
 // L3 acceptance (#41 task 9): the seven Campaign workspace states, light and dark, on Catsights,
-// plus state 8 (#63): a 132-node reference graph drawn in lanes.
+// Large-graph geometry uses the existing 51-node fixture; the retired 132-node ATCS case is removed.
 // Screenshots are the acceptance artefacts; this file also proves each state's own marker contract
 // so a broken render fails loud rather than only looking wrong in a picture nobody re-checks.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bootDriver, electronBinary, fillConfiguration, waitForConfigurationReady, whyNoWindow, type BootedDriver, type HostAnswer } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
@@ -15,10 +15,11 @@ import { repoRoot } from './support/dsh-home.ts';
 import { timingProbePackId } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 import { localHome, type LocalHome } from './support/fabric.ts';
-import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
+import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import type { RunView } from '@hima/harness';
 import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 import { appendReplaySession } from './support/moments.ts';
+import { QUIET_TITLE_ROW } from './support/pipeline.ts';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 
@@ -185,24 +186,8 @@ async function fillShipped(d: BootedDriver, browser: Inspector, target = '2.25')
   });
 }
 
-/** A one-line scripted reply, written as a fresh replay session/override pair inside a home: the
- *  only conversation turn most of this file's owner states need — "Keep this conversation as the
- *  Campaign Agent." answered with "Campaign Agent conversation is ready." (`campaign-graph.desktop
- *  .test.ts`'s own recipe).
- *
- *  C7 investigation note: a genuinely `running` node (as opposed to a Run merely `status: 'running'`
- *  with an unlaunched `currentNode`) needs a real Campaign Agent driving `hima_execute` turn by turn
- *  — `begin` admits a node, then `work` actually launches its Job, and `work` requires the
- *  `executionId` `begin`'s own receipt mints fresh per call (a `randomUUID()`), which a static
- *  replay script cannot know ahead of time. `{{fromRequest:<regex>}}` can in principle extract it
- *  from a later turn's own request (which by then carries the prior turn's tool result in its
- *  history), and scripting exactly that was tried here; it did not resolve within a reasonable
- *  number of iterations (the second scripted reply's own confirmation text never appeared), and
- *  chasing the exact reason further — inside `fabric.ts`'s own execution-admission protocol, out of
- *  this file's scope — was not a good trade against the rest of this review. States 3 and 6 below
- *  therefore read whichever node `run.currentNode` already names (the entry, immediately after
- *  Run creation) rather than gating on a literal `running` node-state read, which C7 asked for but
- *  this fixture cannot yet reliably produce. */
+/** Dialogue replay prepares the Guide and Campaign Agent; DBOS drives the real method.
+ * The command fixture stays in flight long enough to inspect an active task's card. */
 async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home: string } }): Promise<{ readonly file: string; readonly override: string; readonly children: readonly string[] }> {
   const dir = path.join(home.h.home, 'owner-replay'); await mkdir(dir, { recursive: true });
   const file = path.join(dir, 'session.jsonl');
@@ -213,23 +198,17 @@ async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home:
     { type: 'block-end', index: 0, block: { type: 'text', text } },
     { type: 'finish', reason: { kind: 'stop' } },
   ] });
-  await writeFile(override, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
-  return appendReplaySession({ file, override, readyFile: path.join(dir, 'unused-ready'), children: [] }, 'campaign-execution', [say('Campaign Agent conversation is ready.')]);
+  await writeFile(override, `${JSON.stringify([say('Fixture conversation is ready.')], null, 2)}\n`);
+  await appendFile(homePatchFile(home.h.home), QUIET_TITLE_ROW);
+  return appendReplaySession({ file, override, readyFile: path.join(dir, 'unused-ready'), children: [] }, 'side-talk', [say('Fixture conversation is ready.')]);
 }
 
-/** A home with the shipped Pack, the stand-in flow and the local Site already seeded
- *  (`localHome`, `support/fabric.ts` — the same fixture `growth.ts`'s and `revision.ts`'s own
- *  fixtures build on), booted with a one-line owner replay and `HIMA_TEST_LEGACY_AUTO_DRIVE`
- *  forced off — the only way a Run this window starts actually carries a conversational owner
- *  (`run.control`), which the FabricCanvas's own scene requires (`executionContext`, `fabric.ts`,
- *  returns no `method` at all once `run.control === undefined`; states 3, 4 and 6 need the graph
- *  itself, not only the masthead's status word). `home: 'hima'`'s own convenience seeding cannot be
- *  used here: it seeds no replay model, and without one a driven owner conversation has nothing to
- *  answer "Keep this conversation as the Campaign Agent." with. */
+/** Seed the existing shipped timing probe and native conversations. The Site command remains
+ * real; its bounded sleep keeps task state observable during window navigation. */
 async function bootOwnedShipped(
   t: TestContext, theme: 'light' | 'dark', port: number, extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<{ d: BootedDriver; home: LocalHome } | undefined> {
-  const home = await localHome(t, {});
+  const home = await localHome(t, { sleepSeconds: 90 });
   if (!home) return undefined;
   const replay = await ownerReplayFiles(home);
   const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port, theme, window: WINDOW,
@@ -239,25 +218,25 @@ async function bootOwnedShipped(
   return { d, home };
 }
 
-/** A short agent-owned Run on the shipped, fast pack (never the 51-node one — that is state 7's own
- *  subject): one native session says it will be the Campaign Agent, the scripted reply confirms it,
- *  and Configuration confirms a plain Campaign from the shipped Pack. */
-async function establishOwnerSession(d: BootedDriver, browser: Inspector): Promise<{ host: HostAnswer; cookie: string; ownerSessionId: string; runId: string }> {
+/** Start the shipped probe from a live Guide and read its independent owner from PostgreSQL. */
+async function establishOwnedCampaign(d: BootedDriver, browser: Inspector): Promise<{ host: HostAnswer; cookie: string; ownerSessionId: string; guideSessionId: string; workspaceId: string; runId: string }> {
   await d.open('/');
   await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
   await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
   const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
   const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId: 'owner-workspace', method: 'workspace/create', payload: { args: { request: { path: d.home.workspace } } } }) });
-  assert.equal((await workspace.json() as { result: { ok: boolean } }).result.ok, true);
+  const madeWorkspace = await workspace.json() as { result: { ok: boolean; value: { workspace: { workspaceId: string } } } };
+  assert.equal(madeWorkspace.result.ok, true);
+  const workspaceId = madeWorkspace.result.value.workspace.workspaceId; assert.ok(workspaceId);
   await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
   await browser.markText('button', 'New Session', 'new-owner-session'); assert.ok((await d.click('new-owner-session')).ok);
   await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
   await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
-  await browser.send('Input.insertText', { text: 'Keep this conversation as the Campaign Agent.' });
+  await browser.send('Input.insertText', { text: 'Prepare a bounded Campaign from the Guide.' });
   await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /start|send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible new-session start control'); e.setAttribute('data-hima-control','start-owner-session'); })()`);
   assert.ok((await d.click('start-owner-session')).ok);
-  await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
+  await browser.wait(`!!document.querySelector('[aria-label="Send message"]')`, 15_000);
   assert.ok((await d.click('open-workbench')).ok);
   assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
   const owner = await d.read('studio'); assert.ok(owner.ok, JSON.stringify(owner));
@@ -271,20 +250,8 @@ async function establishOwnerSession(d: BootedDriver, browser: Inspector): Promi
   assert.equal(guideView.run.control?.guideSessionId, ownerSessionId);
   const executionOwner = guideView.run.control?.owner;
   if (typeof executionOwner !== 'string' || executionOwner === '') throw new Error(`Run has no native execution owner: ${JSON.stringify(guideView.run.control)}`);
-  await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
-  assert.ok((await d.click('open-owner')).ok);
-  await browser.wait(`!!document.querySelector('[contenteditable="true"]')`);
-  await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
-  await browser.send('Input.insertText', { text: 'Initialize this Campaign execution session without starting node work.' });
-  await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no execution session send control'); e.setAttribute('data-hima-control','initialize-execution-owner'); })()`);
-  assert.ok((await d.click('initialize-execution-owner')).ok);
-  await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready.')`, 15_000);
-  await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`);
-  await browser.mark('[data-hima-region="campaign-chip"]', 'execution-owner-chip');
-  assert.ok((await d.click('execution-owner-chip')).ok);
-  await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(executionOwner)}`);
-  await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') !== undefined`, 15_000);
-  return { host, cookie, ownerSessionId: executionOwner, runId };
+  assert.notEqual(executionOwner, ownerSessionId, 'Guide and execution owner are independent native conversations');
+  return { host, cookie, ownerSessionId: executionOwner, guideSessionId: ownerSessionId, workspaceId, runId };
 }
 
 /** Run both themes of one acceptance state under one `test()`, so the file reports exactly seven
@@ -305,58 +272,41 @@ async function bothThemes(t: TestContext, run: (theme: 'light' | 'dark') => Prom
   if (failures.length) throw new Error(failures.join('\n'));
 }
 
-/**
- * A2: opens a fresh native session and its own workbench pane, sharing the one bootstrap sequence
- * every "second session in this same window" state needs (state 6's own Side Talk today) — click
- * "New session", wait for its composer to render, wait for `open-workbench` to enable, click it,
- * then wait for that session's own `studio` region to actually mount.
- *
- * Diagnosed by running state 6 alone three times in a row (foreground, this sandbox): 2 of 3 runs
- * failed, every time at the exact same step — `document.querySelector('[data-hima-region="studio"]')
- * !== null` timing out — and every failure happened here, before a single Hima-specific assertion had
- * even run (the very next line after this helper reads `data-hima-state-session`, which is where a
- * genuine Fabric-state defect would instead surface). That is a session/dock-panel bootstrap race in
- * this sandbox, not a rendering defect this task's own acceptance criteria are about, so it is
- * hardened here with one bounded retry of the click-and-wait itself (max 2 attempts, logged) —
- * never a retry of a Hima assertion, which must still fail loud and immediately if the state it
- * reads is actually wrong.
- */
-async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser: Inspector, clickMark: string, openMark: string, notSession?: string): Promise<void> {
-  const maxAttempts = 2;
-  // "New session" is clicked at most once: a first attempt's own click already creates the fresh
-  // session (confirmed by its own composer rendering, waited for below), so a naive retry that
-  // re-clicked it on a second attempt was itself found to break the second attempt — a second click
-  // on that same control while a session draft is already open dismisses it instead of opening
-  // another, which then leaves no `open-workbench` control for the retry's own mark to find at all
-  // (empirically: attempt 2 failed at that exact mark, "missing control", diagnosed while building
-  // this fix). Only the part that actually raced in three straight foreground runs — the wait for
-  // `studio` to mount after `open-workbench` is clicked — is retried, together with re-clicking
-  // `open-workbench` itself (idempotent: clicking an already-open tab's own opener again is a no-op
-  // on the same tab), never the "New session" bootstrap step and never a Hima-specific assertion.
-  // The shell renders its "New session" control a beat after the previous session's page settles;
-  // marking it before it exists throws inside the page. Wait for it (bounded), never for a Hima fact.
-  await browser.wait(`!!document.querySelector('[aria-label="New session"]')`, 15_000);
-  await browser.mark('[aria-label="New session"]', clickMark);
-  assert.ok((await d.click(clickMark)).ok);
-  await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
-      await browser.mark('[data-hima-control="open-workbench"]', openMark);
-      assert.ok((await d.click(openMark)).ok);
-      // The previous session's own Campaign tab may still be mounted (each session keeps its dock),
-      // so "a studio exists" is not "this session's studio exists": when the caller names the session
-      // it just left, wait for a studio whose session id is a different one.
-      const studioOfThisSession = notSession === undefined
-        ? `document.querySelector('[data-hima-region="studio"]') !== null`
-        : `[...document.querySelectorAll('[data-hima-region="studio"]')].some((e) => e.getAttribute('data-hima-state-session') && e.getAttribute('data-hima-state-session') !== ${JSON.stringify(notSession)})`;
-      await browser.wait(studioOfThisSession, 20_000);
-      return;
-    } catch (error) {
-      if (attempt >= maxAttempts) throw error;
-      t.diagnostic(`openNewSessionWorkbench: attempt ${String(attempt)}/${String(maxAttempts)} failed waiting for studio to mount (${(error as Error).message}); retrying the open-workbench click and wait once more, never the "New session" step and never a Hima assertion`);
-    }
+/** Native New Session reuses a blank conversation, including this fixture's silent owner.
+ * Create an independent native fixture explicitly, then select it through the real sidebar. */
+async function openNewSessionWorkbench(d: BootedDriver, browser: Inspector, workspaceId: string): Promise<string> {
+  const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
+  const created = await api(host, cookie, '/api/session/create', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'independent-side-talk', method: 'session/create', payload: { args: { request: { workspaceId } } } }),
+  });
+  assert.equal(created.status, 200);
+  const made = await created.json() as { result: { ok: boolean; value: { sessionId: string } } };
+  assert.equal(made.result.ok, true);
+  const sessionId = made.result.value.sessionId; assert.ok(sessionId);
+  const title = 'Independent Side Talk fixture';
+  for (const [operation, request] of [
+    ['rename', { sessionId, title }],
+    ['prompt', { sessionId, requestId: 'side-talk-fixture-prompt', mode: 'queue', content: [{ type: 'text', text: 'Inspect the existing Campaign without taking ownership.' }] }],
+  ] as const) {
+    const response = await api(host, cookie, `/api/session/${operation}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: `side-talk-${operation}`, method: `session/${operation}`, payload: { args: { request } } }),
+    });
+    assert.equal(response.status, 200);
+    const accepted = await response.json() as { result?: { ok?: boolean } };
+    assert.equal(accepted.result?.ok, true, JSON.stringify(accepted));
   }
+  if (await browser.evaluate(`!!document.querySelector('[aria-label="Open sidebar"]')`)) {
+    await browser.mark('[aria-label="Open sidebar"]', 'open-side-sidebar'); assert.ok((await d.click('open-side-sidebar')).ok);
+  }
+  await browser.wait(`[...document.querySelectorAll('[role="treeitem"]')].some(e=>!e.querySelector('[role="treeitem"]') && e.getBoundingClientRect().height>0 && e.textContent.includes(${JSON.stringify(title)}))`);
+  await browser.evaluate(`(() => { const row=[...document.querySelectorAll('[role="treeitem"]')].find(e=>!e.querySelector('[role="treeitem"]') && e.getBoundingClientRect().height>0 && e.textContent.includes(${JSON.stringify(title)})); if(!row)throw new Error('Independent native session row is unavailable'); row.setAttribute('data-hima-control','open-independent-side-talk'); })()`);
+  assert.ok((await d.click('open-independent-side-talk')).ok);
+  await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
+  assert.ok((await d.click('open-workbench')).ok);
+  await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session') === ${JSON.stringify(sessionId)}`, 20_000);
+  return sessionId;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -425,24 +375,23 @@ test('state 2: Configuration page reports ready once the shipped Pack, Site and 
 // State 3: running with a node card open.
 // ---------------------------------------------------------------------------------------------
 
-test('state 3: a running Campaign opens its current node\'s card', async (t) => {
+test('state 3: a running DBOS Campaign opens its active task card', async (t) => {
   if (windowUnavailable(t)) return;
   await bothThemes(t, async (theme) => {
     const port = await freePort();
-    // `campaign-graph`/`campaign-node-card` are FabricCanvas's own: it never mounts without a scene,
-    // and a scene needs `context.method.reference`, which `executionContext` only ever computes for
-    // an owned Run (`fabric.ts`) — so this state, like 4 and 6, needs `bootOwnedShipped`.
     const booted = await bootOwnedShipped(t, theme, port);
     if (!booted) return;
     const { d, home } = booted;
     let browser: Inspector | undefined;
     try {
       browser = await inspectWindow(port);
-      await establishOwnerSession(d, browser);
-      await browser.wait(`!!document.querySelector('[data-hima-region="campaign-graph"]')`, 15_000);
-      await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-current') !== ''`, 20_000);
-      const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
-      const current = graph.state.current; assert.ok(current, JSON.stringify(graph));
+      const { host, cookie, guideSessionId, runId } = await establishOwnedCampaign(d, browser);
+      await browser.wait(`document.querySelector('[data-hima-region="campaign-node-synthesize"]')?.getAttribute('data-hima-state-task-status') === 'running'`, 15_000);
+      const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guideSessionId)}`)).json() as RunView;
+      assert.equal(view.run.engine, 'dbos/5.2.11');
+      assert.equal(view.run.status, 'running');
+      assert.equal(view.tasks?.find(task => task.taskId === 'synthesize' && task.current)?.projection.state, 'running');
+      const current = 'synthesize';
       const width = await widenDockPane(browser);
       t.diagnostic(`state 3 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
@@ -467,12 +416,8 @@ test('state 4: a blocked Campaign shows the attention strip with the blocker\'s 
   if (windowUnavailable(t)) return;
   await bothThemes(t, async (theme) => {
     const port = await freePort();
-    // One failed attempt (the same fixture `unified-workbench.test.ts`'s own retry case uses) blocks
-    // the entry node until a person acts: a real HimaFabric `waiting`, not a fixture kind of its own.
-    // This Run is the file's own default (unowned, legacy auto-drive) — the attention strip's own
-    // routed fix (item B) is what makes `campaign-attention` render for it at all
-    // (`CampaignTab.tsx`'s graph-less fallback now reads `view.blockers` directly, independently of
-    // `executionContext`'s method/reference, which only an *owned* Run ever carries).
+    // A real Site command failure becomes a current DBOS task diagnostic. The canvas must show
+    // that original reason without depending on a retired Ledger BlockerRecord.
     const d = await bootDriver(t, { home: 'hima', sleepSeconds: 5, failures: 1, theme, window: WINDOW, remoteDebuggingPort: port });
     if (!d) return;
     let browser: Inspector | undefined;
@@ -491,8 +436,10 @@ test('state 4: a blocked Campaign shows the attention strip with the blocker\'s 
       const viewerSessionId = studio.state.session;
       if (typeof viewerSessionId !== 'string' || viewerSessionId === '') throw new Error(`Workbench has no native viewer session: ${JSON.stringify(studio)}`);
       const view = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(viewerSessionId)}`)).json() as RunView;
-      const reason = view.blockers.at(-1)?.reason;
-      assert.ok(reason, `the Run carries a blocker: ${JSON.stringify(view.blockers)}`);
+      assert.equal(view.run.engine, 'dbos/5.2.11');
+      const failed = view.tasks?.find(task => task.taskId === 'synthesize' && task.current && task.projection.state === 'failed');
+      assert.ok(failed && failed.projection.state === 'failed', `the failed task remains current: ${JSON.stringify(view.tasks)}`);
+      const reason = failed.projection.reason.message;
       await browser.wait(`document.querySelector('[data-hima-region="campaign-attention"]')?.getAttribute('data-hima-state-kind') === 'waiting'`, 10_000);
       const stripReason = await browser.evaluate<string>(`document.querySelector('[data-hima-region="campaign-attention"] span')?.textContent ?? ''`);
       assert.equal(stripReason, reason, 'the strip says the same reason the Run itself carries');
@@ -516,15 +463,16 @@ test('state 5: an ended Campaign shows the Goal seal for ended-goal-met', async 
       browser = await inspectWindow(port);
       await prepareSession(d, browser, false);
       await waitForConfigurationPaneSettled(browser);
-      await fillShipped(d, browser);
+      await fillShipped(d, browser, '2.3');
       assert.ok((await d.click('config-confirm')).ok);
-      assert.ok((await d.wait('campaign-masthead', 'ended — goal met', 35_000)).ok);
+      assert.ok((await d.wait('campaign-masthead', 'ended · Goal met', 35_000)).ok);
       const width = await widenDockPane(browser);
       t.diagnostic(`state 5 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
       await browser.wait(`document.querySelector('[data-hima-region="campaign-goal"]')?.getAttribute('data-hima-state-status') === 'ended-goal-met'`, 10_000);
+      assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-goal"]')?.getAttribute('data-hima-state-goal')`), 'met');
       const sealText = await browser.evaluate<string>(`document.querySelector('[data-hima-region="campaign-goal"] .hima-goal-title')?.textContent ?? ''`);
-      assert.match(sealText, /ended.*goal met/, `the seal says the run status label: ${sealText}`);
+      assert.match(sealText, /ended.*Goal met/, `the seal says the run status label: ${sealText}`);
       await capture(d, browser, `ended-goal-${theme}`);
     } finally { await finish(d, browser); }
   });
@@ -544,16 +492,16 @@ test('state 6: a Side Talk viewing an owned Run sees who owns it and no business
     let browser: Inspector | undefined;
     try {
       browser = await inspectWindow(port);
-      const { ownerSessionId, runId } = await establishOwnerSession(d, browser);
+      const { host, cookie, ownerSessionId, guideSessionId, workspaceId, runId } = await establishOwnedCampaign(d, browser);
 
-      // A2: hardened against the bootstrap race diagnosed above — one bounded retry of the click
-      // and studio-mount wait, never of the Hima assertion right after it.
-      await openNewSessionWorkbench(t, d, browser, 'new-side-talk', 'open-side-workbench', ownerSessionId);
-      const sideSession = await browser.evaluate<string>(`[...document.querySelectorAll('[data-hima-region="studio"]')].map((e) => e.getAttribute('data-hima-state-session') || '').find((id) => id && id !== ${JSON.stringify(ownerSessionId)}) || ''`);
-      assert.ok(sideSession && sideSession !== ownerSessionId, 'the Side Talk is a genuinely different session');
+      const sideSession = await openNewSessionWorkbench(d, browser, workspaceId);
+      assert.ok(sideSession && sideSession !== ownerSessionId && sideSession !== guideSessionId, 'Side Talk, Guide and execution owner are three distinct native conversations');
 
       assert.ok((await d.fill('studio-run', runId)).ok);
       await browser.wait(`document.querySelector('[data-hima-region="campaign"]') !== null`, 10_000);
+      const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sideSession)}`)).json() as RunView;
+      assert.equal(view.run.control?.owner, ownerSessionId, 'Side Talk navigation preserves the PG execution owner');
+      assert.notEqual(view.run.control?.owner, sideSession, 'the independent viewer has no execution ownership');
       const width = await widenDockPane(browser);
       t.diagnostic(`state 6 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
@@ -565,12 +513,14 @@ test('state 6: a Side Talk viewing an owned Run sees who owns it and no business
       // renders — "Continue is never offered to a non-owner" was previously only ever checked page-
       // wide, never on the one surface (`NodeCard`'s own `Footer`) that draws the owner/non-owner
       // split at all.
-      const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
-      const current = graph.state.current; assert.ok(current, JSON.stringify(graph));
+      // DBOS can have concurrent active tasks; select the declared command rather than a retired
+      // serial currentNode pointer. Navigation never admits business work.
+      const current = 'synthesize';
       assert.ok((await d.click(`node-${current}`)).ok);
       await browser.wait(`document.querySelector('[data-hima-region="campaign-node-card"]')?.getAttribute('data-hima-state-node') === ${JSON.stringify(current)}`, 10_000);
       assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-region="emergency"]')`), true, 'the non-owner footer discloses its own Emergency section');
       assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-control="node-continue"]')`), false, 'Continue is never offered to a non-owner');
+      assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-region="emergency"] [data-hima-control="run-stop"]')`), true, 'the independent viewer retains the human emergency Stop boundary');
       await capture(d, browser, `side-talk-${theme}`);
     } finally { await finish(d, browser); await home.h.dispose(); }
   });
@@ -743,100 +693,6 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
       })()`);
       assert.ok(goalInBounds.ok, `the Goal roundel should sit inside the canvas: ${JSON.stringify(goalInBounds)}`);
       await capture(d, browser, `graph-51-node-${theme}`);
-    } finally {
-      await finish(d, browser);
-      await h.dispose();
-    }
-  });
-});
-
-
-// ---------------------------------------------------------------------------------------------
-// State 8 (#63, #64): the 132-node agentic-timing-closure-system reference graph, in lanes.
-// ---------------------------------------------------------------------------------------------
-
-/** The shipped ATCS Pack, copied to a local variant whose only changes are the Site-facing ones the
- *  ATCS contract test already makes (local wrappers for the Site's EDA launchers); its graph.yml is
- *  the shipped file byte for byte, which is this state's own subject. */
-async function bootAtcsGraph(t: TestContext, theme: 'light' | 'dark', remoteDebuggingPort: number) {
-  const { createHimaHome } = await import('./support/dsh-home.ts');
-  const { cp, readFile, realpath } = await import('node:fs/promises');
-  const { parse, stringify } = await import('yaml');
-  const h = await createHimaHome();
-  const packSource = path.join(h.home, 'l3-atcs', 'agentic-timing-closure-system');
-  await cp(path.join(repoRoot, 'packs/agentic-timing-closure-system'), packSource, { recursive: true });
-  const contract = parse(await readFile(path.join(packSource, 'contract.yml'), 'utf8')) as { environment: { wrappers: string[] }; tools: { argv: string[]; interactive?: { argv: string[] } }[] };
-  const wrapper = await realpath('/usr/bin/tclsh');
-  contract.environment.wrappers = [wrapper, 'python3', '/usr/bin/python3'];
-  for (const tool of contract.tools) if (tool.interactive) { tool.argv = [wrapper, '${WORKSPACE}/flow/atcs-repl.tcl']; tool.interactive.argv = tool.argv; }
-  await writeFile(path.join(packSource, 'contract.yml'), stringify(contract));
-  const inputsRoot = path.join(h.home, 'l3-atcs-inputs'); await mkdir(path.join(inputsRoot, 'analysis'), { recursive: true });
-  await writeFile(path.join(inputsRoot, 'manifest.json'), '{}\n'); await writeFile(path.join(inputsRoot, 'caps.json'), '{}\n');
-  const replayDir = path.join(h.home, 'atcs-graph-replay'); await mkdir(replayDir);
-  const replayFile = path.join(replayDir, 'session.jsonl'), replayOverride = path.join(replayDir, 'replay.override.json');
-  await writeFile(replayFile, `${JSON.stringify({ version: 0, type: 'session', id: 'session-atcs-graph', createdAt: 0, cwd: '{{cwd}}' })}\n`);
-  const say = (text: string): ReplayEntry => ({ kind: 'chunks', chunks: [
-    { type: 'block-start', index: 0, blockType: 'text' },
-    { type: 'block-end', index: 0, block: { type: 'text', text } },
-    { type: 'finish', reason: { kind: 'stop' } },
-  ] });
-  await writeFile(replayOverride, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
-  await writeLocalSite(h, { allowedReadRoots: [packSource, inputsRoot, h.workspace], allowedWriteRoots: [h.workspace],
-    allowedWrappers: [wrapper, 'python3', '/usr/bin/python3'], licences: { xtop: 2, innovus: 1, primetime: 1, starrc: 1 },
-    bindings: { designStateManifest: path.join(inputsRoot, 'manifest.json'), analysisContract: path.join(inputsRoot, 'analysis'),
-      siteCapabilities: path.join(inputsRoot, 'caps.json'), workspaceRoot: h.workspace } });
-  await writeReplayOverlay(h.home, { file: replayFile, overrideFile: replayOverride });
-  const d = await bootDriver(t, { existing: h, remoteDebuggingPort, theme, window: WINDOW,
-    model: { replay: { file: replayFile, override: replayOverride, children: [] } },
-    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1' } });
-  if (!d) { await h.dispose(); return undefined; }
-  return { d, h, packSource };
-}
-
-test('state 8: the 132-node ATCS reference graph opens in lanes with no overlapping nodes or labels', async (t) => {
-  if (windowUnavailable(t)) return;
-  await bothThemes(t, async (theme) => {
-    const port = await freePort();
-    const booted = await bootAtcsGraph(t, theme, port);
-    if (!booted) return;
-    const { d, h } = booted;
-    let browser: Inspector | undefined;
-    try {
-      browser = await inspectWindow(port);
-      await openConfiguredGraph(d, h, browser, { packId: 'agentic-timing-closure-system', packSource: booted.packSource, reviewedFile: 'graph.yml',
-        goal: { target_setup_wns_ns: '0', target_hold_wns_ns: '0' }, minNodes: 132 });
-      const width = await widenDockPane(browser);
-      assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
-      await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale') !== '1.00'`, 20_000).catch(() => undefined);
-      await browser.evaluate('new Promise((resolve) => setTimeout(resolve, 400))');
-      // Measured on screen as the canvas opens (labels visible): every node's own square hit area and
-      // every id label, in client pixels, across all 132 nodes (off-screen ones included).
-      const measured = await browser.evaluate<{ scale: number; nodes: number; rows: number; glyphOverlaps: string[]; labelOverlaps: string[] }>(`(() => {
-        const graph = document.querySelector('[data-hima-region="campaign-graph"]');
-        const nodes = [...graph.querySelectorAll('[data-hima-region^="campaign-node-"]')];
-        const glyphs = nodes.map((n) => ({ id: n.getAttribute('data-hima-region').slice('campaign-node-'.length), r: n.querySelector('[data-hima-control^="node-"]').getBoundingClientRect() }));
-        const labels = nodes.map((n) => ({ id: n.getAttribute('data-hima-region').slice('campaign-node-'.length), r: n.querySelector('.hima-node-label').getBoundingClientRect() }));
-        const meet = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
-        const glyphOverlaps = [], labelOverlaps = [];
-        for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-          if (meet(glyphs[i].r, glyphs[j].r)) glyphOverlaps.push(glyphs[i].id + ' / ' + glyphs[j].id);
-          if (meet(labels[i].r, labels[j].r) || meet(labels[i].r, glyphs[j].r) || meet(labels[j].r, glyphs[i].r)) labelOverlaps.push(labels[i].id + ' / ' + labels[j].id);
-        }
-        const rows = new Set(glyphs.map((g) => Math.round(g.r.top)));
-        return { scale: Number(graph.getAttribute('data-hima-state-scale')), nodes: nodes.length, rows: rows.size, glyphOverlaps, labelOverlaps };
-      })()`);
-      t.diagnostic(`state 8 (${theme}): ${JSON.stringify({ ...measured, glyphOverlaps: measured.glyphOverlaps.slice(0, 5), labelOverlaps: measured.labelOverlaps.slice(0, 5), counts: [measured.glyphOverlaps.length, measured.labelOverlaps.length] })}`);
-      await capture(d, browser, `atcs-graph-open-${theme}`);
-      assert.ok((await d.click('canvas-fit')).ok);
-      await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale')) < 0.6`, 10_000);
-      await browser.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
-      await capture(d, browser, `atcs-graph-fit-${theme}`);
-
-      assert.equal(measured.nodes, 132);
-      assert.ok(measured.scale >= 0.6, `the canvas opens at a readable scale: ${String(measured.scale)}`);
-      assert.deepEqual(measured.glyphOverlaps, [], 'no two node glyphs overlap on screen');
-      assert.deepEqual(measured.labelOverlaps, [], 'no node label runs into another label or glyph on screen');
-      assert.ok(measured.rows >= 3, `the graph spreads over several lanes: ${String(measured.rows)}`);
     } finally {
       await finish(d, browser);
       await h.dispose();

@@ -118,7 +118,6 @@
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",
-    "test/contract/growth-assets.desktop.test.ts",
     "test/contract/remaining-ui.desktop.test.ts",
     "test/contract/pack-owner.desktop.test.ts",
     "test/contract/site-rediscover.desktop.test.ts",

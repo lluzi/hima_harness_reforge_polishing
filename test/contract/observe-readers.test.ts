@@ -18,7 +18,7 @@ import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
+import { observeReport } from './support/observe-report.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
 import { assertReadAsDeclared } from './support/readings.ts';
@@ -61,7 +61,7 @@ test('the innovus-timing-summary reader emits setup WNS/TNS, density, and an unk
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader innovus-timing-summary`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'innovus-timing-summary' });
     assert.equal(kind, 'success', text);
     assert.ok(runId, 'a run id is reported');
     const records = host.ctx.hima.ledger.records({ runId: runId! });
@@ -113,7 +113,7 @@ test('the innovus-timing-summary reader emits hold WNS for both scopes from the 
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${fixture} --reader innovus-timing-summary`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: fixture, reader: 'innovus-timing-summary' });
     assert.equal(kind, 'success', text);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
     const rec = records[0]!;
@@ -195,7 +195,7 @@ test('a truncated Innovus summary, cut before the timing table, yields unknown v
   await writeFile(path.join(h.workspace, rel), truncated, 'utf8');
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${rel} --reader innovus-timing-summary`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: rel, reader: 'innovus-timing-summary' });
     assert.equal(kind, 'success', text);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
     const rec = records[0]!;
@@ -234,7 +234,7 @@ test('a report of the wrong kind is refused by the innovus-timing-summary reader
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --reader innovus-timing-summary`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: report.rel, reader: 'innovus-timing-summary' });
     assert.equal(kind, 'error', text);
     assert.match(text, /refused/);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
@@ -252,7 +252,7 @@ test('a report of the wrong kind is refused by the innovus-verify-drc reader, wi
   const report = await writeSampleReport(h);
   const host = await bootInProcess(h);
   try {
-    const { kind, text, runId } = await himaCommand(host, h.workspace, `/hima observe local ${report.rel} --reader innovus-verify-drc`);
+    const { kind, text, runId } = await observeReport(host, h.workspace, { site: 'local', path: report.rel, reader: 'innovus-verify-drc' });
     assert.equal(kind, 'error', text);
     const records = host.ctx.hima.ledger.records({ runId: runId! });
     assert.equal(records.length, 1);
@@ -270,9 +270,9 @@ test('the two Innovus readers refuse each other\'s report kind: a real summary i
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(summary), path.dirname(drc)] });
   const host = await bootInProcess(h);
   try {
-    const summaryAsDrc = await himaCommand(host, h.workspace, `/hima observe local ${summary} --reader innovus-verify-drc`);
+    const summaryAsDrc = await observeReport(host, h.workspace, { site: 'local', path: summary, reader: 'innovus-verify-drc' });
     assert.equal(summaryAsDrc.kind, 'error', summaryAsDrc.text);
-    const drcAsSummary = await himaCommand(host, h.workspace, `/hima observe local ${drc} --reader innovus-timing-summary`);
+    const drcAsSummary = await observeReport(host, h.workspace, { site: 'local', path: drc, reader: 'innovus-timing-summary' });
     assert.equal(drcAsSummary.kind, 'error', drcAsSummary.text);
   } finally { await host.dispose(); await h.dispose(); }
 });

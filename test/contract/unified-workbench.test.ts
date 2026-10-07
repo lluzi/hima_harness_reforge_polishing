@@ -1,21 +1,21 @@
-// @hima-seam llm direct
-// L3: native dsh conversation + Hima dock. Real Host and local Jobs; no real model or SSH.
+// @hima-seam llm-replay direct
+// L3: native dsh conversation + Hima dock. Real Host and DBOS local tasks; no real model or SSH.
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { appendFile, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bootDriver, fillConfiguration, waitForConfigurationReady, type BootedDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
+import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { inspectWindow } from './support/inspect-window.ts';
 import { writeSampleReport } from './support/site.ts';
 import { localHome } from './support/fabric.ts';
-import { installWorkshopPack, packsDirOf, timingProbePackId, writePackVariant } from './support/pack.ts';
-import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
-import { HIMA_INTENT_SECTIONS } from '@hima/harness';
+import { packsDirOf, timingProbePackId, writePackVariant } from './support/pack.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import { QUIET_TITLE_ROW } from './support/pipeline.ts';
-import type { RunView } from '@hima/harness';
+import { packDigestOf, retainRunMaterial, type RunView } from '@hima/harness';
 import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
@@ -53,7 +53,9 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
   assert.ok((await d.click('open-workbench')).ok);
   assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
-  return { host, cookie };
+  const studio = await d.read('studio'); assert.ok(studio.ok);
+  const sessionId = studio.state.session; assert.ok(sessionId);
+  return { host, cookie, sessionId };
 }
 
 /** Fill the Configuration page (#41 task 7) for the shipped timing-probe Pack: the same document
@@ -117,7 +119,14 @@ async function finish(d: BootedDriver, browser?: Inspector) {
     const sessionId = studio.ok ? studio.state.session : undefined;
     const listed = await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(sessionId ?? '')}`);
     const { runs = [] } = await listed.json() as { runs?: RunView['run'][] };
-    for (const run of runs.filter((run) => run.status === 'running' || run.status === 'waiting')) await api(host, cookie, `/hima/api/runs/${run.id}/cancel?sessionId=${encodeURIComponent(sessionId ?? "")}`, { method: 'POST' });
+    for (const run of runs.filter(run => run.status === 'running' || run.status === 'waiting')) {
+      if (run.control) await api(host, cookie, `/hima/api/runs/${run.id}/control`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, action: 'cancel', expectedEpoch: run.control.epoch,
+          expectedRevision: run.control.revision, requestId: `cleanup-${run.id}` }),
+      });
+      else await api(host, cookie, `/hima/api/runs/${run.id}/cancel?sessionId=${encodeURIComponent(sessionId ?? '')}`, { method: 'POST' });
+    }
   }
   await d.dispose();
 }
@@ -127,7 +136,7 @@ test('Guide keeps its conversation while Campaign and Data Insight remain peer m
   if (!home) return;
   const port = await freePort();
   const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port,
-    window: { width: 1440, height: 960 }, env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1' } });
+    window: { width: 1440, height: 960 }, env: { HIMA_TEST_SILENT_AGENT: '1' } });
   if (!d) { await home.h.dispose(); return; }
   let browser: Inspector | undefined;
   try {
@@ -151,7 +160,7 @@ test('Guide keeps its conversation while Campaign and Data Insight remain peer m
     const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${guide}`)).json() as RunView;
     assert.equal(view.run.control?.guideSessionId, guide);
     assert.notEqual(view.run.control?.owner, guide);
-    assert.equal(view.jobs.length, 0, 'silent mechanism test starts no business tool');
+    assert.equal(view.run.engine, 'dbos/5.2.11', 'the workflow executes independently of the silent conversational model');
     const running = await d.read('studio'); assert.ok(running.ok);
     assert.equal(running.state.session, guide, 'dispatch never switches or occupies Guide');
     assert.ok((await d.click('studio-mode-insight')).ok);
@@ -180,7 +189,7 @@ test('Data Insight shows the LibInsight pages in place and keeps them across a m
   await writeFile(path.join(data, 'app.json'), JSON.stringify({ data_root: 'data', kits: [{ id: 'fixture-kit', manifest: 'kits/fixture-kit.json' }] }));
   const port = await freePort();
   const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port, window: { width: 1440, height: 960 },
-    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1', HIMA_LIBINSIGHT_ROOT: code, HIMA_LIBINSIGHT_DATA: data } });
+    env: { HIMA_TEST_SILENT_AGENT: '1', HIMA_LIBINSIGHT_ROOT: code, HIMA_LIBINSIGHT_DATA: data } });
   if (!d) { await home.h.dispose(); return; }
   let browser: Inspector | undefined;
   try {
@@ -289,12 +298,12 @@ test('ordinary conversation opens the chosen Pack authoring session with native 
 
 test('conversation draft, native files and verified reports share one workspace with a real Run', async (t) => {
   const port = await freePort();
-  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 2, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port });
+  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 2, env: { HIMA_TEST_SILENT_AGENT: '1' }, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port });
   if (!d) return;
   let browser: Inspector | undefined;
   try {
     browser = await inspectWindow(port);
-    const { host, cookie } = await prepareSession(d, browser);
+    const { host, cookie, sessionId } = await prepareSession(d, browser);
     const url = await browser.evaluate<string>('location.href');
     await waitForConfigurationPaneSettled(browser);
     await capture(d, browser, 'configuration-empty');
@@ -302,31 +311,30 @@ test('conversation draft, native files and verified reports share one workspace 
     await capture(d, browser, 'configuration-ready');
     await capture(d, browser, 'light-start');
     assert.ok((await d.click('config-confirm')).ok);
-    // This start route returns after legacy automatic drive settles. Running interaction itself is
-    // held by the controlled Job/replay path below; this case needs a real created Run to inspect.
-    assert.ok((await d.wait('campaign-masthead', 'ended — goal met', 35_000)).ok);
+    // Start acknowledges the durable Run; completion is observed from its current projection.
+    assert.ok((await d.wait('campaign-masthead', 'ended · Goal met', 35_000)).ok);
     const id = await currentRun(d);
-    const started = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    const started = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
     assert.equal(started.run.status, 'ended-goal-met');
-    assert.equal(started.jobs.filter((job) => job.event === 'launched').length, 2, 'the completed Run still proves two actual local Jobs');
-    // Task 8: this Run has no conversational owner (the legacy automatic-drive path this file boots
-    // under) — the session-header chip and the tab title both read `RunHeadView.control.owner`
-    // alone, so neither claims identity for a Run this session merely happened to start. The
-    // positive case (an agent-owned Run genuinely claiming both) is `campaign-graph.desktop.test.ts`.
+    assert.equal(started.run.engine, 'dbos/5.2.11');
+    assert.ok(started.jobs.some(job => job.event === 'launched'), 'the Run executed an actual local tool');
+    assert.ok(started.tasks?.some(task => task.current && task.result), 'the current Task results remain inspectable');
+    assert.equal(started.run.control?.guideSessionId, sessionId);
+    assert.notEqual(started.run.control?.owner, sessionId, 'the Guide remains separate from the execution owner');
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true);
     assert.equal(await browser.evaluate('document.body.innerText.includes(\'Hima Workspace\')'), true);
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     assert.ok((await d.click('studio-evidence')).ok);
-    assert.ok((await d.wait('studio', 'clock-period-at-most@1', 10_000)).ok);
-    assert.ok((await d.wait('studio', 'sha256', 10_000)).ok, 'failed judgment exposes original citations');
+    assert.ok((await d.wait('studio', 'clock-period-at-most', 10_000)).ok);
+    assert.ok((await d.wait('studio', 'sha256', 10_000)).ok, 'the judgment exposes original citations');
     assert.ok((await d.click('studio-report')).ok);
     await browser.mark('.hima-studio a[href*="/experience.md?"]', 'open-saved-report');
     assert.ok((await d.click('open-saved-report')).ok);
     assert.ok((await d.wait('studio', 'original bytes verified by the Host', 12_000)).ok);
     await capture(d, browser, 'light-report');
-    const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    const view = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
     assert.ok(view.experience);
     const file = view.experience.markdown.path;
     const original = await readFile(file);
@@ -359,18 +367,18 @@ test('conversation draft, native files and verified reports share one workspace 
   } finally { await finish(d, browser); }
 });
 
-test('preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable', async (t) => {
+test('preparation retries preserve drafts, pending starts cannot be replaced, and a continued DBOS Run remains cancellable', async (t) => {
   const port = await freePort();
-  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 5, failures: 1, theme: 'dark', window: { width: 1280, height: 860 }, remoteDebuggingPort: port });
+  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 20, env: { HIMA_TEST_SILENT_AGENT: '1' }, theme: 'dark', window: { width: 1280, height: 860 }, remoteDebuggingPort: port });
   if (!d) return;
   let browser: Inspector | undefined;
   try {
     const siteFile = path.join(d.home.home, 'hima/sites/local.yml');
     await writeFile(path.join(d.home.home, 'hima/sites/other.yml'), (await readFile(siteFile, 'utf8')).replace('name: local', 'name: other'));
     browser = await inspectWindow(port);
-    const { host, cookie } = await prepareSession(d, browser);
+    const { host, cookie, sessionId } = await prepareSession(d, browser);
     const sample = await writeSampleReport(d.home);
-    const probe = await (await api(host, cookie, '/hima/api/observe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ site: 'local', path: path.join(d.home.workspace, sample.rel) }) })).json() as RunView;
+    const probe = await (await api(host, cookie, '/hima/api/observe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, site: 'local', path: path.join(d.home.workspace, sample.rel) }) })).json() as RunView;
     assert.ok(probe.run?.id);
     await fillStart(d, browser, '2.3');
     // A failed save keeps what the person typed, and never enables Confirm until the file is ready
@@ -394,31 +402,43 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     // `disabled` attribute the way a fast double click racing that same re-render could.
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
     await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
-    const runs = await (await api(host, cookie, '/hima/api/runs')).json() as { runs: RunView['run'][] };
-    assert.equal(runs.runs.length, 2, 'one Probe and exactly one Campaign despite repeated confirm clicks');
+    const runs = await (await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(sessionId)}`)).json() as { runs: RunView['run'][] };
+    assert.equal(runs.runs.length, 2, 'one Probe and exactly one Campaign despite repeated confirm clicks while its HTTP response is paused');
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-run"]').disabled`), true, 'selection cannot replace the pending start');
     await browser.send('Fetch.continueRequest', { requestId: starting.requestId }); await browser.send('Fetch.disable');
-    assert.ok((await d.wait('campaign-masthead', 'waiting', 25_000)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-synthesize"]')?.getAttribute('data-hima-state-task-status') === 'running'`, 25_000);
     const id = await currentRun(d);
-    await capture(d, browser, 'dark-blocked');
-    // C10: the attention strip's own resume now confirms first, in the card's own words, exactly as
-    // pause/stop already did — one extra click on the confirm sentence's own control before the Run
-    // actually resumes.
-    assert.ok((await d.click('resume')).ok);
-    assert.ok((await d.click('resume-confirm')).ok);
-    assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false, 'Cancel does not wait for the resumed continuation to finish');
+    const running = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
+    assert.equal(running.run.engine, 'dbos/5.2.11');
+    const launched = running.jobs.filter(job => job.event === 'launched').map(job => job.recordId);
+    assert.ok(launched.length > 0);
+    assert.ok((await d.click('node-synthesize')).ok);
+    await browser.evaluate(`document.querySelector('[data-hima-region="emergency"]').open = true`);
+    assert.ok((await d.click('run-pause')).ok);
+    assert.ok((await d.click('run-pause-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="run-continue"]')`, 10_000);
+    await capture(d, browser, 'dark-paused');
+    assert.ok((await d.click('run-continue')).ok);
+    assert.ok((await d.click('run-continue-confirm')).ok);
+    await browser.wait(`document.querySelector('[data-hima-control="run-continue"]') === null`, 10_000);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="run-stop"]').disabled`), false, 'Stop remains available after continuing the Run');
+    await browser.wait(`[...document.querySelector('[data-hima-control="studio-run"]').options].some(o => o.value === ${JSON.stringify(probe.run.id)})`);
     assert.ok((await d.fill('studio-run', probe.run.id)).ok);
     assert.ok((await d.wait('campaign-masthead', 'No Fabric state recorded', 10_000)).ok);
     assert.ok((await d.fill('studio-run', id)).ok);
-    assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false);
-    // C10: same confirm-first gate as resume, above.
-    assert.ok((await d.click('cancel')).ok);
-    assert.ok((await d.click('cancel-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-node-synthesize"]')`);
+    assert.ok((await d.click('node-synthesize')).ok);
+    await browser.evaluate(`document.querySelector('[data-hima-region="emergency"]').open = true`);
+    assert.ok((await d.click('run-stop')).ok);
+    assert.ok((await d.click('run-stop-confirm')).ok);
     assert.ok((await d.wait('campaign-masthead', 'cancelled', 15_000)).ok);
-    const ended = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
-    assert.equal(ended.cancels.length, 1);
-    assert.equal(ended.jobs.filter((job) => job.event === 'launched').length, 2, 'Run selection never launches another continuation');
+    assert.ok((await d.wait('campaign-masthead', 'stop closed', 15_000)).ok);
+    const ended = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
+    assert.equal(ended.run.status, 'cancelled', 'the scoped read retains the authoritative stop decision');
+    assert.equal(ended.run.stopState?.closed, true, 'the original task resources are physically closed');
+    assert.equal(ended.run.stopState?.unclosedResources, 0);
+    assert.equal(ended.run.stopState?.effectsWithoutStopProof, 0);
+    assert.deepEqual(ended.jobs.filter(job => job.event === 'launched').map(job => job.recordId), launched, 'selection and continuation do not submit the running Task twice');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await capture(d, browser, 'dark-cancelled');
   } catch (error) {
@@ -428,84 +448,101 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
   } finally { await finish(d, browser); }
 });
 
-test('a Pack under authoring and its Workshop code records remain visible beside the native conversation', async (t) => {
+test('historical Code and Knowledge retain verified material reads in the dock and native context card', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });
   if (!home) return;
-  const pack = await installWorkshopPack(packsDirOf(home.h));
-  await writeFile(path.join(packsDirOf(home.h), pack, 'INTENT.md'), HIMA_INTENT_SECTIONS.map((heading) => `## ${heading}\n\nLocal UI fixture for this declared method.\n`).join('\n'));
-  const broken = path.join(packsDirOf(home.h), 'broken-pack');
-  await writePackVariant(packsDirOf(home.h), 'broken-pack', []);
-  await symlink(home.h.workspace, path.join(broken, '.state'));
-  let scenario = await writeMomentScenario(home.h, 'writes');
-  const contextReplay: ReplayEntry[] = [
+  // Retained historical records are read-only compatibility fixtures, never Workshop execution.
+  const seed = await bootInProcess(home.h);
+  let id: string;
+  let codeRecordId: string;
+  let knowledgeRecordId: string;
+  const codeText = '#!/bin/sh\n# Retained historical source; this fixture never executes it.\nset -eu\n';
+  const knowledgeText = '# Historical method knowledge\nRead the retained source bytes before drawing a conclusion.\n';
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  try {
+    const owner = await createRootAgent(seed.ctx, home.h.workspace);
+    const run = await seed.ctx.hima.ledger.createRun({ campaignId: 'historical-material-fixture', siteId: 'local',
+      packId: timingProbePackId, packDigest: packDigestOf(path.join(packsDirOf(home.h), timingProbePackId)),
+      status: 'cancelled', currentNode: 'synthesize',
+      control: { mode: 'agent', owner: String(owner.id), epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } });
+    id = run.id;
+    const deps = { ledger: seed.ctx.hima.ledger, packsDir: packsDirOf(home.h) };
+    const source = path.join(home.h.workspace, 'historical-miner.sh');
+    const knowledgeSource = path.join(home.h.workspace, 'historical-mining.md');
+    await writeFile(source, codeText); await writeFile(knowledgeSource, knowledgeText);
+    const codeRetained = await retainRunMaterial(deps, id, Buffer.from(codeText), hash(codeText));
+    const knowledgeRetained = await retainRunMaterial(deps, id, Buffer.from(knowledgeText), hash(knowledgeText));
+    assert.ok(codeRetained); assert.ok(knowledgeRetained);
+    const common = { nodeId: 'synthesize', attempt: 1, sessionId: String(owner.id), workshop: 'historical-mining' };
+    const code = await seed.ctx.hima.ledger.appendCode(id, { ...common, path: source, retainedPath: codeRetained,
+      sha256: hash(codeText), bytes: Buffer.byteLength(codeText), language: 'shell' });
+    const knowledge = await seed.ctx.hima.ledger.appendKnowledge(id, { ...common, origin: 'legacyPack',
+      file: 'mining.md', purpose: 'retained historical method knowledge', path: knowledgeSource, retainedPath: knowledgeRetained,
+      sha256: hash(knowledgeText), bytes: Buffer.byteLength(knowledgeText) });
+    codeRecordId = code.id; knowledgeRecordId = knowledge.id;
+    // Reads must use the retained originals, even when the live source paths have changed.
+    await writeFile(source, 'changed live code\n'); await writeFile(knowledgeSource, 'changed live knowledge\n');
+  } finally { await seed.dispose(); }
+  const replayDir = path.join(home.h.home, 'historical-material-replay'); await mkdir(replayDir);
+  const file = path.join(replayDir, 'session.jsonl'), override = path.join(replayDir, 'replay.override.json');
+  await writeFile(file, `${JSON.stringify({ version: 0, type: 'session', id: 'session-historical-material', createdAt: 0, cwd: '{{cwd}}' })}\n`);
+  const say = (text: string): ReplayEntry => ({ kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ] });
+  const replay: ReplayEntry[] = [
     { kind: 'chunks', chunks: [
       { type: 'block-start', index: 0, blockType: 'tool-call' },
       { type: 'block-end', index: 0, block: { type: 'tool-call', id: 'call-native-material-context' as never,
-        name: 'hima_context', arguments: '{"run":"{{fromRequest:(run-[0-9a-f-]+)}}"}' } },
+        name: 'hima_context', arguments: JSON.stringify({ run: id }) } },
       { type: 'finish', reason: { kind: 'tool-calls' } },
-    ] },
-    { kind: 'chunks', chunks: [
-      { type: 'block-start', index: 0, blockType: 'text' },
-      { type: 'block-end', index: 0, block: { type: 'text', text: 'Replay: the requested Run context is visible in this conversation.' } },
-      { type: 'finish', reason: { kind: 'stop' } },
-    ] },
-  ];
-  scenario = await appendReplaySession(scenario, 'native-material-context', contextReplay);
+    ] }, say('Replay: the requested Run context is visible in this conversation.')];
+  await writeFile(override, `${JSON.stringify(replay, null, 2)}\n`);
   await appendFile(path.join(home.h.profileDir, 'cordis.patch.yml'), QUIET_TITLE_ROW);
   const port = await freePort();
-  const d = await bootDriver(t, { existing: home.h, model: { replay: { file: scenario.file, override: scenario.override, children: scenario.children } }, remoteDebuggingPort: port });
+  const d = await bootDriver(t, { existing: home.h, model: { replay: { file, override, children: [] } }, remoteDebuggingPort: port });
   if (!d) { await home.h.dispose(); return; }
   let browser: Inspector | undefined;
   try {
     browser = await inspectWindow(port);
-    // Replay already supplies a configured model; dsh correctly omits the missing-model dialog.
-    const { host, cookie } = await prepareSession(d, browser, true);
+    const { host, cookie, sessionId } = await prepareSession(d, browser, true);
     const url = await browser.evaluate<string>('location.href');
-    await fillStart(d, browser, '2.0');
-    const options = await browser.evaluate<{ value: string; text: string; disabled: boolean }[]>(`[...document.querySelector('[data-hima-control="config-pack"]').options].map(o=>({value:o.value,text:o.textContent,disabled:o.disabled}))`);
-    assert.ok(options.find((o) => o.value === pack)?.text.includes('test pack (intent)'));
-    assert.equal(options.find((o) => o.value === 'broken-pack')?.disabled, true);
-    assert.ok(options.find((o) => o.value === 'broken-pack')?.text.includes('unreadable'));
-    assert.ok((await d.fill('config-pack', pack)).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="configuration"]').getAttribute('data-hima-state-ready')==='true'`);
-    assert.ok((await d.click('config-confirm')).ok);
-    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`, 15_000);
-    // Task 5: the Live view is the HimaFabric canvas alone; the workshop section moved to Evidence.
+    await browser.wait(`[...document.querySelector('[data-hima-control="studio-run"]').options].some(o => o.value === ${JSON.stringify(id)})`);
+    assert.ok((await d.fill('studio-run', id)).ok);
     assert.ok((await d.click('studio-evidence')).ok);
-    assert.ok((await d.wait('run-workshop', 'miner.sh', 40_000)).ok);
-    assert.ok((await d.wait('campaign-masthead', 'ended', 40_000)).ok);
-    const id = await currentRun(d);
-    const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
-    assert.equal(view.run.purpose, 'test');
-    const status = await d.read('campaign-masthead'); assert.ok(status.ok);
-    assert.equal(status.state.purpose, 'test');
-    assert.ok(status.text.includes('test run'));
-    const workshop = await d.read('run-workshop'); assert.ok(workshop.ok);
-    assert.ok(view.code.length > 0);
-    assert.ok(view.knowledge.length > 0);
-    for (const code of view.code) assert.ok(workshop.text.includes(code.sha256.slice(0, 12)), workshop.text);
+    const view = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
+    assert.equal(view.run.status, 'cancelled');
+    assert.equal(view.code.length, 1); assert.equal(view.knowledge.length, 1);
+    assert.equal(view.code[0]!.recordId, codeRecordId); assert.equal(view.knowledge[0]!.recordId, knowledgeRecordId);
+    assert.ok((await d.wait('run-material', hash(codeText), 12_000)).ok);
     const material = await d.read('run-material'); assert.ok(material.ok);
-    assert.ok(material.text.includes(view.code[0]!.sha256), material.text);
-    assert.ok(material.text.includes(view.knowledge[0]!.sha256), material.text);
+    assert.ok(material.text.includes(hash(knowledgeText)), material.text);
     const sample = await writeSampleReport(home.h);
     const probe = await (await api(host, cookie, '/hima/api/observe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ site: 'local', path: path.join(home.h.workspace, sample.rel) }),
+      body: JSON.stringify({ sessionId, site: 'local', path: path.join(home.h.workspace, sample.rel) }),
     })).json() as RunView;
+    assert.ok(probe.run?.id);
     await browser.pause(`*/hima/api/runs/${id}/material/*`);
-    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    assert.ok((await d.click(`material-${codeRecordId}`)).ok);
     const held = await browser.nextPaused();
-    await browser.wait(`[...document.querySelectorAll('[data-hima-control="studio-run"] option')].some((option) => option.value === ${JSON.stringify(probe.run.id)})`);
+    await browser.wait(`[...document.querySelector('[data-hima-control="studio-run"]').options].some(o => o.value === ${JSON.stringify(probe.run.id)})`);
     assert.ok((await d.fill('studio-run', probe.run.id)).ok);
     assert.ok((await d.wait('campaign-masthead', 'No Fabric state recorded', 10_000)).ok);
     assert.ok((await d.fill('studio-run', id)).ok);
-    assert.ok((await d.wait('run-material', view.code[0]!.sha256, 10_000)).ok);
+    assert.ok((await d.wait('run-material', hash(codeText), 10_000)).ok);
     await browser.send('Fetch.continueRequest', { requestId: held.requestId }).catch(() => undefined);
     await browser.send('Fetch.disable');
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]') === null`), true, 'the old A response cannot populate A after A→B→A changed its material selection');
-    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]') === null`), true,
+      'the old A response cannot populate A after A→B→A changed its material selection');
+    assert.ok((await d.click(`material-${codeRecordId}`)).ok);
     assert.ok((await d.wait('material-content', 'set -eu', 12_000)).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]').textContent`), codeText);
+    assert.ok((await d.click(`material-${knowledgeRecordId}`)).ok);
+    assert.ok((await d.wait('material-content', 'Historical method knowledge', 12_000)).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]').textContent`), knowledgeText);
     assert.equal(await browser.evaluate('location.href'), url);
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await browser.evaluate(`(() => { const e=document.querySelector('[contenteditable="true"]'); e.focus(); const r=document.createRange(); r.selectNodeContents(e); const s=getSelection(); s.removeAllRanges(); s.addRange(r); })()`);
@@ -516,12 +553,13 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     await browser.markText('*', '1 tool call', 'expand-material-tool');
     assert.ok((await d.click('expand-material-tool')).ok);
     const chatMaterial = `[...document.querySelectorAll('[data-hima-region="run-material"]')].find(e => !e.closest('.hima-studio') && e.getBoundingClientRect().height > 0)`;
-    await browser.wait(`!!${chatMaterial} && ${chatMaterial}.textContent.includes(${JSON.stringify(view.code[0]!.sha256)}) && ${chatMaterial}.textContent.includes(${JSON.stringify(view.knowledge[0]!.sha256)})`);
-    assert.ok(await browser.evaluate<boolean>(`!!${chatMaterial}.querySelector('[data-hima-control="material-${view.code[0]!.recordId}"]')`));
-    await browser.evaluate(`(() => { const section=${chatMaterial}; const button=section.querySelector('[data-hima-control="material-${view.code[0]!.recordId}"]'); button.setAttribute('data-hima-control', 'chat-material-record'); })()`);
+    await browser.wait(`!!${chatMaterial} && ${chatMaterial}.textContent.includes(${JSON.stringify(hash(codeText))}) && ${chatMaterial}.textContent.includes(${JSON.stringify(hash(knowledgeText))})`);
+    assert.ok(await browser.evaluate<boolean>(`!!${chatMaterial}.querySelector('[data-hima-control="material-${codeRecordId}"]')`));
+    await browser.evaluate(`(() => { const button=${chatMaterial}.querySelector('[data-hima-control="material-${codeRecordId}"]'); button.setAttribute('data-hima-control', 'chat-material-record'); })()`);
     assert.ok((await d.click('chat-material-record')).ok);
     await browser.wait(`!!${chatMaterial}.querySelector('[data-hima-region="material-content"]') && ${chatMaterial}.querySelector('[data-hima-region="material-content"]').textContent.includes('set -eu')`, 12_000);
-    await capture(d, browser, 'light-workshop');
+    assert.equal(await browser.evaluate(`${chatMaterial}.querySelector('[data-hima-region="material-content"]').textContent`), codeText);
+    await capture(d, browser, 'light-historical-material');
   } catch (error) {
     t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
     t.diagnostic(d.stderr());
@@ -545,7 +583,7 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     const graph = path.join(packsDirOf(d.home), pack, 'graph.yml');
     await writeFile(graph, (await readFile(graph, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
     browser = await inspectWindow(port);
-    const { host, cookie } = await prepareSession(d, browser);
+    const { host, cookie, sessionId } = await prepareSession(d, browser);
     await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"]')`);
     await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"] option[value="relative-goal"]')`);
     assert.ok((await d.fill('config-pack', pack)).ok);
@@ -564,14 +602,14 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     await browser.wait(`document.querySelector('[data-hima-region="config-readiness"]')?.textContent.includes('at most 2 decimal places')`);
     await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('invalid Goal parameter')`);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
-    assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
+    assert.deepEqual(await (await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(sessionId)}`)).json(), { runs: [] });
     await capture(d, browser, 'pls21-relative-goal-invalid');
     assert.ok((await d.fill('config-goal-improvement_pct', '5.25')).ok);
     await waitForConfigurationReady(d, pack, 'local');
     assert.ok((await d.click('config-confirm')).ok);
     await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`);
     const id = await currentRun(d);
-    const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    const view = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(sessionId)}`)).json() as RunView;
     assert.deepEqual(view.run.goal, { improvement_pct: 5.25 });
     await capture(d, browser, 'pls21-relative-goal-started');
   } catch (error) {
