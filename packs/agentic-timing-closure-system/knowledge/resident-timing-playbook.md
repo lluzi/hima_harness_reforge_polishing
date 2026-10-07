@@ -2,8 +2,8 @@
 
 ## Objective and fixed boundary
 
-Own the complete fix-timing engineering task. Start from the supplied common R1 and make the best
-actual native XTop state you can. The ambition is to clear every target setup and hold violation
+Own the complete fix-timing engineering task. Start from the supplied common R1 measurement and make
+the best actual native XTop state you can of the same design (see "Pick and prove the base"). The ambition is to clear every target setup and hold violation
 without a required-constraint regression. Deliver the best actual state and explain residuals
 and limits. A separate evaluator may assess its effect; benchmarking is not this engineering task.
 
@@ -74,8 +74,9 @@ master, range and margin from the active state; never replay a historical object
 
 ### Keep one live XTop state
 
-Load the verified common R1 or a lineage-checked best checkpoint once into one long-lived XTop
-process. Use that same process to inspect, source generated Tcl, mutate, measure, undo, checkpoint and
+When loading is expensive, load the verified common R1 or a lineage-checked best checkpoint once
+into one long-lived XTop process (on a small design, reproducible full-script reruns are fine, see
+"Pick and prove the base"). Use that same process to inspect, source generated Tcl, mutate, measure, undo, checkpoint and
 export. Strip standalone scripts' `open_workspace` and `exit` when sourcing only their operation body.
 One writer owns mutable XTop state; collaborators may analyze reports or prepare scripts but do not
 mutate concurrently. A command timeout means running/unknown, not permission to replay. Reopen only
@@ -189,6 +190,165 @@ and `fix_converge.tcl` `ba51cbd8b638d0de49dabcadaccef14dd3d1db69079ef9e0dafd1ec5
 The Issue #82 Resident metrics and persistent-session facts come from retained Run
 `run-2ab21055-e5ae-4e6b-b5b6-e2cdcd13d10e`; its original live Campaign Reader failure was a Host
 materialization defect, not proof that every referenced artifact had been accepted into the Campaign.
+
+## Full-closure ladder for multi-scenario GBA designs
+
+Use this ladder when the Goal is zero setup and zero hold violations in every required scenario and
+the residuals are large, mixed setup/hold, or AutoFix has stalled. Every step is a hypothesis: measure
+setup, hold, transition and capacitance after it and keep a per-step table. No object name below is a
+recipe; discover every pin, net, cell and master from the active state.
+
+### 0. Pick and prove the base
+
+The supplied common R1 is the measured starting point, and `measurements.before` is always R1. Before
+building on it, ask whether R1 itself is an obstacle. A plain AutoFix R1 often inserts thousands of
+hold/delay cells before any electrical repair; once slews are fixed those cells over-delay paths and
+occupy the rows later hold fixes need. Compare, by measurement:
+
+- R1 as supplied;
+- R1 with its own common-stage ECO cells removed (they carry the common-stage name prefix; list them
+  with `get_cells -hier *<prefix>*` and `remove_buffer` each, counting refusals);
+- the staged baseline R0 that R1 was built from (`baseline/` netlist and DEF, the copied native STA
+  data and library Tcl in `research/native-input/`, opened exactly as the common-stage
+  `native-stage.tcl` does).
+
+All three are the same design under the same constraints, libraries and scenarios. Keep the base that
+reaches the best measured result, and state its lineage in `remaining`/`unknown` facts and in
+REPRODUCE.md: an ECO built from R0 is R0-relative and replaces R1's ECO rather than adding to it.
+Never edit constraints, scenarios, libraries or the STA data to make any base look better.
+
+On a small design a full load plus ladder takes seconds to minutes. Then prefer complete,
+reproducible scripts rerun from the chosen base for every experiment over a long-lived session. Use
+the long-lived session when loading is expensive.
+
+### 1. Optimise against the measurement of record
+
+The measurement of record is `summarize_gba_violations -exclude_path -setup|-hold` (pure GBA). XTop
+fixers use retained path-based slack wherever a dumped path exists, so they stop when that path is
+clean while the GBA endpoint is still negative. When the retained dump holds only a subset of paths,
+run `purge_timing_paths` before fixing, and prove the `-exclude_path` numbers are bit-identical before
+and after it. In one retained trail this alone cleared about 230 more endpoints. Expect some over-fix
+against path-based analysis and say so.
+
+### 2. Electrical first
+
+Weak drivers on long wires make slews of around a nanosecond. GBA propagates the worst fan-in slew, so
+a few of them cost nanoseconds of setup everywhere downstream, and sizing then reports `no_setup_gain`.
+Repair data-path transition and capacitance first:
+
+~~~tcl
+set targets [get_transition_violated_pins -pin_type data]   ;# filter out excluded structures, see 7
+fix_transition_violations $targets
+~~~
+
+Expect hold to get worse (paths got faster); that is cheap to repair later. Do not delete the only
+buffers that re-drive a long wire to "remove delay": that makes setup worse and doubles hold. Remove
+buffers only through `fix_setup_gba_violations -remove_buffer_only`, which checks the result.
+
+### 3. Data-path setup, then data-path hold on min-only branches
+
+Use the setup buffer family of the design's fastest VT. Then run, measuring after each:
+
+~~~tcl
+fix_setup_gba_violations -remove_buffer_only -setup_target $t -hold_margin 0.0
+fix_setup_gba_violations -methods "size_cell" -effort extreme_high -setup_target $t -hold_margin 0.0
+fix_setup_gba_violations -methods "insert_buffer split_net" -effort extreme_high -setup_target $t -hold_margin 0.0
+fix_setup_gba_violations -effort extreme_high -setup_target $t -hold_margin 0.0
+fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target $t -setup_margin 0.0
+fix_hold_gba_violations -effort extreme_high -hold_target $t -setup_margin 0.0 -buffer_list $hold_cells -max_cluster_loader_count 4
+~~~
+
+`$t` is a small positive target (for example 0.005 ns) so a zero-WNS Goal holds after rounding. Give
+the hold fixer the full set of plain buffers and delay cells the library offers (discover them from
+`get_lib_cells`) and raise `eco_max_buffer_chain_length` when an input needs nanoseconds of delay.
+
+### 4. Let fail reasons choose the next action
+
+After every fixer, read `report_fail_reasons -stats -verbose -pins [get_<check>_gba_violated_pins
+-exclude_path -endpoint_only]`:
+
+| Dominant reason | Meaning | Next action |
+| --- | --- | --- |
+| `legal_fail_no_space_on_row` | the ECO cell has no legal site nearby | widen the ECO legalization window, e.g. `set_placement_constraint -max_displacement {300t 20t}` (allows small original-cell shifts); report displacement and overlap afterwards |
+| `break_max_transition` on a hold sink | delay cannot sit after a bad slew | re-drive the net with a strong buffer at its source (port or driver), then rerun the hold fixer |
+| `no_setup_gain` everywhere | the residual is structural | stop sizing; classify the endpoints (step 5) |
+| `break_hold` / `no_hold_margin` while fixing setup | real setup/hold coupling | only now try a negative hold margin or the branch method below |
+| `break_setup` while fixing hold | delay landed on a shared segment | move delay to the private min-only branch |
+
+### 5. Classify residual endpoints by structure, not by slack
+
+For each remaining endpoint, compare its critical max path (slow corner) with its critical min path
+(fast corner) using `get_critical_gba_path -to <pin> -delay_type max|min -scenario <s>`:
+
+- **Data path with logic and spare slack:** keep using data-path ECOs.
+- **Both setup and hold violate:** find where the min path diverges from the max path. Delay the
+  min-only branch. A candidate pin is feasible when its slow-corner setup slack is at least k × the
+  fast-corner hold deficit, where k is the slow/fast delay ratio of the cell you insert. Measure k from
+  candidate tables (`list_insert_buffer_candidates`); in one retained case plain buffers had k ≈ 2.1
+  and HVT clock buffers k ≈ 2.7–3.5.
+- **Direct Q→D with no logic, or a capture window shorter than the launching element's clock-to-Q**
+  (macro pipelines, register files): no data-path ECO can fix it. Only clock skew can.
+- **Hold on an input-port-to-macro net with no max (setup) constraint:** this is free delay. It is
+  usually blocked only by the port slew rule: buffer at the port first, then let the hold fixer add a
+  delay chain near the macro.
+
+### 6. Clock skew for structural walls
+
+Before any clock ECO, trace the leaf clock nets of the launch and capture elements:
+
+- Never delay a clock net that also clocks the launching element of the same path. That is neutral at
+  best.
+- Never delay a net that feeds a clock-generation or divider flop: it creates new clock-path checks.
+- Delay capture groups instead, with one clock-delay cell per group of capture clock pins.
+- Solve a pipeline of skewed elements from the sink end backwards, or all stages together. A greedy
+  per-endpoint pass with a launch-margin guard refuses the middle stage.
+
+For high-k clock delay (HVT clock buffers), use the tool first and repair the hold it dents:
+
+~~~tcl
+fix_violations_by_clock_eco -setup -buffer $hvt_clock_buffer -count 2 -trace_level 6 -hold_wns_threshold -0.3 -auto_scan
+~~~
+
+For the remaining capture flops, use a per-flop useful-skew loop:
+1. `insert_buffer [get_pins <capture CP>] $hvt_clock_buffer`, one cell at a time.
+2. Stop when the D-pin setup slack reaches the target.
+3. `undo` the last cell if the same flop's own launch (Q) setup slack falls below a guard.
+4. Repair hold on min-only branches, then re-measure.
+
+### 7. Protected structures
+
+Keep generic fixers away from power-switch enable chains, always-on or isolation structures, and
+dont_touch objects, especially when no power intent is loaded. Filter them out of the target pin lists
+rather than letting `-force` buffer them. Report their pre-existing violations separately, item by
+item against baseline.
+
+### 8. Finish and prove
+
+Run a clean-up loop of setup and hold fixers until nothing changes. Then run a last electrical pass
+that may not dent timing: `fix_transition_violations -check_timing_margin <targets>`. Then:
+
+- rerun the whole selected script from its base in a clean directory, and diff the per-step numbers;
+- reopen the saved workspace in a new session and re-measure;
+- scan the worst slacks;
+- run `check_placement_overlap` and `summarize_inst_displacement`;
+- compare `summarize_transition_violations` / `summarize_capacitance_violations` with baseline item
+  by item.
+
+State thin margins, clock-path delay cells and the absence of OCV derates as signoff risks.
+
+### Provenance of this ladder
+
+This ladder comes from an engineering feasibility study on 2026-10-07 on the ICExplorer-XTop 2025.09
+vendor tutorial design (`cpu`, 4 scenarios), retained under the Site's `explore/fz-closure`.
+- Vendor scripts and stock AutoFix stalled at setup 605–618 / −1.83 to −1.96 ns and hold 372–391 /
+  −3.06 ns.
+- The ordered ladder reached 0/0 in all four scenarios from raw inputs. Transition went from 2663 to
+  45, all pre-existing kinds, and capacitance from 100 to 1, identical to baseline.
+- Building on the common R1 as supplied stalled at hold 115 / −0.90 ns. Removing R1's own cells first
+  left hold 13 / −0.37 ns.
+
+These are hypotheses for the next design, not a guaranteed sequence, and no endpoint, cell or ECO
+from that study is to be replayed.
 
 ## Required delivery
 

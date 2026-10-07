@@ -1,4 +1,4 @@
-# ATCS 0.4.0 run contract
+# ATCS 0.4.1 run contract
 
 ## Goal template
 
@@ -16,10 +16,17 @@ and producer provenance. Preparation launches no PrimeTime. Common R1 is produce
 AutoFix, with saved native state and before/after reports. NativeReportPaths controls evidence breadth
 from 1,000 to 100,000 paths; it does not limit repair techniques or iterations.
 
-The resident opens verified R1 and may research, code, use ordinary AutoFix, resize/VT, buffering,
+An XTop-native designStateManifest (`inputKind: xtop-native`) is a netlist + DEF + retained native
+STA dump with no Innovus database, SPEF or SDC; its nativeTimingContext then declares
+`constraintsEmbeddedIn: staData` with no constraint files, and the dump's tree digest is the
+constraint identity. XTop scenarios may name their mode (func/test MCMM designs).
+
+The resident's `measurements.before` is always the verified R1. It opens verified R1 and may research, code, use ordinary AutoFix, resize/VT, buffering,
 insert/split/remove, placement, routing/detour and supported combinations. It measures candidates,
 undoes regressions and returns the best actual state under Runtime/Site budget. There is no fixed
-seat plan, mutation count, model-step count or hard-coded design object list. Full professional
+seat plan, mutation count, model-step count or hard-coded design object list. When R1 itself is the
+obstacle, the resident may peel R1's own common-stage cells or rebuild from the staged baseline R0 of
+the same design, and must state the selected state's lineage (an R0-based ECO replaces R1's ECO). Full professional
 method and admitted engineering document shape remain in resident-timing-playbook.md.
 
 ## Run contract
