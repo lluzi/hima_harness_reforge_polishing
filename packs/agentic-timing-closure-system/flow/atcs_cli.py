@@ -599,8 +599,12 @@ def _native_timing_input(path, manifest_path=None):
         raise InputError("invalid-input", "nativeTimingContext must have schema atcs.native-timing-context/1")
     required = {"schema", "designStateManifestSha256", "requiredScenarios", "staData",
                 "sourceReports", "constraints", "producer"}
-    if set(obj) != required:
-        raise InputError("invalid-input", f"nativeTimingContext must have exactly {sorted(required)}")
+    if set(obj) not in (required, required | {"constraintsEmbeddedIn"}):
+        raise InputError("invalid-input", f"nativeTimingContext must have exactly {sorted(required)} (+constraintsEmbeddedIn)")
+    # A design whose constraints exist only inside the retained dump declares that instead of SDC refs.
+    embedded = obj.get("constraintsEmbeddedIn")
+    if embedded is not None and (embedded != "staData" or obj["constraints"] != []):
+        raise InputError("invalid-input", "nativeTimingContext.constraintsEmbeddedIn must be 'staData' with constraints []")
     if manifest_path is not None and obj["designStateManifestSha256"] != core.file_sha256(Path(manifest_path)):
         raise core.AtcsError("identity-mismatch", "native timing data belongs to another designStateManifest")
     scenarios = obj["requiredScenarios"]
@@ -616,6 +620,8 @@ def _native_timing_input(path, manifest_path=None):
         raise core.AtcsError("identity-mismatch", "retained native STA data is missing, linked or changed")
     for field in ("sourceReports", "constraints"):
         refs = obj[field]
+        if field == "constraints" and embedded is not None:
+            continue
         if not isinstance(refs, list) or not refs:
             raise InputError("invalid-input", f"nativeTimingContext.{field} must be a non-empty list")
         for index, ref in enumerate(refs):
@@ -699,6 +705,8 @@ def _cmd_prepare_native_context(workspace, args):
         "constraints": list(native["constraints"]), "sourceReports": report_refs,
         "producer": dict(native["producer"]), "sourceInputSha256": core.file_sha256(Path(native_context_path)),
     }
+    if "constraintsEmbeddedIn" in native:
+        body["constraintsEmbeddedIn"] = native["constraintsEmbeddedIn"]
     return _paths(workspace)["xtop_context"], core.stamp("xtop-context", body)
 
 

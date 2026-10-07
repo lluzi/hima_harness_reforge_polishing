@@ -1,0 +1,23 @@
+allowedReadRoots:
+  - /data/eda/env
+  - /data/eda/software/eda_tools/empyrean
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
+  - /data/eda/project/hima_harness/operator-admin/atcs-job-reaper-v1
+  - /data/eda/project/hima_harness/xtop-tutorial/inputs
+  - /data/eda/project/hima_harness/xtop-tutorial/runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/xtop-tutorial/runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py
+  - python3
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

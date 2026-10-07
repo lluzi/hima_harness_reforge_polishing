@@ -422,8 +422,8 @@ def compile_xtop_site_context(site_profile, required_scenarios):
     lines = []
     corners = []
     for row in scenarios:
-        if not isinstance(row, dict) or set(row) != {"name", "corner", "libertyGlob"}:
-            raise core.AtcsError("invalid-input", "each xtopContext.scenarios entry must have name, corner, libertyGlob")
+        if not isinstance(row, dict) or set(row) - {"mode"} != {"name", "corner", "libertyGlob"}:
+            raise core.AtcsError("invalid-input", "each xtopContext.scenarios entry must have name, corner, libertyGlob (+mode)")
         if not all(isinstance(row[key], str) and row[key] for key in row):
             raise core.AtcsError("invalid-input", "XTop scenario fields must be non-empty strings")
         name = row["name"]
@@ -446,11 +446,18 @@ def compile_xtop_site_context(site_profile, required_scenarios):
             "invalid-input",
             f"xtopContext scenario mismatch; required={list(required)}, configured={list(scenario_map)}",
         )
-    lines.append("create_mode func")
+    # One mode `func` unless the Site names each scenario's mode (e.g. func/test MCMM designs).
+    modes = []
+    for name in required:
+        mode = scenario_map[name].get("mode", "func")
+        if mode not in modes:
+            modes.append(mode)
+            lines.append(f"create_mode {tcl_safe(mode, 'XTop mode')}")
     for name in required:
         corner = scenario_map[name]["corner"]
+        mode = scenario_map[name].get("mode", "func")
         lines.append(
-            f"create_scenario -corner {tcl_safe(corner, 'XTop corner')} -mode func {tcl_safe(name, 'XTop scenario')}"
+            f"create_scenario -corner {tcl_safe(corner, 'XTop corner')} -mode {tcl_safe(mode, 'XTop mode')} {tcl_safe(name, 'XTop scenario')}"
         )
 
     list_fields = ("bufferListForHold", "bufferListForSetup", "cellNominalSwapKeywords")

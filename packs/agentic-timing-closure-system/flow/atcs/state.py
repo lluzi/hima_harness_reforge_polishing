@@ -249,6 +249,18 @@ from . import reports
 
 REQUIRED_LIFECYCLE_STAGES = ("init", "place", "cts", "route", "postroute")
 
+# An XTop-native design is a netlist + DEF + retained native STA dump. It has no Innovus database,
+# SPEF or SDC of its own: its constraints and parasitics exist only inside the retained dump, whose
+# tree digest the native timing context binds. The XTop-only route never restores Innovus.
+XTOP_NATIVE = "xtop-native"
+
+
+def _is_xtop_native(manifest):
+    kind = manifest.get("inputKind")
+    if kind not in (None, XTOP_NATIVE):
+        raise core.AtcsError("invalid-input", f"unknown manifest.inputKind {kind!r}")
+    return kind == XTOP_NATIVE
+
 
 def _resolve(root, path):
     if root and not os.path.isabs(path):
@@ -269,6 +281,15 @@ def design_state(manifest):
 
     top = core.require(manifest, "top", "manifest")
     stage = core.require(manifest, "stage", "manifest")
+    native = _is_xtop_native(manifest)
+    database_out = None if native else _database_identity(manifest, root)
+    netlist_rel = core.require(manifest, "netlist", "manifest")
+    if native and manifest.get("def") is None:
+        raise core.AtcsError("missing-input", "an xtop-native manifest needs its DEF")
+    return _design_state_body(manifest, root, top, stage, database_out, netlist_rel)
+
+
+def _database_identity(manifest, root):
     database = core.require(manifest, "database", "manifest")
     enc_rel = core.require(database, "enc", "manifest.database")
     enc_dat_rel = core.require(database, "encDat", "manifest.database")
@@ -289,16 +310,16 @@ def design_state(manifest):
             f"manifest.database.encDat {enc_dat_rel!r} is not paired with manifest.database.enc "
             f"{enc_rel!r} -- expected an encDat named {expected_enc_dat_name!r}",
         )
-    netlist_rel = core.require(manifest, "netlist", "manifest")
-
     enc_path = _resolve(root, enc_rel)
     enc_dat_path = _resolve(root, enc_dat_rel)
-    database_out = {
+    return {
         "path": enc_rel,
         "sha256": core.file_sha256(enc_path),
         "datDigest": core.tree_digest(enc_dat_path),
     }
 
+
+def _design_state_body(manifest, root, top, stage, database_out, netlist_rel):
     netlist_path = _resolve(root, netlist_rel)
     netlist_out = {"path": netlist_rel, "sha256": core.file_sha256(netlist_path)}
 
@@ -332,6 +353,8 @@ def design_state(manifest):
         "scenarios": scenario_names,
         "parentId": manifest.get("parentId"),
     }
+    if database_out is None:
+        body["inputKind"] = XTOP_NATIVE
     return core.stamp("design-state", body)
 
 
@@ -348,6 +371,8 @@ def _required_corners(manifest):
 
 def _check_minimum_inputs(manifest, root):
     missing = []
+    if _is_xtop_native(manifest):
+        return _check_xtop_native_inputs(manifest, root)
 
     database = manifest.get("database", {})
     enc = database.get("enc")
@@ -386,6 +411,26 @@ def _check_minimum_inputs(manifest, root):
     if not manifest.get("scenarios"):
         missing.append("scenarios")
 
+    return missing
+
+
+def _check_xtop_native_inputs(manifest, root):
+    missing = []
+    for field in ("netlist", "def"):
+        path = manifest.get(field)
+        if not path or not _exists(_resolve(root, path)):
+            missing.append(field)
+    for field in ("database", "spef", "sdc"):
+        if manifest.get(field):
+            missing.append(f"{field}: an xtop-native manifest carries no {field}")
+    libraries = manifest.get("libraries", [])
+    if not libraries:
+        missing.append("libraries")
+    for path in libraries:
+        if not _exists(_resolve(root, path)):
+            missing.append(f"libraries:{path}")
+    if not manifest.get("scenarios"):
+        missing.append("scenarios")
     return missing
 
 
