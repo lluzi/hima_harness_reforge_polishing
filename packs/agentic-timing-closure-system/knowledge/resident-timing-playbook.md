@@ -344,6 +344,60 @@ picoseconds, keep working while the Run budget allows. Stopping 100 minutes earl
 Record each attempt in the step table. Only when every applicable one is measured and none improves
 the residual may the stop reason say "floor", with the evidence named.
 
+### 7c. Use the time box; a confident "floor" is usually an untried tactic
+
+The Pack's time box is 120 minutes with a 15-minute closing reserve, so the engineering task may work
+until about 95 minutes after the task's `createdAt` (in `task.json`; compare with `date -u`). On a
+small design a whole rebuild plus ladder takes about a minute, so this is dozens of experiments.
+
+While the Goal is unmet, do not deliver before about 75 minutes have passed unless a real tool, input
+or permission blocker stops you. In two retained App Runs on the XTop tutorial, the resident delivered
+after 12–14 minutes claiming a floor:
+- one stopped at hold 1 / −1.5 ps;
+- one stopped at setup 48 on a macro pipeline;
+
+Both residuals were closed by other Runs using tactics in this playbook. When you feel stuck:
+
+1. Rebuild from the other base (R0 vs R1-without-common-cells), or reorder the ladder, and compare.
+2. For each residual class, go through sections 5, 6 and 7b explicitly. Write a table of tactic → measured
+   result in `engineering/REPRODUCE.md`.
+3. Combine the partial wins of different experiments. Each experiment is a reproducible script, so
+   take the hold-clean steps of one and the setup-clean steps of another, and re-measure.
+
+### 7d. Pipeline skew, step by step
+
+For a chain of storage elements A → B → C, where data goes Q→D with no logic between them (macro
+pipelines, register-file read stages), and setup fails at B and C:
+
+1. Measure each stage's setup deficit `dB`, `dC` (slow corner) and each capture pin's hold slack
+   (fast corner).
+2. Start at the **sink** C. Its capture clock needs `dC + dB`, because delaying B's clock also delays
+   B's launch toward C. Insert a chain of delay cells in front of C's clock pin only:
+   `insert_buffer [get_pins C/<clk pin>] {cell cell ...}`. Choose the chain length from the measured
+   slow-corner delay of one cell, and re-measure.
+3. Then delay B's clock by `dB`. Re-measure B/D, C/D, and the hold at B and C.
+4. If B's capture clock shares a leaf net with its launch flops, or that net clocks a divider or
+   clock-generation flop, isolate the pin first. `insert_buffer` on the pin itself splits it from the
+   net.
+5. Repair any hold dent on the min-only branches, then re-measure all four scenarios.
+
+A per-endpoint greedy skew loop that delays B first will see C get worse and back off. That is not a
+floor.
+
+### 7e. Keep the delivery small
+
+The Host materializes the whole `engineering/` tree into the Campaign workspace, file by file, before
+the Reader runs. Thousands of files or hundreds of MB take a quarter of an hour. Keep scratch
+workspaces, probes and superseded checkpoints **outside** `engineering/`, for example in `scratch/`
+beside it. Put into `engineering/` only:
+- the selected checkpoint;
+- scripts;
+- ECO exports;
+- raw reports;
+- logs;
+- REPRODUCE.md;
+- the result document.
+
 ### 8. Finish and prove
 
 Run a clean-up loop of setup and hold fixers until nothing changes. Then run a last electrical pass
