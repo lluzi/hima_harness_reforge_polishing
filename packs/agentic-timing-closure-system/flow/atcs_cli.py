@@ -4460,7 +4460,7 @@ def _cmd_common_autofix(workspace, args):
     clock.setdefault("experimentDeadline", clock["startedAt"] + 90 * 60)
     _canonical_write(clock_path, clock)
     before, residual = root / "initial-analysis", root / "residual-analysis"
-    fixes = integration.auto_fix_tcl(integration.DEFAULT_SETUP_MARGIN, integration.DEFAULT_HOLD_MARGIN)
+    fixes = integration.vendor_tutorial_flow_tcl()
     body = (_native_analysis_tcl(before, summary_top_n, detail_top_n) + "\n".join(fixes)
             + "\n" + _native_analysis_tcl(residual, summary_top_n, detail_top_n))
     body += f"""

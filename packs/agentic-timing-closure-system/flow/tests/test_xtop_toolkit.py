@@ -422,6 +422,9 @@ proc stub_fix {name words} {
 }
 proc fix_hold_gba_violations {args} { return [stub_fix fix_hold_gba_violations $args] }
 proc fix_setup_gba_violations {args} { return [stub_fix fix_setup_gba_violations $args] }
+proc get_parameter {name} { return 0 }
+proc fix_transition_violations {args} { stub_record fix_transition_violations {*}$args; return 0 }
+proc fix_capacitance_violations {args} { stub_record fix_capacitance_violations {*}$args; return 0 }
 proc undo {args} {
     stub_record undo {*}$args
     if {$::stub_undo_broken} { return "" }

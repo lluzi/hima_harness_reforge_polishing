@@ -1,4 +1,4 @@
-# ATCS 0.4.6 run contract
+# ATCS 0.4.7 run contract
 
 ## Goal template
 
@@ -13,7 +13,8 @@ is prediction-only and does not establish physical signoff or approve adoption.
 The staged design, common R1, constraints, libraries and ordered scenarios stay fixed. Retained
 nativeTimingContext supplies same-design timing data, source reports, SDC hashes, ordered scenarios
 and producer provenance. Preparation launches no PrimeTime. Common R1 is produced by actual initial
-AutoFix, with saved native state and before/after reports. NativeReportPaths controls evidence breadth
+AutoFix, the vendor tutorial's own fix flow (transition, capacitance, then setup and hold, twice),
+with saved native state and before/after reports. NativeReportPaths controls evidence breadth
 from 1,000 to 100,000 paths; it does not limit repair techniques or iterations.
 
 An XTop-native designStateManifest (`inputKind: xtop-native`) is a netlist + DEF + retained native

@@ -1277,6 +1277,37 @@ def auto_fix_tcl(setup_margin, hold_margin):
     ]
 
 
+def vendor_tutorial_flow_tcl():
+    """Common R1: the vendor's own automatic-fix flow, as the ICExplorer-XTop 2025.09 tutorial ships it.
+
+    The tutorial teaches one fixer per lab, each from the unfixed design, and never chains them.
+    Combined with electrical repair first (lab4 transition, lab5 capacitance), then lab3 setup and
+    lab2 hold, then one more setup + hold pass, the commands are copied verbatim from
+    `share/tutorial/lab*/` (targets and margins included). Buffer lists and sizing rules come from
+    the Site's `ecoParameters`, as in the labs' own `set_parameter` lines. lab5's capacitance target
+    is restored after its fixers, because the saved R1 workspace keeps session parameters. Measured on the tutorial
+    design on 2026-10-08: setup 1029 -> 323, hold 906 -> 103, where lab3 + lab2 alone stop at 618 / 378.
+    """
+    setup = [
+        'fix_setup_gba_violations -methods "size_cell" -effort high -setup_target 0.005 -hold_margin 0.0',
+        'fix_setup_gba_violations -methods "size_cell" -size_rule nominal_keywords -setup_target 0.005 -hold_margin 0.0',
+        'fix_setup_gba_violations -methods "insert_buffer" -setup_target 0.005 -hold_margin 0.0',
+    ]
+    hold = [
+        "fix_hold_gba_violations -size_cell_only -size_rule nominal_keywords -hold_target 0.005 -setup_margin 0.01",
+        "fix_hold_gba_violations -effort high -hold_target 0.005 -setup_margin 0.01",
+    ]
+    return [
+        'fix_transition_violations -methods "size_cell"',
+        "fix_transition_violations",
+        "set ::atcs_saved_cap_slack_target [get_parameter eco_capacitance_slack_target]",
+        "set_parameter eco_capacitance_slack_target 0.01",
+        'fix_capacitance_violations -methods "size_cell"',
+        "fix_capacitance_violations",
+        "set_parameter eco_capacitance_slack_target $::atcs_saved_cap_slack_target",
+    ] + (setup + hold) * 2
+
+
 def _recipe_margin(plan, key, default):
     value = plan.get(key, default)
     if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)

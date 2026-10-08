@@ -18,7 +18,7 @@ ROOT = FLOW.parents[2]
 REPO_ROOT = Path(os.environ.get("HIMA_TEST_REPO_ROOT", ROOT))
 sys.path[:0] = [str(FLOW), str(TESTS)]
 import atcs_cli as cli
-from atcs import adapters, core, workspaces, contributions
+from atcs import adapters, core, workspaces, contributions, integration
 from test_cli_state import _make_baseline_manifest, _write_json, _write_xtop_context, _xtop_site_config
 from test_worker_slots import _active
 from test_xtop_toolkit import STUB_XTOP, TCLSH, PLAN
@@ -210,7 +210,17 @@ proc fix_hold_gba_violations {args} { fixture_default fix_hold_gba_violations {*
         calls = (self.ws / "research/observe/common-r1/vendor-calls.txt").read_text().splitlines()
         analyzed = [i for i, line in enumerate(calls) if line.startswith("analyze_")]
         fixed = [i for i, line in enumerate(calls) if line.startswith("fix_")]
-        self.assertEqual(len(fixed), 4)
+        # The vendor tutorial flow: electrical labs first (lab4, lab5), then setup (lab3) and
+        # hold (lab2), then one more setup + hold pass.
+        self.assertEqual(common["autoFixCommands"], integration.vendor_tutorial_flow_tcl())
+        # lab5's capacitance target persists in the saved R1 workspace; it is restored after its fixers.
+        cap = [i for i, line in enumerate(common["autoFixCommands"]) if "eco_capacitance_slack_target" in line]
+        self.assertEqual([common["autoFixCommands"][i].split()[0] for i in cap], ["set", "set_parameter", "set_parameter"])
+        self.assertTrue(common["autoFixCommands"][cap[-1]].endswith("$::atcs_saved_cap_slack_target"))
+        self.assertLess(max(i for i, line in enumerate(common["autoFixCommands"]) if line.startswith("fix_capacitance")), cap[-1])
+        self.assertEqual([calls[i].split()[0] for i in fixed],
+                         ["fix_transition_violations"] * 2 + ["fix_capacitance_violations"] * 2
+                         + (["fix_setup_gba_violations"] * 3 + ["fix_hold_gba_violations"] * 2) * 2)
         self.assertLess(analyzed[1], fixed[0]); self.assertLess(fixed[-1], analyzed[2])
         self.assertTrue(any(line.startswith("save_workspace") for line in calls))
         with patch.object(adapters, "run_tool", side_effect=AssertionError("must reuse completed common R1")):
