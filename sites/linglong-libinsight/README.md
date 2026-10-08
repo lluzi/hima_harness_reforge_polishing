@@ -34,8 +34,12 @@ Installed by the integrator, not by this slice:
    `resident-engineering-wrapper.py` (sha256 `85d64ee8…9e799`, identical to the repo template), the
    OpenCode 1.18.34 executable and image `7d651dc8…` (`localhost/edarunner:alma8`).
 2. `mkdir -p /data/eda/project/hima_harness/libinsight-runs/{campaigns,requests,library}` — the
-   capability bind-mounts `library` and `requests` read-only, and Podman refuses to start a container
+   capability bind-mounts `library` and `requests` (and, since 2026-10-08, `inputs`) read-only, and Podman refuses to start a container
    whose bind source is missing.
+3. 2026-10-08 (insight rules, Pack 0.2): `libinsight-runs/inputs` holds Site copies of design and
+   cell inputs the rules read (`aes28/` timing report and netlist, `tsmc28-spice/` cell netlists).
+   The capability bind-mounts it read-only as well; the earlier capability file is kept beside it
+   as `….json.2026-10-05.bak`. These inputs never enter Git.
 
 Nothing else is installed: no new wrapper, image, Python package or licence change.
 
