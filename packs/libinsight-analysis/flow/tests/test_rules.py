@@ -153,6 +153,8 @@ class Helpers(unittest.TestCase):
         self.assertEqual(label("(A1 A2 + B)'", ["A1", "A2", "B"]), "AOI21")
         self.assertEqual(label("(S&B)|(!S&A)", ["A", "B", "S"]), "MUX2")
         self.assertEqual(label("A^B", ["A", "B"]), "XOR2")
+        # A function with no plain class name is never shown as a Boolean expression.
+        self.assertEqual(label("!((((!A1)+B1)+B2)+B3)", ["A1", "B1", "B2", "B3"]), "Complex logic (4 inputs)")
         flop = R.flop("DFFRX1", 1.0, clear="!RN")
         self.assertEqual(F.class_label(flop, F.pins_of(flop, 1000.0), F.signature(flop, F.pins_of(flop, 1000.0))),
                          "Flop + reset")

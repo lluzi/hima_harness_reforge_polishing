@@ -652,8 +652,8 @@ def class_label(cell, pins, sig):
     if any((p.get("attrs") or {}).get("three_state") for p in cell.get("pins") or []):
         label = "Tri-state " + (label or "logic")
     if label is None:
-        text = " ".join(str(pins[out]["function"]).split())
-        label = ("Logic %s = %s" % (out, text)) if len(text) <= 32 else "Complex logic (%d inputs)" % len(inputs)
+        # A Boolean expression is not a plain-English class; the page names the class, the cell names the rest.
+        label = "Complex logic (%d inputs)" % len(inputs)
     return label
 
 
