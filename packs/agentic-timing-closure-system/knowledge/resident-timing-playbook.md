@@ -240,6 +240,35 @@ reproducible scripts rerun from the chosen base over one long-lived session.
    reorder your steps, or combine the partial wins of different experiments, and keep a table of
    tactic → measured result in `engineering/REPRODUCE.md`.
 
+### An order of work that has closed mixed multi-scenario residuals
+
+This is an order, not a script: discover every object and choose every value by measurement, and
+keep the per-step table.
+
+1. **Base.** Common R1 inserts hold cells before any electrical repair; once slews are fixed those
+   cells over-delay paths and occupy the rows later fixes need. Compare a rebuild from the staged R0
+   with R1, and expect R0 to be the better base for a full closure.
+2. **Measurement.** Drop the retained path-based timing paths so the fixers work on GBA, and prove
+   the measurement of record did not change.
+3. **Placement room.** Keep legalization obligatory, then widen the ECO placement range and allow
+   longer buffer chains. Increase them step by step while `report_fail_reasons` still names
+   "no space on row".
+4. **Electrical repair** on data pins with transition violations, excluding protected structures, before
+   any timing fixer. Prefer the fastest variants of the buffer cells for setup and electrical work.
+5. **Setup on the data path.** Run the setup fixers in turn: remove redundant buffers, size at the
+   highest effort, then insert buffers and split nets, then all methods.
+6. **Hold on the data path.** Size first, then insert with the full list of small buffers and delay
+   cells of the library and clustered loaders.
+7. **Ports that block hold.** When a hold endpoint is fed directly from an input port whose net
+   already violates transition, the hold fixer cannot add delay. Put a strong buffer at the port
+   location on that net, then rerun the hold fixer.
+8. **Structural walls.** Clock skew as described below, sink first; then the tool's clock fixer with a
+   clock cell; then per-register skew with a launch check. Re-fix hold after every skew pass.
+9. **Clean-up.** Alternate setup and hold fixers until nothing changes, then a last electrical pass that
+   may not dent timing.
+10. **Residual hold.** For each remaining hold endpoint, try the delay cells from smallest up, at the
+    endpoint and then one stage earlier, and keep one only if hold clears and setup stays clean.
+
 ### Structural setup walls: clock skew, step by step
 
 A structural wall is a setup endpoint whose worst path has no combinational cell between the launching
@@ -277,6 +306,9 @@ Legality is unchanged: keep obligatory legalization for every clock-pin insertio
 `check_placement_overlap` with the starting state.
 
 ### Before you deliver: the time-box check
+
+The Reader enforces this check. A refusal that names the time box is not a document problem: resume
+engineering from your best checkpoint and deliver again later.
 
 While the Goal is unmet, run `date -u` and compare it with `createdAt` in `task.json` before writing
 the delivery. If fewer than 75 minutes have passed, do not deliver: go back to the residual classes,

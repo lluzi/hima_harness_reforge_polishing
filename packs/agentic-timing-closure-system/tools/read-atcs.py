@@ -2181,6 +2181,43 @@ def _engineering_regressions(before, after, goal, collateral, collateral_unknown
     return core.known(len(reasons)), reasons
 
 
+RESIDENT_MIN_MINUTES_BEFORE_UNMET_DELIVERY = 75
+"""While the timing Goal is unmet, a resident delivery made earlier than this after the task started
+is sent back to keep engineering (playbook "Before you deliver: the time-box check")."""
+
+
+def _time_box_check(workspace, task_id, delivery, measurements):
+    after = measurements.get("after") if isinstance(measurements, dict) else None
+    try:
+        goal_met = all(after[mode]["violations"] == 0 and after[mode]["wnsNs"] >= 0
+                       for mode in ("setup", "hold"))
+    except (KeyError, TypeError):
+        return  # the shape checks below refuse a malformed document
+    task_path = Path(workspace) / ".hima-engineering" / task_id / "task.json"
+    if goal_met or not task_path.is_file():
+        return
+    try:
+        started = _parse_utc(_load_json(task_path)["createdAt"])
+        delivered = _parse_utc(delivery["createdAt"])
+    except (KeyError, TypeError, ValueError):
+        return
+    minutes = (delivered - started).total_seconds() / 60
+    if minutes < RESIDENT_MIN_MINUTES_BEFORE_UNMET_DELIVERY:
+        raise ValueError(
+            f"time box: the timing Goal is unmet and this delivery came {minutes:.0f} minutes after the "
+            f"task started, before the {RESIDENT_MIN_MINUTES_BEFORE_UNMET_DELIVERY}-minute check. This is "
+            "not a document problem: the correction is to keep engineering. Resume from your best "
+            "checkpoint, take the next untried tactic for the residual (for a structural setup wall, the "
+            "playbook's step-by-step clock skew), measure it, and deliver again when the Goal is met or "
+            f"after {RESIDENT_MIN_MINUTES_BEFORE_UNMET_DELIVERY} minutes.")
+
+
+def _parse_utc(text):
+    from datetime import datetime, timezone
+    value = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 def _read_engineering_result(report, workspace, extra, mods):
     """Read one Host-delivered resident result and independently verify its engineering evidence.
 
@@ -2223,6 +2260,7 @@ def _read_engineering_result(report, workspace, extra, mods):
     delivery = deliveries[0]
     if task != {key: delivery.get(key) for key in task_keys}:
         raise ValueError("engineering-result.task does not match the verified Host delivery identity")
+    _time_box_check(workspace, task["taskId"], delivery, obj.get("measurements"))
 
     baseline = _load_json(Path(workspace) / "state" / "baseline.json")
     _verify_identity(baseline, "design-state", core)

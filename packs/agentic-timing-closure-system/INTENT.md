@@ -61,6 +61,8 @@ so the before state is the strongest stock-XTop reference rather than setup and 
 ladder and keeps only general principles and XTop command mechanics, so the resident must work out the
 closure method itself on the design. 0.4.9 adds the general clock-skew technique for structural setup
 walls and a time-box check before delivery, after a 0.4.8 resident closed hold but stopped at setup 55
-with a clock attempt that used data buffers without obligatory legalization.
+with a clock attempt that used data buffers without obligatory legalization. 0.4.10 adds an order of
+work in prose and makes the time-box check binding: the Reader sends a Goal-unmet delivery made before
+75 minutes back to the resident to keep engineering, after two residents delivered at 16 and 19 minutes.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.
