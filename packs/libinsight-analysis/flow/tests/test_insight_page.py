@@ -131,6 +131,15 @@ class CheckRule(unittest.TestCase):
             "paths[0].rows[0].eq must include the cell in use")
         self.assertRejected(self.mutated("path", lambda r: r["paths"][0]["rows"][0].pop("op")),
                             "paths[0].rows[0] is missing op")
+        # A stage whose cell is not in the facts given is drawn as not judged, not refused.
+        not_judged = self.mutated("path", lambda r: r["paths"][0]["rows"][0].update(
+            op={"slew": None, "load": None, "from": "fo4"}, best=None, eq=[], nfast=0))
+        self.assertEqual(insight_page.check_rule(not_judged), [])
+        # Cell names reach .tcl and .sdc lines: a name that is not a plain identifier is refused.
+        self.assertRejected(self.mutated("path", lambda r: r["paths"][0]["rows"][0]["eq"][0].update(
+            name="X] ; file delete -force ~ ; #")), "must be a plain cell name")
+        self.assertRejected(self.mutated("path", lambda r: r["paths"][0]["rows"][0].update(cls="NAND2\nset_dont_use *")),
+                            "without control characters")
         self.assertRejected(self.mutated("path", lambda r: r.update(paths=[dict(r["paths"][0], rows=r["paths"][0]["rows"] * 12)] * 5)),
                             "hold 480 stages")
 

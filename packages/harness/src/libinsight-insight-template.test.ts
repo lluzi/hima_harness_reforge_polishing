@@ -168,3 +168,21 @@ test('vmin redesign brief without a netlist stays at arc level', () => {
   assert.ok(file.text.includes('## Where in the circuit\n\nNo transistor netlist was given, so this brief stays at arc level: A2→ZN fall.\n'));
   assert.ok(file.text.includes('## What it costs\n\n- not estimated\n'));
 });
+
+test('generated files carry only plain cell names, one-line comments and no spreadsheet formulas', () => {
+  const hostile = 'X] ; file delete -force ~ ; #';
+  const vmin = { id: 'vmin_bottleneck', hi: 0.81, items: [{ name: hostile, v: '6T-HVT\nexec rm', x: 12 }, { name: 'NOR3X1', v: '6T-HVT\nexec rm', x: 12 }] };
+  for (const variant of [null, '6T-HVT\nexec rm']) {
+    const sdc = INSIGHT.files.derateSdc(vmin, variant);
+    assert.ok(!sdc.text.includes(hostile), 'a name that is not a plain identifier never reaches a command line');
+    assert.match(sdc.text, /\[get_lib_cells \*\/NOR3X1\]/);
+    assert.ok(sdc.text.split('\n').every((line: string) => line === '' || line.startsWith('#') || line.startsWith('set_timing_derate')), 'a variant cannot open a new line');
+  }
+  const tcl = INSIGHT.files.dontUseTcl({ id: 'critical_path_faster_cells', design: { name: 'demo_top\nexec rm' },
+    paths: [{ rows: [{ cell: 'NAND2X1', cls: 'NAND2\nexec rm' }] }] }, { '0:0': [hostile, 'NAND2X2'] });
+  assert.ok(!tcl.text.includes(hostile));
+  assert.ok(tcl.text.split('\n').every((line: string) => line === '' || line.startsWith('#') || line.startsWith('set_dont_use [get_lib_cells */')));
+  assert.equal(tcl.lines, 1);
+  const csv = INSIGHT.files.roadmapGapsCsv({ items: [{ cls: '=HYPERLINK("x")', v: '+1', lo: { name: 'A' }, hi: { name: 'B' }, ratio: 2, miss: { drive: 1.5, area: 1 } }] });
+  assert.ok(csv.text.includes(`'=HYPERLINK`) && csv.text.includes(`'+1`), 'a text cell never starts a formula');
+});

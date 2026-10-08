@@ -21,7 +21,7 @@ import subprocess
 import sys
 import time
 
-from . import common, delivery
+from . import common, delivery, insight_page
 
 FLOW = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RULES = os.path.join(FLOW, "libinsight_analysis", "rules")
@@ -167,7 +167,13 @@ def run(argv):
     code_dir = os.path.join(root, rel)
     if not os.path.isdir(code_dir):
         os.makedirs(code_dir)
-    facts_paths, other_paths = _input_paths(rule_args)
+    # The rule runs in ROOT, so relative inputs and globs resolve there too: what is hashed is what it reads.
+    here = os.getcwd()
+    os.chdir(root)
+    try:
+        facts_paths, other_paths = _input_paths(rule_args)
+    finally:
+        os.chdir(here)
     before = dict((p, common.sha256_file(p)) for p in facts_paths + other_paths)
     out_json = os.path.join(code_dir, "rule.json")
     command = [sys.executable, module] + rule_args + ["--out", out_json]
@@ -181,8 +187,19 @@ def run(argv):
         print("the rule exited %d; nothing was delivered. Its message is above." % done.returncode)
         return 1
     after = dict((p, common.sha256_file(p)) for p in facts_paths + other_paths)
+    changed = sorted(p for p in before if before[p] != after[p])
+    if changed:
+        for path in changed:
+            print("%s changed while the rule ran (sha256 %s before, %s after); nothing was delivered. Run it again "
+                  "once the file is stable." % (path, before[path], after[path]))
+        return 1
     with open(out_json) as stream:
         rule = json.load(stream)
+    shape = insight_page.check_rule(rule)
+    if shape:
+        for line in shape:
+            print("insight: %s" % line)
+        return 1
     code_files = []
     for src in [module] + helpers:
         dst = os.path.join(code_dir, os.path.basename(src))
@@ -200,13 +217,12 @@ def run(argv):
         sources.append({"path": path, "kind": "facts", "sha256Before": before[path], "sha256After": after[path],
                         "libertySha256": header["source"]["sha256"]})
     analysis_id = rule["id"].replace("_", "-")
+    if opts["version"] and not opts["version"].isdigit():
+        raise UsageError("--version must be a whole number, not %r" % opts["version"])
     version = int(opts["version"]) if opts["version"] else _next_version(prepared, analysis_id)
     assumptions = ["Rule: %s" % rule["rule"]]
-    assumptions += ["Also read %s (sha256 %s, unchanged: %s)." % (p, after[p], "yes" if before[p] == after[p] else "NO")
-                    for p in other_paths]
+    assumptions += ["Also read %s (sha256 %s, unchanged during the run)." % (p, after[p]) for p in other_paths]
     limits = ["Only the facts files listed as sources were read; other corners and variants were not checked."]
-    if any(before[p] != after[p] for p in before):
-        limits.append("An input file changed while the rule ran; re-run before trusting this result.")
     doc = {
         "schema": "hima-libinsight-analysis/1",
         "id": analysis_id,

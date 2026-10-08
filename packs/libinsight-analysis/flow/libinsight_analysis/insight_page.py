@@ -44,6 +44,11 @@ BOX = ("p5", "p25", "p50", "p75", "p95", "mn", "mx", "n")
 BRIEF = ("cell", "arc", "symptom", "now", "target", "unit", "compare", "where", "levers", "cost", "check")
 
 
+# Cell names go into generated .tcl, .sdc and .csv lines, so they are plain identifiers.
+CELL = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
 class _Check(object):
     """Collects problem sentences; each helper returns whether the value passed."""
 
@@ -55,11 +60,18 @@ class _Check(object):
         return False
 
     def text(self, at, value, high, low=1):
+        if isinstance(value, str) and CONTROL.search(value):
+            return self.bad(at, "must be one line of text without control characters")
         if isinstance(value, str) and low <= len(value) <= high and (low == 0 or value.strip()):
             return True
         if low == 0:
             return self.bad(at, "must be a string of at most %d characters" % high)
         return self.bad(at, "must be a non-empty string of at most %d characters" % high)
+
+    def cell(self, at, value):
+        if self.text(at, value, 120) and not CELL.match(value):
+            return self.bad(at, "must be a plain cell name (letters, digits, _ . -), not %s" % _show(value))
+        return True
 
     def number(self, at, value, null=False, low=None, high=None):
         if value is None and null:
@@ -230,7 +242,7 @@ def _vmin(c, rule):
         at = "items[%d]" % index
         if not c.obj(at, item, ("name", "label", "v", "t", "x", "cls", "extra", "fan", "focus")):
             continue
-        c.text(at + ".name", item["name"], 120)
+        c.cell(at + ".name", item["name"])
         c.text(at + ".v", item["v"], 60)
         c.text(at + ".cls", item["cls"], 60)
         c.number(at + ".x", item["x"])
@@ -289,7 +301,7 @@ def _gaps(c, rule):
             for position, cell in enumerate(cells):
                 where = "%s.cells[%d]" % (at, position)
                 if c.obj(where, cell, ("name", "s", "drive", "area", "leak", "d4", "d16")):
-                    c.text(where + ".name", cell["name"], 120)
+                    c.cell(where + ".name", cell["name"])
                     c.text(where + ".s", cell["s"], 60)
                     if c.number(where + ".drive", cell["drive"]) and cell["drive"] <= 0:
                         c.bad(where + ".drive", "must be above 0 (drive is drawn on a log axis)")
@@ -301,7 +313,7 @@ def _gaps(c, rule):
         for side in ("lo", "hi"):
             where = "%s.%s" % (at, side)
             if c.obj(where, item[side], ("name", "s", "drive", "area")):
-                c.text(where + ".name", item[side]["name"], 120)
+                c.cell(where + ".name", item[side]["name"])
                 c.text(where + ".s", item[side]["s"], 60)
                 c.number(where + ".drive", item[side]["drive"], low=0)
                 c.number(where + ".area", item[side]["area"], low=0)
@@ -336,35 +348,36 @@ def _path(c, rule):
             if not c.obj(where, row, ("inst", "cell", "s", "arc", "d", "cls", "op", "nfast", "best", "eq", "focus")):
                 continue
             c.text(where + ".inst", row["inst"], 200)
-            c.text(where + ".cell", row["cell"], 120)
+            c.cell(where + ".cell", row["cell"])
             c.text(where + ".s", row["s"], 60)
             c.text(where + ".arc", row["arc"], 60)
             c.text(where + ".cls", row["cls"], 60)
             c.text(where + ".focus", row["focus"], 400)
             c.number(where + ".d", row["d"])
-            c.number(where + ".best", row["best"])
+            c.number(where + ".best", row["best"], null=True)
             c.integer(where + ".nfast", row["nfast"])
             op = row["op"]
             if c.obj(where + ".op", op, ("slew", "load", "from")):
-                c.number(where + ".op.slew", op["slew"], low=0)
-                c.number(where + ".op.load", op["load"], low=0)
+                c.number(where + ".op.slew", op["slew"], null=True, low=0)
+                c.number(where + ".op.load", op["load"], null=True, low=0)
                 if op["from"] not in OP_FROM:
                     c.bad(where + ".op.from", "must be report or fo4 (4x the cell's own input capacitance), not %s" % (
                         _show(op["from"]),))
-            if not c.array(where + ".eq", row["eq"], 1, 200):
+            if not c.array(where + ".eq", row["eq"], 0, 200):
                 continue
             names = []
             for number, eq in enumerate(row["eq"]):
                 there = "%s.eq[%d]" % (where, number)
                 if c.obj(there, eq, ("name", "s", "vt", "d", "a", "l")):
                     names.append(eq["name"])
-                    c.text(there + ".name", eq["name"], 120)
+                    c.cell(there + ".name", eq["name"])
                     c.text(there + ".s", eq["s"], 60)
                     c.text(there + ".vt", eq["vt"], 20)
                     c.number(there + ".d", eq["d"])
                     c.number(there + ".a", eq["a"], low=0)
                     c.number(there + ".l", eq["l"], null=True)
-            if isinstance(row["cell"], str) and row["cell"] not in names:
+            # An empty list is a stage the facts do not cover: shown as not judged.
+            if row["eq"] and isinstance(row["cell"], str) and row["cell"] not in names:
                 c.bad(where + ".eq", "must include the cell in use %s" % row["cell"])
     if stages > MAX_STAGES:
         c.bad("paths", "hold %d stages in all; a rule shows at most %d" % (stages, MAX_STAGES))
@@ -379,7 +392,7 @@ def _spike(c, rule):
                                 "xname", "axes", "vals", "res", "tol", "slice", "observed", "expected", "tolx",
                                 "verdict")):
             continue
-        c.text(at + ".name", item["name"], 120)
+        c.cell(at + ".name", item["name"])
         for field, high in (("v", 60), ("corner", 80), ("corners", 120), ("kind", 60), ("arc", 60),
                             ("label_pos", 80), ("xname", 60), ("verdict", 200)):
             c.text("%s.%s" % (at, field), item[field], high)

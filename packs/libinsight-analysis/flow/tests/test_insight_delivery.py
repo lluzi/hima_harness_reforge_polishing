@@ -70,6 +70,20 @@ class InsightDelivery(unittest.TestCase):
         self.assertTrue(doc["insight"]["items"][0]["brief"]["where"])
         self.assertTrue(any("cells_a.spi" in line for line in doc["assumptions"]), "the netlist is named with its hash")
 
+    def test_relative_inputs_resolve_in_the_root_the_rule_runs_in(self):
+        shutil.copytree(self.corpus, os.path.join(self.root, "corpus"))
+        self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "vmin_bottleneck", "--root", self.root,
+                                              "--prepared", self.prepared, "--", "--facts", "9T-SVT=corpus/*.json.gz",
+                                              "--hi", "0.81", "--lo", "0.72", "--temps=-40,125"]), 0)
+        with open(os.path.join(self.root, "analysis-result.json")) as stream:
+            doc = json.load(stream)
+        self.assertEqual(len(doc["sources"]), 4)
+        corpus = os.path.realpath(os.path.join(self.root, "corpus"))
+        self.assertTrue(all(os.path.realpath(s["path"]).startswith(corpus) for s in doc["sources"]), doc["sources"])
+
+    def test_a_bad_version_is_a_usage_error(self):
+        self.assertEqual(self.deliver("--version", "abc"), 2)
+
     def test_usage_errors_deliver_nothing(self):
         self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "vmin_bottleneck", "--prepared", self.prepared]), 2)
         self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "no_such_rule", "--root", self.root,

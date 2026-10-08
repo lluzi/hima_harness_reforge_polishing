@@ -1,0 +1,2 @@
+# The Host allows the insight page template's one script by its sha256; its bytes must not change on checkout.
+packs/*/page/*.html text eol=lf

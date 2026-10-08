@@ -661,7 +661,10 @@ export default class Hima extends Service {
               const entry = await analyses.summary(sessionId, runId);
               // An admitted insight rule is drawn by its Pack's template, beside the project's other rules.
               const insight = await analyses.insightPage(sessionId, runId);
-              if (insight) return { status: 200, ...insightPage(insight) };
+              // A template the Host cannot fill (no marker, more than one script) falls back to the ordinary page.
+              let filled: ReturnType<typeof insightPage> | undefined;
+              try { filled = insight ? insightPage(insight) : undefined; } catch (error) { this.ctx.logger('hima').warn(error); }
+              if (filled) return { status: 200, ...filled };
               const detail = await analyses.detail(sessionId, runId);
               // A Run waiting on a person may wait long; its page looks again less often.
               const refreshSeconds = analysisSettled(entry) ? undefined : entry.status === 'waiting' ? 60 : 10;
