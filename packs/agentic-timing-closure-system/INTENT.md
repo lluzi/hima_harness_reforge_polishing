@@ -64,5 +64,7 @@ walls and a time-box check before delivery, after a 0.4.8 resident closed hold b
 with a clock attempt that used data buffers without obligatory legalization. 0.4.10 adds an order of
 work in prose and makes the time-box check binding: the Reader sends a Goal-unmet delivery made before
 75 minutes back to the resident to keep engineering, after two residents delivered at 16 and 19 minutes.
+0.4.11 says the check is not a timer, after a resident delivered at 14 minutes and then slept until the
+75-minute mark instead of engineering.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.

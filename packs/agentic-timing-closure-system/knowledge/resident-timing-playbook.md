@@ -310,6 +310,9 @@ Legality is unchanged: keep obligatory legalization for every clock-pin insertio
 The Reader enforces this check. A refusal that names the time box is not a document problem: resume
 engineering from your best checkpoint and deliver again later.
 
+The check is not a timer. Never sleep, poll or wait for the 75-minute mark: every minute before it is
+for measured engineering on the residual. A resident that waits instead of working has stopped early.
+
 While the Goal is unmet, run `date -u` and compare it with `createdAt` in `task.json` before writing
 the delivery. If fewer than 75 minutes have passed, do not deliver: go back to the residual classes,
 pick the next untried tactic (for a structural wall, the step-by-step clock skew above), and measure
