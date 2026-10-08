@@ -264,8 +264,7 @@ def run(inputs, naming="generic", factor=FACTOR, max_items=MAX_ITEMS, library=No
                        "the same grid." % (
                            TOLERANCE["delay"][1], TOLERANCE["delay"][0] * 100, TOLERANCE["transition"][1],
                            TOLERANCE["transition"][0] * 100), 400),
-        "library": F.clip("%s · %d variants · %d corners · %s cells" % (
-            library or libname or "Library", len(variants), ncorners, "{:,}".format(len(cells_all))), 160),
+        "library": F.clip(" · ".join([library or libname or "Library", F.count_words(len(variants), "variant"), F.count_words(ncorners, "corner"), F.count_words(len(cells_all), "cell")]), 160),
         "facts": [["Cells affected", len(cells_hit)], ["Tables affected", flagged], ["Tables checked", checked],
                   ["Spikes", shapes["spike"]], ["Kinks", shapes["kink"]],
                   ["Most affected", "%s (%d)" % by_variant.most_common(1)[0] if by_variant else "none"],

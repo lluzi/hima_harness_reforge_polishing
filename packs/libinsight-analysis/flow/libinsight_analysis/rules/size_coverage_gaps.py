@@ -155,8 +155,7 @@ def run(inputs, gap=GAP, min_cells=MIN_CELLS, naming="generic", max_items=MAX_IT
         "rule": F.clip("For each function and variant, sort every cell (all flavours) by drive strength, measured "
                        "at 4× its own input capacitance against the reference inverter. Flag a jump of at least "
                        "%g× between neighbouring cells inside the range." % gap, 400),
-        "library": F.clip("%s · %d variants · %d corners · %s cells" % (
-            library or libname or "Library", len(variants), len(set(corners)), "{:,}".format(cell_total)), 160),
+        "library": F.clip(" · ".join([library or libname or "Library", F.count_words(len(variants), "variant"), F.count_words(len(set(corners)), "corner"), F.count_words(cell_total, "cell")]), 160),
         "facts": [["Function sets checked", checked], ["With a gap ≥ %g×" % gap, len(gaps)],
                   ["Same gap in every VT of a track", every],
                   ["Widest", "%s ×%.2f" % (widest["label"], widest["ratio"]) if widest else "none"],

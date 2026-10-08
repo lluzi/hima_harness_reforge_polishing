@@ -230,6 +230,7 @@ class Gaps(Base):
         rule = size_coverage_gaps.run(self.corpus())
         self.check(rule)
         self.assertEqual(rule["score"], {"dimension": "ppa", "affected": 2, "checked": 4, "weight": 4})
+        self.assertIn("2 variants · 1 corner ·", rule["library"])   # counts read as words, singular when one
         self.assertEqual(len(rule["items"]), 1)                 # the same gap in both VTs is one item
         item = rule["items"][0]
         self.assertEqual((item["cls"], item["i"], item["vts"]), ("NAND2", 4, 2))

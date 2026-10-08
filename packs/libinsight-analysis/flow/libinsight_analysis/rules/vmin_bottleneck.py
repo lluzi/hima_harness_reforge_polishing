@@ -326,8 +326,7 @@ def run(inputs, hi=None, lo=None, temps=None, watch=WATCH, naming="generic", net
         "rule": F.clip("Flag a cell when its delay grows at least %g%% more than the reference inverter's from %s "
                        "(%s), each cell at 4× its own input capacitance. Derate = the excess." % (
                            ctx["watch"], span, temp_words), 400),
-        "library": F.clip("%s · %d variants · %d corners · %s cells" % (
-            library or libname or "Library", len(variants), corners, "{:,}".format(checked)), 160),
+        "library": F.clip(" · ".join([library or libname or "Library", F.count_words(len(variants), "variant"), F.count_words(corners, "corner"), F.count_words(checked, "cell")]), 160),
         "facts": facts[:12],
         "score": {"dimension": "robustness", "affected": flagged, "checked": checked, "weight": 6},
         "impact": [
