@@ -102,6 +102,11 @@ def _input_paths(rule_args):
                 break
             (facts_specs if key == "--facts" else others).append(value)
         i += 1
+    import glob as _glob
+    expanded = []
+    for value in others:
+        expanded.extend(sorted(_glob.glob(value)) if any(c in value for c in "*?[") else [value])
+    others = expanded
     facts_paths = []
     for _label, path in F.parse_inputs(facts_specs) if facts_specs else []:
         if os.path.abspath(path) not in facts_paths:

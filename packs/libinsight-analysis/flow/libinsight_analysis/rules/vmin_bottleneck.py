@@ -11,6 +11,7 @@ Usage (from flow/):
       --temps=-40,125 --watch 5 --naming dnum [--netlist cells.spi] --out vmin_bottleneck.json
 """
 import argparse
+import glob
 import os
 import sys
 import time
@@ -360,17 +361,27 @@ def main(argv=None):
     ap.add_argument("--temps", help="temperatures to compare, comma separated; write --temps=-40,125 (default: every one found)")
     ap.add_argument("--watch", type=float, default=WATCH, help="flag level, %% extra slowdown (default 5)")
     ap.add_argument("--naming", default="generic", help="naming profile: generic, dnum, or a JSON file")
-    ap.add_argument("--netlist", action="append", help="cell transistor netlist (SPICE/CDL), for the briefs")
+    ap.add_argument("--netlist", action="append", help="cell transistor netlist (SPICE/CDL) or a glob of them, for the briefs")
     ap.add_argument("--briefs", type=int, default=BRIEFS, help="redesign briefs for the worst N cells")
     ap.add_argument("--max-items", type=int, default=MAX_ITEMS)
     ap.add_argument("--library", help="the library name for the page header")
     ap.add_argument("--out", default="-")
     args = ap.parse_args(argv)
     start = time.time()
+    netlist = None
+    if args.netlist:
+        # A glob keeps the recorded command line short; each pattern must match at least one file.
+        netlist = []
+        for pattern in args.netlist:
+            found = sorted(glob.glob(os.path.expanduser(pattern))) if any(c in pattern for c in "*?[") else [pattern]
+            if not found:
+                sys.stderr.write("%s: no netlist matches %s\n" % (RULE_ID, pattern))
+                return 2
+            netlist.extend(found)
     try:
         rule = run(F.parse_inputs(args.facts), args.hi, args.lo,
                    [t for t in args.temps.split(",") if t.strip()] if args.temps else None, args.watch, args.naming,
-                   args.netlist, args.briefs, min(args.max_items, 400), args.library)
+                   netlist, args.briefs, min(args.max_items, 400), args.library)
     except F.RuleError as exc:
         sys.stderr.write("%s: %s\n" % (RULE_ID, exc))
         return 2

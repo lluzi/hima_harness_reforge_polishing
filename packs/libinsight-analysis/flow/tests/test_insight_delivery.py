@@ -57,6 +57,19 @@ class InsightDelivery(unittest.TestCase):
         # Delivering again with the same code reuses the same folder; the delivery stays accepted.
         self.assertEqual(self.deliver(), 0)
 
+    def test_a_netlist_glob_keeps_the_command_exact_and_short(self):
+        R.write_text(os.path.join(self.corpus, "cells_a.spi"), R.NOR3_SPICE)
+        pattern = os.path.join(self.corpus, "*.spi")
+        self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "vmin_bottleneck", "--root", self.root,
+                                              "--prepared", self.prepared, "--",
+                                              "--facts", "9T-SVT=%s" % os.path.join(self.corpus, "*.json.gz"),
+                                              "--hi", "0.81", "--lo", "0.72", "--temps=-40,125", "--netlist", pattern]), 0)
+        with open(os.path.join(self.root, "analysis-result.json")) as stream:
+            doc = json.load(stream)
+        self.assertIn(pattern, doc["run"]["command"])
+        self.assertTrue(doc["insight"]["items"][0]["brief"]["where"])
+        self.assertTrue(any("cells_a.spi" in line for line in doc["assumptions"]), "the netlist is named with its hash")
+
     def test_usage_errors_deliver_nothing(self):
         self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "vmin_bottleneck", "--prepared", self.prepared]), 2)
         self.assertEqual(libinsight_cli.main(["insight-delivery", "--rule", "no_such_rule", "--root", self.root,
