@@ -1,4 +1,4 @@
-# LibInsight resident custom analysis 0.1
+# LibInsight resident custom analysis 0.2
 
 ## Business
 
@@ -43,3 +43,11 @@ shown honestly and is not admitted.
 `custom-analysis-contract.md`, `analysis-library.md` and `example-custom-analysis.md` (a verified
 SAED14 run). Grounded in the 2026-09-24 QuaLib qualification, the library-intelligence worker and
 LibInsight's extractor.
+
+## Insight rules (0.2)
+
+A library-quality question ("which cells limit my Vmin?") becomes an insight rule: an id and one sentence the
+person confirms in chat. The resident runs the matching example rule from the catalogue, or writes a new one
+on its pattern, and delivers the rule's data only; the Pack's fixed template draws it as the three-column
+Library Insight page beside the project's other rules. The purpose is to answer the few questions about real
+use and cost that matter most, with a file to act on, and let the agent and the QuaLib API carry the rest.

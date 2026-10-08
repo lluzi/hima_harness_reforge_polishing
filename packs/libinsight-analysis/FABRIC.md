@@ -37,3 +37,13 @@ Pack Python suites cover the real SAED14 delivery and every Reader rejection, pr
 hashing/catalog/licence refusals, idempotent and conflicting admission, deliver, the Reader script
 and the CLI. The L2 Host test drives the full graph through the real resident wrapper with an ACP
 stand-in. See TEST.md.
+
+## 0.2.0 insight rules
+
+`flow/libinsight_analysis/rules/` holds four example rules (stdlib, Python 3.6+), each `run(...) -> dict` in
+the shape of `knowledge/insight-rule-shape.md`. `insight_delivery.py` (`libinsight_cli.py insight-delivery`)
+runs one rule, or a rule module the resident writes under `analysis/`, and writes the complete delivery with
+the rule as its optional `insight` block, every facts file hashed before and after, the code that ran and the
+candidate; `delivery.py` checks the block with `insight_page.check_rule`. `page/insight-page.html` is the fixed
+template; the Host fills it from the Reader-accepted bytes (ADR-0021, 2026-10-08 note). No new task, Reader
+value or rule: the graph is unchanged.
