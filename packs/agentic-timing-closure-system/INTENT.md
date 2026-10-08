@@ -57,5 +57,8 @@ remaining/regressed/blocked/unknown item is an object and that a Reader repair r
 document, because published support files are immutable. 0.4.7 makes common R1 the vendor's own
 automatic-fix flow from the XTop tutorial (transition and capacitance first, then setup and hold, twice),
 so the before state is the strongest stock-XTop reference rather than setup and hold fixers alone.
+0.4.8 (demo branch `demo/atcs-derive`) withdraws the executable ladder and the playbook's step-by-step
+ladder and keeps only general principles and XTop command mechanics, so the resident must work out the
+closure method itself on the design.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.

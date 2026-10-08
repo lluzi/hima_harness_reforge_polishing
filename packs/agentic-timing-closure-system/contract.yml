@@ -1,5 +1,5 @@
 id: agentic-timing-closure-system
-version: 0.4.7
+version: 0.4.8
 title: Agentic timing closure system
 status: development
 minimumHarnessVersion: 0.3.0
@@ -137,7 +137,6 @@ tools:
     - resident-timing-playbook.md
     - xtop-capabilities.md
     - state-and-evidence.md
-    - xtop-closure-ladder.tcl.txt
     artifactPrefix: engineering
     produces: engineeringResult
 - id: evaluate-timing
@@ -208,9 +207,6 @@ words:
     label: common native report path breadth
     unit: paths
 knowledge:
-- file: xtop-closure-ladder.tcl.txt
-  purpose: Executable, design-independent XTop full-closure ladder (procedure library atcs_ladder_run)
-    with obligatory legalization and an overlap gate; the resident runs it first from the staged baseline.
 - file: resident-timing-playbook.md
   purpose: Complete whole-task XTop engineering goal, fixed identities, one persistent native session,
     evidence-led hold/setup mechanisms, best-state selection and delivery contract.
