@@ -394,7 +394,7 @@ function PATH(){
  const fast=E.filter(isFast).sort((p,q)=>p.d-q.d),slow=E.filter(isSlow);
  fast.slice(0,3).forEach(e=>s+=T(xs(e.a)+8,ys(e.d)+4,e.s,{c:GRN,fs:10.5,halo:1}));
  s+=T((a+bx)/2,H-6,`every ${S.cls} equivalent (${vts.map((v,i)=>v+" "+sym[SH[Math.min(3,i)]]).join(", ")}): area µm² vs delay ps at this stage`,{a:"middle",fs:10.5});
- const op=S.op||{},from=op.from==="fo4"?"FO4 fallback (4× own input cap)":"from the timing report";
+ const op=S.op||{},from=op.from==="fo4"?"FO4 fallback (4× own input cap)":"from the design (timing report or netlist)";
  $("mid").innerHTML=ruleSec()+`<div class="sec"><h3>Path ${pi+1} · slack ${fx(P.slack,0)} ps · ${esc(P.start)} → ${esc(P.end)}</h3><table><tr><th>Instance</th><th>Cell</th><th>Arc</th><th class="num">Delay ps</th><th class="num">Faster by</th><th class="num">Don't-use</th></tr>${srows}</table></div>
  <div class="sec"><h3>${esc(S.s)} on ${esc(S.inst)} · equivalent cells</h3><div class="op">Judged at this stage's operating point: input slew <b>${fx(op.slew,1)} ps</b>, output load <b>${fx(op.load,2)} fF</b> · ${esc(from)}</div>${svg(W,H,s)}
   <div class="legend"><span><b style="background:${GRN}"></b>faster: keep</span><span><b style="background:${FAINT}"></b>slower</span><span style="color:${RED}">✕ marked don't-use</span><span>◯ cell in use · dashed: its delay</span><span>click a slower point to toggle</span></div>

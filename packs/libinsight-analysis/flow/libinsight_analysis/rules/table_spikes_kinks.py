@@ -186,7 +186,7 @@ def _item(rec, family_count):
     verdict = ("Spike: this point sits %.1f× the tolerance off the line between its neighbours, on the opposite side "
                "from both." % ratio) if shape == "spike" else (
         "Kink: the curve's bend flips here, %.1f× the tolerance on each side." % ratio)
-    corners = "flagged at %d of %d corners" % (len(family_count), rec["n_corners"])
+    corners = "flagged at %d of %s" % (len(family_count), F.count_words(rec["n_corners"], "corner"))
     return {
         "name": rec["cell"], "label": F.clip(rec["label"], 60), "v": rec["v"], "ratio": F.rnd(ratio, 3),
         "corner": rec["corner"], "corners": corners, "kind": rec["kind"],
