@@ -42,6 +42,18 @@ export interface LibInsightAnalysisResult {
   readonly run: { readonly command: string; readonly exitCode: number; readonly elapsedSeconds: number; readonly usedQualib: boolean };
   readonly assumptions: readonly string[];
   readonly limits: readonly string[];
+  /** An insight rule (Pack `knowledge/insight-rule-shape.md`), shape-checked by the Pack Reader; the Pack's
+   *  page template draws it, so the Host only needs its name. */
+  readonly insight?: InsightRule;
+}
+
+export interface InsightRule { readonly id: string; readonly kind: string; readonly [field: string]: unknown }
+
+/** What the Pack's insight page draws for one Run: its rule, beside the project's other admitted rules. */
+export interface InsightPageData {
+  readonly template: string;
+  readonly rules: readonly InsightRule[];
+  readonly selected: number;
 }
 
 export interface LibInsightAnalysisProposal {
@@ -289,6 +301,36 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     }
   }
 
+  /** An admitted insight rule of one Run, or nothing: a Run whose result is not admitted shows no rule. */
+  function insightOf(read: LibInsightAnalysisDetail): InsightRule | undefined {
+    const rule = read.admission.admitted ? read.result?.insight : undefined;
+    return rule !== null && typeof rule === 'object' && typeof rule.id === 'string' && typeof rule.kind === 'string' ? rule : undefined;
+  }
+
+  /**
+   * The insight page of one Run: its admitted rule, selected, beside the newest admitted rule of every
+   * other id in the same project, oldest first, drawn by the installed Pack's fixed template. Nothing
+   * when the Run has no admitted rule or the Pack has no template; the ordinary page shows it then.
+   */
+  async function insightPage(sessionId: string, runId: string): Promise<InsightPageData | undefined> {
+    const own = insightOf(await detail(sessionId, runId));
+    if (!own) return undefined;
+    let template: string;
+    try { template = await readFile(path.join(loadPack(deps.packsDir, packId).dir, 'page', 'insight-page.html'), 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+    const shown = new Map<string, { readonly runId: string; readonly createdAt: string; readonly rule: InsightRule }>();
+    const analyses = (await list(sessionId)).analyses;
+    shown.set(own.id, { runId, createdAt: analyses.find(entry => entry.runId === runId)?.createdAt ?? '', rule: own });
+    // Newest first: the first admitted rule of an id is the one shown.
+    for (const entry of analyses) {
+      if (entry.runId === runId || entry.analysis?.admitted !== true) continue;
+      const rule = insightOf(await detail(sessionId, entry.runId).catch(() => ({ runId: entry.runId, admission: { admitted: false } })));
+      if (rule && !shown.has(rule.id)) shown.set(rule.id, { runId: entry.runId, createdAt: entry.createdAt, rule });
+    }
+    const rows = [...shown.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return { template, rules: rows.map(row => row.rule), selected: rows.findIndex(row => row.runId === runId) };
+  }
+
   /** What the Guide's `hima_insight_analysis` answers (ADR-0021): every action reads or starts through
    *  the same functions above, and a result is the Reader-accepted bytes, bounded for a conversation. */
   async function tool(sessionId: string, args: LibInsightAnalysisToolArgs): Promise<object> {
@@ -320,11 +362,13 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
       ...(result ? { question: result.question, summary: result.summary, assumptions: result.assumptions, limits: result.limits,
         plots: result.plots.map(plot => ({ title: plot.title, kind: plot.kind, dataset: plot.dataset })),
         datasets: boundedDatasets(result.datasets), sources: result.sources, run: result.run } : {}),
+      // An insight rule's headline, for the reply; its items, charts and files are on the page.
+      ...(result?.insight ? { insightRule: Object.fromEntries(['id', 'title', 'rule', 'summary', 'result', 'facts'].filter(key => key in result.insight!).map(key => [key, result.insight![key]])) } : {}),
       next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: point the person to the Open analysis page button on this result, and do not paste the page path, which is not a link in the conversation.'
         : 'Explain where the analysis stands or why it was not admitted, from these facts; do not present an unadmitted result as established.' };
   }
 
-  return { status, propose, confirm, list, summary, detail, tool };
+  return { status, propose, confirm, list, summary, detail, insightPage, tool };
 }
 
 /** What one result answer may put into a conversation: rows, cell text and total serialized size. */

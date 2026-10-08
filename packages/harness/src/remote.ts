@@ -668,7 +668,8 @@ export interface RemoteOperations {
     detail(sessionId: string, runId: string): Promise<object>;
   };
   /** One library analysis as its own page (ADR-0021), for a live conversation of its project. */
-  analysisPage?(sessionId: string, runId: string): Promise<{ readonly status: number; readonly html: string }>;
+  /** `scriptSha256` names the one script an insight page may run (its Pack template's); other pages run none. */
+  analysisPage?(sessionId: string, runId: string): Promise<{ readonly status: number; readonly html: string; readonly scriptSha256?: string }>;
   resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
   listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
   readRunAssets?(runId: string,revision?:number): Promise<import('./experience.js').ReadRunAssetsResult>;
@@ -2229,9 +2230,10 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
         if (!ops.validateSession?.(sessionId)) { sendPage(res, 403, messagePage('Open this page from a live HimaHarness conversation.')); return; }
         const answer = await ops.analysisPage(sessionId, runId);
         // The page shows model- and resident-written text on this origin: it may load nothing, run
-        // nothing and be framed by nothing, whatever its escaping.
+        // nothing but its Pack template's own script (by hash), and be framed by nothing, whatever its escaping.
+        const script = answer.scriptSha256 === undefined ? '' : `; script-src 'sha256-${answer.scriptSha256}'`;
         res.writeHead(answer.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
-          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+          'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'${script}` });
         res.end(answer.html);
       } catch (err) {
         ctx.logger.error(err);

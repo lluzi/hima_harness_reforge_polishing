@@ -126,3 +126,37 @@ test('an analysis page stops refreshing only once its Run has ended or was cance
   assert.equal(analysisSettled({ task: { state: 'failed' } }), true);
   assert.equal(analysisSettled({}), true, 'knowing nothing, waiting changes nothing');
 });
+
+test('an insight page shows the Run\'s admitted rule beside the newest admitted rule of every other id, oldest first', async () => {
+  const rule = (id: string, tag: string) => ({ id, kind: 'vmin', title: tag });
+  const results: Record<string, unknown> = {
+    'run-a': { schema: 'hima-libinsight-analysis/1', plots: [], datasets: {}, insight: rule('vmin_bottleneck', 'first') },
+    'run-b': { schema: 'hima-libinsight-analysis/1', plots: [], datasets: {}, insight: rule('size_coverage_gaps', 'gaps') },
+    'run-c': { schema: 'hima-libinsight-analysis/1', plots: [], datasets: {}, insight: rule('vmin_bottleneck', 'second') },
+    'run-d': { schema: 'hima-libinsight-analysis/1', plots: [], datasets: {}, insight: rule('table_spikes_kinks', 'unadmitted') },
+    'run-e': { schema: 'hima-libinsight-analysis/1', plots: [], datasets: {} },
+  };
+  const admitted = view({ value: { admitted: true, id: 'a', version: 1, resultSha256: sha('a') } });
+  const f = await fixture({ 'run-a': admitted, 'run-b': admitted, 'run-c': admitted, 'run-d': view({ value: { admitted: false, reason: 'blocked' } }), 'run-e': admitted }, {
+    readRetained: async (runId: string) => Buffer.from(JSON.stringify(results[runId])),
+  });
+  try {
+    await cp(path.join(repoRoot, 'packs/libinsight-analysis'), path.join(f.packsDir, 'libinsight-analysis'), { recursive: true });
+    const template = '<script type="application/json" id="insight-data">/*INSIGHT-DATA*/</script><script>boot()</script>';
+    await mkdir(path.join(f.packsDir, 'libinsight-analysis', 'page'), { recursive: true });
+    await writeFile(path.join(f.packsDir, 'libinsight-analysis', 'page', 'insight-page.html'), template);
+    const titles = (page: Awaited<ReturnType<typeof f.analyses.insightPage>>) => page?.rules.map(r => r.title);
+    const newest = await f.analyses.insightPage('s', 'run-c');
+    assert.deepEqual(titles(newest), ['gaps', 'second']);
+    assert.equal(newest?.selected, 1);
+    assert.equal(newest?.template, template);
+    // An older version of a rule keeps its own page: its rule takes the id, the newer one is left out.
+    const older = await f.analyses.insightPage('s', 'run-a');
+    assert.deepEqual(titles(older), ['first', 'gaps']);
+    assert.equal(older?.selected, 0);
+    assert.equal(await f.analyses.insightPage('s', 'run-d'), undefined, 'a rule that was not admitted has no insight page');
+    assert.equal(await f.analyses.insightPage('s', 'run-e'), undefined, 'a plain analysis keeps the ordinary page');
+    const answer = await f.analyses.tool('s', { action: 'result', runId: 'run-b' }) as { insightRule?: { id: string; title: string } };
+    assert.deepEqual(answer.insightRule, { id: 'size_coverage_gaps', title: 'gaps' });
+  } finally { await f.cleanup(); }
+});

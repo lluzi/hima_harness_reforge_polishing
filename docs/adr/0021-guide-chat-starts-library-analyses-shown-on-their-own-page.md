@@ -55,3 +55,18 @@ status: accepted
 ## 回滚
 
 本 ADR 的实现提交可整体回退，恢复 ADR-0020 修订中的标签页。Pack 与 Site 不受影响。
+
+## 2026-10-08 修订：insight 规则页只运行 Pack 模板自身的脚本
+
+用户于 2026-10-08 同意：Pack `libinsight-analysis` 0.2 的 insight 规则（左 Data insight、中 Cell insight、
+右 Impact & action 三栏页面）需要点击交互，因此独立网页对 insight 结果放开唯一一段脚本。
+
+- 驻场 Agent 只写规则 JSON（交付中的可选 `insight` 块，形状见 Pack `knowledge/insight-rule-shape.md`），
+  Pack Reader 校验其形状。它从不写 HTML 或图表代码。
+- Host 用已安装 Pack 的固定模板 `page/insight-page.html` 呈现：规则 JSON 放进不执行的
+  `<script type="application/json">` 数据元素（`<`、`>`、`&`、U+2028/2029 转义），模板唯一的可执行脚本
+  按其 sha256 写入 CSP `script-src`；其余 CSP 不变（不加载任何外部资源、无网络、不可被嵌入）。
+- 页面展示该 Run 的已登记规则，并列出同一项目中其他规则 id 各自最新的已登记版本；库分数由模板按规则的
+  `score` 计算。没有已登记 insight 规则的 Run 仍使用原来的无脚本页面。
+
+回滚：撤回该提交即恢复全部页面无脚本；Pack 0.2 的规则 JSON 仍会出现在原页面的数据表中。
