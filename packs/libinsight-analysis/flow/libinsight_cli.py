@@ -16,6 +16,14 @@ workspace after the Host materialized the delivery). RESULT defaults to ROOT/ana
 then ROOT/state/analysis-result.json; PREPARED defaults to the prepared request of the Campaign
 this file was deployed into. Exit 0 prints `accepted`; exit 1 prints one problem per line.
 
+Insight rules (knowledge/insight-playbook.md):
+
+    libinsight_cli.py insight-delivery (--rule RULE_ID | --module FILE) [--root DIR] [--version N] -- RULE ARGS
+    libinsight_cli.py build-page OUT.html RULE.json... [--selected N]
+
+insight-delivery runs one rule and writes the checked delivery and its candidate; build-page draws
+rule JSON files with the Pack's fixed page template, for a look before delivering.
+
 Exit codes: 0 ok, 1 delivery problems, 2 malformed input, 3 refused by a business rule.
 """
 import json
@@ -26,7 +34,7 @@ FLOW = os.path.dirname(os.path.abspath(__file__))
 if FLOW not in sys.path:
     sys.path.insert(0, FLOW)
 
-from libinsight_analysis import common, delivery, tasks  # noqa: E402
+from libinsight_analysis import common, delivery, insight_delivery, insight_page, tasks  # noqa: E402
 
 
 def _fail(code, detail, status):
@@ -67,6 +75,15 @@ def main(argv=None):
     command, rest = argv[0], argv[1:]
     if command == "check-delivery":
         return check_delivery(rest)
+    if command == "insight-delivery":
+        try:
+            return insight_delivery.run(rest)
+        except insight_delivery.UsageError as error:
+            return _fail("usage", str(error), 2)
+        except common.LiaError as error:
+            return _fail(error.code, error.detail, 3)
+    if command == "build-page":
+        return insight_page.main(rest)
     if command.startswith("task-") and len(rest) == 3:
         workspace, task_input, task_output = rest
         workspace = os.path.abspath(workspace)

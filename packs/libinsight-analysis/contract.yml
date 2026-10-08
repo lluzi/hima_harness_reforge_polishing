@@ -1,6 +1,6 @@
 id: libinsight-analysis
-version: 0.1.0
-title: LibInsight resident custom analysis
+version: 0.2.0
+title: LibInsight resident custom analysis and insight rules
 status: development
 minimumHarnessVersion: 0.3.0
 ontology:
@@ -89,6 +89,9 @@ tools:
     plots, the exact main script text and every code file, and honest assumptions and limits. Check it with
     check-delivery before writing the delivery candidate. Do not change licences, start or switch licence
     services, write beside a source, use the network, or present prose in place of computed datasets.
+    A library-quality request is an insight rule (insight-playbook.md): run the matching example rule, or a
+    rule module you write on its pattern, with `libinsight_cli.py insight-delivery`, which writes the checked
+    delivery with the rule as its insight block; the Pack's fixed page template draws it.
   inputs:
   - WORKSPACE
   licences:
@@ -103,6 +106,9 @@ tools:
     reads:
     - preparedRequest
     knowledge:
+    - insight-playbook.md
+    - rule-catalog.md
+    - insight-rule-shape.md
     - custom-analysis-contract.md
     - qualib-api-playbook.md
     - facts-schema.md
@@ -154,6 +160,14 @@ words:
     label: Reader-accepted analyses admitted into the library
     unit: count
 knowledge:
+- file: insight-playbook.md
+  purpose: How a library-quality request becomes an insight rule (id and one sentence), which data to read first,
+    the one command that runs a rule to a checked delivery, the writing rules, colour roles, score and action files.
+- file: rule-catalog.md
+  purpose: The four example rules (vmin_bottleneck, size_coverage_gaps, critical_path_faster_cells,
+    table_spikes_kinks) with their sentence, data, example requests and the words that map to them.
+- file: insight-rule-shape.md
+  purpose: The exact JSON shape of one insight rule, per page kind, that the Pack's fixed page template draws.
 - file: custom-analysis-contract.md
   purpose: The exact hima-libinsight-analysis/1 delivery, a complete valid example, the Reader's rejection list,
     the delivery candidate and the same-task repair rules.
