@@ -69,4 +69,8 @@ status: accepted
 - 页面展示该 Run 的已登记规则，并列出同一项目中其他规则 id 各自最新的已登记版本；库分数由模板按规则的
   `score` 计算。没有已登记 insight 规则的 Run 仍使用原来的无脚本页面。
 
+- Host 知道窗口所用的回环源（`http://127.0.0.1:<port>`）时，`hima_insight_analysis` 的 confirm、list、result
+  回答带绝对 `pageUrl`，Guide 以 Markdown 链接结束回复；桌面 App 把该源下 `/hima/analysis/` 的链接（新窗口或页内跳转）
+  都在分析页自己的窗口打开，不替换对话窗口。卡片上的 “Open analysis page” 按钮保留。
+
 回滚：撤回该提交即恢复全部页面无脚本；Pack 0.2 的规则 JSON 仍会出现在原页面的数据表中。

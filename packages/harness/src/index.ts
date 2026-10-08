@@ -941,6 +941,11 @@ export default class Hima extends Service {
       readRunView: runId => this.viewReaders().readRunView(runId),
       readRetained: (runId, record, maxBytes) => readDurableSourceBytes(this.retainedMaterialsDir, runId, record, maxBytes),
       authorize: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
+      // The desktop window reaches a loopback Host at http://127.0.0.1:<port>; a Host on any other bind gives no link.
+      pageOrigin: () => {
+        const web = this.ctx.get('webServer');
+        return web && web.host === '127.0.0.1' && web.port > 0 ? `http://127.0.0.1:${String(web.port)}` : undefined;
+      },
       // Only what a person typed counts: plugin notices, tool results and the model's own words do not.
       humanMessages: sessionId => {
         const agent = this.ctx.get('agents')?.get(sessionId as never);

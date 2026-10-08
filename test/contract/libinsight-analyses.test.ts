@@ -156,7 +156,21 @@ test('an insight page shows the Run\'s admitted rule beside the newest admitted 
     assert.equal(older?.selected, 0);
     assert.equal(await f.analyses.insightPage('s', 'run-d'), undefined, 'a rule that was not admitted has no insight page');
     assert.equal(await f.analyses.insightPage('s', 'run-e'), undefined, 'a plain analysis keeps the ordinary page');
-    const answer = await f.analyses.tool('s', { action: 'result', runId: 'run-b' }) as { insightRule?: { id: string; title: string } };
+    const answer = await f.analyses.tool('s', { action: 'result', runId: 'run-b' }) as { insightRule?: { id: string; title: string }; pageUrl?: string };
     assert.deepEqual(answer.insightRule, { id: 'size_coverage_gaps', title: 'gaps' });
+    assert.equal(answer.pageUrl, undefined, 'no link without a known loopback origin');
+  } finally { await f.cleanup(); }
+});
+
+test('with a known loopback origin, a result answer carries an absolute page link and asks the Guide to end with it', async () => {
+  const f = await fixture({ 'run-ok': view({ value: { admitted: true, id: 'a', version: 1, resultSha256: sha('a') } }) }, {
+    pageOrigin: () => 'http://127.0.0.1:51234',
+  });
+  try {
+    const answer = await f.analyses.tool('s 1', { action: 'result', runId: 'run-ok' }) as { pageUrl?: string; next: string };
+    assert.equal(answer.pageUrl, 'http://127.0.0.1:51234/hima/analysis/run-ok?session=s%201');
+    assert.match(answer.next, /\[Open the Library Insight page\]\(http:\/\/127\.0\.0\.1:51234\/hima\/analysis\/run-ok\?session=s%201\)/);
+    const listed = await f.analyses.tool('s 1', { action: 'list' }) as { analyses: { pageUrl?: string }[] };
+    assert.equal(listed.analyses[0]?.pageUrl, answer.pageUrl);
   } finally { await f.cleanup(); }
 });
