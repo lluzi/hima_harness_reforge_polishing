@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Library Insight</title>
+<style>
+:root{--ink:#1F2125;--text:#3C4048;--dim:#6B6F78;--faint:#9A9DA5;--line:#D3D6DB;--soft:#E8EAED;--paper:#F3F4F6;--white:#fff;--red:#B3261E;--redt:#FBEDEC;--grn:#2E7D4F;--grnt:#E7F3EC}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 Aptos,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
+header{display:flex;align-items:baseline;gap:16px;padding:12px 20px;background:var(--white);border-bottom:1px solid var(--line)}
+header h1{margin:0;font-size:17px;color:var(--ink);font-weight:600}
+header .meta{color:var(--dim);font-size:13px}
+main{display:grid;grid-template-columns:350px minmax(0,1fr) 380px;gap:12px;padding:12px;min-height:calc(100vh - 50px)}
+.col{background:var(--white);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-width:0}
+.colhead{padding:12px 16px 10px;border-bottom:1px solid var(--soft)}
+.colhead h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.colhead .sub{font-size:12px;color:var(--faint)}
+.sec{padding:14px 16px;border-bottom:1px solid var(--soft)}
+.sec:last-child{border-bottom:0}
+.sec h3{margin:0 0 8px;font-size:12px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.score{display:flex;align-items:center;gap:16px;cursor:pointer;border-radius:8px;padding:4px;margin:-4px}
+.score:hover{background:var(--paper)}
+.big{font-size:42px;font-weight:600;color:var(--ink);line-height:1}
+.big small{font-size:15px;color:var(--faint);font-weight:400}
+.subs{flex:1;display:grid;gap:5px}
+.subs div{display:grid;grid-template-columns:80px 1fr 24px;align-items:center;gap:8px;font-size:12px}
+.subs div.ns{grid-template-columns:80px 1fr}
+.subs .nsv{color:var(--faint);font-size:11.5px}
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--text)}
+.hint{font-size:11.5px;color:var(--faint);margin-top:6px}
+.rule{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--white);border-radius:8px;padding:9px 11px;margin:0 0 8px;cursor:pointer;font:inherit;color:var(--text)}
+.rule:hover{border-color:var(--faint)}
+.rule.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.rule .nm{font-family:Consolas,Menlo,monospace;font-size:12.5px;color:var(--ink);font-weight:600}
+.rule .sm{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+.rule .rs{display:block;font-size:12px;color:var(--red);margin-top:3px}
+.from{font-size:11.5px;color:var(--faint)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px;margin-bottom:12px}
+.kv span:nth-child(2n){font-weight:600;color:var(--ink);text-align:right}
+.ruletxt{font-size:13.5px;color:var(--ink);margin:0}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td,th{padding:5px 8px;border-bottom:1px solid var(--soft);text-align:left;vertical-align:top}
+th{font-size:11px;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+td.num,th.num{text-align:right;white-space:nowrap}
+tr.row{cursor:pointer}tr.row:hover{background:var(--paper)}tr.row.on{background:var(--soft)}
+tr.row.on td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+tr.mark{background:var(--soft)}tr.mark td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.bad{color:var(--red);font-weight:600}.good{color:var(--grn);font-weight:600}
+.mono{font-family:Consolas,Menlo,monospace;font-size:12px}
+select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+.pick{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;color:var(--dim);flex-wrap:wrap}
+svg text{font-family:Aptos,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
+.legend{font-size:11.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap;margin-top:4px}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.focus{background:var(--redt);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--ink)}
+.focus.g{background:var(--grnt)}
+.op{font-size:12px;color:var(--dim);margin:0 0 8px}
+.op b{color:var(--ink);font-weight:600}
+.imp{display:grid;grid-template-columns:86px 1fr;gap:6px 10px;font-size:13px;margin:0}
+.imp dt{color:var(--dim)}.imp dd{margin:0;color:var(--ink)}
+ol.todo{margin:0;padding-left:18px}ol.todo li{margin:0 0 8px}
+ol.todo li b{display:block;font-size:11px;letter-spacing:.05em;color:var(--dim)}
+.fname{font-size:11.5px;color:var(--dim);margin:0 0 6px}
+pre.code{background:#F6F7F8;border:1px solid var(--soft);border-radius:8px;padding:10px;font:11.5px/1.5 Consolas,Menlo,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;margin:0;max-height:360px;overflow:auto}
+pre.code .c{color:var(--faint)}
+.acts{display:flex;gap:6px}
+.btn{border:1px solid var(--text);background:var(--white);border-radius:6px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink)}
+.btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+.row2{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chartbox h4{margin:0 0 4px;font-size:12px;color:var(--dim);font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.card{background:var(--paper);border-radius:8px;padding:8px 10px;font-size:12.5px}
+.card b{display:block;font-size:18px;color:var(--ink)}
+.card.r b{color:var(--red)}
+.overlay{position:fixed;inset:0;background:rgba(31,33,37,.35);display:none;align-items:flex-start;justify-content:center;padding-top:80px;z-index:5}
+.overlay.show{display:flex}
+.pop{background:#fff;border-radius:12px;width:520px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.2);padding:18px 20px}
+.pop h3{margin:0 0 2px;font-size:16px;color:var(--ink)}
+.pop .grp{margin:12px 0 0}
+.pop .grp h4{margin:0 0 4px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between}
+.pop .line{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border-radius:6px;font-size:13.5px;cursor:pointer}
+.pop .line:hover{background:var(--paper)}
+.pop .line b{color:var(--red);white-space:nowrap}
+.pop .line.z b{color:var(--faint);font-weight:400}
+.pop .empty{padding:5px 8px;font-size:13px;color:var(--faint)}
+.pop .foot{margin-top:12px;font-size:12px;color:var(--dim)}
+.vrow,.pt{cursor:pointer}
+@media (max-width:1180px){main{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
+</style></head>
+<body>
+<header><h1>Library Insight</h1><span class="meta" id="meta"></span></header>
+<main>
+ <section class="col">
+  <div class="colhead"><h2>Data insight</h2><div class="sub">Library level</div></div>
+  <div class="sec"><h3>Library score</h3>
+   <div class="score" id="score"><div class="big" id="overall"></div><div class="subs" id="subs"></div></div>
+   <div class="hint">Click the score to see what lowered it.</div></div>
+  <div class="sec"><h3><span>Rules checked</span><span id="nrules"></span></h3><div id="rules"></div>
+   <div class="from">New rules come from prompts in the Hima Harness chat: the pack names the rule and writes its script.</div></div>
+  <div class="sec" id="overview"></div>
+ </section>
+ <section class="col">
+  <div class="colhead"><h2>Cell insight</h2><div class="sub">Cell level · select to drill in · problems in red</div></div>
+  <div id="mid"></div>
+ </section>
+ <section class="col">
+  <div class="colhead"><h2>Impact &amp; action</h2><div class="sub">What it costs, and what to run</div></div>
+  <div id="right"></div>
+ </section>
+</main>
+<div class="overlay" id="ov"><div class="pop" id="pop"></div></div>
+<script type="application/json" id="insight-data">/*INSIGHT-DATA*/</script>
+<script>
+"use strict";
+(function(){
+/* ---------------- pure helpers (no DOM) ---------------- */
+const RED="#B3261E",GRN="#2E7D4F",INK="#1F2125",TXT="#3C4048",DIM="#6B6F78",FAINT="#9A9DA5",LINE="#D3D6DB",SOFT="#E8EAED",BOXF="#DADDE2",CLSF="#F3C9C5";
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fin=v=>typeof v==="number"&&isFinite(v);
+const fx=(v,d)=>fin(v)?v.toFixed(d):"–";
+const sg=(v,d)=>fin(v)?(v>=0?"+":"−")+Math.abs(v).toFixed(d):"–";
+const num=v=>fin(v)?String(Math.round(v*100)/100):String(v==null?"":v);
+const cmp=(a,b)=>a<b?-1:a>b?1:0;
+const fmtT=t=>String(t).replace(/^-/,"−")+" °C";
+const WHO={chip_designer:"CHIP DESIGNER",cell_designer:"CELL DESIGNER",library_provider:"LIBRARY PROVIDER",note:"NOTE"};
+const PARTS=[["quality","Quality",0.5],["ppa","PPA",0.3],["robustness","Robustness",0.2]];
+
+/* Score: points = weight × min(1, (affected/checked)/0.05); part = 100 − its rules' points (floor 0);
+   overall = 50/30/20 over the scored parts, renormalised; dimension none never counts. */
+function points(s){
+ if(!s||!fin(s.checked)||s.checked<=0||!fin(s.affected)||!fin(s.weight))return 0;
+ return s.weight*Math.min(1,(s.affected/s.checked)/0.05);
+}
+function score(rules){
+ const parts=PARTS.map(([key,name,weight])=>({key,name,weight,share:0,value:null,lost:0,rules:[]})),none=[];
+ (rules||[]).forEach((r,index)=>{const s=(r&&r.score)||{},line={index,id:r.id,title:r.title,points:points(s)};
+  if(s.dimension==="none"){none.push(line);return;}
+  const p=parts.find(q=>q.key===s.dimension);if(p)p.rules.push(line);});
+ let wsum=0;
+ parts.forEach(p=>{if(!p.rules.length)return;p.lost=p.rules.reduce((a,q)=>a+q.points,0);p.value=Math.max(0,100-p.lost);wsum+=p.weight;});
+ let overall=null;
+ if(wsum>0){overall=0;parts.forEach(p=>{if(p.value==null)return;p.share=p.weight/wsum;overall+=p.share*p.value;});}
+ return {overall,parts,none};
+}
+
+/* Action files: exact text, one {name, text} each. */
+function factor(x){return (1+x/100).toFixed(2);}
+function derateSdc(rule,variant){
+ const items=(rule.items||[]).filter(x=>!variant||x.v===variant);
+ const lines=[`# derate_low_voltage.sdc - generated by ${rule.id}`,
+  `# use for runs below ${num(rule.hi)} V; one late derate per flagged cell${variant?" in "+variant:""}`];
+ items.forEach(x=>lines.push(`set_timing_derate -late ${factor(x.x)} [get_lib_cells */${x.name}]`));
+ return {name:"derate_low_voltage.sdc",text:lines.join("\n")+"\n"};
+}
+function csvCell(v){const s=fin(v)?String(v):String(v==null?"":v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function csv(header,rows){return [header].concat(rows.map(r=>r.map(csvCell).join(","))).join("\n")+"\n";}
+function roadmapGapsCsv(rule){
+ return {name:"roadmap_gaps.csv",text:csv("function,variant,below,above,jump,suggested_drive,suggested_area",
+  (rule.items||[]).map(x=>[x.cls,x.v,x.lo.name,x.hi.name,fx(x.ratio,2),fx(x.miss.drive,2),fx(x.miss.area,2)]))};
+}
+function recharacteriseCsv(rule){
+ return {name:"recharacterise.csv",text:csv("variant,corner,cell,arc,when,table,point",
+  (rule.items||[]).map(x=>[x.v,x.corner,x.name,x.arc,x.when,x.kind,x.label_pos]))};
+}
+/* marks: {"<path>:<stage>": [cell names marked don't-use at that stage]} */
+function dontUseTcl(rule,marks){
+ const groups=new Map();
+ Object.keys(marks||{}).sort(cmp).forEach(key=>{
+  const [p,s]=key.split(":").map(Number),path=(rule.paths||[])[p],row=path&&path.rows[s],names=marks[key]||[];
+  if(!row||!names.length)return;
+  const g=groups.get(row.cls)||{keep:new Set(),drop:new Set()};groups.set(row.cls,g);
+  g.keep.add(row.cell);names.forEach(n=>g.drop.add(n));});
+ const d=rule.design||{};
+ const lines=[`# dont_use_critical.tcl - generated by ${rule.id} for design ${d.name}`,
+  `# scope: the setup-repair step only, then reset_dont_use`];
+ let n=0;
+ [...groups.keys()].sort(cmp).forEach(cls=>{const g=groups.get(cls),drop=[...g.drop].filter(x=>!g.keep.has(x)).sort(cmp);
+  if(!drop.length)return;
+  lines.push(`# ${cls}: keep ${[...g.keep].sort(cmp).join(", ")} and faster; drop ${drop.length} slower`);
+  drop.forEach(x=>{lines.push(`set_dont_use [get_lib_cells */${x}]`);n++;});});
+ if(!n)lines.push("# no cells marked yet: mark slower cells on the page to add them here");
+ return {name:"dont_use_critical.tcl",text:lines.join("\n")+"\n",lines:n};
+}
+function redesignBrief(rule,item){
+ const b=item.brief,L=[];
+ L.push(`# Redesign brief: ${b.cell}, ${b.arc}`,"",`For the cell designer. Generated by ${rule.id} from ${item.label} (${item.v}).`,"");
+ L.push("## What is wrong","",b.symptom,"",`- Now: ${num(b.now)} ${b.unit}`,`- Target: ${num(b.target)} ${b.unit}`,`- Compared with: ${b.compare}`,"");
+ L.push("## Where in the circuit","",b.where==null?`No transistor netlist was given, so this brief stays at arc level: ${b.arc}.`:b.where,"");
+ L.push("## What to change","");(b.levers||[]).forEach((l,i)=>L.push(`${i+1}. ${l.change} - expected effect: ${l.effect}`));L.push("");
+ L.push("## What it costs","");if((b.cost||[]).length)b.cost.forEach(c=>L.push(`- ${c[0]}: ${num(c[1])}`));else L.push("- not estimated");L.push("");
+ L.push("## How to check it","",b.check);
+ return {name:`redesign_${String(b.cell).replace(/[^A-Za-z0-9_.-]/g,"_")}.md`,text:L.join("\n")+"\n"};
+}
+const files={derateSdc,roadmapGapsCsv,dontUseTcl,recharacteriseCsv,redesignBrief};
+globalThis.INSIGHT={score,points,files,esc};
+
+/* ---------------- page (DOM) ---------------- */
+let RULES=[],R=null,ri=0,ST={},STS=[],FILES=[];
+const $=id=>document.getElementById(id);
+const all=(sel,root)=>Array.from((root||document).querySelectorAll(sel));
+function svg(w,h,b){return `<svg viewBox="0 0 ${w} ${h}" width="${w}" style="display:block;max-width:100%;height:auto">${b}</svg>`}
+function T(x,y,s,o={}){return `<text x="${x}" y="${y}" font-size="${o.fs||11}" fill="${o.c||DIM}" text-anchor="${o.a||"start"}" ${o.w?`font-weight="${o.w}"`:""} ${o.halo?'stroke="#fff" stroke-width="4" paint-order="stroke"':""}>${esc(s)}</text>`}
+function L(x1,y1,x2,y2,c=LINE,w=1,d=""){return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}" ${d?`stroke-dasharray="${d}"`:""}/>`}
+function Rc(x,y,w,h,c,o=""){return `<rect x="${x}" y="${y}" width="${Math.max(0,w)}" height="${Math.max(0,h)}" fill="${c}" ${o}/>`}
+function C(x,y,r,c,o=""){return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" ${o}/>`}
+function line(pts){return pts.filter(p=>fin(p[0])&&fin(p[1])).map((p,i)=>(i?"L":"M")+p[0]+","+p[1]).join(" ")}
+function hbars(title,items,{w=318,x0=110,fmt=v=>v,hot=()=>false}={}){
+ const rh=19,h=22+rh*items.length,mx=Math.max(1e-9,...items.map(i=>i[1]).filter(fin));
+ let b=T(0,12,title,{fs:12,c:INK,w:600});
+ items.forEach(([l,v],i)=>{const y=22+rh*i,len=fin(v)?(w-x0-44)*v/mx:0;b+=T(0,y+13,l,{c:TXT});b+=Rc(x0,y+4,len,11,hot(l,v,i)?RED:FAINT);b+=T(x0+len+4,y+13,fmt(v),{c:INK});});
+ return svg(w,h,b);
+}
+function niceStep(span){for(const s of [1,2,5,10,20,50,100,200,500])if(span/s<=5)return s;return 1000;}
+
+function shell(){
+ const S=score(RULES);
+ $("overall").innerHTML=S.overall==null?`–<small>/100</small>`:`${Math.round(S.overall)}<small>/100</small>`;
+ $("subs").innerHTML=S.parts.map(p=>p.value==null?`<div class="ns"><span>${esc(p.name)}</span><span class="nsv">not scored</span></div>`
+  :`<div><span>${esc(p.name)}</span><span class="bar"><i style="width:${p.value.toFixed(1)}%"></i></span><span>${Math.round(p.value)}</span></div>`).join("");
+ $("score").onclick=pop;$("ov").onclick=e=>{if(e.target.id==="ov")$("ov").classList.remove("show")};
+ $("nrules").textContent=String(RULES.length);
+ $("rules").innerHTML=RULES.map((r,i)=>`<button class="rule" data-i="${i}"><span class="nm">${esc(r.id)}</span><span class="sm">${esc(r.summary)}</span><span class="rs">${esc(r.result)}</span></button>`).join("");
+ all(".rule").forEach(b=>b.onclick=()=>open_(+b.dataset.i));
+}
+function pop(){
+ const S=score(RULES),used=S.parts.filter(p=>p.value!=null),off=S.parts.filter(p=>p.value==null);
+ const pct=v=>String(Math.round(v*1000)/10)+"%";
+ const weights=used.length?used.map(p=>`${pct(p.share)} ${p.name}`).join(" + "):"No part is scored yet";
+ let h=`<h3>What lowered the score: ${S.overall==null?"–":Math.round(S.overall)} / 100</h3><div style="font-size:12px;color:${DIM}">${esc(weights)}${off.length?esc(` (${off.map(p=>p.name).join(", ")} not scored)`):""}. Each rule costs up to its weight, in proportion to the share of cells it flags; a 5% share costs the full weight.</div>`;
+ for(const p of S.parts){
+  h+=`<div class="grp"><h4><span>${esc(p.name)} ${p.value==null?"· not scored":Math.round(p.value)}</span><span>${p.value==null?"":"−"+Math.round(100-p.value)}</span></h4>`;
+  if(!p.rules.length)h+=`<div class="empty">No rule checks this part yet.</div>`;
+  for(const d of p.rules)h+=`<div class="line" data-r="${d.index}"><span>${esc(d.title)} <span class="mono" style="color:${FAINT}">→ ${esc(d.id)}</span></span><b>−${d.points.toFixed(1)}</b></div>`;
+  h+="</div>";}
+ if(S.none.length){h+=`<div class="grp"><h4><span>Not in the score</span><span></span></h4>`;
+  for(const d of S.none)h+=`<div class="line z" data-r="${d.index}"><span>${esc(d.title)} <span class="mono" style="color:${FAINT}">→ ${esc(d.id)}</span></span><b>design-specific</b></div>`;h+="</div>";}
+ h+=`<div class="foot">A part reads “not scored” until a rule checks it. Rules about one design never change the library score.</div>`;
+ $("pop").innerHTML=h;$("ov").classList.add("show");
+ all(".pop .line").forEach(l=>l.onclick=()=>{$("ov").classList.remove("show");open_(+l.dataset.r)});
+}
+function open_(i){
+ ri=Math.max(0,Math.min(RULES.length-1,i|0));R=RULES[ri];
+ ST=STS[ri]||(STS[ri]={sel:0,v:null,path:0,stage:null,du:{}});
+ $("meta").textContent=R.library||"";
+ all(".rule").forEach(b=>b.classList.toggle("on",+b.dataset.i===ri));render();
+}
+function render(){FILES=[];({vmin:VMIN,gaps:GAPS,path:PATH,spike:SPIKE})[R.kind]();wireFiles();}
+function facts(){return `<div class="kv">${(R.facts||[]).map(f=>`<span>${esc(f[0])}</span><span>${esc(fin(f[1])?f[1].toLocaleString("en-US"):f[1])}</span>`).join("")}</div>`}
+function ruleSec(){return `<div class="sec"><h3>Rule <span class="mono" style="text-transform:none;letter-spacing:0">${esc(R.id)}</span></h3><p class="ruletxt">${esc(R.rule)}</p></div>`}
+function hintOf(){return R.hint?`<div class="hint">${esc(R.hint)}</div>`:""}
+function impactSec(){return `<div class="sec"><h3>Impact on your design</h3><dl class="imp">${(R.impact||[]).map(p=>`<dt>${esc(p[0])}</dt><dd>${esc(p[1])}</dd>`).join("")}</dl></div>`}
+function todoSec(){return `<div class="sec"><h3>What to do</h3><ol class="todo">${(R.todo||[]).map(t=>`<li><b>${esc(WHO[t.who]||"NOTE")}</b>${esc(t.text)}</li>`).join("")}</ol></div>`}
+function focusSec(title,text,good){return `<div class="sec"><h3>${esc(title)}</h3><div class="focus${good?" g":""}">${esc(text)}</div></div>`}
+function fileSec(title,f,note){
+ const k=FILES.push(f)-1,grey=/\.(sdc|tcl)$/.test(f.name);
+ const body=f.text.replace(/\n$/,"").split("\n").map(l=>grey&&l.startsWith("#")?`<span class="c">${esc(l)}</span>`:esc(l)).join("\n");
+ return `<div class="sec"><h3><span>${esc(title)}</span><span class="acts"><button class="btn" data-copy="${k}">Copy</button><button class="btn" data-dl="${k}">Download</button></span></h3><div class="fname mono">${esc(f.name)}</div><pre class="code">${body}</pre>${note?`<div class="hint">${esc(note)}</div>`:""}</div>`;
+}
+function wireFiles(){
+ all("[data-copy]").forEach(b=>b.onclick=()=>copyText(FILES[+b.dataset.copy].text,b));
+ all("[data-dl]").forEach(b=>b.onclick=()=>download(FILES[+b.dataset.dl]));
+}
+function copyText(text,btn){
+ const done=()=>{btn.textContent="Copied";setTimeout(()=>{btn.textContent="Copy"},1200);};
+ const fallback=()=>{const t=document.createElement("textarea");t.value=text;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();
+  try{document.execCommand("copy");done();}catch(e){}t.remove();};
+ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,fallback);else fallback();
+}
+function download(f){
+ const url=URL.createObjectURL(new Blob([f.text],{type:"text/plain;charset=utf-8"})),a=document.createElement("a");
+ a.href=url;a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+/* ======================= 1. Vmin ======================= */
+function VMIN(){
+ const rows=R.rows||[],temps=R.temps||[],watch=fin(R.watch)?R.watch:0;
+ const W=318,x0=56,x1=W-40,rh=26,top=26,H=top+rh*rows.length+26;
+ const vals=[];rows.forEach(r=>{if(r.b)vals.push(r.b.p5,r.b.mx);(r.dots||[]).forEach(d=>vals.push(d));});
+ const fv=vals.filter(fin),lo=Math.min(-2,...fv),hi=Math.max(watch*2,1,...fv)*1.02;
+ const xs=v=>x0+(x1-x0)*(v-lo)/(hi-lo);
+ let b=T(0,12,`Extra slowdown vs inverter, ${num(R.hi)}→${num(R.lo)} V`,{fs:12,c:INK,w:600});
+ b+=L(xs(0),top-4,xs(0),H-22,INK,1)+L(xs(watch),top-4,xs(watch),H-22,RED,1,"4 3");
+ rows.forEach((r,i)=>{const y=top+rh*i+rh/2,on=ST.v===r.v;
+  b+=`<g class="vrow" data-v="${esc(r.v)}">`+Rc(0,y-rh/2+1,W,rh-2,on?"#F1F2F4":"#fff")+T(0,y+4,r.v,{c:on?INK:TXT,w:on?600:400});
+  if(r.b)b+=L(xs(r.b.p5),y,xs(r.b.p95),y,FAINT,1)+Rc(xs(r.b.p25),y-6,xs(r.b.p75)-xs(r.b.p25),12,BOXF,`stroke="${FAINT}"`)+L(xs(r.b.p50),y-6,xs(r.b.p50),y+6,INK,1.5);
+  (r.dots||[]).forEach((d,j)=>{if(fin(d))b+=C(xs(d),y+((j*7)%11)-5,2.2,RED,'fill-opacity=".7"')});
+  b+=T(x1+6,y+4,String(r.n),{c:r.n?RED:FAINT,w:600})+"</g>";});
+ const step=niceStep(hi);for(let v=0;v<=hi;v+=step)b+=T(xs(v),H-8,(v>0?"+":"")+v+"%",{a:"middle",fs:10});
+ $("overview").innerHTML=`<h3>Library overview</h3>${facts()}${svg(W,H,b)}<div class="legend"><span>box = middle 50% · whiskers 5–95%</span><span><b style="background:${RED}"></b>flagged cells</span><span>solid line: inverter · dashed: +${esc(num(watch))}% watch</span></div><div class="hint">Click a variant to filter the cells.</div>${hintOf()}`;
+ all(".vrow").forEach(g=>g.onclick=()=>{ST.v=ST.v===g.dataset.v?null:g.dataset.v;ST.sel=0;render();});
+ const items=(R.items||[]).filter(x=>!ST.v||x.v===ST.v);
+ if(!items.length){$("mid").innerHTML=ruleSec()+`<div class="sec">No flagged cells${ST.v?" in "+esc(ST.v):""}.</div>`;$("right").innerHTML=fileSec("Script",derateSdc(R,ST.v));return;}
+ const it=items[Math.min(ST.sel,items.length-1)];
+ const opts=items.map((x,i)=>`<option value="${i}" ${x===it?"selected":""}>${esc(x.label)} · ${esc(x.v)} · ${sg(x.x,1)}%</option>`).join("");
+ const panel=t=>{const F=(R.fan||{})[it.v+"|"+t],cv=(it.fan||{})[t];if(!F||!cv||F.volts.length<2)return "";
+  const CB=(R.clsbox||{})[it.v+"|"+t+"|"+it.cls];
+  const W2=330,H2=244,a=50,bx=W2-70,tp=18,bt=H2-50,n=F.volts.length,xs2=i=>a+(bx-a)*i/(n-1);
+  const ups=[...cv,...F.inv,...F.boxes.filter(Boolean).map(q=>q.p95),...(CB?CB.boxes.filter(Boolean).map(q=>q.p95):[])].filter(fin);
+  const downs=[...cv,...F.inv].filter(fin);
+  const ymax=Math.max(...ups)*1.04,ymin=Math.min(0.97,Math.min(...downs)*0.99),ys=v=>bt-(bt-tp)*(v-ymin)/(ymax-ymin);
+  let s="";for(let k=0;k<=4;k++){const v=ymin+(ymax-ymin)*k/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,"×"+v.toFixed(2),{a:"end",fs:10});}
+  const bxp=(B,x,f,st)=>L(x,ys(B.p5),x,ys(B.p95),st,1)+Rc(x-9,ys(B.p75),18,ys(B.p25)-ys(B.p75),f,`stroke="${st}"`)+L(x-9,ys(B.p50),x+9,ys(B.p50),INK,1.5);
+  F.boxes.forEach((B,i)=>{const x=xs2(i);if(B)s+=bxp(B,x-12,BOXF,FAINT);if(CB&&CB.boxes[i])s+=bxp(CB.boxes[i],x+12,CLSF,RED);
+   if(i===n-1&&(B||(CB&&CB.boxes[i])))s+=T(x-12,bt+28,"all",{a:"middle",fs:9.5})+T(x+12,bt+28,"class",{a:"middle",fs:9.5,c:RED});});
+  s+=`<path d="${line(F.inv.map((v,i)=>[xs2(i),ys(v)]))}" fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="6 3"/>`;
+  s+=`<path d="${line(cv.map((v,i)=>[xs2(i),ys(v)]))}" fill="none" stroke="${RED}" stroke-width="2.5"/>`;cv.forEach((v,i)=>{if(fin(v))s+=C(xs2(i),ys(v),3.5,RED)});
+  const e=(it.extra||{})[t];if(fin(e)&&fin(cv[n-1]))s+=T(xs2(n-1)+6,ys(cv[n-1])+4,sg(e,1)+"%",{c:RED,w:600,fs:11.5});
+  F.volts.forEach((v,i)=>s+=T(xs2(i),bt+16,num(v)+" V",{a:"middle"}));
+  s+=T((a+bx)/2,H2-4,"delay relative to "+num(F.volts[0])+" V",{a:"middle",fs:10.5});
+  return `<div class="chartbox"><h4>${esc(fmtT(t))}</h4>${svg(W2,H2,s)}</div>`;};
+ const pct=x=>Math.round((Number(factor(x))-1)*100)+"%";
+ const rows2=items.slice(0,14).map((x,i)=>`<tr class="row ${x===it?"on":""}" data-i="${i}"><td class="mono">${esc(x.label)}</td><td>${esc(x.v)}</td><td>${esc(x.cls)}</td>${temps.map(t=>`<td class="num">${fin((x.extra||{})[t])?sg(x.extra[t],1)+"%":"–"}</td>`).join("")}<td class="num bad">${fin(x.x)?pct(x.x):"–"}</td></tr>`).join("");
+ $("mid").innerHTML=ruleSec()+`<div class="sec"><div class="pick">Cell <select id="pk">${opts}</select> ${ST.v?`<span>filtered to ${esc(ST.v)} · <a href="#" id="clr">show all</a></span>`:""}</div>
+  <div class="two">${temps.map(panel).join("")}</div>
+  <div class="legend"><span><b style="background:${BOXF};border:1px solid ${FAINT}"></b>all ${esc(it.v)} cells</span><span><b style="background:${CLSF};border:1px solid ${RED}"></b>${esc(it.cls)} cells</span><span><b style="background:${INK}"></b>reference inverter (dashed)</span><span><b style="background:${RED}"></b>${esc(it.label)}</span></div>
+  <div class="hint">Boxes: middle 50% and 5–95% of cells at each voltage. As the supply drops, the spread widens.</div></div>
+  <div class="sec"><h3>Flagged cells${ST.v?" · "+esc(ST.v):""} · worst first${items.length>14?` · first 14 of ${items.length}`:""}</h3><table><tr><th>Cell</th><th>Variant</th><th>Class</th>${temps.map(t=>`<th class="num">${esc(fmtT(t))}</th>`).join("")}<th class="num">Derate</th></tr>${rows2}</table></div>`;
+ $("pk").onchange=e=>{ST.sel=+e.target.value;render();};
+ if($("clr"))$("clr").onclick=e=>{e.preventDefault();ST.v=null;ST.sel=0;render();};
+ all("#mid tr.row").forEach(r=>r.onclick=()=>{ST.sel=+r.dataset.i;render();});
+ $("right").innerHTML=focusSec("For "+it.label,it.focus)+impactSec()+todoSec()
+  +fileSec("Script",derateSdc(R,ST.v),ST.v?`Only the ${ST.v} cells, as filtered. Show all variants for the whole list.`:"")
+  +(it.brief?fileSec("Design brief",redesignBrief(R,it),"For the cell designer: one cell, one arc."):"");
+}
+
+/* ======================= 2. Size gaps ======================= */
+function GAPS(){
+ const M=R.matrix||{tracks:[],vts:[],counts:[]},nv=M.vts.length;
+ const cw=Math.min(70,Math.floor(220/Math.max(1,nv))),x0=48,y0=30,rh=26;
+ let b=T(0,12,"Functions with a gap · track × VT",{fs:12,c:INK,w:600});
+ M.vts.forEach((c,j)=>b+=T(x0+cw*j+cw/2,y0-6,c,{a:"middle"}));
+ const mx=Math.max(1,...M.counts.flat().filter(fin));
+ M.tracks.forEach((r,i)=>{b+=T(0,y0+rh*i+17,r,{c:TXT});(M.counts[i]||[]).forEach((v,j)=>{const f=fin(v)?v/mx:0;
+  b+=`<rect x="${x0+cw*j+2}" y="${y0+rh*i+2}" width="${cw-4}" height="${rh-4}" rx="3" fill="${RED}" fill-opacity="${f?(0.15+0.85*f).toFixed(3):0.04}"/>`+T(x0+cw*j+cw/2,y0+rh*i+17,fin(v)&&v?String(v):"–",{a:"middle",c:f>0.55?"#fff":INK});});});
+ const items=R.items||[];
+ const top=items.slice(0,8).map(x=>[x.label,x.ratio]);
+ $("overview").innerHTML=`<h3>Library overview</h3>${facts()}${svg(Math.max(270,x0+cw*nv+6),y0+rh*M.tracks.length+6,b)}${top.length?`<div style="margin-top:12px">${hbars("Widest gaps (next cell's drive ÷ previous)",top,{x0:120,fmt:v=>"×"+fx(v,2),hot:(l,v,i)=>items[i].vts>=nv})}</div><div class="legend"><span><b style="background:${RED}"></b>same gap in every VT: a library design choice, not noise</span></div>`:""}${hintOf()}`;
+ if(!items.length){$("mid").innerHTML=ruleSec()+`<div class="sec">No gaps found.</div>`;$("right").innerHTML=impactSec()+todoSec()+fileSec("Script",roadmapGapsCsv(R));return;}
+ const it=items[Math.min(ST.sel,items.length-1)],cs=it.cells,lo=cs[it.i],hi=cs[it.i+1];
+ const opts=items.map((x,i)=>`<option value="${i}" ${x===it?"selected":""}>${esc(x.label)} · ×${fx(x.ratio,2)}</option>`).join("");
+ const W=700,H=300,a=58,bx=W-20,tp=18,bt=H-44;
+ const dmin=Math.log(Math.min(...cs.map(c=>c.drive)))-0.15,dmax=Math.log(Math.max(...cs.map(c=>c.drive)))+0.15;
+ const amax=Math.max(...cs.map(c=>c.area),it.miss.area)*1.1,xs=v=>a+(bx-a)*(Math.log(v)-dmin)/(dmax-dmin),ys=v=>bt-(bt-tp)*v/amax;
+ let s="";for(let k=0;k<=4;k++){const v=amax*k/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,v.toFixed(1),{a:"end",fs:10});}
+ [1,2,4,8,16,32,64,128].forEach(v=>{if(Math.log(v)>dmin&&Math.log(v)<dmax)s+=L(xs(v),tp,xs(v),bt,SOFT)+T(xs(v),bt+15,"×"+v,{a:"middle",fs:10});});
+ s+=Rc(xs(lo.drive),tp,xs(hi.drive)-xs(lo.drive),bt-tp,RED,'fill-opacity=".07"');
+ s+=T((xs(lo.drive)+xs(hi.drive))/2,tp+14,`no cell between ×${fx(lo.drive,1)} and ×${fx(hi.drive,1)}`,{a:"middle",c:RED,w:600,fs:11.5,halo:1});
+ s+=`<path d="${line(cs.map(c=>[xs(c.drive),ys(c.area)]))}" fill="none" stroke="${LINE}" stroke-width="1"/>`;
+ cs.forEach((c,i)=>{const k=i===it.i||i===it.i+1;s+=C(xs(c.drive),ys(c.area),k?6:4.5,k?RED:"#8E929A",`stroke="#fff" stroke-width="1.5"`);});
+ s+=C(xs(it.miss.drive),ys(it.miss.area),6,"#fff",`stroke="${GRN}" stroke-width="2" stroke-dasharray="3 2"`)+T(xs(it.miss.drive),ys(it.miss.area)-12,"missing size",{a:"middle",c:GRN,fs:11,halo:1});
+ [lo,hi].forEach((c,j)=>{s+=T(xs(c.drive)+(j?8:-8),ys(c.area)+(j?-8:16),c.s,{a:j?"start":"end",c:INK,w:600,fs:11,halo:1});});
+ s+=T((a+bx)/2,H-6,`every ${it.cls} cell in ${it.v}: drive strength (relative to the weakest) vs area (µm²)`,{a:"middle",fs:10.5});
+ const g=v=>!fin(v)?"–":Math.abs(v)>=100?v.toFixed(0):v.toPrecision(3);
+ const rows=cs.map((c,i)=>{const k=i===it.i||i===it.i+1;return `<tr class="${k?"mark":""}"><td class="mono ${k?"bad":""}">${esc(c.s)}</td><td class="num">×${fx(c.drive,2)}</td><td class="num">${fx(c.area,2)}</td><td class="num">${g(c.leak)}</td><td class="num">${fx(c.d4,0)}</td><td class="num">${fx(c.d16,0)}</td></tr>`}).join("");
+ const span=cs[cs.length-1].drive/cs[0].drive;
+ $("mid").innerHTML=ruleSec()+`<div class="sec"><div class="pick">Function <select id="pk">${opts}</select></div>${svg(W,H,s)}
+  <div class="legend"><span><b style="background:#8E929A"></b>cells of this function</span><span><b style="background:${RED}"></b>the two cells either side of the gap</span><span style="color:${GRN}">◌ where a missing size would sit</span></div>
+  <div class="cards"><div class="card r"><b>×${fx(it.ratio,2)}</b>drive jump ${esc(lo.s)} → ${esc(hi.s)}</div><div class="card r"><b>+${Math.max(0,it.pen_area).toFixed(0)}%</b>area paid by taking ${esc(hi.s)} instead of the missing size</div><div class="card r"><b>+${Math.max(0,it.weak).toFixed(0)}%</b>delay at 16× load if ${esc(lo.s)} is kept instead</div></div>
+  <div class="hint">${it.vts>=nv?`The same gap is in all ${nv} VTs: a library design choice.`:`Gap in ${it.vts} of ${nv} VTs.`} ${cs.length} cells cover ×${span.toFixed(0)} of drive, but none between ×${fx(lo.drive,1)} and ×${fx(hi.drive,1)}.</div></div>
+  <div class="sec"><h3>All ${esc(it.cls)} cells · ${esc(it.v)} · weakest first</h3><table><tr><th>Cell</th><th class="num">Drive</th><th class="num">Area <span style="text-transform:none">µm²</span></th><th class="num">Leakage</th><th class="num">4× load ps</th><th class="num">16× load ps</th></tr>${rows}</table></div>`;
+ $("pk").onchange=e=>{ST.sel=+e.target.value;render();};
+ $("right").innerHTML=focusSec("For "+it.label,it.focus)+impactSec()+todoSec()+fileSec("Script",roadmapGapsCsv(R),"Every gap of this rule, with the suggested drive and area of the missing size.");
+}
+
+/* ======================= 3. Critical path ======================= */
+function PATH(){
+ const Dg=R.design||{},paths=R.paths||[];
+ const stageGain=r=>{const u=(r.eq||[]).find(e=>e.name===r.cell);return u&&fin(r.best)?u.d-r.best:0;};
+ const prow=paths.map((p,i)=>`<tr class="row ${i===ST.path?"on":""}" data-p="${i}"><td class="num bad">${fx(p.slack,0)}</td><td class="mono" style="font-size:11px">${esc(p.start)} → ${esc(p.end)}</td><td class="num">${p.rows.length}</td><td class="num good">${fin(p.gain)?"−"+p.gain.toFixed(0):"–"}</td></tr>`).join("");
+ $("overview").innerHTML=`<h3>Library overview · design view</h3>${facts()}<div class="op"><b>${esc(Dg.name)}</b> · ${esc(Dg.lib)} · ${esc(Dg.flow)} · ${esc(Dg.corner)}</div><table><tr><th class="num">Slack ps</th><th>Path</th><th class="num">Cells</th><th class="num">If fastest</th></tr>${prow}</table><div class="hint">If fastest: delay saved (ps) if every cell on the path took its fastest equivalent at its own operating point. An upper bound to guide the repair, not a sign-off number.</div>${hintOf()}`;
+ all("#overview tr.row").forEach(r=>r.onclick=()=>{ST.path=+r.dataset.p;ST.stage=null;render();});
+ const P=paths[Math.min(ST.path,paths.length-1)];
+ if(!P){$("mid").innerHTML=ruleSec();$("right").innerHTML="";return;}
+ const pi=paths.indexOf(P);
+ if(ST.stage==null||ST.stage>=P.rows.length){let k=0,g=-Infinity;P.rows.forEach((r,i)=>{const v=stageGain(r);if(v>g){g=v;k=i}});ST.stage=k;}
+ const S=P.rows[ST.stage],E=S.eq||[],U=E.find(e=>e.name===S.cell)||{d:S.d,a:1,name:S.cell,s:S.s};
+ const key=pi+":"+ST.stage,du=ST.du[key]||(ST.du[key]=[]);
+ const isFast=e=>e.d<U.d*0.98,isSlow=e=>e.d>U.d*1.02;
+ const srows=P.rows.map((r,i)=>{const gn=stageGain(r),m=(ST.du[pi+":"+i]||[]).length;return `<tr class="row ${i===ST.stage?"on":""}" data-s="${i}"><td class="mono" style="font-size:11px">${esc(r.inst)}</td><td class="mono">${esc(r.s)}</td><td>${esc(r.arc)}</td><td class="num">${fx(r.d,0)}</td><td class="num good">${gn>0.5?"−"+gn.toFixed(0):"–"}</td><td class="num bad">${m||""}</td></tr>`}).join("");
+ const W=700,H=300,a=56,bx=W-20,tp=16,bt=H-42;
+ const amax=Math.max(...E.map(e=>e.a))*1.08||1,dmax=Math.max(...E.map(e=>e.d))*1.06,dmin=Math.min(...E.map(e=>e.d))*0.9;
+ const dspan=(dmax-dmin)||1,xs=v=>a+(bx-a)*v/amax,ys=v=>bt-(bt-tp)*(v-dmin)/dspan;
+ let s="";for(let k=0;k<=4;k++){const v=dmin+dspan*k/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,v.toFixed(0)+" ps",{a:"end",fs:10});}
+ for(let k=0;k<=4;k++){const v=amax*k/4;s+=T(xs(v),bt+15,v.toFixed(1),{a:"middle",fs:10});}
+ s+=Rc(a,ys(U.d),bx-a,bt-ys(U.d),GRN,'fill-opacity=".06"')+L(a,ys(U.d),bx,ys(U.d),INK,1,"4 3")+T(bx-4,ys(U.d)+14,"faster than the cell in use ↓",{a:"end",c:GRN,fs:10.5,halo:1});
+ const vts=[...new Set(E.map(e=>e.vt))].sort(cmp),SH=["circle","square","triangle","diamond"],sym={circle:"●",square:"■",triangle:"▲",diamond:"◆"};
+ const shape=(vt,x,y,fill,stroke)=>{const k=SH[Math.min(3,vts.indexOf(vt))],o=`fill="${fill}" stroke="${stroke}" stroke-width="1.5"`;
+  return k==="square"?`<rect x="${x-5}" y="${y-5}" width="10" height="10" ${o}/>`:k==="triangle"?`<path d="M${x},${y-6} L${x+6},${y+5} L${x-6},${y+5}Z" ${o}/>`:k==="diamond"?`<path d="M${x},${y-6} L${x+6},${y} L${x},${y+6} L${x-6},${y}Z" ${o}/>`:C(x,y,5,fill,`stroke="${stroke}" stroke-width="1.5"`);};
+ E.forEach((e,i)=>{const x=xs(e.a),y=ys(e.d),isU=e.name===S.cell,f=isFast(e),d=du.includes(e.name);
+  const col=isU?INK:f?GRN:d?"#fff":FAINT,st=isU?INK:f?GRN:d?RED:"#fff";
+  s+=`<g class="pt" data-e="${i}">`+shape(e.vt,x,y,col,st);
+  if(d)s+=L(x-4,y-4,x+4,y+4,RED,1.5)+L(x-4,y+4,x+4,y-4,RED,1.5);
+  if(isU)s+=C(x,y,10,"none",`stroke="${INK}" stroke-width="2"`)+T(x+13,y+4,"in use: "+e.s,{c:INK,w:600,fs:11.5,halo:1});
+  s+="</g>";});
+ const fast=E.filter(isFast).sort((p,q)=>p.d-q.d),slow=E.filter(isSlow);
+ fast.slice(0,3).forEach(e=>s+=T(xs(e.a)+8,ys(e.d)+4,e.s,{c:GRN,fs:10.5,halo:1}));
+ s+=T((a+bx)/2,H-6,`every ${S.cls} equivalent (${vts.map((v,i)=>v+" "+sym[SH[Math.min(3,i)]]).join(", ")}): area µm² vs delay ps at this stage`,{a:"middle",fs:10.5});
+ const op=S.op||{},from=op.from==="fo4"?"FO4 fallback (4× own input cap)":"from the timing report";
+ $("mid").innerHTML=ruleSec()+`<div class="sec"><h3>Path ${pi+1} · slack ${fx(P.slack,0)} ps · ${esc(P.start)} → ${esc(P.end)}</h3><table><tr><th>Instance</th><th>Cell</th><th>Arc</th><th class="num">Delay ps</th><th class="num">Faster by</th><th class="num">Don't-use</th></tr>${srows}</table></div>
+ <div class="sec"><h3>${esc(S.s)} on ${esc(S.inst)} · equivalent cells</h3><div class="op">Judged at this stage's operating point: input slew <b>${fx(op.slew,1)} ps</b>, output load <b>${fx(op.load,2)} fF</b> · ${esc(from)}</div>${svg(W,H,s)}
+  <div class="legend"><span><b style="background:${GRN}"></b>faster: keep</span><span><b style="background:${FAINT}"></b>slower</span><span style="color:${RED}">✕ marked don't-use</span><span>◯ cell in use · dashed: its delay</span><span>click a slower point to toggle</span></div>
+  <div class="row2"><button class="btn dark" id="allslow">Don't-use all slower</button><button class="btn" id="clear">Clear</button><span class="hint" style="margin:0">${fast.length} faster · ${slow.length} slower · ${du.length} marked</span></div></div>`;
+ all("#mid tr.row").forEach(r=>r.onclick=()=>{ST.stage=+r.dataset.s;render();});
+ all(".pt").forEach(g=>g.onclick=()=>{const e=E[+g.dataset.e];if(!e||e.name===S.cell||isFast(e))return;const k=du.indexOf(e.name);if(k>=0)du.splice(k,1);else du.push(e.name);render();});
+ $("allslow").onclick=()=>{slow.forEach(e=>{if(!du.includes(e.name))du.push(e.name)});render();};$("clear").onclick=()=>{du.length=0;render();};
+ const best=fast[0],tcl=dontUseTcl(R,ST.du);
+ const fopt=fast.slice(0,5).map(e=>`<tr><td class="mono good">${esc(e.s)}</td><td class="num">${fx(e.d,0)}</td><td class="num">${fin(U.a)&&U.a>0?(e.a/U.a).toFixed(1)+"×":"–"}</td><td class="num">${fx(e.l,2)}</td></tr>`).join("")||`<tr><td colspan="4" class="hint">none</td></tr>`;
+ $("right").innerHTML=focusSec(`For ${S.s} on ${S.inst}`,S.focus,!!best)
+  +`<div class="sec"><h3>Faster options</h3><table><tr><th>Cell</th><th class="num">Delay ps</th><th class="num">Area</th><th class="num">Leakage</th></tr>${fopt}</table></div>`
+  +impactSec()+todoSec()+fileSec(`Script · ${tcl.lines} line${tcl.lines===1?"":"s"}`,tcl,"Updates as you mark cells. The optimiser can then only pick the faster equivalents on these paths.");
+}
+
+/* ======================= 4. Spikes ======================= */
+function SPIKE(){
+ const hot=list=>{const m=Math.max(0,...list.map(x=>x[1]).filter(fin));return (l,v)=>m>0&&v>=m*0.5;};
+ const bv=R.by_variant||[],bf=R.by_family||[],bk=R.by_kind||[];
+ $("overview").innerHTML=`<h3>Library overview</h3>${facts()}${bv.length?hbars("Issue groups by variant",bv,{x0:70,hot:hot(bv)}):""}${bf.length?`<div style="margin-top:12px">${hbars("By cell family",bf,{x0:90,hot:hot(bf)})}</div>`:""}${bk.length?`<div style="margin-top:12px">${hbars("By table",bk,{x0:110})}</div>`:""}${hintOf()}`;
+ const items=R.items||[];
+ if(!items.length){$("mid").innerHTML=ruleSec()+`<div class="sec">No table issues found.</div>`;$("right").innerHTML=impactSec()+todoSec()+fileSec("Script",recharacteriseCsv(R));return;}
+ const it=items[Math.min(ST.sel,items.length-1)];
+ const opts=items.map((x,i)=>`<option value="${i}" ${x===it?"selected":""}>${esc(x.label)} · ${esc(x.v)} · ${fx(x.ratio,1)}×</option>`).join("");
+ const sl=it.slice,W=420,H=250,a=58,bx=W-16,tp=16,bt=H-42,k=sl.k;
+ const allY=[...sl.y,...sl.others.flatMap(o=>o.y)].filter(fin),ymin=Math.min(...allY)*0.95,ymax=Math.max(...allY)*1.05;
+ const xmin=Math.log(sl.x[0]),xmax=Math.log(sl.x[sl.x.length-1]),xs=v=>a+(bx-a)*(Math.log(v)-xmin)/((xmax-xmin)||1),ys=v=>bt-(bt-tp)*(v-ymin)/((ymax-ymin)||1);
+ let s="";for(let q=0;q<=4;q++){const v=ymin+(ymax-ymin)*q/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,v.toFixed(0),{a:"end",fs:10});}
+ sl.x.forEach(v=>s+=T(xs(v),bt+15,v<10?v.toFixed(1):v.toFixed(0),{a:"middle",fs:9.5}));
+ sl.others.forEach(o=>s+=`<path d="${line(o.y.map((v,i)=>[xs(sl.x[i]),ys(v)]))}" fill="none" stroke="${LINE}" stroke-width="1.5"/>`);
+ s+=`<path d="${line(sl.y.map((v,i)=>[xs(sl.x[i]),ys(v)]))}" fill="none" stroke="${TXT}" stroke-width="2"/>`;
+ sl.y.forEach((v,i)=>s+=C(xs(sl.x[i]),ys(v),i===k?6:3,i===k?RED:TXT));
+ s+=T(xs(sl.x[k])-8,ys(sl.y[k])-10,"flagged point",{a:"end",c:RED,w:600,fs:11,halo:1});
+ if(k>0&&k<sl.y.length-1){const w=(sl.x[k]-sl.x[k-1])/(sl.x[k+1]-sl.x[k-1]),ex=sl.y[k-1]+w*(sl.y[k+1]-sl.y[k-1]);
+  s+=L(xs(sl.x[k-1]),ys(sl.y[k-1]),xs(sl.x[k+1]),ys(sl.y[k+1]),INK,1,"4 3")+C(xs(sl.x[k]),ys(ex),5,"#fff",`stroke="${INK}" stroke-width="1.5" stroke-dasharray="2 2"`)+L(xs(sl.x[k]),ys(ex),xs(sl.x[k]),ys(sl.y[k]),RED,1.5);}
+ s+=T((a+bx)/2,H-6,`${it.kind} (ps) vs ${it.xname} at ${sl.at}`,{a:"middle",fs:10.5});
+ const n=it.vals.length,m=it.vals[0].length,cw=50,ch=26,hx=60,hy=36,HW=hx+cw*m+6,HH=hy+ch*n+30;
+ let h=T(hx+cw*m/2,12,"load (fF) →",{a:"middle",fs:10.5});
+ it.axes[1].forEach((v,j)=>h+=T(hx+cw*j+cw/2,hy,v<1?v.toFixed(2):v.toFixed(0),{a:"middle",fs:9.5}));
+ for(let i=0;i<n;i++){h+=T(hx-6,hy+ch*i+ch/2+8,it.axes[0][i].toFixed(0),{a:"end",fs:9.5});
+  for(let j=0;j<m;j++){const rv=(it.res[i]||[])[j],r=Math.min(1,(fin(rv)?rv:0)/3),fl=i===it.pos[0]&&j===it.pos[1];
+   h+=Rc(hx+cw*j+1,hy+ch*i+5,cw-2,ch-2,RED,`fill-opacity="${(0.03+0.8*r).toFixed(3)}" ${fl?`stroke="${INK}" stroke-width="2.5"`:""}`)+T(hx+cw*j+cw/2,hy+ch*i+ch/2+9,fx(it.vals[i][j],0),{a:"middle",fs:10,c:r>0.55?"#fff":INK});}}
+ h+=`<text x="12" y="${hy+ch*n/2+8}" font-size="10.5" fill="${DIM}" transform="rotate(-90 12 ${hy+ch*n/2+8})" text-anchor="middle">slew (ps)</text>`;
+ const rows=items.map((x,i)=>`<tr class="row ${x===it?"on":""}" data-i="${i}"><td class="mono">${esc(x.label)}</td><td>${esc(x.v)}</td><td>${esc(x.arc)}</td><td>${esc(x.kind)}</td><td>${esc(x.label_pos)}</td><td class="num bad">${fx(x.ratio,1)}×</td><td>${esc(x.corners)}</td></tr>`).join("");
+ const err=it.observed-it.expected;
+ $("mid").innerHTML=ruleSec()+`<div class="sec"><div class="pick">Cell <select id="pk">${opts}</select></div>
+ <div class="two"><div class="chartbox"><h4>Slice through the flagged point${sl.others.length?" · siblings in grey":""} · ◌ smooth value</h4>${svg(W,H,s)}</div><div class="chartbox"><h4>${esc(it.kind)} table (ps) · ${esc(it.corner)} · red = distance from the line between neighbours</h4>${svg(HW,HH,h)}</div></div>
+ <div class="cards"><div class="card r"><b>${fx(it.ratio,1)}×</b>the allowed error</div><div class="card r"><b>${sg(err,0)} ps</b>table value vs smooth curve at ${esc(it.label_pos)}</div><div class="card"><b>${esc(String(it.corners).split("·")[0])}</b>${esc(it.arc)}${it.when?" when "+esc(it.when):""}</div></div></div>
+ <div class="sec"><h3>Worst issues · worst first</h3><table><tr><th>Cell</th><th>Variant</th><th>Arc</th><th>Table</th><th>Point</th><th class="num">Size</th><th>Where</th></tr>${rows}</table></div>`;
+ $("pk").onchange=e=>{ST.sel=+e.target.value;render();};
+ all("#mid tr.row").forEach(r=>r.onclick=()=>{ST.sel=+r.dataset.i;render();});
+ $("right").innerHTML=focusSec("For "+it.label,it.focus)+impactSec()+todoSec()+fileSec("Script",recharacteriseCsv(R),"One line per flagged table point: the re-characterisation request for the library provider.");
+}
+
+function boot(){
+ let data=null;
+ try{data=JSON.parse($("insight-data").textContent);}catch(e){data=null;}
+ if(!data||!Array.isArray(data.rules)||!data.rules.length){$("mid").innerHTML=`<div class="sec">The page data could not be read.</div>`;return;}
+ RULES=data.rules;shell();
+ const h=new URLSearchParams(location.hash.slice(1));
+ open_(h.get("r")!=null?+h.get("r"):+data.selected||0);
+ if(h.get("sel"))ST.sel=+h.get("sel");if(h.get("v"))ST.v=h.get("v");if(h.get("p"))ST.path=+h.get("p");if(h.get("st"))ST.stage=+h.get("st");
+ render();if(h.get("pop"))pop();
+}
+if(typeof document!=="undefined"&&document.getElementById("insight-data"))boot();
+})();
+</script>
+</body></html>
