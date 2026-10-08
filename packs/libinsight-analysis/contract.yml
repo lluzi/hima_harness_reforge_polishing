@@ -89,7 +89,7 @@ tools:
     plots, the exact main script text and every code file, and honest assumptions and limits. Check it with
     check-delivery before writing the delivery candidate. Do not change licences, start or switch licence
     services, write beside a source, use the network, or present prose in place of computed datasets.
-    A library-quality request is an insight rule (insight-playbook.md): run the matching example rule, or a
+    A library-quality request is an insight rule (see insight-playbook.md). Run the matching example rule, or a
     rule module you write on its pattern, with `libinsight_cli.py insight-delivery`, which writes the checked
     delivery with the rule as its insight block; the Pack's fixed page template draws it.
   inputs:
