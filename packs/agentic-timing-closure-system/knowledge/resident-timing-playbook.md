@@ -240,6 +240,50 @@ reproducible scripts rerun from the chosen base over one long-lived session.
    reorder your steps, or combine the partial wins of different experiments, and keep a table of
    tactic → measured result in `engineering/REPRODUCE.md`.
 
+### Structural setup walls: clock skew, step by step
+
+A structural wall is a setup endpoint whose worst path has no combinational cell between the launching
+storage element (a macro or flop output) and the capturing one, or so few that the launching element's
+own clock-to-output delay already exceeds the capture window. Sizing and buffering report no gain there
+(`report_fail_reasons` says so), because no data-path cell can change. Recognise walls from the
+critical GBA path (`get_critical_gba_path -to <endpoint> -delay_type max`): count the cells between the
+launch output and the capture input.
+
+The repair is to make the capture clock arrive later at that element:
+
+1. **Measure first.** For every wall endpoint, record its setup deficit (worst slow-corner slack), its
+   launching element, and the hold slack at the same capture pin (fast corner).
+2. **Order a chain from the sink.** When walls form a chain A → B → C (A launches into B, B into C),
+   delaying B's clock also delays what B launches into C. So C needs its own deficit **plus** B's shift.
+   Compute the shift of every element as its own deficit, a small target margin, and the shift of the
+   element that launches into it; then insert the largest shift first.
+3. **Insert on the clock pin itself.** `insert_buffer [get_pins <element>/<clock pin>] <cell>` puts the
+   cell between the clock net and that one pin only, so other elements on the same clock net are not
+   moved. Use clock-tree buffers or delay cells from the active library (discover them with
+   `get_lib_cells`; clock buffers usually have CK in the name). Measure the slow-corner delay of one cell
+   before choosing how many to chain. Insert one cell per call, re-measure, and `undo` the last one when
+   it does not help.
+4. **Check both sides after each insertion.** The delayed element now launches later: check the slack
+   on its own outputs and undo if they fall below a small guard. Its capture pin gets more hold
+   pessimism: re-run the hold fixer after each skew pass.
+5. **Registers behind a delayed macro.** A register that captures from a delayed macro, or any residual
+   register endpoint without a data-path fix, can take the same treatment on its own clock pin, with
+   the same launch check and undo.
+6. **The tool's clock fixer.** `fix_violations_by_clock_eco` is worth a measured try, but give it
+   clock-tree cells, not data buffers, and run it with `placement_legalization_obligated true` so it
+   cannot commit overlaps. Repair the hold dent afterwards.
+
+Legality is unchanged: keep obligatory legalization for every clock-pin insertion and compare
+`check_placement_overlap` with the starting state.
+
+### Before you deliver: the time-box check
+
+While the Goal is unmet, run `date -u` and compare it with `createdAt` in `task.json` before writing
+the delivery. If fewer than 75 minutes have passed, do not deliver: go back to the residual classes,
+pick the next untried tactic (for a structural wall, the step-by-step clock skew above), and measure
+it. Only a real tool, input or permission blocker justifies delivering earlier, and the stop reason
+must name it.
+
 ### Keep the delivery small
 
 The Host materializes the whole `engineering/` tree into the Campaign workspace, file by file, before

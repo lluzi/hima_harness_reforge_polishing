@@ -59,6 +59,8 @@ automatic-fix flow from the XTop tutorial (transition and capacitance first, the
 so the before state is the strongest stock-XTop reference rather than setup and hold fixers alone.
 0.4.8 (demo branch `demo/atcs-derive`) withdraws the executable ladder and the playbook's step-by-step
 ladder and keeps only general principles and XTop command mechanics, so the resident must work out the
-closure method itself on the design.
+closure method itself on the design. 0.4.9 adds the general clock-skew technique for structural setup
+walls and a time-box check before delivery, after a 0.4.8 resident closed hold but stopped at setup 55
+with a clock attempt that used data buffers without obligatory legalization.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.
