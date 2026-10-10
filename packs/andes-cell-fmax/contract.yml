@@ -313,6 +313,8 @@ rules:
   - fmax-goal
 
 knowledge:
+  - file: design-notes.md
+    purpose: The design's timing at 1 GHz, where the delay goes by cell type, what the flow and the stock library offer, and the custom-cell idea, for the Guide's first conversation.
   - file: andes-flow.md
     purpose: The flow, every tool and command, the round loop, the owner's turns and what each round's results mean.
   - file: himatime-playbook.md

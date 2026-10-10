@@ -87,6 +87,7 @@ prechecks with `andes_cli.py precheck`, and delivers one result with its reports
 
 - `knowledge/andes-flow.md`
 - `knowledge/andescell-playbook.md`
+- `knowledge/design-notes.md` (the Guide's first conversation: bottleneck, cell-type delay, flow and library)
 - `knowledge/evidence-and-claims.md`
 - `knowledge/himatime-playbook.md`
 - `knowledge/qualib-playbook.md`
