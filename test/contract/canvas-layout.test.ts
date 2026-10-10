@@ -5,6 +5,7 @@ import { readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { layoutCanvas, fitToWidth, labelsVisibleAt, loadPack, PITCH, ROW, NODE, X0, PAD_Y } from '@hima/harness';
+import { WIDE_PITCH } from '../../packages/harness/src/canvas-layout.ts';
 import type { LayoutGraph, CanvasScene, PlacedNode } from '@hima/harness';
 import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND, pickOwnedRun, recordEndedSeenAt } from '@hima/harness';
 import type { RunView, RunHeadView } from '@hima/harness';
@@ -19,6 +20,7 @@ const linear: LayoutGraph = { entry: 'prepare', nodes: [node('prepare'), node('a
 
 test('a linear graph ranks along one spine at the mockup pitch and ends in a Goal roundel', () => {
   const scene = layoutCanvas(linear);
+  assert.equal(scene.pitch, PITCH, 'a graph without merged steps keeps the mockup pitch');
   assert.deepEqual(scene.nodes.map((n) => [n.id, n.rank, n.row, n.state]), [['prepare', 0, 0, 'pending'], ['analyze', 1, 0, 'pending'], ['check', 2, 0, 'pending'], ['select', 3, 0, 'pending']]);
   assert.equal(scene.nodes[1]!.x, X0 + PITCH);
   assert.equal(scene.nodes[1]!.y, PAD_Y);
@@ -366,6 +368,24 @@ test('the shipped andes-cell-fmax graph keeps one spine with both agents in lane
       }
     }
   }
+  // Full words: the wide pitch gives a label two lines of 24 characters and a checklist line 30.
+  assert.equal(scene.pitch, WIDE_PITCH);
+  assert.ok(scene.nodes.every((n) => n.wide === true));
+  for (const n of scene.nodes) {
+    if (n.label !== undefined) assert.ok(n.label.length <= 48, `${n.id}'s label fits two lines`);
+    for (const member of n.members ?? []) assert.ok((member.label ?? member.id).length <= 30, `${member.id}'s checklist line fits`);
+  }
+  assert.ok(next.x - join.x >= WIDE_PITCH && join.x - reference.x >= WIDE_PITCH, 'spine columns stand a wide pitch apart');
+  // No edge runs through a node's glyph other than its own two ends.
+  for (const edge of scene.edges) {
+    for (const p of samplePath(edge.path)) {
+      for (const n of scene.nodes) {
+        if (n.id === edge.from || n.id === edge.to) continue;
+        assert.ok(!(Math.abs(p.x - n.x) < NODE / 2 + 2 && Math.abs(p.y - n.y) < NODE / 2 + 2), `${edge.from} -> ${edge.to} passes through ${n.id}`);
+      }
+    }
+  }
+  assert.ok(scene.edges.find((e) => e.kind === 'revisit')!.path.split(' ').every((token) => !token.startsWith('-')), 'the revisit loop stays on the canvas');
   assert.deepEqual(scene.edges.filter((e) => e.chip !== undefined).map((e) => `${e.from}>${e.to}`), [], 'no chip out of a merged step');
   assert.equal(scene.edges.filter((e) => e.from === 'seg:requirements-joined' && e.to === 'next-round').length, 1, 'parallel outcome edges out of a merged step draw as one');
 });
