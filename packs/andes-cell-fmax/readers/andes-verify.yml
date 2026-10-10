@@ -1,0 +1,6 @@
+id: andes-verify
+version: "0.2.0"
+file: tools/read-verify.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-andes-cell-check
+emits: [verify_delivery_valid, local_gain_ps, cells_passed_screen, cells_faster_than_stock]

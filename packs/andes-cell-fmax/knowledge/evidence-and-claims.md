@@ -4,13 +4,16 @@
 
 Every number in a round record comes from a tool report the Pack's own steps produced: the sapr
 post-route summary (Fmax, worst slack, TNS, area, instances, route DRC, new-cell instances), the
-HimaTime load and verification, the Qualib screen and AndesCell's generation record. The Readers
-read those files; the round record compares the new-library build with the reference build.
+HimaTime load, AndesCell's generation record, HimaTime's verification of the new cells (the local
+gain in ps) and the Qualib screen. The Readers read those files; for the two verify deliveries the
+Reader asks HimaTime and Qualib again for their own answer and states the tools' numbers, never the
+agent's. The round record compares the new-library build with the reference build.
 
 ## Claims
 
-What an agent writes (its analysis, its expected gain, a `himatime estimate` it ran) is a claim.
-It guides AndesCell's choice and is shown beside the result; it is never the result.
+What an agent writes (its analysis, its expected gain, a `himatime estimate` it ran, the AndesCell
+agent's reasons) is a claim. It guides the next step and is shown beside the result; it is never
+the result. A delivery whose numbers disagree with the tools is refused.
 
 ## Never claimed
 

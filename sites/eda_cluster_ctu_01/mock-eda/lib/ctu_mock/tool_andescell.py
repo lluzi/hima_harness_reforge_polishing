@@ -254,7 +254,7 @@ def cmd_generate(rest):
            "Selected families: %s" % (", ".join(gen["selected"]) or "none"), "",
            "Requested families ranked by HimaTime estimated recovery on the build:"]
     for i, x in enumerate(ranked):
-        rpt.append("  %d. %-6s %7.3f ns  priority %d  requested by %-16s %s" % (i + 1, x["family"], x["estRecoveryNs"], x["priority"],
+        rpt.append("  %d. %-6s %7.3f ns  priority %d  requested by %-17s %s" % (i + 1, x["family"], x["estRecoveryNs"], x["priority"],
                                                                          ", ".join(x["requestedBy"]) or "-", "generated" if x in chosen else "not this run"))
     for sk in skipped:
         if "ranked" not in sk["reason"]:

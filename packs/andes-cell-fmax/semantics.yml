@@ -41,9 +41,30 @@ values:
   requirements_on_critical_path:
     unit: count
     description: "Informational. Requirements naming a stock family that is on the worst paths with a positive estimated recovery."
+  plan_valid:
+    unit: count
+    description: "One when the AndesCell agent's generation plan passed the Pack's check (round, 1-2 requested new families with reasons and HimaTime's estimated recovery, every other requested family skipped with a reason, report)."
+  plan_families:
+    unit: count
+    description: "Families the generation plan builds this round."
+  plan_follows_ranking:
+    unit: count
+    description: "Informational. One when the plan took the requested new families with the highest HimaTime estimated recovery."
+  verify_delivery_valid:
+    unit: count
+    description: "One when a verify delivery (HimaTime cell timing or Qualib cell screen) agreed with the tools' own answer for this round's cells."
+  local_gain_ps:
+    unit: ps
+    description: "HimaTime: how much faster the worst path of the build this round started from gets with this round's new cells (ps), from himatime verify; the same on both verify branches."
+  cells_passed_screen:
+    unit: count
+    description: "This round's new cells that pass the Qualib screen, from qualib screen; the same on both verify branches."
+  cells_faster_than_stock:
+    unit: count
+    description: "Informational. This round's new cells whose FO4 delay is below their stock cell's, from himatime verify."
   round_valid:
     unit: count
-    description: "One when the new-library build finished at the reference clock with zero route DRC and used only screened and verified new cells."
+    description: "One when the new-library build finished at the reference clock with zero route DRC and used only new cells that passed the Qualib screen and HimaTime verification."
   fmax_gain_pct:
     unit: percent
     description: "100 x (new-library build Fmax / reference build Fmax - 1) for this round."

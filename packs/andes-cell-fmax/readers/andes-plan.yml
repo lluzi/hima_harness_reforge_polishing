@@ -1,0 +1,6 @@
+id: andes-plan
+version: "0.2.0"
+file: tools/read-plan.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-andes-plan/1
+emits: [plan_valid, plan_families, plan_follows_ranking]
