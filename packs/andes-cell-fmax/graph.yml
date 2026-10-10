@@ -23,15 +23,15 @@ autopilot:
     about: Synthesis and APR on the stock library, then HimaTime loads the routed design and reports Fmax, the worst paths and where their delay goes by cell type.
   - from: [requirements-joined]
     until: [andescell-agent, blocked]
-    label: Both requirement lists ready
+    label: Requirement check
     about: Both agents' cell requirements passed the check; the AndesCell agent chooses the cells next.
   - from: [generate-cells]
     until: [himatime-verify, qualib-screen, blocked]
-    label: Generate the cells
+    label: Cell generation
     about: AndesCell builds the cells the AndesCell agent chose; HimaTime and Qualib check them next.
   - from: [cells-verified]
     until: [next-round, blocked]
-    label: Rebuild and compare
+    label: Rebuild and comparison
     about: Synthesis and APR rebuilds the design with the cells that passed, then compares it with the reference build.
 
 nodes:

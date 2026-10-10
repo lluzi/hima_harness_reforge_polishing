@@ -39,8 +39,8 @@ cells AndesCell built.
   recovery 3.04 ns"), `priority`.
 - `reports/himatime-agent/r<k>/analysis.md`: what you ran, what you found (the numbers), why these
   families, what you expect the round to give (the estimate), and what will limit Fmax next. Keep
-  the HimaTime output you quote beside it (e.g. `himatime report ... > stage_report.rpt`) and
-  deliver both as support.
+  HimaTime's `stage_breakdown.rpt` and `report_timing.rpt` beside it (`himatime load --db
+  <campaign>/<timingState.buildDir> --out ./ht` writes both) and deliver them all as support.
 
 ## Verify the new cells (himatime-verify)
 

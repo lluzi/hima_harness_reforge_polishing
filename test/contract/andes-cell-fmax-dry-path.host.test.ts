@@ -67,7 +67,7 @@ function requirements(agent: Agent, k: number, families: readonly string[], { an
     requirements: families.map((family, i) => ({ family, purpose: `faster ${family} on the worst paths`,
       target: 'cell delay -30 % at fanout 4', evidence: `stage breakdown of round ${k}`, priority: i + 1 })),
     report,
-  }), support: { [report]: analysis } };
+  }), support: { [report]: analysis, [`reports/${agent}-agent/r${k}/${agent === 'himatime' ? 'stage_breakdown.rpt' : 'library_analysis.rpt'}`]: `stand-in ${agent} tool report, round ${k}\n` } };
 }
 
 /** Run one mock EDA CLI of the Site (no pacing) and return its stdout. */
@@ -423,6 +423,8 @@ test('andes dry path: propose, choose, generate, verify and rebuild each round, 
       for (const node of ['himatime-agent', 'qualib-agent', 'andescell-agent', 'himatime-verify', 'qualib-screen']) {
         assert.ok((await report(`${node}/r${k}/analysis.md`)).length > 0, `${node} r${k} analysis`);
       }
+      assert.ok((await report(`himatime-agent/r${k}/stage_breakdown.rpt`)).length > 0);
+      assert.ok((await report(`qualib-agent/r${k}/library_analysis.rpt`)).length > 0);
       assert.match(await report(`generate-cells/r${k}/generation.rpt`), /AndesCell generation report/);
       assert.match(await report(`himatime-verify/r${k}/verify.rpt`), /Local gain on the worst path/);
       assert.match(await report(`qualib-screen/r${k}/cell_screen.rpt`), /cell\(s\) pass the screen/);

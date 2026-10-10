@@ -63,14 +63,14 @@ as soon as the automatic segment before it hands back:
    rounds), begin **both** `himatime-agent` and `qualib-agent` and start **both** engineering tasks
    in the same turn, so they run in parallel (the Site allows 3 jobs). Give each task this round's
    number k and, from round 2 on, one sentence on what the last round showed.
-2. **Choose**: after "Both requirement lists ready", begin `andescell-agent` and start its task
+2. **Choose**: after "Requirement check", begin `andescell-agent` and start its task
    (round k; the two lists are its inputs).
-3. **Verify**: after "Generate the cells", begin **both** `himatime-verify` and `qualib-screen` and
+3. **Verify**: after "Cell generation", begin **both** `himatime-verify` and `qualib-screen` and
    start **both** tasks in the same turn.
 
 When a task delivers, collect it; when its Reader accepts the delivery, release and complete that
 node. A refused delivery comes back with the problems: send them to the same task to repair. After
-the verify pair, the automatic segment "Rebuild and compare" runs to the round checks; then decide
+the verify pair, the automatic segment "Rebuild and comparison" runs to the round checks; then decide
 the next round.
 
 Report to the person in chip-designer words, one line per step as it finishes: what each agent

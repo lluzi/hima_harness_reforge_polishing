@@ -140,8 +140,9 @@ tools:
       delay -30 % at fanout 4'), evidence (the paths and stages it rests on), priority 1-5}. The
       AndesCell agent builds at most two new families per round from both agents' lists and never a
       family already in the library. Keep your reports in reports/himatime-agent/r<k>/ of your
-      private workspace (k = the round of timingState): analysis.md and the HimaTime output you used
-      (e.g. stage_report.rpt). Write the requirements file (hima-andes-requirements/1, agent
+      private workspace (k = the round of timingState): analysis.md and HimaTime's
+      stage_breakdown.rpt and report_timing.rpt (himatime load --db <campaign>/<buildDir> --out
+      <dir> writes both). Write the requirements file (hima-andes-requirements/1, agent
       himatime, round k, summary, requirements, report = reports/himatime-agent/r<k>/analysis.md).
       Run `python3 <campaign>/flow/andes_cli.py precheck <campaign> himatime <your file>` and fix
       every problem it prints, then deliver the file as the result and your reports as support. Do
