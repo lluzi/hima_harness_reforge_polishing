@@ -1089,8 +1089,8 @@ export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
  */
 export const viewChecklistItem = z.strictObject({
   label: displayLabel,
-  /** The nodes this line stands for, in graph order. It is ticked when the last of them that this
-   *  round reaches has been visited in this round. */
+  /** The nodes this line stands for, in graph order. It is ticked when every one of them has
+   *  completed in the current round (a round starts at each traversal of a `revisit` edge). */
   nodes: z.array(packId).min(1).max(16),
   /** Which rounds show the line: the first round only, later rounds only, or every round. */
   rounds: z.enum(['first', 'later', 'all']).default('all'),

@@ -674,6 +674,36 @@ export interface LogTailView {
   readonly truncated: boolean;
 }
 
+/**
+ * The tool reports a Run's Pack leaves under its declared reports folder (`contract.reports.dir`),
+ * as `GET /hima/api/runs/<id>/reports` answers: one entry per file at
+ * `<dir>/<node id>/r<round>/<name>` in the Campaign workspace, newest round first. `files` is empty
+ * (and `dir` absent) when the Pack declares no reports folder; `error` says why the Site could not
+ * be listed, without failing the read.
+ */
+export interface RunReportFile {
+  readonly node: string;
+  readonly round: number;
+  readonly name: string;
+  /** Relative to the Campaign workspace: `<dir>/<node>/r<round>/<name>`. */
+  readonly path: string;
+  readonly bytes: number;
+  readonly modifiedAt?: string;
+}
+export interface RunReportsView {
+  readonly dir?: string;
+  readonly files: readonly RunReportFile[];
+  readonly at: string;
+  readonly error?: string;
+}
+/** One report's text, as `GET /hima/api/runs/<id>/reports/file?path=` answers; bounded, plain text. */
+export interface RunReportText {
+  readonly path: string;
+  readonly text: string;
+  /** True when the file is longer than the bounded read returned. */
+  readonly truncated: boolean;
+}
+
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
 export interface PackTransferBody {
   readonly pack: string;
@@ -740,6 +770,9 @@ export interface RemoteOperations {
    * `session` absent when that node has no Job open right now.
    */
   jobLogTail?(runId: string, nodeId: string, lines: number): Promise<LogTailView>;
+  /** The Run's tool reports (`RunReportsView`) and one report's bounded text; any viewer may read them. */
+  runReports?(runId: string): Promise<RunReportsView>;
+  runReport?(runId: string, path: string): Promise<RunReportText>;
   executionContext?(runId: string): ExecutionContext;
   executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;

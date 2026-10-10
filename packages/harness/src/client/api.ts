@@ -3,7 +3,7 @@
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
 import type { ExecutionContext } from '../fabric.js';
 import type { CampaignFile } from '../campaign-file.js';
-import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView, SiteDiscoverBody, SiteHeadView } from '../remote.js';
+import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunReportsView, RunReportText, RunView, SiteDiscoverBody, SiteHeadView } from '../remote.js';
 import type { SiteDiscoveryResult } from '../sites.js';
 import type { StartChoices } from '../workbench.js';
 import type { GuideContextView, TargetAddress } from '../guide-context.js';
@@ -12,7 +12,7 @@ import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
-import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
+import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, runReportFilePath, runReportsPath, siteDiscoverPath } from '../paths.js';
 
 /**
  * Why a Hima request did not answer. `hima/unreachable` is the one code minted here rather than by
@@ -171,6 +171,17 @@ export const correctExperience = (body: ExperienceCorrectionRequest, signal?: Ab
 export function fetchLogTail(runId: string, nodeId: string, lines = 1, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<LogTailView>> {
   const query = new URLSearchParams({ node: nodeId, lines: String(lines) });
   return runRequest(scoped(`${runLogTailPath(runId)}?${query}`, sessionId), { signal });
+}
+
+/** The Run's tool reports, grouped later by node and round (`RunReportsView`). */
+export function fetchRunReports(runId: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<RunReportsView>> {
+  return runRequest(scoped(runReportsPath(runId), sessionId), { signal });
+}
+
+/** One tool report's bounded text. */
+export function fetchRunReport(runId: string, path: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<RunReportText>> {
+  const query = new URLSearchParams({ path });
+  return runRequest(scoped(`${runReportFilePath(runId)}?${query}`, sessionId), { signal });
 }
 
 export interface ControlRunResult {

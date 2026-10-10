@@ -54,6 +54,8 @@ export const runMomentPath = (runId: string): string => `${runPath(runId)}/momen
  *  any viewer may make, whether or not they own the execution — the canvas's running node, not
  *  `hima_execute read @job-log`, which stays bound to the owner's own admitted execution. */
 export const runLogTailPath = (runId: string): string => `${runPath(runId)}/log-tail`;
+export const runReportsPath = (runId: string): string => `${runPath(runId)}/reports`;
+export const runReportFilePath = (runId: string): string => `${runPath(runId)}/reports/file`;
 
 /** The Markdown of a Run's technical report, as the Site has it: the `.md` route, read back and held
  *  against its recorded hash on the way through (#30). */
