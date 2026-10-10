@@ -36,6 +36,19 @@
    Campaign owner decides another round (back to step 1, with this round in `state/lessons.json`)
    or ends at the Goal. At most 4 rounds.
 
+## For the Campaign owner: what to do each round
+
+- The two agent steps (**HimaTime agent**, **Qualib agent**) do not start by themselves. When the
+  automatic segment "Reference build and timing" (round 1) or "Load into HimaTime" (later rounds)
+  finishes, begin **both** agent nodes and start **both** engineering tasks in the same turn, so
+  they run in parallel (the Site allows 3 jobs). Give each task this round's number k and, from
+  round 2 on, one sentence on what the last round showed.
+- When a task delivers, collect it; when its Reader accepts the requirements, release and complete
+  that node. After both are complete, the automatic segment "Generate, screen, verify and rebuild"
+  runs to the round checks.
+- Report to the person in chip-designer words: before → after (Fmax, worst slack, TNS, area,
+  new-cell instances) against the reference build, the gain against the target, and the next step.
+
 ## The tools (all on PATH in the agents' sandbox)
 
 | Tool | Command | What it does | Time |
