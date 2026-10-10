@@ -100,6 +100,7 @@
     "test/contract/site-discovery.test.ts",
     "test/contract/site-name.test.ts",
     "test/contract/site-surface.host.test.ts",
+    "test/contract/run-reports.host.test.ts",
     "test/contract/skills.test.ts",
     "test/contract/ssh.test.ts",
     "test/contract/standin-stages.test.ts",

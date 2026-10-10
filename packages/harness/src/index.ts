@@ -57,6 +57,7 @@ import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsT
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { jobKill, nodeLogTail } from './jobs.js';
+import { RunReports } from './run-reports.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -169,6 +170,8 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
+export { ReportPathError } from './errors.js';
+export { RunReports, listRunReports, readRunReport, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit } from './run-reports.js';
 export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
@@ -227,6 +230,9 @@ export type {
   SiteHeadView,
   SiteDiscoverBody,
   LogTailView,
+  RunReportFile,
+  RunReportsView,
+  RunReportText,
 } from './remote.js';
 
 // The Campaign's technical report (#30): what it says, and how a face reads one back. On the surface
@@ -502,6 +508,8 @@ export default class Hima extends Service {
    *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
    *  prevents a fast Run from producing more durable turns than its Agent can consume. */
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
+  /** The Run tool-report reader (`run-reports.ts`), with its short per-Run listing cache. */
+  private readonly reports = new RunReports(() => ({ ledger: this.ledger, sitesDir: this.config.sitesDir, packsDir: this.config.packsDir }));
   /** Running-status lines: facts already told (one line per key) and the last line per Run. */
   private readonly statusSeen = new Set<string>();
   private readonly statusLast = new Map<string, string>();
@@ -613,6 +621,8 @@ export default class Hima extends Service {
           sites: () => this.sites(),
           discoverSite: ({ sessionId, ...request }) => this.discoverSite(request, sessionId),
           jobLogTail: (runId, nodeId, lines) => this.jobLogTail(runId, nodeId, lines),
+          runReports: (runId) => this.reports.list(runId),
+          runReport: (runId, relative) => this.reports.read(runId, relative),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
             if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);

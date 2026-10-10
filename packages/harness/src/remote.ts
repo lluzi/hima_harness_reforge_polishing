@@ -82,7 +82,7 @@ import type { CancelResult } from './recovery.js';
 // bundled into the browser half, where a runtime import of it would ship the seam to every browser.
 import type { MomentOnNode } from './moments.js';
 import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
-import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
+import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError, ReportPathError } from './errors.js';
 import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
 // Type-only, and erased: the ladder's rung names, declared where a pack folder is read.
 import type { PackStageOrRefusal } from './packs.js';
@@ -1944,6 +1944,13 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return jobLogTailOperation(ops, decoded(logTail[1]!, 'run id'), url);
   }
 
+  // Before the run read below, for the same reason: the Run's tool reports and one report's text.
+  const reports = /^\/runs\/([^/]+)\/reports(\/file)?$/.exec(rest);
+  if (reports) {
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
+    return runReportsOperation(ops, decoded(reports[1]!, 'run id'), reports[2] === undefined ? undefined : url);
+  }
+
   // Before the run read below, which claims `/runs/<id>` and `/runs/<id>/records` alone: this pair is
   // the one place in the namespace that reaches a Site to answer a read.
   const experience = /^\/runs\/([^/]+)\/experience(\.md)?$/.exec(rest);
@@ -2192,6 +2199,30 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
     }
   }
   return ok(answer);
+}
+
+/**
+ * `GET /hima/api/runs/<id>/reports` and `GET /hima/api/runs/<id>/reports/file?path=`: the tool reports
+ * the Run's Pack leaves in its Campaign workspace, and one report's bounded text. Like the log tail,
+ * any viewer of the Run may read them, with no owned execution. The listing never fails for a Site
+ * that cannot be asked (it says so in `error`); a report path the caller cannot have meant is a
+ * coded 400, and one that is not there a coded 404.
+ */
+async function runReportsOperation(ops: RemoteOperations, runId: string, file: URL | undefined): Promise<Answer> {
+  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  if (file === undefined) {
+    if (ops.runReports === undefined) return failure(500, 'hima/internal', 'tool reports are unavailable on this Host');
+    return ok(await ops.runReports(runId));
+  }
+  if (ops.runReport === undefined) return failure(500, 'hima/internal', 'tool reports are unavailable on this Host');
+  const relative = file.searchParams.get('path');
+  if (!relative) throw new BadRequest('"path" is required as a query parameter');
+  try {
+    return ok(await ops.runReport(runId, relative));
+  } catch (error) {
+    if (error instanceof ReportPathError) return failure(error.missing ? 404 : 400, error.missing ? 'hima/not-found' : 'hima/bad-request', error.message);
+    throw error;
+  }
 }
 
 /**

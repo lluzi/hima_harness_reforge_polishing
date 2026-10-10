@@ -188,7 +188,15 @@ function admit(argv: readonly string[], siteName: string): void {
   // deletion, link-following or caller-selected predicate options.
   if (verb === 'find') {
     if (argv.length === 7 && argv[1]?.startsWith('/') && argv.slice(2).join(' ') === '-maxdepth 33 -mindepth 1 -print0') return;
-    throw new Error('checkpoint inventory permits only find <absolute-root> -maxdepth 33 -mindepth 1 -print0');
+    // The tool-reports listing (`run-reports.ts`): regular files exactly three levels down
+    // (<node>/r<k>/<file>), never following a link. Same output cap as the inventory.
+    if (argv.length === 9 && argv[1]?.startsWith('/') && argv.slice(2).join(' ') === '-mindepth 3 -maxdepth 3 -type f -print0') return;
+    throw new Error('checkpoint inventory permits only find <absolute-root> -maxdepth 33 -mindepth 1 -print0, and the report listing only find <absolute-root> -mindepth 3 -maxdepth 3 -type f -print0');
+  }
+  // The bounded report read: the first <n> bytes of one absolute path, and nothing else.
+  if (verb === 'head') {
+    if (argv.length === 5 && argv[1] === '-c' && /^[1-9][0-9]{0,8}$/.test(argv[2] ?? '') && argv[3] === '--' && argv[4]?.startsWith('/')) return;
+    throw new Error('head is admitted only as the bounded report read (head -c <bytes> -- <absolute path>)');
   }
   if (processProbes.has(verb)) {
     if (processProbeShape(argv)) return;
@@ -307,7 +315,7 @@ export class LocalChannel implements Channel {
     const exit = await this.spawn(verb!, args, options.stdin).catch((err: Error) => {
       throw new SiteUnreadableError(this.siteName, `cannot run ${verb} on site ${this.siteName}: the command could not be started: ${err.message}`);
     });
-    if (exit.outputLimitExceeded) throw new Error(`checkpoint inventory exceeded ${checkpointInventoryOutputLimit} byte output limit`);
+    if (exit.outputLimitExceeded) throw new Error(`find output exceeded its ${checkpointInventoryOutputLimit} byte output limit`);
     if (exit.code === null) {
       const how = exit.timedOut ? `it timed out after ${LocalChannel.commandTimeoutMs} ms` : `it was killed by ${exit.signal}`;
       throw new SiteUnreadableError(this.siteName, `cannot run ${verb} on site ${this.siteName}: ${how}`);
@@ -446,7 +454,7 @@ export class SshChannel implements Channel {
     const what = `run ${verb}`;
     const wire = argv.map(quote).join(' ');
     let exit = await this.send(argv, wire, what, options.stdin);
-    if (exit.outputLimitExceeded) throw new Error(`checkpoint inventory exceeded ${checkpointInventoryOutputLimit} byte output limit`);
+    if (exit.outputLimitExceeded) throw new Error(`find output exceeded its ${checkpointInventoryOutputLimit} byte output limit`);
     if (SshChannel.staleControlSocket.test(exit.stderr)) {
       // A master killed outright leaves its socket behind with nothing listening on it. ssh says so
       // and connects unmultiplexed, so without removing it every later command pays for its own
