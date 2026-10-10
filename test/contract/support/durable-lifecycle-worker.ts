@@ -37,7 +37,7 @@ let host:any;
 const until=async(predicate:()=>Promise<boolean>)=>{const deadline=Date.now()+20000;while(!await predicate()){if(Date.now()>deadline)throw new Error('Lifecycle boundary wait timed out');await new Promise(resolve=>setTimeout(resolve,30));}};
 try {
  host=await bootInProcess(h);const service=host.ctx.hima;await service.reconciled;const store=service.durable.store;
- if(mode==='race'||mode==='stop-authority') {
+ if(mode==='race'||mode==='race-microseconds'||mode==='stop-authority') {
   const opening={runId:'callback-race',inputSha256:'b'.repeat(64),applicationVersion:service.durable.applicationVersion,owner:'race-owner',deadlineAt:new Date(Date.now()+60000).toISOString(),data:{}};
   await store.createRun(opening);
   const {compileFlow}=await load('flow-compiler');const schema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object'}};
@@ -72,6 +72,17 @@ try {
   const exit=store.acceptHostExit({requestId:'callback-race-exit',mode:'drain'}).then(()=>{accepted=true;});
   await new Promise(resolve=>setTimeout(resolve,80));assert.equal(accepted,false,'accepted exit waits for the actual admission callback transaction');
   release();assert.equal(await dispatch,true);await exit;
+  if(mode==='race-microseconds') {
+    // A real pre-fence submit and accepted exit can occupy the same millisecond.
+    // pg converts timestamptz to JS Date unless the query retains its SQL text.
+    const {Pool}=require('pg');
+    const credentials=JSON.parse(await readFile(path.join(home,'hima/database/credentials.json'),'utf8'));
+    const pool=new Pool({host:'127.0.0.1',port:credentials.port,user:credentials.user,password:credentials.password,database:'hima_application'});
+    try {
+      await pool.query("UPDATE hima.effect_dispatches SET started_at='2026-10-10 12:00:00.000600+00' WHERE effect_id=$1 AND dispatch_id='submit'",[identity.effectId]);
+      await pool.query("UPDATE hima.host_exit_requests SET accepted_at='2026-10-10 12:00:00.000800+00' WHERE request_id='callback-race-exit'");
+    } finally {await pool.end();}
+  }
   await assert.rejects(store.claimEffectDispatch(admission,async()=>true,'next-message',identity.inputSha256),/closing/);
   await assert.rejects(store.assertEffectAdmission(admission,async()=>true),/closing/);
   await assert.rejects(store.externalEffectTransaction(identity,{admission,permit:async()=>true},async()=>true),/closing/);
@@ -94,7 +105,8 @@ try {
   await store.releaseHostExit('callback-race-exit');
   }
  }
- if(mode!=='stop-authority') {
+ if(mode==='race-microseconds') {process.send?.({ok:true,mode});}
+ else if(mode!=='stop-authority') {
  const owner=await createRootAgent(host.ctx,workspace),actor=String(owner.id);
  const pack=loadPack(packsDir,'facade-fixture'),site=loadSite(sitesDir,'local');
  if(mode==='prepare'||mode==='prepare-intent') {

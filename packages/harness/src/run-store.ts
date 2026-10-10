@@ -89,7 +89,7 @@ export class RunStore {
   }
   /** Host lock always precedes Run locks. App-exit stop admission uses the same boundary. */
   async #assertHostAdmission(client:ClientBase,admission?:EffectAdmission):Promise<boolean> {
-    const row=(await client.query<{active_request:string|null;mode:string|null;accepted_at:string|null;finalizing:boolean}>(`SELECT h.active_request,h.finalizing,r.mode,r.accepted_at FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0];
+    const row=(await client.query<{active_request:string|null;mode:string|null;accepted_at:string|null;finalizing:boolean}>(`SELECT h.active_request,h.finalizing,r.mode,r.accepted_at::text AS accepted_at FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0];
     const collecting=admission?Boolean((await client.query(`SELECT 1 FROM hima.flow_derived_effects d JOIN hima.effect_dispatches p ON p.effect_id=d.parent_effect_id
       WHERE d.child_effect_id=$1 AND d.run_id=$2 AND d.purpose='collect' AND p.dispatch_id='submit'
       AND ($3::timestamptz IS NULL OR (p.started_at<=$3::timestamptz

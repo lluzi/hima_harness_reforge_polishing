@@ -216,6 +216,8 @@ test('App exit drains the original durable Job, fences new work, and reopens pre
 test('a failed durable Stop jobs request releases only its App exit fence and preserves original physical facts',{timeout:90000},()=>durableLifecycleScenario('stop-failure'));
 test('Keep jobs exit and reopen retain the original durable resource identity and deadline',{timeout:90000},()=>durableLifecycleScenario('keep'));
 
+test('Host exit preserves sub-millisecond PG ordering for original Reader admission',{timeout:90000},()=>durableLifecycleScenario('race-microseconds'));
+
 test('Accepted exit serializes with the real PG callback admission transaction',{timeout:90000},()=>durableLifecycleScenario('race'));
 
 test('Stop jobs closes the original durable process without cancelling the Run or clearing human hold',{timeout:90000},()=>durableLifecycleScenario('stop'));
