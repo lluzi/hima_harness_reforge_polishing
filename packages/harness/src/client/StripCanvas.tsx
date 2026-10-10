@@ -2,7 +2,8 @@
 // column of stations, each a node with its checklist for the current round, in place of the full
 // canvas. `strip-layout.ts` decides every state and coordinate; this draws them with the canvas's own
 // pieces (node square, state glyph, AI ring, current ring, check marks, edge styles), so the strip
-// looks like the canvas it replaces. It does not pan or zoom: it fits the pane's width and scrolls down.
+// looks like the canvas it replaces. Each square stands at the left with its text beside it, and every
+// edge runs from square to square. It does not pan or zoom: it fits the pane's width and scrolls down.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { PlacedNode } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
@@ -80,13 +81,13 @@ function Station({ station, view, motionOff }: { station: PlacedStation; view: R
         {station.ai || station.state !== 'waiting' ? null : <path className="hima-strip-step-glyph" d="M-7 -5H7M-7 0H7M-7 5H3" />}
       </g>
       {station.labelLines.map((line, index) => (
-        <text key={index} className="hima-node-label" x={station.cx} y={station.labelY + index * STRIP_LINE} textAnchor="middle">{line}</text>
+        <text key={index} className="hima-node-label" x={station.textX} y={station.labelY + index * STRIP_LINE}>{line}</text>
       ))}
       {station.activityY === undefined ? null : <>
-        <text className="hima-node-activity" x={station.cx} y={station.activityY} textAnchor="middle" data-hima-region={`strip-activity-${station.id}`}>
+        <text className="hima-node-activity" x={station.textX} y={station.activityY} data-hima-region={`strip-activity-${station.id}`}>
           {truncate(activityLine, station.textChars)}<title>{activityLine}</title>
         </text>
-        {counter === undefined ? null : <text className="hima-node-activity-count" x={station.cx} y={station.activityY + STRIP_LINE} textAnchor="middle">{counter}</text>}
+        {counter === undefined ? null : <text className="hima-node-activity-count" x={station.textX} y={station.activityY + STRIP_LINE}>{counter}</text>}
       </>}
       {station.placedLines.map((line, index) => line.state === 'hidden' || line.folded === true ? null : (
         <g key={index} className={`hima-strip-line hima-strip-line-${line.state}`} transform={`translate(${line.x},${line.y})`}

@@ -230,6 +230,7 @@ export const HIMA_STYLE = `
 .hima-strip{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow-x:hidden;overflow-y:auto}
 .hima-strip svg{display:block}
 .hima-strip-top{flex:none;margin:0;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);font-weight:600;color:var(--hima-ink);border-bottom:1px solid var(--hima-line);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.hima-strip .hima-node-label,.hima-strip .hima-node-activity,.hima-strip .hima-node-activity-count{text-anchor:start}
 .hima-strip-line-active .hima-node-check-text{fill:var(--hima-ink);font-weight:600}
 .hima-strip-step-glyph{fill:none;stroke:var(--hima-ink-3);stroke-width:1.6;stroke-linecap:round}
 .hima-strip-edge-flow .hima-edge-path{stroke-dasharray:8 4;animation:hima-strip-flow 1s linear infinite}

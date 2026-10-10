@@ -1,6 +1,7 @@
 // L1: the strip (graph.yml `view`) is a pure function of the Pack graph and the Run's facts: rounds,
 // checklist lines, station states, station edges, the lit edge and the AI flag, then its placement
-// in a pane 300–440 px wide. The fixture is the AndesCell Pack 0.2 strip of STRIP-SPEC.md.
+// in a pane 300–440 px wide: every edge from square to square, clear of every text. The fixture is
+// the AndesCell Pack 0.2 strip of STRIP-SPEC.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { foldedSaid, layoutStrip, stripFacts, stripState, wrapWords } from '../../packages/harness/src/strip-layout.ts';
@@ -233,34 +234,58 @@ const SHOWN = () => [
   viewOf({ generation: 3, status: 'ended-goal-met', currentNode: 'next-round', rows: [generation(1, ROUND), generation(2, ROUND.slice(4)), generation(3, ROUND.slice(4))] }),
 ];
 
+type Point = readonly [number, number];
+const SQUARE_HALF = 18;
+/** Whether `p` lies on the boundary of the square centred on (cx, cy). */
+function onSquare(p: Point, cx: number, cy: number): boolean {
+  const dx = Math.abs(p[0] - cx), dy = Math.abs(p[1] - cy), e = 0.06;
+  return (Math.abs(dx - SQUARE_HALF) <= e && dy <= SQUARE_HALF + e) || (Math.abs(dy - SQUARE_HALF) <= e && dx <= SQUARE_HALF + e);
+}
+/** Whether the axis-aligned segment a-b meets the box (edges touching count). */
+function meets(a: Point, b: Point, box: { x: number; y: number; w: number; h: number }): boolean {
+  const [x1, x2] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])], [y1, y2] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
+  return x2 >= box.x && x1 <= box.x + box.w && y2 >= box.y && y1 <= box.y + box.h;
+}
+
 for (const width of [300, 320, 380, 440]) {
-  test(`placement at ${String(width)} px: every box, line and lane inside the pane, rows side by side, back edges outside every station`, () => {
+  test(`placement at ${String(width)} px: every box, line and edge inside the pane, rows side by side, edges from square to square and clear of every text`, () => {
     for (const s of SHOWN().map((view) => state(view))) {
       const scene = layoutStrip(s, width);
       assert.equal(scene.width, width);
       for (const placed of scene.stations) {
         assert.ok(placed.left >= 0 && placed.left + placed.width <= width, `${placed.id} sits inside the pane`);
-        assert.ok(placed.cx - 22 >= 0 && placed.cx + 22 <= width, `${placed.id}'s square and rings sit inside the pane`);
+        assert.ok(placed.cx - 22 >= placed.left && placed.cy - 22 >= placed.top, `${placed.id}'s square and rings sit inside its block`);
+        assert.ok(placed.textBox.x >= placed.cx + 22 && placed.textBox.x + placed.textBox.w <= placed.left + placed.width + 0.5, `${placed.id}'s text sits right of its square, inside its column`);
         for (const line of placed.placedLines) if (line.state !== 'hidden' && line.folded !== true) {
           const longest = Math.max(...line.text.map((text) => text.length));
-          assert.ok(line.x >= placed.left && line.x + 15 + longest * 6.3 <= placed.left + placed.width + 0.5, `${placed.id} · ${line.label} fits its column`);
+          assert.ok(line.x >= placed.textBox.x && line.x + 15 + longest * 6.3 <= placed.left + placed.width + 0.5, `${placed.id} · ${line.label} fits its column`);
+          assert.ok(line.y >= placed.textBox.y && line.y + 14 * line.text.length <= placed.textBox.y + placed.textBox.h + 0.5, `${placed.id} · ${line.label} sits inside the text box`);
           assert.ok(line.text.length >= 1 && line.text.length <= 3);
         }
+        for (const [i] of placed.labelLines.entries()) assert.ok(placed.labelY + 14 * i - 11 >= placed.textBox.y, `${placed.id}'s label sits inside the text box`);
       }
       const [h, q] = [scene.stations.find((x) => x.id === 'himatime')!, scene.stations.find((x) => x.id === 'qualib')!];
       assert.equal(h.top, q.top);
       assert.ok(h.left + h.width < q.left, 'two stations on a row sit side by side without touching');
       const rtl = scene.stations.find((x) => x.id === 'rtl2gds')!, andes = scene.stations.find((x) => x.id === 'andescell')!;
       assert.ok(rtl.bottom < h.top && Math.max(h.bottom, q.bottom) < andes.top, 'rows do not overlap');
-      const minLeft = Math.min(...scene.stations.map((x) => x.left)), maxRight = Math.max(...scene.stations.map((x) => x.left + x.width));
+      assert.equal(scene.edges.length, s.edges.length);
       for (const e of scene.edges) {
-        const points = [...e.path.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
-        assert.ok(points.every(([x, y]) => x >= 2 && x <= width - 2 && y >= 0 && y <= scene.height), `${e.from}>${e.to} stays inside the pane`);
-        if (e.kind === 'back') {
-          const xs = points.map(([x]) => x);
-          const lane = e.side === 'left' ? Math.min(...xs) : Math.max(...xs);
-          assert.ok(e.side === 'left' ? lane < minLeft : lane > maxRight, `${e.from}>${e.to} runs outside every station`);
+        const name = `${e.from}>${e.to} (${String(width)} px)`;
+        const source = scene.stations.find((x) => x.id === e.from)!, target = scene.stations.find((x) => x.id === e.to)!;
+        assert.ok(e.points.every(([x, y]) => x >= 2 && x <= width - 2 && y >= 0 && y <= scene.height), `${name} stays inside the pane`);
+        assert.ok(onSquare(e.points[0]!, source.cx, source.cy), `${name} starts on the source square`);
+        assert.ok(onSquare(e.points.at(-1)!, target.cx, target.cy), `${name} ends on the target square`);
+        const [p, last] = [e.points.at(-2)!, e.points.at(-1)!];
+        assert.ok(Math.hypot(last[0] - p[0], last[1] - p[1]) >= 18, `${name} has a straight run for its arrowhead`);
+        for (let i = 1; i < e.points.length; i++) {
+          const [a, b] = [e.points[i - 1]!, e.points[i]!];
+          assert.ok(a[0] === b[0] || a[1] === b[1], `${name} runs orthogonally`);
+          for (const station of scene.stations) assert.ok(!meets(a, b, station.textBox), `${name} crosses no text of ${station.id}`);
         }
+        const xs = [...e.path.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
+        assert.deepEqual(xs[0], [Math.round(e.points[0]![0] * 10) / 10, Math.round(e.points[0]![1] * 10) / 10], `${name}'s path starts at its first point`);
+        assert.deepEqual(xs.at(-1), [Math.round(e.points.at(-1)![0] * 10) / 10, Math.round(e.points.at(-1)![1] * 10) / 10], `${name}'s path ends at its last point`);
       }
       assert.ok(scene.height > andes.bottom);
       // The recording's pane body is about 380 x 690; below the header, masthead, tabs and top line
@@ -269,6 +294,26 @@ for (const width of [300, 320, 380, 440]) {
     }
   });
 }
+
+test('the edges between two stations run side by side; squares one above the other join straight', () => {
+  const scene = layoutStrip(state(SHOWN()[1]!), 380);
+  const edge = (from: string, to: string) => scene.edges.find((e) => e.from === from && e.to === to)!;
+  assert.equal(edge('rtl2gds', 'himatime').points.length, 2, 'RTL2GDS straight down to HimaTime');
+  assert.equal(edge('himatime', 'rtl2gds').points.length, 2);
+  assert.equal(edge('himatime', 'andescell').points.length, 2);
+  assert.ok(edge('rtl2gds', 'himatime').points[0]![0] !== edge('himatime', 'rtl2gds').points[0]![0], 'one each way, side by side');
+  assert.equal(edge('rtl2gds', 'qualib').points.length, 4, 'one turn in the row gap to Qualib');
+  // No two edges cross anywhere.
+  const segments = scene.edges.flatMap((e) => e.points.slice(1).map((b, i) => ({ id: `${e.from}>${e.to}`, a: e.points[i]!, b })));
+  const crosses = (p: typeof segments[number], q: typeof segments[number]) => {
+    const horizontal = (s: typeof p) => s.a[1] === s.b[1];
+    if (horizontal(p) === horizontal(q)) return false;
+    const [hz, vt] = horizontal(p) ? [p, q] : [q, p];
+    const y = hz.a[1], x = vt.a[0];
+    return x > Math.min(hz.a[0], hz.b[0]) && x < Math.max(hz.a[0], hz.b[0]) && y > Math.min(vt.a[1], vt.b[1]) && y < Math.max(vt.a[1], vt.b[1]);
+  };
+  for (const p of segments) for (const q of segments) if (p.id !== q.id) assert.ok(!crosses(p, q), `${p.id} and ${q.id} do not cross`);
+});
 
 test('more than four shown lines: the leading run of done lines folds into one line that keeps the count', () => {
   const fork = layoutStrip(state(SHOWN()[1]!), 380).stations.find((x) => x.id === 'rtl2gds')!;
