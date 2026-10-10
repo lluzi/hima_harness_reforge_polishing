@@ -417,6 +417,35 @@ export const HIMA_STYLE = `
 .hima-outcome-word[data-outcome="converged"],.hima-outcome-word[data-outcome="open"]{color:var(--hima-ink-2)}
 
 /* The restyled tool receipt and its shared row/section components (#41 task 6): no inline style. */
+.hima-chart-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);width:100%;max-width:760px;min-width:0;box-sizing:border-box;font-size:var(--hima-fs-label);line-height:var(--hima-lh-tight)}
+.hima-chart-card p{margin:0}
+.hima-chart-note{font-size:var(--hima-fs-body);line-height:var(--hima-lh-body);color:var(--hima-ink)}
+.hima-chart{margin:0;padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:flex;flex-direction:column;gap:var(--hima-sp-2);min-width:0}
+.hima-chart figcaption{display:flex;flex-direction:column;gap:2px}
+.hima-chart-title{font-size:var(--hima-fs-body);font-weight:650;color:var(--hima-ink)}
+.hima-chart-subtitle{color:var(--hima-ink-2)}
+.hima-chart-legend{display:flex;flex-wrap:wrap;gap:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2);align-items:center}
+.hima-chart-legend-item{display:inline-flex;align-items:center;gap:6px}
+.hima-chart-swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.hima-chart-better{color:var(--hima-ink-3)}
+.hima-chart-rows{display:flex;flex-direction:column;gap:6px}
+.hima-chart-row{display:grid;grid-template-columns:minmax(56px,26%) minmax(0,1fr);gap:var(--hima-sp-2);align-items:center}
+.hima-chart-category{color:var(--hima-ink-2);overflow-wrap:anywhere}
+.hima-chart-row-highlight .hima-chart-category{color:var(--hima-ink);font-weight:700}
+.hima-chart-bars{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hima-chart-room-left{padding-left:64px}
+.hima-chart-room-right{padding-right:64px}
+.hima-chart-bar-track{display:block;overflow:visible}
+.hima-chart-zero{stroke:var(--hima-line-strong);stroke-width:1}
+.hima-chart-value{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2);font-variant-numeric:tabular-nums}
+.hima-chart-row-highlight .hima-chart-value{fill:var(--hima-ink);font-weight:600}
+.hima-chart-role-baseline{background:var(--hima-neutral);fill:var(--hima-neutral);opacity:.55}
+.hima-chart-role-proposed{background:var(--hima-accent);fill:var(--hima-accent)}
+.hima-chart-role-measured{background:var(--hima-good);fill:var(--hima-good)}
+.hima-chart-role-neutral{background:var(--hima-ink-3);fill:var(--hima-ink-3)}
+.hima-chart-caption{color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow)}
+.hima-chart-source{color:var(--hima-ink-3);font-size:var(--hima-fs-eyebrow)}
+.hima-chart-error{color:var(--hima-bad)}
 .hima-run-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);line-height:var(--hima-lh-body)}
 .hima-run-card-receipt{display:flex;flex-direction:column;gap:2px}
 .hima-run-card-receipt-line{display:flex;gap:4px;flex-wrap:wrap;align-items:baseline}
