@@ -195,6 +195,8 @@ export const HIMA_STYLE = `
 .hima-masthead-owner{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);color:var(--hima-ink-2);flex:none;white-space:nowrap}
 .hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-view-count{font-variant-numeric:tabular-nums;color:var(--hima-live);font-weight:650}
+.hima-view-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hima-live);margin-left:4px;vertical-align:super}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
 /* A narrow pane (the strip's phone width): the title and the status line wrap instead of being cut,

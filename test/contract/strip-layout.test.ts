@@ -8,6 +8,7 @@ import { foldedSaid, layoutStrip, stripFacts, stripState, wrapWords } from '../.
 import type { StripState } from '../../packages/harness/src/strip-layout.ts';
 import { bestHeadline } from '../../packages/harness/src/client/results-view.ts';
 import { claimAutoOpen, autoOpened, receiptTime, shouldAutoOpen } from '../../packages/harness/src/client/run-auto-open.ts';
+import { forgetSeen, markSeen, newsScope, unseenCount } from '../../packages/harness/src/client/view-news.ts';
 import type { PackContract, PackGraph } from '@hima/harness';
 import type { PackResults } from '../../packages/harness/src/packs.ts';
 import type { RunView } from '@hima/harness';
@@ -360,6 +361,22 @@ test('the pane opens for a Run started moments ago, once, and never for an old o
   assert.equal(claimAutoOpen('run-auto-1'), true);
   assert.equal(claimAutoOpen('run-auto-1'), false, 'one Run opens the pane once');
   assert.equal(autoOpened('run-auto-1'), true);
+});
+
+test('Reports counts the files that appeared since this viewer last opened it, per Run; opening clears it', () => {
+  forgetSeen();
+  const reports = newsScope('reports', 'sess-a', 'run-1');
+  assert.equal(unseenCount(reports, ['a.rpt', 'b.rpt']), 2, 'never opened: every file is new');
+  assert.equal(markSeen(reports, ['a.rpt', 'b.rpt']), true);
+  assert.equal(unseenCount(reports, ['a.rpt', 'b.rpt']), 0, 'opening clears the count');
+  assert.equal(markSeen(reports, ['a.rpt']), false, 'nothing new to mark');
+  assert.equal(unseenCount(reports, ['a.rpt', 'b.rpt', 'c.rpt', 'c.rpt']), 1, 'one new file, counted once');
+  assert.equal(unseenCount(newsScope('reports', 'sess-b', 'run-1'), ['a.rpt']), 1, 'another viewer has its own count');
+  assert.equal(unseenCount(newsScope('reports', 'sess-a', 'run-2'), ['a.rpt']), 1, 'and so has another Run');
+  const results = newsScope('results', 'sess-a', 'run-1');
+  assert.equal(unseenCount(results, []), 0, 'no round result yet: no dot');
+  markSeen(results, ['obs-1']);
+  assert.equal(unseenCount(results, ['obs-1', 'obs-2']) > 0, true, 'a new round result shows the dot');
 });
 
 test('the shipped Pack 0.2 graph (a copy of packs/andes-cell-fmax/graph.yml) draws the same strip as the fixture', () => {
