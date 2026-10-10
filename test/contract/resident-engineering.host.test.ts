@@ -227,10 +227,12 @@ test('public Host wakes the owner when a resident turn waits without a status po
       try { return JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8')).phase === 'waiting'; }
       catch { return false; }
     }, 5_000, 20);
-    await waitUntil('resident lifecycle queues an actionable owner turn without an owner status call',
-      () => owner!.inbox.nextTurn.length > 0, 5_000, 20);
-    const text = owner.inbox.nextTurn.flatMap(message => message.content)
+    const queuedText = () => owner!.inbox.nextTurn.flatMap(message => message.content)
       .filter(block => block.type === 'text').map(block => block.text).join('\n');
+    assert.match(queuedText(), /HimaHarness: [^\n]+ started its engineering task\./, 'the start is a running status line');
+    await waitUntil('resident lifecycle queues an actionable owner turn without an owner status call',
+      () => /Resident engineering task/.test(queuedText()), 5_000, 20);
+    const text = queuedText().slice(queuedText().indexOf('HimaHarness: ', queuedText().indexOf('display only')));
     assert.match(text, /resident.*waiting/i);
     assert.match(text, /HimaHarness: [^\n]+ finished its turn\.\n\n/, 'a plain line first, the owner detail after a blank line');
     assert.match(text, /engineering.*status/i);

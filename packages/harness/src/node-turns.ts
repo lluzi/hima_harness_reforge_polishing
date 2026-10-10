@@ -129,6 +129,9 @@ export interface FabricDeps {
   /** `headline` is the one plain line the chat shows first ("HimaHarness: …"); `detail` is the
    *  owner's machine-readable instruction after it. Without a headline the Host derives one. */
   readonly notify?: (owner: string, runId: string, executionId: string, detail?: string, headline?: string) => NotificationDelivery;
+  /** A plain running-status line for the owner's chat ("HimaHarness: …") that asks for no reply and
+   *  grants nothing. `key` names the fact (one line per key); the Host drops repeats. */
+  readonly status?: (owner: string, runId: string, key: string, line: string) => void;
 }
 
 /** Immediate Host delivery result. Control facts are already durable whatever this says. */

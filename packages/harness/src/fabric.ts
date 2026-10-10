@@ -136,7 +136,7 @@ import {
   reconcileEngineeringTask, waitEngineeringReceipt, writeEngineeringRequest,
   type EngineeringRequest, type EngineeringTaskIdentity,
 } from './engineering-executor.js';
-import { noteEngineeringActivity } from './engineering-activity.js';
+import { engineeringActivityOf, noteEngineeringActivity } from './engineering-activity.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -2034,6 +2034,66 @@ export function noticeValue(deps: FabricDeps, runId: string, pack: Pick<Pack, 'c
   return undefined;
 }
 
+/**
+ * Up to `max` labelled values from the newest observation written after `afterSeq` (in `branchId`
+ * when given): the Pack's results rows first, then its declared words. E.g. "Fmax 957.67 MHz,
+ * Worst slack -0.044 ns". Absent when that observation carries no labelled number.
+ */
+export function statusValues(deps: FabricDeps, runId: string, pack: Pick<Pack, 'contract'>, afterSeq: number, branchId?: string, max = 3): string | undefined {
+  const records = currentRecordsIn(deps.ledger.records({ runId }));
+  const observation = records.findLast((record) => record.type === 'observation' && record.seq > afterSeq
+    && (branchId === undefined || record.branchId === undefined || record.branchId === branchId));
+  if (observation?.type !== 'observation') return undefined;
+  const rows = pack.contract.results?.rows ?? [];
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  const add = (type: string, label: string, unit: string | undefined, digits: number | undefined) => {
+    if (parts.length >= max || seen.has(type)) return;
+    const value = observation.values.find((item) => item.type === type && typeof item.value === 'number')?.value;
+    if (typeof value !== 'number') return;
+    seen.add(type);
+    const shown = digits !== undefined ? value.toFixed(digits) : Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(6)));
+    parts.push(`${label} ${shown}${unit === undefined ? '' : ` ${unit}`}`);
+  };
+  for (const row of rows) add(row.type, row.label, row.unit, row.digits);
+  for (const value of observation.values) {
+    const word = pack.contract.words[value.type];
+    if (word !== undefined) add(value.type, word.label, word.unit, undefined);
+  }
+  return parts.length === 0 ? undefined : parts.join(', ');
+}
+
+/**
+ * The running-status line for one settled execution inside a self-driving segment, or undefined
+ * when the node earns none. A tool step whose only successor reads its output stays quiet; that
+ * Reader step reports for it, under the tool step's label and with the values it read. A Reader
+ * step with no tool step before it, a passing judge, and explore/wait nodes stay quiet. Failures
+ * always report.
+ */
+export function segmentStatusLine(deps: FabricDeps, runId: string, pack: Pack, execution: NodeExecution, result: Step): string | undefined {
+  const node = pack.graph.nodes.find((candidate) => candidate.id === execution.nodeId);
+  if (node === undefined) return undefined;
+  const failed = !(result.kind === 'settled' || result.kind === 'moved');
+  const generation = deps.ledger.run(runId)?.generation ?? 1;
+  const round = generation > 1 ? ` (round ${String(generation)})` : '';
+  const name = nodeDisplayName(pack, node.id);
+  if (failed) return `${NOTICE_PREFIX} ${name} failed${round}.`;
+  if (node.kind === 'judge') return (result as { outcome?: string }).outcome === 'FAIL' ? `${NOTICE_PREFIX} ${name}: check failed${round}.` : undefined;
+  if (node.kind !== 'act') return undefined;
+  const byId = new Map(pack.graph.nodes.map((candidate) => [candidate.id, candidate]));
+  if (node.parameters.observes !== undefined) {
+    const producers = pack.graph.edges.filter((edge) => edge.to === node.id && edge.revisit !== true)
+      .map((edge) => byId.get(edge.from)).filter((candidate) => candidate?.kind === 'act' && candidate.parameters.tool !== undefined);
+    if (producers.length !== 1) return undefined;
+    const values = statusValues(deps, runId, pack, execution.inputThroughSeq ?? 0, execution.branchId);
+    return `${NOTICE_PREFIX} ${nodeDisplayName(pack, producers[0]!.id)} finished${round}${values === undefined ? '' : ` \u2014 ${values}`}.`;
+  }
+  const next = pack.graph.edges.filter((edge) => edge.from === node.id);
+  const readBy = next.length === 1 ? byId.get(next[0]!.to) : undefined;
+  if (readBy?.kind === 'act' && readBy.parameters.observes !== undefined) return undefined;
+  return `${NOTICE_PREFIX} ${name} finished${round}.`;
+}
+
 /** One plain line about an execution, e.g. "HimaHarness: Reference build finished (Fmax 957.67 MHz)." */
 export function executionNotice(deps: FabricDeps, runId: string, executionId: string): string | undefined {
   const execution = deps.ledger.run(runId)?.control?.executions[executionId];
@@ -2895,6 +2955,8 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
           phase: 'working', jobSession: session, result: { kind: 'pending', session },
         });
         observeResidentEngineering(deps, run.id, execution.id);
+        deps.status?.(run.control!.owner, run.id, `engineering-start:${execution.id}`,
+          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} started its engineering task.`);
         return executionAnswer(deps, run.id, 'accepted', { receipt, data });
       }
       const status = claim.kind === 'at-cap' ? 'at-cap' : claim.kind === 'budget-exhausted' ? 'budget-exhausted'
@@ -3091,6 +3153,11 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
       receipt = await finishEngineeringRequest(deps, run.id, execution.id, req.requestId, data, 'done', verified
         ? { phase: 'ready', reason: undefined, result: { kind: 'settled', session: execution.jobSession } }
         : { phase: 'working', reason: 'the Pack Reader did not accept the engineering result' });
+      if (verified) {
+        const toolCalls = engineeringActivityOf(deps.ledger, run.id)?.[execution.nodeId]?.toolCalls;
+        deps.status?.(run.control!.owner, run.id, `engineering-delivered:${execution.id}`,
+          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} delivered its result${toolCalls === undefined || toolCalls === 0 ? '' : ` (${String(toolCalls)} tool calls)`}.`);
+      }
       return executionAnswer(deps, run.id, 'accepted', { receipt, data,
         reason: verified
           ? `The Reader accepted the result; execution ${execution.id} is ready, not completed. Release the engineering session.${completionAllowed({ ...execution, phase: 'ready' }) ? ' Then call action complete with this executionId. Successor autopilot starts only after that owner completion.' : ' Inspect the current control holds and Run state before any business completion.'}`
@@ -3359,6 +3426,11 @@ export async function recordExecutionResult(ctx: Driving, execution: NodeExecuti
   if ((phase === 'ready' || phase === 'failed') && !autopilotDrives(ctx.pack, execution.nodeId)) {
     const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
     if (owner !== undefined) ctx.deps.notify?.(owner, ctx.runId, execution.id);
+  } else if ((phase === 'ready' || phase === 'failed') && ctx.deps.status !== undefined) {
+    // Inside the segment the owner hears one plain status line per node instead (no reply asked).
+    const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
+    const line = segmentStatusLine(ctx.deps, ctx.runId, ctx.pack, execution, result);
+    if (owner !== undefined && line !== undefined) ctx.deps.status(owner, ctx.runId, `node:${execution.id}`, line);
   }
 }
 
