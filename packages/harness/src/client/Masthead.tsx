@@ -63,9 +63,11 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
   const budgetWord = context === undefined ? undefined : t(BUDGET_STANDING[context.budget.phase]);
   const purposeMark = runPurposeMark(run?.purpose);
   // The node the Run stands at, in the Pack's own words when it gave the node a label.
+  // While a fork is open the run row names the join; the steps actually running are its branches'.
+  const labelOf = (id: string) => context?.method?.reference.nodes.find((node) => node.id === id)?.label ?? id;
+  const branches = Object.values(run?.fork?.branches ?? {}).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
   const currentNode = run?.currentNode;
-  const currentSaid = currentNode === undefined ? undefined
-    : (context?.method?.reference.nodes.find((node) => node.id === currentNode)?.label ?? currentNode);
+  const currentSaid = branches.length > 0 ? branches.map(labelOf).join(', ') : currentNode === undefined ? undefined : labelOf(currentNode);
   // C19: a Campaign with no name of its own (`name` absent — no Campaign file, or one that never
   // set `name`) never falls back to the raw campaign id (a bare uuid-shaped identifier means nothing
   // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
@@ -87,8 +89,8 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
             : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said}</span>}
           {currentSaid === undefined ? null : <span> · {currentSaid}</span>}
           {run?.generation === undefined ? null : <span> · {t('masthead.gen', { n: run.generation })}</span>}
-          {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}
-          {budgetWord === undefined ? null : <span> · {budgetWord}</span>}
+          {elapsedPhrase === undefined ? null : <span className="hima-masthead-elapsed"> · {elapsedPhrase}</span>}
+          {budgetWord === undefined ? null : <span className="hima-masthead-budget"> · {budgetWord}</span>}
         </p>
       </div>
       {isOwner || ownerId === undefined ? null : (

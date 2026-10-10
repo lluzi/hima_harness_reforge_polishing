@@ -25,6 +25,7 @@ import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT } from './locale/index.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { autoOpened, claimAutoOpen, receiptTime, shouldAutoOpen, timeOf } from './run-auto-open.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -989,6 +990,18 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
     });
     return () => { controller.abort(); };
   }, [runId, sessionId]);
+
+  // A receipt showing a Run this conversation started a moment ago opens the workspace on its Live
+  // view, once per Run in this window; a re-rendered or replayed transcript does not (`run-auto-open.ts`).
+  const startedRun = state.view?.run;
+  useEffect(() => {
+    if (openRun === undefined || runId === undefined || startedRun === undefined || startedRun.id !== runId) return;
+    const at = receiptTime(toolBlock) ?? timeOf(startedRun.createdAt);
+    if (!shouldAutoOpen({ toolName, status: startedRun.status, at, now: Date.now(), opened: autoOpened(runId) })) return;
+    if (claimAutoOpen(runId)) openRun(runId);
+    // Decided once, when the Run's first read arrives for this receipt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, startedRun?.id]);
 
   if (runId === undefined) {
     // A failed call has something to say, and it is the tool's own words: saying "this call reported

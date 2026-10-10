@@ -194,14 +194,14 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>}
       {address.kind !== 'campaign' ? null : <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
-      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another Campaign</button> : null}
+      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button hima-studio-secondary' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another Campaign</button> : null}
       {address.kind === 'campaign' && retainedReportRef ? <button className='hima-button' data-hima-control='studio-open-retained-insight' onClick={() => chooseInsight({ kind: 'insight', reportRef: retainedReportRef })}>Open retained insight</button> : null}
       <div className='hima-studio-header-actions'>
         {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier
             compacting pass reached for — both read as text-only actions inside a row that already
             carries a select and an icon-only refresh control, and the missing border made them easy
             to miss beside those. Same markers, same visible text. */}
-        <button className='hima-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
+        <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
         <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
       </div>
     </header>
@@ -227,7 +227,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             onBusy={setConfirming} refreshSignal={configRefresh}
             onStarted={(started) => { chooseCampaign({ kind: 'campaign', runId: started.run.id }); list.refresh(); }} />
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId)} sessionId={activeSessionId} draft={memoryDrafts[memoryScopeKey(activeSessionId)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId)]: draft }))}/></div>
-        : <div className='hima-workbench-body'><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
+        : <div className='hima-workbench-body'><CampaignTab key={selected} sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
             <TeamPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} view={view} onChanged={() => { snapshot.refresh(); execution.refresh(); list.refresh(); }} onInspect={entry => setAddress({ kind: 'child', parentSessionId: entry.parentSessionId, childSessionId: entry.childSessionId })}/>
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} draft={memoryDrafts[memoryScopeKey(activeSessionId, selected)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId, selected)]: draft }))}/></div>}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
