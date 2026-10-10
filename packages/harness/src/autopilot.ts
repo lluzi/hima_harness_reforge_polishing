@@ -23,7 +23,7 @@
 // fork, one line per branch.
 import { createHash, randomUUID } from 'node:crypto';
 import { executionContext, executionPack, identityOf, nodeDisplayName, noticeValue, NOTICE_PREFIX, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
-import { autopilotDrives, autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop, type SegmentAutopilot } from './packs.js';
+import { autopilotDrives, autopilotOf, autopilotSegmentOf, forkFrom, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop, type SegmentAutopilot } from './packs.js';
 import { currentRecordsIn, hasEnded, type DelegationRecord, type LedgerRecord, type NodeExecution, type ObservationRecord, type RunRecord } from './ledger.js';
 import { runDelegations, type RunDelegationRequest, type RunDelegationView } from './delegation-runtime.js';
 import { parseDelegationResultObservedPayload } from './delegation.js';
@@ -75,9 +75,45 @@ function autopilotHeadline(deps: FabricDeps, pack: Pack, run: RunRecord, records
   const name = (index < 0 ? undefined : declared[index]?.label) ?? (last === undefined ? 'The automatic steps' : nodeDisplayName(pack, last.nodeId));
   const start = visits.find((record) => index >= 0 && segments[index]!.nodes.has(record.nodeId));
   const value = noticeValue(deps, run.id, pack, start === undefined ? 0 : start.seq - 1);
-  const where = hasEnded(run.status) ? ' The Campaign ended.' : run.status === 'running' && run.currentNode !== undefined
-    ? ` Next: ${nodeDisplayName(pack, run.currentNode)}.` : run.status === 'waiting' ? ' Waiting for a decision.' : '';
+  let available: readonly string[] = [];
+  if (run.status === 'running') {
+    try { available = executionContext(deps, run.id).available; } catch { available = []; }
+  }
+  const next = nextStepPhrase(pack, available);
+  const where = hasEnded(run.status) ? ' The Campaign ended.' : next !== undefined ? ` ${next}`
+    : run.status === 'running' && run.currentNode !== undefined
+      ? ` Next: ${nodeDisplayName(pack, run.currentNode)}.` : run.status === 'waiting' ? ' Waiting for a decision.' : '';
   return `${NOTICE_PREFIX} ${name} finished${value === undefined ? '' : ` (${value})`}.${where}`;
+}
+
+const spoken = (names: readonly string[]): string =>
+  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)!}`;
+
+/**
+ * What the owner should do next, in the Pack's words, from the nodes it may begin now. An outsourced
+ * act node (its contract tool declares `outsourcing`) does not start itself: the owner begins it and
+ * starts its resident engineering task, so the line says so — for several at once, that they run in
+ * parallel. A fork node whose branch heads are outsourced says the same after the fork node.
+ * Undefined when nothing is available.
+ */
+export function nextStepPhrase(pack: Pick<Pack, 'graph' | 'contract'>, available: readonly string[]): string | undefined {
+  if (available.length === 0) return undefined;
+  const outsourced = (nodeId: string): boolean => {
+    const node = pack.graph.nodes.find((candidate) => candidate.id === nodeId);
+    if (node?.kind !== 'act') return false;
+    return pack.contract.tools.find((tool) => tool.id === node.parameters.tool)?.outsourcing !== undefined;
+  };
+  const begin = (ids: readonly string[]): string => `begin ${spoken(ids.map((id) => nodeDisplayName(pack, id)))} and start ${ids.length === 1
+    ? 'its engineering task' : 'their engineering tasks'}`;
+  const agents = available.filter(outsourced);
+  if (agents.length > 0) return `Next: ${begin(agents)} now${agents.length > 1 ? ' (they run in parallel)' : ''}.`;
+  if (available.length === 1) {
+    const node = pack.graph.nodes.find((candidate) => candidate.id === available[0]);
+    const fork = node === undefined ? undefined : forkFrom(pack.graph, node);
+    const heads = fork?.ok === true ? fork.branches.map((branch) => branch.nodes[0]!).filter(outsourced) : [];
+    if (heads.length > 0) return `Next: run ${nodeDisplayName(pack, available[0]!)}, then ${begin(heads)}${heads.length > 1 ? ' (they run in parallel)' : ''}.`;
+  }
+  return `Next: ${spoken(available.map((id) => nodeDisplayName(pack, id)))}.`;
 }
 
 /** A self-driving fork as the plan resolved it: its declaration, its branches and its join. */
