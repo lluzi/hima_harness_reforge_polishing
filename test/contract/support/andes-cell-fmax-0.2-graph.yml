@@ -4,7 +4,8 @@
 # two resident agents in parallel verify (HimaTime agent: the worst paths re-timed with the new
 # cells, the local gain in ps; Qualib agent: the cell screen) -> join (local gain above 0 ps and at
 # least one cell passed the screen) -> Synthesis and APR with the new library -> round record ->
-# checks -> next round (owner decision; back to HimaTime with this round's results in lessons).
+# checks -> next round (owner decision; back to HimaTime with this round's results in lessons). One
+# round is expected to reach the default Goal (+1 % Fmax); the round limit is 2 as a safety margin.
 #
 # Both forks' branch nodes and the AndesCell agent are outsourced resident tasks, so neither fork is
 # an autopilot fork: the owner begins each of those nodes, starts its resident task, collects and
@@ -14,7 +15,7 @@
 # twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
 # next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
 id: andes-cell-fmax
-version: "0.2.0"
+version: "0.3.0"
 entry: bind-inputs
 autopilot:
   - from: [bind-inputs]
@@ -48,7 +49,7 @@ nodes:
   - id: reference-build
     kind: act
     label: Reference build
-    about: Synthesis and APR of aes_cipher_top on the stock std9t_svt library at 1.000 ns, RTL to routed design.
+    about: Synthesis and APR of aes_cipher_top on the stock std9t_svt library at 0.500 ns (2 GHz), RTL to routed design.
     parameters:
       tool: reference-build
       arguments:
@@ -164,7 +165,7 @@ nodes:
     parameters:
       chooser: andes-next
       bind: { roundStep: 1 }
-      converge: { read: bestFmax, band: 0.001, generations: 2, generationLimit: 4 }
+      converge: { read: bestFmax, band: 0.001, generations: 2, generationLimit: 2 }
   - id: blocked
     kind: wait
     label: Needs a person

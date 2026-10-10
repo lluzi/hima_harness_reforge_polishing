@@ -1,5 +1,5 @@
 // The andes-cell-fmax Pack's whole graph below the GUI, with no model and the mock EDA run locally,
-// as an L2 Host test. One round reads
+// as an L2 Host test. One round (the default +1 % Goal is met in it) reads
 //
 //   bind-inputs -> reference-build -> read-reference -> check-reference
 //               -> load-timing -> read-timing                               (autopilot; opens the propose fork)
@@ -31,8 +31,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import type { ExecutionActionRequest, LedgerRecord } from '@hima/harness';
+import { cp, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { himaChart, type ExecutionActionRequest, type LedgerRecord } from '@hima/harness';
 import { repoRoot, type HimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, hostLog, type InProcessHost } from './support/boot-inprocess.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
@@ -65,7 +65,7 @@ function requirements(agent: Agent, k: number, families: readonly string[], { an
     schema: 'hima-andes-requirements/1', agent, round: k,
     summary: `Round ${k}: the worst paths need faster ${families.join(' and ')} cells.`,
     requirements: families.map((family, i) => ({ family, purpose: `faster ${family} on the worst paths`,
-      target: 'cell delay -30 % at fanout 4', evidence: `stage breakdown of round ${k}`, priority: i + 1 })),
+      target: 'cell delay -10 % at fanout 4', evidence: `stage breakdown of round ${k}`, priority: i + 1 })),
     report,
   }), support: { [report]: analysis, [`reports/${agent}-agent/r${k}/${agent === 'himatime' ? 'stage_breakdown.rpt' : 'library_analysis.rpt'}`]: `stand-in ${agent} tool report, round ${k}\n` } };
 }
@@ -331,111 +331,125 @@ const HEAD = ['bind-inputs', 'reference-build', 'read-reference', 'check-referen
 const TAIL = ['requirements-joined', 'andescell-agent', 'generate-cells', 'himatime-verify', 'qualib-screen', 'cells-verified', 'new-library-build',
   'compare-round', 'read-round', 'check-round', 'read-round-goal', 'judge-round'];
 
-test('andes dry path: propose, choose, generate, verify and rebuild each round, three rounds to a 5 % Fmax gain, goal-met', async (t) => {
+test('andes dry path: propose, choose, generate, verify and rebuild in one round to the +1 % Fmax Goal, with a chart from every step', async (t) => {
   const home = await prepareHome(t);
   const host = await bootInProcess(home.h);
   try {
-    const r = await openRun(host, home, { target_fmax_gain_pct: 5 });
+    const r = await openRun(host, home, { target_fmax_gain_pct: 1 });
     // ----- the autopilot runs the reference build and the HimaTime load, then opens the propose fork
     await r.reachFork(['himatime-agent', 'qualib-agent']);
     assert.deepEqual(r.doneNodes(), HEAD, 'reference build and timing drive themselves');
-    assert.deepEqual(r.latestValues('andes-reference'), { reference_valid: 1, design_fmax_mhz: 957.67, design_wns_ns: -0.0442,
-      design_tns_ns: -3.213, design_area_um2: 41200, new_cell_instances: 0, route_drc_errors: 0 });
+    // A ~2 GHz block: 0.500 ns clock, worst slack -12.4 ps, Fmax = 1000 / (0.500 + 0.0124) MHz.
+    assert.deepEqual(r.latestValues('andes-reference'), { reference_valid: 1, design_fmax_mhz: 1951.6, design_wns_ns: -0.0124,
+      design_tns_ns: -0.596, design_area_um2: 41200, new_cell_instances: 0, route_drc_errors: 0 });
     assert.deepEqual(r.verdicts('reference-valid'), ['PASS']);
-    assert.equal(r.latestValues('andes-timing').timing_fmax_mhz, 957.67);
+    assert.equal(r.latestValues('andes-timing').timing_fmax_mhz, 1951.6);
     const inputs = JSON.parse(await readFile(path.join(r.workspace, 'state/inputs.json'), 'utf8'));
     assert.deepEqual(Object.keys(inputs.tools).sort(), ['andescell', 'himatime', 'qualib', 'sapr', 'xtop']);
     assert.match(inputs.tools.xtop.version, /XTop timing ECO \(xtop\) version /);
+    assert.equal(inputs.clockPeriodNs, 0.5);
 
     // ----- round 1: XNOR3 and BUF; the Qualib agent's first list names a family AndesCell cannot
     // build, and the HimaTime agent's first verification types a local gain HimaTime did not report
     const r1 = await round(r, home, 1, requirements('himatime', 1, ['XNOR3', 'BUF', 'XOR2']), requirements('qualib', 1, ['FULLADDER', 'XNOR3']),
       { qualib: requirements('qualib', 1, ['XNOR3', 'BUF', 'MUX2I']), verifyGainOffsetPs: 12 });
     assert.match(r1.qualibRejected ?? '', /qualib requirements refused: .*family 'FULLADDER' is not an AndesCell family/, r1.qualibRejected);
-    assert.match(r1.verifyRejected ?? '', /himatime-verify refused: .*localGainPs must be HimaTime's gain on the worst path, 168\.48 ps/, r1.verifyRejected);
+    assert.match(r1.verifyRejected ?? '', /himatime-verify refused: .*localGainPs must be HimaTime's gain on the worst path, 16\.88 ps/, r1.verifyRejected);
     for (const node of TAIL) assert.ok(r.doneNodes().includes(node), `${node} ran in round 1`);
     assert.deepEqual(r.verdicts('requirements-valid'), ['PASS', 'PASS'], 'the propose join judged each branch PASS');
     assert.deepEqual(r1.chosen.families, ['XNOR3', 'BUF']);
-    assert.deepEqual([r1.checks.worstPath, r1.checks.localGainPs], ['A1', 168.48], 'HimaTime: the worst path is 168.48 ps faster with the new cells');
+    // A1: 3 XNOR3 x 28 ps x 12 % + 4 BUF x 17 ps x 10 % (every new cell, extra-fast variants included)
+    assert.deepEqual([r1.checks.worstPath, r1.checks.localGainPs], ['A1', 16.88], 'HimaTime: the worst path is 16.88 ps faster with the new cells');
+    assert.ok(r1.checks.localGainPs >= 8 && r1.checks.localGainPs <= 20);
     assert.deepEqual(r.verdicts('local-gain-positive'), ['PASS', 'PASS'], 'the verify join judged each branch');
     assert.deepEqual(r.verdicts('cells-screened'), ['PASS', 'PASS']);
     const screen1 = await readState(r.workspace, 'qualib-screen.json');
     assert.deepEqual(screen1.cells.filter((c: any) => c.status === 'FAIL').map((c: any) => c.name).sort(), ['ANDES_BUF_XF8_R1', 'ANDES_XNOR3_XF4_R1']);
     const build1 = await readState(r.workspace, 'round-build.json');
     assert.ok(build1.acceptedCells.every((c: string) => !c.includes('_XF')), 'the rebuild uses only cells that passed the screen');
+    // The key-expansion path B1 limits the rebuild: WNS -4.8 ps, 1000 / (0.500 + 0.0048) = 1980.98 MHz.
     const f1 = r.latestValues('andes-round');
     assert.equal(f1.round_valid, 1);
-    assert.equal(f1.fmax_gain_pct, 2.5);
-    assert.equal(f1.design_fmax_mhz, 981.64);
+    assert.equal(f1.fmax_gain_pct, 1.51);
+    assert.ok((f1.fmax_gain_pct ?? 0) >= 1.2 && (f1.fmax_gain_pct ?? 0) <= 1.8);
+    assert.equal(f1.best_gain_pct, 1.51);
+    assert.equal(f1.design_fmax_mhz, 1980.98);
+    assert.equal(f1.design_wns_ns, -0.0048);
     assert.ok((f1.new_cell_instances ?? 0) > 0);
     assert.deepEqual(r.verdicts('cells-used'), ['PASS']);
     assert.deepEqual(r.verdicts('round-improved'), ['PASS']);
-    assert.deepEqual(r.verdicts('fmax-goal'), ['FAIL']);
-    const next1 = await r.decide('next-strategy');
-    assert.equal(next1.done.kind, 'accepted', `next-strategy: ${next1.done.reason}`);
-    assert.equal(next1.advice?.chosen?.strategy?.roundRevision, 1, JSON.stringify(next1.advice));
-
-    // ----- round 2: HimaTime starts from the round-1 build; XOR2 and MUX2I
-    const r2 = await round(r, home, 2, requirements('himatime', 2, ['XOR2', 'MUX2I', 'XNOR3']), requirements('qualib', 2, ['MUX2I', 'XOR2']));
-    assert.notEqual(r2.ht.taskId, r1.ht.taskId, 'the revisit opened new resident tasks');
-    const timing2 = await readState(r.workspace, 'timing.json');
-    assert.equal(timing2.source, 'round 1 new-library build');
-    assert.deepEqual(r2.chosen.families, ['XOR2', 'MUX2I']);
-    assert.equal(r2.checks.worstPath, 'B1');
-    assert.ok(r2.checks.localGainPs > 0);
-    assert.equal(r.latestValues('andes-round').fmax_gain_pct, 3.4);
-    const next2 = await r.decide('next-strategy');
-    assert.equal(next2.done.kind, 'accepted', `next-strategy: ${next2.done.reason}`);
-
-    // ----- round 3: AOI21 and OAI21 reach the Goal
-    const r3 = await round(r, home, 3, requirements('himatime', 3, ['AOI21', 'OAI21']), requirements('qualib', 3, ['OAI21', 'AOI21', 'NOR2']));
-    assert.deepEqual(r3.chosen.families, ['AOI21', 'OAI21']);
-    assert.equal(r3.checks.worstPath, 'C1');
-    assert.ok(r3.checks.localGainPs > 0);
-    const f3 = r.latestValues('andes-round');
-    assert.equal(f3.fmax_gain_pct, 5.2);
-    assert.equal(f3.best_gain_pct, 5.2);
-    assert.equal(f3.design_fmax_mhz, 1007.46);
-    assert.ok((f3.design_wns_ns ?? -1) > 0, 'timing met at 1.000 ns');
-    assert.deepEqual(r.verdicts('fmax-goal'), ['FAIL', 'FAIL', 'PASS']);
-    assert.deepEqual(r.verdicts('requirements-valid'), Array(6).fill('PASS'), 'two branches a round, three rounds');
-    assert.deepEqual(r.verdicts('local-gain-positive'), Array(6).fill('PASS'));
+    assert.deepEqual(r.verdicts('fmax-goal'), ['PASS'], 'one round meets the +1 % Goal');
     const end = await r.decide('goal-met');
     assert.equal(end.done.kind, 'accepted', `goal-met: ${end.done.reason}`);
+    assert.equal(end.advice?.chosen?.goalMet, true, JSON.stringify(end.advice));
     assert.equal(r.run().status, 'ended-goal-met', r.failure('goal-met'));
 
     const summary = await readFile(path.join(r.workspace, 'derived/summary.md'), 'utf8');
     assert.ok(summary.includes(`Claim boundary: ${CLAIM}`), summary);
-    assert.match(summary, /\| 3 \| AOI21, OAI21 \| 1007\.46 \| 5\.20 % \|/);
+    assert.match(summary, /\| 1 \| XNOR3, BUF \| 1980\.98 \| 1\.51 % \|/);
     const record = await readState(r.workspace, 'round.json');
     assert.equal(record.claimBoundary, CLAIM);
-    assert.deepEqual(record.cumulativeFamilies, ['AOI21', 'BUF', 'MUX2I', 'OAI21', 'XNOR3', 'XOR2']);
-    assert.equal(record.localGainPs, r3.checks.localGainPs);
+    assert.deepEqual(record.cumulativeFamilies, ['BUF', 'XNOR3']);
+    assert.equal(record.localGainPs, r1.checks.localGainPs);
 
-    // ----- every tool and agent left its reports at reports/<node>/r<k>/
+    // ----- every tool and agent node of the round left a human-readable report at reports/<node>/r1/
     const report = (rel: string) => readFile(path.join(r.workspace, 'reports', rel), 'utf8');
+    const STEPS = ['bind-inputs', 'reference-build', 'load-timing', 'himatime-agent', 'qualib-agent', 'andescell-agent', 'generate-cells',
+      'himatime-verify', 'qualib-screen', 'new-library-build', 'compare-round'];
+    for (const node of STEPS) {
+      const files = await readdir(path.join(r.workspace, 'reports', node, 'r1'));
+      assert.ok(files.some((name) => /\.(rpt|md)$/.test(name)), `${node} r1 has a report: ${files.join(', ')}`);
+    }
     assert.match(await report('bind-inputs/r1/tools.rpt'), /AndesCell families/);
+    assert.match(await report('bind-inputs/r1/tools.rpt'), /28 nm, stock library std9t_svt, clock 0\.500 ns/);
     for (const name of ['report_qor.rpt', 'postroute_timing.rpt', 'area.rpt', 'route_drc.rpt']) assert.ok((await report(`reference-build/r1/${name}`)).length > 0, name);
     assert.match(await report('reference-build/r1/postroute_timing.rpt'), /\(VIOLATED\)/);
-    for (const k of [1, 2, 3]) {
-      assert.match(await report(`load-timing/r${k}/report_timing.rpt`), /slack \(VIOLATED\)/);
-      assert.match(await report(`load-timing/r${k}/stage_breakdown.rpt`), /Stage breakdown by cell family/);
-      for (const node of ['himatime-agent', 'qualib-agent', 'andescell-agent', 'himatime-verify', 'qualib-screen']) {
-        assert.ok((await report(`${node}/r${k}/analysis.md`)).length > 0, `${node} r${k} analysis`);
-      }
-      assert.ok((await report(`himatime-agent/r${k}/stage_breakdown.rpt`)).length > 0);
-      assert.ok((await report(`qualib-agent/r${k}/library_analysis.rpt`)).length > 0);
-      assert.match(await report(`generate-cells/r${k}/generation.rpt`), /AndesCell generation report/);
-      assert.match(await report(`himatime-verify/r${k}/verify.rpt`), /Local gain on the worst path/);
-      assert.match(await report(`qualib-screen/r${k}/cell_screen.rpt`), /cell\(s\) pass the screen/);
-      assert.match(await report(`compare-round/r${k}/round-${k}.md`), new RegExp(`# Round ${k}:`));
-      for (const name of ['report_qor.rpt', 'postroute_timing.rpt', 'area.rpt', 'route_drc.rpt', 'report_timing.rpt']) assert.ok((await report(`new-library-build/r${k}/${name}`)).length > 0, `rebuild r${k} ${name}`);
+    assert.match(await report('load-timing/r1/report_timing.rpt'), /slack \(VIOLATED\)/);
+    assert.match(await report('load-timing/r1/stage_breakdown.rpt'), /Stage breakdown by cell family/);
+    for (const node of ['himatime-agent', 'qualib-agent', 'andescell-agent', 'himatime-verify', 'qualib-screen']) {
+      assert.ok((await report(`${node}/r1/analysis.md`)).length > 0, `${node} r1 analysis`);
     }
-    assert.match(await report('new-library-build/r3/report_timing.rpt'), /slack \(MET\)/);
-    for (const rel of ['load-timing/r1/report_timing.rpt', 'reference-build/r1/report_qor.rpt', 'generate-cells/r1/generation.rpt', 'himatime-verify/r1/verify.rpt']) {
+    assert.ok((await report('himatime-agent/r1/stage_breakdown.rpt')).length > 0);
+    assert.ok((await report('qualib-agent/r1/library_analysis.rpt')).length > 0);
+    assert.match(await report('generate-cells/r1/generation.rpt'), /AndesCell generation report/);
+    assert.match(await report('himatime-verify/r1/verify.rpt'), /Local gain on the worst path/);
+    assert.match(await report('qualib-screen/r1/cell_screen.rpt'), /cell\(s\) pass the screen/);
+    assert.match(await report('compare-round/r1/round-1.md'), /# Round 1:/);
+    assert.match(await report('compare-round/r1/round-1.md'), /These are results on the demo Site eda_cluster_ctu_01, not signoff and not silicon\./);
+    for (const name of ['report_qor.rpt', 'postroute_timing.rpt', 'area.rpt', 'route_drc.rpt', 'report_timing.rpt']) assert.ok((await report(`new-library-build/r1/${name}`)).length > 0, `rebuild r1 ${name}`);
+    for (const rel of ['bind-inputs/r1/tools.rpt', 'load-timing/r1/report_timing.rpt', 'reference-build/r1/report_qor.rpt', 'generate-cells/r1/generation.rpt',
+      'himatime-verify/r1/verify.rpt', 'compare-round/r1/round-1.md']) {
       assert.doesNotMatch(await report(rel), /mock/i, `${rel} reads as a tool report`);
     }
-    t.diagnostic(`gains 2.50 / 3.40 / 5.20 %; local gains ${String(r1.checks.localGainPs)} / ${String(r2.checks.localGainPs)} / ${String(r3.checks.localGainPs)} ps; run ${r.runId} ended ${r.run().status}`);
+
+    // ----- the charts: hima-chart/1 files written by the Pack's steps and Readers from the tools' own numbers
+    const chartOf = async (rel: string) => {
+      const text = await report(rel);
+      assert.doesNotMatch(text, /mock/i, `${rel} never says "mock"`);
+      return himaChart.parse(JSON.parse(text));
+    };
+    const timing = await chartOf('reference-build/r1/timing.chart.json');
+    assert.deepEqual([timing.categories[0], timing.series[0]!.values[0]], ['A1 S-box/MixColumns', -12.4]);
+    const stages = await chartOf('load-timing/r1/stage-breakdown.chart.json');
+    assert.deepEqual(stages.highlight, ['XNOR3', 'BUF']);
+    assert.equal(stages.series[0]!.values[stages.categories.indexOf('XNOR3')], 16.39);
+    const ht = await chartOf('himatime-agent/r1/proposal.chart.json');
+    assert.equal(ht.title, 'Why these cells: timing');
+    assert.deepEqual(ht.categories, ['XNOR3', 'BUF', 'XOR2']);
+    assert.deepEqual(ht.series.map((x) => x.values), [[16.39, 13.27, 8.2], [8.4, 5.44, 3.36]]);
+    const ql = await chartOf('qualib-agent/r1/proposal.chart.json');
+    assert.match(ql.title, /^Why these cells: library FO4/);
+    assert.deepEqual(ql.categories, ['XNOR3', 'BUF', 'MUX2I'], 'the accepted (repaired) list, not the refused one');
+    assert.deepEqual(ql.series.map((x) => x.values), [[28, 14.6, 19], [25.2, 13.43, 17.67]]);
+    const gen = await chartOf('generate-cells/r1/generation.chart.json');
+    assert.equal(gen.categories.length, 6);
+    const local = await chartOf('himatime-verify/r1/local-gain.chart.json');
+    assert.deepEqual([local.categories[0], local.series[0]!.values[0], local.series[1]!.values[0]], ['A1 S-box/MixColumns', -12.4, 4.48]);
+    const screen = await chartOf('qualib-screen/r1/screen.chart.json');
+    assert.deepEqual(screen.highlight.sort(), ['ANDES_BUF_XF8_R1', 'ANDES_XNOR3_XF4_R1']);
+    const compare = await chartOf('compare-round/r1/before-after.chart.json');
+    assert.deepEqual(compare.series.map((x) => x.values), [[1951.6, -12.4, -596], [1980.98, -4.8, -100]]);
+    t.diagnostic(`gain 1.51 %; local gain ${String(r1.checks.localGainPs)} ps; run ${r.runId} ended ${r.run().status}`);
   } finally {
     await host.dispose(); await home.h.dispose();
   }

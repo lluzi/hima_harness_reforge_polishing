@@ -280,9 +280,11 @@ def breakdown(speed):
         cell = sum(p["mix"][family] * (1 - speed.get(family, 0.0)) for p in PATHS if family in p["mix"])
         on = sum(1 for p in PATHS if family in p["mix"])
         worst_share = 100.0 * worst["mix"].get(family, 0.0) * (1 - speed.get(family, 0.0)) / path_delay(worst, speed)
+        # HimaTime's estimate of the worst path's own slack back (ps) if this family became AndesCell-class faster
+        worst_rec = 0.0 if family in speed else worst["mix"].get(family, 0.0) * FAMILIES[family]["speedup"]
         rows.append(dict(family=family, stages=stages, cellDelayPs=round(cell, 1), meanStagePs=round(cell / stages, 1),
                          sharePct=round(100.0 * cell / total_path, 2),
-                         onPaths=on, worstPathSharePct=round(worst_share, 2), generated=family in speed,
+                         onPaths=on, worstPathSharePct=round(worst_share, 2), worstPathRecoveryPs=round(worst_rec, 2), generated=family in speed,
                          estRecoveryNs=recovery_ns(speed, family), achievableSpeedupPct=round(100 * FAMILIES[family]["speedup"])))
     rows.sort(key=lambda r: (-r["estRecoveryNs"], -r["cellDelayPs"]))
     net = sum(net_delay(p) for p in PATHS)

@@ -5,11 +5,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkPack, loadPack, loadSite, packStageOf } from '@hima/harness';
+import { checkPack, himaChart, loadPack, loadSite, packStageOf } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 
 const packId = 'andes-cell-fmax';
@@ -29,7 +29,7 @@ const AGENTS = [
 
 test('the Pack loads at stage compiled with plain words, a results table, a reports folder and five resident agents', () => {
   const pack = loadPack(packsDir, packId);
-  assert.equal(pack.contract.version, '0.2.0');
+  assert.equal(pack.contract.version, '0.3.0');
   assert.equal(pack.graph.version, pack.contract.version);
   assert.equal(packStageOf(packsDir, packId)?.stage, 'compiled');
   assert.deepEqual(pack.contract.reports, { dir: 'reports' });
@@ -62,7 +62,10 @@ test('the Pack loads at stage compiled with plain words, a results table, a repo
   assert.equal(pack.contract.results?.headline?.type, 'fmax_gain_pct');
   assert.deepEqual(pack.contract.results?.columns.map((c) => c.reader), ['andes-reference', 'andes-round']);
   assert.equal(pack.contract.words.target_fmax_gain_pct?.label, 'Fmax gain over the reference build, at least');
-  assert.equal(pack.contract.goal?.target_fmax_gain_pct?.default, 5);
+  assert.equal(pack.contract.goal?.target_fmax_gain_pct?.default, 1, 'one round meets the default Goal');
+  const next = pack.graph.nodes.find((n) => n.id === 'next-round');
+  assert.ok(next?.kind === 'explore');
+  assert.equal(next.parameters.converge?.generationLimit, 2, 'one round expected, a second as a safety margin');
 });
 
 test('the graph proposes in a fork, chooses with the AndesCell agent, verifies in a fork and loops through the owner', () => {
@@ -174,6 +177,34 @@ test('the resident capability runs OpenCode in the sandbox with the mock toolcha
   assert.ok(capability.sandbox.readOnlyRoots.includes('/data/eda/project/hima_harness/ctu01-eda'));
   assert.equal(capability.environment.toolPaths[0], '/data/eda/project/hima_harness/ctu01-eda/bin');
   assert.equal(capability.environment.set.EMPYREAN_LICENSE_MODE, 'old', 'the wrapper launch line tests it');
+});
+
+test('the knowledge charts are hima-chart/1 files the tools produce today, and the design notes tell the Guide to show them', async () => {
+  const chartsDir = path.join(packDir, 'knowledge/charts');
+  const names = (await readdir(chartsDir)).sort();
+  assert.deepEqual(names, ['library-fo4.chart.json', 'stage-breakdown.chart.json', 'worst-paths.chart.json']);
+  const fresh = await mkdtemp(path.join(os.tmpdir(), 'andes-charts-'));
+  try {
+    const run = spawnSync('python3', [path.join(packDir, 'flow/knowledge_charts.py'), path.join(siteDir, 'mock-eda'), fresh], { encoding: 'utf8' });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    for (const name of names) {
+      const text = await readFile(path.join(chartsDir, name), 'utf8');
+      assert.equal(text, await readFile(path.join(fresh, name), 'utf8'), `${name} is current (python3 flow/knowledge_charts.py <mock-eda>)`);
+      assert.doesNotMatch(text, /mock/i, name);
+      himaChart.parse(JSON.parse(text));
+    }
+  } finally { await rm(fresh, { recursive: true, force: true }); }
+  const stages = himaChart.parse(JSON.parse(await readFile(path.join(chartsDir, 'stage-breakdown.chart.json'), 'utf8')));
+  assert.deepEqual(stages.categories.slice(0, 2), ['XNOR3', 'BUF']);
+  assert.deepEqual(stages.highlight, ['XNOR3', 'BUF']);
+  const paths = himaChart.parse(JSON.parse(await readFile(path.join(chartsDir, 'worst-paths.chart.json'), 'utf8')));
+  assert.deepEqual([paths.categories.length, paths.series[0]!.values[0]], [8, -12.4]);
+  const fo4 = himaChart.parse(JSON.parse(await readFile(path.join(chartsDir, 'library-fo4.chart.json'), 'utf8')));
+  assert.ok(fo4.series.every((series) => series.values.every((v) => v !== null && v > 0 && v < 40)), 'no stock or AndesCell FO4 near 100 ps');
+  const notes = await readFile(path.join(packDir, 'knowledge/design-notes.md'), 'utf8');
+  for (const name of names) assert.ok(notes.includes(`charts/${name}`), `design-notes.md names charts/${name}`);
+  assert.match(notes, /hima_chart/);
+  assert.doesNotMatch(notes, /\b(1[0-9]{2}|[2-9][0-9]{2}) ps of\b/, 'no per-cell 100+ ps figure');
 });
 
 test('the mock EDA toolchain unit suite passes (python3 -m unittest)', () => {

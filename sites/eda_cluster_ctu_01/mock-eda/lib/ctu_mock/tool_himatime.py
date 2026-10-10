@@ -104,14 +104,16 @@ def breakdown_text(s):
              % (len(model.PATHS), s["netDelayPs"], s["netSharePct"]),
              "cell (ps): the family's cell delay summed over all its stages on the %d paths; ps/stage: one stage on average."
              % len(model.PATHS),
-             "Est. recovery: endpoint slack HimaTime expects back (ns, criticality-weighted) if the family's cells were AndesCell-class faster.",
+             "Est. recovery: endpoint slack HimaTime expects back (ns, criticality-weighted) if the family's cells were AndesCell-class faster;",
+             "worst-path rec.: the worst path's own slack back (ps) on the same assumption.",
              "",
-             "  %-7s %7s %10s %9s %8s %9s %11s %11s %10s %s" % ("family", "stages", "cell (ps)", "ps/stage", "share%", "on paths", "worst-path%", "achievable", "est. rec.", "status"),
-             "  " + "-" * 106]
+             "  %-7s %7s %10s %9s %8s %9s %11s %11s %10s %9s %s" % ("family", "stages", "cell (ps)", "ps/stage", "share%", "on paths", "worst-path%",
+                                                                  "achievable", "est. rec.", "wp rec.", "status"),
+             "  " + "-" * 116]
     for r in s["stageBreakdown"]:
-        lines.append("  %-7s %7d %10.1f %9.1f %8.2f %9d %11.2f %10s%% %10.3f %s" % (
+        lines.append("  %-7s %7d %10.1f %9.1f %8.2f %9d %11.2f %10s%% %10.3f %9.2f %s" % (
             r["family"], r["stages"], r["cellDelayPs"], r["meanStagePs"], r["sharePct"], r["onPaths"], r["worstPathSharePct"],
-            "-%d" % r["achievableSpeedupPct"], r["estRecoveryNs"], "generated (AndesCell)" if r["generated"] else "stock"))
+            "-%d" % r["achievableSpeedupPct"], r["estRecoveryNs"], r["worstPathRecoveryPs"], "generated (AndesCell)" if r["generated"] else "stock"))
     lines.append("")
     return "\n".join(lines)
 

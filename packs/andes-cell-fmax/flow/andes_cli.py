@@ -50,6 +50,9 @@ TOOLS = ("sapr", "himatime", "qualib", "andescell", "xtop")
 MAX_REQUIREMENTS = 8
 CLAIM_BOUNDARY = ("Every EDA result in this Pack comes from mock tools on a demo Site (mock EDA); "
                   "not signoff, not silicon.")
+# What a report the App shows says instead (round-<k>.md, the charts): the same boundary in plain words.
+SHOWN_BOUNDARY = "These are results on the demo Site eda_cluster_ctu_01, not signoff and not silicon."
+CHART_SCHEMA = "hima-chart/1"
 IMPROVE_EPS_MHZ = 0.005
 
 
@@ -137,6 +140,106 @@ def publish(ws, node, k, files):
             tmp = d / (name + ".tmp")
             shutil.copyfile(str(source), str(tmp))
             os.replace(tmp, d / name)
+
+
+# ---------------------------------------------------------------- charts (hima-chart/1)
+#
+# Every chart a person sees in the chat is a file one of these steps wrote from a tool's own output
+# (`<WS>/reports/<node id>/r<k>/<name>.chart.json`, or the Pack's knowledge/charts/). No timestamp, so
+# the same tool output always gives the same bytes. The words follow the App: no internal names.
+
+def chart(title, unit, categories, series, source, subtitle=None, highlight=(), better=None, caption=None):
+    doc = dict(schema=CHART_SCHEMA, title=title, kind="bar", unit=unit, categories=list(categories),
+               series=[dict(name=n, values=[None if v is None else round(float(v), 2) for v in vals], role=role) for n, vals, role in series],
+               highlight=[h for h in highlight if h in categories], source=source)
+    if subtitle:
+        doc["subtitle"] = subtitle
+    if better:
+        doc["better"] = better
+    if caption:
+        doc["caption"] = caption
+    return doc
+
+
+def write_chart(ws, node, k, name, doc):
+    """Write reports/<node>/r<k>/<name>.chart.json (atomically; unchanged bytes are left alone)."""
+    path = report_dir(ws, node, k) / ("%s.chart.json" % name)
+    text = json.dumps(doc, indent=2, sort_keys=True) + "\n"
+    if path.is_file() and path.read_text() == text:
+        return path
+    write_text(path, text)
+    return path
+
+
+def path_label(p):
+    """A worst path as a chart category: its id and group, at most 24 characters."""
+    group = {"S-box / MixColumns": "S-box/MixColumns"}.get(p["group"], p["group"])
+    return ("%s %s" % (p["id"], group))[:24]
+
+
+def slack_chart(paths, source, subtitle, n=8):
+    """Slack (ps) of the n worst paths of a build, worst first (HimaTime's path list)."""
+    rows = paths[:n]
+    return chart("Worst-path slack", "ps", [path_label(p) for p in rows],
+                 [("Slack", [1000.0 * p["slackNs"] for p in rows], "measured")], source, subtitle=subtitle, better="higher",
+                 highlight=[path_label(rows[0])] if rows else (),
+                 caption="Negative slack fails the 0.500 ns clock; the worst path sets Fmax = 1000 / (0.500 ns - worst slack).")
+
+
+def stage_chart(summary, source, subtitle):
+    """Share of the worst path's delay by cell family, from HimaTime's stage breakdown and path list."""
+    worst = summary["paths"][0]
+    total = 1000.0 * (summary["clockPeriodNs"] - worst["slackNs"])
+    rows = [r for r in summary["stageBreakdown"] if r["worstPathSharePct"] > 0]
+    rows.sort(key=lambda r: -r["worstPathSharePct"])
+    nets = sum(st["netDelayPs"] for st in worst["stages"])
+    categories = [r["family"] for r in rows] + ["Nets"]
+    values = [r["worstPathSharePct"] for r in rows] + [100.0 * nets / total]
+    top = [r["family"] for r in sorted(rows, key=lambda r: -r["estRecoveryNs"])[:2] if not r["generated"]]
+    return chart("Where the worst path's delay goes", "%", categories, [("Share of worst path", values, "neutral")], source,
+                 subtitle=subtitle, highlight=top,
+                 caption="Path %s, %d logic levels, %.1f ps; the rest is setup and clock uncertainty." % (worst["id"], len(worst["stages"]) - 1, total))
+
+
+def _version(doc):
+    """'4.2.0' from a tool line such as 'HimaTime static timing analysis (himatime) version 4.2.0, linux64'."""
+    m = re.search(r"version ([^ ,]+)", str(doc.get("tool") or ""))
+    return m.group(1) if m else ""
+
+
+def tool_query(inputs, name, argv):
+    """A fast, read-only tool query that prints JSON."""
+    out = subprocess.run([tool_path(inputs, name)] + argv, capture_output=True, text=True, timeout=120)
+    if out.returncode != 0:
+        raise ToolError("%s %s failed: %s" % (name, argv[0], (out.stderr or out.stdout).strip()[:400]))
+    try:
+        return json.loads(out.stdout)
+    except ValueError:
+        raise ToolError("%s %s printed no JSON" % (name, argv[0]))
+
+
+def fo4_rows(stock, families):
+    """Per family: Qualib's stock FO4 (the smallest drive, as library_analysis.rpt lists it) and the
+    AndesCell target at the family's typical speed-up."""
+    rows = []
+    for fam in families:
+        cells = sorted((c for c in stock["cells"] if c["family"] == fam), key=lambda c: c["drive"])
+        if not cells:
+            continue
+        headroom = stock["families"][fam]["customHeadroomPct"]
+        rows.append(dict(family=fam, cell=cells[0]["name"], fo4=cells[0]["fo4DelayPs"], target=cells[0]["fo4DelayPs"] * (1 - headroom / 100.0),
+                         headroom=headroom))
+    return rows
+
+
+def library_chart(rows, title, source, subtitle, highlight=()):
+    return chart(title, "ps", [r["family"] for r in rows],
+                 [("Stock std9t_svt FO4", [r["fo4"] for r in rows], "baseline"),
+                  ("AndesCell target FO4", [r["target"] for r in rows], "proposed")],
+                 source, subtitle=subtitle, better="lower", highlight=highlight,
+                 caption="FO4 delay of the smallest stock drive (%s); the target is AndesCell's typical cell-level speed-up (%s)."
+                 % (", ".join(r["cell"] for r in rows[:4]) + (", ..." if len(rows) > 4 else ""),
+                    ", ".join("-%d %%" % r["headroom"] for r in rows[:4]) + (", ..." if len(rows) > 4 else "")))
 
 
 def load_inputs(ws):
@@ -282,6 +385,10 @@ def cmd_reference(ws, timeout_min):
     publish(ws, "reference-build", 1, [(out / "reports" / name, name) for name in BUILD_REPORTS])
     if not rec["finished"]:
         raise ToolError("the reference build did not finish: %s" % rec["failure"])
+    report = tool_query(inputs, "himatime", ["report", "--db", str(out), "--paths", "8", "--json"])
+    write_chart(ws, "reference-build", 1, "timing", slack_chart(
+        report["paths"], "HimaTime %s, the routed reference build (himatime report --paths 8)" % _version(report),
+        "Reference build on the stock library: WNS %.1f ps, Fmax %.2f MHz" % (1000.0 * rec["wnsNs"], rec["fmaxMhz"])))
     print("reference build: Fmax %.2f MHz (WNS %.4f ns, TNS %.3f ns), area %.1f um^2, %d instances, route DRC %d"
           % (rec["fmaxMhz"], rec["wnsNs"], rec["tnsNs"], rec["areaUm2"], rec["instances"], rec["routeDrcErrors"]))
 
@@ -320,6 +427,9 @@ def cmd_timing(ws):
                claimBoundary=CLAIM_BOUNDARY)
     write_json(state(ws, "timing.json"), rec)
     publish(ws, "load-timing", k, [(out / "report_timing.rpt", "report_timing.rpt"), (out / "stage_breakdown.rpt", "stage_breakdown.rpt")])
+    write_chart(ws, "load-timing", k, "stage-breakdown", stage_chart(
+        s, "HimaTime %s stage breakdown (stage_breakdown.rpt) of the %s" % (_version(s), source),
+        "Round %d starts at Fmax %.2f MHz; worst path %s" % (k, s["fmaxMhz"], s["worstPath"])))
     top = ", ".join("%s %.3f ns" % (r["family"], r["estRecoveryNs"]) for r in s["stageBreakdown"][:4])
     print("round %d starts from the %s: Fmax %.2f MHz, WNS %.4f ns; largest est. recovery: %s" % (k, source, s["fmaxMhz"], s["wnsNs"], top))
 
@@ -386,7 +496,7 @@ def validate_requirements(ws, agent, path=None, files_root=None):
             if not isinstance(r.get(field), str) or not r[field].strip():
                 problems.append("%s: %s must be a non-empty string" % (where, field))
         if isinstance(r.get("target"), str) and not re.search(r"\d+(?:\.\d+)?\s*%", r["target"]):
-            problems.append("%s: target must state a percentage, e.g. 'rise delay -30 %% at fanout 4'" % where)
+            problems.append("%s: target must state a percentage, e.g. 'rise delay -10 %% at fanout 4'" % where)
         ev = r.get("evidence")
         if not ev or not isinstance(ev, (str, dict, list)):
             problems.append("%s: evidence must name the paths, stages or report lines it rests on" % where)
@@ -403,6 +513,41 @@ def validate_requirements(ws, agent, path=None, files_root=None):
     if problems:
         raise ToolError("; ".join(problems))
     return doc, dict(count=len(items), onCriticalPath=on_critical, round=k)
+
+
+def requested_families(inputs, doc):
+    out = []
+    for r in doc.get("requirements") or []:
+        fam = canonical(inputs, r.get("family")) if isinstance(r, dict) else None
+        if fam is not None and fam not in out:
+            out.append(fam)
+    return out
+
+
+def proposal_chart(ws, agent):
+    """reports/<agent node>/r<k>/proposal.chart.json: why this agent asks for these cells, from the
+    tools' own numbers (HimaTime's stage breakdown in state/timing.json; Qualib's stock library)."""
+    ws = Path(ws)
+    doc, facts = validate_requirements(ws, agent)
+    inputs = load_inputs(ws)
+    k, timing = current_round(ws)
+    families = requested_families(inputs, doc)[:16]
+    rows = {r["family"]: r for r in timing.get("stageBreakdown") or []}
+    top = sorted(families, key=lambda f: -rows.get(f, {}).get("estRecoveryNs", 0.0))[:2]
+    if agent == "himatime":
+        made = chart("Why these cells: timing", "", families,
+                     [("Share of worst path, %", [rows.get(f, {}).get("worstPathSharePct", 0.0) for f in families], "neutral"),
+                      ("Worst-path slack back, ps", [rows.get(f, {}).get("worstPathRecoveryPs", 0.0) for f in families], "proposed")],
+                     "HimaTime stage breakdown of the %s, round %d (stage_breakdown.rpt)" % (timing["source"], k),
+                     subtitle="The HimaTime agent's families: their share of the worst path and the slack HimaTime expects back",
+                     highlight=top, better="higher",
+                     caption="Slack back: the worst path's gain if the family's cells were AndesCell-class faster (HimaTime).")
+    else:
+        stock = tool_query(inputs, "qualib", ["list", "--lib", inputs["library"], "--json"])
+        made = library_chart(fo4_rows(stock, families), "Why these cells: library FO4 against the AndesCell target",
+                             "Qualib %s, stock library %s (qualib list)" % (_version(stock), inputs["library"]),
+                             "The Qualib agent's families, round %d: stock FO4 and what a custom cell reaches" % k, highlight=top)
+    return write_chart(ws, AGENT_NODES[agent], k, "proposal", made)
 
 
 def cmd_requirements(ws, agent):
@@ -672,6 +817,39 @@ def validate_check(ws, kind, path=None, files_root=None):
     return doc, facts
 
 
+def check_chart(ws, kind):
+    """reports/<node>/r<k>/<name>.chart.json for an accepted verify delivery, from the tools' own
+    answer: HimaTime's re-timed worst paths (local-gain) or Qualib's screen ratios (screen)."""
+    ws = Path(ws)
+    inputs = load_inputs(ws)
+    k, timing = current_round(ws)
+    gen, verify, screen = tool_facts(ws, inputs, k, timing)
+    if kind == "himatime-verify":
+        local = verify["local"]
+        rows = local["paths"]
+        made = chart("Worst paths with the new cells: slack before and after", "ps", [path_label(p) for p in rows],
+                     [("Before", [1000.0 * p["slackBeforeNs"] for p in rows], "baseline"),
+                      # HimaTime's slack before plus its gain in ps (slackAfterNs is rounded to 0.1 ps)
+                      ("With the new cells", [1000.0 * p["slackBeforeNs"] + p["gainPs"] for p in rows], "measured")],
+                     "HimaTime %s verify --paths %d of %s on the %s (verify.rpt)" % (_version(verify), VERIFY_PATHS, gen["library"], timing["source"]),
+                     subtitle="Local gain on the worst path %s: %.2f ps" % (local["worstPath"], local["localGainPs"]),
+                     better="higher", highlight=[path_label(rows[0])] if rows else (),
+                     caption="Every new cell of the round, extra-fast variants included; the rebuild uses only the cells that pass the screen.")
+        return write_chart(ws, "himatime-verify", k, "local-gain", made)
+    limits = screen["limits"]
+    cells = screen["cells"][:16]
+    made = chart("New cells against the screen limits", "% of limit", [c["name"] for c in cells],
+                 [("Area", [100.0 * c["ratios"]["area"] / limits["area"] for c in cells], "neutral"),
+                  ("Input cap", [100.0 * c["ratios"]["cap"] / limits["cap"] for c in cells], "neutral"),
+                  ("Leakage", [100.0 * c["ratios"]["leakage"] / limits["leakage"] for c in cells], "neutral")],
+                 "Qualib %s cell screen of %s (cell_screen.rpt)" % (_version(screen), gen["library"]),
+                 subtitle="%d of %d cells pass; above 100 %% fails" % (len(screen["passed"]), len(cells)), better="lower",
+                 highlight=[c["name"] for c in cells if c["status"] != "PASS"],
+                 caption="Each ratio to its stock cell, as a share of its limit: area %.2fx, input cap %.2fx, leakage %.2fx."
+                 % (limits["area"], limits["cap"], limits["leakage"]))
+    return write_chart(ws, "qualib-screen", k, "screen", made)
+
+
 def cmd_delivery(ws, kind):
     if kind == "andescell":
         doc, facts = validate_plan(ws)
@@ -733,6 +911,14 @@ def cmd_generate(ws):
                runtimeS=seconds, writtenAt=now())
     write_json(state(ws, "generation.json"), rec)
     publish(ws, "generate-cells", k, [(out / "generation.rpt", "generation.rpt")])
+    cells = manifest["cells"][:16]
+    write_chart(ws, "generate-cells", k, "generation", chart(
+        "New cells against their stock cells", "ps", [c["name"] for c in cells],
+        [("Stock cell FO4", [c["stockFo4DelayPs"] for c in cells], "baseline"), ("AndesCell FO4", [c["fo4DelayPs"] for c in cells], "measured")],
+        "AndesCell %s characterization, %s (generation.rpt)" % (_version(gen), manifest["name"]),
+        subtitle="Round %d: %s" % (k, ", ".join(gen["selected"]) or "no family"), better="lower",
+        highlight=[c["name"] for c in cells if not c["variant"].startswith("XF")],
+        caption="XF cells are extra-fast high-drive variants; the Qualib screen decides whether they may enter a build."))
     print("AndesCell round %d: %d cell(s) in %s (the generation plan's families)" % (k, len(rec["cells"]), ", ".join(rec["selected"]) or "no family"))
 
 
@@ -849,6 +1035,14 @@ def cmd_compare(ws):
         write_json(state(ws, "library.json"), library)
     write_text(ws / "derived" / ("round-%d.md" % k), round_markdown(record))
     publish(ws, "compare-round", k, [(ws / "derived" / ("round-%d.md" % k), "round-%d.md" % k)])
+    write_chart(ws, "compare-round", k, "before-after", chart(
+        "Before and after: the reference build against the new library", "", ["Fmax, MHz", "Worst slack, ps", "TNS, ps"],
+        [("Reference build", [ref["fmaxMhz"], 1000.0 * ref["wnsNs"], 1000.0 * ref["tnsNs"]], "baseline"),
+         ("Round %d new library" % k, [fmax, None if build.get("wnsNs") is None else 1000.0 * build["wnsNs"],
+                                       None if build.get("tnsNs") is None else 1000.0 * build["tnsNs"]], "measured")],
+        "Synthesis and APR post-route summaries, reference and round %d builds (report_qor.rpt)" % k,
+        subtitle="Fmax gain %s %% over the reference build" % _fmt(gain), better="higher",
+        caption=SHOWN_BOUNDARY))
     write_summary(ws)
     print("round %d: Fmax %s MHz vs reference %.2f MHz (%s %%), best %s %%, improved %s, valid %s"
           % (k, fmax, ref["fmaxMhz"], gain, best_gain, improved, valid))
@@ -885,7 +1079,7 @@ def round_markdown(r):
         lines.append("Not generated: %s, %s." % (s["family"], s["reason"]))
     if r["problems"]:
         lines += ["", "Problems: " + "; ".join(r["problems"])]
-    lines += ["", "Claim boundary: " + CLAIM_BOUNDARY, ""]
+    lines += ["", SHOWN_BOUNDARY, ""]
     return "\n".join(lines)
 
 

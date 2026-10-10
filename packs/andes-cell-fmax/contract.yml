@@ -1,5 +1,5 @@
 id: andes-cell-fmax
-version: "0.2.0"
+version: "0.3.0"
 title: New standard cells for a faster aes_cipher_top (AndesCell)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -108,9 +108,9 @@ tools:
   - id: reference-build
     file: flow/andes_cli.py
     description: >-
-      Synthesis and APR (sapr) of aes_cipher_top on the stock library at the 1.000 ns clock, RTL to
+      Synthesis and APR (sapr) of aes_cipher_top on the stock library at the 0.500 ns clock, RTL to
       routed design, into runs/reference/; write state/reference.json from the post-route summary and
-      its reports to reports/reference-build/r1/.
+      its reports to reports/reference-build/r1/, with HimaTime's worst-path slack chart (timing.chart.json).
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', reference, '${WORKSPACE}', '${TIMEOUT_MIN}']
 
@@ -119,7 +119,8 @@ tools:
     description: >-
       Load the build this round starts from into HimaTime (the reference build in round 1, the latest
       new-library build after) and write state/timing.json: Fmax, worst paths and the stage breakdown
-      by cell family with estimated slack recovery. Starts round k = rounds in lessons + 1.
+      by cell family with estimated slack recovery, and the chart of where the worst path's delay goes
+      (reports/load-timing/r<k>/stage-breakdown.chart.json). Starts round k = rounds in lessons + 1.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', timing, '${WORKSPACE}']
 
@@ -127,7 +128,7 @@ tools:
     file: flow/andes_cli.py
     description: >-
       You are the HimaTime timing engineer for this round of new standard cells on aes_cipher_top
-      (28 nm, stock library std9t_svt, clock 1.000 ns). Read timingState (the HimaTime load this
+      (28 nm, stock library std9t_svt, clock 0.500 ns). Read timingState (the HimaTime load this
       round starts from: Fmax, the worst paths, and the stage breakdown by cell family with HimaTime's
       estimated slack recovery), referenceBuild, lessons (every earlier round: what each agent asked
       for, what the AndesCell agent chose and why, the local gains, the screen and the gains) and
@@ -137,7 +138,7 @@ tools:
       (himatime report --db <campaign>/<buildDir of timingState> --stages --paths 5; himatime estimate
       --db ... --families A,B to test a pair) and quote its numbers. Then write 2-5 cell requirements
       for AndesCell, highest impact first, each {family, purpose, target (a percentage, e.g. 'rise
-      delay -30 % at fanout 4'), evidence (the paths and stages it rests on), priority 1-5}. The
+      delay -10 % at fanout 4'), evidence (the paths and stages it rests on), priority 1-5}. The
       AndesCell agent builds at most two new families per round from both agents' lists and never a
       family already in the library. Keep your reports in reports/himatime-agent/r<k>/ of your
       private workspace (k = the round of timingState): analysis.md and HimaTime's
@@ -160,7 +161,7 @@ tools:
     file: flow/andes_cli.py
     description: >-
       You are the Qualib library engineer for this round of new standard cells on aes_cipher_top
-      (28 nm, stock library std9t_svt, clock 1.000 ns). Read timingState (the critical-path stage
+      (28 nm, stock library std9t_svt, clock 0.500 ns). Read timingState (the critical-path stage
       breakdown by cell family this round starts from), referenceBuild, lessons and library (the new
       cells already delivered). Analyse the stock library against the cells on the critical paths:
       run `qualib analyze --lib std9t_svt --timing <campaign>/<reports.summary of timingState> --out
@@ -168,7 +169,7 @@ tools:
       X`, and find the critical-path families whose stock cells leave the most on the table (missing
       drive strengths, rise/fall imbalance, slow arcs, high input capacitance) where a custom cell
       would help. Then write 2-5 cell requirements for AndesCell, highest impact first, each {family,
-      purpose, target (a percentage, e.g. 'rise delay -30 % at fanout 4'), evidence (the library gap
+      purpose, target (a percentage, e.g. 'rise delay -10 % at fanout 4'), evidence (the library gap
       and the critical-path share it rests on), priority 1-5}. The AndesCell agent builds at most two
       new families per round from both agents' lists and never a family already in the library. Keep
       your reports in reports/qualib-agent/r<k>/ of your private workspace (k = the round of
@@ -190,7 +191,7 @@ tools:
     file: flow/andes_cli.py
     description: >-
       You are the AndesCell cell engineer for this round of new standard cells on aes_cipher_top
-      (28 nm, stock library std9t_svt, clock 1.000 ns). Read himatimeRequirements and
+      (28 nm, stock library std9t_svt, clock 0.500 ns). Read himatimeRequirements and
       qualibRequirements (this round's two requirement lists), timingState (HimaTime's stage
       breakdown with the estimated slack recovery per cell family), lessons and library (families
       already delivered). Print both lists as one with `python3 <campaign>/flow/andes_cli.py merged
@@ -223,7 +224,8 @@ tools:
       Run AndesCell on both agents' merged requirements for exactly the generation plan's families,
       against the build this round started from, with every earlier round's library as existing;
       write state/generation.json (families generated, requirements skipped and why, the new cells)
-      and generation.rpt to reports/generate-cells/r<k>/.
+      and generation.rpt with the chart of each new cell's FO4 against its stock cell
+      (generation.chart.json) to reports/generate-cells/r<k>/.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', generate, '${WORKSPACE}']
 
@@ -231,7 +233,7 @@ tools:
     file: flow/andes_cli.py
     description: >-
       You are the HimaTime timing engineer, back for the second half of this round on aes_cipher_top
-      (1.000 ns): AndesCell has built the cells your requirements and the Qualib agent's asked for.
+      (0.500 ns): AndesCell has built the cells your requirements and the Qualib agent's asked for.
       Read generation (the new cells and the directory they are in), timingState (the build this
       round started from) and lessons. Re-time the worst paths of that build with the new cells:
       `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<buildDir of timingState>
@@ -295,7 +297,8 @@ tools:
     description: >-
       Deterministic round record from the reference build and this round's new-library build: Fmax
       gain, best gain, improvement, validity, new-cell usage; append lessons, update the cumulative
-      library, write derived/round-<k>.md (also to reports/compare-round/r<k>/) and derived/summary.md.
+      library, write derived/round-<k>.md (also to reports/compare-round/r<k>/, with the before/after
+      chart before-after.chart.json) and derived/summary.md.
       Uses no model text as a fact.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', compare, '${WORKSPACE}']
@@ -314,7 +317,7 @@ rules:
 
 knowledge:
   - file: design-notes.md
-    purpose: The design's timing at 1 GHz, where the delay goes by cell type, what the flow and the stock library offer, and the custom-cell idea, for the Guide's first conversation.
+    purpose: The design's timing at 2 GHz (0.500 ns), where the delay goes by cell type, what the flow and the stock library offer, and the custom-cell idea, for the Guide's first conversation.
   - file: andes-flow.md
     purpose: The flow, every tool and command, the round loop, the owner's turns and what each round's results mean.
   - file: himatime-playbook.md
@@ -329,7 +332,7 @@ knowledge:
     purpose: What is a tool result, what is a claim, and the claim boundary of this demo.
 
 goal:
-  target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 30, default: 5, precision: 2 }
+  target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 30, default: 1, precision: 2 }
 
 strategy:
   buildTimeoutMin: { type: number, unit: min, min: 5, max: 60, default: 20, precision: 0 }

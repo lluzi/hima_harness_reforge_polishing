@@ -11,7 +11,9 @@ whose numbers or decisions disagree with it.
 
 The values are the tools' numbers, never the agent's text, and are the same on either branch so the
 join judges both branches by one rule set: local_gain_ps (HimaTime's gain on the worst path, ps) and
-cells_passed_screen (cells that pass the Qualib screen).
+cells_passed_screen (cells that pass the Qualib screen). An accepted delivery also gets its chart from
+the same tool answer: reports/himatime-verify/r<k>/local-gain.chart.json or
+reports/qualib-screen/r<k>/screen.chart.json (andes_cli.check_chart).
 """
 import importlib.util
 import json
@@ -42,6 +44,10 @@ def main(report_path, out_path, workspace):
         {"type": "cells_passed_screen", "unit": "count", "value": facts["cellsPassedScreen"]},
         {"type": "cells_faster_than_stock", "unit": "count", "value": facts["cellsFasterThanStock"]},
     ]
+    try:
+        print("wrote %s" % cli.check_chart(workspace, kind))
+    except (cli.ToolError, OSError, ValueError, KeyError) as error:
+        print("no %s chart: %s" % (kind, error), file=sys.stderr)
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)
 
