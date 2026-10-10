@@ -202,7 +202,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             carries a select and an icon-only refresh control, and the missing border made them easy
             to miss beside those. Same markers, same visible text. */}
         <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
-        <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
+        <button className='hima-button hima-studio-secondary' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
       </div>
     </header>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}

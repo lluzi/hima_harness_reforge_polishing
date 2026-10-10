@@ -13,9 +13,8 @@ import { CanvasAttention, ExecutionMarkers } from './FabricCanvas.js';
 import { AI_RING_ID, AI_RING_LIVE_ID, AiRing, CheckMark, CurrentRing, NodeShape, StateGlyph, truncate } from './FabricNode.js';
 import { activityKindKey, aiWorking, engineeringActivityOf } from './engineering-activity.js';
 import type { Acting } from './HimaRunCard.js';
-import { labelKeyed, useHimaT } from './locale/index.js';
+import { useHimaT } from './locale/index.js';
 import { bestHeadline } from './results-view.js';
-import { labelled, runStatusLabel } from '../card-labels.js';
 
 export interface StripCanvasProps {
   readonly graph: PackGraph;
@@ -37,15 +36,13 @@ function targetSaid(value: number, unit: string | undefined): string {
   return `${value > 0 ? '+' : ''}${String(value)}${unit === undefined ? '' : ` ${unit}`}`;
 }
 
-/** "Round k · best +x.xx % · target +y %", each part only when known; an ended Run adds its seal. */
+/** "Round k · best +x.xx % · target +y %", each part only when known (the masthead says how it ended). */
 function TopLine({ round, contract, view }: { round: number; contract: PackContract; view: RunView | undefined }): ReactElement {
   const t = useHimaT();
   const results = contract.results;
   const best = results === undefined || view === undefined ? undefined : bestHeadline(results, view);
   const headline = results?.headline;
   const goal = headline === undefined ? undefined : view?.run.goal?.[headline.type];
-  const status = view?.run.status;
-  const ended = status !== undefined && (status.startsWith('ended-') || status === 'cancelled');
   const parts = [
     t('strip.round', { n: round }),
     ...(best === undefined ? [] : [t('strip.best', { value: best.display })]),
@@ -54,7 +51,6 @@ function TopLine({ round, contract, view }: { round: number; contract: PackContr
   return (
     <p className="hima-strip-top" data-hima-region="strip-top" data-hima-state-round={String(round)}>
       <span>{parts.join(' · ')}</span>
-      {!ended ? null : <span className={`hima-masthead-seal hima-masthead-seal-${status}`}>{' · '}{labelKeyed(t, `status.${status}`, labelled(runStatusLabel, status).said)}</span>}
     </p>
   );
 }
@@ -72,7 +68,6 @@ function Station({ station, view, motionOff }: { station: PlacedStation; view: R
   const activityLine = activity?.latest === undefined ? t('ai.kind.other') : `${t(activityKindKey(activity.latest.kind))} ${activity.latest.title}`;
   const counter = activity === undefined ? undefined
     : activity.planTotal > 0 ? t('ai.counter', { calls: activity.toolCalls, done: activity.planDone, total: activity.planTotal }) : t('ai.calls', { calls: activity.toolCalls });
-  const labelTop = station.cy + 18 + 20;
   return (
     <g className="hima-strip-station" data-hima-region={`strip-station-${station.id}`} data-hima-state-state={station.state} data-hima-state-ai={String(station.ai)}>
       <title>{`${station.label}${station.about === undefined ? '' : ` — ${station.about}`}`}</title>
@@ -81,9 +76,11 @@ function Station({ station, view, motionOff }: { station: PlacedStation; view: R
         {station.ai ? <AiRing node={node} working={working} motionOff={motionOff} /> : null}
         <NodeShape node={node} />
         <StateGlyph node={node} motionOff={motionOff} />
+        {/* A waiting step station is not an empty box: three short lines, a plain list of steps. */}
+        {station.ai || station.state !== 'waiting' ? null : <path className="hima-strip-step-glyph" d="M-7 -5H7M-7 0H7M-7 5H3" />}
       </g>
       {station.labelLines.map((line, index) => (
-        <text key={index} className="hima-node-label" x={station.cx} y={labelTop + index * STRIP_LINE} textAnchor="middle">{line}</text>
+        <text key={index} className="hima-node-label" x={station.cx} y={station.labelY + index * STRIP_LINE} textAnchor="middle">{line}</text>
       ))}
       {station.activityY === undefined ? null : <>
         <text className="hima-node-activity" x={station.cx} y={station.activityY} textAnchor="middle" data-hima-region={`strip-activity-${station.id}`}>
@@ -91,10 +88,11 @@ function Station({ station, view, motionOff }: { station: PlacedStation; view: R
         </text>
         {counter === undefined ? null : <text className="hima-node-activity-count" x={station.cx} y={station.activityY + STRIP_LINE} textAnchor="middle">{counter}</text>}
       </>}
-      {station.placedLines.map((line, index) => line.state === 'hidden' ? null : (
+      {station.placedLines.map((line, index) => line.state === 'hidden' || line.folded === true ? null : (
         <g key={index} className={`hima-strip-line hima-strip-line-${line.state}`} transform={`translate(${line.x},${line.y})`}
-          data-hima-region={`strip-line-${station.id}-${String(index)}`} data-hima-state-state={line.state}>
-          <title>{line.label}</title>
+          data-hima-region={`strip-line-${station.id}-${String(index)}`} data-hima-state-state={line.state}
+          {...(line.folds === undefined ? {} : { 'data-hima-state-folds': String(line.folds) })}>
+          <title>{line.folds === undefined ? line.label : station.placedLines.slice(index, index + line.folds).map((l) => l.label).join(' · ')}</title>
           <CheckMark state={LINE_STATE[line.state]} motionOff={motionOff} />
           {line.text.map((text, at) => <text key={at} className="hima-node-check-text" x={15} y={9 + at * STRIP_LINE}>{text}</text>)}
         </g>
@@ -117,7 +115,8 @@ export function StripCanvas({ graph, contract, view, context, stale, reducedMoti
   }, []);
   const motionOff = reducedMotion || stale;
   const state = useMemo(() => stripState(graph, contract.tools, stripFacts(view)), [graph, contract, view]);
-  const scene = useMemo(() => layoutStrip(state, width), [state, width]);
+  const t = useHimaT();
+  const scene = useMemo(() => layoutStrip(state, width, { done: (n) => t('strip.done', { n }) }), [state, width, t]);
   const current = state.stations.filter((station) => station.state === 'active').map((station) => station.id).join(' ');
   return (
     <div className="hima-canvas-wrap">

@@ -195,14 +195,16 @@ export function stripState(graph: Pick<PackGraph, 'nodes' | 'edges'> & { readonl
 export const STRIP_NODE = 36;
 const HALF = STRIP_NODE / 2;
 /** Room above a square for its rings (the AI ring at +2, the current-node ring at +4). */
-const RING = 6;
-/** One text line (label, activity, checklist). */
-export const STRIP_LINE = 15;
+const RING = 4;
+/** One text line (label, activity, checklist); the type stays at 12-13 px. */
+export const STRIP_LINE = 14;
 /** Width estimates per character: 13 px semibold label, 12 px checklist and activity text. */
 const LABEL_CHAR = 7, TEXT_CHAR = 6.3;
 /** A checklist line's box and the gap before its text. */
 export const STRIP_CHECK_INDENT = 15;
-const ROW_GAP = 40, TOP = 8, BOTTOM = 12, COL_GAP = 14, LANE0 = 8, LANE_STEP = 8, PORT = 7;
+/** A station with more shown lines than this folds its leading done lines into one. */
+export const STRIP_FOLD_OVER = 4;
+const ROW_GAP = 24, TOP = 6, BOTTOM = 8, COL_GAP = 12, LANE0 = 6, LANE_STEP = 7, PORT = 7;
 
 /** A line of text, wrapped between words into at most `lines` lines of `max` characters; the last is
  *  ellipsized if the text runs on. */
@@ -221,9 +223,13 @@ export function wrapWords(text: string, max: number, lines = 2): readonly string
 }
 
 export interface PlacedStripLine extends StripLine {
-  /** Top of the line's check box; the text's first baseline is `y + 9`, each wrapped line 15 below. */
+  /** Top of the line's check box; the text's first baseline is `y + 9`, each wrapped line 14 below. */
   readonly x: number; readonly y: number;
   readonly text: readonly string[];
+  /** The first of a folded run of done lines: how many lines this one line stands for. */
+  readonly folds?: number;
+  /** A done line folded into the line before it: not drawn. */
+  readonly folded?: true;
 }
 
 export interface PlacedStation extends StripStationView {
@@ -232,7 +238,10 @@ export interface PlacedStation extends StripStationView {
   /** The station's own block: its column and its height. */
   readonly left: number; readonly width: number; readonly top: number; readonly bottom: number;
   readonly labelLines: readonly string[];
-  /** Baseline of the first activity line (an active AI station reserves two lines). */
+  /** Baseline of the first label line. */
+  readonly labelY: number;
+  /** Baseline of the activity line; its tool-call count sits one line below (an active AI station
+   *  reserves the two). */
   readonly activityY?: number;
   /** Characters an activity line may run to. */
   readonly textChars: number;
@@ -274,7 +283,25 @@ const spread = (n: number, step: number): number[] => Array.from({ length: n }, 
  * AI agent works there, and its checklist under it; down edges straight from a station's foot to the
  * next station's square; back edges in lanes along the outer sides, entering the square's side.
  */
-export function layoutStrip(state: StripState, width: number): StripScene {
+export interface StripWords {
+  /** The folded line's count, e.g. "4 done". */
+  readonly done: (n: number) => string;
+}
+const ENGLISH: StripWords = { done: (n) => `${String(n)} done` };
+
+/** One line standing for a run of done lines: "First … Last · N done", shortened to fit `max`,
+ *  the count always kept. */
+export function foldedSaid(labels: readonly string[], max: number, words: StripWords = ENGLISH): string {
+  const count = words.done(labels.length);
+  const first = labels[0] ?? '', last = labels[labels.length - 1] ?? '';
+  const full = `${first} … ${last} · ${count}`;
+  if (full.length <= max) return full;
+  const room = max - count.length - 3;
+  if (room >= 8) return `${last.length <= room ? last : `${last.slice(0, room - 1).trimEnd()}…`} · ${count}`;
+  return count;
+}
+
+export function layoutStrip(state: StripState, width: number, words: StripWords = ENGLISH): StripScene {
   const W = Math.max(280, Math.floor(width));
   const rows = [...new Set(state.stations.map((station) => station.row))].sort((a, b) => a - b);
   const sameRow = (edge: StripEdgeView) => state.stations.find((s) => s.id === edge.from)!.row === state.stations.find((s) => s.id === edge.to)!.row;
@@ -297,28 +324,37 @@ export function layoutStrip(state: StripState, width: number): StripScene {
       const left = station.span === 2 ? ML : station.col === 0 ? ML : ML + w + COL_GAP;
       const cx = left + w / 2, cy = top + RING + HALF;
       const labelLines = wrapWords(station.label, Math.max(8, Math.floor((w - 8) / LABEL_CHAR)));
-      let y = cy + HALF + 20 + STRIP_LINE * (labelLines.length - 1);
+      const labelY = cy + HALF + 15;
+      let y = labelY + STRIP_LINE * (labelLines.length - 1);
       const textChars = Math.max(10, Math.floor((w - 8) / TEXT_CHAR));
       let activityY: number | undefined;
       if (station.ai && station.state === 'active') { activityY = y + STRIP_LINE; y += 2 * STRIP_LINE; }
       const shown = station.lines.filter((line) => line.state !== 'hidden');
       const lineChars = Math.max(8, Math.floor((w - 8 - STRIP_CHECK_INDENT) / TEXT_CHAR));
-      const texts = shown.map((line) => wrapWords(line.label, lineChars, 3));
+      // More than four lines: the leading run of done lines folds into one, so the line being
+      // worked and the ones after it stay in view while the ticks still count up.
+      let run = 0;
+      while (run < shown.length && shown[run]!.state === 'done') run += 1;
+      const fold = shown.length > STRIP_FOLD_OVER && run >= 2 ? run : 0;
+      const texts = shown.map((line, i) => (fold > 0 && i === 0 ? [foldedSaid(shown.slice(0, fold).map((l) => l.label), lineChars, words)]
+        : fold > 0 && i < fold ? [] : wrapWords(line.label, lineChars, 3)));
       const longest = Math.max(0, ...texts.flat().map((text) => text.length));
       const blockW = Math.min(w - 8, STRIP_CHECK_INDENT + longest * TEXT_CHAR);
       const x = Math.max(left + 4, cx - blockW / 2);
-      let lineTop = y + 10;
+      let lineTop = y + 6;
       const placedLines: PlacedStripLine[] = [];
-      const textOf = new Map(shown.map((line, i) => [line, texts[i]!]));
+      const indexOf = new Map(shown.map((line, i) => [line, i]));
       for (const line of station.lines) {
-        if (line.state === 'hidden') { placedLines.push({ ...line, x, y: lineTop, text: [] }); continue; }
-        const text = textOf.get(line)!;
-        placedLines.push({ ...line, x, y: lineTop, text });
-        lineTop += STRIP_LINE * text.length + 3;
+        const i = indexOf.get(line);
+        if (i === undefined) { placedLines.push({ ...line, x, y: lineTop, text: [] }); continue; }
+        if (fold > 0 && i > 0 && i < fold) { placedLines.push({ ...line, x, y: lineTop, text: [], folded: true }); continue; }
+        const text = texts[i]!;
+        placedLines.push({ ...line, x, y: lineTop, text, ...(fold > 0 && i === 0 ? { folds: fold } : {}) });
+        lineTop += STRIP_LINE * text.length + 1;
       }
-      const stationBottom = (shown.length === 0 ? y + 4 : lineTop) + 2;
+      const stationBottom = (shown.length === 0 ? y + 4 : lineTop) + 1;
       bottom = Math.max(bottom, stationBottom);
-      placed.push({ ...station, cx, cy, left, width: w, top, bottom: stationBottom, labelLines, ...(activityY === undefined ? {} : { activityY }), textChars, placedLines });
+      placed.push({ ...station, cx, cy, left, width: w, top, bottom: stationBottom, labelLines, labelY, ...(activityY === undefined ? {} : { activityY }), textChars, placedLines });
     }
     top = bottom + ROW_GAP;
   }

@@ -3,7 +3,7 @@
 // in a pane 300–440 px wide. The fixture is the AndesCell Pack 0.2 strip of STRIP-SPEC.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutStrip, stripFacts, stripState, wrapWords } from '../../packages/harness/src/strip-layout.ts';
+import { foldedSaid, layoutStrip, stripFacts, stripState, wrapWords } from '../../packages/harness/src/strip-layout.ts';
 import type { StripState } from '../../packages/harness/src/strip-layout.ts';
 import { bestHeadline } from '../../packages/harness/src/client/results-view.ts';
 import { claimAutoOpen, autoOpened, receiptTime, shouldAutoOpen } from '../../packages/harness/src/client/run-auto-open.ts';
@@ -223,20 +223,28 @@ test('a Run with no generation rows yet reads its node list as round 1', () => {
   assert.equal(stripState(graph, tools, facts).stations[0]!.lines[0]!.state, 'done');
 });
 
+/** Every state the recording shows, for the placement checks. */
+const SHOWN = () => [
+  viewOf({ generation: 1, currentNode: 'reference-build', rows: [generation(1, ['bind-inputs'], ['reference-build'])] }),
+  viewOf({ generation: 1, currentNode: 'requirements-joined', fork: { 'himatime-agent': { currentNode: 'himatime-agent', state: 'running' }, 'qualib-agent': { currentNode: 'qualib-agent', state: 'running' } }, rows: [generation(1, upTo('himatime-agent'), ['himatime-agent', 'qualib-agent'])] }),
+  viewOf({ generation: 1, currentNode: 'andescell-agent', rows: [generation(1, upTo('andescell-agent'), ['andescell-agent'])] }),
+  viewOf({ generation: 2, currentNode: 'cells-verified', fork: { 'himatime-verify': { currentNode: 'himatime-verify', state: 'running' }, 'qualib-screen': { currentNode: 'qualib-screen', state: 'running' } }, rows: [generation(1, ROUND), generation(2, upTo('himatime-verify').slice(4), ['himatime-verify', 'qualib-screen'])] }),
+  viewOf({ generation: 2, currentNode: 'new-library-build', rows: [generation(1, ROUND), generation(2, upTo('new-library-build').slice(4), ['new-library-build'])] }),
+  viewOf({ generation: 3, status: 'ended-goal-met', currentNode: 'next-round', rows: [generation(1, ROUND), generation(2, ROUND.slice(4)), generation(3, ROUND.slice(4))] }),
+];
+
 for (const width of [300, 320, 380, 440]) {
-  test(`placement at ${String(width)} px: inside the pane, rows side by side, back edges outside every station`, () => {
-    for (const s of [
-      state(viewOf({ generation: 1, currentNode: 'reference-build', rows: [generation(1, ['bind-inputs'], ['reference-build'])] })),
-      state(viewOf({ generation: 2, currentNode: 'requirements-joined', fork: { 'himatime-agent': { currentNode: 'himatime-agent', state: 'running' }, 'qualib-agent': { currentNode: 'qualib-agent', state: 'running' } }, rows: [generation(1, ROUND), generation(2, ['load-timing', 'read-timing'], ['himatime-agent', 'qualib-agent'])] })),
-    ]) {
+  test(`placement at ${String(width)} px: every box, line and lane inside the pane, rows side by side, back edges outside every station`, () => {
+    for (const s of SHOWN().map((view) => state(view))) {
       const scene = layoutStrip(s, width);
       assert.equal(scene.width, width);
       for (const placed of scene.stations) {
         assert.ok(placed.left >= 0 && placed.left + placed.width <= width, `${placed.id} sits inside the pane`);
-        for (const line of placed.placedLines) if (line.state !== 'hidden') {
+        assert.ok(placed.cx - 22 >= 0 && placed.cx + 22 <= width, `${placed.id}'s square and rings sit inside the pane`);
+        for (const line of placed.placedLines) if (line.state !== 'hidden' && line.folded !== true) {
           const longest = Math.max(...line.text.map((text) => text.length));
           assert.ok(line.x >= placed.left && line.x + 15 + longest * 6.3 <= placed.left + placed.width + 0.5, `${placed.id} · ${line.label} fits its column`);
-          assert.ok(line.text.length <= 3);
+          assert.ok(line.text.length >= 1 && line.text.length <= 3);
         }
       }
       const [h, q] = [scene.stations.find((x) => x.id === 'himatime')!, scene.stations.find((x) => x.id === 'qualib')!];
@@ -246,17 +254,36 @@ for (const width of [300, 320, 380, 440]) {
       assert.ok(rtl.bottom < h.top && Math.max(h.bottom, q.bottom) < andes.top, 'rows do not overlap');
       const minLeft = Math.min(...scene.stations.map((x) => x.left)), maxRight = Math.max(...scene.stations.map((x) => x.left + x.width));
       for (const e of scene.edges) {
-        const xs = [...e.path.matchAll(/[MLQ]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Number(m[1]));
-        assert.ok(xs.every((x) => x >= 0 && x <= width), `${e.from}>${e.to} stays inside the pane`);
+        const points = [...e.path.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
+        assert.ok(points.every(([x, y]) => x >= 2 && x <= width - 2 && y >= 0 && y <= scene.height), `${e.from}>${e.to} stays inside the pane`);
         if (e.kind === 'back') {
+          const xs = points.map(([x]) => x);
           const lane = e.side === 'left' ? Math.min(...xs) : Math.max(...xs);
           assert.ok(e.side === 'left' ? lane < minLeft : lane > maxRight, `${e.from}>${e.to} runs outside every station`);
         }
       }
       assert.ok(scene.height > andes.bottom);
+      // The recording's pane body is about 380 x 690; below the header, masthead, tabs and top line
+      // the strip has about 540 px, and it must show whole in every state.
+      if (width >= 380) assert.ok(scene.height <= 520, `the strip fits the pane without scrolling (${String(scene.height)} px)`);
     }
   });
 }
+
+test('more than four shown lines: the leading run of done lines folds into one line that keeps the count', () => {
+  const fork = layoutStrip(state(SHOWN()[1]!), 380).stations.find((x) => x.id === 'rtl2gds')!;
+  const drawn = fork.placedLines.filter((line) => line.state !== 'hidden' && line.folded !== true);
+  assert.equal(drawn[0]!.folds, 4);
+  assert.match(drawn[0]!.text[0]!, /4 done$/);
+  assert.deepEqual(drawn.slice(1).map((line) => [line.label, line.state]), [['Local gain confirmed', 'pending'], ['Rebuild with new cells', 'pending'], ['Compare with the reference', 'pending'], ['Next round', 'pending']]);
+  const baseline = layoutStrip(state(SHOWN()[0]!), 380).stations.find((x) => x.id === 'rtl2gds')!;
+  assert.ok(baseline.placedLines.every((line) => line.folds === undefined), 'one done line does not fold');
+  const agents = layoutStrip(state(SHOWN()[3]!), 380).stations.find((x) => x.id === 'himatime')!;
+  assert.ok(agents.placedLines.every((line) => line.folds === undefined), 'a station of two lines never folds');
+  assert.equal(foldedSaid(['Check tools and design', 'Reference build', 'Reference timing clean', 'Load into HimaTime'], 60), 'Check tools and design … Load into HimaTime · 4 done');
+  assert.equal(foldedSaid(['Check tools and design', 'Reference build', 'Reference timing clean', 'Load into HimaTime'], 30), 'Load into HimaTime · 4 done');
+  assert.equal(foldedSaid(['a', 'b'], 9), '2 done');
+});
 
 test('wrapWords breaks between words into at most two lines and ellipsizes the rest', () => {
   assert.deepEqual(wrapWords('Find the bottleneck, write requirements', 20), ['Find the bottleneck,', 'write requirements']);

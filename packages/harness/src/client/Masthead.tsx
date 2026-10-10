@@ -82,13 +82,13 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
       data-hima-state-status={status ?? ''} data-hima-state-current={run?.currentNode ?? ''} data-hima-state-generation={run?.generation === undefined ? '' : String(run.generation)}
       data-hima-state-purpose={run?.purpose ?? 'campaign'}>
       <div className="hima-masthead-id">
-        <h2>{name ?? fallbackTitle}{purposeMark === undefined ? null : ` · ${purposeMark}`}</h2>
+        <h2 title={`${name ?? fallbackTitle}${purposeMark === undefined ? '' : ` · ${purposeMark}`}`}>{name ?? fallbackTitle}{purposeMark === undefined ? null : ` · ${purposeMark}`}</h2>
         <p className="hima-masthead-sub">
           {said === undefined
             ? (view === undefined ? null : <span className="hima-masthead-seal">{t('masthead.noFabricState')}</span>)
             : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said}</span>}
           {currentSaid === undefined ? null : <span> · {currentSaid}</span>}
-          {run?.generation === undefined ? null : <span> · {t('masthead.gen', { n: run.generation })}</span>}
+          {run?.generation === undefined ? null : <span className="hima-masthead-round"> · {t('masthead.gen', { n: run.generation })}</span>}
           {elapsedPhrase === undefined ? null : <span className="hima-masthead-elapsed"> · {elapsedPhrase}</span>}
           {budgetWord === undefined ? null : <span className="hima-masthead-budget"> · {budgetWord}</span>}
         </p>
