@@ -88,6 +88,11 @@ export const HIMA_STYLE = `
 .hima-detail .hima-results-table{min-width:0}
 .hima-results-table th,.hima-results-table td{padding:var(--hima-sp-1) var(--hima-sp-3);border-bottom:1px solid var(--hima-line);text-align:right;white-space:nowrap}
 .hima-results-table th[scope=row],.hima-results-table thead th:first-child{text-align:left;font-weight:500;color:var(--hima-ink-2)}
+/* A narrow pane: the table takes the pane's width; labels and column titles wrap, numbers never. */
+.hima-results-table{width:100%;table-layout:fixed}
+.hima-results-table thead th,.hima-results-table th[scope=row]{white-space:normal;overflow-wrap:anywhere}
+.hima-results-table thead th:first-child,.hima-results-table th[scope=row]{width:46%}
+@container (max-width:460px){.hima-results-table th,.hima-results-table td{padding:var(--hima-sp-1) var(--hima-sp-2)}}
 .hima-results-table thead th{font-weight:600;color:var(--hima-ink)}
 .hima-results-better{color:var(--hima-good);font-weight:650}
 .hima-activity{margin:0 var(--hima-sp-3) var(--hima-sp-3);background:var(--hima-glass);color:var(--hima-glass-ink);border-radius:var(--hima-r-m);display:flex;flex-direction:column;flex:1;min-height:168px;overflow:hidden}
