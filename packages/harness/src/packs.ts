@@ -738,6 +738,11 @@ export const packResults = z.strictObject({
 });
 export type PackResults = z.infer<typeof packResults>;
 
+/** Where a Pack's tools and agents leave the human-readable tool reports a person opens on the
+ *  Reports face: `<dir>/<node id>/r<round>/<file>`, relative to the Campaign workspace. Display only. */
+export const packReports = z.strictObject({ dir: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/) });
+export type PackReports = z.infer<typeof packReports>;
+
 export const packContract = z.strictObject({
   id: packId,
   version: z.string(),
@@ -821,6 +826,8 @@ export const packContract = z.strictObject({
   words: z.record(declaredName, packWord).default({}),
   /** The Results face's before/after table. Optional; absent keeps the plain observation list. */
   results: packResults.optional(),
+  /** The Reports face's tool-report folder. Optional; absent shows no tool reports. */
+  reports: packReports.optional(),
 });
 export type PackContract = z.infer<typeof packContract>;
 export type PackTool = z.infer<typeof packTool>;
@@ -1074,6 +1081,37 @@ export const segmentAutopilot = z.strictObject({
 export type ForkAutopilot = z.infer<typeof forkAutopilot>;
 export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
 
+/**
+ * **The strip** (2026-10-10): a Pack's compact view of its graph for a narrow pane. A few stations,
+ * each drawn as one node with a checklist; edges between stations come from the graph's own edges
+ * that cross from one station to another (a station's edge to a station on an earlier row is drawn
+ * as a back edge along the side). Display only: routing, execution and records keep using node ids.
+ */
+export const viewChecklistItem = z.strictObject({
+  label: displayLabel,
+  /** The nodes this line stands for, in graph order. It is ticked when the last of them that this
+   *  round reaches has been visited in this round. */
+  nodes: z.array(packId).min(1).max(16),
+  /** Which rounds show the line: the first round only, later rounds only, or every round. */
+  rounds: z.enum(['first', 'later', 'all']).default('all'),
+});
+export const viewStation = z.strictObject({
+  id: packId,
+  label: displayLabel,
+  about: displayAbout.optional(),
+  /** The station's row in the strip, 0 at the top; at most two stations share a row (side by side,
+   *  in declared order). */
+  row: z.number().int().min(0).max(5),
+  checklist: z.array(viewChecklistItem).min(1).max(12),
+});
+export const packView = z.strictObject({
+  stations: z.array(viewStation).min(2).max(6),
+  /** Nodes no station lists: drawn nowhere (a wait node is surfaced by the Run's own blocker). */
+  hidden: z.array(packId).default([]),
+});
+export type PackView = z.infer<typeof packView>;
+export type ViewStation = z.infer<typeof viewStation>;
+
 export const packGraph = z.strictObject({
   id: packId,
   version: z.string(),
@@ -1084,6 +1122,8 @@ export const packGraph = z.strictObject({
   loops: z.record(packId, packLoop).default({}),
   /** Where the Harness drives the graph itself (ADR-0016). Absent: every node is the owner's. */
   autopilot: z.array(z.union([forkAutopilot, segmentAutopilot])).max(16).default([]),
+  /** The strip view of this graph. Optional; absent draws the full canvas. */
+  view: packView.optional(),
 });
 export type PackGraph = z.infer<typeof packGraph>;
 
@@ -2217,6 +2257,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   }
   validateGenerationLimit(graph, broken);
   validateAutopilot(pack, broken);
+  validateView(pack, broken);
 }
 
 /** Cross-check the static recipe only. Dispatch and dependency settlement stay explicit owner acts. */
@@ -2832,6 +2873,32 @@ export const autopilotDrives = (pack: Pick<Pack, 'graph'>, nodeId: string): bool
  * segment stops. **No person inside the loop**: a judge in a segment labels its UNDETERMINED, since
  * an unlabelled one waits for a person. Segments overlap neither each other nor a fork's branches.
  */
+/** The strip names only nodes of the graph, every node exactly once (a checklist line or
+ *  `hidden`), unique station ids, and at most two stations per row. */
+function validateView(pack: Pack, broken: (file: string, why: string) => never): void {
+  const view = pack.graph.view;
+  if (view === undefined) return;
+  const ids = new Set(pack.graph.nodes.map((node) => node.id));
+  const placed = new Map<string, string>();
+  const place = (id: string, where: string) => {
+    if (!ids.has(id)) broken(packFiles.graph, `view: ${where} names "${id}", which is not a node of its graph`);
+    const other = placed.get(id);
+    if (other !== undefined) broken(packFiles.graph, `view: "${id}" is in ${other} and in ${where}; every node is in one place`);
+    placed.set(id, where);
+  };
+  const stations = new Set<string>();
+  const rows = new Map<number, number>();
+  for (const station of view.stations) {
+    if (stations.has(station.id)) broken(packFiles.graph, `view: station "${station.id}" is declared twice`);
+    stations.add(station.id);
+    rows.set(station.row, (rows.get(station.row) ?? 0) + 1);
+    if (rows.get(station.row)! > 2) broken(packFiles.graph, `view: row ${String(station.row)} holds more than two stations`);
+    for (const item of station.checklist) for (const id of item.nodes) place(id, `station "${station.id}"`);
+  }
+  for (const id of view.hidden) place(id, 'hidden');
+  for (const id of ids) if (!placed.has(id)) broken(packFiles.graph, `view: node "${id}" is in no station and not hidden`);
+}
+
 function validateAutopilot(pack: Pack, broken: (file: string, why: string) => never): void {
   const graph = pack.graph;
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
