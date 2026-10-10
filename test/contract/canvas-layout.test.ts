@@ -402,6 +402,25 @@ test('an AI node counts as working while its execution is open or its agent repo
   assert.equal(aiWorking(view('working'), 'other'), false, 'only its own node');
 });
 
+test('the andes-cell-fmax lanes depend only on the graph: round 2 with HimaTime running and Qualib done lays out exactly as round 1', () => {
+  const pack = loadPack(packsDir, 'andes-cell-fmax');
+  const context = { available: [], method: { contract: pack.contract } } as unknown as ExecutionContext;
+  const positions = (view: RunView) => {
+    const { graph, facts } = sceneInputs(pack.graph, view, context);
+    return layoutCanvas(graph, facts).nodes.map((n) => [n.id, n.x, n.y]);
+  };
+  const first = positions({ run: { currentNode: 'read-timing', generation: 1 }, nodes: [{ nodeId: 'bind-inputs', state: 'done' }], generations: [{ generation: 1, branches: [] }] } as unknown as RunView);
+  const second = positions({
+    run: { currentNode: 'himatime-agent', generation: 2, fork: { from: 'read-timing', join: 'requirements-joined', branches: { 'qualib-agent': 'qualib-agent', 'himatime-agent': 'himatime-agent' } } },
+    nodes: [{ nodeId: 'bind-inputs', state: 'done' }, { nodeId: 'read-timing', state: 'done' }, { nodeId: 'qualib-agent', state: 'done' }, { nodeId: 'himatime-agent', state: 'running' }],
+    // The latest generation's fold lists the branches in the order they ran, possibly only some.
+    generations: [{ generation: 1, branches: [] }, { generation: 2, branches: [{ id: 'qualib-agent', nodes: [{ nodeId: 'qualib-agent' }] }] }],
+  } as unknown as RunView);
+  assert.deepEqual(second, first);
+  const y = (id: string) => first.find(([candidate]) => candidate === id)![2] as number;
+  assert.ok(y('himatime-agent') < y('seg:bind-inputs') && y('qualib-agent') < y('himatime-agent'), 'HimaTime nearest the spine, Qualib above it');
+});
+
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
   assert.equal(goalSaid({ target_period_ns: 2.3 }, { goal: { target_period_ns: { label: 'clock period', unit: 'ns' } } } as never), 'clock period 2.3 ns');
   assert.equal(goalSaid({ target_period_ns: 2.3 }, undefined), 'target_period_ns 2.3');

@@ -328,12 +328,14 @@ function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, 
  * Only a real collision moves a node: a linear graph stays on row 0, and a node at a half rank never
  * shares a row with a neighbour half a pitch away, since their labels would run into each other. */
 function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, rank: ReadonlyMap<string, number>, fork: LayoutFacts['fork'] | undefined, pitch = PITCH): Map<string, number> {
-  const detected = fork === undefined ? autoDetectForkBranches(nodes, edges) : { node: fork.node, branches: fork.branches };
-  const branchOffset = new Map<string, number>();
-  const n = detected?.branches.length ?? 0;
   // A graph with merged steps keeps the room below its spine for their checklists, so a fork's
   // lanes all open above it instead: branch i at lane -(i + 1). Every other graph fans symmetrically.
+  // Those lanes come from the graph alone — never from the Run's fork record, whose branch list
+  // follows the current generation's execution history and so changed between rounds.
   const above = nodes.some((node) => node.members !== undefined);
+  const detected = fork === undefined || above ? autoDetectForkBranches(nodes, edges) : { node: fork.node, branches: fork.branches };
+  const branchOffset = new Map<string, number>();
+  const n = detected?.branches.length ?? 0;
   const wide = above;
   // Above the spine, the first branch in the graph's own order takes the lane nearest it.
   const position = new Map(nodes.map((node, i) => [node.id, i]));
