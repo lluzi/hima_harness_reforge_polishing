@@ -204,7 +204,7 @@ test('the knowledge charts are hima-chart/1 files the tools produce today, and t
   const notes = await readFile(path.join(packDir, 'knowledge/design-notes.md'), 'utf8');
   for (const name of names) assert.ok(notes.includes(`charts/${name}`), `design-notes.md names charts/${name}`);
   assert.match(notes, /hima_chart/);
-  assert.doesNotMatch(notes, /\b(1[0-9]{2}|[2-9][0-9]{2}) ps of\b/, 'no per-cell 100+ ps figure');
+  assert.doesNotMatch(notes, /\b[A-Z][A-Z0-9]+ [0-9]{3}(\.[0-9]+)? ps\b/, 'no per-cell 100+ ps figure');
 });
 
 test('the mock EDA toolchain unit suite passes (python3 -m unittest)', () => {

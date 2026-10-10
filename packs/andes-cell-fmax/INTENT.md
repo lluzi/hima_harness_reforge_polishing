@@ -1,6 +1,6 @@
 ## Business
 
-A chip designer wants `aes_cipher_top` (28 nm, stock library `std9t_svt`, 1.000 ns clock) to run
+A chip designer wants `aes_cipher_top` (28 nm, stock library `std9t_svt`, 0.500 ns clock) to run
 faster without touching the RTL or the clock, by adding custom standard cells to the library. The
 delivery is a new cell library and the evidence that it raises Fmax: a before/after table of the
 new-library build against the reference build.
@@ -22,6 +22,12 @@ agent and Qualib agent with a measured local positive gain, then fed back to the
 App draws it as four stations in a phone-width strip; every step leaves its tool reports where the
 App's Reports tab reads them.
 
+Version 0.3 (user, 2026-10-10, strip demo v3): one round demonstrates the App. "Pretend this is a
+~2 GHz design": the target is +1 % Fmax, a custom cell gives about 5–10 % at cell level, the data
+path has 20–30 levels of logic, and no single cell contributes 100+ ps. The chat shows charts whose
+numbers come from the tools: the Guide's design charts, each agent's "why these cells" chart before
+the AndesCell agent, the local gain and the before/after comparison.
+
 ## Answers
 
 - Tools on screen: AndesCell (cell generation), HimaTime (STA), Synthesis and APR (synthesis + APR),
@@ -36,11 +42,12 @@ App's Reports tab reads them.
   `reports/<node id>/r<k>/` in the Campaign workspace; the App shows them in small type in the strip
   (user, 2026-10-10). Nothing on screen says "mock"; the claim boundary stays in the round records,
   the summary and the Report.
-- Goal: Fmax gain over the reference build of at least 5 % (default).
+- Goal: Fmax gain over the reference build of at least 1 % (default); one round is expected to
+  reach it (round 1: +1.51 %), and the Campaign allows two.
 
 ## Ambiguities resolved
 
-- "Better Fmax" is 1000 / (1.000 ns − worst slack) of the new-library build against the reference
+- "Better Fmax" is 1000 / (0.500 ns − worst slack) of the new-library build against the reference
   build of the same design at the same clock; rounds accumulate cells, so each round's build has
   every earlier round's accepted cells.
 - AndesCell builds at most two families per round. The AndesCell agent chooses them from both
@@ -57,7 +64,7 @@ App's Reports tab reads them.
   on most worst paths, 3–7 buffers per path, slow rising edges through stacked AOI/OAI inputs), and
   that adding every candidate cell can make a design slower; only cells on the worst paths help.
 - Requirements are claims until AndesCell, the Qualib screen, HimaTime's verification and the
-  rebuild measure them; the Reader, not the agent, produces every result number. For the verify
+  rebuild measure them; the Reader, not the agent, produces every result number and every chart. For the verify
   deliveries the Reader asks HimaTime and Qualib again and refuses numbers that disagree.
 - Verify outside, equip inside (Hima as an agent OS, 2026-10-05): the agents run the tools and
   decide; the Pack's prechecks, Readers and judges hold their deliveries to the tools' own answers.

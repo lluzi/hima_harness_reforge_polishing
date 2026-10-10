@@ -1,7 +1,7 @@
 ## Goal template
 
 A Campaign of this Pack asks for new standard cells that make `aes_cipher_top` faster than its
-reference build. Goal parameter `target_fmax_gain_pct` (percent, 0.1–30, default 5): the best valid
+reference build. Goal parameter `target_fmax_gain_pct` (percent, 0.1–30, default 1): the best valid
 round's Fmax gain over the reference build must reach it. Strategy: `buildTimeoutMin` (min, default
 20, per Synthesis and APR run) and `roundRevision` (count, the round counter the chooser advances).
 
@@ -12,9 +12,12 @@ round's Fmax gain over the reference build must reach it. Strategy: `buildTimeou
   `workspaceRoot`; at most three Site jobs at once (two resident agents and one Reader fit).
 - Reports (`contract.reports.dir: reports`): every step writes its human-readable reports to
   `reports/<node id>/r<k>/`; a resident agent's `artifactPrefix` is `reports/<its node id>`, so its
-  delivered reports land in the same place.
-- Clock fixed at 1.000 ns; RTL and flow settings fixed; only new cells change the build.
-- At most two new families per round (AndesCell); at most 4 rounds (`generationLimit`).
+  delivered reports land in the same place. Charts (`hima-chart/1`, `<name>.chart.json`) sit beside
+  them, written by the Pack's steps and by the Readers that accept agent deliveries from the tools'
+  own output; three knowledge charts for the Guide are in `knowledge/charts/`
+  (`flow/knowledge_charts.py` writes them from the Site's tools).
+- Clock fixed at 0.500 ns (2 GHz); RTL and flow settings fixed; only new cells change the build.
+- At most two new families per round (AndesCell); one round is expected, at most 2 (`generationLimit`).
 
 ## Run contract
 
@@ -32,16 +35,32 @@ segments: bind→read-timing (which opens the propose fork), `requirements-joine
 `andescell-agent`), `generate-cells` (which opens the verify fork), `cells-verified`→`judge-round`.
 The owner drives the five resident nodes (begin, `engineering start`, delivery, release, complete)
 and decides `next-round`. FAIL or UNDETERMINED at any join or at `check-reference` goes to `blocked`.
-Budget: time box 3 h with a 10 min closing reserve; `generationLimit: 4`; converge on
+Budget: time box 3 h with a 10 min closing reserve; `generationLimit: 2`; converge on
 `best_fmax_mhz` (band 0.001 MHz, 2 generations).
 
 The strip (`graph.yml view`): `rtl2gds` (row 0; bind through read-timing, `cells-verified`, the
 rebuild through `next-round`), `himatime` and `qualib` (row 1; propose and verify), `andescell`
 (row 2; `requirements-joined`, `andescell-agent`, `generate-cells`); `blocked` hidden.
 
+Charts (`hima-chart/1`), one per step beside its reports:
+
+| Step | File under `reports/<step>/r<k>/` | Written by | Shows |
+| --- | --- | --- | --- |
+| `reference-build` | `timing.chart.json` | `andes_cli.py reference` (`himatime report --json`) | slack of the 8 worst paths |
+| `load-timing` | `stage-breakdown.chart.json` | `andes_cli.py timing` | share of the worst path's delay by cell family |
+| `himatime-agent` | `proposal.chart.json` | Reader `andes-requirements` on acceptance | "Why these cells: timing": worst-path share (%) and slack back (ps) per requested family |
+| `qualib-agent` | `proposal.chart.json` | Reader `andes-requirements` on acceptance (`qualib list --json`) | "Why these cells: library FO4 ...": stock FO4 against the AndesCell target (ps) |
+| `generate-cells` | `generation.chart.json` | `andes_cli.py generate` | each new cell's FO4 against its stock cell |
+| `himatime-verify` | `local-gain.chart.json` | Reader `andes-verify` on acceptance (`himatime verify --json`) | worst-path slack before and with the new cells |
+| `qualib-screen` | `screen.chart.json` | Reader `andes-verify` on acceptance (`qualib screen --json`) | area, input cap and leakage as a share of each screen limit |
+| `compare-round` | `before-after.chart.json` | `andes_cli.py compare` | Fmax, worst slack and TNS, reference against new library |
+
+Knowledge charts (`knowledge/charts/`): `stage-breakdown`, `worst-paths`, `library-fo4`. A chart
+carries no timestamp: the same tool output always gives the same bytes.
+
 ## Semantics
 
-`design_fmax_mhz` = 1000 / (1.000 − WNS) from the sapr post-route summary (reference build via
+`design_fmax_mhz` = 1000 / (0.500 − WNS) from the sapr post-route summary (reference build via
 `andes-reference`, new-library build via `andes-round`). `fmax_gain_pct` = new-library Fmax /
 reference Fmax − 1; `best_gain_pct` = best valid round's; `best_fmax_mhz` monotone. `round_valid`:
 the build finished at the reference clock, route DRC 0, only screened and verified new cells used.
@@ -62,8 +81,8 @@ Reader on either verify branch. `plan_valid`, `verify_delivery_valid`: a deliver
 
 ## Choosers
 
-`andes-next` at `next-round`: constraint PASS and Goal PASS → goal met; otherwise
-`next: {roundRevision: roundStep}` (another round). Reads `best_fmax_mhz` for convergence; changes
+`andes-next` at `next-round`: constraint PASS and Goal PASS → goal met (expected after round 1);
+otherwise `next: {roundRevision: roundStep}` (another round, at most one more). Reads `best_fmax_mhz` for convergence; changes
 only the round counter.
 
 ## Endings

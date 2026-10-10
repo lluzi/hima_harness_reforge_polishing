@@ -1,9 +1,12 @@
 ## Files written
 
-- `contract.yml` (0.2.0, `reports: { dir: reports }`), `graph.yml` (with the strip `view`),
-  `semantics.yml`; `flow/andes_cli.py` (every tool step, the requirements, plan and verify
-  validators, `merged`, `precheck`); `tools/read-{reference,timing,requirements,plan,verify,round}.py`
-  with `readers/*.yml`; `rules/*.yml` (eight); `choosers/andes-next.yml`; `knowledge/*.md` (six).
+- `contract.yml` (0.3.0, `reports: { dir: reports }`, default Goal +1 %), `graph.yml` (with the
+  strip `view`; `generationLimit: 2`), `semantics.yml`; `flow/andes_cli.py` (every tool step, the
+  requirements, plan and verify validators, `merged`, `precheck`, the chart builders);
+  `flow/knowledge_charts.py` (writes `knowledge/charts/*.chart.json` from the Site's tools);
+  `tools/read-{reference,timing,requirements,plan,verify,round}.py` with `readers/*.yml`;
+  `rules/*.yml` (eight); `choosers/andes-next.yml`; `knowledge/*.md` (seven) and
+  `knowledge/charts/` (three charts).
 - Outside the Pack: `sites/eda_cluster_ctu_01/` (Site, Permit, capability, mock toolchain and its
   tests) and `test/contract/andes-cell-fmax*.ts`.
 
@@ -40,7 +43,10 @@ Pack tools copy their tool's human-readable reports to `reports/<node id>/r<k>/`
 (`tools.rpt`), `reference-build` and `new-library-build` (`report_qor.rpt`, `postroute_timing.rpt`,
 `area.rpt`, `route_drc.rpt`; the rebuild adds `himatime report`'s `report_timing.rpt`),
 `load-timing` (`report_timing.rpt`, `stage_breakdown.rpt`), `generate-cells` (`generation.rpt`),
-`compare-round` (`round-<k>.md`, which carries the claim boundary). A resident agent's
+`compare-round` (`round-<k>.md`, which states the claim boundary in plain words). Each step also
+writes a `hima-chart/1` chart beside its reports (SPEC.md, Charts); the proposal, local-gain and
+screen charts come from the Reader that accepts the agent's delivery, from the tools' own answer,
+so an agent never types a chart's numbers. A resident agent's
 `artifactPrefix` is `reports/<its node id>`: it keeps its `analysis.md` and the tool reports it used
 in `reports/<node id>/r<k>/` of its private workspace and delivers them as support, which the Host
 materializes at the same path in the Campaign workspace. No copy step and no second location.
@@ -68,7 +74,8 @@ answers `-version`. One reference build and one round with hand-written requirem
 | compare-round | 0.1 s |
 
 Round 1 (XNOR3+BUF requested by HimaTime, XNOR3+XOR2 by Qualib): AndesCell picked XNOR3 and BUF,
-4 of 6 cells passed the screen, Fmax 957.67 → 981.64 MHz (+2.50 %), 474 new-cell instances. In the
+4 of 6 cells passed the screen, Fmax 957.67 → 981.64 MHz (+2.50 %; the 1 GHz calibration of 0.1,
+replaced in 0.3 by the 2 GHz one), 474 new-cell instances. In the
 podman sandbox image (`c8e8a7a4…`, python3 3.12, toolchain read-only, CTU_MOCK_TIME_SCALE 0.25):
 `himatime load` 3.1 s, `qualib analyze` 2.3 s, `himatime report/estimate`, `andescell --dry-run`
 and the Pack precheck instant.
@@ -81,14 +88,21 @@ and the Pack precheck instant.
   verifies while Qualib screens; the rebuild then uses only the cells the screen passes.
 - A Qualib agent that fails every cell the screen passes still passes the join (the rule reads the
   tool's pass count); the rebuild then places no new cell and `cells-used` fails the round.
-- Pack 0.2 is not yet smoke-tested on linglong.
+- Pack 0.2 and 0.3 are not yet smoke-tested on linglong.
+- The proposal, local-gain and screen charts are written by Readers (a Reader's only other side
+  effect is its OUT file). A Reader that cannot write its chart still accepts the delivery and says
+  so on stderr; the chart is then missing from Reports.
+- The design model of 0.3 (a ~2 GHz block, 0.500 ns): reference Fmax 1951.60 MHz (WNS −12.4 ps);
+  round 1 with XNOR3 and BUF reaches 1980.98 MHz (+1.51 %). HimaTime's estimated recovery ranks
+  XNOR3 and BUF first, while `himatime estimate` gives other pairs more (XNOR3+XOR2 +1.67 %): the
+  AndesCell agent follows the recovery ranking, and either pair meets the +1 % Goal.
 
 ## Reviews
 
-- Pack load, stage, strip and semantics: `test/contract/andes-cell-fmax.test.ts` (8 tests),
-  including a refused strip and the mock toolchain unit suite (10 tests).
-- Host dry path (`andes-dry` group, 2026-10-10, ~45 s): propose fork, AndesCell agent, generate,
-  verify fork and rebuild through the stand-in, three rounds to goal-met (+2.50 / +3.40 / +5.20 %,
-  local gains 168.48 / 131.52 / 123.48 ps), a refused requirements list and a refused local-gain
-  number each repaired in the same task, every report at `reports/<node>/r<k>/`.
+- Pack load, stage, strip, semantics and knowledge charts: `test/contract/andes-cell-fmax.test.ts`
+  (9 tests), including a refused strip and the mock toolchain unit suite (13 tests).
+- Host dry path (`andes-dry` group, 2026-10-10, ~27 s, Pack 0.3): propose fork, AndesCell agent,
+  generate, verify fork and rebuild through the stand-in, one round to goal-met (+1.51 %, local
+  gain 16.88 ps), a refused requirements list and a refused local-gain number each repaired in the
+  same task, a report and a chart from every step at `reports/<node>/r1/`.
 - Site smoke on linglong (2026-10-10): every CLI and one reference build plus one round, timings above.

@@ -9,8 +9,9 @@ cells AndesCell built.
 
 - `timingState` (`state/timing.json`): `round` (your k), `source`, `fmaxMhz`, `wnsNs`,
   `worstPaths` (id, group, start/end, slack, cell delay by family) and `stageBreakdown` (per family:
-  stages, cell delay, share of path delay, worst-path share, `estRecoveryNs`, achievable speed-up,
-  whether it is already generated).
+  stages, cell delay, ps per stage, share of path delay, worst-path share, `estRecoveryNs`, the
+  worst path's own slack back `worstPathRecoveryPs`, achievable speed-up, whether it is already
+  generated).
 - `lessons` (`state/lessons.json`): earlier rounds, what was requested, picked, skipped, gained.
 - `library` (`state/library.json`): families already delivered. They are not generated again.
 
@@ -22,21 +23,24 @@ cells AndesCell built.
 2. Group by path group: S-box/MixColumns paths are XNOR3/BUF/XOR2-heavy, key expansion is
    XOR2/MUX2I-heavy, load/round control is AOI21/OAI21-heavy, output decode is NAND2/NOR2-heavy.
    The worst group sets Fmax now; the next group sets it once the worst one is fixed.
-3. `estRecoveryNs` is HimaTime's own ranking signal (criticality-weighted slack it expects back);
-   AndesCell ranks your families by it. `worstPathSharePct` tells you what limits Fmax right now.
-4. Test pairs: `himatime estimate --db <campaign>/<buildDir> --families XNOR3,BUF` prints the
-   estimated Fmax with both families faster. Try 2-3 pairs; the best pair is your top two.
-5. Net delay is about a quarter of path delay and no cell changes it; DFF clock-to-Q helps only a
-   little (−10 % achievable).
+3. `estRecoveryNs` is HimaTime's own ranking signal (criticality-weighted slack it expects back
+   over all the worst paths); AndesCell ranks your families by it. `worstPathSharePct` and
+   `worstPathRecoveryPs` tell you what limits Fmax right now. A stage is 10–30 ps: no single cell
+   is slow, so look for the families with the most stages and the slowest stages on the worst path.
+4. Check your top pair: `himatime estimate --db <campaign>/<buildDir> --families XNOR3,BUF` prints
+   the estimated Fmax with both families faster, to set against the Goal. Other pairs may estimate
+   differently; your list's order follows the estimated recovery, which is what AndesCell ranks by.
+5. Net delay is about a sixth of path delay and no cell changes it; DFF clock-to-Q helps only a
+   little (−5 % achievable).
 
 ## Write
 
 - 2-5 requirements, highest impact first (priority 1, 2, ...). The first two decide this round.
 - Each requirement: `family` (an AndesCell family: `andescell families`), `purpose` (what the cell
   must do better, e.g. "faster rising output on the S-box XNOR3 trees"), `target` with a percentage
-  (`"cell delay -30 % at fanout 4"`; AndesCell's typical reach per family is the stage table's
-  achievable column), `evidence` (paths and numbers: "A1-A7: XNOR3 268 ps of 1044 ps on A1, est.
-  recovery 3.04 ns"), `priority`.
+  (`"cell delay -10 % at fanout 4"`; AndesCell's typical reach per family is the stage table's
+  achievable column, 4–10 %), `evidence` (paths and numbers: "A1-A7: 3 XNOR3 stages, 84 ps of
+  512.4 ps on A1 (16.4 %), est. recovery 0.302 ns"), `priority`.
 - `reports/himatime-agent/r<k>/analysis.md`: what you ran, what you found (the numbers), why these
   families, what you expect the round to give (the estimate), and what will limit Fmax next. Keep
   HimaTime's `stage_breakdown.rpt` and `report_timing.rpt` beside it (`himatime load --db
