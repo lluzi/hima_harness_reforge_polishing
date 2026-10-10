@@ -1,0 +1,6 @@
+id: round-improved
+version: "0.1.0"
+title: This round's build is faster than every earlier build
+requires: [{ type: round_improved }]
+subject: { type: round_improved }
+predicate: { op: eq, threshold: 1, unit: count }

@@ -1,0 +1,6 @@
+id: andes-requirements
+version: "0.1.0"
+file: tools/read-requirements.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-andes-requirements/1
+emits: [requirements_valid, requirements_count, requirements_on_critical_path]

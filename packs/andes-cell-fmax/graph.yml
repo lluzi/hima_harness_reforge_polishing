@@ -1,0 +1,182 @@
+# Reference build once, then rounds of: HimaTime loads the latest build -> two resident agents in
+# parallel (HimaTime agent: Fmax and critical paths; Qualib agent: library vs critical-path cells),
+# each delivering Reader-checked cell requirements -> join -> AndesCell generates -> Qualib cell
+# screen -> HimaTime verifies -> Synthesis and APR with the new library -> round record -> checks ->
+# next round (owner decision; back to HimaTime with this round's results in lessons).
+#
+# The fork's two branch nodes are outsourced resident tasks, so the fork is NOT an autopilot fork:
+# the owner begins both branch nodes, starts each resident task, collects and releases each verified
+# delivery and completes each node (in any order); the last completion closes the fork. Everything
+# else drives itself: bind-inputs .. read-timing (which opens the fork) and requirements-joined ..
+# judge-round. The owner decides next-round. The round record is read twice: once for the usage and
+# improvement checks and once, fresh, for the validity/Goal judge the next-round chooser weighs (an
+# explore node needs exactly one judge after a fresh reading).
+id: andes-cell-fmax
+version: "0.1.0"
+entry: bind-inputs
+autopilot:
+  - from: [bind-inputs]
+    until: [himatime-agent, qualib-agent, blocked]
+    label: Reference build and timing
+    about: Synthesis and APR on the stock library, then HimaTime loads the routed design and reports Fmax, the worst paths and where their delay goes by cell type.
+  - from: [requirements-joined]
+    until: [next-round, blocked]
+    label: Generate, screen, verify and rebuild
+    about: AndesCell builds the requested cells, Qualib screens them, HimaTime verifies them, then Synthesis and APR rebuilds the design with the new library and compares it with the reference.
+
+nodes:
+  - id: bind-inputs
+    kind: act
+    label: Check tools and design
+    about: Checks that Synthesis and APR, HimaTime, Qualib, AndesCell and XTop answer on the Site, and records the design files and the stock library.
+    parameters:
+      tool: bind-inputs
+      arguments:
+        MOCK_EDA_ROOT: { from: input, name: mockEdaRoot }
+        DESIGN_ROOT: { from: input, name: designRoot }
+        LIBRARY: { from: input, name: stockLibrary }
+  - id: reference-build
+    kind: act
+    label: Reference build
+    about: Synthesis and APR of aes_cipher_top on the stock std9t_svt library at 1.000 ns, RTL to routed design.
+    parameters:
+      tool: reference-build
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: buildTimeoutMin }
+  - id: read-reference
+    kind: act
+    label: Read the reference build
+    about: Reads Fmax, worst slack, total negative slack, cell area and route DRC from the post-route summary.
+    parameters: { observes: referenceBuild }
+  - id: check-reference
+    kind: judge
+    label: Reference build is clean
+    about: The reference build finished with zero route DRC errors.
+    parameters: { rules: [reference-valid] }
+  - id: load-timing
+    kind: act
+    label: Load into HimaTime
+    about: HimaTime loads the latest routed build and reports Fmax, the worst paths and the delay of each cell type on them.
+    parameters:
+      tool: load-timing
+  - id: read-timing
+    kind: act
+    label: Read the timing
+    about: Reads this round's starting Fmax and worst slack, then hands the timing to both agents at once.
+    parameters: { observes: timingState }
+  - id: himatime-agent
+    kind: act
+    label: HimaTime agent
+    about: AI agent. Analyses Fmax and the critical paths with HimaTime and writes the cell requirements the timing needs.
+    parameters:
+      tool: himatime-agent
+  - id: qualib-agent
+    kind: act
+    label: Qualib agent
+    about: AI agent. Analyses the stock library against the critical-path cells with Qualib and writes the cell requirements the library lacks.
+    parameters:
+      tool: qualib-agent
+  - id: requirements-joined
+    kind: judge
+    label: Both requirement lists ready
+    about: Both agents delivered cell requirements that passed the Pack's check.
+    parameters: { rules: [requirements-valid] }
+  - id: generate-cells
+    kind: act
+    label: AndesCell generates cells
+    about: AndesCell builds new cells for the most valuable requested cell families (at most two per round).
+    parameters:
+      tool: generate-cells
+  - id: screen-cells
+    kind: act
+    label: Qualib cell screen
+    about: Qualib screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access.
+    parameters:
+      tool: screen-cells
+  - id: verify-cells
+    kind: act
+    label: HimaTime verifies cells
+    about: HimaTime checks the new cells' timing against the stock cells and estimates the design with them.
+    parameters:
+      tool: verify-cells
+  - id: new-library-build
+    kind: act
+    label: Rebuild with new library
+    about: Synthesis and APR with the stock library plus every accepted new cell so far.
+    parameters:
+      tool: new-library-build
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: buildTimeoutMin }
+  - id: compare-round
+    kind: act
+    label: Compare with the reference
+    about: Writes the round's before/after record and the summary.
+    parameters:
+      tool: compare-round
+  - id: read-round
+    kind: act
+    label: Read the round result
+    about: Reads the new-library build's Fmax, slack, area and new-cell usage, and the gain over the reference build.
+    parameters: { observes: roundRecord }
+  - id: check-round
+    kind: judge
+    label: New cells used and faster
+    about: The build placed new cells, and it is faster than every earlier build.
+    parameters: { rules: [cells-used, round-improved] }
+  - id: read-round-goal
+    kind: act
+    label: Read the round for the goal
+    about: Reads the round result again for the goal check.
+    parameters: { observes: roundRecord }
+  - id: judge-round
+    kind: judge
+    label: Clean build and Fmax goal
+    about: The build is clean with screened cells only, and the best Fmax gain reaches the target.
+    parameters:
+      rules: [round-valid, fmax-goal]
+      bind:
+        target_fmax_gain_pct: { from: goal, name: target_fmax_gain_pct }
+  - id: next-round
+    kind: explore
+    label: Next round
+    about: Decide whether the target is met, or the agents get another round with this round's results.
+    parameters:
+      chooser: andes-next
+      bind: { roundStep: 1 }
+      converge: { read: bestFmax, band: 0.001, generations: 2, generationLimit: 4 }
+  - id: blocked
+    kind: wait
+    label: Needs a person
+    about: A build or a requirement check failed in a way the flow cannot repair by itself.
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: bind-inputs, to: reference-build }
+  - { from: reference-build, to: read-reference }
+  - { from: read-reference, to: check-reference }
+  - { from: check-reference, to: load-timing, outcome: PASS }
+  - { from: check-reference, to: blocked, outcome: FAIL }
+  - { from: check-reference, to: blocked, outcome: UNDETERMINED }
+  - { from: load-timing, to: read-timing }
+  - { from: read-timing, to: himatime-agent }
+  - { from: read-timing, to: qualib-agent }
+  - { from: himatime-agent, to: requirements-joined }
+  - { from: qualib-agent, to: requirements-joined }
+  - { from: requirements-joined, to: generate-cells, outcome: PASS }
+  - { from: requirements-joined, to: blocked, outcome: FAIL }
+  - { from: requirements-joined, to: blocked, outcome: UNDETERMINED }
+  - { from: generate-cells, to: screen-cells }
+  - { from: screen-cells, to: verify-cells }
+  - { from: verify-cells, to: new-library-build }
+  - { from: new-library-build, to: compare-round }
+  - { from: compare-round, to: read-round }
+  - { from: read-round, to: check-round }
+  - { from: check-round, to: read-round-goal, outcome: PASS }
+  - { from: check-round, to: read-round-goal, outcome: FAIL }
+  - { from: check-round, to: read-round-goal, outcome: UNDETERMINED }
+  - { from: read-round-goal, to: judge-round }
+  - { from: judge-round, to: next-round, outcome: PASS }
+  - { from: judge-round, to: next-round, outcome: FAIL }
+  - { from: judge-round, to: next-round, outcome: UNDETERMINED }
+  - { from: next-round, to: load-timing, revisit: true }
+loops: {}

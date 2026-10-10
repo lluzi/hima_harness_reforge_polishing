@@ -1,0 +1,6 @@
+id: requirements-valid
+version: "0.1.0"
+title: The agent delivered valid cell requirements for this round
+requires: [{ type: requirements_valid }]
+subject: { type: requirements_valid }
+predicate: { op: eq, threshold: 1, unit: count }

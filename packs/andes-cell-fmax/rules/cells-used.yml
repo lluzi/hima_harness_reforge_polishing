@@ -1,0 +1,6 @@
+id: cells-used
+version: "0.1.0"
+title: The new-library build placed at least one new cell
+requires: [{ type: new_cell_instances }]
+subject: { type: new_cell_instances }
+predicate: { op: gte, threshold: 1, unit: count }
