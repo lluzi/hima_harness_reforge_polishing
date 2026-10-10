@@ -25,6 +25,7 @@
     "test/contract/client-style.test.ts",
     "test/contract/command.test.ts",
     "test/contract/conversation-execution.host.test.ts",
+    "test/contract/andes-cell-fmax.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/dc-reader.test.ts",
     "test/contract/delegation-input-native.host.test.ts",
@@ -164,5 +165,8 @@
   "cellfmax-dry": [
     "test/contract/custom-cell-fmax-sky130-demo-dry-path.host.test.ts",
     "test/contract/custom-cell-fmax-sky130-demo-converge.host.test.ts"
+  ],
+  "andes-dry": [
+    "test/contract/andes-cell-fmax-dry-path.host.test.ts"
   ]
 }

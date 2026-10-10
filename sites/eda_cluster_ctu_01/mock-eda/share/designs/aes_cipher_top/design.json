@@ -1,0 +1,12 @@
+{
+  "schema": "ctu-design/1",
+  "design": "aes_cipher_top",
+  "description": "AES-128 encryption core (one round per clock), 28 nm, stock library std9t_svt",
+  "technology": "28 nm (mock)",
+  "library": "std9t_svt",
+  "corner": "tt0p90v25c",
+  "clockPeriodNs": 1.0,
+  "rtl": ["rtl/aes_cipher_top.v", "rtl/aes_key_expand_128.v", "rtl/aes_sbox.v"],
+  "sdc": "aes_cipher_top.sdc",
+  "note": "MOCK EDA demo design of the Site eda_cluster_ctu_01: the mock flow uses a calibrated path model, not these files."
+}

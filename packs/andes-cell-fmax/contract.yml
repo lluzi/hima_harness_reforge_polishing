@@ -1,0 +1,252 @@
+id: andes-cell-fmax
+version: "0.1.0"
+title: New standard cells for a faster aes_cipher_top (AndesCell, mock EDA demo)
+status: development
+minimumHarnessVersion: 0.2.2
+
+ontology:
+  aliases:
+    himatimeRequirements: [HimaTime agent requirements, timing-side cell requirements]
+    qualibRequirements: [Qualib agent requirements, library-side cell requirements]
+    roundRecord: [round result, before/after comparison, new-library build result]
+
+budget:
+  timeBoxMs: 10800000
+  closingReserveMs: 600000
+  minimumGenerations: 1
+
+inputs:
+  - name: mockEdaRoot
+    description: Read-only root of the Site's EDA toolchain (bin/sapr, himatime, qualib, andescell, xtop; mock EDA on the demo Site).
+  - name: designRoot
+    description: Read-only design directory of aes_cipher_top (design.json, rtl/, aes_cipher_top.sdc).
+  - name: stockLibrary
+    description: Name of the stock standard-cell library the design is built with (std9t_svt).
+  - name: workspaceRoot
+    description: Campaign-private output root allowed by the Site Permit.
+
+outputs:
+  - name: inputsState
+    path: state/inputs.json
+    description: Tool paths and versions, the design files with SHA-256, AndesCell's family list.
+  - name: referenceBuild
+    path: state/reference.json
+    reader: andes-reference
+    description: The reference build (Synthesis and APR on the stock library), from the sapr post-route summary.
+  - name: timingState
+    path: state/timing.json
+    reader: andes-timing
+    description: >-
+      HimaTime load of the build this round starts from (the reference build in round 1, the latest
+      new-library build after): Fmax, worst slack, the 8 worst paths and the stage breakdown by cell
+      family with HimaTime's estimated slack recovery per family. Its round number is this round's.
+  - name: lessons
+    path: state/lessons.json
+    description: Every round so far, with what each agent asked for, what AndesCell generated and why, the screen, and the build result.
+  - name: library
+    path: state/library.json
+    description: The cumulative new-cell library (every round's accepted AndesCell cells and the families they cover).
+  - name: himatimeRequirements
+    path: state/himatime-requirements.json
+    reader: andes-requirements
+    description: The HimaTime agent's cell requirements for this round (hima-andes-requirements/1).
+  - name: qualibRequirements
+    path: state/qualib-requirements.json
+    reader: andes-requirements
+    description: The Qualib agent's cell requirements for this round (hima-andes-requirements/1).
+  - name: generation
+    path: state/generation.json
+    description: What AndesCell generated from the merged requirements, what it skipped and why.
+  - name: screen
+    path: state/screen.json
+    description: The Qualib cell screen of this round's cells (pass/fail with reasons).
+  - name: cellVerify
+    path: state/cell-verify.json
+    description: HimaTime's verification of this round's cells and its design estimate.
+  - name: roundBuild
+    path: state/round-build.json
+    description: The new-library build (Synthesis and APR with the stock library and every accepted new cell).
+  - name: roundRecord
+    path: state/round.json
+    reader: andes-round
+    description: The round record (hima-andes-round/1) comparing the new-library build with the reference build.
+  - name: summary
+    path: derived/summary.md
+    description: Every round's Fmax, gain, new families and new-cell instances, with the claim boundary.
+
+environment:
+  wrappers: [/usr/bin/python3]
+
+workspace:
+  source: pack
+  copy: [andes_cli.py]
+
+tools:
+  - id: bind-inputs
+    file: flow/andes_cli.py
+    description: >-
+      Check the Site's EDA tools (sapr, himatime, qualib, andescell and xtop answer -version), the
+      aes_cipher_top design files and the stock library name; write state/inputs.json with the tool
+      versions, file SHA-256 and AndesCell's family list; create the empty lessons and library files.
+    inputs: [WORKSPACE, MOCK_EDA_ROOT, DESIGN_ROOT, LIBRARY]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', bind, '${WORKSPACE}', '${MOCK_EDA_ROOT}', '${DESIGN_ROOT}', '${LIBRARY}']
+
+  - id: reference-build
+    file: flow/andes_cli.py
+    description: >-
+      Synthesis and APR (sapr) of aes_cipher_top on the stock library at the 1.000 ns clock, RTL to
+      routed design, into runs/reference/; write state/reference.json from the post-route summary.
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', reference, '${WORKSPACE}', '${TIMEOUT_MIN}']
+
+  - id: load-timing
+    file: flow/andes_cli.py
+    description: >-
+      Load the build this round starts from into HimaTime (the reference build in round 1, the latest
+      new-library build after) and write state/timing.json: Fmax, worst paths and the stage breakdown
+      by cell family with estimated slack recovery. Starts round k = rounds in lessons + 1.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', timing, '${WORKSPACE}']
+
+  - id: himatime-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the HimaTime timing engineer for this round of new standard cells on aes_cipher_top
+      (28 nm, stock library std9t_svt, clock 1.000 ns). Read timingState (the HimaTime load this
+      round starts from: Fmax, the worst paths, and the stage breakdown by cell family with HimaTime's
+      estimated slack recovery), referenceBuild, lessons (every earlier round: what each agent asked
+      for, what AndesCell generated and why, the gains) and library (the new cells already delivered).
+      Find where the critical paths spend their time: which cell families dominate the worst paths,
+      how much slack each would give back, and which paths limit Fmax once those are fixed. Run
+      HimaTime yourself in your private workspace (himatime report --db <campaign>/<buildDir of
+      timingState> --stages --paths 5; himatime estimate --db ... --families A,B to test a pair) and
+      quote its numbers. Then write 2-5 cell requirements for AndesCell, highest impact first, each
+      {family, purpose, target (a percentage, e.g. 'rise delay -30 % at fanout 4'), evidence (the
+      paths and stages it rests on), priority 1-5}. AndesCell builds at most two new families per
+      round, ranked by HimaTime's estimated recovery, and never regenerates a family already in the
+      library. Write your analysis to requirements/himatime/r<k>/analysis.md (k = the round of
+      timingState) and the requirements file (hima-andes-requirements/1, agent himatime, round k,
+      summary, requirements, report). Run `python3 <campaign>/flow/andes_cli.py precheck <campaign>
+      himatime <your file>` and fix every problem it prints, then deliver the file as the result and
+      the analysis as support. Do not run Synthesis and APR, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', himatime]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, referenceBuild, timingState, lessons, library]
+      knowledge: [andes-flow.md, himatime-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: requirements/himatime
+      produces: himatimeRequirements
+
+  - id: qualib-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the Qualib library engineer for this round of new standard cells on aes_cipher_top
+      (28 nm, stock library std9t_svt, clock 1.000 ns). Read timingState (the critical-path stage
+      breakdown by cell family this round starts from), referenceBuild, lessons and library (the new
+      cells already delivered). Analyse the stock library against the cells on the critical paths:
+      run `qualib analyze --lib std9t_svt --timing <campaign>/<reports.summary of timingState> --out
+      <dir>` (add --extra-lib <campaign>/<dir> for each delivered library) and `qualib list --family
+      X`, and find the critical-path families whose stock cells leave the most on the table (missing
+      drive strengths, rise/fall imbalance, slow arcs, high input capacitance) where a custom cell
+      would help. Then write 2-5 cell requirements for AndesCell, highest impact first, each {family,
+      purpose, target (a percentage, e.g. 'rise delay -30 % at fanout 4'), evidence (the library gap
+      and the critical-path share it rests on), priority 1-5}. AndesCell builds at most two new
+      families per round, ranked by HimaTime's estimated recovery, and never regenerates a family
+      already in the library. Write your analysis to requirements/qualib/r<k>/analysis.md (k = the
+      round of timingState) and the requirements file (hima-andes-requirements/1, agent qualib, round
+      k, summary, requirements, report). Run `python3 <campaign>/flow/andes_cli.py precheck
+      <campaign> qualib <your file>` and fix every problem it prints, then deliver the file as the
+      result and the analysis as support. Do not run Synthesis and APR, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', qualib]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, referenceBuild, timingState, lessons, library]
+      knowledge: [andes-flow.md, qualib-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: requirements/qualib
+      produces: qualibRequirements
+
+  - id: generate-cells
+    file: flow/andes_cli.py
+    description: >-
+      Merge both agents' requirements and run AndesCell on them against the build this round started
+      from, with every earlier round's library as existing; write state/generation.json (families
+      generated, requirements skipped and why, the new cells).
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', generate, '${WORKSPACE}']
+
+  - id: screen-cells
+    file: flow/andes_cli.py
+    description: Qualib cell screen of this round's AndesCell cells (area, input capacitance, leakage, DRC, LVS, pin access); write state/screen.json.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', screen, '${WORKSPACE}']
+
+  - id: verify-cells
+    file: flow/andes_cli.py
+    description: HimaTime verification of this round's cells (timing arcs against the stock cells, design estimate without the cells that failed the screen); write state/cell-verify.json.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', verify, '${WORKSPACE}']
+
+  - id: new-library-build
+    file: flow/andes_cli.py
+    description: >-
+      Synthesis and APR of aes_cipher_top with the stock library plus every accepted new cell of this
+      and earlier rounds (cells that failed the screen or verification are dont-use), into
+      runs/r<k>/build/; write state/round-build.json.
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', build, '${WORKSPACE}', '${TIMEOUT_MIN}']
+
+  - id: compare-round
+    file: flow/andes_cli.py
+    description: >-
+      Deterministic round record from the reference build and this round's new-library build: Fmax
+      gain, best gain, improvement, validity, new-cell usage; append lessons, update the cumulative
+      library, write derived/round-<k>.md and derived/summary.md. Uses no model text as a fact.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', compare, '${WORKSPACE}']
+
+rules:
+  - reference-valid
+  - requirements-valid
+  - cells-used
+  - round-improved
+  - round-valid
+  - fmax-goal
+
+knowledge:
+  - file: andes-flow.md
+    purpose: The flow, every tool and command, the round loop and what each round's results mean.
+  - file: himatime-playbook.md
+    purpose: How the HimaTime agent reads the timing reports and turns the stage breakdown into cell requirements.
+  - file: qualib-playbook.md
+    purpose: How the Qualib agent analyses the stock library against the critical-path cells and writes cell requirements.
+  - file: requirements-format.md
+    purpose: The hima-andes-requirements/1 file, a worked example, the precheck and the delivery.
+  - file: evidence-and-claims.md
+    purpose: What is a tool result, what is a claim, and the claim boundary of this mock-EDA demo.
+
+goal:
+  target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 30, default: 5, precision: 2 }
+
+strategy:
+  buildTimeoutMin: { type: number, unit: min, min: 5, max: 60, default: 20, precision: 0 }
+  roundRevision: { type: number, unit: count, min: 0, max: 1, default: 0, precision: 0 }
+
+words:
+  target_fmax_gain_pct: { label: "Fmax gain over the reference build, at least", unit: percent }
+  buildTimeoutMin: { label: time limit per Synthesis and APR run, unit: min }
+  roundRevision: { label: another design round requested (0 before the first), unit: count }
+
+results:
+  headline: { type: fmax_gain_pct, label: Fmax gain over the reference build, unit: "%", better: higher, digits: 2 }
+  columns:
+    - { label: Reference build, reader: andes-reference }
+    - { label: New-library build, reader: andes-round }
+  rows:
+    - { type: design_fmax_mhz, label: Fmax, unit: MHz, better: higher, digits: 2 }
+    - { type: design_wns_ns, label: Worst slack, unit: ns, better: higher, digits: 3 }
+    - { type: design_tns_ns, label: Total negative slack, unit: ns, better: higher, digits: 3 }
+    - { type: design_area_um2, label: Cell area, unit: "µm²", better: lower, digits: 0 }
+    - { type: new_cell_instances, label: New-cell instances, digits: 0 }
+    - { type: route_drc_errors, label: Route DRC errors, better: lower, digits: 0 }

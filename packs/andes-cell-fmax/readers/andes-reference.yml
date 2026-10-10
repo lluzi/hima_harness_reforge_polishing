@@ -1,0 +1,6 @@
+id: andes-reference
+version: "0.1.0"
+file: tools/read-reference.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-andes-build/1
+emits: [reference_valid, design_fmax_mhz, design_wns_ns, design_tns_ns, design_area_um2, new_cell_instances, route_drc_errors]

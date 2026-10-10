@@ -1,0 +1,6 @@
+id: andes-timing
+version: "0.1.0"
+file: tools/read-timing.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-andes-timing/1
+emits: [timing_loaded, timing_fmax_mhz, timing_wns_ns, timing_critical_families]

@@ -1,0 +1,19 @@
+allowedReadRoots:
+  - /data/eda/project/hima_harness/ctu-mock-eda
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01
+  - /data/eda/project/hima_harness/ctu-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/ctu-runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01/resident-engineering-wrapper.py
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

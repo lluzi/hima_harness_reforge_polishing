@@ -1,0 +1,6 @@
+id: reference-valid
+version: "0.1.0"
+title: The reference build finished with zero route DRC errors
+requires: [{ type: reference_valid }]
+subject: { type: reference_valid }
+predicate: { op: eq, threshold: 1, unit: count }

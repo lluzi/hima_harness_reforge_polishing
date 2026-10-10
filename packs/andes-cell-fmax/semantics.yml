@@ -1,0 +1,61 @@
+values:
+  reference_valid:
+    unit: count
+    description: "One when the reference build (stock library) finished with zero route DRC errors."
+  design_fmax_mhz:
+    unit: mhz
+    description: "Fmax of a build, 1000 / (clock period - worst setup slack), from the sapr post-route summary."
+  design_wns_ns:
+    unit: ns
+    description: "Worst setup slack of a build (negative when violated)."
+  design_tns_ns:
+    unit: ns
+    description: "Total negative setup slack of a build over its violating endpoints."
+  design_area_um2:
+    unit: um2
+    description: "Standard-cell area of a build."
+  new_cell_instances:
+    unit: count
+    description: "Instances of AndesCell cells in a build's routed netlist (zero in the reference build)."
+  route_drc_errors:
+    unit: count
+    description: "Detailed-route DRC errors of a build."
+  timing_loaded:
+    unit: count
+    description: "One when HimaTime loaded the build this round starts from."
+  timing_fmax_mhz:
+    unit: mhz
+    description: "Fmax of the build this round starts from, as HimaTime reports it."
+  timing_wns_ns:
+    unit: ns
+    description: "Worst setup slack of the build this round starts from."
+  timing_critical_families:
+    unit: count
+    description: "Stock cell families with a positive HimaTime estimated slack recovery: the candidates for new cells."
+  requirements_valid:
+    unit: count
+    description: "One when an agent's cell requirements passed the Pack's check (schema, round, AndesCell families, targets, evidence, report)."
+  requirements_count:
+    unit: count
+    description: "Number of cell requirements in an agent's delivery."
+  requirements_on_critical_path:
+    unit: count
+    description: "Informational. Requirements naming a stock family that is on the worst paths with a positive estimated recovery."
+  round_valid:
+    unit: count
+    description: "One when the new-library build finished at the reference clock with zero route DRC and used only screened and verified new cells."
+  fmax_gain_pct:
+    unit: percent
+    description: "100 x (new-library build Fmax / reference build Fmax - 1) for this round."
+  best_gain_pct:
+    unit: percent
+    description: "Largest Fmax gain over the reference build of any valid round so far."
+  round_improved:
+    unit: count
+    description: "One when this round's build is valid and faster than every earlier build."
+  best_fmax_mhz:
+    unit: mhz
+    description: "Best Fmax of a valid build so far (the reference build's before the first)."
+  new_families_used:
+    unit: count
+    description: "Informational. Cell families this round added to the delivered library."
