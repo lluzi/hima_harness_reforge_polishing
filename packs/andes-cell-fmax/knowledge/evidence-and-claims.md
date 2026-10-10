@@ -24,3 +24,9 @@ the result. A delivery whose numbers disagree with the tools is refused.
 ## Claim boundary (verbatim in every round record and the summary)
 
 > Every EDA result in this Pack comes from mock tools on a demo Site (mock EDA); not signoff, not silicon.
+
+## In the conversation with the person
+
+The records above carry the claim boundary word for word. In chat, say it once, in the final
+summary only, as: "These are results on the demo Site eda_cluster_ctu_01, not signoff and not
+silicon." Do not repeat it in status replies.
