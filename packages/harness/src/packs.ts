@@ -715,6 +715,29 @@ export const strategyKnob = z
     }
   });
 
+/** What a person reads for a node or an autopilot segment: an optional display name and a one-line
+ *  meaning. Words only — identity, routing and execution keep using the id. */
+const displayLabel = z.string().min(1).max(40);
+const displayAbout = z.string().min(1).max(240);
+const nodeWords = { label: displayLabel.optional(), about: displayAbout.optional() };
+
+/**
+ * The before/after table a person reads on the Results face: which Reader's observations fill each
+ * column and which semantic values are the rows. Display only; every value still comes from a
+ * Reader observation in HimaLedger.
+ */
+export const packResultsColumn = z.strictObject({ label: displayLabel, reader: z.string().min(1) });
+export const packResultsRow = z.strictObject({
+  type: declaredName, label: displayLabel, unit: z.string().max(16).optional(),
+  better: z.enum(['higher', 'lower']).optional(), digits: z.number().int().min(0).max(6).optional(),
+});
+export const packResults = z.strictObject({
+  headline: packResultsRow.optional(),
+  columns: z.array(packResultsColumn).min(1).max(4),
+  rows: z.array(packResultsRow).min(1).max(12),
+});
+export type PackResults = z.infer<typeof packResults>;
+
 export const packContract = z.strictObject({
   id: packId,
   version: z.string(),
@@ -796,6 +819,8 @@ export const packContract = z.strictObject({
    * `/hima pack check` refuses it.
    */
   words: z.record(declaredName, packWord).default({}),
+  /** The Results face's before/after table. Optional; absent keeps the plain observation list. */
+  results: packResults.optional(),
 });
 export type PackContract = z.infer<typeof packContract>;
 export type PackTool = z.infer<typeof packTool>;
@@ -874,6 +899,7 @@ export type NodeArgument = z.infer<typeof nodeArgument>;
 const actNode = z.strictObject({
   id: packId,
   kind: z.literal('act'),
+  ...nodeWords,
   parameters: z
     .strictObject({
       /** A tool of the contract to run on the Site. */
@@ -895,6 +921,7 @@ const actNode = z.strictObject({
 const judgeNode = z.strictObject({
   id: packId,
   kind: z.literal('judge'),
+  ...nodeWords,
   parameters: z.strictObject({
     /** The rules to apply, in order. The outgoing edge is chosen by the outcome of the first. */
     rules: z.array(z.string().min(1)).min(1),
@@ -931,6 +958,7 @@ export type PackConverge = z.infer<typeof packConverge>;
 const exploreNode = z.strictObject({
   id: packId,
   kind: z.literal('explore'),
+  ...nodeWords,
   parameters: z.strictObject({
     /**
      * The chooser to apply, by identity — a file under `choosers/`, exactly as a rule is (D38).
@@ -966,6 +994,7 @@ const exploreNode = z.strictObject({
 const waitNode = z.strictObject({
   id: packId,
   kind: z.literal('wait'),
+  ...nodeWords,
   parameters: z.strictObject({ blocker: z.string().min(1) }),
 });
 
@@ -1039,6 +1068,8 @@ export const segmentAutopilot = z.strictObject({
   from: z.array(packId).min(1).max(16),
   /** Where it stops: the owner's decision points and the Run's honest ending. */
   until: z.array(packId).min(1).max(16),
+  /** The name and meaning of the step these nodes make together, for the canvas. */
+  ...nodeWords,
 });
 export type ForkAutopilot = z.infer<typeof forkAutopilot>;
 export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
