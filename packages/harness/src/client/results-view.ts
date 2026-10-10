@@ -90,3 +90,21 @@ export function resultsTable(results: PackResults, view: Pick<RunView, 'generati
   }
   return { round: selected, rounds, columns: results.columns.map((column) => column.label), rows, ...(headline === undefined ? {} : { headline }) };
 }
+
+/** The best headline value over every round read so far, under the headline's own `better` (higher
+ *  when it states none), printed as the table prints it; absent until a round has been read. */
+export function bestHeadline(results: PackResults, view: Pick<RunView, 'generations' | 'observations'>): { readonly value: number; readonly display: string } | undefined {
+  const row = results.headline;
+  if (row === undefined) return undefined;
+  const reader = results.columns[results.columns.length - 1]!.reader;
+  let best: number | undefined;
+  for (const observation of view.observations) {
+    if (observation.reader.id !== reader) continue;
+    const found = observation.values.find((value) => value.type === row.type);
+    if (found === undefined || found.value === null) continue;
+    if (best === undefined || (row.better === 'lower' ? found.value < best : found.value > best)) best = found.value;
+  }
+  if (best === undefined) return undefined;
+  const sign = best > 0 ? '+' : '';
+  return { value: best, display: `${sign}${formatted(best, row.digits)}${row.unit === undefined ? '' : ` ${row.unit}`}` };
+}
