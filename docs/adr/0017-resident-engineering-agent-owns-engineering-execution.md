@@ -12,6 +12,12 @@ status: accepted
 
 用户进一步确认 Pack 作者也要适配工程外包能力：方法必须明确哪些工程节点可交给驻场工程 Agent，并写清该节点的目标、输入/上下文与 playbook、所需工作范围、工程交付及结果返回位置。工程对接 Agent 依照 Pack 的声明委派，接回同一节点的实际结果，不能把外包等同于节点或 Campaign 已成功，也不能由平台按 Pack 名称隐式硬编码外包。声明面向通用工程角色；OpenCode 是当前能力实现，其内部协作者与操作细节不重复写入 Hima 的节点编排。
 
+## 后续 HimaTeam 扩展的适用范围（2026-10-10）
+
+本文关于不建立长期项目主会话或常驻团队服务的限制，适用于 Issue #82 的任务级工程委派。
+后续 HimaTeam 的长期成员身份、经验与跨任务复用由 ADR-0022/0024 明确扩展；原生工程
+自主性、外层 owner、真实证据和授权边界继续保留，不因 Team 扩展而重建内部细粒度修复团队。
+
 ## 实施后的边界修正与现场结论
 
 现场冻结候选曾使用包装进程内的 provider broker、任务 token 和 ACP permission kind 关联。它帮助完成了第一次真实工程试验，但用户随后直接纠正产品方向：OpenCode 已是工程 executor，Hima 不再建设第二套账户代理或 permission-kind 安全策略。当前代码因此删除 broker/token/净化 profile 和 kind 投影，直接只读挂载 Site 既有 OpenCode config/auth，当前 native session 的 ACP permission 统一 allow-once；真正的边界是 task-local Podman namespace、Site Permit、固定 task/Run 身份和只读/私有目录。原生认证在 OpenCode 自己的执行环境中可见，不能再宣称对 OpenCode shell 隔离账户密钥；Hima 只保证不把密钥复制进 prompt、Host request、ACP trace或交付文档。该简化尚未重新部署或重新执行 live Run，不能借用旧候选的通过事实。
