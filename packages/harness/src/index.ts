@@ -88,6 +88,7 @@ export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact
 export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
+export * from './charts.js';
 export { runDelegations, delegationRuntimePolicy, operateRunDelegation } from './delegation-runtime.js';
 export { WORKSHOP_ENTRY_SCHEMA } from './autopilot.js';
 export { autopilotOf, autopilotSegmentOf, autopilotDrives } from './packs.js';
