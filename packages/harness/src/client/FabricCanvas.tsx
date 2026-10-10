@@ -153,11 +153,6 @@ export function FabricCanvas({
   // True while the camera is jumping to its initial fit — suppresses `.hima-canvas-transform`'s own
   // eased transition for that one jump, which has nothing sensible to ease from.
   const [suppressTransition, setSuppressTransition] = useState(true);
-  // C10: the historical-run attention strip's own resume/cancel now confirm first, exactly as the
-  // node card and Diagnostics already do for pause/stop — one control at a time, never both open.
-  const [confirmingControl, setConfirmingControl] = useState<'resume' | 'cancel'>();
-  const toggleControl = (key: 'resume' | 'cancel') => setConfirmingControl((current) => (current === key ? undefined : key));
-
   const motionOff = reducedMotion || stale;
 
   useEffect(() => {
@@ -413,71 +408,9 @@ export function FabricCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlaced?.id, selectedPlaced?.x, selectedPlaced?.y, transform.scale, transform.tx, transform.ty, viewport.width, viewport.height]);
 
-  // C5: an ended Run's own execution context can still carry a stale `reason`/`budget.phase` from
-  // whatever fenced it last — the fence strip must only ever describe something the Run is doing
-  // right now, so it is gated on the Run still being active. A blocker (`kind: 'waiting'`) already
-  // implies `status === 'waiting'`, which is itself active, but the fence check is separate (it reads
-  // `context`, not `run.status` directly) and needs its own gate.
-  const active = run?.status === 'running' || run?.status === 'waiting';
-  const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
-  const fenceReason = active && context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
-    ? context.reason ?? (context.budget.phase === 'exhausted' ? 'the Budget is exhausted' : 'the Budget is closing')
-    : undefined;
-  const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
-    : fenceReason !== undefined ? { kind: 'fence' as const, reason: fenceReason } : undefined;
-
   return (
     <div className="hima-canvas-wrap">
-      {attention === undefined ? null : (
-        <div className={`hima-canvas-attention hima-canvas-attention-${attention.kind}`} data-hima-region="campaign-attention" data-hima-state-kind={attention.kind}>
-          <span>{attention.reason}</span>
-          {/* C10: the masthead already carries its own "Open Campaign Agent" for the OWNER'S own
-              view of someone else's Run; here the gate names who the strip is for — the non-owner
-              (Side Talk) reading a waiting blocker on a Run they do not control, who has no other way
-              there. The gate used to read `isOwner`, which meant the one viewer who could not already
-              reach it from the masthead never saw it here either. */}
-          {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
-            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>{t('canvas.openAgent')}</button>
-          ) : null}
-          {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
-              (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's
-              own tool receipt offers such a Run (`RunControls`, `HimaRunCard.tsx`) belong in its own
-              attention strip too: Continue while it waits, Stop whenever it is active, through the
-              same `actOnRun` route and the same `runControls` words (#41 task 9 item B). C10: each
-              now confirms first, in the card's own words, rather than acting the instant it is
-              clicked. */}
-          {run?.control !== undefined ? null : (
-            <>
-              {showsResume(run?.status) ? (
-                <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => toggleControl('resume')}>{runControls.resume.said}</button>
-              ) : null}
-              {showsCancel(run?.status) ? (
-                <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => toggleControl('cancel')}>{runControls.cancel.said}</button>
-              ) : null}
-              {confirmingControl !== 'resume' ? null : (
-                <div className="hima-node-card-confirm" data-hima-region="resume-confirm">
-                  <p>{t('canvas.resumeConfirmText')}</p>
-                  <div className="hima-node-card-footer-row">
-                    <button type="button" className="hima-button hima-primary" data-hima-control="resume-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('resume'); setConfirmingControl(undefined); }}>{t('canvas.confirmResume')}</button>
-                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
-                  </div>
-                </div>
-              )}
-              {confirmingControl !== 'cancel' ? null : (
-                <div className="hima-node-card-confirm" data-hima-region="cancel-confirm">
-                  <p>{t('canvas.stopConfirmText')}</p>
-                  <div className="hima-node-card-footer-row">
-                    <button type="button" className="hima-button hima-primary" data-hima-control="cancel-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('cancel'); setConfirmingControl(undefined); }}>{t('canvas.confirmStop')}</button>
-                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
-                  </div>
-                </div>
-              )}
-              {acting.notice === undefined ? null : <span role="status">{acting.notice}</span>}
-              {acting.refusal === undefined ? null : <span role="alert" data-hima-region="run-error">{acting.refusal.message}</span>}
-            </>
-          )}
-        </div>
-      )}
+      <CanvasAttention view={view} context={context} isOwner={isOwner} openOwner={openOwner} acting={acting} />
       <div className="hima-canvas" ref={containerRef} data-hima-region="campaign-graph"
         data-hima-state-nodes={String(scene.nodes.length)} data-hima-state-current={currentNode?.id ?? ''}
         data-hima-state-scale={transform.scale.toFixed(2)} data-hima-state-stale={String(stale)}>
@@ -609,6 +542,97 @@ export function FabricCanvas({
           <button type="button" className="hima-icon-button" data-hima-control="canvas-fit" aria-label={t('canvas.fit')} onClick={fitAll}><Glyph name="fit" /></button>
         </div>
       </div>
+      <ExecutionMarkers view={view} />
+    </div>
+  );
+}
+
+/** The strip above the canvas (and the strip view) while the Run needs attention: a waiting blocker,
+ *  or a Budget fence. Shared by `FabricCanvas` and `StripCanvas`. */
+export function CanvasAttention({ view, context, isOwner, openOwner, acting }: {
+  readonly view: RunView | undefined; readonly context: ExecutionContext | undefined; readonly isOwner: boolean;
+  openOwner(id: string): void; readonly acting: Acting;
+}): ReactElement | null {
+  const t = useHimaT();
+  const run = view?.run;
+  // C10: the historical-run attention strip's own resume/cancel now confirm first, exactly as the
+  // node card and Diagnostics already do for pause/stop — one control at a time, never both open.
+  const [confirmingControl, setConfirmingControl] = useState<'resume' | 'cancel'>();
+  const toggleControl = (key: 'resume' | 'cancel') => setConfirmingControl((current) => (current === key ? undefined : key));
+  // C5: an ended Run's own execution context can still carry a stale `reason`/`budget.phase` from
+  // whatever fenced it last — the fence strip must only ever describe something the Run is doing
+  // right now, so it is gated on the Run still being active. A blocker (`kind: 'waiting'`) already
+  // implies `status === 'waiting'`, which is itself active, but the fence check is separate (it reads
+  // `context`, not `run.status` directly) and needs its own gate.
+  const active = run?.status === 'running' || run?.status === 'waiting';
+  const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
+  const fenceReason = active && context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
+    ? context.reason ?? (context.budget.phase === 'exhausted' ? 'the Budget is exhausted' : 'the Budget is closing')
+    : undefined;
+  const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
+    : fenceReason !== undefined ? { kind: 'fence' as const, reason: fenceReason } : undefined;
+
+  return (
+    <>
+      {attention === undefined ? null : (
+        <div className={`hima-canvas-attention hima-canvas-attention-${attention.kind}`} data-hima-region="campaign-attention" data-hima-state-kind={attention.kind}>
+          <span>{attention.reason}</span>
+          {/* C10: the masthead already carries its own "Open Campaign Agent" for the OWNER'S own
+              view of someone else's Run; here the gate names who the strip is for — the non-owner
+              (Side Talk) reading a waiting blocker on a Run they do not control, who has no other way
+              there. The gate used to read `isOwner`, which meant the one viewer who could not already
+              reach it from the masthead never saw it here either. */}
+          {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
+            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>{t('canvas.openAgent')}</button>
+          ) : null}
+          {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
+              (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's
+              own tool receipt offers such a Run (`RunControls`, `HimaRunCard.tsx`) belong in its own
+              attention strip too: Continue while it waits, Stop whenever it is active, through the
+              same `actOnRun` route and the same `runControls` words (#41 task 9 item B). C10: each
+              now confirms first, in the card's own words, rather than acting the instant it is
+              clicked. */}
+          {run?.control !== undefined ? null : (
+            <>
+              {showsResume(run?.status) ? (
+                <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => toggleControl('resume')}>{runControls.resume.said}</button>
+              ) : null}
+              {showsCancel(run?.status) ? (
+                <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => toggleControl('cancel')}>{runControls.cancel.said}</button>
+              ) : null}
+              {confirmingControl !== 'resume' ? null : (
+                <div className="hima-node-card-confirm" data-hima-region="resume-confirm">
+                  <p>{t('canvas.resumeConfirmText')}</p>
+                  <div className="hima-node-card-footer-row">
+                    <button type="button" className="hima-button hima-primary" data-hima-control="resume-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('resume'); setConfirmingControl(undefined); }}>{t('canvas.confirmResume')}</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
+                  </div>
+                </div>
+              )}
+              {confirmingControl !== 'cancel' ? null : (
+                <div className="hima-node-card-confirm" data-hima-region="cancel-confirm">
+                  <p>{t('canvas.stopConfirmText')}</p>
+                  <div className="hima-node-card-footer-row">
+                    <button type="button" className="hima-button hima-primary" data-hima-control="cancel-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('cancel'); setConfirmingControl(undefined); }}>{t('canvas.confirmStop')}</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>{t('canvas.cancel')}</button>
+                  </div>
+                </div>
+              )}
+              {acting.notice === undefined ? null : <span role="status">{acting.notice}</span>}
+              {acting.refusal === undefined ? null : <span role="alert" data-hima-region="run-error">{acting.refusal.message}</span>}
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The visually hidden execution list a driver polls (`node-execution`), always rendered under the
+ *  Live view whichever drawing it shows. */
+export function ExecutionMarkers({ view }: { readonly view: RunView | undefined }): ReactElement | null {
+  return (
+    <>
       {/* Always rendered, regardless of which card — if any — is open: the node card's own Job tab is
           where a person *reads* an execution's own row (#41 task 6 review), but a driver polls the
           `node-execution` marker under `.hima-studio` without opening any node, so this visually-
@@ -626,6 +650,6 @@ export function FabricCanvas({
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,0 +1,249 @@
+# Reference build once, then rounds of: HimaTime loads the latest build -> two resident agents in
+# parallel propose cell requirements (HimaTime agent: the worst paths; Qualib agent: the library) ->
+# join -> the AndesCell agent (resident) chooses the families to build -> AndesCell generates them ->
+# two resident agents in parallel verify (HimaTime agent: the worst paths re-timed with the new
+# cells, the local gain in ps; Qualib agent: the cell screen) -> join (local gain above 0 ps and at
+# least one cell passed the screen) -> Synthesis and APR with the new library -> round record ->
+# checks -> next round (owner decision; back to HimaTime with this round's results in lessons).
+#
+# Both forks' branch nodes and the AndesCell agent are outsourced resident tasks, so neither fork is
+# an autopilot fork: the owner begins each of those nodes, starts its resident task, collects and
+# releases its verified delivery and completes it (a fork's branches in any order; the last
+# completion closes the fork). Everything else drives itself in four segments, each handing back to
+# the owner where a resident task starts. The owner decides next-round. The round record is read
+# twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
+# next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
+id: andes-cell-fmax
+version: "0.2.0"
+entry: bind-inputs
+autopilot:
+  - from: [bind-inputs]
+    until: [himatime-agent, qualib-agent, blocked]
+    label: Reference build and timing
+    about: Synthesis and APR on the stock library, then HimaTime loads the routed design and reports Fmax, the worst paths and where their delay goes by cell type.
+  - from: [requirements-joined]
+    until: [andescell-agent, blocked]
+    label: Requirement check
+    about: Both agents' cell requirements passed the check; the AndesCell agent chooses the cells next.
+  - from: [generate-cells]
+    until: [himatime-verify, qualib-screen, blocked]
+    label: Cell generation
+    about: AndesCell builds the cells the AndesCell agent chose; HimaTime and Qualib check them next.
+  - from: [cells-verified]
+    until: [next-round, blocked]
+    label: Rebuild and comparison
+    about: Synthesis and APR rebuilds the design with the cells that passed, then compares it with the reference build.
+
+nodes:
+  - id: bind-inputs
+    kind: act
+    label: Check tools and design
+    about: Checks that Synthesis and APR, HimaTime, Qualib, AndesCell and XTop answer on the Site, and records the design files and the stock library.
+    parameters:
+      tool: bind-inputs
+      arguments:
+        EDA_ROOT: { from: input, name: edaRoot }
+        DESIGN_ROOT: { from: input, name: designRoot }
+        LIBRARY: { from: input, name: stockLibrary }
+  - id: reference-build
+    kind: act
+    label: Reference build
+    about: Synthesis and APR of aes_cipher_top on the stock std9t_svt library at 1.000 ns, RTL to routed design.
+    parameters:
+      tool: reference-build
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: buildTimeoutMin }
+  - id: read-reference
+    kind: act
+    label: Read the reference build
+    about: Reads Fmax, worst slack, total negative slack, cell area and route DRC from the post-route summary.
+    parameters: { observes: referenceBuild }
+  - id: check-reference
+    kind: judge
+    label: Reference build is clean
+    about: The reference build finished with zero route DRC errors.
+    parameters: { rules: [reference-valid] }
+  - id: load-timing
+    kind: act
+    label: Load into HimaTime
+    about: HimaTime loads the latest routed build and reports Fmax, the worst paths and the delay of each cell type on them.
+    parameters:
+      tool: load-timing
+  - id: read-timing
+    kind: act
+    label: Read the timing
+    about: Reads this round's starting Fmax and worst slack, then hands the timing to both agents at once.
+    parameters: { observes: timingState }
+  - id: himatime-agent
+    kind: act
+    label: HimaTime agent
+    about: AI agent. Finds the bottleneck on the worst paths with HimaTime and writes the cell requirements the timing needs.
+    parameters:
+      tool: himatime-agent
+  - id: qualib-agent
+    kind: act
+    label: Qualib agent
+    about: AI agent. Checks the stock library against the critical-path cells with Qualib and writes the cell requirements the library lacks.
+    parameters:
+      tool: qualib-agent
+  - id: requirements-joined
+    kind: judge
+    label: Both requirement lists ready
+    about: Both agents delivered cell requirements that passed the Pack's check.
+    parameters: { rules: [requirements-valid] }
+  - id: andescell-agent
+    kind: act
+    label: AndesCell agent
+    about: AI agent. Merges both requirement lists and chooses the one or two cell families with the most estimated recovery to build this round.
+    parameters:
+      tool: andescell-agent
+  - id: generate-cells
+    kind: act
+    label: Generate the cells
+    about: AndesCell builds the chosen families' cells (netlist, layout, Liberty, LEF), including an extra-fast variant of some.
+    parameters:
+      tool: generate-cells
+  - id: himatime-verify
+    kind: act
+    label: HimaTime agent verifies
+    about: AI agent. Re-times the worst paths with the new cells and reports the local gain in ps and each cell's FO4 against its stock cell.
+    parameters:
+      tool: himatime-verify
+  - id: qualib-screen
+    kind: act
+    label: Qualib agent screens
+    about: AI agent. Screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access, and passes or fails each.
+    parameters:
+      tool: qualib-screen
+  - id: cells-verified
+    kind: judge
+    label: Local gain confirmed
+    about: The new cells make the worst path faster (local gain above 0 ps) and at least one passed the screen.
+    parameters: { rules: [local-gain-positive, cells-screened] }
+  - id: new-library-build
+    kind: act
+    label: Rebuild with new cells
+    about: Synthesis and APR with the stock library plus every new cell that passed the screen so far.
+    parameters:
+      tool: new-library-build
+      arguments:
+        TIMEOUT_MIN: { from: strategy, name: buildTimeoutMin }
+  - id: compare-round
+    kind: act
+    label: Compare with the reference
+    about: Writes the round's before/after record and the summary.
+    parameters:
+      tool: compare-round
+  - id: read-round
+    kind: act
+    label: Read the round result
+    about: Reads the new-library build's Fmax, slack, area and new-cell usage, and the gain over the reference build.
+    parameters: { observes: roundRecord }
+  - id: check-round
+    kind: judge
+    label: New cells used and faster
+    about: The build placed new cells, and it is faster than every earlier build.
+    parameters: { rules: [cells-used, round-improved] }
+  - id: read-round-goal
+    kind: act
+    label: Read the round for the goal
+    about: Reads the round result again for the goal check.
+    parameters: { observes: roundRecord }
+  - id: judge-round
+    kind: judge
+    label: Clean build and Fmax goal
+    about: The build is clean with screened cells only, and the best Fmax gain reaches the target.
+    parameters:
+      rules: [round-valid, fmax-goal]
+      bind:
+        target_fmax_gain_pct: { from: goal, name: target_fmax_gain_pct }
+  - id: next-round
+    kind: explore
+    label: Next round
+    about: Decide whether the target is met, or the agents get another round with this round's results.
+    parameters:
+      chooser: andes-next
+      bind: { roundStep: 1 }
+      converge: { read: bestFmax, band: 0.001, generations: 2, generationLimit: 4 }
+  - id: blocked
+    kind: wait
+    label: Needs a person
+    about: A build, a delivery check or the local-gain check failed in a way the flow cannot repair by itself.
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: bind-inputs, to: reference-build }
+  - { from: reference-build, to: read-reference }
+  - { from: read-reference, to: check-reference }
+  - { from: check-reference, to: load-timing, outcome: PASS }
+  - { from: check-reference, to: blocked, outcome: FAIL }
+  - { from: check-reference, to: blocked, outcome: UNDETERMINED }
+  - { from: load-timing, to: read-timing }
+  - { from: read-timing, to: himatime-agent }
+  - { from: read-timing, to: qualib-agent }
+  - { from: himatime-agent, to: requirements-joined }
+  - { from: qualib-agent, to: requirements-joined }
+  - { from: requirements-joined, to: andescell-agent, outcome: PASS }
+  - { from: requirements-joined, to: blocked, outcome: FAIL }
+  - { from: requirements-joined, to: blocked, outcome: UNDETERMINED }
+  - { from: andescell-agent, to: generate-cells }
+  - { from: generate-cells, to: himatime-verify }
+  - { from: generate-cells, to: qualib-screen }
+  - { from: himatime-verify, to: cells-verified }
+  - { from: qualib-screen, to: cells-verified }
+  - { from: cells-verified, to: new-library-build, outcome: PASS }
+  - { from: cells-verified, to: blocked, outcome: FAIL }
+  - { from: cells-verified, to: blocked, outcome: UNDETERMINED }
+  - { from: new-library-build, to: compare-round }
+  - { from: compare-round, to: read-round }
+  - { from: read-round, to: check-round }
+  - { from: check-round, to: read-round-goal, outcome: PASS }
+  - { from: check-round, to: read-round-goal, outcome: FAIL }
+  - { from: check-round, to: read-round-goal, outcome: UNDETERMINED }
+  - { from: read-round-goal, to: judge-round }
+  - { from: judge-round, to: next-round, outcome: PASS }
+  - { from: judge-round, to: next-round, outcome: FAIL }
+  - { from: judge-round, to: next-round, outcome: UNDETERMINED }
+  - { from: next-round, to: load-timing, revisit: true }
+loops: {}
+
+# The strip: four stations in a phone-width pane. Every node is in one place; the wait node is drawn
+# nowhere (a blocked Run says so itself).
+view:
+  stations:
+    - id: rtl2gds
+      label: RTL2GDS flow
+      about: Synthesis and APR, post-route timing in HimaTime, and the rebuild with the new cells.
+      row: 0
+      checklist:
+        - { label: Check tools and design, nodes: [bind-inputs], rounds: first }
+        - { label: Reference build, nodes: [reference-build], rounds: first }
+        - { label: Reference timing clean, nodes: [read-reference, check-reference], rounds: first }
+        - { label: Load into HimaTime, nodes: [load-timing, read-timing] }
+        - { label: Local gain confirmed, nodes: [cells-verified] }
+        - { label: Rebuild with new cells, nodes: [new-library-build] }
+        - { label: Compare with the reference, nodes: [compare-round, read-round, check-round, read-round-goal, judge-round] }
+        - { label: Next round, nodes: [next-round] }
+    - id: himatime
+      label: HimaTime agent
+      about: AI agent for the timing view.
+      row: 1
+      checklist:
+        - { label: "Find the bottleneck, write requirements", nodes: [himatime-agent] }
+        - { label: Verify new cells (local gain), nodes: [himatime-verify] }
+    - id: qualib
+      label: Qualib agent
+      about: AI agent for the library view.
+      row: 1
+      checklist:
+        - { label: "Check the library, write requirements", nodes: [qualib-agent] }
+        - { label: Screen new cells, nodes: [qualib-screen] }
+    - id: andescell
+      label: AndesCell agent
+      about: AI agent that chooses the cells; AndesCell builds them.
+      row: 2
+      checklist:
+        - { label: Both requirement lists ready, nodes: [requirements-joined] }
+        - { label: Choose the cells, nodes: [andescell-agent] }
+        - { label: Generate the cells, nodes: [generate-cells] }
+  hidden: [blocked]

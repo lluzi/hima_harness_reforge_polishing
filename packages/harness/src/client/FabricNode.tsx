@@ -115,14 +115,14 @@ export function KindOutline({ kind, half = HALF, mark = false }: { kind: NodeKin
   }
 }
 
-function NodeShape({ node }: { node: PlacedNode }): ReactElement {
+export function NodeShape({ node }: { node: PlacedNode }): ReactElement {
   const fillClass = node.revised === 'affected' ? { fill: `url(#${HATCH_PATTERN_ID})` } : {};
   return <g className="hima-node-shape" {...fillClass}><KindOutline kind={node.kind} mark={node.kind === 'explore'} /></g>;
 }
 
 /** The current node's own distinct ring — the mockup's own accent ring, 2 px, offset 4 px past the
  *  node's own form — in addition to (never instead of) its state's own shape and colour. */
-function CurrentRing({ node }: { node: PlacedNode }): ReactElement {
+export function CurrentRing({ node }: { node: PlacedNode }): ReactElement {
   return <g className="hima-node-current-ring"><KindOutline kind={node.kind} half={HALF + 4} /></g>;
 }
 
@@ -139,7 +139,7 @@ function SelectedHalo({ node }: { node: PlacedNode }): ReactElement {
  *  while the agent works and stands still once it is done. The two gradients live in
  *  `FabricCanvas`'s own `<defs>`; the turning one is never referenced while motion is off. */
 export const AI_RING_ID = 'hima-ai-ring', AI_RING_LIVE_ID = 'hima-ai-ring-live';
-function AiRing({ node, working, motionOff }: { node: PlacedNode; working: boolean; motionOff: boolean }): ReactElement | null {
+export function AiRing({ node, working, motionOff }: { node: PlacedNode; working: boolean; motionOff: boolean }): ReactElement | null {
   const done = node.state === 'done' || node.state === 'reconciled';
   // An outsourced node the owner drives can sit `available` while its agent works: the agent's own
   // execution or activity says it is working, not only the node's Ledger state.
@@ -152,7 +152,7 @@ function AiRing({ node, working, motionOff }: { node: PlacedNode; working: boole
  *  `pending`/`available`, whose hollow-or-accent stroke is the whole of what they say. An AI node
  *  draws its spark instead of the plain dot or tick, in every state that would otherwise show one
  *  (and while it waits, so it reads as the AI step before it starts). */
-function StateGlyph({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
+export function StateGlyph({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
   if (node.ai === true && ['pending', 'available', 'running', 'done', 'reconciled'].includes(node.state)) {
     return <g transform="translate(-8,-8)" className={`hima-node-glyph-ai hima-node-glyph-ai-${node.state}`}><Glyph name="sparkle" size={16} /></g>;
   }
@@ -199,7 +199,7 @@ function StateBar({ node }: { node: PlacedNode }): ReactElement | null {
 
 /** One checklist line's own mark: an empty box waiting, a pulsing dot running, a green tick done, a
  *  red cross failed. Colour is never the only signal: each state draws its own shape. */
-function CheckMark({ state, motionOff }: { state: GroupMember['state']; motionOff: boolean }): ReactElement {
+export function CheckMark({ state, motionOff }: { state: GroupMember['state']; motionOff: boolean }): ReactElement {
   if (state === 'done' || state === 'reconciled') {
     return <g className="hima-check hima-check-done"><rect x={0} y={0} width={10} height={10} rx={2} /><Glyph name="check" size={10} /></g>;
   }
