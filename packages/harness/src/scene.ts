@@ -145,6 +145,13 @@ function collapseSegments(graph: LayoutGraph, facts: LayoutFacts, groups: readon
     seen.add(key);
     edges.push(from === edge.from && target === edge.to ? edge : { ...edge, from, to: target });
   }
+  // A wait node is drawn on a graph with merged steps only once the Run has been there: until then
+  // the blocked path is implied, and its edges would only cut across the checklists.
+  const unvisited = new Set(nodes.filter((node) => node.kind === 'wait' && states[node.id] === undefined && facts.currentNode !== node.id).map((node) => node.id));
+  if (unvisited.size > 0) {
+    nodes.splice(0, nodes.length, ...nodes.filter((node) => !unvisited.has(node.id)));
+    edges.splice(0, edges.length, ...edges.filter((edge) => !unvisited.has(edge.from) && !unvisited.has(edge.to)));
+  }
   const unique = (ids: readonly string[]) => [...new Set(ids.map(to))];
   const opens = graph.opens === undefined ? undefined : Object.fromEntries(Object.entries(graph.opens).map(([id, loop]) => [to(id), loop]));
   const collapsed: LayoutGraph = { ...graph, entry: to(graph.entry), nodes, edges, ...(opens === undefined ? {} : { opens }) };

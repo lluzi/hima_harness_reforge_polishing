@@ -875,3 +875,26 @@ test('an autopilot declaration is held at load: a wait inside a segment, an unla
   assert.deepEqual(parse(await readFile(path.join(dir, 'graph.yml'), 'utf8')).autopilot, [{ fork: 'start', revisions: 1, author: { maxElapsedMs: 30_000, maxFollowups: 3 } }]);
   assert.equal(loadPack(packsDir, packId).graph.autopilot.length, 1);
 });
+
+test('a hand-back names outsourced next steps as begin-and-start work in the Pack labels, not as running work', async () => {
+  const { nextStepPhrase } = await import(new URL('../../packages/harness/lib/autopilot.js', import.meta.url).href);
+  const act = (id: string, tool: string, label?: string) => ({ id, kind: 'act', ...(label === undefined ? {} : { label }), parameters: { tool } });
+  const pack = {
+    contract: { tools: [{ id: 'build' }, { id: 'split' }, { id: 'agent', outsourcing: { role: 'resident-engineering-agent' } }] },
+    graph: { entry: 'reference', autopilot: [], nodes: [
+      act('reference', 'build', 'Reference build'), act('fork', 'split', 'Hand to the agents'),
+      act('himatime-agent', 'agent', 'HimaTime agent'), act('qualib-agent', 'agent', 'Qualib agent'),
+      { id: 'join', kind: 'judge', parameters: { rules: ['r'] } },
+    ], edges: [
+      { from: 'reference', to: 'fork' }, { from: 'fork', to: 'himatime-agent' }, { from: 'fork', to: 'qualib-agent' },
+      { from: 'himatime-agent', to: 'join' }, { from: 'qualib-agent', to: 'join' },
+    ] },
+  };
+  assert.equal(nextStepPhrase(pack, ['himatime-agent', 'qualib-agent']),
+    'Next: begin HimaTime agent and Qualib agent and start their engineering tasks now (they run in parallel).');
+  assert.equal(nextStepPhrase(pack, ['qualib-agent']), 'Next: begin Qualib agent and start its engineering task now.');
+  assert.equal(nextStepPhrase(pack, ['fork']),
+    'Next: run Hand to the agents, then begin HimaTime agent and Qualib agent and start their engineering tasks (they run in parallel).');
+  assert.equal(nextStepPhrase(pack, ['reference']), 'Next: Reference build.');
+  assert.equal(nextStepPhrase(pack, []), undefined);
+});
