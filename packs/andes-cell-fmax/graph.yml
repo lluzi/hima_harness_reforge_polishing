@@ -105,13 +105,13 @@ nodes:
       tool: generate-cells
   - id: himatime-verify
     kind: act
-    label: HimaTime agent verifies
+    label: HimaTime agent (verify)
     about: AI agent. Re-times the worst paths with the new cells and reports the local gain in ps and each cell's FO4 against its stock cell.
     parameters:
       tool: himatime-verify
   - id: qualib-screen
     kind: act
-    label: Qualib agent screens
+    label: Qualib agent (screen)
     about: AI agent. Screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access, and passes or fails each.
     parameters:
       tool: qualib-screen
