@@ -165,5 +165,8 @@
   "cellfmax-dry": [
     "test/contract/custom-cell-fmax-sky130-demo-dry-path.host.test.ts",
     "test/contract/custom-cell-fmax-sky130-demo-converge.host.test.ts"
+  ],
+  "andes-dry": [
+    "test/contract/andes-cell-fmax-dry-path.host.test.ts"
   ]
 }
