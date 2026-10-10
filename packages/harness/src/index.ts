@@ -58,6 +58,7 @@ import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSave
 import { SshChannel, type Channel } from './channel.js';
 import { jobKill, nodeLogTail } from './jobs.js';
 import { RunReports } from './run-reports.js';
+import { packChartPattern } from './chart-files.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -172,7 +173,8 @@ export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
 export { ReportPathError } from './errors.js';
-export { RunReports, listRunReports, readRunReport, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit } from './run-reports.js';
+export { RunReports, chartPathPattern, listRunReports, readRunReport, readRunReportBytes, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit, type RunReportBytes } from './run-reports.js';
+export { ChartFileError, chartNoteLimit, chartOf, chartRequestOf, packChartPattern, readChartAnswer, type ChartRequest } from './chart-files.js';
 export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
@@ -389,6 +391,9 @@ export const HIMA_PRODUCT_CONTEXT = [
   'When you write to the person, talk as to a chip designer about the design and its numbers, in a few short lines. Name steps by their Pack labels, not node ids. Never paste hashes, execution or record ids, revision numbers or file paths unless the person asks for them.',
 ].join('\n');
 
+/** The most Pack chart files the inventory names per Pack. */
+const packChartInventoryLimit = 12;
+
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
  * Run id or customer material is exposed. Read afresh for every prompt assembly. */
 export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string, visibleRuns?: readonly RunRecord[]): string {
@@ -402,12 +407,16 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   };
   const packs = installedPacks(packsDir);
   const sites = installedSites(sitesDir);
+  const charts: string[] = [];
   const active = (visibleRuns ?? ledger.runs()).filter((run) => !hasEnded(run.status)).slice(-5);
   const packLine = packs.length === 0
     ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
     : `Installed HimaPacks: ${packs.map((id) => {
       try {
-        const overview = packOverview(loadPack(packsDir, id));
+        const pack = loadPack(packsDir, id);
+        const overview = packOverview(pack);
+        const shipped = [...pack.folder.files.keys()].map((file) => file.replace(/^knowledge\//, '')).filter((file) => packChartPattern.test(file)).sort();
+        if (shipped.length > 0) charts.push(`${id}: ${shipped.slice(0, packChartInventoryLimit).join(', ')}`);
         return `${id}${overview.status === undefined ? '' : ` (${overview.status.raw})`}`;
       } catch {
         return `${id} (unreadable; do not claim ready)`;
@@ -419,7 +428,8 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   const campaignLine = active.length === 0
     ? 'Active Campaigns: none.'
     : `Active Campaigns: ${active.map((run) => `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${run.status ?? 'preparing'}${where(run)}`).join('; ')}.`;
-  return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
+  const chartLine = charts.length === 0 ? [] : [`Pack charts (show one with hima_chart {pack, file}): ${charts.join('; ')}.`];
+  return [`HimaHarness: ${versionLine()}.`, packLine, ...chartLine, siteLine, campaignLine].join('\n');
 }
 
 /** The tool an act node of `pack` runs, when `nodeId` names one. */
@@ -560,8 +570,8 @@ export default class Hima extends Service {
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
         const roleInstruction=role==='execution-owner'
-          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. When a round is measured, report before -> after for its key metrics (e.g. Fmax, worst slack, TNS, area) and the gain against the target, then the next decision in one sentence. When a HimaHarness status line arrives during an autopilot segment, either stay silent or reply with at most one short sentence.'
-          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. When a round is measured, report before -> after for its key metrics (e.g. Fmax, worst slack, TNS, area) and the gain against the target, then the next decision in one sentence. When a HimaHarness status line arrives during an autopilot segment, either stay silent or reply with at most one short sentence. Show charts with hima_chart: the chart files a hand-back names (hima_chart {runId, path}) and those the Pack\'s owner instructions name, each with one sentence on what it shows and why it matters for the next step; the chart is the evidence, so never type its numbers yourself.'
+          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner. When you explain a design or method from Pack knowledge, show the Pack charts that support it with hima_chart {pack, file} (the inventory names them), and a Run\'s own report charts with hima_chart {runId, path}; add a one-line note, and never type a chart\'s numbers yourself.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
@@ -717,7 +727,7 @@ export default class Hima extends Service {
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
       }, { root: this.config.knowledgeDir },
       { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
-      (request) => this.startGuidedRun(request),
+      (request) => this.startGuidedRun(request), this.reports,
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
     for (const tool of guideTools({
       inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),

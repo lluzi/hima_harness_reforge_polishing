@@ -1,6 +1,8 @@
 // The tool reports a Run's Pack leaves in its Campaign workspace (`contract.reports.dir`), as the
 // Reports face lists and opens them: `<workspace>/<dir>/<node id>/r<round>/<file>` on the Run's Site,
-// local or SSH. Display only — nothing here is Ledger evidence and nothing here writes.
+// local or SSH. Display only — nothing here is Ledger evidence and nothing here writes. A chart file
+// (`<dir>/<node>/r<k>/<name>.chart.json`) is read the same way for `hima_chart` (`readChart`, its exact
+// bytes; `chart-files.ts` validates them).
 //
 // Every read goes through the same machinery the Host reads any Run file with: the Site's own
 // channel (its closed verb list, audited at the wire) and the Permit's `decideRead`, which resolves a
@@ -54,6 +56,11 @@ export function reportPathPattern(dir: string): RegExp {
   return new RegExp(`^${dir}/[a-z0-9][a-z0-9-]*/r[0-9]{1,3}/[A-Za-z0-9._-]{1,120}$`);
 }
 
+/** The one shape a Run chart path may have: a report path whose file is `<name>.chart.json`. */
+export function chartPathPattern(dir: string): RegExp {
+  return new RegExp(`^${dir}/[a-z0-9][a-z0-9-]*/r[0-9]{1,3}/[A-Za-z0-9._-]{1,120}\\.chart\\.json$`);
+}
+
 /** A failure to list, worded for the person reading the Reports face; no host path in it. */
 class Unlistable extends Error {}
 
@@ -96,6 +103,21 @@ export class RunReports {
   /** `GET /hima/api/runs/<id>/reports/file?path=`. */
   read(runId: string, relative: string): Promise<RunReportText> {
     return readRunReport(this.#deps(), runId, relative, (run) => this.#method(run));
+  }
+
+  /**
+   * A fresh listing that also becomes the one viewers are served: for a reader that must see the files
+   * a step wrote a moment ago (the autopilot's hand-back), not a listing up to `reportListTtlMs` old.
+   */
+  listFresh(runId: string): Promise<RunReportsView> {
+    this.#lists.delete(runId);
+    return this.list(runId);
+  }
+
+  /** One chart file's exact bytes (`hima_chart`): the same bounded, permit-checked read as a report,
+   *  held to `chartPathPattern`. */
+  readChart(runId: string, relative: string): Promise<RunReportBytes> {
+    return readRunReportBytes(this.#deps(), runId, relative, (run) => this.#method(run), chartShape);
   }
 
   #method(run: RunRecord): ReportsMethod {
@@ -203,14 +225,32 @@ function textOf(bytes: Uint8Array, truncated: boolean): string | undefined {
   return undefined;
 }
 
-/** One report's bounded text. Throws `ReportPathError` for a path the caller cannot have meant. */
-export async function readRunReport(deps: RunReportsDeps, runId: string, relative: string, method: (run: RunRecord) => ReportsMethod): Promise<RunReportText> {
+/** Which paths a read accepts, and how a refusal names that shape. */
+interface ReportShape {
+  readonly pattern: (dir: string) => RegExp;
+  readonly what: string;
+  readonly shape: (dir: string) => string;
+}
+const reportShape: ReportShape = { pattern: reportPathPattern, what: 'a report path', shape: (dir) => `a report path is ${dir}/<node>/r<round>/<file>` };
+const chartShape: ReportShape = { pattern: chartPathPattern, what: 'a Run chart path', shape: (dir) => `a Run chart is ${dir}/<node>/r<round>/<name>.chart.json` };
+
+/** One report's exact first bytes, bounded, and whether there were more. */
+export interface RunReportBytes {
+  readonly path: string;
+  readonly bytes: Uint8Array;
+  readonly truncated: boolean;
+}
+
+/** One report's bounded bytes, under `pattern`. Throws `ReportPathError` for a path the caller cannot
+ *  have meant, one that is missing or one that leads out of the Campaign workspace. */
+export async function readRunReportBytes(deps: RunReportsDeps, runId: string, relative: string, method: (run: RunRecord) => ReportsMethod,
+  shape: ReportShape = reportShape): Promise<RunReportBytes> {
   const run = existingRun(deps.ledger, runId);
   let reports: ReportsMethod;
   try { reports = method(run); } catch { throw new ReportPathError('The Pack method of this Run cannot be read here, so its reports cannot be opened.', true); }
   if (reports.dir === undefined) throw new ReportPathError("This Run's Pack declares no reports folder.", true);
-  if (!reportPathPattern(reports.dir).test(relative) || relative.split('/').some((part) => part === '.' || part === '..')) {
-    throw new ReportPathError(`"${relative}" is not a report path; a report path is ${reports.dir}/<node>/r<round>/<file>`);
+  if (!shape.pattern(reports.dir).test(relative) || relative.split('/').some((part) => part === '.' || part === '..')) {
+    throw new ReportPathError(`"${relative}" is not ${shape.what}; ${shape.shape(reports.dir)}`);
   }
   const prepared = workspaceOf(deps.ledger, runId);
   if (prepared === undefined) throw new ReportPathError('This Run has no Campaign workspace yet, so it has no reports.', true);
@@ -227,7 +267,13 @@ export async function readRunReport(deps: RunReportsDeps, runId: string, relativ
   const head = await channel.exec(['head', '-c', String(reportReadLimit + 1), '--', decided.absPath]);
   if (head.code !== 0) throw new Error(`cannot read ${relative} on site ${site.name}: head exited ${head.code}${head.stderr.trim() ? `: ${head.stderr.trim()}` : ''}`);
   const truncated = head.stdout.byteLength > reportReadLimit;
-  const text = textOf(truncated ? head.stdout.subarray(0, reportReadLimit) : head.stdout, truncated);
+  return { path: relative, bytes: truncated ? head.stdout.subarray(0, reportReadLimit) : head.stdout, truncated };
+}
+
+/** One report's bounded text. Throws `ReportPathError` for a path the caller cannot have meant. */
+export async function readRunReport(deps: RunReportsDeps, runId: string, relative: string, method: (run: RunRecord) => ReportsMethod): Promise<RunReportText> {
+  const read = await readRunReportBytes(deps, runId, relative, method);
+  const text = textOf(read.bytes, read.truncated);
   if (text === undefined) throw new ReportPathError(`${relative} is a binary file, not a text report.`);
-  return { path: relative, text, truncated };
+  return { path: relative, text, truncated: read.truncated };
 }
