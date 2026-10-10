@@ -316,8 +316,116 @@ def copy_confined(root, relative, destination):
     fsync_directory(destination.parent)
 
 
+ACTIVITY_KINDS = {
+    "read": "read", "fetch": "read", "edit": "edit", "delete": "edit", "move": "edit",
+    "execute": "execute", "search": "search",
+}
+ABSOLUTE_PATH = re.compile(r"(?<![\w.~:/-])/[^\s/'\"`]+(?:/[^\s/'\"`]+)+")
+
+
+def activity_title(value, limit=120):
+    """One display line: absolute paths keep their last two segments, the line keeps 120 chars."""
+    text = " ".join(str(value).split())
+    text = ABSOLUTE_PATH.sub(lambda match: "/".join(match.group(0).split("/")[-2:]), text)
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+
+
+def plan_progress(entries):
+    """(done, total) for ACP plan entries or OpenCode todowrite todos; None when not a list."""
+    if not isinstance(entries, list):
+        return None
+    items = [item for item in entries if isinstance(item, dict)]
+    return sum(1 for item in items if item.get("status") == "completed"), len(items)
+
+
+class Activity:
+    """Live display facts from ACP session/update traffic. Never authority: the Host only shows them."""
+
+    def __init__(self, retained=None):
+        self.lock = threading.Lock()
+        self.value = None
+        self.titles = {}
+        self.message = None
+        self.message_id = None
+        if isinstance(retained, dict):
+            value = {key: retained.get(key) for key in ("toolCalls", "planDone", "planTotal")}
+            if all(isinstance(item, int) and item >= 0 for item in value.values()):
+                latest = retained.get("latest")
+                self.value = {**value, **({"latest": latest} if isinstance(latest, dict) else {})}
+        self.dirty = False
+
+    def _ensure(self):
+        if self.value is None:
+            self.value = {"toolCalls": 0, "planDone": 0, "planTotal": 0}
+        return self.value
+
+    def _latest(self, kind, title):
+        title = activity_title(title)
+        if title:
+            self._ensure()["latest"] = {"kind": kind, "title": title, "at": now()}
+            self.dirty = True
+
+    def _plan(self, progress):
+        if progress is not None:
+            value = self._ensure()
+            value["planDone"], value["planTotal"] = progress
+            self.dirty = True
+
+    def update(self, update):
+        kind = update.get("sessionUpdate")
+        with self.lock:
+            if kind == "agent_message_chunk":
+                content = update.get("content")
+                if not (isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str)):
+                    return
+                message_id = update.get("messageId")
+                if self.message is None or (message_id is not None and message_id != self.message_id):
+                    self.message = ""
+                self.message_id = message_id
+                if len(self.message) < 100:
+                    self.message = (self.message + content["text"])[:100]
+                    if self.message.strip():
+                        self._latest("message", self.message)
+                return
+            if kind == "plan":
+                self.message = None
+                self._plan(plan_progress(update.get("entries")))
+                return
+            if kind not in ("tool_call", "tool_call_update"):
+                return
+            self.message = None
+            call_id = update.get("toolCallId")
+            title = update.get("title")
+            raw = update.get("rawInput")
+            todos = plan_progress(raw.get("todos")) if isinstance(raw, dict) else None
+            is_plan = todos is not None or (isinstance(title, str) and title.strip().lower() == "todowrite")
+            if kind == "tool_call":
+                self._ensure()["toolCalls"] += 1
+                self.dirty = True
+            self._plan(todos)
+            if not isinstance(title, str) or not title.strip():
+                return
+            if kind == "tool_call_update" and self.titles.get(call_id) == title:
+                return
+            self.titles[call_id] = title
+            if len(self.titles) > 512:
+                self.titles.pop(next(iter(self.titles)))
+            self._latest("plan" if is_plan else ACTIVITY_KINDS.get(update.get("kind"), "other"), title)
+
+    def new_turn(self):
+        with self.lock:
+            self.message = None
+
+    def snapshot(self):
+        with self.lock:
+            self.dirty = False
+            if self.value is None:
+                return None
+            return {**self.value, **({"latest": dict(self.value["latest"])} if "latest" in self.value else {})}
+
+
 class ACP:
-    def __init__(self, argv, cwd, env, trace, stderr_log, on_text_chunk=None):
+    def __init__(self, argv, cwd, env, trace, stderr_log, on_text_chunk=None, on_update=None):
         self.trace = trace
         self.write_lock = threading.Lock()
         self.pending = {}
@@ -325,6 +433,7 @@ class ACP:
         self.next_id = 1
         self.closed = threading.Event()
         self.on_text_chunk = on_text_chunk
+        self.on_update = on_update
         self.process = subprocess.Popen(
             argv, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True,
@@ -362,6 +471,12 @@ class ACP:
                     # original queue route, so a malformed notification cannot stop this reader.
                     params = message.get("params")
                     update = params.get("update") if isinstance(params, dict) else None
+                    on_update = getattr(self, "on_update", None)
+                    if on_update is not None and message.get("method") == "session/update" and isinstance(update, dict):
+                        try:
+                            on_update(params.get("sessionId"), update)
+                        except Exception:
+                            pass
                     if (self.on_text_chunk is not None and message.get("method") == "session/update"
                             and isinstance(update, dict) and update.get("sessionUpdate") == "agent_message_chunk"):
                         content = update.get("content")
@@ -462,6 +577,15 @@ class Wrapper:
         self.reply_size = 0
         self.reply_trimmed = False
         self.reply_lock = threading.Lock()
+        self.state_lock = threading.RLock()
+        self.state_args = None
+        self.state_written = 0.0
+        retained_state = None
+        try:
+            retained_state = load_json(self.task_dir / "state.json").get("activity")
+        except Exception:
+            pass
+        self.activity = Activity(retained_state)
         self.runtime = self.task_dir / "runtime.json"
         self.resumed = self.runtime.exists()
         if self.resumed:
@@ -547,15 +671,29 @@ class Wrapper:
             raise ValueError("production resident sessions require the declared Podman sandbox")
 
     def state(self, phase, active=None, detail=None):
-        body = {
-            "schema": PROTOCOL, "taskId": self.task["taskId"],
-            **({"sessionId": self.session_id} if self.session_id else {}),
-            "phase": phase,
-            **({"activeRequestId": active} if active else {}),
-            **({"detail": detail} if detail else {}),
-            "updatedAt": now(),
-        }
-        atomic_replace(self.task_dir / "state.json", framed(body))
+        with self.state_lock:
+            activity = self.activity.snapshot()
+            body = {
+                "schema": PROTOCOL, "taskId": self.task["taskId"],
+                **({"sessionId": self.session_id} if self.session_id else {}),
+                "phase": phase,
+                **({"activeRequestId": active} if active else {}),
+                **({"detail": detail} if detail else {}),
+                **({"activity": activity} if activity is not None else {}),
+                "updatedAt": now(),
+            }
+            atomic_replace(self.task_dir / "state.json", framed(body))
+            self.state_args = (phase, active, detail)
+            self.state_written = time.monotonic()
+
+    def flush_activity(self):
+        """Republish a running state with fresh activity, at most once per second. Other phases keep
+        their signed bytes (the Host keys owner notices on them); the next state() carries activity."""
+        if not self.activity.dirty or self.state_args is None or time.monotonic() - self.state_written < 1.0:
+            return
+        with self.state_lock:
+            if self.activity.dirty and self.state_args is not None and self.state_args[0] == "running":
+                self.state(*self.state_args)
 
     def receipt(self, request, status, result=None, error=None):
         body = {
@@ -674,7 +812,7 @@ class Wrapper:
         self.state("starting")
         try:
             self.rpc = ACP(self.native_argv(), str(self.workspace), self.native_env(), self.native_dir / "session-events.jsonl", self.native_dir / "stderr.log",
-                           on_text_chunk=self._on_native_text_chunk)
+                           on_text_chunk=self._on_native_text_chunk, on_update=self._on_native_update)
             self.record_owned(False)
             initialized = self.rpc.request("initialize", {
                 "protocolVersion": self.capability["native"]["protocolVersion"],
@@ -696,6 +834,11 @@ class Wrapper:
                 except Exception:
                     pass
             raise
+
+    def _on_native_update(self, session_id, update):
+        # Reader thread. Display facts only; the debounced flush in run() publishes them.
+        if session_id == self.session_id:
+            self.activity.update(update)
 
     def _on_native_text_chunk(self, session_id, text):
         # Called from ACP._read's own thread, not the prompt worker or the main loop; this is the
@@ -755,6 +898,7 @@ class Wrapper:
                         return
                     with self.reply_lock:
                         self.reply_chunks, self.reply_size, self.reply_trimmed = [], 0, False
+                    self.activity.new_turn()
                     self.state("running", request["requestId"])
                     params = {
                         "sessionId": self.session_id,
@@ -1237,6 +1381,7 @@ class Wrapper:
             self.state("starting")
         while not self.stop_event.is_set():
             self.handle_native()
+            self.flush_activity()
             requests = self.task_dir / "requests"
             if requests.exists():
                 for path in sorted(requests.glob("*.json")):

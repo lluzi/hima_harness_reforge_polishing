@@ -62,6 +62,7 @@ import type {
 } from './ledger.js';
 import type { GenerationView, RevisionHistoryView } from './generations.js';
 import { generationsOf } from './generations.js';
+import { engineeringActivityOf, type EngineeringActivityView } from './engineering-activity.js';
 // Type-only, like every other shape here: this module is bundled into the browser half as well, and
 // `channel.ts` reaches for ssh and the filesystem. What the audit routes answer comes through
 // `RemoteOperations`, from the host that has the audit.
@@ -382,6 +383,10 @@ export interface RunHeadView {
 /** A whole Run as HimaGuide shows it. Every operation that answers with a Run answers with this. */
 export interface RunView {
   readonly analyses?: readonly AnalysisView[];
+  /** Live activity of resident engineering (AI) nodes, keyed by node id: tool calls, plan progress
+   *  and the latest action, as the task wrapper last reported it. Host memory, never Ledger
+   *  authority; the last value stays after the execution ends. Absent when no such node reported. */
+  readonly engineeringActivity?: Readonly<Record<string, EngineeringActivityView>>;
   readonly archive?: { readonly recordId: string; readonly delivery: 'pending' | 'complete' | 'failed'; readonly directory: string; readonly reason?: string };
   readonly run: RunHeadView;
   /** A fail-closed study projection over existing records. It starts no timer or telemetry service. */
@@ -948,8 +953,10 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const prepared = records.findLast((r): r is WorkspaceRecord => r.type === 'workspace');
   const experience = records.findLast((r): r is ExperienceRecord => r.type === 'experience');
   const workshop = standingWorkshop(run, records);
+  const engineeringActivity = engineeringActivityOf(ledger, run.id);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
+    ...(engineeringActivity === undefined ? {} : { engineeringActivity }),
     valueMeasurement: valueMeasurementReceipt(run, records),
     ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName, ...(prepared.bindings === undefined ? {} : { bindings: prepared.bindings }) } }),
     observations,

@@ -136,6 +136,7 @@ import {
   reconcileEngineeringTask, waitEngineeringReceipt, writeEngineeringRequest,
   type EngineeringRequest, type EngineeringTaskIdentity,
 } from './engineering-executor.js';
+import { noteEngineeringActivity } from './engineering-activity.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -1986,6 +1987,66 @@ export function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   const reference = loadRunPack(deps.packsDir, run.packId, run.packDigest);
   return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
 }
+
+/** Chat notices open with one plain line a chip designer reads; the machine detail follows it. */
+export const NOTICE_PREFIX = 'HimaHarness:';
+
+function readableId(id: string): string {
+  const words = id.replace(/[-_]+/g, ' ').trim();
+  return words === '' ? id : words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function noticePack(deps: FabricDeps, runId: string): Pack | undefined {
+  const run = deps.ledger.run(runId);
+  if (run === undefined) return undefined;
+  try { return executionPack(deps, run); } catch { return undefined; }
+}
+
+/** What a person calls a node: its Pack `label`, else its id made readable. */
+export function nodeDisplayName(pack: Pick<Pack, 'graph'> | undefined, nodeId: string): string {
+  return pack?.graph.nodes.find((node) => node.id === nodeId)?.label ?? readableId(nodeId);
+}
+
+/** The node's display name for a Run, read from its pinned Pack; never throws. */
+export function runNodeName(deps: FabricDeps, runId: string, nodeId: string): string {
+  return nodeDisplayName(noticePack(deps, runId), nodeId);
+}
+
+/**
+ * The first Pack results row with a value in the newest observation written after `afterSeq`
+ * (and in `branchId`, when given), e.g. "Fmax 957.67 MHz". Absent when the Pack declares no
+ * results table or no such value is recorded: a notice then names the step without a number.
+ */
+export function noticeValue(deps: FabricDeps, runId: string, pack: Pick<Pack, 'contract'> | undefined, afterSeq = 0, branchId?: string): string | undefined {
+  const rows = pack?.contract.results?.rows;
+  if (rows === undefined) return undefined;
+  const records = currentRecordsIn(deps.ledger.records({ runId }));
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index]!;
+    if (record.type !== 'observation' || record.seq <= afterSeq) continue;
+    if (branchId !== undefined && record.branchId !== undefined && record.branchId !== branchId) continue;
+    for (const row of rows) {
+      const value = record.values.find((item) => item.type === row.type && typeof item.value === 'number')?.value;
+      if (typeof value === 'number') return `${row.label} ${value.toFixed(row.digits ?? 2)}${row.unit === undefined ? '' : ` ${row.unit}`}`;
+    }
+  }
+  return undefined;
+}
+
+/** One plain line about an execution, e.g. "HimaHarness: Reference build finished (Fmax 957.67 MHz)." */
+export function executionNotice(deps: FabricDeps, runId: string, executionId: string): string | undefined {
+  const execution = deps.ledger.run(runId)?.control?.executions[executionId];
+  if (execution === undefined) return undefined;
+  const pack = noticePack(deps, runId);
+  const name = nodeDisplayName(pack, execution.nodeId);
+  if (execution.phase === 'ready' || execution.phase === 'completed') {
+    const value = noticeValue(deps, runId, pack, execution.inputThroughSeq ?? 0, execution.branchId);
+    return `${NOTICE_PREFIX} ${name} finished${value === undefined ? '' : ` (${value})`}.`;
+  }
+  if (execution.phase === 'failed') return `${NOTICE_PREFIX} ${name} failed.`;
+  if (execution.phase === 'uncertain') return `${NOTICE_PREFIX} ${name} needs a look.`;
+  return `${NOTICE_PREFIX} ${name} is running.`;
+}
 /**
  * The evidence an execution was admitted on. A fork branch's execution is admitted on the unbranched
  * evidence and its own branch's — never a sibling branch's, which it does not read and which moves
@@ -3225,6 +3286,8 @@ export function observeResidentEngineering(deps: FabricDeps, runId: string, exec
         const state = await readEngineeringState(identity.site, taskDir, taskId);
         if (deps.stopSignal?.aborted) return;
         readError = undefined;
+        // Display-only live activity for the Workbench's AI node; kept after the execution ends.
+        if (state) noteEngineeringActivity(deps.ledger, runId, execution.nodeId, executionId, state);
         // Read current authority again after Site I/O: a handoff, stop or settlement can land while
         // the state file is in flight. Paused owners may hear facts; notifications grant no work.
         const latest = existingRun(deps.ledger, runId);

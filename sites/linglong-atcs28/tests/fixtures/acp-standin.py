@@ -140,6 +140,22 @@ def complete_prompt(request_id, text):
             },
         })
         pending_permission.wait(5)
+    if "EMIT_ACTIVITY" in text:
+        def update(value):
+            send({"jsonrpc": "2.0", "method": "session/update",
+                  "params": {"sessionId": "native-session-1", "update": value}})
+        todos = [{"content": "read", "status": "completed"}, {"content": "edit", "status": "in_progress"},
+                 {"content": "check", "status": "pending"}]
+        update({"sessionUpdate": "tool_call", "toolCallId": "call-todo", "kind": "other", "title": "todowrite",
+                "status": "pending", "rawInput": {"todos": todos}})
+        update({"sessionUpdate": "plan", "entries": [{**item, "status": "completed"} if index < 2 else item
+                                                     for index, item in enumerate(todos)]})
+        update({"sessionUpdate": "tool_call", "toolCallId": "call-bash", "kind": "execute", "title": "bash",
+                "status": "pending", "rawInput": {}})
+        update({"sessionUpdate": "tool_call_update", "toolCallId": "call-bash", "kind": "execute",
+                "title": "cat /data/eda/project/runs/campaign-1/workspace/report.txt", "status": "in_progress"})
+        update({"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "thinking"}})
+        time.sleep(1.6)
     send({
         "jsonrpc": "2.0",
         "method": "session/update",

@@ -382,6 +382,33 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertEqual(state["detail"]["completedRequestId"], "message:reply-b")
         self.assertEqual(state["detail"]["reply"], {"text": "done", "requestId": "message:reply-b", "truncated": False})
 
+    def test_native_tool_calls_plan_and_message_publish_live_activity(self):
+        self.start_wrapper()
+        self.request("start:activity", "start")
+        deadline = time.monotonic() + 5
+        while wait_json(self.task / "state.json")["phase"] == "running" and time.monotonic() < deadline:
+            time.sleep(.02)
+        message = self.request("message:activity", "message", {"text": "EMIT_ACTIVITY"})
+        self.assertEqual(message["status"], "accepted")
+        running = None
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            state = wait_json(self.task / "state.json")
+            if state.get("phase") == "running" and "activity" in state:
+                running = state
+            if state.get("detail", {}).get("completedRequestId") == "message:activity":
+                break
+            time.sleep(.02)
+        self.assertIsNotNone(running, "running state republished with activity before the turn ended")
+        self.assertEqual(running["sha256"], sha256(canonical({k: v for k, v in running.items() if k != "sha256"})).hexdigest())
+        self.assertEqual({k: running["activity"][k] for k in ("toolCalls", "planDone", "planTotal")},
+                         {"toolCalls": 2, "planDone": 2, "planTotal": 3})
+        self.assertEqual((running["activity"]["latest"]["kind"], running["activity"]["latest"]["title"]),
+                         ("execute", "cat workspace/report.txt"))
+        self.assertEqual(state["detail"]["completedRequestId"], "message:activity")
+        self.assertEqual(state["activity"]["toolCalls"], 2)
+        self.assertEqual((state["activity"]["latest"]["kind"], state["activity"]["latest"]["title"]), ("message", "done"))
+
     def test_observed_extra_keys_and_missing_fields_have_actionable_delivery_errors(self):
         self.start_wrapper()
         self.request("start:invalid-contract", "start")
@@ -828,3 +855,35 @@ class AcpReaderRobustnessTest(unittest.TestCase):
             self.assertEqual(chunks, [("s", "done")])
             self.assertEqual(waiter.get_nowait()["result"]["stopReason"], "end_turn")
             self.assertEqual(module.incoming.qsize(), 3)
+
+
+class ActivityTest(unittest.TestCase):
+    def test_titles_paths_messages_and_retained_counts(self):
+        module = load_wrapper_module()
+        self.assertEqual(module.activity_title("cd /a/b/c/d && ls /x/y https://h/a/b/c"), "cd c/d && ls x/y https://h/a/b/c")
+        self.assertEqual(len(module.activity_title("x" * 300)), 120)
+        activity = module.Activity()
+        self.assertIsNone(activity.snapshot())
+        activity.update({"sessionUpdate": "tool_call", "toolCallId": "1", "kind": "read", "title": "read"})
+        activity.update({"sessionUpdate": "tool_call_update", "toolCallId": "1", "kind": "read", "title": "read"})
+        self.assertTrue(activity.dirty)
+        value = activity.snapshot()
+        self.assertFalse(activity.dirty)
+        self.assertEqual((value["toolCalls"], value["latest"]["kind"], value["latest"]["title"]), (1, "read", "read"))
+        activity.update({"sessionUpdate": "tool_call_update", "toolCallId": "1", "kind": "read", "title": "read"})
+        self.assertFalse(activity.dirty, "an unchanged title is not a new action")
+        for text in ("Fmax ", "is limited ", "by " + "y" * 200):
+            activity.update({"sessionUpdate": "agent_message_chunk", "messageId": "m1", "content": {"type": "text", "text": text}})
+        latest = activity.snapshot()["latest"]
+        self.assertEqual(latest["kind"], "message")
+        self.assertTrue(latest["title"].startswith("Fmax is limited by y"))
+        self.assertLessEqual(len(latest["title"]), 100)
+        activity.update({"sessionUpdate": "agent_message_chunk", "messageId": "m2", "content": {"type": "text", "text": "Next"}})
+        self.assertEqual(activity.snapshot()["latest"]["title"], "Next")
+        activity.update({"sessionUpdate": "tool_call_update", "toolCallId": "t", "title": "todowrite",
+                         "rawInput": {"todos": [{"status": "completed"}, {"status": "pending"}]}})
+        value = activity.snapshot()
+        self.assertEqual((value["planDone"], value["planTotal"], value["latest"]["kind"], value["toolCalls"]), (1, 2, "plan", 1))
+        retained = module.Activity(value)
+        self.assertEqual(retained.snapshot()["toolCalls"], 1)
+        self.assertIsNone(module.Activity({"toolCalls": "x"}).snapshot())

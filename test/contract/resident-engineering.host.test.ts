@@ -592,13 +592,24 @@ test('resident status exposes the completed native public reply to its owner', a
   const host = await bootInProcess(fixture.h);
   try {
     const owner = await createRootAgent(host.ctx, fixture.h.workspace);
-    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT');
+    const task = await openResidentTask(host, fixture, owner, 'DELIVER_RESULT EMIT_ACTIVITY');
     const taskDir = path.join(task.workspace.workspace, '.hima-engineering', task.engineering.data.taskId);
     await waitUntil('native public reply completed', async () => {
       try { return JSON.parse(await readFile(path.join(taskDir, 'state.json'), 'utf8')).phase === 'waiting'; } catch { return false; }
     }, 10_000, 20);
     const status = await task.execute('read-native-reply', 'engineering', { executionId: task.executionId, engineering: { operation: 'status' } });
     assert.equal(status.data.state.detail.reply?.text, 'done', 'phase/end_turn alone loses the reply that explains readiness or blockers');
+    // The Workbench's AI node reads the wrapper's live activity through RunView, kept in Host memory.
+    const remote = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+    const nodeId = host.ctx.hima.ledger.run(task.started.run.id)!.control!.executions[task.executionId]!.nodeId;
+    const activityOf = () => remote.runView(host.ctx.hima.ledger, host.ctx.hima.ledger.run(task.started.run.id)!).engineeringActivity?.[nodeId];
+    await waitUntil('Host polled the waiting activity', () => activityOf()?.state === 'waiting', 5_000, 20);
+    const activity = activityOf();
+    assert.equal(activity.executionId, task.executionId);
+    assert.deepEqual([activity.toolCalls, activity.planDone, activity.planTotal], [2, 2, 3]);
+    assert.deepEqual([activity.latest.kind, activity.latest.title], ['message', 'done']);
+    await host.ctx.hima.cancelRun(task.started.run.id);
+    assert.equal(activityOf()?.toolCalls, 2, 'a finished node keeps its totals');
   } finally {
     await host.dispose(); await fixture.h.dispose();
   }
