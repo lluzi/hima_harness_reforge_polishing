@@ -1033,8 +1033,11 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
   const currentNode = state.view?.run.currentNode;
   const nodeSaid = currentNode === undefined ? undefined : (labels?.identity === identity ? labels.byId[currentNode] : undefined) ?? currentNode;
   const round = state.view?.run.generation;
+  // Only the call that starts a Run gets the full receipt; the owner's many follow-up calls each
+  // read as one quiet line with a small link, so a running conversation does not fill with cards.
+  const compact = toolName !== undefined && toolName !== 'hima_run';
   return (
-    <div className="hima-run-card hima-root" title={runId}>
+    <div className={`hima-run-card hima-root${compact ? ' hima-run-card-compact' : ''}`} title={runId}>
       <style>{HIMA_STYLE}</style>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
       {state.view === undefined ? (state.error === undefined ? <div className="hima-muted">{t('run.readingRun')}</div> : null) : (
@@ -1047,9 +1050,14 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
               <span className="hima-state-word" data-state={status ?? ''}>{statusWord}</span>
               {nodeSaid === undefined ? null : <><span className="hima-muted">·</span><span>{nodeSaid}</span></>}
               {round === undefined ? null : <><span className="hima-muted">·</span><span>{t('masthead.gen', { n: round })}</span></>}
+              {!compact || openRun === undefined ? null : (
+                <button type="button" className="hima-run-card-link" data-hima-control="open-run" onClick={() => { openRun(runId); }}>
+                  {t('run.openCampaign')} <Glyph name="arrow-right" size={12} />
+                </button>
+              )}
             </div>
             {notice === undefined ? null : <div className="hima-run-card-receipt-notice">{notice}</div>}
-            {openRun === undefined ? null : (
+            {openRun === undefined || compact ? null : (
               <button type="button" className="hima-button" data-hima-control="open-run" onClick={() => { openRun(runId); }}>
                 {t('run.openCampaign')} <Glyph name="arrow-right" size={12} />
               </button>

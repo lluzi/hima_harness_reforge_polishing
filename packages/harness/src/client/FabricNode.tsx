@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { EXTRA_LINE, NODE, PITCH } from '../canvas-layout.js';
 import type { GroupMember, NodeKind, PlacedNode } from '../canvas-layout.js';
 import { fetchLogTail } from './api.js';
-import { activityKindKey, type EngineeringActivityView } from './engineering-activity.js';
+import { activityKindKey, activityPhrase, type EngineeringActivityView } from './engineering-activity.js';
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT } from './locale/index.js';
 
@@ -270,7 +270,7 @@ export function FabricNode({ node, activity, working = false, runId, labelsVisib
   // The extra lines start right under the label: one line down for a one-line label, two for a
   // wrapped one (the layout reserves two either way, so this only ever moves them up).
   const extraTop = labelY + 15 * (labelLines?.length ?? 2);
-  const activityLine = activity?.latest === undefined ? undefined : `${t(activityKindKey(activity.latest.kind))} ${activity.latest.title}`;
+  const activityLine = activity?.latest === undefined ? undefined : activityPhrase(t(activityKindKey(activity.latest.kind)), activity.latest.title);
   return (
     <g
       data-hima-region={`campaign-node-${node.id}`}

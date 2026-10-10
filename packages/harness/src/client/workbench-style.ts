@@ -421,6 +421,9 @@ export const HIMA_STYLE = `
 .hima-receipt-body-folded{max-height:0;overflow:hidden}
 .hima-receipt-summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:var(--hima-sp-1);color:var(--hima-ink-2);font-size:var(--hima-fs-label)}
 .hima-receipt-summary::-webkit-details-marker{display:none}
+.hima-run-card-compact{padding-top:2px;padding-bottom:2px;color:var(--hima-ink-2)}
+.hima-run-card-compact .hima-receipt-summary{display:none}
+.hima-run-card-link{background:none;border:0;padding:0 0 0 6px;color:var(--hima-accent,inherit);cursor:pointer;font:inherit;display:inline-flex;align-items:center;gap:2px}
 .hima-receipt-chevron{display:inline-flex;transition:transform 150ms ease}
 .hima-receipt-chevron-open{transform:rotate(90deg)}
 @media (prefers-reduced-motion: reduce){ .hima-receipt-chevron{transition:none} }

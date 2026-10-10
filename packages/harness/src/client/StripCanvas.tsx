@@ -11,7 +11,7 @@ import type { RunView } from '../remote.js';
 import { layoutStrip, stripFacts, stripState, STRIP_LINE, type PlacedStation } from '../strip-layout.js';
 import { CanvasAttention, ExecutionMarkers } from './FabricCanvas.js';
 import { AI_RING_ID, AI_RING_LIVE_ID, AiRing, CheckMark, CurrentRing, NodeShape, StateGlyph, truncate } from './FabricNode.js';
-import { activityKindKey, aiWorking, engineeringActivityOf } from './engineering-activity.js';
+import { activityKindKey, activityPhrase, aiWorking, engineeringActivityOf } from './engineering-activity.js';
 import type { Acting } from './HimaRunCard.js';
 import { useHimaT } from './locale/index.js';
 import { bestHeadline } from './results-view.js';
@@ -65,7 +65,7 @@ function Station({ station, view, motionOff }: { station: PlacedStation; view: R
   const members = station.lines.flatMap((line) => line.nodes);
   const working = station.ai && active && members.some((id) => aiWorking(view, id));
   const activity = station.activeNode === undefined ? undefined : engineeringActivityOf(view, station.activeNode);
-  const activityLine = activity?.latest === undefined ? t('ai.kind.other') : `${t(activityKindKey(activity.latest.kind))} ${activity.latest.title}`;
+  const activityLine = activity?.latest === undefined ? t('ai.kind.other') : activityPhrase(t(activityKindKey(activity.latest.kind)), activity.latest.title);
   const counter = activity === undefined ? undefined
     : activity.planTotal > 0 ? t('ai.counter', { calls: activity.toolCalls, done: activity.planDone, total: activity.planTotal }) : t('ai.calls', { calls: activity.toolCalls });
   return (
