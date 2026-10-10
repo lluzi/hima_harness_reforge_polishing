@@ -22,7 +22,7 @@ commands:
   -version  print the version and exit
 
 analyze: qualib analyze --lib std9t_svt [--extra-lib DIR ...] [--timing timing_summary.json] --out DIR
-screen:  qualib screen --cells ANDESCELL_DIR --out DIR
+screen:  qualib screen --cells ANDESCELL_DIR [--out DIR] [--json]
 list:    qualib list [--lib std9t_svt] [--family XNOR3]
 
 Screen limits (relative to the stock cell of the same family and drive): area <= 1.35x,
@@ -141,44 +141,54 @@ def screen_cell(cell, signoff_dir):
                 status="PASS" if not reasons else "FAIL", reasons=reasons)
 
 
+def screen_result(lib):
+    """What `qualib screen` decides, computed without pacing (deterministic)."""
+    rows = [screen_cell(cell, Path(lib["_dir"]) / "signoff") for cell in lib["cells"]]
+    return dict(schema="ctu-qualib-screen/1", tool=version_line("qualib"), library=lib["name"], round=lib.get("round"),
+                limits=LIMITS, cells=rows, passed=[r["name"] for r in rows if r["status"] == "PASS"],
+                failed=[r["name"] for r in rows if r["status"] != "PASS"], screenedAt=now_iso(),
+                note="MOCK EDA (demo Site eda_cluster_ctu_01)")
+
+
 def cmd_screen(rest):
     p = argparse.ArgumentParser(prog="qualib screen")
     p.add_argument("--cells", required=True, help="an AndesCell output directory")
-    p.add_argument("--out", required=True)
+    p.add_argument("--out", help="write screen.json, cell_screen.rpt and screen.log here")
+    p.add_argument("--json", action="store_true", help="print the result as JSON (fast without --out)")
     p.add_argument("--quiet", action="store_true")
     a = p.parse_args(rest)
+    if not a.out and not a.json:
+        raise ToolError("give --out DIR (reports) or --json (result to stdout)")
     lib = libraries.load_extra(a.cells)
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    if not a.quiet:
-        banner("qualib")
-    log = Log("QL", out / "screen.log", quiet=a.quiet)
-    log("SCR", "screening %d cell(s) of %s (limits: area <= %.2fx, input cap <= %.2fx, leakage <= %.2fx)"
-        % (len(lib["cells"]), lib["name"], LIMITS["area"], LIMITS["cap"], LIMITS["leakage"]))
-    log.phase("SCR", "Liberty/LEF consistency and pin access", 3, 2)
-    rows = []
-    for cell in lib["cells"]:
-        log.phase("SCR", "%s" % cell["name"], 0.8, 1)
-        row = screen_cell(cell, Path(lib["_dir"]) / "signoff")
-        rows.append(row)
-        log("SCR", "  %-22s %s%s" % (cell["name"], row["status"], "  (" + "; ".join(row["reasons"]) + ")" if row["reasons"] else ""))
-    passed = [r["name"] for r in rows if r["status"] == "PASS"]
-    failed = [r["name"] for r in rows if r["status"] != "PASS"]
-    result = dict(schema="ctu-qualib-screen/1", tool=version_line("qualib"), library=lib["name"], round=lib.get("round"),
-                  limits=LIMITS, cells=rows, passed=passed, failed=failed, screenedAt=now_iso(),
-                  note="MOCK EDA (demo Site eda_cluster_ctu_01)")
-    write_json(out / "screen.json", result)
-    table = ["Qualib cell screen: %s (round %s)" % (lib["name"], lib.get("round")), "",
-             "  %-22s %-6s %-9s %6s %6s %6s %4s %4s %6s  %s" % ("cell", "family", "vs stock", "area", "cap", "leak", "DRC", "LVS", "result", "reason"),
-             "  " + "-" * 100]
-    for r in rows:
-        table.append("  %-22s %-6s %-9s %5.2fx %5.2fx %5.2fx %4s %4s %6s  %s" % (
-            r["name"], r["family"], r["stockCell"], r["ratios"]["area"], r["ratios"]["cap"], r["ratios"]["leakage"],
-            "0" if r["checks"]["drcClean"] else "ERR", "ok" if r["checks"]["lvsMatch"] else "ERR", r["status"], "; ".join(r["reasons"])))
-    table += ["", "%d of %d cell(s) pass the screen." % (len(passed), len(rows)), ""]
-    write_text(out / "cell_screen.rpt", "\n".join(table))
-    log("SCR", "%d of %d cell(s) PASS; report %s (%.1f s)" % (len(passed), len(rows), out / "cell_screen.rpt", log.elapsed()))
-    log.close()
+    result = screen_result(lib)
+    rows, passed = result["cells"], result["passed"]
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("qualib")
+        log = Log("QL", out / "screen.log", quiet=quiet)
+        log("SCR", "screening %d cell(s) of %s (limits: area <= %.2fx, input cap <= %.2fx, leakage <= %.2fx)"
+            % (len(lib["cells"]), lib["name"], LIMITS["area"], LIMITS["cap"], LIMITS["leakage"]))
+        log.phase("SCR", "Liberty/LEF consistency and pin access", 3, 2)
+        for row in rows:
+            log.phase("SCR", "%s" % row["name"], 0.8, 1)
+            log("SCR", "  %-22s %s%s" % (row["name"], row["status"], "  (" + "; ".join(row["reasons"]) + ")" if row["reasons"] else ""))
+        write_json(out / "screen.json", result)
+        table = ["Qualib cell screen: %s (round %s)" % (lib["name"], lib.get("round")), "",
+                 "  %-22s %-6s %-9s %6s %6s %6s %4s %4s %6s  %s" % ("cell", "family", "vs stock", "area", "cap", "leak", "DRC", "LVS", "result", "reason"),
+                 "  " + "-" * 100]
+        for r in rows:
+            table.append("  %-22s %-6s %-9s %5.2fx %5.2fx %5.2fx %4s %4s %6s  %s" % (
+                r["name"], r["family"], r["stockCell"], r["ratios"]["area"], r["ratios"]["cap"], r["ratios"]["leakage"],
+                "0" if r["checks"]["drcClean"] else "ERR", "ok" if r["checks"]["lvsMatch"] else "ERR", r["status"], "; ".join(r["reasons"])))
+        table += ["", "%d of %d cell(s) pass the screen." % (len(passed), len(rows)), ""]
+        write_text(out / "cell_screen.rpt", "\n".join(table))
+        log("SCR", "%d of %d cell(s) PASS; report %s (%.1f s)" % (len(passed), len(rows), out / "cell_screen.rpt", log.elapsed()))
+        log.close()
+    if a.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
 
 
 def handler(argv):

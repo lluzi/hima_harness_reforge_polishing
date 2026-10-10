@@ -33,7 +33,7 @@ outputs in --out:
   aes_cipher_top.hdb.json      design database for HimaTime (himatime load --db DIR)
   aes_cipher_top.route.v       routed netlist (abridged: critical-path instances)
   aes_cipher_top.route.def     routed DEF header and component summary
-  reports/synth_qor.rpt reports/place.rpt reports/cts.rpt reports/route_drc.rpt
+  reports/report_qor.rpt reports/place.rpt reports/cts.rpt reports/route_drc.rpt
   reports/area.rpt reports/postroute_timing.rpt
 """
 
@@ -151,16 +151,34 @@ def run(argv):
 def _reports(out, s, speed, by_cell, usable, extra):
     r = out / "reports"
     hdr = ["*" * 72, "Report : %s", "Design : %s" % model.DESIGN, "Version: %s" % s["tool"], "Date   : %s" % s["finishedAt"],
-           "Note   : MOCK EDA (demo Site eda_cluster_ctu_01); not signoff", "*" * 72, ""]
+           "Note   : demo Site eda_cluster_ctu_01; not signoff", "*" * 72, ""]
     head = lambda title: "\n".join(hdr) % title
-    write_text(r / "synth_qor.rpt", head("qor (synthesis)") + "\n".join([
-        "  Timing path group '%s'" % model.CLOCK_NAME,
+    worst_path = min(model.PATHS, key=lambda p: model.slack_ps(p, speed))
+    write_text(r / "report_qor.rpt", head("qor") + "\n".join([
+        "  Flow settings",
         "  -----------------------------------",
-        "  Levels of logic:            %d" % (len(model.stages(model.PATHS[0], speed)) - 1),
-        "  Critical path length:       %.3f ns" % (model.path_delay(model.PATHS[0], speed) / 1000.0),
+        "  Synthesis effort:           high (timing-driven, ultra mapping, retiming off)",
+        "  Placement effort:           high (timing-driven)",
+        "  Clock tree effort:          high",
+        "  Routing effort:             high (timing-driven, SI-aware)",
+        "  Post-route optimization:    high (setup)",
+        "",
+        "  Timing path group '%s' (clock period %.3f ns)" % (model.CLOCK_NAME, s["clockPeriodNs"]),
+        "  -----------------------------------",
+        "  Levels of logic:            %d" % (len(model.stages(worst_path, speed)) - 1),
+        "  Critical path length:       %.3f ns" % (model.path_delay(worst_path, speed) / 1000.0),
+        "  Critical path slack:        %.4f ns" % s["wnsNs"],
+        "  Total negative slack:       %.3f ns" % s["tnsNs"],
+        "  No. of violating paths:     %d" % s["violatingEndpoints"],
+        "  Fmax:                       %.2f MHz" % s["fmaxMhz"],
+        "",
+        "  Cell count",
+        "  -----------------------------------",
         "  Leaf cell count:            %d" % s["instances"],
         "  Sequential cell count:      %d" % model.FAMILIES["DFF"]["instances"],
-        "  Cell area:                  %.1f um^2" % s["areaUm2"], ""]))
+        "  AndesCell instances:        %d" % s["newCellInstances"],
+        "  Cell area:                  %.1f um^2" % s["areaUm2"],
+        "  Route DRC violations:       %d" % s["routeDrcErrors"], ""]))
     write_text(r / "place.rpt", head("placement") + "  utilization %.1f %%   rows 9-track   overflow 0.00 %%   legal: yes\n" % s["coreUtilizationPct"])
     write_text(r / "cts.rpt", head("clock tree") + "  clock %s  sinks %d  latency %.3f ns  skew 0.016 ns  buffers 74\n"
                % (model.CLOCK_NAME, model.FAMILIES["DFF"]["instances"], model.CLOCK_LATENCY_NS))
@@ -177,9 +195,10 @@ def _reports(out, s, speed, by_cell, usable, extra):
     t = model.timing(speed)
     worst = sorted(model.PATHS, key=lambda p: model.slack_ps(p, speed))[:5]
     tl = ["  WNS %.4f ns   TNS %.3f ns   violating endpoints %d   Fmax %.2f MHz" % (t["wnsNs"], t["tnsNs"], t["violatingEndpoints"], t["fmaxMhz"]), "",
-          "  %-24s %-24s %10s" % ("Startpoint", "Endpoint", "Slack (ns)")]
+          "  %-24s %-24s %10s  %s" % ("Startpoint", "Endpoint", "Slack (ns)", "")]
     for p in worst:
-        tl.append("  %-24s %-24s %10.4f" % (p["start"], p["end"], model.slack_ps(p, speed) / 1000.0))
+        slack = model.slack_ps(p, speed) / 1000.0
+        tl.append("  %-24s %-24s %10.4f  %s" % (p["start"], p["end"], slack, "(VIOLATED)" if slack < 0 else "(MET)"))
     tl += ["", "  Full path detail: himatime load --db %s" % out, ""]
     write_text(r / "postroute_timing.rpt", head("post-route timing summary") + "\n".join(tl))
     nl = ["// %s routed netlist (abridged to the 20 worst paths' instances)" % model.DESIGN,

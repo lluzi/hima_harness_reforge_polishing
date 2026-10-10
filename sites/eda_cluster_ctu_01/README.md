@@ -18,9 +18,9 @@ model. Every EDA result on this Site comes from mock tools (mock EDA); not signo
 | Command | Tool | Typical time |
 | --- | --- | --- |
 | `sapr run` | Synthesis and APR: RTL to routed design, post-route summary and reports | 75-95 s |
-| `himatime load / report / estimate / verify-cells` | HimaTime STA | 14 s / instant / instant / 15 s |
-| `qualib analyze / screen / list` | Qualib library analysis and cell screen | 9 s / 9 s / instant |
-| `andescell generate / families` | AndesCell cell generation (at most 2 families a run) | 30-40 s; `--dry-run` instant |
+| `himatime load / report / estimate / verify` | HimaTime STA; `verify` re-times the worst paths with new cells (local gain in ps, FO4 per cell) | 14 s / instant / instant / 8 s (`--json` alone: instant) |
+| `qualib analyze / screen / list` | Qualib library analysis and cell screen | 9 s / 9 s (`--json` alone: instant) / instant |
+| `andescell generate / families` | AndesCell cell generation (at most 2 families a run; `--families A,B` builds exactly a plan's choice) | 30-40 s; `--dry-run` instant |
 | `xtop -version` | XTop timing ECO; installed, not a step of the flow | instant |
 
 `CTU_MOCK_TIME_SCALE` scales every wait (0 = none; the resident capability sets 0.25 so the agents'
