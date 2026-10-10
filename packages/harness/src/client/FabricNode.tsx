@@ -36,6 +36,8 @@ const LABEL_LINE_CHARS = 14;
 /** A merged step's checklist line, and an AI node's activity line, at the 12 px eyebrow size. */
 const CHECK_LINE_CHARS = 18;
 const ACTIVITY_LINE_CHARS = 22;
+/** At the wide pitch of a graph with merged steps (`PlacedNode.wide`), the words read in full. */
+const WIDE_LABEL_LINE_CHARS = 24, WIDE_CHECK_LINE_CHARS = 30, WIDE_ACTIVITY_LINE_CHARS = 30;
 
 /** A label in at most two lines, broken between words; the second line is ellipsized if it runs on. */
 export function wrapLabel(text: string, max = LABEL_LINE_CHARS): readonly string[] {
@@ -212,16 +214,16 @@ function CheckMark({ state, motionOff }: { state: GroupMember['state']; motionOf
 
 /** A merged step's checklist, one line per member in segment order, starting `top` below the node's
  *  centre — inside the extra lines the layout reserved for it (`EXTRA_LINE` each). */
-function Checklist({ members, top, motionOff }: { members: readonly GroupMember[]; top: number; motionOff: boolean }): ReactElement {
+function Checklist({ members, top, motionOff, wide }: { members: readonly GroupMember[]; top: number; motionOff: boolean; wide: boolean }): ReactElement {
   const t = useHimaT();
   return <g className="hima-node-checklist">
     {members.map((member, index) => {
       const said = member.label ?? member.id;
       const y = top + index * EXTRA_LINE;
-      return <g key={member.id} data-hima-region={`campaign-node-member-${member.id}`} data-hima-state-state={member.state} transform={`translate(-60,${y - 9})`}>
+      return <g key={member.id} data-hima-region={`campaign-node-member-${member.id}`} data-hima-state-state={member.state} transform={`translate(${wide ? -100 : -60},${y - 9})`}>
         <title>{`${said} · ${labelKeyed(t, `nodeState.${member.state}`, member.state)}${member.about === undefined ? '' : ` — ${member.about}`}`}</title>
         <CheckMark state={member.state} motionOff={motionOff} />
-        <text className="hima-node-check-text" x={15} y={9}>{truncate(said, CHECK_LINE_CHARS)}</text>
+        <text className="hima-node-check-text" x={15} y={9}>{truncate(said, wide ? WIDE_CHECK_LINE_CHARS : CHECK_LINE_CHARS)}</text>
       </g>;
     })}
   </g>;
@@ -259,7 +261,8 @@ export function FabricNode({ node, activity, working = false, runId, labelsVisib
   const logLine = useLastLogLine(runId, node.id, running);
   const labelY = HALF + 20;
   // A Pack's own label replaces the id line (wrapping onto the caption's line) and hides the caption.
-  const labelLines = node.label === undefined ? undefined : wrapLabel(node.label);
+  const wide = node.wide === true;
+  const labelLines = node.label === undefined ? undefined : wrapLabel(node.label, wide ? WIDE_LABEL_LINE_CHARS : LABEL_LINE_CHARS);
   const stateWord = labelKeyed(t, `nodeState.${node.state}`, node.state);
   const hover = node.label === undefined
     ? `${node.id} · ${node.kind} · ${stateWord}${node.caption === undefined ? '' : ` · ${node.caption}`}`
@@ -321,10 +324,10 @@ export function FabricNode({ node, activity, working = false, runId, labelsVisib
           </text>
         )}
         {logLine === undefined ? null : <text className="hima-node-log" y={labelY + 30} textAnchor="middle">{truncate(logLine, 40)}<title>{logLine}</title></text>}
-        {node.members === undefined ? null : <Checklist members={node.members} top={extraTop} motionOff={reducedMotion} />}
+        {node.members === undefined ? null : <Checklist members={node.members} top={extraTop} motionOff={reducedMotion} wide={wide} />}
         {!showsActivity ? null : <>
           {activityLine === undefined ? null : (
-            <text className="hima-node-activity" y={extraTop} textAnchor="middle">{truncate(activityLine, ACTIVITY_LINE_CHARS)}<title>{activityLine}</title></text>
+            <text className="hima-node-activity" y={extraTop} textAnchor="middle">{truncate(activityLine, wide ? WIDE_ACTIVITY_LINE_CHARS : ACTIVITY_LINE_CHARS)}<title>{activityLine}</title></text>
           )}
           <text className="hima-node-activity-count" y={extraTop + EXTRA_LINE} textAnchor="middle">
             {activity.planTotal > 0

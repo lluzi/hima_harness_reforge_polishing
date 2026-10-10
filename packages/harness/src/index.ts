@@ -16,7 +16,7 @@
 //
 // It is also the bundle's surface: everything a caller outside `packages/harness/src` imports from
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
-import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
+import { boundContextSummary, createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -502,6 +502,11 @@ export default class Hima extends Service {
    *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
    *  prevents a fast Run from producing more durable turns than its Agent can consume. */
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
+  /** Running-status lines: facts already told (one line per key) and the last line per Run. */
+  private readonly statusSeen = new Set<string>();
+  private readonly statusLast = new Map<string, string>();
+  /** The owner's still-unclaimed status message per owner+Run, and the lines it carries. */
+  private readonly pendingStatus = new Map<string, { readonly id: MessageId; readonly lines: readonly string[] }>();
   private readonly guideNoticeIdentities = new Map<string,string>();
   private readonly factStop = new AbortController();
   /** The Harness's own driver of Pack-declared autopilot regions (ADR-0016). */
@@ -538,7 +543,7 @@ export default class Hima extends Service {
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
         const roleInstruction=role==='execution-owner'
-          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. When a round is measured, report before -> after for its key metrics (e.g. Fmax, worst slack, TNS, area) and the gain against the target, then the next decision in one sentence.'
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. When a round is measured, report before -> after for its key metrics (e.g. Fmax, worst slack, TNS, area) and the gain against the target, then the next decision in one sentence. When a HimaHarness status line arrives during an autopilot segment, either stay silent or reply with at most one short sentence.'
           : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           roleInstruction,
@@ -1414,6 +1419,39 @@ export default class Hima extends Service {
     return result;
   }
 
+  /**
+   * A plain running-status line in the owner's chat. DSH shows a message only once a turn claims it,
+   * so there is no display-only path: a busy owner gets it injected at its next step (no new turn);
+   * an idle owner gets one follow-up turn, and a status still unclaimed is replaced by one carrying
+   * every pending line, so a fast segment wakes the owner once. The text asks for no reply and the
+   * chat shows it as a one-line notice row. One line per key; the same line twice is dropped.
+   */
+  private postStatus(owner: string, runId: string, key: string, line: string): void {
+    if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) return;
+    const seen = `${runId}\u0000${key}`;
+    if (this.statusSeen.has(seen) || this.statusLast.get(runId) === line) return;
+    this.statusSeen.add(seen); this.statusLast.set(runId, line);
+    const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
+    if (!agent) return;
+    const slot = `${owner}\u0000${runId}`;
+    const message = (lines: readonly string[]) => createUserMessage({
+      source: { kind: 'plugin', plugin: 'hima', form: 'notice', summary: boundContextSummary(lines.at(-1)!) },
+      content: [{ type: 'text', text: `${lines.join('\n')}\n\nHima running status for Run ${runId}, display only: no reply is needed. Stay silent or answer in at most one short sentence; do not start, repeat or change any work because of it. It grants no authority or budget.` }] });
+    try {
+      if (agent.status === 'running') { agent.inject(message([line])); return; }
+      const pending = this.pendingStatus.get(slot);
+      if (pending !== undefined) {
+        const merged = message([...pending.lines, line].slice(-8));
+        if (agent.inbox.replace(pending.id, merged)) { this.pendingStatus.set(slot, { id: merged.id, lines: [...pending.lines, line].slice(-8) }); return; }
+      }
+      const fresh = message([line]);
+      agent.followup(fresh);
+      this.pendingStatus.set(slot, { id: fresh.id, lines: [line] });
+    } catch (error) {
+      this.ctx.logger.warn(`Campaign status line was not delivered: ${(error as Error).message}`);
+    }
+  }
+
   /** A source-linked important boundary reaches the original Guide; it grants no execution authority. */
   private notifyGuideBoundary(runId:string):void {
     if(!this.notificationsActive||(process.env.NODE_TEST_CONTEXT!==undefined&&process.env.HIMA_TEST_SILENT_AGENT==='1'))return;
@@ -1429,7 +1467,7 @@ export default class Hima extends Service {
     if(JSON.stringify(guide.session.deriveMessages()).includes(marker)){this.guideNoticeIdentities.set(key,fingerprint);return;}
     const plain=failed.length>0?`${NOTICE_PREFIX} ${failed.length===1?'One step needs':`${failed.length} steps need`} review.`
       :({'ended-goal-met':'The Campaign ended: target reached.','ended-goal-not-met':'The Campaign ended: target not reached.','ended-converged':'The Campaign ended: no further gain found.','ended-budget-exhausted':'The Campaign ended: time budget used up.','cancelled':'The Campaign was stopped.','waiting':'The Campaign is waiting for a decision.'} as Record<string,string>)[run.status??'']?.replace(/^/,`${NOTICE_PREFIX} `)??`${NOTICE_PREFIX} The Campaign changed state.`;
-    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:`${plain}\n\n${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
+    const message=createUserMessage({source:{kind:'plugin',plugin:'hima',form:'notice',summary:boundContextSummary(plain)},content:[{type:'text',text:`${plain}\n\n${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
     const prior=this.pendingProgressNotifications.get(key);
     if(!prior||!guide.inbox.replace(prior,message))guide.followup(message);
     this.pendingProgressNotifications.set(key,message.id);this.guideNoticeIdentities.set(key,fingerprint);
@@ -1677,6 +1715,7 @@ export default class Hima extends Service {
       stopSignal: this.factStop.signal,
       beforeSlotClaim:(siteName)=>reconcileExecutionIntents(this.deps(),siteName),
       log: (line) => this.ctx.logger.info(line),
+      status: (owner, runId, key, line) => this.postStatus(owner, runId, key, line),
       notify: (owner, runId, executionId, detail, headline) => {
         this.notifyGuideBoundary(runId);
         if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) {
@@ -1687,7 +1726,7 @@ export default class Hima extends Service {
         try {
           // One plain line for the person reading the chat, then the owner's machine detail.
           const plain = headline ?? executionNotice(this.deps(), runId, executionId) ?? `${NOTICE_PREFIX} The Campaign has new results.`;
-          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `${plain}\n\nHima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
+          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima', form: 'notice', summary: boundContextSummary(plain) }, content: [{ type: 'text', text: `${plain}\n\nHima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
           if (detail === undefined) {
             const key = `${owner}\u0000${runId}`;
             const pending = this.pendingProgressNotifications.get(key);

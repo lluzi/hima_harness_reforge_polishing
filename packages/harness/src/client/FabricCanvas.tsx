@@ -3,7 +3,7 @@
 // every node at its own `x`/`y`), the Goal roundel, and the attention strip above it all. Nothing
 // here computes a coordinate; `canvas-layout.ts` already has.
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { centerAt, fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
+import { centerAt, fitToWidth, labelsVisibleAt, PITCH } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
@@ -219,7 +219,8 @@ export function FabricCanvas({
       // outside that readable range.
       // The whole scene, both ways, centred with even margins — not only its width, which left a
       // tall scene pinned to the top-left of a short pane.
-      const whole = Math.min(1, (viewport.width - 32) / scene.width, (viewport.height - 32) / scene.height);
+      // A graph laid out at the wide pitch may also zoom in (to 1.6) to fill the pane.
+      const whole = Math.min(scene.pitch > PITCH ? 1.6 : 1, (viewport.width - 32) / scene.width, (viewport.height - 32) / scene.height);
       const fit = whole >= 0.6 ? { scale: whole, ...centerAt(scene, viewport, whole) } : fitToWidth(scene, viewport);
       if (fit.scale >= 0.6 && fit.scale <= 2) {
         setTransform(fit);

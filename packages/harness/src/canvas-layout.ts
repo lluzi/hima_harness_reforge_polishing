@@ -88,6 +88,8 @@ export interface PlacedNode {
   readonly caption?: string; readonly current: boolean;
   readonly waitedForSlot: boolean; readonly revised?: 'changed' | 'affected'; readonly frame?: string;
   readonly label?: string; readonly about?: string; readonly members?: readonly GroupMember[]; readonly ai?: true;
+  /** Laid out at the wide pitch of a graph with merged steps: its label and extra lines may run wider. */
+  readonly wide?: true;
 }
 
 /** One edge, positioned. `path` is a ready-to-render SVG path `d` string; `chip` is an outcome word
@@ -113,6 +115,8 @@ export interface Frame {
  * have to compute itself. */
 export interface CanvasScene {
   readonly width: number; readonly height: number; readonly nodes: readonly PlacedNode[];
+  /** The horizontal distance between two ranks: `PITCH`, or `WIDE_PITCH` for a graph with merged steps. */
+  readonly pitch: number;
   readonly edges: readonly PlacedEdge[]; readonly frames: readonly Frame[]; readonly goal: { readonly x: number; readonly y: number };
 }
 
@@ -120,6 +124,11 @@ export interface CanvasScene {
  * the horizontal distance between two ranks, the vertical distance between two rows, a node's
  * diameter, the left margin before rank 0, and the top margin above row 0. */
 export const PITCH = 90, ROW = 96, NODE = 36, X0 = 64, PAD_Y = 72;
+/** A graph with merged steps reads in full words: its ranks stand this far apart, so a label runs to
+ *  two lines of about 24 characters and a checklist line to about 30 (`WIDE_LABEL_HALF_W` and
+ *  `WIDE_EXTRA_HALF_W` each side). */
+export const WIDE_PITCH = 200;
+const WIDE_LABEL_HALF_W = 82, WIDE_EXTRA_HALF_W = 105;
 
 // ---------------------------------------------------------------------------------------------------
 // Rule 1 (rank) and rule 2 (row), shared by the top-level reference graph and every loop's or growth's
@@ -272,6 +281,8 @@ const FOOT_HALF_W = (PITCH - 8) / 2, FOOT_TOP = NODE / 2, FOOT_BOTTOM = NODE / 2
  * reads wider than the label budget (`EXTRA_HALF_W` each side, about 22 characters of 12 px text). */
 export const EXTRA_LINE = 15;
 const EXTRA_HALF_W = 70;
+const labelHalfOf = (wide: boolean | undefined): number => (wide === true ? WIDE_LABEL_HALF_W : FOOT_HALF_W);
+const extraHalfOf = (wide: boolean | undefined): number => (wide === true ? WIDE_EXTRA_HALF_W : EXTRA_HALF_W);
 const extraOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => ((n.members?.length ?? 0) + (n.ai === true ? 2 : 0)) * EXTRA_LINE;
 const footBottomOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => FOOT_BOTTOM + extraOf(n);
 
@@ -281,7 +292,7 @@ const footBottomOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => FOOT_BOT
  * lane within their width — that lane, and every lane under it, moves down until it clears them. A
  * graph with no extra lines keeps exactly `top + (row - minRow) * ROW`.
  */
-function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, row: ReadonlyMap<string, number>, minRow: number, top: number): Map<number, number> {
+function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, row: ReadonlyMap<string, number>, minRow: number, top: number, pitch = PITCH, wide = false): Map<number, number> {
   const lanes = [...new Set(nodes.map((node) => row.get(node.id) ?? 0))].sort((a, b) => a - b);
   const ys = new Map<number, number>();
   let previous: number | undefined;
@@ -291,8 +302,8 @@ function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, 
       const extra = extraOf(owner);
       const ownerLane = row.get(owner.id) ?? 0;
       if (extra === 0 || ownerLane >= lane) continue;
-      const ownerX = (rank.get(owner.id) ?? 0) * PITCH;
-      const reaches = nodes.some((other) => (row.get(other.id) ?? 0) === lane && Math.abs((rank.get(other.id) ?? 0) * PITCH - ownerX) < EXTRA_HALF_W + FOOT_HALF_W);
+      const ownerX = (rank.get(owner.id) ?? 0) * pitch;
+      const reaches = nodes.some((other) => (row.get(other.id) ?? 0) === lane && Math.abs((rank.get(other.id) ?? 0) * pitch - ownerX) < extraHalfOf(wide) + labelHalfOf(wide));
       if (reaches) y = Math.max(y, ys.get(ownerLane)! + FOOT_TOP + FOOT_BOTTOM + extra);
     }
     ys.set(lane, y);
@@ -316,14 +327,20 @@ function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, 
  *
  * Only a real collision moves a node: a linear graph stays on row 0, and a node at a half rank never
  * shares a row with a neighbour half a pitch away, since their labels would run into each other. */
-function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, rank: ReadonlyMap<string, number>, fork: LayoutFacts['fork'] | undefined): Map<string, number> {
+function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, rank: ReadonlyMap<string, number>, fork: LayoutFacts['fork'] | undefined, pitch = PITCH): Map<string, number> {
   const detected = fork === undefined ? autoDetectForkBranches(nodes, edges) : { node: fork.node, branches: fork.branches };
   const branchOffset = new Map<string, number>();
   const n = detected?.branches.length ?? 0;
   // A graph with merged steps keeps the room below its spine for their checklists, so a fork's
   // lanes all open above it instead: branch i at lane -(i + 1). Every other graph fans symmetrically.
   const above = nodes.some((node) => node.members !== undefined);
-  detected?.branches.forEach((branch, i) => { for (const id of branch.nodes) branchOffset.set(id, above ? -(i + 1) : i - (n - 1) / 2); });
+  const wide = above;
+  // Above the spine, the first branch in the graph's own order takes the lane nearest it.
+  const position = new Map(nodes.map((node, i) => [node.id, i]));
+  const lanes = detected === undefined ? [] : above
+    ? [...detected.branches].sort((a, b) => (position.get(a.nodes[0] ?? '') ?? 0) - (position.get(b.nodes[0] ?? '') ?? 0))
+    : detected.branches;
+  lanes.forEach((branch, i) => { for (const id of branch.nodes) branchOffset.set(id, above ? -(i + 1) : i - (n - 1) / 2); });
 
   const ids = new Set(nodes.map((node) => node.id));
   const predecessors = new Map<string, string[]>();
@@ -342,10 +359,10 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
   // their own row instead. Only two such blocks side by side on one row cannot be stretched apart,
   // so they still take separate lanes.
   const free = (x: number, y: number, extra: number) => placed.every((p) =>
-    (Math.abs(p.x - x) >= 2 * FOOT_HALF_W || Math.abs(p.y - y) >= (FOOT_TOP + FOOT_BOTTOM) / ROW)
-    && !(extra > 0 && p.extra > 0 && p.y === y && Math.abs(p.x - x) < 2 * EXTRA_HALF_W));
+    (Math.abs(p.x - x) >= 2 * labelHalfOf(wide) || Math.abs(p.y - y) >= (FOOT_TOP + FOOT_BOTTOM) / ROW)
+    && !(extra > 0 && p.extra > 0 && p.y === y && Math.abs(p.x - x) < 2 * extraHalfOf(wide)));
   for (const node of order) {
-    const x = (rank.get(node.id) ?? 0) * PITCH;
+    const x = (rank.get(node.id) ?? 0) * pitch;
     const homes = (predecessors.get(node.id) ?? []).map((from) => home.get(from)).filter((h): h is number => h !== undefined);
     const inherited = homes.length > 0 ? Math.min(...homes) : 0;
     const offset = branchOffset.get(node.id);
@@ -549,11 +566,11 @@ type Box = { readonly left: number; readonly right: number; readonly top: number
 
 /** A node's glyph (with a 2-unit margin) and its label lines, as open boxes. */
 const glyphBox = (n: Point): Box => ({ left: n.x - NODE / 2 - 2, right: n.x + NODE / 2 + 2, top: n.y - NODE / 2 - 2, bottom: n.y + NODE / 2 + 2 });
-const labelBox = (n: Point): Box => ({ left: n.x - FOOT_HALF_W, right: n.x + FOOT_HALF_W, top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM });
+const labelBox = (n: Point & { readonly wide?: true }): Box => ({ left: n.x - labelHalfOf(n.wide), right: n.x + labelHalfOf(n.wide), top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM });
 /** A node's label box, plus the wider box of its extra lines when it draws any. */
 const footBoxes = (n: PlacedNode): Box[] => {
   const extra = extraOf(n);
-  return extra === 0 ? [labelBox(n)] : [labelBox(n), { left: n.x - EXTRA_HALF_W, right: n.x + EXTRA_HALF_W, top: n.y + FOOT_BOTTOM, bottom: n.y + FOOT_BOTTOM + extra }];
+  return extra === 0 ? [labelBox(n)] : [labelBox(n), { left: n.x - extraHalfOf(n.wide), right: n.x + extraHalfOf(n.wide), top: n.y + FOOT_BOTTOM, bottom: n.y + FOOT_BOTTOM + extra }];
 };
 
 /** Whether the straight segment `a`–`b` passes through the inside of `box` (Liang–Barsky clipping). */
@@ -744,14 +761,15 @@ const wordsOf = (node: LayoutNode): Pick<PlacedNode, 'label' | 'about' | 'member
 export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasScene {
   const hang = hangNodeIds(graph.nodes, graph.edges, graph.entry);
   const rankMap = computeRank(graph.nodes, graph.edges, hang, graph.entry);
-  const rowMap = computeRow(graph.nodes, graph.edges, hang, rankMap, facts?.fork);
+  const checklists = graph.nodes.some((node) => node.members !== undefined);
+  const pitch = checklists ? WIDE_PITCH : PITCH;
+  const rowMap = computeRow(graph.nodes, graph.edges, hang, rankMap, facts?.fork, pitch);
   // With merged steps on the spine, a wait node (drawn only once the Run has been there) stands
   // apart past the Goal, one lane below the spine, rather than hanging among the checklists.
-  const checklists = graph.nodes.some((node) => node.members !== undefined);
   if (checklists) {
     const spineRanks = graph.nodes.filter((node) => node.kind !== 'wait').map((node) => rankMap.get(node.id) ?? 0);
     const spineMax = spineRanks.length > 0 ? Math.max(...spineRanks) : 0;
-    graph.nodes.filter((node) => node.kind === 'wait').forEach((node, i) => { rankMap.set(node.id, spineMax + 2.5 + i); rowMap.set(node.id, 1); });
+    graph.nodes.filter((node) => node.kind === 'wait').forEach((node, i) => { rankMap.set(node.id, spineMax + 2 + i); rowMap.set(node.id, 1); });
   }
 
   const rows = graph.nodes.map((node) => rowMap.get(node.id) ?? 0);
@@ -779,8 +797,20 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   // were (only a badge with no room above its arc now sits on the arc's own apex).
   const mainLevels = revisitLevels(graph.edges, (id) => rankMap.get(id) ?? 0);
   const topExtra = 0.75 * ARC_STEP * Math.max(0, ...mainLevels.values());
-  const pass1X = new Map(graph.nodes.map((node) => [node.id, X0 + (rankMap.get(node.id) ?? 0) * PITCH]));
-  const laneY = rowYs(graph.nodes, rankMap, rowMap, minRow, PAD_Y + topExtra);
+  const pass1X = new Map(graph.nodes.map((node) => [node.id, X0 + (rankMap.get(node.id) ?? 0) * pitch]));
+  const laneY = rowYs(graph.nodes, rankMap, rowMap, minRow, PAD_Y + topExtra, pitch, checklists);
+  if (checklists) {
+    // The lanes above a checklist spine stand evenly apart, at the widest gap any of them needs.
+    const upper = [...laneY.keys()].filter((lane) => lane <= 0).sort((a, b) => a - b);
+    if (upper.length > 1) {
+      let step = 0;
+      for (let i = 1; i < upper.length; i++) step = Math.max(step, (laneY.get(upper[i]!)! - laneY.get(upper[i - 1]!)!) / (upper[i]! - upper[i - 1]!));
+      const before = laneY.get(upper.at(-1)!)!;
+      for (const lane of upper) laneY.set(lane, laneY.get(upper[0]!)! + (lane - upper[0]!) * step);
+      const delta = laneY.get(upper.at(-1)!)! - before;
+      for (const lane of [...laneY.keys()]) if (lane > 0) laneY.set(lane, laneY.get(lane)! + delta);
+    }
+  }
   /** How far the lanes down to `row` were stretched for extra lines (0 for a graph without any). */
   const stretchAt = (row: number): number => {
     let stretch = 0;
@@ -900,6 +930,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
       id: node.id, kind: node.kind, x, y, rank, row, state: stateOf(node.id), caption: node.caption,
       current: node.id === facts?.currentNode,
       waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id), ...wordsOf(node),
+      ...(checklists ? { wide: true as const } : {}),
     };
   });
   const finalPosition = new Map(mainNodes.map((node) => [node.id, { x: node.x, y: node.y }]));
@@ -916,12 +947,13 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     // target's top. Neither runs below the spine, where the checklists are.
     if (!checklists) return placed;
     if (placed.kind === 'revisit') {
-      // Over every lane: up from the source's top, across above the highest lane, and down into the
-      // target's top-left from its left, clear of the fork's edges rising from its top-right.
+      // Over every lane and round the left: up from the source's top to a track above the highest
+      // lane, back across, down left of the target and into its left side — clear of the fork's
+      // edges rising from the target's top, and of every lane between.
       const apex = Math.max(12, mainTop - 40);
-      const c = (apex - 0.25 * (from.y - NODE / 2 + to.y - NODE / 2) / 2) / 0.75;
-      return { ...placed, path: `M ${from.x} ${from.y - NODE / 2} C ${from.x + 40} ${c}, ${to.x - 150} ${c}, ${to.x - 8} ${to.y - NODE / 2}`,
-        ...(placed.badge === undefined ? {} : { badge: { ...placed.badge, y: Math.max(12, apex) } }) };
+      const left = to.x - NODE / 2 - 22;
+      return { ...placed, path: roundedPath([{ x: from.x, y: from.y - NODE / 2 }, { x: from.x, y: apex }, { x: left, y: apex }, { x: left, y: to.y }, { x: to.x - NODE / 2, y: to.y }]),
+        ...(placed.badge === undefined ? {} : { badge: { ...placed.badge, x: (from.x + left) / 2, y: apex } }) };
     }
     if (from.y === to.y || to.x <= from.x) return placed;
     const kindOf = (id: string) => graph.nodes.find((node) => node.id === id)?.kind;
@@ -965,7 +997,8 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   // node's own caption and the Goal's own label — "next-period" running straight into "clock period
   // at m…" (PLS design review) — and a node's caption already reads to the right of its own shape,
   // so the roundel needs the extra half-pitch of clearance a bare node-to-node gap does not.
-  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y + topExtra - minRow * ROW + stretchAt(0) + shiftBefore(maxRank + 1) };
+  // At the wide pitch one full rank already clears the last node's own words.
+  const goal = { x: X0 + maxRank * pitch + (checklists ? pitch : 1.5 * PITCH), y: PAD_Y + topExtra - minRow * ROW + stretchAt(0) + shiftBefore(maxRank + 1) };
   const allFrames = [...loopFrames, ...growthFrames];
   const allNodes = [...mainNodes, ...loopNodes, ...growthNodes];
   // Finding 2: the Goal roundel's own column (`goal.x + 96`) is only ever wide enough for the main
@@ -988,7 +1021,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     ...allNodes.map((node) => node.y + footBottomOf(node) + 16));
 
   return {
-    width, height, goal,
+    width, height, goal, pitch,
     nodes: allNodes,
     edges: allEdges,
     frames: allFrames,

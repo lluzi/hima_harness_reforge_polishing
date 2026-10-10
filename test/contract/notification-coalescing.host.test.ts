@@ -135,3 +135,68 @@ test('a human clearing a blocked node queues a wake-up turn for the idle owner w
     await host.dispose(); await home.h.dispose();
   }
 });
+
+test('segment status lines name the step with its read values, stay quiet for deferred tools and passing judges', async () => {
+  const { segmentStatusLine } = await import(new URL('../../packages/harness/lib/fabric.js', import.meta.url).href);
+  const observation = { id: 'o1', type: 'observation', seq: 7, runId: 'r', values: [
+    { type: 'design_fmax_mhz', value: 957.674, unit: 'mhz' }, { type: 'design_wns_ns', value: -0.0441, unit: 'ns' },
+    { type: 'route_drc_errors', value: 0, unit: 'count' },
+  ] };
+  const deps = { ledger: { run: () => ({ generation: 2 }), records: () => [observation] } };
+  const act = (id: string, label: string, parameters: Record<string, unknown>) => ({ id, kind: 'act', label, parameters });
+  const pack = {
+    contract: { words: { route_drc_errors: { label: 'route DRC errors' } }, results: { columns: [], rows: [
+      { type: 'design_fmax_mhz', label: 'Fmax', unit: 'MHz', digits: 2 }, { type: 'design_wns_ns', label: 'Worst slack', unit: 'ns', digits: 3 },
+    ] } },
+    graph: { nodes: [
+      act('reference-build', 'Reference build', { tool: 'build' }), act('read-reference', 'Read the reference build', { observes: 'referenceBuild' }),
+      { id: 'check', kind: 'judge', label: 'Reference build is clean', parameters: { rules: ['valid'] } },
+      act('screen-cells', 'Qualib cell screen', { tool: 'screen' }),
+    ], edges: [{ from: 'reference-build', to: 'read-reference' }, { from: 'read-reference', to: 'check' }, { from: 'check', to: 'screen-cells', outcome: 'PASS' }] },
+  };
+  const line = (nodeId: string, result: Record<string, unknown>) =>
+    segmentStatusLine(deps, 'r', pack, { id: `e-${nodeId}`, nodeId, inputThroughSeq: 3 }, result);
+  assert.equal(line('read-reference', { kind: 'settled' }),
+    'HimaHarness: Reference build finished (round 2) — Fmax 957.67 MHz, Worst slack -0.044 ns, route DRC errors 0.');
+  assert.equal(line('reference-build', { kind: 'settled' }), undefined, 'the Reader step after it reports for the tool step');
+  assert.equal(line('check', { kind: 'settled', outcome: 'PASS' }), undefined, 'a passing judge is quiet');
+  assert.equal(line('check', { kind: 'settled', outcome: 'FAIL' }), 'HimaHarness: Reference build is clean: check failed (round 2).');
+  assert.equal(line('screen-cells', { kind: 'settled' }), 'HimaHarness: Qualib cell screen finished (round 2).');
+  assert.equal(line('screen-cells', { kind: 'blocked' }), 'HimaHarness: Qualib cell screen failed (round 2).');
+});
+
+test('running status lines reach the owner once each, coalesce while unclaimed, and ask for no reply', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let maintenance: Promise<void> | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    maintenance = owner.runMaintenance((signal) => new Promise<void>((resolve) => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }));
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    owner.inbox.clear();
+    const status = (host.ctx.hima as any).deps().status as (owner: string, runId: string, key: string, line: string) => void;
+    status(String(owner.id), started.run.id, 'node:a', 'HimaHarness: Reference build finished — Fmax 957.67 MHz.');
+    status(String(owner.id), started.run.id, 'node:a', 'HimaHarness: Reference build finished — Fmax 957.67 MHz.');
+    status(String(owner.id), started.run.id, 'node:b', 'HimaHarness: Reference build finished — Fmax 957.67 MHz.');
+    status(String(owner.id), started.run.id, 'node:c', 'HimaHarness: Qualib cell screen finished.');
+    assert.equal(owner.inbox.nextTurn.length, 1, 'unclaimed status lines share one pending turn');
+    const message = owner.inbox.nextTurn[0]!;
+    const text = messageText(message);
+    assert.equal(text.match(/Reference build finished/g)?.length, 1, 'never the same line twice');
+    assert.match(text, /^HimaHarness: Reference build finished — Fmax 957\.67 MHz\.\nHimaHarness: Qualib cell screen finished\.\n\n/);
+    assert.match(text, /no reply is needed/);
+    assert.deepEqual(message.source, { kind: 'plugin', plugin: 'hima', form: 'notice', summary: 'HimaHarness: Qualib cell screen finished.' });
+    await host.ctx.hima.cancelRun(started.run.id);
+    owner.cancel({ kind: 'hook', reason: 'status line test complete' });
+    await maintenance;
+    maintenance = undefined;
+  } finally {
+    if (maintenance !== undefined) await maintenance;
+    await host.dispose(); await home.h.dispose();
+  }
+});
