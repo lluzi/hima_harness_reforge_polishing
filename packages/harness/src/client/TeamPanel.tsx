@@ -35,7 +35,7 @@ export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: Team
   const changed = () => { refresh(); onChanged(); };
   return <section className='hima-team-panel' data-hima-region='agent-team'>
     <header><span className='hima-studio-eyebrow'>AGENT TEAM</span><button type='button' className='hima-button' onClick={refresh}>Refresh team</button></header>
-    {error ? <p role='alert'>Team unavailable: {error}</p> : delegations.length === 0 ? <p>{loading ? 'Reading retained delegation receipts…' : 'No child task has been delegated from this Campaign.'}</p>
+    {error ? <p role='alert'>Team unavailable: {error}</p> : delegations.length === 0 ? <p>{loading ? 'Reading retained delegation receipts…' : 'No child task has been delegated from this project.'}</p>
       : <>{loading ? <p className='hima-small' role='status'>Refreshing retained delegation receipts…</p> : null}{delegations.map(entry => <DelegationCard key={entry.delegationId} sessionId={sessionId} runId={runId} view={view} entry={entry} onChanged={changed} onInspect={() => onInspect(entry)}/>)}</>}
   </section>;
 }
@@ -96,7 +96,7 @@ function DelegationCard({ sessionId, runId, view, entry, onChanged, onInspect }:
     <div className='hima-team-actions'><button type='button' className='hima-button' onClick={onInspect}>Inspect transcript</button><button type='button' className='hima-button' disabled={control === undefined || busy !== undefined} onClick={() => void act('result')}>Read result</button><button type='button' className='hima-button' disabled={control === undefined || busy !== undefined || ['completed','cancelled','expired'].includes(entry.status)} onClick={() => void act('cancel')}>Request cancel</button></div>
     <label>Follow up with {entry.childSessionId}<textarea value={draft} onChange={event => setDraft(event.target.value)} placeholder='Message the exact child task'/></label>
     <button type='button' className='hima-button' disabled={!followupAvailable || busy !== undefined || draft.trim() === ''} onClick={() => void act('followup')}>{busy === 'followup' ? 'Sending…' : 'Send follow-up'}</button>
-    {control === undefined ? <p className='hima-small'>This retained task is read-only because the Campaign has no current owner control.</p> : null}
+    {control === undefined ? <p className='hima-small'>This retained task is read-only because the project has no current owner control.</p> : null}
     {status ? <p role='status'>{status}</p> : null}
     {resultLines.length === 0 ? null : <section className='hima-delegation-result'><h4>Candidate child result</h4>{resultLines.map((line, index) => <pre key={`${String(index)}:${line.slice(0, 40)}`}>{line}</pre>)}</section>}
     {resultUnknowns.map((unknown, index) => <p className='hima-memory-warning' key={`${String(index)}:${unknown}`}>Unknown: {unknown}</p>)}

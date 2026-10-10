@@ -99,7 +99,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('start-owner-session')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
     assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+    assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
     const owner = (await d.read('studio')); assert.ok(owner.ok); const ownerSession = owner.state.session; assert.ok(ownerSession);
     viewerSession = ownerSession;
 
@@ -151,7 +151,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') === 'running'`, 10_000);
     // The Campaign tab's own dock chip title carries the same identity, short: the running glyph and
     // the current node rather than "configure".
-    await browser.wait(`document.body.innerText.includes('Campaign · bind-inputs')`, 10_000);
+    await browser.wait(`document.body.innerText.includes('Project · bind-inputs')`, 10_000);
     // The anchored node card (Facts/Job/Code/Knowledge/Evidence tabs) is a later task's file
     // (`NodeCard.tsx`); this task's own node is clickable and marks itself selected in its own
     // region — asserted as a state change the click itself caused, not a fact already true of the

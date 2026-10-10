@@ -97,7 +97,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const view = snapshot.value;
   const retainedReportRef = view?.experience?.recordId;
   const visibleInsightReports: readonly AvailableInsightReport[] = view === undefined ? [] : [
-    ...(view.experience === undefined ? [] : [{ reportRef: view.experience.recordId, label: `Campaign Experience · ${view.run.id}`, detail: `Saved report written ${view.experience.writtenAt}.` }]),
+    ...(view.experience === undefined ? [] : [{ reportRef: view.experience.recordId, label: t('workbench.experienceLabel', { run: view.run.id }), detail: `Saved report written ${view.experience.writtenAt}.` }]),
     ...view.observations.map(observation => ({ reportRef: observation.recordId,
       label: `${observation.path.split(/[\\/]/).at(-1) ?? observation.recordId} · ${observation.reader.id}${observation.generation === undefined ? '' : ` · g${String(observation.generation)}`}`,
       detail: `Observation candidate · ${observation.reader.reportKind} · ${observation.contentSha256}. The Host still validates whether its retained bytes are a supported Insight report.`,
@@ -188,13 +188,13 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>{t('workbench.mode.campaign')}</button>
         <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>{t('workbench.mode.insight')}</button>
       </div>
-      {address.kind !== 'campaign' ? null : <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
-        <option value=''>Select a Campaign</option>
+      {address.kind !== 'campaign' ? null : <select aria-label={t('workbench.projectOnHost')} data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
+        <option value=''>{t('workbench.selectProject')}</option>
         {selected && !list.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>}
       {address.kind !== 'campaign' ? null : <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
-      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button hima-studio-secondary' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another Campaign</button> : null}
+      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button hima-studio-secondary' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>{t('workbench.startAnother')}</button> : null}
       {address.kind === 'campaign' && retainedReportRef ? <button className='hima-button' data-hima-control='studio-open-retained-insight' onClick={() => chooseInsight({ kind: 'insight', reportRef: retainedReportRef })}>Open retained insight</button> : null}
       <div className='hima-studio-header-actions'>
         {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier

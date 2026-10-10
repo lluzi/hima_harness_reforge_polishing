@@ -36,6 +36,7 @@ function reportFailure(value: unknown): string {
 export interface AvailableInsightReport { readonly reportRef: string; readonly label: string; readonly detail: string }
 
 export function InsightView({ sessionId, scope, reportRef, availableReports, onReference, onSelectReportRef, pickFolder, openRun, onRunStarted }: { readonly sessionId: string; readonly scope?: string; readonly reportRef?: string; readonly availableReports: readonly AvailableInsightReport[]; readonly onReference:(text:string)=>void; onSelectReportRef(reportRef?: string): void; readonly pickFolder?: () => Promise<string | null>; openRun(runId: string): void; onRunStarted?(): void }): ReactElement {
+  const t = useHimaT();
   const [library, setLibrary] = useState<LibraryInsightReportView>();
   const [feedback, setFeedback] = useState<GenerationFeedbackReportView>();
   const [report, setReport] = useState<RetainedReport>();
@@ -71,7 +72,7 @@ export function InsightView({ sessionId, scope, reportRef, availableReports, onR
   if(feedback)return <GenerationFeedbackPanel key={`${sessionId}:${feedback.reportRef}:${feedback.source.sha256}`} view={feedback} viewer={sessionId} onReference={onReference} onChooseAnother={() => onSelectReportRef()}/>;
   if (reportRef === undefined) return <ReportPreparation sessionId={sessionId} scope={scope} availableReports={availableReports} onSelect={onSelectReportRef} pickFolder={pickFolder} openRun={openRun} onRunStarted={onRunStarted}/>;
   return <section className='hima-insight-report' data-hima-region='insight-report' data-hima-state-report={reportRef}>
-    <header><div><span className='hima-studio-eyebrow'>RETAINED INSIGHT</span><h2>Campaign Experience report</h2></div><button type='button' className='hima-button' onClick={() => onSelectReportRef()}>Choose another report</button></header>
+    <header><div><span className='hima-studio-eyebrow'>RETAINED INSIGHT</span><h2>{t('insight.experienceTitle')}</h2></div><button type='button' className='hima-button' onClick={() => onSelectReportRef()}>Choose another report</button></header>
     {loading ? <p>Resolving and verifying the retained report bytes…</p> : failure ? <p role='alert'>Verified report unavailable: {failure}</p> : report && identity ? <>
       <p>This view renders the verified saved Experience report. It does not claim native Liberty analysis.</p>
       <dl className='hima-report-identity'><dt>Report record</dt><dd>{report.record.id}</dd><dt>Run</dt><dd>{report.json.runId}</dd><dt>Schema</dt><dd>{report.json.schema}</dd><dt>Version</dt><dd>{identity.version}</dd><dt>SHA-256</dt><dd>{identity.sha256}</dd></dl>

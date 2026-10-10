@@ -18,10 +18,18 @@ function choices(inputs: readonly string[], extra: Partial<StartChoices> = {}): 
   return { packs: [], sites: [], proposal: { inputs: inputs.map((name) => ({ name, description: name, ready: false })) }, ...extra } as unknown as StartChoices;
 }
 
-test('the mode tab reads "QuaLib Insight" in English and "QuaLib 洞察" in Chinese, Campaign unchanged', () => {
+test('the mode tab reads "QuaLib Insight" in English and "QuaLib 洞察" in Chinese, and "Project" beside it', () => {
   assert.equal(en['workbench.mode.insight'], 'QuaLib Insight');
   assert.equal(zh['workbench.mode.insight'], 'QuaLib 洞察');
-  assert.equal(en['workbench.mode.campaign'], 'Campaign');
+  assert.equal(en['workbench.mode.campaign'], 'Project');
+  // The pane and the receipts say "project", the plain word the chat uses (2026-10-10): no English
+  // value says "Campaign" any more, and the Chinese column says 项目.
+  assert.deepEqual(Object.entries(en).filter(([, value]) => /\bCampaign\b/.test(value)), []);
+  assert.deepEqual(Object.entries(zh).filter(([, value]) => /Campaign/.test(value)), []);
+  assert.equal(en['tab.campaign'], 'Project ·');
+  assert.equal(en['run.openCampaign'], 'Open project');
+  assert.equal(en['workbench.selectProject'], 'Select a project');
+  assert.equal(zh['workbench.mode.campaign'], '项目');
   // Every new English key has a Chinese value (the shell enforces balance on registration).
   for (const key of Object.keys(en).filter((k) => k.startsWith('insight.analyse.') || k.startsWith('workbench.mode.'))) {
     assert.equal(typeof (zh as Record<string, string>)[key], 'string', `zh is missing ${key}`);

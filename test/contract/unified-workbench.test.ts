@@ -52,7 +52,7 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.send('Input.insertText', { text: draft });
   assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
   return { host, cookie };
 }
 

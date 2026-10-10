@@ -416,7 +416,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   if (draft === undefined) {
     return <div className="hima-config hima-root" data-hima-region="configuration" data-hima-state-ready="false" data-hima-state-pack="" data-hima-state-site="" data-hima-state-changed="0">
-      {error === undefined ? <p className="hima-small">Reading the Campaign file…</p> : <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{error}</span><button type="button" className="hima-button" data-hima-control="config-retry" onClick={() => { void tick.current(); }}>Retry</button></div>}
+      {error === undefined ? <p className="hima-small">Reading the project file…</p> : <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{error}</span><button type="button" className="hima-button" data-hima-control="config-retry" onClick={() => { void tick.current(); }}>Retry</button></div>}
     </div>;
   }
 
@@ -686,7 +686,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       <div className="hima-config-knowledge-add-row">
         <input data-hima-control="config-knowledge-path" aria-label={t('config.pathToDocument')} value={knowledgePath} placeholder={t('config.pathPlaceholder')} onChange={(event) => setKnowledgePath(event.target.value)} />
         <button className="hima-button" data-hima-control="config-knowledge-add" onClick={addKnowledge}>{t('config.addDocument')}</button>
-        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this Campaign: …')}>{t('config.askGuide')}</button>
+        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this project: …')}>{t('config.askGuide')}</button>
       </div>
     </section>
 
