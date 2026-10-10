@@ -57,6 +57,46 @@ export interface AutopilotHost {
    * close a Host start or a delegation deadline takes). Absent, such a session waits for its deadline.
    */
   readonly closeUndrivable?: (runId: string) => Promise<void>;
+  /**
+   * A fresh listing of this Run's report files (the Reports face's own reader), so a hand-back can name
+   * the chart files the steps that just finished left. Absent, or failing, a hand-back names none.
+   */
+  readonly reportFiles?: (runId: string) => Promise<readonly ReportFileRef[]>;
+}
+
+/** One report file as the Reports listing names it. */
+export interface ReportFileRef {
+  readonly node: string;
+  readonly round: number;
+  readonly name: string;
+  readonly path: string;
+}
+
+/** The most chart files one hand-back names. */
+export const handBackChartLimit = 6;
+
+/**
+ * The chart files (`*.chart.json`) the nodes that just finished left in the Run's newest reports
+ * round, in the listing's order (graph order, then name). The newest round is the highest round any
+ * report of the Run is filed under, so a node that wrote a chart in an earlier round and none in this
+ * one is never shown an old chart as new. Generic: the Host knows chart files, not what they show.
+ */
+export function finishedNodeCharts(finished: ReadonlySet<string>, files: readonly ReportFileRef[]): readonly ReportFileRef[] {
+  const round = files.reduce((top, file) => Math.max(top, file.round), 0);
+  return files.filter((file) => file.round === round && finished.has(file.node) && file.name.endsWith('.chart.json')).slice(0, handBackChartLimit);
+}
+
+/**
+ * The hand-back's chart sentence: show each chart the finished steps left with `hima_chart`, before
+ * beginning the outsourced node(s) now available when there are any, and say in one sentence per chart
+ * what it shows and why it leads to the next step. Undefined when there is no chart to show.
+ */
+export function chartInstruction(pack: Pick<Pack, 'graph' | 'contract'>, runId: string, available: readonly string[], charts: readonly ReportFileRef[]): string | undefined {
+  if (charts.length === 0) return undefined;
+  const agents = available.filter((nodeId) => outsourcedNode(pack, nodeId));
+  const files = charts.map((chart) => `${chart.path} (${nodeDisplayName(pack, chart.node)})`).join(', ');
+  const show = `show the ${charts.length === 1 ? 'chart' : 'charts'} the steps that just finished left, one hima_chart call each with runId ${runId} and path: ${files}; with each, say in one sentence what it shows and why it leads to the next step.`;
+  return agents.length === 0 ? `${show.charAt(0).toUpperCase()}${show.slice(1)}` : `Before you begin ${spoken(agents.map((id) => nodeDisplayName(pack, id)))}, ${show}`;
 }
 
 /**
@@ -325,8 +365,16 @@ export class Autopilot {
     const where = hasEnded(run.status) ? `the Run ended ${run.status}` : run.status !== 'running' ? `the Run is ${run.status}`
       : run.fork !== undefined ? `the Run's fork into ${run.fork.join} is open; ${available.length === 0 ? 'no branch node is yours to begin yet' : `${spoken(available)} ${available.length === 1 ? 'is' : 'are'} yours to begin`}`
         : `the Run now stands at ${run.currentNode ?? 'no node'}, which is yours`;
+    // The chart files the steps that finished since the last hand-back left (this generation's nodes).
+    const finished = new Set(records.filter((record) => record.type === 'node' && record.state === 'done' && record.seq > since
+      && (record.generation ?? 1) === generation).map((record) => (record as Extract<LedgerRecord, { type: 'node' }>).nodeId));
+    let charts: readonly ReportFileRef[] = [];
+    if (finished.size > 0 && this.#host.reportFiles !== undefined) {
+      try { charts = finishedNodeCharts(finished, await this.#host.reportFiles(runId)); } catch { charts = []; }
+    }
     const detail = [`Hima autopilot took ${String(turns)} node turn(s) of generation ${String(generation)}; ${where}.`,
       branches.length === 0 ? '' : `Fork branches this generation: ${branches.join(' | ')}.`,
+      chartInstruction(pack, runId, available, charts) ?? '',
       nextStepInstruction(pack, available) ?? '',
       'Read hima_context once for the facts; the autopilot takes no decision of yours.'].filter(Boolean).join(' ');
     const headline = autopilotHeadline(this.#deps(), pack, run, records, generation, available);

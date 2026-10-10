@@ -597,6 +597,7 @@ export default class Hima extends Service {
       stopped: () => this.autopilotStopped || this.factStop.signal.aborted,
       pollMs: 100,
       closeUndrivable: runId => this.closeUndrivableInteractiveSessions(runId),
+      reportFiles: async runId => (await this.reports.listFresh(runId)).files,
     });
     // #64 D-T04-1: the existing kick, scheduled — a Run a non-kicking path left on a self-driving node
     // is picked up within one period (`Autopilot.sweep`).
