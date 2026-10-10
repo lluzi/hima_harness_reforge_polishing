@@ -1,12 +1,13 @@
 // @hima-seam client-slots wrapped
 // Hima occupies the native dsh dock. The host owns sessions, chat, files and panel geometry;
 // this adapter registers the Hima view and passes navigation actions into presentation components.
-import { createElement, useState, type ReactElement } from 'react';
+import { createElement, useState, useEffect, useMemo, type ReactElement } from 'react';
 import { runStatusSaid } from '../card-labels.js';
 import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
-import { HimaWorkbench } from './HimaWorkbench.js';
+import { HimaWorkbench, type WorkbenchProps } from './HimaWorkbench.js';
+import { teamOperations, teamRequest } from './api.js';
 import { InsightAnalysisCard } from './InsightAnalysisCard.js';
 import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
@@ -38,6 +39,17 @@ export interface ClientContext {
    *  `inject` array above would block this whole adapter's `apply()` on a service that may never
    *  arrive, taking the Campaign chip and tab down with it. */
   get?(name: string): unknown;
+}
+
+function TeamWorkbench(props:WorkbenchProps):ReactElement {
+  const activeSessionId=props.useSessions(state=>state.current)??props.sessionId;
+  const [scope,setScope]=useState<{sessionId:string;projectId:string}>();
+  useEffect(()=>{const controller=new AbortController();setScope(undefined);
+    void teamRequest<{projectId:string}>(activeSessionId,{action:'context'},controller.signal).then(value=>setScope({sessionId:activeSessionId,projectId:value.projectId})).catch(()=>undefined);
+    return ()=>controller.abort();
+  },[activeSessionId]);
+  const operations=useMemo(()=>scope?.sessionId===activeSessionId?teamOperations(activeSessionId,scope.projectId):undefined,[scope,activeSessionId]);
+  return createElement(HimaWorkbench,{...props,teamOperations:operations});
 }
 
 export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'];
@@ -170,7 +182,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
     inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), openChild: (address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }) => ctx.sessions.openSubagent(address), pickFolder }),
-  }, HimaWorkbench));
+  }, TeamWorkbench));
   ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab.title', key: WORKBENCH_ID,
   }, CampaignTabTitle));

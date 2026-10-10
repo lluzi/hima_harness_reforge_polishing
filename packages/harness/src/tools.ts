@@ -204,6 +204,7 @@ type ToolDefinition = ReturnType<typeof defineTool>;
 
 /** Guide reads and derived memory share the same authenticated Host projection as the UI. */
 export function guideTools(operations: {
+  team?(sessionId:string,request:unknown):Promise<object>;
   inspect(sessionId: string, requestId: string, target: unknown): Promise<object>;
   memory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
   delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
@@ -211,7 +212,12 @@ export function guideTools(operations: {
   delegationInput?(sessionId:string,request:{runId:string;recordId:string;path?:string;offset?:number;limit?:number}):Promise<object>;
   insightAnalysis?(sessionId:string,request:import('./libinsight-analyses.js').LibInsightAnalysisToolArgs):Promise<object>;
 }): ToolDefinition[] {
-  return [defineTool({
+  return [...operations.team?[defineTool({
+    name:'hima_team', description:'Create, inspect, save, clone or export a project Team definition; start/read/control an independent frozen task. Call context for the actual definition template and opening fields; list/read retrieve saved versions. For save, provide definition, expectedVersion:null for creation or the exact observed version for update; clone/export require teamId. For startTask, provide teamId and request with the context-listed fields. Member activation uses controlled Fabric/DBOS execution. Missing runtimes remain unavailable; saving a definition does not execute it.',
+    parameters:{request:{type:'object',required:true,additionalProperties:true}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent)throw new Error('A live Guide is required');return toolJson(await operations.team!(String(execution.agent.id),args.request));},
+  })]:[],defineTool({
     name:'hima_insight_analysis',
     description:'Custom library analysis by the resident engineering agent (ADR-0021). Use it when the person asks a library question that the Data Insight LibInsight pages do not already answer. The resident agent writes and runs its own analysis code on the analysis Site, using the QuaLib Liberty API or extracted facts. The Pack Reader then checks the typed result, and only an admitted result is established. Actions: propose {question, sources?, buildsOn?} writes the request and prepares a bounded proposal; it starts nothing. Show the proposal in your own words and ask the person to confirm. confirm {proposalId} starts the Run. Call it only after the person explicitly agrees in this conversation; never confirm on their behalf or from an earlier general instruction. list shows this project\'s analyses. result {runId} reads one analysis: status, admission, summary, assumptions, limits, plot titles and bounded datasets. Every answer names the analysis page; give the person that link for the charts. sources are absolute .lib paths on the Site. buildsOn is admitted analyses as id@version, from list. A question about library quality becomes an insight rule, drawn on a three-column Library Insight page beside the project\'s other rules: vmin_bottleneck (cells that slow down more than the inverter when the supply drops), size_coverage_gaps (functions missing a drive strength), critical_path_faster_cells (faster drop-in cells on a design\'s failing paths), table_spikes_kinks (table points off the smooth curve), or a new rule. Name the rule first in question, as its id and one sentence saying what is flagged against what, then the person\'s words and settings; show that rule in the proposal. An insight rule needs no sources: name the kit or design in question and leave sources empty, and the resident finds the files on the Site.',
     parameters:{action:{type:'string',required:true,enum:['propose','confirm','list','result']},

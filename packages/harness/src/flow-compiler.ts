@@ -1,7 +1,10 @@
 // Compilation is pure Pack-data work. This module never launches a task or advances a Run.
 import { createHash } from 'node:crypto';
+import { flowMethodDigest } from './flow-definition.js';
+import { teamDefinition, type TeamDefinition } from './team-contract.js';
+import { taskSource, type TaskSource } from './task-contract.js';
 import path from 'node:path';
-import { flowSource, flowSourceVersion, flowIRVersion, type Flow, type FlowBlock, type FlowSource, type CompiledFlow,
+import { flowSource, flowElement, flowSourceVersion, flowIRVersion, type Flow, type FlowBlock, type FlowSource, type CompiledFlow,
   type CompiledTask, type FlowExtensionSlot, type FrozenFlowFragment, type FrozenLegacyFlowFragment } from './flow-definition.js';
 import { compileTaskSchema, taskSchemaDraft, taskContract, taskOutputBinding, type JsonValue, type TaskInputBinding,
   type TaskLocalSchemas, type TaskOutputBinding, type TaskSchema } from './task-contract.js';
@@ -111,6 +114,10 @@ function enumAt(schema: Record<string, JsonValue>, fieldPath: readonly string[],
 interface Availability { readonly all: Set<string>; readonly required: Set<string> }
 const copied = (value: Availability): Availability => ({ all: new Set(value.all), required: new Set(value.required) });
 export interface CompileFlowOptions { readonly packSha256: string; readonly localSchemas?: TaskLocalSchemas; readonly tools?: readonly string[] }
+interface TeamCompileOptions {
+  readonly team: { readonly source: Extract<TaskSource, { kind: 'team' }>; readonly method: import('./task-contract.js').MethodRef; readonly memberId:string };
+  readonly localSchemas?: TaskLocalSchemas; readonly tools?: readonly string[];
+}
 
 /** Proves named sources and control reachability. Business data/type validity is checked at handoff. */
 export function compileFlow(source: unknown, options: CompileFlowOptions): CompiledFlow {
@@ -118,7 +125,23 @@ export function compileFlow(source: unknown, options: CompileFlowOptions): Compi
   if (!parsed.success) fail(`/${parsed.error.issues[0]?.path.join('/') ?? ''}`, `${parsed.error.issues[0]?.message}; correct this flow declaration`);
   return compileSource(parsed.data, options);
 }
-function compileSource(source: FlowSource, options: CompileFlowOptions, external: Readonly<Record<string, CompiledTask>> = {}, initial: Availability = { all: new Set(), required: new Set() }, initialCarry: ReadonlySet<string> = new Set()): CompiledFlow {
+/** Independent Team data uses the existing interpreter, never a manufactured Pack. */
+export function compileTeamFlow(source: Extract<TaskSource, { kind: 'team' }>, definition: TeamDefinition): CompiledFlow {
+  const origin = taskSource.parse(source);
+  if (origin.kind !== 'team') fail('/source', 'an independent task requires a Team source');
+  const declared = teamDefinition.parse(definition);
+  if (digest(declared) !== source.team.sha256) fail('/definition', 'use the exact saved definition version and digest');
+  const declaration:FlowSource = { schema: flowSourceVersion, id: source.team.teamId, version: String(source.team.version),
+    flow: flowElement.parse({ kind: 'task', id: 'leader', tool: 'resident/team-member',
+      contract: { input: { version: 'hima-team-input/1', schema: { $schema: taskSchemaDraft, type: 'object',
+        properties: { goal: { type: 'string', minLength: 1 }, input: {}, closure: { type: 'string', minLength: 1 } },
+        required: ['goal', 'input', 'closure'], additionalProperties: false } }, output: declared.delivery.output },
+      inputs: { goal: { source: 'runInput', path: ['goal'] }, input: { source: 'runInput', path: ['input'] }, closure: { source: 'runInput', path: ['closure'] } } }),
+  };
+  return compileSource(declaration, { tools: ['resident/team-member'], team: { source,
+    method: { kind: 'team', id: source.team.teamId, version: String(source.team.version), sha256: source.team.sha256 }, memberId:declared.leaderMemberId } });
+}
+function compileSource(source: FlowSource, options: CompileFlowOptions | TeamCompileOptions, external: Readonly<Record<string, CompiledTask>> = {}, initial: Availability = { all: new Set(), required: new Set() }, initialCarry: ReadonlySet<string> = new Set()): CompiledFlow {
   const locals = options.localSchemas ?? {};
   const blocks: Record<string, FlowBlock> = {};
   const tasks: Record<string, CompiledTask> = {};
@@ -215,9 +238,13 @@ function compileSource(source: FlowSource, options: CompileFlowOptions, external
     if (!tasks[slot.returnTo]) fail(`${at}/returnTo`, 'name a declared return task');
     if (!precedes(blocks, source.flow.id, slot.afterTask, slot.returnTo)) fail(`${at}/returnTo`, 'return must be a later task in this flow; place the slot before its consumer');
   }
-  return finish({ schema: flowIRVersion, source: 'flow', packId: source.id, version: source.version,
+  if('team' in options)tasks.leader={...tasks.leader!,memberId:options.team.memberId};
+  const body = { schema: flowIRVersion, version: source.version,
     entry: source.flow.id, blocks, tasks, localSchemas: locals, toolIds: options.tools ?? [...new Set(Object.values(tasks).map(task => task.tool))].sort(), dependencies, extensions,
-    packSha256: options.packSha256 });
+  };
+  return 'team' in options
+    ? finish({ ...body, source: 'team', taskSource: options.team.source, method: options.team.method })
+    : finish({ schema:flowIRVersion,source:'flow',packId:source.id,version:source.version,entry:body.entry,blocks,tasks,localSchemas:locals,toolIds:body.toolIds,dependencies,extensions,packSha256:options.packSha256 });
 }
 function blockTaskIds(blocks: Readonly<Record<string, FlowBlock>>, entry: string, seen = new Set<string>()): Set<string> {
   if (seen.has(entry)) return new Set(); seen.add(entry);
@@ -250,7 +277,7 @@ export function freezeFlowFragment(base: CompiledFlow, slotId: string, fragment:
   const predecessors = available.all;
   const external = Object.fromEntries([...predecessors].filter(id => base.tasks[id] !== undefined).map(id => [id, base.tasks[id]!]));
   const source = flowSource.parse({ schema: flowSourceVersion, id: base.packId, version: base.version, flow: fragment.flow });
-  const compiled = compileSource(source, { packSha256: base.packSha256, localSchemas: base.localSchemas, tools: base.toolIds }, external,
+  const compiled = compileSource(source, { packSha256: flowMethodDigest(base), localSchemas: base.localSchemas, tools: base.toolIds }, external,
     available, carryScopeAtTask(base.blocks, base.entry, slot.afterTask));
   if (base.tasks[slot.afterTask]?.budget !== 'closing' && Object.values(compiled.tasks).some(task => task.budget === 'closing')) {
     fail('/extension/flow/budget', 'this slot does not grant the closing reserve; keep diagnostic tasks in the original work budget');
@@ -479,7 +506,7 @@ export function compileLegacyGrowth(pack: Pack, candidate: unknown): FrozenLegac
       returnNode: graph.returnNode } as unknown as JsonValue };
   const fragmentGraph: PackGraph = { id: pack.id, version: pack.contract.version,
     entry: graph.graph.entry, nodes: [...graph.graph.nodes], edges: [...graph.graph.edges], loops: {}, autopilot: [] };
-  const flow = lowerLegacyFlow(fragmentGraph, pack.contract, base.packSha256, { id: graph.returnNode, task: returned },
+  const flow = lowerLegacyFlow(fragmentGraph, pack.contract, flowMethodDigest(base), { id: graph.returnNode, task: returned },
     carryScopeAtTask(base.blocks, base.entry, graph.parentNode).has('strategy'));
   const data = { slotId: slot.id, returnTo: slot.returnTo, return: { taskId: id, path: [] }, flow,
     proposalId: proposal.proposalId, requiredOutputs: proposal.requiredOutputs, optional: proposal.optional };

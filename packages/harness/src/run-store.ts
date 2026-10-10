@@ -1,4 +1,7 @@
-import { createHash } from 'node:crypto';
+import { TeamError, teamDefinition, actorGrant, type TeamDefinition, type TeamView, type ActorGrant, type TeamTaskView } from './team-contract.js';
+import type { TeamDefinitionStore } from './team.js';
+import { taskMethodDigest } from './task-contract.js';
+import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import type { ClientBase } from 'pg';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
@@ -82,6 +85,89 @@ export class RunStore {
     this.#pool.on('error', () => { /* Idle socket failures are surfaced by the next authoritative query. */ });
     this.#source = source;
   }
+  teamDefinitions(): TeamDefinitionStore {
+    return { list: projectId => this.listTeamDefinitions(projectId), read: (projectId, teamId, version) => this.readTeamDefinition(projectId, teamId, version), save: request => this.saveTeamVersion(request) };
+  }
+  async operatorIdentity(): Promise<string> {
+    const { rows } = await this.#pool.query<{actor_id:string}>(`INSERT INTO hima.host_operator(singleton,actor_id) VALUES(true,$1)
+      ON CONFLICT(singleton) DO UPDATE SET singleton=true RETURNING actor_id`, [`human-${randomUUID()}`]);
+    return rows[0]!.actor_id;
+  }
+  async listTeamDefinitions(projectId:string): Promise<readonly TeamView[]> {
+    const {rows}=await this.#pool.query<TeamView>(`SELECT t.team_id AS "teamId",t.project_id AS "projectId",v.version,v.sha256,v.definition
+      FROM hima.teams t JOIN hima.team_versions v ON v.team_id=t.team_id AND v.version=t.version WHERE t.project_id=$1 ORDER BY t.team_id`,[projectId]);
+    return rows;
+  }
+  async readTeamDefinition(projectId:string,teamId:string,version?:number): Promise<TeamView|undefined> {
+    const {rows}=await this.#pool.query<TeamView>(`SELECT t.team_id AS "teamId",t.project_id AS "projectId",v.version,v.sha256,v.definition
+      FROM hima.teams t JOIN hima.team_versions v ON v.team_id=t.team_id AND v.version=COALESCE($3,t.version) WHERE t.project_id=$1 AND t.team_id=$2`,[projectId,teamId,version??null]);
+    return rows[0];
+  }
+  async saveTeamVersion(request:{projectId:string;teamId:string;definition:TeamDefinition;expectedVersion:number|null}):Promise<TeamView> {
+    const definition=teamDefinition.parse(request.definition),sha256=jsonDigest(definition);
+    return this.transaction(async client=>{
+      await this.#assertHostAdmission(client);
+      if(request.expectedVersion===null) {
+        const inserted=await client.query('INSERT INTO hima.teams(team_id,project_id,version) VALUES($1,$2,1) ON CONFLICT DO NOTHING',[request.teamId,request.projectId]);
+        if(!inserted.rowCount)throw new TeamError('hima/team-conflict','This team already exists; read its current version before saving.');
+      } else {
+        const changed=await client.query('UPDATE hima.teams SET version=version+1 WHERE team_id=$1 AND project_id=$2 AND version=$3',[request.teamId,request.projectId,request.expectedVersion]);
+        if(!changed.rowCount)throw new TeamError('hima/team-conflict','This definition changed or belongs to another project; read its current version.');
+      }
+      const version=(request.expectedVersion??0)+1;
+      await client.query('INSERT INTO hima.team_versions(team_id,version,sha256,definition) VALUES($1,$2,$3,$4)',[request.teamId,version,sha256,JSON.stringify(definition)]);
+      for(const member of definition.members)await client.query('INSERT INTO hima.team_members(team_id,member_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[request.teamId,member.id]);
+      return {teamId:request.teamId,projectId:request.projectId,version,sha256,definition};
+    },'hima.saveTeamVersion');
+  }
+  async listTeamTasks(projectId:string,teamId:string):Promise<readonly Omit<TeamTaskView,'readiness'>[]> {
+    return (await this.#pool.query<{task:Omit<TeamTaskView,'readiness'>}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 ORDER BY task_id',[projectId,teamId])).rows.map(row=>row.task);
+  }
+  async readTeamTask(projectId:string,teamId:string,taskId:string):Promise<Omit<TeamTaskView,'readiness'>|undefined> {
+    const {rows}=await this.#pool.query<{task:Omit<TeamTaskView,'readiness'>}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3',[projectId,teamId,taskId]);
+    return rows[0]?.task;
+  }
+  async openTeamTask(request:{projectId:string;requestId:string;requestSha256:string;task:Omit<TeamTaskView,'readiness'>;opening:DurableRunOpening}):Promise<Omit<TeamTaskView,'readiness'>> {
+    const {opening,task}=request;
+    if(opening.applicationVersion!==this.applicationVersion||opening.inputSha256!==jsonDigest(opening.data)||!Number.isFinite(Date.parse(opening.deadlineAt)))throw new TeamError('hima/team-invalid','Independent opening requires frozen input, deadline and executable identity.');
+    return this.transaction(async client=>{
+      await this.#assertHostAdmission(client);
+      const version=(await client.query<{sha256:string}>('SELECT v.sha256 FROM hima.teams t JOIN hima.team_versions v ON v.team_id=t.team_id WHERE t.project_id=$1 AND t.team_id=$2 AND v.version=$3 FOR SHARE OF t',[request.projectId,task.team.teamId,task.team.version])).rows[0];
+      if(!version||version.sha256!==task.team.sha256)throw new TeamError('hima/not-authorized','The frozen Team definition is unavailable in this project.');
+      const inserted=await client.query(`INSERT INTO hima.team_tasks(task_id,team_id,definition_version,project_id,request_id,request_sha256,task)
+        VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,[task.taskId,task.team.teamId,task.team.version,request.projectId,request.requestId,request.requestSha256,JSON.stringify(task)]);
+      const held=(await client.query<{request_sha256:string;task:Omit<TeamTaskView,'readiness'>}>('SELECT request_sha256,task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND request_id=$3 FOR UPDATE',[request.projectId,task.team.teamId,request.requestId])).rows[0];
+      if(!held||held.request_sha256!==request.requestSha256)throw new TeamError('hima/team-conflict','This opening request already names different frozen content.');
+      if(!inserted.rowCount)return held.task;
+      await client.query(`INSERT INTO hima.runs(run_id,input_sha256,application_version,opening,owner,deadline_at) VALUES($1,$2,$3,$4,$5,$6)`,[opening.runId,opening.inputSha256,opening.applicationVersion,JSON.stringify(opening),opening.owner,opening.deadlineAt]);
+      await this.#emit(client,opening.runId,factIdentity('run-opened',opening.runId),'run-opened',opening as unknown as JsonValue);
+      return task;
+    },'hima.openTeamTask');
+  }
+  async issueTeamGrant(value:ActorGrant):Promise<{grant:ActorGrant;token:string}> {
+    const grant=actorGrant.parse(value);
+    return this.transaction(async client=>{
+      const token=randomBytes(32).toString('base64url');
+      await this.#assertHostAdmission(client);
+      const run=await this.#run(client,grant.runId,true),data=run.opening.data as unknown as {source?:import('./task-contract.js').TaskSource;definition?:TeamDefinition};
+      const invocation=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1 AND run_id=$2',[grant.effectId,grant.runId])).rows[0]?.invocation;
+      if(!invocation||(invocation.context as unknown as {flow:CompiledFlow}).flow.tasks[invocation.identity.taskId]?.memberId!==grant.memberId||grant.actorId!==grant.memberId||('source' in invocation.identity && jsonDigest(invocation.identity.source)!==jsonDigest(data.source))||(grant.capabilities.includes('delegate')&&data.definition?.leaderMemberId!==grant.memberId))throw new TeamError('hima/not-authorized','Grant must bind the exact Host member and invocation source.');
+      if(run.cancelled||run.hold||run.epoch!==grant.generation||Date.now()>=Date.parse(run.deadlineAt)||Date.parse(grant.expiresAt)>Date.parse(run.deadlineAt)||Date.now()>=Date.parse(grant.expiresAt)
+        ||data.source?.kind!=='team'||data.source.projectId!==grant.projectId||data.source.taskId!==grant.taskId||data.source.team.teamId!==grant.teamId||!data.definition?.members.some(member=>member.id===grant.memberId))throw new TeamError('hima/not-authorized','Grant does not match current task, member, generation or deadline.');
+      await client.query('INSERT INTO hima.task_actor_grants(grant_id,task_id,token_sha256,grant_data) VALUES($1,$2,$3,$4)',[grant.grantId,grant.taskId,jsonDigest(token),JSON.stringify(grant)]);
+      return {grant,token};
+    },'hima.issueTeamGrant');
+  }
+  async resolveTeamGrant(token:string):Promise<ActorGrant> {
+    const row=(await this.#pool.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE token_sha256=$1',[jsonDigest(token)])).rows[0];
+    if(!row)throw new TeamError('hima/not-authorized','Unknown member capability.');
+    const grant=actorGrant.parse(row.grant_data),run=await this.run(grant.runId);
+    if(grant.revokedAt||Date.now()>=Date.parse(grant.expiresAt)||Date.now()>=Date.parse(run.deadlineAt)||grant.generation!==run.epoch||run.cancelled||run.hold||await this.hostExit())throw new TeamError('hima/not-authorized','Member capability expired, was revoked, or execution is held/stopped.');
+    return grant;
+  }
+  async revokeTeamGrant(grantId:string):Promise<void> {
+    await this.#pool.query("UPDATE hima.task_actor_grants SET grant_data=jsonb_set(grant_data,'{revokedAt}',$2::jsonb) WHERE grant_id=$1",[grantId,JSON.stringify(new Date().toISOString())]);
+  }
   async initialize(): Promise<void> { await migrateRunStore(this.#pool); }
   async close(): Promise<void> { await this.#pool.end(); }
   async transaction<T>(body: (client: ClientBase) => Promise<T>, name: string): Promise<T> {
@@ -120,9 +206,9 @@ export class RunStore {
       stop();return true;
     });
   }
-  async #hostExitStopActive(client:ClientBase,requestId:string):Promise<boolean> {
+  async #hostExitStopActive(client:ClientBase,requestId:string,teamOnly=false):Promise<boolean> {
     const row=(await client.query<{active_request:string|null;mode:string|null;finalizing:boolean}>(`SELECT h.active_request,h.finalizing,r.mode FROM hima.host_exit h LEFT JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true FOR SHARE OF h`)).rows[0];
-    return row?.active_request===requestId&&row.mode==='stop-jobs'&&!row.finalizing;
+    return row?.active_request===requestId&&(row.mode==='stop-jobs'||teamOnly)&&!row.finalizing;
   }
   async hostExit():Promise<import('./host-exit.js').HostExitRequest|undefined> {
     const row=(await this.#pool.query<{requestId:string;mode:import('./host-exit.js').HostExitMode}>(`SELECT r.request_id AS "requestId",r.mode FROM hima.host_exit h JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true`)).rows[0];
@@ -130,6 +216,19 @@ export class RunStore {
   }
   async lastHostExitRequestId():Promise<string|undefined> {
     return (await this.#pool.query<{request_id:string}>('SELECT request_id FROM hima.host_exit_requests ORDER BY accepted_at DESC LIMIT 1')).rows[0]?.request_id;
+  }
+  async fenceTeamRunsForExit(requestId:string):Promise<void> {
+    await this.#externalTransaction(async client=>{
+      const active=(await client.query<{active_request:string|null}>('SELECT active_request FROM hima.host_exit WHERE singleton=true FOR UPDATE')).rows[0];
+      if(active?.active_request!==requestId)throw new Error('Team exit fence requires the current Host exit request');
+      const runs=(await client.query<{run_id:string}>("SELECT run_id FROM hima.runs WHERE opening->'data'->'source'->>'kind'='team' AND NOT cancelled FOR UPDATE")).rows;
+      for(const run of runs) {
+        const factId=factIdentity('team-exit',run.run_id,requestId);
+        if((await client.query('SELECT 1 FROM hima.outbox WHERE fact_id=$1',[factId])).rowCount)continue;
+        await client.query("UPDATE hima.runs SET epoch=epoch+1,hold='Team stopped on App exit; explicit controlled continuation required',hold_source='human' WHERE run_id=$1",[run.run_id]);
+        await this.#emit(client,run.run_id,factId,'team-exit',{requestId});
+      }
+    });
   }
   async acceptHostExit(request:import('./host-exit.js').HostExitRequest):Promise<void> {
     await this.#externalTransaction(async client=>{
@@ -249,7 +348,8 @@ export class RunStore {
       const previous = (await client.query<{digest:string;receipt:DurableRun}>('SELECT digest,receipt FROM hima.commands WHERE run_id=$1 AND command_id=$2',[command.runId,command.commandId])).rows[0];
       if (previous) { if (previous.digest !== digest) mismatch('Command'); return readRun(previous.receipt); }
       if (command.owner !== run.owner || command.epoch !== run.epoch || command.revision !== run.revision) throw new Error('Control owner/epoch/revision is stale; refresh this Run');
-      if (run.cancelled) throw new Error('Cancelled Run cannot be resumed');
+      // Team stop retries reconcile the same cancelled effects; they never admit new work.
+      if (run.cancelled && !(command.action==='cancel'&&!command.scope&&(run.opening.data as {source?:{kind?:string}}).source?.kind==='team')) throw new Error('Cancelled Run cannot be resumed');
       if (command.action === 'handoff' && !command.nextOwner?.trim()) throw new Error('Handoff needs the next owner');
       if (command.scope || command.action === 'revise' || command.action === 'respond') {
         const start = (await client.query<{value:{flow:CompiledFlow}}>('SELECT value FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,'definition'])).rows[0]?.value;
@@ -439,7 +539,7 @@ export class RunStore {
   async bindDerivedEffect(parent:TaskIdentity,child:TaskIdentity,options:{readonly purpose:'business'|'collect'}={purpose:'business'}):Promise<void> {
     taskIdentity.parse(parent);taskIdentity.parse(child);
     if(!['business','collect'].includes(options.purpose))throw new Error('Derived effect needs its immutable business or collection purpose');
-    if(parent.runId!==child.runId||parent.applicationVersion!==child.applicationVersion||parent.packSha256!==child.packSha256||parent.irSha256!==child.irSha256||parent.effectId===child.effectId)throw new Error('Derived effect must retain its original parent Run/method/version');
+    if(parent.runId!==child.runId||parent.applicationVersion!==child.applicationVersion||taskMethodDigest(parent)!==taskMethodDigest(child)||('source' in parent)!==('source' in child)||('source' in parent&&'source' in child&&(jsonDigest(parent.source)!==jsonDigest(child.source)||jsonDigest(parent.method)!==jsonDigest(child.method)))||parent.irSha256!==child.irSha256||parent.effectId===child.effectId)throw new Error('Derived effect must retain its original parent Run/method/version');
     await this.#externalTransaction(async client=>{
       await this.#run(client,parent.runId,true);
       const held=(await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1 AND run_id=$2',[parent.effectId,parent.runId])).rows[0];
@@ -894,7 +994,7 @@ export class RunStore {
     const client=await this.#pool.connect();
     try {
       await client.query('BEGIN');
-      const stopActive=exitRequestId===undefined||await this.#hostExitStopActive(client,exitRequestId);
+      const stopActive=exitRequestId===undefined||await this.#hostExitStopActive(client,exitRequestId,'source' in identity&&identity.source.kind==='team');
       const run=await this.#run(client,identity.runId,true);
       const effect=(await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0];
       if(run.applicationVersion!==this.applicationVersion||!effect||jsonDigest(effect.identity)!==jsonDigest(identity)) mismatch('Cleanup effect');

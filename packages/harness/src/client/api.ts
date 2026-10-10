@@ -235,3 +235,22 @@ async function runRequest<T>(target: string, init: RequestInit): Promise<HimaRes
   if (!response.ok) return { ok: false, error: failureFrom(response.status, body) };
   return { ok: true, value: body as T };
 }
+
+export async function teamRequest<T>(sessionId:string,request:unknown,signal?:AbortSignal):Promise<T> {
+  const result=await runRequest<T>('/hima/api/teams',{method:'POST',body:JSON.stringify({sessionId,request}),signal});
+  if(!result.ok)throw new Error(result.error.message);
+  return result.value;
+}
+export function teamOperations(sessionId:string,projectId:string):import('./HimaTeamPanel.js').HimaTeamOperations {
+  return {projectId,
+    list:async signal=>(await teamRequest<{teams:readonly import('../team-contract.js').TeamView[]}>(sessionId,{action:'list'},signal)).teams,
+    read:(ref,signal)=>teamRequest(sessionId,{action:'read',...ref},signal),
+    save:(request,signal)=>teamRequest(sessionId,{action:'save',...request},signal),
+    clone:(ref,signal)=>teamRequest(sessionId,{action:'clone',...ref},signal),
+    export:(ref,signal)=>teamRequest(sessionId,{action:'export',...ref},signal),
+    startTask:(request,signal)=>teamRequest(sessionId,{action:'startTask',teamId:request.teamId,version:request.expectedVersion,request},signal),
+    readTask:(ref,signal)=>teamRequest(sessionId,{action:'readTask',...ref},signal),
+    listTasks:async(ref,signal)=>(await teamRequest<{tasks:readonly import('../team-contract.js').TeamTaskView[]}>(sessionId,{action:'listTasks',...ref},signal)).tasks,
+    control:async(ref,signal)=>{await teamRequest(sessionId,{action:'control',...ref},signal);return teamRequest(sessionId,{action:'readTask',teamId:ref.teamId,taskId:ref.taskId},signal);},
+  };
+}

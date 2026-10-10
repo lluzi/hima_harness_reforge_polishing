@@ -18,6 +18,7 @@ import { ChildSessionPanel } from './ChildSessionPanel.js';
 import { InsightView, type AvailableInsightReport } from './InsightView.js';
 import { LibInsightAppPanel } from './LibInsightAppPanel.js';
 import { TeamPanel } from './TeamPanel.js';
+import { HimaTeamPanel, type HimaTeamOperations } from './HimaTeamPanel.js';
 import { WorkMemoryPanel } from './WorkMemoryPanel.js';
 import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbench-state.js';
 
@@ -26,6 +27,7 @@ import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbenc
  *  to the tab whose own menu opened it, never passed on as a control's own state. */
 export interface WorkbenchProps {
   sessionId: string;
+  teamOperations?: HimaTeamOperations;
   useSessions<T>(selector: (state: { current?: string }) => T): T;
   openOwner(id: string): void;
   openChild(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void;
@@ -67,13 +69,14 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
 
-export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder }: WorkbenchProps): ReactElement {
+export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder, teamOperations }: WorkbenchProps): ReactElement {
   const activeSessionId = useSessions((state) => state.current) ?? sessionId;
   const { tab } = useTabInfo();
   const requestedAddress = workbenchAddressOf(tab.navigation.params);
   const [address, setAddress] = useState<WorkbenchAddress>(requestedAddress);
   const lastCampaignAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'campaign' ? requestedAddress : { kind: 'campaign' });
   const lastInsightAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'insight' ? requestedAddress : { kind: 'insight' });
+  const lastTeamAddress = useRef<Extract<WorkbenchAddress, { kind: 'team' }>>(requestedAddress.kind === 'team' ? requestedAddress : { kind: 'team' });
   const lastInsightReports = useRef<readonly AvailableInsightReport[]>([]);
   const selected = runIdForWorkbenchAddress(address);
   const [managingPack, setManagingPack] = useState(false);
@@ -135,6 +138,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   useEffect(() => {
     if (requestedAddress.kind === 'campaign') lastCampaignAddress.current = requestedAddress;
     if (requestedAddress.kind === 'insight') lastInsightAddress.current = requestedAddress;
+    if (requestedAddress.kind === 'team') { lastTeamAddress.current = requestedAddress; setManagingPack(false); }
     setAddress(requestedAddress);
   }, [tab.navigation.revision, workbenchAddressKey(requestedAddress)]);
 
@@ -195,6 +199,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     <header className='hima-studio-header'>
       <div className='hima-studio-modes' role='tablist' aria-label='Hima work mode'>
         <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>Campaign</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'team'} data-hima-control='studio-mode-team' onClick={() => { setManagingPack(false); setAddress(lastTeamAddress.current); }}>Teams</button>
         <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>Data Insight</button>
       </div>
       {address.kind !== 'campaign' ? null : <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
@@ -214,7 +219,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
       </div>
     </header>
-    {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
+    {address.kind === 'campaign' && list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
     {managingPack
       // The Pack owner panel replaces the Configuration page or the Live canvas below it rather than
       // stacking above it (review MINOR: "give the canvas its full height") — the two once shared one
@@ -225,6 +230,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} initialLocation={managingPackLocation} pickFolder={pickFolder} />
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
+        : address.kind === 'team'
+          ? <HimaTeamPanel key={JSON.stringify([activeSessionId, teamOperations?.projectId])} address={address} operations={teamOperations} onAddress={next => { lastTeamAddress.current = next; setAddress(next); }} />
         : address.kind === 'insight'
         ? showingLibInsight ? null : <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} onShowLibInsight={() => { setInsightSurface('libinsight'); chooseInsight({ kind: 'insight' }); }} />
         : address.kind === 'child'

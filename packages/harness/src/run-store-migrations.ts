@@ -9,7 +9,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
     await client.query(`
       CREATE SCHEMA IF NOT EXISTS hima;
       CREATE TABLE IF NOT EXISTS hima.schema_version(version integer PRIMARY KEY);
-      INSERT INTO hima.schema_version VALUES (1) ON CONFLICT DO NOTHING;
+      INSERT INTO hima.schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM hima.schema_version);
       CREATE TABLE IF NOT EXISTS hima.host_exit (
         singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), active_request text);
       INSERT INTO hima.host_exit(singleton) VALUES(true) ON CONFLICT DO NOTHING;
@@ -70,7 +70,22 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       ALTER TABLE hima.flow_derived_effects ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'business';
     `);
     const { rows } = await client.query<{version: number}>('SELECT version FROM hima.schema_version');
-    if (rows.length !== 1 || rows[0]?.version !== 1) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
+    if (rows.length !== 1 || ![1, 2].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
+    if (rows[0]!.version === 1) {
+      await client.query(`
+        CREATE TABLE hima.host_operator(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), actor_id text NOT NULL UNIQUE);
+        CREATE TABLE hima.teams(team_id text PRIMARY KEY, project_id text NOT NULL, version integer NOT NULL CHECK(version>0));
+        CREATE TABLE hima.team_versions(team_id text NOT NULL REFERENCES hima.teams, version integer NOT NULL CHECK(version>0),
+          sha256 text NOT NULL, definition jsonb NOT NULL, PRIMARY KEY(team_id,version));
+        CREATE TABLE hima.team_members(team_id text NOT NULL REFERENCES hima.teams, member_id text NOT NULL, PRIMARY KEY(team_id,member_id));
+        CREATE TABLE hima.team_tasks(task_id text PRIMARY KEY, team_id text NOT NULL, definition_version integer NOT NULL,
+          project_id text NOT NULL, request_id text NOT NULL, request_sha256 text NOT NULL, task jsonb NOT NULL,
+          FOREIGN KEY(team_id,definition_version) REFERENCES hima.team_versions, UNIQUE(project_id,team_id,request_id));
+        CREATE TABLE hima.task_actor_grants(grant_id text PRIMARY KEY, task_id text NOT NULL REFERENCES hima.team_tasks,
+          token_sha256 text NOT NULL UNIQUE, grant_data jsonb NOT NULL);
+        UPDATE hima.schema_version SET version=2 WHERE version=1;
+      `);
+    }
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }

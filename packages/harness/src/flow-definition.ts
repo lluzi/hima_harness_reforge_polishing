@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { packId } from './pack-folder.js';
 import { taskContract, taskInputBinding, taskOutputBinding, type TaskContract, type TaskInputBinding,
-  type TaskLocalSchemas, type TaskOutputBinding, type JsonValue } from './task-contract.js';
+  type TaskLocalSchemas, type TaskOutputBinding, type JsonValue, type TaskSource, type MethodRef } from './task-contract.js';
 
 export const flowSourceVersion = 'hima-flow/1' as const;
 export const flowIRVersion = 'hima-flow-ir/1' as const;
@@ -73,11 +73,13 @@ export type FlowBlock =
        * iteration can select an entry; no matching exit means this composition has ended. */
       readonly entries?: Readonly<Record<string, { readonly body: string; readonly carry: FlowRepeat['carry']; readonly stop: FlowRepeat['stop'] }>> };
 export interface CompiledTask extends FlowTask {
+  /** Host-frozen assignment for independent Team effects, distinct from native session IDs. */
+  readonly memberId?: string;
   /** Whole legacy business declaration, including Reader/rules/chooser/Team/revision references. */
   readonly legacy?: JsonValue;
 }
 export interface CompiledFlow {
-  readonly schema: typeof flowIRVersion; readonly source: 'flow' | 'legacy'; readonly packId: string;
+  readonly schema: typeof flowIRVersion; readonly source: 'flow' | 'legacy' | 'team'; readonly packId?: string;
   readonly version: string; readonly entry: string; readonly blocks: Readonly<Record<string, FlowBlock>>;
   readonly tasks: Readonly<Record<string, CompiledTask>>; readonly localSchemas: TaskLocalSchemas;
   /** Declared method tools are data, including tools reserved for an extension. */
@@ -86,9 +88,15 @@ export interface CompiledFlow {
    * invalidation also traverses choice selectors, repeat stop/carry and extension/control reachability. */
   readonly dependencies: Readonly<Record<string, readonly string[]>>;
   readonly extensions: readonly FlowExtensionSlot[];
-  readonly packSha256: string; readonly irSha256: string;
+  readonly packSha256?: string; readonly irSha256: string;
+  readonly taskSource?: TaskSource; readonly method?: MethodRef;
   /** Immutable method data for adapters, never an executable second scheduler. */
   readonly compatibility?: JsonValue;
+}
+export function flowMethodDigest(flow: CompiledFlow): string {
+  const value = flow.source === 'team' ? flow.method?.sha256 : flow.packSha256;
+  if (!value || !/^[a-f0-9]{64}$/.test(value)) throw new Error('Frozen flow lacks its actual method identity');
+  return value;
 }
 export interface FrozenFlowFragment {
   readonly slotId: string; readonly returnTo: string; readonly return: TaskOutputBinding;

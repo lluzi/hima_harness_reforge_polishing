@@ -1,3 +1,10 @@
+import { z as teamZ } from 'zod';
+import { controlFlow } from './flow-workflow.js';
+import { openDurableTeamRun, readTeamTask } from './durable-fabric.js';
+import { listTeams, readTeam, saveTeamDefinition, cloneTeam, exportTeamDefinition } from './team.js';
+import { TeamError, teamTaskRequest, type TeamDefinition, type TeamReadiness, type TeamDefinitionActor } from './team-contract.js';
+import type { FlowAdapterContext } from './flow-workflow.js';
+import type { TaskEffectAdapter } from './task-effects.js';
 // @hima-seam agent wrapped
 // @hima-seam plugin-module direct
 // @hima-seam commands direct
@@ -371,6 +378,7 @@ export interface Config {
  */
 export const HIMA_PRODUCT_CONTEXT = [
   'HimaHarness adds governed chip-design Campaigns and Data Insight to DeepSeek Harness. A HimaPack declares one transparent method; a Site supplies the permitted execution environment; one persistent Run records facts, work and evidence.',
+  'HimaTeam definitions can be managed independently of Packs. Use hima_team context for the definition template and request fields, then save/read/clone/export as requested. Starting a task freezes its definition and requires a deadline and closure condition; the Host reports unavailable runtimes honestly. Definition saving is not member execution.',
   'Your current role, task, inputs, tools, budget and recipient are stated separately. Follow that exact role: a Guide serves the person, a Campaign owner coordinates the Run, and a bounded child performs only its delegated work.',
   'Use only granted inputs and tools. Do not search product source code to rediscover a Pack or tool contract; report a missing professional fact or capability to the recipient instead.',
   'For a declared resident engineering task, the workflow starts the Site executor, collects its contract-checked delivery and closes its resources automatically. The Campaign owner may use hima_execute engineering message on the recorded execution to give business steering, and hima_context to inspect current facts. A status reply is one snapshot: when no actionable fact changed, explain that work remains active and yield instead of busy-polling. The external engineering session executes this task and does not acquire Run ownership.',
@@ -470,7 +478,12 @@ function testDiscoveryChannelFor(): ((name: string, ssh: SshTarget) => Channel) 
 
 await assertHomeExecutionAllowed({home:localDatabaseHome()});
 
+export interface TeamExecutor {
+  readiness(definition:TeamDefinition):Promise<TeamReadiness>;
+  resolve(context:FlowAdapterContext):Promise<TaskEffectAdapter>;
+}
 export default class Hima extends Service {
+  teamExecutor?:TeamExecutor;
   static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
   static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required(), interactiveBindingsFile:z.string() });
 
@@ -574,10 +587,12 @@ export default class Hima extends Service {
       ...preparationWorkflowDefinitions({ sitesDir: this.config.sitesDir }),
       ...flowWorkflowDefinitions({ finalize: async (runtime,runId,revision,attempt) => {
         await this.durableAdaptersReady;
+        const source=(await runtime.store.run(runId)).opening.data as {source?:{kind?:string}};
+        if(source.source?.kind==='team')return {complete:true};
         return createDurableViewReaders({...this.deps(),durable:runtime},{retainedMaterialsDir:this.retainedMaterialsDir}).finalizeDelivery(runId,revision,attempt);
       }, resolveAdapter: async context => {
         await this.durableAdaptersReady;
-        return resolveDurableTaskAdapter(context, { ctx: this.ctx, sitesDir: this.config.sitesDir,
+        return resolveDurableTaskAdapter(context, { ctx: this.ctx, teamExecutor:this.teamExecutor, sitesDir: this.config.sitesDir,
           retainedMaterialsDir: this.retainedMaterialsDir,
           interactive: { bridge: interactiveBridge,
             ...(testFixtureCanRunHere() && process.env.HIMA_TEST_INTERACTIVE_BINDING_ID
@@ -626,6 +641,20 @@ export default class Hima extends Service {
     let observersClosed = false;
     closeHostResources = async () => {
       if(!observersClosed) {
+      if(this.durable) {
+        await this.reconciled?.catch(()=>undefined);
+        // Fence admission before taking inventory, including a racing first Team opening.
+        const active=await this.durable.store.hostExit();
+        let status=active?await this.exitStatus():await this.prepareExitBoundary({requestId:`host-team-close-${randomUUID()}`,mode:'keep-jobs'},false);
+        const teams=(await this.durable.store.runs()).filter(run=>(run.opening.data as {source?:{kind?:string}}).source?.kind==='team');
+        const unclosed=()=>status.runs.some(row=>teams.some(team=>team.runId===row.runId)&&row.state!=='ready');
+        // A failed closer may retry only original resources under a fresh stop receipt.
+        if(active&&unclosed())status=await this.prepareExitBoundary({requestId:`host-team-close-${randomUUID()}`,mode:active.mode,expectedRequestId:active.requestId},false);
+        if(unclosed())throw new Error('Team resource closure is unproved; Host cannot confirm resource shutdown');
+        if(!status.requestId)throw new Error('Original App exit fence disappeared before resource finalization');
+        // Pin the accepted fence before closing PG; a previously admitted cancel cannot release it.
+        await this.durable.store.beginHostExitFinalization(status.requestId);
+      }
       this.notificationsActive = false;
       this.pendingProgressNotifications.clear();
       this.factStop.abort();
@@ -691,6 +720,8 @@ export default class Hima extends Service {
           resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
           listSessionChildren: request => listSessionChildren(this.ctx, {...request,assignedGuide:this.viewReaders().assignedGuide}),
           workMemory: (sessionId, request) => this.workMemory(sessionId, request, 'person'),
+          teamOperation:(sessionId,request)=>this.teamOperation(sessionId,request,'human'),
+          memberTeamContext:(token,request)=>this.memberTeamContext(token,request),
           correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
           experienceCandidates: (sessionId,runId)=>this.experienceCandidates(sessionId,runId),
           delegations: (sessionId,runId)=>this.delegations(sessionId,runId),
@@ -779,6 +810,7 @@ export default class Hima extends Service {
       (request) => this.startGuidedRun(request),
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
     for (const tool of guideTools({
+      team:(sessionId,request)=>this.teamOperation(sessionId,request,'guide'),
       inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),
       memory: (sessionId, request) => this.workMemory(sessionId, request, 'model'),
       delegate: request=>this.delegate(request),
@@ -970,6 +1002,57 @@ export default class Hima extends Service {
       readExperience: readers.readExperience,readReportMaterial:readers.readReportMaterial,readTaskArtifact:readers.readTaskArtifact };
   }
 
+  async memberTeamContext(token:string,raw:unknown):Promise<object> {
+    teamZ.strictObject({action:teamZ.literal('readTask')}).parse(raw);
+    const grant=await this.durable.store.resolveTeamGrant(token);
+    if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
+    const task=await this.durable.store.readTeamTask(grant.projectId,grant.teamId,grant.taskId);
+    if(!task)throw new TeamError('hima/not-authorized','Member task identity is unavailable.');
+    const invocation=(await this.durable.store.flowInvocations(grant.runId)).find(row=>row.identity.effectId===grant.effectId);
+    if(!invocation)throw new TeamError('hima/not-authorized','Original member input is unavailable.');
+    const {input:_wholeTaskInput,...metadata}=task;
+    return {actor:{kind:'member',teamId:grant.teamId,memberId:grant.memberId,taskId:grant.taskId,generation:grant.generation},task:metadata,input:(invocation.context as {input?:unknown}).input};
+  }
+  async teamOperation(sessionId:string,raw:unknown,origin:'human'|'guide'='guide'):Promise<object> {
+    if(!this.ctx.get('agents')?.list().some(agent=>String(agent.id)===sessionId))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
+    const projectId=await sessionProject(this.ctx,sessionId,true);
+    const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
+    const value=teamZ.strictObject({action:teamZ.enum(['context','list','read','save','clone','export','startTask','listTasks','readTask','control']),teamId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    const store=this.durable.store.teamDefinitions();
+    if(value.action==='context')return {projectId,actor,definitionTemplate:{schema:'hima-team-definition/1',title:'Team',members:[{id:'lead',role:'Lead',runtime:'opencode',modelRef:'configure-model',skills:[],instructions:'Work within the given scope.',toolRefs:[],knowledgeRefs:[]}],leaderMemberId:'lead',collaboration:'Explain responsibilities and handoff.',delivery:{description:'State the agreed delivery.',output:{version:'delivery/1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:true}}}},taskOpeningFields:['requestId','teamId','expectedVersion','goal','input','deadlineAt','closure'],modelReferenceHelp:'modelRef is a reference to separately configured credentials and model settings, not a key or machine path.'};
+    if(value.action==='list')return {teams:await listTeams(store,actor,projectId)};
+    if(value.action==='save')return saveTeamDefinition(store,actor,{projectId,...(value.teamId?{teamId:value.teamId}:{}),definition:value.definition,expectedVersion:value.expectedVersion??null,applyToRunning:value.applyToRunning});
+    if(!value.teamId)throw new TeamError('hima/team-invalid','Choose a team identity.');
+    const ref={projectId,teamId:value.teamId,version:value.version};
+    if(value.action==='read')return readTeam(store,actor,ref);
+    if(value.action==='clone')return cloneTeam(store,actor,{...ref,title:value.title});
+    if(value.action==='export')return exportTeamDefinition(store,actor,ref);
+    if(value.action==='listTasks') {
+      await readTeam(store,actor,ref);
+      const tasks=[];
+      for(const task of await this.durable.store.listTeamTasks(projectId,value.teamId)) {
+        const frozen=await readTeam(store,actor,{...ref,version:task.team.version});
+        const readiness=await this.teamExecutor?.readiness(frozen.definition)??{ready:false,missing:['Pi/OpenCode runtime and model configuration have not been qualified.']};
+        tasks.push(await readTeamTask(this.durable,actor,value.teamId,task.taskId,readiness));
+      }
+      return {tasks};
+    }
+    const opening=value.action==='startTask'?teamTaskRequest.parse(value.request):undefined;
+    if(opening&&opening.teamId!==value.teamId)throw new TeamError('hima/not-authorized','The opening request must name the selected team.');
+    const retained=value.taskId?await this.durable.store.readTeamTask(projectId,value.teamId,value.taskId):undefined;
+    const version=opening?.expectedVersion??retained?.team.version??value.version;
+    const view=await readTeam(store,actor,{...ref,version}),readiness=await this.teamExecutor?.readiness(view.definition)??{ready:false,missing:['Pi/OpenCode runtime and model configuration have not been qualified.']};
+    if(opening)return openDurableTeamRun(this.durable,actor,opening,readiness);
+    if(!value.taskId)throw new TeamError('hima/team-invalid','Choose a task identity.');
+    if(value.action==='readTask')return readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness);
+    const request=teamZ.strictObject({requestId:teamZ.string().min(1),action:teamZ.enum(['pause','continue','cancel']),expectedEpoch:teamZ.number().int().nonnegative(),expectedRevision:teamZ.number().int().nonnegative()}).parse(value.request);
+    const task=await readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness),run=await this.durable.store.run(task.currentRunId);
+    if(request.action==='continue'&&run.hold?.startsWith('Team stopped on App exit'))throw new TeamError('hima/team-not-ready','Controlled post-exit Team continuation is not qualified yet; retain this task and its evidence.');
+    const handle=await controlFlow(this.durable,{runId:run.runId,commandId:request.requestId,action:request.action,owner:run.owner,epoch:request.expectedEpoch,revision:request.expectedRevision,actor:actor.actorId,origin:origin==='human'?'human':'agent'});
+    const result=await handle.getResult();
+    await this.durable.store.putFlowFact(run.runId,`team-control-result:${request.requestId}`,result as import('./task-contract.js').JsonValue);
+    return result as object;
+  }
   async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
     const workspaceRef = await sessionProject(this.ctx, sessionId, true);
     if (request.runId) await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
@@ -1013,10 +1096,24 @@ export default class Hima extends Service {
 
   async prepareExit(request: HostExitRequest): Promise<HostExitStatus> {
     if(this.resourcesClosing)throw new BadRequest('Host resources are finalizing; no new exit operation is allowed');
+    return this.prepareExitBoundary(request);
+  }
+  // The ordered disposer owns this existing exit boundary after public operations are fenced.
+  private async prepareExitBoundary(request: HostExitRequest, requireReconciliation=true): Promise<HostExitStatus> {
     if(!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.requestId)||(request.expectedRequestId!==undefined&&!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,120}$/.test(request.expectedRequestId))||!['drain','keep-jobs','stop-jobs'].includes(request.mode))throw new BadRequest('invalid App exit request');
-    await this.reconciled;
+    if(requireReconciliation)await this.reconciled;
     await this.durable.store.acceptHostExit(request);
+    await this.durable.store.fenceTeamRunsForExit(request.requestId);
     this.exitRequest=request;
+    for(const run of await this.durable.store.runs()) {
+      if((run.opening.data as {source?:{kind?:string}}).source?.kind!=='team')continue;
+      for(const invocation of await this.durable.store.flowInvocations(run.runId)) {
+        const handle=await this.durable.startWorkflow('hima.flow.cleanup',`hima-team-exit:${identityOf([request.requestId,invocation.identity.effectId])}`,
+          {runId:run.runId,invocation:invocation as unknown as import('./task-contract.js').JsonValue,reason:'team-exit',exitRequestId:request.requestId});
+        const closed=await handle.getResult() as {closed?:boolean;reason?:string};
+        if(!closed.closed)await this.durable.store.putFlowFact(run.runId,`app-exit-failed:${request.requestId}`,{reason:closed.reason??'Team closure is unknown'});
+      }
+    }
     if(request.mode==='stop-jobs') {
       // Reuse finite cleanup of the original identities; do not cancel the whole Run.
       const work=(async()=>{
@@ -1220,6 +1317,7 @@ export default class Hima extends Service {
       if(this.factStop.signal.aborted)throw new Error('Host is stopping; history facts remain pending');
       const original=originals.get(fact.runId)??await this.durable.store.run(fact.runId);
       const opening=(original.opening.data as unknown as {run:import('./ledger.js').RunRecord}).run;
+      if((original.opening.data as {source?:{kind?:string}}).source?.kind==='team')return;
       await this.ledger.projectDurableFact(fact,opening);
     });
   }
@@ -1227,6 +1325,7 @@ export default class Hima extends Service {
   private async deliverDurableBoundaries():Promise<void> {
     if(!this.notificationsActive||this.exitRequest||(process.env.NODE_TEST_CONTEXT!==undefined&&process.env.HIMA_TEST_SILENT_AGENT==='1'))return;
     for(const original of await this.durable.store.runs()) {
+      if((original.opening.data as {source?:{kind?:string}}).source?.kind==='team')continue;
       if(this.factStop.signal.aborted||this.exitRequest)return;
       const sourceRevision=await this.durable.store.sourceRevision(original.runId);
       if(this.notifiedSourceRevisions.get(original.runId)===sourceRevision)continue;
@@ -1525,6 +1624,8 @@ export default class Hima extends Service {
       durable: this.durable,
       durableModelSelection: this.ctx.get('agentDefaultModel')?.currentSelection(),
       projectOfRun: async runId => {
+        const independentSource=(await this.durable.store.run(runId).catch(()=>undefined))?.opening.data as {source?:{kind?:string;projectId?:string}}|undefined;
+        if(independentSource?.source?.kind==='team')return independentSource.source.projectId;
         const durable = await knownDurableRun(this.deps(), runId);
         if (durable) {
           const product = (durable.opening.data as { product?: { guideSessionId?: string; parentSessionId?: string } }).product;
@@ -1750,7 +1851,7 @@ export type { CampaignFile, PreparationOverrides } from './campaign-file.js';
 export { changedFields } from './campaign-file-diff.js';
 
 // Shared data boundary for DBOS tasks; adapters and Pack compilation consume one contract.
-export { taskResultProtocol, taskSchemaDraft, taskJsonValue, taskIdentity, taskInputBinding,
+export { taskResultProtocol, taskResultProtocol2, taskSchemaDraft, taskJsonValue, taskIdentity, taskIdentityV1, taskIdentityV2, taskMethodDigest, taskInputBinding,
   taskOutputBinding, taskSchema, taskContract, taskArtifact, taskDiagnostic, taskProjectionState,
   taskProjection, taskToolOutput, taskResult, TaskContractError, validateTaskInput, createTaskResult } from './task-contract.js';
 export type { JsonValue, TaskIdentity, TaskInputBinding, TaskOutputBinding, TaskSchema, TaskContract,
@@ -1761,8 +1862,13 @@ export { flowSourceVersion, flowIRVersion, flowElement, flowExtensionSlot, flowS
 export type { FlowTask, FlowSequence, FlowChoice, FlowParallel, FlowRepeat, Flow, FlowSource,
   FlowExtensionSlot, FlowBlock, FlowBranch, CompiledTask, CompiledFlow, FrozenFlowFragment, FrozenLegacyFlowFragment } from './flow-definition.js';
 export { FlowCompileError, compileFlow, compilePackFlow, compileLegacyFlow, compileLegacyGrowth,
-  freezeFlowFragment } from './flow-compiler.js';
+  freezeFlowFragment, compileTeamFlow } from './flow-compiler.js';
 export type { CompileFlowOptions } from './flow-compiler.js';
 
 export { startFlow, controlFlow, readFlow, scheduleFlowDeadline, flowWorkflowDefinitions } from './flow-workflow.js';
 export type { FlowStart, FlowAdapterContext, FlowInvocation, FlowOutcome, FlowWorkflowOptions } from './flow-workflow.js';
+
+export * from './team-contract.js';
+export * from './team.js';
+
+export { commandTaskAdapter } from './task-effects.js';

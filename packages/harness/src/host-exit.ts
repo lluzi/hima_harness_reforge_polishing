@@ -29,8 +29,9 @@ export async function readDurableHostExitStatus(store:import('./run-store.js').R
     const request=await store.hostExit();
     const activeAgents=agents?.list().filter(a=>a.status==='running').map(a=>String(a.id))??[];
     const lastRequest=request?.requestId??await store.lastHostExitRequestId();
-    const runs:HostExitStatus['runs'][number][]=[];let deliveryWriting=false;
+    const runs:HostExitStatus['runs'][number][]=[];let deliveryWriting=false;const teamRuns=new Set<string>();
     for(const run of await store.runs()) {
+        if((run.opening.data as {source?:{kind?:string}}).source?.kind==='team')teamRuns.add(run.runId);
         const facts=await store.flowPhysicalFacts(run.runId);
         const resources=facts.resources.filter(resource=>!resource.released);
         const unclosed=facts.effects.filter(effect=>effect.dispatches.some(dispatch=>!dispatch.dispatchId.startsWith('stop:')&&!dispatch.dispatchId.startsWith('cleanup:'))&&!facts.stopped[effect.identity.effectId]&&
@@ -66,6 +67,6 @@ export async function readDurableHostExitStatus(store:import('./run-store.js').R
         const state=(failed&&(resources.length||unclosed.length))||unknown?'uncertain':resources.length||unclosed.length||collecting||pendingDelivery?'working':'ready';
         runs.push({runId:run.runId,state,jobs,...(failed?{reason:'Original stop failed; its physical facts and human holds are retained.'}:unknown?{reason:preparationUnknown?'Admitted preparation has no confirmed write closure.':'Original dispatch closure is unproved.'}:pendingDelivery?{reason:'Original report/archive file publication awaits write closure.'}:collecting?{reason:'Original submitted output awaits its necessary collection.'}:resources.length?{reason:'Original physical resources await closure.'}:{})});
     }
-    return {...request,agents:activeAgents,runs,ready:request?.mode==='keep-jobs'?!deliveryWriting:(activeAgents.length===0&&runs.every(run=>run.state==='ready'))};
+    return {...request,agents:activeAgents,runs,ready:request?.mode==='keep-jobs'?(!deliveryWriting&&runs.filter(run=>teamRuns.has(run.runId)).every(run=>run.state==='ready')):(activeAgents.length===0&&runs.every(run=>run.state==='ready'))};
     });
 }

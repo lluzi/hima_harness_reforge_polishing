@@ -2,7 +2,7 @@
 // neither a Ledger projection nor the adapter resolver chooses the next task.
 import { DBOS, type WorkflowHandle } from '@dbos-inc/dbos-sdk';
 import type { DurableRuntime, DurableWorkflowDefinition } from './durable-runtime.js';
-import { flowTaskCountsExperiment, flowInvocationRevision, flowExtensionKey, type FlowRevisionRule, type FlowInvocationPath, type FlowExtensionScope, type CompiledFlow, type CompiledTask, type FlowBranch, type FrozenFlowFragment, type FrozenLegacyFlowFragment } from './flow-definition.js';
+import { flowTaskCountsExperiment, flowInvocationRevision, flowExtensionKey, flowMethodDigest, type FlowRevisionRule, type FlowInvocationPath, type FlowExtensionScope, type CompiledFlow, type CompiledTask, type FlowBranch, type FrozenFlowFragment, type FrozenLegacyFlowFragment } from './flow-definition.js';
 import { freezeFlowFragment, freezeLegacyFlowFragment } from './flow-compiler.js';
 import { branchContains, jsonDigest, type DurableCommand, type FlowInvocationRecord } from './run-store.js';
 import { createTaskResult, validateTaskInput, type JsonValue, type TaskInputBinding, type TaskResult, type TaskDiagnostic, } from './task-contract.js';
@@ -154,10 +154,15 @@ function adapterContext(runtime: DurableRuntime, context: TaskExecution, request
 function identity(runtime: DurableRuntime, context: TaskExecution): TaskEffectRequest['identity'] {
   const version = revisionAt(context, context.taskId).version;
   const inputSha256 = jsonDigest(context.input);
-  return { runId: context.runId, taskId: context.taskId,
+  const base = { runId: context.runId, taskId: context.taskId,
     effectId: `hima-effect:${jsonDigest([context.runId, context.flow.irSha256, context.taskId, context.iterations, context.branches,context.extensions, version, inputSha256])}`,
-    inputSha256, packSha256: context.flow.packSha256, irSha256: context.flow.irSha256,
+    inputSha256, irSha256: context.flow.irSha256,
     applicationVersion: runtime.applicationVersion, adapterVersion: taskEffectAdapterVersion };
+  if (context.flow.source === 'team') {
+    if (!context.flow.taskSource || !context.flow.method) throw new Error('Team execution requires its frozen source and method');
+    return { ...base, source: context.flow.taskSource, method: context.flow.method };
+  }
+  return { ...base, packSha256: flowMethodDigest(context.flow) };
 }
 function heldReason(authority: Awaited<ReturnType<DurableRuntime['store']['flowAuthority']>>, context: Execution): string | undefined {
   if (authority.run.hold) return authority.run.hold;
@@ -377,9 +382,9 @@ async function executeBlock(runtime: DurableRuntime, initial: Execution): Promis
 }
 
 async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; invocation: FlowInvocationRecord; reason: string; exitRequestId?:string }, options: FlowWorkflowOptions): Promise<JsonValue> {
-  if(input.reason==='app-exit') {
+  if(input.reason==='app-exit'||input.reason==='team-exit') {
     const active=await runtime.store.hostExit();
-    if(!input.exitRequestId||active?.requestId!==input.exitRequestId||active.mode!=='stop-jobs')return {closed:false,reason:'App exit stop request is stale or no longer active'};
+    if(!input.exitRequestId||active?.requestId!==input.exitRequestId||(input.reason==='app-exit'&&active.mode!=='stop-jobs')||(input.reason==='team-exit'&&(input.invocation.context as unknown as TaskExecution).flow.source!=='team'))return {closed:false,reason:'App exit stop request is stale or no longer active'};
   }
   const context = input.invocation.context as unknown as TaskExecution;
   const authority = await runtime.store.flowAuthority(input.runId);
@@ -419,7 +424,7 @@ async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; i
   const result = await taskEffectStep('hima.control.stop-original', async () => {
     if (!await adapter.permit(prepared, 'release')) return { closed: false as const, reason: 'Current Site Permit blocks original cleanup' };
     return adapter.stop!(prepared, snapshot.facts.submitted, (id, value) => runtime.store.claimEffectCleanup(request.identity,
-      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value),input.reason==='app-exit'?input.exitRequestId:undefined));
+      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value),input.reason==='app-exit'||input.reason==='team-exit'?input.exitRequestId:undefined));
   }).catch(error => ({ closed: false as const, reason: text(error) }));
   if (result.closed) {
     await runtime.store.releaseEffectResources(request.identity, result.proof);
@@ -430,7 +435,7 @@ async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; i
 async function cleanup(runtime:DurableRuntime,input:Parameters<typeof cleanupAttempt>[1],options:FlowWorkflowOptions):Promise<JsonValue> {
   for(let attempt=0;;attempt++){
     const result=await cleanupAttempt(runtime,input,options) as unknown as {closed:boolean;reason?:string};
-    if(input.reason==='app-exit')return asJson(result);
+    if(input.reason==='app-exit'||input.reason==='team-exit')return asJson(result);
     const authority=await runtime.store.flowAuthority(input.runId);
     if(result.closed||result.reason?.includes('no physical stop')||authority.at>=Date.parse(authority.run.deadlineAt))return asJson(result);
     // Query the original identity while a launch/stop acknowledgement is uncertain. Stable raw

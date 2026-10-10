@@ -1,3 +1,6 @@
+import { compileTeamFlow } from './flow-compiler.js';
+import { teamTaskRequest, TeamError, type TeamDefinitionActor, type TeamTaskRequest, type TeamTaskView, type TeamReadiness } from './team-contract.js';
+import { taskMethodDigest } from './task-contract.js';
 // Product preparation and PG-backed Fabric views; the finite DBOS interpreter alone schedules tasks.
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { createHash, randomUUID } from 'node:crypto';
@@ -5,7 +8,7 @@ import type { DurableRuntime, DurableWorkflowDefinition } from './durable-runtim
 import { durableEngine } from './durable-runtime.js';
 import { branchContains, factIdentity, jsonDigest, type DurableRun, type DurableCommand } from './run-store.js';
 import { taskEffectAdapterVersion, taskEffectStep } from './task-effects.js';
-import type { JsonValue, TaskIdentity } from './task-contract.js';
+import type { JsonValue, TaskIdentity, TaskProjectionState, TaskResult } from './task-contract.js';
 import { startFlow, scheduleFlowDeadline, controlFlow, readFlow, type FlowStart } from './flow-workflow.js';
 import type { DurableProductOpening } from './durable-task-adapters.js';
 import { prepareWorkspaceFiles, type WorkspaceFilesResult } from './workspace.js';
@@ -17,7 +20,7 @@ import { decideWrite } from './shell.js';
 import { budgetStanding } from './budget.js';
 import type { RunRecord, NodeExecution } from './ledger.js';
 import type { FabricDeps } from './node-turns.js';
-import {flowTaskBranches,type FlowBranch} from './flow-definition.js';
+import {flowTaskBranches,flowMethodDigest,type FlowBranch} from './flow-definition.js';
 import type { ExecutionContext } from './fabric.js';
 
 const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -88,7 +91,7 @@ export async function openDurableProductRun(deps: FabricDeps, options: {
   const workspaceDecision=await decideWrite(options.site,requestedWorkspace,channelFor(options.site));
   const product: DurableProductOpening = { campaignId:run.campaignId, siteId:options.site.name, siteDigest:jsonDigest(json(options.site)),
     workspace:workspaceDecision.ok?workspaceDecision.absPath:requestedWorkspace, bindings,
-    method:{packId:options.pack.id,packDigest:options.pack.flow.packSha256,retainedPackDir:options.retainedPackDir},
+    method:{packId:options.pack.id,packDigest:flowMethodDigest(options.pack.flow),retainedPackDir:options.retainedPackDir},
     parentSessionId:options.owner,...(run.control?.guideSessionId?{guideSessionId:run.control.guideSessionId}:{}),modelSelection };
   const start: FlowStart = {runId,flow:options.pack.flow,runInput:json(bindings),goal:json(run.goal??{}),strategy:json(run.firstStrategy??{})};
   const data: ProductRunData = {run,budget:run.budget!,product,start,requestDigest:options.requestDigest,...(options.inputs?{inputs:options.inputs}:{})};
@@ -117,6 +120,9 @@ export async function recoverDurablePreparations(runtime:DurableRuntime):Promise
     if(run.applicationVersion!==runtime.applicationVersion)continue;
     const data=run.opening.data as unknown as Partial<ProductRunData>;
     if(data.product?.method&&data.start?.flow) {await scheduleFlowDeadline(runtime,run.runId);await startDurablePreparation(runtime,run.runId);}
+    if((run.opening.data as {source?:{kind?:string}}).source?.kind==='team'&&data.start?.flow&&!run.cancelled&&!run.hold&&!await runtime.store.hostExit()) {
+      await scheduleFlowDeadline(runtime,run.runId);await startFlow(runtime,data.start);
+    }
   }
 }
 /** This finite product workflow composes the existing copier and then the one interpreter. */
@@ -124,7 +130,7 @@ export function preparationWorkflowDefinitions(options: { readonly sitesDir: str
   return [{name:preparationWorkflowName,async execute(runtime,input):Promise<JsonValue> {
     const runId = (input as {runId:string}).runId, original = await runtime.store.run(runId), data = dataOf(original);
     const identity: TaskIdentity = {runId,taskId:'hima.prepare',effectId:`hima-prepare-effect:${runId}`,inputSha256:original.inputSha256,
-      packSha256:data.start.flow.packSha256,irSha256:data.start.flow.irSha256,applicationVersion:original.applicationVersion,adapterVersion:taskEffectAdapterVersion};
+      packSha256:flowMethodDigest(data.start.flow),irSha256:data.start.flow.irSha256,applicationVersion:original.applicationVersion,adapterVersion:taskEffectAdapterVersion};
     await runtime.store.prepareEffect(identity,json({workspace:data.product.workspace,method:data.product.method,inputs:data.inputs??{}}));
     let prepared:WorkspaceFilesResult;
     let preparationClosed=false;
@@ -251,7 +257,7 @@ export async function readDurableExecutionContext(deps: FabricDeps, runId: strin
     for(const scope of scopes)holds.push({scope,source:control.holdSource??'unknown'});
   }
   if(run.control)run={...run,control:{...run.control,paused:[...new Set(holds.map(hold=>hold.scope))]}};
-  const executions:NodeExecution[] = tasks.map(task=>({id:task.identity.effectId,nodeId:task.identity.taskId,kind:pack.graph.nodes.find(node=>node.id===task.identity.taskId)?.kind??'act',methodDigest:task.identity.packSha256,inputDigest:task.identity.inputSha256,phase:task.result?'completed':task.state.state==='failed'?'failed':task.state.state==='unknown'?'uncertain':'begun',attempt:task.version+1,generation:(task.iterations?.at(-1)?.iteration??0)+1,...(task.iterations?.length?{loopId:task.iterations.at(-1)!.repeatId,loopGeneration:task.iterations.at(-1)!.iteration+1}:{})}));
+  const executions:NodeExecution[] = tasks.map(task=>({id:task.identity.effectId,nodeId:task.identity.taskId,kind:pack.graph.nodes.find(node=>node.id===task.identity.taskId)?.kind??'act',methodDigest:taskMethodDigest(task.identity),inputDigest:task.identity.inputSha256,phase:task.result?'completed':task.state.state==='failed'?'failed':task.state.state==='unknown'?'uncertain':'begun',attempt:task.version+1,generation:(task.iterations?.at(-1)?.iteration??0)+1,...(task.iterations?.length?{loopId:task.iterations.at(-1)!.repeatId,loopGeneration:task.iterations.at(-1)!.iteration+1}:{})}));
   return {engine:durableEngine,run,nodes:pack.graph.nodes,budget:budgetStanding(run,0),available:[],executions,growths:[],revisions:[],
     holds,
     method:{id:pack.id,version:pack.contract.version,digest:data.product.method.packDigest,dir:pack.dir,contract:pack.contract,reference:pack.graph},
@@ -512,7 +518,7 @@ function revisionPreparationWorkflowDefinition(options:{readonly sitesDir:string
     if(!plan||!command.change)throw new Error('Revision preparation needs its frozen accepted command and byte plan');
     const original=await runtime.store.run(command.runId),data=dataOf(original);
     const identity:TaskIdentity={runId:command.runId,taskId:'hima.prepare-revision',effectId:`hima-revision-effect:${jsonDigest([command.runId,command.commandId])}`,
-      inputSha256:prepared.requestDigest,packSha256:data.start.flow.packSha256,irSha256:data.start.flow.irSha256,applicationVersion:original.applicationVersion,adapterVersion:taskEffectAdapterVersion};
+      inputSha256:prepared.requestDigest,packSha256:flowMethodDigest(data.start.flow),irSha256:data.start.flow.irSha256,applicationVersion:original.applicationVersion,adapterVersion:taskEffectAdapterVersion};
     await runtime.store.prepareEffect(identity,json(prepared));
     for(const [index,change] of plan.changes.entries()) {
       const reservation=await taskEffectStep('hima.revision.reserve-original-write',()=>runtime.store.reserveExternalResearchWrite(identity,{
@@ -630,7 +636,7 @@ export async function bindDurableKnowledge(deps:FabricDeps,runId:string,owner:st
   const task=active[0]!,loop=task.iterations.at(-1),branch=task.branches.at(-1);
   if(context.holds?.some(hold=>hold.scope==='*'||hold.scope===task.identity.taskId)) throw new Error('Campaign knowledge evidence requires an active writable Campaign');
   const execution:NodeExecution={id:task.identity.effectId,nodeId:task.identity.taskId,kind:context.nodes.find(node=>node.id===task.identity.taskId)?.kind??'act',
-    methodDigest:task.identity.packSha256,inputDigest:task.identity.inputSha256,phase:'begun',attempt:task.version+1,generation:(loop?.iteration??0)+1,
+    methodDigest:taskMethodDigest(task.identity),inputDigest:task.identity.inputSha256,phase:'begun',attempt:task.version+1,generation:(loop?.iteration??0)+1,
     ...(loop?{loopId:loop.repeatId,loopGeneration:loop.iteration+1}:{}),...(branch?{branchId:branch.branch}:{})};
   return {identity:task.identity,execution,scope,admission:{runId,effectId:task.identity.effectId,owner,epoch:context.run.control!.epoch,revision:context.run.control!.revision}};
 }
@@ -651,4 +657,59 @@ export async function recordDurableDocumentKnowledge(deps:FabricDeps,binding:Dur
   const id=factIdentity('effect-fact',binding.identity.effectId,`native:${phase}`),fact=await store.fact(id);
   if(!fact) throw new Error('Campaign knowledge source fact is unavailable');
   return {hit:prepared.hit,recordId:id};
+}
+
+/** Independent openings retain Team provenance in the same PG Run and DBOS interpreter. */
+export async function openDurableTeamRun(runtime:DurableRuntime,actor:TeamDefinitionActor,raw:TeamTaskRequest,readiness:TeamReadiness):Promise<TeamTaskView> {
+  const request=teamTaskRequest.parse(raw);
+
+  const view=await runtime.store.readTeamDefinition(actor.projectId,request.teamId,request.expectedVersion);
+  if(!view)throw new TeamError('hima/not-authorized','This saved Team version is unavailable in the current project.');
+  const team={teamId:view.teamId,version:view.version,sha256:view.sha256};
+  const taskId=`task-${jsonDigest([actor.projectId,request.teamId,request.requestId])}`,runId=`run-${taskId}`;
+  const held=await runtime.store.readTeamTask(actor.projectId,request.teamId,taskId);
+  if(held) {
+    const original=await runtime.store.run(held.currentRunId);
+    if((original.opening.data as {requestDigest?:string}).requestDigest!==jsonDigest(request))throw new TeamError('hima/team-conflict','This opening request already names different frozen content.');
+    if(!original.cancelled&&!original.hold&&Date.now()<Date.parse(original.deadlineAt)&&!await runtime.store.hostExit()) {
+      const frozen=(original.opening.data as unknown as {start:FlowStart}).start;
+      await scheduleFlowDeadline(runtime,original.runId);await startFlow(runtime,frozen);
+    }
+    return {...held,readiness};
+  }
+  if(Date.parse(request.deadlineAt)<=Date.now())throw new TeamError('hima/team-invalid','Choose a future absolute deadline and explicit closure condition.');
+  const source={kind:'team' as const,projectId:actor.projectId,team,taskId},flow=compileTeamFlow(source,view.definition);
+  const start:FlowStart={runId,flow,runInput:json({goal:request.goal,input:request.input,closure:request.closure}),goal:json({}),strategy:json({})};
+  const data=json({source,definition:view.definition,start,actor,budget:{closingReserveMs:0},requestDigest:jsonDigest(request)});
+  const task=await runtime.store.openTeamTask({projectId:actor.projectId,requestId:request.requestId,requestSha256:jsonDigest(request),
+    task:{taskId,team,projectId:actor.projectId,goal:request.goal,input:request.input,deadlineAt:request.deadlineAt,closure:request.closure,runIds:[runId],currentRunId:runId},
+    opening:{runId,inputSha256:jsonDigest(data),applicationVersion:runtime.applicationVersion,owner:`member:${view.definition.leaderMemberId}`,deadlineAt:request.deadlineAt,data}});
+  await scheduleFlowDeadline(runtime,runId);
+  await startFlow(runtime,start);
+  return {...task,readiness};
+}
+export async function readTeamTask(runtime:DurableRuntime,actor:TeamDefinitionActor,teamId:string,taskId:string,readiness:TeamReadiness):Promise<TeamTaskView> {
+  const task=await runtime.store.readTeamTask(actor.projectId,teamId,taskId);
+  if(!task)throw new TeamError('hima/not-found','This task is unavailable in the current project.');
+  const execution=await readFlow(runtime,task.currentRunId);
+  const tasks=(execution.tasks as unknown as {identity:TaskIdentity;state?:{state?:string;reason?:string|{message?:string};diagnostic?:{message?:string}};result?:TaskResult;current?:boolean}[])
+    .filter(row=>row.current!==false).map(row=>({taskId:row.identity.taskId,effectId:row.identity.effectId,
+      state:(row.result?'succeeded':row.state?.state==='unknown'?'waiting':row.state?.state??'pending') as TaskProjectionState,
+      ...((typeof row.state?.reason==='string'?row.state.reason:row.state?.reason?.message??row.state?.diagnostic?.message)?{reason:typeof row.state?.reason==='string'?row.state.reason:row.state?.reason?.message??row.state?.diagnostic?.message}:{}),...(row.result?{result:row.result}:{})}));
+  const outcome=await runtime.store.flowFact(task.currentRunId,`outcome:${execution.run.revision}`) as {state?:string;reason?:string}|null;
+  const unsettled=execution.resources.some(resource=>!resource.released);
+  const unproved=execution.effects.some(effect=>effect.dispatches.some(dispatch=>!dispatch.dispatchId.startsWith('stop:')&&!dispatch.dispatchId.startsWith('cleanup:'))&&!execution.stopped[effect.identity.effectId]&&!execution.resources.some(resource=>resource.effectId===effect.identity.effectId&&resource.released));
+  const resourceState=unsettled?'active' as const:unproved?'unknown' as const:'closed' as const;
+  const cancellationRequested=execution.run.cancelled;
+  const closureWaiting=cancellationRequested&&resourceState!=='closed';
+  const state=(closureWaiting?'waiting':execution.run.cancelled?'cancelled':outcome?.state==='succeeded'?'succeeded':outcome?.state==='failed'?'failed':execution.run.hold||tasks.some(row=>row.state==='waiting')?'waiting':tasks.some(row=>row.state==='running')?'running':'pending') as TaskProjectionState;
+  const exitId=await runtime.store.lastHostExitRequestId();
+  const exitFailure=exitId?await runtime.store.flowFact(task.currentRunId,`app-exit-failed:${exitId}`) as {reason?:string}|null:null;
+  const controls=await runtime.store.orderedFlowFacts(task.currentRunId,'team-control-result:');
+  const cleanupReason=controls.map(fact=>fact.value as {run?:{epoch?:number};cleanup?:{closed?:boolean;reason?:string}[]}).reverse()
+    .find(value=>value.run?.epoch===execution.run.epoch)?.cleanup?.find(value=>!value.closed)?.reason;
+  const actualReason=exitFailure?.reason??(closureWaiting?cleanupReason:undefined)??outcome?.reason??tasks.find(row=>row.reason)?.reason;
+  const reason=closureWaiting?`Stop requested; original member/resource closure is unproved.${actualReason?' '+actualReason:''}`:actualReason??execution.run.hold;
+  const allowedActions:('pause'|'continue'|'cancel')[]=execution.run.hold?.startsWith('Team stopped on App exit')?[]:execution.run.cancelled?(closureWaiting?['cancel']:[]):Date.now()>=Date.parse(execution.run.deadlineAt)?['cancel']:execution.run.hold?['continue','cancel']:['pause','cancel'];
+  return {...task,readiness,allowedActions,execution:{epoch:execution.run.epoch,revision:execution.run.revision,state,resourceState,cancellationRequested,...(reason?{reason}:{}),tasks}};
 }

@@ -43,6 +43,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
   async function readRun(runId: string): Promise<RunRecord | undefined> {
     const original=await knownDurableRun(deps,runId);
     if(!original)return deps.ledger.run(runId);
+    if((original.opening.data as {source?:{kind?:string}}).source?.kind==='team')return undefined;
     const store=deps.durable!.store,prepared=await store.flowFact(runId,'preparation') as unknown as import('./workspace.js').WorkspaceFilesResult|null, outcome=await store.flowFact(runId,`outcome:${original.revision}`);
     return original.cancelled ? (await readDurableExecutionContext(deps,runId)).run : await readDurableRunView(deps.durable!,original,prepared,outcome);
   }
@@ -156,7 +157,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
   async function assignedGuide(viewerSessionId:string,parentSessionId:string,childSessionId?:string):Promise<boolean> {
     for(const run of await deps.durable?.store.runs()??[]) {
       const opening=run.opening.data as unknown as {run:RunRecord};
-      if(run.owner!==parentSessionId || opening.run.control?.guideSessionId!==viewerSessionId)continue;
+      if(run.owner!==parentSessionId || opening.run?.control?.guideSessionId!==viewerSessionId)continue;
       if(childSessionId===undefined)return true;
       for(const invocation of await deps.durable!.store.flowInvocations(run.runId)) {
         const effect=await deps.durable!.store.effect(invocation.identity.effectId);if(!effect)continue;
@@ -309,7 +310,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     const {readExperience}=await import('./experience.js');return readExperience(await sourceDeps(runId,revision),runId);
   }
   async function listRunHeads() {
-    return Promise.all((await deps.durable?.store.runs()??[]).map(async run=>{
+    return Promise.all((await deps.durable?.store.runs()??[]).filter(run=>(run.opening.data as {source?:{kind?:string}}).source?.kind!=='team').map(async run=>{
       const store=deps.durable!.store, sourceRevision=await store.sourceRevision(run.runId), prepared=await store.flowFact(run.runId,'preparation') as unknown as import('./workspace.js').WorkspaceFilesResult|null, outcome=await store.flowFact(run.runId,`outcome:${run.revision}`);
       const current=run.cancelled?(await readDurableExecutionContext(deps,run.runId)).run:await readDurableRunView(deps.durable!,run,prepared,outcome),pack=await readFrozenProductMethod(deps.durable!,run);
       return {...runHeadView(current,pack.contract.version,packWords(pack)),engine:run.engine,goalState:current.goalState,...(current.stopState?{stopState:current.stopState}:{}),sourceRevision,historyPendingFacts:await store.pendingFactCount(run.runId),deadlineAt:run.deadlineAt};

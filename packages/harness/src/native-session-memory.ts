@@ -20,15 +20,29 @@ type SessionSurface = { readonly session: SessionHeader; readonly events: readon
 type SessionQuery = { readSession(id: never): Promise<SessionLog>; readSurface(id: never): Promise<SessionSurface> };
 type SessionPersistence = { stat(id: never): Promise<{ readonly header: SessionHeader } | undefined> };
 
-/** Text carried by a native message/event payload. Structural event metadata is deliberately ignored. */
-function payloadText(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map(payloadText).join('');
-  if (value && typeof value === 'object') return Object.entries(value).filter(([key]) => !['type', 'id', 'seq', 'time', 'timestamp'].includes(key)).map(([, item]) => payloadText(item)).join('');
+/** Released V3 wraps tool content in one block; V4 carries it on a tool-role message.
+ * Only model-facing text is semantic conversation evidence. Names, sources, paths,
+ * titles, call arguments and diagnostic reasons cannot qualify an empty session.
+ */
+function contentText(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  return content.map((block) => {
+    if (!block || typeof block !== 'object') return '';
+    const item = block as { type?: unknown; text?: unknown; content?: unknown };
+    if (item.type === 'text' && typeof item.text === 'string') return item.text;
+    return item.type === 'tool-result' ? contentText(item.content) : '';
+  }).join('');
+}
+function semanticText(event: unknown): string {
+  if (!event || typeof event !== 'object') return '';
+  const { type, data } = event as { type?: unknown; data?: unknown };
+  if (!data || typeof data !== 'object') return '';
+  if (type === 'user/message') return contentText((data as { content?: unknown }).content).trim();
+  if (type === 'system/message' || type === 'developer/message' || type === 'assistant/message' || type === 'tool/result') {
+    return contentText((data as { message?: { content?: unknown } }).message?.content).trim();
+  }
   return '';
 }
-const semanticText = (event: unknown): string =>
-  event && typeof event === 'object' && 'data' in event ? payloadText((event as { data: unknown }).data).trim() : '';
 
 /**
  * Read one exact persisted native Session through the pinned public services.

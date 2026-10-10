@@ -2,10 +2,11 @@
 export type WorkbenchAddress =
   | { readonly kind: 'campaign'; readonly runId?: string }
   | { readonly kind: 'insight'; readonly reportRef?: string; readonly scope?: string }
+  | { readonly kind: 'team'; readonly teamId?: string; readonly taskId?: string; readonly memberId?: string }
   | { readonly kind: 'child'; readonly parentSessionId: string; readonly childSessionId: string }
   | { readonly kind: 'invalid'; readonly code: 'hima/invalid-view-address'; readonly message: string };
 
-type NavigationParams = { readonly kind?: unknown; readonly runId?: unknown; readonly reportRef?: unknown; readonly scope?: unknown; readonly parentSessionId?: unknown; readonly childSessionId?: unknown };
+type NavigationParams = { readonly kind?: unknown; readonly runId?: unknown; readonly reportRef?: unknown; readonly scope?: unknown; readonly teamId?: unknown; readonly taskId?: unknown; readonly memberId?: unknown; readonly parentSessionId?: unknown; readonly childSessionId?: unknown };
 
 const text = (value: unknown): string | undefined => typeof value === 'string' && value !== '' ? value : undefined;
 
@@ -31,6 +32,15 @@ export function workbenchAddressOf(params: unknown): WorkbenchAddress {
     if (value.scope !== undefined && text(value.scope) === undefined) return invalid('Insight scope must be a non-empty string when present.');
     return { kind: 'insight', ...(text(value.reportRef) === undefined ? {} : { reportRef: text(value.reportRef)! }), ...(text(value.scope) === undefined ? {} : { scope: text(value.scope)! }) };
   }
+  if (value.kind === 'team') {
+    for (const field of ['teamId', 'taskId', 'memberId'] as const) {
+      if (value[field] !== undefined && text(value[field]) === undefined) return invalid(`Team ${field} must be a non-empty string when present.`);
+    }
+    if (value.taskId !== undefined && value.teamId === undefined) return invalid('A task address requires its teamId.');
+    if (value.memberId !== undefined && value.taskId === undefined) return invalid('A member address requires its taskId and teamId.');
+    return { kind: 'team', ...(value.teamId === undefined ? {} : { teamId: text(value.teamId)! }),
+      ...(value.taskId === undefined ? {} : { taskId: text(value.taskId)! }), ...(value.memberId === undefined ? {} : { memberId: text(value.memberId)! }) };
+  }
   if (value.kind === 'child') {
     const parentSessionId = text(value.parentSessionId); const childSessionId = text(value.childSessionId);
     return parentSessionId === undefined || childSessionId === undefined
@@ -45,6 +55,8 @@ export const workbenchAddressKey = (address: WorkbenchAddress): string => addres
   ? JSON.stringify(['campaign', address.runId ?? null])
   : address.kind === 'insight'
     ? JSON.stringify(['insight', address.reportRef ?? null, address.scope ?? null])
+    : address.kind === 'team'
+      ? JSON.stringify(['team', address.teamId ?? null, address.taskId ?? null, address.memberId ?? null])
     : address.kind === 'child'
       ? JSON.stringify(['child', address.parentSessionId, address.childSessionId])
       : JSON.stringify(['invalid', address.code, address.message]);

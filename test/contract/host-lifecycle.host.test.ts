@@ -339,8 +339,8 @@ for(const disposition of ['keep-jobs','cancel','stop-jobs'] as const) {
     const stopped:string[]=[],cancelled:string[]=[],warnings:string[]=[];
     const invocation=(effectId:string)=>({identity:{effectId}});
     const store:any={
-      acceptHostExit:async(request:any)=>{active=request;},hostExit:async()=>active,
-      releaseHostExit:async()=>{active=undefined;},runs:async()=>[{runId:'exit-run'}],
+      acceptHostExit:async(request:any)=>{active=request;},hostExit:async()=>active,fenceTeamRunsForExit:async()=>{},
+      releaseHostExit:async()=>{active=undefined;},runs:async()=>[{runId:'exit-run',opening:{data:{}}}],
       flowInvocations:async()=>[invocation('first'),invocation('second')],derivedEffects:async()=>[],
       flowPhysicalFacts:async()=>({effects:['first','second'].map(effectId=>({identity:{effectId},dispatches:[{dispatchId:'submit'}]}))}),
       withHostExitStopBoundary:async(requestId:string,work:()=>void)=>{if(active?.requestId!==requestId||active.mode!=='stop-jobs')return false;work();return true;},
@@ -349,6 +349,7 @@ for(const disposition of ['keep-jobs','cancel','stop-jobs'] as const) {
       stopped.push(input.invocation.identity.effectId);
       return {getResult:async()=>{if(stopped.length===1){entered();await firstPending;}return {closed:true};}};
     }},ctx:{get:()=>({list:()=>[{cancel:()=>{cancelled.push('agent');finished();}}]}),logger:{warn:(value:string)=>warnings.push(value)}},exitStatus:async()=>({requestId:active?.requestId,mode:active?.mode}),cancelExit:undefined};
+    Object.setPrototypeOf(service,Hima.prototype);
     service.cancelExit=(id:string)=>Hima.prototype.cancelExit.call(service,id);
     await Hima.prototype.prepareExit.call(service,{requestId:'stop-original',mode:'stop-jobs'});
     await firstEntered;

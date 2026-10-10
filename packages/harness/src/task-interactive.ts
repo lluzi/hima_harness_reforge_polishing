@@ -1,3 +1,4 @@
+import { taskMethodDigest } from './task-contract.js';
 // PG authority for the existing Operator/Tcl transport. No graph driving or Ledger writes.
 import { createHash, randomBytes } from 'node:crypto';
 import { channelFor } from './channel.js';
@@ -84,7 +85,7 @@ export async function taskInteractiveDelegationGrant(deps: TaskInteractiveDeps, 
   admission: EffectAdmission, target: { readonly executionId: string; readonly nodeId: string }): Promise<OperatorDelegationGrant> {
   const provisional: OperatorDelegationGrant = { runId: identity.runId, ...target, bindingDigest: '0'.repeat(64), mutation: 'qualified', testOnly: false, commands: [] };
   const derived = await readTaskInteractiveOperation(deps.store, identity, target) ?? await deps.resolveOperation?.(identity, provisional);
-  if (!derived || derived.binding.packDigest !== identity.packSha256 || derived.binding.nodeId !== target.nodeId) throw new Error('Exact retained Pack has no qualified interactive operation for this task');
+  if (!derived || derived.binding.packDigest !== taskMethodDigest(identity) || derived.binding.nodeId !== target.nodeId) throw new Error('Exact retained Pack has no qualified interactive operation for this task');
   const qualification = await qualifyInteractiveOperation({ ...deps.bridge, trustedTestQualification: deps.trustedTestQualification }, derived);
   if (qualification.mutation !== 'qualified') throw new Error('Exact Operator binding is not qualified for mutation');
   const site = loadSite(deps.sitesDir, derived.site);
@@ -193,7 +194,7 @@ export async function operateTaskInteractive(deps: TaskInteractiveDeps, actor: s
     if (!prepared && request.action !== 'open') return refused('Original interactive session has no retained prepared binding');
     const derived = prepared?.derived ?? await readTaskInteractiveOperation(deps.store, identity, operator);
     if (!derived || derived.site !== grant.guard.siteId || derived.workspace !== grant.effective.workspace
-      || derived.binding.packDigest !== identity.packSha256 || derived.binding.nodeId !== request.nodeId) return refused('Interactive binding differs from the exact frozen task/Pack/Site workspace');
+      || derived.binding.packDigest !== taskMethodDigest(identity) || derived.binding.nodeId !== request.nodeId) return refused('Interactive binding differs from the exact frozen task/Pack/Site workspace');
     const qualification = await qualifyInteractiveOperation({ ...deps.bridge, trustedTestQualification: deps.trustedTestQualification }, derived);
     if (qualification.bindingDigest !== operator.bindingDigest || qualification.testOnly !== operator.testOnly) return refused('Interactive qualification differs from original Operator grant');
     const site = () => loadSite(deps.sitesDir, derived.site);

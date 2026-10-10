@@ -1,4 +1,5 @@
 import { taskToolOutput } from './task-contract.js';
+import { TeamError } from './team-contract.js';
 // @hima-seam webserver wrapped
 // @hima-seam client-connection wrapped
 // The Hima remote interface: one namespace, `/hima/api/`, on the host's web server. It is what
@@ -641,6 +642,8 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  teamOperation?(sessionId:string,request:unknown):Promise<object>;
+  memberTeamContext?(token:string,request:unknown):Promise<object>;
   readRunView?(runId: string): Promise<RunView | undefined>;
   listRunHeads?(): Promise<readonly RunHeadView[]>;
   readRunRecord?(recordId: string): Promise<LedgerRecord | undefined>;
@@ -1623,6 +1626,17 @@ function unpreparedReason(prepared: Extract<StartRunResult, { kind: 'unprepared'
 /** Route one request inside the namespace. The path is already known to start with the prefix. */
 async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Promise<Answer> {
   const rest = url.pathname.slice(HIMA_API_PREFIX.length);
+  if(rest==='/teams') {
+    if(req.method!=='POST'||!ops.teamOperation)return failure(405,'hima/bad-request','Team operations require POST.');
+    const body=z.strictObject({sessionId:z.string().min(1),request:z.unknown()}).parse(await readJsonBody(req));
+    if(!ops.validateSession?.(body.sessionId))return failure(403,'hima/not-authorized','Choose a live project conversation.');
+    try{return ok(await ops.teamOperation(body.sessionId,body.request));}
+    catch(error){
+      if(error instanceof TeamError)return failure(error.code==='hima/not-authorized'?403:error.code==='hima/not-found'?404:409,'hima/bad-request',error.message);
+      if(error instanceof ZodError)return failure(400,'hima/bad-request',error.message);
+      throw error;
+    }
+  }
   const method = req.method ?? 'GET';
   const authorize = async (runId: string): Promise<Answer | undefined> => {
     const sessionId = url.searchParams.get('sessionId');
@@ -2174,6 +2188,21 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
     path: HIMA_API_PREFIX,
     handler: async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://hima.invalid');
+      // A separate, narrowly scoped member surface. Bearer capabilities never authorize
+      // browser/admin operations, and browser cookies never authorize this surface.
+      if(url.pathname===`${HIMA_API_PREFIX}/member/task`) {
+        const authorization=req.headers.authorization;
+        if(req.method!=='POST'||!ops.memberTeamContext||req.headers.origin!==undefined||typeof authorization!=='string'||!authorization.startsWith('Bearer ')) {
+          send(res,failure(403,'hima/not-authorized','A current member capability is required.'));return;
+        }
+        try{send(res,ok(await ops.memberTeamContext(authorization.slice(7),await readJsonBody(req))));}
+        catch(error){
+          if(error instanceof TeamError){send(res,failure(403,'hima/not-authorized',error.message));return;}
+          if(error instanceof ZodError){send(res,failure(400,'hima/bad-request','Member scope is resolved by Host; provide only the requested action.'));return;}
+          ctx.logger.error('Member task request failed inside HimaHarness');send(res,failure(503,'hima/internal','Member task facts are unavailable.'));
+        }
+        return;
+      }
       const token=req.headers['x-hima-desktop-control'];
       // Only the exact lifecycle endpoint accepts the process-owned capability without a
       // browser cookie. A supplied Origin continues through the ordinary browser guard.

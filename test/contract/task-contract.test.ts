@@ -1,6 +1,7 @@
 // L1: one data contract, independent of the command/model/engineering adapters.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { taskIdentityV2, taskMethodDigest, taskResultProtocol2 } from '@hima/harness';
 import {
   createTaskResult, validateTaskInput, taskIdentity, taskInputBinding, taskOutputBinding,
   taskProjectionState, taskProjection, taskContract, TaskContractError,
@@ -22,6 +23,19 @@ const artifact = { runId: identity.runId, taskId: identity.taskId, effectId: ide
   name: 'checkpoint', path: 'engineering/best.checkpoint', sha256: digest };
 const output = { schemaVersion: 'result/1', value: { goalMet: true, evidence: 'PASS', remaining: 0 },
   artifacts: [artifact], diagnostics: [{ code: 'timing', message: 'Raw timing verified', source: 'reader:timing/1' }] };
+
+test('independent Team results preserve source and method without inventing Pack identity', () => {
+  const { packSha256: _old, ...base } = identity;
+  const team = { ...base, source: { kind: 'team' as const, projectId: 'project-a', team: { teamId: 'team-a', version: 1, sha256: digest }, taskId: 'task-a' },
+    method: { kind: 'team' as const, id: 'team-a', version: '1', sha256: digest } };
+  assert.deepEqual(taskIdentityV2.parse(team), team);
+  const result = createTaskResult(team, contract, output);
+  assert.equal(result.schema, taskResultProtocol2);
+  assert.equal(taskMethodDigest(result.identity), digest);
+  assert.equal(Object.hasOwn(result.identity, 'packSha256'), false);
+  assert.equal(createTaskResult(identity, contract, output).schema, 'hima-task-result/1');
+  assert.equal(taskIdentityV2.safeParse({ ...team, packSha256: digest }).success, false);
+});
 
 function rejected(action: () => unknown, code: string, correction: RegExp) {
   assert.throws(action, (error: unknown) => {

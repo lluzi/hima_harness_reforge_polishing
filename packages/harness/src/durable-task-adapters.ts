@@ -1,3 +1,4 @@
+import { taskMethodDigest } from './task-contract.js';
 // @hima-seam agent wrapped
 // Product/domain materialization for the one durable interpreter. No Ledger or successor selection.
 import { createHash } from 'node:crypto';
@@ -38,6 +39,7 @@ export interface DurableProductOpening {
 }
 export interface DurableTaskAdapterDeps {
   readonly ctx: Context; readonly sitesDir: string; readonly retainedMaterialsDir: string;
+  readonly teamExecutor?: { resolve(context:FlowAdapterContext):Promise<TaskEffectAdapter> };
   readonly interactive?: Omit<TaskInteractiveDeps, 'store' | 'sitesDir' | 'resolveOperation'> & { readonly bridge: InteractiveBindingBridge };
 }
 const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -111,6 +113,11 @@ async function materialization(context: FlowAdapterContext, deps: DurableTaskAda
     platform: { ...product.bindings, ...values, ...(product.bindings.flowRoot?{FLOW_ROOT:product.bindings.flowRoot}:{}), ...(product.bindings.design?{DESIGN:product.bindings.design}:{}), WORKSPACE: product.workspace, FLOW: pathsOf(site).join(product.workspace,'flow'), GENERATION: String(generation), RUN: current.runId, CAMPAIGN: product.campaignId } };
 }
 export async function resolveDurableTaskAdapter(context: FlowAdapterContext, deps: DurableTaskAdapterDeps): Promise<TaskEffectAdapter|TaskCollectionPending> {
+  if(context.flow.source==='team') {
+    const provider=deps.teamExecutor;
+    if(!provider)throw new TaskAdapterMaterializationError({code:'team-executor-unavailable',message:'This Team runtime has not been installed and qualified; configure its required components.',source:'team-runtime'});
+    return provider.resolve(context);
+  }
   const original=await materialization(context,deps),plan=await approvedRevisionAssets(original);
   if('pending' in plan)return plan;
   const m={...original,assets:plan.assets,assetBinding:plan.binding},adapter=await taskAdapter(m);
@@ -612,7 +619,7 @@ async function growthResumeOutput(m:Materialization,request:TaskEffectRequest):P
       const fact=await m.store.fact(row.id);if(!fact||fact.kind!=='task-result')throw new Error('Diagnostic Reader source has no committed task-result fact');
       const producer=fact.payload as unknown as TaskResult;
       const observed=object(producer.value).observations;
-      if(producer.identity.runId!==request.identity.runId||producer.identity.packSha256!==request.identity.packSha256||!Array.isArray(observed)||!observed.some(candidate=>jsonDigest(candidate)===jsonDigest(raw)))throw new Error('Diagnostic Reader values differ from their committed producer source');
+      if(producer.identity.runId!==request.identity.runId||taskMethodDigest(producer.identity)!==taskMethodDigest(request.identity)||!Array.isArray(observed)||!observed.some(candidate=>jsonDigest(candidate)===jsonDigest(raw)))throw new Error('Diagnostic Reader values differ from their committed producer source');
       await taskEffectStep('hima.domain.diagnostic-source',()=>retainedObservationText(row));
       rows.push({...row,seq:fact.seq,at:fact.at});
     }

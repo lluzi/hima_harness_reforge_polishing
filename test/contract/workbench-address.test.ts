@@ -21,3 +21,14 @@ test('address keys are canonical tuples and mode switches carry no hidden execut
   assert.equal(runIdForWorkbenchAddress(insight), undefined);
   assert.equal(runIdForWorkbenchAddress(workbenchAddressOf({ kind: 'child', parentSessionId: 'p', childSessionId: 'c' })), undefined);
 });
+
+test('Team addresses preserve team/task/member identities without leaking execution identity', () => {
+  assert.deepEqual(workbenchAddressOf({ kind: 'team' }), { kind: 'team' });
+  const task = workbenchAddressOf({ kind: 'team', teamId: 'team-a', taskId: 'task-a', memberId: 'member-a' });
+  assert.deepEqual(task, { kind: 'team', teamId: 'team-a', taskId: 'task-a', memberId: 'member-a' });
+  assert.equal(runIdForWorkbenchAddress(task), undefined);
+  assert.notEqual(workbenchAddressKey(task), workbenchAddressKey(workbenchAddressOf({ kind: 'team', teamId: 'team-a', taskId: 'task-b', memberId: 'member-a' })));
+  for (const value of [{ kind: 'team', teamId: '' }, { kind: 'team', taskId: 'task' }, { kind: 'team', teamId: 'team', memberId: 'member' }, { kind: 'team', teamId: 'team', taskId: 3 }]) {
+    assert.equal(workbenchAddressOf(value).kind, 'invalid', JSON.stringify(value));
+  }
+});

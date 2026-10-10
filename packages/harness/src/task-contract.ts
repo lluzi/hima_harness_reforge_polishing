@@ -5,6 +5,7 @@ import type { ValidateFunction } from 'ajv';
 import { z } from 'zod';
 
 export const taskResultProtocol = 'hima-task-result/1' as const;
+export const taskResultProtocol2 = 'hima-task-result/2' as const;
 export const taskSchemaDraft = 'https://json-schema.org/draft/2020-12/schema' as const;
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -30,11 +31,26 @@ const packRelativePath = z.string().min(1).refine((value) => !value.startsWith('
 'must be a normalized Pack/workspace-relative path');
 
 /** Logical invocation identity is supplied and frozen by Runtime, never by a producer/model. */
-export const taskIdentity = z.strictObject({
+export const taskIdentityV1 = z.strictObject({
   runId: name, taskId: name, effectId: name, inputSha256: digest, packSha256: digest, irSha256: digest,
   applicationVersion: name, adapterVersion: name,
 });
+const sourceId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/);
+export const taskSource = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('team'), projectId: name,
+    team: z.strictObject({ teamId: sourceId, version: z.number().int().positive(), sha256: digest }), taskId: sourceId }),
+  z.strictObject({ kind: z.literal('pack'), projectId: name, runId: sourceId, packId: sourceId, sha256: digest, parentEffectId: name.optional() }),
+]);
+export type TaskSource = z.infer<typeof taskSource>;
+export const methodRef = z.strictObject({ kind: z.enum(['team', 'pack']), id: sourceId, version: name, sha256: digest });
+export type MethodRef = z.infer<typeof methodRef>;
+export const taskIdentityV2 = taskIdentityV1.omit({ packSha256: true }).extend({ source: taskSource, method: methodRef });
+export const taskIdentity = z.union([taskIdentityV1, taskIdentityV2]);
 export type TaskIdentity = z.infer<typeof taskIdentity>;
+/** One method comparison across new independent sources and byte-preserved historical identities. */
+export function taskMethodDigest(identity: TaskIdentity): string {
+  return 'packSha256' in identity ? identity.packSha256 : identity.method.sha256;
+}
 
 /** Empty path selects the whole value; path components are exact keys, never expressions. */
 export const taskOutputBinding = z.strictObject({ taskId: name, path: fieldPath });
@@ -83,10 +99,11 @@ export const taskToolOutput = z.strictObject({
   schemaVersion: name, value: taskJsonValue, artifacts: z.array(taskArtifact), diagnostics: z.array(taskDiagnostic),
 });
 export type TaskToolOutput = z.infer<typeof taskToolOutput>;
-export const taskResult = z.strictObject({
-  schema: z.literal(taskResultProtocol), identity: taskIdentity, outputSchemaVersion: name,
+const taskResultV1 = z.strictObject({
+  schema: z.literal(taskResultProtocol), identity: taskIdentityV1, outputSchemaVersion: name,
   value: taskJsonValue, artifacts: z.array(taskArtifact), diagnostics: z.array(taskDiagnostic),
 });
+export const taskResult = z.union([taskResultV1, taskResultV1.extend({ schema: z.literal(taskResultProtocol2), identity: taskIdentityV2 })]);
 export type TaskResult = Readonly<z.infer<typeof taskResult>>;
 
 export type TaskContractErrorCode = 'identity' | 'schema-definition' | 'schema-version' | 'input-schema'
@@ -201,7 +218,7 @@ export function createTaskResult(identity: unknown, contract: unknown, output: u
     }
   }
   validateValue(declared.output, produced.value, locals, 'output-schema');
-  return immutable(structuredClone({ schema: taskResultProtocol, identity: fixedIdentity,
+  return immutable(taskResult.parse(structuredClone({ schema: 'packSha256' in fixedIdentity ? taskResultProtocol : taskResultProtocol2, identity: fixedIdentity,
     outputSchemaVersion: declared.output.version, value: produced.value,
-    artifacts: produced.artifacts, diagnostics: produced.diagnostics }));
+    artifacts: produced.artifacts, diagnostics: produced.diagnostics })));
 }
