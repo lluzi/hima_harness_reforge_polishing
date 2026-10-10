@@ -1,18 +1,20 @@
 # Reference build once, then rounds of: HimaTime loads the latest build -> two resident agents in
-# parallel (HimaTime agent: Fmax and critical paths; Qualib agent: library vs critical-path cells),
-# each delivering Reader-checked cell requirements -> join -> AndesCell generates -> Qualib cell
-# screen -> HimaTime verifies -> Synthesis and APR with the new library -> round record -> checks ->
-# next round (owner decision; back to HimaTime with this round's results in lessons).
+# parallel propose cell requirements (HimaTime agent: the worst paths; Qualib agent: the library) ->
+# join -> the AndesCell agent (resident) chooses the families to build -> AndesCell generates them ->
+# two resident agents in parallel verify (HimaTime agent: the worst paths re-timed with the new
+# cells, the local gain in ps; Qualib agent: the cell screen) -> join (local gain above 0 ps and at
+# least one cell passed the screen) -> Synthesis and APR with the new library -> round record ->
+# checks -> next round (owner decision; back to HimaTime with this round's results in lessons).
 #
-# The fork's two branch nodes are outsourced resident tasks, so the fork is NOT an autopilot fork:
-# the owner begins both branch nodes, starts each resident task, collects and releases each verified
-# delivery and completes each node (in any order); the last completion closes the fork. Everything
-# else drives itself: bind-inputs .. read-timing (which opens the fork) and requirements-joined ..
-# judge-round. The owner decides next-round. The round record is read twice: once for the usage and
-# improvement checks and once, fresh, for the validity/Goal judge the next-round chooser weighs (an
-# explore node needs exactly one judge after a fresh reading).
+# Both forks' branch nodes and the AndesCell agent are outsourced resident tasks, so neither fork is
+# an autopilot fork: the owner begins each of those nodes, starts its resident task, collects and
+# releases its verified delivery and completes it (a fork's branches in any order; the last
+# completion closes the fork). Everything else drives itself in four segments, each handing back to
+# the owner where a resident task starts. The owner decides next-round. The round record is read
+# twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
+# next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
 id: andes-cell-fmax
-version: "0.1.0"
+version: "0.2.0"
 entry: bind-inputs
 autopilot:
   - from: [bind-inputs]
@@ -20,9 +22,17 @@ autopilot:
     label: Reference build and timing
     about: Synthesis and APR on the stock library, then HimaTime loads the routed design and reports Fmax, the worst paths and where their delay goes by cell type.
   - from: [requirements-joined]
+    until: [andescell-agent, blocked]
+    label: Requirement check
+    about: Both agents' cell requirements passed the check; the AndesCell agent chooses the cells next.
+  - from: [generate-cells]
+    until: [himatime-verify, qualib-screen, blocked]
+    label: Cell generation
+    about: AndesCell builds the cells the AndesCell agent chose; HimaTime and Qualib check them next.
+  - from: [cells-verified]
     until: [next-round, blocked]
-    label: Generate, screen, verify and rebuild
-    about: AndesCell builds the requested cells, Qualib screens them, HimaTime verifies them, then Synthesis and APR rebuilds the design with the new library and compares it with the reference.
+    label: Rebuild and comparison
+    about: Synthesis and APR rebuilds the design with the cells that passed, then compares it with the reference build.
 
 nodes:
   - id: bind-inputs
@@ -67,13 +77,13 @@ nodes:
   - id: himatime-agent
     kind: act
     label: HimaTime agent
-    about: AI agent. Analyses Fmax and the critical paths with HimaTime and writes the cell requirements the timing needs.
+    about: AI agent. Finds the bottleneck on the worst paths with HimaTime and writes the cell requirements the timing needs.
     parameters:
       tool: himatime-agent
   - id: qualib-agent
     kind: act
     label: Qualib agent
-    about: AI agent. Analyses the stock library against the critical-path cells with Qualib and writes the cell requirements the library lacks.
+    about: AI agent. Checks the stock library against the critical-path cells with Qualib and writes the cell requirements the library lacks.
     parameters:
       tool: qualib-agent
   - id: requirements-joined
@@ -81,28 +91,39 @@ nodes:
     label: Both requirement lists ready
     about: Both agents delivered cell requirements that passed the Pack's check.
     parameters: { rules: [requirements-valid] }
+  - id: andescell-agent
+    kind: act
+    label: AndesCell agent
+    about: AI agent. Merges both requirement lists and chooses the one or two cell families with the most estimated recovery to build this round.
+    parameters:
+      tool: andescell-agent
   - id: generate-cells
     kind: act
-    label: AndesCell generates cells
-    about: AndesCell builds new cells for the most valuable requested cell families (at most two per round).
+    label: Generate the cells
+    about: AndesCell builds the chosen families' cells (netlist, layout, Liberty, LEF), including an extra-fast variant of some.
     parameters:
       tool: generate-cells
-  - id: screen-cells
+  - id: himatime-verify
     kind: act
-    label: Qualib cell screen
-    about: Qualib screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access.
+    label: HimaTime agent verifies
+    about: AI agent. Re-times the worst paths with the new cells and reports the local gain in ps and each cell's FO4 against its stock cell.
     parameters:
-      tool: screen-cells
-  - id: verify-cells
+      tool: himatime-verify
+  - id: qualib-screen
     kind: act
-    label: HimaTime verifies cells
-    about: HimaTime checks the new cells' timing against the stock cells and estimates the design with them.
+    label: Qualib agent screens
+    about: AI agent. Screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access, and passes or fails each.
     parameters:
-      tool: verify-cells
+      tool: qualib-screen
+  - id: cells-verified
+    kind: judge
+    label: Local gain confirmed
+    about: The new cells make the worst path faster (local gain above 0 ps) and at least one passed the screen.
+    parameters: { rules: [local-gain-positive, cells-screened] }
   - id: new-library-build
     kind: act
-    label: Rebuild with new library
-    about: Synthesis and APR with the stock library plus every accepted new cell so far.
+    label: Rebuild with new cells
+    about: Synthesis and APR with the stock library plus every new cell that passed the screen so far.
     parameters:
       tool: new-library-build
       arguments:
@@ -147,7 +168,7 @@ nodes:
   - id: blocked
     kind: wait
     label: Needs a person
-    about: A build or a requirement check failed in a way the flow cannot repair by itself.
+    about: A build, a delivery check or the local-gain check failed in a way the flow cannot repair by itself.
     parameters: { blocker: hard-blocker }
 
 edges:
@@ -162,12 +183,17 @@ edges:
   - { from: read-timing, to: qualib-agent }
   - { from: himatime-agent, to: requirements-joined }
   - { from: qualib-agent, to: requirements-joined }
-  - { from: requirements-joined, to: generate-cells, outcome: PASS }
+  - { from: requirements-joined, to: andescell-agent, outcome: PASS }
   - { from: requirements-joined, to: blocked, outcome: FAIL }
   - { from: requirements-joined, to: blocked, outcome: UNDETERMINED }
-  - { from: generate-cells, to: screen-cells }
-  - { from: screen-cells, to: verify-cells }
-  - { from: verify-cells, to: new-library-build }
+  - { from: andescell-agent, to: generate-cells }
+  - { from: generate-cells, to: himatime-verify }
+  - { from: generate-cells, to: qualib-screen }
+  - { from: himatime-verify, to: cells-verified }
+  - { from: qualib-screen, to: cells-verified }
+  - { from: cells-verified, to: new-library-build, outcome: PASS }
+  - { from: cells-verified, to: blocked, outcome: FAIL }
+  - { from: cells-verified, to: blocked, outcome: UNDETERMINED }
   - { from: new-library-build, to: compare-round }
   - { from: compare-round, to: read-round }
   - { from: read-round, to: check-round }
@@ -180,3 +206,44 @@ edges:
   - { from: judge-round, to: next-round, outcome: UNDETERMINED }
   - { from: next-round, to: load-timing, revisit: true }
 loops: {}
+
+# The strip: four stations in a phone-width pane. Every node is in one place; the wait node is drawn
+# nowhere (a blocked Run says so itself).
+view:
+  stations:
+    - id: rtl2gds
+      label: RTL2GDS flow
+      about: Synthesis and APR, post-route timing in HimaTime, and the rebuild with the new cells.
+      row: 0
+      checklist:
+        - { label: Check tools and design, nodes: [bind-inputs], rounds: first }
+        - { label: Reference build, nodes: [reference-build], rounds: first }
+        - { label: Reference timing clean, nodes: [read-reference, check-reference], rounds: first }
+        - { label: Load into HimaTime, nodes: [load-timing, read-timing] }
+        - { label: Local gain confirmed, nodes: [cells-verified] }
+        - { label: Rebuild with new cells, nodes: [new-library-build] }
+        - { label: Compare with the reference, nodes: [compare-round, read-round, check-round, read-round-goal, judge-round] }
+        - { label: Next round, nodes: [next-round] }
+    - id: himatime
+      label: HimaTime agent
+      about: AI agent for the timing view.
+      row: 1
+      checklist:
+        - { label: "Find the bottleneck, write requirements", nodes: [himatime-agent] }
+        - { label: Verify new cells (local gain), nodes: [himatime-verify] }
+    - id: qualib
+      label: Qualib agent
+      about: AI agent for the library view.
+      row: 1
+      checklist:
+        - { label: "Check the library, write requirements", nodes: [qualib-agent] }
+        - { label: Screen new cells, nodes: [qualib-screen] }
+    - id: andescell
+      label: AndesCell agent
+      about: AI agent that chooses the cells; AndesCell builds them.
+      row: 2
+      checklist:
+        - { label: Both requirement lists ready, nodes: [requirements-joined] }
+        - { label: Choose the cells, nodes: [andescell-agent] }
+        - { label: Generate the cells, nodes: [generate-cells] }
+  hidden: [blocked]

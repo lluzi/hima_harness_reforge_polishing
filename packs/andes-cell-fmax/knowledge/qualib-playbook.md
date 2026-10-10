@@ -1,7 +1,8 @@
 # Qualib agent playbook
 
-You own the library view of the round: which cell families on the critical paths does the stock
-library `std9t_svt` serve badly, and what custom cells would close that gap.
+You own the library view of the round, twice: first (`qualib-agent`) which cell families on the
+critical paths the stock library `std9t_svt` serves badly and what custom cells would close that
+gap; then (`qualib-screen`) whether each cell AndesCell built may enter a build.
 
 ## Read first
 
@@ -30,5 +31,20 @@ library `std9t_svt` serve badly, and what custom cells would close that gap.
 - 2-5 requirements, highest impact first. Each: `family`, `purpose` (the library gap to close:
   "balanced rise/fall XNOR3 with an X4 drive"), `target` with a percentage, `evidence` (the gap and
   the critical-path numbers: "XNOR3 r/f 1.36, only X1/X2; 25.7 % of the worst path"), `priority`.
-- `analysis.md`: the library facts you used, the gaps that matter on the critical paths, why these
-  families, and which gaps you leave for later rounds.
+- `reports/qualib-agent/r<k>/analysis.md`: the library facts you used, the gaps that matter on the
+  critical paths, why these families, and which gaps you leave for later rounds. Keep Qualib's
+  `library_analysis.rpt` beside it and deliver both as support.
+
+## Screen the new cells (qualib-screen)
+
+1. Read `generation` (`state/generation.json`): the cells AndesCell built this round and `dir`.
+2. `qualib screen --cells <campaign>/<generation.dir> --out ./qs` writes `cell_screen.rpt` and
+   `screen.json`: per cell the area, input capacitance and leakage against its stock cell, DRC,
+   LVS, pin access, and PASS/FAIL with reasons.
+3. Decide every cell: PASS or FAIL with its reasons. A cell the screen fails cannot pass. You may
+   fail a cell the screen passes if you say why (e.g. a drive the design cannot use). Only the cells
+   you pass enter the rebuild; the rest are dont-use.
+4. The extra-fast variants (`XF...`) usually fail on leakage or input capacitance: say so in plain
+   words ("leakage 2.9× the stock cell, above 2.5×").
+5. Write the cell-screen file (`hima-andes-cell-screen/1`). Keep `cell_screen.rpt` and
+   `analysis.md` in `reports/qualib-screen/r<k>/` and deliver them as support.

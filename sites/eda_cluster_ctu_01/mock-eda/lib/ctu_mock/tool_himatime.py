@@ -15,14 +15,16 @@ commands:
   load          load the routed design, update timing, write the timing reports (10-20 s)
   report        print timing of a loaded or routed design to stdout (fast)
   estimate      what-if: the timing if some cell families were AndesCell-class faster (fast)
-  verify-cells  check AndesCell cells' timing arcs and their effect on the design (10-20 s)
+  verify        re-time the worst paths with AndesCell cells: local gain per path, each cell's FO4
+                against its stock cell, design estimate (about 5-10 s with --out; --json alone is fast)
   -version      print the version and exit
 
 load:         himatime load --db SAPR_DIR --out DIR [--paths N]
                 writes timing_summary.json, report_timing.rpt, stage_breakdown.rpt, report_qor.rpt
 report:       himatime report --db SAPR_DIR [--paths N] [--stages] [--json]
 estimate:     himatime estimate --db SAPR_DIR --families XNOR3,BUF[,...] [--speedup PCT] [--json]
-verify-cells: himatime verify-cells --cells ANDESCELL_DIR --db SAPR_DIR --out DIR
+verify:       himatime verify --cells ANDESCELL_DIR --db SAPR_DIR [--paths N] [--dont-use CELL ...]
+                [--out DIR] [--json]   writes verify.json, verify.rpt (--out); prints JSON (--json)
 
 The stage breakdown groups the cell delay of every stage on the worst paths by cell family (cell
 type), with its share of the path delay and HimaTime's estimated slack recovery (ns, weighted by
@@ -144,7 +146,7 @@ def cmd_load(rest):
     s["loadedAt"] = now_iso()
     write_json(out / "timing_summary.json", s)
     write_text(out / "report_timing.rpt", "\n".join(["Report : timing -max_paths %d -delay max" % a.paths, "Design : %s" % model.DESIGN,
-                                                       "Version: %s" % version_line("himatime"), "Note   : MOCK EDA (demo Site eda_cluster_ctu_01)", ""]
+                                                       "Version: %s" % version_line("himatime"), "Note   : demo Site eda_cluster_ctu_01; not signoff", ""]
                                                       + [path_text(x) for x in s["paths"]]))
     write_text(out / "stage_breakdown.rpt", summary_text(s) + "\n" + breakdown_text(s))
     write_text(out / "report_qor.rpt", summary_text(s))
@@ -207,64 +209,111 @@ def cmd_estimate(rest):
     print("  estimate : WNS %.4f ns  TNS %.3f ns  Fmax %.2f MHz  (%+.2f %%)" % (t["wnsNs"], t["tnsNs"], t["fmaxMhz"], gain))
 
 
-def cmd_verify(rest):
-    p = argparse.ArgumentParser(prog="himatime verify-cells")
-    p.add_argument("--cells", required=True, help="an AndesCell output directory")
-    p.add_argument("--db", required=True, help="the sapr directory of the design the cells are for")
-    p.add_argument("--out", required=True)
-    p.add_argument("--dont-use", action="append", default=[], help="cells to leave out of the design estimate")
-    p.add_argument("--quiet", action="store_true")
-    a = p.parse_args(rest)
-    lib = libraries.load_extra(a.cells)
-    _, db = _db(a.db)
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    if not a.quiet:
-        banner("himatime")
-    log = Log("HT", out / "verify.log", quiet=a.quiet)
-    log("VFY", "verifying %d AndesCell cell(s) of %s against %s" % (len(lib["cells"]), lib["name"], model.STOCK_LIBRARY))
-    log.phase("LIB", "Reading %s and %s" % (model.STOCK_LIBRARY, lib["name"]), 3, 2)
+def verify_result(lib, db, n_paths=8, dont_use=()):
+    """What `himatime verify` reports, computed without pacing: every new cell's FO4 against its
+    stock cell, the n worst paths of the build re-timed with the new cells (the local gain), and
+    the design estimate. Deterministic: the same cells and build always give the same numbers."""
     rows = []
     for cell in lib["cells"]:
-        log.phase("ARC", "Timing arcs of %s" % cell["name"], 1.6, 1)
         stock = libraries.stock_cell(cell["family"], cell["drive"])
         improvement = round(100.0 * (1 - cell["fo4DelayPs"] / stock["fo4DelayPs"]), 1)
         checks = dict(monotonicTables=True, slewWithinLimits=True, capWithinLimits=True,
+                      fo4FasterThanStock=cell["fo4DelayPs"] < stock["fo4DelayPs"],
                       fo4MatchesGeneration=abs(improvement - cell["speedupPct"]) <= 3.0)
-        status = "PASS" if all(checks.values()) else "FAIL"
         rows.append(dict(name=cell["name"], family=cell["family"], drive=cell["drive"], stockCell=stock["name"],
-                         fo4DelayPs=cell["fo4DelayPs"], stockFo4DelayPs=stock["fo4DelayPs"], improvementPct=improvement,
-                         checks=checks, status=status))
-        log("ARC", "  %-22s FO4 %6.1f ps vs %-9s %6.1f ps  (%+.1f %%)  %s" % (cell["name"], cell["fo4DelayPs"], stock["name"], stock["fo4DelayPs"], -improvement, status))
+                         fo4DelayPs=cell["fo4DelayPs"], stockFo4DelayPs=stock["fo4DelayPs"],
+                         fo4GainPs=round(stock["fo4DelayPs"] - cell["fo4DelayPs"], 1), improvementPct=improvement,
+                         checks=checks, status="PASS" if all(checks.values()) else "FAIL"))
+    before = dict(db.get("speed") or {})
+    new_speed, _ = libraries.speed_of([dict(name=lib["name"], cells=lib["cells"])], set(dont_use))
+    after = dict(before)
+    for fam, sp in new_speed.items():
+        after[fam] = max(after.get(fam, 0.0), sp)
+    local = model.local_gain(before, after, n_paths)
     usable_extra = [dict(name=l["name"], cells=l["cells"]) for l in db.get("extraLibraries") or []] + [dict(name=lib["name"], cells=lib["cells"])]
-    speed, _ = libraries.speed_of(usable_extra, set(a.dont_use) | set(db.get("dontUse") or []))
-    base = model.timing(db.get("speed") or {})
+    speed, _ = libraries.speed_of(usable_extra, set(dont_use) | set(db.get("dontUse") or []))
+    base = model.timing(before)
     t = model.timing(speed)
     gain = round(100.0 * (t["fmaxMhz"] / base["fmaxMhz"] - 1), 2)
-    log.phase("UPD", "Design estimate with the new cells (%s)" % model.DESIGN, 3, 2)
-    result = dict(schema="ctu-himatime-verify/1", tool=version_line("himatime"), library=lib["name"], round=lib.get("round"),
-                  cells=rows, passed=sum(1 for r in rows if r["status"] == "PASS"), failed=sum(1 for r in rows if r["status"] != "PASS"),
-                  designEstimate=dict(wnsNs=t["wnsNs"], tnsNs=t["tnsNs"], fmaxMhz=t["fmaxMhz"], gainVsDbPct=gain,
-                                      dbFmaxMhz=base["fmaxMhz"], excluded=sorted(set(a.dont_use))),
-                  verifiedAt=now_iso(), note="MOCK EDA (demo Site eda_cluster_ctu_01)")
-    write_json(out / "verify.json", result)
-    table = ["HimaTime cell verification: %s (round %s)" % (lib["name"], lib.get("round")), "",
-             "  %-22s %-6s %-10s %9s %9s %8s %s" % ("cell", "family", "vs stock", "FO4 (ps)", "stock", "delta", "result"),
-             "  " + "-" * 78]
-    for r in rows:
-        table.append("  %-22s %-6s %-10s %9.1f %9.1f %7.1f%% %s" % (r["name"], r["family"], r["stockCell"], r["fo4DelayPs"], r["stockFo4DelayPs"], -r["improvementPct"], r["status"]))
-    table += ["", "Design estimate with these cells (excluding %s): WNS %.4f ns, Fmax %.2f MHz (%+.2f %% vs the loaded build)"
-              % (", ".join(sorted(set(a.dont_use))) or "none", t["wnsNs"], t["fmaxMhz"], gain), ""]
-    write_text(out / "verify.rpt", "\n".join(table))
-    log("VFY", "%d of %d cell(s) PASS; design estimate Fmax %.2f MHz (%+.2f %%)" % (result["passed"], len(rows), t["fmaxMhz"], gain))
-    log.close()
+    return dict(schema="ctu-himatime-verify/1", tool=version_line("himatime"), library=lib["name"], round=lib.get("round"),
+                cells=rows, passed=sum(1 for r in rows if r["status"] == "PASS"), failed=sum(1 for r in rows if r["status"] != "PASS"),
+                local=dict(local, pathCount=n_paths, excluded=sorted(set(dont_use))),
+                designEstimate=dict(wnsNs=t["wnsNs"], tnsNs=t["tnsNs"], fmaxMhz=t["fmaxMhz"], gainVsDbPct=gain,
+                                    dbFmaxMhz=base["fmaxMhz"], excluded=sorted(set(dont_use))),
+                verifiedAt=now_iso(), note="MOCK EDA (demo Site eda_cluster_ctu_01)")
+
+
+def verify_text(result):
+    local = result["local"]
+    out = ["HimaTime cell verification: %s (round %s)" % (result["library"], result["round"]), "",
+           "New cells against their stock cells (FO4 delay):", "",
+           "  %-22s %-6s %-10s %9s %9s %8s %s" % ("cell", "family", "vs stock", "FO4 (ps)", "stock", "delta", "result"),
+           "  " + "-" * 78]
+    for r in result["cells"]:
+        out.append("  %-22s %-6s %-10s %9.1f %9.1f %7.1f%% %s" % (r["name"], r["family"], r["stockCell"], r["fo4DelayPs"],
+                                                                r["stockFo4DelayPs"], -r["improvementPct"], r["status"]))
+    out += ["", "The %d worst paths of the build, re-timed with the new cells%s:" % (
+        local["pathCount"], " (excluding %s)" % ", ".join(local["excluded"]) if local["excluded"] else ""), "",
+        "  %-4s %-22s %-18s %-18s %10s %10s %9s  %s" % ("path", "group", "startpoint", "endpoint", "before ps", "after ps", "gain ps", "new cells on it"),
+        "  " + "-" * 118]
+    for p in local["paths"]:
+        out.append("  %-4s %-22s %-18s %-18s %10.2f %10.2f %9.2f  %s" % (p["id"], p["group"], p["startpoint"][:18], p["endpoint"][:18],
+                                                                       p["beforePs"], p["afterPs"], p["gainPs"], ", ".join(p["newFamilies"]) or "-"))
+    est = result["designEstimate"]
+    out += ["", "Local gain on the worst path (%s): %.2f ps faster; mean over the %d paths %.2f ps; %d of %d paths faster."
+            % (local["worstPath"], local["localGainPs"], local["pathCount"], local["meanGainPs"], local["pathsImproved"], local["pathCount"]),
+            "Design estimate with these cells: WNS %.4f ns, Fmax %.2f MHz (%+.2f %% vs the loaded build); the rebuild decides."
+            % (est["wnsNs"], est["fmaxMhz"], est["gainVsDbPct"]), ""]
+    return "\n".join(out)
+
+
+def cmd_verify(rest, prog="himatime verify"):
+    p = argparse.ArgumentParser(prog=prog)
+    p.add_argument("--cells", required=True, help="an AndesCell output directory")
+    p.add_argument("--db", required=True, help="the sapr directory of the build the cells are for")
+    p.add_argument("--paths", type=int, default=8, help="worst paths to re-time (1-20, default 8)")
+    p.add_argument("--out", help="write verify.json, verify.rpt and verify.log here")
+    p.add_argument("--json", action="store_true", help="print the result as JSON (fast without --out)")
+    p.add_argument("--dont-use", action="append", default=[], help="cells to leave out")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    if not 1 <= a.paths <= 20:
+        raise ToolError("--paths must be 1-20 (the design db keeps the 20 worst path groups)")
+    if not a.out and not a.json:
+        raise ToolError("give --out DIR (reports) or --json (result to stdout)")
+    lib = libraries.load_extra(a.cells)
+    _, db = _db(a.db)
+    result = verify_result(lib, db, a.paths, a.dont_use)
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "verify.log", quiet=quiet)
+        log("VFY", "verifying %d AndesCell cell(s) of %s against %s" % (len(lib["cells"]), lib["name"], model.STOCK_LIBRARY))
+        log.phase("LIB", "Reading %s and %s" % (model.STOCK_LIBRARY, lib["name"]), 2, 2)
+        for r in result["cells"]:
+            log.phase("ARC", "Timing arcs of %s" % r["name"], 0.6, 1)
+            log("ARC", "  %-22s FO4 %6.1f ps vs %-9s %6.1f ps  (%+.1f %%)  %s" % (r["name"], r["fo4DelayPs"], r["stockCell"], r["stockFo4DelayPs"], -r["improvementPct"], r["status"]))
+        log.phase("PTH", "Re-timing the %d worst paths with the new cells" % a.paths, 3, 3)
+        log.phase("UPD", "Design estimate with the new cells (%s)" % model.DESIGN, 2, 2)
+        write_json(out / "verify.json", result)
+        write_text(out / "verify.rpt", verify_text(result))
+        local = result["local"]
+        log("VFY", "%d of %d cell(s) PASS; local gain on the worst path %s: %.2f ps" % (result["passed"], len(result["cells"]), local["worstPath"], local["localGainPs"]))
+        log.close()
+    if a.json:
+        import json
+        print(json.dumps(result, indent=2, sort_keys=True))
 
 
 def handler(argv):
     if not argv or argv[0] in ("-h", "-help", "--help", "help"):
         print(HELP)
         return 0
-    commands = {"load": cmd_load, "report": cmd_report, "estimate": cmd_estimate, "verify-cells": cmd_verify}
+    commands = {"load": cmd_load, "report": cmd_report, "estimate": cmd_estimate, "verify": cmd_verify,
+                "verify-cells": lambda rest: cmd_verify(rest, "himatime verify-cells")}
     if argv[0] not in commands:
         raise ToolError("unknown command %r (try: himatime -help)" % argv[0])
     commands[argv[0]](argv[1:])

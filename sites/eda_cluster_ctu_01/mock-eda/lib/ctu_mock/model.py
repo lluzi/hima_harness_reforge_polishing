@@ -211,6 +211,23 @@ def recovery_ns(speed, family, fraction=None):
     return round(total / 1000.0, 3)
 
 
+def local_gain(before, after, n_paths=8):
+    """HimaTime's local view of new cells: the `n_paths` worst paths of a build (worst first, by the
+    `before` slack), each path's delay in ps before and after the cells of `after`, and the gain on
+    the worst path (the local gain). A family on none of these paths gains nothing here."""
+    worst = sorted(PATHS, key=lambda p: slack_ps(p, before))[:n_paths]
+    rows = []
+    for p in worst:
+        b, a = path_delay(p, before), path_delay(p, after)
+        rows.append(dict(id=p["id"], group=p["group"], startpoint=p["start"], endpoint=p["end"], beforePs=round(b, 2),
+                         afterPs=round(a, 2), gainPs=round(b - a, 2), slackBeforeNs=round(slack_ps(p, before) / 1000.0, 4),
+                         slackAfterNs=round(slack_ps(p, after) / 1000.0, 4),
+                         newFamilies=sorted(f for f in p["mix"] if after.get(f, 0.0) > before.get(f, 0.0))))
+    return dict(paths=rows, worstPath=rows[0]["id"], localGainPs=rows[0]["gainPs"],
+                meanGainPs=round(sum(r["gainPs"] for r in rows) / len(rows), 2),
+                pathsImproved=sum(1 for r in rows if r["gainPs"] > 0))
+
+
 def breakdown(speed):
     """Per-family stage table over the 20 worst paths."""
     rows = []

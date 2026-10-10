@@ -1,7 +1,9 @@
 # HimaTime agent playbook
 
-You own the timing view of the round: where do the worst paths of `aes_cipher_top` spend their
-time, and which cell families would give the most Fmax back if AndesCell made them faster.
+You own the timing view of the round, twice: first (`himatime-agent`) where the worst paths of
+`aes_cipher_top` spend their time and which cell families would give the most Fmax back if
+AndesCell made them faster; then (`himatime-verify`) how much faster the worst paths are with the
+cells AndesCell built.
 
 ## Read first
 
@@ -35,5 +37,24 @@ time, and which cell families would give the most Fmax back if AndesCell made th
   (`"cell delay -30 % at fanout 4"`; AndesCell's typical reach per family is the stage table's
   achievable column), `evidence` (paths and numbers: "A1-A7: XNOR3 268 ps of 1044 ps on A1, est.
   recovery 3.04 ns"), `priority`.
-- `analysis.md`: what you ran, what you found (the numbers), why these families, what you expect
-  the round to give (the estimate), and what will limit Fmax next.
+- `reports/himatime-agent/r<k>/analysis.md`: what you ran, what you found (the numbers), why these
+  families, what you expect the round to give (the estimate), and what will limit Fmax next. Keep
+  HimaTime's `stage_breakdown.rpt` and `report_timing.rpt` beside it (`himatime load --db
+  <campaign>/<timingState.buildDir> --out ./ht` writes both) and deliver them all as support.
+
+## Verify the new cells (himatime-verify)
+
+1. Read `generation` (`state/generation.json`): the cells AndesCell built this round and `dir`,
+   where they are. The build to re-time is `<campaign>/<timingState.buildDir>`, the one this round
+   started from.
+2. `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<timingState.buildDir>
+   --paths 8 --out ./hv` writes `verify.rpt` and `verify.json`: the 8 worst paths worst first, each
+   with its delay before and after the new cells and the gain in ps; the **local gain** (the worst
+   path's gain); every new cell's FO4 against its stock cell; and a design estimate.
+3. A positive local gain says the cells help where they sit. Say which paths gain the most, which
+   gain nothing (no new cell on them) and which path group will limit Fmax after the rebuild.
+4. The extra-fast variants (`XF...`) are faster still but may not pass the Qualib screen, which
+   runs at the same time; the rebuild uses only the cells that pass.
+5. Copy HimaTime's numbers into the cell-timing file (`hima-andes-cell-timing/1`); the precheck
+   holds them against HimaTime's own answer. Keep `verify.rpt` and `analysis.md` in
+   `reports/himatime-verify/r<k>/` and deliver them as support.

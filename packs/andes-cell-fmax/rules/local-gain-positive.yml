@@ -1,0 +1,6 @@
+id: local-gain-positive
+version: "0.2.0"
+title: The new cells make the worst path faster (local gain above 0 ps)
+requires: [{ type: local_gain_ps }]
+subject: { type: local_gain_ps }
+predicate: { op: gt, threshold: 0, unit: ps }

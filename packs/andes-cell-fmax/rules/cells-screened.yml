@@ -1,0 +1,6 @@
+id: cells-screened
+version: "0.2.0"
+title: At least one new cell passed the Qualib screen
+requires: [{ type: cells_passed_screen }]
+subject: { type: cells_passed_screen }
+predicate: { op: gte, threshold: 1, unit: count }

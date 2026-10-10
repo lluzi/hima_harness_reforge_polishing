@@ -1,5 +1,5 @@
 id: andes-cell-fmax
-version: "0.1.0"
+version: "0.2.0"
 title: New standard cells for a faster aes_cipher_top (AndesCell)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -9,6 +9,9 @@ ontology:
     himatimeRequirements: [HimaTime agent requirements, timing-side cell requirements]
     qualibRequirements: [Qualib agent requirements, library-side cell requirements]
     roundRecord: [round result, before/after comparison, new-library build result]
+    generationPlan: [AndesCell agent plan, generation plan, cells to build this round]
+    himatimeVerify: [HimaTime verification, local gain of the new cells]
+    qualibScreen: [Qualib cell screen, screen decision]
 
 budget:
   timeBoxMs: 10800000
@@ -54,15 +57,26 @@ outputs:
     path: state/qualib-requirements.json
     reader: andes-requirements
     description: The Qualib agent's cell requirements for this round (hima-andes-requirements/1).
+  - name: generationPlan
+    path: state/generation-plan.json
+    reader: andes-plan
+    description: >-
+      The AndesCell agent's generation plan for this round (hima-andes-plan/1): the 1-2 families to
+      build, each with its reason and HimaTime's estimated recovery, and the requested families it skipped.
   - name: generation
     path: state/generation.json
-    description: What AndesCell generated from the merged requirements, what it skipped and why.
-  - name: screen
-    path: state/screen.json
-    description: The Qualib cell screen of this round's cells (pass/fail with reasons).
-  - name: cellVerify
-    path: state/cell-verify.json
-    description: HimaTime's verification of this round's cells and its design estimate.
+    description: What AndesCell generated for exactly the plan's families, what it skipped and why, and the new cells.
+  - name: himatimeVerify
+    path: state/himatime-verify.json
+    reader: andes-verify
+    description: >-
+      The HimaTime agent's verification (hima-andes-cell-timing/1): the worst paths of the build this
+      round started from re-timed with the new cells (local gain in ps) and each cell's FO4 against its stock cell.
+  - name: qualibScreen
+    path: state/qualib-screen.json
+    reader: andes-verify
+    description: >-
+      The Qualib agent's cell screen (hima-andes-cell-screen/1): PASS or FAIL per new cell with reasons.
   - name: roundBuild
     path: state/round-build.json
     description: The new-library build (Synthesis and APR with the stock library and every accepted new cell).
@@ -95,7 +109,8 @@ tools:
     file: flow/andes_cli.py
     description: >-
       Synthesis and APR (sapr) of aes_cipher_top on the stock library at the 1.000 ns clock, RTL to
-      routed design, into runs/reference/; write state/reference.json from the post-route summary.
+      routed design, into runs/reference/; write state/reference.json from the post-route summary and
+      its reports to reports/reference-build/r1/.
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', reference, '${WORKSPACE}', '${TIMEOUT_MIN}']
 
@@ -115,27 +130,30 @@ tools:
       (28 nm, stock library std9t_svt, clock 1.000 ns). Read timingState (the HimaTime load this
       round starts from: Fmax, the worst paths, and the stage breakdown by cell family with HimaTime's
       estimated slack recovery), referenceBuild, lessons (every earlier round: what each agent asked
-      for, what AndesCell generated and why, the gains) and library (the new cells already delivered).
-      Find where the critical paths spend their time: which cell families dominate the worst paths,
-      how much slack each would give back, and which paths limit Fmax once those are fixed. Run
-      HimaTime yourself in your private workspace (himatime report --db <campaign>/<buildDir of
-      timingState> --stages --paths 5; himatime estimate --db ... --families A,B to test a pair) and
-      quote its numbers. Then write 2-5 cell requirements for AndesCell, highest impact first, each
-      {family, purpose, target (a percentage, e.g. 'rise delay -30 % at fanout 4'), evidence (the
-      paths and stages it rests on), priority 1-5}. AndesCell builds at most two new families per
-      round, ranked by HimaTime's estimated recovery, and never regenerates a family already in the
-      library. Write your analysis to requirements/himatime/r<k>/analysis.md (k = the round of
-      timingState) and the requirements file (hima-andes-requirements/1, agent himatime, round k,
-      summary, requirements, report). Run `python3 <campaign>/flow/andes_cli.py precheck <campaign>
-      himatime <your file>` and fix every problem it prints, then deliver the file as the result and
-      the analysis as support. Do not run Synthesis and APR, change the Goal, or invent numbers.
+      for, what the AndesCell agent chose and why, the local gains, the screen and the gains) and
+      library (the new cells already delivered). Find where the critical paths spend their time:
+      which cell families dominate the worst paths, how much slack each would give back, and which
+      paths limit Fmax once those are fixed. Run HimaTime yourself in your private workspace
+      (himatime report --db <campaign>/<buildDir of timingState> --stages --paths 5; himatime estimate
+      --db ... --families A,B to test a pair) and quote its numbers. Then write 2-5 cell requirements
+      for AndesCell, highest impact first, each {family, purpose, target (a percentage, e.g. 'rise
+      delay -30 % at fanout 4'), evidence (the paths and stages it rests on), priority 1-5}. The
+      AndesCell agent builds at most two new families per round from both agents' lists and never a
+      family already in the library. Keep your reports in reports/himatime-agent/r<k>/ of your
+      private workspace (k = the round of timingState): analysis.md and HimaTime's
+      stage_breakdown.rpt and report_timing.rpt (himatime load --db <campaign>/<buildDir> --out
+      <dir> writes both). Write the requirements file (hima-andes-requirements/1, agent
+      himatime, round k, summary, requirements, report = reports/himatime-agent/r<k>/analysis.md).
+      Run `python3 <campaign>/flow/andes_cli.py precheck <campaign> himatime <your file>` and fix
+      every problem it prints, then deliver the file as the result and your reports as support. Do
+      not run Synthesis and APR, change the Goal, or invent numbers.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', himatime]
     outsourcing:
       role: resident-engineering-agent
       reads: [inputsState, referenceBuild, timingState, lessons, library]
       knowledge: [andes-flow.md, himatime-playbook.md, requirements-format.md, evidence-and-claims.md]
-      artifactPrefix: requirements/himatime
+      artifactPrefix: reports/himatime-agent
       produces: himatimeRequirements
 
   - id: qualib-agent
@@ -151,49 +169,124 @@ tools:
       drive strengths, rise/fall imbalance, slow arcs, high input capacitance) where a custom cell
       would help. Then write 2-5 cell requirements for AndesCell, highest impact first, each {family,
       purpose, target (a percentage, e.g. 'rise delay -30 % at fanout 4'), evidence (the library gap
-      and the critical-path share it rests on), priority 1-5}. AndesCell builds at most two new
-      families per round, ranked by HimaTime's estimated recovery, and never regenerates a family
-      already in the library. Write your analysis to requirements/qualib/r<k>/analysis.md (k = the
-      round of timingState) and the requirements file (hima-andes-requirements/1, agent qualib, round
-      k, summary, requirements, report). Run `python3 <campaign>/flow/andes_cli.py precheck
+      and the critical-path share it rests on), priority 1-5}. The AndesCell agent builds at most two
+      new families per round from both agents' lists and never a family already in the library. Keep
+      your reports in reports/qualib-agent/r<k>/ of your private workspace (k = the round of
+      timingState): analysis.md and Qualib's library_analysis.rpt. Write the requirements file
+      (hima-andes-requirements/1, agent qualib, round k, summary, requirements, report =
+      reports/qualib-agent/r<k>/analysis.md). Run `python3 <campaign>/flow/andes_cli.py precheck
       <campaign> qualib <your file>` and fix every problem it prints, then deliver the file as the
-      result and the analysis as support. Do not run Synthesis and APR, change the Goal, or invent numbers.
+      result and your reports as support. Do not run Synthesis and APR, change the Goal, or invent numbers.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', qualib]
     outsourcing:
       role: resident-engineering-agent
       reads: [inputsState, referenceBuild, timingState, lessons, library]
       knowledge: [andes-flow.md, qualib-playbook.md, requirements-format.md, evidence-and-claims.md]
-      artifactPrefix: requirements/qualib
+      artifactPrefix: reports/qualib-agent
       produces: qualibRequirements
+
+  - id: andescell-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the AndesCell cell engineer for this round of new standard cells on aes_cipher_top
+      (28 nm, stock library std9t_svt, clock 1.000 ns). Read himatimeRequirements and
+      qualibRequirements (this round's two requirement lists), timingState (HimaTime's stage
+      breakdown with the estimated slack recovery per cell family), lessons and library (families
+      already delivered). Print both lists as one with `python3 <campaign>/flow/andes_cli.py merged
+      <campaign> > merged.json`, list AndesCell's templates with `andescell families`, and rank the
+      requested families with `andescell generate --requirements merged.json --db
+      <campaign>/<buildDir of timingState> --round <k> --dry-run` (add --existing <campaign>/<dir> for
+      each library.rounds[].dir). Choose the 1-2 families to build this round: the ones with the
+      highest HimaTime estimated recovery that AndesCell has a template for and that are not
+      delivered yet; say for each why, with its estimated recovery, and say why every other requested
+      family waits. Keep your reports in reports/andescell-agent/r<k>/ of your private workspace (k =
+      the round of timingState): analysis.md and the dry run's output (dry_run.rpt). Write the
+      generation plan (hima-andes-plan/1, agent andescell, round k, summary, families [{family,
+      reason, estRecoveryNs}], skipped [{family, reason}], report =
+      reports/andescell-agent/r<k>/analysis.md). Run `python3 <campaign>/flow/andes_cli.py precheck
+      <campaign> andescell <your file>` and fix every problem it prints, then deliver the file as the
+      result and your reports as support. The next step builds exactly your families. Do not
+      generate cells yourself, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', andescell]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, himatimeRequirements, qualibRequirements]
+      knowledge: [andes-flow.md, andescell-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/andescell-agent
+      produces: generationPlan
 
   - id: generate-cells
     file: flow/andes_cli.py
     description: >-
-      Merge both agents' requirements and run AndesCell on them against the build this round started
-      from, with every earlier round's library as existing; write state/generation.json (families
-      generated, requirements skipped and why, the new cells).
+      Run AndesCell on both agents' merged requirements for exactly the generation plan's families,
+      against the build this round started from, with every earlier round's library as existing;
+      write state/generation.json (families generated, requirements skipped and why, the new cells)
+      and generation.rpt to reports/generate-cells/r<k>/.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', generate, '${WORKSPACE}']
 
-  - id: screen-cells
+  - id: himatime-verify
     file: flow/andes_cli.py
-    description: Qualib cell screen of this round's AndesCell cells (area, input capacitance, leakage, DRC, LVS, pin access); write state/screen.json.
+    description: >-
+      You are the HimaTime timing engineer, back for the second half of this round on aes_cipher_top
+      (1.000 ns): AndesCell has built the cells your requirements and the Qualib agent's asked for.
+      Read generation (the new cells and the directory they are in), timingState (the build this
+      round started from) and lessons. Re-time the worst paths of that build with the new cells:
+      `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<buildDir of timingState>
+      --paths 8 --out <dir>` writes verify.rpt and verify.json: each path's delay before and after
+      in ps, the local gain on the worst path, and each new cell's FO4 against its stock cell. Say
+      what the local gain means for the next build and which paths limit Fmax after these cells.
+      Keep your reports in reports/himatime-verify/r<k>/ of your private workspace: verify.rpt and
+      analysis.md. Write the verification file (hima-andes-cell-timing/1, agent himatime, round k,
+      summary, worstPath, localGainPs, paths [{id, beforePs, afterPs, gainPs}] worst first, cells
+      [{name, fo4Ps, stockCell, stockFo4Ps}] for every new cell, report =
+      reports/himatime-verify/r<k>/analysis.md), copying HimaTime's numbers. Run `python3
+      <campaign>/flow/andes_cli.py precheck <campaign> himatime-verify <your file>` and fix every
+      problem it prints, then deliver the file as the result and your reports as support. Do not run
+      Synthesis and APR, change the Goal, or invent numbers.
     inputs: [WORKSPACE]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', screen, '${WORKSPACE}']
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', himatime-verify]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, generationPlan, generation]
+      knowledge: [andes-flow.md, himatime-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/himatime-verify
+      produces: himatimeVerify
 
-  - id: verify-cells
+  - id: qualib-screen
     file: flow/andes_cli.py
-    description: HimaTime verification of this round's cells (timing arcs against the stock cells, design estimate without the cells that failed the screen); write state/cell-verify.json.
+    description: >-
+      You are the Qualib library engineer, back for the second half of this round on aes_cipher_top:
+      AndesCell has built new cells. Read generation (the new cells and their directory), lessons
+      and library. Screen every new cell before it may enter a build: `qualib screen --cells
+      <campaign>/<generation.dir> --out <dir>` writes cell_screen.rpt and screen.json (area, input
+      capacitance and leakage against the stock cell, DRC, LVS, pin access). Decide PASS or FAIL for
+      every new cell with its reasons: a cell that fails the screen cannot pass; you may also fail a
+      cell the screen passes if you say why. Keep your reports in reports/qualib-screen/r<k>/ of your
+      private workspace: cell_screen.rpt and analysis.md. Write the screen file
+      (hima-andes-cell-screen/1, agent qualib, round k, summary, cells [{name, status, reasons}],
+      report = reports/qualib-screen/r<k>/analysis.md). Run `python3 <campaign>/flow/andes_cli.py
+      precheck <campaign> qualib-screen <your file>` and fix every problem it prints, then deliver the
+      file as the result and your reports as support. Only the cells you pass enter the rebuild. Do
+      not run Synthesis and APR, change the Goal, or invent numbers.
     inputs: [WORKSPACE]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', verify, '${WORKSPACE}']
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', qualib-screen]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, generationPlan, generation]
+      knowledge: [andes-flow.md, qualib-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/qualib-screen
+      produces: qualibScreen
 
   - id: new-library-build
     file: flow/andes_cli.py
     description: >-
       Synthesis and APR of aes_cipher_top with the stock library plus every accepted new cell of this
-      and earlier rounds (cells that failed the screen or verification are dont-use), into
-      runs/r<k>/build/; write state/round-build.json.
+      and earlier rounds (cells the Qualib agent did not pass are dont-use), into runs/r<k>/build/;
+      write state/round-build.json and the build's reports, with HimaTime's report_timing.rpt, to
+      reports/new-library-build/r<k>/.
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', build, '${WORKSPACE}', '${TIMEOUT_MIN}']
 
@@ -202,13 +295,18 @@ tools:
     description: >-
       Deterministic round record from the reference build and this round's new-library build: Fmax
       gain, best gain, improvement, validity, new-cell usage; append lessons, update the cumulative
-      library, write derived/round-<k>.md and derived/summary.md. Uses no model text as a fact.
+      library, write derived/round-<k>.md (also to reports/compare-round/r<k>/) and derived/summary.md.
+      Uses no model text as a fact.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', compare, '${WORKSPACE}']
+
+reports: { dir: reports }
 
 rules:
   - reference-valid
   - requirements-valid
+  - local-gain-positive
+  - cells-screened
   - cells-used
   - round-improved
   - round-valid
@@ -216,13 +314,15 @@ rules:
 
 knowledge:
   - file: andes-flow.md
-    purpose: The flow, every tool and command, the round loop and what each round's results mean.
+    purpose: The flow, every tool and command, the round loop, the owner's turns and what each round's results mean.
   - file: himatime-playbook.md
-    purpose: How the HimaTime agent reads the timing reports and turns the stage breakdown into cell requirements.
+    purpose: How the HimaTime agent turns the stage breakdown into cell requirements, and verifies the new cells (local gain).
   - file: qualib-playbook.md
-    purpose: How the Qualib agent analyses the stock library against the critical-path cells and writes cell requirements.
+    purpose: How the Qualib agent analyses the stock library against the critical-path cells, and screens the new cells.
+  - file: andescell-playbook.md
+    purpose: How the AndesCell agent merges both requirement lists and chooses the families to build this round.
   - file: requirements-format.md
-    purpose: The hima-andes-requirements/1 file, a worked example, the precheck and the delivery.
+    purpose: The delivery files (requirements, generation plan, cell timing, cell screen), worked examples, the precheck and the delivery.
   - file: evidence-and-claims.md
     purpose: What is a tool result, what is a claim, and the claim boundary of this demo.
 

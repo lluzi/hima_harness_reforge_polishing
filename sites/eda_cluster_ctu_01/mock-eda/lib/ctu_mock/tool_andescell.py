@@ -30,6 +30,8 @@ generate options:
   --existing DIR        an AndesCell library of an earlier round (repeatable); its families are
                         already generated and are skipped
   --max-families N      families to generate this run (1-%d; default %d, the licensed capacity)
+  --families A,B        generate exactly these requested families (a generation plan's choice);
+                        each must be requested, have a template and not be generated already
   --out DIR             output directory (not needed with --dry-run)
   --dry-run             rank and select only; generate nothing
 
@@ -102,6 +104,25 @@ def select(reqs, speed, existing_families, max_families):
     return ranked, chosen, skipped
 
 
+def plan_select(ranked, chosen_words, max_families):
+    """Keep exactly the families a generation plan chose; every other candidate is skipped."""
+    chosen = []
+    for word in [w for w in chosen_words.split(",") if w.strip()]:
+        fam = model.canonical_family(word)
+        match = next((x for x in ranked if x["family"] == fam), None)
+        if match is None:
+            raise ToolError("family %r is not a candidate this run: it must be requested, have an AndesCell template and not be generated already (candidates: %s)"
+                            % (word, ", ".join(x["family"] for x in ranked) or "none"))
+        if match not in chosen:
+            chosen.append(match)
+    if not 1 <= len(chosen) <= max_families:
+        raise ToolError("--families must name 1-%d families" % max_families)
+    skipped = [dict(requirement=x["requirements"][0], family=x["family"],
+                    reason="not in the generation plan (ranked %d of %d by estimated recovery, %.3f ns)" % (ranked.index(x) + 1, len(ranked), x["estRecoveryNs"]))
+               for x in ranked if x not in chosen]
+    return chosen, skipped
+
+
 def make_cells(family, k):
     info = model.FAMILIES[family]
     s = info["speedup"]
@@ -152,6 +173,7 @@ def cmd_generate(rest):
     p.add_argument("--round", type=int, required=True)
     p.add_argument("--existing", action="append", default=[])
     p.add_argument("--max-families", type=int, default=MAX_FAMILIES)
+    p.add_argument("--families", help="comma-separated families to generate (a generation plan's choice)")
     p.add_argument("--out")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--quiet", action="store_true")
@@ -168,6 +190,9 @@ def cmd_generate(rest):
     existing_families = {c["family"] for lib in existing for c in lib["cells"]} | set(speed)
     reqs = load_requirements(a.requirements)
     ranked, chosen, skipped = select(reqs, speed, existing_families, a.max_families)
+    if a.families is not None:
+        chosen, plan_skipped = plan_select(ranked, a.families, a.max_families)
+        skipped = [x for x in skipped if "ranked" not in x["reason"]] + plan_skipped
     if a.dry_run:
         print("AndesCell dry run, round %d: %d requirement(s), %d candidate famil%s" % (a.round, len(reqs), len(ranked), "y" if len(ranked) == 1 else "ies"))
         for i, x in enumerate(ranked):
@@ -227,6 +252,14 @@ def cmd_generate(rest):
     write_json(out / "generation.json", gen)
     rpt = ["AndesCell generation report, round %d (%s)" % (a.round, name), "",
            "Selected families: %s" % (", ".join(gen["selected"]) or "none"), "",
+           "Requested families ranked by HimaTime estimated recovery on the build:"]
+    for i, x in enumerate(ranked):
+        rpt.append("  %d. %-6s %7.3f ns  priority %d  requested by %-17s %s" % (i + 1, x["family"], x["estRecoveryNs"], x["priority"],
+                                                                         ", ".join(x["requestedBy"]) or "-", "generated" if x in chosen else "not this run"))
+    for sk in skipped:
+        if "ranked" not in sk["reason"]:
+            rpt.append("  skipped %-6s %s" % (sk["family"], sk["reason"]))
+    rpt += ["",
            "  %-24s %-6s %-9s %9s %9s %8s %10s" % ("cell", "family", "vs stock", "FO4 (ps)", "stock", "delta", "area um^2"), "  " + "-" * 82]
     for c in cells:
         rpt.append("  %-24s %-6s %-9s %9.1f %9.1f %7.1f%% %10.3f" % (c["name"], c["family"], c["stockCell"], c["fo4DelayPs"], c["stockFo4DelayPs"], -c["speedupPct"], c["areaUm2"]))
