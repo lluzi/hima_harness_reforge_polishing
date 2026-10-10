@@ -68,8 +68,7 @@ function useReducedMotion(): boolean {
  *  decision and blockers that read them, and finally its Workshop, growths and revisions. Says so
  *  plainly when none of that exists yet, rather than an empty pane a person might read as broken. */
 /** The Results face's before/after table, for the Pack that declares one (`contract.results`): the
- *  headline figure, a round selector, and one row per declared value with one column per Reader.
- *  A cell an earlier round filled says which round. */
+ *  headline figure, a round selector, and one row per declared value with one column per Reader. */
 function ResultsSection({ results, view }: { results: PackResults; view: RunView }): ReactElement {
   const t = useHimaT();
   const [round, setRound] = useState<number>();
@@ -98,7 +97,6 @@ function ResultsSection({ results, view }: { results: PackResults; view: RunView
               {row.cells.map((cell, index) => (
                 <td key={index} className={cell.better === true ? 'hima-results-better' : undefined}>
                   {cell.display}
-                  {cell.fromRound === undefined ? null : <span className="hima-muted"> · {t('results.earlier', { n: cell.fromRound })}</span>}
                 </td>
               ))}
             </tr>

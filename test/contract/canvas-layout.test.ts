@@ -304,33 +304,32 @@ test('an act node whose tool an AI agent works through (contract outsourcing) is
   assert.equal(unmarked.graph.nodes.some((n) => n.ai === true), false, 'no contract, no AI mark');
 });
 
-test('the Results table reads each column from its Reader per round, falling back to an earlier round, and marks the better value', () => {
+test('the Results table offers only rounds the new build has read, reads the reference from its one run, and greens only a better last column', () => {
   const results = {
     headline: { type: 'fmax_gain_pct', label: 'Fmax gain', unit: '%', better: 'higher' as const, digits: 2 },
     columns: [{ label: 'Reference build', reader: 'andes-reference' }, { label: 'New-library build', reader: 'andes-round' }],
     rows: [{ type: 'design_fmax_mhz', label: 'Fmax', unit: 'MHz', better: 'higher' as const, digits: 1 }, { type: 'design_area_um2', label: 'Cell area', better: 'lower' as const, digits: 0 }],
   };
   const obs = (reader: string, generation: number, values: Record<string, number>) => ({ reader: { id: reader }, generation, values: Object.entries(values).map(([type, value]) => ({ type, value, unit: 'x' })) });
-  const view = {
-    generations: [{ generation: 1 }, { generation: 2 }],
-    observations: [
-      obs('andes-reference', 1, { design_fmax_mhz: 400, design_area_um2: 1000 }),
-      obs('andes-round', 1, { design_fmax_mhz: 410, design_area_um2: 1010, fmax_gain_pct: 2.5 }),
-      obs('andes-round', 2, { design_fmax_mhz: 421.04, design_area_um2: 990, fmax_gain_pct: 5.26 }),
-    ],
-  } as never;
+  const reference = obs('andes-reference', 1, { design_fmax_mhz: 400, design_area_um2: 1000 });
+  const round1 = obs('andes-round', 1, { design_fmax_mhz: 410, design_area_um2: 1010, fmax_gain_pct: 2.5 });
+  // Round 2 has opened but its build has not been read yet: it is not offered.
+  const running = resultsTable(results, { generations: [{ generation: 1 }, { generation: 2 }], observations: [reference, round1] } as never);
+  assert.deepEqual([running.round, running.rounds], [1, [1]]);
+  assert.equal(running.headline?.display, '+2.50 %');
+  assert.deepEqual(running.rows[0]!.cells.map((c) => [c.display, c.better]), [['400.0', undefined], ['410.0', true]]);
+  assert.deepEqual(running.rows[1]!.cells.map((c) => [c.display, c.better]), [['1000', undefined], ['1010', undefined]], 'a worse last column stays plain; the reference is never marked');
+  assert.equal(JSON.stringify(running).includes('fromRound'), false, 'no per-cell round suffix');
+
+  const view = { generations: [{ generation: 1 }, { generation: 2 }], observations: [reference, round1, obs('andes-round', 2, { design_fmax_mhz: 421.04, design_area_um2: 990, fmax_gain_pct: 5.26 })] } as never;
   const latest = resultsTable(results, view);
-  assert.equal(latest.round, 2);
-  assert.deepEqual(latest.rounds, [1, 2]);
-  assert.equal(latest.headline?.display, '+5.26 %');
-  assert.deepEqual(latest.rows[0]!.cells.map((c) => [c.display, c.fromRound, c.better]), [['400.0', 1, undefined], ['421.0', undefined, true]],
-    'the reference ran once: round 2 shows its round-1 reading, said so');
+  assert.deepEqual([latest.round, latest.rounds, latest.headline?.display], [2, [1, 2], '+5.26 %']);
+  assert.deepEqual(latest.rows[0]!.cells.map((c) => c.display), ['400.0', '421.0'], 'the reference build is read from its one run');
   assert.deepEqual(latest.rows[1]!.cells.map((c) => c.better), [undefined, true], 'lower area is better');
-  const first = resultsTable(results, view, 1);
-  assert.deepEqual(first.rows[1]!.cells.map((c) => [c.display, c.better]), [['1000', true], ['1010', undefined]]);
-  assert.equal(first.headline?.display, '+2.50 %');
+  assert.equal(resultsTable(results, view, 1).headline?.display, '+2.50 %');
+  assert.equal(resultsTable(results, view, 3).round, 2, 'an unread round answers the latest read one');
   const empty = resultsTable(results, { generations: [], observations: [] } as never);
-  assert.deepEqual([empty.round, empty.headline, empty.rows[0]!.cells[0]!.display], [1, undefined, '—']);
+  assert.deepEqual([empty.round, empty.rounds, empty.headline, empty.rows[0]!.cells[0]!.display], [1, [], undefined, '—']);
 });
 
 test('the shipped andes-cell-fmax graph keeps one spine: merged steps and the join on it, the two agents either side, no chips into the wait node or out of a merged step', () => {
