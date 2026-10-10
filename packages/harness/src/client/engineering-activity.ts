@@ -22,3 +22,12 @@ export function engineeringActivityOf(view: RunView | undefined, nodeId: string)
 /** The dictionary key for an action kind's plain word ("reading", "running", …). */
 export const activityKindKey = (kind: string): string =>
   ['read', 'edit', 'execute', 'search', 'plan', 'message'].includes(kind) ? `ai.kind.${kind}` : 'ai.kind.other';
+
+/** Whether the AI agent at a node is working: an execution there in a non-terminal phase (begun,
+ *  working, ready), or its reported activity in a working state. */
+export function aiWorking(view: RunView | undefined, nodeId: string): boolean {
+  const executing = Object.values(view?.run.control?.executions ?? {}).some((execution) =>
+    execution.nodeId === nodeId && (execution.phase === 'begun' || execution.phase === 'working' || execution.phase === 'ready'));
+  const state = engineeringActivityOf(view, nodeId)?.state;
+  return executing || state === 'running' || state === 'working' || state === 'waiting';
+}

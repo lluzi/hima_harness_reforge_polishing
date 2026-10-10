@@ -260,6 +260,32 @@ function withBranchCaptions(nodes: readonly LayoutNode[], fork: LayoutFacts['for
 }
 
 /**
+ * Outcome chips only where one visible check node branches. An edge into a wait node (the blocked
+ * path is what the wait node's own shape says) and an edge leaving a merged step (its check is
+ * inside it) carry no chip, and the parallel edges such a pair draws as one line become one edge:
+ * the one that still says whether its target hangs (any edge but FAIL/UNDETERMINED, else FAIL).
+ */
+function quietOutcomes(scene: { graph: LayoutGraph; facts: LayoutFacts }): { graph: LayoutGraph; facts: LayoutFacts } {
+  const { graph } = scene;
+  const kindOf = new Map(graph.nodes.map((node) => [node.id, node.kind]));
+  const merged = new Set(graph.nodes.filter((node) => node.members !== undefined).map((node) => node.id));
+  const quiet = (edge: LayoutEdge) => edge.outcome !== undefined && edge.revisit !== true && (kindOf.get(edge.to) === 'wait' || merged.has(edge.from));
+  if (!graph.edges.some(quiet)) return scene;
+  const hangs = (edge: LayoutEdge) => edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED';
+  const edges: LayoutEdge[] = [];
+  const kept = new Map<string, number>();
+  for (const edge of graph.edges) {
+    if (!quiet(edge)) { edges.push(edge); continue; }
+    const key = `${edge.from}>${edge.to}`;
+    const at = kept.get(key);
+    const chipless: LayoutEdge = { ...edge, chipless: true };
+    if (at === undefined) { kept.set(key, edges.length); edges.push(chipless); continue; }
+    if (hangs(edges[at]!) && !hangs(edge)) edges[at] = chipless;
+  }
+  return { graph: { ...graph, edges }, facts: scene.facts };
+}
+
+/**
  * The one adapter this module exists for: a HimaFabric reference graph, plus what a `RunView` and an
  * `ExecutionContext` know so far, turned into `layoutCanvas`'s own two inputs.
  *
@@ -288,7 +314,7 @@ export function sceneInputs(
   const marked: LayoutGraph = { ...graph, nodes: withAiMarks(graph.nodes, packNodes, aiToolsOf(context?.method?.contract.tools)) };
   const groups = isFullGraph(reference) ? segmentGroups(reference) : [];
 
-  if (view === undefined) return collapseSegments(marked, {}, groups, packNodes);
+  if (view === undefined) return quietOutcomes(collapseSegments(marked, {}, groups, packNodes));
 
   const states: Record<string, NodeVisualState> = {};
   const waitedForSlot: string[] = [];
@@ -312,5 +338,5 @@ export function sceneInputs(
     ...(revisions.length === 0 ? {} : { revisions }),
   };
   const labelledGraph: LayoutGraph = fork === undefined ? marked : { ...marked, nodes: withBranchCaptions(marked.nodes, fork) };
-  return collapseSegments(labelledGraph, facts, groups, packNodes);
+  return quietOutcomes(collapseSegments(labelledGraph, facts, groups, packNodes));
 }
