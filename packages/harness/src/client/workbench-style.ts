@@ -80,7 +80,9 @@ export const HIMA_STYLE = `
 /* The Results face: a headline figure, a round selector and the before/after table. */
 .hima-results{display:flex;flex-direction:column;gap:var(--hima-sp-3)}
 .hima-results-headline{display:flex;align-items:baseline;gap:var(--hima-sp-3);padding:0;border:0}
-.hima-results-headline-value{font-size:var(--hima-fs-display);font-weight:650;color:var(--hima-good);font-variant-numeric:tabular-nums}
+.hima-results-headline-value{font-size:var(--hima-fs-display);font-weight:650;color:var(--hima-good);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+/* At phone width the number keeps its unit ("+2.50 %" never breaks before the "%"); the label wraps. */
+.hima-results-headline > .hima-muted{flex:1 1 0;min-width:0;overflow-wrap:break-word}
 .hima-results-rounds{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-results-rounds .hima-button{min-height:28px;padding:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-label)}
 .hima-results-rounds .hima-button[aria-pressed=true]{border-color:var(--hima-live);color:var(--hima-ink);font-weight:650}
