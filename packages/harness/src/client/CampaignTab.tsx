@@ -23,6 +23,8 @@ import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
 import { useViewerSession } from './viewer-session.js';
 import { groupGenerationAnalyses } from './generation-analysis.js';
+import { resultsTable } from './results-view.js';
+import type { PackResults } from '../packs.js';
 
 export interface CampaignTabProps {
   readonly sessionId: string;
@@ -42,8 +44,8 @@ export interface CampaignTabProps {
 
 type Section = 'live' | 'generations' | 'evidence' | 'report';
 const SECTIONS: readonly { readonly key: Section; readonly said: string }[] = [
-  { key: 'live', said: 'Live' }, { key: 'generations', said: 'Generations' },
-  { key: 'evidence', said: 'Evidence' }, { key: 'report', said: 'Report' },
+  { key: 'live', said: 'Live' }, { key: 'generations', said: 'Rounds' },
+  { key: 'evidence', said: 'Results' }, { key: 'report', said: 'Report' },
 ];
 
 
@@ -65,7 +67,66 @@ function useReducedMotion(): boolean {
  *  knowledge first, since those are what a Run leaves behind, then the observations, verdicts,
  *  decision and blockers that read them, and finally its Workshop, growths and revisions. Says so
  *  plainly when none of that exists yet, rather than an empty pane a person might read as broken. */
-function EvidenceView({ view }: { view: RunView }): ReactElement {
+/** The Results face's before/after table, for the Pack that declares one (`contract.results`): the
+ *  headline figure, a round selector, and one row per declared value with one column per Reader.
+ *  A cell an earlier round filled says which round. */
+function ResultsSection({ results, view }: { results: PackResults; view: RunView }): ReactElement {
+  const t = useHimaT();
+  const [round, setRound] = useState<number>();
+  const table = resultsTable(results, view, round);
+  return (
+    <section className="hima-results" data-hima-region="results-table" data-hima-state-round={String(table.round)}>
+      {table.headline === undefined ? null : (
+        <div className="hima-results-headline" data-hima-region="results-headline">
+          <span className="hima-results-headline-value">{table.headline.display}</span>
+          <span className="hima-muted">{table.headline.label} · {t('results.round', { n: table.round })}</span>
+        </div>
+      )}
+      {table.rounds.length < 2 ? null : (
+        <div className="hima-results-rounds" role="group" aria-label={t('results.rounds')}>
+          {table.rounds.map((n) => (
+            <button key={n} type="button" className="hima-button" aria-pressed={n === table.round} data-hima-control={`results-round-${String(n)}`} onClick={() => setRound(n)}>{t('results.round', { n })}</button>
+          ))}
+        </div>
+      )}
+      <table className="hima-results-table">
+        <thead><tr><th scope="col">{t('results.measure')}</th>{table.columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead>
+        <tbody>
+          {table.rows.map((row) => (
+            <tr key={row.type} data-hima-region={`results-row-${row.type}`}>
+              <th scope="row">{row.label}{row.unit === undefined ? '' : ` (${row.unit})`}</th>
+              {row.cells.map((cell, index) => (
+                <td key={index} className={cell.better === true ? 'hima-results-better' : undefined}>
+                  {cell.display}
+                  {cell.fromRound === undefined ? null : <span className="hima-muted"> · {t('results.earlier', { n: cell.fromRound })}</span>}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** The raw observations: which file each Reader read and what it hashed to. */
+function ObservationsSection({ view }: { view: RunView }): ReactElement | null {
+  const t = useHimaT();
+  if (view.observations.length === 0) return null;
+  return (
+    <section>
+      <h3>{t('campaign.observations')}</h3>
+      {view.observations.map((observation) => (
+        <details key={observation.recordId}>
+          <summary>{observation.path.split('/').at(-1)} · {t('campaign.summaryObservation')}</summary>
+          <ObservationRow observation={observation} />
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function EvidenceView({ view, results }: { view: RunView; results?: PackResults }): ReactElement {
   const t = useHimaT();
   const hasMaterial = view.code.length > 0 || view.knowledge.length > 0;
   const hasGrowth = view.generations.some((generation) => (generation.growths ?? []).length > 0);
@@ -76,22 +137,23 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
   if (empty) return <div className="hima-detail hima-evidence"><p>{t('campaign.noEvidence')}</p></div>;
   return (
     <div className="hima-detail hima-evidence">
+      {/* A Pack that declares a results table leads with it; the raw readings it came from fold
+          under it, closed. Without one, the observations stay where they always were. */}
+      {results === undefined ? null : <>
+        <ResultsSection results={results} view={view} />
+        {view.observations.length === 0 ? null : (
+          <details className="hima-results-sources" data-hima-region="results-sources">
+            <summary>{t('results.sources')}</summary>
+            <ObservationsSection view={view} />
+          </details>
+        )}
+      </>}
       <MaterialSection view={view} />
       <ArchiveSection view={view} />
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
       <GrowthSection view={view} />
       <RevisionSection view={view} />
-      {view.observations.length === 0 ? null : (
-        <section>
-          <h3>{t('campaign.observations')}</h3>
-          {view.observations.map((observation) => (
-            <details key={observation.recordId}>
-              <summary>{observation.path.split('/').at(-1)} · {t('campaign.summaryObservation')}</summary>
-              <ObservationRow observation={observation} />
-            </details>
-          ))}
-        </section>
-      )}
+      {results === undefined ? <ObservationsSection view={view} /> : null}
       {view.verdicts.length === 0 ? null : (
         <section>
           <h3>{t('campaign.verdicts')}</h3>
@@ -288,7 +350,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           ? <div className="hima-empty"><p>{t('campaign.readingRunRecords')}</p></div>
           : section === 'generations'
             ? <div className="hima-detail"><h3>{t('campaign.generationsHeading')}</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>{t('campaign.noGenerationOpened')}</p>}<GenerationResearch view={view}/></div>
-            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
+            : section === 'evidence' ? <EvidenceView view={view} results={context?.method?.contract.results} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>

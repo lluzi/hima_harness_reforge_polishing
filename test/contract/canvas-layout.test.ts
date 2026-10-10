@@ -10,6 +10,7 @@ import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIN
 import type { RunView, RunHeadView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
 import { legacyAtcsGraph } from './support/atcs-legacy.ts';
+import { resultsTable } from '../../packages/harness/src/client/results-view.ts';
 
 const node = (id: string, kind: 'act' | 'judge' | 'explore' | 'wait' = 'act') => ({ id, kind });
 const linear: LayoutGraph = { entry: 'prepare', nodes: [node('prepare'), node('analyze'), node('check', 'judge'), node('select', 'explore')],
@@ -300,6 +301,35 @@ test('an act node whose tool an AI agent works through (contract outsourcing) is
   assert.equal(scene.nodes.find((n) => n.id === 'agent')!.ai, true, 'the mark reaches the placed node');
   const unmarked = sceneInputs(andesGraph(false) as never);
   assert.equal(unmarked.graph.nodes.some((n) => n.ai === true), false, 'no contract, no AI mark');
+});
+
+test('the Results table reads each column from its Reader per round, falling back to an earlier round, and marks the better value', () => {
+  const results = {
+    headline: { type: 'fmax_gain_pct', label: 'Fmax gain', unit: '%', better: 'higher' as const, digits: 2 },
+    columns: [{ label: 'Reference build', reader: 'andes-reference' }, { label: 'New-library build', reader: 'andes-round' }],
+    rows: [{ type: 'design_fmax_mhz', label: 'Fmax', unit: 'MHz', better: 'higher' as const, digits: 1 }, { type: 'design_area_um2', label: 'Cell area', better: 'lower' as const, digits: 0 }],
+  };
+  const obs = (reader: string, generation: number, values: Record<string, number>) => ({ reader: { id: reader }, generation, values: Object.entries(values).map(([type, value]) => ({ type, value, unit: 'x' })) });
+  const view = {
+    generations: [{ generation: 1 }, { generation: 2 }],
+    observations: [
+      obs('andes-reference', 1, { design_fmax_mhz: 400, design_area_um2: 1000 }),
+      obs('andes-round', 1, { design_fmax_mhz: 410, design_area_um2: 1010, fmax_gain_pct: 2.5 }),
+      obs('andes-round', 2, { design_fmax_mhz: 421.04, design_area_um2: 990, fmax_gain_pct: 5.26 }),
+    ],
+  } as never;
+  const latest = resultsTable(results, view);
+  assert.equal(latest.round, 2);
+  assert.deepEqual(latest.rounds, [1, 2]);
+  assert.equal(latest.headline?.display, '+5.26 %');
+  assert.deepEqual(latest.rows[0]!.cells.map((c) => [c.display, c.fromRound, c.better]), [['400.0', 1, undefined], ['421.0', undefined, true]],
+    'the reference ran once: round 2 shows its round-1 reading, said so');
+  assert.deepEqual(latest.rows[1]!.cells.map((c) => c.better), [undefined, true], 'lower area is better');
+  const first = resultsTable(results, view, 1);
+  assert.deepEqual(first.rows[1]!.cells.map((c) => [c.display, c.better]), [['1000', true], ['1010', undefined]]);
+  assert.equal(first.headline?.display, '+2.50 %');
+  const empty = resultsTable(results, { generations: [], observations: [] } as never);
+  assert.deepEqual([empty.round, empty.headline, empty.rows[0]!.cells[0]!.display], [1, undefined, '—']);
 });
 
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
