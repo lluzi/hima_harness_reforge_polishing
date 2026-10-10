@@ -479,7 +479,7 @@ try {
     const observed=(await runtime.store.flowProjection(human.run.id)).tasks.find((task:any)=>task.identity.effectId===waiting.identity.effectId);
     const beforeObservation=await runtime.store.sourceRevision(human.run.id);
     await runtime.store.flowState(human.run.id,waiting.identity.effectId,1000000+index,{...observed.state,
-      reason:{...observed.state.reason,message:`${observed.state.reason.message} [fixture observation ${index}]`}});
+      diagnostic:{...waiting.projection.reason,message:`${waiting.projection.reason.message} [fixture observation ${index}]`}});
     assert.ok(await runtime.store.sourceRevision(human.run.id)>beforeObservation,'the independent waiting observation advances the source watermark');
     assert.deepEqual(await responseEvidence(),malformedEvidence,'bad envelopes create no control/response/result/resource facts while idle observation continues');
   }
