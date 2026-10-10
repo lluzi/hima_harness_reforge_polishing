@@ -2063,6 +2063,9 @@ export function statusValues(deps: FabricDeps, runId: string, pack: Pick<Pack, '
   return parts.length === 0 ? undefined : parts.join(', ');
 }
 
+/** " (round k)" after a status line from the second round on; nothing in the first. */
+const roundSuffix = (generation: number): string => (generation > 1 ? ` (round ${String(generation)})` : '');
+
 /**
  * The running-status line for one settled execution inside a self-driving segment, or undefined
  * when the node earns none. A tool step whose only successor reads its output stays quiet; that
@@ -2074,8 +2077,7 @@ export function segmentStatusLine(deps: FabricDeps, runId: string, pack: Pack, e
   const node = pack.graph.nodes.find((candidate) => candidate.id === execution.nodeId);
   if (node === undefined) return undefined;
   const failed = !(result.kind === 'settled' || result.kind === 'moved');
-  const generation = deps.ledger.run(runId)?.generation ?? 1;
-  const round = generation > 1 ? ` (round ${String(generation)})` : '';
+  const round = roundSuffix(deps.ledger.run(runId)?.generation ?? 1);
   const name = nodeDisplayName(pack, node.id);
   if (failed) return `${NOTICE_PREFIX} ${name} failed${round}.`;
   if (node.kind === 'judge') return (result as { outcome?: string }).outcome === 'FAIL' ? `${NOTICE_PREFIX} ${name}: check failed${round}.` : undefined;
@@ -2956,7 +2958,7 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
         });
         observeResidentEngineering(deps, run.id, execution.id);
         deps.status?.(run.control!.owner, run.id, `engineering-start:${execution.id}`,
-          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} started its engineering task.`);
+          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} started its engineering task${roundSuffix(execution.generation)}.`);
         return executionAnswer(deps, run.id, 'accepted', { receipt, data });
       }
       const status = claim.kind === 'at-cap' ? 'at-cap' : claim.kind === 'budget-exhausted' ? 'budget-exhausted'
@@ -3154,9 +3156,12 @@ async function actOnEngineering(deps: FabricDeps, run: RunRecord, req: Execution
         ? { phase: 'ready', reason: undefined, result: { kind: 'settled', session: execution.jobSession } }
         : { phase: 'working', reason: 'the Pack Reader did not accept the engineering result' });
       if (verified) {
-        const toolCalls = engineeringActivityOf(deps.ledger, run.id)?.[execution.nodeId]?.toolCalls;
+        // The activity is kept per node; a node begun again in a later round must not borrow the
+        // tool-call count of its earlier execution.
+        const activity = engineeringActivityOf(deps.ledger, run.id)?.[execution.nodeId];
+        const toolCalls = activity?.executionId === execution.id ? activity.toolCalls : undefined;
         deps.status?.(run.control!.owner, run.id, `engineering-delivered:${execution.id}`,
-          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} delivered its result${toolCalls === undefined || toolCalls === 0 ? '' : ` (${String(toolCalls)} tool calls)`}.`);
+          `${NOTICE_PREFIX} ${runNodeName(deps, run.id, execution.nodeId)} delivered its result${roundSuffix(execution.generation)}${toolCalls === undefined || toolCalls === 0 ? '' : ` (${String(toolCalls)} tool calls)`}.`);
       }
       return executionAnswer(deps, run.id, 'accepted', { receipt, data,
         reason: verified

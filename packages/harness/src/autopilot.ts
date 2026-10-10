@@ -65,7 +65,7 @@ export interface AutopilotHost {
  * and where the Run stands now. E.g. "HimaHarness: Reference build finished (Fmax 957.67 MHz).
  * Next: HimaTime analysis."
  */
-function autopilotHeadline(deps: FabricDeps, pack: Pack, run: RunRecord, records: readonly LedgerRecord[], generation: number): string {
+function autopilotHeadline(deps: FabricDeps, pack: Pack, run: RunRecord, records: readonly LedgerRecord[], generation: number, available: readonly string[]): string {
   const segments = autopilotOf(pack).segments;
   const declared = pack.graph.autopilot.filter((entry): entry is SegmentAutopilot => !('fork' in entry));
   const visits = records.filter((record): record is Extract<LedgerRecord, { type: 'node' }> => record.type === 'node'
@@ -75,10 +75,6 @@ function autopilotHeadline(deps: FabricDeps, pack: Pack, run: RunRecord, records
   const name = (index < 0 ? undefined : declared[index]?.label) ?? (last === undefined ? 'The automatic steps' : nodeDisplayName(pack, last.nodeId));
   const start = visits.find((record) => index >= 0 && segments[index]!.nodes.has(record.nodeId));
   const value = noticeValue(deps, run.id, pack, start === undefined ? 0 : start.seq - 1);
-  let available: readonly string[] = [];
-  if (run.status === 'running') {
-    try { available = executionContext(deps, run.id).available; } catch { available = []; }
-  }
   const next = nextStepPhrase(pack, available);
   const where = hasEnded(run.status) ? ' The Campaign ended.' : next !== undefined ? ` ${next}`
     : run.status === 'running' && run.currentNode !== undefined
@@ -98,11 +94,7 @@ const spoken = (names: readonly string[]): string =>
  */
 export function nextStepPhrase(pack: Pick<Pack, 'graph' | 'contract'>, available: readonly string[]): string | undefined {
   if (available.length === 0) return undefined;
-  const outsourced = (nodeId: string): boolean => {
-    const node = pack.graph.nodes.find((candidate) => candidate.id === nodeId);
-    if (node?.kind !== 'act') return false;
-    return pack.contract.tools.find((tool) => tool.id === node.parameters.tool)?.outsourcing !== undefined;
-  };
+  const outsourced = (nodeId: string): boolean => outsourcedNode(pack, nodeId);
   const begin = (ids: readonly string[]): string => `begin ${spoken(ids.map((id) => nodeDisplayName(pack, id)))} and start ${ids.length === 1
     ? 'its engineering task' : 'their engineering tasks'}`;
   const agents = available.filter(outsourced);
@@ -114,6 +106,28 @@ export function nextStepPhrase(pack: Pick<Pack, 'graph' | 'contract'>, available
     if (heads.length > 0) return `Next: run ${nodeDisplayName(pack, available[0]!)}, then ${begin(heads)}${heads.length > 1 ? ' (they run in parallel)' : ''}.`;
   }
   return `Next: ${spoken(available.map((id) => nodeDisplayName(pack, id)))}.`;
+}
+
+/** An act node whose contract tool declares resident engineering `outsourcing`: it does not start
+ *  itself; the owner begins it and starts its engineering task. */
+function outsourcedNode(pack: Pick<Pack, 'graph' | 'contract'>, nodeId: string): boolean {
+  const node = pack.graph.nodes.find((candidate) => candidate.id === nodeId);
+  if (node?.kind !== 'act') return false;
+  return pack.contract.tools.find((tool) => tool.id === node.parameters.tool)?.outsourcing !== undefined;
+}
+
+/**
+ * The owner's instruction in a hand-back, by node id: every outsourced node it may begin now (the
+ * admission's `available`, which already leaves out any node begun in this generation) is to be
+ * begun and its engineering task started in this same turn — one node after a segment, or every
+ * branch head of a fork at once. Undefined when no available node is outsourced.
+ */
+export function nextStepInstruction(pack: Pick<Pack, 'graph' | 'contract'>, available: readonly string[]): string | undefined {
+  const agents = available.filter((nodeId) => outsourcedNode(pack, nodeId));
+  if (agents.length === 0) return undefined;
+  return agents.length === 1
+    ? `Begin ${agents[0]!} now and start its resident engineering task (hima_execute begin, then engineering start) in this same turn; do not wait for another notice.`
+    : `Begin ${spoken(agents)} now and start each one's resident engineering task (hima_execute begin, then engineering start) in this same turn; they run in parallel, so do not wait for one before starting the other.`;
 }
 
 /** A self-driving fork as the plan resolved it: its declaration, its branches and its join. */
@@ -180,6 +194,9 @@ export class Autopilot {
   readonly #running = new Map<string, Promise<void>>();
   readonly #again = new Set<string>();
   readonly #notices = new Map<string, string[]>();
+  /** The Ledger seq at each Run's latest hand-back, so a summary never repeats an earlier fork's
+   *  branches: a round may hold more than one fork (propose, then verify). */
+  readonly #handedBackAt = new Map<string, number>();
 
   constructor(host: AutopilotHost) { this.#host = host; }
 
@@ -221,7 +238,7 @@ export class Autopilot {
     while (this.#running.size > 0) await Promise.allSettled([...this.#running.values()]);
   }
 
-  /** The owner notices this Host sent for a Run, oldest first. */
+  /** The owner notices this Host sent for a Run, oldest first: the plain line, a blank line, the detail. */
   notices(runId: string): readonly string[] { return this.#notices.get(runId) ?? []; }
 
   #deps(): FabricDeps { return this.#host.deps(); }
@@ -268,10 +285,12 @@ export class Autopilot {
     if (inRegion) return;
     const generation = run.generation ?? 1;
     const records = this.#deps().ledger.records({ runId });
+    const since = this.#handedBackAt.get(runId) ?? 0;
+    this.#handedBackAt.set(runId, records.at(-1)?.seq ?? since);
     const current = new Set(currentRecordsIn(records).map((record) => record.id));
     const lastByBranch = new Map<string, LedgerRecord>();
     for (const record of records) {
-      if (record.type === 'node' && record.generation === generation && record.branchId !== undefined) lastByBranch.set(record.branchId, record);
+      if (record.type === 'node' && record.generation === generation && record.branchId !== undefined && record.seq > since) lastByBranch.set(record.branchId, record);
     }
     const adopted = new Map<string, string[]>();
     for (const record of records) {
@@ -297,16 +316,24 @@ export class Autopilot {
         + (adopted.has(branchId) ? `; adopted Team result ${adopted.get(branchId)!.join(', ')}` : '')
         + (reading !== undefined && record.state !== 'cancelled' ? `; final reading ${reading.id} (${reading.reader.id}${artifact})` : ''));
     }
-    const where = hasEnded(run.status) ? `the Run ended ${run.status}` : run.status === 'running'
-      ? `the Run now stands at ${run.currentNode ?? 'no node'}, which is yours` : `the Run is ${run.status}`;
+    let available: readonly string[] = [];
+    if (run.status === 'running') {
+      try { available = executionContext(this.#deps(), runId).available; } catch { available = []; }
+    }
+    // Inside an open fork `currentNode` is the join, which is not where the owner acts: the branch
+    // nodes it may begin are.
+    const where = hasEnded(run.status) ? `the Run ended ${run.status}` : run.status !== 'running' ? `the Run is ${run.status}`
+      : run.fork !== undefined ? `the Run's fork into ${run.fork.join} is open; ${available.length === 0 ? 'no branch node is yours to begin yet' : `${spoken(available)} ${available.length === 1 ? 'is' : 'are'} yours to begin`}`
+        : `the Run now stands at ${run.currentNode ?? 'no node'}, which is yours`;
     const detail = [`Hima autopilot took ${String(turns)} node turn(s) of generation ${String(generation)}; ${where}.`,
       branches.length === 0 ? '' : `Fork branches this generation: ${branches.join(' | ')}.`,
+      nextStepInstruction(pack, available) ?? '',
       'Read hima_context once for the facts; the autopilot takes no decision of yours.'].filter(Boolean).join(' ');
+    const headline = autopilotHeadline(this.#deps(), pack, run, records, generation, available);
     const list = this.#notices.get(runId) ?? [];
-    list.push(detail);
+    list.push(`${headline}\n\n${detail}`);
     this.#notices.set(runId, list);
-    this.#host.notifyOwner(runId, `autopilot:${runId}:${String(generation)}:${String(run.currentNode)}:${String(list.length)}`, detail,
-      autopilotHeadline(this.#deps(), pack, run, records, generation));
+    this.#host.notifyOwner(runId, `autopilot:${runId}:${String(generation)}:${String(run.currentNode)}:${String(list.length)}`, detail, headline);
   }
 
   /** Drive one branch of a self-driving fork until it reaches the join, is held, or the Run stops. */

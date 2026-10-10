@@ -898,3 +898,45 @@ test('a hand-back names outsourced next steps as begin-and-start work in the Pac
   assert.equal(nextStepPhrase(pack, ['reference']), 'Next: Reference build.');
   assert.equal(nextStepPhrase(pack, []), undefined);
 });
+
+test('every hand-back of a round with two forks names exactly the outsourced nodes now available and says to begin and start them in this turn', async () => {
+  const { nextStepPhrase, nextStepInstruction } = await import(new URL('../../packages/harness/lib/autopilot.js', import.meta.url).href);
+  // The strip demo's round: a propose fork of two resident agents, a join judge, one resident agent
+  // after a segment, a generate step that opens a verify fork of two resident agents, and its join.
+  const act = (id: string, tool: string, label?: string) => ({ id, kind: 'act', ...(label === undefined ? {} : { label }), parameters: { tool } });
+  const pack = {
+    contract: { tools: [{ id: 'flow' }, { id: 'generate' }, { id: 'agent', outsourcing: { role: 'resident-engineering-agent' } }] },
+    graph: { entry: 'read-timing', autopilot: [], nodes: [
+      act('read-timing', 'flow', 'Load into HimaTime'),
+      act('himatime-agent', 'agent', 'HimaTime agent'), act('qualib-agent', 'agent', 'Qualib agent'),
+      { id: 'requirements-joined', kind: 'judge', label: 'Both requirement lists ready', parameters: { rules: ['r'] } },
+      act('andescell-agent', 'agent', 'AndesCell agent'), act('generate-cells', 'generate', 'Generate the cells'),
+      act('himatime-verify', 'agent', 'HimaTime agent'), act('qualib-screen', 'agent', 'Qualib agent'),
+      { id: 'cells-verified', kind: 'judge', label: 'Local gain confirmed', parameters: { rules: ['g'] } },
+    ], edges: [
+      { from: 'read-timing', to: 'himatime-agent' }, { from: 'read-timing', to: 'qualib-agent' },
+      { from: 'himatime-agent', to: 'requirements-joined' }, { from: 'qualib-agent', to: 'requirements-joined' },
+      { from: 'requirements-joined', to: 'andescell-agent', outcome: 'PASS' }, { from: 'andescell-agent', to: 'generate-cells' },
+      { from: 'generate-cells', to: 'himatime-verify' }, { from: 'generate-cells', to: 'qualib-screen' },
+      { from: 'himatime-verify', to: 'cells-verified' }, { from: 'qualib-screen', to: 'cells-verified' },
+    ] },
+  };
+  // 1. The propose fork is open: both branch heads are available and none is begun.
+  assert.equal(nextStepPhrase(pack, ['himatime-agent', 'qualib-agent']),
+    'Next: begin HimaTime agent and Qualib agent and start their engineering tasks now (they run in parallel).');
+  assert.equal(nextStepInstruction(pack, ['himatime-agent', 'qualib-agent']),
+    'Begin himatime-agent and qualib-agent now and start each one\'s resident engineering task (hima_execute begin, then engineering start) in this same turn; they run in parallel, so do not wait for one before starting the other.');
+  // 2. After the join's segment: the one resident node after it.
+  assert.equal(nextStepPhrase(pack, ['andescell-agent']), 'Next: begin AndesCell agent and start its engineering task now.');
+  assert.equal(nextStepInstruction(pack, ['andescell-agent']),
+    'Begin andescell-agent now and start its resident engineering task (hima_execute begin, then engineering start) in this same turn; do not wait for another notice.');
+  // 3. The verify fork of the same round, after generate: its own two heads, never the propose pair.
+  assert.equal(nextStepPhrase(pack, ['himatime-verify', 'qualib-screen']),
+    'Next: begin HimaTime agent and Qualib agent and start their engineering tasks now (they run in parallel).');
+  assert.match(nextStepInstruction(pack, ['himatime-verify', 'qualib-screen']), /^Begin himatime-verify and qualib-screen now .* in this same turn/);
+  // A branch head already begun is not available, so only the other is named.
+  assert.equal(nextStepPhrase(pack, ['qualib-screen']), 'Next: begin Qualib agent and start its engineering task now.');
+  // Nothing outsourced available: no instruction, and the plain next step.
+  assert.equal(nextStepInstruction(pack, ['cells-verified']), undefined);
+  assert.equal(nextStepPhrase(pack, ['cells-verified']), 'Next: Local gain confirmed.');
+});

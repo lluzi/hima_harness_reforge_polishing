@@ -986,7 +986,12 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const prepared = records.findLast((r): r is WorkspaceRecord => r.type === 'workspace');
   const experience = records.findLast((r): r is ExperienceRecord => r.type === 'experience');
   const workshop = standingWorkshop(run, records);
-  const engineeringActivity = engineeringActivityOf(ledger, run.id);
+  // Activity is kept per node; once a node is begun again (a later round) the earlier execution's
+  // activity is not this node's any more, so it is left out until the new one reports.
+  const latestExecution = new Map(Object.values(run.control?.executions ?? {}).map((execution) => [execution.nodeId, execution.id]));
+  const activity = Object.entries(engineeringActivityOf(ledger, run.id) ?? {})
+    .filter(([nodeId, view]) => (latestExecution.get(nodeId) ?? view.executionId) === view.executionId);
+  const engineeringActivity = activity.length === 0 ? undefined : Object.fromEntries(activity);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
     ...(engineeringActivity === undefined ? {} : { engineeringActivity }),
