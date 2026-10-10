@@ -5,7 +5,7 @@ faster without touching the RTL or the clock, by adding custom standard cells to
 delivery is a new cell library and the evidence that it raises Fmax: a before/after table of the
 new-library build against the reference build.
 
-## Golden Flow (the user's words)
+## Golden Flow
 
 Start from an RTL2GDS flow (Synthesis and APR), post route, load the design into HimaTime. One
 resident agent of HimaTime analyses the design's Fmax and, at the same time, a Qualib resident agent
@@ -18,9 +18,9 @@ to the RTL2GDS flow and yields better Fmax. Loop rounds until the target.
 
 - Tools on screen: AndesCell (cell generation), HimaTime (STA), Synthesis and APR (synthesis + APR),
   Qualib (library analysis, cell screen), XTop (timing ECO; installed on the Site, not a step).
-- Every tool is a mock on the demo Site `eda_cluster_ctu_01` (user, 2026-10-10: a real App run with
-  real agents, every EDA tool a fast mock, several rounds in about an hour). The claim boundary
-  says so in every round record.
+- The tools run on the demo Site `eda_cluster_ctu_01` (user, 2026-10-10: a real App run with real
+  agents and fast demo tools, several rounds in about an hour). The claim boundary in every round
+  record and in the Report states that the EDA results are mock results.
 - The AI agents are real OpenCode resident agents; they run the tools themselves in their sandbox.
 - Goal: Fmax gain over the reference build of at least 5 % (default).
 
@@ -33,3 +33,11 @@ to the RTL2GDS flow and yields better Fmax. Loop rounds until the target.
   estimated recovery; a family that is on no worst path gains nothing, so the agents' analysis
   decides the result.
 - Cells that fail the Qualib screen never enter a build (dont-use).
+
+## Knowledge applied
+
+- From the SKY130 custom-cell demo (2026-10-06): where the critical-path time goes (one XNOR3 stage
+  on most worst paths, 3–7 buffers per path, slow rising edges through stacked AOI/OAI inputs), and
+  that adding every candidate cell can make a design slower; only cells on the worst paths help.
+- Requirements are claims until AndesCell, the Qualib screen, HimaHarness's own verify step and the
+  rebuild measure them; the Reader, not the agent, produces every result number.

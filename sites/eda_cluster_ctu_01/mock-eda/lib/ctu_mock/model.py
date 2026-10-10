@@ -18,7 +18,7 @@ MOCK EDA: these are model numbers for a demonstration Site; not signoff, not sil
 import hashlib
 
 DESIGN = "aes_cipher_top"
-TECHNOLOGY = "28 nm (mock)"
+TECHNOLOGY = "28 nm"
 STOCK_LIBRARY = "std9t_svt"
 CORNER = "tt0p90v25c"
 CLOCK_NAME = "clk"

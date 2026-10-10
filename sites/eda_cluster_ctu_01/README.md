@@ -9,7 +9,7 @@ model. Every EDA result on this Site comes from mock tools (mock EDA); not signo
 
 | Path | What | Access |
 | --- | --- | --- |
-| `/data/eda/project/hima_harness/ctu-mock-eda` | the toolchain (`bin/`, `lib/ctu_mock/`, `share/`), copied from `mock-eda/` here | read-only for Campaigns and agents |
+| `/data/eda/project/hima_harness/ctu01-eda` | the toolchain (`bin/`, `lib/ctu_mock/`, `share/`), copied from `mock-eda/` here | read-only for Campaigns and agents |
 | `/data/eda/project/hima_harness/ctu-runs` | Campaign workspaces | the only write root |
 | `/data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01` | the resident wrapper copy and `engineering-capabilities-ctu01.json` | read-only |
 
@@ -44,6 +44,6 @@ wrapper's launch line tests it; no licence is used.
 ## Install in a Home
 
 Copy `site.yml` to `hima/sites/eda_cluster_ctu_01.yml` and `permit.yml` beside it. Deploy the
-toolchain with `rsync -a --delete mock-eda/ <server>:/data/eda/project/hima_harness/ctu-mock-eda/`
+toolchain with `rsync -a --delete mock-eda/ <server>:/data/eda/project/hima_harness/ctu01-eda/`
 (excluding `tests/`), and the capability JSON plus the wrapper into
 `operator-admin/resident-engineering-ctu01/`.

@@ -92,7 +92,7 @@ async function prepareHome(t: TestContext): Promise<Home> {
     allowedReadRoots: [h.workspace, mockRoot, path.dirname(wrapper), path.dirname(native)],
     allowedWriteRoots: [h.workspace], allowedWrappers: ['/usr/bin/python3', wrapper], parallelJobs: 3,
     bindings: {
-      mockEdaRoot: mockRoot, designRoot: path.join(mockRoot, 'share/designs/aes_cipher_top'), stockLibrary: 'std9t_svt',
+      edaRoot: mockRoot, designRoot: path.join(mockRoot, 'share/designs/aes_cipher_top'), stockLibrary: 'std9t_svt',
       engineeringCapabilities: capability, workspaceRoot: h.workspace,
     },
   });
@@ -252,7 +252,7 @@ test('andes dry path: two agents per round, three rounds to a 5 % Fmax gain, goa
     assert.equal(r.latestValues('andes-timing').timing_fmax_mhz, 957.67);
     const inputs = JSON.parse(await readFile(path.join(r.workspace, 'state/inputs.json'), 'utf8'));
     assert.deepEqual(Object.keys(inputs.tools).sort(), ['andescell', 'himatime', 'qualib', 'sapr', 'xtop']);
-    assert.match(inputs.tools.xtop.version, /XTop timing ECO .*mock/);
+    assert.match(inputs.tools.xtop.version, /XTop timing ECO \(xtop\) version /);
 
     // ----- round 1: XNOR3 and BUF; the Qualib agent's first delivery names a family AndesCell cannot build
     const r1 = await round(r, home, 1, requirements('himatime', 1, ['XNOR3', 'BUF', 'XOR2']), requirements('qualib', 1, ['FULLADDER', 'XNOR3']),

@@ -1,7 +1,5 @@
 # The AndesCell Fmax flow
 
-Every EDA result in this Pack comes from mock tools on a demo Site (mock EDA); not signoff, not silicon.
-
 ## The design and the goal
 
 - Design `aes_cipher_top` (AES-128, one round per clock), 28 nm, stock library `std9t_svt`

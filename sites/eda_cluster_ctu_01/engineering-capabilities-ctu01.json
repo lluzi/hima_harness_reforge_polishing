@@ -23,7 +23,7 @@
     "executable": "/usr/bin/podman",
     "image": "c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667",
     "readOnlyRoots": [
-      "/data/eda/project/hima_harness/ctu-mock-eda"
+      "/data/eda/project/hima_harness/ctu01-eda"
     ],
     "privateWorkspace": "workspace",
     "privateHome": "home",
@@ -38,7 +38,7 @@
     "set": {
       "TZ": "America/Los_Angeles",
       "EMPYREAN_LICENSE_MODE": "old",
-      "CTU_MOCK_EDA": "/data/eda/project/hima_harness/ctu-mock-eda",
+      "CTU_EDA_ROOT": "/data/eda/project/hima_harness/ctu01-eda",
       "CTU_MOCK_TIME_SCALE": "0.25",
       "PYTHONDONTWRITEBYTECODE": "1",
       "PYTHONPYCACHEPREFIX": "/tmp/pycache",
@@ -52,7 +52,7 @@
       "no_proxy": "localhost,127.0.0.1,::1,linglong,.local"
     },
     "toolPaths": [
-      "/data/eda/project/hima_harness/ctu-mock-eda/bin",
+      "/data/eda/project/hima_harness/ctu01-eda/bin",
       "/usr/local/bin",
       "/usr/bin",
       "/bin"

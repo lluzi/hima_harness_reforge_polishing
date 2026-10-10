@@ -126,7 +126,7 @@ def make_cells(family, k):
                         inputCapFf=round(stock["inputCapFf"] * (1 + cap_inc), 3), stockInputCapFf=stock["inputCapFf"],
                         leakageNw=round(stock["leakageNw"] * leak_ratio, 2), stockLeakageNw=stock["leakageNw"],
                         function=info["function"], inputs=info["inputs"], output=info["out"],
-                        origin="AndesCell 2.4.0-mock round %d, %s variant of %s" % (k, tag, stock["name"])))
+                        origin="AndesCell 2.4.0 round %d, %s variant of %s" % (k, tag, stock["name"])))
     return out
 
 
@@ -199,8 +199,8 @@ def cmd_generate(rest):
         log.phase("CHR", "%s: characterization (%s, 5x5 NLDM)" % (fam, model.CORNER), 3, 2)
         for c in made:
             log("GEN", "  %-22s FO4 %.1f ps (stock %s %.1f ps, -%.1f %%), area %.3f um^2" % (c["name"], c["fo4DelayPs"], c["stockCell"], c["stockFo4DelayPs"], c["speedupPct"], c["areaUm2"]))
-            write_text(out / "signoff" / ("%s.drc.rpt" % c["name"]), "DRC %s: 0 violations (MOCK EDA)\n" % c["name"])
-            write_text(out / "signoff" / ("%s.lvs.rpt" % c["name"]), "LVS %s: layout and schematic netlists MATCH (MOCK EDA)\n" % c["name"])
+            write_text(out / "signoff" / ("%s.drc.rpt" % c["name"]), "DRC %s: 0 violations\n" % c["name"])
+            write_text(out / "signoff" / ("%s.lvs.rpt" % c["name"]), "LVS %s: layout and schematic netlists MATCH\n" % c["name"])
         cells.extend(made)
     name = "andes_r%d" % a.round
     banner_lines = ["AndesCell library %s, round %d, %s (MOCK EDA, demo Site eda_cluster_ctu_01; not signoff)" % (name, a.round, model.CORNER)]

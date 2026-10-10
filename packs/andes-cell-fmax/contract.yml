@@ -1,6 +1,6 @@
 id: andes-cell-fmax
 version: "0.1.0"
-title: New standard cells for a faster aes_cipher_top (AndesCell, mock EDA demo)
+title: New standard cells for a faster aes_cipher_top (AndesCell)
 status: development
 minimumHarnessVersion: 0.2.2
 
@@ -16,8 +16,8 @@ budget:
   minimumGenerations: 1
 
 inputs:
-  - name: mockEdaRoot
-    description: Read-only root of the Site's EDA toolchain (bin/sapr, himatime, qualib, andescell, xtop; mock EDA on the demo Site).
+  - name: edaRoot
+    description: Read-only root of the Site's EDA toolchain (bin/sapr, himatime, qualib, andescell, xtop).
   - name: designRoot
     description: Read-only design directory of aes_cipher_top (design.json, rtl/, aes_cipher_top.sdc).
   - name: stockLibrary
@@ -88,8 +88,8 @@ tools:
       Check the Site's EDA tools (sapr, himatime, qualib, andescell and xtop answer -version), the
       aes_cipher_top design files and the stock library name; write state/inputs.json with the tool
       versions, file SHA-256 and AndesCell's family list; create the empty lessons and library files.
-    inputs: [WORKSPACE, MOCK_EDA_ROOT, DESIGN_ROOT, LIBRARY]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', bind, '${WORKSPACE}', '${MOCK_EDA_ROOT}', '${DESIGN_ROOT}', '${LIBRARY}']
+    inputs: [WORKSPACE, EDA_ROOT, DESIGN_ROOT, LIBRARY]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', bind, '${WORKSPACE}', '${EDA_ROOT}', '${DESIGN_ROOT}', '${LIBRARY}']
 
   - id: reference-build
     file: flow/andes_cli.py
@@ -224,7 +224,7 @@ knowledge:
   - file: requirements-format.md
     purpose: The hima-andes-requirements/1 file, a worked example, the precheck and the delivery.
   - file: evidence-and-claims.md
-    purpose: What is a tool result, what is a claim, and the claim boundary of this mock-EDA demo.
+    purpose: What is a tool result, what is a claim, and the claim boundary of this demo.
 
 goal:
   target_fmax_gain_pct: { type: number, unit: percent, min: 0.1, max: 30, default: 5, precision: 2 }

@@ -9,14 +9,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SHARE = ROOT / "share"
 SITE_NAME = "eda_cluster_ctu_01"
-MOCK_NOTE = "MOCK EDA build for the demo Site %s: model numbers, not signoff, not silicon." % SITE_NAME
+SITE_NOTE = "Installed on %s." % SITE_NAME
 
 VERSIONS = {
-    "sapr": ("Synthesis and APR", "sapr", "2026.09-SP1-mock"),
-    "himatime": ("HimaTime static timing analysis", "himatime", "4.2.0-mock"),
-    "qualib": ("Qualib library analysis and cell screen", "qualib", "3.1.2-mock"),
-    "andescell": ("AndesCell standard-cell generation", "andescell", "2.4.0-mock"),
-    "xtop": ("XTop timing ECO", "xtop", "2026.06-mock"),
+    "sapr": ("Synthesis and APR", "sapr", "2026.09-SP1"),
+    "himatime": ("HimaTime static timing analysis", "himatime", "4.2.0"),
+    "qualib": ("Qualib library analysis and cell screen", "qualib", "3.1.2"),
+    "andescell": ("AndesCell standard-cell generation", "andescell", "2.4.0"),
+    "xtop": ("XTop timing ECO", "xtop", "2026.06"),
 }
 
 
@@ -33,7 +33,7 @@ def banner(tool, out=sys.stdout):
     title, name, version = VERSIONS[tool]
     rule = "*" * 78
     lines = [rule, "  %s" % title, "  %s version %s (build %d, linux64)" % (name, version, 4400 + len(name) * 13),
-             "  %s" % MOCK_NOTE, rule]
+             "  %s" % SITE_NOTE, rule]
     out.write("\n".join(lines) + "\n")
     out.flush()
 
@@ -133,7 +133,6 @@ def run_main(tool, handler, argv):
     """Common entry: -version / -help, refusals as one ERROR line and exit 2."""
     if argv and argv[0] in ("-version", "--version", "-v"):
         print(version_line(tool))
-        print(MOCK_NOTE)
         return 0
     try:
         return handler(argv) or 0

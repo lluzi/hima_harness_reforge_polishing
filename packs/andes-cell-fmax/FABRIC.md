@@ -1,9 +1,3 @@
-## Site
-
-`eda_cluster_ctu_01` (ssh to linglong; `workspaceRoot` `/data/eda/project/hima_harness/ctu-runs`,
-`parallelJobs: 3`), toolchain `/data/eda/project/hima_harness/ctu-mock-eda`, resident capability
-`operator-admin/resident-engineering-ctu01/engineering-capabilities-ctu01.json`.
-
 ## Files written
 
 - `contract.yml`, `graph.yml`, `semantics.yml`; `flow/andes_cli.py` (every tool step and the
@@ -12,7 +6,13 @@
 - Outside the Pack: `sites/eda_cluster_ctu_01/` (Site, Permit, capability, mock toolchain and its
   tests) and `test/contract/andes-cell-fmax*.ts`.
 
-## How the two agents run at once
+### Site
+
+`eda_cluster_ctu_01` (ssh to linglong; `workspaceRoot` `/data/eda/project/hima_harness/ctu-runs`,
+`parallelJobs: 3`), toolchain `/data/eda/project/hima_harness/ctu01-eda`, resident capability
+`operator-admin/resident-engineering-ctu01/engineering-capabilities-ctu01.json`.
+
+### How the two agents run at once
 
 The fork at `read-timing` has two outsourced act nodes as branches. The autopilot does not drive
 resident tasks, so the fork is not declared as an autopilot fork: the head segment stops when
@@ -22,9 +22,9 @@ wrapper Jobs, inside the Site's three slots), collects each delivery (its Reader
 branch), releases and completes each node in any order. The last completion closes the fork; the
 join `requirements-joined` judges each branch's reading and the second segment drives the rest.
 
-## Smoke on the Site (2026-10-10, time scale 1)
+### Smoke on the Site (2026-10-10, time scale 1)
 
-Toolchain deployed to `/data/eda/project/hima_harness/ctu-mock-eda`; wrapper copy (template
+Toolchain deployed to `/data/eda/project/hima_harness/ctu01-eda`; wrapper copy (template
 `fb4739c2`) and capability (`b8e76e1d`) in `operator-admin/resident-engineering-ctu01/`. Every CLI
 answers `-version`. One reference build and one round with hand-written requirements in
 `ctu-runs/smoke-20261010/` (log `smoke.log`), host python3 3.12:
@@ -51,3 +51,11 @@ and the Pack precheck instant.
 
 - The mock is a calibrated path model, not a timer: one design, one corner, one clock.
 - The cell targets in requirements are recorded (met / not met) but do not change the cells.
+
+## Reviews
+
+- Pack load and semantics: `test/contract/andes-cell-fmax.test.ts` (6 tests), including the mock
+  toolchain unit suite.
+- Host dry path (`andes-dry` group): both resident agents at once through the stand-in, generate /
+  screen / verify / rebuild, three rounds to goal-met.
+- Site smoke on linglong (2026-10-10): every CLI and one reference build plus one round, timings above.

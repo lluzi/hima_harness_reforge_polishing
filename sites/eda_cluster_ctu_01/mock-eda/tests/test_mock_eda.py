@@ -73,7 +73,7 @@ class Clis(unittest.TestCase):
         for tool in ("sapr", "himatime", "qualib", "andescell", "xtop"):
             out = run(tool, "-version")
             self.assertEqual(out.returncode, 0, out.stderr)
-            self.assertIn("mock", out.stdout)
+            self.assertIn("version", out.stdout)
             self.assertEqual(run(tool, "-help").returncode, 0)
         self.assertEqual(run("xtop", "-batch", "x.tcl").returncode, 2)
 

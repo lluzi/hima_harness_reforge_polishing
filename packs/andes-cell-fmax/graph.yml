@@ -32,7 +32,7 @@ nodes:
     parameters:
       tool: bind-inputs
       arguments:
-        MOCK_EDA_ROOT: { from: input, name: mockEdaRoot }
+        EDA_ROOT: { from: input, name: edaRoot }
         DESIGN_ROOT: { from: input, name: designRoot }
         LIBRARY: { from: input, name: stockLibrary }
   - id: reference-build

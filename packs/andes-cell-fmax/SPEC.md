@@ -7,7 +7,7 @@ round's Fmax gain over the reference build must reach it. Strategy: `buildTimeou
 
 ## Constraints
 
-- Site `eda_cluster_ctu_01` (or a Site binding `mockEdaRoot`, `designRoot`, `stockLibrary`,
+- Site `eda_cluster_ctu_01` (or a Site binding `edaRoot`, `designRoot`, `stockLibrary`,
   `engineeringCapabilities`): the toolchain and design are read-only; Campaigns write only under
   `workspaceRoot`; at most three Site jobs at once (two resident agents and one Reader fit).
 - Clock fixed at 1.000 ns; RTL and flow settings fixed; only new cells change the build.
@@ -63,3 +63,11 @@ artifacts `requirements/himatime/`) and `qualib-agent` (same with `qualib-playbo
 `requirements/qualib/`). Both read `inputsState`, `referenceBuild`, `timingState`, `lessons`,
 `library`. Each prechecks and delivers one `hima-andes-requirements/1` with `analysis.md`; a refused
 delivery is repaired in the same task.
+
+## Knowledge
+
+- `knowledge/andes-flow.md`
+- `knowledge/evidence-and-claims.md`
+- `knowledge/himatime-playbook.md`
+- `knowledge/qualib-playbook.md`
+- `knowledge/requirements-format.md`

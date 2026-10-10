@@ -98,8 +98,8 @@ test('the resident capability runs OpenCode in the sandbox with the mock toolcha
   assert.equal(capability.native.model, 'deepseek/deepseek-flash');
   assert.equal(capability.native.version, '1.18.34');
   assert.equal(capability.sandbox.kind, 'podman');
-  assert.ok(capability.sandbox.readOnlyRoots.includes('/data/eda/project/hima_harness/ctu-mock-eda'));
-  assert.equal(capability.environment.toolPaths[0], '/data/eda/project/hima_harness/ctu-mock-eda/bin');
+  assert.ok(capability.sandbox.readOnlyRoots.includes('/data/eda/project/hima_harness/ctu01-eda'));
+  assert.equal(capability.environment.toolPaths[0], '/data/eda/project/hima_harness/ctu01-eda/bin');
   assert.equal(capability.environment.set.EMPYREAN_LICENSE_MODE, 'old', 'the wrapper launch line tests it');
 });
 

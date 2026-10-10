@@ -1,5 +1,5 @@
 allowedReadRoots:
-  - /data/eda/project/hima_harness/ctu-mock-eda
+  - /data/eda/project/hima_harness/ctu01-eda
   - /data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01
   - /data/eda/project/hima_harness/ctu-runs
 allowedWriteRoots:

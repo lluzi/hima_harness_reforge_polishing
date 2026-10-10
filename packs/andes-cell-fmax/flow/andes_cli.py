@@ -2,9 +2,9 @@
 """Deterministic steps of the andes-cell-fmax Pack (python3, stdlib only).
 
 Every number this file writes comes from a tool report (sapr, himatime, qualib, andescell), never
-from model text. The tools are the mock EDA toolchain bound by the Site (mockEdaRoot).
+from model text. The tools are the mock EDA toolchain bound by the Site (edaRoot).
 
-  bind       <WS> <MOCK_EDA_ROOT> <DESIGN_ROOT> <LIBRARY>   tool versions, design, families
+  bind       <WS> <EDA_ROOT> <DESIGN_ROOT> <LIBRARY>   tool versions, design, families
   reference  <WS> <TIMEOUT_MIN>        Synthesis and APR on the stock library (the reference build)
   timing     <WS>                      load the latest build into HimaTime (start of a round)
   requirements <WS> <AGENT>            validate state/<AGENT>-requirements.json (agent delivery)
@@ -170,7 +170,7 @@ def cmd_bind(ws, mock_root, design_root, library):
     for name in TOOLS:
         path = mock_root / "bin" / name
         if not path.is_file() or not os.access(str(path), os.X_OK):
-            raise ToolError("the Site's mock EDA root has no executable bin/%s: %s" % (name, path))
+            raise ToolError("the Site's EDA root has no executable bin/%s: %s" % (name, path))
         out = subprocess.run([str(path), "-version"], capture_output=True, text=True, timeout=60)
         if out.returncode != 0 or not out.stdout.strip():
             raise ToolError("%s -version failed: %s" % (name, (out.stderr or out.stdout).strip()))
@@ -190,7 +190,7 @@ def cmd_bind(ws, mock_root, design_root, library):
     if fam.returncode != 0:
         raise ToolError("andescell families failed: %s" % fam.stderr.strip())
     families = json.loads(fam.stdout)
-    inputs = dict(schema="hima-andes-inputs/1", mockEdaRoot=str(mock_root), designRoot=str(design_root), design=DESIGN,
+    inputs = dict(schema="hima-andes-inputs/1", edaRoot=str(mock_root), designRoot=str(design_root), design=DESIGN,
                   library=library, clockPeriodNs=design.get("clockPeriodNs"), technology=design.get("technology"),
                   tools=tools, families=[f["family"] for f in families["families"]], aliases=families.get("aliases") or {},
                   maxFamiliesPerRound=families.get("maxFamiliesPerRun"),
@@ -201,7 +201,7 @@ def cmd_bind(ws, mock_root, design_root, library):
         write_json(state(ws, "lessons.json"), dict(schema="hima-andes-lessons/1", rounds=[]))
     if not state(ws, "library.json").exists():
         write_json(state(ws, "library.json"), dict(schema="hima-andes-library/1", rounds=[], families=[]))
-    print("bound %s on %s; %d AndesCell families; mock EDA root %s" % (DESIGN, library, len(inputs["families"]), mock_root))
+    print("bound %s on %s; %d AndesCell families; EDA root %s" % (DESIGN, library, len(inputs["families"]), mock_root))
 
 
 # ---------------------------------------------------------------- builds

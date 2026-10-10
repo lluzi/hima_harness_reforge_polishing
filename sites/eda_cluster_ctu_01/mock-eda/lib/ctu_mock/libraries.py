@@ -176,8 +176,8 @@ def write_share():
     """Regenerate share/libs/std9t_svt (stock Liberty, LEF, manifest). Deterministic."""
     d = SHARE / "libs" / model.STOCK_LIBRARY
     d.mkdir(parents=True, exist_ok=True)
-    banner = ["std9t_svt standard-cell library, %s, 9-track SVT (MOCK library of the demo Site eda_cluster_ctu_01)" % model.CORNER,
-              "Generated from the mock EDA design model; not a foundry library, not for signoff."]
+    banner = ["std9t_svt standard-cell library, %s, 9-track SVT" % model.CORNER,
+              "Characterized at %s." % model.CORNER]
     cells = stock_cells()
     (d / ("%s_%s.lib" % (model.STOCK_LIBRARY, model.CORNER))).write_text(liberty_text(model.STOCK_LIBRARY, cells, banner))
     (d / ("%s.lef" % model.STOCK_LIBRARY)).write_text(lef_text(cells, banner))

@@ -3,8 +3,8 @@ kind: ssh
 workspaceRoot: /data/eda/project/hima_harness/ctu-runs
 permit: ./permit.yml
 bindings:
-  mockEdaRoot: /data/eda/project/hima_harness/ctu-mock-eda
-  designRoot: /data/eda/project/hima_harness/ctu-mock-eda/share/designs/aes_cipher_top
+  edaRoot: /data/eda/project/hima_harness/ctu01-eda
+  designRoot: /data/eda/project/hima_harness/ctu01-eda/share/designs/aes_cipher_top
   stockLibrary: std9t_svt
   engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01/engineering-capabilities-ctu01.json
   workspaceRoot: /data/eda/project/hima_harness/ctu-runs
