@@ -10,6 +10,8 @@ import { claimAutoOpen, autoOpened, receiptTime, shouldAutoOpen } from '../../pa
 import type { PackContract, PackGraph } from '@hima/harness';
 import type { PackResults } from '../../packages/harness/src/packs.ts';
 import type { RunView } from '@hima/harness';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 
 const act = (id: string, tool?: string) => ({ id, kind: 'act' as const, parameters: tool === undefined ? {} : { tool } });
 const judge = (id: string) => ({ id, kind: 'judge' as const, parameters: {} });
@@ -286,4 +288,20 @@ test('the pane opens for a Run started moments ago, once, and never for an old o
   assert.equal(claimAutoOpen('run-auto-1'), true);
   assert.equal(claimAutoOpen('run-auto-1'), false, 'one Run opens the pane once');
   assert.equal(autoOpened('run-auto-1'), true);
+});
+
+test('the shipped Pack 0.2 graph (a copy of packs/andes-cell-fmax/graph.yml) draws the same strip as the fixture', () => {
+  const shipped = parse(readFileSync(new URL('./support/andes-cell-fmax-0.2-graph.yml', import.meta.url), 'utf8')) as PackGraph;
+  const shippedTools = ['himatime-agent', 'qualib-agent', 'andescell-agent', 'himatime-verify', 'qualib-screen'].map((id) => ({ id, outsourcing: {} })) as unknown as PackContract['tools'];
+  const views = [
+    viewOf({ generation: 1, currentNode: 'reference-build', rows: [generation(1, ['bind-inputs'], ['reference-build'])] }),
+    viewOf({ generation: 1, currentNode: 'requirements-joined', fork: { 'himatime-agent': { currentNode: 'himatime-agent', state: 'running' }, 'qualib-agent': { currentNode: 'qualib-agent', state: 'running' } }, rows: [generation(1, upTo('himatime-agent'), ['himatime-agent', 'qualib-agent'])] }),
+    viewOf({ generation: 1, currentNode: 'cells-verified', fork: { 'himatime-verify': { currentNode: 'himatime-verify', state: 'running' }, 'qualib-screen': { currentNode: 'qualib-screen', state: 'running' } }, rows: [generation(1, upTo('himatime-verify'), ['himatime-verify', 'qualib-screen'])] }),
+    viewOf({ generation: 2, currentNode: 'load-timing', rows: [generation(1, ROUND), generation(2, [], ['load-timing'])] }),
+  ];
+  for (const view of views) {
+    const ours = stripState(graph, tools, stripFacts(view)), theirs = stripState(shipped, shippedTools, stripFacts(view));
+    assert.deepEqual(theirs.stations.map((s) => [s.id, s.state, s.ai, s.lines.map((l) => [l.label, l.state])]), ours.stations.map((s) => [s.id, s.state, s.ai, s.lines.map((l) => [l.label, l.state])]));
+    assert.deepEqual(theirs.edges, ours.edges);
+  }
 });

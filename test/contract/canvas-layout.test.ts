@@ -336,59 +336,8 @@ test('the Results table offers only rounds the new build has read, reads the ref
   assert.deepEqual([empty.round, empty.rounds, empty.headline, empty.rows[0]!.cells[0]!.display], [1, [], undefined, '—']);
 });
 
-test('the shipped andes-cell-fmax graph keeps one spine with both agents in lanes above it, and no edge crosses a checklist or an agent\'s activity', () => {
-  const pack = loadPack(packsDir, 'andes-cell-fmax');
-  const context = { available: [], method: { contract: pack.contract } } as unknown as ExecutionContext;
-  const { graph, facts } = sceneInputs(pack.graph, { run: {}, nodes: [], generations: [] } as unknown as RunView, context);
-  const scene = layoutCanvas(graph, facts);
-  const at = (id: string) => { const n = scene.nodes.find((candidate) => candidate.id === id); assert.ok(n, `${id} is placed`); return n; };
-  const reference = at('seg:bind-inputs'), join = at('seg:requirements-joined'), next = at('next-round');
-  assert.ok(reference.members!.length > 1 && join.members!.length > 1, 'both labelled segments are merged steps');
-  assert.equal(join.y, reference.y, 'the join sits on the spine');
-  assert.equal(next.y, reference.y, 'the explore node sits on the spine');
-  assert.equal(scene.goal.y, reference.y, 'the Goal sits on the spine');
-  const himatime = at('himatime-agent'), qualib = at('qualib-agent');
-  assert.equal(himatime.ai, true); assert.equal(qualib.ai, true);
-  assert.ok(himatime.y < reference.y && qualib.y < himatime.y, `both agents sit above the spine in distinct lanes, HimaTime nearer (${qualib.y}, ${himatime.y}, ${reference.y})`);
-  assert.ok(Math.abs((reference.y - himatime.y) - (himatime.y - qualib.y)) < 1, 'the lanes are evenly spaced');
-  assert.ok(himatime.x === qualib.x && himatime.x > reference.x && himatime.x < join.x, 'the agents run side by side between the fork and the join');
-  assert.equal(scene.nodes.some((n) => n.kind === 'wait'), false, 'the unvisited wait node is not drawn');
-  const arc = scene.edges.find((e) => e.kind === 'revisit')!;
-  assert.ok(arc.badge!.y < qualib.y - NODE / 2, 'the revisit arc rides above the top lane');
-  // The text boxes under a merged step (its checklist) and an AI node (label and activity lines).
-  const boxes = scene.nodes.flatMap((n) => {
-    if (n.members !== undefined) return [{ id: n.id, left: n.x - 70, right: n.x + 70, top: n.y + NODE / 2 + 39, bottom: n.y + NODE / 2 + 39 + n.members.length * 15 }];
-    if (n.ai === true) return [{ id: n.id, left: n.x - 70, right: n.x + 70, top: n.y + NODE / 2 + 2, bottom: n.y + NODE / 2 + 39 + 30 }];
-    return [];
-  });
-  for (const edge of scene.edges) {
-    for (const p of samplePath(edge.path)) {
-      for (const box of boxes) {
-        assert.ok(!(p.x > box.left && p.x < box.right && p.y > box.top && p.y < box.bottom), `${edge.from} -> ${edge.to} crosses ${box.id}'s text at (${p.x.toFixed(0)},${p.y.toFixed(0)})`);
-      }
-    }
-  }
-  // Full words: the wide pitch gives a label two lines of 24 characters and a checklist line 30.
-  assert.equal(scene.pitch, WIDE_PITCH);
-  assert.ok(scene.nodes.every((n) => n.wide === true));
-  for (const n of scene.nodes) {
-    if (n.label !== undefined) assert.ok(n.label.length <= 48, `${n.id}'s label fits two lines`);
-    for (const member of n.members ?? []) assert.ok((member.label ?? member.id).length <= 30, `${member.id}'s checklist line fits`);
-  }
-  assert.ok(next.x - join.x >= WIDE_PITCH && join.x - reference.x >= WIDE_PITCH, 'spine columns stand a wide pitch apart');
-  // No edge runs through a node's glyph other than its own two ends.
-  for (const edge of scene.edges) {
-    for (const p of samplePath(edge.path)) {
-      for (const n of scene.nodes) {
-        if (n.id === edge.from || n.id === edge.to) continue;
-        assert.ok(!(Math.abs(p.x - n.x) < NODE / 2 + 2 && Math.abs(p.y - n.y) < NODE / 2 + 2), `${edge.from} -> ${edge.to} passes through ${n.id}`);
-      }
-    }
-  }
-  assert.ok(scene.edges.find((e) => e.kind === 'revisit')!.path.split(' ').every((token) => !token.startsWith('-')), 'the revisit loop stays on the canvas');
-  assert.deepEqual(scene.edges.filter((e) => e.chip !== undefined).map((e) => `${e.from}>${e.to}`), [], 'no chip out of a merged step');
-  assert.equal(scene.edges.filter((e) => e.from === 'seg:requirements-joined' && e.to === 'next-round').length, 1, 'parallel outcome edges out of a merged step draw as one');
-});
+// The shipped andes-cell-fmax graph (0.2) declares a strip view, so its Live view is the strip:
+// `strip-layout.test.ts` holds its layout, from a copy of that graph.
 
 test('an AI node counts as working while its execution is open or its agent reports work, whatever the node state says', () => {
   const view = (phase?: string, state?: string) => ({
@@ -400,25 +349,6 @@ test('an AI node counts as working while its execution is open or its agent repo
   assert.equal(aiWorking(view(undefined, 'working'), 'agent'), true);
   assert.equal(aiWorking(view(undefined, 'completed'), 'agent'), false);
   assert.equal(aiWorking(view('working'), 'other'), false, 'only its own node');
-});
-
-test('the andes-cell-fmax lanes depend only on the graph: round 2 with HimaTime running and Qualib done lays out exactly as round 1', () => {
-  const pack = loadPack(packsDir, 'andes-cell-fmax');
-  const context = { available: [], method: { contract: pack.contract } } as unknown as ExecutionContext;
-  const positions = (view: RunView) => {
-    const { graph, facts } = sceneInputs(pack.graph, view, context);
-    return layoutCanvas(graph, facts).nodes.map((n) => [n.id, n.x, n.y]);
-  };
-  const first = positions({ run: { currentNode: 'read-timing', generation: 1 }, nodes: [{ nodeId: 'bind-inputs', state: 'done' }], generations: [{ generation: 1, branches: [] }] } as unknown as RunView);
-  const second = positions({
-    run: { currentNode: 'himatime-agent', generation: 2, fork: { from: 'read-timing', join: 'requirements-joined', branches: { 'qualib-agent': 'qualib-agent', 'himatime-agent': 'himatime-agent' } } },
-    nodes: [{ nodeId: 'bind-inputs', state: 'done' }, { nodeId: 'read-timing', state: 'done' }, { nodeId: 'qualib-agent', state: 'done' }, { nodeId: 'himatime-agent', state: 'running' }],
-    // The latest generation's fold lists the branches in the order they ran, possibly only some.
-    generations: [{ generation: 1, branches: [] }, { generation: 2, branches: [{ id: 'qualib-agent', nodes: [{ nodeId: 'qualib-agent' }] }] }],
-  } as unknown as RunView);
-  assert.deepEqual(second, first);
-  const y = (id: string) => first.find(([candidate]) => candidate === id)![2] as number;
-  assert.ok(y('himatime-agent') < y('seg:bind-inputs') && y('qualib-agent') < y('himatime-agent'), 'HimaTime nearest the spine, Qualib above it');
 });
 
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
