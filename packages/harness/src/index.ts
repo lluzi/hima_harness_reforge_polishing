@@ -36,7 +36,7 @@ import { operateRunDelegation, runDelegations, delegationRuntimePolicy, operator
 import { registerDelegationGuard, parseDelegationResultObservedPayload, reviewedScopeProblem, delegationInputSelected, selectDelegationInput, type DelegationInputSelection } from './delegation.js';
 import { createInteractiveBindingBridge, testFixtureCanRunHere } from './interactive-binding.js';
 import { operateInteractive, parseInteractiveRequest, listInteractiveSessions, reconcileInteractiveState, createInteractiveTimerController, interactiveDelegationGrant, type InteractiveRuntimeDeps, type InteractiveTimerController } from './interactive-runtime.js';
-import { executionPack, interactiveDriving, reconcileInteractiveExecution } from './fabric.js';
+import { executionPack, interactiveDriving, reconcileInteractiveExecution, executionNotice, runNodeName, NOTICE_PREFIX } from './fabric.js';
 import { Autopilot } from './autopilot.js';
 /** How often the Host re-kicks a Run standing idle on a self-driving node (#64 D-T04-1). */
 const autopilotSweepMs = 15_000;
@@ -379,6 +379,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'When the current act tool declares resident engineering outsourcing, the Campaign owner may hand that complete engineering node to the Site executor through hima_execute engineering start, continue the same task with messages, and collect Reader-verified delivery before release. Start one execution only once. A status reply is one current snapshot: if the task remains starting or running with no actionable change, tell the person it is active and yield instead of busy-polling in the same turn. The external engineering session is an executor, never another Run owner.',
   'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
   'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
+  'When you write to the person, talk as to a chip designer about the design and its numbers, in a few short lines. Name steps by their Pack labels, not node ids. Never paste hashes, execution or record ids, revision numbers or file paths unless the person asks for them.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
@@ -537,7 +538,7 @@ export default class Hima extends Service {
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
         const roleInstruction=role==='execution-owner'
-          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion.'
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. When a round is measured, report before -> after for its key metrics (e.g. Fmax, worst slack, TNS, area) and the gain against the target, then the next decision in one sentence.'
           : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           roleInstruction,
@@ -557,7 +558,7 @@ export default class Hima extends Service {
       delegate: request => this.runDelegation(request),
       childIdle: id => { const agent = this.ctx.get('agents')?.get(id as never); return agent === undefined || agent.status === 'idle'; },
       childResults: process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_AUTOPILOT_CHILD_RESULTS === 'ledger' ? 'ledger' : 'native',
-      notifyOwner: (runId, key, detail) => { const owner = this.ledger.run(runId)?.control?.owner; if (owner !== undefined) this.deps().notify?.(owner, runId, key, detail); },
+      notifyOwner: (runId, key, detail, headline) => { const owner = this.ledger.run(runId)?.control?.owner; if (owner !== undefined) this.deps().notify?.(owner, runId, key, detail, headline); },
       readMaterial: async (runId, recordId) => { const read = await readMaterial(this.deps(), runId, recordId); return read.kind === 'read' ? read.text : undefined; },
       readReading: async (runId, recordId) => { const read = await readReportMaterial(this.deps(), runId, recordId); return read.kind === 'read' ? read.text : undefined; },
       log: line => { this.ctx.logger.info(line); if (process.env.HIMA_AUTOPILOT_DEBUG === '1') process.stderr.write(`${line}\n`); },
@@ -788,7 +789,8 @@ export default class Hima extends Service {
           if(result.status==='duplicate'||this.autopilotNode(run.id,session.nodeId))return;
           this.deps().notify?.(control.owner,run.id,session.executionId,result.status==='refused'
             ?`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it, and the Host could not close it: ${result.reason}`
-            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`);
+            :`Interactive session ${session.toolSessionId} of node ${session.nodeId} has no Operator that may still drive it; the Host closed it (${result.status}). Its execution settles from the Job's own records; inspect them before a retry.`,
+            `${NOTICE_PREFIX} ${runNodeName(this.deps(),run.id,session.nodeId)}: its interactive tool session ${result.status==='refused'?'could not be closed':'was closed'}.`);
         })().catch(error=>this.ctx.logger.warn(`hima: closing interactive session ${session.toolSessionId} of ${run.id} failed: ${String(error)}`)));
       }
     }
@@ -814,7 +816,7 @@ export default class Hima extends Service {
       const fresh=this.executionContext(run.id);
       if(fresh.run.control?.epoch!==control.epoch||fresh.reason||fresh.holds?.some(h=>h.source!=='agent'))continue;
       this.recoveredOwners.add(key);
-      this.deps().notify?.(control.owner,run.id,`recovery:${control.epoch}`);
+      this.deps().notify?.(control.owner,run.id,`recovery:${control.epoch}`,undefined,`${NOTICE_PREFIX} HimaHarness restarted and reconnected this Campaign.`);
     }
   }
 
@@ -955,7 +957,8 @@ export default class Hima extends Service {
         if(this.autopilotNode(run.id,deadline.nodeId))return;
         this.deps().notify?.(run.control.owner,run.id,deadline.executionId,result.status==='refused'
           ?`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached, and the Host could not stop it: ${result.reason}`
-          :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`);
+          :`An interactive ${deadline.kind} deadline of session ${deadline.toolSessionId} was reached and the Host ${deadline.kind==='command'?'interrupted the command':'closed the session'} (${result.status}). Inspect the exact stop receipt and original Job; no checkpoint or successful design result is implied.`,
+          `${NOTICE_PREFIX} ${runNodeName(this.deps(),run.id,deadline.nodeId)} reached its time limit${result.status==='refused'?' and could not be stopped':''}.`);
       },
     };
     this.interactiveRuntime=runtime;this.interactiveTimers=createInteractiveTimerController(runtime);return runtime;
@@ -1424,7 +1427,9 @@ export default class Hima extends Service {
     const guide=this.ctx.get('agents')?.get(guideId as never);if(!guide)return;
     const marker=`Hima Guide boundary ${fingerprint}`;
     if(JSON.stringify(guide.session.deriveMessages()).includes(marker)){this.guideNoticeIdentities.set(key,fingerprint);return;}
-    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:`${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
+    const plain=failed.length>0?`${NOTICE_PREFIX} ${failed.length===1?'One step needs':`${failed.length} steps need`} review.`
+      :({'ended-goal-met':'The Campaign ended: target reached.','ended-goal-not-met':'The Campaign ended: target not reached.','ended-converged':'The Campaign ended: no further gain found.','ended-budget-exhausted':'The Campaign ended: time budget used up.','cancelled':'The Campaign was stopped.','waiting':'The Campaign is waiting for a decision.'} as Record<string,string>)[run.status??'']?.replace(/^/,`${NOTICE_PREFIX} `)??`${NOTICE_PREFIX} The Campaign changed state.`;
+    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:`${plain}\n\n${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
     const prior=this.pendingProgressNotifications.get(key);
     if(!prior||!guide.inbox.replace(prior,message))guide.followup(message);
     this.pendingProgressNotifications.set(key,message.id);this.guideNoticeIdentities.set(key,fingerprint);
@@ -1672,7 +1677,7 @@ export default class Hima extends Service {
       stopSignal: this.factStop.signal,
       beforeSlotClaim:(siteName)=>reconcileExecutionIntents(this.deps(),siteName),
       log: (line) => this.ctx.logger.info(line),
-      notify: (owner, runId, executionId, detail) => {
+      notify: (owner, runId, executionId, detail, headline) => {
         this.notifyGuideBoundary(runId);
         if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) {
           return { status: 'inactive', message: 'The control fact is recorded; Campaign Agent notification is inactive on this Host.' };
@@ -1680,7 +1685,9 @@ export default class Hima extends Service {
         const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
         if (!agent) return { status: 'owner-unavailable', message: 'The control fact is recorded; the owning Campaign Agent is not currently live.' };
         try {
-          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
+          // One plain line for the person reading the chat, then the owner's machine detail.
+          const plain = headline ?? executionNotice(this.deps(), runId, executionId) ?? `${NOTICE_PREFIX} The Campaign has new results.`;
+          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `${plain}\n\nHima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
           if (detail === undefined) {
             const key = `${owner}\u0000${runId}`;
             const pending = this.pendingProgressNotifications.get(key);

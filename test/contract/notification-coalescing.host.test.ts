@@ -62,6 +62,8 @@ test('execution facts coalesce to one queued wake-up while human controls stay i
       'many execution completions replace one pending progress wake-up instead of growing the queue');
     assert.match(messageText(owner.inbox.nextTurn[0]!), new RegExp(secondId),
       'the one pending wake-up points at the latest execution while hima_context retains every fact');
+    assert.match(messageText(owner.inbox.nextTurn[0]!), /^HimaHarness: [^\n]+ finished\.\n\n/,
+      'the chat reader sees one plain line first; the owner detail follows a blank line');
 
     const control = host.ctx.hima.ledger.run(runId)!.control!;
     const paused = await host.ctx.hima.executionAction({
@@ -73,6 +75,7 @@ test('execution facts coalesce to one queued wake-up while human controls stay i
     assert.equal(owner.inbox.nextTurn.length, 2,
       'a human control message is never hidden behind the coalesced progress notification');
     assert.match(messageText(owner.inbox.nextTurn[1]!), /user paused/);
+    assert.match(messageText(owner.inbox.nextTurn[1]!), /^HimaHarness: Paused [^\n]+\.\n\n/);
 
     owner.cancel({ kind: 'hook', reason: 'notification coalescing test complete' });
     await maintenance;
@@ -121,6 +124,7 @@ test('a human clearing a blocked node queues a wake-up turn for the idle owner w
     assert.equal(cleared.notification?.status, 'queued', 'the person is told the owner was notified');
     assert.equal(owner.inbox.nextTurn.length, 1, 'the clearance is an ordinary follow-up turn that wakes an idle owner');
     assert.match(messageText(owner.inbox.nextTurn[0]!), new RegExp(`user continued node ${nodeId}`));
+    assert.match(messageText(owner.inbox.nextTurn[0]!), /^HimaHarness: Continued [^\n]+\.\n\n/);
     assert.equal(owner.status, 'idle', 'nothing but the queued notification is needed to start the owner');
 
     owner.cancel({ kind: 'hook', reason: 'clearance notification test complete' });

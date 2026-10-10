@@ -48,4 +48,8 @@ test('the shared product context stays role-neutral and sends bounded children t
   assert.match(HIMA_PRODUCT_CONTEXT, /status reply is one current snapshot.*yield instead of busy-polling/i);
   assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /You are HimaGuide/i);
   assert.doesNotMatch(HIMA_PRODUCT_CONTEXT, /Fmax (?:improved|increased)|ready to run/i);
+  // The person reads a chip designer's report, not protocol identifiers.
+  assert.match(HIMA_PRODUCT_CONTEXT, /chip designer about the design and its numbers/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Pack labels, not node ids/i);
+  assert.match(HIMA_PRODUCT_CONTEXT, /Never paste hashes, execution or record ids, revision numbers or file paths/i);
 });

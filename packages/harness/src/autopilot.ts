@@ -22,8 +22,8 @@
 // authors, an Explore decision, the honest end), with one summary of what the region did — for a
 // fork, one line per branch.
 import { createHash, randomUUID } from 'node:crypto';
-import { executionContext, executionPack, identityOf, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
-import { autopilotDrives, autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop } from './packs.js';
+import { executionContext, executionPack, identityOf, nodeDisplayName, noticeValue, NOTICE_PREFIX, restartBranchAt, settleBranchRefused, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { autopilotDrives, autopilotOf, autopilotSegmentOf, positionOf, type ForkAutopilot, type ForkBranch, type Pack, type PackAgentTeam, type PackAgentTeamMember, type PackNode, type PackWorkshop, type SegmentAutopilot } from './packs.js';
 import { currentRecordsIn, hasEnded, type DelegationRecord, type LedgerRecord, type NodeExecution, type ObservationRecord, type RunRecord } from './ledger.js';
 import { runDelegations, type RunDelegationRequest, type RunDelegationView } from './delegation-runtime.js';
 import { parseDelegationResultObservedPayload } from './delegation.js';
@@ -43,7 +43,7 @@ export interface AutopilotHost {
   /** `native` reads a child's completed turn itself; `ledger` waits for its recorded result (tests). */
   readonly childResults: 'native' | 'ledger';
   /** Tell the Run's owner once, with detail; the Host decides whether its Agent is live. */
-  readonly notifyOwner: (runId: string, key: string, detail: string) => void;
+  readonly notifyOwner: (runId: string, key: string, detail: string, headline?: string) => void;
   /** The recorded Workshop or code material a child needs, read the way the owner would read it. */
   readonly readMaterial: (runId: string, recordId: string) => Promise<string | undefined>;
   /** A reading's retained bytes, for the join summary's record ids. */
@@ -57,6 +57,27 @@ export interface AutopilotHost {
    * close a Host start or a delegation deadline takes). Absent, such a session waits for its deadline.
    */
   readonly closeUndrivable?: (runId: string) => Promise<void>;
+}
+
+/**
+ * The plain line the owner's chat shows when the Run leaves a self-driving region, in the Pack's
+ * own words: the segment's `label` (else its last node's), a result value when one is at hand,
+ * and where the Run stands now. E.g. "HimaHarness: Reference build finished (Fmax 957.67 MHz).
+ * Next: HimaTime analysis."
+ */
+function autopilotHeadline(deps: FabricDeps, pack: Pack, run: RunRecord, records: readonly LedgerRecord[], generation: number): string {
+  const segments = autopilotOf(pack).segments;
+  const declared = pack.graph.autopilot.filter((entry): entry is SegmentAutopilot => !('fork' in entry));
+  const visits = records.filter((record): record is Extract<LedgerRecord, { type: 'node' }> => record.type === 'node'
+    && record.generation === generation && record.branchId === undefined && segments.some((segment) => segment.nodes.has(record.nodeId)));
+  const last = visits.at(-1);
+  const index = last === undefined ? -1 : segments.findIndex((segment) => segment.nodes.has(last.nodeId));
+  const name = (index < 0 ? undefined : declared[index]?.label) ?? (last === undefined ? 'The automatic steps' : nodeDisplayName(pack, last.nodeId));
+  const start = visits.find((record) => index >= 0 && segments[index]!.nodes.has(record.nodeId));
+  const value = noticeValue(deps, run.id, pack, start === undefined ? 0 : start.seq - 1);
+  const where = hasEnded(run.status) ? ' The Campaign ended.' : run.status === 'running' && run.currentNode !== undefined
+    ? ` Next: ${nodeDisplayName(pack, run.currentNode)}.` : run.status === 'waiting' ? ' Waiting for a decision.' : '';
+  return `${NOTICE_PREFIX} ${name} finished${value === undefined ? '' : ` (${value})`}.${where}`;
 }
 
 /** A self-driving fork as the plan resolved it: its declaration, its branches and its join. */
@@ -248,7 +269,8 @@ export class Autopilot {
     const list = this.#notices.get(runId) ?? [];
     list.push(detail);
     this.#notices.set(runId, list);
-    this.#host.notifyOwner(runId, `autopilot:${runId}:${String(generation)}:${String(run.currentNode)}:${String(list.length)}`, detail);
+    this.#host.notifyOwner(runId, `autopilot:${runId}:${String(generation)}:${String(run.currentNode)}:${String(list.length)}`, detail,
+      autopilotHeadline(this.#deps(), pack, run, records, generation));
   }
 
   /** Drive one branch of a self-driving fork until it reaches the join, is held, or the Run stops. */

@@ -27,7 +27,7 @@ import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemp
 import { killDidNotTake, workshopOutputProblem, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, executionPack, reconcileAppliedRevisions, residentEngineeringIdentityFor, residentEngineeringStartOf, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, observeResidentEngineering, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, executionPack, NOTICE_PREFIX, reconcileAppliedRevisions, residentEngineeringIdentityFor, residentEngineeringStartOf, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, observeResidentEngineering, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { engineeringTaskDirectory, engineeringTaskId, loadEngineeringCapability, readEngineeringOwned, reconcileEngineeringTask } from './engineering-executor.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
@@ -658,7 +658,8 @@ export async function cancelRun(deps: FabricDeps, runId: string, requestedReason
     deps.notify?.(control.owner, runId, stop.requestId ?? `stop:${runId}`,
       confirmed
         ? 'The requested Campaign stop is complete. Acknowledge the final state and start no further node.'
-        : `The requested Campaign stop could not be confirmed${reason === undefined ? '' : `: ${reason}`}. Read current facts and ask the user before any further action.`);
+        : `The requested Campaign stop could not be confirmed${reason === undefined ? '' : `: ${reason}`}. Read current facts and ask the user before any further action.`,
+      confirmed ? `${NOTICE_PREFIX} The Campaign stopped.` : `${NOTICE_PREFIX} The stop could not be confirmed.`);
   });
   if (fault !== undefined) throw fault;
   return { ...result!, run: existingRun(deps.ledger, runId) };

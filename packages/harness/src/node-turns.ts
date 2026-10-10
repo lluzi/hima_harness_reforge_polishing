@@ -126,7 +126,9 @@ export interface FabricDeps {
    * (the acceptance script, a test) has no host log to write to, and the Run is unaffected either way.
    */
   readonly log?: (line: string) => void;
-  readonly notify?: (owner: string, runId: string, executionId: string, detail?: string) => NotificationDelivery;
+  /** `headline` is the one plain line the chat shows first ("HimaHarness: …"); `detail` is the
+   *  owner's machine-readable instruction after it. Without a headline the Host derives one. */
+  readonly notify?: (owner: string, runId: string, executionId: string, detail?: string, headline?: string) => NotificationDelivery;
 }
 
 /** Immediate Host delivery result. Control facts are already durable whatever this says. */

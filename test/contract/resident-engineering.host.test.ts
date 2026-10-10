@@ -232,6 +232,7 @@ test('public Host wakes the owner when a resident turn waits without a status po
     const text = owner.inbox.nextTurn.flatMap(message => message.content)
       .filter(block => block.type === 'text').map(block => block.text).join('\n');
     assert.match(text, /resident.*waiting/i);
+    assert.match(text, /HimaHarness: [^\n]+ finished its turn\.\n\n/, 'a plain line first, the owner detail after a blank line');
     assert.match(text, /engineering.*status/i);
     assert.equal(host.ctx.hima.executionContext(task.started.run.id).executions.find(e => e.id === task!.executionId)?.phase, 'working',
       'turn-end is neither Reader verification nor node completion');

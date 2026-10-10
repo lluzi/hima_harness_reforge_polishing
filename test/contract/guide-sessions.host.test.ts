@@ -123,6 +123,7 @@ test('a terminal Campaign boundary reaches its original Guide once without chang
     assert.equal((await host.ctx.hima.executionAction(req)).kind,'accepted');
     await waitUntil('terminal facts reach original Guide',()=>JSON.stringify(guide.session.deriveMessages()).includes('Hima Guide boundary'));
     await guide.whenIdle();await owner.whenIdle();
+    assert.match(JSON.stringify(guide.session.deriveMessages()),/HimaHarness: (?:The Campaign was stopped|One step needs review)\.\\n\\nHima Guide boundary/);
     assert.equal(host.ctx.hima.ledger.run(runId)?.status,'cancelled');
     assert.equal(host.ctx.hima.ledger.run(runId)?.control?.owner,String(owner.id));
     const before=guide.session.deriveMessages().length;

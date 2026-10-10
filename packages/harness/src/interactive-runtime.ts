@@ -5,7 +5,7 @@ import path from 'node:path';
 import { testFixtureCanRunHere } from './interactive-binding.js';
 import { z } from 'zod';
 import { advance, budgetStanding, ownedWaitedMs } from './budget.js';
-import { controlling, identityOf, updateExecution, type FabricDeps } from './fabric.js';
+import { controlling, identityOf, NOTICE_PREFIX, runNodeName, updateExecution, type FabricDeps } from './fabric.js';
 import {
   closeInteractiveJob, interactiveCloseGrace, jobProcessGroupAlive, observeInteractiveToken, parseInteractiveRecord, readInteractiveTranscript,
   sendInteractiveInput, signalInteractiveJob,
@@ -549,7 +549,8 @@ class RunInteractiveAuthority implements InteractiveAuthority {
       ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }), reason });
     if (!['completed', 'failed'].includes(execution.phase)) await updateExecution(this.deps.fabric, run.id, execution.id, { phase: 'uncertain', reason });
     this.deps.fabric.notify?.(run.control.owner, run.id, execution.id,
-      `Node ${execution.nodeId}: ${reason}. It is a blocker on that node: a person must end that process group on Site ${run.siteId} before the node's tool slot can be used again. Other nodes are not held by it.`);
+      `Node ${execution.nodeId}: ${reason}. It is a blocker on that node: a person must end that process group on Site ${run.siteId} before the node's tool slot can be used again. Other nodes are not held by it.`,
+      `${NOTICE_PREFIX} ${runNodeName(this.deps.fabric, run.id, execution.nodeId)} is blocked: a tool process kept running after it closed.`);
   }
 
   async recordJobLaunch(job: InteractiveJobIdentity): Promise<void> {
