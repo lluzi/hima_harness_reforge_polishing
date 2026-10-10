@@ -461,7 +461,14 @@ try {
 
   const responseRequest=async(response:unknown,requestId:string,sessionId=String(guide.id))=>fetch(new URL(`/hima/api/runs/${human.run.id}/control`,url),{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({sessionId,action:'respond',requestId,expectedEpoch:humanView.run.control.epoch,expectedRevision:humanView.run.control.revision,response})});
   const respond=(value:unknown,requestId:string,sessionId=String(guide.id))=>responseRequest({effectId:waiting.identity.effectId,output:{schemaVersion:waiting.contract.output.version,value,artifacts:[],diagnostics:[]}},requestId,sessionId);
-  const malformedRevision=await runtime.store.sourceRevision(human.run.id);
+  // Idle waiting-state observations may legitimately advance the source revision.
+  // The rejected envelopes must leave actual control, response and result/resource evidence unchanged.
+  const responseEvidence=async()=>{
+    const projection=await runtime.store.flowProjection(human.run.id);
+    return {controls:projection.controls,results:projection.tasks.filter((task:any)=>task.result).map((task:any)=>task.result),
+      response:await runtime.store.flowFact(human.run.id,`response:${waiting.identity.effectId}`),physical:await runtime.store.flowPhysicalFacts(human.run.id)};
+  };
+  const malformedEvidence=await responseEvidence();
   for(const [index,response] of [undefined,
     {effectId:waiting.identity.effectId,output:{schemaVersion:waiting.contract.output.version,value:{strict:true,period:1},artifacts:[]}},
     {effectId:waiting.identity.effectId,output:{schemaVersion:waiting.contract.output.version,value:{strict:true,period:1},artifacts:[{name:'bad',path:'result.txt',sha256:'not-a-hash'}],diagnostics:[]}},
@@ -469,7 +476,12 @@ try {
     const malformed=await responseRequest(response,`malformed-response-${index}`);
     assert.equal(malformed.status,400,await malformed.clone().text());
     const error=await malformed.json() as any;assert.equal(error.error.code,'hima/bad-request');assert.match(error.error.message,/response/);
-    assert.equal(await runtime.store.sourceRevision(human.run.id),malformedRevision,'bad envelopes create no control/result facts');
+    const observed=(await runtime.store.flowProjection(human.run.id)).tasks.find((task:any)=>task.identity.effectId===waiting.identity.effectId);
+    const beforeObservation=await runtime.store.sourceRevision(human.run.id);
+    await runtime.store.flowState(human.run.id,waiting.identity.effectId,1000000+index,{...observed.state,
+      reason:{...observed.state.reason,message:`${observed.state.reason.message} [fixture observation ${index}]`}});
+    assert.ok(await runtime.store.sourceRevision(human.run.id)>beforeObservation,'the independent waiting observation advances the source watermark');
+    assert.deepEqual(await responseEvidence(),malformedEvidence,'bad envelopes create no control/response/result/resource facts while idle observation continues');
   }
   const deniedResponse=await respond({strict:true,period:1},'foreign-response',String(foreign.id));assert.equal(deniedResponse.status,403);
   const invalidResponse=await respond({unexpected:true},'invalid-response');assert.equal(invalidResponse.status,409,await invalidResponse.text());

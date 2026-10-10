@@ -28,6 +28,12 @@ function continuation(local: Awaited<ReturnType<typeof controlledRun>>, requestI
     requestId, expectedEpoch: local.paused.epoch, expectedRevision: local.paused.revision };
 }
 
+async function disposeControlledRun(local: Awaited<ReturnType<typeof controlledRun>>) {
+  await local.host.ctx.hima.prepareExit({requestId:'owned-controls-teardown',mode:'stop-jobs'});
+  await waitUntil('test-owned original resources close before Home removal',async()=>(await local.host.ctx.hima.exitStatus()).ready,30000);
+  await local.dispose();
+}
+
 test('simultaneous duplicate continuations clear one hold without relaunching the original Job', async t => {
   const local = await controlledRun(t);
   try {
@@ -39,7 +45,7 @@ test('simultaneous duplicate continuations clear one hold without relaunching th
     assert.equal(context.durable?.controls.filter((control: any) => control.commandId === request.requestId).length, 1);
     const view = await admissionStatus(local.host, local.guide, local.runId);
     assert.equal(view.jobs.filter((job: any) => job.event === 'launched').length, 1, 'control never creates a second physical submit');
-  } finally { await local.dispose(); }
+  } finally { await disposeControlledRun(local); }
 });
 
 test('a cancel crossing a continuation reaches proved closure and late control cannot resurrect the Run', async t => {
@@ -61,7 +67,7 @@ test('a cancel crossing a continuation reaches proved closure and late control c
     const current = context.run.control!;
     assert.equal((await local.host.ctx.hima.executionAction({ ...resume, requestId: 'late-continue', expectedEpoch: current.epoch, expectedRevision: current.revision })).kind, 'refused');
     assert.equal((await local.host.ctx.hima.readExecutionContext(local.runId)).run.status, 'cancelled');
-  } finally { await local.dispose(); }
+  } finally { await disposeControlledRun(local); }
 });
 
 test('a refused stale control leaves facts unchanged and a corrected current request can continue', async t => {
@@ -81,5 +87,5 @@ test('a refused stale control leaves facts unchanged and a corrected current req
     const corrected = await local.host.ctx.hima.readExecutionContext(local.runId);
     assert.deepEqual(corrected.run.control?.paused, []);
     assert.equal(corrected.durable?.controls.filter((control: any) => control.commandId === request.requestId).length, 1);
-  } finally { await local.dispose(); }
+  } finally { await disposeControlledRun(local); }
 });
