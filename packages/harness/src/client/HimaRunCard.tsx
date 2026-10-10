@@ -21,7 +21,7 @@ import type { BlockerView, CancelView, Citation, CodeView, DecisionView, Experie
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
+import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchExecutionContext, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT } from './locale/index.js';
 import { HIMA_STYLE } from './workbench-style.js';
@@ -961,6 +961,23 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
   const state: { view?: RunView; error?: HimaFailure } = stored.identity === identity ? stored : {};
   const setState = (next: { view?: RunView; error?: HimaFailure }) => setStored({ identity, ...next });
   const acting = useRunActions(runId, (view) => setState({ view }), sessionId, state.view);
+  // The receipt names the current node by the Pack's own label; the method that holds the labels
+  // comes with the execution context (an owned Run's), read once. Without it the id stands in.
+  const [labels, setLabels] = useState<{ identity: string; byId: Readonly<Record<string, string>> }>();
+  // The Run detail starts folded. It stays an open <details> underneath (the desktop driver reads
+  // `innerText`, which a closed <details> drops), folded visually instead; the summary toggles it.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (runId === undefined) return;
+    const controller = new AbortController();
+    void fetchExecutionContext(runId, controller.signal, sessionId).then((result) => {
+      if (controller.signal.aborted || !result.ok) return;
+      const byId: Record<string, string> = {};
+      for (const node of result.value.method?.reference.nodes ?? []) if (node.label !== undefined) byId[node.id] = node.label;
+      setLabels({ identity, byId });
+    });
+    return () => { controller.abort(); };
+  }, [runId, sessionId]);
 
   useEffect(() => {
     if (runId === undefined) return;
@@ -999,7 +1016,10 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
   }
   const status = state.view?.run.status;
   const statusWord = status === undefined ? t('status.noFabricLong') : labelKeyed(t, `status.${status}`, labelled(runStatusLabel, status).said);
-  const notice = acting.refusal?.message ?? acting.notice ?? t('run.nothingFurther');
+  const notice = acting.refusal?.message ?? acting.notice;
+  const currentNode = state.view?.run.currentNode;
+  const nodeSaid = currentNode === undefined ? undefined : (labels?.identity === identity ? labels.byId[currentNode] : undefined) ?? currentNode;
+  const round = state.view?.run.generation;
   return (
     <div className="hima-run-card hima-root" title={runId}>
       <style>{HIMA_STYLE}</style>
@@ -1007,13 +1027,15 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
       {state.view === undefined ? (state.error === undefined ? <div className="hima-muted">{t('run.readingRun')}</div> : null) : (
         <>
           <div className="hima-run-card-receipt" data-hima-region="run-receipt">
-            <div className="hima-run-card-receipt-line">
-              <span className="hima-mono">{toolName ?? 'hima'}</span>
-              <span className="hima-muted">·</span>
+            {/* One plain line: the project's state, the step it stands at, the round. The tool's
+                own name stays on the card's hover title for whoever needs it. */}
+            <div className="hima-run-card-receipt-line" title={toolName ?? 'hima'}>
+              <span>{t('masthead.campaign')}</span>
               <span className="hima-state-word" data-state={status ?? ''}>{statusWord}</span>
-              {state.view.run.currentNode === undefined ? null : <><span className="hima-muted">·</span><span className="hima-mono">{state.view.run.currentNode}</span></>}
+              {nodeSaid === undefined ? null : <><span className="hima-muted">·</span><span>{nodeSaid}</span></>}
+              {round === undefined ? null : <><span className="hima-muted">·</span><span>{t('masthead.gen', { n: round })}</span></>}
             </div>
-            <div className="hima-run-card-receipt-notice">{notice}</div>
+            {notice === undefined ? null : <div className="hima-run-card-receipt-notice">{notice}</div>}
             {openRun === undefined ? null : (
               <button type="button" className="hima-button" data-hima-control="open-run" onClick={() => { openRun(runId); }}>
                 {t('run.openCampaign')} <Glyph name="arrow-right" size={12} />
@@ -1024,9 +1046,11 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
               driver.ts`), which excludes a closed <details>'s content entirely — so this stays open,
               and the visual fold the compact receipt promises is `.hima-receipt-body`'s own
               max-height and scroll instead: text a driver reads is still rendered, just clipped. */}
-          <details data-hima-control="receipt-details" open>
-            <summary>{t('run.detail')}</summary>
-            <div className="hima-receipt-body">
+          <details data-hima-control="receipt-details" data-hima-state-expanded={String(expanded)} open>
+            <summary className="hima-receipt-summary" aria-expanded={expanded} onClick={(event) => { event.preventDefault(); setExpanded((now) => !now); }}>
+              <span className={`hima-receipt-chevron${expanded ? ' hima-receipt-chevron-open' : ''}`}><Glyph name="arrow-right" size={12} /></span>{t('run.detail')}
+            </summary>
+            <div className={`hima-receipt-body${expanded ? '' : ' hima-receipt-body-folded'}`}>
               <HimaViewerSession value={sessionId}><RunBody view={state.view} acting={acting} /></HimaViewerSession>
             </div>
           </details>
