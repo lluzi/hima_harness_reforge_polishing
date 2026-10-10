@@ -25,11 +25,15 @@ model. Every EDA result on this Site comes from mock tools (mock EDA); not signo
 
 `CTU_MOCK_TIME_SCALE` scales every wait (0 = none; the resident capability sets 0.25 so the agents'
 own runs are quick). The model (`lib/ctu_mock/model.py`) holds the 20 worst path groups of
-`aes_cipher_top` (28 nm, `std9t_svt`, 1.000 ns): reference WNS −0.0442 ns, Fmax 957.67 MHz,
-TNS −3.213 ns, 41 200 µm², 18 400 instances. A generated cell family speeds up only the cell delay
-of its own stages. Calibration (`mock-eda/tests/test_mock_eda.py`): XNOR3+BUF → +2.50 %, then
-XOR2+MUX2I → +3.40 %, then AOI21+OAI21 → +5.20 % Fmax over the reference build; a family on no worst
-path gains nothing. `python3 -m ctu_mock.libraries` (from `lib/`) regenerates `share/libs/std9t_svt`.
+`aes_cipher_top` (28 nm, `std9t_svt`, clock 0.500 ns, a ~2 GHz block): 22-28 logic levels a path,
+10-30 ps of cell and 2-5 ps of net delay a stage, DFF clock-to-Q 34 ps. Reference WNS −0.0124 ns,
+Fmax 1951.60 MHz, TNS −0.596 ns over 74 violating endpoints, 41 200 µm², 18 400 instances. A
+generated cell family speeds up only the cell delay of its own stages, by 5-10 %. Calibration
+(`mock-eda/tests/test_mock_eda.py`, the math is in the model's docstring): XNOR3+BUF take 13.84 ps
+off the worst path A1 (16.88 ps with the extra-fast variants), the key-expansion path B1 then limits
+Fmax at 1980.98 MHz, +1.51 % over the reference build, so the default +1 % Goal is met in one round;
+a family on no worst path gains nothing. `python3 -m ctu_mock.libraries` (from `lib/`) regenerates
+`share/libs/std9t_svt`.
 
 ## Resident agents
 

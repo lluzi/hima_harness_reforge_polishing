@@ -3,9 +3,9 @@
     {
       "areaUm2": 5.54,
       "drive": 1,
-      "fallFo4Ps": 78.8,
+      "fallFo4Ps": 32.7,
       "family": "DFF",
-      "fo4DelayPs": 82.0,
+      "fo4DelayPs": 34.0,
       "function": "IQ",
       "inputCapFf": 0.92,
       "inputs": [
@@ -15,14 +15,14 @@
       "leakageNw": 6.8,
       "name": "DFFQ_X1",
       "output": "Q",
-      "riseFo4Ps": 85.2
+      "riseFo4Ps": 35.3
     },
     {
       "areaUm2": 7.645,
       "drive": 2,
-      "fallFo4Ps": 67.8,
+      "fallFo4Ps": 28.1,
       "family": "DFF",
-      "fo4DelayPs": 70.5,
+      "fo4DelayPs": 29.2,
       "function": "IQ",
       "inputCapFf": 1.426,
       "inputs": [
@@ -32,14 +32,14 @@
       "leakageNw": 13.6,
       "name": "DFFQ_X2",
       "output": "Q",
-      "riseFo4Ps": 73.2
+      "riseFo4Ps": 30.4
     },
     {
       "areaUm2": 3.133,
       "drive": 2,
-      "fallFo4Ps": 25.3,
+      "fallFo4Ps": 14.3,
       "family": "BUF",
-      "fo4DelayPs": 25.8,
+      "fo4DelayPs": 14.6,
       "function": "A",
       "inputCapFf": 1.333,
       "inputs": [
@@ -48,14 +48,14 @@
       "leakageNw": 4.2,
       "name": "BUF_X2",
       "output": "Z",
-      "riseFo4Ps": 26.3
+      "riseFo4Ps": 14.9
     },
     {
       "areaUm2": 4.653,
       "drive": 4,
-      "fallFo4Ps": 22.9,
+      "fallFo4Ps": 13.0,
       "family": "BUF",
-      "fo4DelayPs": 23.4,
+      "fo4DelayPs": 13.3,
       "function": "A",
       "inputCapFf": 2.279,
       "inputs": [
@@ -64,14 +64,14 @@
       "leakageNw": 8.4,
       "name": "BUF_X4",
       "output": "Z",
-      "riseFo4Ps": 23.9
+      "riseFo4Ps": 13.5
     },
     {
       "areaUm2": 7.491,
       "drive": 8,
-      "fallFo4Ps": 21.2,
+      "fallFo4Ps": 12.0,
       "family": "BUF",
-      "fo4DelayPs": 21.6,
+      "fo4DelayPs": 12.2,
       "function": "A",
       "inputCapFf": 4.171,
       "inputs": [
@@ -80,14 +80,14 @@
       "leakageNw": 16.8,
       "name": "BUF_X8",
       "output": "Z",
-      "riseFo4Ps": 22.0
+      "riseFo4Ps": 12.5
     },
     {
       "areaUm2": 1.01,
       "drive": 1,
-      "fallFo4Ps": 11.7,
+      "fallFo4Ps": 9.7,
       "family": "INV",
-      "fo4DelayPs": 12.0,
+      "fo4DelayPs": 10.0,
       "function": "!A",
       "inputCapFf": 0.84,
       "inputs": [
@@ -96,14 +96,14 @@
       "leakageNw": 1.2,
       "name": "INV_X1",
       "output": "ZN",
-      "riseFo4Ps": 12.3
+      "riseFo4Ps": 10.3
     },
     {
       "areaUm2": 1.394,
       "drive": 2,
-      "fallFo4Ps": 10.0,
+      "fallFo4Ps": 8.3,
       "family": "INV",
-      "fo4DelayPs": 10.3,
+      "fo4DelayPs": 8.6,
       "function": "!A",
       "inputCapFf": 1.302,
       "inputs": [
@@ -112,14 +112,14 @@
       "leakageNw": 2.4,
       "name": "INV_X2",
       "output": "ZN",
-      "riseFo4Ps": 10.6
+      "riseFo4Ps": 8.9
     },
     {
       "areaUm2": 2.071,
       "drive": 4,
-      "fallFo4Ps": 9.1,
+      "fallFo4Ps": 7.6,
       "family": "INV",
-      "fo4DelayPs": 9.4,
+      "fo4DelayPs": 7.8,
       "function": "!A",
       "inputCapFf": 2.226,
       "inputs": [
@@ -128,14 +128,14 @@
       "leakageNw": 4.8,
       "name": "INV_X4",
       "output": "ZN",
-      "riseFo4Ps": 9.6
+      "riseFo4Ps": 8.0
     },
     {
       "areaUm2": 3.78,
       "drive": 1,
-      "fallFo4Ps": 47.5,
+      "fallFo4Ps": 23.7,
       "family": "XNOR3",
-      "fo4DelayPs": 56.0,
+      "fo4DelayPs": 28.0,
       "function": "!(A1^A2^A3)",
       "inputCapFf": 1.62,
       "inputs": [
@@ -146,14 +146,14 @@
       "leakageNw": 5.9,
       "name": "XNOR3_X1",
       "output": "ZN",
-      "riseFo4Ps": 64.5
+      "riseFo4Ps": 32.3
     },
     {
       "areaUm2": 5.216,
       "drive": 2,
-      "fallFo4Ps": 40.8,
+      "fallFo4Ps": 20.4,
       "family": "XNOR3",
-      "fo4DelayPs": 48.2,
+      "fo4DelayPs": 24.1,
       "function": "!(A1^A2^A3)",
       "inputCapFf": 2.511,
       "inputs": [
@@ -164,14 +164,14 @@
       "leakageNw": 11.8,
       "name": "XNOR3_X2",
       "output": "ZN",
-      "riseFo4Ps": 55.5
+      "riseFo4Ps": 27.8
     },
     {
       "areaUm2": 2.77,
       "drive": 1,
-      "fallFo4Ps": 34.2,
+      "fallFo4Ps": 18.9,
       "family": "XOR2",
-      "fo4DelayPs": 38.0,
+      "fo4DelayPs": 21.0,
       "function": "A1^A2",
       "inputCapFf": 1.48,
       "inputs": [
@@ -181,14 +181,14 @@
       "leakageNw": 4.2,
       "name": "XOR2_X1",
       "output": "Z",
-      "riseFo4Ps": 41.8
+      "riseFo4Ps": 23.1
     },
     {
       "areaUm2": 2.77,
       "drive": 1,
-      "fallFo4Ps": 34.2,
+      "fallFo4Ps": 18.9,
       "family": "XOR2",
-      "fo4DelayPs": 38.0,
+      "fo4DelayPs": 21.0,
       "function": "A1^A2",
       "inputCapFf": 1.48,
       "inputs": [
@@ -198,14 +198,14 @@
       "leakageNw": 4.2,
       "name": "XNOR2_X1",
       "output": "Z",
-      "riseFo4Ps": 41.8
+      "riseFo4Ps": 23.1
     },
     {
       "areaUm2": 3.823,
       "drive": 2,
-      "fallFo4Ps": 29.4,
+      "fallFo4Ps": 16.3,
       "family": "XOR2",
-      "fo4DelayPs": 32.7,
+      "fo4DelayPs": 18.1,
       "function": "A1^A2",
       "inputCapFf": 2.294,
       "inputs": [
@@ -215,14 +215,14 @@
       "leakageNw": 8.4,
       "name": "XOR2_X2",
       "output": "Z",
-      "riseFo4Ps": 35.9
+      "riseFo4Ps": 19.8
     },
     {
       "areaUm2": 3.823,
       "drive": 2,
-      "fallFo4Ps": 29.4,
+      "fallFo4Ps": 16.3,
       "family": "XOR2",
-      "fo4DelayPs": 32.7,
+      "fo4DelayPs": 18.1,
       "function": "A1^A2",
       "inputCapFf": 2.294,
       "inputs": [
@@ -232,14 +232,14 @@
       "leakageNw": 8.4,
       "name": "XNOR2_X2",
       "output": "Z",
-      "riseFo4Ps": 35.9
+      "riseFo4Ps": 19.8
     },
     {
       "areaUm2": 3.02,
       "drive": 1,
-      "fallFo4Ps": 31.2,
+      "fallFo4Ps": 17.4,
       "family": "MUX2I",
-      "fo4DelayPs": 34.0,
+      "fo4DelayPs": 19.0,
       "function": "!((I0&!S)|(I1&S))",
       "inputCapFf": 1.21,
       "inputs": [
@@ -250,14 +250,14 @@
       "leakageNw": 3.6,
       "name": "MUX2I_X1",
       "output": "ZN",
-      "riseFo4Ps": 36.8
+      "riseFo4Ps": 20.6
     },
     {
       "areaUm2": 4.168,
       "drive": 2,
-      "fallFo4Ps": 26.8,
+      "fallFo4Ps": 15.0,
       "family": "MUX2I",
-      "fo4DelayPs": 29.2,
+      "fo4DelayPs": 16.3,
       "function": "!((I0&!S)|(I1&S))",
       "inputCapFf": 1.875,
       "inputs": [
@@ -268,14 +268,14 @@
       "leakageNw": 7.2,
       "name": "MUX2I_X2",
       "output": "ZN",
-      "riseFo4Ps": 31.7
+      "riseFo4Ps": 17.7
     },
     {
       "areaUm2": 3.28,
       "drive": 1,
-      "fallFo4Ps": 38.1,
+      "fallFo4Ps": 21.9,
       "family": "MUX2",
-      "fo4DelayPs": 40.0,
+      "fo4DelayPs": 23.0,
       "function": "(I0&!S)|(I1&S)",
       "inputCapFf": 1.1,
       "inputs": [
@@ -286,14 +286,14 @@
       "leakageNw": 3.9,
       "name": "MUX2_X1",
       "output": "Z",
-      "riseFo4Ps": 41.9
+      "riseFo4Ps": 24.1
     },
     {
       "areaUm2": 1.76,
       "drive": 1,
-      "fallFo4Ps": 26.1,
+      "fallFo4Ps": 13.9,
       "family": "AOI21",
-      "fo4DelayPs": 30.0,
+      "fo4DelayPs": 16.0,
       "function": "!((A1&A2)|B)",
       "inputCapFf": 1.18,
       "inputs": [
@@ -304,14 +304,14 @@
       "leakageNw": 2.9,
       "name": "AOI21_X1",
       "output": "ZN",
-      "riseFo4Ps": 33.9
+      "riseFo4Ps": 18.1
     },
     {
       "areaUm2": 2.429,
       "drive": 2,
-      "fallFo4Ps": 22.4,
+      "fallFo4Ps": 12.0,
       "family": "AOI21",
-      "fo4DelayPs": 25.8,
+      "fo4DelayPs": 13.8,
       "function": "!((A1&A2)|B)",
       "inputCapFf": 1.829,
       "inputs": [
@@ -322,14 +322,14 @@
       "leakageNw": 5.8,
       "name": "AOI21_X2",
       "output": "ZN",
-      "riseFo4Ps": 29.2
+      "riseFo4Ps": 15.6
     },
     {
       "areaUm2": 1.76,
       "drive": 1,
-      "fallFo4Ps": 26.3,
+      "fallFo4Ps": 14.9,
       "family": "OAI21",
-      "fo4DelayPs": 30.0,
+      "fo4DelayPs": 17.0,
       "function": "!((A1|A2)&B)",
       "inputCapFf": 1.16,
       "inputs": [
@@ -340,14 +340,14 @@
       "leakageNw": 2.8,
       "name": "OAI21_X1",
       "output": "ZN",
-      "riseFo4Ps": 33.7
+      "riseFo4Ps": 19.1
     },
     {
       "areaUm2": 2.429,
       "drive": 2,
-      "fallFo4Ps": 22.6,
+      "fallFo4Ps": 12.8,
       "family": "OAI21",
-      "fo4DelayPs": 25.8,
+      "fo4DelayPs": 14.6,
       "function": "!((A1|A2)&B)",
       "inputCapFf": 1.798,
       "inputs": [
@@ -358,14 +358,14 @@
       "leakageNw": 5.6,
       "name": "OAI21_X2",
       "output": "ZN",
-      "riseFo4Ps": 29.0
+      "riseFo4Ps": 16.4
     },
     {
       "areaUm2": 2.27,
       "drive": 1,
-      "fallFo4Ps": 28.6,
+      "fallFo4Ps": 17.0,
       "family": "AOI22",
-      "fo4DelayPs": 32.0,
+      "fo4DelayPs": 19.0,
       "function": "!((A1&A2)|(B1&B2))",
       "inputCapFf": 1.2,
       "inputs": [
@@ -377,14 +377,14 @@
       "leakageNw": 3.4,
       "name": "AOI22_X1",
       "output": "ZN",
-      "riseFo4Ps": 35.4
+      "riseFo4Ps": 21.0
     },
     {
       "areaUm2": 2.27,
       "drive": 1,
-      "fallFo4Ps": 28.8,
+      "fallFo4Ps": 18.0,
       "family": "OAI22",
-      "fo4DelayPs": 32.0,
+      "fo4DelayPs": 20.0,
       "function": "!((A1|A2)&(B1|B2))",
       "inputCapFf": 1.2,
       "inputs": [
@@ -396,14 +396,14 @@
       "leakageNw": 3.3,
       "name": "OAI22_X1",
       "output": "ZN",
-      "riseFo4Ps": 35.2
+      "riseFo4Ps": 22.0
     },
     {
       "areaUm2": 1.26,
       "drive": 1,
-      "fallFo4Ps": 19.2,
+      "fallFo4Ps": 11.5,
       "family": "NAND2",
-      "fo4DelayPs": 20.0,
+      "fo4DelayPs": 12.0,
       "function": "!(A1&A2)",
       "inputCapFf": 0.98,
       "inputs": [
@@ -413,14 +413,14 @@
       "leakageNw": 1.9,
       "name": "NAND2_X1",
       "output": "ZN",
-      "riseFo4Ps": 20.8
+      "riseFo4Ps": 12.5
     },
     {
       "areaUm2": 1.739,
       "drive": 2,
-      "fallFo4Ps": 16.5,
+      "fallFo4Ps": 9.9,
       "family": "NAND2",
-      "fo4DelayPs": 17.2,
+      "fo4DelayPs": 10.3,
       "function": "!(A1&A2)",
       "inputCapFf": 1.519,
       "inputs": [
@@ -430,14 +430,14 @@
       "leakageNw": 3.8,
       "name": "NAND2_X2",
       "output": "ZN",
-      "riseFo4Ps": 17.9
+      "riseFo4Ps": 10.7
     },
     {
       "areaUm2": 2.583,
       "drive": 4,
-      "fallFo4Ps": 15.0,
+      "fallFo4Ps": 9.0,
       "family": "NAND2",
-      "fo4DelayPs": 15.6,
+      "fo4DelayPs": 9.4,
       "function": "!(A1&A2)",
       "inputCapFf": 2.597,
       "inputs": [
@@ -447,14 +447,14 @@
       "leakageNw": 7.6,
       "name": "NAND2_X4",
       "output": "ZN",
-      "riseFo4Ps": 16.2
+      "riseFo4Ps": 9.7
     },
     {
       "areaUm2": 1.26,
       "drive": 1,
-      "fallFo4Ps": 22.4,
+      "fallFo4Ps": 13.1,
       "family": "NOR2",
-      "fo4DelayPs": 24.0,
+      "fo4DelayPs": 14.0,
       "function": "!(A1|A2)",
       "inputCapFf": 1.02,
       "inputs": [
@@ -464,14 +464,14 @@
       "leakageNw": 2.0,
       "name": "NOR2_X1",
       "output": "ZN",
-      "riseFo4Ps": 25.6
+      "riseFo4Ps": 14.9
     },
     {
       "areaUm2": 1.739,
       "drive": 2,
-      "fallFo4Ps": 19.3,
+      "fallFo4Ps": 11.3,
       "family": "NOR2",
-      "fo4DelayPs": 20.6,
+      "fo4DelayPs": 12.0,
       "function": "!(A1|A2)",
       "inputCapFf": 1.581,
       "inputs": [
@@ -481,14 +481,14 @@
       "leakageNw": 4.0,
       "name": "NOR2_X2",
       "output": "ZN",
-      "riseFo4Ps": 22.0
+      "riseFo4Ps": 12.8
     },
     {
       "areaUm2": 1.76,
       "drive": 1,
-      "fallFo4Ps": 24.5,
+      "fallFo4Ps": 14.2,
       "family": "NAND3",
-      "fo4DelayPs": 26.0,
+      "fo4DelayPs": 15.0,
       "function": "!(A1&A2&A3)",
       "inputCapFf": 1.04,
       "inputs": [
@@ -499,14 +499,14 @@
       "leakageNw": 2.4,
       "name": "NAND3_X1",
       "output": "ZN",
-      "riseFo4Ps": 27.5
+      "riseFo4Ps": 15.8
     },
     {
       "areaUm2": 2.02,
       "drive": 1,
-      "fallFo4Ps": 27.3,
+      "fallFo4Ps": 16.4,
       "family": "NOR3",
-      "fo4DelayPs": 30.0,
+      "fo4DelayPs": 18.0,
       "function": "!(A1|A2|A3)",
       "inputCapFf": 1.08,
       "inputs": [
@@ -517,14 +517,14 @@
       "leakageNw": 2.5,
       "name": "NOR3_X1",
       "output": "ZN",
-      "riseFo4Ps": 32.7
+      "riseFo4Ps": 19.6
     },
     {
       "areaUm2": 1.76,
       "drive": 1,
-      "fallFo4Ps": 29.1,
+      "fallFo4Ps": 17.5,
       "family": "AND2",
-      "fo4DelayPs": 30.0,
+      "fo4DelayPs": 18.0,
       "function": "A1&A2",
       "inputCapFf": 0.96,
       "inputs": [
@@ -534,14 +534,14 @@
       "leakageNw": 2.6,
       "name": "AND2_X1",
       "output": "Z",
-      "riseFo4Ps": 30.9
+      "riseFo4Ps": 18.5
     },
     {
       "areaUm2": 2.429,
       "drive": 2,
-      "fallFo4Ps": 25.0,
+      "fallFo4Ps": 15.0,
       "family": "AND2",
-      "fo4DelayPs": 25.8,
+      "fo4DelayPs": 15.5,
       "function": "A1&A2",
       "inputCapFf": 1.488,
       "inputs": [
@@ -551,14 +551,14 @@
       "leakageNw": 5.2,
       "name": "AND2_X2",
       "output": "Z",
-      "riseFo4Ps": 26.6
+      "riseFo4Ps": 15.9
     },
     {
       "areaUm2": 1.76,
       "drive": 1,
-      "fallFo4Ps": 30.5,
+      "fallFo4Ps": 18.1,
       "family": "OR2",
-      "fo4DelayPs": 32.0,
+      "fo4DelayPs": 19.0,
       "function": "A1|A2",
       "inputCapFf": 0.98,
       "inputs": [
@@ -568,7 +568,7 @@
       "leakageNw": 2.7,
       "name": "OR2_X1",
       "output": "Z",
-      "riseFo4Ps": 33.5
+      "riseFo4Ps": 19.9
     }
   ],
   "corner": "tt0p90v25c",
