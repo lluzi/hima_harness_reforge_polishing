@@ -320,7 +320,10 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
   const detected = fork === undefined ? autoDetectForkBranches(nodes, edges) : { node: fork.node, branches: fork.branches };
   const branchOffset = new Map<string, number>();
   const n = detected?.branches.length ?? 0;
-  detected?.branches.forEach((branch, i) => { for (const id of branch.nodes) branchOffset.set(id, i - (n - 1) / 2); });
+  // A graph with merged steps keeps the room below its spine for their checklists, so a fork's
+  // lanes all open above it instead: branch i at lane -(i + 1). Every other graph fans symmetrically.
+  const above = nodes.some((node) => node.members !== undefined);
+  detected?.branches.forEach((branch, i) => { for (const id of branch.nodes) branchOffset.set(id, above ? -(i + 1) : i - (n - 1) / 2); });
 
   const ids = new Set(nodes.map((node) => node.id));
   const predecessors = new Map<string, string[]>();
@@ -742,11 +745,19 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const hang = hangNodeIds(graph.nodes, graph.edges, graph.entry);
   const rankMap = computeRank(graph.nodes, graph.edges, hang, graph.entry);
   const rowMap = computeRow(graph.nodes, graph.edges, hang, rankMap, facts?.fork);
+  // With merged steps on the spine, a wait node (drawn only once the Run has been there) stands
+  // apart past the Goal, one lane below the spine, rather than hanging among the checklists.
+  const checklists = graph.nodes.some((node) => node.members !== undefined);
+  if (checklists) {
+    const spineRanks = graph.nodes.filter((node) => node.kind !== 'wait').map((node) => rankMap.get(node.id) ?? 0);
+    const spineMax = spineRanks.length > 0 ? Math.max(...spineRanks) : 0;
+    graph.nodes.filter((node) => node.kind === 'wait').forEach((node, i) => { rankMap.set(node.id, spineMax + 2.5 + i); rowMap.set(node.id, 1); });
+  }
 
   const rows = graph.nodes.map((node) => rowMap.get(node.id) ?? 0);
   const minRow = rows.length > 0 ? Math.min(...rows) : 0;
   const maxRow = rows.length > 0 ? Math.max(...rows) : 0;
-  const ranks = graph.nodes.map((node) => rankMap.get(node.id) ?? 0);
+  const ranks = graph.nodes.filter((node) => !checklists || node.kind !== 'wait').map((node) => rankMap.get(node.id) ?? 0);
   const maxRank = ranks.length > 0 ? Math.max(...ranks) : 0;
 
   // Rule 3.
@@ -898,8 +909,27 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     const from = finalPosition.get(edge.from) ?? { x: pass1X.get(edge.from) ?? X0, y: pass1Y.get(edge.from) ?? PAD_Y };
     const to = finalPosition.get(edge.to) ?? { x: pass1X.get(edge.to) ?? X0, y: pass1Y.get(edge.to) ?? PAD_Y };
     const level = mainLevels.get(edge);
-    return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to),
+    const placed = classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to),
       level === undefined ? undefined : arcApexAbove(mainTop, level));
+    // Lanes above a checklist spine: an edge up into a lane leaves its source's top and turns into
+    // the target's side; an edge down out of a lane leaves its source's side and drops into the
+    // target's top. Neither runs below the spine, where the checklists are.
+    if (!checklists) return placed;
+    if (placed.kind === 'revisit') {
+      // Over every lane: up from the source's top, across above the highest lane, and down into the
+      // target's top-left from its left, clear of the fork's edges rising from its top-right.
+      const apex = Math.max(12, mainTop - 40);
+      const c = (apex - 0.25 * (from.y - NODE / 2 + to.y - NODE / 2) / 2) / 0.75;
+      return { ...placed, path: `M ${from.x} ${from.y - NODE / 2} C ${from.x + 40} ${c}, ${to.x - 150} ${c}, ${to.x - 8} ${to.y - NODE / 2}`,
+        ...(placed.badge === undefined ? {} : { badge: { ...placed.badge, y: Math.max(12, apex) } }) };
+    }
+    if (from.y === to.y || to.x <= from.x) return placed;
+    const kindOf = (id: string) => graph.nodes.find((node) => node.id === id)?.kind;
+    if (kindOf(edge.to) === 'wait') return placed;
+    const path = to.y < from.y
+      ? roundedPath([{ x: from.x + 10, y: from.y - NODE / 2 }, { x: from.x + 10, y: to.y }, { x: to.x - NODE / 2, y: to.y }])
+      : roundedPath([{ x: from.x + NODE / 2, y: from.y }, { x: to.x, y: from.y }, { x: to.x, y: to.y - NODE / 2 }]);
+    return { ...placed, path };
   });
 
   // Rule 7: each accepted growth, laid out below its parent node the same way an open loop is below

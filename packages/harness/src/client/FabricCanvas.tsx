@@ -202,8 +202,11 @@ export function FabricCanvas({
   // node once the Run moved on.
   useEffect(() => {
     if (!measured.current) return;
-    if (fittedFor.current !== runId) {
-      fittedFor.current = runId;
+    // A scene that changes size (its method arrives after a fallback graph, a wait node appears) is
+    // fitted again; the same scene keeps whatever the person did with the camera.
+    const fitKey = `${runId}:${String(Math.round(scene.width))}x${String(Math.round(scene.height))}`;
+    if (fittedFor.current !== fitKey) {
+      fittedFor.current = fitKey;
       setSuppressTransition(true);
       // Labels must be visible the moment the canvas opens (`labelsVisibleAt(0.6) === true`, the
       // floor below which Task 5's own labels-hidden rule kicks in) — a wide scene fitted any
@@ -214,7 +217,10 @@ export function FabricCanvas({
       // scene that was never too small to read. The clamp — and the "centre on the node a person
       // actually wants to see" behaviour — only kicks in once the natural scale would have opened
       // outside that readable range.
-      const fit = fitToWidth(scene, viewport);
+      // The whole scene, both ways, centred with even margins — not only its width, which left a
+      // tall scene pinned to the top-left of a short pane.
+      const whole = Math.min(1, (viewport.width - 32) / scene.width, (viewport.height - 32) / scene.height);
+      const fit = whole >= 0.6 ? { scale: whole, ...centerAt(scene, viewport, whole) } : fitToWidth(scene, viewport);
       if (fit.scale >= 0.6 && fit.scale <= 2) {
         setTransform(fit);
       } else {
@@ -242,7 +248,7 @@ export function FabricCanvas({
     // Only the identity of the running node and the viewport's own size decide a re-centre; the
     // scene's other facts (a lit edge, a fresh log line) must never nudge the camera.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, currentNode?.id, viewport.width, viewport.height]);
+  }, [runId, currentNode?.id, viewport.width, viewport.height, scene.width, scene.height]);
 
   // A newly-lit edge's one-shot animation, tracked here rather than during `Edge`'s own render: the
   // read (what was already lit, as of the last commit) happens below, in the render body; the write

@@ -264,8 +264,9 @@ export function FabricNode({ node, activity, working = false, runId, labelsVisib
   const hover = node.label === undefined
     ? `${node.id} · ${node.kind} · ${stateWord}${node.caption === undefined ? '' : ` · ${node.caption}`}`
     : `${node.label} · ${stateWord}${node.about === undefined ? '' : ` — ${node.about}`}`;
-  // The extra lines start below the two label lines the layout always reserves.
-  const extraTop = labelY + 30;
+  // The extra lines start right under the label: one line down for a one-line label, two for a
+  // wrapped one (the layout reserves two either way, so this only ever moves them up).
+  const extraTop = labelY + 15 * (labelLines?.length ?? 2);
   const activityLine = activity?.latest === undefined ? undefined : `${t(activityKindKey(activity.latest.kind))} ${activity.latest.title}`;
   return (
     <g

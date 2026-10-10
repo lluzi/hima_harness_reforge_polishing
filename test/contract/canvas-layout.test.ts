@@ -261,10 +261,10 @@ test('a labelled segment collapses into one merged step with a checklist; an unl
   assert.deepEqual([group.kind, group.label, group.about], ['act', 'Reference build', 'Synthesis, APR and the route check.']);
   assert.deepEqual(group.members!.map((m) => [m.id, m.label, m.state]),
     [['synth', 'Synthesis and APR', 'done'], ['post-route', 'Post-route', 'running'], ['route-ok', undefined, 'pending']]);
-  assert.deepEqual(graph.nodes.map((n) => n.id), ['seg:synth', 'agent', 'blocked'], 'members leave the node list; the until node stays');
+  assert.deepEqual(graph.nodes.map((n) => n.id), ['seg:synth', 'agent'], 'members leave the node list; the until node stays; the unvisited wait node is not drawn');
   assert.equal(graph.entry, 'seg:synth');
   assert.deepEqual(graph.edges.map((e) => [e.from, e.to, e.outcome ?? '', e.revisit === true]),
-    [['seg:synth', 'agent', 'PASS', false], ['seg:synth', 'blocked', 'FAIL', false], ['agent', 'seg:synth', '', true]],
+    [['seg:synth', 'agent', 'PASS', false], ['agent', 'seg:synth', '', true]],
     'internal edges drop; crossing edges (and the revisit) are redrawn to the group');
   assert.equal(facts.states!['seg:synth'], 'running', 'running while any member runs');
   assert.equal(facts.currentNode, 'seg:synth');
@@ -279,19 +279,21 @@ test('a labelled segment collapses into one merged step with a checklist; an unl
   assert.equal(waiting.facts.states!['seg:synth'], 'pending', 'waiting before any member starts');
 
   const plain = sceneInputs(andesGraph(false) as never, view, andesContext);
-  assert.deepEqual(plain.graph.nodes.map((n) => n.id), ['synth', 'post-route', 'route-ok', 'agent', 'blocked'], 'an old Pack\'s unlabelled segment is unchanged');
+  assert.deepEqual(plain.graph.nodes.map((n) => n.id), ['synth', 'post-route', 'route-ok', 'agent', 'blocked'], 'an old Pack\'s unlabelled segment is unchanged, its wait node included');
   assert.equal(plain.graph.nodes.some((n) => n.members !== undefined), false);
 });
 
-test('a merged step\'s checklist lines are reserved below it, so the node under it moves clear', () => {
-  const { graph, facts } = sceneInputs(andesGraph(true) as never);
+test('with merged steps, a wait node is drawn only once the Run has been there, past the Goal and below the spine', () => {
+  const unvisited = sceneInputs(andesGraph(true) as never);
+  assert.equal(unvisited.graph.nodes.some((n) => n.id === 'blocked'), false);
+  assert.equal(unvisited.graph.edges.some((e) => e.to === 'blocked'), false);
+  const view = { run: { currentNode: 'blocked' }, nodes: [{ nodeId: 'synth', state: 'done' }, { nodeId: 'route-ok', state: 'done' }, { nodeId: 'blocked', state: 'blocked' }], generations: [] } as unknown as RunView;
+  const { graph, facts } = sceneInputs(andesGraph(true) as never, view);
   const scene = layoutCanvas(graph, facts);
   const group = scene.nodes.find((n) => n.id === 'seg:synth')!;
-  const hung = scene.nodes.find((n) => n.id === 'blocked')!;
-  assert.equal(group.members!.length, 3);
-  // The checklist (three 15-unit lines under the label lines) would reach the hung wait node one row
-  // down, half a pitch on; the lanes move it a row further instead.
-  assert.ok(hung.y - group.y >= NODE / 2 + 39 + 3 * 15 + NODE / 2, `the wait node clears the checklist (dy ${hung.y - group.y})`);
+  const wait = scene.nodes.find((n) => n.id === 'blocked')!;
+  assert.ok(wait.x > scene.goal.x && wait.y > group.y, `the wait node stands past the Goal (${wait.x} > ${scene.goal.x}) below the spine`);
+  assert.equal(scene.goal.y, group.y);
   assert.ok(scene.height >= group.y + NODE / 2 + 39 + 3 * 15, 'the scene holds the checklist');
 });
 
@@ -332,7 +334,7 @@ test('the Results table offers only rounds the new build has read, reads the ref
   assert.deepEqual([empty.round, empty.rounds, empty.headline, empty.rows[0]!.cells[0]!.display], [1, [], undefined, '—']);
 });
 
-test('the shipped andes-cell-fmax graph keeps one spine: merged steps and the join on it, the two agents either side, no chips into the wait node or out of a merged step', () => {
+test('the shipped andes-cell-fmax graph keeps one spine with both agents in lanes above it, and no edge crosses a checklist or an agent\'s activity', () => {
   const pack = loadPack(packsDir, 'andes-cell-fmax');
   const context = { available: [], method: { contract: pack.contract } } as unknown as ExecutionContext;
   const { graph, facts } = sceneInputs(pack.graph, { run: {}, nodes: [], generations: [] } as unknown as RunView, context);
@@ -345,19 +347,26 @@ test('the shipped andes-cell-fmax graph keeps one spine: merged steps and the jo
   assert.equal(scene.goal.y, reference.y, 'the Goal sits on the spine');
   const himatime = at('himatime-agent'), qualib = at('qualib-agent');
   assert.equal(himatime.ai, true); assert.equal(qualib.ai, true);
-  assert.ok(himatime.y < reference.y && qualib.y > reference.y, `the agents sit either side of the spine (${himatime.y}, ${reference.y}, ${qualib.y})`);
+  assert.ok(himatime.y < reference.y && qualib.y < himatime.y, `both agents sit above the spine in distinct lanes, HimaTime nearer (${qualib.y}, ${himatime.y}, ${reference.y})`);
+  assert.ok(Math.abs((reference.y - himatime.y) - (himatime.y - qualib.y)) < 1, 'the lanes are evenly spaced');
   assert.ok(himatime.x === qualib.x && himatime.x > reference.x && himatime.x < join.x, 'the agents run side by side between the fork and the join');
-  assert.ok(at('blocked').y > reference.y, 'the wait node hangs below the spine');
-  // Every node's checklist or activity lines clear every node below it.
-  for (const owner of scene.nodes) {
-    const lines = ((owner.members?.length ?? 0) + (owner.ai === true ? 2 : 0)) * 15;
-    if (lines === 0) continue;
-    for (const other of scene.nodes) {
-      if (other === owner || other.y <= owner.y || Math.abs(other.x - owner.x) >= 70 + (PITCH - 8) / 2) continue;
-      assert.ok(other.y - NODE / 2 >= owner.y + NODE / 2 + 39 + lines, `${other.id} clears ${owner.id}'s extra lines`);
+  assert.equal(scene.nodes.some((n) => n.kind === 'wait'), false, 'the unvisited wait node is not drawn');
+  const arc = scene.edges.find((e) => e.kind === 'revisit')!;
+  assert.ok(arc.badge!.y < qualib.y - NODE / 2, 'the revisit arc rides above the top lane');
+  // The text boxes under a merged step (its checklist) and an AI node (label and activity lines).
+  const boxes = scene.nodes.flatMap((n) => {
+    if (n.members !== undefined) return [{ id: n.id, left: n.x - 70, right: n.x + 70, top: n.y + NODE / 2 + 39, bottom: n.y + NODE / 2 + 39 + n.members.length * 15 }];
+    if (n.ai === true) return [{ id: n.id, left: n.x - 70, right: n.x + 70, top: n.y + NODE / 2 + 2, bottom: n.y + NODE / 2 + 39 + 30 }];
+    return [];
+  });
+  for (const edge of scene.edges) {
+    for (const p of samplePath(edge.path)) {
+      for (const box of boxes) {
+        assert.ok(!(p.x > box.left && p.x < box.right && p.y > box.top && p.y < box.bottom), `${edge.from} -> ${edge.to} crosses ${box.id}'s text at (${p.x.toFixed(0)},${p.y.toFixed(0)})`);
+      }
     }
   }
-  assert.deepEqual(scene.edges.filter((e) => e.chip !== undefined).map((e) => `${e.from}>${e.to}`), [], 'no chip into the wait node or out of a merged step');
+  assert.deepEqual(scene.edges.filter((e) => e.chip !== undefined).map((e) => `${e.from}>${e.to}`), [], 'no chip out of a merged step');
   assert.equal(scene.edges.filter((e) => e.from === 'seg:requirements-joined' && e.to === 'next-round').length, 1, 'parallel outcome edges out of a merged step draw as one');
 });
 
