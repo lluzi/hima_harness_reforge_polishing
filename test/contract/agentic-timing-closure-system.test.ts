@@ -30,7 +30,7 @@ test('ATCS readiness precedes engineering and retains the legacy endpoint resolv
 
 test('ATCS 0.4 outsources one whole fix-timing task and keeps XTop engineering evidence separate from final signoff', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.4.0');
+  assert.equal(pack.contract.version, '0.4.7');
   assert.equal(pack.contract.minimumHarnessVersion, '0.3.0');
   assert.equal(pack.contract.budget.timeBoxMs, 7_200_000);
   assert.equal(pack.contract.budget.closingReserveMs, 900000,
@@ -43,7 +43,7 @@ test('ATCS 0.4 outsources one whole fix-timing task and keeps XTop engineering e
   assert.deepEqual(tool.outsourcing, {
     role: 'resident-engineering-agent',
     reads: ['inputReadiness', 'baselineState', 'nativeContext', 'commonStage'],
-    knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md'],
+    knowledge: ['resident-timing-playbook.md', 'xtop-capabilities.md', 'state-and-evidence.md', 'xtop-closure-ladder.tcl.txt'],
     artifactPrefix: 'engineering',
     produces: 'engineeringResult',
   });

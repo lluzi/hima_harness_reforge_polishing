@@ -529,7 +529,7 @@ test('installed Pack ownership refuses unknown files even inside installer metad
   assert.throws(() => exportPackMethod({ from: seeded.packDir, to: path.join(home, 'share') }), /unknown|ownership|manifest/);
 });
 
-test('the shipped ATCS method installs exact bytes and preserves its recorded release seal', async (t) => {
+test('the current development ATCS method installs exact bytes without inventing a release seal', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'u9-atcs-development-install-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const id = 'agentic-timing-closure-system';
@@ -539,13 +539,13 @@ test('the shipped ATCS method installs exact bytes and preserves its recorded re
   const receipt = installPackMethod({ from: source, to: installed });
   assert.equal(receipt.digest, expected);
   const pack = loadPack(path.dirname(installed), id);
-  assert.equal(pack.contract.version, '0.4.0');
+  assert.equal(pack.contract.version, '0.4.7');
   assert.equal(pack.flow!.irSha256, loadPack(path.dirname(source), id).flow!.irSha256);
   assert.equal(packDigestOf(installed), expected);
-  assert.deepEqual(await readFile(path.join(installed, 'VERSION.yml')), await readFile(path.join(source, 'VERSION.yml')),
-    'installation retains the source release evidence byte for byte');
+  assert.equal(pack.contract.status, 'development');
+  await assert.rejects(readFile(path.join(installed, 'VERSION.yml')), { code: 'ENOENT' });
   assert.equal(releaseIssue(snapshotPackFolder(installed), pack.contract), undefined);
-  await writeFile(path.join(installed, 'INTENT.md'), 'changed method bytes\n');
-  assert.match(releaseIssue(snapshotPackFolder(installed), pack.contract) ?? '', /INTENT\.md no longer hashes/);
+  await writeFile(path.join(installed, 'tools/read-atcs.py'), '# changed executable method bytes\n');
+  assert.notEqual(packDigestOf(installed), expected, 'changed executable method has a new content identity');
   assert.equal(await readFile(path.join(installed, 'TEST.md'), 'utf8'), await readFile(path.join(source, 'TEST.md'), 'utf8'));
 });

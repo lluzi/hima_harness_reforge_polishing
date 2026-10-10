@@ -293,7 +293,7 @@ const overlaps = (a: ReturnType<typeof footprint>, b: ReturnType<typeof footprin
 test('the current ATCS 0.4 route lays out five business tasks and its terminal Goal', () => {
   const pack = loadPack(packsDir, 'agentic-timing-closure-system');
   const scene = shippedScene('agentic-timing-closure-system');
-  assert.equal(pack.contract.version, '0.4.0');
+  assert.equal(pack.contract.version, '0.4.7');
   assert.equal(scene.nodes.length, pack.graph.nodes.length);
   assert.deepEqual(new Set(scene.nodes.map(node => node.id)),
     new Set(['prepare-inputs', 'prepare-baseline', 'fix-timing', 'evaluate-timing', 'deliver']));

@@ -490,7 +490,7 @@ test('development ATCS is admitted only as an explicit internal candidate and ke
     const checked = packagerRun('--check-pack-assets', packs, '--internal-candidate');
     assert.equal(checked.status, 0, checked.stderr);
     const pack = identitiesFrom(checked.stdout).packs.find((row: { id: string }) => row.id === 'agentic-timing-closure-system');
-    assert.equal(pack.version, '0.4.0');
+    assert.equal(pack.version, '0.4.7');
     assert.equal(pack.stage, 'development');
     assert.equal(pack.status, 'development');
     assert.equal(pack.methodDigest, undefined);
