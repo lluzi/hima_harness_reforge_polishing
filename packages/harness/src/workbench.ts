@@ -1296,7 +1296,7 @@ export interface PreparationView {
     readonly jobCap?: number;
     readonly licences?: Readonly<Record<string, number>>;
   };
-  readonly referenceGraph: { readonly entry: string; readonly nodes: readonly { readonly id: string; readonly kind: string }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: boolean }[] };
+  readonly referenceGraph: { readonly entry: string; readonly nodes: readonly { readonly id: string; readonly kind: string; readonly label?: string }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: boolean }[] };
   readonly unknowns: readonly string[];
   readonly nextActions: readonly string[];
 }

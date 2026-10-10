@@ -11,6 +11,7 @@ import { writeLocalSite } from './support/site.ts';
 import { localFabric } from './support/fabric.ts';
 import { applyPackTransfer, clearRemoteCommands, loadPack, packOverview, previewPackTransfer, remoteCommands } from '@hima/harness';
 import path from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -46,7 +47,10 @@ test('start choices do not invent a Pack or Site selection and a concrete select
     assert.equal(empty.site, undefined);
   } finally { assert.equal(await host.stop(), 0, host.stderr()); }
 
-  await installPack(h);
+  const installed = await installPack(h);
+  // A node's optional display label rides on the proposal's bare graph for the configuration mini-graph.
+  const graphFile = path.join(installed.dir, 'graph.yml');
+  await writeFile(graphFile, (await readFile(graphFile, 'utf8')).replace('  - id: synthesize\n    kind: act\n', '  - id: synthesize\n    kind: act\n    label: Synthesis\n'));
   await writeLocalSite(h, { bindings: { flowRoot: h.workspace, design: 'fixture', workspaceRoot: h.workspace }, allowedReadRoots: [h.workspace], allowedWriteRoots: [h.workspace] });
   host = await bootHimaHost(h);
   try {
@@ -60,6 +64,8 @@ test('start choices do not invent a Pack or Site selection and a concrete select
     assert.match(selected.proposal.id, /^[a-f0-9]{64}\.[a-f0-9]{32}\.[a-f0-9]{64}$/);
     assert.equal(selected.proposal.pack.id, timingProbePackId);
     assert.ok(selected.proposal.referenceGraph.nodes.length > 0);
+    assert.deepEqual(selected.proposal.referenceGraph.nodes.find((node: { id: string }) => node.id === 'synthesize'), { id: 'synthesize', kind: 'act', label: 'Synthesis' });
+    assert.ok(selected.proposal.referenceGraph.nodes.filter((node: { id: string }) => node.id !== 'synthesize').every((node: object) => !('label' in node)), 'an unlabelled node stays bare');
     assert.deepEqual((await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json() as { runs: unknown[] }).runs, []);
   } finally { assert.equal(await host.stop(), 0, host.stderr()); await h.dispose(); }
 });

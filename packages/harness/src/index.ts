@@ -1802,7 +1802,9 @@ export default class Hima extends Service {
     const strategy = overrides === undefined
       ? Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]))
       : Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, overrides.strategy?.[name] ?? declaration.default]));
-    const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
+    // Display words ride along for the configuration mini-graph; the proposal identity
+    // (campaignProposalFactsIdentity) keeps its own bare {id, kind} projection.
+    const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind, ...(node.label === undefined ? {} : { label: node.label }) })),
       edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
     const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0 && (overrides === undefined || overrideUnknowns.length === 0);
     const proposalId = newCampaignProposalId(pack, site, overrides);
