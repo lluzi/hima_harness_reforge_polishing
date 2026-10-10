@@ -1451,6 +1451,10 @@ export default class Hima extends Service {
     this.statusSeen.add(seen); this.statusLast.set(runId, line);
     const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
     if (!agent) return;
+    // A step that settles after the Run has ended tells an idle owner nothing new: the ending notice
+    // already did. It never wakes the owner for another turn.
+    const status = this.ledger.runs().find((run) => run.id === runId)?.status ?? '';
+    if ((status.startsWith('ended') || status === 'cancelled') && agent.status !== 'running') return;
     const slot = `${owner}\u0000${runId}`;
     const message = (lines: readonly string[]) => createUserMessage({
       source: { kind: 'plugin', plugin: 'hima', form: 'notice', summary: boundContextSummary(lines.at(-1)!) },
