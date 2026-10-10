@@ -13,9 +13,8 @@ const resultValue = (result: unknown): Record<string, unknown> => {
 
 test('ordinary side talk owns an interactive terminal while a foreign or child Agent is refused', async (t) => {
   const h = await createHimaHome();
-  t.after(() => h.dispose());
   const host = await bootInProcess(h);
-  t.after(() => host.dispose());
+  t.after(async () => { await host.dispose(); await h.dispose(); });
   const sideTalk = await createRootAgent(host.ctx, h.workspace);
   const foreign = await createRootAgent(host.ctx, h.workspace);
   const child = await createChildAgent(host.ctx, sideTalk, h.workspace);
