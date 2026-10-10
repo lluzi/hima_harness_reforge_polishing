@@ -1,4 +1,4 @@
-// The Campaign tab: the masthead, the view switch (Live, Generations, Evidence, Report) and the
+// The Campaign tab: the masthead, the view switch (Live, Rounds, Results, Report or Reports) and the
 // HimaFabric canvas that makes the Live view. Everything the four stacked Live sections
 // (`RunSummary`, `CampaignGraph`, `JobActivity`, `EvidenceTrail`) used to say separately is said here
 // instead — the canvas for where the Run stands, and the other three views for what it has recorded.
@@ -13,6 +13,8 @@ import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
 import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
+import { ReportsView } from './ReportsView.js';
+import { StripCanvas } from './StripCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
   MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
@@ -42,11 +44,16 @@ export interface CampaignTabProps {
   openFiles(): void;
 }
 
-type Section = 'live' | 'generations' | 'evidence' | 'report';
-const SECTIONS: readonly { readonly key: Section; readonly said: string }[] = [
-  { key: 'live', said: 'Live' }, { key: 'generations', said: 'Rounds' },
-  { key: 'evidence', said: 'Results' }, { key: 'report', said: 'Report' },
-];
+type Section = 'live' | 'generations' | 'evidence' | 'report' | 'reports';
+const SECTIONS: readonly Section[] = ['live', 'generations', 'evidence', 'report'];
+
+/** The views a Pack's contract asks for: with a Results table, its round selector replaces Rounds;
+ *  with a tool-report folder, Reports (whose last entry is the Run report) replaces Report. */
+export function sectionsFor(contract: { readonly results?: unknown; readonly reports?: unknown } | undefined): readonly Section[] {
+  return SECTIONS
+    .filter((key) => !(key === 'generations' && contract?.results !== undefined))
+    .map((key) => (key === 'report' && contract?.reports !== undefined ? 'reports' : key));
+}
 
 
 /** `prefers-reduced-motion`, tracked live: a stale snapshot already stops every animation, and this
@@ -314,25 +321,38 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
   // execution context actually change identity (a fresh poll) — not on every render this component
   // takes for a reason of its own (switching views, selecting a node, the masthead's own tick).
+  // A Pack graph that declares a strip (`view`) is drawn as the strip instead of the full canvas;
+  // the full graph and its contract come with the owned Run's execution context.
+  const strip = context?.method?.reference.view === undefined ? undefined : context.method;
+  const sections = sectionsFor(context?.method?.contract);
   const scene = useMemo(() => {
-    if (reference === undefined) return undefined;
+    if (reference === undefined || strip !== undefined) return undefined;
     const built = sceneInputs(reference, view, context);
     return layoutCanvas(built.graph, built.facts);
-  }, [reference, view, context]);
+  }, [reference, view, context, strip]);
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
+  // A view the Pack's contract does not offer (its contract arrived after the first render) falls
+  // back to the one that replaced it.
+  useEffect(() => {
+    if (sections.includes(section)) return;
+    setSection(section === 'report' ? 'reports' : section === 'reports' ? 'report' : 'live');
+  }, [sections.join(), section]);
 
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
       <nav className="hima-campaign-views" aria-label={t('campaign.views')}>
-        {SECTIONS.map(({ key }) => (
+        {sections.map((key) => (
           <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{t(`campaign.section.${key}`)}</button>
         ))}
       </nav>
       <div className="hima-campaign-content">
-        {section === 'live' ? (
+        {section === 'live' && strip !== undefined ? (
+          <StripCanvas graph={strip.reference} contract={strip.contract} view={view} context={context} stale={stale}
+            reducedMotion={reducedMotion} isOwner={isOwner} openOwner={openOwner} acting={acting} />
+        ) : section === 'live' ? (
           scene === undefined
             ? <div className="hima-empty">
                 <p>{packUnavailable && packId !== undefined
@@ -348,7 +368,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           ? <div className="hima-empty"><p>{t('campaign.readingRunRecords')}</p></div>
           : section === 'generations'
             ? <div className="hima-detail"><h3>{t('campaign.generationsHeading')}</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>{t('campaign.noGenerationOpened')}</p>}<GenerationResearch view={view}/></div>
-            : section === 'evidence' ? <EvidenceView view={view} results={context?.method?.contract.results} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
+            : section === 'evidence' ? <EvidenceView view={view} results={context?.method?.contract.results} />
+              : section === 'reports' ? <ReportsView runId={runId} view={view} graph={context?.method?.reference} runReport={() => <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />} />
+                : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>

@@ -106,6 +106,10 @@ export const HIMA_STYLE = `
 .hima-studio{position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
 .hima-studio-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-1) var(--hima-sp-4);min-height:40px;border-bottom:1px solid var(--hima-line);flex:none}
 .hima-studio-header select{flex:1 1 140px;min-width:0}
+/* A phone-width pane keeps the header to two rows: the two least-used actions step aside there
+   (a new Campaign starts from the conversation; files open from the shell). */
+.hima-studio{container-type:inline-size}
+@container (max-width:460px){ .hima-studio-secondary{display:none} }
 .hima-studio-header-actions{display:flex;flex-wrap:wrap;min-width:0;gap:var(--hima-sp-2);margin-inline-start:auto}
 .hima-studio-modes{display:flex;align-items:center;gap:var(--hima-sp-1);flex:none}
 .hima-studio-modes button{appearance:none;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);padding:var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;white-space:nowrap}
@@ -178,6 +182,17 @@ export const HIMA_STYLE = `
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
+/* A narrow pane (the strip's phone width): the title and the status line wrap instead of being cut,
+   and the Budget word, the least needed fact there, steps aside. Nothing gets smaller. */
+.hima-campaign{container-type:inline-size}
+@container (max-width:520px){
+  .hima-masthead{height:auto;min-height:66px;padding-bottom:var(--hima-sp-2);flex-wrap:wrap}
+  .hima-masthead h2{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .hima-masthead-sub{white-space:normal}
+  .hima-masthead-budget{display:none}
+  .hima-masthead-owner{flex-wrap:wrap;white-space:normal}
+  .hima-campaign-views{gap:var(--hima-sp-4)}
+}
 .hima-campaign-stale{flex:none;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);color:var(--hima-warn);background:var(--hima-soft)}
 
 .hima-canvas-wrap{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
@@ -194,6 +209,38 @@ export const HIMA_STYLE = `
 .hima-canvas-legend span{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
 .hima-legend-shape{fill:none;stroke:var(--hima-ink-3);stroke-width:1.3}
 .hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);z-index:6;display:flex;gap:var(--hima-sp-1)}
+
+/* The strip (graph.yml view): a phone-width column of stations in place of the canvas. It fits the
+   pane's width and scrolls down; its lit edges flow while the step they lead into runs. */
+.hima-strip{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow-x:hidden;overflow-y:auto}
+.hima-strip svg{display:block}
+.hima-strip-top{flex:none;margin:0;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);font-weight:600;color:var(--hima-ink);border-bottom:1px solid var(--hima-line);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.hima-strip-line-active .hima-node-check-text{fill:var(--hima-ink);font-weight:600}
+.hima-strip-edge-flow .hima-edge-path{stroke-dasharray:8 4;animation:hima-strip-flow 1s linear infinite}
+@keyframes hima-strip-flow{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion: reduce){ .hima-strip-edge-flow .hima-edge-path{animation:none} }
+
+/* The Reports view: tool reports by round, station and node; one opens in place as plain text. */
+.hima-reports{display:flex;flex-direction:column;gap:var(--hima-sp-3);padding:var(--hima-sp-3) var(--hima-sp-4);min-width:0}
+.hima-reports p{margin:0}
+.hima-reports-error{font-size:var(--hima-fs-label);color:var(--hima-bad);overflow-wrap:anywhere}
+.hima-reports-round{display:flex;flex-direction:column;gap:var(--hima-sp-2);min-width:0}
+.hima-reports-round-title{margin:0;font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);text-transform:uppercase;font-weight:600;color:var(--hima-ink-3)}
+.hima-reports-station{display:flex;flex-direction:column;gap:var(--hima-sp-1);min-width:0}
+.hima-reports-station h4{margin:0;font-size:var(--hima-fs-label);font-weight:650;color:var(--hima-ink)}
+.hima-reports-node h5{margin:var(--hima-sp-1) 0 0;font-size:var(--hima-fs-eyebrow);font-weight:500;color:var(--hima-ink-3)}
+.hima-reports ul{list-style:none;margin:0;padding:0}
+.hima-reports-file-row{appearance:none;display:flex;width:100%;box-sizing:border-box;align-items:baseline;justify-content:space-between;gap:var(--hima-sp-2);border:0;border-bottom:1px solid var(--hima-line);background:none;padding:var(--hima-sp-1) 0;color:var(--hima-ink);cursor:pointer;text-align:left;font-size:var(--hima-fs-label);min-width:0}
+.hima-reports-file-row:hover{background:var(--hima-soft)}
+.hima-reports-file-row>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-reports-file-row>span:last-child{flex:none;font-size:var(--hima-fs-eyebrow)}
+.hima-reports-head{display:flex;align-items:center;gap:var(--hima-sp-3);min-width:0}
+.hima-reports-title{display:flex;flex-direction:column;min-width:0;font-size:var(--hima-fs-label)}
+.hima-reports-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-reports-back{min-height:28px;padding:var(--hima-sp-1) var(--hima-sp-2);font-size:var(--hima-fs-label);flex:none}
+.hima-reports-back-glyph{display:inline-flex;transform:rotate(180deg)}
+.hima-report-text{margin:0;padding:var(--hima-sp-2) var(--hima-sp-3);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);line-height:1.4;white-space:pre;overflow:auto;max-width:100%;box-sizing:border-box;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);color:var(--hima-ink)}
+.hima-reports-truncated{font-size:var(--hima-fs-eyebrow)}
 
 /* The zoom/pan transform: eased on a follow, instant while reduced motion or a stale snapshot ask
    for none — .hima-canvas-transform-still is set by the same motionOff flag that also gates the
