@@ -77,6 +77,19 @@ export const HIMA_STYLE = `
 .hima-detail a{color:var(--hima-accent)}
 .hima-report{line-height:var(--hima-lh-body)}
 .hima-evidence>div{padding:var(--hima-sp-2) 0;border-bottom:1px solid var(--hima-line)}
+/* The Results face: a headline figure, a round selector and the before/after table. */
+.hima-results{display:flex;flex-direction:column;gap:var(--hima-sp-3)}
+.hima-results-headline{display:flex;align-items:baseline;gap:var(--hima-sp-3);padding:0;border:0}
+.hima-results-headline-value{font-size:var(--hima-fs-display);font-weight:650;color:var(--hima-good);font-variant-numeric:tabular-nums}
+.hima-results-rounds{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-results-rounds .hima-button{min-height:28px;padding:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-label)}
+.hima-results-rounds .hima-button[aria-pressed=true]{border-color:var(--hima-live);color:var(--hima-ink);font-weight:650}
+.hima-results-table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+.hima-detail .hima-results-table{min-width:0}
+.hima-results-table th,.hima-results-table td{padding:var(--hima-sp-1) var(--hima-sp-3);border-bottom:1px solid var(--hima-line);text-align:right;white-space:nowrap}
+.hima-results-table th[scope=row],.hima-results-table thead th:first-child{text-align:left;font-weight:500;color:var(--hima-ink-2)}
+.hima-results-table thead th{font-weight:600;color:var(--hima-ink)}
+.hima-results-better{color:var(--hima-good);font-weight:650}
 .hima-activity{margin:0 var(--hima-sp-3) var(--hima-sp-3);background:var(--hima-glass);color:var(--hima-glass-ink);border-radius:var(--hima-r-m);display:flex;flex-direction:column;flex:1;min-height:168px;overflow:hidden}
 .hima-activity header,.hima-activity footer{display:flex;justify-content:space-between;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-3);border-bottom:1px solid var(--hima-glass-line);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3)}
 .hima-activity header span:first-child{color:var(--hima-glass-ink);font-weight:600}
@@ -242,6 +255,25 @@ export const HIMA_STYLE = `
 .hima-node-caption{font-size:var(--hima-fs-label);fill:var(--hima-ink-3);text-anchor:middle}
 .hima-node-log{font-size:var(--hima-fs-eyebrow);font-family:var(--hima-font-mono);fill:var(--hima-live);text-anchor:middle}
 .hima-node-labels-hidden{visibility:hidden}
+/* The AI node: its own spark and a gradient ring (indigo, amber, teal) that turns while it works. */
+.hima-node-ai-ring{fill:none;stroke-width:2}
+.hima-ai-stop-1{stop-color:#6366f1} .hima-ai-stop-2{stop-color:#f59e0b} .hima-ai-stop-3{stop-color:#14b8a6}
+.hima-node-glyph-ai{color:var(--hima-accent)}
+.hima-node-glyph-ai-done,.hima-node-glyph-ai-reconciled{color:var(--hima-on-solid)}
+.hima-node-activity{font-size:var(--hima-fs-eyebrow);fill:var(--hima-accent);text-anchor:middle}
+.hima-node-activity-count{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-3);text-anchor:middle;font-variant-numeric:tabular-nums}
+.hima-legend-ai{fill:none;stroke:url(#hima-ai-ring);stroke-width:2}
+/* A merged step's checklist: a box per member that ticks green as it finishes. */
+.hima-check rect{fill:var(--hima-paper);stroke:var(--hima-ink-3);stroke-width:1.2}
+.hima-check-done rect{fill:var(--hima-good);stroke:var(--hima-good)}
+.hima-check-done{color:var(--hima-on-solid)}
+.hima-check-failed rect{stroke:var(--hima-bad)}
+.hima-check-failed path{stroke:var(--hima-bad);stroke-width:1.5;stroke-linecap:round}
+.hima-check-running rect{stroke:var(--hima-live)}
+.hima-check-running circle{fill:var(--hima-live)}
+.hima-check-pulse{animation:hima-check-pulse 1.2s ease-in-out infinite}
+@keyframes hima-check-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.hima-node-check-text{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2)}
 .hima-node-current-ring{fill:none;stroke:var(--hima-accent);stroke-width:2}
 /* C6: a selected node's own halo — the same accent available/CurrentRing already share, at 40%
    opacity so it reads distinctly from the full-opacity current-node ring (4px offset) when a person
@@ -274,6 +306,7 @@ export const HIMA_STYLE = `
 
 @media (prefers-reduced-motion: reduce){
   .hima-node-running-pulse{animation:none}
+  .hima-check-pulse{animation:none}
   .hima-edge-lit-enter .hima-edge-path{animation:none}
   .hima-edge-revisit-pulse .hima-edge-path{animation:none}
 }

@@ -26,8 +26,19 @@ export type NodeKind = 'act' | 'judge' | 'explore' | 'wait';
 export type NodeVisualState =
   | 'pending' | 'available' | 'running' | 'waiting-for-slot' | 'retrying' | 'blocked' | 'cancelled' | 'done' | 'reconciled';
 
-/** One node of a reference graph or a loop's/growth's own subgraph, stripped to what layout needs. */
-export interface LayoutNode { readonly id: string; readonly kind: NodeKind; readonly caption?: string }
+/** One step of a merged node's checklist: a member node, the words a person reads for it, and where
+ * it stands. Listed in the segment's own order. */
+export interface GroupMember { readonly id: string; readonly label?: string; readonly about?: string; readonly state: NodeVisualState }
+
+/** One node of a reference graph or a loop's/growth's own subgraph, stripped to what layout needs.
+ * `label`/`about` are the Pack's own display words (the id stays the identity); `members` makes it a
+ * merged step whose checklist is drawn under its label; `ai` marks an act node whose tool an AI agent
+ * works through. The last two add text lines under the node, so the layout reserves room for them. */
+export interface LayoutNode {
+  readonly id: string; readonly kind: NodeKind; readonly caption?: string;
+  readonly label?: string; readonly about?: string;
+  readonly members?: readonly GroupMember[]; readonly ai?: true;
+}
 
 /** One edge. `revisit: true` marks the one edge kind rank (rule 1) is computed without; `outcome`
  * carries the Judge word (`PASS` | `FAIL` | `UNDETERMINED`, or a Pack's own converged/generation-limit
@@ -71,6 +82,7 @@ export interface PlacedNode {
   readonly rank: number; readonly row: number; readonly state: NodeVisualState;
   readonly caption?: string; readonly current: boolean;
   readonly waitedForSlot: boolean; readonly revised?: 'changed' | 'affected'; readonly frame?: string;
+  readonly label?: string; readonly about?: string; readonly members?: readonly GroupMember[]; readonly ai?: true;
 }
 
 /** One edge, positioned. `path` is a ready-to-render SVG path `d` string; `chip` is an outcome word
@@ -249,6 +261,14 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
  * truncated to the `PITCH - 8` label budget. Two nodes whose footprints meet overlap on screen. */
 const FOOT_HALF_W = (PITCH - 8) / 2, FOOT_TOP = NODE / 2, FOOT_BOTTOM = NODE / 2 + 39;
 
+/** The extra lines some nodes draw below those two: one per member of a merged step's checklist, and
+ * two (the agent's latest action and its counters) for an AI node. Each is `EXTRA_LINE` tall, and
+ * reads wider than the label budget (`EXTRA_HALF_W` each side, about 22 characters of 12 px text). */
+export const EXTRA_LINE = 15;
+const EXTRA_HALF_W = 70;
+const extraOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => ((n.members?.length ?? 0) + (n.ai === true ? 2 : 0)) * EXTRA_LINE;
+const footBottomOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => FOOT_BOTTOM + extraOf(n);
+
 /** Rule 2's row (#63: lanes). Every node takes the first row, from its preferred row downward, where
  * its footprint meets no node already placed; nodes are placed by rank, then declaration order.
  *
@@ -281,8 +301,21 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
 
   const row = new Map<string, number>();
   const home = new Map<string, number>();
-  const placed: { x: number; y: number }[] = [];
-  const free = (x: number, y: number) => placed.every((p) => Math.abs(p.x - x) >= 2 * FOOT_HALF_W || Math.abs(p.y - y) >= (FOOT_TOP + FOOT_BOTTOM) / ROW);
+  const placed: { x: number; y: number; extra: number }[] = [];
+  // Two footprints meet when any of their boxes do: the glyph-and-label box, and — for a node that
+  // draws extra lines (a checklist, an AI node's activity) — the wider box of those lines below it.
+  // With no extra lines this is exactly the old test: 2 * FOOT_HALF_W apart, or a footprint's height.
+  const boxesAt = (p: { x: number; y: number; extra: number }) => {
+    const y = p.y * ROW;
+    const label = { left: p.x - FOOT_HALF_W, right: p.x + FOOT_HALF_W, top: y - FOOT_TOP, bottom: y + FOOT_BOTTOM };
+    return p.extra === 0 ? [label] : [label, { left: p.x - EXTRA_HALF_W, right: p.x + EXTRA_HALF_W, top: y + FOOT_BOTTOM, bottom: y + FOOT_BOTTOM + p.extra }];
+  };
+  const overlap = (a: { left: number; right: number; top: number; bottom: number }, b: typeof a) =>
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const free = (x: number, y: number, extra: number) => {
+    const mine = boxesAt({ x, y, extra });
+    return placed.every((p) => !boxesAt(p).some((box) => mine.some((own) => overlap(box, own))));
+  };
   for (const node of order) {
     const x = (rank.get(node.id) ?? 0) * PITCH;
     const homes = (predecessors.get(node.id) ?? []).map((from) => home.get(from)).filter((h): h is number => h !== undefined);
@@ -290,9 +323,10 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
     const offset = branchOffset.get(node.id);
     const forkRow = offset === undefined || detected === undefined ? undefined : (row.get(detected.node) ?? 0) + offset;
     let r = forkRow ?? inherited;
-    while (!free(x, r)) r += 1;
+    const extra = extraOf(node);
+    while (!free(x, r, extra)) r += 1;
     row.set(node.id, r);
-    placed.push({ x, y: r });
+    placed.push({ x, y: r, extra });
     home.set(node.id, forkRow !== undefined ? (home.get(detected!.node) ?? 0) : hang.has(node.id) ? inherited : r);
   }
   return row;
@@ -488,6 +522,11 @@ type Box = { readonly left: number; readonly right: number; readonly top: number
 /** A node's glyph (with a 2-unit margin) and its label lines, as open boxes. */
 const glyphBox = (n: Point): Box => ({ left: n.x - NODE / 2 - 2, right: n.x + NODE / 2 + 2, top: n.y - NODE / 2 - 2, bottom: n.y + NODE / 2 + 2 });
 const labelBox = (n: Point): Box => ({ left: n.x - FOOT_HALF_W, right: n.x + FOOT_HALF_W, top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM });
+/** A node's label box, plus the wider box of its extra lines when it draws any. */
+const footBoxes = (n: PlacedNode): Box[] => {
+  const extra = extraOf(n);
+  return extra === 0 ? [labelBox(n)] : [labelBox(n), { left: n.x - EXTRA_HALF_W, right: n.x + EXTRA_HALF_W, top: n.y + FOOT_BOTTOM, bottom: n.y + FOOT_BOTTOM + extra }];
+};
 
 /** Whether the straight segment `a`–`b` passes through the inside of `box` (Liang–Barsky clipping). */
 function segmentMeets(a: Point, b: Point, box: Box): boolean {
@@ -566,14 +605,14 @@ function routeEdges(edges: PlacedEdge[], nodes: readonly PlacedNode[]): number {
   let lowest = -Infinity;
   if (nodes.length === 0) return lowest;
   const top = Math.min(...nodes.map((n) => n.y)) - NODE / 2 - 3 * TRACK;
-  const bottom = Math.max(...nodes.map((n) => n.y)) + FOOT_BOTTOM + 16 * TRACK;
+  const bottom = Math.max(...nodes.map((n) => n.y + footBottomOf(n))) + 16 * TRACK;
   edges.forEach((edge, index) => {
     if (edge.kind !== 'dependency' && edge.kind !== 'outcome') return;
     const s = at.get(edge.from), t = at.get(edge.to);
     if (!s || !t || t.x <= s.x) return;
     const others = nodes.filter((n) => n !== s && n !== t);
     const steep = /^M [^A-Z]+ L [^A-Z]+$/.test(edge.path) && Math.abs(t.y - s.y) > t.x - s.x - NODE;
-    const boxes = others.flatMap((n) => [glyphBox(n), labelBox(n)]);
+    const boxes = others.flatMap((n) => [glyphBox(n), ...footBoxes(n)]);
     if (!steep && !pathChords(edge.path).some(([a, b]) => boxes.some((box) => segmentMeets(a, b, box)))) return;
     const xa = s.x + CORRIDOR, xb = Math.max(xa, t.x - CORRIDOR);
     const crossing = others.filter((n) => n.x + FOOT_HALF_W > xa && n.x - FOOT_HALF_W < xb);
@@ -581,10 +620,10 @@ function routeEdges(edges: PlacedEdge[], nodes: readonly PlacedNode[]): number {
     for (let y = top; y <= bottom; y += TRACK) {
       if (crossing.some((n) => Math.abs(y - n.y) < NODE / 2 + 2 && n.x + NODE / 2 + 2 > xa && n.x - NODE / 2 - 2 < xb)) continue;
       if (runs.some((run) => run.from < xb + CORRIDOR && xa - CORRIDOR < run.to && Math.abs(run.y - y) < TRACK)) continue;
-      const labels = crossing.filter((n) => y > n.y + NODE / 2 && y < n.y + FOOT_BOTTOM).length
+      const labels = crossing.filter((n) => y > n.y + NODE / 2 && y < n.y + footBottomOf(n)).length
         // The vertical runs are counted against every label they cross, the edge's own source and
         // target included: a track above the source leaves it clear of its own id and caption.
-        + nodes.filter((n) => ([[xa, s.y], [xb, t.y]] as const).some(([x, end]) => Math.abs(x - n.x) < FOOT_HALF_W && Math.min(end, y) < n.y + FOOT_BOTTOM && Math.max(end, y) > n.y + NODE / 2)).length;
+        + nodes.filter((n) => ([[xa, s.y], [xb, t.y]] as const).some(([x, end]) => Math.abs(x - n.x) < FOOT_HALF_W && Math.min(end, y) < n.y + footBottomOf(n) && Math.max(end, y) > n.y + NODE / 2)).length;
       const cost = Math.abs(y - s.y) + Math.abs(y - t.y) + 4 * ROW * labels;
       if (best === undefined || cost < best.cost) best = { y, cost };
     }
@@ -612,7 +651,7 @@ function placeChips(edges: PlacedEdge[], nodes: readonly PlacedNode[]): void {
   const meets = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const blocked: Box[] = nodes.flatMap((n) => [
     { left: n.x - NODE / 2, right: n.x + NODE / 2, top: n.y - NODE / 2, bottom: n.y + NODE / 2 },
-    { left: n.x - FOOT_HALF_W, right: n.x + FOOT_HALF_W, top: n.y + NODE / 2, bottom: n.y + FOOT_BOTTOM },
+    ...footBoxes(n),
   ]);
   const straight = (edge: PlacedEdge) => /^M [^A-Z]+ L [^A-Z]+$/.test(edge.path);
   // A straight edge's chip first tries rule 4's own place over its midpoint, then stacks above it (a
@@ -659,6 +698,14 @@ function boundingFrame(
   const maxY = Math.max(...ys) + NODE / 2 + 24;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
+
+/** The display words and extra lines a placed node carries over from its `LayoutNode`, only when set. */
+const wordsOf = (node: LayoutNode): Pick<PlacedNode, 'label' | 'about' | 'members' | 'ai'> => ({
+  ...(node.label === undefined ? {} : { label: node.label }),
+  ...(node.about === undefined ? {} : { about: node.about }),
+  ...(node.members === undefined ? {} : { members: node.members }),
+  ...(node.ai === true ? { ai: true as const } : {}),
+});
 
 /** The one pure function this module exists for: a HimaFabric reference graph plus what the execution
  * trace knows so far, turned into a fully positioned scene. Rules 1–2 place the main spine; rule 3
@@ -747,7 +794,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
         id: node.id, kind: node.kind, x: p.x, y: p.y, rank: rankOf(node.id), row: rowOf(node.id),
         state: stateOf(node.id), caption: node.caption, current: node.id === facts?.currentNode,
         waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
-        frame: frameId,
+        frame: frameId, ...wordsOf(node),
       };
     });
     const localLevels = revisitLevels(subgraph.edges, (id) => localRank.get(id) ?? 0);
@@ -809,7 +856,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     return {
       id: node.id, kind: node.kind, x, y, rank, row, state: stateOf(node.id), caption: node.caption,
       current: node.id === facts?.currentNode,
-      waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
+      waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id), ...wordsOf(node),
     };
   });
   const finalPosition = new Map(mainNodes.map((node) => [node.id, { x: node.x, y: node.y }]));
@@ -874,7 +921,9 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const lowestTrack = routeEdges(allEdges, allNodes);
   // The lowest node's own labels still need their room below it, and a routed edge's track can run
   // below the lowest node — the scene keeps a margin past whichever reaches further.
-  const height = Math.max((maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra + topExtra, lowestTrack + PAD_Y);
+  // A merged step's checklist or an AI node's activity lines can reach below the lowest row's margin.
+  const height = Math.max((maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra + topExtra, lowestTrack + PAD_Y,
+    ...allNodes.map((node) => node.y + footBottomOf(node) + 16));
 
   return {
     width, height, goal,

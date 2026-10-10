@@ -216,6 +216,92 @@ test('sceneInputs projects a RunView and ExecutionContext onto layout facts', ()
   assert.deepEqual([graph.nodes.find((n) => n.id === 'route-x')?.caption, graph.nodes.find((n) => n.id === 'route-y')?.caption], ['branch x', 'branch y']);
 });
 
+// Andes demo asks 1, 4, 5: a Pack's own display words reach the canvas, an AI node is marked from the
+// contract's outsourcing tools, and a labelled autopilot segment collapses into one merged step.
+const tool = (id: string, toolId: string, words: { label?: string; about?: string } = {}) => ({ id, kind: 'act' as const, ...words, parameters: { tool: toolId, arguments: {} } });
+const andesGraph = (labelled: boolean) => ({
+  id: 'andes', version: '0.1.0', entry: 'synth', loops: {},
+  nodes: [
+    tool('synth', 'synthesis', { label: 'Synthesis and APR', about: 'Builds the reference design.' }),
+    tool('post-route', 'apr', { label: 'Post-route' }),
+    { id: 'route-ok', kind: 'judge' as const, parameters: { rules: ['route-clean'] } },
+    tool('agent', 'himatime-agent', { label: 'HimaTime agent', about: 'Analyses Fmax and proposes cells.' }),
+    { id: 'blocked', kind: 'wait' as const, parameters: { blocker: 'route' } },
+  ],
+  edges: [
+    { from: 'synth', to: 'post-route' }, { from: 'post-route', to: 'route-ok' },
+    { from: 'route-ok', to: 'agent', outcome: 'PASS' }, { from: 'route-ok', to: 'blocked', outcome: 'FAIL' },
+    { from: 'agent', to: 'synth', revisit: true },
+  ],
+  autopilot: [{ from: ['synth'], until: ['agent', 'blocked'], ...(labelled ? { label: 'Reference build', about: 'Synthesis, APR and the route check.' } : {}) }],
+});
+const andesContext = { available: [], method: { contract: { tools: [{ id: 'synthesis' }, { id: 'apr' }, { id: 'himatime-agent', outsourcing: { role: 'resident-engineering-agent' } }] } } } as unknown as ExecutionContext;
+
+test('sceneInputs carries a node\'s own label and about through to the placed node', () => {
+  const { graph, facts } = sceneInputs(andesGraph(false) as never);
+  const agent = graph.nodes.find((n) => n.id === 'agent')!;
+  assert.equal(agent.label, 'HimaTime agent');
+  assert.equal(agent.about, 'Analyses Fmax and proposes cells.');
+  assert.equal(graph.nodes.find((n) => n.id === 'route-ok')!.label, undefined, 'a node with no words keeps none');
+  const placed = layoutCanvas(graph, facts).nodes.find((n) => n.id === 'synth')!;
+  assert.deepEqual([placed.label, placed.about], ['Synthesis and APR', 'Builds the reference design.']);
+});
+
+test('a labelled segment collapses into one merged step with a checklist; an unlabelled one stays node by node', () => {
+  const view = {
+    run: { currentNode: 'post-route', generation: 1 },
+    nodes: [{ nodeId: 'synth', state: 'done' }, { nodeId: 'post-route', state: 'running' }],
+    generations: [],
+  } as unknown as RunView;
+  const { graph, facts } = sceneInputs(andesGraph(true) as never, view, andesContext);
+  const group = graph.nodes.find((n) => n.id === 'seg:synth')!;
+  assert.ok(group, 'the segment is one node, named after its first member');
+  assert.deepEqual([group.kind, group.label, group.about], ['act', 'Reference build', 'Synthesis, APR and the route check.']);
+  assert.deepEqual(group.members!.map((m) => [m.id, m.label, m.state]),
+    [['synth', 'Synthesis and APR', 'done'], ['post-route', 'Post-route', 'running'], ['route-ok', undefined, 'pending']]);
+  assert.deepEqual(graph.nodes.map((n) => n.id), ['seg:synth', 'agent', 'blocked'], 'members leave the node list; the until node stays');
+  assert.equal(graph.entry, 'seg:synth');
+  assert.deepEqual(graph.edges.map((e) => [e.from, e.to, e.outcome ?? '', e.revisit === true]),
+    [['seg:synth', 'agent', 'PASS', false], ['seg:synth', 'blocked', 'FAIL', false], ['agent', 'seg:synth', '', true]],
+    'internal edges drop; crossing edges (and the revisit) are redrawn to the group');
+  assert.equal(facts.states!['seg:synth'], 'running', 'running while any member runs');
+  assert.equal(facts.currentNode, 'seg:synth');
+  assert.equal(facts.states!.synth, undefined, 'a member\'s own state folds into the group');
+
+  const done = sceneInputs(andesGraph(true) as never, { ...view, nodes: ['synth', 'post-route', 'route-ok'].map((nodeId) => ({ nodeId, state: 'done' })) } as unknown as RunView, andesContext);
+  assert.equal(done.facts.states!['seg:synth'], 'done', 'done once every member is');
+  const failed = sceneInputs(andesGraph(true) as never, { ...view, nodes: [{ nodeId: 'synth', state: 'done' }, { nodeId: 'post-route', state: 'blocked' }] } as unknown as RunView, andesContext);
+  assert.equal(failed.facts.states!['seg:synth'], 'blocked', 'failed when a member failed');
+  const waiting = sceneInputs(andesGraph(true) as never);
+  assert.equal(waiting.graph.nodes[0]!.id, 'seg:synth');
+  assert.equal(waiting.facts.states!['seg:synth'], 'pending', 'waiting before any member starts');
+
+  const plain = sceneInputs(andesGraph(false) as never, view, andesContext);
+  assert.deepEqual(plain.graph.nodes.map((n) => n.id), ['synth', 'post-route', 'route-ok', 'agent', 'blocked'], 'an old Pack\'s unlabelled segment is unchanged');
+  assert.equal(plain.graph.nodes.some((n) => n.members !== undefined), false);
+});
+
+test('a merged step\'s checklist lines are reserved below it, so the node under it moves clear', () => {
+  const { graph, facts } = sceneInputs(andesGraph(true) as never);
+  const scene = layoutCanvas(graph, facts);
+  const group = scene.nodes.find((n) => n.id === 'seg:synth')!;
+  const hung = scene.nodes.find((n) => n.id === 'blocked')!;
+  assert.equal(group.members!.length, 3);
+  // The checklist (three 15-unit lines under the label lines) would reach the hung wait node one row
+  // down, half a pitch on; the lanes move it a row further instead.
+  assert.ok(hung.y - group.y >= NODE / 2 + 39 + 3 * 15 + NODE / 2, `the wait node clears the checklist (dy ${hung.y - group.y})`);
+  assert.ok(scene.height >= group.y + NODE / 2 + 39 + 3 * 15, 'the scene holds the checklist');
+});
+
+test('an act node whose tool an AI agent works through (contract outsourcing) is an AI node', () => {
+  const { graph } = sceneInputs(andesGraph(false) as never, { run: {}, nodes: [], generations: [] } as unknown as RunView, andesContext);
+  assert.deepEqual(graph.nodes.filter((n) => n.ai === true).map((n) => n.id), ['agent']);
+  const scene = layoutCanvas(graph);
+  assert.equal(scene.nodes.find((n) => n.id === 'agent')!.ai, true, 'the mark reaches the placed node');
+  const unmarked = sceneInputs(andesGraph(false) as never);
+  assert.equal(unmarked.graph.nodes.some((n) => n.ai === true), false, 'no contract, no AI mark');
+});
+
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
   assert.equal(goalSaid({ target_period_ns: 2.3 }, { goal: { target_period_ns: { label: 'clock period', unit: 'ns' } } } as never), 'clock period 2.3 ns');
   assert.equal(goalSaid({ target_period_ns: 2.3 }, undefined), 'target_period_ns 2.3');

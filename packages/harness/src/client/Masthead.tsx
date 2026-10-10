@@ -62,6 +62,10 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
     : t('masthead.elapsed', { now: duration(elapsedMs), box: duration(run.budget.timeBoxMs) });
   const budgetWord = context === undefined ? undefined : t(BUDGET_STANDING[context.budget.phase]);
   const purposeMark = runPurposeMark(run?.purpose);
+  // The node the Run stands at, in the Pack's own words when it gave the node a label.
+  const currentNode = run?.currentNode;
+  const currentSaid = currentNode === undefined ? undefined
+    : (context?.method?.reference.nodes.find((node) => node.id === currentNode)?.label ?? currentNode);
   // C19: a Campaign with no name of its own (`name` absent — no Campaign file, or one that never
   // set `name`) never falls back to the raw campaign id (a bare uuid-shaped identifier means nothing
   // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
@@ -79,7 +83,7 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
           {said === undefined
             ? (view === undefined ? null : <span className="hima-masthead-seal">{t('masthead.noFabricState')}</span>)
             : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said}</span>}
-          {run?.currentNode === undefined ? null : <span> · {run.currentNode}</span>}
+          {currentSaid === undefined ? null : <span> · {currentSaid}</span>}
           {run?.generation === undefined ? null : <span> · {t('masthead.gen', { n: run.generation })}</span>}
           {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}
           {budgetWord === undefined ? null : <span> · {budgetWord}</span>}

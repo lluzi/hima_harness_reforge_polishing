@@ -3,10 +3,11 @@
 // the host bundle: `canvas-layout.ts` and `scene.ts` are this module's siblings for the same reason.
 // No DOM, no Node imports; `NodeCard.tsx` imports this as a sibling module and adds nothing of its
 // own to what it says.
-import type { NodeKind } from './canvas-layout.js';
+import type { GroupMember, NodeKind } from './canvas-layout.js';
 
-/** One tab the node card can show, across every node kind. */
-export type NodeCardTabKey = 'facts' | 'job' | 'code' | 'knowledge' | 'evidence' | 'rules' | 'verdicts' | 'decision' | 'strategy' | 'generations' | 'blocker' | 'clearance';
+/** One tab the node card can show, across every node kind. `ai` is an AI node's own work; `members`
+ *  is a merged step's checklist. */
+export type NodeCardTabKey = 'facts' | 'job' | 'code' | 'knowledge' | 'evidence' | 'rules' | 'verdicts' | 'decision' | 'strategy' | 'generations' | 'blocker' | 'clearance' | 'ai' | 'members';
 
 /** The tab set for each node kind, in the order the card shows them; the first is the default tab. */
 export const TABS_BY_KIND: Readonly<Record<NodeKind, readonly NodeCardTabKey[]>> = {
@@ -15,6 +16,14 @@ export const TABS_BY_KIND: Readonly<Record<NodeKind, readonly NodeCardTabKey[]>>
   explore: ['decision', 'strategy', 'generations'],
   wait: ['blocker', 'clearance'],
 };
+
+/** The tabs one placed node's card shows: a merged step leads with its steps, an AI node with the
+ *  agent's own work before the act tabs, and every other node with its kind's own set. */
+export function tabsFor(node: { readonly kind: NodeKind; readonly ai?: true; readonly members?: readonly GroupMember[] }): readonly NodeCardTabKey[] {
+  if (node.members !== undefined) return ['members', 'facts'];
+  if (node.ai === true) return ['ai', ...TABS_BY_KIND.act];
+  return TABS_BY_KIND[node.kind];
+}
 
 /** The mockup's own size for the card: 384 wide, "about 300" tall (spec, "The canvas"). */
 export const NODE_CARD_WIDTH = 384;

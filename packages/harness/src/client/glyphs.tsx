@@ -6,10 +6,10 @@ import type { ReactElement } from 'react';
 
 export type GlyphName =
   | 'check' | 'dot' | 'ring' | 'hourglass' | 'retry' | 'square' | 'bar' | 'diamond'
-  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit';
+  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit' | 'sparkle';
 
-/** The three glyphs drawn as a solid shape rather than an outlined stroke. */
-const FILLED = new Set<GlyphName>(['check', 'dot', 'square']);
+/** The glyphs drawn as a solid shape rather than an outlined stroke. */
+const FILLED = new Set<GlyphName>(['check', 'dot', 'square', 'sparkle']);
 
 function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
   switch (name) {
@@ -56,6 +56,9 @@ function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
       );
     case 'close':
       return <path d="M4 4 12 12M12 4 4 12" strokeWidth={1.4} strokeLinecap="round" />;
+    case 'sparkle':
+      // The AI node's own mark: a four-point spark with a small one beside it.
+      return <path d="M7 2.2 8.3 6.2 12.3 7.5 8.3 8.8 7 12.8 5.7 8.8 1.7 7.5 5.7 6.2ZM12.4 1.4 13 3 14.6 3.6 13 4.2 12.4 5.8 11.8 4.2 10.2 3.6 11.8 3Z" />;
     case 'arrow-right':
       return <path d="M2.5 8h9M8.3 4.3 12 8l-3.7 3.7" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />;
     case 'fit':

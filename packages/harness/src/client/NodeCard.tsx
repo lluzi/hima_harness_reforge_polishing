@@ -18,7 +18,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type R
 import type { PlacedNode } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import type { PackNode } from '../packs.js';
-import { cardPosition, NODE_CARD_HEIGHT, NODE_CARD_WIDTH, TABS_BY_KIND, type NodeCardTabKey } from '../node-card-layout.js';
+import { cardPosition, NODE_CARD_HEIGHT, NODE_CARD_WIDTH, tabsFor, type NodeCardTabKey } from '../node-card-layout.js';
 import type { ObservationView, RunView } from '../remote.js';
 import { absentSaid, counted, jobFolded, loopsIn, strategySaid } from '../card-labels.js';
 import { fetchLogTail } from './api.js';
@@ -26,6 +26,8 @@ import { useEscape } from './escape-stack.js';
 import { BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT, type Translate } from './locale/index.js';
+import { activityKindKey, engineeringActivityOf } from './engineering-activity.js';
+import { shortTime } from './time.js';
 
 export interface NodeCardProps {
   readonly node: PlacedNode;
@@ -274,6 +276,38 @@ function ClearanceTab({ node, view }: { node: PlacedNode; view: RunView }): Reac
   );
 }
 
+/** A merged step's own checklist: every member in segment order, its state and what it does. A
+ *  group has no Pack node of its own (`packNodeOf` finds none for its `seg:` id), so this tab is
+ *  what the card says about it. */
+function MembersTab({ node }: { node: PlacedNode }): ReactElement {
+  const t = useHimaT();
+  const members = node.members ?? [];
+  return <ol>{members.map((member) => (
+    <li key={member.id} data-hima-region={`node-member-${member.id}`} data-hima-state-state={member.state}>
+      <strong>{member.label ?? member.id}</strong> · <span className="hima-state-word" data-state={member.state}>{labelKeyed(t, `nodeState.${member.state}`, member.state)}</span>
+      {member.about === undefined ? null : <div className="hima-muted">{member.about}</div>}
+    </li>
+  ))}</ol>;
+}
+
+/** An AI node's own work, as its agent last reported it: tool calls, plan progress, latest action. */
+function AiTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
+  const t = useHimaT();
+  const activity = engineeringActivityOf(view, node.id);
+  if (activity === undefined) return <p className="hima-muted">{t('ai.none')}</p>;
+  return (
+    <div data-hima-region="node-ai-work" data-hima-state-execution={activity.executionId}>
+      <h5>{t('ai.toolCalls')}</h5>
+      <p>{activity.toolCalls}</p>
+      <h5>{t('ai.plan')}</h5>
+      <p>{activity.planTotal === 0 ? t('ai.noPlan') : t('ai.planProgress', { done: activity.planDone, total: activity.planTotal })}</p>
+      <h5>{t('ai.latest')}</h5>
+      <p>{activity.latest === undefined ? t('ai.none') : t('ai.latestAt', { kind: t(activityKindKey(activity.latest.kind)), title: activity.latest.title, at: shortTime(activity.latest.at) })}</p>
+      <p className="hima-muted">{t('ai.updated', { at: shortTime(activity.updatedAt) })}</p>
+    </div>
+  );
+}
+
 function TabContent({ tab, node, view, context, runId, motionOff, openFiles }: { tab: NodeCardTabKey; node: PlacedNode; view: RunView; context?: ExecutionContext; runId: string; motionOff: boolean; openFiles(): void }): ReactElement {
   switch (tab) {
     case 'facts': return <FactsTab node={node} view={view} context={context} />;
@@ -288,6 +322,8 @@ function TabContent({ tab, node, view, context, runId, motionOff, openFiles }: {
     case 'generations': return <GenerationsTab node={node} view={view} context={context} />;
     case 'blocker': return <BlockerTab node={node} view={view} />;
     case 'clearance': return <ClearanceTab node={node} view={view} />;
+    case 'ai': return <AiTab node={node} view={view} />;
+    case 'members': return <MembersTab node={node} />;
     default: { const exhaustive: never = tab; void exhaustive; return <></>; }
   }
 }
@@ -326,7 +362,8 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
   if (owner) {
     return (
       <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
-        {!active ? null : (
+        {/* A merged step is not one node the Run can pause; its members are. */}
+        {!active || node.members !== undefined ? null : (
           <div className="hima-node-card-footer-row">
             <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>{t('node.pauseNode')}</button>
             <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>{t('node.continueNode')}</button>
@@ -361,9 +398,9 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
 
 export function NodeCard({ node, view, context, runId, owner, anchor, canvas, motionOff, onClose, openFiles, acting }: NodeCardProps): ReactElement {
   const t = useHimaT();
-  const tabs = TABS_BY_KIND[node.kind];
+  const tabs = tabsFor(node);
   const [tab, setTab] = useState<NodeCardTabKey>(tabs[0]!);
-  useEffect(() => { setTab(TABS_BY_KIND[node.kind][0]!); }, [node.id, node.kind]);
+  useEffect(() => { setTab(tabs[0]!); }, [node.id, node.kind]);
 
   // Escape closes the card, through the one shared stack (`escape-stack.ts`) every dismissible
   // surface registers on: only the topmost registrant reacts to a given Escape press, so a sheet
@@ -389,8 +426,11 @@ export function NodeCard({ node, view, context, runId, owner, anchor, canvas, mo
     <div ref={hostRef} className="hima-node-card" data-hima-region="campaign-node-card" data-hima-state-node={node.id} data-hima-state-tab={tab}>
       <header className="hima-node-card-header">
         <div>
-          <h4>{node.id}</h4>
-          <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{labelKeyed(t, `nodeState.${nodeView.state}`, nodeView.state)}</span></>}</p>
+          <h4 title={node.id}>{node.label ?? node.id}</h4>
+          {node.about === undefined ? null : <p>{node.about}</p>}
+          {node.members !== undefined
+            ? <p className="hima-muted">{t('node.group', { n: node.members.length })} · <span className="hima-state-word" data-state={node.state}>{labelKeyed(t, `nodeState.${node.state}`, node.state)}</span></p>
+            : <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{labelKeyed(t, `nodeState.${nodeView.state}`, nodeView.state)}</span></>}</p>}
         </div>
         <button type="button" className="hima-icon-button" data-hima-control="node-card-close" aria-label={t('node.close')} onClick={onClose}><Glyph name="close" /></button>
       </header>

@@ -5,9 +5,10 @@ import { useViewerSession } from './viewer-session.js';
 // glyph on top of the kind's own form, never colour alone. Coordinates come from `PlacedNode` alone —
 // nothing here computes a position.
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { NODE, PITCH } from '../canvas-layout.js';
-import type { NodeKind, PlacedNode } from '../canvas-layout.js';
+import { EXTRA_LINE, NODE, PITCH } from '../canvas-layout.js';
+import type { GroupMember, NodeKind, PlacedNode } from '../canvas-layout.js';
 import { fetchLogTail } from './api.js';
+import { activityKindKey, type EngineeringActivityView } from './engineering-activity.js';
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT } from './locale/index.js';
 
@@ -27,6 +28,30 @@ const HALF = NODE / 2;
 const LABEL_CHAR_WIDTH_PX = 7;
 const LABEL_PADDING_PX = 8;
 const LABEL_MAX_CHARS = Math.floor((PITCH - LABEL_PADDING_PX) / LABEL_CHAR_WIDTH_PX);
+
+/** A Pack's own node label wraps onto two lines of this many characters rather than being cut at
+ *  `LABEL_MAX_CHARS`: words with spaces read narrower than a hyphenated id (about 6.3 px a character
+ *  at 13 px), so 14 still sits about inside one node's own 90-unit pitch. */
+const LABEL_LINE_CHARS = 14;
+/** A merged step's checklist line, and an AI node's activity line, at the 12 px eyebrow size. */
+const CHECK_LINE_CHARS = 18;
+const ACTIVITY_LINE_CHARS = 22;
+
+/** A label in at most two lines, broken between words; the second line is ellipsized if it runs on. */
+export function wrapLabel(text: string, max = LABEL_LINE_CHARS): readonly string[] {
+  if (text.length <= max) return [text];
+  const words = text.split(/\s+/);
+  let first = '';
+  let used = 0;
+  for (const word of words) {
+    const next = first === '' ? word : `${first} ${word}`;
+    if (next.length > max) break;
+    first = next; used += 1;
+  }
+  if (first === '') return [text.slice(0, max), truncate(text.slice(max).trim(), max)];
+  const rest = words.slice(used).join(' ');
+  return rest === '' ? [first] : [first, truncate(rest, max)];
+}
 
 /** A caption, id or goal word shown at a glance, one line, ellipsized rather than wrapped; the full
  *  text always travels in a `<title>` so a person can still read it by hovering. Exported for
@@ -108,9 +133,24 @@ function SelectedHalo({ node }: { node: PlacedNode }): ReactElement {
   return <g className="hima-node-selected-halo"><KindOutline kind={node.kind} half={HALF + 6} /></g>;
 }
 
+/** The AI node's own ring, 2 px past its square (inside the current-node ring at 4 px): a gradient (indigo, amber, teal) that turns slowly
+ *  while the agent works and stands still once it is done. The two gradients live in
+ *  `FabricCanvas`'s own `<defs>`; the turning one is never referenced while motion is off. */
+export const AI_RING_ID = 'hima-ai-ring', AI_RING_LIVE_ID = 'hima-ai-ring-live';
+function AiRing({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
+  const live = node.state === 'running' || node.state === 'retrying';
+  if (!live && node.state !== 'done' && node.state !== 'reconciled') return null;
+  return <g className="hima-node-ai-ring" stroke={`url(#${live && !motionOff ? AI_RING_LIVE_ID : AI_RING_ID})`}><KindOutline kind="act" half={HALF + 2} /></g>;
+}
+
 /** The state glyph: a small mark centred on the node, layered over its own kind-shape. Absent for
- *  `pending`/`available`, whose hollow-or-accent stroke is the whole of what they say. */
+ *  `pending`/`available`, whose hollow-or-accent stroke is the whole of what they say. An AI node
+ *  draws its spark instead of the plain dot or tick, in every state that would otherwise show one
+ *  (and while it waits, so it reads as the AI step before it starts). */
 function StateGlyph({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
+  if (node.ai === true && ['pending', 'available', 'running', 'done', 'reconciled'].includes(node.state)) {
+    return <g transform="translate(-8,-8)" className={`hima-node-glyph-ai hima-node-glyph-ai-${node.state}`}><Glyph name="sparkle" size={16} /></g>;
+  }
   switch (node.state) {
     case 'pending': case 'available': return null;
     case 'running':
@@ -152,8 +192,42 @@ function StateBar({ node }: { node: PlacedNode }): ReactElement | null {
   </g>;
 }
 
+/** One checklist line's own mark: an empty box waiting, a pulsing dot running, a green tick done, a
+ *  red cross failed. Colour is never the only signal: each state draws its own shape. */
+function CheckMark({ state, motionOff }: { state: GroupMember['state']; motionOff: boolean }): ReactElement {
+  if (state === 'done' || state === 'reconciled') {
+    return <g className="hima-check hima-check-done"><rect x={0} y={0} width={10} height={10} rx={2} /><Glyph name="check" size={10} /></g>;
+  }
+  if (state === 'blocked' || state === 'cancelled') {
+    return <g className="hima-check hima-check-failed"><rect x={0} y={0} width={10} height={10} rx={2} /><path d="M2.5 2.5 7.5 7.5M7.5 2.5 2.5 7.5" /></g>;
+  }
+  if (state === 'running' || state === 'retrying' || state === 'waiting-for-slot') {
+    return <g className="hima-check hima-check-running"><rect x={0} y={0} width={10} height={10} rx={2} /><circle cx={5} cy={5} r={2.2} className={motionOff ? undefined : 'hima-check-pulse'} /></g>;
+  }
+  return <g className="hima-check hima-check-waiting"><rect x={0} y={0} width={10} height={10} rx={2} /></g>;
+}
+
+/** A merged step's checklist, one line per member in segment order, starting `top` below the node's
+ *  centre — inside the extra lines the layout reserved for it (`EXTRA_LINE` each). */
+function Checklist({ members, top, motionOff }: { members: readonly GroupMember[]; top: number; motionOff: boolean }): ReactElement {
+  const t = useHimaT();
+  return <g className="hima-node-checklist">
+    {members.map((member, index) => {
+      const said = member.label ?? member.id;
+      const y = top + index * EXTRA_LINE;
+      return <g key={member.id} data-hima-region={`campaign-node-member-${member.id}`} data-hima-state-state={member.state} transform={`translate(-60,${y - 9})`}>
+        <title>{`${said} · ${labelKeyed(t, `nodeState.${member.state}`, member.state)}${member.about === undefined ? '' : ` — ${member.about}`}`}</title>
+        <CheckMark state={member.state} motionOff={motionOff} />
+        <text className="hima-node-check-text" x={15} y={9}>{truncate(said, CHECK_LINE_CHARS)}</text>
+      </g>;
+    })}
+  </g>;
+}
+
 export interface FabricNodeProps {
   readonly node: PlacedNode;
+  /** What the AI agent at this node is doing, when the Host reports it (an AI node only). */
+  readonly activity?: EngineeringActivityView;
   readonly runId: string;
   readonly labelsVisible: boolean;
   /** Reduced motion, or a stale snapshot — the caller ORs the two before handing this down, since a
@@ -167,15 +241,26 @@ export interface FabricNodeProps {
   onSelect(id: string): void;
 }
 
-export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
+export function FabricNode({ node, activity, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
   const t = useHimaT();
   // C19: the log-tail poll never runs while stale/reduced-motion (the caller hands this component
   // `reducedMotion || stale` as one flag, `FabricCanvas.tsx`) — a stale node is already showing a
   // frozen fact, not a live one, so polling for a fresh log line underneath it would only ever
-  // answer with output nobody watching believes is still current.
-  const running = node.current && node.state === 'running' && !reducedMotion;
+  // answer with output nobody watching believes is still current. A merged step has no log of its
+  // own (its members do), and an AI node with activity says what its agent does instead.
+  const showsActivity = node.ai === true && activity !== undefined;
+  const running = node.current && node.state === 'running' && !reducedMotion && node.members === undefined && !showsActivity;
   const logLine = useLastLogLine(runId, node.id, running);
   const labelY = HALF + 20;
+  // A Pack's own label replaces the id line (wrapping onto the caption's line) and hides the caption.
+  const labelLines = node.label === undefined ? undefined : wrapLabel(node.label);
+  const stateWord = labelKeyed(t, `nodeState.${node.state}`, node.state);
+  const hover = node.label === undefined
+    ? `${node.id} · ${node.kind} · ${stateWord}${node.caption === undefined ? '' : ` · ${node.caption}`}`
+    : `${node.label} · ${stateWord}${node.about === undefined ? '' : ` — ${node.about}`}`;
+  // The extra lines start below the two label lines the layout always reserves.
+  const extraTop = labelY + 30;
+  const activityLine = activity?.latest === undefined ? undefined : `${t(activityKindKey(activity.latest.kind))}: ${activity.latest.title}`;
   return (
     <g
       data-hima-region={`campaign-node-${node.id}`}
@@ -201,29 +286,43 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
           plus its caption when the Pack gave it one — the same words the label and caption texts
           below already show, gathered into one tooltip so hovering anywhere on the node (not only
           its label text) reads them. */}
-      <title>{`${node.id} · ${node.kind} · ${labelKeyed(t, `nodeState.${node.state}`, node.state)}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
+      <title>{hover}</title>
       <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
       {selected ? <SelectedHalo node={node} /> : null}
       {node.current ? <CurrentRing node={node} /> : null}
+      {node.ai === true ? <AiRing node={node} motionOff={reducedMotion} /> : null}
       <NodeShape node={node} />
       <StateGlyph node={node} motionOff={reducedMotion} />
       <StateBar node={node} />
       {node.revised === 'changed' ? <path className="hima-node-mark-changed" d={`M ${HALF - 6} ${-HALF} L ${HALF} ${-HALF} L ${HALF} ${-HALF + 6} Z`} /> : null}
       {node.waitedForSlot && node.state === 'done' ? <g transform={`translate(${HALF - 10},${HALF - 10})`} className="hima-node-mark-waited"><Glyph name="hourglass" size={10} /></g> : null}
       <g className={`hima-node-labels${labelsVisible ? '' : ' hima-node-labels-hidden'}`}>
-        <text className="hima-node-label" y={labelY} textAnchor="middle">{truncate(node.id)}<title>{node.id}</title></text>
-        {node.caption === undefined ? null : (
-          <text className="hima-node-caption" y={labelY + 15} textAnchor="middle">{truncate(node.caption)}<title>{node.caption}</title></text>
-        )}
+        {labelLines === undefined ? <>
+          <text className="hima-node-label" y={labelY} textAnchor="middle">{truncate(node.id)}<title>{node.id}</title></text>
+          {node.caption === undefined ? null : (
+            <text className="hima-node-caption" y={labelY + 15} textAnchor="middle">{truncate(node.caption)}<title>{node.caption}</title></text>
+          )}
+        </> : labelLines.map((line, index) => (
+          <text key={index} className="hima-node-label" y={labelY + index * 15} textAnchor="middle">{line}<title>{node.label}</title></text>
+        ))}
         {/* A3: drawn on its own line, below the Pack's own caption (if any) rather than replacing
             it — a node's declared caption and "the Run is running but has not yet begun this node"
             are two different facts, never folded into one truncated line. */}
         {awaitingAgent !== true ? null : (
-          <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">
+          <text className="hima-node-caption" y={labelY + 15 * (labelLines?.length ?? (node.caption === undefined ? 1 : 2))} textAnchor="middle">
             {t('node.awaitingAgent')}<title>{t('node.awaitingAgent.title')}</title>
           </text>
         )}
         {logLine === undefined ? null : <text className="hima-node-log" y={labelY + 30} textAnchor="middle">{truncate(logLine, 40)}<title>{logLine}</title></text>}
+        {node.members === undefined ? null : <Checklist members={node.members} top={extraTop} motionOff={reducedMotion} />}
+        {!showsActivity ? null : <>
+          {activityLine === undefined ? null : (
+            <text className="hima-node-activity" y={extraTop} textAnchor="middle">{truncate(activityLine, ACTIVITY_LINE_CHARS)}<title>{activityLine}</title></text>
+          )}
+          <text className="hima-node-activity-count" y={extraTop + EXTRA_LINE} textAnchor="middle">
+            {t('ai.counter', { calls: activity.toolCalls, done: activity.planDone, total: activity.planTotal })}
+          </text>
+        </>}
       </g>
     </g>
   );

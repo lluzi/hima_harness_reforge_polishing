@@ -19,7 +19,7 @@
 // captions — a scene of bare shapes is still a scene). The two are told apart by `'loops' in
 // reference`, which is true of every `PackGraph` (`loops` always present, even empty) and false of
 // `PreparationView.referenceGraph` (which never declares the field at all).
-import type { LayoutEdge, LayoutFacts, LayoutGraph, LayoutNode, LayoutSubgraph, NodeVisualState } from './canvas-layout.js';
+import type { GroupMember, LayoutEdge, LayoutFacts, LayoutGraph, LayoutNode, LayoutSubgraph, NodeVisualState } from './canvas-layout.js';
 import { nodeCaption } from './card-labels.js';
 import type { ExecutionContext } from './fabric.js';
 import type { PackEdge, PackGraph, PackNode } from './packs.js';
@@ -33,11 +33,132 @@ type BareEdge = BareGraph['edges'][number];
 
 const isFullGraph = (reference: BareGraph | PackGraph): reference is PackGraph => 'loops' in reference;
 
-/** A node with declared parameters carries a caption; a bare one (no parameters at all) carries none. */
+/** The Pack's own display words for a node, when it declared any (`label`, `about`). */
+const wordsOf = (node: BareNode | PackNode): Pick<LayoutNode, 'label' | 'about'> => {
+  const words = node as { readonly label?: string; readonly about?: string };
+  return { ...(words.label === undefined ? {} : { label: words.label }), ...(words.about === undefined ? {} : { about: words.about }) };
+};
+
+/** A node with declared parameters carries a caption; a bare one (no parameters at all) carries none.
+ *  Either carries the Pack's own display words when it declared them. */
 function layoutNode(node: BareNode | PackNode): LayoutNode {
-  if (!('parameters' in node)) return { id: node.id, kind: node.kind as LayoutNode['kind'] };
+  if (!('parameters' in node)) return { id: node.id, kind: node.kind as LayoutNode['kind'], ...wordsOf(node) };
   const caption = nodeCaption(node);
-  return caption === undefined ? { id: node.id, kind: node.kind } : { id: node.id, kind: node.kind, caption };
+  return caption === undefined ? { id: node.id, kind: node.kind, ...wordsOf(node) } : { id: node.id, kind: node.kind, caption, ...wordsOf(node) };
+}
+
+/** The contract tools an AI agent works through (`outsourcing`), by id. */
+type ContractTools = NonNullable<ExecutionContext['method']>['contract']['tools'];
+const aiToolsOf = (tools: ContractTools | undefined): ReadonlySet<string> =>
+  new Set((tools ?? []).filter((tool) => tool.outsourcing !== undefined).map((tool) => tool.id));
+
+/** Marks every act node whose tool is one an AI agent works through: same square, its own look. */
+function withAiMarks(nodes: readonly LayoutNode[], packNodes: readonly PackNode[], aiTools: ReadonlySet<string>): readonly LayoutNode[] {
+  if (aiTools.size === 0) return nodes;
+  const ai = new Set(packNodes.filter((node) => node.kind === 'act' && node.parameters.tool !== undefined && aiTools.has(node.parameters.tool)).map((node) => node.id));
+  return ai.size === 0 ? nodes : nodes.map((node) => (ai.has(node.id) ? { ...node, ai: true as const } : node));
+}
+
+/** One merged step: a labelled autopilot segment's nodes, drawn as one node with a checklist. */
+interface SegmentGroup { readonly id: string; readonly label: string; readonly about?: string; readonly members: readonly string[] }
+
+/**
+ * Every labelled segment of the graph's autopilot, as one merged step. A segment's nodes are those
+ * the Harness's own `segmentNodes` (`packs.ts`, host-only) walks: every node reachable from `from`
+ * along non-revisit edges, never crossing an `until` node and never past a fork node (an act node
+ * with two or more unlabelled edges out — a fork's own declaration drives its branches). A segment
+ * with no `label` stays as it was, node by node; a fork entry is never merged; a node an earlier
+ * group already holds is never held twice.
+ */
+function segmentGroups(reference: PackGraph): readonly SegmentGroup[] {
+  const byId = new Map(reference.nodes.map((node) => [node.id, node]));
+  const isFork = (node: PackNode) => node.kind === 'act' && reference.edges.filter((edge) => edge.from === node.id && edge.outcome === undefined).length >= 2;
+  const claimed = new Set<string>();
+  const groups: SegmentGroup[] = [];
+  for (const declared of reference.autopilot ?? []) {
+    if ('fork' in declared || declared.label === undefined) continue;
+    const until = new Set(declared.until);
+    const members: string[] = [];
+    const seen = new Set<string>();
+    const walk: string[] = [...declared.from];
+    for (let at = walk.shift(); at !== undefined; at = walk.shift()) {
+      if (seen.has(at) || until.has(at)) continue;
+      seen.add(at);
+      const node = byId.get(at);
+      if (node === undefined) continue;
+      if (!claimed.has(at)) members.push(at);
+      if (isFork(node)) continue;
+      for (const edge of reference.edges) if (edge.from === at && edge.revisit !== true) walk.push(edge.to);
+    }
+    if (members.length === 0) continue;
+    for (const id of members) claimed.add(id);
+    groups.push({ id: `seg:${members[0]!}`, label: declared.label, ...(declared.about === undefined ? {} : { about: declared.about }), members });
+  }
+  return groups;
+}
+
+/** A merged step's own state, folded from its members': running while any runs, done once all are,
+ *  blocked when any failed, otherwise waiting (available when the Run may begin a member next). */
+function foldState(states: readonly NodeVisualState[]): NodeVisualState {
+  if (states.some((state) => state === 'running' || state === 'retrying' || state === 'waiting-for-slot')) return 'running';
+  if (states.length > 0 && states.every((state) => state === 'done' || state === 'reconciled')) return 'done';
+  if (states.some((state) => state === 'blocked' || state === 'cancelled')) return 'blocked';
+  return states.some((state) => state === 'available') ? 'available' : 'pending';
+}
+
+/**
+ * The graph and facts with every labelled segment collapsed into its one merged node: the members
+ * leave the node list (the group takes the first member's place), an edge inside the group is
+ * dropped, an edge crossing its boundary is redrawn to or from the group, and every fact naming a
+ * member names the group instead. The group's checklist lists its members, in segment order, with
+ * their own words and states.
+ */
+function collapseSegments(graph: LayoutGraph, facts: LayoutFacts, groups: readonly SegmentGroup[], packNodes: readonly PackNode[]): { graph: LayoutGraph; facts: LayoutFacts } {
+  if (groups.length === 0) return { graph, facts };
+  const groupOf = new Map<string, SegmentGroup>();
+  for (const group of groups) for (const id of group.members) groupOf.set(id, group);
+  const to = (id: string) => groupOf.get(id)?.id ?? id;
+  const stateOf = (id: string): NodeVisualState => facts.states?.[id] ?? (facts.available?.includes(id) ? 'available' : 'pending');
+  const byId = new Map(packNodes.map((node) => [node.id, node]));
+
+  const states: Record<string, NodeVisualState> = {};
+  for (const [id, state] of Object.entries(facts.states ?? {})) if (!groupOf.has(id)) states[id] = state;
+  const nodes: LayoutNode[] = [];
+  for (const node of graph.nodes) {
+    const group = groupOf.get(node.id);
+    if (group === undefined) { nodes.push(node); continue; }
+    if (group.members[0] !== node.id) continue;
+    const members: GroupMember[] = group.members.map((id) => {
+      const words = byId.get(id) === undefined ? {} : wordsOf(byId.get(id)!);
+      return { id, ...words, state: stateOf(id) };
+    });
+    states[group.id] = foldState(members.map((member) => member.state));
+    nodes.push({ id: group.id, kind: 'act', label: group.label, ...(group.about === undefined ? {} : { about: group.about }), members });
+  }
+  const edges: LayoutEdge[] = [];
+  const seen = new Set<string>();
+  for (const edge of graph.edges) {
+    const from = to(edge.from), target = to(edge.to);
+    if (from === target && (groupOf.has(edge.from) || groupOf.has(edge.to))) continue;
+    const key = `${from}>${target}>${edge.outcome ?? ''}>${edge.revisit === true ? 'r' : ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push(from === edge.from && target === edge.to ? edge : { ...edge, from, to: target });
+  }
+  const unique = (ids: readonly string[]) => [...new Set(ids.map(to))];
+  const opens = graph.opens === undefined ? undefined : Object.fromEntries(Object.entries(graph.opens).map(([id, loop]) => [to(id), loop]));
+  const collapsed: LayoutGraph = { ...graph, entry: to(graph.entry), nodes, edges, ...(opens === undefined ? {} : { opens }) };
+  const next: LayoutFacts = {
+    ...facts,
+    states,
+    ...(facts.available === undefined ? {} : { available: unique(facts.available) }),
+    ...(facts.currentNode === undefined ? {} : { currentNode: to(facts.currentNode) }),
+    ...(facts.waitedForSlot === undefined ? {} : { waitedForSlot: unique(facts.waitedForSlot) }),
+    ...(facts.fork === undefined ? {} : { fork: { node: to(facts.fork.node), join: to(facts.fork.join), branches: facts.fork.branches.map((branch) => ({ id: branch.id, nodes: unique(branch.nodes) })) } }),
+    ...(facts.growths === undefined ? {} : { growths: facts.growths.map((growth) => ({ ...growth, parentNode: to(growth.parentNode), returnNode: to(growth.returnNode) })) }),
+    ...(facts.revisions === undefined ? {} : { revisions: facts.revisions.map((revision) => ({ changedNodes: unique(revision.changedNodes), affectedNodes: unique(revision.affectedNodes) })) }),
+  };
+  return { graph: collapsed, facts: next };
 }
 
 const layoutEdge = (edge: BareEdge | PackEdge): LayoutEdge => ({
@@ -161,7 +282,13 @@ export function sceneInputs(
       }
     : { entry: reference.entry, nodes: reference.nodes.map(layoutNode), edges: reference.edges.map(layoutEdge) };
 
-  if (view === undefined) return { graph, facts: {} };
+  // Two Pack words for the canvas (#andes asks 4 and 5): an AI node keeps its square with its own
+  // look, and a labelled autopilot segment is one merged step with a checklist.
+  const packNodes = isFullGraph(reference) ? reference.nodes : [];
+  const marked: LayoutGraph = { ...graph, nodes: withAiMarks(graph.nodes, packNodes, aiToolsOf(context?.method?.contract.tools)) };
+  const groups = isFullGraph(reference) ? segmentGroups(reference) : [];
+
+  if (view === undefined) return collapseSegments(marked, {}, groups, packNodes);
 
   const states: Record<string, NodeVisualState> = {};
   const waitedForSlot: string[] = [];
@@ -170,7 +297,7 @@ export function sceneInputs(
     if (node.waitedForSlot === true) waitedForSlot.push(node.nodeId);
   }
   const revisions = (view.revisions ?? []).map((revision) => ({ changedNodes: revision.changedNodes, affectedNodes: revision.affectedNodes }));
-  const growths = growthsOf(context, graph);
+  const growths = growthsOf(context, marked);
   const fork = forkOf(view);
 
   const facts: LayoutFacts = {
@@ -184,6 +311,6 @@ export function sceneInputs(
     ...(growths.length === 0 ? {} : { growths }),
     ...(revisions.length === 0 ? {} : { revisions }),
   };
-  const labelledGraph: LayoutGraph = fork === undefined ? graph : { ...graph, nodes: withBranchCaptions(graph.nodes, fork) };
-  return { graph: labelledGraph, facts };
+  const labelledGraph: LayoutGraph = fork === undefined ? marked : { ...marked, nodes: withBranchCaptions(marked.nodes, fork) };
+  return collapseSegments(labelledGraph, facts, groups, packNodes);
 }

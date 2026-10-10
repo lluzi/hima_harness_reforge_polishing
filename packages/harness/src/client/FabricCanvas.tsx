@@ -9,9 +9,10 @@ import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { NODE_CARD_WIDTH } from '../node-card-layout.js';
-import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
+import { AI_RING_ID, AI_RING_LIVE_ID, FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
+import { engineeringActivityOf } from './engineering-activity.js';
 import { Glyph } from './glyphs.js';
-import { useHimaT } from './locale/index.js';
+import { labelKeyed, useHimaT } from './locale/index.js';
 import { NodeCard } from './NodeCard.js';
 import type { Acting } from './HimaRunCard.js';
 
@@ -60,18 +61,22 @@ const MULTIPLICATION_SIGN = String.fromCharCode(215);
  *  parent tracks "already seen" in an effect, after commit, and only ever hands this component a
  *  already-decided boolean to render from. */
 function Edge({ edge, firstLit, pulse }: { edge: PlacedEdge; firstLit: boolean; pulse: boolean }): ReactElement {
+  const t = useHimaT();
   const dashed = edge.kind === 'revisit' || edge.kind === 'return';
   const arrowed = edge.kind === 'dependency' || edge.kind === 'outcome';
+  // The Judge word reads plainly on the chip (pass / fail / unclear); a Pack's own outcome word
+  // stays as written. The layout sized the pill for the raw word, which is never shorter.
+  const chipText = edge.chip === undefined ? '' : labelKeyed(t, `edge.outcome.${edge.chip.text}`, edge.chip.text);
   // 6.5 px/char at the 13 px label font, the same estimate `FabricNode`'s own truncation uses — a
   // pill a hair wider than the shortest possible real text is safer than one that clips it.
-  const chipWidth = edge.chip === undefined ? 0 : edge.chip.text.length * 6.5 + 16;
+  const chipWidth = edge.chip === undefined ? 0 : chipText.length * 6.5 + 16;
   return (
     <g className={`hima-edge hima-edge-${edge.kind}${edge.lit ? ' hima-edge-lit' : ''}${firstLit ? ' hima-edge-lit-enter' : ''}${pulse ? ' hima-edge-revisit-pulse' : ''}`}>
       <path d={edge.path} className={`hima-edge-path${dashed ? ' hima-edge-dashed' : ''}`} markerEnd={arrowed ? `url(#${edge.lit ? 'hima-arrow-lit' : 'hima-arrow'})` : undefined} />
       {edge.chip === undefined ? null : (
         <g transform={`translate(${edge.chip.x},${edge.chip.y})`} className={`hima-edge-chip hima-edge-chip-${edge.chip.text.toLowerCase()}`}>
           <rect x={-chipWidth / 2} y={-9} width={chipWidth} height={18} rx={9} />
-          <text y={4} textAnchor="middle">{edge.chip.text}</text>
+          <text y={4} textAnchor="middle">{chipText}</text>
         </g>
       )}
       {/* C11: a revisit arc's own badge is only informative once the loop has actually gone around
@@ -482,6 +487,15 @@ export function FabricCanvas({
             <pattern id={HATCH_PATTERN_ID} width={6} height={6} patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
               <line x1={0} y1={0} x2={0} y2={6} className="hima-node-hatch-line" />
             </pattern>
+            {/* The AI node's ring: indigo, amber, teal. The live one turns slowly; it is only ever
+                referenced while motion is on (`FabricNode`'s own `AiRing`). */}
+            <linearGradient id={AI_RING_ID} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" className="hima-ai-stop-1" /><stop offset="0.5" className="hima-ai-stop-2" /><stop offset="1" className="hima-ai-stop-3" />
+            </linearGradient>
+            <linearGradient id={AI_RING_LIVE_ID} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" className="hima-ai-stop-1" /><stop offset="0.5" className="hima-ai-stop-2" /><stop offset="1" className="hima-ai-stop-3" />
+              {motionOff ? null : <animateTransform attributeName="gradientTransform" type="rotate" from="0 0.5 0.5" to="360 0.5 0.5" dur="6s" repeatCount="indefinite" />}
+            </linearGradient>
           </defs>
           <g className={`hima-canvas-transform${motionOff || suppressTransition ? ' hima-canvas-transform-still' : ''}`} transform={`translate(${transform.tx},${transform.ty}) scale(${transform.scale})`}>
             {scene.frames.map((frame) => <FrameBox key={frame.id} frame={frame} />)}
@@ -499,6 +513,7 @@ export function FabricCanvas({
             })}
             {scene.nodes.map((node) => (
               <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}
+                activity={node.ai === true ? engineeringActivityOf(view, node.id) : undefined}
                 reducedMotion={motionOff} selected={node.id === selectedNodeId} onSelect={onSelectNode}
                 // A3: the Run's own status word (masthead) can honestly say "running" while the
                 // current node itself sits at `available` — HimaFabric truth, not a bug: the Run is
@@ -576,6 +591,7 @@ export function FabricCanvas({
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="judge" half={7} /></svg>{t('legend.judge')}</span>
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="explore" half={7} mark /></svg>{t('legend.explore')}</span>
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="wait" half={7} /></svg>{t('legend.wait')}</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-ai"><KindOutline kind="act" half={7} /></svg>{t('legend.ai')}</span>
         </div>
         <div className="hima-canvas-tools">
           <button type="button" className="hima-icon-button" data-hima-control="canvas-locate" aria-label={t('canvas.locate')} onClick={locate}><Glyph name="locate" /></button>
