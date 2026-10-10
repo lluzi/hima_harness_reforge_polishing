@@ -43,7 +43,12 @@ export interface LayoutNode {
 /** One edge. `revisit: true` marks the one edge kind rank (rule 1) is computed without; `outcome`
  * carries the Judge word (`PASS` | `FAIL` | `UNDETERMINED`, or a Pack's own converged/generation-limit
  * word) that a chip renders. */
-export interface LayoutEdge { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: true }
+export interface LayoutEdge {
+  readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: true;
+  /** Draw no outcome chip on this edge (its outcome still decides hanging): a path to a wait node,
+   *  or one leaving a merged step, where the word would only repeat what the shape already says. */
+  readonly chipless?: true;
+}
 
 /** A self-contained graph: a loop body or a growth's proposed graph, laid out by the same rules 1–2
  * as the top-level reference graph, then hung under the node that owns it (rules 6–7). */
@@ -244,7 +249,8 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
       while (cursor !== undefined && !seen.has(cursor)) {
         seen.add(cursor);
         const incoming = edges.filter((edge) => edge.to === cursor && !edge.revisit);
-        if (incoming.length >= 2 && byId.get(cursor)?.kind === 'judge') { joinId = cursor; break; }
+        // A merged step can be the join: its first member is the judge the branches converge into.
+        if (incoming.length >= 2 && (byId.get(cursor)?.kind === 'judge' || byId.get(cursor)?.members !== undefined)) { joinId = cursor; break; }
         chain.push(cursor);
         const onward = edges.filter((edge) => edge.from === cursor && !edge.revisit);
         cursor = onward.length === 1 ? onward[0]!.to : undefined;
@@ -268,6 +274,32 @@ export const EXTRA_LINE = 15;
 const EXTRA_HALF_W = 70;
 const extraOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => ((n.members?.length ?? 0) + (n.ai === true ? 2 : 0)) * EXTRA_LINE;
 const footBottomOf = (n: Pick<LayoutNode, 'members' | 'ai'>): number => FOOT_BOTTOM + extraOf(n);
+
+/**
+ * Each lane's own y, top to bottom: `ROW` apart as rule 2 spaces them, stretched further wherever a
+ * node's extra lines (a merged step's checklist, an AI node's activity) would reach a node in a lower
+ * lane within their width — that lane, and every lane under it, moves down until it clears them. A
+ * graph with no extra lines keeps exactly `top + (row - minRow) * ROW`.
+ */
+function rowYs(nodes: readonly LayoutNode[], rank: ReadonlyMap<string, number>, row: ReadonlyMap<string, number>, minRow: number, top: number): Map<number, number> {
+  const lanes = [...new Set(nodes.map((node) => row.get(node.id) ?? 0))].sort((a, b) => a - b);
+  const ys = new Map<number, number>();
+  let previous: number | undefined;
+  for (const lane of lanes) {
+    let y = previous === undefined ? top + (lane - minRow) * ROW : ys.get(previous)! + (lane - previous) * ROW;
+    for (const owner of nodes) {
+      const extra = extraOf(owner);
+      const ownerLane = row.get(owner.id) ?? 0;
+      if (extra === 0 || ownerLane >= lane) continue;
+      const ownerX = (rank.get(owner.id) ?? 0) * PITCH;
+      const reaches = nodes.some((other) => (row.get(other.id) ?? 0) === lane && Math.abs((rank.get(other.id) ?? 0) * PITCH - ownerX) < EXTRA_HALF_W + FOOT_HALF_W);
+      if (reaches) y = Math.max(y, ys.get(ownerLane)! + FOOT_TOP + FOOT_BOTTOM + extra);
+    }
+    ys.set(lane, y);
+    previous = lane;
+  }
+  return ys;
+}
 
 /** Rule 2's row (#63: lanes). Every node takes the first row, from its preferred row downward, where
  * its footprint meets no node already placed; nodes are placed by rank, then declaration order.
@@ -302,20 +334,13 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
   const row = new Map<string, number>();
   const home = new Map<string, number>();
   const placed: { x: number; y: number; extra: number }[] = [];
-  // Two footprints meet when any of their boxes do: the glyph-and-label box, and — for a node that
-  // draws extra lines (a checklist, an AI node's activity) — the wider box of those lines below it.
-  // With no extra lines this is exactly the old test: 2 * FOOT_HALF_W apart, or a footprint's height.
-  const boxesAt = (p: { x: number; y: number; extra: number }) => {
-    const y = p.y * ROW;
-    const label = { left: p.x - FOOT_HALF_W, right: p.x + FOOT_HALF_W, top: y - FOOT_TOP, bottom: y + FOOT_BOTTOM };
-    return p.extra === 0 ? [label] : [label, { left: p.x - EXTRA_HALF_W, right: p.x + EXTRA_HALF_W, top: y + FOOT_BOTTOM, bottom: y + FOOT_BOTTOM + p.extra }];
-  };
-  const overlap = (a: { left: number; right: number; top: number; bottom: number }, b: typeof a) =>
-    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  const free = (x: number, y: number, extra: number) => {
-    const mine = boxesAt({ x, y, extra });
-    return placed.every((p) => !boxesAt(p).some((box) => mine.some((own) => overlap(box, own))));
-  };
+  // Lanes are chosen from the glyph-and-label footprints alone, so a checklist or an AI node's
+  // activity lines never bend the spine or a fork's lanes: `rowYs` opens the room they need below
+  // their own row instead. Only two such blocks side by side on one row cannot be stretched apart,
+  // so they still take separate lanes.
+  const free = (x: number, y: number, extra: number) => placed.every((p) =>
+    (Math.abs(p.x - x) >= 2 * FOOT_HALF_W || Math.abs(p.y - y) >= (FOOT_TOP + FOOT_BOTTOM) / ROW)
+    && !(extra > 0 && p.extra > 0 && p.y === y && Math.abs(p.x - x) < 2 * EXTRA_HALF_W));
   for (const node of order) {
     const x = (rank.get(node.id) ?? 0) * PITCH;
     const homes = (predecessors.get(node.id) ?? []).map((from) => home.get(from)).filter((h): h is number => h !== undefined);
@@ -438,7 +463,7 @@ function classifyEdge(
       path: `M ${sx + 18} ${sy} C ${sx + 22} ${sy}, ${tx} ${ty - 30}, ${tx} ${ty - 18}`,
       // #63: on the curve's own midpoint (t = 0.5 of the cubic above), not under the target, where
       // it covered the target's own id and caption.
-      chip: { x: (sx + tx) / 2 + 10.5, y: (sy + ty) / 2 - 13.5, text: outcome },
+      ...(edge.chipless === true ? {} : { chip: { x: (sx + tx) / 2 + 10.5, y: (sy + ty) / 2 - 13.5, text: outcome } }),
     };
   }
   if (edge.outcome !== undefined) {
@@ -446,7 +471,7 @@ function classifyEdge(
     return {
       from: edge.from, to: edge.to, kind: 'outcome', outcome, lit: litFromSource,
       path: `M ${sx + 18} ${sy} L ${tx - 18} ${ty}`,
-      chip: { x: (sx + tx) / 2, y: sy - 24, text: outcome },
+      ...(edge.chipless === true ? {} : { chip: { x: (sx + tx) / 2, y: sy - 24, text: outcome } }),
     };
   }
   return { from: edge.from, to: edge.to, kind: 'dependency', lit: litFromSource, path: `M ${sx + 18} ${sy} L ${tx - 18} ${ty}` };
@@ -744,7 +769,14 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const mainLevels = revisitLevels(graph.edges, (id) => rankMap.get(id) ?? 0);
   const topExtra = 0.75 * ARC_STEP * Math.max(0, ...mainLevels.values());
   const pass1X = new Map(graph.nodes.map((node) => [node.id, X0 + (rankMap.get(node.id) ?? 0) * PITCH]));
-  const pass1Y = new Map(graph.nodes.map((node) => [node.id, PAD_Y + topExtra + ((rowMap.get(node.id) ?? 0) - minRow) * ROW]));
+  const laneY = rowYs(graph.nodes, rankMap, rowMap, minRow, PAD_Y + topExtra);
+  /** How far the lanes down to `row` were stretched for extra lines (0 for a graph without any). */
+  const stretchAt = (row: number): number => {
+    let stretch = 0;
+    for (const [lane, y] of laneY) if (lane <= row) stretch = y - (PAD_Y + topExtra + (lane - minRow) * ROW);
+    return stretch;
+  };
+  const pass1Y = new Map(graph.nodes.map((node) => [node.id, laneY.get(rowMap.get(node.id) ?? 0)!]));
 
   // Rule 6: every explore node that opens a loop, processed low rank to high rank so an earlier
   // open loop's height is already known when a later one's anchor position is computed — "the spine
@@ -840,7 +872,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     // clearance) measured against where the spine's own deepest row would otherwise sit
     // (`PAD_Y + (maxRow - minRow) * ROW`) — clamped to never go negative, since a frame that already
     // sits above the spine's own bottom needs no extra shift at all.
-    const spineBottom = PAD_Y + topExtra + (maxRow - minRow) * ROW;
+    const spineBottom = PAD_Y + topExtra + (maxRow - minRow) * ROW + stretchAt(maxRow);
     const frameBottom = placed.box.y + placed.box.height + 24;
     const extra = Math.max(0, frameBottom - spineBottom);
     loopShift.push({ exploreRank, extra });
@@ -903,7 +935,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   // node's own caption and the Goal's own label — "next-period" running straight into "clock period
   // at m…" (PLS design review) — and a node's caption already reads to the right of its own shape,
   // so the roundel needs the extra half-pitch of clearance a bare node-to-node gap does not.
-  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y + topExtra - minRow * ROW + shiftBefore(maxRank + 1) };
+  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y + topExtra - minRow * ROW + stretchAt(0) + shiftBefore(maxRank + 1) };
   const allFrames = [...loopFrames, ...growthFrames];
   const allNodes = [...mainNodes, ...loopNodes, ...growthNodes];
   // Finding 2: the Goal roundel's own column (`goal.x + 96`) is only ever wide enough for the main
@@ -922,7 +954,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   // The lowest node's own labels still need their room below it, and a routed edge's track can run
   // below the lowest node — the scene keeps a margin past whichever reaches further.
   // A merged step's checklist or an AI node's activity lines can reach below the lowest row's margin.
-  const height = Math.max((maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra + topExtra, lowestTrack + PAD_Y,
+  const height = Math.max((maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra + topExtra + stretchAt(maxRow), lowestTrack + PAD_Y,
     ...allNodes.map((node) => node.y + footBottomOf(node) + 16));
 
   return {

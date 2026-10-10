@@ -11,9 +11,7 @@ export interface ResultsCell {
   /** The value as printed, or an em dash when the column has no reading of this row yet. */
   readonly display: string;
   readonly value?: number;
-  /** The earlier round this cell's observation came from, when the selected round has none. */
-  readonly fromRound?: number;
-  /** The better of the first and last columns under the row's own `better`. */
+  /** The last column, when it beats the first under the row's own `better`. Never the reference. */
   readonly better?: true;
 }
 
@@ -34,6 +32,15 @@ export function resultsRounds(view: Pick<RunView, 'generations' | 'observations'
   return rounds.size === 0 ? [1] : [...rounds].sort((a, b) => a - b);
 }
 
+/** The rounds with a result to show: those the last column's Reader (the round's own build) has read
+ *  in, oldest first. A round still running has none and is not offered yet. */
+function readRounds(results: PackResults, view: Pick<RunView, 'observations'>): readonly number[] {
+  const reader = results.columns[results.columns.length - 1]!.reader;
+  const rounds = new Set<number>();
+  for (const observation of view.observations) if (observation.reader.id === reader) rounds.add(observation.generation ?? 1);
+  return [...rounds].sort((a, b) => a - b);
+}
+
 /** One reader's reading of one value type for a round: that round's latest, else its latest earlier. */
 function readingOf(view: Pick<RunView, 'observations'>, reader: string, type: string, round: number): { value: number | null; round: number } | undefined {
   let best: { value: number | null; round: number } | undefined;
@@ -51,22 +58,23 @@ function readingOf(view: Pick<RunView, 'observations'>, reader: string, type: st
 
 const formatted = (value: number, digits: number | undefined): string => (digits === undefined ? String(value) : value.toFixed(digits));
 
-/** The table for one round. `round` outside the Run's rounds is answered for its latest round. */
+/** The table for one round: only rounds the last column has read are offered, the latest by
+ *  default; `round` outside them is answered for that latest one. Before any is read, the table
+ *  shows the Run's latest round (the reference may already be in) with no headline. */
 export function resultsTable(results: PackResults, view: Pick<RunView, 'generations' | 'observations'>, round?: number): ResultsTable {
-  const rounds = resultsRounds(view);
-  const selected = round !== undefined && rounds.includes(round) ? round : rounds[rounds.length - 1]!;
+  const rounds = readRounds(results, view);
+  const opened = resultsRounds(view);
+  const selected = round !== undefined && rounds.includes(round) ? round : rounds.at(-1) ?? opened[opened.length - 1]!;
   const cellOf = (reader: string, row: Row): ResultsCell => {
     const reading = readingOf(view, reader, row.type, selected);
     if (reading === undefined || reading.value === null) return { display: DASH };
-    return { display: formatted(reading.value, row.digits), value: reading.value, ...(reading.round < selected && reading.round > 0 ? { fromRound: reading.round } : {}) };
+    return { display: formatted(reading.value, row.digits), value: reading.value };
   };
   const rows = results.rows.map((row) => {
     const cells = results.columns.map((column) => cellOf(column.reader, row));
     const first = cells[0]?.value, last = cells.length > 1 ? cells[cells.length - 1]?.value : undefined;
-    if (row.better !== undefined && first !== undefined && last !== undefined && first !== last) {
-      const lastWins = row.better === 'higher' ? last > first : last < first;
-      const index = lastWins ? cells.length - 1 : 0;
-      cells[index] = { ...cells[index]!, better: true };
+    if (row.better !== undefined && first !== undefined && last !== undefined && (row.better === 'higher' ? last > first : last < first)) {
+      cells[cells.length - 1] = { ...cells[cells.length - 1]!, better: true };
     }
     return { label: row.label, type: row.type, ...(row.unit === undefined ? {} : { unit: row.unit }), cells };
   });
@@ -75,7 +83,7 @@ export function resultsTable(results: PackResults, view: Pick<RunView, 'generati
   if (headlineRow !== undefined) {
     const lastColumn = results.columns[results.columns.length - 1]!;
     const reading = readingOf(view, lastColumn.reader, headlineRow.type, selected);
-    if (reading !== undefined && reading.value !== null) {
+    if (rounds.includes(selected) && reading !== undefined && reading.value !== null) {
       const sign = reading.value > 0 ? '+' : '';
       headline = { label: headlineRow.label, display: `${sign}${formatted(reading.value, headlineRow.digits)}${headlineRow.unit === undefined ? '' : ` ${headlineRow.unit}`}` };
     }

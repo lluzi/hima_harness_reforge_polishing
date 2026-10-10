@@ -404,7 +404,7 @@ class ResidentEngineeringWrapperTest(WrapperFixture):
         self.assertEqual({k: running["activity"][k] for k in ("toolCalls", "planDone", "planTotal")},
                          {"toolCalls": 2, "planDone": 2, "planTotal": 3})
         self.assertEqual((running["activity"]["latest"]["kind"], running["activity"]["latest"]["title"]),
-                         ("execute", "cat workspace/report.txt"))
+                         ("execute", "cat report.txt"))
         self.assertEqual(state["detail"]["completedRequestId"], "message:activity")
         self.assertEqual(state["activity"]["toolCalls"], 2)
         self.assertEqual((state["activity"]["latest"]["kind"], state["activity"]["latest"]["title"]), ("message", "done"))
@@ -860,7 +860,7 @@ class AcpReaderRobustnessTest(unittest.TestCase):
 class ActivityTest(unittest.TestCase):
     def test_titles_paths_messages_and_retained_counts(self):
         module = load_wrapper_module()
-        self.assertEqual(module.activity_title("cd /a/b/c/d && ls /x/y https://h/a/b/c"), "cd c/d && ls x/y https://h/a/b/c")
+        self.assertEqual(module.activity_title("cd /a/b/c/d && ls x/y https://h/a/b/c"), "cd d && ls y https://h/a/b/c")
         self.assertEqual(len(module.activity_title("x" * 300)), 120)
         activity = module.Activity()
         self.assertIsNone(activity.snapshot())
@@ -887,3 +887,24 @@ class ActivityTest(unittest.TestCase):
         retained = module.Activity(value)
         self.assertEqual(retained.snapshot()["toolCalls"], 1)
         self.assertIsNone(module.Activity({"toolCalls": "x"}).snapshot())
+
+    def test_actions_read_as_short_human_phrases(self):
+        module = load_wrapper_module()
+        phrase = module.action_phrase
+        root = "data/eda/project/hima_harness/ctu-runs/run-1/.hima-engineering/task/workspace"
+        self.assertEqual(phrase("execute", "bash", {"command": f"cd /{root} && FOO=1 /opt/eda/bin/himatime report_paths -n 5 | tee log"}), "himatime report_paths")
+        self.assertEqual(phrase("execute", f"cd {root} && qualib analyze --lib x.lib", {}), "qualib analyze")
+        self.assertEqual(phrase("execute", "bash", {"command": f"export A=1; python3 {root}/tools/andes_cli.py --verbose precheck"}), "python3 andes_cli.py precheck")
+        self.assertEqual(phrase("execute", "bash", {"command": f"ls -la {root}/reports"}), "ls reports")
+        self.assertEqual(phrase("read", f"{root}/knowledge/himatime-playbook.md", {}), "himatime-playbook.md")
+        self.assertEqual(phrase("read", "read", {"filePath": f"/{root}/knowledge/himatime-playbook.md"}), "himatime-playbook.md")
+        self.assertEqual(phrase("edit", "write", {"filePath": f"{root}/result.json"}), "result.json")
+        self.assertEqual(phrase("search", "grep", {"pattern": "set_max_delay|create_clock " * 4}), ("set_max_delay|create_clock " * 4)[:39] + "\u2026")
+        self.assertEqual(phrase("other", f"inspect {root}/x.rpt now", {}), "inspect x.rpt now")
+        self.assertLessEqual(len(phrase("execute", "bash", {"command": "tool " + "a" * 200})), 60)
+        activity = module.Activity()
+        activity.update({"sessionUpdate": "tool_call", "toolCallId": "c", "kind": "execute", "title": "bash", "rawInput": {"cwd": f"/{root}"}})
+        self.assertEqual(activity.snapshot()["latest"]["title"], "bash")
+        activity.update({"sessionUpdate": "tool_call_update", "toolCallId": "c", "title": f"cd {root} && himatime report_timing",
+                         "rawInput": {"command": f"cd /{root} && himatime report_timing -max_paths 10"}})
+        self.assertEqual(activity.snapshot()["latest"], {**activity.snapshot()["latest"], "kind": "execute", "title": "himatime report_timing"})

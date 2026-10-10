@@ -17,6 +17,7 @@ import os
 from pathlib import Path, PurePosixPath
 import queue
 import re
+import shlex
 import signal
 import stat
 import subprocess
@@ -320,14 +321,75 @@ ACTIVITY_KINDS = {
     "read": "read", "fetch": "read", "edit": "edit", "delete": "edit", "move": "edit",
     "execute": "execute", "search": "search",
 }
-ABSOLUTE_PATH = re.compile(r"(?<![\w.~:/-])/[^\s/'\"`]+(?:/[^\s/'\"`]+)+")
+# Any absolute or relative path with at least two segments (not a URL): shown by its basename.
+MULTI_SEGMENT_PATH = re.compile(r"(?<![\w.~:/@+-])(?:[\w.~@+*-]+)?(?:/[\w.~@+*-]+)+/?")
+INTERPRETERS = {"python", "python3", "python2", "bash", "sh", "zsh", "node", "perl", "tclsh", "ruby", "Rscript"}
+PREFIX_WORDS = {"env", "sudo", "time", "exec", "nohup", "command", "nice"}
+SKIPPED_COMMANDS = {"cd", "export", "set", "source", ".", "pushd", "popd", "true", "unset", "umask", "ulimit"}
+ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def clip(text, limit):
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+
+
+def basename(text):
+    stripped = text.rstrip("/")
+    return stripped.rsplit("/", 1)[-1] or text
+
+
+def strip_paths(text):
+    return MULTI_SEGMENT_PATH.sub(lambda match: basename(match.group(0)), text)
 
 
 def activity_title(value, limit=120):
-    """One display line: absolute paths keep their last two segments, the line keeps 120 chars."""
-    text = " ".join(str(value).split())
-    text = ABSOLUTE_PATH.sub(lambda match: "/".join(match.group(0).split("/")[-2:]), text)
-    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+    """One display line: multi-segment paths become their basename, the line keeps `limit` chars."""
+    return clip(strip_paths(" ".join(str(value).split())), limit)
+
+
+def command_phrase(command):
+    """'cd /x && FOO=1 /opt/bin/himatime report_paths -n 5 | tee log' -> 'himatime report_paths'."""
+    for segment in re.split(r"&&|\|\||[;|\n]", command):
+        try:
+            words = shlex.split(segment, comments=True)
+        except ValueError:
+            words = segment.split()
+        while words and (ENV_ASSIGNMENT.match(words[0]) or words[0] in PREFIX_WORDS):
+            words = words[1:]
+        if not words or words[0] in SKIPPED_COMMANDS:
+            continue
+        program = basename(words[0])
+        rest = [word for word in words[1:] if not word.startswith("-")]
+        phrase = [program]
+        if program in INTERPRETERS and rest:
+            phrase.append(basename(rest.pop(0)))
+        if rest:
+            phrase.append(basename(rest[0]))
+        return clip(" ".join(phrase), 60)
+    return None
+
+
+def action_phrase(kind, title, raw):
+    """A short human phrase for one tool action of the given display kind."""
+    raw = raw if isinstance(raw, dict) else {}
+    title = title.strip() if isinstance(title, str) else ""
+    if kind == "execute":
+        command = raw.get("command") if isinstance(raw.get("command"), str) else title
+        phrase = command_phrase(command) if command else None
+        return phrase or activity_title(title, 60) or None
+    if kind in ("read", "edit"):
+        target = next((raw[key] for key in ("filePath", "file_path", "path", "filename", "url")
+                       if isinstance(raw.get(key), str) and raw[key].strip()), None)
+        if target is None and title and (" " not in title or "/" in title):
+            target = title.split()[-1] if "/" in title else title
+        return clip(basename(target.strip()), 60) if target else (activity_title(title, 60) or None)
+    if kind == "search":
+        pattern = next((raw[key] for key in ("pattern", "query", "glob", "regex")
+                        if isinstance(raw.get(key), str) and raw[key].strip()), None)
+        return clip(" ".join((pattern or title).split()), 40) or None
+    if kind == "plan":
+        return "update plan"
+    return activity_title(title, 60) or None
 
 
 def plan_progress(entries):
@@ -345,6 +407,7 @@ class Activity:
         self.lock = threading.Lock()
         self.value = None
         self.titles = {}
+        self.kinds = {}
         self.message = None
         self.message_id = None
         if isinstance(retained, dict):
@@ -403,14 +466,19 @@ class Activity:
                 self._ensure()["toolCalls"] += 1
                 self.dirty = True
             self._plan(todos)
-            if not isinstance(title, str) or not title.strip():
+            reported = update.get("kind") if isinstance(update.get("kind"), str) else self.kinds.get(call_id)
+            self.kinds[call_id] = reported
+            display = "plan" if is_plan else ACTIVITY_KINDS.get(reported, "other")
+            phrase = action_phrase(display, title, raw)
+            if not phrase:
                 return
-            if kind == "tool_call_update" and self.titles.get(call_id) == title:
+            if kind == "tool_call_update" and self.titles.get(call_id) == phrase:
                 return
-            self.titles[call_id] = title
-            if len(self.titles) > 512:
-                self.titles.pop(next(iter(self.titles)))
-            self._latest("plan" if is_plan else ACTIVITY_KINDS.get(update.get("kind"), "other"), title)
+            self.titles[call_id] = phrase
+            for retained in (self.titles, self.kinds):
+                if len(retained) > 512:
+                    retained.pop(next(iter(retained)))
+            self._latest(display, phrase)
 
     def new_turn(self):
         with self.lock:

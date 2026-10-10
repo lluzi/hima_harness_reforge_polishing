@@ -137,9 +137,12 @@ function SelectedHalo({ node }: { node: PlacedNode }): ReactElement {
  *  while the agent works and stands still once it is done. The two gradients live in
  *  `FabricCanvas`'s own `<defs>`; the turning one is never referenced while motion is off. */
 export const AI_RING_ID = 'hima-ai-ring', AI_RING_LIVE_ID = 'hima-ai-ring-live';
-function AiRing({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
-  const live = node.state === 'running' || node.state === 'retrying';
-  if (!live && node.state !== 'done' && node.state !== 'reconciled') return null;
+function AiRing({ node, working, motionOff }: { node: PlacedNode; working: boolean; motionOff: boolean }): ReactElement | null {
+  const done = node.state === 'done' || node.state === 'reconciled';
+  // An outsourced node the owner drives can sit `available` while its agent works: the agent's own
+  // execution or activity says it is working, not only the node's Ledger state.
+  const live = !done && (working || node.state === 'running' || node.state === 'retrying');
+  if (!live && !done) return null;
   return <g className="hima-node-ai-ring" stroke={`url(#${live && !motionOff ? AI_RING_LIVE_ID : AI_RING_ID})`}><KindOutline kind="act" half={HALF + 2} /></g>;
 }
 
@@ -228,6 +231,9 @@ export interface FabricNodeProps {
   readonly node: PlacedNode;
   /** What the AI agent at this node is doing, when the Host reports it (an AI node only). */
   readonly activity?: EngineeringActivityView;
+  /** The AI node's agent is working: an execution at this node in a non-terminal phase, or its
+   *  reported activity says so. Turns the ring even while the node itself reads `available`. */
+  readonly working?: boolean;
   readonly runId: string;
   readonly labelsVisible: boolean;
   /** Reduced motion, or a stale snapshot — the caller ORs the two before handing this down, since a
@@ -241,7 +247,7 @@ export interface FabricNodeProps {
   onSelect(id: string): void;
 }
 
-export function FabricNode({ node, activity, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
+export function FabricNode({ node, activity, working = false, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
   const t = useHimaT();
   // C19: the log-tail poll never runs while stale/reduced-motion (the caller hands this component
   // `reducedMotion || stale` as one flag, `FabricCanvas.tsx`) — a stale node is already showing a
@@ -260,7 +266,7 @@ export function FabricNode({ node, activity, runId, labelsVisible, reducedMotion
     : `${node.label} · ${stateWord}${node.about === undefined ? '' : ` — ${node.about}`}`;
   // The extra lines start below the two label lines the layout always reserves.
   const extraTop = labelY + 30;
-  const activityLine = activity?.latest === undefined ? undefined : `${t(activityKindKey(activity.latest.kind))}: ${activity.latest.title}`;
+  const activityLine = activity?.latest === undefined ? undefined : `${t(activityKindKey(activity.latest.kind))} ${activity.latest.title}`;
   return (
     <g
       data-hima-region={`campaign-node-${node.id}`}
@@ -290,7 +296,7 @@ export function FabricNode({ node, activity, runId, labelsVisible, reducedMotion
       <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
       {selected ? <SelectedHalo node={node} /> : null}
       {node.current ? <CurrentRing node={node} /> : null}
-      {node.ai === true ? <AiRing node={node} motionOff={reducedMotion} /> : null}
+      {node.ai === true ? <AiRing node={node} working={working} motionOff={reducedMotion} /> : null}
       <NodeShape node={node} />
       <StateGlyph node={node} motionOff={reducedMotion} />
       <StateBar node={node} />
@@ -320,7 +326,9 @@ export function FabricNode({ node, activity, runId, labelsVisible, reducedMotion
             <text className="hima-node-activity" y={extraTop} textAnchor="middle">{truncate(activityLine, ACTIVITY_LINE_CHARS)}<title>{activityLine}</title></text>
           )}
           <text className="hima-node-activity-count" y={extraTop + EXTRA_LINE} textAnchor="middle">
-            {t('ai.counter', { calls: activity.toolCalls, done: activity.planDone, total: activity.planTotal })}
+            {activity.planTotal > 0
+              ? t('ai.counter', { calls: activity.toolCalls, done: activity.planDone, total: activity.planTotal })
+              : t('ai.calls', { calls: activity.toolCalls })}
           </text>
         </>}
       </g>

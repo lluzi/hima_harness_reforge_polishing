@@ -11,6 +11,7 @@ import type { RunView, RunHeadView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
 import { legacyAtcsGraph } from './support/atcs-legacy.ts';
 import { resultsTable } from '../../packages/harness/src/client/results-view.ts';
+import { aiWorking } from '../../packages/harness/src/client/engineering-activity.ts';
 
 const node = (id: string, kind: 'act' | 'judge' | 'explore' | 'wait' = 'act') => ({ id, kind });
 const linear: LayoutGraph = { entry: 'prepare', nodes: [node('prepare'), node('analyze'), node('check', 'judge'), node('select', 'explore')],
@@ -303,33 +304,73 @@ test('an act node whose tool an AI agent works through (contract outsourcing) is
   assert.equal(unmarked.graph.nodes.some((n) => n.ai === true), false, 'no contract, no AI mark');
 });
 
-test('the Results table reads each column from its Reader per round, falling back to an earlier round, and marks the better value', () => {
+test('the Results table offers only rounds the new build has read, reads the reference from its one run, and greens only a better last column', () => {
   const results = {
     headline: { type: 'fmax_gain_pct', label: 'Fmax gain', unit: '%', better: 'higher' as const, digits: 2 },
     columns: [{ label: 'Reference build', reader: 'andes-reference' }, { label: 'New-library build', reader: 'andes-round' }],
     rows: [{ type: 'design_fmax_mhz', label: 'Fmax', unit: 'MHz', better: 'higher' as const, digits: 1 }, { type: 'design_area_um2', label: 'Cell area', better: 'lower' as const, digits: 0 }],
   };
   const obs = (reader: string, generation: number, values: Record<string, number>) => ({ reader: { id: reader }, generation, values: Object.entries(values).map(([type, value]) => ({ type, value, unit: 'x' })) });
-  const view = {
-    generations: [{ generation: 1 }, { generation: 2 }],
-    observations: [
-      obs('andes-reference', 1, { design_fmax_mhz: 400, design_area_um2: 1000 }),
-      obs('andes-round', 1, { design_fmax_mhz: 410, design_area_um2: 1010, fmax_gain_pct: 2.5 }),
-      obs('andes-round', 2, { design_fmax_mhz: 421.04, design_area_um2: 990, fmax_gain_pct: 5.26 }),
-    ],
-  } as never;
+  const reference = obs('andes-reference', 1, { design_fmax_mhz: 400, design_area_um2: 1000 });
+  const round1 = obs('andes-round', 1, { design_fmax_mhz: 410, design_area_um2: 1010, fmax_gain_pct: 2.5 });
+  // Round 2 has opened but its build has not been read yet: it is not offered.
+  const running = resultsTable(results, { generations: [{ generation: 1 }, { generation: 2 }], observations: [reference, round1] } as never);
+  assert.deepEqual([running.round, running.rounds], [1, [1]]);
+  assert.equal(running.headline?.display, '+2.50 %');
+  assert.deepEqual(running.rows[0]!.cells.map((c) => [c.display, c.better]), [['400.0', undefined], ['410.0', true]]);
+  assert.deepEqual(running.rows[1]!.cells.map((c) => [c.display, c.better]), [['1000', undefined], ['1010', undefined]], 'a worse last column stays plain; the reference is never marked');
+  assert.equal(JSON.stringify(running).includes('fromRound'), false, 'no per-cell round suffix');
+
+  const view = { generations: [{ generation: 1 }, { generation: 2 }], observations: [reference, round1, obs('andes-round', 2, { design_fmax_mhz: 421.04, design_area_um2: 990, fmax_gain_pct: 5.26 })] } as never;
   const latest = resultsTable(results, view);
-  assert.equal(latest.round, 2);
-  assert.deepEqual(latest.rounds, [1, 2]);
-  assert.equal(latest.headline?.display, '+5.26 %');
-  assert.deepEqual(latest.rows[0]!.cells.map((c) => [c.display, c.fromRound, c.better]), [['400.0', 1, undefined], ['421.0', undefined, true]],
-    'the reference ran once: round 2 shows its round-1 reading, said so');
+  assert.deepEqual([latest.round, latest.rounds, latest.headline?.display], [2, [1, 2], '+5.26 %']);
+  assert.deepEqual(latest.rows[0]!.cells.map((c) => c.display), ['400.0', '421.0'], 'the reference build is read from its one run');
   assert.deepEqual(latest.rows[1]!.cells.map((c) => c.better), [undefined, true], 'lower area is better');
-  const first = resultsTable(results, view, 1);
-  assert.deepEqual(first.rows[1]!.cells.map((c) => [c.display, c.better]), [['1000', true], ['1010', undefined]]);
-  assert.equal(first.headline?.display, '+2.50 %');
+  assert.equal(resultsTable(results, view, 1).headline?.display, '+2.50 %');
+  assert.equal(resultsTable(results, view, 3).round, 2, 'an unread round answers the latest read one');
   const empty = resultsTable(results, { generations: [], observations: [] } as never);
-  assert.deepEqual([empty.round, empty.headline, empty.rows[0]!.cells[0]!.display], [1, undefined, '—']);
+  assert.deepEqual([empty.round, empty.rounds, empty.headline, empty.rows[0]!.cells[0]!.display], [1, [], undefined, '—']);
+});
+
+test('the shipped andes-cell-fmax graph keeps one spine: merged steps and the join on it, the two agents either side, no chips into the wait node or out of a merged step', () => {
+  const pack = loadPack(packsDir, 'andes-cell-fmax');
+  const context = { available: [], method: { contract: pack.contract } } as unknown as ExecutionContext;
+  const { graph, facts } = sceneInputs(pack.graph, { run: {}, nodes: [], generations: [] } as unknown as RunView, context);
+  const scene = layoutCanvas(graph, facts);
+  const at = (id: string) => { const n = scene.nodes.find((candidate) => candidate.id === id); assert.ok(n, `${id} is placed`); return n; };
+  const reference = at('seg:bind-inputs'), join = at('seg:requirements-joined'), next = at('next-round');
+  assert.ok(reference.members!.length > 1 && join.members!.length > 1, 'both labelled segments are merged steps');
+  assert.equal(join.y, reference.y, 'the join sits on the spine');
+  assert.equal(next.y, reference.y, 'the explore node sits on the spine');
+  assert.equal(scene.goal.y, reference.y, 'the Goal sits on the spine');
+  const himatime = at('himatime-agent'), qualib = at('qualib-agent');
+  assert.equal(himatime.ai, true); assert.equal(qualib.ai, true);
+  assert.ok(himatime.y < reference.y && qualib.y > reference.y, `the agents sit either side of the spine (${himatime.y}, ${reference.y}, ${qualib.y})`);
+  assert.ok(himatime.x === qualib.x && himatime.x > reference.x && himatime.x < join.x, 'the agents run side by side between the fork and the join');
+  assert.ok(at('blocked').y > reference.y, 'the wait node hangs below the spine');
+  // Every node's checklist or activity lines clear every node below it.
+  for (const owner of scene.nodes) {
+    const lines = ((owner.members?.length ?? 0) + (owner.ai === true ? 2 : 0)) * 15;
+    if (lines === 0) continue;
+    for (const other of scene.nodes) {
+      if (other === owner || other.y <= owner.y || Math.abs(other.x - owner.x) >= 70 + (PITCH - 8) / 2) continue;
+      assert.ok(other.y - NODE / 2 >= owner.y + NODE / 2 + 39 + lines, `${other.id} clears ${owner.id}'s extra lines`);
+    }
+  }
+  assert.deepEqual(scene.edges.filter((e) => e.chip !== undefined).map((e) => `${e.from}>${e.to}`), [], 'no chip into the wait node or out of a merged step');
+  assert.equal(scene.edges.filter((e) => e.from === 'seg:requirements-joined' && e.to === 'next-round').length, 1, 'parallel outcome edges out of a merged step draw as one');
+});
+
+test('an AI node counts as working while its execution is open or its agent reports work, whatever the node state says', () => {
+  const view = (phase?: string, state?: string) => ({
+    run: { control: phase === undefined ? undefined : { executions: { e: { nodeId: 'agent', phase } } } },
+    ...(state === undefined ? {} : { engineeringActivity: { agent: { executionId: 'e', state, toolCalls: 3, planDone: 0, planTotal: 0, updatedAt: '' } } }),
+  }) as never;
+  for (const phase of ['begun', 'working', 'ready']) assert.equal(aiWorking(view(phase), 'agent'), true, phase);
+  for (const phase of ['completed', 'failed', 'uncertain']) assert.equal(aiWorking(view(phase), 'agent'), false, phase);
+  assert.equal(aiWorking(view(undefined, 'working'), 'agent'), true);
+  assert.equal(aiWorking(view(undefined, 'completed'), 'agent'), false);
+  assert.equal(aiWorking(view('working'), 'other'), false, 'only its own node');
 });
 
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
@@ -617,9 +658,12 @@ test('the retained ATCS outcome chips sit clear of one another and of every node
   const scene = legacyAtcsScene();
   // `FabricCanvas`'s own chip pill: `text.length * 6.5 + 16` wide, 18 tall, centred on the chip point.
   const chips = scene.edges.flatMap((e) => e.chip === undefined ? [] : [{ edge: `${e.from} -> ${e.to}`, left: e.chip.x - (e.chip.text.length * 6.5 + 16) / 2, right: e.chip.x + (e.chip.text.length * 6.5 + 16) / 2, top: e.chip.y - 9, bottom: e.chip.y + 9 }]);
-  const declaredOutcomes = legacyAtcs.edges.filter((edge: any) => edge.outcome !== undefined).length;
-  assert.equal(chips.length, declaredOutcomes, 'every retained labelled outcome renders one chip');
-  assert.ok(chips.length >= 12, 'the retained multi-Judge route exercises overlapping chip placement');
+  // A path into a wait node carries no chip (the wait node's own shape says it): every other
+  // labelled outcome renders one.
+  const waits = new Set(legacyAtcs.nodes.filter((n: any) => n.kind === 'wait').map((n: any) => n.id));
+  const declaredOutcomes = legacyAtcs.edges.filter((edge: any) => edge.outcome !== undefined && !waits.has(edge.to)).length;
+  assert.equal(chips.length, declaredOutcomes, 'every retained labelled outcome not into a wait node renders one chip');
+  assert.ok(chips.length >= 10, 'the retained multi-Judge route exercises overlapping chip placement');
   for (let i = 0; i < chips.length; i++) {
     for (let j = i + 1; j < chips.length; j++) assert.ok(!overlaps(chips[i]!, chips[j]!), `the chips of ${chips[i]!.edge} and ${chips[j]!.edge} overlap`);
     for (const n of scene.nodes) {

@@ -71,7 +71,9 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
   // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
   // the same two facts the sub-line beside it already reads off `run.currentNode`/`run.generation`,
   // named here where a title is expected instead of an opaque id.
-  const fallbackTitle = run?.packId === undefined ? t('masthead.campaign') : `${run.packId}${run.generation === undefined ? '' : ` · ${t('masthead.gen', { n: run.generation })}`}`;
+  // The Pack's own title, when the execution context carries its contract, says what the work is.
+  const packSaid = context?.method?.contract.title ?? run?.packId;
+  const fallbackTitle = packSaid === undefined ? t('masthead.campaign') : `${packSaid}${run?.generation === undefined ? '' : ` · ${t('masthead.gen', { n: run.generation })}`}`;
 
   return (
     <header className="hima-masthead" data-hima-region="campaign-masthead"

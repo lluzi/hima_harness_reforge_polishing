@@ -9,8 +9,8 @@ import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { NODE_CARD_WIDTH } from '../node-card-layout.js';
-import { AI_RING_ID, AI_RING_LIVE_ID, FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
-import { engineeringActivityOf } from './engineering-activity.js';
+import { AI_RING_ID, AI_RING_LIVE_ID, FabricNode, HATCH_PATTERN_ID, KindOutline, truncate, wrapLabel } from './FabricNode.js';
+import { aiWorking, engineeringActivityOf } from './engineering-activity.js';
 import { Glyph } from './glyphs.js';
 import { labelKeyed, useHimaT } from './locale/index.js';
 import { NodeCard } from './NodeCard.js';
@@ -54,6 +54,9 @@ const clampScale = (scale: number): number => Math.min(2, Math.max(0.4, scale));
 // would otherwise trip) still catches a real icon-as-unicode regression instead of needing a
 // source-level exemption for this one.
 const MULTIPLICATION_SIGN = String.fromCharCode(215);
+
+/** The Goal roundel's words, per line: it sits past the last rank with room to either side. */
+const GOAL_LINE_CHARS = 22;
 
 /** One edge, drawn verbatim from its own `path`. `firstLit`/`pulse` are computed by the parent, never
  *  written here — a component reading its own "have I animated yet" from a ref it also mutates during
@@ -514,6 +517,7 @@ export function FabricCanvas({
             {scene.nodes.map((node) => (
               <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}
                 activity={node.ai === true ? engineeringActivityOf(view, node.id) : undefined}
+                working={node.ai === true && aiWorking(view, node.id)}
                 reducedMotion={motionOff} selected={node.id === selectedNodeId} onSelect={onSelectNode}
                 // A3: the Run's own status word (masthead) can honestly say "running" while the
                 // current node itself sits at `available` — HimaFabric truth, not a bug: the Run is
@@ -558,14 +562,12 @@ export function FabricCanvas({
                       with no number in it at all (a Pack's own choice knob). */}
                   {goalText === '' ? null : (() => {
                     const split = splitGoalText(goalText);
-                    return split === undefined ? (
-                      <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 18)}<title>{goalText}</title></text>
-                    ) : (
-                      <>
-                        <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(split.label, 18)}<title>{goalText}</title></text>
-                        <text className="hima-goal-value" y={56} textAnchor="middle">{split.value}<title>{goalText}</title></text>
-                      </>
-                    );
+                    // The goal's words wrap onto two lines of 22 characters before its value.
+                    const lines = wrapLabel(split === undefined ? goalText : split.label, GOAL_LINE_CHARS);
+                    return <>
+                      {lines.map((line, index) => <text key={index} className="hima-goal-label" y={40 + 16 * index} textAnchor="middle">{line}<title>{goalText}</title></text>)}
+                      {split === undefined ? null : <text className="hima-goal-value" y={40 + 16 * lines.length} textAnchor="middle">{split.value}<title>{goalText}</title></text>}
+                    </>;
                   })()}
                 </>
               )}
