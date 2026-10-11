@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { clearRemoteCommands, packDigestOf, remoteCommands, ReportPathError, reportListLimit, reportReadLimit, RunReports,
+import { clearRemoteCommands, packDigestOf, remoteCommands, ReportPathError, reportListLimit, reportReadLimit, RunReports, sizeBatches,
   type RunReportsView, type RunReportText } from '@hima/harness';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootInProcess, type InProcessHost } from './support/boot-inprocess.ts';
@@ -171,6 +171,17 @@ test('a report reads as bounded text; a long one is truncated; a binary one, a b
   await symlink(path.join(f.outside, 'secret.txt'), path.join(f.workspace, 'reports/synthesize/r1/escape.rpt'));
   await assert.rejects(reports.read(runId, 'reports/synthesize/r1/escape.rpt'), refused(false));
   await assert.rejects(reports.read(runId, 'reports/synthesize/r1/absent.rpt'), refused(true));
+});
+
+test('file sizes are asked a few dozen long paths at a time, so one multiplexed ssh command stays small', () => {
+  const long = Array.from({ length: 65 }, (_, i) => `/data/eda/project/site/ctu-runs/campaign-20261011-074425-322d/reports/reference-build/r1/report-${String(i).padStart(3, '0')}.rpt`);
+  const batches = sizeBatches(long);
+  assert.ok(batches.length > 1, 'long paths do not all go in one command');
+  assert.deepEqual(batches.flat(), long, 'every file once, in order');
+  for (const batch of batches) assert.ok(batch.reduce((n, f) => n + Buffer.byteLength(f) + 3, 0) <= 3_000);
+  const short = Array.from({ length: 250 }, (_, i) => `r/${String(i)}`);
+  assert.deepEqual(sizeBatches(short).map((b) => b.length), [100, 100, 50], 'short paths still go at most 100 at a time');
+  assert.deepEqual(sizeBatches([]), []);
 });
 
 test(`the listing keeps at most ${reportListLimit} files, dropping the oldest rounds`, async (t) => {

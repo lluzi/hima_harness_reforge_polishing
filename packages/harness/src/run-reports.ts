@@ -34,8 +34,11 @@ export const reportListTtlMs = 5_000;
 const nodePattern = /^[a-z0-9][a-z0-9-]*$/;
 const roundPattern = /^r([0-9]{1,3})$/;
 const namePattern = /^[A-Za-z0-9._-]{1,120}$/;
-/** Files per `wc -c`: keeps one ssh command line far below the remote shell's argument limit. */
+/** Files per `wc -c`, and the most path bytes one `wc -c` carries: an ssh command multiplexed over a
+ *  control master travels in one socket message, which macOS caps near 8 KiB, so long Campaign paths
+ *  must go a few dozen at a time. */
 const sizeBatch = 100;
+const sizeBatchBytes = 3_000;
 
 /** What reading a Run's reports needs of its Host. */
 export interface RunReportsDeps {
@@ -152,16 +155,34 @@ async function locate(site: Site, channel: Channel, workspace: string, dir: stri
  *  between the listing and this question simply has no size and is left out. */
 async function sizesOf(channel: Channel, files: readonly string[]): Promise<Map<string, number>> {
   const sizes = new Map<string, number>();
-  for (let start = 0; start < files.length; start += sizeBatch) {
-    const batch = files.slice(start, start + sizeBatch);
+  for (const batch of sizeBatches(files)) {
     const answer = await channel.exec(['wc', '-c', '--', ...batch]);
     const wanted = new Set(batch);
+    let answered = 0;
     for (const line of Buffer.from(answer.stdout).toString('utf8').split('\n')) {
       const match = /^\s*(\d+) (.+)$/.exec(line);
-      if (match !== null && wanted.has(match[2]!)) sizes.set(match[2]!, Number(match[1]));
+      if (match !== null && wanted.has(match[2]!)) { sizes.set(match[2]!, Number(match[1])); answered += 1; }
+    }
+    // `wc` answers 1 when a file went away and still sizes the rest; anything else with no sizes
+    // at all (ssh's 255 among them) is a fault, never an empty folder.
+    if (answered === 0 && answer.code !== 0 && answer.code !== 1) {
+      throw new Error(`wc exited ${String(answer.code)}${answer.stderr.trim() ? `: ${answer.stderr.trim()}` : ''}`);
     }
   }
   return sizes;
+}
+
+/** The files in batches of at most `sizeBatch` paths and `sizeBatchBytes` path bytes (one path always fits). */
+export function sizeBatches(files: readonly string[]): string[][] {
+  const batches: string[][] = [];
+  let batch: string[] = [], bytes = 0;
+  for (const file of files) {
+    const size = Buffer.byteLength(file) + 3;
+    if (batch.length > 0 && (batch.length >= sizeBatch || bytes + size > sizeBatchBytes)) { batches.push(batch); batch = []; bytes = 0; }
+    batch.push(file); bytes += size;
+  }
+  if (batch.length > 0) batches.push(batch);
+  return batches;
 }
 
 /** The listing itself. Never throws for a Site that cannot be asked: it answers `error` instead. */

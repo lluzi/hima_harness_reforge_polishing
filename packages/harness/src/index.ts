@@ -173,7 +173,7 @@ export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
 export { ReportPathError } from './errors.js';
-export { RunReports, chartPathPattern, listRunReports, readRunReport, readRunReportBytes, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit, type RunReportBytes } from './run-reports.js';
+export { RunReports, chartPathPattern, listRunReports, readRunReport, readRunReportBytes, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit, sizeBatches, type RunReportBytes } from './run-reports.js';
 export { ChartFileError, chartNoteLimit, chartOf, chartRequestOf, packChartPattern, readChartAnswer, type ChartRequest } from './chart-files.js';
 export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
