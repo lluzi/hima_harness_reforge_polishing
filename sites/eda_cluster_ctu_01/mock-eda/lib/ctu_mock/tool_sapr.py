@@ -29,12 +29,13 @@ run options:
 
 outputs in --out:
   sapr.log                     the full run log
-  sapr_summary.json            post-route WNS, TNS, Fmax, area, instances, route DRC, new-cell usage
+  sapr_summary.json            post-route WNS, TNS, Fmax, area, instances, route DRC, new-cell usage,
+                               and the QoR at the end of every flow stage (stages)
   aes_cipher_top.hdb.json      design database for HimaTime (himatime load --db DIR)
   aes_cipher_top.route.v       routed netlist (abridged: critical-path instances)
   aes_cipher_top.route.def     routed DEF header and component summary
   reports/report_qor.rpt reports/place.rpt reports/cts.rpt reports/route_drc.rpt
-  reports/area.rpt reports/postroute_timing.rpt
+  reports/area.rpt reports/postroute_timing.rpt reports/flow_summary.rpt (QoR per flow stage)
 """
 
 
@@ -118,6 +119,7 @@ def run(argv):
     area, instances, by_cell = model.area(speed, usable)
     log.phase("STA", "Post-route timing (SPEF, %s)" % model.CORNER, 4, 2)
     new_total = sum(by_cell.values())
+    stages = model.flow_stages(speed, area, instances, n_extra)
     families_used = sorted(f for f, cells in usable.items() if any(by_cell.get(c) for c in cells))
     summary = dict(
         schema="ctu-sapr-summary/1", tool=version_line("sapr"), design=model.DESIGN, technology=model.TECHNOLOGY,
@@ -127,6 +129,7 @@ def run(argv):
         newCellInstances=new_total, newCellInstancesByCell=by_cell, newFamiliesUsed=families_used,
         extraLibraries=[dict(name=l["name"], round=l.get("round"), manifestSha256=l["_manifestSha256"],
                              libertySha256=l["_files"]["liberty"]["sha256"]) for l in extra],
+        stages=stages, flowRuntimeS=sum(st["runtimeS"] for st in stages),
         dontUse=sorted(args.dont_use), runtimeS=log.elapsed(), finishedAt=now_iso(),
         note="MOCK EDA: model numbers for the demo Site eda_cluster_ctu_01; not signoff, not silicon.")
     db = dict(schema="ctu-design-db/1", design=model.DESIGN, clockPeriodNs=period, library=model.STOCK_LIBRARY,
@@ -179,6 +182,17 @@ def _reports(out, s, speed, by_cell, usable, extra):
         "  AndesCell instances:        %d" % s["newCellInstances"],
         "  Cell area:                  %.1f um^2" % s["areaUm2"],
         "  Route DRC violations:       %d" % s["routeDrcErrors"], ""]))
+    fl = ["  %-16s %10s %10s %10s %12s %10s %8s %6s %10s" % ("stage", "WNS (ns)", "TNS (ns)", "violating", "area (um^2)", "instances",
+                                                              "util %", "DRC", "runtime s"), "  " + "-" * 100]
+    for st in s["stages"]:
+        fl.append("  %-16s %10.4f %10.3f %10d %12.1f %10d %8.1f %6s %10.0f" % (
+            st["label"], st["wnsNs"], st["tnsNs"], st["violatingEndpoints"], st["areaUm2"], st["instances"], st["utilizationPct"],
+            "-" if st["routeDrcErrors"] is None else str(st["routeDrcErrors"]), st["runtimeS"]))
+    fl += ["  " + "-" * 100, "  %-16s %10s %10s %10s %12s %10s %8s %6s %10.0f" % ("flow", "", "", "", "", "", "", "", s["flowRuntimeS"]), "",
+           "  Synthesis and floorplan time the netlist with wire-load estimates; placement adds real wire lengths,",
+           "  CTS the clock skew and latency, routing the coupling. Post-route optimization ends at the final numbers.",
+           "  DRC is counted on the routed stages; detailed routing ends with 0 violations.", ""]
+    write_text(r / "flow_summary.rpt", head("QoR by flow stage") + "\n".join(fl))
     write_text(r / "place.rpt", head("placement") + "  utilization %.1f %%   rows 9-track   overflow 0.00 %%   legal: yes\n" % s["coreUtilizationPct"])
     write_text(r / "cts.rpt", head("clock tree") + "  clock %s  sinks %d  latency %.3f ns  skew 0.016 ns  buffers 74\n"
                % (model.CLOCK_NAME, model.FAMILIES["DFF"]["instances"], model.CLOCK_LATENCY_NS))

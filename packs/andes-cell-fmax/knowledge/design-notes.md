@@ -8,8 +8,10 @@ this reference and measures it again; quote the Campaign's numbers once it has t
 
 ## Charts to show
 
-Three charts in this Pack draw these numbers from the same tools. Show them with `hima_chart`
-(`{ pack: "andes-cell-fmax", file: "charts/<name>" }`): when you explain the bottleneck, show
+Four charts in this Pack draw these numbers from the same tools. Show them with `hima_chart`
+(`{ pack: "andes-cell-fmax", file: "charts/<name>" }`): when you summarize the RTL2GDS baseline,
+show `charts/reference-summary.chart.json` (Fmax, worst slack, TNS, violating endpoints, area,
+instances, utilization, route DRC and flow runtime of the reference build); when you explain the bottleneck, show
 `charts/stage-breakdown.chart.json` (where the worst path's delay goes) and
 `charts/worst-paths.chart.json` (slack of the 8 worst paths); when you explain the library, show
 `charts/library-fo4.chart.json` (stock FO4 of the critical families against the AndesCell target).
@@ -17,7 +19,11 @@ Three charts in this Pack draw these numbers from the same tools. Show them with
 ## The timing at 2 GHz
 
 - Fmax 1951.60 MHz; worst slack −0.0124 ns (−12.4 ps); TNS −0.596 ns over 74 violating endpoints.
-- Cell area 41 200 µm², 18 400 instances, route DRC 0.
+- Cell area 41 200 µm², 18 400 instances, utilization 70.0 %, route DRC 0; the flow (synthesis,
+  floorplan, placement, CTS, route, post-route opt) takes 80 s (1.33 min) on the Site.
+- Through the flow (`flow_summary.rpt`) the worst slack goes +9.6 ps after synthesis (wire-load
+  estimates), −16.0 after placement, −20.6 after CTS, −27.0 after routing and −12.4 ps after
+  post-route optimization: the real wires cost the slack, and optimization wins part of it back.
 - The worst path has 23 levels of logic and is 0.512 ns long (`report_qor.rpt`). Every path must
   arrive within 480 ps of the launch edge: the 500 ps clock less 12 ps setup and 8 ps uncertainty.
 - Fmax = 1000 / (0.500 ns − worst slack): 1000 / 0.5124 = 1951.60 MHz.

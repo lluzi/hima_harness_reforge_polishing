@@ -39,7 +39,7 @@
    passed the screen. Otherwise the Run stops for a person.
 7. **Synthesis and APR rebuilds** the design with the stock library plus every accepted new cell
    of this and earlier rounds (cells the Qualib agent did not pass are dont-use).
-8. **Compare**: `state/round.json` and `derived/round-<k>.md` hold the before/after table (Fmax,
+8. **Compare**: `state/round.json` and `derived/round-<k>.md` hold the comparison table (Fmax,
    worst slack, TNS, area, new-cell instances, route DRC) against the reference build, the gain, the
    best gain so far, and whether the round improved on every earlier build.
 9. **Checks and next round**: new cells used, faster than before, clean build, Goal reached. The
@@ -61,6 +61,8 @@ accepts a delivery, from the tools' own numbers:
 
 | Step | Chart | Shows |
 | --- | --- | --- |
+| `reference-build` | `summary.chart.json` | the RTL2GDS baseline: Fmax, worst slack, TNS, violating endpoints, cell area, instances, utilization, route DRC and flow runtime (a metric table) |
+| `reference-build` | `flow-stages.chart.json` | worst slack after each flow stage: synthesis, floorplan, placement, CTS, route, post-route opt |
 | `reference-build` | `timing.chart.json` | slack of the 8 worst paths of the reference build |
 | `load-timing` | `stage-breakdown.chart.json` | share of the worst path's delay by cell family |
 | `himatime-agent` | `proposal.chart.json` | why these cells, timing: each requested family's share of the worst path and the slack HimaTime expects back |
@@ -68,13 +70,19 @@ accepts a delivery, from the tools' own numbers:
 | `generate-cells` | `generation.chart.json` | each new cell's FO4 against its stock cell |
 | `himatime-verify` | `local-gain.chart.json` | slack of the 8 worst paths before and with the new cells |
 | `qualib-screen` | `screen.chart.json` | each new cell's area, input cap and leakage as a share of its screen limit |
-| `compare-round` | `before-after.chart.json` | Fmax, worst slack and TNS, reference build against the new library |
+| `compare-round` | `comparison.chart.json` | the RTL2GDS comparison: the same metrics plus new-cell instances, reference build against the new library, with the change |
+| `compare-round` | `flow-stages.chart.json` | worst slack after each flow stage, reference build against the new library |
 
 ## For the Campaign owner: what to do each round
 
 The five agent steps do not start by themselves. Each round has three agent turns, and each comes
 as soon as the automatic segment before it hands back:
 
+0. **Initial summary** (round 1 only): when "Reference build and timing" hands back, first give a
+   short summary of the RTL2GDS baseline in plain words (Fmax, worst slack, TNS and violating
+   endpoints, area and utilization, route DRC, how the slack moved through the flow stages) and
+   show `reports/reference-build/r1/summary.chart.json`, `reports/reference-build/r1/flow-stages.chart.json`
+   and `reports/reference-build/r1/timing.chart.json` with `hima_chart`. Then propose.
 1. **Propose**: after "Reference build and timing" (round 1) or "Load into HimaTime" (later
    rounds), begin **both** `himatime-agent` and `qualib-agent` and start **both** engineering tasks
    in the same turn, so they run in parallel (the Site allows 3 jobs). Give each task this round's
@@ -93,8 +101,10 @@ as soon as the automatic segment before it hands back:
 When a task delivers, collect it; when its Reader accepts the delivery, release and complete that
 node. A refused delivery comes back with the problems: send them to the same task to repair. After
 the verify pair, the automatic segment "Rebuild and comparison" runs to the round checks; then decide
-the next round. At the end, show `reports/compare-round/r<k>/before-after.chart.json` with
-`hima_chart` beside the before → after summary.
+the next round. At the end, give the comparison in a few plain sentences (Fmax, worst slack, TNS,
+area and new-cell instances against the reference build, the gain against the Goal) and show
+`reports/compare-round/r<k>/comparison.chart.json`, `reports/compare-round/r<k>/flow-stages.chart.json`
+and `reports/himatime-verify/r<k>/local-gain.chart.json` with `hima_chart`.
 
 Report to the person in chip-designer words, one line per step as it finishes: what each agent
 asked for or chose and why, the local gain in ps on the worst path, which cells passed the screen

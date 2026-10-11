@@ -1,5 +1,5 @@
 id: andes-cell-fmax
-version: "0.3.0"
+version: "0.3.1"
 title: New standard cells for a faster aes_cipher_top (AndesCell)
 status: development
 minimumHarnessVersion: 0.2.2
@@ -110,7 +110,9 @@ tools:
     description: >-
       Synthesis and APR (sapr) of aes_cipher_top on the stock library at the 0.500 ns clock, RTL to
       routed design, into runs/reference/; write state/reference.json from the post-route summary and
-      its reports to reports/reference-build/r1/, with HimaTime's worst-path slack chart (timing.chart.json).
+      its reports (with flow_summary.rpt, the QoR per flow stage) to reports/reference-build/r1/, with the
+      RTL2GDS summary (summary.chart.json), the worst slack through the flow (flow-stages.chart.json) and
+      HimaTime's worst-path slack chart (timing.chart.json).
     inputs: [WORKSPACE, TIMEOUT_MIN]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', reference, '${WORKSPACE}', '${TIMEOUT_MIN}']
 
@@ -297,8 +299,8 @@ tools:
     description: >-
       Deterministic round record from the reference build and this round's new-library build: Fmax
       gain, best gain, improvement, validity, new-cell usage; append lessons, update the cumulative
-      library, write derived/round-<k>.md (also to reports/compare-round/r<k>/, with the before/after
-      chart before-after.chart.json) and derived/summary.md.
+      library, write derived/round-<k>.md (also to reports/compare-round/r<k>/, with the RTL2GDS comparison
+      comparison.chart.json and the flow-stage chart flow-stages.chart.json) and derived/summary.md.
       Uses no model text as a fact.
     inputs: [WORKSPACE]
     argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', compare, '${WORKSPACE}']

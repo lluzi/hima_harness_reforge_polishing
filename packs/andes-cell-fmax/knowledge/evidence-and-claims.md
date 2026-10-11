@@ -30,7 +30,7 @@ the result. A delivery whose numbers disagree with the tools is refused.
 ## In the conversation with the person
 
 The records above carry the claim boundary word for word. A report the App shows
-(`round-<k>.md`, the before/after chart) says it in plain words instead: "These are results on the
+(`round-<k>.md`, the summary and comparison tables) says it in plain words instead: "These are results on the
 demo Site eda_cluster_ctu_01, not signoff and not silicon." In chat, say it once, in the final
 summary only, as: "These are results on the demo Site eda_cluster_ctu_01, not signoff and not
 silicon." Do not repeat it in status replies. Use exactly that sentence and do not paraphrase it:

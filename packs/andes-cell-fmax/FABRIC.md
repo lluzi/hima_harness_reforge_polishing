@@ -1,12 +1,12 @@
 ## Files written
 
-- `contract.yml` (0.3.0, `reports: { dir: reports }`, default Goal +1 %), `graph.yml` (with the
+- `contract.yml` (0.3.1, `reports: { dir: reports }`, default Goal +1 %), `graph.yml` (with the
   strip `view`; `generationLimit: 2`), `semantics.yml`; `flow/andes_cli.py` (every tool step, the
   requirements, plan and verify validators, `merged`, `precheck`, the chart builders);
   `flow/knowledge_charts.py` (writes `knowledge/charts/*.chart.json` from the Site's tools);
   `tools/read-{reference,timing,requirements,plan,verify,round}.py` with `readers/*.yml`;
   `rules/*.yml` (eight); `choosers/andes-next.yml`; `knowledge/*.md` (seven) and
-  `knowledge/charts/` (three charts).
+  `knowledge/charts/` (four charts, the reference summary among them).
 - Outside the Pack: `sites/eda_cluster_ctu_01/` (Site, Permit, capability, mock toolchain and its
   tests) and `test/contract/andes-cell-fmax*.ts`.
 

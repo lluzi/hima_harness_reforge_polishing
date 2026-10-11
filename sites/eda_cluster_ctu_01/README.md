@@ -32,7 +32,9 @@ generated cell family speeds up only the cell delay of its own stages, by 5-10 %
 (`mock-eda/tests/test_mock_eda.py`, the math is in the model's docstring): XNOR3+BUF take 13.84 ps
 off the worst path A1 (16.88 ps with the extra-fast variants), the key-expansion path B1 then limits
 Fmax at 1980.98 MHz, +1.51 % over the reference build, so the default +1 % Goal is met in one round;
-a family on no worst path gains nothing. `python3 -m ctu_mock.libraries` (from `lib/`) regenerates
+a family on no worst path gains nothing. Every `sapr run` also reports the QoR at the end of each flow stage
+(synthesis, floorplan, placement, CTS, route, post-route opt) in `sapr_summary.json` `stages` and
+`reports/flow_summary.rpt`. `python3 -m ctu_mock.libraries` (from `lib/`) regenerates
 `share/libs/std9t_svt`.
 
 ## Resident agents
