@@ -155,8 +155,8 @@ under your private workspace (`--out ./hw`, `--out ./ql`) and keep the reports y
 
 - `timingGainPct`: this round's custom-cell build against the reference build at route, as a share
   of the clock period. TNS and violating paths usually move more than the worst slack: the custom
-  cells speed up many paths a little, while the worst path is dominated by an SRAM access no cell
-  changes.
+  cells speed up thousands of paths a little each. On an SRAM-to-flop worst path the SRAM access
+  stays; the gain comes from the logic cells after it and the loads they drive.
 - The all-group worst slack may sit on an input or output path group (reg2out); custom cells inside
   the core do not move it. Say so rather than calling it a regression.
 - The placement stage (place_opt) moves too, but the result is the route timing.
