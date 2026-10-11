@@ -484,7 +484,8 @@ proc write_design_changes {args} {
             cli._cmd_implement(self.ws, [str(self.ws / "state/working-state.json"), str(self.site_path)])
 
     def test_graph_contract_smoke(self):
-        node = "/Users/lluzi/.local/node24/bin/node"
+        node = os.environ.get("HIMA_TEST_NODE") or shutil.which("node")
+        self.assertIsNotNone(node, "Node.js is required for the graph contract smoke")
         legacy_root = self.ws / "legacy-packs"
         legacy_pack = legacy_root / "agentic-timing-closure-system"
         shutil.copytree(FLOW.parent, legacy_pack)

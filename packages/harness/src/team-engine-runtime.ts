@@ -6,7 +6,8 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify, isDeepStrictEqual } from 'node:util';
 import { request as httpRequest } from 'node:http';
 import { isIP } from 'node:net';
-import { mkdir, realpath, writeFile, lstat, readFile, readdir, symlink, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdir, realpath, writeFile, lstat, stat, readFile, readdir, symlink, rm } from 'node:fs/promises';
 import { z } from 'zod';
 import type { TeamServiceReceipt } from './team-service-runtime.js';
 const relative=z.string().min(1).refine(v=>!path.isAbsolute(v)&&!v.split(/[\\/]/).some(p=>!p||p==='.'||p==='..'));
@@ -50,7 +51,8 @@ export function compileEngineeringPolicy(input:EngineeringEgressPolicy,now=Date.
   return {bytes:engineeringPolicyBytes(tuples,deadlineEpochSeconds,timeoutSeconds),policySha256:sha256,tuples,validUntil:p.validUntil,deadlineEpochSeconds,timeoutSeconds};
 }
 interface HostClockTiming {hostBeforeMs:number;hostAfterMs:number;}
-interface Generation {id:string;state:TeamServiceReceipt['state'];fenced:boolean;manifest?:EngineeringEngineManifest;files?:Record<string,string>;root?:string;env?:NodeJS.ProcessEnv;facts?:EngineeringOwnedFacts;diagnostic?:TeamServiceReceipt['diagnostic'];start?:Promise<TeamServiceReceipt>;pending:Set<Promise<unknown>>;policies:Map<string,CompiledEngineeringPolicy>;stop?:Promise<TeamServiceReceipt>;exporting:boolean;}
+interface RootlessKeeper {file:string;pid:number;startIdentity:string;}
+interface Generation {id:string;state:TeamServiceReceipt['state'];fenced:boolean;manifest?:EngineeringEngineManifest;files?:Record<string,string>;root?:string;env?:NodeJS.ProcessEnv;facts?:EngineeringOwnedFacts;rootlessPolicy?:{file:string;sha256:string};rootlessKeeper?:RootlessKeeper;rootlessInvoked?:boolean;rootlessRetired?:boolean;rootlessCommandUnknown?:boolean;diagnostic?:TeamServiceReceipt['diagnostic'];start?:Promise<TeamServiceReceipt>;pending:Set<Promise<unknown>>;policies:Map<string,CompiledEngineeringPolicy>;stop?:Promise<TeamServiceReceipt>;exporting:boolean;}
 export interface EngineeringRuntimeOptions {home:string;runtimeDirectory?:string;recordReceipt:(receipt:TeamServiceReceipt)=>Promise<void>;readManifest:()=>Promise<{engineeringEngine?:EngineeringEngineManifest;files?:Record<string,string>}>;}
 export class EngineeringEngineRuntime {
   private generation?:Generation;private closed=false;
@@ -64,20 +66,42 @@ export class EngineeringEngineRuntime {
     if(prior&&prior.facts&&!Object.values(prior.facts.closure).every(Boolean))return Promise.reject(new Error('Previous engine generation requires exact resource reconciliation before restart.'));
     const g:Generation={id:randomUUID(),state:'starting',fenced:false,pending:new Set(),policies:new Map(),exporting:false};this.generation=g;g.start=this.launch(g);return g.start;
   }
-  private async cli(g:Generation,args:string[],stdin?:string,timing?:HostClockTiming):Promise<string>{
+  private async cli(g:Generation,args:string[],stdin?:string,timing?:HostClockTiming,intent:'control'|'initial-import'='control'):Promise<string>{
     if(!g.root||!g.env||!g.manifest)throw new Error('Engine assets are not initialized.');
+    if(g.manifest.provider==='rootless'){if(g.rootlessRetired)throw new Error('Owned rootless generation is retired; no CLI control admitted.');await this.verifyRootlessConfiguration(g);const initialImport=intent==='initial-import'&&!g.rootlessInvoked;if(!initialImport)await this.rootlessKeeperIdentity(g);g.rootlessInvoked=true;}
     if(g.manifest.provider==='applehv'&&(args.includes('--connection')||args[0]==='machine'&&args[1]==='ssh'))await this.verifyPrivateConnection(g);
     return this.execute(g,path.join(g.root,g.manifest.executable),args,stdin,timing);
   }
   private execute(g:Generation,executable:string,args:string[],stdin?:string,timing?:HostClockTiming,environment:NodeJS.ProcessEnv=g.env!):Promise<string>{
-    return new Promise((resolve,reject)=>{if(timing)timing.hostBeforeMs=Date.now();const child=spawn(executable,args,{cwd:g.root,env:environment,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';let exceeded=false,timedOut=false;
-      const timer=setTimeout(()=>{timedOut=true;child.kill('SIGKILL');},120000);
-      child.stdout.on('data',b=>{stdout+=b;if(stdout.length>2*1024*1024){exceeded=true;child.kill('SIGKILL');}});child.stderr.on('data',b=>{if(stderr.length<4096)stderr+=b;});
-      child.once('error',()=>{clearTimeout(timer);reject(new Error('Fixed engine CLI failed to start.'));});child.once('close',async code=>{if(timing)timing.hostAfterMs=Date.now();clearTimeout(timer);try{await writeFile(path.join(g.facts!.canonicalStorage,`cli-${randomUUID()}.json`),JSON.stringify({generation:g.id,executable,args,code,stdout,stderr,outputExceeded:exceeded,timedOut}),{mode:0o600,flag:'wx'});}catch{reject(new Error('Private CLI evidence could not be retained.'));return;}code===0&&!exceeded&&!timedOut?resolve(stdout.trim()):reject(new Error(timedOut?'Owned engine CLI timed out; retain generation for reconciliation.':`Owned engine CLI failed (${code}); diagnostic retained privately.`));});
+    return new Promise((resolve,reject)=>{if(timing)timing.hostBeforeMs=Date.now();const ownedGroup=g.manifest?.provider==='rootless'&&process.platform!=='win32';const bornAtMs=Date.now();const child=spawn(executable,args,{cwd:g.root,env:environment,stdio:['pipe','pipe','pipe'],...(ownedGroup?{detached:true}:{})});let stdout='',stderr='';let exceeded=false,timedOut=false,terminationRequested=false;
+      // POSIX detached spawn creates a new session/group whose identity is this child PID.
+      // Rootless reexec children inherit it; Podman's private pause keeper starts its own session.
+      const commandIdentity=ownedGroup&&child.pid?{pid:child.pid,processGroup:child.pid,session:child.pid,bornAtMs}:undefined;
+      const terminate=()=>{if(!ownedGroup){child.kill('SIGKILL');return;}if(terminationRequested)return;terminationRequested=true;if(!commandIdentity){g.rootlessCommandUnknown=true;return;}try{process.kill(-commandIdentity.processGroup,'SIGKILL');}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')g.rootlessCommandUnknown=true;}};
+      const timer=setTimeout(()=>{timedOut=true;terminate();},120000);
+      child.stdout.on('data',b=>{stdout+=b;if(stdout.length>2*1024*1024){exceeded=true;terminate();}});child.stderr.on('data',b=>{if(stderr.length<4096)stderr+=b;});
+      child.once('error',()=>{clearTimeout(timer);reject(new Error('Fixed engine CLI failed to start.'));});child.once('close',async code=>{if(timing)timing.hostAfterMs=Date.now();clearTimeout(timer);let groupAbsent=true;if(commandIdentity){for(let i=0;i<20;i++){try{process.kill(-commandIdentity.processGroup,0);groupAbsent=false;}catch(error){groupAbsent=(error as NodeJS.ErrnoException).code==='ESRCH';if(!groupAbsent)g.rootlessCommandUnknown=true;}if(groupAbsent)break;await new Promise(resolve=>setTimeout(resolve,25));}if(!groupAbsent)g.rootlessCommandUnknown=true;}try{await writeFile(path.join(g.facts!.canonicalStorage,`cli-${randomUUID()}.json`),JSON.stringify({generation:g.id,executable,args,code,stdout,stderr,outputExceeded:exceeded,timedOut,...(ownedGroup?{commandIdentity,terminationRequested,groupAbsent}: {})}),{mode:0o600,flag:'wx'});}catch{reject(new Error('Private CLI evidence could not be retained.'));return;}code===0&&!exceeded&&!timedOut&&groupAbsent?resolve(stdout.trim()):reject(new Error(!groupAbsent?'Owned rootless CLI process group closure is unobserved; retain generation for reconciliation.':timedOut?'Owned engine CLI timed out; retain generation for reconciliation.':`Owned engine CLI failed (${code}); diagnostic retained privately.`));});
       child.stdin.on('error',()=>{});child.stdin.end(stdin);
     });
   }
-  private command(g:Generation,args:string[]):string[]{return g.manifest?.provider==='applehv'?['--connection',g.facts!.machineName!,...args]:['--root',path.join(g.facts!.canonicalStorage,'storage'),'--runroot',path.join(g.facts!.canonicalStorage,'runroot'),...args];}
+  private command(g:Generation,args:string[]):string[]{return g.manifest?.provider==='applehv'?['--connection',g.facts!.machineName!,...args]:['--root',path.join(g.facts!.canonicalStorage,'storage'),'--runroot',path.join(g.facts!.canonicalStorage,'runroot'),...(args[0]==='load'?['load','--signature-policy',g.rootlessPolicy!.file,...args.slice(1)]:args)];}
+  private async initializeRootlessPolicy(g:Generation):Promise<void>{
+    const image=g.manifest!.image,archive=path.join(g.root!,image.file),info=await lstat(archive).catch(()=>undefined);
+    if(g.files?.[image.file]!==image.sha256||!info?.isFile()||info.size!==image.bytes||await realpath(archive)!==archive||!archive.startsWith(g.root!+path.sep))throw new Error('Fixed engine image archive path/manifest identity differs; no import admitted.');
+    const digest=createHash('sha256');for await(const bytes of createReadStream(archive))digest.update(bytes);
+    if(digest.digest('hex')!==image.sha256)throw new Error('Fixed engine image archive bytes differ; no import admitted.');
+    const file=path.join(g.facts!.canonicalStorage,'config/containers/policy.json');await mkdir(path.dirname(file),{mode:0o700});
+    // This admits only the hash-bound offline fixture. It is not signature authenticity.
+    const bytes=JSON.stringify({default:[{type:'reject'}],transports:{'oci-archive':{[archive]:[{type:'insecureAcceptAnything'}]}}});
+    await writeFile(file,bytes,{flag:'wx',mode:0o600});g.rootlessPolicy={file,sha256:sha(bytes)};
+  }
+  private async verifyRootlessConfiguration(g:Generation):Promise<void>{
+    if(!g.rootlessPolicy||!g.facts?.configSha256)throw new Error('Owned rootless signature policy identity is missing; no control admitted.');
+    for(const [file,expected] of [[path.join(g.facts.canonicalStorage,'containers.conf'),g.facts.configSha256],[g.rootlessPolicy.file,g.rootlessPolicy.sha256]]){
+      const info=await lstat(file!).catch(()=>undefined);
+      if(!info?.isFile()||info.uid!==process.getuid?.()||(info.mode&0o777)!==0o600||await realpath(file!)!==file||sha(await readFile(file!,'utf8'))!==expected)throw new Error('Owned rootless configuration/signature policy drift; no control admitted.');
+    }
+  }
   private async inspectMachine(g:Generation):Promise<any>{const rows=JSON.parse(await this.cli(g,['machine','inspect',g.facts!.machineName!]));if(!Array.isArray(rows)||rows.length!==1||rows[0].Name!==g.facts!.machineName)throw new Error('Private machine identity differs.');if(g.facts!.machineCreatedAt&&rows[0].Created!==g.facts!.machineCreatedAt)throw new Error('Private machine creation identity drift; no control admitted.');return rows[0];}
   private async verifyPrivateConnection(g:Generation,admit=false):Promise<void>{
     const facts=g.facts!;const machine=await this.inspectMachine(g);
@@ -97,8 +121,29 @@ export class EngineeringEngineRuntime {
     if(!facts.connectionSha256)facts.connectionSha256=current;
   }
   private async helperIdentities(g:Generation):Promise<Array<{pid:number;startIdentity:string}>>{
+    const visible=await this.visibleHelperIdentities(g);
+    if(g.manifest!.provider==='rootless'){const keeper=await this.rootlessKeeperIdentity(g);if(keeper&&!visible.some(h=>h.pid===keeper.pid))visible.push({pid:keeper.pid,startIdentity:keeper.startIdentity});}
+    return visible;
+  }
+  private async visibleHelperIdentities(g:Generation):Promise<Array<{pid:number;startIdentity:string}>>{
     const {stdout}=await promisify(execFile)('/bin/ps',['-axo','pid=,lstart=,command='],{maxBuffer:4*1024*1024});const helpers=g.manifest!.helpers.map(p=>path.join(g.root!,p));
     return stdout.split('\n').filter(line=>helpers.some(h=>line.includes(h))&& (line.includes(g.facts!.machineName??g.facts!.canonicalStorage)||line.includes(g.facts!.canonicalStorage))).map(line=>({pid:Number(line.trim().split(/\s+/)[0]),startIdentity:sha(line.trim())}));
+  }
+  private async rootlessKeeperIdentity(g:Generation):Promise<RootlessKeeper|undefined>{
+    const file=path.join(g.facts!.canonicalStorage,'run/libpod/tmp/pause.pid'),info=await lstat(file).catch(error=>{if(error.code==='ENOENT')return undefined;throw error;});
+    if(!info){if(g.rootlessKeeper||process.platform==='linux')throw new Error('Owned rootless pause PID identity is missing; no control admitted.');return undefined;}
+    if(!info.isFile()||info.uid!==process.getuid?.()||(info.mode&0o022)!==0||info.size>32||await realpath(file)!==file)throw new Error('Owned rootless pause PID file identity differs; no control admitted.');
+    const raw=(await readFile(file,'utf8')).trim();if(!/^[1-9]\d*$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new Error('Owned rootless pause PID is invalid; no control admitted.');
+    const pid=Number(raw),proc=`/proc/${pid}`,executable=path.join(g.root!,g.manifest!.executable),expected=g.files?.[g.manifest!.executable];
+    const [status,processStat,environment,actualExe,loaded,asset]=await Promise.all([readFile(path.join(proc,'status'),'utf8'),readFile(path.join(proc,'stat'),'utf8'),readFile(path.join(proc,'environ'),'utf8'),realpath(path.join(proc,'exe')),stat(path.join(proc,'exe')),lstat(executable)]);
+    const uid=status.match(/^Uid:\s+(\d+)\s+(\d+)/m),fields=processStat.slice(processStat.lastIndexOf(')')+1).trim().split(/\s+/),birth=fields[19];
+    if(Number(uid?.[1])!==process.getuid?.()||Number(uid?.[2])!==process.getuid?.()||!processStat.startsWith(`${pid} (podman pause) `)||['Z','X'].includes(fields[0]!)||!birth||!/^\d+$/.test(birth))throw new Error('Owned rootless pause UID/birth identity differs; no control admitted.');
+    if(!expected||!asset.isFile()||await realpath(executable)!==executable||actualExe!==executable||loaded.dev!==asset.dev||loaded.ino!==asset.ino)throw new Error('Owned rootless pause loaded executable identity is unqualified; retain unknown helper.');
+    const digest=createHash('sha256');for await(const bytes of createReadStream(executable))digest.update(bytes);if(digest.digest('hex')!==expected)throw new Error('Owned rootless pause executable bytes differ; no control admitted.');
+    const values=environment.split('\0');const ownedEnvironment=['HOME','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_RUNTIME_DIR','TMPDIR','CONTAINERS_CONF'].map(key=>{const matches=values.filter(value=>value.startsWith(key+'='));if(matches.length!==1||matches[0]!==`${key}=${g.env![key]}`)throw new Error('Owned rootless pause environment identity differs; no control admitted.');return matches[0];});
+    const keeper={file,pid,startIdentity:sha(JSON.stringify({pid,birth,uid:Number(uid![1]),executable,dev:loaded.dev,ino:loaded.ino,sha256:expected,environment:ownedEnvironment}))};
+    if(g.rootlessKeeper&&(g.rootlessKeeper.pid!==pid||g.rootlessKeeper.startIdentity!==keeper.startIdentity))throw new Error('Owned rootless pause start identity drift; no control admitted.');
+    g.rootlessKeeper??=keeper;return keeper;
   }
   private async launch(g:Generation):Promise<TeamServiceReceipt>{
     try{await this.receipt(g,'start');const installedManifest=await this.options.readManifest();const metadata=installedManifest.engineeringEngine;g.files=installedManifest.files?freezeSnapshot(structuredClone(installedManifest.files)):undefined;if(!metadata)throw new Error('Install the matching fixed private-engine closure; Guide remains available.');g.manifest=metadata;const generations=path.join(await realpath(this.options.home),'hima/team-services/engineering-engine');for(const name of await readdir(generations).catch(()=>[])){const marker=JSON.parse(await readFile(path.join(generations,name,'generation.json'),'utf8'));if(marker.quiescent!==true)throw new Error('Interrupted engine generation requires exact resource reconciliation; no automatic takeover.');}g.root=await realpath(this.options.runtimeDirectory!);
@@ -116,8 +161,8 @@ export class EngineeringEngineRuntime {
         await this.cli(g,['machine','init','--provider','applehv','--image',path.join(g.root,metadata.machineImage!.file),'--cpus','2','--memory','2048','--disk-size','10','--volume',`${path.join(short,'transfer')}:/mnt/hima-transfer:ro`,g.facts.machineName!]);
         const initialized=await this.inspectMachine(g);if(typeof initialized.Created!=='string')throw new Error('Private machine creation identity missing.');g.facts.machineCreatedAt=initialized.Created;if(initialized.Rosetta!==false || initialized.Rootful!==false || initialized.Resources?.CPUs!==2 || initialized.Resources?.Memory!==2048 || initialized.Resources?.DiskSize!==10 || !(await realpath(initialized.ConfigDir?.Path)).startsWith(canonical+path.sep))throw new Error('Observed private machine provider/resource/config boundary differs.');if(initialized.State!=='stopped')throw new Error('Private machine did not initialize stopped.');
         if(g.fenced)throw new Error('Generation stopped before machine start.');await this.cli(g,['machine','start','--update-connection=false',g.facts.machineName!]);await this.verifyPrivateConnection(g,true);
-      }else if(process.getuid?.()===0)throw new Error('Engineering engine requires rootless Linux identity.');
-      await this.cli(g,this.command(g,['load','--input',path.join(g.root,metadata.image.file)]));
+      }else {if(process.getuid?.()===0)throw new Error('Engineering engine requires rootless Linux identity.');await this.initializeRootlessPolicy(g);}
+      await this.cli(g,this.command(g,['load','--input',path.join(g.root,metadata.image.file)]),undefined,undefined,'initial-import');
       const image=JSON.parse(await this.cli(g,this.command(g,['image','inspect',`sha256:${metadata.image.configSha256}`])))[0];
       if(image?.Id?.replace(/^sha256:/,'')!==metadata.image.configSha256 || image.Architecture!==(metadata.guestPlatform==='linux-arm64'?'arm64':'amd64'))throw new Error('Observed guest image identity/architecture differs.');g.facts.imageDigest=`sha256:${metadata.image.configSha256}`;
       await this.observe(g);if(g.fenced)throw new Error('Generation stopped during readiness.');g.state='running';
@@ -132,11 +177,15 @@ export class EngineeringEngineRuntime {
       await new Promise<void>((resolve,reject)=>{const req=httpRequest({socketPath:socket,path:'/_ping',timeout:1000},res=>{let body='';res.on('data',b=>body+=b);res.on('end',()=>res.statusCode===200&&body==='OK'?resolve():reject(new Error('Engine ping not ready.')));});req.on('error',reject);req.on('timeout',()=>req.destroy(new Error('Engine ping timeout.')));req.end();});
       await this.verifyPrivateConnection(g);
       const helpers=await this.helperIdentities(g);if(helpers.length<g.manifest!.helpers.length)throw new Error('Owned native helper start identities are incomplete.');if(g.facts!.helpers.length && JSON.stringify(helpers)!==JSON.stringify(g.facts!.helpers))throw new Error('Owned native helper start identity drift.');g.facts!.helpers=helpers;
-    }else{const info=JSON.parse(await this.cli(g,this.command(g,['info','--format','json'])));if(info.host?.security?.rootless!==true)throw new Error('Guest engine is not observed rootless.');}
+    }else{const info=JSON.parse(await this.cli(g,this.command(g,['info','--format','json'])));if(info.host?.security?.rootless!==true)throw new Error('Guest engine is not observed rootless.');g.facts!.helpers=await this.helperIdentities(g);}
     for(const lease of g.facts!.namespaces){if(Date.parse(lease.validUntil)<=Date.now())throw new Error('Namespace policy expired; readiness revoked.');const inspected=await this.container(g,lease.containerId);if(!lease.observedRulesSha256||!inspected.State.Running||`${inspected.State.Pid}:${inspected.State.StartedAt}`!==lease.guestPidIdentity)throw new Error('Owned namespace identity changed.');const pid=inspected.State.Pid,policy=g.policies.get(lease.containerId);if(!policy)throw new Error('Namespace timed admission is missing.');const timing:HostClockTiming={hostBeforeMs:0,hostAfterMs:0};const observed=await this.guest(g,['podman','unshare','nsenter',`--net=/proc/${pid}/ns/net`,'nft','-j','-T','list','ruleset'],undefined,timing);verifyObservedEngineeringRules(observed,policy.tuples,policy,timing.hostAfterMs);}
   }
   private async container(g:Generation,id:string):Promise<any>{const rows=JSON.parse(await this.cli(g,this.command(g,['container','inspect',id])));const c=rows[0];if(rows.length!==1||c?.Id!==id||c.Config?.Labels?.['hima.engine-generation']!==g.id)throw new Error('Owned container identity mismatch; resource retained.');return c;}
-  async status():Promise<TeamServiceReceipt>{const g=this.generation??(this.generation=this.empty());if(g.state==='running'){await Promise.allSettled([...g.pending]);}if(g.state==='running')try{await this.observe(g);}catch(error){g.state='failed';g.fenced=true;g.diagnostic={code:'engine-observation',message:(error as Error).message};}return this.receipt(g,'status');}
+  async status():Promise<TeamServiceReceipt>{const g=this.generation??(this.generation=this.empty());if(g.state!=='running')return this.receipt(g,'status');
+    // Snapshot before registering this observation so it never waits on itself.
+    const prior=[...g.pending],pending=(async()=>{await Promise.allSettled(prior);if(g.state==='running'&&!g.fenced)try{await this.observe(g);}catch(error){g.state='failed';g.fenced=true;g.diagnostic={code:'engine-observation',message:(error as Error).message};}return this.receipt(g,'status');})();
+    g.pending.add(pending);try{return await pending;}finally{g.pending.delete(pending);}
+  }
   prepareNamespace(request:EngineeringNamespaceRequest):Promise<EngineeringNamespaceLease>{const g=this.generation;
     if(!g||g.fenced||g.exporting||g.state!=='running'||request.engineGeneration!==g.id)return Promise.reject(new Error('Current unfenced engine generation required.'));
     if(request.taskIdentity.fixture!=='trusted-namespace-test'||!/^[A-Za-z0-9_-]{1,128}$/.test(request.taskIdentity.taskId))return Promise.reject(new Error('Only the explicit trusted namespace fixture is admitted; member activation remains blocked.'));
@@ -163,6 +212,9 @@ export class EngineeringEngineRuntime {
   }
   private async guestArguments(g:Generation,args:string[]):Promise<string[]> {
     if(g.manifest!.provider==='applehv')return args;
+    if(g.rootlessRetired)throw new Error('Owned rootless generation is retired; no guest control admitted.');
+    await this.verifyRootlessConfiguration(g);
+    await this.rootlessKeeperIdentity(g);
     const helpers=await this.rootlessController(g);
     const mapped=args.map(value=>value==='nsenter'?helpers.nsenter:value==='nft'?helpers.nft:value==='python3'?helpers.python:value);
     return mapped[0]==='podman'?[path.join(g.root!,g.manifest!.executable),...this.command(g,mapped.slice(1))]:mapped;
@@ -255,6 +307,10 @@ sys.exit(0 if admitted else 3)
   async stop():Promise<TeamServiceReceipt>{const g=this.generation;if(!g)return this.receipt(this.empty(),'stop');if(g.stop)return g.stop;g.fenced=true;g.state='stopping';g.stop=this.closeGeneration(g);return g.stop;}
   private async closeGeneration(g:Generation):Promise<TeamServiceReceipt>{await g.start?.catch(()=>{});await Promise.allSettled([...g.pending]);try{
       if(g.facts){
+        if(g.manifest!.provider==='rootless'&&!g.rootlessInvoked){
+          // No engine command was admitted: only this owned generation's files exist.
+          g.facts.closure={containers:true,machine:true,helpers:true};g.rootlessRetired=true;
+        }else{
         const machineBefore=g.manifest!.provider==='applehv'?(g.facts.machineCreatedAt?await this.inspectMachine(g):undefined):undefined;
         const stoppedBeforeGuestObservation=g.manifest!.provider==='applehv'&&(!machineBefore||machineBefore.State==='stopped');
         if(stoppedBeforeGuestObservation){
@@ -264,7 +320,15 @@ sys.exit(0 if admitted else 3)
         }else {for(const lease of g.facts.namespaces){const c=await this.container(g,lease.containerId);if(c.Config?.Labels?.['hima.namespace-generation']!==lease.namespaceGeneration || c.State.Running&&`${c.State.Pid}:${c.State.StartedAt}`!==lease.guestPidIdentity)throw new Error('Namespace start identity drift; no stop admitted.');await this.cli(g,this.command(g,['stop','--time','3',lease.containerId]));await this.cli(g,this.command(g,['rm',lease.containerId]));}
         const remaining=JSON.parse(await this.cli(g,this.command(g,['ps','--all','--filter',`label=hima.engine-generation=${g.id}`,'--format','json'])));g.facts.closure.containers=Array.isArray(remaining)&&remaining.length===0;}
         if(g.manifest!.provider==='applehv'){const before=await this.helperIdentities(g);if(g.facts.helpers.length&&JSON.stringify(before)!==JSON.stringify(g.facts.helpers))throw new Error('Helper identities drifted; no stop signal admitted.');const machine=machineBefore;if(machine?.State==='running')await this.cli(g,['machine','stop',g.facts.machineName!]);g.facts.closure.machine=!machine||(await this.inspectMachine(g)).State==='stopped';g.facts.closure.helpers=(await this.helperIdentities(g)).length===0;
-        }else {g.facts.closure.machine=true;g.facts.closure.helpers=(await this.helperIdentities(g)).length===0;}
+        }else {g.facts.closure.machine=true;const keeper=await this.rootlessKeeperIdentity(g);
+          if(keeper){const all=JSON.parse(await this.cli(g,this.command(g,['ps','--all','--format','json'])));if(!Array.isArray(all)||all.length)throw new Error('Private engine container inventory is not empty; no rootless pause shutdown admitted.');await this.rootlessKeeperIdentity(g);try{await this.cli(g,this.command(g,['system','migrate']));}finally{g.rootlessRetired=true;}
+            // Further Podman commands would create a new pause process. Observe OS facts only.
+            let remains=true;for(let i=0;i<20;i++){remains=!!await lstat(`/proc/${keeper.pid}`).catch(error=>{if(error.code==='ENOENT')return undefined;throw error;});if(!remains)break;await new Promise(resolve=>setTimeout(resolve,25));}
+            if(remains||await lstat(keeper.file).catch(error=>{if(error.code==='ENOENT')return undefined;throw error;}))throw new Error('Owned rootless pause PID/file remains after scoped migration; closure unresolved.');
+          }
+          g.facts.closure.helpers=!g.rootlessCommandUnknown&&(await this.visibleHelperIdentities(g)).length===0;
+        }
+        }
       }g.state=!g.facts||Object.values(g.facts.closure).every(Boolean)?'stopped':'failed';if(g.state==='stopped'&&g.facts){if(g.manifest!.provider==='applehv'&&g.facts.machineCreatedAt){await this.cli(g,['machine','rm','--force',g.facts.machineName!]);const machines=JSON.parse(await this.cli(g,['machine','list','--format','json']));if(!Array.isArray(machines)||machines.some((m:any)=>m.Name===g.facts!.machineName))throw new Error('Owned machine removal was not observed.');}await writeFile(path.join(g.facts.canonicalStorage,'final-owned-facts.json'),JSON.stringify(g.facts),{mode:0o600});if(await realpath(g.facts.shortHome)!==g.facts.canonicalStorage||(await lstat(path.dirname(g.facts.shortHome))).uid!==process.getuid?.())throw new Error('Short Home alias ownership changed; retain unknown path.');await rm(path.dirname(g.facts.shortHome),{recursive:true,force:true});}if(g.state==='failed')throw new Error('Closure observations are incomplete; retain private generation.');
     }catch(error){g.state='failed';g.diagnostic={code:'engine-closure',message:(error as Error).message};}return this.receipt(g,'stop');}
   async stopAll():Promise<TeamServiceReceipt[]>{this.closed=true;return this.generation?[await this.stop()]:[];}

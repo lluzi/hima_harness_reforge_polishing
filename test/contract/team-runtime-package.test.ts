@@ -47,6 +47,35 @@ test('internal assembly preserves pinned bytes and exposes blockers; distributio
   } finally { await rm(f.directory,{recursive:true,force:true}); }
 });
 
+test('platform-specific deployment requirements assemble without changing common or other-platform declarations', async () => {
+  const f = await fixture();
+  try {
+    f.pin.components[0]!.requiredFiles = ['helpers/foreign-platform'];
+    f.pin.components[0]!.notices = ['FOREIGN-NOTICE'];
+    Object.assign(f.pin.components[0]!.platformAssets[platform]!, {requiredFiles:['helpers/service'], notices:['NOTICE']});
+    const foreign = {files:{'helpers/foreign-platform':sha('foreign helper')},requiredFiles:['helpers/foreign-platform'],notices:['FOREIGN-NOTICE']};
+    Object.assign(f.pin.components[0]!.platformAssets, {'other-platform':foreign});
+    await f.seal();
+    const before = await readFile(f.pinFile,'utf8');
+    const receipt = await f.assemble();
+    assert.equal(await readFile(path.join(f.directory,'assembled/helpers/service'),'utf8'),'retained service');
+    await verifyTeamRuntime(path.join(f.directory,'assembled'),receipt);
+    assert.equal(await readFile(f.pinFile,'utf8'),before);
+  } finally { await rm(f.directory,{recursive:true,force:true}); }
+});
+
+test('platform-specific obligations never fall back to matching common declarations when they disagree', async () => {
+  for (const field of ['requiredFiles','notices'] as const) {
+    const f = await fixture();
+    try {
+      Object.assign(f.pin.components[0]!.platformAssets[platform]!, {[field]:['unapproved-platform-file']});
+      await f.seal();
+      await assert.rejects(f.assemble(), /helper\/notice obligations differ/);
+      assert.equal(existsSync(path.join(f.directory,'assembled')),false);
+    } finally { await rm(f.directory,{recursive:true,force:true}); }
+  }
+});
+
 test('wrong architecture, corrupt bytes, missing helpers and unpinned extras fail before output', async () => {
   for (const scenario of ['wrong-platform','wrong-native-arch','wrong-hash','missing-helper','extra-file','changed-manifest']) {
     const f = await fixture();

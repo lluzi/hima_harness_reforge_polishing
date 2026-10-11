@@ -201,6 +201,8 @@ test('SDK staging publishes a closure reusable by the existing packager and pres
     const originalPin = JSON.stringify(pin); await writeFile(pinFile, originalPin);
     const output = path.join(f.root, 'staged');
     const result = await packageTeamMemberRuntime({ prefix, output, pinFile, publishedPinFile, internalCandidate: true, imageInputs: { ...f.options, sourceManifestSha256: await f.freeze() } });
+    const published = JSON.parse(await readFile(publishedPinFile,'utf8'));
+    assert.deepEqual(published.components[0].requiredFiles, pin.components[0]!.requiredFiles, 'staging one platform must preserve common requirements used by other platforms');
     const repackaged = await packageTeamRuntime({ prefix: output, output: path.join(f.root, 'repackaged'), pinFile: publishedPinFile, internalCandidate: true });
     assert.equal(repackaged.manifestSha256, result.manifestSha256); assert.equal(repackaged.inventorySha256, result.inventorySha256);
     assert.equal(await readFile(path.join(prefix, 'team-runtime.json'), 'utf8'), original); assert.equal(await readFile(pinFile, 'utf8'), originalPin);

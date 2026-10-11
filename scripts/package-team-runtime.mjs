@@ -51,9 +51,12 @@ export async function packageTeamRuntime({ prefix, output, pinFile, internalCand
   for (const id of closure.requiredComponents) {
     const fixed = pin.components.find(c => c.id === id); const actual = manifest.components.find(c => c.id === id);
     if (!actual || !fixed || actual.version !== fixed.version || actual.source !== fixed.source || actual.license !== fixed.license) fail(`missing or unpinned ${id} deployment identity`);
-    const pinnedFiles = fixed.platformAssets?.[platform]?.files;
+    const fixedPlatform = fixed.platformAssets?.[platform];
+    const pinnedFiles = fixedPlatform?.files;
     if (!pinnedFiles || !Object.keys(pinnedFiles).length) fail(`missing fixed ${id} platform hashes`);
-    if (JSON.stringify(actual.requiredFiles) !== JSON.stringify(fixed.requiredFiles) || JSON.stringify(actual.notices) !== JSON.stringify(fixed.notices)) fail(`${id} helper/notice obligations differ`);
+    const requiredFiles = Object.hasOwn(fixedPlatform, 'requiredFiles') ? fixedPlatform.requiredFiles : fixed.requiredFiles;
+    const notices = Object.hasOwn(fixedPlatform, 'notices') ? fixedPlatform.notices : fixed.notices;
+    if (JSON.stringify(actual.requiredFiles) !== JSON.stringify(requiredFiles) || JSON.stringify(actual.notices) !== JSON.stringify(notices)) fail(`${id} helper/notice obligations differ`);
     for (const file of [...actual.requiredFiles, ...actual.notices]) if (!pinnedFiles[file] || manifest.files[file] !== pinnedFiles[file]) fail(`${id} deployed file is not bound to the fixed platform assets: ${file}`);
   }
   const inventory = new Set(Object.keys(manifest.files)); inventory.add('team-runtime.json');
@@ -107,7 +110,7 @@ export async function packageTeamMemberRuntime({prefix,output,pinFile,imageInput
   const manifestBytes=JSON.stringify(manifest);writeFileSync(path.join(output,'team-runtime.json'),manifestBytes);
   const next=JSON.parse(readFileSync(pinFile,'utf8')),platform=manifest.platform,closure=next.platformAssets[platform];
   const fixed=next.components.find(component=>component.id==='engineering-engine');
-  fixed.requiredFiles=engine.requiredFiles;fixed.platformAssets[platform].files=Object.fromEntries([...engine.requiredFiles,...engine.notices].map(file=>[file,manifest.files[file]]));
+  Object.assign(fixed.platformAssets[platform],{requiredFiles:engine.requiredFiles,notices:engine.notices,files:Object.fromEntries([...engine.requiredFiles,...engine.notices].map(file=>[file,manifest.files[file]]))});
   Object.assign(closure,{engineeringEngine:manifest.engineeringEngine,manifestSha256:hashFile(path.join(output,'team-runtime.json')),inventorySha256:createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex'),fileCount:Object.keys(manifest.files).length});
   if(!closure.releaseBlockers?.length)fail('SDK asset assembly must retain installation/rights/isolation release blockers');
   await verifyTeamRuntime(output,{platform,manifestSha256:closure.manifestSha256});

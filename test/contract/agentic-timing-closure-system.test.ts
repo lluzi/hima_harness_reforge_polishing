@@ -458,7 +458,7 @@ test('the retained ATCS 0.2.10 snapshot loads, fits its Sites, and passes the fo
   const tests = spawnSync('python3', ['-m', 'unittest',
     'test_owner_timing_lead.py', 'test_engineering_result.py', 'test_resident_native_context.py', '-v'], {
     cwd: path.join(packDir, 'flow/tests'),
-    env: { ...process.env, HIMA_TEST_REPO_ROOT: repoRoot },
+    env: { ...process.env, HIMA_TEST_REPO_ROOT: repoRoot, HIMA_TEST_NODE: process.execPath },
     encoding: 'utf8',
   });
   assert.equal(tests.status, 0, `${tests.stdout}\n${tests.stderr}`);

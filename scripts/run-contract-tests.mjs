@@ -50,6 +50,8 @@ try {
       const env = {
         ...process.env,
         TMPDIR: temporary, TMUX_TMPDIR: temporary,
+        // Python probes must not add unsealed bytecode to immutable source Pack inputs.
+        PYTHONPYCACHEPREFIX: path.join(temporary, 'python-cache'),
         DSH_HOME: path.join(temporary, 'dsh'), DSH_AGENTS_HOME: path.join(temporary, 'agents'),
         HIMA_USER_DATA: path.join(temporary, 'electron'), DSH_TELEMETRY_DISABLED: '1',
         HIMA_TEST_GROUP: group, HIMA_TEST_TMPDIR: temporary,
