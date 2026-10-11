@@ -239,30 +239,21 @@ test('Host shutdown timeout preserves the owned process and reports unconfirmed 
   } finally { child.kill('SIGKILL'); await ended; }
 });
 
+// Protocol substitutes below exercise receipt validation; real PG closure is qualified separately.
 test('an unconfirmed database shutdown cannot become a successful App exit merely because the Host process exited zero', async () => {
-  const folder = await mkdtemp(path.join(tmpdir(), 'hima-host-stop-receipt-'));
-  const entry = path.join(folder, 'host.mjs');
-  await writeFile(entry, `import {createServer} from 'node:http';
-    const server=createServer((request,response)=>{response.writeHead(401);response.end();});
-    server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=contract'));
-    process.on('SIGTERM',()=>{console.error('hima: resource shutdown unconfirmed; pid='+process.pid);server.close(()=>process.exit(0));});
-  `);
-  const host = await launchHimaHost({ dshEntry: entry, node: process.execPath, cwd: folder, env: process.env, profile: 'hima' });
-  try { await assert.rejects(host.stop(), /resource shutdown unconfirmed/); }
-  finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
+  const fixture = await nativeExitProvider('ready', false, 'unconfirmed');
+  try {
+    await assert.rejects(fixture.host.stop(), /resource shutdown unconfirmed/);
+    assert.equal(fixture.host.child.exitCode, 0, 'the original provider really exited zero');
+  } finally { await fixture.dispose(); }
 });
 
 test('a zero Host exit without a positive resource-shutdown receipt remains unconfirmed', async () => {
-  const folder = await mkdtemp(path.join(tmpdir(), 'hima-host-no-receipt-'));
-  const entry = path.join(folder, 'host.mjs');
-  await writeFile(entry, `import {createServer} from 'node:http';
-    const server=createServer((request,response)=>{response.writeHead(401);response.end();});
-    server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=contract'));
-    process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
-  `);
-  const host = await launchHimaHost({ dshEntry: entry, node: process.execPath, cwd: folder, env: process.env, profile: 'hima' });
-  try { await assert.rejects(host.stop(), /resource shutdown unconfirmed/); }
-  finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
+  const fixture = await nativeExitProvider('ready', false, 'absent');
+  try {
+    await assert.rejects(fixture.host.stop(), /resource shutdown unconfirmed/);
+    assert.equal(fixture.host.child.exitCode, 0, 'the original provider really exited zero');
+  } finally { await fixture.dispose(); }
 });
 
 // Actual positive native finalization is covered by host-lifecycle.host.test.ts's
@@ -271,7 +262,13 @@ test('a raw positive receipt cannot confirm shutdown without native finalization
   const folder = await mkdtemp(path.join(tmpdir(), 'hima-host-positive-receipt-'));
   const entry = path.join(folder, 'host.mjs');
   await writeFile(entry, `import {createServer} from 'node:http';
-    const server=createServer((request,response)=>{response.writeHead(401);response.end();});
+    const server=createServer((request,response)=>{
+      if(request.url==='/hima/api/lifecycle/exit'&&request.headers['x-hima-desktop-control']===process.env.HIMA_DESKTOP_CONTROL_TOKEN){
+        response.writeHead(request.method==='GET'?200:403,{'content-type':'application/json'});
+        response.end(request.method==='GET'?'{"ready":false}':'{"error":{"message":"native finalization unavailable"}}');return;
+      }
+      response.writeHead(401);response.end('{}');
+    });
     server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>process.stderr.write('hima: resource shutdown confirmed; pid='+process.pid+'\\n',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=contract')));
     process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
   `);
@@ -283,21 +280,23 @@ test('a raw positive receipt cannot confirm shutdown without native finalization
     assert.equal(host.child.signalCode, null);
     process.kill(host.child.pid!, 0);
   }
-  finally { if (host.child.exitCode === null && host.child.signalCode === null) host.child.kill('SIGKILL'); await rm(folder, { recursive: true, force: true }); }
+  finally { if (host.child.exitCode === null && host.child.signalCode === null) { const closed = new Promise(resolve => host.child.once('close', resolve)); host.child.kill('SIGKILL'); await closed; } await rm(folder, { recursive: true, force: true }); }
 });
 
 // This provider qualifies the launcher protocol only. Actual DBOS/PG ownership stays
 // covered by host-lifecycle.host.test.ts; the child owns each protocol transition.
-async function nativeExitProvider(behavior: 'ready' | 'never' | 'late' | 'replaced' | 'wrong-finalization', accepted = false) {
+async function nativeExitProvider(behavior: 'ready' | 'never' | 'late' | 'replaced' | 'wrong-finalization', accepted = false, receipt: 'confirmed' | 'unconfirmed' | 'absent' = 'confirmed') {
   const folder = await mkdtemp(path.join(tmpdir(), 'hima-native-exit-'));
   const entry = path.join(folder, 'fake.mjs'), eventsFile = path.join(folder, 'events.json');
   await writeFile(entry, `import {createServer} from 'node:http';import {writeFileSync} from 'node:fs';
-    const behavior=${JSON.stringify(behavior)},events=[],record=event=>{events.push(event);writeFileSync(${JSON.stringify(eventsFile)},JSON.stringify(events));};
-    let state=${accepted ? "{requestId:'original-drain',mode:'drain',ready:false}" : '{ready:false}'},reads=0,finalized=false;
+    const behavior=${JSON.stringify(behavior)},receipt=${JSON.stringify(receipt)},events=[],record=event=>{events.push(event);writeFileSync(${JSON.stringify(eventsFile)},JSON.stringify(events));};
+    let state=${accepted ? "{requestId:'original-drain',mode:'drain',ready:false}" : '{ready:false}'},reads=0,finalized=false,bootProbed=false;
     const server=createServer(async(req,res)=>{
       if(req.url!=='/hima/api/lifecycle/exit'){res.writeHead(401);res.end('{}');return;}
       if(req.headers['x-hima-desktop-control']!==process.env.HIMA_DESKTOP_CONTROL_TOKEN){res.writeHead(403);res.end('{}');return;}
       const answer=()=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(state));};
+      // The new launcher presence probe is a read, not an exit-state transition.
+      if(req.method==='GET'&&!bootProbed){bootProbed=true;record({kind:'get',...state});answer();return;}
       if(req.method==='POST'){
         let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);record({kind:'post',...body});
         if(body.mode==='finish-exit'){
@@ -316,7 +315,8 @@ async function nativeExitProvider(behavior: 'ready' | 'never' | 'late' | 'replac
     });
     process.on('SIGTERM',()=>{record({kind:'signal',finalized,...state});
       if(!finalized){server.close(()=>process.exit(2));return;}
-      process.stderr.write('hima: resource shutdown confirmed; pid='+process.pid+'\\n',()=>server.close(()=>process.exit(0)));
+      if(receipt==='absent'){server.close(()=>process.exit(0));return;}
+      process.stderr.write('hima: resource shutdown '+(receipt==='unconfirmed'?'unconfirmed':'confirmed')+'; pid='+process.pid+'\\n',()=>server.close(()=>process.exit(0)));
     });
     server.listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1',()=>console.log('dsh web: http://127.0.0.1:'+server.address().port+'/?token=fake'));
   `);
