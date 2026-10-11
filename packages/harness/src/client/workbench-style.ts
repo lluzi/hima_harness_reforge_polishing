@@ -421,7 +421,7 @@ export const HIMA_STYLE = `
 .hima-outcome-word[data-outcome="converged"],.hima-outcome-word[data-outcome="open"]{color:var(--hima-ink-2)}
 
 /* The restyled tool receipt and its shared row/section components (#41 task 6): no inline style. */
-.hima-chart-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);width:100%;max-width:760px;min-width:0;box-sizing:border-box;font-size:var(--hima-fs-label);line-height:var(--hima-lh-tight)}
+.hima-chart-card{container:hima-chart / inline-size;display:flex;flex-direction:column;gap:var(--hima-sp-2);width:100%;max-width:760px;min-width:0;box-sizing:border-box;font-size:var(--hima-fs-label);line-height:var(--hima-lh-tight)}
 .hima-chart-card p{margin:0}
 .hima-chart-note{font-size:var(--hima-fs-body);line-height:var(--hima-lh-body);color:var(--hima-ink)}
 .hima-chart{margin:0;padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:flex;flex-direction:column;gap:var(--hima-sp-2);min-width:0}
@@ -447,6 +447,31 @@ export const HIMA_STYLE = `
 .hima-chart-role-proposed{background:var(--hima-accent);fill:var(--hima-accent)}
 .hima-chart-role-measured{background:var(--hima-good);fill:var(--hima-good)}
 .hima-chart-role-neutral{background:var(--hima-ink-3);fill:var(--hima-ink-3)}
+.hima-chart-metrics{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.hima-chart-metrics-single{max-width:440px}
+.hima-chart-metrics th,.hima-chart-metrics td{padding:5px 0 5px var(--hima-sp-4);border-bottom:1px solid var(--hima-line);text-align:right;vertical-align:baseline;white-space:nowrap}
+.hima-chart-metrics tr > :first-child{padding-left:0}
+.hima-chart-metrics tbody tr:last-child > *{border-bottom:0}
+.hima-chart-metrics thead th{font-size:var(--hima-fs-eyebrow);font-weight:600;color:var(--hima-ink-2);white-space:normal;vertical-align:bottom}
+.hima-chart-metrics th[scope=row],.hima-chart-metrics thead th:first-child{text-align:left;font-weight:500;color:var(--hima-ink-2);white-space:normal;overflow-wrap:break-word;width:36%}
+.hima-chart-metrics-single th[scope=row]{width:auto}
+.hima-chart-metrics .hima-chart-row-highlight th[scope=row]{color:var(--hima-ink);font-weight:700}
+.hima-chart-measure-unit{display:none;font-weight:400;color:var(--hima-ink-3)}
+.hima-chart-number{color:var(--hima-ink)}
+.hima-chart-unit{margin-left:4px;color:var(--hima-ink-3);font-size:var(--hima-fs-eyebrow)}
+.hima-chart-delta .hima-chart-number{color:inherit;font-weight:600}
+.hima-chart-delta .hima-chart-unit{color:inherit}
+.hima-chart-delta-pct{margin-left:6px;font-size:var(--hima-fs-eyebrow)}
+.hima-chart-delta-better{color:var(--hima-good)}
+.hima-chart-delta-worse{color:var(--hima-bad)}
+.hima-chart-delta-none,.hima-chart-delta-same{color:var(--hima-ink-3)}
+.hima-chart-delta-none .hima-chart-number,.hima-chart-delta-same .hima-chart-number{font-weight:400}
+@container hima-chart (max-width:520px){
+  .hima-chart-metrics th,.hima-chart-metrics td{padding-left:var(--hima-sp-3)}
+  .hima-chart-metrics:not(.hima-chart-metrics-single) .hima-chart-measure-unit{display:inline}
+  .hima-chart-metrics:not(.hima-chart-metrics-single) td .hima-chart-unit{display:none}
+  .hima-chart-delta-pct{display:block;margin-left:0}
+}
 .hima-chart-caption{color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow)}
 .hima-chart-source{color:var(--hima-ink-3);font-size:var(--hima-fs-eyebrow)}
 .hima-chart-error{color:var(--hima-bad)}
