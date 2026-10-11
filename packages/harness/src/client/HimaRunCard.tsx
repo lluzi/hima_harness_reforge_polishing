@@ -1048,7 +1048,9 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
             <div className="hima-run-card-receipt-line" title={toolName ?? 'hima'}>
               <span>{t('masthead.campaign')}</span>
               <span className="hima-state-word" data-state={status ?? ''}>{statusWord}</span>
-              {nodeSaid === undefined ? null : <><span className="hima-muted">·</span><span>{nodeSaid}</span></>}
+              {/* The step is live state, not what this call did: on a follow-up receipt every line
+                  would repeat the Run's current step, so only the full receipt names it. */}
+              {nodeSaid === undefined || compact ? null : <><span className="hima-muted">·</span><span>{nodeSaid}</span></>}
               {round === undefined ? null : <><span className="hima-muted">·</span><span>{t('masthead.gen', { n: round })}</span></>}
               {!compact || openRun === undefined ? null : (
                 <button type="button" className="hima-run-card-link" data-hima-control="open-run" onClick={() => { openRun(runId); }}>

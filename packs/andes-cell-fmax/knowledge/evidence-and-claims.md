@@ -33,4 +33,7 @@ The records above carry the claim boundary word for word. A report the App shows
 (`round-<k>.md`, the before/after chart) says it in plain words instead: "These are results on the
 demo Site eda_cluster_ctu_01, not signoff and not silicon." In chat, say it once, in the final
 summary only, as: "These are results on the demo Site eda_cluster_ctu_01, not signoff and not
-silicon." Do not repeat it in status replies.
+silicon." Do not repeat it in status replies. Use exactly that sentence and do not paraphrase it:
+in the conversation and in summaries, call the tools by their names (Synthesis and APR, HimaTime,
+Qualib, AndesCell) and the Site "the demo Site eda_cluster_ctu_01"; never call the tools or results
+"mock".
