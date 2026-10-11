@@ -789,6 +789,11 @@ def validate_requirements(ws, agent, path=None, files_root=None, tools=None):
                     problems.append("arc %s: %s must be HimaTime's best what-if gain, %s ns" % (arc_name(a), field, ref[field]))
         if bad:
             problems.append("%d arc(s) are not in HimaTime's merged what-if list: %s%s" % (len(bad), ", ".join(bad[:5]), " ..." if len(bad) > 5 else ""))
+        missing = [arc_name(a) for key, a in by_key.items() if key not in seen]
+        if items and missing:
+            problems.append("list every arc of HimaTime's merged what-if list (%d); %d are missing: %s%s. Say in the summary and "
+                            "analysis which arcs matter most; do not drop any." % (len(merged), len(missing), ", ".join(missing[:5]),
+                                                                                  " ..." if len(missing) > 5 else ""))
         facts.update(count=len(seen), arcs=[plain_arc(by_key[key]) for key in by_key if key in seen], mergedCount=len(merged))
     else:
         if "analysis" not in tools:
@@ -812,6 +817,15 @@ def validate_requirements(ws, agent, path=None, files_root=None, tools=None):
                 seen.append(c)
         if bad:
             problems.append("%d cell(s) are not cells of Qualib's analysis of the what-if arcs: %s%s" % (len(bad), ", ".join(bad[:5]), " ..." if len(bad) > 5 else ""))
+        missing = [c for c in known if c not in seen]
+        if cells and missing:
+            problems.append("list every cell of Qualib's analysis of the what-if arcs (%d); %d are missing: %s%s. A remark about a "
+                            "cell (for example a stock Vt that is faster on some arcs) goes in notes {cell: text}; every cell stays "
+                            "listed, because AndesCell keeps or drops a cell only on its measured cell-level gain."
+                            % (len(known), len(missing), ", ".join(missing[:5]), " ..." if len(missing) > 5 else ""))
+        notes = doc.get("notes")
+        if notes is not None and (not isinstance(notes, dict) or any(k not in known or not isinstance(v, str) for k, v in notes.items())):
+            problems.append("notes must be {cell: text} for cells of the analysis")
         want = analysis.get("constraints") or {}
         got = doc.get("constraints")
         if not isinstance(got, dict):
@@ -921,6 +935,10 @@ def validate_plan(ws, path=None, files_root=None):
     if outside:
         problems.append("%d arc(s) are not both in the HimaTime agent's arcs and on a cell the Qualib agent lists: %s%s"
                         % (len(outside), ", ".join(outside[:5]), " ..." if len(outside) > 5 else ""))
+    left = [k for k in allowed if k not in seen]
+    if items and left:
+        problems.append("plan every arc both lists allow (%d); %d are missing. AndesCell explores each arc and HimaTime keeps a "
+                        "cell only on its measured cell-level gain, so no arc is dropped before generation." % (len(allowed), len(left)))
     settings = doc.get("settings")
     if not isinstance(settings, dict) or settings.get("iterations") != ITERATIONS or not isinstance(settings.get("scale"), (int, float)) \
             or abs(settings["scale"] - SCALE) > 1e-9:

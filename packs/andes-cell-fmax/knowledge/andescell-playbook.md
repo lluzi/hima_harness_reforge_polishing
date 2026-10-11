@@ -19,9 +19,9 @@ generates exactly your arcs, so the round rests on this plan.
    cell's). The Site's AndesCell data is for these settings; others are refused.
 2. `andescell generate --arcs plan.json --round <k> --iterations 50 --scale 0.9 --dry-run` prints
    what the generation would give. Keep its output as `dry_run.rpt`.
-3. You may leave arcs out and say why (an arc already delivered, an arc you judge not worth a cell);
-   never add arcs outside both lists. Every arc AndesCell does not generate is a cell the rebuild
-   cannot use.
+3. Plan every arc both lists allow and never add one outside them: AndesCell explores each arc and
+   HimaTime keeps a cell only on its measured cell-level gain, so nothing is dropped before
+   generation. Say in `reason` which arcs you expect to matter most and why.
 4. Write `summary` and `reason`: how many arcs both lists allow, how many you plan, the settings and
    why.
 

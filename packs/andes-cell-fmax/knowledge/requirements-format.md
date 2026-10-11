@@ -43,7 +43,8 @@ empty: the precheck refuses an empty one. Edit the file with your editor; keep i
 
 - `arcs`: arcs of HimaTime's merged what-if list (`himatime whatif --scale 0.9`), each once, with
   the rankings that name it and its best TNS and WNS what-if gain in ns, as HimaTime prints them.
-  You may leave arcs out; you may not add one or change a number.
+  List every arc of the merged list (the draft does); say in `summary` and the analysis which arcs
+  matter most. You may not drop, add or change one.
 
 ## Requirements (hima-andes-requirements/2): qualib-agent
 
@@ -55,11 +56,14 @@ empty: the precheck refuses an empty one. Edit the file with your editor; keep i
   "summary": "ULVT is already the fastest Vt on most of the requested arcs; LVT and SVT are slower; only a custom cell helps.",
   "cells": ["ND2D1X", "INVD2X"],
   "constraints": { "footprint": "same area and pins as the stock cell", "inputCapMaxRatio": 1.3, "lvs": "match" },
+  "notes": { "INVD2X": "LVT is faster than ULVT at the table centre on its requested arc" },
   "report": "reports/qualib-agent/r1/analysis.md"
 }
 ```
 
-- `cells`: cells of `qualib analyze` on the what-if arcs, each once. `constraints`: Qualib's own
+- `cells`: every cell of `qualib analyze` on the what-if arcs, each once (the draft lists them). A
+  remark about one cell, such as a stock Vt that is faster on some arcs, goes in `notes`; the cell
+  stays listed, because only the measured cell-level gain keeps or drops a custom cell. `constraints`: Qualib's own
   (`inputCapMaxRatio` and `lvs` as the analysis states them; `footprint` in words).
 
 ## Generation plan (hima-andes-plan/2): andescell-agent

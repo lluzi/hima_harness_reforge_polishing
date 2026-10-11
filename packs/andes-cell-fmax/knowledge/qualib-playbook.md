@@ -27,8 +27,10 @@ With `db = <campaign>/<timingState.buildDir>`, in your private workspace:
 ## Write (qualib-agent)
 
 - `python3 <campaign>/flow/andes_cli.py draft <campaign> qualib ./ql/library_analysis.json > requirements.json`
-  writes the cells and Qualib's constraints. You may remove cells (say why); never add cells or change
-  the constraints: the precheck holds them to Qualib's own answer.
+  writes every cell and Qualib's constraints. Keep every cell listed: AndesCell explores each one and
+  HimaTime keeps a custom cell only on its measured cell-level gain. A remark about one cell (for
+  example a stock Vt that is faster on some arcs at the table centre) goes in `notes` `{cell: text}`.
+  Never add cells or change the constraints: the precheck holds them to Qualib's own answer.
 - Write `summary`: how many arcs and cells, on how many arcs ULVT is already the fastest, how much
   slower LVT and SVT are, and the constraints.
 - `reports/qualib-agent/r<k>/analysis.md` and `library_analysis.rpt` beside it, delivered as support.

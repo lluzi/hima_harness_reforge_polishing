@@ -34,7 +34,7 @@ With `db = <campaign>/<timingState.buildDir>`, in your private workspace:
 
 - `python3 <campaign>/flow/andes_cli.py draft <campaign> himatime ./hw/whatif.json > requirements.json`
   writes the requirements with every merged arc and its `rankedBy`, `tnsGainNs` and `wnsGainNs`
-  from HimaTime. You may remove arcs you do not want customized (say why in the analysis); never add
+  from HimaTime. Keep every arc (say in the analysis which matter most; HimaTime's cell-level check decides later which custom cells stay); never add
   arcs or change numbers: the precheck holds them to HimaTime's own answer.
 - Write `summary`: how far the high-value analysis narrows the design (cells → high-value instances
   → listed cells → arcs) and the top three arcs by TNS gain, with their cell names.
