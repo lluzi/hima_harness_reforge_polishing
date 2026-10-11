@@ -29,8 +29,10 @@ gap; then (`qualib-screen`) whether each cell AndesCell built may enter a build.
 ## Write
 
 - 2-5 requirements, highest impact first. Each: `family`, `purpose` (the library gap to close:
-  "balanced rise/fall XNOR3 with an X4 drive"), `target` with a percentage, `evidence` (the gap and
-  the critical-path numbers: "XNOR3 r/f 1.36, only X1/X2; 25.7 % of the worst path"), `priority`.
+  "balanced rise/fall XNOR3 with an X4 drive"), `target` with a percentage (AndesCell's typical
+  cell-level gain is 4–10 %, the analysis' headroom column), `evidence` (the gap and the
+  critical-path numbers: "XNOR3 r/f 1.36, only X1/X2, FO4 28.0 ps; 16.4 % of the worst path"),
+  `priority`.
 - `reports/qualib-agent/r<k>/analysis.md`: the library facts you used, the gaps that matter on the
   critical paths, why these families, and which gaps you leave for later rounds. Keep Qualib's
   `library_analysis.rpt` beside it and deliver both as support.

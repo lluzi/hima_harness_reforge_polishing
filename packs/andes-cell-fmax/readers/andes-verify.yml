@@ -1,5 +1,5 @@
 id: andes-verify
-version: "0.2.0"
+version: "0.3.0"
 file: tools/read-verify.py
 argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
 reportKind: hima-andes-cell-check

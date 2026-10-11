@@ -4,7 +4,9 @@
 argv: read-requirements.py <REPORT> <OUT> <WORKSPACE>. The agent is named by the report file
 (state/himatime-requirements.json or state/qualib-requirements.json). The checks are the Pack's own
 validator in <WORKSPACE>/flow/andes_cli.py, the same one the agent's precheck runs. A refused file
-exits non-zero with every problem, so the same resident task can repair it.
+exits non-zero with every problem, so the same resident task can repair it. An accepted file also
+gets its chart, reports/<agent node>/r<k>/proposal.chart.json: why the agent asks for these cells, in
+the tools' own numbers (andes_cli.proposal_chart).
 """
 import importlib.util
 import json
@@ -33,6 +35,10 @@ def main(report_path, out_path, workspace):
         {"type": "requirements_count", "unit": "count", "value": facts["count"]},
         {"type": "requirements_on_critical_path", "unit": "count", "value": facts["onCriticalPath"]},
     ]
+    try:
+        print("wrote %s" % cli.proposal_chart(workspace, agent))
+    except (cli.ToolError, OSError, ValueError, KeyError) as error:
+        print("no proposal chart: %s" % error, file=sys.stderr)
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)
 

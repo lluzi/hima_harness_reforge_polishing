@@ -22,7 +22,7 @@ run options:
   --lib NAME             stock standard-cell library (default std9t_svt)
   --extra-lib DIR        an AndesCell library directory to add (repeatable; cumulative libraries)
   --dont-use CELL        a cell the flow must not use (repeatable; e.g. cells that failed a screen)
-  --clock-period NS      override the SDC clock period (default: from the SDC, 1.000 ns)
+  --clock-period NS      override the SDC clock period (default: from the SDC, 0.500 ns)
   --jobs N               worker threads (1-8, default 4)
   --out DIR              output directory (created; must be empty or absent)
   --quiet                only print the final summary
@@ -108,7 +108,7 @@ def run(argv):
     log.phase("SYN", "Elaborating RTL", 3, 2, lambda k, n: "%d modules" % (9 * k))
     log.phase("SYN", "Technology mapping to %s%s" % (model.STOCK_LIBRARY, " + %d AndesCell librar%s" % (n_extra, "y" if n_extra == 1 else "ies") if n_extra else ""),
               14, 5, lambda k, n: "%d cells mapped" % (int(18400 * k / n)))
-    log.phase("SYN", "Timing-driven optimization", 10, 4, lambda k, n: "WNS %.3f ns" % (-0.21 + 0.04 * k))
+    log.phase("SYN", "Timing-driven optimization", 10, 4, lambda k, n: "WNS %.3f ns" % (-0.085 + 0.015 * k))
     log.phase("FP", "Floorplan (utilization %.0f %%, 9-track rows)" % (100 * model.CORE_UTILIZATION), 3, 2)
     log.phase("PLC", "Global and detailed placement", 14, 5, lambda k, n: "overflow %.2f %%" % (4.0 / k))
     log.phase("CTS", "Clock tree synthesis (%s)" % model.CLOCK_NAME, 8, 4, lambda k, n: "skew %d ps" % (40 - 6 * k))

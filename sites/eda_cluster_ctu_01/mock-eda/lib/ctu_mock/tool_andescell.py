@@ -45,6 +45,7 @@ CAP_INCREASE = {"DFF": 0.06, "BUF": 0.10, "INV": 0.08, "XNOR3": 0.14, "XOR2": 0.
                 "NAND3": 0.10, "NOR3": 0.10, "AND2": 0.10, "OR2": 0.10}
 # Families for which AndesCell also tries an extra-fast high-drive variant (high leakage; Qualib screens it).
 XF_FAMILIES = ("XNOR3", "BUF", "AOI21", "XOR2")
+XF_EXTRA_SPEEDUP = 0.02   # the extra-fast variant is 2 points faster than its family's F cells
 
 
 def priority_of(value):
@@ -133,7 +134,7 @@ def make_cells(family, k):
     variants = [("F%d" % drives[0], drives[0], s, 1.35, CAP_INCREASE[family]), ("F%d" % drives[1], drives[1], s, 1.40, CAP_INCREASE[family])]
     if family in XF_FAMILIES:
         top = max(4, 2 * drives[1])
-        variants.append(("XF%d" % top, top, s + 0.06, 2.9, 0.34))
+        variants.append(("XF%d" % top, top, s + XF_EXTRA_SPEEDUP, 2.9, 0.34))
     for tag, drive, sp, leak_ratio, cap_inc in variants:
         stock = libraries.stock_cell(family, drive)
         fo4 = round(stock["fo4DelayPs"] * (1 - sp), 1)

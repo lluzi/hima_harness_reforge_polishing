@@ -13,7 +13,7 @@ SITE_WIDTH_UM = 0.10
 # Electrical character of the stock std9t_svt cells per family: input cap per X1 (fF), leakage per
 # X1 (nW), rise/fall ratio of the worst arc, and what Qualib reports as the library gap.
 STOCK = {
-    "DFF":   dict(cap=0.92, leak=6.8, rf=1.08, gap="clock-to-Q 82 ps at FO4; no fast-Q (low-clock-to-Q) flop in the library"),
+    "DFF":   dict(cap=0.92, leak=6.8, rf=1.08, gap="clock-to-Q 34 ps at FO4; no fast-Q (low-clock-to-Q) flop in the library"),
     "BUF":   dict(cap=0.86, leak=2.1, rf=1.04, gap="drive steps X2 -> X4 -> X8 too coarse for fanout 6-12 nets; no balanced-skew mid-drive buffer"),
     "INV":   dict(cap=0.84, leak=1.2, rf=1.06, gap="complete drive range X1-X4; little headroom"),
     "XNOR3": dict(cap=1.62, leak=5.9, rf=1.36, gap="only X1/X2; rise 36 % slower than fall; no XNOR3 with a fast late-arriving A3 pin"),
@@ -172,12 +172,16 @@ def lef_text(cells, banner_lines):
     return "\n".join(out) + "\n"
 
 
+def share_banner():
+    """The comment lines at the top of the stock library files."""
+    return ["std9t_svt standard-cell library, %s, 9-track SVT" % model.CORNER, "Characterized at %s." % model.CORNER]
+
+
 def write_share():
     """Regenerate share/libs/std9t_svt (stock Liberty, LEF, manifest). Deterministic."""
     d = SHARE / "libs" / model.STOCK_LIBRARY
     d.mkdir(parents=True, exist_ok=True)
-    banner = ["std9t_svt standard-cell library, %s, 9-track SVT" % model.CORNER,
-              "Characterized at %s." % model.CORNER]
+    banner = share_banner()
     cells = stock_cells()
     (d / ("%s_%s.lib" % (model.STOCK_LIBRARY, model.CORNER))).write_text(liberty_text(model.STOCK_LIBRARY, cells, banner))
     (d / ("%s.lef" % model.STOCK_LIBRARY)).write_text(lef_text(cells, banner))

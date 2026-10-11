@@ -14,20 +14,20 @@ unchanged, otherwise a new name (e.g. `analysis-2.md`).
   "schema": "hima-andes-requirements/1",
   "agent": "himatime",
   "round": 1,
-  "summary": "The S-box/MixColumns paths set Fmax: XNOR3 and BUF stages carry 44 % of the worst path.",
+  "summary": "The S-box/MixColumns paths set Fmax: XNOR3 and BUF stages carry 30 % of the worst path.",
   "requirements": [
     {
       "family": "XNOR3",
       "purpose": "Faster rising output for the S-box XNOR3 trees",
-      "target": "cell delay -30 % at fanout 4",
-      "evidence": "A1-A7 S-box paths; XNOR3 268 ps of 1044 ps on A1; HimaTime est. recovery 3.04 ns",
+      "target": "cell delay -10 % at fanout 4",
+      "evidence": "A1-A7 S-box paths; 3 XNOR3 stages, 84 ps of 512.4 ps on A1; HimaTime est. recovery 0.302 ns",
       "priority": 1
     },
     {
       "family": "BUF",
       "purpose": "Mid-drive balanced buffer for the fanout-6..12 S-box nets",
-      "target": "cell delay -25 % at fanout 6",
-      "evidence": "BUF on all 20 worst paths, 18.8 % of A1; est. recovery 2.09 ns",
+      "target": "cell delay -8 % at fanout 6",
+      "evidence": "BUF on all 20 worst paths, 4 stages and 13.3 % of A1; est. recovery 0.191 ns",
       "priority": 2
     }
   ],
@@ -50,12 +50,12 @@ unchanged, otherwise a new name (e.g. `analysis-2.md`).
   "round": 1,
   "summary": "Both lists ask for XNOR3; XNOR3 and BUF have the most estimated recovery on the S-box paths.",
   "families": [
-    { "family": "XNOR3", "reason": "Asked by both agents; 25.7 % of the worst path, the largest estimated recovery", "estRecoveryNs": 3.041 },
-    { "family": "BUF", "reason": "On all 20 worst paths; second largest estimated recovery", "estRecoveryNs": 2.087 }
+    { "family": "XNOR3", "reason": "Asked by both agents; 16.4 % of the worst path, the largest estimated recovery", "estRecoveryNs": 0.302 },
+    { "family": "BUF", "reason": "On all 20 worst paths; second largest estimated recovery", "estRecoveryNs": 0.191 }
   ],
   "skipped": [
-    { "family": "XOR2", "reason": "Third by estimated recovery (1.966 ns); AndesCell builds two families a round" },
-    { "family": "MUX2I", "reason": "1.178 ns estimated recovery; the key-expansion paths come after the S-box paths" }
+    { "family": "XOR2", "reason": "Third by estimated recovery (0.171 ns); AndesCell builds two families a round" },
+    { "family": "MUX2I", "reason": "0.104 ns estimated recovery; the key-expansion paths come after the S-box paths" }
   ],
   "report": "reports/andescell-agent/r1/analysis.md"
 }
@@ -77,15 +77,15 @@ Copy HimaTime's numbers from `himatime verify --paths 8` (`verify.json`).
   "schema": "hima-andes-cell-timing/1",
   "agent": "himatime",
   "round": 1,
-  "summary": "With the new XNOR3 and BUF cells the worst path A1 is 168.5 ps faster; key expansion (B1) limits Fmax next.",
+  "summary": "With the new XNOR3 and BUF cells the worst path A1 is 16.88 ps faster; key expansion (B1) limits Fmax next.",
   "worstPath": "A1",
-  "localGainPs": 168.48,
+  "localGainPs": 16.88,
   "paths": [
-    { "id": "A1", "beforePs": 1044.2, "afterPs": 875.72, "gainPs": 168.48 },
-    { "id": "B1", "beforePs": 1041.45, "afterPs": 1014.17, "gainPs": 27.28 }
+    { "id": "A1", "beforePs": 512.4, "afterPs": 495.52, "gainPs": 16.88 },
+    { "id": "B1", "beforePs": 509.0, "afterPs": 503.94, "gainPs": 5.06 }
   ],
   "cells": [
-    { "name": "ANDES_XNOR3_F1_R1", "fo4Ps": 38.1, "stockCell": "XNOR3_X1", "stockFo4Ps": 56.0 }
+    { "name": "ANDES_XNOR3_F1_R1", "fo4Ps": 25.2, "stockCell": "XNOR3_X1", "stockFo4Ps": 28.0 }
   ],
   "report": "reports/himatime-verify/r1/analysis.md"
 }

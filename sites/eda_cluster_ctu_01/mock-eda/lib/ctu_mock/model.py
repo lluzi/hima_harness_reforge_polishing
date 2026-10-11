@@ -1,17 +1,41 @@
 """The deterministic design model behind every mock EDA number on eda_cluster_ctu_01.
 
-One design (aes_cipher_top, 28 nm, stock library std9t_svt, clock 1.000 ns) is represented by its 20
-worst register-to-register path groups. Each path is a list of stages; every stage is one cell of a
-cell family (DFF clock-to-Q, BUF, XNOR3, XOR2, MUX2I, AOI21, ...) plus the net delay after it. A
-generated (AndesCell) cell family makes the cell delay of every stage of that family faster by the
-family's achievable speed-up; net delay never changes. Everything the mock tools print (slack, WNS,
-TNS, Fmax, the per-cell-type stage breakdown, area, instance counts) is computed here, so the same
-library always gives the same numbers on every tool.
+One design (aes_cipher_top, 28 nm, stock library std9t_svt, clock clk at 0.500 ns, a ~2 GHz block)
+is represented by its 20 worst register-to-register path groups. Each path is a launching flop
+(DFF clock-to-Q) and 22-28 logic levels; every level is one cell of a cell family (BUF, XNOR3, XOR2,
+MUX2I, AOI21, NAND2, INV, ...) plus the net delay after it. A generated (AndesCell) cell family makes
+the cell delay of every stage of that family faster by the family's achievable speed-up (5-10 % at
+cell level); net delay never changes. Everything the mock tools print (slack, WNS, TNS, Fmax, the
+per-cell-type stage breakdown, area, instance counts) is computed here, so the same library always
+gives the same numbers on every tool.
 
-Calibration (see tests/test_mock_eda.py): with the families AndesCell picks when the requirements
-name the critical-path families, the new-library build is +2.50 % (XNOR3, BUF), +3.40 % (+ XOR2,
-MUX2I) and +5.20 % (+ AOI21, OAI21) Fmax over the reference build. A family that is on no worst path
-gains nothing.
+The timing math (asserted in tests/test_mock_eda.py):
+
+  Stage delays. A logic stage is 10-30 ps of cell delay (FO4-class: INV 10, NAND2 12, NOR2 14,
+  AOI21 16, BUF 17, OAI21 17, MUX2I 19, XOR2 21, XNOR3 28 ps) plus 2-5 ps of net. DFF clock-to-Q is
+  34 ps. No stock cell is slower than 34 ps at fanout 4.
+
+  Path delay against the clock. The capture flop needs setup 12 ps and the clock has 8 ps of
+  uncertainty, so a path must arrive within 500 - 20 = 480 ps of the launch edge (clock latency,
+  95 ps, is on both ends and cancels). slack = 480 - (clock-to-Q + cells + nets).
+
+  The worst path A1 (S-box / MixColumns, 23 levels):
+    clock-to-Q 34 + cells 369 (3 XNOR3 x 28 + 4 BUF x 17 + 2 XOR2 x 21 + 1 MUX2I x 19
+    + 3 AOI21 x 16 + 4 NAND2 x 12 + 6 INV x 10; 16.0 ps a level) + nets 89.4 (24 nets, 3.7 ps each)
+    = 492.4 ps; slack = 480 - 492.4 = -12.4 ps.
+
+  Fmax = 1000 / (T - WNS) MHz with T = 0.500 ns and WNS in ns (to 0.1 ps):
+    reference: 1000 / (0.500 + 0.0124) = 1951.60 MHz; TNS -0.596 ns over 74 violating endpoints.
+
+  Round 1, XNOR3 (-10 %) and BUF (-8 %), the two families HimaTime ranks first:
+    A1 gets 84 x 0.10 + 68 x 0.08 = 8.40 + 5.44 = 13.84 ps faster with the cells that pass the
+    screen (HimaTime verify, which also re-times with the extra-fast -12 % / -10 % variants, reports
+    10.08 + 6.80 = 16.88 ps), so A1 ends at +1.4 ps. The key-expansion group then limits Fmax: B1
+    has one XNOR3 and one BUF, 28 x 0.10 + 17 x 0.08 = 4.16 ps, and goes from -9.0 to -4.84 ps.
+    New-library build: 1000 / (0.500 + 0.0048) = 1980.98 MHz, +1.51 % over the reference; TNS
+    -0.100 ns over 33 endpoints. The default Goal (+1 %) is met in one round.
+
+  A family that is on no worst path gains nothing.
 
 MOCK EDA: these are model numbers for a demonstration Site; not signoff, not silicon.
 """
@@ -22,49 +46,50 @@ TECHNOLOGY = "28 nm"
 STOCK_LIBRARY = "std9t_svt"
 CORNER = "tt0p90v25c"
 CLOCK_NAME = "clk"
-CLOCK_PERIOD_NS = 1.000
-CLOCK_LATENCY_NS = 0.142
-UNCERTAINTY_PS = 25.0
-SETUP_PS = 32.0
+CLOCK_PERIOD_NS = 0.500
+CLOCK_LATENCY_NS = 0.095
+UNCERTAINTY_PS = 8.0
+SETUP_PS = 12.0
 CORE_UTILIZATION = 0.70
 REFERENCE_DRC = 0
 
-# family -> facts used by every tool. speedup: the cell-delay reduction an AndesCell-generated cell
-# of this family reaches at fanout 4 (fraction). typPs: a typical stage delay on the critical paths.
+# family -> facts used by every tool. typPs: the stock cell delay of one stage of this family on the
+# critical paths (about its X1 FO4 delay). speedup: the cell-delay reduction an AndesCell-generated
+# cell of this family reaches at fanout 4 (fraction; 5-10 % at cell level).
 FAMILIES = {
-    "DFF": dict(cells=["DFFQ_X1", "DFFQ_X2"], out="Q", typPs=82, speedup=0.10, instances=530, areaUm2=5.54, adopt=0.25, areaRatio=1.14,
+    "DFF": dict(cells=["DFFQ_X1", "DFFQ_X2"], out="Q", typPs=34, speedup=0.05, instances=530, areaUm2=5.54, adopt=0.25, areaRatio=1.14,
                   inputs=["D", "CK"], function="IQ", describe="D flip-flop (clock-to-Q)"),
-    "BUF": dict(cells=["BUF_X2", "BUF_X4", "BUF_X8"], out="Z", typPs=30, speedup=0.28, instances=1900, areaUm2=2.27, adopt=0.12, areaRatio=1.22,
+    "BUF": dict(cells=["BUF_X2", "BUF_X4", "BUF_X8"], out="Z", typPs=17, speedup=0.08, instances=1900, areaUm2=2.27, adopt=0.12, areaRatio=1.22,
                   inputs=["A"], function="A", describe="non-inverting buffer"),
-    "INV": dict(cells=["INV_X1", "INV_X2", "INV_X4"], out="ZN", typPs=12, speedup=0.08, instances=1680, areaUm2=1.01, adopt=0.03, areaRatio=1.10,
+    "INV": dict(cells=["INV_X1", "INV_X2", "INV_X4"], out="ZN", typPs=10, speedup=0.04, instances=1680, areaUm2=1.01, adopt=0.03, areaRatio=1.10,
                   inputs=["A"], function="!A", describe="inverter"),
-    "XNOR3": dict(cells=["XNOR3_X1", "XNOR3_X2"], out="ZN", typPs=56, speedup=0.32, instances=1120, areaUm2=3.78, adopt=0.22, areaRatio=1.18,
+    "XNOR3": dict(cells=["XNOR3_X1", "XNOR3_X2"], out="ZN", typPs=28, speedup=0.10, instances=1120, areaUm2=3.78, adopt=0.22, areaRatio=1.18,
                   inputs=["A1", "A2", "A3"], function="!(A1^A2^A3)", describe="3-input exclusive NOR"),
-    "XOR2": dict(cells=["XOR2_X1", "XNOR2_X1", "XOR2_X2", "XNOR2_X2"], out="Z", typPs=38, speedup=0.24, instances=2660, areaUm2=2.77, adopt=0.14, areaRatio=1.16,
+    "XOR2": dict(cells=["XOR2_X1", "XNOR2_X1", "XOR2_X2", "XNOR2_X2"], out="Z", typPs=21, speedup=0.08, instances=2660, areaUm2=2.77, adopt=0.14, areaRatio=1.16,
                   inputs=["A1", "A2"], function="A1^A2", describe="2-input exclusive OR / NOR"),
-    "MUX2I": dict(cells=["MUX2I_X1", "MUX2I_X2"], out="ZN", typPs=34, speedup=0.24, instances=860, areaUm2=3.02, adopt=0.18, areaRatio=1.15,
+    "MUX2I": dict(cells=["MUX2I_X1", "MUX2I_X2"], out="ZN", typPs=19, speedup=0.07, instances=860, areaUm2=3.02, adopt=0.18, areaRatio=1.15,
                   inputs=["I0", "I1", "S"], function="!((I0&!S)|(I1&S))", describe="2:1 inverting multiplexer"),
-    "MUX2": dict(cells=["MUX2_X1"], out="Z", typPs=40, speedup=0.16, instances=330, areaUm2=3.28, adopt=0.0, areaRatio=1.15,
+    "MUX2": dict(cells=["MUX2_X1"], out="Z", typPs=23, speedup=0.05, instances=330, areaUm2=3.28, adopt=0.0, areaRatio=1.15,
                   inputs=["I0", "I1", "S"], function="(I0&!S)|(I1&S)", describe="2:1 multiplexer"),
-    "AOI21": dict(cells=["AOI21_X1", "AOI21_X2"], out="ZN", typPs=30, speedup=0.24, instances=1250, areaUm2=1.76, adopt=0.10, areaRatio=1.17,
+    "AOI21": dict(cells=["AOI21_X1", "AOI21_X2"], out="ZN", typPs=16, speedup=0.07, instances=1250, areaUm2=1.76, adopt=0.10, areaRatio=1.17,
                   inputs=["A1", "A2", "B"], function="!((A1&A2)|B)", describe="AND-OR-invert 2-1"),
-    "OAI21": dict(cells=["OAI21_X1", "OAI21_X2"], out="ZN", typPs=30, speedup=0.22, instances=1290, areaUm2=1.76, adopt=0.10, areaRatio=1.17,
+    "OAI21": dict(cells=["OAI21_X1", "OAI21_X2"], out="ZN", typPs=17, speedup=0.06, instances=1290, areaUm2=1.76, adopt=0.10, areaRatio=1.17,
                   inputs=["A1", "A2", "B"], function="!((A1|A2)&B)", describe="OR-AND-invert 2-1"),
-    "AOI22": dict(cells=["AOI22_X1"], out="ZN", typPs=32, speedup=0.18, instances=640, areaUm2=2.27, adopt=0.08, areaRatio=1.16,
+    "AOI22": dict(cells=["AOI22_X1"], out="ZN", typPs=19, speedup=0.06, instances=640, areaUm2=2.27, adopt=0.08, areaRatio=1.16,
                   inputs=["A1", "A2", "B1", "B2"], function="!((A1&A2)|(B1&B2))", describe="AND-OR-invert 2-2"),
-    "OAI22": dict(cells=["OAI22_X1"], out="ZN", typPs=32, speedup=0.18, instances=410, areaUm2=2.27, adopt=0.0, areaRatio=1.16,
+    "OAI22": dict(cells=["OAI22_X1"], out="ZN", typPs=20, speedup=0.06, instances=410, areaUm2=2.27, adopt=0.0, areaRatio=1.16,
                   inputs=["A1", "A2", "B1", "B2"], function="!((A1|A2)&(B1|B2))", describe="OR-AND-invert 2-2"),
-    "NAND2": dict(cells=["NAND2_X1", "NAND2_X2", "NAND2_X4"], out="ZN", typPs=20, speedup=0.12, instances=1900, areaUm2=1.26, adopt=0.05, areaRatio=1.12,
+    "NAND2": dict(cells=["NAND2_X1", "NAND2_X2", "NAND2_X4"], out="ZN", typPs=12, speedup=0.05, instances=1900, areaUm2=1.26, adopt=0.05, areaRatio=1.12,
                   inputs=["A1", "A2"], function="!(A1&A2)", describe="2-input NAND"),
-    "NOR2": dict(cells=["NOR2_X1", "NOR2_X2"], out="ZN", typPs=24, speedup=0.14, instances=1300, areaUm2=1.26, adopt=0.06, areaRatio=1.12,
+    "NOR2": dict(cells=["NOR2_X1", "NOR2_X2"], out="ZN", typPs=14, speedup=0.05, instances=1300, areaUm2=1.26, adopt=0.06, areaRatio=1.12,
                   inputs=["A1", "A2"], function="!(A1|A2)", describe="2-input NOR"),
-    "NAND3": dict(cells=["NAND3_X1"], out="ZN", typPs=26, speedup=0.14, instances=520, areaUm2=1.76, adopt=0.06, areaRatio=1.12,
+    "NAND3": dict(cells=["NAND3_X1"], out="ZN", typPs=15, speedup=0.05, instances=520, areaUm2=1.76, adopt=0.06, areaRatio=1.12,
                   inputs=["A1", "A2", "A3"], function="!(A1&A2&A3)", describe="3-input NAND"),
-    "NOR3": dict(cells=["NOR3_X1"], out="ZN", typPs=30, speedup=0.16, instances=380, areaUm2=2.02, adopt=0.0, areaRatio=1.12,
+    "NOR3": dict(cells=["NOR3_X1"], out="ZN", typPs=18, speedup=0.05, instances=380, areaUm2=2.02, adopt=0.0, areaRatio=1.12,
                   inputs=["A1", "A2", "A3"], function="!(A1|A2|A3)", describe="3-input NOR"),
-    "AND2": dict(cells=["AND2_X1", "AND2_X2"], out="Z", typPs=30, speedup=0.14, instances=610, areaUm2=1.76, adopt=0.05, areaRatio=1.12,
+    "AND2": dict(cells=["AND2_X1", "AND2_X2"], out="Z", typPs=18, speedup=0.05, instances=610, areaUm2=1.76, adopt=0.05, areaRatio=1.12,
                   inputs=["A1", "A2"], function="A1&A2", describe="2-input AND"),
-    "OR2": dict(cells=["OR2_X1"], out="Z", typPs=32, speedup=0.14, instances=420, areaUm2=1.76, adopt=0.05, areaRatio=1.12,
+    "OR2": dict(cells=["OR2_X1"], out="Z", typPs=19, speedup=0.05, instances=420, areaUm2=1.76, adopt=0.05, areaRatio=1.12,
                   inputs=["A1", "A2"], function="A1|A2", describe="2-input OR"),
 }
 
@@ -80,51 +105,69 @@ ALIASES = {
 EXTRA_INSTANCES = 18400 - sum(f["instances"] for f in FAMILIES.values())
 EXTRA_AREA_UM2 = 41200.0 - sum(f["instances"] * f["areaUm2"] for f in FAMILIES.values())
 
-# The 20 worst path groups of the reference build. ref: reference path delay in ps from the launch
-# clock edge (clock-to-Q included) plus setup and uncertainty; mix: cell delay per family in ps;
-# the rest of ref is net delay. n: violating endpoints the group stands for (TNS).
-PATHS = [
-    dict(id="A1", n=12, start="sa12_reg_3_", end="sa21_reg_6_", via="us12", group="S-box / MixColumns", ref=1044.20,
-         mix=dict(DFF=82, XNOR3=268, BUF=196, XOR2=96, MUX2I=40, AOI21=56, NAND2=44, INV=24)),
-    dict(id="A2", n=11, start="sa03_reg_5_", end="sa30_reg_1_", via="us03", group="S-box / MixColumns", ref=1041.00,
-         mix=dict(DFF=82, XNOR3=252, BUF=188, XOR2=104, MUX2I=40, AOI21=60, NAND2=44, INV=24)),
-    dict(id="A3", n=9, start="sa21_reg_0_", end="sa12_reg_7_", via="us21", group="S-box / MixColumns", ref=1036.10,
-         mix=dict(DFF=80, XNOR3=236, BUF=176, XOR2=110, MUX2I=44, AOI21=60, NAND2=48, INV=26)),
-    dict(id="A4", n=8, start="sa30_reg_2_", end="sa03_reg_4_", via="us30", group="S-box / MixColumns", ref=1031.40,
-         mix=dict(DFF=80, XNOR3=226, BUF=166, XOR2=104, MUX2I=50, AOI21=70, NAND2=48, INV=26)),
-    dict(id="A5", n=8, start="sa11_reg_6_", end="sa22_reg_3_", via="us11", group="S-box / MixColumns", ref=1027.90,
-         mix=dict(DFF=80, XNOR3=210, BUF=160, XOR2=116, MUX2I=50, AOI21=70, NAND2=44, INV=30)),
-    dict(id="A6", n=7, start="sa22_reg_1_", end="sa11_reg_0_", via="us22", group="S-box / MixColumns", ref=1023.60,
-         mix=dict(DFF=80, XNOR3=196, BUF=168, XOR2=120, MUX2I=45, AOI21=70, NAND2=44, INV=30)),
-    dict(id="A7", n=6, start="sa00_reg_4_", end="sa33_reg_2_", via="us00", group="S-box / MixColumns", ref=1018.30,
-         mix=dict(DFF=80, XNOR3=184, BUF=150, XOR2=124, MUX2I=50, AOI21=80, NAND2=44, INV=30)),
-    dict(id="B1", n=7, start="u0/w_reg_3__17_", end="u0/w_reg_0__17_", via="u0/u3", group="key expansion", ref=1041.45,
-         mix=dict(DFF=82, XNOR3=36, BUF=40, XOR2=272, MUX2I=208, AOI21=48, NAND2=60, INV=34)),
-    dict(id="B2", n=6, start="u0/w_reg_3__9_", end="u0/w_reg_1__9_", via="u0/u1", group="key expansion", ref=1039.05,
-         mix=dict(DFF=82, XNOR3=30, BUF=44, XOR2=260, MUX2I=200, AOI21=52, NAND2=60, INV=34)),
-    dict(id="B3", n=5, start="u0/w_reg_3__26_", end="u0/w_reg_2__26_", via="u0/u2", group="key expansion", ref=1039.95,
-         mix=dict(DFF=80, XNOR3=40, BUF=44, XOR2=248, MUX2I=188, AOI21=56, NAND2=56, INV=34)),
-    dict(id="B4", n=4, start="u0/w_reg_3__2_", end="u0/w_reg_3__2_", via="u0/u0", group="key expansion", ref=1035.53,
-         mix=dict(DFF=80, XNOR3=30, BUF=50, XOR2=232, MUX2I=176, AOI21=60, NAND2=56, INV=34)),
-    dict(id="C1", n=5, start="ld_r_reg", end="sa13_reg_4_", via="ld_mux", group="load / round control", ref=1013.78,
-         mix=dict(DFF=84, BUF=14, AOI21=262, OAI21=204, NAND2=84, NOR2=70, INV=40)),
-    dict(id="C2", n=4, start="ld_r_reg", end="sa31_reg_7_", via="ld_mux", group="load / round control", ref=1012.94,
-         mix=dict(DFF=84, BUF=16, AOI21=246, OAI21=196, NAND2=84, NOR2=70, INV=40)),
-    dict(id="C3", n=4, start="dcnt_reg_1_", end="sa20_reg_2_", via="ld_mux", group="load / round control", ref=1012.36,
-         mix=dict(DFF=82, BUF=20, AOI21=232, OAI21=184, NAND2=88, NOR2=76, INV=40)),
-    dict(id="C4", n=3, start="dcnt_reg_2_", end="sa02_reg_5_", via="ld_mux", group="load / round control", ref=1009.70,
-         mix=dict(DFF=82, BUF=18, AOI21=220, OAI21=172, NAND2=92, NOR2=80, INV=40)),
-    dict(id="D1", n=5, start="dcnt_reg_0_", end="text_out_reg_96_", via="out_dec", group="output decode", ref=1007.07,
-         mix=dict(DFF=86, BUF=22, AOI21=20, OAI21=16, NAND2=212, NOR2=196, INV=96)),
-    dict(id="D2", n=4, start="dcnt_reg_3_", end="text_out_reg_33_", via="out_dec", group="output decode", ref=1005.85,
-         mix=dict(DFF=86, BUF=24, AOI21=18, OAI21=16, NAND2=204, NOR2=190, INV=92)),
-    dict(id="D3", n=3, start="dcnt_reg_0_", end="done_reg", via="out_dec", group="output decode", ref=1005.17,
-         mix=dict(DFF=84, BUF=24, AOI21=20, OAI21=18, NAND2=192, NOR2=182, INV=88)),
-    dict(id="E1", n=3, start="u0/r0/out_reg_27_", end="u0/w_reg_0__27_", via="u0/r0", group="round constant", ref=1006.00,
-         mix=dict(DFF=80, BUF=80, XOR2=70, MUX2I=70, AOI21=80, OAI21=70, NAND2=100, NOR2=90, INV=50)),
-    dict(id="F1", n=3, start="text_in_r_reg_5_", end="sa30_reg_5_", via="in_xbar", group="input crossbar", ref=986.00,
-         mix=dict(DFF=84, BUF=10, INV=60, AND2=150, OR2=140, NAND3=120, AOI22=110)),
+# The 20 worst path groups of the reference build. levels: logic stages per family after the
+# launching flop (DFF clock-to-Q, one per path); a family's cell delay on the path is levels x typPs.
+# slackPs: the reference build's slack. The routed net delay of the path is what is left of the
+# path delay (clock period - slack) after its cells, setup and uncertainty: about 3-4 ps a stage.
+# n: violating endpoints the group stands for (TNS).
+_PATHS = [
+    dict(id="A1", n=8, start="sa12_reg_3_", end="sa21_reg_6_", via="us12", group="S-box / MixColumns", slackPs=-12.4,
+         levels=dict(XNOR3=3, BUF=4, XOR2=2, MUX2I=1, AOI21=3, NAND2=4, INV=6)),
+    dict(id="A2", n=7, start="sa03_reg_5_", end="sa30_reg_1_", via="us03", group="S-box / MixColumns", slackPs=-11.8,
+         levels=dict(XNOR3=4, BUF=4, XOR2=2, MUX2I=2, AOI21=3, NAND2=4, INV=3)),
+    dict(id="A3", n=6, start="sa21_reg_0_", end="sa12_reg_7_", via="us21", group="S-box / MixColumns", slackPs=-11.0,
+         levels=dict(XNOR3=4, BUF=5, XOR2=2, MUX2I=1, AOI21=2, NAND2=4, INV=4)),
+    dict(id="A4", n=5, start="sa30_reg_2_", end="sa03_reg_4_", via="us30", group="S-box / MixColumns", slackPs=-10.1,
+         levels=dict(XNOR3=3, BUF=5, XOR2=2, MUX2I=1, AOI21=3, NAND2=3, INV=5)),
+    dict(id="A5", n=5, start="sa11_reg_6_", end="sa22_reg_3_", via="us11", group="S-box / MixColumns", slackPs=-9.3,
+         levels=dict(XNOR3=3, BUF=4, XOR2=2, MUX2I=2, AOI21=3, NAND2=3, INV=5)),
+    dict(id="A6", n=4, start="sa22_reg_1_", end="sa11_reg_0_", via="us22", group="S-box / MixColumns", slackPs=-8.4,
+         levels=dict(XNOR3=3, BUF=4, XOR2=2, MUX2I=1, AOI21=4, NAND2=3, INV=5)),
+    dict(id="A7", n=4, start="sa00_reg_4_", end="sa33_reg_2_", via="us00", group="S-box / MixColumns", slackPs=-7.2,
+         levels=dict(XNOR3=3, BUF=4, XOR2=2, MUX2I=2, AOI21=3, NAND2=4, INV=5)),
+    dict(id="B1", n=5, start="u0/w_reg_3__17_", end="u0/w_reg_0__17_", via="u0/u3", group="key expansion", slackPs=-9.0,
+         levels=dict(XOR2=5, MUX2I=5, XNOR3=1, BUF=1, NAND2=4, AOI21=3, INV=3)),
+    dict(id="B2", n=4, start="u0/w_reg_3__9_", end="u0/w_reg_1__9_", via="u0/u1", group="key expansion", slackPs=-8.4,
+         levels=dict(XOR2=5, MUX2I=4, XNOR3=1, BUF=1, NAND2=5, AOI21=3, INV=4)),
+    dict(id="B3", n=4, start="u0/w_reg_3__26_", end="u0/w_reg_2__26_", via="u0/u2", group="key expansion", slackPs=-8.7,
+         levels=dict(XOR2=5, MUX2I=4, XNOR3=1, BUF=1, NAND2=4, AOI21=3, INV=5)),
+    dict(id="B4", n=3, start="u0/w_reg_3__2_", end="u0/w_reg_3__2_", via="u0/u0", group="key expansion", slackPs=-6.0,
+         levels=dict(XOR2=5, MUX2I=4, BUF=2, NAND2=4, AOI21=3, INV=6)),
+    dict(id="C1", n=3, start="ld_r_reg", end="sa13_reg_4_", via="ld_mux", group="load / round control", slackPs=-4.0,
+         levels=dict(AOI21=6, OAI21=5, NAND2=5, NOR2=4, INV=5, BUF=1)),
+    dict(id="C2", n=3, start="ld_r_reg", end="sa31_reg_7_", via="ld_mux", group="load / round control", slackPs=-3.6,
+         levels=dict(AOI21=6, OAI21=5, NAND2=5, NOR2=4, INV=4, BUF=1)),
+    dict(id="C3", n=2, start="dcnt_reg_1_", end="sa20_reg_2_", via="ld_mux", group="load / round control", slackPs=-3.3,
+         levels=dict(AOI21=5, OAI21=5, NAND2=6, NOR2=4, INV=5, BUF=1)),
+    dict(id="C4", n=2, start="dcnt_reg_2_", end="sa02_reg_5_", via="ld_mux", group="load / round control", slackPs=-2.8,
+         levels=dict(AOI21=5, OAI21=4, NAND2=6, NOR2=5, INV=5, BUF=1)),
+    dict(id="D1", n=3, start="dcnt_reg_0_", end="text_out_reg_96_", via="out_dec", group="output decode", slackPs=-3.1,
+         levels=dict(NAND2=9, NOR2=8, INV=8, AOI21=1, OAI21=1, BUF=1)),
+    dict(id="D2", n=2, start="dcnt_reg_3_", end="text_out_reg_33_", via="out_dec", group="output decode", slackPs=-2.6,
+         levels=dict(NAND2=9, NOR2=9, INV=7, AOI21=1, OAI21=1, BUF=1)),
+    dict(id="D3", n=2, start="dcnt_reg_0_", end="done_reg", via="out_dec", group="output decode", slackPs=-2.2,
+         levels=dict(NAND2=8, NOR2=9, INV=8, AOI21=1, OAI21=1, BUF=1)),
+    dict(id="E1", n=2, start="u0/r0/out_reg_27_", end="u0/w_reg_0__27_", via="u0/r0", group="round constant", slackPs=-1.6,
+         levels=dict(BUF=2, XOR2=3, MUX2I=3, AOI21=3, OAI21=3, NAND2=4, NOR2=3, INV=2)),
+    dict(id="F1", n=2, start="text_in_r_reg_5_", end="sa30_reg_5_", via="in_xbar", group="input crossbar", slackPs=4.5,
+         levels=dict(BUF=1, AND2=5, OR2=4, NAND3=5, AOI22=4, INV=3)),
 ]
+
+OVER_PS = UNCERTAINTY_PS + SETUP_PS
+
+
+def _path(p):
+    """One path group with its derived delays. mix: cell delay per family in ps (the launching flop
+    first); ref: the reference path delay in ps (clock-to-Q, cells, nets, setup and uncertainty),
+    so that slack = clock period - ref."""
+    mix = dict(DFF=float(FAMILIES["DFF"]["typPs"]))
+    for family, count in p["levels"].items():
+        mix[family] = float(count * FAMILIES[family]["typPs"])
+    ref = round(CLOCK_PERIOD_NS * 1000.0 - p["slackPs"], 2)
+    return dict(p, mix=mix, ref=ref, logicLevels=sum(p["levels"].values()))
+
+
+PATHS = [_path(p) for p in _PATHS]
 
 # The order families appear along a path of each group (round-robin), after the launching flop.
 GROUP_ORDER = {
@@ -136,8 +179,7 @@ GROUP_ORDER = {
     "input crossbar": ["BUF", "AND2", "OR2", "NAND3", "AOI22", "INV"],
 }
 
-OVER_PS = UNCERTAINTY_PS + SETUP_PS
-CRITICAL_WINDOW_PS = 30.0   # HimaTime's estimate weights paths within this window of the worst
+CRITICAL_WINDOW_PS = 15.0   # HimaTime's estimate weights paths within this window of the worst
 WEIGHT_POWER = 4
 MAX_FAMILIES_PER_ROUND = 2
 
@@ -238,8 +280,11 @@ def breakdown(speed):
         cell = sum(p["mix"][family] * (1 - speed.get(family, 0.0)) for p in PATHS if family in p["mix"])
         on = sum(1 for p in PATHS if family in p["mix"])
         worst_share = 100.0 * worst["mix"].get(family, 0.0) * (1 - speed.get(family, 0.0)) / path_delay(worst, speed)
-        rows.append(dict(family=family, stages=stages, cellDelayPs=round(cell, 1), sharePct=round(100.0 * cell / total_path, 2),
-                         onPaths=on, worstPathSharePct=round(worst_share, 2), generated=family in speed,
+        # HimaTime's estimate of the worst path's own slack back (ps) if this family became AndesCell-class faster
+        worst_rec = 0.0 if family in speed else worst["mix"].get(family, 0.0) * FAMILIES[family]["speedup"]
+        rows.append(dict(family=family, stages=stages, cellDelayPs=round(cell, 1), meanStagePs=round(cell / stages, 1),
+                         sharePct=round(100.0 * cell / total_path, 2),
+                         onPaths=on, worstPathSharePct=round(worst_share, 2), worstPathRecoveryPs=round(worst_rec, 2), generated=family in speed,
                          estRecoveryNs=recovery_ns(speed, family), achievableSpeedupPct=round(100 * FAMILIES[family]["speedup"])))
     rows.sort(key=lambda r: (-r["estRecoveryNs"], -r["cellDelayPs"]))
     net = sum(net_delay(p) for p in PATHS)

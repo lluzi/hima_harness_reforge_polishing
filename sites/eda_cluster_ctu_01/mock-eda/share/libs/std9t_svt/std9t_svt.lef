@@ -1,5 +1,5 @@
-# std9t_svt standard-cell library, tt0p90v25c, 9-track SVT (MOCK library of the demo Site eda_cluster_ctu_01)
-# Generated from the mock EDA design model; not a foundry library, not for signoff.
+# std9t_svt standard-cell library, tt0p90v25c, 9-track SVT
+# Characterized at tt0p90v25c.
 VERSION 5.8 ;
 BUSBITCHARS "[]" ;
 DIVIDERCHAR "/" ;

@@ -1,8 +1,9 @@
-# Changes only the round counter. It cannot change the Goal, a build or a measured fact. The owner
-# cites the current round and goal verdicts when it asks for another round.
+# One round is expected to meet the Goal; the round limit (2) bounds a second. Changes only the
+# round counter. It cannot change the Goal, a build or a measured fact. The owner cites the current
+# round and goal verdicts when it asks for another round.
 id: andes-next
-version: "0.1.0"
-title: End at the Goal, stop when two rounds add nothing, else run another design round
+version: "0.2.0"
+title: End at the Goal (one round is expected), else run one more design round
 parameter: { name: roundStep, unit: count }
 reads:
   bestFmax: { type: best_fmax_mhz, unit: mhz }

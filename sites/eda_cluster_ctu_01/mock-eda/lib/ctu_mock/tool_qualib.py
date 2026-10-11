@@ -18,12 +18,12 @@ commands:
             --timing, ranked against the design's critical-path stage breakdown (about 10 s)
   screen    screen AndesCell cells: area, input capacitance, leakage, DRC, LVS, pin access,
             Liberty/LEF consistency (about 10 s)
-  list      list the cells of a library family (fast)
+  list      list the cells of a library (family) with area, cap, leakage and FO4 (fast; --json)
   -version  print the version and exit
 
 analyze: qualib analyze --lib std9t_svt [--extra-lib DIR ...] [--timing timing_summary.json] --out DIR
 screen:  qualib screen --cells ANDESCELL_DIR [--out DIR] [--json]
-list:    qualib list [--lib std9t_svt] [--family XNOR3]
+list:    qualib list [--lib std9t_svt] [--family XNOR3] [--json]
 
 Screen limits (relative to the stock cell of the same family and drive): area <= 1.35x,
 input capacitance <= 1.30x, leakage <= 2.5x; DRC 0, LVS match, every pin accessible.
@@ -36,12 +36,21 @@ def cmd_list(rest):
     p = argparse.ArgumentParser(prog="qualib list")
     p.add_argument("--lib", default=model.STOCK_LIBRARY)
     p.add_argument("--family")
+    p.add_argument("--json", action="store_true", help="print the cells and family facts as JSON")
     a = p.parse_args(rest)
     if a.lib != model.STOCK_LIBRARY:
         raise ToolError("library %r is not installed (installed: %s)" % (a.lib, model.STOCK_LIBRARY))
     fam = model.canonical_family(a.family) if a.family else None
     if a.family and fam is None:
         raise ToolError("unknown family %r" % a.family)
+    if a.json:
+        cells = [c for c in libraries.stock_cells() if not fam or c["family"] == fam]
+        families = {f: dict(describe=i["describe"], customHeadroomPct=round(100 * i["speedup"]), gap=libraries.STOCK[f]["gap"],
+                            riseFallRatio=libraries.STOCK[f]["rf"])
+                    for f, i in model.FAMILIES.items() if not fam or f == fam}
+        print(json.dumps(dict(schema="ctu-qualib-list/1", tool=version_line("qualib"), library=model.STOCK_LIBRARY, corner=model.CORNER,
+                              cells=cells, families=families), indent=2, sort_keys=True))
+        return
     print("%-12s %-6s %5s %9s %9s %9s %9s %8s" % ("cell", "family", "drive", "area um2", "cap fF", "leak nW", "rise ps", "fall ps"))
     for c in libraries.stock_cells():
         if fam and c["family"] != fam:

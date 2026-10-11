@@ -1,0 +1,41 @@
+{
+  "caption": "Path A1, 23 logic levels, 512.4 ps; the rest is setup and clock uncertainty.",
+  "categories": [
+    "XNOR3",
+    "BUF",
+    "INV",
+    "AOI21",
+    "NAND2",
+    "XOR2",
+    "DFF",
+    "MUX2I",
+    "Nets"
+  ],
+  "highlight": [
+    "XNOR3",
+    "BUF"
+  ],
+  "kind": "bar",
+  "schema": "hima-chart/1",
+  "series": [
+    {
+      "name": "Share of worst path",
+      "role": "neutral",
+      "values": [
+        16.39,
+        13.27,
+        11.71,
+        9.37,
+        9.37,
+        8.2,
+        6.64,
+        3.71,
+        17.45
+      ]
+    }
+  ],
+  "source": "HimaTime 4.2.0 stage breakdown (stage_breakdown.rpt) of the reference build",
+  "subtitle": "Reference build on the stock library: Fmax 1951.60 MHz at the 0.500 ns clock",
+  "title": "Where the worst path's delay goes",
+  "unit": "%"
+}

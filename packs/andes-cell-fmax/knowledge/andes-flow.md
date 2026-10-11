@@ -3,11 +3,13 @@
 ## The design and the goal
 
 - Design `aes_cipher_top` (AES-128, one round per clock), 28 nm, stock library `std9t_svt`
-  (9-track SVT, corner tt0p90v25c), clock `clk` at 1.000 ns.
-- Reference build (stock library only): Fmax ≈ 957.67 MHz, worst slack −0.0442 ns, TNS ≈ −3.2 ns,
-  ≈ 41 200 µm², ≈ 18 400 instances, route DRC 0.
-- Fmax = 1000 / (1.000 − worst slack in ns) MHz. The Campaign Goal is a percentage: the best
-  new-library build's Fmax gain over the reference build must reach it (default 5 %).
+  (9-track SVT, corner tt0p90v25c), clock `clk` at 0.500 ns (2 GHz). The worst paths have 22–28
+  levels of logic of 10–30 ps each, plus 2–5 ps of net a stage.
+- Reference build (stock library only): Fmax 1951.60 MHz, worst slack −0.0124 ns, TNS −0.596 ns
+  over 74 violating endpoints, 41 200 µm², 18 400 instances, route DRC 0.
+- Fmax = 1000 / (0.500 − worst slack in ns) MHz. The Campaign Goal is a percentage: the best
+  new-library build's Fmax gain over the reference build must reach it (default 1 %). One round is
+  expected to reach it; a second round is allowed as a safety margin.
 - The only way to gain is new standard cells. The clock, the RTL and the flow settings stay fixed.
 
 ## One round
@@ -41,8 +43,8 @@
    worst slack, TNS, area, new-cell instances, route DRC) against the reference build, the gain, the
    best gain so far, and whether the round improved on every earlier build.
 9. **Checks and next round**: new cells used, faster than before, clean build, Goal reached. The
-   Campaign owner decides another round (back to step 1, with this round in `state/lessons.json`)
-   or ends at the Goal. At most 4 rounds.
+   Campaign owner ends at the Goal or, if it is not reached, decides another round (back to step
+   1, with this round in `state/lessons.json`). At most 2 rounds.
 
 ## Reports
 
@@ -54,6 +56,20 @@ the reference build and each rebuild (`report_qor.rpt`, `postroute_timing.rpt`, 
 `reports/<its step>/r<k>/` of its private workspace, delivered as support (`himatime-agent`,
 `qualib-agent`, `andescell-agent`, `himatime-verify`, `qualib-screen`).
 
+Charts (`hima-chart/1`) sit beside the reports, each written by a Pack step or by the Reader that
+accepts a delivery, from the tools' own numbers:
+
+| Step | Chart | Shows |
+| --- | --- | --- |
+| `reference-build` | `timing.chart.json` | slack of the 8 worst paths of the reference build |
+| `load-timing` | `stage-breakdown.chart.json` | share of the worst path's delay by cell family |
+| `himatime-agent` | `proposal.chart.json` | why these cells, timing: each requested family's share of the worst path and the slack HimaTime expects back |
+| `qualib-agent` | `proposal.chart.json` | why these cells, library: each requested family's stock FO4 against the AndesCell target |
+| `generate-cells` | `generation.chart.json` | each new cell's FO4 against its stock cell |
+| `himatime-verify` | `local-gain.chart.json` | slack of the 8 worst paths before and with the new cells |
+| `qualib-screen` | `screen.chart.json` | each new cell's area, input cap and leakage as a share of its screen limit |
+| `compare-round` | `before-after.chart.json` | Fmax, worst slack and TNS, reference build against the new library |
+
 ## For the Campaign owner: what to do each round
 
 The five agent steps do not start by themselves. Each round has three agent turns, and each comes
@@ -63,15 +79,22 @@ as soon as the automatic segment before it hands back:
    rounds), begin **both** `himatime-agent` and `qualib-agent` and start **both** engineering tasks
    in the same turn, so they run in parallel (the Site allows 3 jobs). Give each task this round's
    number k and, from round 2 on, one sentence on what the last round showed.
-2. **Choose**: after "Requirement check", begin `andescell-agent` and start its task
-   (round k; the two lists are its inputs).
+2. **Choose**: after "Requirement check" (both requirement lists verified), and before you begin
+   the AndesCell agent, show both proposal charts with `hima_chart`
+   (`{ runId, path: "reports/himatime-agent/r<k>/proposal.chart.json" }` and
+   `reports/qualib-agent/r<k>/proposal.chart.json`) and say in one sentence each why the HimaTime
+   agent wants its cells (timing: their share of the worst path and the slack back) and why the
+   Qualib agent wants its cells (library: stock FO4 against the AndesCell target). Then begin
+   `andescell-agent` and start its task (round k; the two lists are its inputs).
 3. **Verify**: after "Cell generation", begin **both** `himatime-verify` and `qualib-screen` and
-   start **both** tasks in the same turn.
+   start **both** tasks in the same turn. When both are complete, show
+   `reports/himatime-verify/r<k>/local-gain.chart.json` with `hima_chart` and say the local gain.
 
 When a task delivers, collect it; when its Reader accepts the delivery, release and complete that
 node. A refused delivery comes back with the problems: send them to the same task to repair. After
 the verify pair, the automatic segment "Rebuild and comparison" runs to the round checks; then decide
-the next round.
+the next round. At the end, show `reports/compare-round/r<k>/before-after.chart.json` with
+`hima_chart` beside the before → after summary.
 
 Report to the person in chip-designer words, one line per step as it finishes: what each agent
 asked for or chose and why, the local gain in ps on the worst path, which cells passed the screen
@@ -88,7 +111,7 @@ against the reference build, the gain against the target, and the next step.
 | HimaTime | `himatime estimate --db SAPR_DIR --families XNOR3,BUF` | what-if: Fmax if those families were AndesCell-class faster | < 1 s |
 | HimaTime | `himatime verify --cells ANDESCELL_DIR --db SAPR_DIR --paths 8 --out DIR` | the worst paths re-timed with new cells (before/after/gain in ps, the local gain), each cell's FO4 against its stock cell: `verify.rpt`, `verify.json` | ~3 s in the sandbox; `--json` alone instant |
 | Qualib | `qualib analyze --lib std9t_svt --timing TIMING_SUMMARY.json --out DIR [--extra-lib DIR]` | library gaps per family, ranked by the design's critical-path need | ~3 s in the sandbox |
-| Qualib | `qualib list --family XNOR3` | stock cells of a family with area, cap, leakage, rise/fall FO4 | < 1 s |
+| Qualib | `qualib list --family XNOR3 [--json]` | stock cells of a family with area, cap, leakage, rise/fall FO4 | < 1 s |
 | Qualib | `qualib screen --cells ANDESCELL_DIR --out DIR` | the cell screen: `cell_screen.rpt`, `screen.json` | ~3 s in the sandbox; `--json` alone instant |
 | AndesCell | `andescell families` | the families AndesCell can build | < 1 s |
 | AndesCell | `andescell generate --requirements FILE --db SAPR_DIR --round K --dry-run [--existing DIR ...]` | which families AndesCell would pick from a requirements file, ranked by estimated recovery | < 1 s |
@@ -113,6 +136,9 @@ under your private workspace (`--out ./ht`, `--out ./ql`) and keep the reports y
   key expansion, load/round control, output decode). Read the new stage breakdown, not the old one.
 - The local gain is the worst path's own gain, before the rebuild: it says the cells help where
   they sit. The rebuild's Fmax gain is smaller, because the next path group then limits Fmax.
+  Round 1 with XNOR3 and BUF: HimaTime's local gain on A1 is 16.88 ps (every new cell, extra-fast
+  variants included); the rebuild with the cells that pass the screen reaches 1980.98 MHz
+  (+1.51 %), limited by the key-expansion path B1 at −0.0048 ns.
 - `lessons.json` lists for every round what each agent asked for, what the AndesCell agent chose
   and why, what was skipped, the local gain, the screen and the gain. Do not ask again for a family
   already in `library.json`.
