@@ -40,7 +40,7 @@ test('the top-level Refresh Run data button re-reads the Campaign file immediate
     await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
     await browser.markText('button', 'New Session', 'campaign-refresh-new-session'); assert.ok((await d.click('campaign-refresh-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Campaign configuration')).ok);
+    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Project configuration')).ok);
 
     // The header refresh icon carries no `data-hima-control` of its own (it never needed one before
     // this fix had anything worth asserting on) — tag it once, the same way `markText` already tags

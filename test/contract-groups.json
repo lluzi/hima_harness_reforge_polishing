@@ -22,6 +22,7 @@
     "test/contract/campaign-file.host.test.ts",
     "test/contract/canvas-layout.test.ts",
     "test/contract/strip-layout.test.ts",
+    "test/contract/chart-geometry.test.ts",
     "test/contract/checkpoint-resume.host.test.ts",
     "test/contract/client-style.test.ts",
     "test/contract/command.test.ts",

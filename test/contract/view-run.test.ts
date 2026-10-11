@@ -364,8 +364,8 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
     });
     assert.deepEqual(
       registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(),
-      ['hima_author', 'hima_context', 'hima_execute', 'hima_observe', 'hima_run'],
-      'the card renders a run wherever a Hima tool reported one, and claims no other key',
+      ['hima_author', 'hima_chart', 'hima_context', 'hima_execute', 'hima_observe', 'hima_run'],
+      'the card renders a run wherever a Hima tool reported one, the chart card renders `hima_chart`, and no other key is claimed',
     );
 
     // The card is what a person sees a Run's path in, so the bundle carries every state it can be in.

@@ -4,7 +4,7 @@
 // report is the last entry ("Run report") and opens the existing Report view.
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { PackGraph } from '../packs.js';
-import type { RunReportFile, RunReportsView, RunView } from '../remote.js';
+import type { RunReportFile, RunReportsView } from '../remote.js';
 import { fetchRunReport, fetchRunReports } from './api.js';
 import { Glyph } from './glyphs.js';
 import { useHimaT } from './locale/index.js';
@@ -48,17 +48,14 @@ export function groupReports(files: readonly RunReportFile[], graph: Pick<PackGr
 
 interface Opened { readonly file: RunReportFile; readonly text?: string; readonly truncated?: boolean; readonly error?: string }
 
-export function ReportsView({ runId, view, graph, runReport }: { runId: string; view: RunView; graph: Pick<PackGraph, 'nodes' | 'view'> | undefined; runReport(): ReactNode }): ReactElement {
-  const t = useHimaT();
+/** The Run's report list: read on open, every 10 s while the window is visible, and whenever the Run
+ *  moves to another node. The Campaign tab holds it, so the Reports view's count of new files stays
+ *  current while another view is open. */
+export function useRunReports(runId: string, currentNode: string | undefined, enabled: boolean): ReportsList {
   const viewer = useViewerSession();
-  const [list, setList] = useState<{ value?: RunReportsView; error?: string }>({});
-  const [opened, setOpened] = useState<Opened>();
-  const [showRunReport, setShowRunReport] = useState(false);
-  const reading = useRef<AbortController>();
-  const currentNode = view.run.currentNode;
-
-  // Read on open, every 10 s while the window is visible, and whenever the Run moves to another node.
+  const [list, setList] = useState<ReportsList>({});
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     const read = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -69,7 +66,19 @@ export function ReportsView({ runId, view, graph, runReport }: { runId: string; 
     void read();
     const timer = setInterval(() => { void read(); }, REFRESH_MS);
     return () => { controller.abort(); clearInterval(timer); };
-  }, [runId, viewer, currentNode]);
+  }, [runId, viewer, currentNode, enabled]);
+  return list;
+}
+
+export interface ReportsList { readonly value?: RunReportsView; readonly error?: string }
+
+export function ReportsView({ runId, list, graph, runReport }: { runId: string; list: ReportsList; graph: Pick<PackGraph, 'nodes' | 'view'> | undefined; runReport(): ReactNode }): ReactElement {
+  const t = useHimaT();
+  const viewer = useViewerSession();
+  const [opened, setOpened] = useState<Opened>();
+  const [showRunReport, setShowRunReport] = useState(false);
+  const reading = useRef<AbortController>();
+
   useEffect(() => () => reading.current?.abort(), []);
 
   const open = (file: RunReportFile) => {

@@ -13,7 +13,8 @@ import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
 import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
-import { ReportsView } from './ReportsView.js';
+import { ReportsView, useRunReports } from './ReportsView.js';
+import { markSeen, newsScope, unseenCount } from './view-news.js';
 import { StripCanvas } from './StripCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
@@ -332,6 +333,22 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   }, [reference, view, context, strip]);
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
+
+  // What arrived since this viewer last opened Reports and Results: a count of new report files on
+  // the Reports tab, a dot on Results for a new round result. Per viewer and in memory only.
+  const hasReports = sections.includes('reports');
+  const reports = useRunReports(runId, view?.run.currentNode, hasReports);
+  const reportPaths = (reports.value?.files ?? []).map((file) => file.path);
+  const resultReaders = new Set((context?.method?.contract.results?.columns ?? []).map((column) => column.reader));
+  const resultIds = (view?.observations ?? []).filter((observation) => resultReaders.has(observation.reader.id)).map((observation) => observation.recordId);
+  const reportsScope = newsScope('reports', sessionId, runId), resultsScope = newsScope('results', sessionId, runId);
+  const [, setSeenTick] = useState(0);
+  useEffect(() => {
+    const changed = section === 'reports' ? markSeen(reportsScope, reportPaths) : section === 'evidence' ? markSeen(resultsScope, resultIds) : false;
+    if (changed) setSeenTick((n) => n + 1);
+  }, [section, reportsScope, resultsScope, reportPaths.join('\n'), resultIds.join('\n')]);
+  const newReports = section === 'reports' ? 0 : unseenCount(reportsScope, reportPaths);
+  const newResult = section !== 'evidence' && unseenCount(resultsScope, resultIds) > 0;
   // A view the Pack's contract does not offer (its contract arrived after the first render) falls
   // back to the one that replaced it.
   useEffect(() => {
@@ -345,7 +362,12 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
       <nav className="hima-campaign-views" aria-label={t('campaign.views')}>
         {sections.map((key) => (
-          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{t(`campaign.section.${key}`)}</button>
+          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}
+            {...(key === 'reports' ? { 'data-hima-state-new': String(newReports) } : key === 'evidence' ? { 'data-hima-state-new': String(newResult) } : {})}>
+            {t(`campaign.section.${key}`)}
+            {key === 'reports' && newReports > 0 ? <span className="hima-view-count" aria-label={t('campaign.newReports', { n: newReports })}> · {newReports}</span> : null}
+            {key === 'evidence' && newResult ? <span className="hima-view-dot" role="img" aria-label={t('campaign.newResult')} /> : null}
+          </button>
         ))}
       </nav>
       <div className="hima-campaign-content">
@@ -369,7 +391,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           : section === 'generations'
             ? <div className="hima-detail"><h3>{t('campaign.generationsHeading')}</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>{t('campaign.noGenerationOpened')}</p>}<GenerationResearch view={view}/></div>
             : section === 'evidence' ? <EvidenceView view={view} results={context?.method?.contract.results} />
-              : section === 'reports' ? <ReportsView runId={runId} view={view} graph={context?.method?.reference} runReport={() => <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />} />
+              : section === 'reports' ? <ReportsView runId={runId} list={reports} graph={context?.method?.reference} runReport={() => <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />} />
                 : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (

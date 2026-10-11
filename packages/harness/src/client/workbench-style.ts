@@ -80,7 +80,9 @@ export const HIMA_STYLE = `
 /* The Results face: a headline figure, a round selector and the before/after table. */
 .hima-results{display:flex;flex-direction:column;gap:var(--hima-sp-3)}
 .hima-results-headline{display:flex;align-items:baseline;gap:var(--hima-sp-3);padding:0;border:0}
-.hima-results-headline-value{font-size:var(--hima-fs-display);font-weight:650;color:var(--hima-good);font-variant-numeric:tabular-nums}
+.hima-results-headline-value{font-size:var(--hima-fs-display);font-weight:650;color:var(--hima-good);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+/* At phone width the number keeps its unit ("+2.50 %" never breaks before the "%"); the label wraps. */
+.hima-results-headline > .hima-muted{flex:1 1 0;min-width:0;overflow-wrap:break-word}
 .hima-results-rounds{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-results-rounds .hima-button{min-height:28px;padding:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-label)}
 .hima-results-rounds .hima-button[aria-pressed=true]{border-color:var(--hima-live);color:var(--hima-ink);font-weight:650}
@@ -195,6 +197,8 @@ export const HIMA_STYLE = `
 .hima-masthead-owner{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);color:var(--hima-ink-2);flex:none;white-space:nowrap}
 .hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-view-count{font-variant-numeric:tabular-nums;color:var(--hima-live);font-weight:650}
+.hima-view-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hima-live);margin-left:4px;vertical-align:super}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
 /* A narrow pane (the strip's phone width): the title and the status line wrap instead of being cut,
@@ -230,6 +234,7 @@ export const HIMA_STYLE = `
 .hima-strip{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow-x:hidden;overflow-y:auto}
 .hima-strip svg{display:block}
 .hima-strip-top{flex:none;margin:0;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);font-weight:600;color:var(--hima-ink);border-bottom:1px solid var(--hima-line);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.hima-strip .hima-node-label,.hima-strip .hima-node-activity,.hima-strip .hima-node-activity-count{text-anchor:start}
 .hima-strip-line-active .hima-node-check-text{fill:var(--hima-ink);font-weight:600}
 .hima-strip-step-glyph{fill:none;stroke:var(--hima-ink-3);stroke-width:1.6;stroke-linecap:round}
 .hima-strip-edge-flow .hima-edge-path{stroke-dasharray:8 4;animation:hima-strip-flow 1s linear infinite}
@@ -416,6 +421,35 @@ export const HIMA_STYLE = `
 .hima-outcome-word[data-outcome="converged"],.hima-outcome-word[data-outcome="open"]{color:var(--hima-ink-2)}
 
 /* The restyled tool receipt and its shared row/section components (#41 task 6): no inline style. */
+.hima-chart-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);width:100%;max-width:760px;min-width:0;box-sizing:border-box;font-size:var(--hima-fs-label);line-height:var(--hima-lh-tight)}
+.hima-chart-card p{margin:0}
+.hima-chart-note{font-size:var(--hima-fs-body);line-height:var(--hima-lh-body);color:var(--hima-ink)}
+.hima-chart{margin:0;padding:var(--hima-sp-3);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:flex;flex-direction:column;gap:var(--hima-sp-2);min-width:0}
+.hima-chart figcaption{display:flex;flex-direction:column;gap:2px}
+.hima-chart-title{font-size:var(--hima-fs-body);font-weight:650;color:var(--hima-ink)}
+.hima-chart-subtitle{color:var(--hima-ink-2)}
+.hima-chart-legend{display:flex;flex-wrap:wrap;gap:var(--hima-sp-1) var(--hima-sp-3);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2);align-items:center}
+.hima-chart-legend-item{display:inline-flex;align-items:center;gap:6px}
+.hima-chart-swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.hima-chart-better{color:var(--hima-ink-3)}
+.hima-chart-rows{display:flex;flex-direction:column;gap:6px}
+.hima-chart-row{display:grid;grid-template-columns:minmax(56px,26%) minmax(0,1fr);gap:var(--hima-sp-2);align-items:center}
+.hima-chart-category{color:var(--hima-ink-2);overflow-wrap:anywhere}
+.hima-chart-row-highlight .hima-chart-category{color:var(--hima-ink);font-weight:700}
+.hima-chart-bars{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hima-chart-room-left{padding-left:64px}
+.hima-chart-room-right{padding-right:64px}
+.hima-chart-bar-track{display:block;overflow:visible}
+.hima-chart-zero{stroke:var(--hima-line-strong);stroke-width:1}
+.hima-chart-value{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2);font-variant-numeric:tabular-nums}
+.hima-chart-row-highlight .hima-chart-value{fill:var(--hima-ink);font-weight:600}
+.hima-chart-role-baseline{background:var(--hima-neutral);fill:var(--hima-neutral);opacity:.55}
+.hima-chart-role-proposed{background:var(--hima-accent);fill:var(--hima-accent)}
+.hima-chart-role-measured{background:var(--hima-good);fill:var(--hima-good)}
+.hima-chart-role-neutral{background:var(--hima-ink-3);fill:var(--hima-ink-3)}
+.hima-chart-caption{color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow)}
+.hima-chart-source{color:var(--hima-ink-3);font-size:var(--hima-fs-eyebrow)}
+.hima-chart-error{color:var(--hima-bad)}
 .hima-run-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);line-height:var(--hima-lh-body)}
 .hima-run-card-receipt{display:flex;flex-direction:column;gap:2px}
 .hima-run-card-receipt-line{display:flex;gap:4px;flex-wrap:wrap;align-items:baseline}

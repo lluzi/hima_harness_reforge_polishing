@@ -14,7 +14,8 @@
 //   waiting. While a fork is open the Run's `currentNode` is the join; the nodes being worked are the
 //   branches' own current nodes, so those are what "current" means here.
 // - Station edges: every graph edge between two stations, one per (from, to) pair; a down edge when
-//   the target sits on a later row, a back edge otherwise, drawn along the strip's outer side.
+//   the target sits on a later row, a back edge otherwise. Each is drawn from square to square (see
+//   Placement below); `side` stays the strip side the spec names for a back edge.
 // - Lit: the edges the active station was entered through in this visit — from a node completed in
 //   this round into the station's current node or a node of the same visit before it. One edge
 //   usually; both at a fork (two stations entered at once) and at a join (one station entered from two).
@@ -191,10 +192,18 @@ export function stripState(graph: Pick<PackGraph, 'nodes' | 'edges'> & { readonl
 // ---------------------------------------------------------------------------------------------------
 // Placement. Pixel units at scale 1 (an SVG user unit is a CSS pixel): the node square keeps the
 // canvas's own 36 px, its label the 13 px label step, the checklist the 12 px eyebrow step.
+//
+// Each station puts its square at the left of its column and its name, activity and checklist to the
+// right of the square, so the column under every square is free. Every edge starts on its source
+// square and ends on its target square: it leaves through the square's bottom (target below or on the
+// same row) or top (target above), runs straight down the square column when the two squares line up,
+// else turns once in the gap between the two rows, and enters the target square's top or bottom. The
+// edges between one pair of stations run side by side, one each way; an edge that skips a row runs
+// along a lane at the strip's left side. Edges never cross text.
 
 export const STRIP_NODE = 36;
 const HALF = STRIP_NODE / 2;
-/** Room above a square for its rings (the AI ring at +2, the current-node ring at +4). */
+/** Room around a square for its rings (the AI ring at +2, the current-node ring at +4). */
 const RING = 4;
 /** One text line (label, activity, checklist); the type stays at 12-13 px. */
 export const STRIP_LINE = 14;
@@ -204,7 +213,16 @@ const LABEL_CHAR = 7, TEXT_CHAR = 6.3;
 export const STRIP_CHECK_INDENT = 15;
 /** A station with more shown lines than this folds its leading done lines into one. */
 export const STRIP_FOLD_OVER = 4;
-const ROW_GAP = 24, TOP = 6, BOTTOM = 8, COL_GAP = 12, LANE0 = 6, LANE_STEP = 7, PORT = 7;
+const TOP = 6, BOTTOM = 8, COL_GAP = 12, MARGIN = 8, LANE0 = 6, LANE_STEP = 7;
+/** From the square's right edge to its text. */
+const TEXT_GAP = 10;
+/** The least room between two rows. */
+const ROW_GAP = 22;
+/** Edges side by side on one square side; turns stacked in one row gap. */
+const PORT_STEP = 7, CHANNEL_STEP = 7;
+/** The least straight run before a square, so the arrowhead (up to 14 px when lit) sits on it. */
+const ARROW_ROOM = 18;
+const CORNER = 5;
 
 /** A line of text, wrapped between words into at most `lines` lines of `max` characters; the last is
  *  ellipsized if the text runs on. */
@@ -222,6 +240,8 @@ export function wrapWords(text: string, max: number, lines = 2): readonly string
   return out;
 }
 
+export interface StripBox { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
+
 export interface PlacedStripLine extends StripLine {
   /** Top of the line's check box; the text's first baseline is `y + 9`, each wrapped line 14 below. */
   readonly x: number; readonly y: number;
@@ -237,6 +257,11 @@ export interface PlacedStation extends StripStationView {
   readonly cx: number; readonly cy: number;
   /** The station's own block: its column and its height. */
   readonly left: number; readonly width: number; readonly top: number; readonly bottom: number;
+  /** Where the label, activity and checklist start (left-aligned, right of the square). */
+  readonly textX: number;
+  /** The box every text of the station sits in: from `textX` to the column's right edge, from the
+   *  label's top to the last checklist line. No edge enters it. */
+  readonly textBox: StripBox;
   readonly labelLines: readonly string[];
   /** Baseline of the first label line. */
   readonly labelY: number;
@@ -248,7 +273,11 @@ export interface PlacedStation extends StripStationView {
   readonly placedLines: readonly PlacedStripLine[];
 }
 
-export interface PlacedStripEdge extends StripEdgeView { readonly path: string }
+export interface PlacedStripEdge extends StripEdgeView {
+  readonly path: string;
+  /** The orthogonal polyline the path rounds: first point on the source square, last on the target's. */
+  readonly points: readonly (readonly [number, number])[];
+}
 
 export interface StripScene {
   readonly width: number; readonly height: number; readonly round: number;
@@ -257,7 +286,7 @@ export interface StripScene {
 }
 
 /** An orthogonal path through `points`, its corners rounded by `r`. */
-function orthogonal(points: readonly (readonly [number, number])[], r = 6): string {
+function orthogonal(points: readonly (readonly [number, number])[], r = CORNER): string {
   const fmt = (n: number) => String(Math.round(n * 10) / 10);
   let d = `M${fmt(points[0]![0])} ${fmt(points[0]![1])}`;
   for (let i = 1; i < points.length; i++) {
@@ -277,12 +306,6 @@ function orthogonal(points: readonly (readonly [number, number])[], r = 6): stri
 /** Evenly spread offsets for `n` ports around 0, `step` apart. */
 const spread = (n: number, step: number): number[] => Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * step);
 
-/**
- * Places a strip state in a pane `width` pixels wide (clamped to at least 280): rows top to bottom,
- * two stations side by side or one across, each a square with its label, an activity line while an
- * AI agent works there, and its checklist under it; down edges straight from a station's foot to the
- * next station's square; back edges in lanes along the outer sides, entering the square's side.
- */
 export interface StripWords {
   /** The folded line's count, e.g. "4 done". */
   readonly done: (n: number) => string;
@@ -301,118 +324,206 @@ export function foldedSaid(labels: readonly string[], max: number, words: StripW
   return count;
 }
 
+/** A station's text, placed relative to the station's top. */
+interface StationText {
+  readonly labelLines: readonly string[]; readonly labelY: number; readonly activityY?: number;
+  readonly textChars: number; readonly lines: readonly PlacedStripLine[]; readonly textBottom: number; readonly height: number;
+}
+
+function stationText(station: StripStationView, textX: number, textW: number, words: StripWords): StationText {
+  const labelLines = wrapWords(station.label, Math.max(6, Math.floor(textW / LABEL_CHAR)));
+  // The label's first line stands level with the square's top edge.
+  const labelY = RING + 10;
+  let y = labelY + STRIP_LINE * (labelLines.length - 1);
+  const textChars = Math.max(8, Math.floor(textW / TEXT_CHAR));
+  let activityY: number | undefined;
+  if (station.ai && station.state === 'active') { activityY = y + STRIP_LINE; y += 2 * STRIP_LINE; }
+  const shown = station.lines.filter((line) => line.state !== 'hidden');
+  const lineChars = Math.max(6, Math.floor((textW - STRIP_CHECK_INDENT) / TEXT_CHAR));
+  // More than four lines: the leading run of done lines folds into one, so the line being worked and
+  // the ones after it stay in view while the ticks still count up.
+  let run = 0;
+  while (run < shown.length && shown[run]!.state === 'done') run += 1;
+  const fold = shown.length > STRIP_FOLD_OVER && run >= 2 ? run : 0;
+  const texts = shown.map((line, i) => (fold > 0 && i === 0 ? [foldedSaid(shown.slice(0, fold).map((l) => l.label), lineChars, words)]
+    : fold > 0 && i < fold ? [] : wrapWords(line.label, lineChars, 3)));
+  let lineTop = y + 6;
+  const lines: PlacedStripLine[] = [];
+  const indexOf = new Map(shown.map((line, i) => [line, i]));
+  for (const line of station.lines) {
+    const i = indexOf.get(line);
+    if (i === undefined) { lines.push({ ...line, x: textX, y: lineTop, text: [] }); continue; }
+    if (fold > 0 && i > 0 && i < fold) { lines.push({ ...line, x: textX, y: lineTop, text: [], folded: true }); continue; }
+    const text = texts[i]!;
+    lines.push({ ...line, x: textX, y: lineTop, text, ...(fold > 0 && i === 0 ? { folds: fold } : {}) });
+    lineTop += STRIP_LINE * text.length + 1;
+  }
+  const textBottom = shown.length === 0 ? y + 4 : lineTop;
+  return { labelLines, labelY, ...(activityY === undefined ? {} : { activityY }), textChars, lines, textBottom, height: Math.max(RING * 2 + STRIP_NODE, textBottom) + 1 };
+}
+
+type Side = 'top' | 'bottom';
+/** The edges between one pair of stations (or one edge that skips rows), in their order side by side. */
+interface Road {
+  readonly key: string;
+  /** The upper end (or, on one row, the left one) and the end it reaches. */
+  readonly a: string; readonly b: string;
+  readonly aSide: Side; readonly bSide: Side;
+  readonly kind: 'adjacent' | 'same' | 'skip';
+  readonly edges: StripEdgeView[];
+}
+
+/**
+ * Places a strip state in a pane `width` pixels wide (clamped to at least 280): rows top to bottom,
+ * two stations side by side or one across, each a square with its name, an activity line while an AI
+ * agent works there, and its checklist to the square's right; edges from square to square.
+ */
 export function layoutStrip(state: StripState, width: number, words: StripWords = ENGLISH): StripScene {
   const W = Math.max(280, Math.floor(width));
   const rows = [...new Set(state.stations.map((station) => station.row))].sort((a, b) => a - b);
-  const sameRow = (edge: StripEdgeView) => state.stations.find((s) => s.id === edge.from)!.row === state.stations.find((s) => s.id === edge.to)!.row;
-  const sideEdges = state.edges.filter((edge) => edge.kind === 'back' && !sameRow(edge));
-  // One lane per back edge on its side, so two edges never read as one line; the margins keep every
-  // station clear of them.
-  const lanesOn = (side: 'left' | 'right') => sideEdges.filter((edge) => edge.side === side).length;
-  const marginFor = (lanes: number) => Math.max(14, LANE0 + LANE_STEP * Math.max(0, lanes - 1) + 14);
-  const ML = marginFor(lanesOn('left')), MR = marginFor(lanesOn('right'));
+  const rowAt = new Map(rows.map((row, index) => [row, index]));
+  const byId = new Map(state.stations.map((station) => [station.id, station]));
+
+  // Roads: the edges between one pair of stations share one; an edge that skips a row has its own.
+  const roads: Road[] = [];
+  for (const edge of state.edges) {
+    const source = byId.get(edge.from)!, target = byId.get(edge.to)!;
+    const ra = rowAt.get(source.row)!, rb = rowAt.get(target.row)!;
+    const kind = ra === rb ? 'same' : Math.abs(ra - rb) === 1 ? 'adjacent' : 'skip';
+    const [a, b] = ra < rb || (ra === rb && source.col <= target.col) ? [source.id, target.id] : [target.id, source.id];
+    const key = kind === 'skip' ? `skip:${edge.from}>${edge.to}` : `${a}|${b}`;
+    const road = roads.find((candidate) => candidate.key === key);
+    if (road !== undefined) { road.edges.push(edge); continue; }
+    roads.push({ key, a, b, aSide: 'bottom', bSide: kind === 'same' ? 'bottom' : 'top', kind, edges: [edge] });
+  }
+  // Down edges first, then the edges back.
+  for (const road of roads) road.edges.sort((p, q) => (p.from === road.a ? 0 : 1) - (q.from === road.a ? 0 : 1));
+  const skips = roads.filter((road) => road.kind === 'skip');
+
+  // Columns: a lane per skipping edge at the left; otherwise a plain margin.
+  const ML = skips.length === 0 ? MARGIN : LANE0 + LANE_STEP * (skips.length - 1) + 10, MR = MARGIN;
   const inner = W - ML - MR;
   const colWidth = (span: 1 | 2) => (span === 2 ? inner : (inner - COL_GAP) / 2);
+  const geometry = new Map(state.stations.map((station) => {
+    const w = colWidth(station.span);
+    const left = station.span === 2 || station.col === 0 ? ML : ML + w + COL_GAP;
+    const cx = left + RING + HALF;
+    const textX = cx + HALF + TEXT_GAP;
+    return [station.id, { left, w, cx, textX, text: stationText(station, textX, left + w - textX, words) }] as const;
+  }));
+  const cxOf = (id: string) => geometry.get(id)!.cx;
 
+  // Ports: on each square side, the roads in the order of where they go (left first), each road's
+  // edges side by side in its own order, so no two edges of one side cross at the square.
+  const port = new Map<string, number>(); // `${road}#${edge index}@${station}` -> x
+  const sides = new Map<string, { road: Road; other: number }[]>();
+  for (const road of roads) {
+    const otherX = (id: string) => (road.kind === 'skip' ? -Infinity : cxOf(id));
+    for (const [id, side, other] of [[road.a, road.aSide, road.b], [road.b, road.bSide, road.a]] as const) {
+      const list = sides.get(`${id}:${side}`) ?? [];
+      list.push({ road, other: otherX(other) });
+      sides.set(`${id}:${side}`, list);
+    }
+  }
+  const portCount = new Map<string, number>();
+  for (const [key, list] of sides) {
+    const id = key.slice(0, key.lastIndexOf(':'));
+    list.sort((p, q) => p.other - q.other);
+    const n = list.reduce((sum, item) => sum + item.road.edges.length, 0);
+    portCount.set(key, n);
+    const step = n > 1 ? Math.min(PORT_STEP, (STRIP_NODE - 12) / (n - 1)) : PORT_STEP;
+    const offsets = spread(n, step);
+    let at = 0;
+    for (const { road } of list) road.edges.forEach((_, i) => port.set(`${road.key}#${String(i)}@${id}`, cxOf(id) + offsets[at++]!));
+  }
+  // Two squares one above the other: the side with fewer edges takes the other side's places, so the
+  // road runs straight.
+  for (const road of roads) {
+    if (road.kind !== 'adjacent' || Math.abs(cxOf(road.a) - cxOf(road.b)) > 0.5) continue;
+    const na = portCount.get(`${road.a}:${road.aSide}`)!, nb = portCount.get(`${road.b}:${road.bSide}`)!;
+    if (na === nb) continue;
+    const [lead, follow] = na > nb ? [road.a, road.b] : [road.b, road.a];
+    if ((sides.get(`${follow}:${follow === road.a ? road.aSide : road.bSide}`) ?? []).length !== 1) continue;
+    road.edges.forEach((_, i) => port.set(`${road.key}#${String(i)}@${follow}`, port.get(`${road.key}#${String(i)}@${lead}`)!));
+  }
+  const portX = (road: Road, i: number, id: string) => port.get(`${road.key}#${String(i)}@${id}`)!;
+
+  // Turns: each edge that does not run straight turns in a row gap, at its own level there. Of a road
+  // turning right, the rightmost edge turns highest; turning left, the leftmost: so they never cross.
+  const levels = new Map<string, number>(); // `${road}#${i}:${gap}` -> level
+  const levelCount = new Map<number, number>();
+  const take = (gap: number, key: string) => { const n = levelCount.get(gap) ?? 0; levels.set(`${key}:${String(gap)}`, n); levelCount.set(gap, n + 1); };
+  const ordered = [...roads].sort((p, q) => Math.min(cxOf(p.a), cxOf(p.b)) - Math.min(cxOf(q.a), cxOf(q.b)));
+  for (const road of ordered) {
+    const ga = rowAt.get(byId.get(road.a)!.row)!, gb = rowAt.get(byId.get(road.b)!.row)! - 1;
+    const order = road.edges.map((_, i) => i);
+    if (road.kind === 'adjacent') {
+      if (road.edges.every((_, i) => Math.abs(portX(road, i, road.a) - portX(road, i, road.b)) < 0.5)) continue;
+      if (cxOf(road.b) > cxOf(road.a)) order.reverse();
+    }
+    for (const i of order) take(ga, `${road.key}#${String(i)}`);
+    if (road.kind === 'skip') for (const i of order) take(gb, `${road.key}#${String(i)}`);
+  }
+
+  // Rows top to bottom; each gap holds its turns, with room for an arrowhead on either side.
   const placed: PlacedStation[] = [];
+  const gapStart = new Map<number, number>();
   let top = TOP;
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     const members = state.stations.filter((station) => station.row === row);
     let bottom = top;
     for (const station of members) {
-      const w = colWidth(station.span);
-      const left = station.span === 2 ? ML : station.col === 0 ? ML : ML + w + COL_GAP;
-      const cx = left + w / 2, cy = top + RING + HALF;
-      const labelLines = wrapWords(station.label, Math.max(8, Math.floor((w - 8) / LABEL_CHAR)));
-      const labelY = cy + HALF + 15;
-      let y = labelY + STRIP_LINE * (labelLines.length - 1);
-      const textChars = Math.max(10, Math.floor((w - 8) / TEXT_CHAR));
-      let activityY: number | undefined;
-      if (station.ai && station.state === 'active') { activityY = y + STRIP_LINE; y += 2 * STRIP_LINE; }
-      const shown = station.lines.filter((line) => line.state !== 'hidden');
-      const lineChars = Math.max(8, Math.floor((w - 8 - STRIP_CHECK_INDENT) / TEXT_CHAR));
-      // More than four lines: the leading run of done lines folds into one, so the line being
-      // worked and the ones after it stay in view while the ticks still count up.
-      let run = 0;
-      while (run < shown.length && shown[run]!.state === 'done') run += 1;
-      const fold = shown.length > STRIP_FOLD_OVER && run >= 2 ? run : 0;
-      const texts = shown.map((line, i) => (fold > 0 && i === 0 ? [foldedSaid(shown.slice(0, fold).map((l) => l.label), lineChars, words)]
-        : fold > 0 && i < fold ? [] : wrapWords(line.label, lineChars, 3)));
-      const longest = Math.max(0, ...texts.flat().map((text) => text.length));
-      const blockW = Math.min(w - 8, STRIP_CHECK_INDENT + longest * TEXT_CHAR);
-      const x = Math.max(left + 4, cx - blockW / 2);
-      let lineTop = y + 6;
-      const placedLines: PlacedStripLine[] = [];
-      const indexOf = new Map(shown.map((line, i) => [line, i]));
-      for (const line of station.lines) {
-        const i = indexOf.get(line);
-        if (i === undefined) { placedLines.push({ ...line, x, y: lineTop, text: [] }); continue; }
-        if (fold > 0 && i > 0 && i < fold) { placedLines.push({ ...line, x, y: lineTop, text: [], folded: true }); continue; }
-        const text = texts[i]!;
-        placedLines.push({ ...line, x, y: lineTop, text, ...(fold > 0 && i === 0 ? { folds: fold } : {}) });
-        lineTop += STRIP_LINE * text.length + 1;
-      }
-      const stationBottom = (shown.length === 0 ? y + 4 : lineTop) + 1;
-      bottom = Math.max(bottom, stationBottom);
-      placed.push({ ...station, cx, cy, left, width: w, top, bottom: stationBottom, labelLines, labelY, ...(activityY === undefined ? {} : { activityY }), textChars, placedLines });
+      const g = geometry.get(station.id)!;
+      const t = g.text;
+      const shift = (n: number) => top + n;
+      bottom = Math.max(bottom, top + t.height);
+      placed.push({
+        ...station, cx: g.cx, cy: top + RING + HALF, left: g.left, width: g.w, top, bottom: top + t.height, textX: g.textX,
+        textBox: { x: g.textX, y: top + RING - 1, w: g.left + g.w - g.textX, h: t.textBottom - RING + 1 },
+        labelLines: t.labelLines, labelY: shift(t.labelY), ...(t.activityY === undefined ? {} : { activityY: shift(t.activityY) }),
+        textChars: t.textChars, placedLines: t.lines.map((line) => ({ ...line, y: shift(line.y) })),
+      });
     }
-    top = bottom + ROW_GAP;
-  }
-  const at = new Map(placed.map((station) => [station.id, station]));
-
-  // Down edges: spread where several leave one foot or enter one square.
-  const downs = state.edges.filter((edge) => edge.kind === 'down');
-  const outX = new Map<string, number>(), inX = new Map<string, number>();
-  for (const station of placed) {
-    const leaving = downs.filter((edge) => edge.from === station.id).sort((a, b) => at.get(a.to)!.cx - at.get(b.to)!.cx);
-    spread(leaving.length, 12).forEach((dx, i) => outX.set(`${leaving[i]!.from}>${leaving[i]!.to}`, dx));
-    const entering = downs.filter((edge) => edge.to === station.id).sort((a, b) => at.get(a.from)!.cx - at.get(b.from)!.cx);
-    spread(entering.length, 12).forEach((dx, i) => inX.set(`${entering[i]!.from}>${entering[i]!.to}`, dx));
-  }
-
-  // Back-edge ports on each square's side: leaving edges above, arriving ones below.
-  const portY = new Map<string, number>();
-  for (const station of placed) {
-    for (const side of ['left', 'right'] as const) {
-      const leaving = sideEdges.filter((edge) => edge.from === station.id && edge.side === side).sort((a, b) => at.get(a.to)!.row - at.get(b.to)!.row);
-      const arriving = sideEdges.filter((edge) => edge.to === station.id && edge.side === side).sort((a, b) => at.get(a.from)!.row - at.get(b.from)!.row);
-      const ports = [...leaving.map((edge) => `out:${edge.from}>${edge.to}`), ...arriving.map((edge) => `in:${edge.from}>${edge.to}`)];
-      spread(ports.length, 14).forEach((dy, i) => portY.set(ports[i]!, station.cy + dy));
-    }
-  }
-
-  // Lanes: the longer run outside; of two equal runs, the one reaching higher. Then a run's
-  // horizontal ends never cross another run's vertical.
-  const laneOf = new Map<string, number>();
-  for (const side of ['left', 'right'] as const) {
-    const runs = sideEdges.filter((edge) => edge.side === side).map((edge) => {
-      const a = portY.get(`out:${edge.from}>${edge.to}`)!, b = portY.get(`in:${edge.from}>${edge.to}`)!;
-      return { key: `${edge.from}>${edge.to}`, lo: Math.min(a, b), hi: Math.max(a, b) };
-    }).sort((p, q) => (q.hi - q.lo) - (p.hi - p.lo) || p.lo - q.lo);
-    runs.forEach((run, lane) => laneOf.set(run.key, lane));
-  }
-
-  const edges: PlacedStripEdge[] = state.edges.map((edge) => {
-    const key = `${edge.from}>${edge.to}`;
-    const source = at.get(edge.from)!, target = at.get(edge.to)!;
-    if (edge.kind === 'down') {
-      const x1 = source.cx + (outX.get(key) ?? 0), y1 = source.bottom + 2;
-      const x2 = target.cx + (inX.get(key) ?? 0), y2 = target.cy - HALF - 5;
-      return { ...edge, path: `M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)}` };
-    }
-    if (source.row === target.row) {
-      const toRight = target.cx > source.cx;
-      const x1 = source.cx + (toRight ? HALF + PORT : -HALF - PORT), x2 = target.cx + (toRight ? -HALF - PORT : HALF + PORT);
-      return { ...edge, path: `M${x1.toFixed(1)} ${source.cy.toFixed(1)} L${x2.toFixed(1)} ${target.cy.toFixed(1)}` };
-    }
-    const left = edge.side === 'left';
-    const lane = laneOf.get(key) ?? 0;
-    const laneX = left ? LANE0 + LANE_STEP * lane : W - LANE0 - LANE_STEP * lane;
-    const y1 = portY.get(`out:${key}`) ?? source.cy, y2 = portY.get(`in:${key}`) ?? target.cy;
-    const x1 = source.cx + (left ? -HALF - PORT : HALF + PORT), x2 = target.cx + (left ? -HALF - PORT : HALF + PORT);
-    return { ...edge, path: orthogonal([[x1, y1], [laneX, y1], [laneX, y2], [x2, y2]]) };
+    const squareBottom = top + RING + STRIP_NODE;
+    const start = Math.max(bottom + 6, squareBottom + ARROW_ROOM);
+    gapStart.set(index, start);
+    const turns = levelCount.get(index) ?? 0;
+    const lastTurn = turns === 0 ? bottom : start + CHANNEL_STEP * (turns - 1);
+    top = Math.max(bottom + ROW_GAP, lastTurn + ARROW_ROOM - RING);
   });
+  const at = new Map(placed.map((station) => [station.id, station]));
+  const sideY = (id: string, side: Side) => { const s = at.get(id)!; return side === 'top' ? s.cy - HALF : s.cy + HALF; };
+  const levelY = (key: string, gap: number) => gapStart.get(gap)! + CHANNEL_STEP * levels.get(`${key}:${String(gap)}`)!;
 
-  const height = Math.ceil((placed.length === 0 ? TOP : Math.max(...placed.map((station) => station.bottom))) + BOTTOM);
+  const edges: PlacedStripEdge[] = [];
+  for (const road of roads) {
+    const ga = rowAt.get(byId.get(road.a)!.row)!, gb = rowAt.get(byId.get(road.b)!.row)! - 1;
+    road.edges.forEach((edge, i) => {
+      const key = `${road.key}#${String(i)}`;
+      const xa = portX(road, i, road.a), xb = portX(road, i, road.b);
+      const ya = sideY(road.a, road.aSide), yb = sideY(road.b, road.bSide);
+      let points: [number, number][];
+      if (road.kind === 'skip') {
+        const lane = LANE0 + LANE_STEP * skips.indexOf(road);
+        const g1 = levelY(key, ga), g2 = levelY(key, gb);
+        points = [[xa, ya], [xa, g1], [lane, g1], [lane, g2], [xb, g2], [xb, yb]];
+      } else if (Math.abs(xa - xb) < 0.5) {
+        points = [[xa, ya], [xb, yb]];
+      } else {
+        const g = levelY(key, ga);
+        points = [[xa, ya], [xa, g], [xb, g], [xb, yb]];
+      }
+      if (edge.from !== road.a) points.reverse();
+      edges.push({ ...edge, path: orthogonal(points), points });
+    });
+  }
+  // Keep the state's edge order.
+  const order = new Map(state.edges.map((edge, index) => [`${edge.from}>${edge.to}`, index]));
+  edges.sort((p, q) => order.get(`${p.from}>${p.to}`)! - order.get(`${q.from}>${q.to}`)!);
+
+  const lastGap = gapStart.get(rows.length - 1);
+  const lastTurns = levelCount.get(rows.length - 1) ?? 0;
+  const contentBottom = placed.length === 0 ? TOP : Math.max(...placed.map((station) => station.bottom));
+  const height = Math.ceil(Math.max(contentBottom, lastTurns === 0 || lastGap === undefined ? 0 : lastGap + CHANNEL_STEP * (lastTurns - 1)) + BOTTOM);
   return { width: W, height, round: state.round, stations: placed, edges };
 }

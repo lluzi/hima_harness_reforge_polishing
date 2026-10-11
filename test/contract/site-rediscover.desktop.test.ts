@@ -82,7 +82,7 @@ test('a person reviews a rediscovered ssh Site on the Configuration page and onl
     await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
     await browser.markText('button', 'New Session', 'site-rediscover-new-session'); assert.ok((await d.click('site-rediscover-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Campaign configuration')).ok);
+    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Project configuration')).ok);
 
     await browser.wait(`!!document.querySelector('[data-hima-control="config-site"]')`);
     const filledSite = await d.fill('config-site', 'lab-a');
