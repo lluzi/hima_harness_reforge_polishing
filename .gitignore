@@ -4,3 +4,6 @@ lib/
 *.tsbuildinfo
 .hima-tmp/
 .superpowers/
+
+# Real OpenC910 DTCO data (foundry library and design data): local only, never in git
+sites/eda_cluster_ctu_01/mock-eda/share/designs/openc910/
