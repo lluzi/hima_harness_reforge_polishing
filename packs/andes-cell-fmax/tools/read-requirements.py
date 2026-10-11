@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Accept or refuse one agent's cell requirements (hima-andes-requirements/1) at delivery.
+"""Accept or refuse one agent's requirements (hima-andes-requirements/2) at delivery.
 
 argv: read-requirements.py <REPORT> <OUT> <WORKSPACE>. The agent is named by the report file
-(state/himatime-requirements.json or state/qualib-requirements.json). The checks are the Pack's own
-validator in <WORKSPACE>/flow/andes_cli.py, the same one the agent's precheck runs. A refused file
-exits non-zero with every problem, so the same resident task can repair it. An accepted file also
-gets its chart, reports/<agent node>/r<k>/proposal.chart.json: why the agent asks for these cells, in
-the tools' own numbers (andes_cli.proposal_chart).
+(state/himatime-requirements.json: arcs; state/qualib-requirements.json: cells and constraints). The
+checks are the Pack's own validator in <WORKSPACE>/flow/andes_cli.py, the same one the agent's
+precheck runs: it asks HimaTime (`himatime whatif --json`) and Qualib (`qualib analyze --json`) for
+their own answer on the build this round starts from and refuses arcs, cells, gains or constraints
+that disagree. A refused file exits non-zero with every problem, so the same resident task can repair
+it. An accepted file also gets its charts, reports/<agent node>/r<k>/proposal.chart.json (and the
+HimaTime agent's funnel.chart.json), from the tools' own numbers (andes_cli.proposal_chart).
 """
 import importlib.util
 import json
@@ -33,11 +35,10 @@ def main(report_path, out_path, workspace):
     values = [
         {"type": "requirements_valid", "unit": "count", "value": 1},
         {"type": "requirements_count", "unit": "count", "value": facts["count"]},
-        {"type": "requirements_on_critical_path", "unit": "count", "value": facts["onCriticalPath"]},
     ]
     try:
         print("wrote %s" % cli.proposal_chart(workspace, agent))
-    except (cli.ToolError, OSError, ValueError, KeyError) as error:
+    except (cli.ToolError, OSError, ValueError, KeyError, TypeError) as error:
         print("no proposal chart: %s" % error, file=sys.stderr)
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)

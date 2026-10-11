@@ -1,0 +1,7 @@
+id: timing-goal
+version: "0.4.0"
+title: The best worst-slack gain at route reaches the target (percent of the clock period)
+parameter: { name: target_timing_gain_pct, unit: percent }
+requires: [{ type: best_gain_pct }]
+subject: { type: best_gain_pct }
+predicate: { op: gte, threshold: { parameter: target_timing_gain_pct }, unit: percent }

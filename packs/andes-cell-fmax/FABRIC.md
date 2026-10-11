@@ -1,14 +1,32 @@
 ## Files written
 
-- `contract.yml` (0.3.1, `reports: { dir: reports }`, default Goal +1 %), `graph.yml` (with the
-  strip `view`; `generationLimit: 2`), `semantics.yml`; `flow/andes_cli.py` (every tool step, the
-  requirements, plan and verify validators, `merged`, `precheck`, the chart builders);
-  `flow/knowledge_charts.py` (writes `knowledge/charts/*.chart.json` from the Site's tools);
-  `tools/read-{reference,timing,requirements,plan,verify,round}.py` with `readers/*.yml`;
-  `rules/*.yml` (eight); `choosers/andes-next.yml`; `knowledge/*.md` (seven) and
-  `knowledge/charts/` (four charts, the reference summary among them).
-- Outside the Pack: `sites/eda_cluster_ctu_01/` (Site, Permit, capability, mock toolchain and its
-  tests) and `test/contract/andes-cell-fmax*.ts`.
+- `contract.yml` (0.4.0, `reports: { dir: reports }`, Goal `target_timing_gain_pct` default +1 %),
+  `graph.yml` (with the strip `view`; `generationLimit: 2`), `semantics.yml`; `flow/andes_cli.py`
+  (every tool step, the requirements, plan and verify validators against the tools, `draft`,
+  `precheck`, the chart builders); `flow/knowledge_charts.py` (writes the generated knowledge,
+  `knowledge/design-notes.md` from `knowledge/design-notes.template.md` and `knowledge/charts/`,
+  from the Site's tools; both git-ignored); `tools/read-{reference,timing,requirements,plan,verify,round}.py`
+  with `readers/*.yml`; `rules/*.yml` (eight); `choosers/andes-next.yml`; `knowledge/*.md` (six
+  tracked, plus the template).
+- Outside the Pack: `sites/eda_cluster_ctu_01/` (Site, Permit, capability, the toolchain with its
+  openc910 replay mode and tests) and `test/contract/andes-cell-fmax*.ts`.
+
+### Installing the Pack on a Site (0.4)
+
+The generated knowledge is the Site's: before the Pack is used (or packaged), run
+`python3 packs/andes-cell-fmax/flow/knowledge_charts.py <EDA_ROOT>` where the Site's tools read the
+installed openc910 data (or `CTU_OPENC910_DATA` points at it). It writes `knowledge/design-notes.md`
+and `knowledge/charts/*.chart.json`; without them `checkPack` refuses the Pack. The Site's bindings
+for 0.4: `designRoot` = the Site's `share/designs/openc910`, `stockLibrary` = a label (`n7-ulvt`).
+
+### How the agents deliver (0.4)
+
+Each agent runs its tools (HimaTime `highvalue`/`whatif`/`verify`, Qualib `analyze`/`screen`,
+AndesCell `--dry-run`) and drafts its delivery with `andes_cli.py draft <campaign> <kind> <tool
+json>`: the arcs, cells, constraints, plan and check numbers come from the tool's own JSON; the agent
+writes the summary, the plan's reason and its analysis, may leave items out, and prechecks. The
+Readers re-ask the tools (`himatime whatif --json`, `qualib analyze --json`, `himatime verify
+--json`, `qualib screen --json` on the kept cells) and refuse what disagrees.
 
 ### Site
 
@@ -27,12 +45,12 @@ autopilot does not drive resident tasks:
   delivery (its Reader runs on that branch), releases and completes each node in any order. The
   last completion closes the fork; the segment from `requirements-joined` judges each branch's
   reading and stops at `andescell-agent`.
-- **Choose**: the owner begins `andescell-agent`, starts its task, collects, releases, completes.
-- **Verify**: the segment from `generate-cells` runs AndesCell for the plan's families and stops
+- **Plan**: the owner begins `andescell-agent`, starts its task, collects, releases, completes.
+- **Verify**: the segment from `generate-cells` runs AndesCell for the plan's arcs and stops
   when `generate-cells` opens the verify fork; the owner drives `himatime-verify` and
   `qualib-screen` as in the propose fork. The join `cells-verified` judges both branches by one rule
-  set: the `andes-verify` Reader states the same tool numbers on either branch (HimaTime's local
-  gain, Qualib's pass count), so neither branch lacks a value its rules need.
+  set: the `andes-verify` Reader states the same tool numbers on either branch (HimaTime's kept
+  cells, Qualib's pass count of the kept cells), so neither branch lacks a value its rules need.
 
 `exploreAfter` still holds: after either join the path reaches `next-round` only through
 `read-round-goal` (a fresh unbranched reading) and `judge-round` (its own two-rule judge).
@@ -40,12 +58,13 @@ autopilot does not drive resident tasks:
 ### Reports
 
 Pack tools copy their tool's human-readable reports to `reports/<node id>/r<k>/`: `bind-inputs`
-(`tools.rpt`), `reference-build` and `new-library-build` (`report_qor.rpt`, `postroute_timing.rpt`,
-`area.rpt`, `route_drc.rpt`; the rebuild adds `himatime report`'s `report_timing.rpt`),
-`load-timing` (`report_timing.rpt`, `stage_breakdown.rpt`), `generate-cells` (`generation.rpt`),
-`compare-round` (`round-<k>.md`, which states the claim boundary in plain words). Each step also
-writes a `hima-chart/1` chart beside its reports (SPEC.md, Charts); the proposal, local-gain and
-screen charts come from the Reader that accepts the agent's delivery, from the tools' own answer,
+(`tools.rpt`), `reference-build` and `new-library-build` (every report of the build: the stage
+summaries, reg2reg timing, power, congestion, clock tree, `flow_summary.rpt`; the rebuild adds
+`himatime report`'s `report_timing.rpt`), `load-timing` (`report_timing.rpt`, `stage_breakdown.rpt`,
+`high_value_cells.rpt`), `generate-cells` (`generation.rpt`), `compare-round` (`round-<k>.md`, which
+states the claim boundary in plain words and that the timing is at the end of route). Each step also
+writes a `hima-chart/1` chart beside its reports (SPEC.md, Charts); the proposal, funnel, cell-check,
+top-cells and screen charts come from the Reader that accepts the agent's delivery, from the tools' own answer,
 so an agent never types a chart's numbers. A resident agent's
 `artifactPrefix` is `reports/<its node id>`: it keeps its `analysis.md` and the tool reports it used
 in `reports/<node id>/r<k>/` of its private workspace and delivers them as support, which the Host
@@ -82,27 +101,28 @@ and the Pack precheck instant.
 
 ## Gaps
 
-- The mock is a calibrated path model, not a timer: one design, one corner, one clock.
-- The cell targets in requirements are recorded (met / not met) but do not change the cells.
-- The local gain uses every new cell of the round, extra-fast variants included, because HimaTime
-  verifies while Qualib screens; the rebuild then uses only the cells the screen passes.
-- A Qualib agent that fails every cell the screen passes still passes the join (the rule reads the
-  tool's pass count); the rebuild then places no new cell and `cells-used` fails the round.
-- Pack 0.2 and 0.3 are not yet smoke-tested on linglong.
-- The proposal, local-gain and screen charts are written by Readers (a Reader's only other side
-  effect is its OUT file). A Reader that cannot write its chart still accepts the delivery and says
-  so on stderr; the chart is then missing from Reports.
-- The design model of 0.3 (a ~2 GHz block, 0.500 ns): reference Fmax 1951.60 MHz (WNS −12.4 ps);
-  round 1 with XNOR3 and BUF reaches 1980.98 MHz (+1.51 %). HimaTime's estimated recovery ranks
-  XNOR3 and BUF first, while `himatime estimate` gives other pairs more (XNOR3+XOR2 +1.67 %): the
-  AndesCell agent follows the recovery ranking, and either pair meets the +1 % Goal.
+- The Site replays one design's data: one reference build and one custom-cell set. A round whose
+  rebuild uses another cell set is refused by the Site (the build fails, the round is invalid); one
+  round is the data's round.
+- The custom build's CTS and route timing follow the Site's stated basis (`basis` in its sapr
+  summary, carried into the round record and the claim boundary, never shown on screen).
+- The chart of the first kept cells shows five cells (three rows each): a metrics table holds at
+  most 16 rows, and a table of two or more columns shows a change column, which has no meaning
+  between different measures.
+- Pack 0.2–0.4 are not yet smoke-tested on linglong; 0.4 needs the openc910 data and the generated
+  knowledge installed on the Site, and the Site bindings above.
+- The proposal, funnel, cell-check, top-cells and screen charts are written by Readers (a Reader's
+  only other side effect is its OUT file). A Reader that cannot write its chart still accepts the
+  delivery and says so on stderr; the chart is then missing from Reports.
 
 ## Reviews
 
-- Pack load, stage, strip, semantics and knowledge charts: `test/contract/andes-cell-fmax.test.ts`
-  (9 tests), including a refused strip and the mock toolchain unit suite (13 tests).
-- Host dry path (`andes-dry` group, 2026-10-10, ~27 s, Pack 0.3): propose fork, AndesCell agent,
-  generate, verify fork and rebuild through the stand-in, one round to goal-met (+1.51 %, local
-  gain 16.88 ps), a refused requirements list and a refused local-gain number each repaired in the
-  same task, a report and a chart from every step at `reports/<node>/r1/`.
-- Site smoke on linglong (2026-10-10): every CLI and one reference build plus one round, timings above.
+- Pack load, stage, strip, semantics, generated knowledge and one round of the Pack's steps on the
+  fixture: `test/contract/andes-cell-fmax.test.ts` (10 tests, 2026-10-11, Pack 0.4.0).
+- Host dry path (`andes-dry` group, 2026-10-11, ~23 s, Pack 0.4.0, fixture bundle): propose fork,
+  AndesCell agent, generate, verify fork and rebuild through the stand-in, one round to goal-met, a
+  refused Qualib list and a refused kept count each repaired in the same task, a report and the
+  charts from every step at `reports/<node>/r1/`.
+- Real data (by hand, 2026-10-11): the Pack's steps and `knowledge_charts.py` on the installed
+  openc910 data reproduce the data owner's numbers at route; generated files not committed.
+- Site smoke on linglong (2026-10-10): Pack 0.1, every CLI and one reference build plus one round.

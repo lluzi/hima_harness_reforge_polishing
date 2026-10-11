@@ -1,11 +1,13 @@
 # Reference build once, then rounds of: HimaTime loads the latest build -> two resident agents in
-# parallel propose cell requirements (HimaTime agent: the worst paths; Qualib agent: the library) ->
-# join -> the AndesCell agent (resident) chooses the families to build -> AndesCell generates them ->
-# two resident agents in parallel verify (HimaTime agent: the worst paths re-timed with the new
-# cells, the local gain in ps; Qualib agent: the cell screen) -> join (local gain above 0 ps and at
-# least one cell passed the screen) -> Synthesis and APR with the new library -> round record ->
-# checks -> next round (owner decision; back to HimaTime with this round's results in lessons). One
-# round is expected to reach the default Goal (+1 % Fmax); the round limit is 2 as a safety margin.
+# parallel propose (HimaTime agent: the high-value cells and the cell what-if, as arcs; Qualib agent:
+# the cells the stock libraries cannot make faster, with the custom-cell constraints) -> join -> the
+# AndesCell agent (resident) plans the arcs to generate and AndesCell's settings -> AndesCell
+# generates them -> two resident agents in parallel verify (HimaTime agent: the cell-level check,
+# which cells are kept; Qualib agent: the screen of the kept cells) -> join (at least one cell kept
+# and screened) -> the full flow with the custom cells -> round record at route -> checks -> next
+# round (owner decision). One round is expected to reach the default Goal (+1 % of the clock period
+# in reg2reg worst slack at route); the Site has build data for that one custom-cell set, so a second
+# round's rebuild would be refused: the round limit (2) is a safety margin and the chooser ends at the Goal.
 #
 # Both forks' branch nodes and the AndesCell agent are outsourced resident tasks, so neither fork is
 # an autopilot fork: the owner begins each of those nodes, starts its resident task, collects and
@@ -15,31 +17,31 @@
 # twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
 # next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
 id: andes-cell-fmax
-version: "0.3.1"
+version: "0.4.0"
 entry: bind-inputs
 autopilot:
   - from: [bind-inputs]
     until: [himatime-agent, qualib-agent, blocked]
     label: Reference build and timing
-    about: Synthesis and APR on the stock library, then HimaTime loads the routed design and reports Fmax, the worst paths and where their delay goes by cell type.
+    about: The full flow to route on the stock libraries, then HimaTime loads the routed design, reports the worst paths and lists the high-value cells.
   - from: [requirements-joined]
     until: [andescell-agent, blocked]
     label: Requirement check
-    about: Both agents' cell requirements passed the check; the AndesCell agent chooses the cells next.
+    about: Both agents' requirements passed the check against the tools; the AndesCell agent plans the arcs next.
   - from: [generate-cells]
     until: [himatime-verify, qualib-screen, blocked]
     label: Cell generation
-    about: AndesCell builds the cells the AndesCell agent chose; HimaTime and Qualib check them next.
+    about: AndesCell generates the planned arcs' cells; HimaTime and Qualib check them next.
   - from: [cells-verified]
     until: [next-round, blocked]
     label: Rebuild and comparison
-    about: Synthesis and APR rebuilds the design with the cells that passed, then compares it with the reference build.
+    about: The full flow again with the kept and screened cells, then the comparison with the reference build at route.
 
 nodes:
   - id: bind-inputs
     kind: act
     label: Check tools and design
-    about: Checks that Synthesis and APR, HimaTime, Qualib, AndesCell and XTop answer on the Site, and records the design files and the stock library.
+    about: Checks that Synthesis and APR, HimaTime, Qualib, AndesCell and XTop answer on the Site, and records the design data.
     parameters:
       tool: bind-inputs
       arguments:
@@ -49,7 +51,7 @@ nodes:
   - id: reference-build
     kind: act
     label: Reference build
-    about: Synthesis and APR of aes_cipher_top on the stock std9t_svt library at 0.500 ns (2 GHz), RTL to routed design.
+    about: The OpenC910 netlist through placement, CTS and route on the stock libraries at 0.500 ns (2 GHz).
     parameters:
       tool: reference-build
       arguments:
@@ -57,74 +59,74 @@ nodes:
   - id: read-reference
     kind: act
     label: Read the reference build
-    about: Reads Fmax, worst slack, total negative slack, cell area and route DRC from the post-route summary.
+    about: Reads the reg2reg worst slack, total negative slack, violating paths and density at route.
     parameters: { observes: referenceBuild }
   - id: check-reference
     kind: judge
-    label: Reference build is clean
-    about: The reference build finished with zero route DRC errors.
+    label: Reference build finished
+    about: The reference build finished the flow through route and wrote its timing summary.
     parameters: { rules: [reference-valid] }
   - id: load-timing
     kind: act
     label: Load into HimaTime
-    about: HimaTime loads the latest routed build and reports Fmax, the worst paths and the delay of each cell type on them.
+    about: HimaTime loads the latest routed build, reports the worst reg2reg paths and lists the high-value cells.
     parameters:
       tool: load-timing
   - id: read-timing
     kind: act
     label: Read the timing
-    about: Reads this round's starting Fmax and worst slack, then hands the timing to both agents at once.
+    about: Reads this round's starting worst slack, then hands the timing to both agents at once.
     parameters: { observes: timingState }
   - id: himatime-agent
     kind: act
     label: HimaTime agent
-    about: AI agent. Finds the bottleneck on the worst paths with HimaTime and writes the cell requirements the timing needs.
+    about: AI agent. Finds the high-value cells and ranks their arcs with HimaTime's what-if, and asks for the arcs to customize.
     parameters:
       tool: himatime-agent
   - id: qualib-agent
     kind: act
     label: Qualib agent
-    about: AI agent. Checks the stock library against the critical-path cells with Qualib and writes the cell requirements the library lacks.
+    about: AI agent. Checks with Qualib that the stock libraries cannot make these cells faster, and sets the custom-cell constraints.
     parameters:
       tool: qualib-agent
   - id: requirements-joined
     kind: judge
     label: Both requirement lists ready
-    about: Both agents delivered cell requirements that passed the Pack's check.
+    about: Both agents delivered requirements that agree with the tools.
     parameters: { rules: [requirements-valid] }
   - id: andescell-agent
     kind: act
     label: AndesCell agent
-    about: AI agent. Merges both requirement lists and chooses the one or two cell families with the most estimated recovery to build this round.
+    about: AI agent. Plans the arcs both lists allow and AndesCell's settings (iterations per arc, delay target).
     parameters:
       tool: andescell-agent
   - id: generate-cells
     kind: act
     label: Generate the cells
-    about: AndesCell builds the chosen families' cells (netlist, layout, Liberty, LEF), including an extra-fast variant of some.
+    about: AndesCell generates a custom cell for every planned arc and keeps the best versions of each.
     parameters:
       tool: generate-cells
   - id: himatime-verify
     kind: act
     label: HimaTime agent (verify)
-    about: AI agent. Re-times the worst paths with the new cells and reports the local gain in ps and each cell's FO4 against its stock cell.
+    about: AI agent. Checks each new cell against its stock cell with HimaTime and keeps the cells with a positive cell-level gain.
     parameters:
       tool: himatime-verify
   - id: qualib-screen
     kind: act
     label: Qualib agent (screen)
-    about: AI agent. Screens every new cell for area, input capacitance, leakage, DRC, LVS and pin access, and passes or fails each.
+    about: AI agent. Screens every kept cell for footprint, input capacitance and LVS, and passes or fails each.
     parameters:
       tool: qualib-screen
   - id: cells-verified
     kind: judge
-    label: Local gain confirmed
-    about: The new cells make the worst path faster (local gain above 0 ps) and at least one passed the screen.
-    parameters: { rules: [local-gain-positive, cells-screened] }
+    label: Cell-level gain confirmed
+    about: HimaTime kept at least one new cell for its cell-level gain, and at least one kept cell passed the screen.
+    parameters: { rules: [cells-gain-positive, cells-screened] }
   - id: new-library-build
     kind: act
-    label: Rebuild with new cells
-    about: Synthesis and APR with the stock library plus every new cell that passed the screen so far.
+    label: Rebuild with custom cells
+    about: The full flow through route with the stock libraries plus every kept and screened custom cell.
     parameters:
       tool: new-library-build
       arguments:
@@ -132,18 +134,18 @@ nodes:
   - id: compare-round
     kind: act
     label: Compare with the reference
-    about: Writes the round's before/after record and the summary.
+    about: Writes the round's comparison at route and the summary.
     parameters:
       tool: compare-round
   - id: read-round
     kind: act
     label: Read the round result
-    about: Reads the new-library build's Fmax, slack, area and new-cell usage, and the gain over the reference build.
+    about: Reads the custom-cell build's worst slack, TNS, violating paths and custom-cell instances, and the gain over the reference build.
     parameters: { observes: roundRecord }
   - id: check-round
     kind: judge
     label: New cells used and faster
-    about: The build placed new cells, and it is faster than every earlier build.
+    about: The build placed custom cells, and its worst slack is better than every earlier build's.
     parameters: { rules: [cells-used, round-improved] }
   - id: read-round-goal
     kind: act
@@ -152,12 +154,12 @@ nodes:
     parameters: { observes: roundRecord }
   - id: judge-round
     kind: judge
-    label: Clean build and Fmax goal
-    about: The build is clean with screened cells only, and the best Fmax gain reaches the target.
+    label: Clean build and timing goal
+    about: The build finished with kept and screened cells only, and the best worst-slack gain reaches the target.
     parameters:
-      rules: [round-valid, fmax-goal]
+      rules: [round-valid, timing-goal]
       bind:
-        target_fmax_gain_pct: { from: goal, name: target_fmax_gain_pct }
+        target_timing_gain_pct: { from: goal, name: target_timing_gain_pct }
   - id: next-round
     kind: explore
     label: Next round
@@ -165,11 +167,11 @@ nodes:
     parameters:
       chooser: andes-next
       bind: { roundStep: 1 }
-      converge: { read: bestFmax, band: 0.001, generations: 2, generationLimit: 2 }
+      converge: { read: bestWns, band: 0.5, generations: 2, generationLimit: 2 }
   - id: blocked
     kind: wait
     label: Needs a person
-    about: A build, a delivery check or the local-gain check failed in a way the flow cannot repair by itself.
+    about: A build, a delivery check or the cell-level check failed in a way the flow cannot repair by itself.
     parameters: { blocker: hard-blocker }
 
 edges:
@@ -214,15 +216,15 @@ view:
   stations:
     - id: rtl2gds
       label: RTL2GDS flow
-      about: Synthesis and APR, post-route timing in HimaTime, and the rebuild with the new cells.
+      about: The flow through route, timing in HimaTime, and the rebuild with the custom cells.
       row: 0
       checklist:
         - { label: Check tools and design, nodes: [bind-inputs], rounds: first }
         - { label: Reference build, nodes: [reference-build], rounds: first }
-        - { label: Reference timing clean, nodes: [read-reference, check-reference], rounds: first }
+        - { label: Reference build finished, nodes: [read-reference, check-reference], rounds: first }
         - { label: Load into HimaTime, nodes: [load-timing, read-timing] }
-        - { label: Local gain confirmed, nodes: [cells-verified] }
-        - { label: Rebuild with new cells, nodes: [new-library-build] }
+        - { label: Cell-level gain confirmed, nodes: [cells-verified] }
+        - { label: Rebuild with custom cells, nodes: [new-library-build] }
         - { label: Compare with the reference, nodes: [compare-round, read-round, check-round, read-round-goal, judge-round] }
         - { label: Next round, nodes: [next-round] }
     - id: himatime
@@ -230,21 +232,21 @@ view:
       about: AI agent for the timing view.
       row: 1
       checklist:
-        - { label: "Find the bottleneck, write requirements", nodes: [himatime-agent] }
-        - { label: Verify new cells (local gain), nodes: [himatime-verify] }
+        - { label: "Rank the arcs, write requirements", nodes: [himatime-agent] }
+        - { label: Check new cells (cell-level gain), nodes: [himatime-verify] }
     - id: qualib
       label: Qualib agent
       about: AI agent for the library view.
       row: 1
       checklist:
         - { label: "Check the library, write requirements", nodes: [qualib-agent] }
-        - { label: Screen new cells, nodes: [qualib-screen] }
+        - { label: Screen kept cells, nodes: [qualib-screen] }
     - id: andescell
       label: AndesCell agent
-      about: AI agent that chooses the cells; AndesCell builds them.
+      about: AI agent that plans the arcs; AndesCell generates the cells.
       row: 2
       checklist:
         - { label: Both requirement lists ready, nodes: [requirements-joined] }
-        - { label: Choose the cells, nodes: [andescell-agent] }
+        - { label: Plan the arcs, nodes: [andescell-agent] }
         - { label: Generate the cells, nodes: [generate-cells] }
   hidden: [blocked]

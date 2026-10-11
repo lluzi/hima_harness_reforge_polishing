@@ -1,52 +1,48 @@
 # Qualib agent playbook
 
-You own the library view of the round, twice: first (`qualib-agent`) which cell families on the
-critical paths the stock library `std9t_svt` serves badly and what custom cells would close that
-gap; then (`qualib-screen`) whether each cell AndesCell built may enter a build.
+You own the library view of the round, twice: first (`qualib-agent`) whether the stock libraries can
+make HimaTime's critical cells faster, and what a custom cell must respect; then (`qualib-screen`)
+whether each cell HimaTime keeps may enter a build.
 
 ## Read first
 
-- `timingState` (`state/timing.json`): the stage breakdown by cell family and the worst paths of
-  the build this round starts from; `reports.summary` is HimaTime's `timing_summary.json`.
-- `library` (`state/library.json`): families already delivered (with their directories).
-- `lessons` (`state/lessons.json`): what earlier rounds asked for and gained.
+- `timingState` (`state/timing.json`): `buildDir` (the routed build this round starts from) and
+  the worst paths. `library` (`state/library.json`): cells already delivered. `lessons`: earlier rounds.
 
-## Analyse
+## Analyse (qualib-agent)
 
-1. `qualib analyze --lib std9t_svt --timing <campaign>/<timingState.reports.summary> --out ./ql`
-   (add `--extra-lib <campaign>/<dir>` for every `library.rounds[].dir`). Read
-   `./ql/library_analysis.rpt`: one row per family, ranked by the design's need, with drive range,
-   FO4 delay, rise/fall ratio, critical-path share, estimated recovery, AndesCell headroom and the
-   library gap (missing drives, slow rise, slow select arc, high input capacitance).
-2. `qualib list --family XNOR3` shows the stock cells of one family: area, input cap, leakage, rise
-   and fall FO4. A rise/fall ratio well above 1.1 or a missing drive step on a family with a large
-   critical-path share is a strong case for a custom cell.
-3. Families with no critical-path share are not worth a cell this round, whatever their gap.
-4. `andescell generate --requirements <your file> --db <campaign>/<timingState.buildDir> --round <k>
-   --dry-run --existing <each delivered library dir>` shows which of your families AndesCell would
-   pick (at most two per round).
+With `db = <campaign>/<timingState.buildDir>`, in your private workspace:
 
-## Write
+1. `himatime whatif --db <db> --scale 0.9 --out ./hw` gives the arcs HimaTime ranks (`./hw/whatif.json`).
+2. `qualib analyze --db <db> --arcs ./hw/whatif.json --out ./ql` writes `library_analysis.rpt` and
+   `library_analysis.json`: per arc the stock delay of the ULVT, LVT and SVT cell at the centre of
+   its delay table and which Vt is fastest; the cells by family; and the **constraints** a custom
+   cell must meet: the same footprint (area and pins as the stock cell), input capacitance within a
+   limit of the stock cell's, LVS match.
+3. The question: can the stock libraries make these cells faster? The design already uses the ULVT
+   cells; where ULVT is the fastest Vt, a Vt swap only makes the arc slower (LVT and SVT are slower by
+   a median the report states). Then only a new cell can help. `qualib list --arcs ./hw/whatif.json`
+   prints the same per-arc facts.
 
-- 2-5 requirements, highest impact first. Each: `family`, `purpose` (the library gap to close:
-  "balanced rise/fall XNOR3 with an X4 drive"), `target` with a percentage (AndesCell's typical
-  cell-level gain is 4–10 %, the analysis' headroom column), `evidence` (the gap and the
-  critical-path numbers: "XNOR3 r/f 1.36, only X1/X2, FO4 28.0 ps; 16.4 % of the worst path"),
-  `priority`.
-- `reports/qualib-agent/r<k>/analysis.md`: the library facts you used, the gaps that matter on the
-  critical paths, why these families, and which gaps you leave for later rounds. Keep Qualib's
-  `library_analysis.rpt` beside it and deliver both as support.
+## Write (qualib-agent)
 
-## Screen the new cells (qualib-screen)
+- `python3 <campaign>/flow/andes_cli.py draft <campaign> qualib ./ql/library_analysis.json > requirements.json`
+  writes the cells and Qualib's constraints. You may remove cells (say why); never add cells or change
+  the constraints: the precheck holds them to Qualib's own answer.
+- Write `summary`: how many arcs and cells, on how many arcs ULVT is already the fastest, how much
+  slower LVT and SVT are, and the constraints.
+- `reports/qualib-agent/r<k>/analysis.md` and `library_analysis.rpt` beside it, delivered as support.
 
-1. Read `generation` (`state/generation.json`): the cells AndesCell built this round and `dir`.
-2. `qualib screen --cells <campaign>/<generation.dir> --out ./qs` writes `cell_screen.rpt` and
-   `screen.json`: per cell the area, input capacitance and leakage against its stock cell, DRC,
-   LVS, pin access, and PASS/FAIL with reasons.
-3. Decide every cell: PASS or FAIL with its reasons. A cell the screen fails cannot pass. You may
-   fail a cell the screen passes if you say why (e.g. a drive the design cannot use). Only the cells
-   you pass enter the rebuild; the rest are dont-use.
-4. The extra-fast variants (`XF...`) usually fail on leakage or input capacitance: say so in plain
-   words ("leakage 2.9× the stock cell, above 2.5×").
-5. Write the cell-screen file (`hima-andes-cell-screen/1`). Keep `cell_screen.rpt` and
+## Screen the kept cells (qualib-screen)
+
+1. Read `generation` (`state/generation.json`): the cells AndesCell built and `dir`.
+2. HimaTime keeps only the cells with a positive cell-level gain. Get them: `himatime verify --cells
+   <campaign>/<generation.dir> --db <campaign>/<timingState.buildDir> --out ./hv` (its `kept/` folder).
+3. `qualib screen --cells ./hv/kept --out ./qs` writes `cell_screen.rpt` and `screen.json`: per cell
+   the area ratio (no larger than the stock cell: the same footprint), the input-capacitance ratio
+   (within 1.30× the stock cell's), LVS, and PASS/FAIL with reasons.
+4. `python3 <campaign>/flow/andes_cli.py draft <campaign> qualib-screen ./qs/screen.json > screen.json`
+   writes PASS or FAIL per kept cell with Qualib's reasons. A cell the screen fails cannot pass; you
+   may fail a cell the screen passes if you say why. Only the cells you pass enter the rebuild.
+5. Write `summary` (pass and fail counts, the input-cap range). Keep `cell_screen.rpt` and
    `analysis.md` in `reports/qualib-screen/r<k>/` and deliver them as support.

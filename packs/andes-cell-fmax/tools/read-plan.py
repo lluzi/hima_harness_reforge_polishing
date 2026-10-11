@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Accept or refuse the AndesCell agent's generation plan (hima-andes-plan/1) at delivery.
+"""Accept or refuse the AndesCell agent's generation plan (hima-andes-plan/2) at delivery.
 
 argv: read-plan.py <REPORT> <OUT> <WORKSPACE>. The report is the Campaign's
 state/generation-plan.json. The checks are the Pack's own validator in
 <WORKSPACE>/flow/andes_cli.py, the same one the agent's precheck and generate-cells run: the round,
-1-2 families that both agents' lists requested and the library does not hold yet, each with a reason
-and HimaTime's estimated recovery, every other requested family skipped with a reason. A refused
-file exits non-zero with every problem, so the same resident task can repair it.
+arcs that the HimaTime agent asked for and whose cell the Qualib agent lists, AndesCell's settings
+(iterations and delay target) and a reason. A refused file exits non-zero with every problem, so the
+same resident task can repair it.
 """
 import importlib.util
 import json
@@ -28,8 +28,7 @@ def main(report_path, out_path, workspace):
         raise ValueError("generation plan refused: %s" % error)
     values = [
         {"type": "plan_valid", "unit": "count", "value": 1},
-        {"type": "plan_families", "unit": "count", "value": len(facts["families"])},
-        {"type": "plan_follows_ranking", "unit": "count", "value": 1 if facts["followsRanking"] else 0},
+        {"type": "plan_arcs", "unit": "count", "value": len(facts["arcs"])},
     ]
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)

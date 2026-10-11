@@ -7,3 +7,7 @@ lib/
 
 # Real OpenC910 DTCO data (foundry library and design data): local only, never in git
 sites/eda_cluster_ctu_01/mock-eda/share/designs/openc910/
+
+# andes-cell-fmax: knowledge generated per Site from its tools (python3 flow/knowledge_charts.py <EDA_ROOT>)
+packs/andes-cell-fmax/knowledge/design-notes.md
+packs/andes-cell-fmax/knowledge/charts/
