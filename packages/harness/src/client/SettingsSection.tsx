@@ -25,6 +25,25 @@ const NO_LIVE_SESSION = 'Open a session to rediscover a Site.';
 
 /** Registered on `settings.section`, `id: 'hima'`. Root-scoped: `useSessions` is a standard prop the
  *  shell always delivers; `pickFolder` is this registration's own inject (`index.ts`). */
+function EngineControls():ReactElement {
+  const [receipt,setReceipt]=useState<import('../team-service-runtime.js').TeamServiceReceipt>();
+  const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string>();
+  useEffect(()=>{const controller=new AbortController();void teamRuntimeRequest('status',controller.signal,'engineering-engine').then(result=>{if(controller.signal.aborted)return;if(result.ok)setReceipt(result.value.receipt);else setMessage(result.error.message);});return()=>controller.abort();},[]);
+  const action=async(operation:'start'|'status'|'stop')=>{
+    setBusy(true);setMessage(undefined);
+    try {const result=await teamRuntimeRequest(operation,undefined,'engineering-engine');if(result.ok)setReceipt(result.value.receipt);else setMessage(result.error.message);}
+    finally {setBusy(false);}
+  };
+  return <section data-hima-region='team-engine-settings'><h3>Private engineering environment</h3>
+    <p role='status'>{receipt?`Engineering engine: ${receipt.state}`:'Reading engine status…'}</p>
+    <p className='hima-small'>The current engine qualifies trusted fixtures only. Pi/OpenCode member execution, full installation and Linux qualification remain unavailable.</p>
+    {receipt?.diagnostic?<p>{receipt.diagnostic.message}</p>:null}{message?<p role='alert'>{message}</p>:null}
+    <button className='hima-button' data-hima-control='team-engine-refresh' disabled={busy} onClick={()=>void action('status')}>Refresh engine status</button>
+    <button className='hima-button' data-hima-control='team-engine-start' disabled={busy||receipt===undefined||!receipt.owned.quiescent||receipt.diagnostic?.code==='interrupted-generation'} onClick={()=>void action('start')}>Start private engine</button>
+    <button className='hima-button' data-hima-control='team-engine-stop' disabled={busy||receipt===undefined||receipt.owned.quiescent} onClick={()=>void action('stop')}>Stop private engine</button>
+  </section>;
+}
+
 export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProps): ReactElement {
   const sessionId = useSessions((state) => state.current);
   const [runtime,setRuntime]=useState<import('../team-service-runtime.js').TeamServiceReceipt>();
@@ -84,6 +103,7 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
         <button className="hima-button" data-hima-control="team-runtime-stop" disabled={runtimeBusy||runtime===undefined||runtime.owned.quiescent} onClick={()=>void serviceAction('stop')}>Stop memory service</button>
         {runtimeMessage?<p role="alert">{runtimeMessage}</p>:null}
       </section>
+      <EngineControls/>
       <section>
         <h3>Packs</h3>
         {choices === undefined ? <p className="hima-small">Reading installed Packs…</p>

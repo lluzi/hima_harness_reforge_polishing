@@ -149,10 +149,43 @@ test('retained native qualification closure assembles with the product pin', {sk
   const directory=await mkdtemp(path.join(os.tmpdir(),'hima-team-retained-'));
   try {
     const receipt=await packageTeamRuntime({prefix:retained,output:path.join(directory,'team-runtime'),pinFile:path.join(repoRoot,'packages/desktop/team-runtime.pin.json'),internalCandidate:true});
-    assert.equal(receipt.platform,'darwin-arm64');assert.equal(receipt.fileCount,52535);
+    assert.equal(receipt.platform,'darwin-arm64');assert.equal(receipt.fileCount,JSON.parse(await readFile(path.join(repoRoot,'packages/desktop/team-runtime.pin.json'),'utf8')).platformAssets['darwin-arm64'].fileCount);
     const currentPin=JSON.parse(await readFile(path.join(repoRoot,'packages/desktop/team-runtime.pin.json'),'utf8')).platformAssets['darwin-arm64'];
     assert.equal(receipt.manifestSha256,currentPin.manifestSha256);
     assert.equal(receipt.inventorySha256,currentPin.inventorySha256);
     assert.ok(receipt.releaseBlockers.some((v:string)=>/sandbox/.test(v)));
   } finally {await rm(directory,{recursive:true,force:true});}
+});
+
+test('fixed engine split inventory admits exact local OCI and refuses guest misclassification and incomplete layers',async()=>{
+ const f=await fixture();try{
+  const {execFileSync}=await import('node:child_process');const target=process.platform==='darwin'?'linux-arm64':'linux-x64';const arch=target==='linux-arm64'?'arm64':'amd64';const config=JSON.stringify({architecture:arch,os:'linux'});const layer=Buffer.from('trusted fixture layer');const childManifest=JSON.stringify({schemaVersion:2,config:{digest:`sha256:${sha(config)}`,size:Buffer.byteLength(config)},layers:[{digest:`sha256:${sha(layer)}`,size:layer.length}]});
+  const layout=path.join(f.directory,'oci');await mkdir(path.join(layout,'blobs/sha256'),{recursive:true});for(const value of [config,layer,childManifest])await writeFile(path.join(layout,'blobs/sha256',sha(value)),value);
+  await mkdir(path.join(f.prefix,'engine'),{recursive:true});const archive=path.join(f.prefix,'engine/fixture.oci.tar');execFileSync('/usr/bin/tar',['-cf',archive,'-C',layout,'.']);const vm=Buffer.from('fixture-compressed-machine');await writeFile(path.join(f.prefix,'engine/machine.zst'),vm);
+  const guest=Buffer.alloc(32);guest.set([0x7f,0x45,0x4c,0x46]);guest[5]=1;guest.writeUInt16LE(target==='linux-arm64'?183:62,18);await writeFile(path.join(f.prefix,'engine/guest'),guest);
+  const added={'engine/fixture.oci.tar':sha(await readFile(archive)),'engine/machine.zst':sha(vm),'engine/guest':sha(guest)};Object.assign(f.manifest.files,added);
+  const engine={kind:'podman',version:'6.1.3',provider:process.platform==='darwin'?'applehv':'rootless',guestPlatform:target,executable:'helpers/service',helpers:['helpers/service'],...(process.platform==='darwin'?{machineImage:{file:'engine/machine.zst',sha256:sha(vm),bytes:vm.length,compression:'zstd'}}:{}),image:{file:'engine/fixture.oci.tar',sha256:added['engine/fixture.oci.tar'],bytes:(await readFile(archive)).length,manifestSha256:sha(childManifest),configSha256:sha(config),layers:[{sha256:sha(layer),bytes:layer.length}],qualification:'trusted-fixture-only'},guestInventory:{'engine/guest':{platform:target,sha256:sha(guest)}}};
+  Object.assign(f.manifest,{engineeringEngine:engine});Object.assign(f.pin.platformAssets[platform]!,{engineeringEngine:engine});
+  const component={id:'engineering-engine',version:'6.1.3',source:'https://github.com/containers/podman/releases/tag/v6.1.3',license:'Apache-2.0',notices:['NOTICE'],requiredFiles:['helpers/service']};f.manifest.components.push(component);f.pin.components.push({...component,platformAssets:{[platform]:{files:f.manifest.files}}});f.pin.platformAssets[platform]!.requiredComponents.push('engineering-engine');f.pin.platformAssets[platform]!.fileCount=Object.keys(f.manifest.files).length;f.pin.platformAssets[platform]!.inventorySha256=sha(JSON.stringify(f.manifest.files));await f.seal();
+  assert.equal((await verifyTeamRuntime(f.prefix)).engineeringEngine?.image.qualification,'trusted-fixture-only');const result=await f.assemble();assert.equal(result.engineeringQualification,'trusted-fixture-only');await verifyTeamRuntime(path.join(f.directory,'assembled'),result);
+  await assert.rejects(f.assemble(false),/distribution is not qualified/);engine.guestInventory['engine/guest'].platform=target==='linux-arm64'?'linux-x64':'linux-arm64';await f.seal();await assert.rejects(verifyTeamRuntime(f.prefix),/Guest inventory target/);engine.guestInventory['engine/guest'].platform=target;engine.image.layers[0]!.bytes++;await f.seal();await assert.rejects(verifyTeamRuntime(f.prefix),/OCI layer inventory/);
+ }finally{await rm(f.directory,{recursive:true,force:true});}
+});
+
+test('SDK runtime staging rejects formal distribution before output or pin mutation',async()=>{
+  const f=await fixture();try{
+    const {packageTeamMemberRuntime}=await import(pathToFileURL(path.join(repoRoot,'scripts/package-team-runtime.mjs')).href);
+    const output=path.join(f.directory,'sdk-output'),publishedPinFile=path.join(f.directory,'sdk-pin.json');
+    await assert.rejects(packageTeamMemberRuntime({prefix:f.prefix,output,pinFile:f.pinFile,imageInputs:{},publishedPinFile}),/internal-only/);
+    assert.equal(existsSync(output),false);assert.equal(existsSync(publishedPinFile),false);
+  }finally{await rm(f.directory,{recursive:true,force:true});}
+});
+
+test('SDK runtime staging refuses a published pin within the original retained prefix',async()=>{
+  const f=await fixture();try{
+    const {packageTeamMemberRuntime}=await import(pathToFileURL(path.join(repoRoot,'scripts/package-team-runtime.mjs')).href);
+    const output=path.join(f.directory,'sdk-output');
+    await assert.rejects(packageTeamMemberRuntime({prefix:f.prefix,output,pinFile:f.pinFile,imageInputs:{},publishedPinFile:path.join(f.prefix,'new.pin.json'),internalCandidate:true}),/pin.*source|retained.*prefix/);
+    assert.equal(existsSync(output),false);assert.equal(existsSync(path.join(f.prefix,'new.pin.json')),false);
+  }finally{await rm(f.directory,{recursive:true,force:true});}
 });

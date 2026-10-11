@@ -261,14 +261,47 @@
       "version": "0.1.5-alpha.1",
       "source": "https://registry.npmjs.org/@deepseek-ai/dsh",
       "distribution": "existing pnpm-lock.yaml; upgrade cohort owned by #99"
+    },
+    {
+      "id": "engineering-engine",
+      "version": "6.1.3",
+      "source": "https://github.com/containers/podman/releases/tag/v6.1.3",
+      "license": "Apache-2.0",
+      "notices": [
+        "engine/LICENSE"
+      ],
+      "requiredFiles": [
+        "engine/bin/podman",
+        "engine/bin/vfkit",
+        "engine/bin/gvproxy",
+        "engine/podman-machine.aarch64.applehv.raw.zst",
+        "engine/member-sdk.oci.tar",
+        "engine/member-sdk-receipt.json",
+        "engine/member-sdk-sources.json"
+      ],
+      "distribution": "Internal trusted-fixture-only base; transitive rights and full member cohort not qualified",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "engine/bin/podman": "0389b36e2c0b182b3f6bc4c0ae78a062eb42f08660e37d46291137b9f5550f33",
+            "engine/bin/vfkit": "67114bab764a1e42b0d21da69ece2a3f88beb8378d5668da5cd4126d8cd0a62a",
+            "engine/bin/gvproxy": "c780d214f74dad611255148665cc1d0c0849ad3787d6ea8d22e96849dddbaa95",
+            "engine/podman-machine.aarch64.applehv.raw.zst": "633971788fcfe7df04f49da53f06c98b28933c5df2f684d57c2f9831411cac77",
+            "engine/member-sdk.oci.tar": "4af56e03ea4ad4753b17a391d1c3b81a54a986ae7a3f7d4980ddbeb3c6fa6479",
+            "engine/member-sdk-receipt.json": "591f98108e37cd64ff9e22faf625e13fd7784e6068f655e61112756156f764bc",
+            "engine/member-sdk-sources.json": "59edd44528b712f7a7bddc367a2c205c8549802c02751942c29693141f8d53e5",
+            "engine/LICENSE": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+          }
+        }
+      }
     }
   ],
   "platformAssets": {
     "darwin-arm64": {
       "qualification": "asset-assembly-only",
-      "manifestSha256": "34438a93a12bbdf1b0a585ee8e9b392fee0b23acf2a5ea1ab2143fcac26f2680",
-      "inventorySha256": "21e3f3ae6db521a736fe6c615013cbd5b0f7a3e4cf4c7d235f64c12523fc4583",
-      "fileCount": 52535,
+      "manifestSha256": "1b2e21757b7424b5ee89e5fda69ef25864377e3a8ec744310f5acd3412c4f52c",
+      "inventorySha256": "1f32d7c0bd1e1b95ffa3c65e50b4343f7bf5e2cefad5d89c4c5b8e3c5dedf071",
+      "fileCount": 52543,
       "requiredComponents": [
         "hindsight",
         "python",
@@ -278,7 +311,8 @@
         "reranker-model",
         "opencode",
         "ripgrep",
-        "fd"
+        "fd",
+        "engineering-engine"
       ],
       "services": [
         {
@@ -303,11 +337,75 @@
       ],
       "nativeEvidence": "macOS 26.5.2 arm64 relocated authenticated readiness, online backup, owned stop and CPU local models; no clean installer or sandbox qualification",
       "releaseBlockers": [
-        "Missing full OAR/Pi/DSH relocatable five-component deployment cohort; DSH upgrade assets owned by #99",
-        "Missing Python/npm standalone notices and native corresponding-source/replacement obligations; inventories retained, no legal clearance",
-        "Missing owned engineering sandbox/helper/image closure and approved outbound/Host-private network isolation proof",
-        "Clean installation, real provider/GitHub permissions and full Team acceptance remain unverified"
-      ]
+        "Native Linux x64 SDK/helper/cohort and clean installation are unqualified",
+        "Four exact npm notice gaps (AWS three packages and proxy-agent-negotiate), Python/native transitive obligations and GPL/LGPL corresponding-source coverage remain unclosed",
+        "Only a trusted namespace fixture is admitted; configured model/research/GitHub destinations, DNS/CDN/expiry/external IPv6 and full member isolation require qualification",
+        "Final clean installer, active Team composition and business acceptance remain with their declared owners"
+      ],
+      "engineeringEngine": {
+        "kind": "podman",
+        "version": "6.1.3",
+        "provider": "applehv",
+        "guestPlatform": "linux-arm64",
+        "executable": "engine/bin/podman",
+        "helpers": [
+          "engine/bin/vfkit",
+          "engine/bin/gvproxy"
+        ],
+        "machineImage": {
+          "file": "engine/podman-machine.aarch64.applehv.raw.zst",
+          "sha256": "633971788fcfe7df04f49da53f06c98b28933c5df2f684d57c2f9831411cac77",
+          "bytes": 937980979,
+          "compression": "zstd"
+        },
+        "image": {
+          "file": "engine/member-sdk.oci.tar",
+          "sha256": "4af56e03ea4ad4753b17a391d1c3b81a54a986ae7a3f7d4980ddbeb3c6fa6479",
+          "bytes": 511858688,
+          "manifestSha256": "37f627ec8284df8afd2aaaf51c1c21966bc26b6a1ec8c2fce16891f4f0bec586",
+          "configSha256": "5b85228ad9c434283f92be24858a074c4b06f9e80d569bdb67659c25786a52c2",
+          "layers": [
+            {
+              "sha256": "db86109db3a878cad2671ab822c9b43afbab6a5e1a67658d760dc0b15e7b75d5",
+              "bytes": 48383649
+            },
+            {
+              "sha256": "7fea2228218a869ae6619766dc4aae2d5e251700ebac01541d63cafea4bc7fc7",
+              "bytes": 23628261
+            },
+            {
+              "sha256": "742d423df6ec83a05afd11c678f055935985f615115c46681d670810438c3732",
+              "bytes": 64500577
+            },
+            {
+              "sha256": "9873f9cf3f97d8317bea39be5130389ca496910902e4c4327c227d606b57511d",
+              "bytes": 203190462
+            },
+            {
+              "sha256": "524cee421e41a5be8b1c16dc9c78729a798b49e2469d9579fe82a7a5ea40fe93",
+              "bytes": 3328
+            },
+            {
+              "sha256": "8c1eba9b087f808edc2d5abbc6c09d454bd62f21857c7b468f809dac8425c464",
+              "bytes": 59707473
+            },
+            {
+              "sha256": "aebdad0123d44ac470e68f04bd7cd8a120fa2bd39ed1b0acaf2b08603f3c51f5",
+              "bytes": 1250674
+            },
+            {
+              "sha256": "8013a2be7b95a67ccdbeb1bda285dd8e6e104a2c2d013d6943064bdde1c1e9df",
+              "bytes": 446
+            },
+            {
+              "sha256": "21a6e20a965318350d10f6a7ce1bcf45b53ac9f49b28524d5d59843e14e1af39",
+              "bytes": 111174250
+            }
+          ],
+          "qualification": "trusted-fixture-only"
+        },
+        "guestInventory": {}
+      }
     },
     "linux-x64": {
       "qualification": "unavailable",

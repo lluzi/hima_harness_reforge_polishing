@@ -1103,7 +1103,7 @@ export default class Hima extends Service {
     return {actor:{kind:'member',teamId:grant.teamId,memberId:grant.memberId,taskId:grant.taskId,generation:grant.generation},task:metadata,input:(invocation.context as {input?:unknown}).input};
   }
   async teamRuntimeOperation(raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['status','start','stop','export']),serviceId:teamZ.literal('hindsight'),
+    const request=teamZ.strictObject({action:teamZ.enum(['status','start','stop','export']),serviceId:teamZ.enum(['hindsight','engineering-engine']),
       cutId:teamZ.string().optional(),destination:teamZ.string().optional()}).parse(raw);
     if(!this.teamServices)throw new BadRequest('Team services have not initialized.');
     if(request.action==='start')try {await this.waitForBusinessAdmission();}

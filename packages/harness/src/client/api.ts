@@ -274,6 +274,6 @@ export function teamOperations(sessionId:string,projectId:string):import('./Hima
 }
 
 /** Operator-only optional service controls; member bearer capabilities do not authorize this route. */
-export function teamRuntimeRequest(action:'status'|'start'|'stop',signal?:AbortSignal):Promise<HimaResult<{receipt:import('../team-service-runtime.js').TeamServiceReceipt;history:readonly import('../team-service-runtime.js').TeamServiceReceipt[]}>> {
-  return runRequest('/hima/api/team-runtime',{method:'POST',body:JSON.stringify({action,serviceId:'hindsight'}),signal});
+export function teamRuntimeRequest(action:'status'|'start'|'stop',signal?:AbortSignal,serviceId:'hindsight'|'engineering-engine'='hindsight'):Promise<HimaResult<{receipt:import('../team-service-runtime.js').TeamServiceReceipt;history:readonly import('../team-service-runtime.js').TeamServiceReceipt[]}>> {
+  return runRequest('/hima/api/team-runtime',{method:'POST',body:JSON.stringify({action,serviceId}),signal});
 }

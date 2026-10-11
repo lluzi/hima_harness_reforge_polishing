@@ -4,20 +4,22 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { readFile, mkdir, realpath, lstat, rm } from 'node:fs/promises';
+import { readFile, mkdir, realpath, lstat, rm, open } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { z } from 'zod';
+import { EngineeringEngineRuntime, engineeringEngineManifest, verifyEngineeringArchive, type EngineeringOwnedFacts, type EngineeringNamespaceRequest, type EngineeringNamespaceLease } from './team-engine-runtime.js';
 
 const relative = z.string().min(1).refine(v => !path.isAbsolute(v) && !v.split(/[\\/]/).some(p => !p || p === '.' || p === '..'));
 const component = z.strictObject({id:z.string().regex(/^[a-z][a-z0-9-]*$/),version:z.string().min(1),source:z.string().url(),license:z.string().min(1),notices:z.array(relative).min(1),requiredFiles:z.array(relative).min(1)});
 export const teamRuntimeManifest = z.strictObject({format:z.literal('hima-team-runtime/1'),platform:z.string(),qualification:z.enum(['asset-assembly-only','mechanism-test-only']),
   files:z.record(relative,z.string().regex(/^[a-f0-9]{64}$/)),components:z.array(component),
+  engineeringEngine:engineeringEngineManifest.optional(),
   services:z.array(z.strictObject({id:z.literal('hindsight'),executable:relative,argv:z.array(z.string()).max(64),timeoutMs:z.number().int().positive().max(120000),stopGraceMs:z.number().int().positive().max(10000),backupExecutable:relative.optional(),backupArgv:z.array(z.string()).max(64).optional()}))});
 export type TeamRuntimeManifest = z.infer<typeof teamRuntimeManifest>;
 export interface TeamServiceReceipt {
   schema:'hima-team-service-receipt/1'; receiptId:string; serviceId:string; generation:string;
   operation:'start'|'status'|'export'|'stop'; state:'starting'|'running'|'stopping'|'stopped'|'failed'|'unavailable'; recordedAt:string;
-  owned:{pid?:number;quiescent:boolean}; diagnostic?:{code:string;message:string};
+  owned:{pid?:number;quiescent:boolean;engine?:EngineeringOwnedFacts}; diagnostic?:{code:string;message:string};
   export?:{cutId:string;file:string;sha256:string;bytes:number};
 }
 class CapabilityError extends Error {readonly code:string; constructor(code:string,message:string){super(message);this.code=code;}}
@@ -31,16 +33,28 @@ export async function readTeamRuntimeManifest(directory:string):Promise<TeamRunt
   if(new Set(manifest.components.map(c=>c.id)).size!==manifest.components.length || new Set(manifest.services.map(c=>c.id)).size!==manifest.services.length) throw new CapabilityError('manifest','Duplicate component/service identity.');
   for(const c of manifest.components) for(const file of [...c.notices,...c.requiredFiles]) if(!manifest.files[file]) throw new CapabilityError('missing-helper',`Component ${c.id} has no pinned helper/notice ${file}.`);
   for(const s of manifest.services) if(s.backupExecutable && !manifest.files[s.backupExecutable] || !manifest.files[s.executable] || !manifest.components.some(c=>c.id===s.id)) throw new CapabilityError('missing-helper',`Service ${s.id} executable/component is not pinned.`);
+  if(manifest.engineeringEngine) {
+    const e=manifest.engineeringEngine;if(!manifest.components.some(c=>c.id==='engineering-engine'&&c.version===e.version))throw new CapabilityError('missing-helper','Engineering component/notice identity is missing.');
+    if(e.provider!==(process.platform==='darwin'?'applehv':'rootless') || e.guestPlatform!==(process.platform==='darwin'?'linux-arm64':'linux-x64') || !['darwin-arm64','linux-x64'].includes(manifest.platform)) throw new CapabilityError('platform','Engineering Host/guest target or provider differs.');
+    if(e.provider==='applehv' && !e.machineImage || e.provider==='rootless' && e.machineImage) throw new CapabilityError('manifest','Engineering machine image/provider differs.');
+    for(const file of [e.executable,...e.helpers,e.image.file,...(e.machineImage?[e.machineImage.file]:[])]) if(!manifest.files[file]) throw new CapabilityError('missing-helper',`Engineering closure does not pin ${file}.`);
+    for(const blob of [e.image,...(e.machineImage?[e.machineImage]:[])]) if(manifest.files[blob.file]!==blob.sha256 || (await lstat(path.join(root,blob.file))).size!==blob.bytes) throw new CapabilityError('asset-integrity','Engineering image digest/byte count differs.');
+    for(const file of [e.executable,...e.helpers]) if(e.guestInventory[file]) throw new CapabilityError('platform','Host engine helpers cannot be reclassified as guest executables.');
+    for(const [file,guest] of Object.entries(e.guestInventory)) if(guest.platform!==e.guestPlatform || manifest.files[file]!==guest.sha256) throw new CapabilityError('platform','Guest inventory target/digest differs.');
+  }
   for(const [file,hash] of Object.entries(manifest.files)) {
     const target=path.join(root,file); const info=await lstat(target).catch(()=>{throw new CapabilityError('missing-helper',`The pinned Team runtime file ${file} is missing.`);});
-    if(!info.isFile() || !(await realpath(target)).startsWith(root+path.sep) || createHash('sha256').update(await readFile(target)).digest('hex')!==hash) throw new CapabilityError('asset-integrity',`Team runtime bytes differ for ${file}; reinstall the fixed closure.`);
-    const bytes=await readFile(target); let arch:string|undefined;
-    if(bytes.length>=20 && bytes.subarray(0,4).equals(Buffer.from([0x7f,0x45,0x4c,0x46]))) arch=bytes[5]===1 && bytes.readUInt16LE(18)===62?'linux-x64':'unsupported-native';
+    if(!info.isFile() || !(await realpath(target)).startsWith(root+path.sep) || await digestTeamRuntimeFile(target)!==hash) throw new CapabilityError('asset-integrity',`Team runtime bytes differ for ${file}; reinstall the fixed closure.`);
+    const handle=await open(target,'r');const bytes=Buffer.alloc(32);await handle.read(bytes,0,32,0);await handle.close();let arch:string|undefined;
+    if(bytes.length>=20 && bytes.subarray(0,4).equals(Buffer.from([0x7f,0x45,0x4c,0x46]))) arch=bytes[5]===1 && bytes.readUInt16LE(18)===62?'linux-x64':bytes[5]===1 && bytes.readUInt16LE(18)===183?'linux-arm64':'unsupported-native';
     if(bytes.length>=8 && bytes.readUInt32LE(0)===0xfeedfacf) arch=bytes.readUInt32LE(4)===0x100000c?'darwin-arm64':'unsupported-native';
-    if(arch && arch!==manifest.platform) throw new CapabilityError('platform',`The native helper ${file} is built for another architecture.`);
+    if(arch && arch!==(manifest.engineeringEngine?.guestInventory[file]?.platform ?? manifest.platform)) throw new CapabilityError('platform',`The native helper ${file} is built for another architecture.`);
   }
+  if(manifest.engineeringEngine) await verifyEngineeringArchive(root,manifest.engineeringEngine);
   return manifest;
 }
+async function digestTeamRuntimeFile(file:string):Promise<string>{const digest=createHash('sha256');for await(const chunk of createReadStream(file))digest.update(chunk);return digest.digest('hex');}
+
 interface OwnedService {
   generation:string; state:TeamServiceReceipt['state']; stopped:boolean; child?:ChildProcessWithoutNullStreams;
   start?:Promise<TeamServiceReceipt>; export?:Promise<TeamServiceReceipt>; diagnostic?:TeamServiceReceipt['diagnostic'];
@@ -51,8 +65,10 @@ export interface TeamServiceRuntimeOptions {home:string;runtimeDirectory?:string
 export class TeamServiceRuntime {
   private readonly services=new Map<string,OwnedService>();
   private shuttingDown=false;
+  private readonly engine:EngineeringEngineRuntime;
   private readonly options:TeamServiceRuntimeOptions;
-  constructor(options:TeamServiceRuntimeOptions){this.options=options;}
+  constructor(options:TeamServiceRuntimeOptions){this.options=options;this.engine=new EngineeringEngineRuntime({...options,readManifest:async()=>{if(!options.runtimeDirectory)throw new Error('Fixed engineering engine assets are missing.');return readTeamRuntimeManifest(options.runtimeDirectory);}});}
+  prepareNamespace(request:EngineeringNamespaceRequest):Promise<EngineeringNamespaceLease>{if(this.shuttingDown)return Promise.reject(new Error('Host shutdown rejects namespace readiness.'));return this.engine.prepareNamespace(request);}
   private groupPresent(owned:OwnedService):boolean {
     if(!owned.child?.pid)return false;
     try{process.kill(-owned.child.pid,0);return true;}catch(error){return (error as NodeJS.ErrnoException).code!=='ESRCH';}
@@ -64,6 +80,7 @@ export class TeamServiceRuntime {
     await this.options.recordReceipt(receipt); return receipt;
   }
   async status(id:string):Promise<TeamServiceReceipt> {
+    if(id==='engineering-engine')return this.engine.status();
     const owned:OwnedService=this.services.get(id) ?? {generation:randomUUID(),state:'unavailable' as const,stopped:true,stopGraceMs:1000,diagnostic:{code:'not-started',message:'No owned service generation has been started by this Host.'}};
     this.services.set(id,owned);
     if(owned.child && (owned.child.exitCode!==null || owned.child.signalCode!==null) && owned.state==='running') {owned.state='failed';owned.diagnostic={code:'process-exit',message:'The owned service exited. Inspect its fixed runtime configuration before restarting.'};}
@@ -74,6 +91,8 @@ export class TeamServiceRuntime {
     return this.receipt(id,owned,'status');
   }
   start(id:string):Promise<TeamServiceReceipt> {
+    if(this.shuttingDown)return Promise.reject(new Error('Host shutdown rejects new service starts.'));
+    if(id==='engineering-engine')return this.engine.start();
     if(this.shuttingDown) return Promise.reject(new Error('Host shutdown rejects new service starts.'));
     const previous=this.services.get(id);
     if(previous?.start && !previous.stopped && ['starting','running'].includes(previous.state)) return previous.start;
@@ -129,6 +148,8 @@ export class TeamServiceRuntime {
     return this.receipt(id,owned,'start');
   }
   export(id:string,request:{cutId:string;destination:string}):Promise<TeamServiceReceipt>{
+    if(this.shuttingDown)return Promise.reject(new Error('Host shutdown rejects new service exports.'));
+    if(id==='engineering-engine')return this.engine.export(request);
     if(this.shuttingDown) return Promise.reject(new Error('Host shutdown rejects new service exports.'));
     const owned=this.services.get(id);
     if(!owned || owned.stopped || owned.state!=='running' || !owned.child || owned.child.exitCode!==null || owned.child.signalCode!==null) return Promise.reject(new Error('Export requires a live owned service generation.'));
@@ -154,6 +175,7 @@ export class TeamServiceRuntime {
     }catch(error){await rm(file,{force:true});throw error;}
   }
   async stop(id:string):Promise<TeamServiceReceipt>{
+    if(id==='engineering-engine')return this.engine.stop();
     const owned=this.services.get(id);if(!owned) return this.status(id);
     owned.stopped=true;owned.state='stopping';
     // Fence new writes first; the active online export is verified before shutdown.
@@ -174,5 +196,5 @@ export class TeamServiceRuntime {
   connection(id:string):{origin:string;apiKey:string;generation:string}|undefined {
     const owned=this.services.get(id);return !this.shuttingDown && owned?.state==='running' && !owned.stopped && owned.origin && owned.apiKey && owned.child?.exitCode===null && owned.child.signalCode===null?{origin:owned.origin,apiKey:owned.apiKey,generation:owned.generation}:undefined;
   }
-  async stopAll():Promise<TeamServiceReceipt[]>{this.shuttingDown=true;return Promise.all([...this.services.keys()].map(id=>this.stop(id)));}
+  async stopAll():Promise<TeamServiceReceipt[]>{this.shuttingDown=true;const engine=this.engine.stopAll();return [...await Promise.all([...this.services.keys()].map(id=>this.stop(id))),...await engine];}
 }

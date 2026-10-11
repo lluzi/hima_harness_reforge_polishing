@@ -90,3 +90,18 @@ test('current App exit fences service startup while status remains readable',asy
   const status=await api(host,cookie,'/hima/api/team-runtime',{method:'POST',body:JSON.stringify({action:'status',serviceId:'hindsight'})});
   assert.equal(status.status,200);
 });
+
+test('operator engine controls retain missing-asset receipts and never expose namespace or member authority',async t=>{
+  const home=await isolatedHome();delete home.env.HIMA_TEAM_RUNTIME;
+  const host=await bootHimaHost(home);t.after(async()=>{await host.stop();await home.dispose();});
+  const cookie=await openSession(host);await createLiveSession(host,cookie,home.workspace);
+  const call=async(body:unknown)=>{const response=await api(host,cookie,'/hima/api/team-runtime',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:response.status,body:await response.json() as any};};
+  const started=await call({action:'start',serviceId:'engineering-engine'});assert.equal(started.status,200,JSON.stringify(started.body));
+  assert.equal(started.body.receipt.serviceId,'engineering-engine');assert.equal(started.body.receipt.state,'unavailable');
+  const status=await call({action:'status',serviceId:'engineering-engine'});assert.equal(status.status,200);assert.equal(status.body.receipt.generation,started.body.receipt.generation);
+  assert.ok(status.body.history.length>=2);
+  assert.equal((await call({action:'prepareNamespace',serviceId:'engineering-engine',argv:['untrusted']})).status,400);
+  assert.equal((await call({action:'start',serviceId:'engineering-engine',pid:process.pid})).status,400);
+  const member=await fetch(new URL('/hima/api/team-runtime',host.url),{method:'POST',headers:{authorization:'Bearer fixture-member'},body:JSON.stringify({action:'start',serviceId:'engineering-engine'})});assert.equal(member.status,401);
+  const stopped=await call({action:'stop',serviceId:'engineering-engine'});assert.equal(stopped.status,200);assert.equal(stopped.body.receipt.owned.quiescent,true);
+});

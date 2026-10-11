@@ -6,7 +6,8 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { TeamServiceRuntime, type TeamServiceReceipt } from '../../packages/harness/src/team-service-runtime.ts';
+import type { TeamServiceReceipt } from '../../packages/harness/lib/types/team-service-runtime.js';
+const {TeamServiceRuntime}=await import(new URL('../../packages/harness/lib/team-service-runtime.js',import.meta.url).href) as typeof import('../../packages/harness/lib/types/team-service-runtime.js');
 
 // Real owned subprocess substituting the selected Hindsight HTTP/CLI dependency. This verifies Host
 // mechanics through Hindsight's real HTTP/native CLI interface only. Not Hindsight qualification.
