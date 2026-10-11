@@ -37,6 +37,20 @@ The timing math (asserted in tests/test_mock_eda.py):
 
   A family that is on no worst path gains nothing.
 
+  QoR through the flow (FLOW_STAGES; sapr_summary.json stages, reports/flow_summary.rpt). Every
+  stage shifts every path's slack by one offset from the final routed-and-optimized slack:
+  synthesis +22.0 ps (wire-load estimates, no real wires), floorplan +19.5, placement -3.6 (real
+  wire lengths), CTS -8.2 (clock skew and latency), route -14.6 (detailed wires and coupling),
+  post-route opt 0 (the final numbers). Reference: WNS +9.6, +7.1, -16.0, -20.6, -27.0, -12.4 ps;
+  TNS 0, 0, -0.862, -1.210, -1.696, -0.596 ns. Round 1: +17.2, +14.7, -8.4, -13.0, -19.4, -4.8 ps.
+  Area and instances are short of the final counts by 836 um^2 / 312 (synthesis, floorplan),
+  514 / 170 (placement; placement buffers), 262 / 96 (CTS and route; clock buffers) and 0 (the
+  optimization's sizing and buffering), so the reference grows 40 364 -> 41 200 um^2 and
+  18 088 -> 18 400 instances; utilization is against the core the floorplan sized for 70 % at the
+  end (68.6 -> 70.0 %). Route DRC is counted on the routed stages: 0 after detailed routing.
+  Runtime per stage is the log's phases: 27 (3 + 14 + 10), 3, 14, 8, 16 and 12 (8 + 4 timing) s,
+  80 s in all; each extra AndesCell library adds 4 s of post-route optimization (84 s in round 1).
+
 MOCK EDA: these are model numbers for a demonstration Site; not signoff, not silicon.
 """
 import hashlib
@@ -219,9 +233,10 @@ def slack_ps(path, speed):
     return CLOCK_PERIOD_NS * 1000.0 - path_delay(path, speed)
 
 
-def timing(speed):
-    """WNS/TNS/Fmax of the design for a library speed map."""
-    slacks = [(p, slack_ps(p, speed)) for p in PATHS]
+def timing(speed, offset_ps=0.0):
+    """WNS/TNS/Fmax of the design for a library speed map. offset_ps shifts every path's slack (a
+    flow stage's timing before post-route optimization; 0 for the routed and optimized design)."""
+    slacks = [(p, slack_ps(p, speed) + offset_ps) for p in PATHS]
     wns = min(s for _, s in slacks)
     tns = sum(p["n"] * min(0.0, s) for p, s in slacks)
     violating = sum(p["n"] for p, s in slacks if s < 0)
@@ -358,3 +373,35 @@ def area(speed, families_used):
         for j, cell in enumerate(sorted(cells)):
             by_cell[cell] = share + (used - share * len(cells) if j == len(cells) - 1 else 0)
     return round(a, 1), inst, by_cell
+
+
+# The flow stages of one Synthesis and APR run, in order: the log phases each stage's runtime is
+# made of (nominal seconds, as the log prints them at CTU_MOCK_TIME_SCALE=1), the stage's timing
+# offset from the final routed-and-optimized slack (ps, the same for every path), and how much cell
+# area (um^2) and how many instances the design is short of its final count at the end of the stage.
+FLOW_STAGES = [
+    dict(stage="synthesis", label="Synthesis", phases=dict(elaborate=3, mapping=14, optimize=10), offsetPs=22.0, areaShortUm2=836.0, instancesShort=312, routed=False),
+    dict(stage="floorplan", label="Floorplan", phases=dict(floorplan=3), offsetPs=19.5, areaShortUm2=836.0, instancesShort=312, routed=False),
+    dict(stage="placement", label="Placement", phases=dict(place=14), offsetPs=-3.6, areaShortUm2=514.0, instancesShort=170, routed=False),
+    dict(stage="cts", label="CTS", phases=dict(cts=8), offsetPs=-8.2, areaShortUm2=262.0, instancesShort=96, routed=False),
+    dict(stage="route", label="Route", phases=dict(route=16), offsetPs=-14.6, areaShortUm2=262.0, instancesShort=96, routed=True),
+    dict(stage="postroute_opt", label="Post-route opt", phases=dict(optimize=8, timing=4), offsetPs=0.0, areaShortUm2=0.0, instancesShort=0, routed=True),
+]
+OPT_SECONDS_PER_EXTRA_LIBRARY = 4
+
+
+def flow_stages(speed, area_um2, instances, n_extra=0):
+    """QoR at the end of every flow stage of one build (see the module docstring): timing from the
+    final slacks shifted by the stage's offset, area and instances short of the final counts,
+    utilization against the core the floorplan sized for the final area, route DRC on the routed
+    stages (0: detailed route ends clean), runtime from the stage's log phases."""
+    core = area_um2 / CORE_UTILIZATION
+    out = []
+    for st in FLOW_STAGES:
+        t = timing(speed, st["offsetPs"])
+        area = round(area_um2 - st["areaShortUm2"], 1)
+        runtime = sum(st["phases"].values()) + (OPT_SECONDS_PER_EXTRA_LIBRARY * n_extra if st["stage"] == "postroute_opt" else 0)
+        out.append(dict(stage=st["stage"], label=st["label"], wnsNs=t["wnsNs"], tnsNs=t["tnsNs"], violatingEndpoints=t["violatingEndpoints"],
+                        areaUm2=area, instances=instances - st["instancesShort"], utilizationPct=round(100.0 * area / core, 1),
+                        routeDrcErrors=REFERENCE_DRC if st["routed"] else None, runtimeS=float(runtime)))
+    return out

@@ -106,6 +106,30 @@ class Calibration(unittest.TestCase):
         self.assertEqual(picked, [("XNOR3", "BUF"), ("XOR2", "AOI21")])
         self.assertEqual([model.recovery_ns({}, f) for f in ("XNOR3", "BUF", "XOR2", "AOI21")], [0.302, 0.191, 0.171, 0.14])
 
+    def test_flow_stages_worsen_through_routing_and_end_at_the_final_numbers(self):
+        def rows(sp, extra):
+            used = {f: ["X"] for f in sp}
+            a, inst, _ = model.area(sp, used)
+            return model.flow_stages(sp, a, inst, extra), model.timing(sp), a, inst
+        for sp, extra, wns_ps, tns in (({}, 0, [9.6, 7.1, -16.0, -20.6, -27.0, -12.4], [0.0, 0.0, -0.862, -1.21, -1.696, -0.596]),
+                                       (speed("XNOR3", "BUF"), 1, [17.2, 14.7, -8.4, -13.0, -19.4, -4.8], [0.0, 0.0, -0.241, -0.525, -1.012, -0.1])):
+            st, final, a, inst = rows(sp, extra)
+            self.assertEqual([s["stage"] for s in st], ["synthesis", "floorplan", "placement", "cts", "route", "postroute_opt"])
+            self.assertEqual([round(1000 * s["wnsNs"], 1) for s in st], wns_ps)
+            self.assertEqual([s["tnsNs"] for s in st], tns)
+            # optimistic synthesis, worse placement, CTS and route, then post-route opt recovers exactly
+            self.assertTrue(st[0]["wnsNs"] > 0 and st[2]["wnsNs"] > st[3]["wnsNs"] > st[4]["wnsNs"] < st[5]["wnsNs"])
+            last = st[-1]
+            self.assertEqual((last["wnsNs"], last["tnsNs"], last["violatingEndpoints"], last["areaUm2"], last["instances"], last["utilizationPct"]),
+                             (final["wnsNs"], final["tnsNs"], final["violatingEndpoints"], a, inst, 70.0))
+            self.assertTrue(all(x["areaUm2"] <= y["areaUm2"] and x["instances"] <= y["instances"] for x, y in zip(st, st[1:])), "area and instances grow")
+            self.assertEqual([s["routeDrcErrors"] for s in st], [None, None, None, None, 0, 0])
+            self.assertEqual([s["runtimeS"] for s in st], [27.0, 3.0, 14.0, 8.0, 16.0, 12.0 + 4 * extra])
+        ref, _, _, _ = rows({}, 0)
+        self.assertEqual([(s["areaUm2"], s["instances"], s["utilizationPct"]) for s in ref],
+                         [(40364.0, 18088, 68.6), (40364.0, 18088, 68.6), (40686.0, 18230, 69.1), (40938.0, 18304, 69.6), (40938.0, 18304, 69.6), (41200.0, 18400, 70.0)])
+        self.assertEqual(sum(s["runtimeS"] for s in ref), 80.0)
+
     def test_off_path_families_gain_nothing(self):
         for fam in ("OAI22", "MUX2", "NOR3"):
             self.assertEqual(model.timing(speed(fam))["fmaxMhz"], 1951.6, fam)
@@ -209,7 +233,14 @@ class Clis(unittest.TestCase):
             self.assertEqual(run(*argv).returncode, 0)
             b1 = json.loads((t / "b1" / "sapr_summary.json").read_text())
             self.assertEqual(b1["fmaxMhz"], 1980.98)
-            for name in ("report_qor.rpt", "postroute_timing.rpt", "area.rpt", "route_drc.rpt"):
+            ref = json.loads((t / "ref" / "sapr_summary.json").read_text())
+            for build in (ref, b1):
+                last = build["stages"][-1]
+                self.assertEqual((last["stage"], last["wnsNs"], last["tnsNs"], last["areaUm2"], last["instances"]),
+                                 ("postroute_opt", build["wnsNs"], build["tnsNs"], build["areaUm2"], build["instances"]))
+            self.assertEqual((ref["flowRuntimeS"], b1["flowRuntimeS"]), (80.0, 84.0))
+            self.assertIn("Post-route opt", (t / "ref" / "reports" / "flow_summary.rpt").read_text())
+            for name in ("report_qor.rpt", "postroute_timing.rpt", "area.rpt", "route_drc.rpt", "flow_summary.rpt"):
                 text = (t / "b1" / "reports" / name).read_text()
                 self.assertNotIn("mock", text.lower(), name)
             self.assertIn("(VIOLATED)", (t / "ref" / "reports" / "postroute_timing.rpt").read_text())
