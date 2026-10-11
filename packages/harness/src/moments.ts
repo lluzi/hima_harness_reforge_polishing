@@ -53,7 +53,11 @@ import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-tools';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parse } from 'yaml';
 import type { Ledger, MomentOutcome } from './ledger.js';
 // The two refusals a moment can arrive with, in the leaf every face recognises errors by type from.
 import { MomentTurnError, RunStartError } from './errors.js';
@@ -67,6 +71,67 @@ import { GOVERNED_TOOLS } from './authoring.js';
  * profile; the id is the directory's name, which is why it is spelled once, here.
  */
 export const HIMA_MOMENT_PRESET = 'hima-moment';
+
+/** rc.2 declares presets instead of scanning their former installed directories.
+ * Keep the existing Home definition and let the native registry own its generations. */
+export function installMomentPreset(ctx: Context, home: string): void {
+  ctx.inject(['agentPresets'], child => {
+    const installed = path.join(home, '.agent-presets', HIMA_MOMENT_PRESET);
+    const directory = existsSync(installed) ? installed : fileURLToPath(new URL('../presets/hima-moment/', import.meta.url));
+    // The published loader-expression schema represents !!js as { __jsExpr }.
+    // Preserve expressions for native entry activation, rather than evaluating them here.
+    const read = (file: string): unknown => {
+      let text = readFileSync(path.join(directory, file), 'utf8');
+      // The released metadata had an unquoted colon; the old scanner tolerated its parse failure.
+      // Decode only those exact shipped bytes; do not rewrite or repair user files.
+      if (file === 'preset.yml' && createHash('sha256').update(text).digest('hex') === '51b12acc5b12030615f036e7e76351525103fc851dbc30c939f9ca900a18ccf0') {
+        const line = text.split('\n').find(row => row.startsWith('description: '))!;
+        text = text.replace(line, `description: ${JSON.stringify(line.slice('description: '.length))}`);
+      }
+      return parse(text, {
+        customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (expression: string) => ({ __jsExpr: expression }) }],
+      });
+    };
+    let metadata: unknown;
+    try { metadata = read('preset.yml'); }
+    catch {
+      // As in the released scanner, optional display text does not grant a
+      // capability. Keep the installed executable definition and its bytes.
+      process.stderr.write(`hima: optional preset display metadata at ${directory} could not be read; native activation keeps the installed plugin definition.\n`);
+      metadata = {};
+    }
+    const plugins = read('agent.cordis.yml');
+    if (!Array.isArray(plugins)) {
+      throw new Error(`Invalid installed Hima moment preset at ${directory}; preserve it and repair its definition.`);
+    }
+    const display = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? metadata as { name?: unknown; description?: unknown; order?: unknown } : {};
+    const text = (value: unknown) => typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+    const name = text(display.name), description = text(display.description);
+    const order = typeof display.order === 'number' && Number.isFinite(display.order) ? display.order : undefined;
+    // Bare packages use the active profile's native resolution generation. Keep
+    // installed relative plugin/include paths anchored to their original directory.
+    const rebase = (rows: unknown[]): unknown[] => rows.map(value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      const row = { ...value } as Record<string, unknown>;
+      if (typeof row.name === 'string' && row.name.startsWith('.')) row.name = pathToFileURL(path.resolve(directory, row.name)).href;
+      if ((row.group === true || row.name === 'cordis:group' || row.name === '@deepseek-ai/cordis-plugin-group')
+          && Array.isArray(row.config)) row.config = rebase(row.config);
+      if ((row.name === 'cordis:include' || row.name === '@deepseek-ai/cordis-plugin-include')
+          && row.config && typeof row.config === 'object' && !Array.isArray(row.config)) {
+        const config = row.config as Record<string, unknown>;
+        if (typeof config.path === 'string' && config.path !== '' && !path.isAbsolute(config.path)
+            && !/^[a-z][a-z\d+.-]*:/i.test(config.path)) row.config = { ...config, path: pathToFileURL(path.resolve(directory, config.path)).href };
+      }
+      return row;
+    });
+    const registry = serviceOn(child, 'agentPresets');
+    if (!registry) throw new Error('Native agent preset registry disappeared during Hima preset installation');
+    return child.effect(() => registry.register({ id: HIMA_MOMENT_PRESET, plugins: rebase(plugins),
+      ...(name === undefined ? {} : { name }), ...(description === undefined ? {} : { description }),
+      ...(order === undefined ? {} : { order }) }), 'hima: installed moment preset registration');
+  });
+}
 
 /** The name of the prompt section a moment's instructions are registered as, for whoever reads one. */
 const INSTRUCTIONS_SECTION = 'hima:moment';
@@ -83,7 +148,10 @@ const INSTRUCTIONS_SECTION = 'hima:moment';
  */
 interface MomentServices {
   /** Compose this agent's scope from one preset; absent in a composition with no roster. */
-  readonly agentPresets?: { mount(agentCtx: Context, id: string): Promise<unknown> };
+  readonly agentPresets?: {
+    mount(agentCtx: Context, id: string): Promise<unknown>;
+    register(definition: { id: string; name?: string; description?: string; order?: number; plugins: unknown[] }): Promise<() => Promise<void>>;
+  };
   /** The prompt registry; `complete` makes one section the whole of a scope's system prompt. */
   readonly systemPrompt?: { section(section: { name: string; order: number; text: string; complete?: boolean }): unknown };
   /** dsh's one-shot approval; `never` answers `rejected` without dispatching an answerer. */

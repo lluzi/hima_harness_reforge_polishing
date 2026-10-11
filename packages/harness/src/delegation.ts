@@ -688,6 +688,21 @@ const noEvidence = (limitations: readonly string[] = []) => ({ artifactRefs: [],
 type ToolCallEvent = { readonly seq: number; readonly turn: number; readonly callId: string; readonly name: string; readonly arguments: string };
 type ToolResultEvent = { readonly seq: number; readonly turn: number; readonly callId: string; readonly isError: boolean; readonly meta?: unknown };
 
+/** Released V3/V4 native tool receipts share the same source/call identity. */
+export function nativeToolResult(message: unknown): { readonly callId: string; readonly isError: boolean } | undefined {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return undefined;
+  const row = message as Record<string, unknown>;
+  const source = row.source as { kind?: unknown; callId?: unknown } | undefined;
+  if (typeof row.id !== 'string' || row.id === '' || !source || source.kind !== 'tool'
+      || typeof source.callId !== 'string' || source.callId === '' || !Array.isArray(row.content)) return undefined;
+  const result = row.role === 'tool' ? row : row.role === 'user' && row.content.length === 1
+    && row.content[0]?.type === 'tool-result' ? row.content[0] as Record<string, unknown> : undefined;
+  if (!result || result.toolCallId !== source.callId || !Array.isArray(result.content)
+      || result.content.some(block => block && typeof block === 'object' && block.type === 'tool-result')
+      || (result.isError !== undefined && typeof result.isError !== 'boolean')) return undefined;
+  return { callId: source.callId, isError: result.isError === true };
+}
+
 function toolEvents(events: readonly NativeSessionEvent[], throughSeq: number): { calls: Map<string, ToolCallEvent>; results: ToolResultEvent[] } {
   const calls = new Map<string, ToolCallEvent>(); const results: ToolResultEvent[] = [];
   for (const event of events) {
@@ -698,19 +713,9 @@ function toolEvents(events: readonly NativeSessionEvent[], throughSeq: number): 
       calls.set(data.callId, { seq: event.seq, turn: data.turn as number, callId: data.callId, name: data.name, arguments: data.arguments });
     }
     if (event.type === 'tool/result' && Number.isSafeInteger(data.turn)) {
-      const message = data.message;
-      if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
-      const row = message as Record<string, unknown>;
-      const source = row.source as { kind?: unknown; callId?: unknown } | undefined;
-      if (typeof row.id !== 'string' || row.id === '' || !source || source.kind !== 'tool'
-          || typeof source.callId !== 'string' || source.callId === '' || !Array.isArray(row.content)) continue;
-      // V4 has a first-class tool message; retained V3 has one user-role wrapper.
-      const result = row.role === 'tool' ? row : row.role === 'user' && row.content.length === 1
-        && row.content[0]?.type === 'tool-result' ? row.content[0] as Record<string, unknown> : undefined;
-      if (!result || result.toolCallId !== source.callId || !Array.isArray(result.content)
-          || result.content.some(block => block && typeof block === 'object' && block.type === 'tool-result')
-          || (result.isError !== undefined && typeof result.isError !== 'boolean')) continue;
-      results.push({ seq: event.seq, turn: data.turn as number, callId: source.callId, isError: result.isError === true,
+      const result = nativeToolResult(data.message);
+      if (!result) continue;
+      results.push({ seq: event.seq, turn: data.turn as number, ...result,
         ...('meta' in data ? { meta: data.meta } : {}) });
     }
   }

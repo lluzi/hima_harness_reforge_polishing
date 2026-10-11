@@ -78,7 +78,7 @@ import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSave
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
 import { SiteUnreadableError } from './errors.js';
-import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
+import { installMomentPreset, momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
 import { openAuthoringSession, registerAuthoringGuard, terminalDenial, SHELL_TOOL, TERMINAL_TOOLS } from './authoring.js';
@@ -540,6 +540,7 @@ export default class Hima extends Service {
     await assertHomeExecutionAllowed({home:localDatabaseHome()});
     const retainedMaterialsDir = await resolveRetainedMaterialsDirectory({home:localDatabaseHome()});
     this.retainedMaterialsDir = retainedMaterialsDir;
+    installMomentPreset(this.ctx, localDatabaseHome());
     let databaseStarting: Promise<LocalDatabase>;
     let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
     let durableStarting: Promise<DurableRuntime> | undefined;

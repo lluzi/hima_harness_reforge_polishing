@@ -1,17 +1,74 @@
 // P02: released-session compatibility on an actual isolated Host; no model turn.
+// @hima-seam agent-presets direct
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type {} from '@deepseek-ai/dsh-agent-preset-registry';
 import { nativeSessionMemoryEvidence, prepareCampaignSession, readWorkMemorySummary, writeWorkMemorySummary } from '@hima/harness';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { homePatchFile } from '../../packages/desktop/src/hima-home.ts';
 import { constants, zstdCompressSync } from 'node:zlib';
-import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
+import { bootInProcess, createPresetRootAgent, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { createHimaHome } from './support/dsh-home.ts';
 import { retainTitleOnly, retainUserText } from './support/p02/native-history.ts';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
+
+test('the native preset registry consumes the retained Hima moment definition without rewriting legacy metadata or expressions', async t => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const directory = path.join(home.home, '.agent-presets/hima-moment');
+  const metadata = 'name: Hima moment\ndescription: One isolated model session for one purpose of a Campaign: the instructions of that purpose, the tools HimaFabric hands it, and nothing else.\norder: 50\n';
+  assert.equal(createHash('sha256').update(metadata).digest('hex'), '51b12acc5b12030615f036e7e76351525103fc851dbc30c939f9ca900a18ccf0');
+  const plugins = "- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n    prefix: !!js \"'retained preset prefix'\"\n    includeRuntimeContext: !!js false\n";
+  await writeFile(path.join(directory, 'preset.yml'), metadata);
+  await writeFile(path.join(directory, 'agent.cordis.yml'), plugins);
+  const host = await bootInProcess(home, { withWebApp: true });
+  try {
+    const registry = host.ctx.agentPresets;
+    const preset = (await registry.list()).find(row => row.id === 'hima-moment');
+    assert.equal(preset?.name, 'Hima moment');
+    assert.equal(preset?.broken, undefined);
+    const agent = await createPresetRootAgent(host.ctx, home.workspace, 'hima-moment');
+    assert.ok(String(agent.id).startsWith('session-'), 'actual native preset activation creates a Session');
+    assert.equal(await readFile(path.join(directory, 'preset.yml'), 'utf8'), metadata);
+    assert.equal(await readFile(path.join(directory, 'agent.cordis.yml'), 'utf8'), plugins);
+  } finally { await host.dispose(); }
+});
+
+test('an installed preset keeps a nested include without a dot prefix anchored to its original directory', async t => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const directory = path.join(home.home, '.agent-presets/hima-moment');
+  await writeFile(path.join(directory, 'agent.cordis.yml'), "- id: retained-group\n  name: '@deepseek-ai/cordis-plugin-group'\n  config:\n    - id: retained-include\n      name: '@deepseek-ai/cordis-plugin-include'\n      config:\n        path: extra.yml\n");
+  await writeFile(path.join(directory, 'extra.yml'), "- id: retained-local\n  name: './retained-plugin.mjs'\n  config:\n    prefix: !!js \"'kept-local'\"\n");
+  await writeFile(path.join(directory, 'retained-plugin.mjs'), "function retained(ctx,config){if(config.prefix!=='kept-local')throw new Error('Legacy preset expression was lost');ctx.systemPrompt.section({name:'legacy-local',order:0,text:config.prefix});}retained.inject=['systemPrompt'];export default retained;\n");
+  const host = await bootInProcess(home, { withWebApp: true });
+  try {
+    const registry = host.ctx.agentPresets;
+    const preset = (await registry.list()).find(row => row.id === 'hima-moment');
+    assert.equal(preset?.broken, undefined, 'native activation must load the original include and plugin');
+    assert.ok(await createPresetRootAgent(host.ctx, home.workspace, 'hima-moment'));
+    assert.match(await readFile(path.join(directory, 'agent.cordis.yml'), 'utf8'), /path: extra.yml/);
+  } finally { await host.dispose(); }
+});
+
+test('malformed optional preset display metadata preserves native activation and the installed plugin definition', async t => {
+  const home = await createHimaHome(); t.after(() => home.dispose());
+  const directory = path.join(home.home, '.agent-presets/hima-moment');
+  const metadata = 'name: [unterminated\n';
+  const plugins = await readFile(path.join(directory, 'agent.cordis.yml'), 'utf8');
+  await writeFile(path.join(directory, 'preset.yml'), metadata);
+  const host = await bootInProcess(home, { withWebApp: true });
+  try {
+    const preset = (await host.ctx.agentPresets.list()).find(row => row.id === 'hima-moment');
+    assert.ok(preset, 'display metadata is not a native capability requirement');
+    assert.equal(preset.name, undefined);
+    assert.equal(preset.broken, undefined);
+    assert.ok(await createPresetRootAgent(host.ctx, home.workspace, 'hima-moment'));
+    assert.equal(await readFile(path.join(directory, 'preset.yml'), 'utf8'), metadata);
+    assert.equal(await readFile(path.join(directory, 'agent.cordis.yml'), 'utf8'), plugins);
+  } finally { await host.dispose(); }
+});
 
 test('native metadata alone cannot qualify a conversation summary', async (t) => {
   const home = await createHimaHome(); t.after(() => home.dispose());

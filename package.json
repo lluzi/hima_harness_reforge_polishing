@@ -39,6 +39,7 @@
     "@hima/harness": "workspace:*",
     "@types/node": "^24.13.3",
     "typescript": "^5.9.3",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2"
   }
 }

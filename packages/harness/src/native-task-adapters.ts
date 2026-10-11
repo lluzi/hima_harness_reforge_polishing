@@ -12,7 +12,7 @@ import { interactiveSessionExists } from './interactive-job.js';
 import type { JobIdentity } from './ledger.js';
 import { HIMA_MOMENT_PRESET, openMoment, readMomentResult, type Moment } from './moments.js';
 import { workshopTools, readBack, type WorkshopScope, type WorkshopAuthority } from './workshop.js';
-import { createDelegation, delegationChildSessionId, delegationRequestDigest, readDelegationResult, cancelDelegation, followupDelegation, readNativeMessageReceipt, nativeMessagesCompletedThrough, type DelegationContract, type DelegationAuthority, type EffectiveDelegationContract, type OperatorDelegationGrant, type DelegationRuntimePolicy } from './delegation.js';
+import { createDelegation, delegationChildSessionId, delegationRequestDigest, readDelegationResult, cancelDelegation, followupDelegation, readNativeMessageReceipt, nativeMessagesCompletedThrough, nativeToolResult, type DelegationContract, type DelegationAuthority, type EffectiveDelegationContract, type OperatorDelegationGrant, type DelegationRuntimePolicy } from './delegation.js';
 import { executeTaskEffect, commandTaskAdapter, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type CommandTaskAdapterOptions, type EffectClosure, type TaskCollectionPending } from './task-effects.js';
 import { jsonDigest, type RunStore } from './run-store.js';
 import { createTaskResult, type JsonValue, type TaskToolOutput, type TaskIdentity } from './task-contract.js';
@@ -131,7 +131,10 @@ export async function readNativeTaskTurn(ctx: Context, sessionId: string): Promi
         const data=end.data as {turn?:number;reason?:{kind?:string}};
         if(!Number.isSafeInteger(data.turn)||typeof data.reason?.kind!=='string')return {state:'unknown',sessionId};
         const calls=new Set(log.events.filter(event=>event.type==='tool/call'&&(event.data as {turn?:number;name?:string})?.turn===data.turn&&(event.data as {name?:string}).name==='hima_workshop_write').map(event=>(event.data as {callId:string}).callId));
-        const writes=log.events.filter(event=>event.type==='tool/result'&&(event.data as {turn?:number})?.turn===data.turn).flatMap(event=>{const blocks=(event.data as {message?:{content?:{type?:string;toolCallId?:string;isError?:boolean}[]}})?.message?.content??[];return blocks.filter(block=>block.type==='tool-result'&&!block.isError&&block.toolCallId&&calls.has(block.toolCallId)).map(block=>block.toolCallId!);});
+        const writes=log.events.filter(event=>event.type==='tool/result'&&(event.data as {turn?:number})?.turn===data.turn).flatMap(event=>{
+            const result=nativeToolResult((event.data as {message?:unknown})?.message);
+            return result&&!result.isError&&calls.has(result.callId)?[result.callId]:[];
+        });
         const text=log.events.filter(event=>event.type==='assistant/message'&&(event.data as {turn?:number;interrupted?:boolean})?.turn===data.turn&&!(event.data as {interrupted?:boolean}).interrupted).flatMap(event=>(event.data as {message?:{content?:{type?:string;text?:string}[]}})?.message?.content??[]).filter(block=>block.type==='text').map(block=>block.text??'').join('');
         return {state:'ended',sessionId,turn:data.turn!,endSeq:end.seq,reason:data.reason.kind,text,successfulWriteCalls:writes};
     } catch(error) {return {state:'unknown',sessionId};}
