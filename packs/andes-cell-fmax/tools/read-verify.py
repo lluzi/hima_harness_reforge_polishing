@@ -2,17 +2,17 @@
 """Accept or refuse a verify delivery and state the round's cell facts from the tools themselves.
 
 argv: read-verify.py <REPORT> <OUT> <WORKSPACE>. The report is the Campaign's
-state/himatime-verify.json (the HimaTime agent: the worst paths re-timed with this round's new cells,
-each cell's FO4 against its stock cell) or state/qualib-screen.json (the Qualib agent: PASS or FAIL
-per new cell with reasons). The checks are the Pack's own validator in <WORKSPACE>/flow/andes_cli.py,
-the same one the agent's precheck runs: it asks HimaTime (`himatime verify --json`) and Qualib
-(`qualib screen --json`) for their deterministic answer on this round's cells and refuses a delivery
-whose numbers or decisions disagree with it.
+state/himatime-verify.json (the HimaTime agent: the cell-level check, which generated cells are kept)
+or state/qualib-screen.json (the Qualib agent: PASS or FAIL per kept cell with reasons). The checks
+are the Pack's own validator in <WORKSPACE>/flow/andes_cli.py, the same one the agent's precheck
+runs: it asks HimaTime (`himatime verify --json`) and Qualib (`qualib screen --json` on the kept
+cells) for their deterministic answer on this round's cells and refuses a delivery whose numbers or
+decisions disagree with it.
 
 The values are the tools' numbers, never the agent's text, and are the same on either branch so the
-join judges both branches by one rule set: local_gain_ps (HimaTime's gain on the worst path, ps) and
-cells_passed_screen (cells that pass the Qualib screen). An accepted delivery also gets its chart from
-the same tool answer: reports/himatime-verify/r<k>/local-gain.chart.json or
+join judges both branches by one rule set: cells_kept (HimaTime's kept cells) and cells_passed_screen
+(kept cells that pass the Qualib screen). An accepted delivery also gets its charts from the same
+tool answer: reports/himatime-verify/r<k>/cell-check.chart.json and top-cells.chart.json, or
 reports/qualib-screen/r<k>/screen.chart.json (andes_cli.check_chart).
 """
 import importlib.util
@@ -40,13 +40,12 @@ def main(report_path, out_path, workspace):
         raise ValueError("%s refused: %s" % (kind, error))
     values = [
         {"type": "verify_delivery_valid", "unit": "count", "value": 1},
-        {"type": "local_gain_ps", "unit": "ps", "value": facts["localGainPs"]},
+        {"type": "cells_kept", "unit": "count", "value": facts["cellsKept"]},
         {"type": "cells_passed_screen", "unit": "count", "value": facts["cellsPassedScreen"]},
-        {"type": "cells_faster_than_stock", "unit": "count", "value": facts["cellsFasterThanStock"]},
     ]
     try:
         print("wrote %s" % cli.check_chart(workspace, kind))
-    except (cli.ToolError, OSError, ValueError, KeyError) as error:
+    except (cli.ToolError, OSError, ValueError, KeyError, TypeError) as error:
         print("no %s chart: %s" % (kind, error), file=sys.stderr)
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)

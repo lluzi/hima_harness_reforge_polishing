@@ -7,124 +7,118 @@ Every agent delivers one JSON object as the `result` of its task and its reports
 there. Support paths are immutable: a repair in the same round writes the same path only if it is
 unchanged, otherwise a new name (e.g. `analysis-2.md`).
 
-## Cell requirements (hima-andes-requirements/1): himatime-agent, qualib-agent
+You never type a tool's numbers. **Draft** each file from the tool's own output, then write the
+`summary` (and the plan's `reason`) in your own words, and **precheck** it:
+
+```
+python3 <campaign>/flow/andes_cli.py draft <campaign> <kind> [<tool json>] > <file>
+python3 <campaign>/flow/andes_cli.py precheck <campaign> <kind> <file>
+```
+
+| kind | tool json | file |
+| --- | --- | --- |
+| `himatime` | `./hw/whatif.json` (`himatime whatif --scale 0.9 --out ./hw`) | arcs to customize |
+| `qualib` | `./ql/library_analysis.json` (`qualib analyze --arcs ./hw/whatif.json --out ./ql`) | cells and constraints |
+| `andescell` | none (it reads both accepted requirement files) | generation plan |
+| `himatime-verify` | `./hv/verify.json` (`himatime verify --out ./hv`) | cell-level check |
+| `qualib-screen` | `./qs/screen.json` (`qualib screen --cells ./hv/kept --out ./qs`) | cell screen |
+
+Without a tool json the draft asks the tool itself. The draft leaves `summary` (and `reason`)
+empty: the precheck refuses an empty one. Edit the file with your editor; keep it one JSON object.
+
+## Requirements (hima-andes-requirements/2): himatime-agent
 
 ```json
 {
-  "schema": "hima-andes-requirements/1",
+  "schema": "hima-andes-requirements/2",
   "agent": "himatime",
   "round": 1,
-  "summary": "The S-box/MixColumns paths set Fmax: XNOR3 and BUF stages carry 30 % of the worst path.",
-  "requirements": [
-    {
-      "family": "XNOR3",
-      "purpose": "Faster rising output for the S-box XNOR3 trees",
-      "target": "cell delay -10 % at fanout 4",
-      "evidence": "A1-A7 S-box paths; 3 XNOR3 stages, 84 ps of 512.4 ps on A1; HimaTime est. recovery 0.302 ns",
-      "priority": 1
-    },
-    {
-      "family": "BUF",
-      "purpose": "Mid-drive balanced buffer for the fanout-6..12 S-box nets",
-      "target": "cell delay -8 % at fanout 6",
-      "evidence": "BUF on all 20 worst paths, 4 stages and 13.3 % of A1; est. recovery 0.191 ns",
-      "priority": 2
-    }
+  "summary": "HimaTime narrows the design to its high-value cells; the what-if merges seven rankings into the arcs below, led by ...",
+  "arcs": [
+    { "cell": "ND2D1X", "from": "A1", "to": "ZN", "edge": "fall", "rankedBy": ["TNS", "TSC_F"], "tnsGainNs": 0.012, "wnsGainNs": 0.0 }
   ],
   "report": "reports/himatime-agent/r1/analysis.md"
 }
 ```
 
-- `agent`: `himatime` or `qualib` (your role). `round`: k.
-- `requirements`: 1-8 items (2-5 recommended). `family`: an AndesCell family (`andescell
-  families`; `XNOR2` means `XOR2`). `target`: text with a percentage. `evidence`: text or an object
-  naming paths, stages, report numbers. `priority`: 1-5 (1 highest) or high/medium/low.
-- `report`: `reports/<himatime-agent|qualib-agent>/r<k>/analysis.md`.
+- `arcs`: arcs of HimaTime's merged what-if list (`himatime whatif --scale 0.9`), each once, with
+  the rankings that name it and its best TNS and WNS what-if gain in ns, as HimaTime prints them.
+  You may leave arcs out; you may not add one or change a number.
 
-## Generation plan (hima-andes-plan/1): andescell-agent
+## Requirements (hima-andes-requirements/2): qualib-agent
 
 ```json
 {
-  "schema": "hima-andes-plan/1",
+  "schema": "hima-andes-requirements/2",
+  "agent": "qualib",
+  "round": 1,
+  "summary": "ULVT is already the fastest Vt on most of the requested arcs; LVT and SVT are slower; only a custom cell helps.",
+  "cells": ["ND2D1X", "INVD2X"],
+  "constraints": { "footprint": "same area and pins as the stock cell", "inputCapMaxRatio": 1.3, "lvs": "match" },
+  "report": "reports/qualib-agent/r1/analysis.md"
+}
+```
+
+- `cells`: cells of `qualib analyze` on the what-if arcs, each once. `constraints`: Qualib's own
+  (`inputCapMaxRatio` and `lvs` as the analysis states them; `footprint` in words).
+
+## Generation plan (hima-andes-plan/2): andescell-agent
+
+```json
+{
+  "schema": "hima-andes-plan/2",
   "agent": "andescell",
   "round": 1,
-  "summary": "Both lists ask for XNOR3; XNOR3 and BUF have the most estimated recovery on the S-box paths.",
-  "families": [
-    { "family": "XNOR3", "reason": "Asked by both agents; 16.4 % of the worst path, the largest estimated recovery", "estRecoveryNs": 0.302 },
-    { "family": "BUF", "reason": "On all 20 worst paths; second largest estimated recovery", "estRecoveryNs": 0.191 }
-  ],
-  "skipped": [
-    { "family": "XOR2", "reason": "Third by estimated recovery (0.171 ns); AndesCell builds two families a round" },
-    { "family": "MUX2I", "reason": "0.104 ns estimated recovery; the key-expansion paths come after the S-box paths" }
-  ],
+  "summary": "Every arc HimaTime asked for sits on a cell Qualib lists; the plan takes them all.",
+  "arcs": [ { "cell": "ND2D1X", "from": "A1", "to": "ZN", "edge": "fall" } ],
+  "settings": { "iterations": 50, "scale": 0.9 },
+  "reason": "All arcs both lists allow, at the Site's AndesCell settings: 50 iterations per arc toward a 10 % faster arc.",
   "report": "reports/andescell-agent/r1/analysis.md"
 }
 ```
 
-- `families`: 1-2 families that one of this round's lists requested, AndesCell has a template for,
-  and the library does not hold yet. `estRecoveryNs` is HimaTime's, from
-  `timingState.stageBreakdown` (to 3 decimals). `reason`: a sentence.
-- `skipped`: every other requested family not yet delivered, with a reason (families already
-  delivered may be listed too).
-- `report`: `reports/andescell-agent/r<k>/analysis.md`.
+- `arcs`: each one of the HimaTime agent's arcs whose cell the Qualib agent lists, each once.
+- `settings`: `iterations` 50 and `scale` 0.9 (the Site's AndesCell data). `reason`: a sentence or two.
 
-## Cell timing (hima-andes-cell-timing/1): himatime-verify
-
-Copy HimaTime's numbers from `himatime verify --paths 8` (`verify.json`).
+## Cell-level check (hima-andes-cell-check/1): himatime-verify
 
 ```json
 {
-  "schema": "hima-andes-cell-timing/1",
+  "schema": "hima-andes-cell-check/1",
   "agent": "himatime",
   "round": 1,
-  "summary": "With the new XNOR3 and BUF cells the worst path A1 is 16.88 ps faster; key expansion (B1) limits Fmax next.",
-  "worstPath": "A1",
-  "localGainPs": 16.88,
-  "paths": [
-    { "id": "A1", "beforePs": 512.4, "afterPs": 495.52, "gainPs": 16.88 },
-    { "id": "B1", "beforePs": 509.0, "afterPs": 503.94, "gainPs": 5.06 }
-  ],
-  "cells": [
-    { "name": "ANDES_XNOR3_F1_R1", "fo4Ps": 25.2, "stockCell": "XNOR3_X1", "stockFo4Ps": 28.0 }
-  ],
+  "summary": "HimaTime keeps the generated cells whose arc beats the stock cell; the rest are dropped.",
+  "generated": 6, "kept": 4, "dropped": 2,
+  "keptArcs": ["ND2D1X_A1_ZN_fall"],
   "report": "reports/himatime-verify/r1/analysis.md"
 }
 ```
 
-- `worstPath`, `localGainPs`: HimaTime's worst path of the build this round started from and its
-  gain in ps with the new cells. `paths`: worst first, at least the worst path; every listed path
-  is one of HimaTime's 8 with its numbers. `cells`: every new cell of `generation`, with its FO4
-  and its stock cell's. Numbers agree with HimaTime within 0.5 ps.
-- `report`: `reports/himatime-verify/r<k>/analysis.md`; deliver `verify.rpt` beside it.
+- `generated`, `kept`, `dropped` and `keptArcs` (arc names `<cell>_<from>_<to>_<edge>`) exactly as
+  `himatime verify` reports them for `<campaign>/<generation.dir>` against the build this round
+  started from.
 
-## Cell screen (hima-andes-cell-screen/1): qualib-screen
+## Cell screen (hima-andes-cell-screen/2): qualib-screen
 
 ```json
 {
-  "schema": "hima-andes-cell-screen/1",
+  "schema": "hima-andes-cell-screen/2",
   "agent": "qualib",
   "round": 1,
-  "summary": "4 of 6 cells pass; both extra-fast variants fail on leakage and input capacitance.",
+  "summary": "Every kept cell keeps the footprint and passes LVS; input capacitance stays within 1.30x.",
   "cells": [
-    { "name": "ANDES_XNOR3_F1_R1", "status": "PASS", "reasons": [] },
-    { "name": "ANDES_XNOR3_XF4_R1", "status": "FAIL", "reasons": ["input cap 1.34x stock > 1.30x", "leakage 2.90x stock > 2.50x"] }
+    { "arc": "ND2D1X_A1_ZN_fall", "status": "PASS", "reasons": [] },
+    { "arc": "INVD2X_I_ZN_rise", "status": "FAIL", "reasons": ["input cap 1.341x stock > 1.30x"] }
   ],
   "report": "reports/qualib-screen/r1/analysis.md"
 }
 ```
 
-- `cells`: every new cell of `generation` exactly once. A cell that `qualib screen` fails cannot
-  be PASS; a FAIL needs its reasons. Only PASS cells enter the rebuild.
-- `report`: `reports/qualib-screen/r<k>/analysis.md`; deliver `cell_screen.rpt` beside it.
+- `cells`: every cell HimaTime keeps, exactly once. A cell that `qualib screen` fails cannot be
+  PASS; a FAIL needs its reasons. Only PASS cells enter the rebuild.
 
-## Precheck and delivery
+## Delivery
 
-```
-python3 <campaign>/flow/andes_cli.py precheck <campaign> <kind> <your file>
-```
-
-`<kind>` is `himatime`, `qualib`, `andescell`, `himatime-verify` or `qualib-screen`. It runs the
-same check as the Pack's Reader (for the verify files it asks HimaTime and Qualib for their own
-answer) and prints every problem, or `precheck PASS`. Deliver the file as the one `result` artifact
-and your reports as `support`. A refused delivery comes back with the problems; repair it in the
-same task.
+Deliver the file as the one `result` artifact and your reports as `support`. A refused delivery
+comes back with the problems; repair it in the same task (draft again from the tool output when the
+numbers are off).

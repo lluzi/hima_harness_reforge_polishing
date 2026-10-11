@@ -1,20 +1,21 @@
 ## Business
 
-A chip designer wants `aes_cipher_top` (28 nm, stock library `std9t_svt`, 0.500 ns clock) to run
-faster without touching the RTL or the clock, by adding custom standard cells to the library. The
-delivery is a new cell library and the evidence that it raises Fmax: a before/after table of the
-new-library build against the reference build.
+A chip designer wants `openc910` (the OpenC910 dual-core RISC-V CPU, 7 nm-class stock libraries,
+0.500 ns clock) to close timing better without touching the netlist or the clock, by adding custom
+standard cells to the library. The delivery is a custom-cell library and the evidence that it
+improves timing at the end of route: a before/after table of the custom-cell build against the
+reference build.
 
 ## Golden Flow
 
-Start from an RTL2GDS flow (Synthesis and APR), post route, load the design into HimaTime. One
-resident agent of HimaTime analyses the design's Fmax and, at the same time, a Qualib resident agent
-analyses the cell library and the design's critical-path information. These two branches propose
-standard-cell customization requirements and merge into an AndesCell resident agent, which chooses
-the cells to generate; AndesCell generates them. The new cells go back to the HimaTime agent, which
-re-times the worst paths with them and must measure a positive local gain, and to the Qualib agent,
-which screens each cell. The cells that pass are fed back to the RTL2GDS flow and yield better Fmax.
-Loop rounds until the target.
+Start from an RTL2GDS flow (placement, CTS and route), load the design into HimaTime. One resident
+agent of HimaTime analyses the design's high-value cells and ranks their arcs by what-if gain and,
+at the same time, a Qualib resident agent analyses the stock libraries for those cells. These two
+branches propose customization requirements and merge into an AndesCell resident agent, which plans
+the arcs to generate; AndesCell generates them. The new cells go back to the HimaTime agent, which
+keeps the cells with a positive cell-level gain, and to the Qualib agent, which screens each kept
+cell. The cells that pass are fed back to the RTL2GDS flow and yield better timing. Loop rounds
+until the target.
 
 Version 0.2 (user, 2026-10-10, the strip demo): "The flow starts with a baseline RTL2GDS flow, then
 HimaTime agent and Qualib agent two branches split, merged to AndesCell agent, fed back to HimaTime
@@ -22,46 +23,44 @@ agent and Qualib agent with a measured local positive gain, then fed back to the
 App draws it as four stations in a phone-width strip; every step leaves its tool reports where the
 App's Reports tab reads them.
 
-Version 0.3 (user, 2026-10-10, strip demo v3): one round demonstrates the App. "Pretend this is a
-~2 GHz design": the target is +1 % Fmax, a custom cell gives about 5–10 % at cell level, the data
-path has 20–30 levels of logic, and no single cell contributes 100+ ps. The chat shows charts whose
-numbers come from the tools: the Guide's design charts, each agent's "why these cells" chart before
-the AndesCell agent, the local gain and the before/after comparison.
-
 Version 0.3.1 (user, 2026-10-10): "we need some data and chart and metric on the RTL2GDS flow, a
-initial summary and ending with a comparison." Synthesis and APR reports its QoR per flow stage;
-the reference build leaves a metric summary and a slack-through-the-flow chart, and the round ends
-with a metric comparison against the reference and the same flow chart for both builds.
+initial summary and ending with a comparison."
+
+Version 0.4.0 (user, 2026-10-10): the demo runs on real DTCO data of OpenC910 that the user
+supplied, replayed by the Site's tools; every number the App shows comes from that data, and the
+displayed data and reports match each other exactly. Amendment (user, 2026-10-10): the comparison is
+at the end of route (prePlace → place_opt → CTS → route), path group reg2reg; the measure is the
+worst-slack gain as a share of the clock period; show off the real data (path groups, clock tree,
+the high-value funnel, real cell names, the kept cells). No Fmax.
 
 ## Answers
 
-- Tools on screen: AndesCell (cell generation), HimaTime (STA), Synthesis and APR (synthesis + APR),
-  Qualib (library analysis, cell screen), XTop (timing ECO; installed on the Site, not a step).
-- The tools run on the demo Site `eda_cluster_ctu_01` (user, 2026-10-10: a real App run with real
-  agents and fast demo tools, several rounds in about an hour). The claim boundary in every round
-  record and in the Report states that the EDA results are mock results.
-- The AI agents are real OpenCode resident agents; they run the tools themselves in their sandbox.
-  Five resident steps a round: HimaTime and Qualib propose, AndesCell chooses, HimaTime and Qualib
-  verify. At most two run at once, within the Site's three job slots.
+- Tools on screen: AndesCell (cell generation), HimaTime (STA, high-value cells, cell what-if,
+  cell-level check), Synthesis and APR (placement, CTS, route), Qualib (library analysis, cell
+  screen), XTop (timing ECO; installed on the Site, not a step).
+- The tools run on the demo Site `eda_cluster_ctu_01` and replay the design data installed there.
+  The claim boundary in every round record and in the Report states the Site's basis; nothing on
+  screen says "mock" or "model".
+- The AI agents are real OpenCode resident agents; they run the tools themselves in their sandbox
+  and draft their deliveries from the tools' own output. Five resident steps a round: HimaTime and
+  Qualib propose, AndesCell plans, HimaTime and Qualib verify. At most two run at once.
 - Reports: each node's human-readable tool reports and each agent's analysis live at
-  `reports/<node id>/r<k>/` in the Campaign workspace; the App shows them in small type in the strip
-  (user, 2026-10-10). Nothing on screen says "mock"; the claim boundary stays in the round records,
-  the summary and the Report.
-- Goal: Fmax gain over the reference build of at least 1 % (default); one round is expected to
-  reach it (round 1: +1.51 %), and the Campaign allows two.
+  `reports/<node id>/r<k>/` in the Campaign workspace.
+- Goal: worst-slack gain at route of at least 1 % of the clock period (default); one round is
+  expected to reach it, and the Campaign allows two.
 
 ## Ambiguities resolved
 
-- "Better Fmax" is 1000 / (0.500 ns − worst slack) of the new-library build against the reference
-  build of the same design at the same clock; rounds accumulate cells, so each round's build has
-  every earlier round's accepted cells.
-- AndesCell builds at most two families per round. The AndesCell agent chooses them from both
-  lists by HimaTime's estimated recovery; a family that is on no worst path gains nothing, so the
-  agents' analysis decides the result.
-- "Local gain" is HimaTime's re-timing of the worst paths of the build the round started from with
-  the new cells: the worst path's delay before minus after, in ps. It must be above 0 ps, and at
-  least one cell must pass the Qualib screen, before the rebuild.
-- Cells that fail the Qualib screen never enter a build (dont-use).
+- "Better timing" is the reg2reg worst slack at the end of route of the custom-cell build against
+  the reference build of the same design at the same clock, as a share of the clock period; TNS and
+  violating paths are shown beside it.
+- Agents deal in arcs (cell, from pin, to pin, edge): AndesCell builds one custom cell per arc.
+  HimaTime's arcs are its merged what-if list; Qualib's are the cells the stock libraries cannot make
+  faster; the plan is the arcs both allow.
+- "Local positive gain" is HimaTime's cell-level check: a generated cell is kept when its arc beats
+  the stock cell's. At least one cell must be kept, and at least one kept cell must pass the Qualib
+  screen, before the rebuild.
+- Cells that are not kept or fail the screen never enter a build.
 
 ## Knowledge applied
 

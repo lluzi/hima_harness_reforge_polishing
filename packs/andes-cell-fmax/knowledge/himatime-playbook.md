@@ -1,64 +1,55 @@
 # HimaTime agent playbook
 
-You own the timing view of the round, twice: first (`himatime-agent`) where the worst paths of
-`aes_cipher_top` spend their time and which cell families would give the most Fmax back if
-AndesCell made them faster; then (`himatime-verify`) how much faster the worst paths are with the
-cells AndesCell built.
+You own the timing view of the round, twice: first (`himatime-agent`) which cell arcs of OpenC910
+would give the most timing back if AndesCell made them faster; then (`himatime-verify`) which of the
+cells AndesCell built really are faster than their stock cells (the cell-level check).
 
 ## Read first
 
-- `timingState` (`state/timing.json`): `round` (your k), `source`, `fmaxMhz`, `wnsNs`,
-  `worstPaths` (id, group, start/end, slack, cell delay by family) and `stageBreakdown` (per family:
-  stages, cell delay, ps per stage, share of path delay, worst-path share, `estRecoveryNs`, the
-  worst path's own slack back `worstPathRecoveryPs`, achievable speed-up, whether it is already
-  generated).
-- `lessons` (`state/lessons.json`): earlier rounds, what was requested, picked, skipped, gained.
-- `library` (`state/library.json`): families already delivered. They are not generated again.
+- `timingState` (`state/timing.json`): `round` (your k), `buildDir` (the routed build this round
+  starts from), `wnsNs`/`tnsNs`/`nvp` (reg2reg at route), `paths` (the 8 worst), `breakdown` (where
+  the worst path's time goes) and `highValue` (HimaTime's high-value summary).
+- `lessons` (`state/lessons.json`): earlier rounds. `library` (`state/library.json`): cells already delivered.
 
-## Analyse
+## Analyse (himatime-agent)
 
-1. `himatime report --db <campaign>/<timingState.buildDir> --stages --paths 5` prints the summary,
-   the stage table and the 5 worst paths in full (Startpoint/Endpoint, every cell with its incr
-   and path delay, slack). Look at which cell types repeat on the worst path and its neighbours.
-2. Group by path group: S-box/MixColumns paths are XNOR3/BUF/XOR2-heavy, key expansion is
-   XOR2/MUX2I-heavy, load/round control is AOI21/OAI21-heavy, output decode is NAND2/NOR2-heavy.
-   The worst group sets Fmax now; the next group sets it once the worst one is fixed.
-3. `estRecoveryNs` is HimaTime's own ranking signal (criticality-weighted slack it expects back
-   over all the worst paths); AndesCell ranks your families by it. `worstPathSharePct` and
-   `worstPathRecoveryPs` tell you what limits Fmax right now. A stage is 10–30 ps: no single cell
-   is slow, so look for the families with the most stages and the slowest stages on the worst path.
-4. Check your top pair: `himatime estimate --db <campaign>/<buildDir> --families XNOR3,BUF` prints
-   the estimated Fmax with both families faster, to set against the Goal. Other pairs may estimate
-   differently; your list's order follows the estimated recovery, which is what AndesCell ranks by.
-5. Net delay is about a sixth of path delay and no cell changes it; DFF clock-to-Q helps only a
-   little (−5 % achievable).
+With `db = <campaign>/<timingState.buildDir>`, in your private workspace:
 
-## Write
+1. `himatime highvalue --db <db> --out ./hv` writes `high_value_cells.rpt` and `high_value.json`:
+   the design's cells, the high-value instances (the top instances per rank type: logic depth,
+   logic dimension, count, count × delay, count × slack), the library cells they use and the
+   **listed high-value cells**, by family. These are the cells that sit on the most critical logic.
+2. `himatime whatif --db <db> --scale 0.9 --out ./hw` writes seven rankings
+   (`cell_what_if_sort_by_<KEY>.rpt`: TNS, WNS, NVP, and the slack-contribution keys) of what each
+   cell arc would give back if its delay were 10 % lower, the top 50 of each, and `whatif.json`
+   with the **merged** arcs (union, deduplicated, the arcs most rankings name first).
+3. Read the rankings: which arcs give the most TNS back (`tns_delta_ns`), which move the worst
+   slack (`wns_delta_ns`), which several rankings agree on. An arc is a cell, an input pin, an
+   output pin and an edge (rise or fall): AndesCell makes one custom cell per arc.
+4. The worst path itself is mostly an SRAM access (`breakdown`); no standard cell changes that. The
+   custom cells work on the many paths just behind it: expect TNS and violating paths to move more
+   than the worst slack.
 
-- 2-5 requirements, highest impact first (priority 1, 2, ...). The first two decide this round.
-- Each requirement: `family` (an AndesCell family: `andescell families`), `purpose` (what the cell
-  must do better, e.g. "faster rising output on the S-box XNOR3 trees"), `target` with a percentage
-  (`"cell delay -10 % at fanout 4"`; AndesCell's typical reach per family is the stage table's
-  achievable column, 4–10 %), `evidence` (paths and numbers: "A1-A7: 3 XNOR3 stages, 84 ps of
-  512.4 ps on A1 (16.4 %), est. recovery 0.302 ns"), `priority`.
-- `reports/himatime-agent/r<k>/analysis.md`: what you ran, what you found (the numbers), why these
-  families, what you expect the round to give (the estimate), and what will limit Fmax next. Keep
-  HimaTime's `stage_breakdown.rpt` and `report_timing.rpt` beside it (`himatime load --db
-  <campaign>/<timingState.buildDir> --out ./ht` writes both) and deliver them all as support.
+## Write (himatime-agent)
 
-## Verify the new cells (himatime-verify)
+- `python3 <campaign>/flow/andes_cli.py draft <campaign> himatime ./hw/whatif.json > requirements.json`
+  writes the requirements with every merged arc and its `rankedBy`, `tnsGainNs` and `wnsGainNs`
+  from HimaTime. You may remove arcs you do not want customized (say why in the analysis); never add
+  arcs or change numbers: the precheck holds them to HimaTime's own answer.
+- Write `summary`: how far the high-value analysis narrows the design (cells → high-value instances
+  → listed cells → arcs) and the top three arcs by TNS gain, with their cell names.
+- `reports/himatime-agent/r<k>/analysis.md`: what you ran, the funnel, the top arcs, how many
+  rankings agree, what you expect. Keep `high_value_cells.rpt` and the `cell_what_if_sort_by_*.rpt`
+  files beside it and deliver them all as support.
 
-1. Read `generation` (`state/generation.json`): the cells AndesCell built this round and `dir`,
-   where they are. The build to re-time is `<campaign>/<timingState.buildDir>`, the one this round
-   started from.
-2. `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<timingState.buildDir>
-   --paths 8 --out ./hv` writes `verify.rpt` and `verify.json`: the 8 worst paths worst first, each
-   with its delay before and after the new cells and the gain in ps; the **local gain** (the worst
-   path's gain); every new cell's FO4 against its stock cell; and a design estimate.
-3. A positive local gain says the cells help where they sit. Say which paths gain the most, which
-   gain nothing (no new cell on them) and which path group will limit Fmax after the rebuild.
-4. The extra-fast variants (`XF...`) are faster still but may not pass the Qualib screen, which
-   runs at the same time; the rebuild uses only the cells that pass.
-5. Copy HimaTime's numbers into the cell-timing file (`hima-andes-cell-timing/1`); the precheck
-   holds them against HimaTime's own answer. Keep `verify.rpt` and `analysis.md` in
-   `reports/himatime-verify/r<k>/` and deliver them as support.
+## Check the new cells (himatime-verify)
+
+1. Read `generation` (`state/generation.json`): the counts and `dir`, where the cells are.
+2. `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<timingState.buildDir> --out ./hv`
+   writes `verify.rpt`, `verify.json` and `kept/`: per generated cell its best version, arc delay
+   in ps and the Δ HimaTime reports, and whether it is kept (positive cell-level gain).
+3. `python3 <campaign>/flow/andes_cli.py draft <campaign> himatime-verify ./hv/verify.json > check.json`
+   writes `generated`, `kept`, `dropped` and `keptArcs` from HimaTime. Write `summary`: kept of
+   generated, the families with the most kept cells, what the dropped cells mean (no cell-level gain:
+   they never enter a build). Quote Δ as HimaTime reports it; do not reinterpret it.
+4. Keep `verify.rpt` and `analysis.md` in `reports/himatime-verify/r<k>/` and deliver them as support.

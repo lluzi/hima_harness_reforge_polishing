@@ -1,6 +1,6 @@
 id: round-valid
-version: "0.1.0"
-title: The new-library build finished cleanly with screened and verified cells only
+version: "0.4.0"
+title: The custom-cell build finished at the reference clock with kept and screened cells only
 requires: [{ type: round_valid }]
 subject: { type: round_valid }
 predicate: { op: eq, threshold: 1, unit: count }
