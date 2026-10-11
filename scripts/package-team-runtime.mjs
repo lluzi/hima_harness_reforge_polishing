@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { constants, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, realpathSync, rmSync } from 'node:fs';
+import { constants, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { readTeamRuntimeManifest } from '../packages/harness/lib/team-service-runtime.js';
 import { hashFile } from './package-native-audit.mjs';
 const fail = message => { throw new Error(`package-team-runtime: ${message}`); };
@@ -89,18 +89,21 @@ export async function packageTeamMemberRuntime({prefix,output,pinFile,imageInput
   if(!manifest.engineeringEngine)fail('member SDK requires the fixed private engine closure');
   const {assembleTeamMemberImage}=await import('./assemble-team-member-image.mjs');
   const imageFile='engine/member-sdk.oci.tar',receiptFile='engine/member-sdk-receipt.json',sourcesFile='engine/member-sdk-sources.json';
-  const receipt=await assembleTeamMemberImage({...imageInputs,output:path.join(output,imageFile),internalCandidate:true});
+  const imageDestination=path.join(output,imageFile);
+  const assemblyDestination=existsSync(imageDestination)?path.join(output,'engine/member-sdk.next.oci.tar'):imageDestination;
+  const receipt=await assembleTeamMemberImage({...imageInputs,output:assemblyDestination,internalCandidate:true});
   if(receipt.memberReady!==false||receipt.platform.os!=='linux'||receipt.platform.architecture!==(manifest.engineeringEngine.guestPlatform==='linux-arm64'?'arm64':'amd64'))fail('SDK assembly target/readiness differs');
   const sourceBytes=readFileSync(imageInputs.sourceManifestFile);
   if(createHash('sha256').update(sourceBytes).digest('hex')!==receipt.sourceManifestSha256)fail('SDK source provenance changed before staging');
   const {writeFileSync}=await import('node:fs');
   writeFileSync(path.join(output,receiptFile),JSON.stringify(receipt));writeFileSync(path.join(output,sourcesFile),sourceBytes);
   const oldImage=manifest.engineeringEngine.image.file;
-  delete manifest.files[oldImage];rmSync(path.join(output,oldImage));
+  if(oldImage!==imageFile){delete manifest.files[oldImage];rmSync(path.join(output,oldImage));}
+  if(assemblyDestination!==imageDestination)renameSync(assemblyDestination,imageDestination);
   manifest.engineeringEngine.image={file:imageFile,sha256:receipt.archiveSha256,bytes:receipt.archiveSize,manifestSha256:receipt.manifestDigest.replace(/^sha256:/,''),configSha256:receipt.configDigest.replace(/^sha256:/,''),layers:receipt.layers.map(layer=>({sha256:layer.digest.replace(/^sha256:/,''),bytes:layer.size})),qualification:'trusted-fixture-only'};
   for(const file of [imageFile,receiptFile,sourcesFile])manifest.files[file]=hashFile(path.join(output,file));
   const engine=manifest.components.find(component=>component.id==='engineering-engine');
-  engine.requiredFiles=engine.requiredFiles.filter(file=>file!==oldImage).concat(imageFile,receiptFile,sourcesFile);
+  engine.requiredFiles=[...new Set(engine.requiredFiles.filter(file=>![oldImage,imageFile,receiptFile,sourcesFile].includes(file)).concat(imageFile,receiptFile,sourcesFile))];
   const manifestBytes=JSON.stringify(manifest);writeFileSync(path.join(output,'team-runtime.json'),manifestBytes);
   const next=JSON.parse(readFileSync(pinFile,'utf8')),platform=manifest.platform,closure=next.platformAssets[platform];
   const fixed=next.components.find(component=>component.id==='engineering-engine');

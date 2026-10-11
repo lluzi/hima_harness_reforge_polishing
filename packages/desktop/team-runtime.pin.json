@@ -287,9 +287,9 @@
             "engine/bin/vfkit": "67114bab764a1e42b0d21da69ece2a3f88beb8378d5668da5cd4126d8cd0a62a",
             "engine/bin/gvproxy": "c780d214f74dad611255148665cc1d0c0849ad3787d6ea8d22e96849dddbaa95",
             "engine/podman-machine.aarch64.applehv.raw.zst": "633971788fcfe7df04f49da53f06c98b28933c5df2f684d57c2f9831411cac77",
-            "engine/member-sdk.oci.tar": "4af56e03ea4ad4753b17a391d1c3b81a54a986ae7a3f7d4980ddbeb3c6fa6479",
-            "engine/member-sdk-receipt.json": "591f98108e37cd64ff9e22faf625e13fd7784e6068f655e61112756156f764bc",
-            "engine/member-sdk-sources.json": "59edd44528b712f7a7bddc367a2c205c8549802c02751942c29693141f8d53e5",
+            "engine/member-sdk.oci.tar": "65fe76f3b530ad7102536990d2565434dbd06c3d072fd71a448fbbb07b7617da",
+            "engine/member-sdk-receipt.json": "e505475a0ad1416415fd799f2d64c2c53b63d221277cfd27823d67810371eb0b",
+            "engine/member-sdk-sources.json": "4b66f2fbc8d5341b08025a59c18cea3404824165b924ddfa989179daefd03ca6",
             "engine/LICENSE": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
           }
         }
@@ -299,8 +299,8 @@
   "platformAssets": {
     "darwin-arm64": {
       "qualification": "asset-assembly-only",
-      "manifestSha256": "1b2e21757b7424b5ee89e5fda69ef25864377e3a8ec744310f5acd3412c4f52c",
-      "inventorySha256": "1f32d7c0bd1e1b95ffa3c65e50b4343f7bf5e2cefad5d89c4c5b8e3c5dedf071",
+      "manifestSha256": "8be8ec4bea1463220a72601d525fd509448d62eef511b836efc686b25def173c",
+      "inventorySha256": "414c796af84f9d9697586d1a69a57f9df614d3ca449219e771d201cd7424077c",
       "fileCount": 52543,
       "requiredComponents": [
         "hindsight",
@@ -338,7 +338,7 @@
       "nativeEvidence": "macOS 26.5.2 arm64 relocated authenticated readiness, online backup, owned stop and CPU local models; no clean installer or sandbox qualification",
       "releaseBlockers": [
         "Native Linux x64 SDK/helper/cohort and clean installation are unqualified",
-        "Four exact npm notice gaps (AWS three packages and proxy-agent-negotiate), Python/native transitive obligations and GPL/LGPL corresponding-source coverage remain unclosed",
+        "Proxy-agent-negotiate lacks a full applicable notice; AWS producer build provenance, Python/native transitive obligations and GPL/LGPL corresponding-source coverage remain unclosed",
         "Only a trusted namespace fixture is admitted; configured model/research/GitHub destinations, DNS/CDN/expiry/external IPv6 and full member isolation require qualification",
         "Final clean installer, active Team composition and business acceptance remain with their declared owners"
       ],
@@ -360,10 +360,10 @@
         },
         "image": {
           "file": "engine/member-sdk.oci.tar",
-          "sha256": "4af56e03ea4ad4753b17a391d1c3b81a54a986ae7a3f7d4980ddbeb3c6fa6479",
-          "bytes": 511858688,
-          "manifestSha256": "37f627ec8284df8afd2aaaf51c1c21966bc26b6a1ec8c2fce16891f4f0bec586",
-          "configSha256": "5b85228ad9c434283f92be24858a074c4b06f9e80d569bdb67659c25786a52c2",
+          "sha256": "65fe76f3b530ad7102536990d2565434dbd06c3d072fd71a448fbbb07b7617da",
+          "bytes": 511860224,
+          "manifestSha256": "aa3614c084195061b5191e738ced5cdfb8e5274a703232f162c5062dfce6d986",
+          "configSha256": "4bbaea1b5bdab932dc78d822119295d4a503f8ab4c7795f68994d82592eb7c9d",
           "layers": [
             {
               "sha256": "db86109db3a878cad2671ab822c9b43afbab6a5e1a67658d760dc0b15e7b75d5",
@@ -398,8 +398,8 @@
               "bytes": 446
             },
             {
-              "sha256": "21a6e20a965318350d10f6a7ce1bcf45b53ac9f49b28524d5d59843e14e1af39",
-              "bytes": 111174250
+              "sha256": "c82a9949318ef441f5c7a9151990a2ca60f904a36acd452997a8e6f39acca9de",
+              "bytes": 111175876
             }
           ],
           "qualification": "trusted-fixture-only"

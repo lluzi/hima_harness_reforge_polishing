@@ -427,11 +427,11 @@ test('a native runtime moved to a directory containing spaces initializes and cl
   } finally { await database?.stop(); await rm(container, { recursive: true, force: true }); }
 });
 
-async function timeoutRuntime(directory: string, delayedAction: 'start' | 'stop'): Promise<string> {
+async function timeoutRuntime(directory: string, delayedAction: 'start' | 'stop', delayMs = 5000): Promise<string> {
   const runtime = path.join(directory, 'fault-runtime');
   await cp(runtimeDirectory!, runtime, { recursive: true, dereference: false, verbatimSymlinks: true });
   await rename(path.join(runtime, 'bin/pg_ctl'), path.join(runtime, 'bin/pg_ctl-real'));
-  const wrapper = `#!${process.execPath}\nimport {spawnSync} from 'node:child_process';\nimport path from 'node:path';\nconst result=spawnSync(path.join(import.meta.dirname,'pg_ctl-real'),process.argv.slice(2),{stdio:'inherit'});\nif(result.status!==0)process.exit(result.status??1);\nif(process.argv.at(-1)===${JSON.stringify(delayedAction)})setTimeout(()=>process.exit(0),5000);else process.exit(0);\n`;
+  const wrapper = `#!${process.execPath}\nimport {spawnSync} from 'node:child_process';\nimport path from 'node:path';\nconst result=spawnSync(path.join(import.meta.dirname,'pg_ctl-real'),process.argv.slice(2),{stdio:'inherit'});\nif(result.status!==0)process.exit(result.status??1);\nif(process.argv.at(-1)===${JSON.stringify(delayedAction)})setTimeout(()=>process.exit(0),${delayMs});else process.exit(0);\n`;
   await writeFile(path.join(runtime, 'bin/pg_ctl'), wrapper, { mode: 0o755 });
   const manifestFile = path.join(runtime, 'postgres-runtime.json');
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as { files: Record<string, string> };
@@ -474,15 +474,22 @@ test('a timed-out startup is reconciled to the original live database after the 
 test('stop timeout retains the Host owner until a subsequent identity check confirms the original database stopped', async () => {
   const container = await mkdtemp(path.join(tmpdir(), 'hima-pg-stop-timeout-'));
   const home = path.join(container, 'home');
-  const seeded = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! }); await seeded.stop();
-  const faultRuntime = await timeoutRuntime(container, 'stop');
-  const database = await startLocalDatabase({ home, runtimeDirectory: faultRuntime, timeoutMs: 1000 });
+  let database: Awaited<ReturnType<typeof startLocalDatabase>> | undefined;
   try {
-    await assert.rejects(database.stop(), /timed out/);
+    const seeded = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! }); await seeded.stop();
+    // Keep normal startup/query deadlines; fault only the successful stop command.
+    // Default pg_ctl outer deadline is 31s; hold its return beyond that deadline.
+    const faultRuntime = await timeoutRuntime(container, 'stop', 45_000);
+    database = await startLocalDatabase({ home, runtimeDirectory: faultRuntime });
+    await assert.rejects(database.stop(), /pg_ctl timed out/);
     assert.ok(await stat(path.join(home, 'hima/database/host-owner')));
+    await assert.rejects(stat(path.join(home, 'hima/database/data/postmaster.pid')), { code: 'ENOENT' });
     await database.stop();
     await assert.rejects(stat(path.join(home, 'hima/database/host-owner')), { code: 'ENOENT' });
-  } finally { await database.stop(); await rm(container, { recursive: true, force: true }); }
+  } finally {
+    // A failed startup may retain a live original cluster: never remove an unknown Home.
+    if (database) { await database.stop(); await rm(container, { recursive: true, force: true }); }
+  }
 });
 
 test('a forged postmaster PID never authorizes killing an unrelated process', async () => {

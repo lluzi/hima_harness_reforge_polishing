@@ -128,7 +128,8 @@
     "test/contract/himateam-workspace.host.test.ts",
     "test/contract/himateam-stream.host.test.ts",
     "test/contract/team-engine-runtime.host.test.ts",
-    "test/contract/team-member-image-package.test.ts"
+    "test/contract/team-member-image-package.test.ts",
+    "test/contract/team-runtime-native-audit.test.ts"
   ],
   "desktop": [
     "test/contract/agent-execution.desktop.test.ts",

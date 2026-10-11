@@ -4,6 +4,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSy
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import { parse } from 'yaml';
 export function hashFile(file) {
   const input = openSync(file, 'r');
@@ -191,13 +192,172 @@ export function auditDistribution({ app, resource, lockfile, electronVersion, no
     teamComponents.push({id:component.id,version:component.version,source:component.source,license:component.license,notices});
     unresolved.push(`${component.id}@${component.version}: native/Python/model transitive licenses, source/replacement obligations and platform installation remain unqualified`);
   }
+  const teamMemberSDK = teamRuntime ? auditTeamMemberAssets({directory: path.join(resource, 'team-runtime'), manifest: teamRuntime}) : undefined;
+  if (teamMemberSDK) unresolved.push(...teamMemberSDK.unresolved);
   const sbom = { format: 'hima-distribution-sbom/1', scope: 'actual deployed npm package roots, bundled Node/PostgreSQL/Electron notices, and native dynamic-link inventory; not source-only or external Site tools',
     platform: `${process.platform}-${process.arch}`, npmLockSha256: hashFile(lockfile), ...(noticeMaterials ? { noticeMaterialsSha256: hashFile(noticeMaterials) } : {}), npm: npm.sort((a, b) => a.path.localeCompare(b.path)), nativeLinks: links, foreignNative,
     electron: { version: electronVersion, source: `https://github.com/electron/electron/releases/tag/v${electronVersion}`, license: 'third-party/ELECTRON-LICENSE', chromium: 'third-party/CHROMIUM-LICENSES.html' },
-    teamComponents, ...(teamRuntime ? {teamRuntime: {platform:teamRuntime.platform,manifestSha256:hashFile(teamManifestFile),qualification:teamRuntime.qualification,releaseBlockers:teamRuntimeIdentity?.releaseBlockers ?? []}} : {}), unresolved, qualification: unresolved.length ? 'distribution terms require review of enumerated missing notices; no legal clearance claim' : 'inventory complete for stated scope; no legal clearance claim' };
+    teamComponents, ...(teamMemberSDK ? {teamMemberSDK} : {}), ...(teamRuntime ? {teamRuntime: {platform:teamRuntime.platform,manifestSha256:hashFile(teamManifestFile),qualification:teamRuntime.qualification,releaseBlockers:teamRuntimeIdentity?.releaseBlockers ?? []}} : {}), unresolved, qualification: unresolved.length ? 'distribution terms require review of enumerated missing notices; no legal clearance claim' : 'inventory complete for stated scope; no legal clearance claim' };
   writeFileSync(path.join(notices, 'SBOM.json'), `${JSON.stringify(sbom, null, 2)}\n`);
-  writeFileSync(path.join(notices, 'THIRD_PARTY_NOTICES.md'), `# HimaHarness candidate dependency notices\n\nThis inventory covers the actual deployed bytes. Retain NODE-LICENSE (including Node bundled dependencies), ELECTRON-LICENSE, CHROMIUM-LICENSES.html, postgres/COPYRIGHT and the npm package notice files listed in SBOM.json.\n\nNpm components: ${npm.length}. Target native objects inspected: ${links.length}. Foreign upstream prebuilds inventoried without link qualification: ${foreignNative.length}.\n\n${npm.map(row => `- ${row.name}@${row.version}: ${row.license}; ${[...row.licenseFiles, ...(row.supplementalLicenseFiles ?? [])].map(file => file.file).join(', ') || 'notice review required'}`).join('\n')}\n\n## Unresolved distribution review\n\n${unresolved.join('\n') || 'No missing standalone npm notice detected. This is not legal clearance.'}\n`);
+  writeFileSync(path.join(notices, 'THIRD_PARTY_NOTICES.md'), `# HimaHarness candidate dependency notices\n\nThis inventory covers the actual deployed outer bytes. Member SDK inventories, when present, are ASSEMBLY-BOUND DECLARATIONS ONLY; nested license bytes and supplemental scope contents have not been independently scanned. Retain NODE-LICENSE (including Node bundled dependencies), ELECTRON-LICENSE, CHROMIUM-LICENSES.html, postgres/COPYRIGHT and the npm package notice files listed in SBOM.json.\n\nNpm components: ${npm.length}. Target native objects inspected: ${links.length}. Foreign upstream prebuilds inventoried without link qualification: ${foreignNative.length}.\n\n${npm.map(row => `- ${row.name}@${row.version}: ${row.license}; ${[...row.licenseFiles, ...(row.supplementalLicenseFiles ?? [])].map(file => file.file).join(', ') || 'notice review required'}`).join('\n')}\n\n## Unresolved distribution review\n\n${unresolved.join('\n') || 'No missing standalone npm notice detected. This is not legal clearance.'}\n`);
   return { file: 'third-party/SBOM.json', sha256: hashFile(path.join(notices, 'SBOM.json')), npmComponents: npm.length, nativeObjects: links.length, foreignNativeObjects: foreignNative.length, unresolved };
+}
+
+// This is an inventory of assembler-bound declarations, not a nested filesystem/license scan.
+const memberVersions = { node: '24.20.0', opencode: '1.18.34', rg: '15.2.0', fd: '10.5.0', pi: '1.1.0', oar: '0.46.0' };
+const memberPrefix = 'opt/hima/member/';
+const sha256Pattern = /^[a-f0-9]{64}$/;
+function memberPath(name) {
+  if (typeof name !== 'string' || !name || name.includes('\\') || name.includes('\0') || name.startsWith('/')
+      || name.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.wh.'))) fail('unsafe Team member asset path');
+  return name;
+}
+function memberFile(directory, name, expected) {
+  memberPath(name);
+  const base = realpathSync(directory), file = path.join(base, name);
+  if (!sha256Pattern.test(expected ?? '') || !lstatSync(file).isFile() || !realpathSync(file).startsWith(base + path.sep)
+      || hashFile(file) !== expected) fail(`Team member asset bytes or containment differ: ${name}`);
+  return file;
+}
+// Fixed assembler OCI envelope only. Stream/hash opaque compressed layers; never decompress or execute them.
+function memberOCI(file, image, receipt) {
+  const input = openSync(file, 'r'), entries = new Map(); let position = 0, sawTerminator = false;
+  const read = (size, at) => { const buffer = Buffer.alloc(size); if (readSync(input, buffer, 0, size, at) !== size) fail('truncated member OCI'); return buffer; };
+  try {
+    while (position < image.bytes) {
+      const header = read(512, position); position += 512;
+      if (header.every(byte => byte === 0)) {
+        if (!read(512, position).every(byte => byte === 0) || position + 512 !== image.bytes) fail('member OCI terminator differs');
+        position += 512; sawTerminator = true; break;
+      }
+      const text = (start, length) => header.subarray(start, start + length).toString().split('\0')[0];
+      const name = [text(345, 155), text(0, 100)].filter(Boolean).join('/'); memberPath(name);
+      const sizeText = text(124, 12).trim(), sumText = text(148, 8).trim();
+      if (!/^[0-7]+$/.test(sizeText) || !/^[0-7]+$/.test(sumText)) fail('invalid member OCI header');
+      const size = parseInt(sizeText, 8), checksum = [...header].reduce((sum, byte, i) => sum + (i >= 148 && i < 156 ? 32 : byte), 0);
+      if (!Number.isSafeInteger(size) || checksum !== parseInt(sumText, 8) || !['0', '\0'].includes(text(156, 1) || '\0')
+          || !/^(oci-layout|index\.json|blobs\/sha256\/[a-f0-9]{64})$/.test(name) || entries.has(name)
+          || position + Math.ceil(size / 512) * 512 > image.bytes) fail('unsupported/unsafe member OCI envelope');
+      const capture = ['oci-layout', 'index.json', `blobs/sha256/${image.manifestSha256}`, `blobs/sha256/${image.configSha256}`].includes(name);
+      if (capture && size > 4 * 1024 * 1024) fail('member OCI metadata exceeds fixed envelope bound');
+      const h = createHash('sha256'), chunks = []; let used = 0;
+      while (used < size) { const chunk = read(Math.min(64 * 1024, size - used), position + used); h.update(chunk); if (capture) chunks.push(chunk); used += chunk.length; }
+      entries.set(name, {size, sha256: h.digest('hex'), ...(capture ? {bytes: Buffer.concat(chunks)} : {})});
+      position += Math.ceil(size / 512) * 512;
+    }
+    if (!sawTerminator) fail('member OCI terminator missing');
+    if (position !== image.bytes) fail('member OCI length differs');
+  } finally { closeSync(input); }
+  const json = name => { const bytes = entries.get(name)?.bytes; if (!bytes) fail(`member OCI metadata missing: ${name}`); return JSON.parse(bytes.toString()); };
+  const descriptor = row => {
+    if (!/^sha256:[a-f0-9]{64}$/.test(row?.digest ?? '') || !Number.isSafeInteger(row.size) || row.size < 0) fail('invalid member OCI descriptor');
+    const entry = entries.get(`blobs/sha256/${row.digest.slice(7)}`);
+    if (!entry || entry.size !== row.size || entry.sha256 !== row.digest.slice(7)) fail('member OCI blob identity differs');
+  };
+  if (json('oci-layout').imageLayoutVersion !== '1.0.0') fail('member OCI layout differs');
+  const index = json('index.json');
+  if (index.schemaVersion !== 2 || index.manifests?.length !== 1 || index.manifests[0].digest !== receipt.manifestDigest
+      || !isDeepStrictEqual(index.manifests[0].platform, receipt.platform)) fail('member OCI index/platform differs');
+  descriptor(index.manifests[0]);
+  const manifest = json(`blobs/sha256/${image.manifestSha256}`);
+  if (manifest.schemaVersion !== 2 || manifest.config?.digest !== receipt.configDigest || !isDeepStrictEqual(manifest.layers, receipt.layers)) fail('member OCI config/layers differ');
+  descriptor(manifest.config); for (const layer of manifest.layers) descriptor(layer);
+  const config = json(`blobs/sha256/${image.configSha256}`);
+  if (config.os !== receipt.platform.os || config.architecture !== receipt.platform.architecture || config.rootfs?.type !== 'layers'
+      || config.rootfs.diff_ids?.length !== receipt.layers.length || !config.rootfs.diff_ids.every(row => /^sha256:[a-f0-9]{64}$/.test(row))
+      || config.rootfs.diff_ids.at(-1) !== receipt.addedLayer.diffId || !config.config?.Env?.includes(`NODE_VERSION=${memberVersions.node}`)) fail('member OCI config platform/Node differs');
+  if (entries.size !== new Set(['oci-layout', 'index.json', `blobs/sha256/${image.manifestSha256}`, `blobs/sha256/${image.configSha256}`, ...receipt.layers.map(row => `blobs/sha256/${row.digest.slice(7)}`)]).size) fail('member OCI unreferenced entries');
+}
+
+/** Synchronous optional SDK audit, consumed by auditDistribution; old base/service assets return undefined. */
+export function auditTeamMemberAssets({ directory, manifest }) {
+  const image = manifest?.engineeringEngine?.image;
+  const receiptName = 'engine/member-sdk-receipt.json', sourcesName = 'engine/member-sdk-sources.json';
+  const recognized = typeof image?.file === 'string' && path.posix.basename(image.file) === 'member-sdk.oci.tar';
+  if (!recognized) {
+    if (manifest?.files?.[receiptName] || manifest?.files?.[sourcesName]) fail('SDK provenance without recognized fixed image');
+    return undefined;
+  }
+  if (image.file !== 'engine/member-sdk.oci.tar') fail('unsafe/nonfixed Team member image path');
+  const archiveFile = memberFile(directory, image.file, manifest.files?.[image.file]);
+  const receiptFile = memberFile(directory, receiptName, manifest.files?.[receiptName]);
+  const sourcesFile = memberFile(directory, sourcesName, manifest.files?.[sourcesName]);
+  const receipt = JSON.parse(readFileSync(receiptFile, 'utf8')), sources = JSON.parse(readFileSync(sourcesFile, 'utf8'));
+  if (receipt.format !== 'hima-team-member-image-assembly/1' || sources.format !== 'hima-team-member-sources/1'
+      || receipt.memberReady !== false || receipt.qualification !== 'offline-asset-assembly-only'
+      || receipt.sourceManifestSha256 !== manifest.files[sourcesName] || receipt.archiveSha256 !== image.sha256
+      || image.sha256 !== manifest.files[image.file] || receipt.archiveSize !== image.bytes || lstatSync(archiveFile).size !== image.bytes
+      || receipt.manifestDigest !== `sha256:${image.manifestSha256}` || receipt.configDigest !== `sha256:${image.configSha256}`
+      || !sha256Pattern.test(image.manifestSha256 ?? '') || !sha256Pattern.test(image.configSha256 ?? '')
+      || !sha256Pattern.test(receipt.baseArchiveSha256 ?? '') || !isDeepStrictEqual(sources.platform, receipt.platform)
+      || sources.platform?.os !== 'linux'
+      || !(manifest.platform === 'darwin-arm64' && manifest.engineeringEngine.guestPlatform === 'linux-arm64' && sources.platform.architecture === 'arm64'
+        || manifest.platform === 'linux-x64' && manifest.engineeringEngine.guestPlatform === 'linux-x64' && sources.platform.architecture === 'amd64')
+      || !Array.isArray(receipt.layers) || !receipt.layers.length
+      || !isDeepStrictEqual(image.layers, receipt.layers.map(row => ({sha256: row.digest?.replace(/^sha256:/, ''), bytes: row.size})))) fail('Team member SDK provenance identity differs');
+  const added = receipt.layers.at(-1);
+  if (!receipt.addedLayer || added.digest !== receipt.addedLayer.digest || added.size !== receipt.addedLayer.size) fail('Team member added layer identity differs');
+  memberOCI(archiveFile, image, receipt);
+  if (!Array.isArray(sources.components) || sources.components.length !== 5 || !Array.isArray(receipt.components) || receipt.components.length !== 6
+      || new Set(sources.components.map(row => row.id)).size !== 5 || new Set(receipt.components.map(row => row.id)).size !== 6
+      || !Array.isArray(sources.files) || !Array.isArray(sources.symlinks)) fail('Team member SDK cohort differs');
+  if (!Array.isArray(sources.archives) || !isDeepStrictEqual(receipt.archives ?? [], sources.archives.map(({root, ...row}) => row))) fail('SDK original archive declarations differ');
+  const rows = new Map(), links = new Map();
+  for (const row of [...sources.files, ...sources.symlinks]) {
+    memberPath(row.imagePath);
+    if (!row.imagePath.startsWith(memberPrefix) || rows.has(row.imagePath)) fail('Team member SDK image declaration outside prefix/duplicate');
+    rows.set(row.imagePath, row);
+    if (row.target !== undefined) {
+      if (typeof row.target !== 'string' || !row.target || row.target.includes('\\') || row.target.includes('\0') || path.posix.isAbsolute(row.target)) fail('unsafe SDK link');
+      links.set(row.imagePath, row.target);
+    } else if (!sha256Pattern.test(row.sha256 ?? '') || !Number.isSafeInteger(row.size) || row.size < 0) fail('SDK source file identity missing');
+    if (row.path !== undefined) memberPath(row.path);
+    if (row.rewrite && (!sha256Pattern.test(row.deployedSha256 ?? '') || !Number.isSafeInteger(row.deployedSize) || row.deployedSize < 0)) fail('SDK rewritten metadata identity missing');
+  }
+  const resolve = original => {
+    let name = original; const seen = new Set();
+    for (let count = 0; count < 64; count++) {
+      const parts = name.split('/'); let changed = false;
+      for (let i = 1; i <= parts.length; i++) {
+        const head = parts.slice(0, i).join('/'); if (!links.has(head)) continue;
+        if (seen.has(head)) fail('cyclic SDK image declaration link'); seen.add(head);
+        name = path.posix.normalize(path.posix.join(path.posix.dirname(head), links.get(head), ...parts.slice(i)));
+        if (!name.startsWith(memberPrefix)) fail('SDK image declaration link escapes'); changed = true; break;
+      }
+      if (!changed) return name;
+    }
+    fail('SDK image declaration link depth exceeded');
+  };
+  for (const name of rows.keys()) {
+    const resolved = resolve(name);
+    if (links.has(name) && ![...rows.keys()].some(row => row === resolved || row.startsWith(resolved + '/'))) fail('SDK link declaration target missing');
+    if (!links.has(name) && resolved !== name) fail('SDK file declaration beneath link');
+  }
+  const reference = imagePath => {
+    memberPath(imagePath); const row = rows.get(imagePath);
+    if (!row || row.target !== undefined || !sha256Pattern.test(row.sha256 ?? '')) fail('SDK required file/notice declaration missing');
+    return { imagePath, sha256: row.sha256, bytes: row.size, ...(row.rewrite ? {deployedSha256: row.deployedSha256, deployedBytes: row.deployedSize} : {}) };
+  };
+  const components = Object.entries(memberVersions).map(([id, version]) => {
+    const actual = receipt.components.find(row => row.id === id), declared = sources.components.find(row => row.id === id);
+    if (!actual || actual.version !== version || typeof actual.source !== 'string' || !actual.source.startsWith('https://') || !actual.license
+        || (id !== 'node' && !isDeepStrictEqual(actual, declared))) fail(`SDK fixed component/source identity differs: ${id}`);
+    if (id === 'node') {
+      memberPath(actual.executable);
+      if (actual.executable !== 'usr/local/bin/node' || !sha256Pattern.test(actual.sha256 ?? '') || !/^sha256:[a-f0-9]{64}$/.test(actual.manifestDigest ?? '')) fail('SDK base Node identity missing');
+      return {...actual, requiredFiles: [{imagePath: actual.executable, sha256: actual.sha256}], notices: [], noticeQualification: actual.noticeQualification ?? 'base notices not declared'};
+    }
+    if (!actual.requiredFiles?.length || !actual.notices?.length) fail(`SDK component notices missing: ${id}`);
+    return {...actual, requiredFiles: actual.requiredFiles.map(reference), notices: actual.notices.map(reference), ...(actual.nativeFiles ? {nativeFiles: actual.nativeFiles.map(reference)} : {})};
+  });
+  const supplementalNotices = sources.files.filter(row => row.imagePath.startsWith(`${memberPrefix}notices/supplemental/`)).map(row => ({...reference(row.imagePath), contentNotIndependentlyRead: true}));
+  const unresolved = [...(receipt.releaseBlockers ?? []), 'Member SDK transitive npm/native/base source and NOTICE obligations remain unqualified; metadata hashes do not establish rights or closure.', 'Member SDK nested license bytes and supplemental scope content were not independently scanned; source-declared references only.', 'Member SDK native execution, isolation, clean installation and member readiness are not qualified by this audit.'];
+  return {scope: 'ASSEMBLY-BOUND DECLARATIONS ONLY', qualification: 'offline-asset-assembly-only', memberReady: false,
+    platform: receipt.platform, components, supplementalNotices,
+    identities: {archiveFile: image.file, archiveSha256: image.sha256, archiveBytes: image.bytes, receiptFile: receiptName, receiptSha256: manifest.files[receiptName], sourceManifestFile: sourcesName, sourceManifestSha256: manifest.files[sourcesName], manifestDigest: receipt.manifestDigest, configDigest: receipt.configDigest, layers: receipt.layers, baseArchiveSha256: receipt.baseArchiveSha256},
+    sourceArchives: sources.archives ?? [], excludedSourceDirectories: sources.excludedSourceDirectories ?? {},
+    releaseBlockers: receipt.releaseBlockers ?? [], unresolved,
+    limits: ['Archive and OCI envelope identities bind assembler input; nested license/file bytes were not independently inspected.', 'Required file and notice SHA values are source-declared, not an independent nested filesystem scan.', 'No full npm/native/source/NOTICE closure, legal clearance, installation acceptance or member readiness claim.']};
 }
 
 /** Retain license-required source/patch/build bytes beside the actual native distribution. */

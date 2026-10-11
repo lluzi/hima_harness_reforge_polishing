@@ -20,15 +20,28 @@ function tar(entries: { path: string; bytes?: Buffer; target?: string }[]) {
   }
   return Buffer.concat([...blocks, Buffer.alloc(1024)]);
 }
+function tarFiles(bytes: Buffer) {
+  const files = new Map<string, Buffer>();
+  for (let offset = 0; offset + 512 <= bytes.length;) {
+    const header = bytes.subarray(offset, offset + 512);
+    if (header.every(b => b === 0)) break;
+    const name = header.toString('utf8', 0, 100).split('\0')[0]!;
+    const size = parseInt(header.toString('ascii', 124, 136), 8);
+    files.set(name, bytes.subarray(offset + 512, offset + 512 + size));
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
 async function fixture(variant = "", architecture = "arm64") {
   const root = await mkdtemp(path.join(os.tmpdir(), 'hima-member-image-'));
   const source = path.join(root, 'source'); await mkdir(source); const releases = path.join(root, 'releases'); await mkdir(releases); const archives: any[] = [];
   const elf = Buffer.alloc(64); elf.write('\x7fELF', 0, 'binary'); elf[4] = 2; elf[5] = 1; elf.writeUInt16LE(architecture === "arm64" ? 183 : 62, 18);
-  const layer = gzipSync(tar([{ path: variant === 'nested-path' ? '../outside' : 'usr/local/bin/node', bytes: elf }, { path: `usr/lib/${architecture === 'arm64' ? 'aarch64' : 'x86_64'}-linux-gnu/libxcb.so.1`, bytes: elf }]));
-  const config = Buffer.from(JSON.stringify({ os: 'linux', architecture, config: { Env: ['NODE_VERSION=24.20.0', 'PATH=/usr/local/bin:/usr/bin:/bin'] }, rootfs: { type: 'layers', diff_ids: ['sha256:' + (variant === 'diff-id' ? '0'.repeat(64) : hash(gunzipSync(layer)))] } }));
+  const nodeElf = Buffer.from(elf); if (variant === 'node-architecture') nodeElf.writeUInt16LE(architecture === 'arm64' ? 62 : 183, 18);
+  const layer = gzipSync(tar([{ path: variant === 'nested-path' ? '../outside' : 'usr/local/bin/node', bytes: nodeElf }, { path: `usr/lib/${architecture === 'arm64' ? 'aarch64' : 'x86_64'}-linux-gnu/libxcb.so.1`, bytes: elf }]));
+  const config = Buffer.from(JSON.stringify({ os: 'linux', architecture: variant === 'config-architecture' ? (architecture === 'arm64' ? 'amd64' : 'arm64') : architecture, config: { Env: ['NODE_VERSION=24.20.0', 'PATH=/usr/local/bin:/usr/bin:/bin'] }, rootfs: { type: 'layers', diff_ids: ['sha256:' + (variant === 'diff-id' ? '0'.repeat(64) : hash(gunzipSync(layer)))] } }));
   const descriptor = (b: Buffer, mediaType: string) => ({ digest: 'sha256:' + hash(b), size: b.length, mediaType });
   const manifest = Buffer.from(JSON.stringify({ schemaVersion: 2, config: descriptor(config, 'application/vnd.oci.image.config.v1+json'), layers: [descriptor(layer, 'application/vnd.oci.image.layer.v1.tar+gzip')] }));
-  const index = Buffer.from(JSON.stringify({ schemaVersion: 2, manifests: [{ ...descriptor(manifest, 'application/vnd.oci.image.manifest.v1+json'), platform: { os: 'linux', architecture } }] }));
+  const index = Buffer.from(JSON.stringify({ schemaVersion: 2, manifests: [{ ...descriptor(manifest, 'application/vnd.oci.image.manifest.v1+json'), platform: { os: 'linux', architecture: variant === 'index-architecture' ? (architecture === 'arm64' ? 'amd64' : 'arm64') : architecture } }] }));
   const archive = tar([{ path: 'oci-layout', bytes: Buffer.from('{"imageLayoutVersion":"1.0.0"}') }, { path: 'index.json', bytes: index }, ...[manifest, config, layer].map(bytes => ({ path: 'blobs/sha256/' + hash(bytes), bytes }))]);
   const baseArchive = path.join(root, 'base.tar'); await writeFile(baseArchive, archive);
   const files: any[] = [];
@@ -51,21 +64,68 @@ async function fixture(variant = "", architecture = "arm64") {
   return { root, source, sourceManifest, freeze, options: { baseArchive, baseIdentity: { sha256: hash(archive), size: archive.length, manifestDigest: 'sha256:' + hash(manifest), configDigest: 'sha256:' + hash(config), platform: { os: 'linux', architecture }, layers: [descriptor(layer, 'application/vnd.oci.image.layer.v1.tar+gzip')] }, sourceRoots: { sdk: source, releases }, sourceManifestFile, output: path.join(root, 'out.tar'), internalCandidate: true } };
 }
 const load = () => import(new URL('../../scripts/assemble-team-member-image.mjs', import.meta.url).href);
-test('offline producer preserves base, emits deterministic complete cohort and no source paths', async () => {
-  const f = await fixture();
+for (const architecture of ['arm64', 'amd64']) test(`offline ${architecture} producer preserves base, emits deterministic complete cohort and no source paths`, async () => {
+  const f = await fixture('', architecture);
   try {
     const { assembleTeamMemberImage } = await load(); const sourceManifestSha256 = await f.freeze();
     const first = await assembleTeamMemberImage({ ...f.options, sourceManifestSha256 });
     await assert.rejects(readFile(`${f.options.output}.layer.gz`), /ENOENT/, 'successful producer leaves only the declared immutable archive');
     const second = await assembleTeamMemberImage({ ...f.options, sourceManifestSha256, output: path.join(f.root, 'second.tar') });
     assert.equal(first.archiveSha256, second.archiveSha256); assert.equal(first.memberReady, false);
+    assert.deepEqual(first.platform, { os: 'linux', architecture });
+    assert.deepEqual(first.components.map((c: any) => [c.id, c.version]), [['node', '24.20.0'], ['opencode', '1.18.34'], ['rg', '15.2.0'], ['fd', '10.5.0'], ['pi', '1.1.0'], ['oar', '0.46.0']]);
+    assert.equal(first.nativeProbes, 'NOT RUN');
     assert.equal(first.layers.length, 2); assert.equal(first.layers[0]!.digest, f.options.baseIdentity.layers[0]!.digest);
     assert.notEqual(first.addedLayer.digest, first.addedLayer.diffId);
     assert.equal(JSON.stringify(first).includes(f.root), false);
-    assert.match((await readFile(f.options.output)).toString('latin1'), /oci-layout/);
+    const outer = tarFiles(await readFile(f.options.output));
+    const index = JSON.parse(outer.get('index.json')!.toString());
+    assert.deepEqual(index.manifests[0].platform, { os: 'linux', architecture });
+    const config = JSON.parse(outer.get(`blobs/sha256/${first.configDigest.slice(7)}`)!.toString());
+    assert.equal(config.os, 'linux'); assert.equal(config.architecture, architecture);
+    const sdk = tarFiles(gunzipSync(outer.get(`blobs/sha256/${first.addedLayer.digest.slice(7)}`)!));
+    const cohort = JSON.parse(sdk.get('opt/hima/member/cohort.json')!.toString());
+    assert.deepEqual(cohort.platform, { os: 'linux', architecture }); assert.equal(cohort.memberReady, false);
+    assert.equal(sdk.has(`opt/hima/member/node_modules/pi-tui/native/linux/prebuilds/linux-${architecture === 'arm64' ? 'arm64' : 'x64'}/linux-platform-x11.node`), true);
     await assert.rejects(assembleTeamMemberImage({ ...f.options, sourceManifestSha256, output: path.join(f.root, 'formal.tar'), internalCandidate: false }), /distribution.*unqualified/i);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
+
+for (const architecture of ['arm64', 'amd64']) {
+  for (const variant of ['index-architecture', 'config-architecture', 'node-architecture']) test(`offline ${architecture} producer rejects crossing ${variant} before output`, async () => {
+    const f = await fixture(variant, architecture);
+    try {
+      const { assembleTeamMemberImage } = await load();
+      await assert.rejects(assembleTeamMemberImage({ ...f.options, sourceManifestSha256: await f.freeze() }), /architecture|platform|Node\/config/);
+      await assert.rejects(readFile(f.options.output), /ENOENT/);
+      await assert.rejects(readFile(`${f.options.output}.layer.gz`), /ENOENT/);
+    } finally { await rm(f.root, { recursive: true, force: true }); }
+  });
+  for (const crossing of ['source', 'base', 'source-os', 'base-os', 'unsupported', 'pi-path', 'pi-native', 'opencode', 'rg', 'fd']) test(`offline ${architecture} producer rejects crossing ${crossing} before output`, async () => {
+    const f = await fixture('', architecture), other = architecture === 'arm64' ? 'amd64' : 'arm64';
+    try {
+      if (crossing === 'source') f.sourceManifest.platform.architecture = other;
+      if (crossing === 'base') f.options.baseIdentity.platform.architecture = other;
+      if (crossing === 'source-os') f.sourceManifest.platform.os = 'darwin';
+      if (crossing === 'base-os') f.options.baseIdentity.platform.os = 'darwin';
+      if (crossing === 'unsupported') { f.sourceManifest.platform.architecture = 'riscv64'; f.options.baseIdentity.platform.architecture = 'riscv64'; }
+      if (crossing === 'pi-path') {
+        const r = f.sourceManifest.files.find(r => r.path === 'pi-native');
+        r.imagePath = r.imagePath.replace(`linux-${architecture === 'arm64' ? 'arm64' : 'x64'}/`, `linux-${other === 'arm64' ? 'arm64' : 'x64'}/`);
+        f.sourceManifest.components.find(c => c.id === 'pi').nativeFiles = [r.imagePath];
+      }
+      if (['pi-native', 'opencode', 'rg', 'fd'].includes(crossing)) {
+        const r = f.sourceManifest.files.find(r => r.path === crossing), b = await readFile(path.join(f.source, r.path));
+        b.writeUInt16LE(other === 'arm64' ? 183 : 62, 18); await writeFile(path.join(f.source, r.path), b); r.sha256 = hash(b);
+      }
+      const { assembleTeamMemberImage } = await load();
+      await assert.rejects(assembleTeamMemberImage({ ...f.options, sourceManifestSha256: await f.freeze() }), /architecture|native module identity/);
+      await assert.rejects(readFile(f.options.output), /ENOENT/);
+      await assert.rejects(readFile(`${f.options.output}.layer.gz`), /ENOENT/);
+    } finally { await rm(f.root, { recursive: true, force: true }); }
+  });
+}
+
 for (const mutation of ['hash', 'architecture', 'missing-sdk', 'mode', 'escape', 'unlisted', 'original-archive', 'native-architecture'] as const) test(`offline producer rejects ${mutation} before output`, async () => {
   const f = await fixture();
   try {
@@ -146,5 +206,14 @@ test('SDK staging publishes a closure reusable by the existing packager and pres
     assert.equal(await readFile(path.join(prefix, 'team-runtime.json'), 'utf8'), original); assert.equal(await readFile(pinFile, 'utf8'), originalPin);
     await assert.rejects(readFile(path.join(output, 'engine/member-sdk.oci.tar.layer.gz')), /ENOENT/);
     assert.equal(result.memberReady, false); await assert.rejects(packageTeamRuntime({ prefix: output, output: path.join(f.root, 'formal'), pinFile: publishedPinFile }), /distribution is not qualified/);
+    const repeated = await packageTeamMemberRuntime({ prefix: output, output: path.join(f.root, 'restaged'), pinFile: publishedPinFile, publishedPinFile: path.join(f.root, 'restaged-pin.json'), internalCandidate: true, imageInputs: { ...f.options, sourceManifestSha256: await f.freeze() } });
+    assert.equal(repeated.manifestSha256, result.manifestSha256); assert.equal(repeated.inventorySha256, result.inventorySha256);
+    assert.equal(hash(await readFile(path.join(output, 'team-runtime.json'))), result.manifestSha256);
+    assert.equal(hash(await readFile(path.join(output, 'engine/member-sdk.oci.tar'))), result.memberImage.archiveSha256);
+    await packageTeamRuntime({ prefix: path.join(f.root, 'restaged'), output: path.join(f.root, 'restaged-repackaged'), pinFile: path.join(f.root, 'restaged-pin.json'), internalCandidate: true });
+    const repeatedManifest = JSON.parse(await readFile(path.join(f.root, 'restaged/team-runtime.json'), 'utf8'));
+    assert.equal(new Set(repeatedManifest.components[0].requiredFiles).size, repeatedManifest.components[0].requiredFiles.length);
+    await assert.rejects(readFile(path.join(f.root, 'restaged/engine/member-sdk.next.oci.tar')), /ENOENT/);
+
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
