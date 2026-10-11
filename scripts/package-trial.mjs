@@ -423,6 +423,7 @@ async function verifyBundleIdentity(app, manifest) {
   if (manifest.runtimeInputs?.sbom && manifest.runtimeInputs.sbom.sha256 !== hash(path.join(resource, manifest.runtimeInputs.sbom.file))) fail('bundled SBOM identity differs from the release manifest');
   if (manifest.runtimeInputs?.node?.binarySha256 && manifest.runtimeInputs.node.binarySha256 !== hash(path.join(resource, 'node/bin/node'))) fail('bundled Node binary identity differs from the release manifest');
   verifyLibInsight(resource, manifest.runtimeInputs?.libinsight);
+  if(manifest.runtimeInputs?.teamRuntime?.manifestSha256) await (await import('./package-team-runtime.mjs')).verifyTeamRuntime(path.join(resource,'team-runtime'),manifest.runtimeInputs.teamRuntime);
   const packsRoot = path.join(resource, 'packs');
   const recorded = manifest.runtimeInputs?.packs;
   if (!Array.isArray(recorded)) fail('manifest records no bundled Pack identities');
@@ -767,7 +768,7 @@ if (args[0] === '--finalize-native-obligations') {
 } else if (args[0] === '--check-platform-layout') {
   process.stdout.write(`${JSON.stringify(nativeLayout(args[1]))}\n`);
 } else if (args.includes('--help') || args.includes('-h')) {
-  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] [--libinsight-source <LibInsight git checkout>] | --finalize-native-obligations <native artifact> --native-evidence <support packet.json> --report <new external sidecar.json> | --verify <native artifact> | --verify-desktop <native artifact>\n');
+  process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] --node-build-manifest <official archive identity.json> --node-archive <retained official archive> --electron-build-manifest <official zip identity.json> --electron-archive <retained zip> --postgres-prefix <16.15 install> --postgres-build-manifest <identity.json> [--internal-candidate] [--team-runtime-prefix <retained fixed native closure>] [--notice-materials <source-bound upstream notices.json>] [--source-materials <fixed source/patch/build inventory.json>] [--interactive-bindings <absolute administrator file>] [--atcs-binding <absolute administrator file>] [--libinsight-source <LibInsight git checkout>] | --finalize-native-obligations <native artifact> --native-evidence <support packet.json> --report <new external sidecar.json> | --verify <native artifact> | --verify-desktop <native artifact>\n');
 } else if (args[0] === '--check-interactive-bindings') {
   const file = value('--check-interactive-bindings');
   if (!file) fail('--check-interactive-bindings needs an absolute administrator file');
@@ -904,9 +905,11 @@ if (args[0] === '--finalize-native-obligations') {
     if (args.includes('--libinsight-source') && !libInsightSource) fail('--libinsight-source needs a LibInsight git checkout');
     const libinsight = libInsightSource ? stageLibInsight(libInsightSource, resource) : 'absent: no --libinsight-source; Data Insight says LibInsight is not installed';
     const postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
+    const teamPrefix=value('--team-runtime-prefix');
+    const teamRuntime=teamPrefix ? await (await import('./package-team-runtime.mjs')).packageTeamRuntime({prefix:path.resolve(teamPrefix),output:path.join(resource,'team-runtime'),pinFile:path.join(root,'packages/desktop/team-runtime.pin.json'),internalCandidate}) : {status:'unavailable',diagnostic:'No retained complete Team runtime asset closure supplied; optional service unavailable, Guide unaffected.'};
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
     const nodeIdentity = stageRuntimeNotices({ resource, electronDist, nodeBinary: node24, nodeManifest: nodeBuildManifest, nodeArchive, electronManifest: electronBuildManifest, electronArchive });
-    const sbom = auditDistribution({ app, resource, lockfile: path.join(root, 'pnpm-lock.yaml'), electronVersion: '44.2.0', noticeMaterials: value('--notice-materials') });
+    const sbom = auditDistribution({ app, resource, lockfile: path.join(root, 'pnpm-lock.yaml'), electronVersion: '44.2.0', noticeMaterials: value('--notice-materials'), teamRuntimeIdentity: teamRuntime });
     const correspondingSource = stageCorrespondingSource({resource, sourceMaterials:value('--source-materials')});
     cpSync(path.join(root, 'docs/operations/third-party-rights.md'), path.join(resource, 'third-party/RIGHTS.md'));
     if (!internalCandidate && !value('--source-materials')) fail('native release requires its fixed corresponding-source materials');
@@ -937,7 +940,7 @@ if (args[0] === '--finalize-native-obligations') {
     const manifest = { format: 2, version: trialVersion, appVersion: trialVersion,
       artifactDigest: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
       platform: layout.platform, signing: layout.signing, osBaseline: layout.baseline, purpose: internalCandidate ? 'internal-u10-candidate' : 'trial-release', commercialDistribution: 'not qualified; source/license obligations and actual platform installation acceptance remain separate',
-      runtimeInputs: { node: nodeIdentity, sbom, correspondingSource, harnessVersion: JSON.parse(readFileSync(path.join(resource, 'node_modules/@hima/harness/package.json'), 'utf8')).version, dbosVersion: JSON.parse(readFileSync(path.resolve(path.dirname(createRequire(realpathSync(path.join(resource, 'node_modules/@hima/harness/package.json'))).resolve('@dbos-inc/dbos-sdk')), '../../package.json'), 'utf8')).version, electron: nodeIdentity.electron, ledgerSchema: runtimeLedger.ledgerSpec.version,
+      runtimeInputs: { node: nodeIdentity, teamRuntime, sbom, correspondingSource, harnessVersion: JSON.parse(readFileSync(path.join(resource, 'node_modules/@hima/harness/package.json'), 'utf8')).version, dbosVersion: JSON.parse(readFileSync(path.resolve(path.dirname(createRequire(realpathSync(path.join(resource, 'node_modules/@hima/harness/package.json'))).resolve('@dbos-inc/dbos-sdk')), '../../package.json'), 'utf8')).version, electron: nodeIdentity.electron, ledgerSchema: runtimeLedger.ledgerSpec.version,
         postgres: { version: postgres.version, platform: postgres.platform, source: postgres.source,
           manifestSha256: hash(path.join(resource, 'postgres/postgres-runtime.json')) },
         bundledPacks: bundledPackIds, packs, atcsSite, libinsight,

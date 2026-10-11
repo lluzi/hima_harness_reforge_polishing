@@ -150,6 +150,13 @@ export function postgresRuntimeDirectory(env: NodeJS.ProcessEnv = process.env): 
   return env.HIMA_POSTGRES_RUNTIME?.trim() ? path.resolve(env.HIMA_POSTGRES_RUNTIME) : path.join(checkoutRoot(), 'postgres');
 }
 
+/** Optional immutable Team assets are App resources; writable service state stays in DSH_HOME. */
+export function teamRuntimeDirectory(env:NodeJS.ProcessEnv=process.env):string|undefined {
+  if(env.HIMA_TEAM_RUNTIME?.trim())return path.resolve(env.HIMA_TEAM_RUNTIME);
+  const bundled=path.join(checkoutRoot(),'team-runtime');
+  return existsSync(path.join(bundled,'team-runtime.json'))?bundled:undefined;
+}
+
 /** LibInsight's own web app, which Data Insight frames (ADR-0019): the copy this App carries, or the
  * checkout a source deployment names through HIMA_LIBINSIGHT_ROOT. Neither means Data Insight says
  * LibInsight is not installed; nothing is searched for. */

@@ -217,6 +217,16 @@ export function guideTools(operations: {
     parameters:{request:{type:'object',required:true,additionalProperties:true}},
     output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
     execute:async(args,execution)=>{if(!execution.agent)throw new Error('A live Guide is required');return toolJson(await operations.team!(String(execution.agent.id),args.request));},
+  }),defineTool({
+    name:'hima_team_send',description:'Send a bounded directed task message through Host. Native receipt is separate from business completion. Use frozen member IDs and staged material IDs; requestId is unchanged when retrying unchanged content.',
+    parameters:{teamId:{type:'string',required:true},taskId:{type:'string',required:true},request:{type:'object',required:true,additionalProperties:true}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent)throw new Error('A live Guide is required');return toolJson(await operations.team!(String(execution.agent.id),{action:'send-message',teamId:args.teamId,taskId:args.taskId,request:args.request}));},
+  }),defineTool({
+    name:'hima_team_read',description:'Read bounded retained task messages, activity, pending human requests or actual member work. Missing native traces remain missing. Only question/handoff/review facts are pending, never automatically approved ACP events.',
+    parameters:{teamId:{type:'string',required:true},taskId:{type:'string',required:true},action:{type:'string',required:true,enum:['read-messages','read-activity','read-pending-requests','read-member-work']},memberId:{type:'string'},cursor:{type:'integer'},limit:{type:'integer'}},
+    output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
+    execute:async(args,execution)=>{if(!execution.agent)throw new Error('A live Guide is required');return toolJson(await operations.team!(String(execution.agent.id),{action:args.action,teamId:args.teamId,taskId:args.taskId,request:{page:{limit:args.limit??50,...(args.cursor===undefined?{}:{cursor:args.cursor})},...(args.memberId?{memberId:args.memberId}:{})}}));},
   })]:[],defineTool({
     name:'hima_insight_analysis',
     description:'Custom library analysis by the resident engineering agent (ADR-0021). Use it when the person asks a library question that the Data Insight LibInsight pages do not already answer. The resident agent writes and runs its own analysis code on the analysis Site, using the QuaLib Liberty API or extracted facts. The Pack Reader then checks the typed result, and only an admitted result is established. Actions: propose {question, sources?, buildsOn?} writes the request and prepares a bounded proposal; it starts nothing. Show the proposal in your own words and ask the person to confirm. confirm {proposalId} starts the Run. Call it only after the person explicitly agrees in this conversation; never confirm on their behalf or from an earlier general instruction. list shows this project\'s analyses. result {runId} reads one analysis: status, admission, summary, assumptions, limits, plot titles and bounded datasets. Every answer names the analysis page; give the person that link for the charts. sources are absolute .lib paths on the Site. buildsOn is admitted analyses as id@version, from list. A question about library quality becomes an insight rule, drawn on a three-column Library Insight page beside the project\'s other rules: vmin_bottleneck (cells that slow down more than the inverter when the supply drops), size_coverage_gaps (functions missing a drive strength), critical_path_faster_cells (faster drop-in cells on a design\'s failing paths), table_spikes_kinks (table points off the smooth curve), or a new rule. Name the rule first in question, as its id and one sentence saying what is flagged against what, then the person\'s words and settings; show that rule in the proposal. An insight rule needs no sources: name the kit or design in question and leave sources empty, and the resident finds the files on the Site.',
@@ -438,7 +448,7 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * and this module has nothing to say about that.
  */
 export function himaTools(deps: FabricDeps, author?: (request: import('./authoring.js').AuthoringRequest, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
-  prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string; retainedMaterialsDir?: string },
+  prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string; retainedMaterialsDir?: string; team?:(sessionId:string,request:unknown)=>Promise<object>; bytes?:(sessionId:string,ref:{teamId:string;taskId:string;stageId:string})=>Promise<{stream:AsyncIterable<Uint8Array>;sha256:string}> },
   sites?: {
     readonly list: () => readonly SiteHeadView[];
     /** The tool's own discover/rediscover never passes `save` — a Site or Permit is written only
@@ -469,7 +479,8 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       name: 'hima_knowledge',
       description: 'Manage Hima-owned offline knowledge without any upload. import copies one explicitly selected PDF, Markdown or text file from this Agent workspace into the Campaign proposal scope returned by hima_prepare. list and search return identities and bounded snippets only. read returns bounded exact source text; when run is supplied, only the owning Agent at its currently admitted node may append a KnowledgeRecord. clear removes one exact current document. Pack knowledge remains read-only and is selected with source=pack and pack.',
       parameters: {
-        action: { type: 'string', required: true, enum: ['import', 'list', 'search', 'read', 'clear'] },
+        action: { type: 'string', required: true, enum: ['import', 'list', 'search', 'read', 'clear', 'task-status', 'task-excerpt', 'task-bytes'] },
+        teamId:{type:'string'},taskId:{type:'string'},stageId:{type:'string'},location:{type:'string'},
         source: { type: 'string', enum: ['current', 'pack'], description: 'Defaults to current. Pack source is read-only.' },
         scope: { type: 'string', description: 'Required for current knowledge and Campaign-attached Pack reads: the full proposal token returned by hima_prepare. It is never a filesystem path.' },
         file: { type: 'string', description: 'Local source path for import only.' },
@@ -481,6 +492,21 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
+        if(['task-status','task-excerpt','task-bytes'].includes(args.action)) {
+          if(!execution.agent||!args.teamId||!args.taskId||!args.stageId||!knowledge?.team)throw new Error('Task material reads require a live project Agent and exact team/task/stage identities.');
+          const sessionId=String(execution.agent.id);
+          const action=args.action==='task-excerpt'?'read-excerpt':'read-material';
+          const value=await knowledge!.team!(sessionId,{action,teamId:args.teamId,taskId:args.taskId,request:{stageId:args.stageId,...(args.location?{location:args.location}:{})}});
+          if(args.action==='task-bytes') {
+            const metadata=value as {material:{bytes:number}};
+            if(metadata.material.bytes>65536)throw new Error('This original exceeds the bounded tool-byte limit; use the authorized Host stream.');
+            if(!knowledge?.bytes)throw new Error('Authorized native byte streaming is unavailable.');
+            const original=await knowledge!.bytes!(sessionId,{teamId:args.teamId,taskId:args.taskId,stageId:args.stageId});
+            const parts=[];for await(const part of original.stream)parts.push(part);
+            return toolJson({...value,encoding:'base64',bytes:Buffer.concat(parts).toString('base64'),sha256:original.sha256});
+          }
+          return toolJson(value);
+        }
         const source = args.source === 'pack' ? 'pack' : 'current';
         if(args.run !== undefined) await assertProjectAccess(deps,execution.agent,args.run);
         const attachedRun = args.run === undefined ? undefined : (await readExecutionContext(deps,args.run)).run;

@@ -242,7 +242,25 @@ export async function teamRequest<T>(sessionId:string,request:unknown,signal?:Ab
   return result.value;
 }
 export function teamOperations(sessionId:string,projectId:string):import('./HimaTeamPanel.js').HimaTeamOperations {
+  const request=<T,>(action:string,ref:{teamId:string;taskId:string},payload:unknown,signal?:AbortSignal)=>teamRequest<T>(sessionId,{action,teamId:ref.teamId,taskId:ref.taskId,request:payload},signal);
   return {projectId,
+    messages:{send:(value,signal)=>{const {projectId:_project,teamId,taskId,...payload}=value;return request('send-message',{teamId,taskId},payload,signal);},readMessages:(ref,page,signal)=>request('read-messages',ref,{page},signal),readActivity:(ref,page,signal)=>request('read-activity',ref,{page},signal),readPendingRequests:(ref,page,signal)=>request('read-pending-requests',ref,{page},signal)},
+    memberWork:{readMemberWork:(ref,memberId,page,signal)=>request('read-member-work',ref,{memberId,page},signal)},
+    listMaterials:(ref,signal)=>request('list-materials',ref,{},signal),
+    materials:{
+      upload:async(ref,file,requestId,signal)=>{
+        const response=await fetch(`/api/session/uploadFileBinary?${new URLSearchParams({sessionId,name:file.name})}`,{method:'POST',headers:{'content-type':'application/octet-stream'},body:file,signal});
+        const result=await response.json();if(!response.ok||!result.ok)throw new Error('Native file upload failed; the draft is retained for retry.');
+        return request('stage-attachment',ref,{requestId,receiptId:result.value.receiptId},signal);
+      },
+      removeDraft:async(ref,stageId)=>{await request('remove-draft',ref,{stageId});},
+      openOriginal:async(ref,stageId)=>{
+        const response=await fetch(`/hima/api/team-material?${new URLSearchParams({sessionId,teamId:ref.teamId,taskId:ref.taskId,stageId})}`);
+        if(!response.ok)throw new Error('The original has not been sent or is unavailable for this task.');
+        const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download='task-material';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      },
+      readExcerpt:(ref,stageId,location)=>request('read-excerpt',ref,{stageId,location}),
+    },
     list:async signal=>(await teamRequest<{teams:readonly import('../team-contract.js').TeamView[]}>(sessionId,{action:'list'},signal)).teams,
     read:(ref,signal)=>teamRequest(sessionId,{action:'read',...ref},signal),
     save:(request,signal)=>teamRequest(sessionId,{action:'save',...request},signal),
@@ -253,4 +271,9 @@ export function teamOperations(sessionId:string,projectId:string):import('./Hima
     listTasks:async(ref,signal)=>(await teamRequest<{tasks:readonly import('../team-contract.js').TeamTaskView[]}>(sessionId,{action:'listTasks',...ref},signal)).tasks,
     control:async(ref,signal)=>{await teamRequest(sessionId,{action:'control',...ref},signal);return teamRequest(sessionId,{action:'readTask',teamId:ref.teamId,taskId:ref.taskId},signal);},
   };
+}
+
+/** Operator-only optional service controls; member bearer capabilities do not authorize this route. */
+export function teamRuntimeRequest(action:'status'|'start'|'stop',signal?:AbortSignal):Promise<HimaResult<{receipt:import('../team-service-runtime.js').TeamServiceReceipt;history:readonly import('../team-service-runtime.js').TeamServiceReceipt[]}>> {
+  return runRequest('/hima/api/team-runtime',{method:'POST',body:JSON.stringify({action,serviceId:'hindsight'}),signal});
 }

@@ -1,3 +1,7 @@
+import { TeamTaskPanel, type TeamTaskOperations, type TeamMessageDraft } from './TeamTaskPanel.js';
+import { TeamMemberPanel, type TeamMemberOperations } from './TeamMemberPanel.js';
+import { TeamMaterialPanel, type TeamMaterialOperations } from './TeamMaterialPanel.js';
+import type { StagedAttachment } from '../team-attachments.js';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { TeamDefinition, TeamTaskRequest, TeamTaskView, TeamView } from '../team-contract.js';
 import type { WorkbenchAddress } from './workbench-address.js';
@@ -7,6 +11,10 @@ type ReadRequest = { readonly teamId: string; readonly version?: number };
 /** Operations are bound to the authenticated project by the Host API adapter, never by member/session fields. */
 export interface HimaTeamOperations {
   readonly projectId: string;
+  readonly messages?:TeamTaskOperations;
+  readonly memberWork?:TeamMemberOperations;
+  readonly materials?:TeamMaterialOperations;
+  listMaterials?(ref:{teamId:string;taskId:string},signal?:AbortSignal):Promise<{materials:readonly StagedAttachment[];draftStageIds:readonly string[]}>;
   list(signal?: AbortSignal): Promise<readonly TeamView[]>;
   read(request: ReadRequest, signal?: AbortSignal): Promise<TeamView>;
   save(request: { readonly teamId?: string; readonly definition: TeamDefinition; readonly expectedVersion: number | null }, signal?: AbortSignal): Promise<TeamView>;
@@ -32,6 +40,9 @@ const errorText = (caught: unknown): string => caught instanceof Error ? caught.
 const references = (value: string): string[] => value.split(',').map(item => item.trim()).filter(Boolean);
 
 export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelProps): ReactElement {
+  const messageDrafts=useRef(new Map<string,TeamMessageDraft>());
+  const [materials,setMaterials]=useState<readonly StagedAttachment[]>([]);
+  const [draftStageIds,setDraftStageIds]=useState<readonly string[]>([]);
   const [teams, setTeams] = useState<readonly TeamView[]>([]);
   const [view, setView] = useState<TeamView>();
   const [draft, setDraft] = useState<TeamDefinition>(emptyDefinition);
@@ -56,6 +67,13 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
   useEffect(() => () => {
     if (address.taskId === undefined) editor.current.set(editorKey, latestEditor.current);
   }, [editorKey, address.taskId]);
+  useEffect(()=>{
+    setMaterials([]);setDraftStageIds([]);
+    if(!operations?.listMaterials||!address.teamId||!address.taskId)return;
+    const controller=new AbortController();
+    void operations.listMaterials({teamId:address.teamId,taskId:address.taskId},controller.signal).then(value=>{if(!controller.signal.aborted){setMaterials(value.materials);setDraftStageIds(value.draftStageIds);}}).catch(caught=>{if(!controller.signal.aborted)setError(errorText(caught));});
+    return ()=>controller.abort();
+  },[operations,address.teamId,address.taskId]);
   const validateTask = (value: TeamTaskView, taskId?: string) => {
     if (value.projectId !== operations?.projectId || value.team.teamId !== address.teamId || (taskId !== undefined && value.taskId !== taskId)) throw new Error('The Host returned a different task identity.');
   };
@@ -214,9 +232,13 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
       <button type='button' className='hima-button' onClick={() => onAddress({ kind: 'team', teamId: address.teamId })}>Back to team definition</button>
       <h3>Task {address.taskId}</h3>{task === undefined ? null : <><p>{task.goal}</p><p className='hima-small'>Frozen v{task.team.version} · deadline {task.deadlineAt} · Run {task.currentRunId}</p><p role='status'>{task.readiness.ready ? 'Host reports task execution ready.' : `Task is not ready: ${task.readiness.missing.join(', ')}`}</p><details><summary>Task input and closure</summary><pre className='hima-team-value'>{JSON.stringify(task.input, null, 2)}</pre><p>{task.closure}</p></details>{task.execution ? <section aria-label='Task execution'><p role='status'>Execution: {task.execution.state}</p><p data-hima-region='team-resource-state'>Resources: {task.execution.resourceState}. {task.execution.cancellationRequested ? 'Stop requested; resource closure is reported separately.' : ''}</p>{task.execution.reason ? <p>{task.execution.reason}</p> : null}<div className='hima-team-actions'>{(task.allowedActions ?? []).map(action => <button type='button' className='hima-button' data-hima-control={`team-${action}`} key={action} disabled={busy || operations?.control === undefined} onClick={() => void control(action)}>{action === 'pause' ? 'Pause task' : action === 'continue' ? 'Continue task' : 'Stop task'}</button>)}</div>{task.execution.tasks.map(item => <article key={item.effectId}><h4>{item.taskId}: {item.state}</h4>{item.reason ? <p>{item.reason}</p> : null}{item.result ? <><p>Retained result · {item.effectId}</p><pre className='hima-team-value'>{JSON.stringify(item.result.value,null,2)}</pre>{item.result.artifacts.map(artifact => <p key={artifact.name}>{artifact.name} · {artifact.sha256}</p>)}</> : null}</article>)}</section> : null}</>}
       <nav aria-label='Team task members'>{draft.members.map(item => <button type='button' className='hima-button' key={item.id} onClick={() => onAddress({ ...address, memberId: item.id })}>{item.role}</button>)}</nav>
-      {address.memberId === undefined ? null : member === undefined ? <p role='alert'>This member is absent from the displayed definition.</p> : <article><h3>{member.role}</h3><p>{member.id} · {member.runtime} · {member.modelRef}</p><p>Actual member execution detail is unavailable.</p></article>}
+      {address.memberId === undefined || task===undefined ? null : member === undefined ? <p role='alert'>This member is absent from the displayed definition.</p> : <TeamMemberPanel taskRef={{projectId:task.projectId,teamId:task.team.teamId,taskId:task.taskId}} memberId={member.id} role={member.role} operations={operations?.memberWork}/>}
     </>}
-    <fieldset disabled><legend>Capabilities awaiting Host integration</legend><button type='button'>Activate via OAR</button><button type='button'>Send member message</button><button type='button'>Attach material</button><button type='button'>Query member memory</button><button type='button'>Apply definition to running tasks</button></fieldset>
-    <p className='hima-small'>OAR, message delivery, materials and member memory are unavailable here. Opening a task is not evidence of member execution or delivery.</p>
+    {task ? <>
+      <TeamMaterialPanel task={{projectId:task.projectId,teamId:task.team.teamId,taskId:task.taskId}} operations={operations?.materials} materials={materials} draftStageIds={draftStageIds} onDraftChange={ids=>{setDraftStageIds(ids);setMaterials(previous=>previous.filter(item=>!draftStageIds.includes(item.stageId)||ids.includes(item.stageId)));}} onStaged={value=>setMaterials(previous=>[...previous.filter(item=>item.stageId!==value.stageId),value])}/>
+      <TeamTaskPanel task={task} members={draft.members} operations={operations?.messages} drafts={messageDrafts.current} stagedAttachmentIds={draftStageIds} onSent={sent=>{const sentIds=new Set(sent.message.materialRefs.map(value=>value.materialId));setDraftStageIds(previous=>previous.filter(id=>!sentIds.has(id)));}} onMember={memberId=>onAddress({...address,memberId})}/>
+    </> : null}
+    <fieldset disabled><legend>Capabilities awaiting Host integration</legend><button type='button'>Activate via OAR</button><button type='button'>Query member memory</button><button type='button'>Apply definition to running tasks</button></fieldset>
+    <p className='hima-small'>Native OAR member delivery and memory remain unavailable; messages and authorized materials are retained by Host. Opening a task is not evidence of member execution or delivery.</p>
   </section>;
 }

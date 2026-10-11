@@ -1,0 +1,529 @@
+{
+  "format": "hima-team-runtime/1",
+  "qualification": "retained-assets-partial",
+  "platforms": [
+    "darwin-arm64",
+    "linux-x64"
+  ],
+  "noImplicitDownloads": true,
+  "components": [
+    {
+      "id": "hindsight",
+      "version": "0.10.3",
+      "source": "https://pypi.org/project/hindsight-api-slim/0.10.3/",
+      "license": "MIT",
+      "notices": [
+        "python/lib/python3.12/site-packages/hindsight_api_slim-0.10.3.dist-info/licenses/LICENSE"
+      ],
+      "requiredFiles": [
+        "python/lib/python3.12/site-packages/hindsight_api/main.py",
+        "python/lib/python3.12/site-packages/hindsight_api/admin/cli.py"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "python/lib/python3.12/site-packages/hindsight_api_slim-0.10.3.dist-info/licenses/LICENSE": "01fde0bedf83bdc185065d7af524a61690efe576a67f922eaff3a1280c17b63a",
+            "python/lib/python3.12/site-packages/hindsight_api/main.py": "751d17bc090773edb5342dcad801cb1d38aca1b82ce64bc07d3fe78c3bddba95",
+            "python/lib/python3.12/site-packages/hindsight_api/admin/cli.py": "dc42d3da197400e083b02b7e1d75b02f1c9379713a2d121362c596e4ad6373f2"
+          }
+        }
+      }
+    },
+    {
+      "id": "python",
+      "version": "3.12.13",
+      "source": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260510",
+      "license": "Python-2.0",
+      "notices": [
+        "python/lib/python3.12/LICENSE.txt"
+      ],
+      "requiredFiles": [
+        "python/bin/python3.12"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "python/lib/python3.12/LICENSE.txt": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+            "python/bin/python3.12": "a395f264e5612a2819662ed3e37fd30d39ed61179b98e5f86c3c783a008d8623"
+          }
+        }
+      }
+    },
+    {
+      "id": "postgres",
+      "version": "16.15",
+      "source": "https://ftp.postgresql.org/pub/source/v16.15/postgresql-16.15.tar.bz2",
+      "license": "PostgreSQL",
+      "notices": [
+        "postgres/COPYRIGHT"
+      ],
+      "requiredFiles": [
+        "postgres/bin/postgres",
+        "postgres/lib/pg_trgm.dylib",
+        "postgres/postgres-runtime.json"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "postgres/COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+            "postgres/bin/postgres": "c045f54e5e1ee59ae3a890e96e52381e4661e505510a02053237b901e8dd8e18",
+            "postgres/lib/pg_trgm.dylib": "4ca51619d921818163446f32837f95aec9fb812f27feaa87286e6e82fa14cb4d",
+            "postgres/postgres-runtime.json": "05e199a9f1b51ffa63a5928c3f2bf613b90bfdb3d416b63d908ccc3190ec67ee"
+          }
+        }
+      }
+    },
+    {
+      "id": "pgvector",
+      "version": "0.8.7",
+      "source": "https://github.com/pgvector/pgvector/tree/v0.8.7",
+      "license": "PostgreSQL",
+      "notices": [
+        "notices/PGVECTOR-LICENSE"
+      ],
+      "requiredFiles": [
+        "postgres/lib/vector.dylib"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "notices/PGVECTOR-LICENSE": "6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87",
+            "postgres/lib/vector.dylib": "84af1d70630b8f976257332e7afad379d035f12092870043f404c5cb92908e4e"
+          }
+        }
+      }
+    },
+    {
+      "id": "bge-model",
+      "version": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+      "source": "https://huggingface.co/BAAI/bge-small-en-v1.5",
+      "license": "MIT",
+      "notices": [
+        "models/BAAI-bge-small-en-v1.5/README.md"
+      ],
+      "requiredFiles": [
+        "models/BAAI-bge-small-en-v1.5/model.safetensors"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "models/BAAI-bge-small-en-v1.5/README.md": "ddb964361a55c6e5dfca6361615854b260c9c960205d04c7520151aaa1d75837",
+            "models/BAAI-bge-small-en-v1.5/model.safetensors": "3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad"
+          }
+        }
+      }
+    },
+    {
+      "id": "reranker-model",
+      "version": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+      "source": "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "license": "Apache-2.0",
+      "notices": [
+        "models/cross-encoder-ms-marco-MiniLM-L-6-v2/README.md"
+      ],
+      "requiredFiles": [
+        "models/cross-encoder-ms-marco-MiniLM-L-6-v2/model.safetensors"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/README.md": "7c0ec39941d0d1d766ccde671f592971d82fe45b7eea550a80d1ea864ebc3baa",
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/model.safetensors": "821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae"
+          }
+        }
+      }
+    },
+    {
+      "id": "opencode",
+      "version": "1.18.34",
+      "source": "https://github.com/anomalyco/opencode/releases/tag/v1.18.34",
+      "license": "MIT",
+      "notices": [
+        "notices/opencode-LICENSE"
+      ],
+      "requiredFiles": [
+        "opencode"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "notices/opencode-LICENSE": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
+            "opencode": "7b63b34fafabded7d9231f6a9032755d0cdeaf8b9d2b70df8e25535471469eea"
+          }
+        }
+      }
+    },
+    {
+      "id": "ripgrep",
+      "version": "15.2.0",
+      "source": "https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0",
+      "license": "MIT OR Unlicense",
+      "notices": [
+        "notices/RG-LICENSE-MIT",
+        "notices/RG-UNLICENSE"
+      ],
+      "requiredFiles": [
+        "helpers/rg"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "notices/RG-LICENSE-MIT": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+            "notices/RG-UNLICENSE": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
+            "helpers/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
+          }
+        }
+      }
+    },
+    {
+      "id": "fd",
+      "version": "10.5.0",
+      "source": "https://github.com/sharkdp/fd/releases/tag/v10.5.0",
+      "license": "MIT OR Apache-2.0",
+      "notices": [
+        "notices/FD-LICENSE-MIT",
+        "notices/FD-LICENSE-APACHE"
+      ],
+      "requiredFiles": [
+        "helpers/fd"
+      ],
+      "distribution": "retained macOS native service assets; assembly qualification only",
+      "platformAssets": {
+        "darwin-arm64": {
+          "files": {
+            "notices/FD-LICENSE-MIT": "322cfc7aa0c774d0eca3b2610f1d414de3ddbd7d8dd4b9dea941a13a6eb07455",
+            "notices/FD-LICENSE-APACHE": "73c83c60d817e7df1943cb3f0af81e4939a8352c9a96c2fd00451b1116fa635c",
+            "helpers/fd": "cf3bde435da174f41cf9589a2efeaf03804df7c250fc15e8b8a1e9bfc66ebc9a"
+          }
+        }
+      }
+    },
+    {
+      "id": "oar",
+      "version": "0.46.0",
+      "source": "https://github.com/botiverse/oar",
+      "sourceRevision": "52719cda0ee3645543b9d0d3f54d4f8895bd18fe",
+      "license": "Apache-2.0",
+      "sourceFiles": {
+        "packages/oar/package.json": "19c2cd85714f935a8663fddb65e8ee9bc4dba9dd82170c6144625215ac8bafbd",
+        "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      },
+      "distribution": "retained npm deployment tree; symlink relocation, notice closure and five-component assembly unqualified",
+      "retainedNpm": {
+        "packagePath": "@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar",
+        "packageJsonSha256": "528b81e2a8cac606dcb0de1af75fd790a06b6950ab2da16f9a62653034b6ff11",
+        "notices": [
+          {
+            "file": "@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/LICENSE",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        ],
+        "filesInventorySha256": "d328dbd2e82477e36ce0ec28a5d3daac983e4e214d012ad78b9b89f5a99a6a34",
+        "lockSha256": "721aa7a83bb5f4513ae8d36b632a4508e55f1fe427384920d6acc321e72a0cbe",
+        "noticesInventorySha256": "ef8ce8d19ba031c62b2272d75905844e231d0cf1893a80536270fa016fd64402",
+        "requiredFiles": {
+          "@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/package.json": "528b81e2a8cac606dcb0de1af75fd790a06b6950ab2da16f9a62653034b6ff11",
+          "@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/dist/index.js": "a214d9ffe59e4a129404d2899855d59287029ae69824232d9ebb2322c34a7abb"
+        }
+      }
+    },
+    {
+      "id": "pi",
+      "version": "1.1.0",
+      "source": "https://registry.npmjs.org/@earendil-works/pi-coding-agent",
+      "distribution": "retained npm deployment tree; symlink relocation, notice closure and five-component assembly unqualified",
+      "license": "MIT",
+      "retainedNpm": {
+        "packagePath": "@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent",
+        "packageJsonSha256": "c662a36f8bc47843393a60dc8616a34dfcc8376e8fcc96dbc2f1020c60e38e2a",
+        "notices": [],
+        "filesInventorySha256": "d328dbd2e82477e36ce0ec28a5d3daac983e4e214d012ad78b9b89f5a99a6a34",
+        "lockSha256": "721aa7a83bb5f4513ae8d36b632a4508e55f1fe427384920d6acc321e72a0cbe",
+        "noticesInventorySha256": "ef8ce8d19ba031c62b2272d75905844e231d0cf1893a80536270fa016fd64402",
+        "requiredFiles": {
+          "@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent/package.json": "c662a36f8bc47843393a60dc8616a34dfcc8376e8fcc96dbc2f1020c60e38e2a",
+          "@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent/dist/index.js": "5482298b995db935f7b96f5d6056fa1c36ac6fc80456be594ef65b83c62b0d30",
+          "@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+          "@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js": "c8114525a78e7d1123a23ae522eb8f5b6f17f556ff746bbeabaaec9c8cd6dff4"
+        }
+      }
+    },
+    {
+      "id": "dsh",
+      "version": "0.1.5-alpha.1",
+      "source": "https://registry.npmjs.org/@deepseek-ai/dsh",
+      "distribution": "existing pnpm-lock.yaml; upgrade cohort owned by #99"
+    }
+  ],
+  "platformAssets": {
+    "darwin-arm64": {
+      "qualification": "asset-assembly-only",
+      "manifestSha256": "34438a93a12bbdf1b0a585ee8e9b392fee0b23acf2a5ea1ab2143fcac26f2680",
+      "inventorySha256": "21e3f3ae6db521a736fe6c615013cbd5b0f7a3e4cf4c7d235f64c12523fc4583",
+      "fileCount": 52535,
+      "requiredComponents": [
+        "hindsight",
+        "python",
+        "postgres",
+        "pgvector",
+        "bge-model",
+        "reranker-model",
+        "opencode",
+        "ripgrep",
+        "fd"
+      ],
+      "services": [
+        {
+          "id": "hindsight",
+          "executable": "python/bin/python3.12",
+          "argv": [
+            "-I",
+            "-B",
+            "-m",
+            "hindsight_api.main"
+          ],
+          "backupExecutable": "python/bin/python3.12",
+          "backupArgv": [
+            "-I",
+            "-B",
+            "-m",
+            "hindsight_api.admin.cli"
+          ],
+          "timeoutMs": 120000,
+          "stopGraceMs": 5000
+        }
+      ],
+      "nativeEvidence": "macOS 26.5.2 arm64 relocated authenticated readiness, online backup, owned stop and CPU local models; no clean installer or sandbox qualification",
+      "releaseBlockers": [
+        "Missing full OAR/Pi/DSH relocatable five-component deployment cohort; DSH upgrade assets owned by #99",
+        "Missing Python/npm standalone notices and native corresponding-source/replacement obligations; inventories retained, no legal clearance",
+        "Missing owned engineering sandbox/helper/image closure and approved outbound/Host-private network isolation proof",
+        "Clean installation, real provider/GitHub permissions and full Team acceptance remain unverified"
+      ]
+    },
+    "linux-x64": {
+      "qualification": "unavailable",
+      "missing": [
+        "Native PostgreSQL/vector/pg_trgm deployment closure",
+        "Linux native execution, owned rootless sandbox and clean installation evidence"
+      ]
+    }
+  },
+  "retainedArchives": [
+    {
+      "name": "opencode-darwin-arm64.zip",
+      "source": "https://github.com/anomalyco/opencode/releases/download/v1.18.34/opencode-darwin-arm64.zip",
+      "bytes": 45538151,
+      "sha256": "8522b70f545184b3a8d97c5ca4f814093b2476d72aebfda8c48bcd072ec31d1b",
+      "officialDigest": "sha256:8522b70f545184b3a8d97c5ca4f814093b2476d72aebfda8c48bcd072ec31d1b"
+    },
+    {
+      "name": "opencode-linux-x64-baseline.tar.gz",
+      "source": "https://github.com/anomalyco/opencode/releases/download/v1.18.34/opencode-linux-x64-baseline.tar.gz",
+      "bytes": 60665421,
+      "sha256": "24b0d458d21ef548b2752166303defcf7f4945b049fb4876ab78dfaf86d81b27",
+      "officialDigest": "sha256:24b0d458d21ef548b2752166303defcf7f4945b049fb4876ab78dfaf86d81b27"
+    },
+    {
+      "name": "oar-0.46.0.tgz",
+      "source": "https://registry.npmjs.org/@botiverse/oar/-/oar-0.46.0.tgz",
+      "bytes": 504653,
+      "sha256": "633cc8a71fd14a8fa0bae2cf1471008b97446e2973754d52d17fc827d8f48873",
+      "registryIntegrity": "sha512-f0AKZlKp4SMB2fPMDRc1+DPl9i5J6waN6o1a7wUsDfjtff3WXF4xuEUNOTU50/eliH1eRXCa0s89uy0oPBGeqA=="
+    },
+    {
+      "name": "pi-1.1.0.tgz",
+      "source": "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-1.1.0.tgz",
+      "bytes": 7520009,
+      "sha256": "09cd8a0a43dbb1d81a67346b09400b439ce71d818caba4e963ea958846a1aed4",
+      "registryIntegrity": "sha512-SeEi/4hdcHNgA9UWlefZl7ZZpm3dzi2OoxNjDHsBJ9o298LNOtbL4DGKgitlEj6uCTccvtw6f2hlCkTPVJ2RXg=="
+    },
+    {
+      "id": "ripgrep",
+      "version": "15.2.0",
+      "platform": "aarch64-apple-darwin",
+      "name": "ripgrep-15.2.0-aarch64-apple-darwin.tar.gz",
+      "source": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4",
+      "bytes": 1764284
+    },
+    {
+      "id": "ripgrep",
+      "version": "15.2.0",
+      "platform": "x86_64-unknown-linux-musl",
+      "name": "ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+      "source": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c",
+      "bytes": 2265718
+    },
+    {
+      "id": "fd",
+      "version": "v10.5.0",
+      "platform": "aarch64-apple-darwin",
+      "name": "fd-v10.5.0-aarch64-apple-darwin.tar.gz",
+      "source": "https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "b67e1836c468e42e411984b56e52fa7abec08c2bd22c867398e7cc134aac5e12",
+      "bytes": 1334374
+    },
+    {
+      "id": "fd",
+      "version": "v10.5.0",
+      "platform": "x86_64-unknown-linux-musl",
+      "name": "fd-v10.5.0-x86_64-unknown-linux-musl.tar.gz",
+      "source": "https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "761c72dc8e120d85b22292063be8a796e2eeb20eb3e4f38b8fa2343ccf3514a7",
+      "bytes": 1573549
+    },
+    {
+      "name": "cpython",
+      "arch": {
+        "family": "aarch64",
+        "variant": null
+      },
+      "os": "darwin",
+      "libc": "none",
+      "major": 3,
+      "minor": 12,
+      "patch": 13,
+      "prerelease": "",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13%2B20260510-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "55bc1a5edbc8ac4da0081f4f5731ed2d1ed10c57cb37a820b2a0dbc7cad742e9",
+      "variant": null,
+      "build": "20260510"
+    },
+    {
+      "name": "cpython",
+      "arch": {
+        "family": "x86_64",
+        "variant": null
+      },
+      "os": "linux",
+      "libc": "gnu",
+      "major": 3,
+      "minor": 12,
+      "patch": 13,
+      "prerelease": "",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13%2B20260510-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "sha256": "d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88",
+      "variant": null,
+      "build": "20260510"
+    }
+  ],
+  "models": [
+    {
+      "id": "BAAI/bge-small-en-v1.5",
+      "revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+      "license": "mit",
+      "weightFiles": [
+        {
+          "file": "model.safetensors",
+          "source": "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/model.safetensors",
+          "bytes": 133466304,
+          "sha256": "3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad"
+        }
+      ]
+    },
+    {
+      "id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+      "license": "apache-2.0",
+      "weightFiles": [
+        {
+          "file": "model.safetensors",
+          "source": "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2/resolve/233902d25c440f23af6f7d6e94d2946bac0bee0a/model.safetensors",
+          "bytes": 90870598,
+          "sha256": "821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae"
+        }
+      ]
+    }
+  ],
+  "noticeObligations": {
+    "python": {
+      "inventorySha256": "d44983d76409b205666d3e2eddc7bd6959ddab104779f685ca194008ec835934",
+      "unresolved": [
+        "github-copilot-sdk@1.0.19",
+        "fastmcp-slim@4.1.0",
+        "magika@0.6.3",
+        "cobble@0.1.4",
+        "obstore@0.11.1",
+        "flatbuffers@25.12.19",
+        "tokenizers@0.22.2",
+        "dnspython@2.9.0",
+        "opentelemetry-util-http@0.66b1",
+        "markitdown@0.1.8"
+      ]
+    },
+    "npm": {
+      "inventorySha256": "ef8ce8d19ba031c62b2272d75905844e231d0cf1893a80536270fa016fd64402",
+      "unresolved": [
+        "@aws-sdk/credential-provider-http@3.972.74",
+        "@aws-sdk/credential-provider-login@3.972.79",
+        "@aws-sdk/nested-clients@3.997.46",
+        "@earendil-works/chord@1.1.0",
+        "@earendil-works/pi-agent-core@1.1.0",
+        "@earendil-works/pi-ai@1.1.0",
+        "@earendil-works/pi-codemode@1.1.0",
+        "@earendil-works/pi-coding-agent@1.1.0",
+        "@earendil-works/pi-mcp@1.1.0",
+        "@earendil-works/pi-telemetry@1.1.0",
+        "@earendil-works/pi-tui@1.1.0",
+        "@esbuild/darwin-arm64@0.28.2",
+        "@esbuild/darwin-x64@0.28.2",
+        "@esbuild/linux-arm64@0.28.2",
+        "@esbuild/linux-x64@0.28.2",
+        "bignumber.js@9.3.1",
+        "data-uri-to-buffer@4.0.1",
+        "proxy-agent-negotiate@1.1.0",
+        "standardwebhooks@1.1.1"
+      ]
+    },
+    "qualification": "10 missing standalone notices in minimal Mac Python graph;19 in current127-root npm graph; declarations/file notices inventoried, source/replacement/native embedded-license obligations not closed; no legal clearance."
+  },
+  "requiredHostEnvironment": {
+    "PYTHON_DOTENV_DISABLED": "1",
+    "PYTHONNOUSERSITE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PI_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HINDSIGHT_API_SKIP_LLM_VERIFICATION": "true only for infrastructure-only probing; actual provider availability stays separate"
+  },
+  "nativeEnvironment": {
+    "choice": "retained native macOS service assets",
+    "missing": [
+      "Missing full OAR/Pi/DSH relocatable five-component deployment cohort; DSH upgrade assets owned by #99",
+      "Missing Python/npm standalone notices and native corresponding-source/replacement obligations; inventories retained, no legal clearance",
+      "Missing owned engineering sandbox/helper/image closure and approved outbound/Host-private network isolation proof",
+      "Clean installation, real provider/GitHub permissions and full Team acceptance remain unverified"
+    ]
+  },
+  "services": [
+    {
+      "id": "hindsight",
+      "executable": "python/bin/python3.12",
+      "argv": [
+        "-I",
+        "-B",
+        "-m",
+        "hindsight_api.main"
+      ],
+      "backupExecutable": "python/bin/python3.12",
+      "backupArgv": [
+        "-I",
+        "-B",
+        "-m",
+        "hindsight_api.admin.cli"
+      ],
+      "timeoutMs": 120000,
+      "stopGraceMs": 5000
+    }
+  ]
+}

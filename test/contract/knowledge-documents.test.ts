@@ -393,3 +393,16 @@ test('HimaGuide reaches current knowledge through one bounded product tool witho
       'a read outside a Campaign remains session knowledge and does not invent a Campaign');
   } finally { await host.dispose(); await h.dispose(); }
 });
+
+// #103 original-first parsing: status must preserve failures instead of throwing away originals.
+test('task material parsing distinguishes unsupported, no-text, failed and sourced text', async () => {
+  const { parseTaskMaterial } = await import('@hima/harness');
+  assert.equal((await parseTaskMaterial(new Uint8Array([0, 1]), 'layout.gds', 'application/octet-stream')).status, 'unsupported');
+  assert.equal((await parseTaskMaterial(new TextEncoder().encode('   '), 'empty.txt', 'text/plain')).status, 'no-text');
+  assert.equal((await parseTaskMaterial(new Uint8Array([255]), 'broken.txt', 'text/plain')).status, 'failed');
+  const parsed = await parseTaskMaterial(new TextEncoder().encode('# Process\n\nThe allowed clock is 800 MHz.'), 'notes.md', 'text/markdown');
+  assert.equal(parsed.status, 'parsed');
+  assert.equal(parsed.chunks[0]?.text, '# Process\n\nThe allowed clock is 800 MHz.');
+  assert.match(parsed.chunks[0]?.location ?? '', /Process/);
+  assert.equal(parsed.chunks[0]?.sha256, 'b04dfd3113f9c0a28ecd62d0ae92d06cfaec0d3cdbd27b17a56f7a9e64045e65');
+});

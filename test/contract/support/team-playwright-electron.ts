@@ -52,9 +52,9 @@ function redact(text: string): string {
     .replace(/((?:api[_-]?key|password|cookieValue|cookie|authorization)["']?\s*[:=]\s*)[^\s,}\n]+/giu, '$1[redacted]');
 }
 
-export async function bootTeamPlaywright(home: HimaHome, evidence: string): Promise<{
+export async function bootTeamPlaywright(home: HimaHome, evidence: string, options: { hindsightFixture?: boolean } = {}): Promise<{
   page: TeamPage;
-  wait(expression: string): Promise<void>;
+  wait(expression: string, timeoutMs?: number): Promise<void>;
   dispose(): Promise<void>;
   screenshot(options: { path: string; fullPage?: boolean; timeout?: number }): Promise<void>;
 }> {
@@ -72,6 +72,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string): Prom
     .filter((entry): entry is [string, string] => entry[1] !== undefined));
   // Authentication is absent in this no-model scenario, including inherited credentials.
   for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN/u.test(key)) delete env[key];
+  if (options.hindsightFixture) env.HIMA_HINDSIGHT_LLM_API_KEY = 'qualification-only';
   recordTestBoot('electron');
   const app = await playwright._electron.launch({ executablePath: binary.at,
     args: [`--remote-debugging-port=${await freePort()}`, path.join(repoRoot, 'packages/desktop/lib/main.js'), '--theme', 'light'],
@@ -115,7 +116,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string): Prom
     // change DOM values without delivering React changes, so L3 uses a painted window.
     await app.evaluate(({ BrowserWindow }) => { for (const win of BrowserWindow.getAllWindows()) { win.webContents.setBackgroundThrottling(false); win.hide(); win.show = () => undefined; } });
     await app.evaluate(({ BrowserWindow }) => { for (const win of BrowserWindow.getAllWindows()) win.showInactive(); });
-    return { page, wait: async expression => { await writeFile(path.join(evidence, 'last-wait.txt'), expression); await page.waitForFunction(expression, undefined, { timeout: 60_000 }); }, dispose,
+    return { page, wait: async (expression, timeoutMs = 60_000) => { await writeFile(path.join(evidence, 'last-wait.txt'), expression); await page.waitForFunction(expression, undefined, { timeout: timeoutMs }); }, dispose,
       screenshot: async options => {
         // Capture only this owned window; hide it immediately after the final frame.
         await app.evaluate(({ BrowserWindow }) => { for (const win of BrowserWindow.getAllWindows()) { win.showInactive(); } });

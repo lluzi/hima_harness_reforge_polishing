@@ -70,7 +70,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       ALTER TABLE hima.flow_derived_effects ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'business';
     `);
     const { rows } = await client.query<{version: number}>('SELECT version FROM hima.schema_version');
-    if (rows.length !== 1 || ![1, 2].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
+    if (rows.length !== 1 || ![1, 2, 3, 4].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
     if (rows[0]!.version === 1) {
       await client.query(`
         CREATE TABLE hima.host_operator(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), actor_id text NOT NULL UNIQUE);
@@ -84,6 +84,35 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
         CREATE TABLE hima.task_actor_grants(grant_id text PRIMARY KEY, task_id text NOT NULL REFERENCES hima.team_tasks,
           token_sha256 text NOT NULL UNIQUE, grant_data jsonb NOT NULL);
         UPDATE hima.schema_version SET version=2 WHERE version=1;
+      `);
+    }
+    if (rows[0]!.version <= 2) {
+      await client.query(`CREATE TABLE hima.team_service_receipts(
+        seq bigserial PRIMARY KEY, receipt_id text NOT NULL UNIQUE, service_id text NOT NULL,
+        generation text NOT NULL, digest text NOT NULL, receipt jsonb NOT NULL);
+        CREATE INDEX team_service_receipts_generation ON hima.team_service_receipts(service_id,generation,seq DESC);
+        UPDATE hima.schema_version SET version=3;`);
+    }
+    if (rows[0]!.version < 4) {
+      await client.query(`
+        ALTER TABLE hima.flow_invocations ADD COLUMN created_at timestamptz;
+        ALTER TABLE hima.flow_invocations ALTER COLUMN created_at SET DEFAULT clock_timestamp();
+        ALTER TABLE hima.flow_invocations ADD COLUMN admitted_generation integer;
+        CREATE TABLE hima.team_attachments(stage_id text PRIMARY KEY, task_id text NOT NULL REFERENCES hima.team_tasks,
+          project_id text NOT NULL, actor_id text NOT NULL, request_id text NOT NULL, digest text NOT NULL,
+          original jsonb NOT NULL, staged jsonb NOT NULL, parser_completed boolean NOT NULL DEFAULT false, removed boolean NOT NULL DEFAULT false,
+          UNIQUE(task_id,actor_id,request_id));
+        CREATE TABLE hima.team_messages(seq bigint GENERATED ALWAYS AS IDENTITY UNIQUE, message_id text PRIMARY KEY,
+          task_id text NOT NULL REFERENCES hima.team_tasks, request_id text NOT NULL, digest text NOT NULL,
+          envelope jsonb NOT NULL, UNIQUE(task_id,request_id));
+        CREATE TABLE hima.team_message_deliveries(delivery_id text PRIMARY KEY, message_id text NOT NULL REFERENCES hima.team_messages,
+          recipient_member_id text NOT NULL, delivery jsonb NOT NULL, UNIQUE(message_id,recipient_member_id));
+        CREATE TABLE hima.team_delivery_attempts(delivery_id text NOT NULL REFERENCES hima.team_message_deliveries,
+          attempt_id text NOT NULL, attempt jsonb NOT NULL, PRIMARY KEY(delivery_id,attempt_id));
+        CREATE TABLE hima.team_material_links(task_id text NOT NULL REFERENCES hima.team_tasks,
+          stage_id text NOT NULL REFERENCES hima.team_attachments, message_id text NOT NULL REFERENCES hima.team_messages,
+          member_ids jsonb NOT NULL, PRIMARY KEY(task_id,stage_id,message_id));
+        UPDATE hima.schema_version SET version=4;
       `);
     }
     await client.query('COMMIT');

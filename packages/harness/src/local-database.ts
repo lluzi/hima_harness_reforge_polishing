@@ -20,6 +20,8 @@ export interface LocalDatabase {
   readonly identity: string;
   readonly application: LocalDatabaseConnection;
   readonly system: LocalDatabaseConnection;
+  /** Optional Hindsight gets its own private, non-superuser role/database on this owned cluster. */
+  prepareHindsight():Promise<LocalDatabaseConnection>;
   /** Consumers close DBOS and all connection pools before stopping the cluster. */
   stop(): Promise<void>;
 }
@@ -343,6 +345,24 @@ export async function startLocalDatabase(options: { readonly home: string; reado
     let capturedAuthority: Record<string, unknown> | undefined;
     return {
       identity: credentials.identity, application: connection('hima_application'), system: connection('hima_dbos_system'),
+      prepareHindsight:async()=>{
+        const file=path.join(root,'hindsight-credentials.json');
+        let service:{password:string};
+        if(await exists(file))service=JSON.parse(await privateFile(file)) as {password:string};
+        else {
+          if(await query('postgres',"SELECT count(*) FROM pg_roles WHERE rolname='hima_hindsight';\n")!=='0'
+            || await query('postgres',"SELECT count(*) FROM pg_database WHERE datname='hima_hindsight';\n")!=='0')throw problem('the service role/database has no private ownership credentials; preserve the original cluster.');
+          service={password:randomBytes(32).toString('hex')};
+          await writeFile(file,JSON.stringify(service),{mode:0o600,flag:'wx'});
+        }
+        if(!/^[a-f0-9]{64}$/.test(service.password))throw problem('the private Hindsight role credentials are invalid.');
+        if(await query('postgres',"SELECT count(*) FROM pg_roles WHERE rolname='hima_hindsight';\n")==='0')await query('postgres',`CREATE ROLE hima_hindsight LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD '${service.password}';\n`);
+        if(await query('postgres',"SELECT count(*) FROM pg_database WHERE datname='hima_hindsight';\n")==='0')await query('postgres','CREATE DATABASE hima_hindsight OWNER hima_hindsight;\n');
+        // A service credential cannot enter the Host application or engine databases.
+        await query('postgres','REVOKE CONNECT ON DATABASE hima_application,hima_dbos_system,postgres FROM PUBLIC;\n');
+        await query('hima_hindsight','CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;\n');
+        return {...connection('hima_hindsight'),user:'hima_hindsight',password:service.password};
+      },
       stop: () => stopping ??= (async () => {
         // This read-only closure capture runs only after consumers close DBOS and their pools.
         // The offline backup never starts an imported cluster to reconstruct missing authority.

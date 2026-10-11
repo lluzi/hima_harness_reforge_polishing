@@ -642,6 +642,8 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  teamRuntimeOperation?(request:unknown):Promise<object>;
+  teamMaterialBytes?(sessionId:string,ref:{teamId:string;taskId:string;stageId:string},signal?:AbortSignal):Promise<{stream:AsyncIterable<Uint8Array>;sha256:string;mediaType:string}>;
   teamOperation?(sessionId:string,request:unknown):Promise<object>;
   memberTeamContext?(token:string,request:unknown):Promise<object>;
   readRunView?(runId: string): Promise<RunView | undefined>;
@@ -1626,6 +1628,11 @@ function unpreparedReason(prepared: Extract<StartRunResult, { kind: 'unprepared'
 /** Route one request inside the namespace. The path is already known to start with the prefix. */
 async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Promise<Answer> {
   const rest = url.pathname.slice(HIMA_API_PREFIX.length);
+  if(rest==='/team-runtime') {
+    if(req.method!=='POST'||!ops.teamRuntimeOperation)return failure(405,'hima/bad-request','Team runtime operations require POST.');
+    try{return ok(await ops.teamRuntimeOperation(await readJsonBody(req)));}
+    catch(error){if(error instanceof ZodError)return failure(400,'hima/bad-request','Choose a supported service operation.');throw error;}
+  }
   if(rest==='/teams') {
     if(req.method!=='POST'||!ops.teamOperation)return failure(405,'hima/bad-request','Team operations require POST.');
     const body=z.strictObject({sessionId:z.string().min(1),request:z.unknown()}).parse(await readJsonBody(req));
@@ -2211,6 +2218,32 @@ export function registerHimaRoutes(ctx: Context, ops: RemoteOperations): () => v
       const rejection = nativeExit?undefined:ctx.connection.requestRejection(req);
       if (rejection !== undefined) {
         send(res, failure(rejection, 'hima/not-authorized', rejection === 401 ? 'no browser session; open the workbench URL first' : 'this origin may not reach the Hima namespace'));
+        return;
+      }
+      if(url.pathname===`${HIMA_API_PREFIX}/team-material`) {
+        const controller=new AbortController();const closed=()=>controller.abort(new Error('Material reader disconnected.'));
+        res.once('close',closed);
+        try {
+          if(req.method!=='GET'||!ops.teamMaterialBytes)throw new BadRequest('Material originals require GET.');
+          const request=z.strictObject({sessionId:z.string().min(1),teamId:z.string().min(1),taskId:z.string().min(1),stageId:z.string().min(1)}).parse(Object.fromEntries(url.searchParams));
+          const value=await ops.teamMaterialBytes(request.sessionId,request,controller.signal);
+          res.statusCode=200;res.setHeader('content-type',value.mediaType);res.setHeader('content-disposition','attachment');res.setHeader('x-content-sha256',value.sha256);res.setHeader('x-content-type-options','nosniff');
+          for await(const bytes of value.stream) {
+            controller.signal.throwIfAborted();
+            if(!res.write(bytes))await new Promise<void>((resolve,reject)=>{
+              const finish=(error?:Error)=>{res.off('drain',drained);res.off('error',failed);res.off('close',disconnected);error?reject(error):resolve();};
+              const drained=()=>finish();const failed=(error:Error)=>finish(error);const disconnected=()=>finish(new Error('Material reader disconnected.'));
+              res.once('drain',drained);res.once('error',failed);res.once('close',disconnected);
+              if(res.destroyed||controller.signal.aborted)disconnected();
+            });
+          }
+          res.end();
+        } catch(error) {
+          if(res.headersSent){res.destroy();return;}
+          if(error instanceof TeamError)send(res,failure(403,'hima/not-authorized',error.message));
+          else if(error instanceof ZodError||error instanceof BadRequest)send(res,failure(400,'hima/bad-request','Choose a task material identity.'));
+          else send(res,failure(503,'hima/internal','The retained original could not be read.'));
+        } finally {res.off('close',closed);controller.abort();}
         return;
       }
       try {

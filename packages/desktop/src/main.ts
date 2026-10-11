@@ -20,7 +20,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, libInsightCodeDirectory, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, libInsightCodeDirectory, packagedTrialDshHome, postgresRuntimeDirectory, teamRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
@@ -606,6 +606,8 @@ async function start(): Promise<void> {
   const env = hostEnvironment();
   env.HIMA_DESKTOP_CONTROL_TOKEN = desktopExitToken;
   env.HIMA_POSTGRES_RUNTIME = postgresRuntimeDirectory(env);
+  const teamRuntime=teamRuntimeDirectory(env);
+  if(teamRuntime!==undefined)env.HIMA_TEAM_RUNTIME=teamRuntime;
   const libInsight = libInsightCodeDirectory(env);
   if (libInsight !== undefined) env.HIMA_LIBINSIGHT_ROOT = libInsight;
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt

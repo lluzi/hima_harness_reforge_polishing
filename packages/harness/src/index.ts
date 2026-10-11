@@ -1,3 +1,7 @@
+import { sendTeamMessage, readTeamMessages, readTaskActivity, readPendingTeamRequests, readMemberWork, reconcileTeamMessageDelivery, type TeamTransport, type TeamMessageActor, type TaskRef } from './team-messages.js';
+import { stageAttachment, readAttachment, materializeAttachment, readAttachmentExcerpt, type TeamAttachmentPorts } from './team-attachments.js';
+import { parseTaskMaterial } from './workshop.js';
+import { TeamServiceRuntime, type TeamServiceReceipt } from './team-service-runtime.js';
 import { z as teamZ } from 'zod';
 import { controlFlow } from './flow-workflow.js';
 import { openDurableTeamRun, readTeamTask } from './durable-fabric.js';
@@ -126,6 +130,7 @@ export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackW
 export { workshopArgv, readersDirName } from './packs.js';
 export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP, KNOWLEDGE_INDEX_SCHEMA, KNOWLEDGE_CHUNK_CHARS, KNOWLEDGE_SEARCH_LIMIT, KNOWLEDGE_SNIPPET_CHARS, KNOWLEDGE_READ_CAP, indexKnowledgeDocument, importCurrentKnowledge, listCurrentKnowledge, clearCurrentKnowledge, searchKnowledgeIndexes, searchCurrentKnowledge, readCurrentKnowledge, searchPackKnowledge, readPackKnowledge, recordDocumentKnowledgeRead } from './workshop.js';
 export type { KnowledgeDocumentIdentity, KnowledgeDocumentChunk, KnowledgeDocumentIndex, KnowledgeSearchHit, KnowledgeSearchCandidate } from './workshop.js';
+export { parseTaskMaterial } from './workshop.js';
 // How far up the pack authoring pipeline a folder has come (#63). On the surface because the pack
 // check reports it, the `/hima pack check` words print it, and the contract suite holds a folder the
 // pipeline authored against the sections the two stages are required to write.
@@ -497,6 +502,9 @@ export default class Hima extends Service {
   reconciled!: Promise<void>;
   /** DBOS owns new durable workflows; its store is the application fact authority. */
   durable!: DurableRuntime;
+  teamTransport:TeamTransport|undefined;
+  private teamServices:TeamServiceRuntime|undefined;
+  private interruptedTeamServices:readonly TeamServiceReceipt[]=[];
   private releaseDurableAdapters!: () => void;
   private readonly durableAdaptersReady = new Promise<void>(resolve => { this.releaseDurableAdapters = resolve; });
   private notificationsActive = false;
@@ -540,6 +548,10 @@ export default class Hima extends Service {
     let closeHostResources = async () => {
       const database = await databaseStarting;
       const durable = await durableStarting?.catch(() => undefined);
+      if(this.teamServices) {
+        const stopped=await this.teamServices.stopAll();
+        if(this.interruptedTeamServices.length || stopped.some(receipt=>!receipt.owned.quiescent))throw new Error('Team service closure is unproved; retain the original Host database and service generation.');
+      }
       if (durable && !durableClosed) { await durable.stop(); durableClosed = true; }
       try {
         if (domainStarting && !domainClosed) { await (await domainStarting).close(); domainClosed = true; }
@@ -602,6 +614,17 @@ export default class Hima extends Service {
     durableStarting = startDurableRuntime({ database, manifest, workflows });
     this.durable = await durableStarting;
     if (closing) return;
+    this.interruptedTeamServices=await this.durable.store.unclosedTeamServiceGenerations();
+    this.teamServices=new TeamServiceRuntime({home:localDatabaseHome(),runtimeDirectory:process.env.HIMA_TEAM_RUNTIME,
+      recordReceipt:receipt=>this.durable.store.recordTeamServiceReceipt(receipt),configuration:async()=>{
+        // Provider credentials stay in the existing Host environment; public status never carries them.
+        const environment:Record<string,string>={};
+        for(const [key,value] of Object.entries(process.env))if(key.startsWith('HIMA_HINDSIGHT_')&&value!==undefined)environment[key.replace(/^HIMA_HINDSIGHT_/,'HINDSIGHT_API_')]=value;
+        if(!environment.HINDSIGHT_API_LLM_PROVIDER || !environment.HINDSIGHT_API_LLM_MODEL)throw new Error('Configure the explicit Hindsight model provider.');
+        const connection=await database.prepareHindsight();
+        const url=new URL(`postgresql://127.0.0.1:${connection.port}/${connection.database}`);url.username=connection.user;url.password=connection.password;
+        return {databaseUrl:url.href,environment};
+      }});
     // Product identity is a prompt contribution rather than a document the Agent has to discover.
     // The dynamic inventory is recomputed at assembly time, so installs and Campaign changes are
     // visible on the next step without restarting the Host or scanning the checkout.
@@ -720,6 +743,8 @@ export default class Hima extends Service {
           resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
           listSessionChildren: request => listSessionChildren(this.ctx, {...request,assignedGuide:this.viewReaders().assignedGuide}),
           workMemory: (sessionId, request) => this.workMemory(sessionId, request, 'person'),
+          teamMaterialBytes:(sessionId,ref,signal)=>this.teamMaterialBytes(sessionId,ref,signal),
+          teamRuntimeOperation:request=>this.teamRuntimeOperation(request),
           teamOperation:(sessionId,request)=>this.teamOperation(sessionId,request,'human'),
           memberTeamContext:(token,request)=>this.memberTeamContext(token,request),
           correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
@@ -805,7 +830,7 @@ export default class Hima extends Service {
       (pack, site, overrides) => {
         const loadedPack = loadPack(this.config.packsDir, pack);
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
-      }, { root: this.config.knowledgeDir, retainedMaterialsDir: this.retainedMaterialsDir },
+      }, { root: this.config.knowledgeDir, retainedMaterialsDir: this.retainedMaterialsDir,team:(sessionId,request)=>this.teamOperation(sessionId,request,'guide'),bytes:(sessionId,ref)=>this.teamMaterialBytes(sessionId,ref) },
       { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
       (request) => this.startGuidedRun(request),
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
@@ -1008,9 +1033,67 @@ export default class Hima extends Service {
       readExperience: readers.readExperience,readReportMaterial:readers.readReportMaterial,readTaskArtifact:readers.readTaskArtifact };
   }
 
+  private teamAttachmentPorts():TeamAttachmentPorts {
+    return {store:this.durable.store.teamAttachments(),native:{
+      resolveUpload:async(sessionId,receiptId)=>{
+        const agent=this.ctx.get('agents')?.get(sessionId as never);
+        const ref=agent&&this.ctx.get('fileUploads')?.resolve(agent,receiptId as never);
+        if(!ref)throw new TeamError('hima/not-authorized','The native upload receipt is unavailable in this receiving conversation.');
+        return ref;
+      },
+      readFileStream:(ref,signal)=>{
+        const storage=this.ctx.get('attachments');if(!storage)throw new TeamError('hima/team-not-ready','Native attachment storage is unavailable.');
+        return storage.readFileStream(ref as never,signal);
+      },
+    },parser:{revision:'hima-task-document/1',parse:parseTaskMaterial}};
+  }
+  async teamMaterialBytes(sessionId:string,ref:{teamId:string;taskId:string;stageId:string},signal?:AbortSignal):Promise<{stream:AsyncIterable<Uint8Array>;sha256:string;mediaType:string}> {
+    if(!this.ctx.get('agents')?.get(sessionId as never))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
+    const projectId=await sessionProject(this.ctx,sessionId,true),actor={kind:'human' as const,actorId:await this.durable.store.operatorIdentity(),projectId};
+    const ports=this.teamAttachmentPorts(),scope={projectId,teamId:ref.teamId,taskId:ref.taskId};
+    const metadata=await readAttachment(ports,actor,scope,ref.stageId);
+    return {stream:materializeAttachment(ports,actor,scope,ref.stageId,signal),sha256:metadata.material.sha256,mediaType:metadata.material.mediaType};
+  }
+  private async teamWorkspaceOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown,sessionId?:string):Promise<object> {
+    const store=this.durable.store.teamMessages();
+    if(action==='send-message') {
+      await this.waitForBusinessAdmission();
+      const payload=teamZ.strictObject({requestId:teamZ.string(),recipientMemberIds:teamZ.array(teamZ.string()),text:teamZ.string(),stagedAttachmentIds:teamZ.array(teamZ.string()),kind:teamZ.enum(['requirement','question','handoff','review']).optional(),replyToMessageId:teamZ.string().optional()}).parse(raw);
+      return sendTeamMessage(store,actor,{...ref,...payload},this.teamTransport);
+    }
+    if(action==='reconcile-delivery') {
+      const {deliveryId}=teamZ.strictObject({deliveryId:teamZ.string()}).parse(raw);
+      if(!this.teamTransport)return store.readDelivery(actor,ref,deliveryId);
+      return reconcileTeamMessageDelivery(store,actor,ref,deliveryId,this.teamTransport);
+    }
+    if(['read-messages','read-activity','read-pending-requests','read-member-work'].includes(action)) {
+      const payload=teamZ.strictObject({page:teamZ.strictObject({cursor:teamZ.number().int().nonnegative().optional(),limit:teamZ.number().int().min(1).max(100)}),memberId:teamZ.string().optional()}).parse(raw);
+      if(action==='read-messages')return readTeamMessages(store,actor,ref,payload.page);
+      if(action==='read-activity')return readTaskActivity(store,actor,ref,payload.page);
+      if(action==='read-pending-requests')return readPendingTeamRequests(store,actor,ref,payload.page);
+      if(!payload.memberId)throw new TeamError('hima/team-invalid','Choose a frozen member identity.');
+      return readMemberWork(store,actor,ref,payload.memberId,payload.page);
+    }
+    const ports=this.teamAttachmentPorts();
+    if(action==='stage-attachment') {
+      if(!sessionId||actor.kind==='member')throw new TeamError('hima/not-authorized','Native receipt staging requires its receiving conversation.');
+      await this.waitForBusinessAdmission();
+      const request=teamZ.strictObject({requestId:teamZ.string(),receiptId:teamZ.string()}).parse(raw);
+      return stageAttachment(ports,actor,{...ref,...request,sessionId});
+    }
+    if(action==='list-materials')return ports.store.listStages!(actor,ref);
+    const request=teamZ.strictObject({stageId:teamZ.string(),location:teamZ.string().optional()}).parse(raw);
+    if(action==='read-stage')return ports.store.readStage(actor,ref,request.stageId);
+    if(action==='remove-draft') {await ports.store.removeDraft(actor,ref,request.stageId);return {removed:true,stageId:request.stageId};}
+    if(action==='read-material')return readAttachment(ports,actor,ref,request.stageId);
+    if(action==='read-excerpt'&&request.location)return readAttachmentExcerpt(ports,actor,ref,request.stageId,request.location);
+    throw new TeamError('hima/team-invalid','Choose a supported task material operation.');
+  }
+
   async memberTeamContext(token:string,raw:unknown):Promise<object> {
-    teamZ.strictObject({action:teamZ.literal('readTask')}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt']),request:teamZ.unknown().optional()}).parse(raw);
     const grant=await this.durable.store.resolveTeamGrant(token);
+    if(request.action!=='readTask')return this.teamWorkspaceOperation({kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},request.action,request.request);
     if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
     const task=await this.durable.store.readTeamTask(grant.projectId,grant.teamId,grant.taskId);
     if(!task)throw new TeamError('hima/not-authorized','Member task identity is unavailable.');
@@ -1019,12 +1102,37 @@ export default class Hima extends Service {
     const {input:_wholeTaskInput,...metadata}=task;
     return {actor:{kind:'member',teamId:grant.teamId,memberId:grant.memberId,taskId:grant.taskId,generation:grant.generation},task:metadata,input:(invocation.context as {input?:unknown}).input};
   }
+  async teamRuntimeOperation(raw:unknown):Promise<object> {
+    const request=teamZ.strictObject({action:teamZ.enum(['status','start','stop','export']),serviceId:teamZ.literal('hindsight'),
+      cutId:teamZ.string().optional(),destination:teamZ.string().optional()}).parse(raw);
+    if(!this.teamServices)throw new BadRequest('Team services have not initialized.');
+    if(request.action==='start')try {await this.waitForBusinessAdmission();}
+    catch {throw new BadRequest('Host admission recovery is unavailable or the App is closing; new service starts are fenced.');}
+    if(this.resourcesClosing && request.action!=='status')throw new BadRequest('Host resources are finalizing; service changes are fenced.');
+    const interrupted=this.interruptedTeamServices.find(receipt=>receipt.serviceId===request.serviceId);
+    let receipt:TeamServiceReceipt;
+    if(interrupted) {
+      receipt={...interrupted,receiptId:randomUUID(),operation:'status',state:'failed',recordedAt:new Date().toISOString(),owned:{quiescent:false},
+        diagnostic:{code:'interrupted-generation',message:'An earlier Host left this service generation without closure proof. Preserve its Home and reconcile the original process before starting another generation.'}};
+      await this.durable.store.recordTeamServiceReceipt(receipt);
+    } else try {
+      if(request.action==='export') {
+        if(!request.cutId||!request.destination)throw new BadRequest('Export needs an explicit cutId and private relative destination.');
+        receipt=await this.teamServices.export(request.serviceId,{cutId:request.cutId,destination:request.destination});
+      } else receipt=await this.teamServices[request.action](request.serviceId);
+    } catch {throw new BadRequest('The owned service operation is unavailable. Read its status and reconcile the original generation.');}
+    return {receipt,history:await this.durable.store.teamServiceReceipts(request.serviceId)};
+  }
   async teamOperation(sessionId:string,raw:unknown,origin:'human'|'guide'='guide'):Promise<object> {
     if(!this.ctx.get('agents')?.list().some(agent=>String(agent.id)===sessionId))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
     const projectId=await sessionProject(this.ctx,sessionId,true);
     const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
-    const value=teamZ.strictObject({action:teamZ.enum(['context','list','read','save','clone','export','startTask','listTasks','readTask','control']),teamId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    const value=teamZ.strictObject({action:teamZ.enum(['context','list','read','save','clone','export','startTask','listTasks','readTask','control','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
     if(['save','clone','startTask'].includes(value.action))await this.waitForBusinessAdmission();
+    if(!['context','list','read','save','clone','export','startTask','listTasks','readTask','control'].includes(value.action)) {
+      if(!value.teamId||!value.taskId)throw new TeamError('hima/team-invalid','Choose a team and task identity.');
+      return this.teamWorkspaceOperation(actor,{projectId,teamId:value.teamId,taskId:value.taskId},value.action,value.request??{page:value.page,...(value.memberId?{memberId:value.memberId}:{})},sessionId);
+    }
     const store=this.durable.store.teamDefinitions();
     if(value.action==='context')return {projectId,actor,definitionTemplate:{schema:'hima-team-definition/1',title:'Team',members:[{id:'lead',role:'Lead',runtime:'opencode',modelRef:'configure-model',skills:[],instructions:'Work within the given scope.',toolRefs:[],knowledgeRefs:[]}],leaderMemberId:'lead',collaboration:'Explain responsibilities and handoff.',delivery:{description:'State the agreed delivery.',output:{version:'delivery/1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:true}}}},taskOpeningFields:['requestId','teamId','expectedVersion','goal','input','deadlineAt','closure'],modelReferenceHelp:'modelRef is a reference to separately configured credentials and model settings, not a key or machine path.'};
     if(value.action==='list')return {teams:await listTeams(store,actor,projectId)};
@@ -1880,3 +1988,6 @@ export * from './team-contract.js';
 export * from './team.js';
 
 export { commandTaskAdapter } from './task-effects.js';
+
+export * from './team-messages.js';
+export * from './team-attachments.js';

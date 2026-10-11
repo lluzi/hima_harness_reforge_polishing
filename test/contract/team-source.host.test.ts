@@ -22,6 +22,8 @@ test('independent Team activation uses real Host/PG/DBOS effect and replay retai
   assert.equal(data.source.kind,'team');assert.equal(Object.hasOwn(data.start.flow,'packId'),false);assert.equal(Object.hasOwn(data.start.flow,'packSha256'),false);
   await waitUntil('Team result is committed',async()=>!!(await host.ctx.hima.durable.store.flowProjection(run.runId)).tasks.some((task:any)=>task.result),30000,25);
   const state=await host.ctx.hima.teamOperation(sessionId,{action:'readTask',teamId:created.teamId,taskId:started.taskId}) as any;
+  const memberWork=await host.ctx.hima.teamOperation(sessionId,{action:'read-member-work',teamId:created.teamId,taskId:started.taskId,request:{memberId:'lead',page:{limit:1}}}) as any;
+  assert.match(memberWork.records[0].result?.text??'',/fixture-only fact 42/);assert.match(memberWork.records[0].result?.sha256??'',/^[a-f0-9]{64}$/);
   const task=state.execution.tasks[0];assert.equal(task.result.schema,'hima-task-result/2');assert.deepEqual(task.result.value,{answer:'fixture-only fact 42'});
   assert.equal(Object.hasOwn(task.result.identity,'packSha256'),false);
   const updated=await host.ctx.hima.teamOperation(sessionId,{action:'save',teamId:created.teamId,definition:{...teamFixture,title:'Updated team'},expectedVersion:1}) as any;

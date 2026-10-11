@@ -87,7 +87,7 @@ export function stageRuntimeNotices({ resource, electronDist, nodeBinary, nodeMa
   return { version: node.version, platform: `${process.platform}-${process.arch}`, binarySha256: hashFile(nodeBinary),
     source: { url: node.source, sha256: node.sha256 }, license: 'third-party/NODE-LICENSE', electron: { version: electron.version, source: { url: electron.source, sha256: electron.sha256 } } };
 }
-export function auditDistribution({ app, resource, lockfile, electronVersion, noticeMaterials }) {
+export function auditDistribution({ app, resource, lockfile, electronVersion, noticeMaterials, teamRuntimeIdentity }) {
   const npm = []; const links = []; const foreignNative = []; const unresolved = []; const packages = new Set();
   const material = noticeMaterials ? JSON.parse(readFileSync(noticeMaterials, 'utf8')) : undefined;
   if (material && (material.format !== 'hima-notice-materials/1' || !Array.isArray(material.packages))) fail('notice materials must use hima-notice-materials/1 with package-bound source integrity');
@@ -179,10 +179,22 @@ export function auditDistribution({ app, resource, lockfile, electronVersion, no
       if (!lstatSync(file).isFile() || hashFile(file) !== entry.sha256) fail(`staged upstream notice bytes differ for ${row.name}@${row.version}: ${entry.file}`);
     }
   }
+  const teamManifestFile=path.join(resource,'team-runtime/team-runtime.json');
+  const teamRuntime=existsSync(teamManifestFile)?JSON.parse(readFileSync(teamManifestFile,'utf8')):undefined;
+  if (teamRuntime && teamRuntimeIdentity && (teamRuntimeIdentity.platform !== teamRuntime.platform || teamRuntimeIdentity.manifestSha256 !== hashFile(teamManifestFile))) fail('Team asset assembly identity differs from the staged manifest');
+  if (teamRuntime) unresolved.push(...(teamRuntimeIdentity?.releaseBlockers ?? ['Team full deployment cohort, transitive notice obligations and native installation remain unqualified']));
+  const teamComponents=[];
+  if(teamRuntime) for(const component of teamRuntime.components ?? []) {
+    const notices=(component.notices ?? []).map(file=>{const at=path.join(resource,'team-runtime',file);
+      if(!existsSync(at) || hashFile(at)!==teamRuntime.files?.[file])fail(`Team component notice bytes differ: ${component.id}/${file}`);
+      return {file:`team-runtime/${file}`,sha256:hashFile(at)};});
+    teamComponents.push({id:component.id,version:component.version,source:component.source,license:component.license,notices});
+    unresolved.push(`${component.id}@${component.version}: native/Python/model transitive licenses, source/replacement obligations and platform installation remain unqualified`);
+  }
   const sbom = { format: 'hima-distribution-sbom/1', scope: 'actual deployed npm package roots, bundled Node/PostgreSQL/Electron notices, and native dynamic-link inventory; not source-only or external Site tools',
     platform: `${process.platform}-${process.arch}`, npmLockSha256: hashFile(lockfile), ...(noticeMaterials ? { noticeMaterialsSha256: hashFile(noticeMaterials) } : {}), npm: npm.sort((a, b) => a.path.localeCompare(b.path)), nativeLinks: links, foreignNative,
     electron: { version: electronVersion, source: `https://github.com/electron/electron/releases/tag/v${electronVersion}`, license: 'third-party/ELECTRON-LICENSE', chromium: 'third-party/CHROMIUM-LICENSES.html' },
-    unresolved, qualification: unresolved.length ? 'distribution terms require review of enumerated missing notices; no legal clearance claim' : 'inventory complete for stated scope; no legal clearance claim' };
+    teamComponents, ...(teamRuntime ? {teamRuntime: {platform:teamRuntime.platform,manifestSha256:hashFile(teamManifestFile),qualification:teamRuntime.qualification,releaseBlockers:teamRuntimeIdentity?.releaseBlockers ?? []}} : {}), unresolved, qualification: unresolved.length ? 'distribution terms require review of enumerated missing notices; no legal clearance claim' : 'inventory complete for stated scope; no legal clearance claim' };
   writeFileSync(path.join(notices, 'SBOM.json'), `${JSON.stringify(sbom, null, 2)}\n`);
   writeFileSync(path.join(notices, 'THIRD_PARTY_NOTICES.md'), `# HimaHarness candidate dependency notices\n\nThis inventory covers the actual deployed bytes. Retain NODE-LICENSE (including Node bundled dependencies), ELECTRON-LICENSE, CHROMIUM-LICENSES.html, postgres/COPYRIGHT and the npm package notice files listed in SBOM.json.\n\nNpm components: ${npm.length}. Target native objects inspected: ${links.length}. Foreign upstream prebuilds inventoried without link qualification: ${foreignNative.length}.\n\n${npm.map(row => `- ${row.name}@${row.version}: ${row.license}; ${[...row.licenseFiles, ...(row.supplementalLicenseFiles ?? [])].map(file => file.file).join(', ') || 'notice review required'}`).join('\n')}\n\n## Unresolved distribution review\n\n${unresolved.join('\n') || 'No missing standalone npm notice detected. This is not legal clearance.'}\n`);
   return { file: 'third-party/SBOM.json', sha256: hashFile(path.join(notices, 'SBOM.json')), npmComponents: npm.length, nativeObjects: links.length, foreignNativeObjects: foreignNative.length, unresolved };

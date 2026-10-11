@@ -1,6 +1,6 @@
 # Initial HimaTeam frontier qualification
 
-This record covers implementation of [#98](https://github.com/lluzi/hima_harness_reforge_polishing/issues/98) and current-version compatibility work for [#99](https://github.com/lluzi/hima_harness_reforge_polishing/issues/99). Both issues remain open until the integration commit and mandatory pre-push checks are synchronized; #99 affected Desktop compatibility passed 6/6 without skips. It does not qualify OAR/Pi/OpenCode member activation or a real business workflow.
+This record covers implementation of [#98](https://github.com/lluzi/hima_harness_reforge_polishing/issues/98) and current-version compatibility work for [#99](https://github.com/lluzi/hima_harness_reforge_polishing/issues/99). Both issues were closed after `40590a3e8fc571b238ea31baff4252d664127d63` was pushed and its remote SHA verified (791 local tests: 787 pass, 0 fail, 4 skip); #99 affected Desktop compatibility passed 6/6 without skips. It does not qualify OAR/Pi/OpenCode member activation or a real business workflow.
 
 The inherited code baseline is `d458ec761899a83200b7264f8e19272df6965c88`; the approved documentation baseline is `138bde2ff78d4328a1267fd6c15b4afbe412f844`. The integrator owns contracts, Host/PG/DBOS wiring, browser API and test registration. Coding workers used GPT-6.1 Sol/medium in fresh independent worktrees; coordinator and independent reviewers used Sol/high. Development token/call attribution was not measured. Product model, SSH and EDA calls were zero in these mechanism tests.
 

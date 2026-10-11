@@ -7,7 +7,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import type { SiteHeadView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
-import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices } from './api.js';
+import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, teamRuntimeRequest } from './api.js';
 import { PackOwnerPanel } from './PackOwnerPanel.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -27,6 +27,9 @@ const NO_LIVE_SESSION = 'Open a session to rediscover a Site.';
  *  shell always delivers; `pickFolder` is this registration's own inject (`index.ts`). */
 export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProps): ReactElement {
   const sessionId = useSessions((state) => state.current);
+  const [runtime,setRuntime]=useState<import('../team-service-runtime.js').TeamServiceReceipt>();
+  const [runtimeBusy,setRuntimeBusy]=useState(false);
+  const [runtimeMessage,setRuntimeMessage]=useState<string>();
   const [choices, setChoices] = useState<StartChoices>();
   const [sites, setSites] = useState<readonly SiteHeadView[]>([]);
   const [knowledgeCount, setKnowledgeCount] = useState<number>();
@@ -36,6 +39,7 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
 
   useEffect(() => {
     const controller = new AbortController();
+    void teamRuntimeRequest('status',controller.signal).then(result=>{if(controller.signal.aborted)return;if(result.ok)setRuntime(result.value.receipt);else setRuntimeMessage(result.error.message);});
     void fetchStartChoices(undefined, undefined, controller.signal).then((result) => { if (result.ok) setChoices(result.value); });
     void fetchSites(controller.signal).then((result) => { if (result.ok) setSites(result.value.sites); });
     return () => { controller.abort(); };
@@ -48,6 +52,12 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
     return () => { controller.abort(); };
   }, [sessionId]);
 
+  const serviceAction=async(action:'status'|'start'|'stop')=>{
+    setRuntimeBusy(true);setRuntimeMessage(undefined);
+    const result=await teamRuntimeRequest(action);
+    if(result.ok)setRuntime(result.value.receipt);else setRuntimeMessage(result.error.message);
+    setRuntimeBusy(false);
+  };
   const rediscover = async (site: SiteHeadView) => {
     if (sessionId === undefined) return;
     const destination = (sshBySite[site.name] ?? '').trim();
@@ -64,6 +74,16 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
   return (
     <div className="hima-root hima-settings" data-hima-region="hima-settings">
       <style>{HIMA_STYLE}</style>
+      <section data-hima-region="team-runtime-settings">
+        <h3>Team memory service</h3>
+        <p role="status">{runtime===undefined?'Reading memory service status…':`Hindsight: ${runtime.state}`}</p>
+        {runtime?.diagnostic?<p>{runtime.diagnostic.message}</p>:null}
+        <p className="hima-small">Guide works independently. Native member execution and its isolation are qualified separately.</p>
+        <button className="hima-button" data-hima-control="team-runtime-refresh" disabled={runtimeBusy} onClick={()=>void serviceAction('status')}>Refresh status</button>
+        <button className="hima-button" data-hima-control="team-runtime-start" disabled={runtimeBusy||runtime===undefined||!runtime.owned.quiescent||runtime.diagnostic?.code==='interrupted-generation'} onClick={()=>void serviceAction('start')}>Start memory service</button>
+        <button className="hima-button" data-hima-control="team-runtime-stop" disabled={runtimeBusy||runtime===undefined||runtime.owned.quiescent} onClick={()=>void serviceAction('stop')}>Stop memory service</button>
+        {runtimeMessage?<p role="alert">{runtimeMessage}</p>:null}
+      </section>
       <section>
         <h3>Packs</h3>
         {choices === undefined ? <p className="hima-small">Reading installed Packs…</p>

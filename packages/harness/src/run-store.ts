@@ -1,3 +1,6 @@
+import { teamMessageDigest, type TaskRef, type TeamMessageActor, type TeamMessageStore, type TeamMessageEnvelope, type TeamMessageDelivery, type TeamReadPage } from './team-messages.js';
+import type { TeamAttachmentStore, PersistedAttachmentOriginal, StagedAttachment } from './team-attachments.js';
+import type { TeamServiceReceipt } from './team-service-runtime.js';
 import { TeamError, teamDefinition, actorGrant, type TeamDefinition, type TeamView, type ActorGrant, type TeamTaskView } from './team-contract.js';
 import type { TeamDefinitionStore } from './team.js';
 import { taskMethodDigest } from './task-contract.js';
@@ -77,6 +80,25 @@ export function branchContains(parent:readonly FlowBranch[],child:readonly FlowB
 
 function invocationPath(record:FlowInvocationRecord):FlowInvocationPath { const context=record.context as unknown as {flow:CompiledFlow;taskId:string;iterations:FlowInvocationPath['iterations'];branches:FlowBranch[];extensions:FlowExtensionScope[]};return {flowSha256:context.flow.irSha256,taskId:context.taskId,iterations:context.iterations,branches:context.branches,extensions:context.extensions??[]}; }
 
+class FlowEffectNotCurrent extends Error {}
+function memberInputProjection(input:JsonValue,label='Retained controlled task input'):{text:string;redacted:boolean;truncated:boolean} {
+  let redacted=false;
+  const hide=(value:JsonValue,key=''):JsonValue=>{
+    if(/secret|password|credential|authorization|token|api[-_]?key|private[-_]?key|socket|environment|connection/i.test(key)) {redacted=true;return '[credential redacted]';}
+    if(typeof value==='string') {
+      if(/^(?:\/|[A-Za-z]:[\\/])/.test(value)) {redacted=true;return '[local path redacted]';}
+      const safe=value.replace(/(Bearer\s+)[^\s]+/gi,'$1[redacted]').replace(/([?&](?:token|api_key|password)=)[^&\s]+/gi,'$1[redacted]')
+        .replace(/(^|[\s"'`(=:\[])(\/(?!\/)[^\s"'`<>(){}\[\],;]+|[A-Za-z]:[\\/][^\s"'`<>(){}\[\],;]+|\\\\[^\s"'`<>(){}\[\],;]+)/gu,'$1[local path redacted]');
+      if(safe!==value)redacted=true;return safe;
+    }
+    if(Array.isArray(value))return value.map(item=>hide(item));
+    if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([name,item])=>[name,hide(item,name)]));
+    return value;
+  };
+  const body=JSON.stringify(hide(input));const truncated=body.length>2400;
+  return {text:`${label}: ${body.slice(0,2400)}${truncated?' [input excerpt truncated]':''}. Native transcript has not been observed.`,redacted,truncated};
+}
+
 export class RunStore {
   readonly #pool: Pool;
   readonly #source: NodePostgresDataSource;
@@ -84,6 +106,187 @@ export class RunStore {
     this.#pool = new Pool({ ...connection, connectionTimeoutMillis: 2000, statement_timeout: 5000 });
     this.#pool.on('error', () => { /* Idle socket failures are surfaced by the next authoritative query. */ });
     this.#source = source;
+  }
+  /** Messaging/materials share the existing application transaction and control authority. */
+  private async workspaceAccess(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,capability:'read-task'|'send-message'|'read-material',writing=false) {
+    if(writing)await this.#assertHostAdmission(client);
+    else await client.query('SELECT singleton FROM hima.host_exit WHERE singleton=true FOR SHARE');
+    const task=(await client.query<{task:Omit<TeamTaskView,'readiness'>}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3 FOR SHARE',[ref.projectId,ref.teamId,ref.taskId])).rows[0]?.task;
+    if(!task)throw new TeamError('hima/not-authorized','Task is unavailable in the authenticated project.');
+    const run=await this.#run(client,task.currentRunId,true);
+    const definition=(run.opening.data as unknown as {definition:TeamDefinition}).definition;
+    if(actor.kind==='member') {
+      const persisted=(await client.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE grant_id=$1 FOR SHARE',[actor.grant.grantId])).rows[0]?.grant_data;
+      const grant=persisted&&actorGrant.parse(persisted);
+      const invocation=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE run_id=$1 AND effect_id=$2',[run.runId,actor.grant.effectId])).rows[0]?.invocation;
+      const host=(await client.query<{active_request:string|null}>('SELECT active_request FROM hima.host_exit WHERE singleton=true')).rows[0];
+      if(!grant||jsonDigest(grant)!==jsonDigest(actor.grant)||grant.projectId!==ref.projectId||grant.teamId!==ref.teamId||grant.taskId!==ref.taskId||grant.runId!==run.runId||grant.actorId!==grant.memberId||!definition.members.some(member=>member.id===grant.memberId)||!invocation||(invocation.context as unknown as {flow:CompiledFlow}).flow.tasks[invocation.identity.taskId]?.memberId!==grant.memberId||grant.revokedAt||Date.now()>=Date.parse(grant.expiresAt)||Date.now()>=Date.parse(run.deadlineAt)||grant.generation!==run.epoch||run.cancelled||run.hold||host?.active_request||!grant.capabilities.includes(capability))throw new TeamError('hima/not-authorized','A current capability for this task, effect, member and generation is required.');
+      if(!await this.workspaceEffectCurrent(client,run,grant.effectId))throw new TeamError('hima/not-authorized','The granted member effect is held, stopped or superseded.');
+    } else {
+      if(actor.projectId!==ref.projectId||!actor.actorId)throw new TeamError('hima/not-authorized','The Host actor belongs to another project.');
+      if(actor.kind==='human') {
+        const operator=(await client.query<{actor_id:string}>('SELECT actor_id FROM hima.host_operator WHERE singleton=true')).rows[0];
+        if(operator?.actor_id!==actor.actorId)throw new TeamError('hima/not-authorized','The Host operator identity is required.');
+      }
+    }
+    return {task,run,definition,sender:actor.kind==='member'?{kind:'member' as const,actorId:actor.grant.actorId,memberId:actor.grant.memberId,runId:actor.grant.runId,effectId:actor.grant.effectId,generation:actor.grant.generation}:{kind:actor.kind,actorId:actor.actorId}};
+  }
+  private async workspaceEffectCurrent(client:ClientBase,run:DurableRun,effectId:string):Promise<boolean> {
+    try {await this.#assertFlowEffectCurrent(client,run,effectId);return true;}
+    catch(error) {if(error instanceof FlowEffectNotCurrent)return false;throw error;}
+  }
+  teamAttachments():TeamAttachmentStore {
+    const load=async(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,stageId:string,linked:boolean)=>{
+      const scope=await this.workspaceAccess(client,actor,ref,linked?'read-material':'send-message');
+      const row=(await client.query<{original:PersistedAttachmentOriginal;staged:StagedAttachment;actor_id:string;removed:boolean}>('SELECT original,staged,actor_id,removed FROM hima.team_attachments WHERE stage_id=$1 AND project_id=$2 AND task_id=$3',[stageId,ref.projectId,ref.taskId])).rows[0];
+      if(!row)throw new TeamError('hima/not-authorized','Material is unavailable in this task.');
+      if(linked) {
+        const member=scope.sender.memberId??null;
+        const allowed=await client.query('SELECT 1 FROM hima.team_material_links WHERE task_id=$1 AND stage_id=$2 AND ($3::text IS NULL OR member_ids ? $3)',[ref.taskId,stageId,member]);
+        if(!allowed.rowCount)throw new TeamError('hima/not-authorized','This original has not been sent to an authorized task member.');
+      } else if(row.actor_id!==scope.sender.actorId)throw new TeamError('hima/not-authorized','The draft belongs to another actor.');
+      return row;
+    };
+    return {
+      listStages:(actor,ref)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'read-task');
+        const rows=(await client.query<{staged:StagedAttachment;draft:boolean}>(`SELECT a.staged,NOT EXISTS(SELECT 1 FROM hima.team_material_links l WHERE l.task_id=a.task_id AND l.stage_id=a.stage_id) AS draft FROM hima.team_attachments a
+          WHERE a.task_id=$1 AND ((a.actor_id=$2 AND NOT a.removed) OR EXISTS(SELECT 1 FROM hima.team_material_links l WHERE l.task_id=a.task_id AND l.stage_id=a.stage_id AND ($3::text IS NULL OR l.member_ids ? $3))) ORDER BY a.stage_id LIMIT 100`,[ref.taskId,scope.sender.actorId,scope.sender.memberId??null])).rows;
+        return {materials:rows.map(row=>row.staged),draftStageIds:rows.filter(row=>row.draft).map(row=>row.staged.stageId)};
+      },'hima.listTaskMaterials'),
+      saveOriginal:(actor,request,original)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,request,'send-message',true);
+        const digest=jsonDigest({original,sender:scope.sender});
+        const stageId=`material-${randomUUID()}`;
+        const staged:StagedAttachment={stageId,material:{materialId:stageId,sha256:original.sha256,bytes:original.bytes,mediaType:original.mediaType,origin:'verbatim',state:'saved',source:original.fileRef.name},parser:{status:'failed',revision:'hima-task-document/1',warnings:['Parsing has not completed; the original is retained.'],chunks:[]}};
+        await client.query('INSERT INTO hima.team_attachments(stage_id,task_id,project_id,actor_id,request_id,digest,original,staged) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[stageId,request.taskId,request.projectId,scope.sender.actorId,request.requestId,digest,JSON.stringify(original),JSON.stringify(staged)]);
+        const held=(await client.query<{digest:string;original:PersistedAttachmentOriginal}>('SELECT digest,original FROM hima.team_attachments WHERE task_id=$1 AND actor_id=$2 AND request_id=$3 FOR UPDATE',[request.taskId,scope.sender.actorId,request.requestId])).rows[0];
+        if(held?.digest!==digest)throw new TeamError('hima/team-conflict','This stage request already names different original bytes.');
+        return held.original;
+      },'hima.saveTaskOriginal'),
+      stage:(actor,request,value)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,request,'send-message',true);
+        const held=(await client.query<{original:PersistedAttachmentOriginal;staged:StagedAttachment;parser_completed:boolean}>('SELECT original,staged,parser_completed FROM hima.team_attachments WHERE task_id=$1 AND actor_id=$2 AND request_id=$3 FOR UPDATE',[request.taskId,scope.sender.actorId,request.requestId])).rows[0];
+        if(!held||jsonDigest(held.original)!==jsonDigest(value.original))throw new TeamError('hima/team-conflict','The saved original does not match this parser result.');
+        // A completed parser revision is immutable. Retrying a failed/incomplete parse can publish once.
+        if(held.parser_completed)return held.staged;
+        const state=value.parser.status==='parsed'?'parsed':value.parser.status==='partial'?'partial':value.parser.status==='unsupported'?'unsupported':'saved';
+        const staged:StagedAttachment={...held.staged,material:{...held.staged.material,state},parser:value.parser};
+        await client.query('UPDATE hima.team_attachments SET staged=$2,parser_completed=true WHERE stage_id=$1',[staged.stageId,JSON.stringify(staged)]);return staged;
+      },'hima.stageTaskMaterial'),
+      readStage:(actor,ref,stageId)=>this.transaction(async client=>(await load(client,actor,ref,stageId,false)).staged,'hima.readTaskDraft'),
+      removeDraft:(actor,ref,stageId)=>this.transaction(async client=>{await load(client,actor,ref,stageId,false);await client.query('UPDATE hima.team_attachments SET removed=true WHERE stage_id=$1',[stageId]);},'hima.removeTaskDraft'),
+      readAuthorized:(actor,ref,stageId)=>this.transaction(async client=>{const row=await load(client,actor,ref,stageId,true);return {...row.staged,original:row.original};},'hima.readTaskMaterial'),
+    };
+  }
+  teamMessages():TeamMessageStore {
+    const readDelivery=async(client:ClientBase,ref:TaskRef,id:string,lock=false)=>{
+      const row=(await client.query<{delivery:TeamMessageDelivery}>('SELECT d.delivery FROM hima.team_message_deliveries d JOIN hima.team_messages m ON m.message_id=d.message_id WHERE m.task_id=$1 AND d.delivery_id=$2'+(lock?' FOR UPDATE OF d':''),[ref.taskId,id])).rows[0];
+      if(!row)throw new TeamError('hima/not-found','Delivery is unavailable in this task.');return row.delivery;
+    };
+    const messages=async(client:ClientBase,ref:TaskRef,page:TeamReadPage)=>{
+      const rows=(await client.query<{seq:string;envelope:TeamMessageEnvelope}>('SELECT seq::text,envelope FROM hima.team_messages WHERE task_id=$1 AND seq>$2 ORDER BY seq LIMIT $3',[ref.taskId,page.cursor??0,page.limit+1])).rows;
+      return {rows:rows.slice(0,page.limit),more:rows.length>page.limit};
+    };
+    return {
+      commitSend:(actor,request)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,request,'send-message',true);
+        if(request.recipientMemberIds.some(id=>!scope.definition.members.some(member=>member.id===id)))throw new TeamError('hima/not-authorized','Choose recipients from the frozen task definition.');
+        const digest=teamMessageDigest(request,scope.sender);
+        const held=(await client.query<{envelope:TeamMessageEnvelope;digest:string}>('SELECT envelope,digest FROM hima.team_messages WHERE task_id=$1 AND request_id=$2',[request.taskId,request.requestId])).rows[0];
+        if(held) {
+          if(held.digest!==digest)throw new TeamError('hima/team-conflict','This request already names different message content.');
+          const deliveries=(await client.query<{delivery:TeamMessageDelivery}>('SELECT delivery FROM hima.team_message_deliveries WHERE message_id=$1 ORDER BY recipient_member_id',[held.envelope.messageId])).rows.map(row=>row.delivery);
+          return {message:held.envelope,deliveries};
+        }
+        if(request.replyToMessageId) {
+          const replied=(await client.query<{envelope:TeamMessageEnvelope}>('SELECT envelope FROM hima.team_messages WHERE task_id=$1 AND message_id=$2',[request.taskId,request.replyToMessageId])).rows[0]?.envelope;
+          if(!replied||!replied.sender.memberId||!request.recipientMemberIds.includes(replied.sender.memberId))throw new TeamError('hima/team-invalid','A reply must address the original task member.');
+        }
+        const stages=[];
+        for(const id of request.stagedAttachmentIds) {
+          const stage=(await client.query<{staged:StagedAttachment;actor_id:string;removed:boolean}>('SELECT staged,actor_id,removed FROM hima.team_attachments WHERE stage_id=$1 AND task_id=$2 FOR SHARE',[id,request.taskId])).rows[0];
+          if(!stage||stage.actor_id!==scope.sender.actorId||stage.removed)throw new TeamError('hima/not-authorized','Only this actor\'s retained task drafts may be sent.');stages.push(stage.staged);
+        }
+        const message:TeamMessageEnvelope={projectId:request.projectId,teamId:request.teamId,taskId:request.taskId,messageId:`message-${randomUUID()}`,requestId:request.requestId,contentDigest:digest,sender:scope.sender,createdAt:new Date().toISOString(),materialRefs:stages.map(stage=>stage.material),recipientMemberIds:request.recipientMemberIds,text:request.text,kind:request.kind??'requirement',...(request.replyToMessageId?{replyToMessageId:request.replyToMessageId}:{})};
+        await client.query('INSERT INTO hima.team_messages(message_id,task_id,request_id,digest,envelope) VALUES($1,$2,$3,$4,$5)',[message.messageId,request.taskId,request.requestId,digest,JSON.stringify(message)]);
+        for(const stage of stages)await client.query('INSERT INTO hima.team_material_links(task_id,stage_id,message_id,member_ids) VALUES($1,$2,$3,$4)',[request.taskId,stage.stageId,message.messageId,JSON.stringify([...new Set([...request.recipientMemberIds,scope.definition.leaderMemberId,...(scope.sender.memberId?[scope.sender.memberId]:[])])])]);
+        const deliveries:TeamMessageDelivery[]=[];
+        for(const recipient of request.recipientMemberIds) {
+          const delivery:TeamMessageDelivery={deliveryId:`delivery-${randomUUID()}`,messageId:message.messageId,recipientMemberId:recipient,state:'pending',revision:0,reason:'Native transport is not yet qualified; message is saved, not received.'};deliveries.push(delivery);
+          await client.query('INSERT INTO hima.team_message_deliveries(delivery_id,message_id,recipient_member_id,delivery) VALUES($1,$2,$3,$4)',[delivery.deliveryId,message.messageId,recipient,JSON.stringify(delivery)]);
+        }
+        return {message,deliveries};
+      },'hima.commitTeamSend'),
+      readMessages:(actor,ref,page)=>this.transaction(async client=>{
+        await this.workspaceAccess(client,actor,ref,'read-task');const {rows,more}=await messages(client,ref,page);
+        const deliveries=(await client.query<{delivery:TeamMessageDelivery}>('SELECT d.delivery FROM hima.team_message_deliveries d WHERE message_id=ANY($1::text[]) ORDER BY recipient_member_id',[rows.map(row=>row.envelope.messageId)])).rows.map(row=>row.delivery);
+        return {messages:rows.map(row=>row.envelope),deliveries,...(more?{nextCursor:Number(rows.at(-1)!.seq)}:{})};
+      },'hima.readTeamMessages'),
+      readDelivery:(actor,ref,id)=>this.transaction(async client=>{await this.workspaceAccess(client,actor,ref,'read-task');return readDelivery(client,ref,id);},'hima.readTeamDelivery'),
+      claimDelivery:(actor,ref,id,revision)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'send-message',true),delivery=await readDelivery(client,ref,id,true);
+        if(delivery.revision!==revision||delivery.state!=='pending'||delivery.target||scope.run.hold||scope.run.cancelled||Date.now()>=Date.parse(scope.run.deadlineAt))return undefined;
+        const invocations=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE run_id=$1 AND admitted_generation=$2 ORDER BY version DESC',[scope.run.runId,scope.run.epoch])).rows.map(row=>row.invocation);
+        const invocation=invocations.find(row=>(row.context as unknown as {flow:CompiledFlow}).flow.tasks[row.identity.taskId]?.memberId===delivery.recipientMemberId);
+        if(!invocation||!await this.workspaceEffectCurrent(client,scope.run,invocation.identity.effectId))return undefined;
+        const target={runId:scope.run.runId,effectId:invocation.identity.effectId,memberId:delivery.recipientMemberId,generation:scope.run.epoch,attemptId:`attempt-${randomUUID()}`};
+        const claimed:TeamMessageDelivery={...delivery,state:'unknown',revision:revision+1,target,reason:'Dispatch intent retained; native receipt not yet observed.'};
+        await client.query('UPDATE hima.team_message_deliveries SET delivery=$2 WHERE delivery_id=$1',[id,JSON.stringify(claimed)]);
+        await client.query('INSERT INTO hima.team_delivery_attempts(delivery_id,attempt_id,attempt) VALUES($1,$2,$3)',[id,target.attemptId,JSON.stringify(claimed)]);return claimed;
+      },'hima.claimTeamDelivery'),
+      recordDelivery:(actor,ref,id,revision,attemptId,result)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'send-message'),delivery=await readDelivery(client,ref,id,true);
+        if(delivery.revision!==revision||delivery.target?.attemptId!==attemptId||delivery.target.generation!==scope.run.epoch||delivery.target.runId!==scope.run.runId||scope.run.cancelled||scope.run.hold)return delivery;
+        const binding=(await client.query('SELECT 1 FROM hima.flow_invocations WHERE run_id=$1 AND effect_id=$2 AND admitted_generation=$3',[scope.run.runId,delivery.target.effectId,delivery.target.generation])).rowCount;
+        if(!binding||!await this.workspaceEffectCurrent(client,scope.run,delivery.target.effectId))return delivery;
+        if(result.state==='accepted'&&(!result.received.nativeReceiptId||jsonDigest(result.received.target)!==jsonDigest(delivery.target)||!Number.isFinite(Date.parse(result.received.receivedAt))))throw new TeamError('hima/team-invalid','Native receive proof does not match this attempt.');
+        const next:TeamMessageDelivery={...delivery,state:result.state,revision:revision+1,...(result.state==='accepted'?{received:result.received,reason:'Native received this message; business completion is separate.'}:{reason:result.reason})};
+        await client.query('UPDATE hima.team_message_deliveries SET delivery=$2 WHERE delivery_id=$1',[id,JSON.stringify(next)]);
+        await client.query('UPDATE hima.team_delivery_attempts SET attempt=$3 WHERE delivery_id=$1 AND attempt_id=$2',[id,attemptId,JSON.stringify(next)]);return next;
+      },'hima.recordTeamDelivery'),
+      readActivity:(actor,ref,page)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'read-task');
+        const rows=(await client.query<{record:import('./team-messages.js').TeamActivityRecord}>(`SELECT record FROM (
+          SELECT envelope->>'createdAt' AS at,message_id AS id,jsonb_build_object('activityId',message_id,'createdAt',envelope->>'createdAt','kind','message','summary',envelope->>'text','messageId',message_id,'memberId',envelope->'sender'->>'memberId','materialRefs',envelope->'materialRefs') AS record FROM hima.team_messages WHERE task_id=$1
+          UNION ALL
+          SELECT at::text,fact_id,jsonb_build_object('activityId',fact_id,'createdAt',at,'kind',CASE WHEN kind='task-result' THEN 'result' WHEN kind='flow-state' THEN 'work' ELSE 'control' END,'summary',CASE WHEN kind='task-result' THEN left((payload->'value')::text,2400) ELSE COALESCE(payload->>'reason',payload->>'state',kind) END,'effectId',COALESCE(payload->'identity'->>'effectId',payload->>'effectId')) FROM hima.outbox WHERE run_id=$2 AND kind IN ('task-result','flow-state','command','team-exit')
+        ) activity ORDER BY at,id LIMIT $3 OFFSET $4`,[ref.taskId,scope.run.runId,page.limit+1,page.cursor??0])).rows;
+        return {...ref,records:rows.slice(0,page.limit).map(row=>row.record),...(rows.length>page.limit?{nextCursor:(page.cursor??0)+page.limit}:{})};
+      },'hima.readTeamActivity'),
+      readPendingRequests:(actor,ref,page)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'read-task');
+        const rows=(await client.query<{seq:string;envelope:TeamMessageEnvelope}>(`SELECT seq::text,envelope FROM hima.team_messages m WHERE task_id=$1 AND seq>$2
+          AND envelope->'sender'->>'kind'='member' AND envelope->>'kind' IN ('question','handoff','review')
+          AND NOT EXISTS(SELECT 1 FROM hima.team_messages reply WHERE reply.task_id=m.task_id AND reply.envelope->>'replyToMessageId'=m.message_id AND reply.envelope->'sender'->>'kind' IN ('human','guide')) ORDER BY seq LIMIT $3`,[ref.taskId,page.cursor??0,page.limit+1])).rows;
+        return {...ref,requests:rows.slice(0,page.limit).map(row=>({requestId:row.envelope.requestId,messageId:row.envelope.messageId,memberId:row.envelope.sender.memberId!,effectId:row.envelope.sender.effectId!,generation:row.envelope.sender.generation!,createdAt:row.envelope.createdAt,kind:row.envelope.kind as 'question'|'handoff'|'review',text:row.envelope.text})),...(rows.length>page.limit?{nextCursor:Number(rows[page.limit-1]!.seq)}:{})};
+      },'hima.readPendingTeamRequests'),
+      readMemberWork:(actor,ref,memberId,page)=>this.transaction(async client=>{
+        const scope=await this.workspaceAccess(client,actor,ref,'read-task');
+        if(actor.kind==='member'&&actor.grant.memberId!==memberId)throw new TeamError('hima/not-authorized','Member work is limited to the granted member context.');
+        if(!scope.definition.members.some(member=>member.id===memberId))throw new TeamError('hima/not-authorized','Member is absent from this frozen task.');
+        const rows=(await client.query<{invocation:FlowInvocationRecord;created_at:Date|null;admitted_generation:number|null;result:TaskResult|null;result_sha256:string|null}>(`SELECT i.invocation,i.created_at,i.admitted_generation,r.result,r.result_sha256 FROM hima.flow_invocations i LEFT JOIN hima.results r USING(effect_id)
+          WHERE i.run_id=$1 AND i.invocation->'context'->'flow'->'tasks'->i.task_id->>'memberId'=$2 ORDER BY i.effect_id LIMIT $3 OFFSET $4`,[scope.run.runId,memberId,page.limit+1,page.cursor??0])).rows;
+        const records=rows.slice(0,page.limit).map(row=>({recordId:row.invocation.identity.effectId,runId:scope.run.runId,effectId:row.invocation.identity.effectId,generation:row.admitted_generation,createdAt:row.created_at?.toISOString()??null,kind:'work' as const,...memberInputProjection((row.invocation.context as unknown as {input:JsonValue}).input),...(row.result&&row.result_sha256?{result:{sha256:row.result_sha256,effectId:row.invocation.identity.effectId,...memberInputProjection(row.result.value,'Retained committed task result')}}:{}),source:'retained' as const}));
+        return {...ref,memberId,records,connection:'unavailable' as const,trace:{state:'missing' as const,reason:'Native member transcript/connection is not qualified. No internal activity is invented.'},...(rows.length>page.limit?{nextCursor:(page.cursor??0)+page.limit}:{})};
+      },'hima.readTeamMemberWork'),
+    };
+  }
+
+  async recordTeamServiceReceipt(receipt:TeamServiceReceipt):Promise<void> {
+    const digest=jsonDigest(receipt);
+    const {rows}=await this.#pool.query<{digest:string}>(`INSERT INTO hima.team_service_receipts(receipt_id,service_id,generation,digest,receipt)
+      VALUES($1,$2,$3,$4,$5) ON CONFLICT(receipt_id) DO UPDATE SET receipt_id=EXCLUDED.receipt_id RETURNING digest`,
+      [receipt.receiptId,receipt.serviceId,receipt.generation,digest,JSON.stringify(receipt)]);
+    if(rows[0]?.digest!==digest)throw new Error('A service receipt identity already names different observed facts.');
+  }
+  async teamServiceReceipts(serviceId:string):Promise<readonly TeamServiceReceipt[]> {
+    return (await this.#pool.query<{receipt:TeamServiceReceipt}>(`SELECT receipt FROM hima.team_service_receipts WHERE service_id=$1 ORDER BY seq DESC LIMIT 100`,[serviceId])).rows.map(row=>row.receipt);
+  }
+  async unclosedTeamServiceGenerations():Promise<readonly TeamServiceReceipt[]> {
+    return (await this.#pool.query<{receipt:TeamServiceReceipt}>(`SELECT receipt FROM
+      (SELECT DISTINCT ON(service_id,generation) receipt FROM hima.team_service_receipts ORDER BY service_id,generation,seq DESC) latest
+      WHERE NOT (receipt->'owned'->>'quiescent')::boolean`)).rows.map(row=>row.receipt);
   }
   teamDefinitions(): TeamDefinitionStore {
     return { list: projectId => this.listTeamDefinitions(projectId), read: (projectId, teamId, version) => this.readTeamDefinition(projectId, teamId, version), save: request => this.saveTeamVersion(request) };
@@ -523,9 +726,9 @@ export class RunStore {
   async recordFlowInvocation(invocation:FlowInvocationRecord):Promise<FlowInvocationRecord> {
     taskIdentity.parse(invocation.identity);taskJsonValue.parse(invocation.context);
     return this.transaction(async client=>{
-      await this.#run(client,invocation.identity.runId,true);
-      await client.query('INSERT INTO hima.flow_invocations VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[
-        invocation.identity.effectId,invocation.identity.runId,invocation.identity.taskId,invocation.version,JSON.stringify(invocation.branches),JSON.stringify(invocation)]);
+      const run=await this.#run(client,invocation.identity.runId,true);
+      await client.query('INSERT INTO hima.flow_invocations(effect_id,run_id,task_id,version,branches,invocation,admitted_generation) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[
+        invocation.identity.effectId,invocation.identity.runId,invocation.identity.taskId,invocation.version,JSON.stringify(invocation.branches),JSON.stringify(invocation),run.epoch]);
       const held=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1',[invocation.identity.effectId])).rows[0]!.invocation;
       if(jsonDigest([held.identity,held.version,held.branches,held.consumedEffects,held.consumedVersions])!==jsonDigest([invocation.identity,invocation.version,invocation.branches,invocation.consumedEffects,invocation.consumedVersions]))mismatch('Flow invocation');
       return held;
@@ -590,23 +793,23 @@ export class RunStore {
     if(!invocation)return;
     const rules=await this.#revisionRules(client,run.runId);
     const revision=flowInvocationRevision(rules,invocation.scope,invocation.consumedVersions).version;
-    if(revision!==invocation.version)throw new Error('Task invocation was superseded by revision; retain its original effects and results');
+    if(revision!==invocation.version)throw new FlowEffectNotCurrent('Task invocation was superseded by revision; retain its original effects and results');
     for(const rule of rules)if(invocation.version>=rule.revision&&flowRevisionApplies(rule,invocation.scope,invocation.consumedVersions)) {
       const held=(await client.query(`WITH RECURSIVE original(effect_id) AS (
         SELECT unnest($1::text[]) UNION SELECT d.child_effect_id FROM hima.flow_derived_effects d JOIN original o ON d.parent_effect_id=o.effect_id WHERE d.run_id=$2)
         SELECT o.effect_id FROM original o JOIN hima.effect_leases l USING(effect_id) WHERE l.released_at IS NULL LIMIT 1`,[[...rule.invalidatedEffects],run.runId])).rows[0];
-      if(held)throw new Error('Revision replacement is waiting for confirmed closure of its original affected task tree');
+      if(held)throw new FlowEffectNotCurrent('Revision replacement is waiting for confirmed closure of its original affected task tree');
     }
-    for(const scope of invocation.scope.extensions??[])if((await client.query('SELECT 1 FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,`extension-disposition:${flowExtensionKey(scope)}`])).rowCount)throw new Error('Original optional extension is stopped; no new business effects');
+    for(const scope of invocation.scope.extensions??[])if((await client.query('SELECT 1 FROM hima.flow_facts WHERE run_id=$1 AND name=$2',[run.runId,`extension-disposition:${flowExtensionKey(scope)}`])).rowCount)throw new FlowEffectNotCurrent('Original optional extension is stopped; no new business effects');
     const controls=(await client.query<{branches:FlowBranch[];hold:string|null;cancelled:boolean}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1',[run.runId])).rows;
-    if(controls.some(control=>(control.cancelled||(control.hold&&invocation.purpose!=='collect'))&&branchContains(control.branches,invocation.branches)))throw new Error('Effect admission blocked by current branch control');
+    if(controls.some(control=>(control.cancelled||(control.hold&&invocation.purpose!=='collect'))&&branchContains(control.branches,invocation.branches)))throw new FlowEffectNotCurrent('Effect admission blocked by current branch control');
     const data=run.opening.data as {budget?:{closingReserveMs?:number;attemptLimit?:number}};
-    if(invocation.experiment&&invocation.purpose!=='collect'&&Date.now()>=Date.parse(run.deadlineAt)-(data.budget?.closingReserveMs??0))throw new Error('Original Run is closing; no new business effects');
-    if(invocation.purpose==='collect'&&!(await client.query("SELECT 1 FROM hima.flow_derived_effects d JOIN hima.effect_dispatches p ON p.effect_id=d.parent_effect_id WHERE d.child_effect_id=$1 AND p.dispatch_id='submit'",[effectId])).rowCount)throw new Error('Collection must consume an already admitted original parent');
+    if(invocation.experiment&&invocation.purpose!=='collect'&&Date.now()>=Date.parse(run.deadlineAt)-(data.budget?.closingReserveMs??0))throw new FlowEffectNotCurrent('Original Run is closing; no new business effects');
+    if(invocation.purpose==='collect'&&!(await client.query("SELECT 1 FROM hima.flow_derived_effects d JOIN hima.effect_dispatches p ON p.effect_id=d.parent_effect_id WHERE d.child_effect_id=$1 AND p.dispatch_id='submit'",[effectId])).rowCount)throw new FlowEffectNotCurrent('Collection must consume an already admitted original parent');
     if(invocation.experiment&&data.budget?.attemptLimit!==undefined) {
       const allocated=(await client.query("SELECT 1 FROM hima.effect_dispatches WHERE effect_id=$1 AND dispatch_id='submit'",[invocation.effect_id])).rowCount;
       const count=Number((await client.query<{count:string}>(`SELECT count(*) FROM hima.effect_dispatches d JOIN hima.flow_invocations i USING(effect_id) WHERE i.run_id=$1 AND d.dispatch_id='submit' AND ${countedInvocation}`,[run.runId])).rows[0]!.count);
-      if(!allocated&&count>=data.budget.attemptLimit)throw new Error('Original Run attempt budget reached; no fresh child allocation');
+      if(!allocated&&count>=data.budget.attemptLimit)throw new FlowEffectNotCurrent('Original Run attempt budget reached; no fresh child allocation');
     }
   }
   async #readFlowAuthority(client:Pick<ClientBase,'query'>,runId:string,lock:boolean) {

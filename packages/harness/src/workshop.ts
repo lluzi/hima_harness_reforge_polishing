@@ -1041,6 +1041,31 @@ export async function indexKnowledgeDocument(input: {
   return indexKnowledgeBytes({ ...input, sourcePath, bytes: await readFile(sourcePath) });
 }
 
+/** Parse an already saved task original. A failed index never removes byte authority. */
+export async function parseTaskMaterial(bytes: Uint8Array, name: string, mediaType: string): Promise<{
+  status: 'parsed' | 'partial' | 'unsupported' | 'failed' | 'no-text';
+  revision: string; warnings: readonly string[];
+  chunks: readonly { location: string; text: string; sha256: string }[];
+}> {
+  const revision = 'hima-task-document/1';
+  if (!['application/pdf', 'text/markdown', 'text/plain'].includes(mediaType)) {
+    return { status: 'unsupported', revision, warnings: ['Only PDF, Markdown and plain text are parsed. The original is retained.'], chunks: [] };
+  }
+  try {
+    const pages = mediaType === 'application/pdf'
+      ? (await extractText(new Uint8Array(bytes), { mergePages: false })).text
+      : [new TextDecoder('utf-8', { fatal: true }).decode(bytes)];
+    if (!Array.isArray(pages) || pages.some(page => typeof page !== 'string')) throw new Error('Invalid parser output');
+    const warnings = mediaType === 'application/pdf'
+      ? pages.flatMap((page, index) => page.trim() ? [] : [`Page ${index + 1} has no extractable text.`]) : [];
+    const chunks = pages.flatMap((page, index) => chunksOfPage(hash(bytes), page, mediaType === 'application/pdf' ? index + 1 : undefined, 0)
+      .map(chunk => ({ location: [name, chunk.page === undefined ? undefined : `page ${chunk.page}`, chunk.section, `excerpt ${chunk.ordinal + 1}`].filter(Boolean).join(' · '), text: chunk.text, sha256: chunk.sha256 })));
+    return { status: chunks.length === 0 ? 'no-text' : warnings.length ? 'partial' : 'parsed', revision, warnings, chunks };
+  } catch {
+    return { status: 'failed', revision, warnings: ['The document could not be parsed. The original is retained.'], chunks: [] };
+  }
+}
+
 const currentIndexAt = (root: string, scope: string, id: string): string => path.join(scopeDirectory(root, scope), safeDocumentId(id), 'index.json');
 const currentMetadataAt = (root: string, scope: string, id: string): string => path.join(scopeDirectory(root, scope), safeDocumentId(id), 'document.json');
 

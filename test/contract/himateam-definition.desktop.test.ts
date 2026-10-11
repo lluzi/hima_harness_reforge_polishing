@@ -65,7 +65,7 @@ test('Playwright Electron Team editor saves, clones, exports and rediscovers a c
     const taskId = await page.evaluate<string>(`document.querySelector(${JSON.stringify(region)}).dataset.himaStateTask`);
     await browser.wait(`document.querySelector(${JSON.stringify(region)}).innerText.includes('Execution: waiting')`);
     const text = await page.evaluate<string>(`document.querySelector(${JSON.stringify(region)}).innerText`);
-    assert.match(text, /Task is not ready:/); assert.match(text, /Execution: waiting/); assert.match(text, /OAR, message delivery, materials and member memory are unavailable/);
+    assert.match(text, /Task is not ready:/); assert.match(text, /Execution: waiting/); assert.match(text, /Native OAR member delivery and memory remain unavailable/);
     await click('team-pause');
     await browser.wait(`document.querySelector(${JSON.stringify(region)}).innerText.includes('Host accepted pause request.')`);
     await browser.wait(`!!document.querySelector('[data-hima-control="team-continue"]')`);
