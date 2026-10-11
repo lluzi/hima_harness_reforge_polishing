@@ -22,10 +22,11 @@
 // (sandbox `none`, HIMA_RESIDENT_TESTING=1). The stand-in delivers STANDIN_RESULT_SOURCE and the
 // STANDIN_ARTIFACT_SOURCE_ROOT tree when its prompt is answered, so this test stages one agent's
 // delivery before starting that agent's task, then the other's; a fork's two tasks stay open
-// together. The verify deliveries carry the numbers this test reads from the same mock tools an
-// agent would run, because the Reader holds them against the tools' own answer.
+// together. Every delivery is drafted, as the agents' playbooks say, from the Site tools' own output
+// (`andes_cli.py draft`), because the Readers hold them against the tools' own answer.
 //
-// Every number below is a mock-EDA model number of the demo Site; not signoff, not silicon.
+// The design data is the Site toolchain's synthetic fixture bundle (CTU_OPENC910_DATA); the real data
+// is never needed. Every number below is the fixture's, through the tools; not signoff, not silicon.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -41,96 +42,78 @@ import { writeLocalSite } from './support/site.ts';
 
 const packId = 'andes-cell-fmax';
 const mockRoot = path.join(repoRoot, 'sites/eda_cluster_ctu_01/mock-eda');
-const CLAIM = 'Every EDA result in this Pack comes from mock tools on a demo Site (mock EDA); not signoff, not silicon.';
+const fixture = path.join(mockRoot, 'tests/fixtures/openc910-mini');
+const CLAIM = 'Every EDA result in this Pack is replayed by mock tools on a demo Site (mock EDA) from measured flow data;';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_RESIDENT_TESTING = '1';
-// A local Job runs in a tmux session whose environment is the tmux server's: set the mock pacing
-// before this file starts its own private tmux server, which every Job of this file inherits.
+// A local Job runs in a tmux session whose environment is the tmux server's: set the tool pacing and
+// the design data (the synthetic fixture bundle, never the real data) before this file starts its own
+// private tmux server, which every Job of this file inherits.
 process.env.CTU_MOCK_TIME_SCALE = '0';
+process.env.CTU_OPENC910_DATA = fixture;
 const tmuxDir = mkdtempSync(path.join(process.env.TMUX_TMPDIR ?? '/tmp', 'ac-'));
 process.env.TMUX_TMPDIR = tmuxDir;
 process.on('exit', () => { spawnSync('tmux', ['-S', path.join(tmuxDir, `tmux-${process.getuid!()}`, 'default'), 'kill-server'], { stdio: 'ignore' }); });
 
-type Agent = 'himatime' | 'qualib';
 interface Delivery { readonly result: string; readonly support: Record<string, string> }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+const fixtureJson = async (rel: string) => JSON.parse(await readFile(path.join(fixture, rel), 'utf8'));
+/** ns to ps as the Pack rounds it (3 decimals). */
+const ps = (ns: number) => Math.round(ns * 1e6) / 1e3;
 
-/** One agent's requirements for round k: the result bytes and its analysis.md support file. */
-function requirements(agent: Agent, k: number, families: readonly string[], { analysis = `# ${agent} round ${k}\n\nStand-in analysis.\n` } = {}): Delivery {
-  const report = `reports/${agent}-agent/r${k}/analysis.md`;
-  return { result: json({
-    schema: 'hima-andes-requirements/1', agent, round: k,
-    summary: `Round ${k}: the worst paths need faster ${families.join(' and ')} cells.`,
-    requirements: families.map((family, i) => ({ family, purpose: `faster ${family} on the worst paths`,
-      target: 'cell delay -10 % at fanout 4', evidence: `stage breakdown of round ${k}`, priority: i + 1 })),
-    report,
-  }), support: { [report]: analysis, [`reports/${agent}-agent/r${k}/${agent === 'himatime' ? 'stage_breakdown.rpt' : 'library_analysis.rpt'}`]: `stand-in ${agent} tool report, round ${k}\n` } };
-}
-
-/** Run one mock EDA CLI of the Site (no pacing) and return its stdout. */
-function mockTool(name: string, ...argv: string[]): string {
-  const run = spawnSync(path.join(mockRoot, 'bin', name), argv, { encoding: 'utf8', env: { ...process.env, CTU_MOCK_TIME_SCALE: '0' } });
+/** Run one Site tool (no pacing, the fixture bundle) and return its stdout. */
+function siteTool(name: string, ...argv: string[]): string {
+  const run = spawnSync(path.join(mockRoot, 'bin', name), argv, { encoding: 'utf8', env: process.env });
   assert.equal(run.status, 0, `${name} ${argv.join(' ')}: ${run.stderr}`);
   return run.stdout;
 }
 
 const readState = async (workspace: string, name: string) => JSON.parse(await readFile(path.join(workspace, 'state', name), 'utf8'));
 
-/** The AndesCell agent's plan, as its playbook says: the requested new families with the most
- *  HimaTime estimated recovery, at most two; every other requested one skipped with a reason. */
-async function plan(workspace: string, k: number): Promise<Delivery & { readonly families: string[] }> {
+/** An agent's delivery as its playbook makes it: the Pack's draft from the tool's own output, the
+ *  agent's summary, its analysis and the tool reports it ran, as support. `edit` changes the drafted
+ *  file to stage a delivery the Reader must refuse. */
+async function drafted(workspace: string, kind: string, k: number, node: string, scratch: string,
+  { edit, analysis = 'analysis.md' }: { readonly edit?: (doc: any) => void; readonly analysis?: string } = {}): Promise<Delivery> {
   const timing = await readState(workspace, 'timing.json');
-  const library = await readState(workspace, 'library.json');
-  const recovery = new Map<string, number>(timing.stageBreakdown.map((r: any) => [r.family, r.estRecoveryNs]));
-  const requested: string[] = [];
-  for (const agent of ['himatime', 'qualib']) {
-    for (const r of (await readState(workspace, `${agent}-requirements.json`)).requirements) if (!requested.includes(r.family)) requested.push(r.family);
-  }
-  const candidates = requested.filter((f) => !library.families.includes(f)).sort((a, b) => (recovery.get(b) ?? 0) - (recovery.get(a) ?? 0));
-  const families = candidates.slice(0, 2);
-  const report = `reports/andescell-agent/r${k}/analysis.md`;
-  return { families, result: json({
-    schema: 'hima-andes-plan/1', agent: 'andescell', round: k,
-    summary: `Round ${k}: ${families.join(' and ')} have the most estimated recovery of the requested families.`,
-    families: families.map((family) => ({ family, reason: `estimated recovery ${String(recovery.get(family))} ns, among the highest requested`, estRecoveryNs: recovery.get(family) })),
-    skipped: candidates.slice(2).map((family) => ({ family, reason: `lower estimated recovery (${String(recovery.get(family) ?? 0)} ns)` })),
-    report,
-  }), support: { [report]: `# AndesCell round ${k}\n\nStand-in choice: ${families.join(', ')}.\n`, [`reports/andescell-agent/r${k}/dry_run.rpt`]: 'stand-in dry run\n' } };
-}
-
-/** The two verify deliveries of round k, from the same tools an agent runs (HimaTime verify, Qualib screen). */
-async function verifyDeliveries(workspace: string, k: number, scratch: string, { gainOffsetPs = 0 } = {}) {
-  const timing = await readState(workspace, 'timing.json');
-  const generation = await readState(workspace, 'generation.json');
-  const cells = path.join(workspace, generation.dir);
   const db = path.join(workspace, timing.buildDir);
-  const hv = path.join(scratch, `hv-r${k}-${String(gainOffsetPs)}`), qs = path.join(scratch, `qs-r${k}`);
-  await rm(hv, { recursive: true, force: true }); await rm(qs, { recursive: true, force: true });
-  mockTool('himatime', 'verify', '--cells', cells, '--db', db, '--paths', '8', '--out', hv, '--quiet');
-  mockTool('qualib', 'screen', '--cells', cells, '--out', qs, '--quiet');
-  const v = JSON.parse(await readFile(path.join(hv, 'verify.json'), 'utf8'));
-  const s = JSON.parse(await readFile(path.join(qs, 'screen.json'), 'utf8'));
-  const ht = `reports/himatime-verify/r${k}`, ql = `reports/qualib-screen/r${k}`;
-  // A refused delivery's support stays published, so its repair names a fresh analysis file.
-  const analysis = gainOffsetPs === 0 ? 'analysis.md' : 'analysis-0.md';
-  const timingDelivery: Delivery = { result: json({
-    schema: 'hima-andes-cell-timing/1', agent: 'himatime', round: k,
-    summary: `Round ${k}: the worst path ${String(v.local.worstPath)} is ${String(v.local.localGainPs)} ps faster with the new cells.`,
-    worstPath: v.local.worstPath, localGainPs: v.local.localGainPs + gainOffsetPs,
-    paths: v.local.paths.map((p: any) => ({ id: p.id, beforePs: p.beforePs, afterPs: p.afterPs, gainPs: p.gainPs })),
-    cells: v.cells.map((c: any) => ({ name: c.name, fo4Ps: c.fo4DelayPs, stockCell: c.stockCell, stockFo4Ps: c.stockFo4DelayPs })),
-    report: `${ht}/${analysis}`,
-  }), support: { [`${ht}/${analysis}`]: `# HimaTime verify round ${k}\n`, [`${ht}/verify.rpt`]: await readFile(path.join(hv, 'verify.rpt'), 'utf8') } };
-  const screenDelivery: Delivery = { result: json({
-    schema: 'hima-andes-cell-screen/1', agent: 'qualib', round: k,
-    summary: `Round ${k}: ${String(s.passed.length)} of ${String(s.cells.length)} new cells pass the screen.`,
-    cells: s.cells.map((c: any) => ({ name: c.name, status: c.status, reasons: c.reasons })),
-    report: `${ql}/analysis.md`,
-  }), support: { [`${ql}/analysis.md`]: `# Qualib screen round ${k}\n`, [`${ql}/cell_screen.rpt`]: await readFile(path.join(qs, 'cell_screen.rpt'), 'utf8') } };
-  return { timing: timingDelivery, screen: screenDelivery, localGainPs: v.local.localGainPs as number, worstPath: v.local.worstPath as string, passed: s.passed.length as number };
+  const dir = path.join(scratch, `${node}-r${String(k)}-${analysis}`);
+  await rm(dir, { recursive: true, force: true });
+  const support: Record<string, string> = {};
+  const keep = async (file: string) => { support[`reports/${node}/r${String(k)}/${path.basename(file)}`] = await readFile(file, 'utf8'); };
+  let toolJson: string | undefined;
+  if (kind === 'himatime') {
+    siteTool('himatime', 'highvalue', '--db', db, '--out', path.join(dir, 'hv'), '--quiet');
+    siteTool('himatime', 'whatif', '--db', db, '--scale', '0.9', '--out', path.join(dir, 'hw'), '--quiet');
+    toolJson = path.join(dir, 'hw/whatif.json');
+    await keep(path.join(dir, 'hv/high_value_cells.rpt'));
+  } else if (kind === 'qualib') {
+    siteTool('himatime', 'whatif', '--db', db, '--scale', '0.9', '--out', path.join(dir, 'hw'), '--quiet');
+    siteTool('qualib', 'analyze', '--db', db, '--arcs', path.join(dir, 'hw/whatif.json'), '--out', path.join(dir, 'ql'), '--quiet');
+    toolJson = path.join(dir, 'ql/library_analysis.json');
+    await keep(path.join(dir, 'ql/library_analysis.rpt'));
+  } else if (kind === 'himatime-verify' || kind === 'qualib-screen') {
+    const generation = await readState(workspace, 'generation.json');
+    siteTool('himatime', 'verify', '--cells', path.join(workspace, generation.dir), '--db', db, '--out', path.join(dir, 'hv'), '--quiet');
+    if (kind === 'himatime-verify') { toolJson = path.join(dir, 'hv/verify.json'); await keep(path.join(dir, 'hv/verify.rpt')); }
+    else {
+      siteTool('qualib', 'screen', '--cells', path.join(dir, 'hv/kept'), '--out', path.join(dir, 'qs'), '--quiet');
+      toolJson = path.join(dir, 'qs/screen.json'); await keep(path.join(dir, 'qs/cell_screen.rpt'));
+    }
+  }
+  const run = spawnSync('python3', [path.join(workspace, 'flow/andes_cli.py'), 'draft', workspace, kind, ...(toolJson ? [toolJson] : [])],
+    { encoding: 'utf8', env: process.env });
+  assert.equal(run.status, 0, `draft ${kind}: ${run.stderr}`);
+  const doc = JSON.parse(run.stdout);
+  doc.summary = `Round ${String(k)}: the stand-in ${kind} delivery, drafted from the tool's own output.`;
+  if ('reason' in doc) doc.reason = 'Every arc both lists allow, at the Site\'s AndesCell settings.';
+  doc.report = `reports/${node}/r${String(k)}/${analysis}`;
+  edit?.(doc);
+  support[doc.report] = `# ${node} round ${String(k)}\n\nStand-in analysis.\n`;
+  return { result: json(doc), support };
 }
 
 interface Home { readonly h: HimaHome; readonly resultSource: string; readonly supportRoot: string; readonly scratch: string }
@@ -139,6 +122,10 @@ async function prepareHome(t: TestContext): Promise<Home> {
   const local = await localHome(t, { sleepSeconds: 0 }); assert.ok(local);
   const h = { ...local.h, workspace: await realpath(local.h.workspace) };
   await cp(path.join(repoRoot, 'packs', packId), path.join(packsDirOf(h), packId), { recursive: true, filter: (s) => !s.includes('__pycache__') });
+  // The Pack's generated knowledge, written by its generator from the Site's tools (on the fixture).
+  const knowledge = spawnSync('python3', [path.join(repoRoot, 'packs', packId, 'flow/knowledge_charts.py'), mockRoot,
+    path.join(packsDirOf(h), packId, 'knowledge')], { encoding: 'utf8', env: process.env });
+  assert.equal(knowledge.status, 0, knowledge.stderr);
   const wrapper = path.join(repoRoot, 'sites/linglong-atcs28/templates/resident-engineering-wrapper.py');
   const native = path.join(repoRoot, 'sites/linglong-atcs28/tests/fixtures/acp-standin.py');
   const admin = path.join(h.workspace, 'resident-admin');
@@ -162,7 +149,7 @@ async function prepareHome(t: TestContext): Promise<Home> {
     allowedReadRoots: [h.workspace, mockRoot, path.dirname(wrapper), path.dirname(native)],
     allowedWriteRoots: [h.workspace], allowedWrappers: ['/usr/bin/python3', wrapper], parallelJobs: 3,
     bindings: {
-      edaRoot: mockRoot, designRoot: path.join(mockRoot, 'share/designs/aes_cipher_top'), stockLibrary: 'std9t_svt',
+      edaRoot: mockRoot, designRoot: fixture, stockLibrary: 'n7-ulvt',
       engineeringCapabilities: capability, workspaceRoot: h.workspace,
     },
   });
@@ -231,7 +218,7 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
     await stage(home, delivery);
     const begin = await act('begin', { nodeId }); assert.equal(begin.kind, 'accepted', `${nodeId} begin: ${begin.reason}`);
     const executionId = begin.receipt!.executionId!;
-    const start = await act('engineering', { executionId, engineering: { operation: 'start', goal: `Round ${k}: ${nodeId} for aes_cipher_top. DELIVER_BEST_EFFORT` } });
+    const start = await act('engineering', { executionId, engineering: { operation: 'start', goal: `Round ${k}: ${nodeId} for openc910. DELIVER_BEST_EFFORT` } });
     assert.equal((start.data as any)?.status, 'started', JSON.stringify(start).slice(0, 3000));
     const taskId = (start.data as any).taskId as string;
     await waitUntil(`${nodeId} round ${k} turn answered`, async () => (await nativeState(taskId))?.phase === 'waiting', 20_000, 100);
@@ -281,104 +268,106 @@ async function openRun(host: InProcessHost, home: Home, goal: Record<string, num
 
 type RunDriver = Awaited<ReturnType<typeof openRun>>;
 
-interface RoundRepairs { readonly qualib?: Delivery; readonly verifyGainOffsetPs?: number }
-
-/** One round: propose (two agents at once), choose (the AndesCell agent), generate, verify (two
- *  agents at once), then the autopilot rebuilds and compares. */
-async function round(r: RunDriver, home: Home, k: number, himatime: Delivery, qualib: Delivery, repairs: RoundRepairs = {}) {
+/** One round: propose (two agents at once), plan (the AndesCell agent), generate, verify (two
+ *  agents at once), then the autopilot rebuilds and compares. The Qualib agent's first list names a
+ *  cell Qualib did not analyse, and the HimaTime agent's first check types a kept count HimaTime did
+ *  not report: both are refused by their Reader and repaired in the same task. */
+async function round(r: RunDriver, home: Home, k: number) {
   // ----- propose: both agents at once, collected in the opposite order to the starts
   await r.reachFork(['himatime-agent', 'qualib-agent']);
   assert.equal(r.run().currentNode, 'requirements-joined', 'inside the propose fork the Run stands at the join');
+  const himatime = await drafted(r.workspace, 'himatime', k, 'himatime-agent', home.scratch);
+  const qualibWrong = await drafted(r.workspace, 'qualib', k, 'qualib-agent', home.scratch, { edit: (doc) => { doc.cells = [...doc.cells, 'NOPE9X']; } });
+  const qualib = await drafted(r.workspace, 'qualib', k, 'qualib-agent', home.scratch, { analysis: 'analysis-2.md' });
   const ht = await r.startAgent('himatime-agent', k, himatime);
-  const ql = await r.startAgent('qualib-agent', k, qualib);
+  const ql = await r.startAgent('qualib-agent', k, qualibWrong);
   assert.equal(r.phaseOf(ht.executionId), 'working');
   assert.equal(r.phaseOf(ql.executionId), 'working');
   const executions = r.run().control!.executions;
   assert.deepEqual([executions[ht.executionId]!.branchId, executions[ql.executionId]!.branchId], ['himatime-agent', 'qualib-agent']);
-  const qualibDone = await r.finishAgent(ql, k, repairs.qualib === undefined ? undefined : { delivery: repairs.qualib, reader: 'andes-requirements' });
+  const qualibDone = await r.finishAgent(ql, k, { delivery: qualib, reader: 'andes-requirements' });
   assert.ok(r.run().fork !== undefined, 'one finished branch keeps the fork open');
   await r.finishAgent(ht, k);
   for (const branch of ['himatime-agent', 'qualib-agent']) assert.equal(r.latestValues('andes-requirements', branch).requirements_valid, 1, `${branch} read on its own branch`);
 
-  // ----- choose: the join drives itself and hands the AndesCell agent to the owner
+  // ----- plan: the join drives itself and hands the AndesCell agent to the owner
   await r.reach('andescell-agent');
-  const chosen = await plan(r.workspace, k);
-  const ac = await r.startAgent('andescell-agent', k, chosen);
+  const plan = await drafted(r.workspace, 'andescell', k, 'andescell-agent', home.scratch);
+  const planned = JSON.parse(plan.result).arcs.length as number;
+  const ac = await r.startAgent('andescell-agent', k, plan);
   await r.finishAgent(ac, k);
-  assert.deepEqual(r.latestValues('andes-plan'), { plan_valid: 1, plan_families: chosen.families.length, plan_follows_ranking: 1 });
+  assert.deepEqual(r.latestValues('andes-plan'), { plan_valid: 1, plan_arcs: planned });
 
   // ----- generate (autopilot), then verify: both agents at once
   await r.reachFork(['himatime-verify', 'qualib-screen']);
   assert.equal(r.run().currentNode, 'cells-verified', 'inside the verify fork the Run stands at its join');
   const generation = await readState(r.workspace, 'generation.json');
-  assert.deepEqual(generation.selected, chosen.families, 'AndesCell built exactly the plan\'s families');
-  const checks = await verifyDeliveries(r.workspace, k, home.scratch);
-  const wrong = repairs.verifyGainOffsetPs === undefined ? undefined : await verifyDeliveries(r.workspace, k, home.scratch, { gainOffsetPs: repairs.verifyGainOffsetPs });
-  const hv = await r.startAgent('himatime-verify', k, wrong?.timing ?? checks.timing);
-  const qs = await r.startAgent('qualib-screen', k, checks.screen);
+  assert.equal(generation.requested, planned, 'AndesCell generated exactly the plan\'s arcs');
+  const checkWrong = await drafted(r.workspace, 'himatime-verify', k, 'himatime-verify', home.scratch, { edit: (doc) => { doc.kept += 1; } });
+  const check = await drafted(r.workspace, 'himatime-verify', k, 'himatime-verify', home.scratch, { analysis: 'analysis-2.md' });
+  const screen = await drafted(r.workspace, 'qualib-screen', k, 'qualib-screen', home.scratch);
+  const hv = await r.startAgent('himatime-verify', k, checkWrong);
+  const qs = await r.startAgent('qualib-screen', k, screen);
   assert.deepEqual([r.run().control!.executions[hv.executionId]!.branchId, r.run().control!.executions[qs.executionId]!.branchId], ['himatime-verify', 'qualib-screen']);
   await r.finishAgent(qs, k);
-  const verifyDone = await r.finishAgent(hv, k, wrong === undefined ? undefined : { delivery: checks.timing, reader: 'andes-verify' });
+  const verifyDone = await r.finishAgent(hv, k, { delivery: check, reader: 'andes-verify' });
+  const kept = JSON.parse(check.result).kept as number;
+  const passed = JSON.parse(screen.result).cells.filter((c: any) => c.status === 'PASS').length as number;
   for (const branch of ['himatime-verify', 'qualib-screen']) {
     const values = r.latestValues('andes-verify', branch);
-    assert.deepEqual([values.verify_delivery_valid, values.local_gain_ps, values.cells_passed_screen], [1, checks.localGainPs, checks.passed], `${branch}: the tools' numbers`);
+    assert.deepEqual([values.verify_delivery_valid, values.cells_kept, values.cells_passed_screen], [1, kept, passed], `${branch}: the tools' numbers`);
   }
   await r.reach('next-round');
-  return { ht, ql, ac, chosen, checks, qualibRejected: qualibDone.rejectedReason, verifyRejected: verifyDone.rejectedReason };
+  return { planned, kept, passed, qualibRejected: qualibDone.rejectedReason, verifyRejected: verifyDone.rejectedReason };
 }
 
 const HEAD = ['bind-inputs', 'reference-build', 'read-reference', 'check-reference', 'load-timing', 'read-timing'];
 const TAIL = ['requirements-joined', 'andescell-agent', 'generate-cells', 'himatime-verify', 'qualib-screen', 'cells-verified', 'new-library-build',
   'compare-round', 'read-round', 'check-round', 'read-round-goal', 'judge-round'];
 
-test('andes dry path: propose, choose, generate, verify and rebuild in one round to the +1 % Fmax Goal, with a chart from every step', async (t) => {
+test('andes dry path: propose, plan, generate, verify and rebuild in one round to the +1 % timing Goal at route, with a chart from every step', async (t) => {
   const home = await prepareHome(t);
   const host = await bootInProcess(home.h);
   try {
-    const r = await openRun(host, home, { target_fmax_gain_pct: 1 });
+    const pr = await fixtureJson('pr/pr.json');
+    const results = await fixtureJson('andescell/results.json');
+    const r = await openRun(host, home, { target_timing_gain_pct: 1 });
     // ----- the autopilot runs the reference build and the HimaTime load, then opens the propose fork
     await r.reachFork(['himatime-agent', 'qualib-agent']);
     assert.deepEqual(r.doneNodes(), HEAD, 'reference build and timing drive themselves');
-    // A ~2 GHz block: 0.500 ns clock, worst slack -12.4 ps, Fmax = 1000 / (0.500 + 0.0124) MHz.
-    assert.deepEqual(r.latestValues('andes-reference'), { reference_valid: 1, design_fmax_mhz: 1951.6, design_wns_ns: -0.0124,
-      design_tns_ns: -0.596, design_area_um2: 41200, new_cell_instances: 0, route_drc_errors: 0 });
+    const ref = pr.reference.route;
+    assert.deepEqual(r.latestValues('andes-reference'), { reference_valid: 1, design_wns_ps: ps(ref.wns_ns.reg2reg), design_tns_ns: ref.tns_ns.reg2reg,
+      design_nvp: ref.nvp.reg2reg, design_density_pct: ref.density_pct, new_cell_instances: 0, new_cell_pct: 0 });
     assert.deepEqual(r.verdicts('reference-valid'), ['PASS']);
-    assert.equal(r.latestValues('andes-timing').timing_fmax_mhz, 1951.6);
+    assert.equal(r.latestValues('andes-timing').timing_wns_ps, ps(ref.wns_ns.reg2reg));
     const inputs = JSON.parse(await readFile(path.join(r.workspace, 'state/inputs.json'), 'utf8'));
     assert.deepEqual(Object.keys(inputs.tools).sort(), ['andescell', 'himatime', 'qualib', 'sapr', 'xtop']);
     assert.match(inputs.tools.xtop.version, /XTop timing ECO \(xtop\) version /);
-    assert.equal(inputs.clockPeriodNs, 0.5);
+    assert.equal(inputs.design, 'openc910');
 
-    // ----- round 1: XNOR3 and BUF; the Qualib agent's first list names a family AndesCell cannot
-    // build, and the HimaTime agent's first verification types a local gain HimaTime did not report
-    const r1 = await round(r, home, 1, requirements('himatime', 1, ['XNOR3', 'BUF', 'XOR2']), requirements('qualib', 1, ['FULLADDER', 'XNOR3']),
-      { qualib: requirements('qualib', 1, ['XNOR3', 'BUF', 'MUX2I']), verifyGainOffsetPs: 12 });
-    assert.match(r1.qualibRejected ?? '', /qualib requirements refused: .*family 'FULLADDER' is not an AndesCell family/, r1.qualibRejected);
-    assert.match(r1.verifyRejected ?? '', /himatime-verify refused: .*localGainPs must be HimaTime's gain on the worst path, 16\.88 ps/, r1.verifyRejected);
+    // ----- round 1, with a refused Qualib list and a refused HimaTime check, each repaired in its task
+    const r1 = await round(r, home, 1);
+    assert.match(r1.qualibRejected ?? '', /qualib requirements refused: .*1 cell\(s\) are not cells of Qualib's analysis of the what-if arcs: NOPE9X/, r1.qualibRejected);
+    assert.match(r1.verifyRejected ?? '', /himatime-verify refused: .*kept must be \d+ \(himatime verify\)/, r1.verifyRejected);
     for (const node of TAIL) assert.ok(r.doneNodes().includes(node), `${node} ran in round 1`);
     assert.deepEqual(r.verdicts('requirements-valid'), ['PASS', 'PASS'], 'the propose join judged each branch PASS');
-    assert.deepEqual(r1.chosen.families, ['XNOR3', 'BUF']);
-    // A1: 3 XNOR3 x 28 ps x 12 % + 4 BUF x 17 ps x 10 % (every new cell, extra-fast variants included)
-    assert.deepEqual([r1.checks.worstPath, r1.checks.localGainPs], ['A1', 16.88], 'HimaTime: the worst path is 16.88 ps faster with the new cells');
-    assert.ok(r1.checks.localGainPs >= 8 && r1.checks.localGainPs <= 20);
-    assert.deepEqual(r.verdicts('local-gain-positive'), ['PASS', 'PASS'], 'the verify join judged each branch');
+    assert.equal(r1.planned, (await fixtureJson('himatime/arc_list.json')).arcs.length, 'the plan takes every arc both lists allow');
+    assert.equal(r1.kept, results.delivered.length, 'HimaTime keeps the cells with a positive cell-level gain');
+    assert.deepEqual(r.verdicts('cells-gain-positive'), ['PASS', 'PASS'], 'the verify join judged each branch');
     assert.deepEqual(r.verdicts('cells-screened'), ['PASS', 'PASS']);
-    const screen1 = await readState(r.workspace, 'qualib-screen.json');
-    assert.deepEqual(screen1.cells.filter((c: any) => c.status === 'FAIL').map((c: any) => c.name).sort(), ['ANDES_BUF_XF8_R1', 'ANDES_XNOR3_XF4_R1']);
     const build1 = await readState(r.workspace, 'round-build.json');
-    assert.ok(build1.acceptedCells.every((c: string) => !c.includes('_XF')), 'the rebuild uses only cells that passed the screen');
-    // The key-expansion path B1 limits the rebuild: WNS -4.8 ps, 1000 / (0.500 + 0.0048) = 1980.98 MHz.
+    assert.equal(build1.acceptedCells.length, r1.passed, 'the rebuild uses the kept and screened cells');
+    const custom = pr.custom_model.stages.route;
+    const period = (await readState(r.workspace, 'reference.json')).clockPeriodNs;
+    const gain = Math.round(10000 * (custom.wns_ns.reg2reg - ref.wns_ns.reg2reg) / period) / 100;
     const f1 = r.latestValues('andes-round');
-    assert.equal(f1.round_valid, 1);
-    assert.equal(f1.fmax_gain_pct, 1.51);
-    assert.ok((f1.fmax_gain_pct ?? 0) >= 1.2 && (f1.fmax_gain_pct ?? 0) <= 1.8);
-    assert.equal(f1.best_gain_pct, 1.51);
-    assert.equal(f1.design_fmax_mhz, 1980.98);
-    assert.equal(f1.design_wns_ns, -0.0048);
-    assert.ok((f1.new_cell_instances ?? 0) > 0);
+    assert.deepEqual(f1, { round_valid: 1, timing_gain_pct: gain, best_gain_pct: gain, round_improved: 1, best_wns_ps: ps(custom.wns_ns.reg2reg),
+      design_wns_ps: ps(custom.wns_ns.reg2reg), design_tns_ns: custom.tns_ns.reg2reg, design_nvp: custom.nvp.reg2reg, design_density_pct: custom.density_pct,
+      new_cell_instances: custom.power.custom_cells, new_cell_pct: custom.power.custom_cells_pct });
+    assert.ok(gain >= 1, 'the fixture meets the +1 % Goal');
     assert.deepEqual(r.verdicts('cells-used'), ['PASS']);
     assert.deepEqual(r.verdicts('round-improved'), ['PASS']);
-    assert.deepEqual(r.verdicts('fmax-goal'), ['PASS'], 'one round meets the +1 % Goal');
+    assert.deepEqual(r.verdicts('timing-goal'), ['PASS'], 'one round meets the +1 % Goal');
     const end = await r.decide('goal-met');
     assert.equal(end.done.kind, 'accepted', `goal-met: ${end.done.reason}`);
     assert.equal(end.advice?.chosen?.goalMet, true, JSON.stringify(end.advice));
@@ -386,11 +375,9 @@ test('andes dry path: propose, choose, generate, verify and rebuild in one round
 
     const summary = await readFile(path.join(r.workspace, 'derived/summary.md'), 'utf8');
     assert.ok(summary.includes(`Claim boundary: ${CLAIM}`), summary);
-    assert.match(summary, /\| 1 \| XNOR3, BUF \| 1980\.98 \| 1\.51 % \|/);
     const record = await readState(r.workspace, 'round.json');
-    assert.equal(record.claimBoundary, CLAIM);
-    assert.deepEqual(record.cumulativeFamilies, ['BUF', 'XNOR3']);
-    assert.equal(record.localGainPs, r1.checks.localGainPs);
+    assert.ok(record.claimBoundary.startsWith(CLAIM));
+    assert.equal(record.cellsKept, r1.kept);
 
     // ----- every tool and agent node of the round left a human-readable report at reports/<node>/r1/
     const report = (rel: string) => readFile(path.join(r.workspace, 'reports', rel), 'utf8');
@@ -398,77 +385,60 @@ test('andes dry path: propose, choose, generate, verify and rebuild in one round
       'himatime-verify', 'qualib-screen', 'new-library-build', 'compare-round'];
     for (const node of STEPS) {
       const files = await readdir(path.join(r.workspace, 'reports', node, 'r1'));
-      assert.ok(files.some((name) => /\.(rpt|md)$/.test(name)), `${node} r1 has a report: ${files.join(', ')}`);
+      assert.ok(files.some((name) => /\.(rpt|md|tarpt)$/.test(name)), `${node} r1 has a report: ${files.join(', ')}`);
     }
-    assert.match(await report('bind-inputs/r1/tools.rpt'), /AndesCell families/);
-    assert.match(await report('bind-inputs/r1/tools.rpt'), /28 nm, stock library std9t_svt, clock 0\.500 ns/);
-    for (const name of ['report_qor.rpt', 'postroute_timing.rpt', 'area.rpt', 'route_drc.rpt']) assert.ok((await report(`reference-build/r1/${name}`)).length > 0, name);
-    assert.match(await report('reference-build/r1/postroute_timing.rpt'), /\(VIOLATED\)/);
-    assert.match(await report('load-timing/r1/report_timing.rpt'), /slack \(VIOLATED\)/);
-    assert.match(await report('load-timing/r1/stage_breakdown.rpt'), /Stage breakdown by cell family/);
-    for (const node of ['himatime-agent', 'qualib-agent', 'andescell-agent', 'himatime-verify', 'qualib-screen']) {
-      assert.ok((await report(`${node}/r1/analysis.md`)).length > 0, `${node} r1 analysis`);
+    assert.match(await report('bind-inputs/r1/tools.rpt'), /openc910 \(stock libraries n7-ulvt; full flow to route, path group reg2reg\)/);
+    for (const name of ['route.summary.rpt', 'route_reg2reg.tarpt', 'cts.summary.rpt', 'flow_summary.rpt']) assert.ok((await report(`reference-build/r1/${name}`)).length > 0, name);
+    assert.ok((await report('load-timing/r1/stage_breakdown.rpt')).length > 0);
+    for (const node of ['himatime-agent', 'andescell-agent', 'qualib-screen']) assert.ok((await report(`${node}/r1/analysis.md`)).length > 0, `${node} r1 analysis`);
+    for (const rel of ['qualib-agent/r1/analysis-2.md', 'himatime-verify/r1/analysis-2.md', 'himatime-agent/r1/high_value_cells.rpt',
+      'qualib-agent/r1/library_analysis.rpt', 'himatime-verify/r1/verify.rpt', 'qualib-screen/r1/cell_screen.rpt', 'generate-cells/r1/generation.rpt']) {
+      assert.ok((await report(rel)).length > 0, rel);
     }
-    assert.ok((await report('himatime-agent/r1/stage_breakdown.rpt')).length > 0);
-    assert.ok((await report('qualib-agent/r1/library_analysis.rpt')).length > 0);
-    assert.match(await report('generate-cells/r1/generation.rpt'), /AndesCell generation report/);
-    assert.match(await report('himatime-verify/r1/verify.rpt'), /Local gain on the worst path/);
-    assert.match(await report('qualib-screen/r1/cell_screen.rpt'), /cell\(s\) pass the screen/);
     assert.match(await report('compare-round/r1/round-1.md'), /# Round 1:/);
     assert.match(await report('compare-round/r1/round-1.md'), /These are results on the demo Site eda_cluster_ctu_01, not signoff and not silicon\./);
-    for (const name of ['report_qor.rpt', 'postroute_timing.rpt', 'area.rpt', 'route_drc.rpt', 'report_timing.rpt']) assert.ok((await report(`new-library-build/r1/${name}`)).length > 0, `rebuild r1 ${name}`);
-    for (const rel of ['bind-inputs/r1/tools.rpt', 'load-timing/r1/report_timing.rpt', 'reference-build/r1/report_qor.rpt', 'generate-cells/r1/generation.rpt',
-      'himatime-verify/r1/verify.rpt', 'compare-round/r1/round-1.md']) {
-      assert.doesNotMatch(await report(rel), /mock/i, `${rel} reads as a tool report`);
+    for (const name of ['route.summary.rpt', 'flow_summary.rpt', 'report_timing.rpt']) assert.ok((await report(`new-library-build/r1/${name}`)).length > 0, `rebuild r1 ${name}`);
+    for (const rel of ['bind-inputs/r1/tools.rpt', 'load-timing/r1/report_timing.rpt', 'reference-build/r1/route.summary.rpt', 'generate-cells/r1/generation.rpt',
+      'compare-round/r1/round-1.md', 'new-library-build/r1/route.summary.rpt']) {
+      assert.doesNotMatch(await report(rel), /mock|model/i, `${rel} reads as a tool report`);
     }
 
     // ----- the charts: hima-chart/1 files written by the Pack's steps and Readers from the tools' own numbers
     const chartOf = async (rel: string) => {
       const text = await report(rel);
-      assert.doesNotMatch(text, /mock/i, `${rel} never says "mock"`);
+      assert.doesNotMatch(text, /mock|model|\bFmax\b/, `${rel} reads as plain words`);
       return himaChart.parse(JSON.parse(text));
     };
-    // The RTL2GDS flow's own data: an initial summary after the reference build and a comparison at the end.
     const refSummary = await chartOf('reference-build/r1/summary.chart.json');
     assert.equal(refSummary.kind, 'metrics');
-    assert.deepEqual(refSummary.series.map((x) => [x.name, x.role, x.values]),
-      [['Reference build', 'baseline', [1951.6, -12.4, -0.596, 74, 41200, 18400, 70, 0, 1.33]]]);
-    assert.deepEqual(refSummary.betterEach, ['higher', 'higher', 'higher', 'lower', 'lower', 'none', 'none', 'lower', 'lower']);
+    assert.deepEqual(refSummary.series[0]!.values.slice(0, 3), [ps(ref.wns_ns.reg2reg), ref.tns_ns.reg2reg, ref.nvp.reg2reg]);
+    const groups = await chartOf('reference-build/r1/path-groups.chart.json');
+    assert.equal(groups.kind, 'metrics');
+    assert.deepEqual(groups.categories.slice(0, 3), ['reg2reg worst slack', 'reg2reg TNS', 'reg2reg violating']);
     const refStages = await chartOf('reference-build/r1/flow-stages.chart.json');
-    assert.deepEqual([refStages.kind, refStages.title, refStages.categories], ['bar', 'Worst slack through the RTL2GDS flow',
-      ['Synthesis', 'Floorplan', 'Placement', 'CTS', 'Route', 'Post-route opt']]);
-    assert.deepEqual(refStages.series[0]!.values, [9.6, 7.1, -16, -20.6, -27, -12.4]);
-    assert.match(await report('reference-build/r1/flow_summary.rpt'), /Post-route opt/);
-    assert.match(await report('new-library-build/r1/flow_summary.rpt'), /Post-route opt/);
-    const timing = await chartOf('reference-build/r1/timing.chart.json');
-    assert.deepEqual([timing.categories[0], timing.series[0]!.values[0]], ['A1 S-box/MixColumns', -12.4]);
-    const stages = await chartOf('load-timing/r1/stage-breakdown.chart.json');
-    assert.deepEqual(stages.highlight, ['XNOR3', 'BUF']);
-    assert.equal(stages.series[0]!.values[stages.categories.indexOf('XNOR3')], 16.39);
-    const ht = await chartOf('himatime-agent/r1/proposal.chart.json');
-    assert.equal(ht.title, 'Why these cells: timing');
-    assert.deepEqual(ht.categories, ['XNOR3', 'BUF', 'XOR2']);
-    assert.deepEqual(ht.series.map((x) => x.values), [[16.39, 13.27, 8.2], [8.4, 5.44, 3.36]]);
-    const ql = await chartOf('qualib-agent/r1/proposal.chart.json');
-    assert.match(ql.title, /^Why these cells: library FO4/);
-    assert.deepEqual(ql.categories, ['XNOR3', 'BUF', 'MUX2I'], 'the accepted (repaired) list, not the refused one');
-    assert.deepEqual(ql.series.map((x) => x.values), [[28, 14.6, 19], [25.2, 13.43, 17.67]]);
-    const gen = await chartOf('generate-cells/r1/generation.chart.json');
-    assert.equal(gen.categories.length, 6);
-    const local = await chartOf('himatime-verify/r1/local-gain.chart.json');
-    assert.deepEqual([local.categories[0], local.series[0]!.values[0], local.series[1]!.values[0]], ['A1 S-box/MixColumns', -12.4, 4.48]);
-    const screen = await chartOf('qualib-screen/r1/screen.chart.json');
-    assert.deepEqual(screen.highlight.sort(), ['ANDES_BUF_XF8_R1', 'ANDES_XNOR3_XF4_R1']);
+    assert.deepEqual(refStages.categories, ['prePlace', 'place_opt', 'CTS', 'route']);
+    assert.equal(refStages.series[0]!.values.at(-1), ps(ref.wns_ns.reg2reg));
+    assert.equal((await chartOf('reference-build/r1/timing.chart.json')).series[0]!.values[0], ps(ref.wns_ns.reg2reg));
+    assert.ok((await chartOf('load-timing/r1/stage-breakdown.chart.json')).categories.includes('SRAM access'));
+    const funnel = await chartOf('himatime-agent/r1/funnel.chart.json');
+    assert.equal(funnel.series[0]!.values[0], (await fixtureJson('himatime/high_value.json')).design_cells);
+    assert.match((await chartOf('himatime-agent/r1/proposal.chart.json')).title, /^Why these arcs/);
+    assert.deepEqual((await chartOf('qualib-agent/r1/proposal.chart.json')).series.map((x) => x.name), ['ULVT', 'LVT', 'SVT']);
+    assert.deepEqual((await chartOf('generate-cells/r1/generation.chart.json')).series[0]!.values.slice(0, 3), [results.requested_arcs, results.generated, results.failed]);
+    assert.match((await chartOf('himatime-verify/r1/cell-check.chart.json')).subtitle ?? '', new RegExp(`^${String(r1.kept)} of ${String(results.generated)} `));
+    assert.equal((await chartOf('himatime-verify/r1/top-cells.chart.json')).kind, 'metrics');
+    assert.equal((await chartOf('qualib-screen/r1/screen.chart.json')).series[0]!.values[1], r1.passed);
     const compare = await chartOf('compare-round/r1/comparison.chart.json');
     assert.equal(compare.kind, 'metrics');
-    assert.equal(compare.categories.at(-1), 'New-cell instances');
-    assert.deepEqual(compare.series.map((x) => [x.name, x.role]), [['Reference build', 'baseline'], ['Round 1 new library', 'measured']]);
-    assert.deepEqual(compare.series[1]!.values.slice(0, 9), [1980.98, -4.8, -0.1, 33, 41481.2, 18366, 70, 0, 1.4]);
-    assert.ok((compare.series[1]!.values.at(-1) ?? 0) > 0, 'new-cell instances');
-    const stagesCompared = await chartOf('compare-round/r1/flow-stages.chart.json');
-    assert.deepEqual(stagesCompared.series.map((x) => x.values), [[9.6, 7.1, -16, -20.6, -27, -12.4], [17.2, 14.7, -8.4, -13, -19.4, -4.8]]);
-    await assert.rejects(report('compare-round/r1/before-after.chart.json'), 'the mixed-unit chart is gone');
-    t.diagnostic(`gain 1.51 %; local gain ${String(r1.checks.localGainPs)} ps; run ${r.runId} ended ${r.run().status}`);
+    assert.equal(compare.categories.at(-1), 'Timing gain');
+    assert.deepEqual(compare.series.map((x) => [x.name, x.role]), [['Reference build', 'baseline'], ['Round 1 custom cells', 'measured']]);
+    assert.deepEqual(compare.series.map((x) => x.values[0]), [ps(ref.wns_ns.reg2reg), ps(custom.wns_ns.reg2reg)]);
+    assert.deepEqual(compare.series.map((x) => x.values.at(-1)), [0, gain]);
+    assert.equal((await chartOf('compare-round/r1/flow-stages.chart.json')).series.length, 2);
+    assert.equal((await chartOf('compare-round/r1/path-groups.chart.json')).series.length, 2);
+    const worst = await chartOf('compare-round/r1/worst-paths.chart.json');
+    assert.deepEqual(worst.series[1]!.values, custom.worst_paths.slice(0, 8).map((p: any) => ps(p.slack_ns)));
+    t.diagnostic(`gain ${String(gain)} % of the clock; kept ${String(r1.kept)}; run ${r.runId} ended ${r.run().status}`);
   } finally {
     await host.dispose(); await home.h.dispose();
   }
