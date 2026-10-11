@@ -1,9 +1,11 @@
 """himatime: HimaTime static timing analysis (mock). Loads a sapr design db and reports timing."""
 import argparse
+import json
+import shutil
 import sys
 from pathlib import Path
 
-from . import libraries, model
+from . import libraries, model, openc910
 from .common import Log, ToolError, banner, now_iso, read_json, run_main, version_line, write_json, write_text
 
 HELP = """\
@@ -17,6 +19,9 @@ commands:
   estimate      what-if: the timing if some cell families were AndesCell-class faster (fast)
   verify        re-time the worst paths with AndesCell cells: local gain per path, each cell's FO4
                 against its stock cell, design estimate (about 5-10 s with --out; --json alone is fast)
+  highvalue     high-value cell analysis of the design (design openc910)
+  whatif        cell what-if: arc derates ranked by TNS, WNS, NVP, TSC, ASC; merged arc list
+                (design openc910)
   -version      print the version and exit
 
 load:         himatime load --db SAPR_DIR --out DIR [--paths N]
@@ -25,6 +30,18 @@ report:       himatime report --db SAPR_DIR [--paths N] [--stages] [--json]
 estimate:     himatime estimate --db SAPR_DIR --families XNOR3,BUF[,...] [--speedup PCT] [--json]
 verify:       himatime verify --cells ANDESCELL_DIR --db SAPR_DIR [--paths N] [--dont-use CELL ...]
                 [--out DIR] [--json]   writes verify.json, verify.rpt (--out); prints JSON (--json)
+
+design openc910 (a sapr build of openc910 as --db):
+load:         himatime load --db SAPR_DIR --out DIR   timing_summary.json (path group reg2reg, the
+                8 worst paths, the worst path's breakdown), report_timing.rpt, stage_breakdown.rpt
+report:       himatime report --db SAPR_DIR [--json]
+highvalue:    himatime highvalue --db SAPR_DIR [--top-families N] [--out DIR] [--json]
+                writes high_value_cells.rpt and high_value.json (--out)
+whatif:       himatime whatif --db SAPR_DIR --scale 0.9 [--sort KEY]... [--top 50] [--out DIR] [--json]
+                writes cell_what_if_sort_by_<KEY>.rpt and whatif.json (rankings, merged arc list)
+verify:       himatime verify --cells ANDESCELL_DIR --db SAPR_DIR [--out DIR] [--json]
+                cell-level check of the generated cells; --out also writes kept/ (the kept cells,
+                the delivery a rebuild takes as --extra-lib)
 
 The stage breakdown groups the cell delay of every stage on the worst paths by cell family (cell
 type), with its share of the path delay and HimaTime's estimated slack recovery (ns, weighted by
@@ -132,6 +149,8 @@ def cmd_load(rest):
     p.add_argument("--paths", type=int, default=20)
     p.add_argument("--quiet", action="store_true")
     a = p.parse_args(rest)
+    if openc910.is_db(a.db):
+        return oc_load(a)
     if not 1 <= a.paths <= 20:
         raise ToolError("--paths must be 1-20 (the design db keeps the 20 worst path groups)")
     d, db = _db(a.db)
@@ -164,12 +183,14 @@ def cmd_load(rest):
 def cmd_report(rest):
     p = argparse.ArgumentParser(prog="himatime report")
     p.add_argument("--db", required=True)
-    p.add_argument("--paths", type=int, default=3)
+    p.add_argument("--paths", type=int)
     p.add_argument("--stages", action="store_true", help="print the stage breakdown by cell family")
     p.add_argument("--json", action="store_true")
     a = p.parse_args(rest)
+    if openc910.is_db(a.db):
+        return oc_report(a)
     _, db = _db(a.db)
-    s = timing_summary(db, max(1, min(20, a.paths)))
+    s = timing_summary(db, max(1, min(20, a.paths or 3)))
     if a.json:
         import json
         print(json.dumps(s, indent=2, sort_keys=True))
@@ -285,6 +306,8 @@ def cmd_verify(rest, prog="himatime verify"):
         raise ToolError("--paths must be 1-20 (the design db keeps the 20 worst path groups)")
     if not a.out and not a.json:
         raise ToolError("give --out DIR (reports) or --json (result to stdout)")
+    if openc910.is_db(a.db):
+        return oc_verify(a)
     lib = libraries.load_extra(a.cells)
     _, db = _db(a.db)
     result = verify_result(lib, db, a.paths, a.dont_use)
@@ -312,11 +335,187 @@ def cmd_verify(rest, prog="himatime verify"):
         print(json.dumps(result, indent=2, sort_keys=True))
 
 
+# ---- design openc910 -------------------------------------------------------------------------
+
+def _oc_header(title, s):
+    return "\n".join(["Report : %s" % title, "Design : %s (%s build, %s)" % (openc910.DESIGN, s.get("build"), openc910.RESULT_STAGE),
+                      "Version: %s" % version_line("himatime"), "Site   : demo Site eda_cluster_ctu_01; not signoff", "", ""])
+
+
+def oc_load(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    if not a.quiet:
+        banner("himatime")
+    log = Log("HT", out / "himatime.log", quiet=a.quiet)
+    log("LOAD", "design %s, %s build: %s" % (oc.DESIGN, s["build"], d / "sapr_summary.json"))
+    log.phase("LIB", "Reading libraries (%s timing libraries)" % (s.get("libraries") or "stock"), 3, 2)
+    log.phase("LOAD", "Reading the routed netlist and parasitics", 4, 3)
+    log.phase("TG", "Building timing graph", 3, 2)
+    log.phase("UPD", "Updating timing (clock %s %.3f ns)" % (s["clock"], s["clockPeriodNs"]), 4, 4)
+    ts = oc.timing_summary(bundle, s["build"])
+    ts.update(tool=version_line("himatime"), db=str(d), loadedAt=now_iso())
+    write_json(out / "timing_summary.json", ts)
+    write_text(out / "report_timing.rpt", _oc_header("timing, path group %s, %d worst paths" % (oc.GROUP, len(ts["paths"])), s)
+               + oc.timing_report_text(bundle, s["build"], len(ts["paths"])))
+    write_text(out / "stage_breakdown.rpt", _oc_header("worst-path breakdown", s) + oc.summary_text(ts) + "\n" + oc.paths_text(ts) + "\n" + oc.breakdown_text(ts))
+    log("RPT", "%s WNS %.0f ps  TNS %.3f ns  violating paths %d" % (oc.GROUP, 1000 * ts["wnsNs"], ts["tnsNs"], ts["nvp"]))
+    if ts["breakdown"]:
+        log("RPT", "worst path: %s" % ", ".join("%s %.0f ps" % (b["part"], 1000 * b["ns"]) for b in ts["breakdown"][:4]))
+    log("RPT", "wrote timing_summary.json, report_timing.rpt, stage_breakdown.rpt in %s (%.1f s)" % (out, log.elapsed()))
+    log.close()
+
+
+def oc_report(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    ts = oc.timing_summary(bundle, s["build"])
+    if a.paths:
+        ts["paths"] = ts["paths"][:max(1, a.paths)]
+    ts.update(tool=version_line("himatime"), db=str(d))
+    if a.json:
+        print(json.dumps(ts, indent=2, sort_keys=True))
+        return
+    print(oc.summary_text(ts))
+    print(oc.paths_text(ts))
+    print(oc.breakdown_text(ts))
+
+
+def cmd_highvalue(rest):
+    oc = openc910
+    p = argparse.ArgumentParser(prog="himatime highvalue")
+    p.add_argument("--db", required=True)
+    p.add_argument("--top-families", type=int, default=10, help="cell families to list (default 10)")
+    p.add_argument("--out", help="write high_value_cells.rpt and high_value.json here")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    d, s, bundle = oc.load_db(a.db)
+    r = oc.high_value_result(bundle, max(1, a.top_families))
+    r.update(tool=version_line("himatime"), db=str(d))
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "highvalue.log", quiet=quiet)
+        log("HV", "high-value cell analysis of %s (rank types: %s)" % (oc.DESIGN, ", ".join(r["rank_types"])))
+        log.phase("HV", "Marking the timing graph", 2, 2)
+        log.phase("HV", "Scanning %d cells, top %d per rank type" % (r["design_cells"], r["top_per_rank"]), 8, 4)
+        write_text(out / "high_value_cells.rpt", bundle.text("himatime/high_value_cells.rpt"))
+        write_json(out / "high_value.json", r)
+        log("HV", "%d high-value instances in %d library cells; %d cells listed" % (r["high_value_instances"], r["lib_cells"], r["listed_cells"]))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+    elif not a.out or a.quiet:
+        print("HimaTime high-value cells of %s: %d design cells, top %d per rank type (%s)" % (oc.DESIGN, r["design_cells"], r["top_per_rank"], ", ".join(r["rank_types"])))
+        print("  %d high-value instances in %d library cells; %d cells listed in %d families" % (r["high_value_instances"], r["lib_cells"], r["listed_cells"], r["family_count"]))
+        print("  top families: %s" % ", ".join("%s %d" % (f["family"], f["count"]) for f in r["families"]))
+
+
+def cmd_whatif(rest):
+    oc = openc910
+    p = argparse.ArgumentParser(prog="himatime whatif")
+    p.add_argument("--db", required=True)
+    p.add_argument("--scale", type=float, required=True, help="arc delay scale of the what-if (e.g. 0.9)")
+    p.add_argument("--sort", action="append", default=[], help="ranking key (repeatable; default: all)")
+    p.add_argument("--top", type=int, help="rows per ranking (default: the analysis' top N)")
+    p.add_argument("--out", help="write cell_what_if_sort_by_<KEY>.rpt and whatif.json here")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    d, s, bundle = oc.load_db(a.db)
+    keys = [k.strip().upper() for word in a.sort for k in word.split(",") if k.strip()]
+    top = a.top if a.top is not None else bundle.whatif["top_n"]
+    r = oc.whatif_result(bundle, a.scale, top, keys or None)
+    r.update(tool=version_line("himatime"), db=str(d))
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "whatif.log", quiet=quiet)
+        log("WI", "cell what-if on %s: arc delay x%g, top %d per ranking" % (oc.DESIGN, r["scale"], r["top_n"]))
+        for k in r["rankings"]:
+            log.phase("WI", "Ranking by %s" % k, 2, 1)
+            write_text(out / ("cell_what_if_sort_by_%s.rpt" % k), bundle.text("himatime/whatif/cell_what_if_sort_by_%s.rpt" % k))
+        write_json(out / "whatif.json", r)
+        log("WI", "%d ranking(s), %d arcs after merge and dedup; wrote whatif.json in %s" % (len(r["rankings"]), r["merged_count"], out))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+    elif not a.out or a.quiet:
+        print("HimaTime cell what-if on %s: arc delay x%g, top %d per ranking" % (oc.DESIGN, r["scale"], r["top_n"]))
+        for k, rows in r["rankings"].items():
+            best = rows[0] if rows else None
+            print("  %-6s %3d rows; first: %s %s->%s (TNS %+.3f ns, WNS %+.4f ns)" % (
+                k, len(rows), best["cell"], best["from"], best["to"], best["tns_delta_ns"], best["wns_delta_ns"]) if best else "  %-6s 0 rows" % k)
+        print("  merged: %d arcs (union of the rankings, dedup)" % r["merged_count"])
+
+
+def oc_verify(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    cells_dir = Path(a.cells)
+    stubs = oc.delivery_arcs(cells_dir)
+    gen_file = cells_dir / "generation.json"
+    gen = read_json(gen_file, "AndesCell generation") if gen_file.is_file() else {}
+    generated = gen.get("generated") if gen.get("schema") == "ctu-andescell-generation/2" else len(stubs)
+    r = oc.cell_check(bundle, generated, stubs)
+    r.update(tool=version_line("himatime"), db=str(d), cellsDir=str(cells_dir), round=gen.get("round"), verifiedAt=now_iso())
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "verify.log", quiet=quiet)
+        log("VFY", "cell-level check of %d generated cell(s) from %s" % (len(r["cells"]), cells_dir))
+        log.phase("LIB", "Reading the stock libraries and the AndesCell delivery", 2, 2)
+        log.phase("ARC", "Timing each custom cell's arc against its stock cell", 4, 4)
+        for c in r["cells"]:
+            log("ARC", "  %-48s v%-3s %8.3f ps  delta %.5f  %s" % (c["arc"], c["bestVersion"], c["delayPs"], c["delta"], "kept" if c["kept"] else "dropped"))
+        log.phase("UPD", "Cell-level gain on the design's high-value instances", 2, 2)
+        kept_dir = out / "kept"
+        if kept_dir.exists():
+            shutil.rmtree(kept_dir)
+        for c in r["cells"]:
+            if c["kept"]:
+                (kept_dir / "cells").mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cells_dir / "cells" / ("%s.lib" % c["arc"]), kept_dir / "cells" / ("%s.lib" % c["arc"]))
+        write_json(kept_dir / "delivery.json", dict(schema="ctu-andescell-delivery/1", design=oc.DESIGN, round=gen.get("round"),
+                                                    source=str(cells_dir), cells=[c["arc"] for c in r["cells"] if c["kept"]]))
+        r["keptDir"] = str(kept_dir)
+        write_json(out / "verify.json", r)
+        write_text(out / "verify.rpt", oc_verify_text(r))
+        log("VFY", "%d of %d generated cell(s) kept (positive cell-level gain), %d dropped; kept cells in %s" % (r["kept"], r["generated"], r["dropped"], kept_dir))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+
+
+def oc_verify_text(r):
+    out = ["HimaTime cell-level check: design %s%s" % (openc910.DESIGN, ", round %s" % r["round"] if r.get("round") is not None else ""), "",
+           "Generated %d, kept %d (positive cell-level gain), dropped %d." % (r["generated"], r["kept"], r["dropped"]), "",
+           "  %-48s %-14s %-5s %8s %10s %10s  %s" % ("arc", "family", "edge", "version", "delay ps", "\u0394", "result"), "  " + "-" * 110]
+    for c in r["cells"]:
+        out.append("  %-48s %-14s %-5s %8s %10.3f %10.5f  %s" % (c["arc"][:48], c["family"][:14], c["edge"], c["bestVersion"], c["delayPs"], c["delta"],
+                                                              "kept" if c["kept"] else "dropped"))
+    out += ["", "Kept cells by family:"] + ["  %-16s %4d" % (f["family"], f["count"]) for f in r["keptByFamily"]] + [""]
+    return "\n".join(out)
+
+
 def handler(argv):
     if not argv or argv[0] in ("-h", "-help", "--help", "help"):
         print(HELP)
         return 0
     commands = {"load": cmd_load, "report": cmd_report, "estimate": cmd_estimate, "verify": cmd_verify,
+                "highvalue": cmd_highvalue, "whatif": cmd_whatif,
                 "verify-cells": lambda rest: cmd_verify(rest, "himatime verify-cells")}
     if argv[0] not in commands:
         raise ToolError("unknown command %r (try: himatime -help)" % argv[0])

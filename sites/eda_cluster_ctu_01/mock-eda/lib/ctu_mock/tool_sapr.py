@@ -3,8 +3,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import libraries, model
-from .common import SHARE, Log, ToolError, banner, now_iso, run_main, sha256_file, version_line, write_json, write_text
+from . import libraries, model, openc910
+from .common import SHARE, SITE_NAME, Log, ToolError, banner, now_iso, run_main, sha256_file, version_line, write_json, write_text
 
 HELP = """\
 usage: sapr run --design NAME --out DIR [options]
@@ -17,8 +17,10 @@ commands:
   -version   print the version and exit
 
 run options:
-  --design NAME          top module (aes_cipher_top)
-  --design-root DIR      design directory with rtl/ and <design>.sdc (default: the bundled design)
+  --design NAME          top module (aes_cipher_top, or openc910: placement optimization of the
+                         installed netlist, see below)
+  --design-root DIR      design directory with rtl/ and <design>.sdc (default: the bundled design;
+                         openc910: the installed design data directory)
   --lib NAME             stock standard-cell library (default std9t_svt)
   --extra-lib DIR        an AndesCell library directory to add (repeatable; cumulative libraries)
   --dont-use CELL        a cell the flow must not use (repeatable; e.g. cells that failed a screen)
@@ -36,6 +38,16 @@ outputs in --out:
   aes_cipher_top.route.def     routed DEF header and component summary
   reports/report_qor.rpt reports/place.rpt reports/cts.rpt reports/route_drc.rpt
   reports/area.rpt reports/postroute_timing.rpt reports/flow_summary.rpt (QoR per flow stage)
+
+design openc910 (full flow: prePlace, place_opt, CTS, route; typically 80-100 s):
+  --extra-lib DIR        an AndesCell delivery (cells/<arc>.lib), e.g. HimaTime's kept/ directory;
+                         the Site has build data for one custom-cell set only
+  --dont-use             not supported
+  outputs: sapr.log, sapr_summary.json (at route: path group reg2reg WNS/TNS/violating paths,
+  every path group, density, overflow, DRV, power, clock tree, custom-cell instances, the 8 worst
+  paths; reg2reg per stage) and reports/{prePlace,place,cts,route}.summary.rpt,
+  {place,cts,route}_reg2reg.tarpt, cts.sum.rpt, {place,route}.power.rpt,
+  {place,route}.congestion.rpt (when available), flow_summary.rpt
 """
 
 
@@ -67,7 +79,7 @@ def design_root(arg):
 
 def build(args):
     if args.design != model.DESIGN:
-        raise ToolError("design %r is not available on this Site (available: %s)" % (args.design, model.DESIGN))
+        raise ToolError("design %r is not available on this Site (available: %s, %s)" % (args.design, model.DESIGN, openc910.DESIGN))
     if args.lib != model.STOCK_LIBRARY:
         raise ToolError("library %r is not installed (installed: %s)" % (args.lib, model.STOCK_LIBRARY))
     if not 1 <= args.jobs <= 8:
@@ -90,6 +102,8 @@ def build(args):
 
 def run(argv):
     args = _parse(argv)
+    if args.design == openc910.DESIGN:
+        return run_openc910(args)
     root, out, extra, speed, usable, period = build(args)
     out.mkdir(parents=True, exist_ok=True)
     if not args.quiet:
@@ -229,6 +243,82 @@ def _reports(out, s, speed, by_cell, usable, extra):
     die = (s["areaUm2"] / model.CORE_UTILIZATION) ** 0.5
     write_text(out / ("%s.route.def" % model.DESIGN), "VERSION 5.8 ;\nDESIGN %s ;\nUNITS DISTANCE MICRONS 2000 ;\nDIEAREA ( 0 0 ) ( %d %d ) ;\nCOMPONENTS %d ;\n# ... (abridged, MOCK EDA)\nEND COMPONENTS\nEND DESIGN\n"
                % (model.DESIGN, int(die * 2000), int(die * 2000), s["instances"]))
+
+
+def run_openc910(args):
+    """The full flow of design openc910 (prePlace, place_opt, CTS, route): replays the installed build data."""
+    oc = openc910
+    if args.dont_use:
+        raise ToolError("--dont-use is not supported for design %s" % oc.DESIGN)
+    if not 1 <= args.jobs <= 8:
+        raise ToolError("--jobs must be 1-8")
+    root = args.design_root if args.design_root and (Path(args.design_root) / "pr" / "pr.json").is_file() else None
+    bundle = oc.Bundle(root)
+    period = bundle.clock_period_ns()
+    if args.clock_period is not None and abs(args.clock_period - period) > 1e-9:
+        raise ToolError("design %s has build data at %.3f ns only" % (oc.DESIGN, period))
+    out = Path(args.out)
+    if out.exists() and any(out.iterdir()):
+        raise ToolError("output directory %s is not empty" % out)
+    arcs = []
+    for d in args.extra_lib:
+        arcs += [a for a in oc.delivery_arcs(d) if a not in arcs]
+    if not arcs:
+        build = "reference"
+    else:
+        delivered = bundle.delivered()
+        if set(arcs) != delivered:
+            raise ToolError("no build data for this custom-cell set on this Site (%d cells; the Site has data for the %d-cell set)" % (len(arcs), len(delivered)))
+        build = "custom"
+    s = oc.build_summary(bundle, build)
+    out.mkdir(parents=True, exist_ok=True)
+    if not args.quiet:
+        banner("sapr")
+    log = Log("SAPR", out / "sapr.log", quiet=args.quiet)
+    log.raw(version_line("sapr"))
+    log("INFO", "design %s: gate-level netlist and floorplan from %s" % (oc.DESIGN, bundle.root))
+    log("INFO", "constraints: clock %s period %.3f ns; path groups %s" % (s["clock"], period, ", ".join(s["groups"])))
+    log("INFO", "%s timing libraries loaded%s" % (s["libraries"] if s["libraries"] is not None else "stock",
+                                                 " (stock libraries + the AndesCell delivery)" if arcs else " (stock libraries)"))
+    for d in args.extra_lib:
+        log("INFO", "extra library: AndesCell delivery %s" % d)
+    if arcs:
+        log("INFO", "AndesCell custom cells: %d" % len(arcs))
+    st = {x["stage"]: x for x in s["stages"]}
+    say = lambda x: log("INFO", "%s %s: WNS %.0f ps, TNS %.3f ns, %d violating paths" % (x["label"], oc.GROUP, 1000 * x["wnsNs"], x["tnsNs"], x["nvp"]))
+    log.phase("INIT", "Reading netlist, libraries and constraints", 6, 2)
+    say(st["prePlace"])
+    log.phase("PLC", "place_opt_design: global placement", 12, 4, lambda k, n: "%d %%" % int(100 * k / n))
+    log.phase("PLC", "place_opt_design: timing-driven optimization%s" % (" with the custom cells" if arcs else ""), 14, 4)
+    log.phase("PLC", "place_opt_design: legalization and DRV fixing", 6, 2)
+    say(st["place_opt"])
+    log.phase("CTS", "Clock tree synthesis (%s)" % s["clock"], 10, 4)
+    log.phase("CTS", "optDesign -postCTS", 8, 2)
+    if s["clockTree"]:
+        ct = s["clockTree"]
+        log("INFO", "clock tree: %d sinks, %d clock gates, %d buffers, %d inverters" % (ct["sinks"], ct["icgs"], ct["buffers"], ct["inverters"]))
+    say(st["cts"])
+    log.phase("RT", "Global and detailed routing", 14, 4)
+    log.phase("RT", "optDesign -postRoute", 10, 3)
+    say(st["route"])
+    log.phase("RPT", "Timing, power and congestion reports", 5, 2)
+    s.update(tool=version_line("sapr"), finished=True, extraLibs=[str(d) for d in args.extra_lib],
+             designRoot=str(bundle.root) if root else None, runtimeS=log.elapsed(), finishedAt=now_iso())
+    write_json(out / "sapr_summary.json", s)
+    rep = out / "reports"
+    header = "# %s: %s, design %s, %s build\n" % (SITE_NAME, version_line("sapr"), oc.DESIGN, build)
+    for name, text in oc.build_reports(bundle, build).items():
+        write_text(rep / name, header + text)
+    write_text(rep / "flow_summary.rpt", header + "\n" + oc.flow_summary_text(s))
+    log("INFO", "route %s: WNS %.0f ps, TNS %.3f ns, %d violating paths; density %.3f %%; custom-cell instances %d"
+        % (oc.GROUP, 1000 * s["wnsNs"], s["tnsNs"], s["nvp"], s["densityPct"], s["customCells"]))
+    log("INFO", "wrote %s" % (out / "sapr_summary.json"))
+    log("INFO", "sapr finished in %.1f s" % log.elapsed())
+    if args.quiet:
+        print("sapr: %s route %s WNS %.0f ps  TNS %.3f ns  violating paths %d  density %.3f %%  custom-cell instances %d"
+              % (oc.DESIGN, oc.GROUP, 1000 * s["wnsNs"], s["tnsNs"], s["nvp"], s["densityPct"], s["customCells"]))
+    log.close()
+    return 0
 
 
 def main(argv):

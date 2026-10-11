@@ -1,0 +1,252 @@
+{
+ "note": "synthetic test fixture",
+ "summary": {
+  "arcs": 8,
+  "with_all_vt": 8,
+  "lvt_slower_median_pct": 10.0,
+  "svt_slower_median_pct": 25.0,
+  "ulvt_fastest_count": 7
+ },
+ "arcs": [
+  {
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "fall",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.01,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.011,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0125,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "rise",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.012,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0132,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.015,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "INVD4X",
+   "from": "I",
+   "to": "ZN",
+   "edge": "rise",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.014,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0154,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0175,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "INVD4X",
+   "from": "I",
+   "to": "ZN",
+   "edge": "fall",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.016,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0176,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.02,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "AOI21D1X",
+   "from": "B",
+   "to": "ZN",
+   "edge": "rise",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.018,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0198,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0225,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "BUFFD8X",
+   "from": "I",
+   "to": "Z",
+   "edge": "fall",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.02,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.022,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.025,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "XOR2D1X",
+   "from": "A1",
+   "to": "Z",
+   "edge": "rise",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.022,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0209,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0275,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  },
+  {
+   "cell": "XOR2D1X",
+   "from": "A2",
+   "to": "Z",
+   "edge": "fall",
+   "ULVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.024,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "LVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.0264,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   },
+   "SVT": {
+    "area_um2": 0.05,
+    "input_cap_pf": 0.0003,
+    "leakage": null,
+    "delay_ns": 0.03,
+    "slew_ns": 0.02,
+    "load_pf": 0.002
+   }
+  }
+ ]
+}

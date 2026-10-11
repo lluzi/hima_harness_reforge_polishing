@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import libraries, model
+from . import libraries, model, openc910
 from .common import Log, ToolError, banner, now_iso, read_json, run_main, sha256_file, version_line, write_json, write_text
 
 MAX_FAMILIES = model.MAX_FAMILIES_PER_ROUND
@@ -34,6 +34,15 @@ generate options:
                         each must be requested, have a template and not be generated already
   --out DIR             output directory (not needed with --dry-run)
   --dry-run             rank and select only; generate nothing
+
+design openc910 (arc-level generation):
+  andescell generate --arcs FILE --round K [--iterations 50] [--scale 0.9] --out DIR [--dry-run]
+  --arcs FILE           JSON {"arcs": [{"cell", "from", "to", "edge"}, ...]}: the timing arcs to
+                        build custom cells for (each must be on the design's what-if arc list)
+  --iterations N        design-space iterations per arc
+  --scale S             arc delay target as a factor of the stock arc (0.9 = 10 %% faster)
+  Writes generation.json, generation.rpt and cells/<arc>.lib (one per generated cell with
+  characterization data); typically 30-40 s.
 
 Selection: requested families that AndesCell has a template for and that no earlier library has
 are ranked by HimaTime's estimated slack recovery on --db (the stage breakdown's est. recovery);
@@ -169,8 +178,11 @@ def cmd_families(rest):
 
 def cmd_generate(rest):
     p = argparse.ArgumentParser(prog="andescell generate")
-    p.add_argument("--requirements", required=True)
-    p.add_argument("--db", required=True)
+    p.add_argument("--requirements")
+    p.add_argument("--db")
+    p.add_argument("--arcs", help="design openc910: the arcs to generate (JSON)")
+    p.add_argument("--iterations", type=int, help="design openc910: iterations per arc")
+    p.add_argument("--scale", type=float, help="design openc910: arc delay target factor")
     p.add_argument("--round", type=int, required=True)
     p.add_argument("--existing", action="append", default=[])
     p.add_argument("--max-families", type=int, default=MAX_FAMILIES)
@@ -181,6 +193,10 @@ def cmd_generate(rest):
     a = p.parse_args(rest)
     if not 1 <= a.round <= 99:
         raise ToolError("--round must be 1-99")
+    if a.arcs:
+        return oc_generate(a)
+    if not a.requirements or not a.db:
+        raise ToolError("give --requirements FILE and --db SAPR_DIR (or --arcs FILE for design openc910)")
     if not 1 <= a.max_families <= MAX_FAMILIES:
         raise ToolError("--max-families must be 1-%d (licensed capacity per run)" % MAX_FAMILIES)
     if not a.dry_run and not a.out:
@@ -272,6 +288,61 @@ def cmd_generate(rest):
     if not cells:
         log("WARN", "no cell generated: no requested family is both new and on AndesCell's template list")
     log("DONE", "%d cell(s) in %d famil%s written to %s (%.1f s)" % (len(cells), len(chosen), "y" if len(chosen) == 1 else "ies", out, log.elapsed()))
+    log.close()
+
+
+def oc_generate(a):
+    oc = openc910
+    bundle = oc.Bundle()
+    res = bundle.results
+    iterations = a.iterations if a.iterations is not None else res["iterations_per_arc"]
+    scale = a.scale if a.scale is not None else bundle.whatif["scale"]
+    if iterations != res["iterations_per_arc"] or abs(scale - bundle.whatif["scale"]) > 1e-9:
+        raise ToolError("the Site has generation data for %d iterations at scale %g" % (res["iterations_per_arc"], bundle.whatif["scale"]))
+    keys = oc.load_arc_file(a.arcs)
+    oc.check_known(bundle, keys)
+    g = oc.generation(bundle, keys)
+    if a.dry_run:
+        print("AndesCell dry run, design %s, round %d: %d arc(s) requested, %d iterations per arc at scale %g"
+              % (oc.DESIGN, a.round, g["requested"], iterations, scale))
+        print("  expected: %d generated, %d failed" % (g["generated"], g["failed"]))
+        return
+    if not a.out:
+        raise ToolError("--out is required unless --dry-run")
+    out = Path(a.out)
+    if out.exists() and any(out.iterdir()):
+        raise ToolError("output directory %s is not empty" % out)
+    out.mkdir(parents=True, exist_ok=True)
+    if not a.quiet:
+        banner("andescell")
+    log = Log("AC", out / "andescell.log", quiet=a.quiet)
+    log("REQ", "%d arc(s) from %s; %d iterations per arc, arc delay target x%g" % (g["requested"], a.arcs, iterations, scale))
+    log.phase("INIT", "Loading templates, design rules and device models", 4, 2)
+    log.phase("GEN", "Design-space exploration: transistor sizing per arc", 16, 8, lambda k, n: "%d/%d arcs" % (int(g["requested"] * k / n), g["requested"]))
+    log.phase("LAY", "Layout synthesis and LVS", 8, 4)
+    log.phase("CHR", "Characterization, keeping the %d best versions per arc" % res["versions_kept_per_arc"], 6, 3)
+    vline = version_line("andescell")
+    for row in g["arcs"]:
+        write_text(out / "cells" / ("%s.lib" % row["arc"]), oc.stub_text(row, a.round, vline))
+    for name in g["failedKnown"]:
+        log("GEN", "  %s: no version passed (failed)" % name)
+    gen = dict(schema="ctu-andescell-generation/2", tool=vline, design=oc.DESIGN, round=a.round, iterations=iterations, scale=scale,
+               versionsKeptPerArc=res["versions_kept_per_arc"], requested=g["requested"], generated=g["generated"], failed=g["failed"],
+               failedKnown=g["failedKnown"], arcs=g["arcs"], delivered=[], arcsFile=str(a.arcs), runtimeS=log.elapsed(), generatedAt=now_iso())
+    write_json(out / "generation.json", gen)
+    rpt = ["AndesCell generation report, design %s, round %d" % (oc.DESIGN, a.round), "",
+           "Requested arcs: %d   iterations per arc: %d   arc delay target: x%g   versions kept per arc: %d" % (g["requested"], iterations, scale, res["versions_kept_per_arc"]),
+           "Generated: %d   failed: %d" % (g["generated"], g["failed"]), "",
+           "  %-48s %-14s %-5s %8s %10s %10s %6s" % ("arc", "family", "edge", "best ver", "delay ps", "\u0394", "LVS"), "  " + "-" * 108]
+    for row in g["arcs"]:
+        b = row["best"]
+        rpt.append("  %-48s %-14s %-5s %8s %10.3f %10.5f %6s" % (row["arc"][:48], row["family"][:14], row["edge"], b["version"], 1000 * b["delay_ns"], b["delta"],
+                                                               "ok" if b.get("lvs_pass") else "ERR"))
+    rpt += ["", "Failed (no version passed): %s" % (", ".join(g["failedKnown"]) or "none"),
+            "HimaTime's cell-level check decides which generated cells are kept.", ""]
+    write_text(out / "generation.rpt", "\n".join(rpt))
+    log("DONE", "%d of %d arc(s) generated, %d failed; %d cell(s) with characterization data in %s (%.1f s)"
+        % (g["generated"], g["requested"], g["failed"], len(g["arcs"]), out / "cells", log.elapsed()))
     log.close()
 
 

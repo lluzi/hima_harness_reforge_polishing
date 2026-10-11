@@ -1,0 +1,53 @@
+{
+ "library": "lib7x",
+ "arcs": [
+  {
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "fall"
+  },
+  {
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "rise"
+  },
+  {
+   "cell": "INVD4X",
+   "from": "I",
+   "to": "ZN",
+   "edge": "rise"
+  },
+  {
+   "cell": "INVD4X",
+   "from": "I",
+   "to": "ZN",
+   "edge": "fall"
+  },
+  {
+   "cell": "AOI21D1X",
+   "from": "B",
+   "to": "ZN",
+   "edge": "rise"
+  },
+  {
+   "cell": "BUFFD8X",
+   "from": "I",
+   "to": "Z",
+   "edge": "fall"
+  },
+  {
+   "cell": "XOR2D1X",
+   "from": "A1",
+   "to": "Z",
+   "edge": "rise"
+  },
+  {
+   "cell": "XOR2D1X",
+   "from": "A2",
+   "to": "Z",
+   "edge": "fall"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+report_extra_derate_result -sort_by NVP -top_n 3
+ND2D2X     A1->ZN : fall  TNS +0.3700
+ND2D2X     A1->ZN : rise  TNS +0.3200
+BUFFD8X    I->Z : fall  TNS +0.2700

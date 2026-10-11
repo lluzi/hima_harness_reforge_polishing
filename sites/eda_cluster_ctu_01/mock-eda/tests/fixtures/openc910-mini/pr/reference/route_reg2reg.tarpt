@@ -1,0 +1,27 @@
+###############################################################
+#  Command:           optDesign -postRoute
+###############################################################
+Path 1: VIOLATED Setup Check with Pin core/u_l2/dout_reg_7_/CP
+Endpoint:   core/u_l2/dout_reg_7_/D (v) checked with leading edge of 'CORE_CLK'
+Beginpoint: core/u_l2/u_sram_1/Q[7]
+Path Groups: {reg2reg}
+= Slack Time -0.030
+
+Path 2: VIOLATED Setup Check with Pin core/u_l2/dout_reg_9_/CP
+Endpoint:   core/u_l2/dout_reg_9_/D (v) checked with leading edge of 'CORE_CLK'
+Beginpoint: core/u_l2/u_sram_1/Q[9]
+Path Groups: {reg2reg}
+= Slack Time -0.028
+
+Path 3: VIOLATED Setup Check with Pin core/u_l2/dout_reg_3_/CP
+Endpoint:   core/u_l2/dout_reg_3_/D (v) checked with leading edge of 'CORE_CLK'
+Beginpoint: core/u_l2/u_sram_1/Q[3]
+Path Groups: {reg2reg}
+= Slack Time -0.027
+
+Path 4: VIOLATED Setup Check with Pin core/u_l2/dout_reg_3_/CP
+Endpoint:   core/u_l2/dout_reg_3_/D (v) checked with leading edge of 'CORE_CLK'
+Beginpoint: core/u_l2/u_sram_1/Q[3]
+Path Groups: {reg2reg}
+= Slack Time -0.027
+

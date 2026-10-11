@@ -1,0 +1,9 @@
+lib_name,master_name,from_pin,to_pin,edge_type
+lib7x,ND2D2X,A1,ZN,fall
+lib7x,ND2D2X,A1,ZN,rise
+lib7x,INVD4X,I,ZN,rise
+lib7x,INVD4X,I,ZN,fall
+lib7x,AOI21D1X,B,ZN,rise
+lib7x,BUFFD8X,I,Z,fall
+lib7x,XOR2D1X,A1,Z,rise
+lib7x,XOR2D1X,A2,Z,fall

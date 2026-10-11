@@ -1,0 +1,221 @@
+{
+ "requested_arcs": 8,
+ "iterations_per_arc": 50,
+ "versions_kept_per_arc": 3,
+ "generated": 6,
+ "failed": 2,
+ "positive_cell_gain": 4,
+ "delivered": [
+  "ND2D2X_A1_ZN_fall",
+  "ND2D2X_A1_ZN_rise",
+  "INVD4X_I_ZN_rise",
+  "AOI21D1X_B_ZN_rise"
+ ],
+ "arcs": [
+  {
+   "arc": "ND2D2X_A1_ZN_fall",
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "fall",
+   "versions_kept": [
+    {
+     "version": 7,
+     "lvs_pass": true,
+     "delay_ns": 0.012,
+     "delta": 1.05
+    },
+    {
+     "version": 3,
+     "lvs_pass": true,
+     "delay_ns": 0.01212,
+     "delta": 1.06
+    },
+    {
+     "version": 12,
+     "lvs_pass": true,
+     "delay_ns": 0.01224,
+     "delta": 1.07
+    }
+   ],
+   "delivered": true,
+   "best": {
+    "version": 7,
+    "lvs_pass": true,
+    "delay_ns": 0.012,
+    "delta": 1.05
+   },
+   "library": {
+    "area_stock_um2": 0.05,
+    "area_custom_um2": 0.05,
+    "input_cap_stock_pf": 0.0003,
+    "input_cap_custom_pf": 0.00028
+   }
+  },
+  {
+   "arc": "ND2D2X_A1_ZN_rise",
+   "cell": "ND2D2X",
+   "from": "A1",
+   "to": "ZN",
+   "edge": "rise",
+   "versions_kept": [
+    {
+     "version": 7,
+     "lvs_pass": true,
+     "delay_ns": 0.013,
+     "delta": 1.05
+    },
+    {
+     "version": 3,
+     "lvs_pass": true,
+     "delay_ns": 0.01313,
+     "delta": 1.06
+    },
+    {
+     "version": 12,
+     "lvs_pass": true,
+     "delay_ns": 0.01326,
+     "delta": 1.07
+    }
+   ],
+   "delivered": true,
+   "best": {
+    "version": 7,
+    "lvs_pass": true,
+    "delay_ns": 0.013,
+    "delta": 1.05
+   },
+   "library": {
+    "area_stock_um2": 0.05,
+    "area_custom_um2": 0.05,
+    "input_cap_stock_pf": 0.0003,
+    "input_cap_custom_pf": 0.00029
+   }
+  },
+  {
+   "arc": "INVD4X_I_ZN_rise",
+   "cell": "INVD4X",
+   "from": "I",
+   "to": "ZN",
+   "edge": "rise",
+   "versions_kept": [
+    {
+     "version": 7,
+     "lvs_pass": true,
+     "delay_ns": 0.014,
+     "delta": 1.05
+    },
+    {
+     "version": 3,
+     "lvs_pass": true,
+     "delay_ns": 0.01414,
+     "delta": 1.06
+    },
+    {
+     "version": 12,
+     "lvs_pass": true,
+     "delay_ns": 0.01428,
+     "delta": 1.07
+    }
+   ],
+   "delivered": true,
+   "best": {
+    "version": 7,
+    "lvs_pass": true,
+    "delay_ns": 0.014,
+    "delta": 1.05
+   },
+   "library": {
+    "area_stock_um2": 0.04,
+    "area_custom_um2": 0.04,
+    "input_cap_stock_pf": 0.0005,
+    "input_cap_custom_pf": 0.00045
+   }
+  },
+  {
+   "arc": "AOI21D1X_B_ZN_rise",
+   "cell": "AOI21D1X",
+   "from": "B",
+   "to": "ZN",
+   "edge": "rise",
+   "versions_kept": [
+    {
+     "version": 7,
+     "lvs_pass": true,
+     "delay_ns": 0.016,
+     "delta": 1.05
+    },
+    {
+     "version": 3,
+     "lvs_pass": true,
+     "delay_ns": 0.01616,
+     "delta": 1.06
+    },
+    {
+     "version": 12,
+     "lvs_pass": true,
+     "delay_ns": 0.01632,
+     "delta": 1.07
+    }
+   ],
+   "delivered": true,
+   "best": {
+    "version": 7,
+    "lvs_pass": true,
+    "delay_ns": 0.016,
+    "delta": 1.05
+   },
+   "library": {
+    "area_stock_um2": 0.06,
+    "area_custom_um2": 0.06,
+    "input_cap_stock_pf": 0.0002,
+    "input_cap_custom_pf": 0.00024
+   }
+  },
+  {
+   "arc": "BUFFD8X_I_Z_fall",
+   "cell": "BUFFD8X",
+   "from": "I",
+   "to": "Z",
+   "edge": "fall",
+   "versions_kept": [
+    {
+     "version": 7,
+     "lvs_pass": true,
+     "delay_ns": 0.02,
+     "delta": 1.05
+    },
+    {
+     "version": 3,
+     "lvs_pass": true,
+     "delay_ns": 0.0202,
+     "delta": 1.06
+    },
+    {
+     "version": 12,
+     "lvs_pass": true,
+     "delay_ns": 0.0204,
+     "delta": 1.07
+    }
+   ],
+   "delivered": false,
+   "best": {
+    "version": 7,
+    "lvs_pass": true,
+    "delay_ns": 0.02,
+    "delta": 1.05
+   }
+  },
+  {
+   "arc": "XOR2D1X_A2_Z_fall",
+   "cell": "XOR2D1X",
+   "from": "A2",
+   "to": "Z",
+   "edge": "fall",
+   "versions_kept": [],
+   "delivered": false,
+   "best": null
+  }
+ ],
+ "source_note": "synthetic test fixture"
+}

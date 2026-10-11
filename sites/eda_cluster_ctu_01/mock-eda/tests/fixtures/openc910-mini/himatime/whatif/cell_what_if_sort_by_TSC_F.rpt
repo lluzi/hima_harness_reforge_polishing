@@ -1,0 +1,4 @@
+report_extra_derate_result -sort_by TSC_F -top_n 3
+INVD4X     I->ZN : rise  TNS +0.3500
+XOR2D1X    A2->Z : fall  TNS +0.3000
+ND2D2X     A1->ZN : fall  TNS +0.2500

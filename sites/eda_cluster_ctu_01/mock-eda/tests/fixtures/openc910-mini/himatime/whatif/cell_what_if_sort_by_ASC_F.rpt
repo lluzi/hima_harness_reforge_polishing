@@ -1,0 +1,4 @@
+report_extra_derate_result -sort_by ASC_F -top_n 3
+ND2D2X     A1->ZN : fall  TNS +0.3500
+ND2D2X     A1->ZN : rise  TNS +0.3000
+INVD4X     I->ZN : rise  TNS +0.2500
