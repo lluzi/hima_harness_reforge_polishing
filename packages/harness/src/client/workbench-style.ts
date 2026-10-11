@@ -488,4 +488,6 @@ export const HIMA_STYLE = `
 .hima-analysis-card-error{color:var(--hima-bad);white-space:pre-wrap;margin:0}
 .hima-analysis-card-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--hima-sp-1)}
 .hima-analysis-card-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--hima-sp-2);align-items:center}
+
+.hima-team-value{white-space:pre-wrap;overflow-wrap:anywhere}
 `;

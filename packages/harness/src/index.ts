@@ -953,8 +953,14 @@ export default class Hima extends Service {
     return observe(this.deps(), req);
   }
 
-  startRun(request: StartRunRequest): Promise<StartRunResult> {
-    if (this.exitRequest) return Promise.reject(new Error('the App is closing; no new Campaign may start'));
+  private async waitForBusinessAdmission():Promise<void> {
+    if(this.exitRequest||this.resourcesClosing)throw new Error('the App is closing; no new business may start');
+    await this.reconciled;
+    // Recovery only releases a previous lifetime. A newly accepted close remains fenced.
+    if(this.exitRequest||this.resourcesClosing)throw new Error('the App is closing; no new business may start');
+  }
+  async startRun(request: StartRunRequest): Promise<StartRunResult> {
+    await this.waitForBusinessAdmission();
     return startRun(this.deps(), request);
   }
 
@@ -1018,6 +1024,7 @@ export default class Hima extends Service {
     const projectId=await sessionProject(this.ctx,sessionId,true);
     const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
     const value=teamZ.strictObject({action:teamZ.enum(['context','list','read','save','clone','export','startTask','listTasks','readTask','control']),teamId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    if(['save','clone','startTask'].includes(value.action))await this.waitForBusinessAdmission();
     const store=this.durable.store.teamDefinitions();
     if(value.action==='context')return {projectId,actor,definitionTemplate:{schema:'hima-team-definition/1',title:'Team',members:[{id:'lead',role:'Lead',runtime:'opencode',modelRef:'configure-model',skills:[],instructions:'Work within the given scope.',toolRefs:[],knowledgeRefs:[]}],leaderMemberId:'lead',collaboration:'Explain responsibilities and handoff.',delivery:{description:'State the agreed delivery.',output:{version:'delivery/1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:true}}}},taskOpeningFields:['requestId','teamId','expectedVersion','goal','input','deadlineAt','closure'],modelReferenceHelp:'modelRef is a reference to separately configured credentials and model settings, not a key or machine path.'};
     if(value.action==='list')return {teams:await listTeams(store,actor,projectId)};
@@ -1271,6 +1278,7 @@ export default class Hima extends Service {
   }
   /** A confirmed Guide proposal starts in an independent native session. Fabric still owns Run admission. */
   async startGuidedRun(request: StartRunRequest): Promise<StartRunResult> {
+    await this.waitForBusinessAdmission();
     if(this.exitRequest)throw new BadRequest('the App is closing; no new task may start');
     if (!request.ownerSessionId || !request.proposalId) {
       throw new BadRequest('confirm a current Campaign proposal from a live Guide conversation before starting');

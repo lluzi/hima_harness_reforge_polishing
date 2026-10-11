@@ -41,3 +41,9 @@ node scripts/run-contract-tests.mjs desktop --files test/contract/himateam-defin
 ```
 
 Playwright is test tooling, not a shipped product dependency. The test owns a separate Home, userData directory, database and ports. It captures only its own App renderer. No product model or native member executor is exercised. Evidence is retained below `.scratch/p01-playwright`, including sanitized request titles, screenshot and actual process cleanup.
+
+## Mandatory regression findings
+
+The first integration pre-push on `c0e03dcd648a9ae3684f7ccb1247b1f4112f1c24` ran all 789 local tests: 783 pass, 2 fail, 4 skip (2197.462 seconds; 61 subprocess and 364 in-process Host boots; zero Electron/SSH). The hook prevented synchronization. Both failures are preserved: Team inline presentation styles violated the client style contract; an immediately reopened installed Host tried to create a Pack Run before recovering its previous exit fence.
+
+The style declarations moved unchanged into the existing token sheet (3/3 style contracts). A real Host/PG counterexample distinguished the startup race from recovery failure: the same start was rejected before recovery and accepted after it. New business entry points now await recovery and recheck current closing state; the current-lifetime PG fence/finalization checks stay intact. The selected skills and reopening cases passed after the fix; related exit contracts passed 9/9. The finalization race case now asserts that closing admission is refused and that stale finalization retains readable PostgreSQL evidence. These focused results do not replace the next commit's mandatory pre-push run.

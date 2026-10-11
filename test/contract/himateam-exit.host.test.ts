@@ -236,10 +236,10 @@ test('normal closer cannot confirm shutdown after an already admitted cancellati
   const closing=service.closeHostResources();let consumed=false;
   try {
     await inventoryInside;releaseCancel();await cancelling;
-    const task=await service.teamOperation(guide,{action:'startTask',teamId:team.teamId,request:{requestId:'after-cancel-before-close',teamId:team.teamId,expectedVersion:1,goal:'Retain the racing original opening',input:{},deadlineAt:new Date(Date.now()+30000).toISOString(),closure:'No delivery claim; retain closure evidence.'}});
+    await assert.rejects(service.teamOperation(guide,{action:'startTask',teamId:team.teamId,request:{requestId:'after-cancel-before-close',teamId:team.teamId,expectedVersion:1,goal:'Must remain fenced during resource close',input:{},deadlineAt:new Date(Date.now()+30000).toISOString(),closure:'No business admission during resource close.'}}),/App is closing/);
     releaseInventory();
     await assert.rejects(closing,/exit.*stale|fence.*disappeared/i);consumed=true;
-    assert.equal((await store.run(task.currentRunId)).runId,task.currentRunId,'unconfirmed shutdown preserves live PG evidence');
+    assert.equal((await store.readTeamDefinition(team.projectId,team.teamId)).teamId,team.teamId,'unconfirmed shutdown preserves live PG evidence');
   } finally {
     releaseCancel();releaseInventory();store.runs=originalRuns;store.releaseHostExit=originalRelease;
     if(!consumed)await closing.catch(()=>{});

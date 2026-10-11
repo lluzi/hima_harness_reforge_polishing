@@ -53,6 +53,7 @@
     "test/contract/guide-sessions.host.test.ts",
     "test/contract/himateam-definition.host.test.ts",
     "test/contract/himateam-exit.host.test.ts",
+    "test/contract/himateam-reopen.host.test.ts",
     "test/contract/historical-words.host.test.ts",
     "test/contract/host-lifecycle.host.test.ts",
     "test/contract/input-admission.host.test.ts",
