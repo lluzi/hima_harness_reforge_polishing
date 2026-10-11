@@ -315,7 +315,7 @@ rules:
 
 knowledge:
   - file: design-notes.md
-    purpose: The design and its timing at route, the worst paths, HimaTime's high-value cells, the stock libraries' Vt, the custom-cell idea, the Goal and the charts to show, for the Guide's first conversation (generated from the Site's tools).
+    purpose: Read it before answering any question about this design's timing (hima_knowledge search, source pack, query "design notes"). The design and its timing at route, the worst paths, HimaTime's high-value cells, the stock libraries' Vt, what custom cells can move, the Goal and the charts to show, for the Guide's first conversation (generated from the Site's tools).
   - file: andes-flow.md
     purpose: The flow, every tool and command, the round loop, the owner's turns and what each round's results mean.
   - file: himatime-playbook.md

@@ -340,8 +340,16 @@ def path_groups_chart(builds, source, subtitle=None, n=4):
         series.append((name, [f[4](by.get(g) or {}) for g, f in rows], role))
     return chart("Path groups at route", "", [("%s %s" % (g, f[0]))[:24] for g, f in rows], series, source, subtitle=subtitle,
                  highlight=[("%s worst slack" % GROUP)[:24]] if GROUP in groups else (),
-                 caption="reg2reg: flop to flop; reg2cgate: flop to clock gate; in2reg and reg2out: the core's inputs and outputs.",
-                 metrics=[(f[1], f[2], f[3]) for g, f in rows])
+                 caption=groups_caption(builds[0][2]), metrics=[(f[1], f[2], f[3]) for g, f in rows])
+
+
+def groups_caption(record):
+    """The path groups in words; when the build carries its SDC output budget, why reg2out is not a core-cell problem."""
+    io = (record or {}).get("ioBudget") or {}
+    if io.get("outputDelayNs") and io.get("outputDelayPorts"):
+        return ("reg2reg (flop to flop) sets the core clock. reg2out sits on the block's output budget: %.3f ns reserved "
+                "outside the core on %d ports, a SoC integration item, not a core-cell one." % (io["outputDelayNs"], io["outputDelayPorts"]))
+    return "reg2reg: flop to flop; reg2cgate: flop to clock gate; in2reg and reg2out: the core's inputs and outputs."
 
 
 def rank_words(types):
@@ -367,7 +375,9 @@ def slack_chart(paths, source, subtitle, clock_ns, n=8):
     labels = unique([end_label(p) for p in rows])
     return chart("Worst reg2reg paths: slack", "ps", labels, [("Slack", [ps(p["slackNs"]) for p in rows], "measured")], source,
                  subtitle=subtitle, better="higher", highlight=labels[:1],
-                 caption="Each path by its end point. Negative slack misses the %.3f ns clock; the worst path sets the worst slack." % clock_ns)
+                 caption=("A wall, not one path: these %d sit within %d ps of each other. Each by its end point; negative slack "
+                          "misses the %.3f ns clock." % (len(rows), round(ps(max(p["slackNs"] for p in rows) - min(p["slackNs"] for p in rows))), clock_ns))
+                 if len(rows) > 1 else "Negative slack misses the %.3f ns clock; the worst path sets the worst slack." % clock_ns)
 
 
 def stage_chart(summary, source, subtitle=None):
@@ -385,9 +395,9 @@ def stage_chart(summary, source, subtitle=None):
     return chart("Where the worst path's %d ps of data time go" % round(1000.0 * total), "ps", [p["part"][:24] for p in parts],
                  [("Delay", [ps(p["ns"]) for p in parts], "neutral")], source, subtitle=subtitle,
                  highlight=[p["part"][:24] for p in parts if p["part"] == "SRAM access"],
-                 caption="%s → %s, slack %d ps. Launch clock latency (%d ps) left out: the capture clock matches it."
-                 % (worst.get("beginShort", "?")[-40:], worst.get("endShort", "?")[-40:], round(1000.0 * worst.get("slackNs", 0.0)),
-                    round(1000.0 * (worst.get("clockNs") or 0.0))))
+                 caption=("Slack %d ps. The SRAM access is fixed by the macro; custom cells act on the logic and the loads of every path in "
+                          "the wall. Launch clock latency (%d ps) is left out: the capture clock matches it.")
+                 % (round(1000.0 * worst.get("slackNs", 0.0)), round(1000.0 * (worst.get("clockNs") or 0.0))))
 
 
 def whatif_gains(whatif):

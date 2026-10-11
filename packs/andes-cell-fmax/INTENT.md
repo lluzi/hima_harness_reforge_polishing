@@ -4,7 +4,10 @@ A chip designer wants `openc910` (the OpenC910 dual-core RISC-V CPU, 7 nm-class 
 0.500 ns clock) to close timing better without touching the netlist or the clock, by adding custom
 standard cells to the library. The delivery is a custom-cell library and the evidence that it
 improves timing at the end of route: a before/after table of the custom-cell build against the
-reference build.
+reference build. The bottleneck story the Pack tells from the data: the reg2reg misses at route are
+a wall of near-equal paths, many through SRAM macros; the macro access is fixed, so the lever is the
+logic cells and the loads on every path in the wall, which custom cells make faster. reg2out is the
+block's output budget, settled at SoC integration, not a core-cell problem.
 
 ## Golden Flow
 
