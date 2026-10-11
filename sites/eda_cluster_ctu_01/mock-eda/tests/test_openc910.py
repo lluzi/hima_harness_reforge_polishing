@@ -130,12 +130,12 @@ class Fixture(unittest.TestCase):
         p = s["paths"][0]
         self.assertEqual((p["rank"], p["endShort"], p["beginShort"], p["clockNs"], p["sramNs"]), (1, "dout_reg_7_", "u_sram_1", 0.12, 0.19))
         self.assertAlmostEqual(p["clockNs"] + p["sramNs"] + p["cellNs"] + p["netNs"], p["arrivalNs"], places=6)
-        self.assertEqual([b["part"] for b in s["breakdown"]], ["clock network", "SRAM access", "INV", "ND2", "AOI21", "nets"])
-        self.assertAlmostEqual(sum(b["ns"] for b in s["breakdown"]), p["arrivalNs"], places=6)
+        self.assertEqual([b["part"] for b in s["breakdown"]], ["SRAM access", "INV", "ND2", "AOI21", "nets"])
+        self.assertAlmostEqual(sum(b["ns"] for b in s["breakdown"]), p["arrivalNs"] - p["clockNs"], places=6)
         rpt = (self.t / "ht" / "report_timing.rpt").read_text()
         self.assertIn("Path 3:", rpt)
         self.assertNotIn("Path 4:", rpt, "only the summary's worst paths")
-        self.assertIn("clock network", (self.t / "ht" / "stage_breakdown.rpt").read_text())
+        self.assertIn("launch clock latency", (self.t / "ht" / "stage_breakdown.rpt").read_text())
         rep = json.loads(ok(self, "himatime", "report", "--db", self.t / "ref", "--json").stdout)
         self.assertEqual((rep["breakdown"], rep["wnsNs"]), (s["breakdown"], s["wnsNs"]))
         self.assertIn("violating paths 150", ok(self, "himatime", "report", "--db", self.t / "ref").stdout)
@@ -262,7 +262,8 @@ class RealBundle(unittest.TestCase):
             self.assertEqual((s["passed"], s["failed"]), (118, 0))
             ts = load(t / "ht" / "timing_summary.json")
             self.assertEqual(len(ts["paths"]), 8)
-            self.assertAlmostEqual(sum(b["ns"] for b in ts["breakdown"]), ts["paths"][0]["arrivalNs"], places=3)
+            self.assertAlmostEqual(sum(b["ns"] for b in ts["breakdown"]), ts["paths"][0]["arrivalNs"] - ts["paths"][0]["clockNs"], places=3)
+            self.assertEqual(load(t / "ref" / "sapr_summary.json")["ioBudget"]["outputDelayPorts"], json.loads((REAL / "pr" / "io_budget.json").read_text())["output_delay_ports"])
             for d in ("ref", "b1"):
                 for p in (t / d / "reports").iterdir():
                     text = p.read_text().lower()

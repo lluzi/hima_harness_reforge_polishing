@@ -382,12 +382,12 @@ def stage_chart(summary, source, subtitle=None):
         parts = body + nets
     worst = (summary.get("paths") or [{}])[0]
     total = sum(p["ns"] for p in parts)
-    return chart("Where the worst path's %d ps go" % round(1000.0 * total), "ps", [p["part"][:24] for p in parts],
+    return chart("Where the worst path's %d ps of data time go" % round(1000.0 * total), "ps", [p["part"][:24] for p in parts],
                  [("Delay", [ps(p["ns"]) for p in parts], "neutral")], source, subtitle=subtitle,
                  highlight=[p["part"][:24] for p in parts if p["part"] == "SRAM access"],
-                 caption="Worst reg2reg path from %s to %s, slack %d ps at the %.3f ns clock."
-                 % (worst.get("beginShort", "?"), worst.get("endShort", "?"), round(1000.0 * worst.get("slackNs", 0.0)),
-                    summary.get("clockPeriodNs") or 0.0))
+                 caption="%s → %s, slack %d ps. Launch clock latency (%d ps) left out: the capture clock matches it."
+                 % (worst.get("beginShort", "?")[-40:], worst.get("endShort", "?")[-40:], round(1000.0 * worst.get("slackNs", 0.0)),
+                    round(1000.0 * (worst.get("clockNs") or 0.0))))
 
 
 def whatif_gains(whatif):

@@ -264,6 +264,7 @@ def build_summary(bundle, build):
     clock_tree = dict(buffers=_num(ct.get("buffers"), True), inverters=_num(ct.get("inverters"), True), icgs=_num(ct.get("icgs"), True),
                       sinks=_num(ct.get("sinks"), True), clockWireUm=ct.get("clock_wire_um")) if ct else None
     basis = bundle.pr.get("custom_model", {}).get("basis") if build == "custom" else None
+    io = io_budget(bundle)
     return dict(schema=SUMMARY_SCHEMA, design=DESIGN, build=build, stage=RESULT_STAGE, clockPeriodNs=bundle.clock_period_ns(),
                 clock=bundle.clock_name(), group=GROUP, wnsNs=g["wnsNs"], tnsNs=g["tnsNs"], nvp=g["nvp"], allPaths=g["allPaths"],
                 groups=groups, pathGroups=[dict(group=k, **groups[k]) for k in final["groups"]],
@@ -273,7 +274,20 @@ def build_summary(bundle, build):
                            switchingMw=round(power["switching_mw"], 3), leakageMw=round(power["leakage_mw"], 3)) if power else None,
                 customCells=int(power.get("custom_cells") or 0), customCellsPct=power.get("custom_cells_pct") or 0.0,
                 libraries=power.get("libraries"), clockTree=clock_tree, stages=stages,
-                worstPaths=short_paths(final.get("worst_paths") or []), instances=None, basis=basis, command=final.get("command"))
+                worstPaths=short_paths(final.get("worst_paths") or []), instances=None, basis=basis, command=final.get("command"),
+                ioBudget=io)
+
+
+def io_budget(bundle):
+    """The block SDC's output-delay budget and the worst reg2out path it sets, when the bundle has it."""
+    if not (bundle.root / "pr" / "io_budget.json").is_file():
+        return None
+    b = bundle.json("pr/io_budget.json")
+    w = b.get("worst_reg2out") or {}
+    return dict(outputDelayPorts=b.get("output_delay_ports"), outputDelayNs=b.get("output_delay_max_ns"), outputClock=b.get("output_delay_clock"),
+                portGroups=[dict(prefix=k, ports=n) for k, n in b.get("port_groups") or []],
+                worstReg2out=dict(endpoint=w.get("endpoint"), externalDelayNs=w.get("external_delay_ns"), requiredNs=w.get("required_ns"),
+                                  arrivalNs=w.get("arrival_ns"), slackNs=w.get("slack_ns")) if w else None)
 
 
 def timing_gain_pct(new_wns_ns, ref_wns_ns, period_ns):
@@ -419,17 +433,18 @@ def path_row(rank, p):
 
 
 def breakdown(p):
-    """The worst path's arrival by part (ns and % of the arrival)."""
+    """The worst path's data time by part (ns and % of the data path: arrival less the launch clock latency)."""
     if not p.get("stages"):
         return []
     clock, parts, _ = _parts(p)
     sram = parts.pop("SRAM access", 0.0)
     net = parts.pop("nets", 0.0)
-    rows = [("clock network", clock)] if round(clock, 3) else []
-    rows += [("SRAM access", sram)] if round(sram, 3) else []
+    # The data path only: the launch clock's latency is matched by the capture clock's, so it is not
+    # time the path spends (path rows keep it as clockNs).
+    rows = [("SRAM access", sram)] if round(sram, 3) else []
     rows += sorted(((k, v) for k, v in parts.items() if round(v, 3) > 0), key=lambda kv: (-kv[1], kv[0]))
     rows.append(("nets", net))
-    total = p["arrival_ns"] or 1.0
+    total = (p["arrival_ns"] - clock) or 1.0
     return [dict(part=k, ns=round(v, 3), pct=round(100.0 * v / total, 1)) for k, v in rows]
 
 
@@ -477,6 +492,8 @@ def breakdown_text(s):
         return "No stage detail for the worst path of this build.\n"
     w = s["paths"][0]
     lines = ["Worst %s path: %s -> %s, arrival %.0f ps, slack %.0f ps" % (s["group"], w["beginShort"], w["endShort"], 1000 * w["arrivalNs"], 1000 * w["slackNs"]),
+             "Data path %.0f ps (arrival less %.0f ps of launch clock latency, which the capture clock matches)."
+             % (1000 * (w["arrivalNs"] - (w.get("clockNs") or 0.0)), 1000 * (w.get("clockNs") or 0.0)),
              "", "  %-24s %10s %8s" % ("part", "ps", "share %"), "  " + "-" * 44]
     for b in s["breakdown"]:
         lines.append("  %-24s %10.0f %8.1f" % (b["part"], 1000 * b["ns"], b["pct"]))

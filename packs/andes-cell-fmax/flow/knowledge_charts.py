@@ -129,21 +129,33 @@ def where(name):
     return "%s %s" % (", ".join(words) if words else "top level", kind)
 
 
-def data_path_words(parts, arrival):
-    """The worst path's arrival in words: the launch clock, then the data path's SRAM access, cells and nets."""
-    if not parts or not arrival:
+def data_path_words(parts, worst):
+    """The worst path's data time in words: SRAM access, cells and nets (the launch clock latency,
+    matched by the capture clock, is not time the path spends)."""
+    if not parts or not worst.get("arrivalNs"):
         return ""
     by = {p["part"]: p["ns"] for p in parts}
-    clock = by.get("clock network", 0.0)
-    cells = [p["part"] for p in parts if p["part"] not in ("clock network", "SRAM access", "nets")]
-    words = "It arrives at %d ps" % round(cli.ps(arrival))
-    if clock:
-        words += ", %d ps of it the launch clock's network" % round(cli.ps(clock))
-    words += ". Of the %d ps data path" % round(cli.ps(arrival - clock))
+    cells = [p["part"] for p in parts if p["part"] not in ("SRAM access", "nets")]
+    data = sum(p["ns"] for p in parts)
+    words = "Its data path takes %d ps" % round(cli.ps(data))
     if "SRAM access" in by:
-        words += ", the SRAM access takes %d ps" % round(cli.ps(by["SRAM access"]))
-    words += "; the rest is %s and %d ps of nets." % (", ".join(cells[:4]) or "no cell", round(cli.ps(by.get("nets", 0.0))))
+        words += ": the SRAM access %d ps" % round(cli.ps(by["SRAM access"]))
+    words += ", then %s and %d ps of nets." % (", ".join(cells[:4]) or "no cell", round(cli.ps(by.get("nets", 0.0))))
     return words
+
+
+def io_words(sapr, all_wns_ns):
+    """Why the all-group worst slack sits on reg2out: the block SDC's output-delay budget."""
+    io = sapr.get("ioBudget") or {}
+    w = io.get("worstReg2out") or {}
+    if not io or not w:
+        return "The all-group worst slack can sit on an input or output group, which custom cells inside the core do not move."
+    groups = ", ".join("%s* %d" % (g["prefix"], g["ports"]) for g in (io.get("portGroups") or [])[:3])
+    return ("It sits on reg2out: the block SDC reserves %.3f ns of output delay on %d output ports (%s; clock %s), which leaves "
+            "%d ps inside the core for those paths; the worst, `%s`, needs %d ps. That is a chip-level I/O budget, settled at "
+            "SoC integration, not a core-cell problem: the core clock is set by reg2reg."
+            % (io["outputDelayNs"], io["outputDelayPorts"], groups, io.get("outputClock"), round(cli.ps(w["requiredNs"])), w["endpoint"],
+               round(cli.ps(w["arrivalNs"]))))
 
 
 def vt_of(names):
@@ -203,9 +215,16 @@ def notes(t, chart_names):
                        (ct.get("clockWireUm") or 0.0) / 1000.0)) if ct else "no clock-tree summary",
         worst_slack="%d" % round(cli.ps(worst.get("slackNs", 0.0))), worst_begin=worst.get("beginShort", "?"), worst_end=worst.get("endShort", "?"),
         worst_from=where(worst.get("begin", "")), worst_to=where(worst.get("end", "")),
-        worst_parts=table(["Part of the worst path", "ps", "share of the arrival"],
+        worst_parts=table(["Part of the worst path's data time", "ps", "share"],
                           [(p["part"], "%d" % round(cli.ps(p["ns"])), "%.1f %%" % p["pct"]) for p in parts]) if parts else "(no breakdown)",
-        sram_line=data_path_words(parts, arrival),
+        sram_line=data_path_words(parts, worst),
+        io_line=io_words(sapr, all_g.get("wnsNs")),
+        wall_ps="%d" % round(cli.ps(max(p["slackNs"] for p in timing.get("paths") or [worst]) - min(p["slackNs"] for p in timing.get("paths") or [worst]))) if worst else "0",
+        max_tns="%.3f" % max((a["tnsGainNs"] or 0.0) for a in merged) if merged else "0",
+        max_wns="%.1f" % (1000.0 * max((a["wnsGainNs"] or 0.0) for a in merged)) if merged else "0",
+        top3wns=table(["Arc (cell, pin to pin, edge)", "What-if WNS gain (ps)", "What-if TNS gain (ns)", "Rankings naming it"],
+                      [("%s %s→%s %s" % (a["cell"], a["from"], a["to"], a["edge"]), "%.1f" % (1000.0 * (a["wnsGainNs"] or 0.0)),
+                        "%.3f" % (a["tnsGainNs"] or 0.0), len(a["rankedBy"])) for a in sorted(merged, key=lambda a: -(a["wnsGainNs"] or 0.0))[:3]]),
         paths_table=table(["#", "Slack (ps)", "From", "To", "End point"],
                           [(p.get("rank"), "%d" % round(cli.ps(p["slackNs"])), where(p.get("begin", "")), where(p.get("end", "")), p.get("endShort"))
                            for p in timing.get("paths") or []]),
@@ -215,9 +234,9 @@ def notes(t, chart_names):
         hv_families=", ".join("%s %s" % (f["family"], f["count"]) for f in (hv.get("families") or [])[:8]),
         rankings=len(whatif.get("rankings") or {}), ranking_keys=", ".join(whatif.get("rankings") or {}), top_n=whatif.get("top_n"),
         scale="%g" % cli.SCALE, faster_pct="%d" % round(100 * (1 - cli.SCALE)), merged=len(merged),
-        top3=table(["Arc (cell, pin to pin, edge)", "What-if TNS gain (ns)", "What-if WNS gain (ns)", "Rankings naming it"],
+        top3=table(["Arc (cell, pin to pin, edge)", "What-if TNS gain (ns)", "What-if WNS gain (ps)", "Rankings naming it"],
                    [("%s %s→%s %s" % (a["cell"], a["from"], a["to"], a["edge"]), "%.3f" % (a["tnsGainNs"] or 0.0),
-                     "%.4f" % (a["wnsGainNs"] or 0.0), len(a["rankedBy"])) for a in top3]),
+                     "%.1f" % (1000.0 * (a["wnsGainNs"] or 0.0)), len(a["rankedBy"])) for a in top3]),
         ql_arcs=analysis.get("arcs"), ql_cells=analysis.get("cells"), ulvt_fastest=vt.get("ulvt_fastest_count"),
         lvt_slower=cli._fmt(vt.get("lvt_slower_median_pct"), "%.1f"), svt_slower=cli._fmt(vt.get("svt_slower_median_pct"), "%.1f"),
         footprint=(analysis.get("constraints") or {}).get("footprint"), cap_ratio=(analysis.get("constraints") or {}).get("inputCapMaxRatio"),

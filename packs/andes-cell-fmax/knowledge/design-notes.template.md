@@ -3,11 +3,12 @@
 <!-- Template. `python3 flow/knowledge_charts.py <EDA_ROOT>` fills every $$name from the Site's own
 tools and writes knowledge/design-notes.md (generated per Site, never committed). -->
 
-What a designer asks before a Campaign: what the design is, where its timing stands at the end of
+What a designer asks before a Project: what the design is, where its timing stands at the end of
 route, where the worst path's time goes, which cells matter, and what the stock libraries can still
 offer. Every number below was printed by the Site's own tools (Synthesis and APR, HimaTime, Qualib)
-for the reference build. A Campaign's first step builds this reference again and measures it; quote
-the Campaign's numbers once it has them.
+for the reference build. A Project's first step builds this reference again and measures it; quote
+the Project's numbers once it has them. In chat, say "Project", not "Campaign", and do not discuss
+the Pack's own status or test stage.
 
 ## The design
 
@@ -22,8 +23,7 @@ the Campaign's numbers once it has them.
 
 - reg2reg: worst slack **$wns ps**, TNS $tns ns, **$nvp violating paths** (of $all_paths reg2reg
   paths).
-- All path groups: worst slack $all_wns ps, TNS $all_tns ns, $all_nvp violating paths. The all-group
-  worst slack can sit on an input or output group, which custom cells inside the core do not move.
+- All path groups: worst slack $all_wns ps, TNS $all_tns ns, $all_nvp violating paths. $io_line
 - Density $density %, total power $power mW; the clock tree has $clock_tree.
 
 $groups_table
@@ -54,6 +54,19 @@ were $faster_pct % faster (delay x$scale): $rankings rankings ($ranking_keys), t
 each, merged and deduplicated into **$merged arcs**. The three arcs with the most TNS back:
 
 $top3
+
+The three arcs with the most worst slack back:
+
+$top3wns
+
+## What custom cells can move
+
+The reg2reg misses are a wall, not one outlier: the 8 worst paths sit within $wall_ps ps of each
+other and $nvp paths fail. An SRAM access is fixed, but every path in the wall also carries logic
+cells and the loads they drive. A few ps per path across the wall moves TNS and the violating-path
+count a lot, and the worst slack moves with the wall's worst paths. Each arc alone gives back
+little (up to $max_tns ns of TNS and $max_wns ps of worst slack in the what-if); the lever is the
+$merged arcs together, on $hv_instances high-value instances. That is what a Project measures.
 
 ## The stock libraries (Qualib)
 
