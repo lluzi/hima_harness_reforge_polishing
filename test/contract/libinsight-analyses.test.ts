@@ -93,9 +93,13 @@ test('a result read for the Guide is bounded however wide the accepted datasets 
   const wide = { schema: 'hima-libinsight-analysis/1', id: 'a', version: 1, question: 'q', summary: 's', assumptions: [], limits: [], plots: [{ id: 'p', title: 'P', kind: 'table', dataset: 'd0' }],
     sources: [], code: { main: { path: 'm.py', sha256: sha('c'), text: '' }, files: [] }, run: { command: 'python3 m.py', exitCode: 0, elapsedSeconds: 1, usedQualib: false },
     datasets: Object.fromEntries(Array.from({ length: 16 }, (_, d) => [`d${String(d)}`, { columns: Array.from({ length: 64 }, (_, c) => ({ name: `c${String(c)}`, type: 'string' })),
-      rows: Array.from({ length: 300 }, () => Array.from({ length: 64 }, () => 'x'.repeat(1000))) }])) };
+      rows: Array.from({ length: 300 }, () => Array.from({ length: 64 }, (_, c) => c === 0 ? 'x'.repeat(500) : 'x')) }])) };
+  const retained = Buffer.from(JSON.stringify(wide));
   const f = await fixture({ 'run-ok': view({ value: { admitted: true, id: 'a', version: 1, resultSha256: sha('a') } }) },
-    { readRetained: async () => Buffer.from(JSON.stringify(wide)) });
+    { readRetained: async (_run, _record, maxBytes) => {
+      assert.ok(retained.byteLength <= maxBytes, 'the substitute obeys the actual retained-reader size contract');
+      return retained;
+    } });
   try {
     const answer = await f.analyses.tool('guide-1', { action: 'result', runId: 'run-ok' }) as Record<string, any>;
     assert.equal(answer.page, '/hima/analysis/run-ok?session=guide-1');
