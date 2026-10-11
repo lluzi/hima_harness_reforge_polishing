@@ -12,6 +12,7 @@ import { InsightAnalysisCard } from './InsightAnalysisCard.js';
 import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { mainViewSession, type SessionNavigationSnapshot } from './workbench-address.js';
 
 const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run', 'hima_context', 'hima_execute'] as const;
 const WORKBENCH_KIND = 'hima-workbench';
@@ -31,7 +32,7 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
-  readonly sessions: { open(id: string): void; openSubagent(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void };
+  readonly uiWorkspace: { openSession(target: string | { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' | 'unknown' }): void };
   effect(callback: () => (() => void)): unknown;
   /** Optional-service lookup ("Prefer `ctx.get(name)` with an undefined check; use `inject` only for
    *  hard dependencies" — the shell's own slot documentation). Used for `uiWorkspace`'s native folder
@@ -42,7 +43,7 @@ export interface ClientContext {
 }
 
 function TeamWorkbench(props:WorkbenchProps):ReactElement {
-  const activeSessionId=props.useSessions(state=>state.current)??props.sessionId;
+  const activeSessionId=props.sessionId;
   const [scope,setScope]=useState<{sessionId:string;projectId:string}>();
   useEffect(()=>{const controller=new AbortController();setScope(undefined);
     void teamRequest<{projectId:string}>(activeSessionId,{action:'context'},controller.signal).then(value=>setScope({sessionId:activeSessionId,projectId:value.projectId})).catch(()=>undefined);
@@ -52,7 +53,7 @@ function TeamWorkbench(props:WorkbenchProps):ReactElement {
   return createElement(HimaWorkbench,{...props,teamOperations:operations});
 }
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'];
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'uiWorkspace', 'conversation'];
 export const name = 'hima-guide';
 
 /** Hima's own mark, composed through the shell's brand seats. */
@@ -144,11 +145,11 @@ function DiagnosticsMenuItem({ tab, dismiss, openRun }: { tab?: { id?: string; k
 
 interface EntryProps {
   wide: boolean;
-  useSessions<T>(selector: (state: { current?: string }) => T): T;
+  useSessions<T>(selector: (state: SessionNavigationSnapshot) => T): T;
   open(wide: boolean): void;
 }
 function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
-  const current = useSessions((state) => state.current);
+  const current = useSessions(mainViewSession);
   const [error, setError] = useState<string>();
   return createElement('div', { className: 'hima-entry hima-root', 'data-wide': wide },
     createElement('style', null, HIMA_STYLE),
@@ -181,7 +182,7 @@ export function apply(ctx: ClientContext): void {
   };
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
-    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), openChild: (address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }) => ctx.sessions.openSubagent(address), pickFolder }),
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.uiWorkspace.openSession(id), openChild: (address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }) => ctx.uiWorkspace.openSession(address), pickFolder }),
   }, TeamWorkbench));
   ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab.title', key: WORKBENCH_ID,
@@ -208,7 +209,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, HimaName));
   ctx.slots.inject('tool.call.toolview', () => {
     const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun, toolName: key }) }, HimaRunCard));
-    claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));
+    claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.uiWorkspace.openSession(id); } }) }, AuthoringCard));
     // A custom library analysis in the conversation (ADR-0021): its proposal, start and result.
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_insight_analysis' }, InsightAnalysisCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };

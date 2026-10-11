@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createEmptyHome } from './support/dsh-home.ts';
-import { bootTeamPlaywright } from './support/team-playwright-electron.ts';
+import { bootTeamPlaywright, finishTeamOnboarding } from './support/team-playwright-electron.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { repoRoot } from './support/dsh-home.ts';
@@ -16,14 +16,10 @@ test('Playwright Electron Team editor saves, clones, exports and rediscovers a c
   const browser = await bootTeamPlaywright(home, evidence);
   const page = browser.page;
   const region = '[data-hima-region="himateam"]';
-  const fill = async (control: string, value: string) => { await page.locator(`[data-hima-control="${control}"]`).fill(value); };
+  const fill = async (control: string, value: string) => { const locator = page.locator(`[data-hima-control="${control}"]`); if (control === 'team-deadline') { await locator.fill(value); await locator.press('ArrowUp'); await locator.press('ArrowDown'); await locator.press('Tab'); return; } await locator.click(); await locator.press('ControlOrMeta+A'); await locator.press('Backspace'); await locator.pressSequentially(value); };
   const click = async (control: string) => { await page.locator(`[data-hima-control="${control}"]`).click(); };
   try {
-    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await page.getByRole('button', { name: 'Configure later', exact: true }).click();
-    await browser.wait(`!document.body.innerText.includes('Configure later')`);
+    await finishTeamOnboarding(browser);
     // Workspace registration uses the same authenticated renderer RPC as the existing
     // test fixture; all Team actions below use normal Playwright locators and clicks.
     const registered = await page.evaluate<{ result: { ok: boolean } }>(`fetch('/api/workspace/create', {
@@ -33,7 +29,8 @@ test('Playwright Electron Team editor saves, clones, exports and rediscovers a c
       }) }).then(response => response.json())`);
     assert.equal(registered.result.ok, true);
     await browser.wait(`!!document.querySelector('[role="treegrid"], [role="tree"]')`);
-    await page.locator('button:has-text("New Session")').click();
+    await page.locator('[data-row-key^="workspace:"]:has(span:text-is("workspace"))').hover();
+    await page.getByRole('button', { name: 'New session in workspace', exact: true }).click();
     await browser.wait(`document.querySelector('[data-hima-control="open-workbench"]')?.disabled === false`);
     await click('open-workbench'); await click('studio-mode-team');
     await browser.wait(`document.querySelector('[data-hima-control="team-title"]')?.disabled === false`);

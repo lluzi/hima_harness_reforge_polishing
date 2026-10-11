@@ -1,0 +1,26 @@
+{
+  "producer": "real isolated old0.1.5-alpha.1 Host/keyless replay; actualnative read and plugin/hima surface; own build",
+  "baseline": "1f81258e272e964c9087f53a89ec7a917b9b32bf",
+  "writerVersion": 3,
+  "originalZstdSha256": "e61ef1176ccfe23074b4d9ccc722bcd2d97c105980771cc50e20740627fc1afd",
+  "decodedSha256": "58d619277c21c1c2f1ee7bb229071c03c397b117e08b4bb99ff19226b3f26d0d",
+  "fixtureSha256": "c6dc6aba378244912e89844a9fa698fb5477e9e750b462380600e327485e6a01",
+  "transformation": "Only header.cwd replaced by {{workspace}}; originalevent/source/id/content/tool declaration/digest unchanged",
+  "oldWorkspace": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-3FGEzl/workspace",
+  "sessionId": "session-292a481c-5716-46d7-b86a-91a017de279e",
+  "noticeId": "9ecafdce-c7af-4299-9152-15dd99ead541",
+  "callId": "native-v3-read-call-001",
+  "scope": "native message/history migration mechanism; model substituted; no Run/EDA/realmodel acceptance",
+  "evidence": ".hima-tmp/himateam-issue97/dsh-v3-fixture/.scratch/dsh-v3-fixture/receipt.json",
+  "closure": {
+    "at": "2026-10-11T13:23:32.146987+00:00",
+    "matchingOwnedDatabaseProcesses": [],
+    "generatorAndObservedChildPidsExited": true,
+    "shutdownReceipt": "hima: resource shutdown confirmed; pid=5067",
+    "nativeWatch": "../himateam-issue97/local-memory-bounded/native/v3-native-generator-03-result.json",
+    "postmasterPidFilePresent": false,
+    "generatorAlive": false,
+    "heldHomeForEvidence": true,
+    "heavyLeaseReturned": true
+  }
+}

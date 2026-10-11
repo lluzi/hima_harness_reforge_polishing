@@ -10,9 +10,10 @@ import type { StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, teamRuntimeRequest } from './api.js';
 import { PackOwnerPanel } from './PackOwnerPanel.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { mainViewSession, type SessionNavigationSnapshot } from './workbench-address.js';
 
 export interface SettingsSectionProps {
-  readonly useSessions: <T>(selector: (state: { current?: string }) => T) => T;
+  readonly useSessions: <T>(selector: (state: SessionNavigationSnapshot) => T) => T;
   /** The native folder picker (#41 task 8), passed through to the Pack owner panel when present. */
   pickFolder?: () => Promise<string | null>;
 }
@@ -45,7 +46,7 @@ function EngineControls():ReactElement {
 }
 
 export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProps): ReactElement {
-  const sessionId = useSessions((state) => state.current);
+  const sessionId = useSessions(mainViewSession);
   const [runtime,setRuntime]=useState<import('../team-service-runtime.js').TeamServiceReceipt>();
   const [runtimeBusy,setRuntimeBusy]=useState(false);
   const [runtimeMessage,setRuntimeMessage]=useState<string>();

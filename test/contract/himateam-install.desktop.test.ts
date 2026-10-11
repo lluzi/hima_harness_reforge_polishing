@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEmptyHome, repoRoot } from './support/dsh-home.ts';
-import { bootTeamPlaywright, type TeamPage } from './support/team-playwright-electron.ts';
+import { bootTeamPlaywright, finishTeamOnboarding, type TeamPage } from './support/team-playwright-electron.ts';
 import type { TeamServiceReceipt } from '../../packages/harness/src/team-service-runtime.ts';
 
 const region = '[data-hima-region="team-runtime-settings"]';
@@ -16,11 +16,7 @@ const control = (name: string) => `[data-hima-control="team-runtime-${name}"]`;
 const receipt = (page: TeamPage) => page.evaluate<{ receipt: TeamServiceReceipt; history: TeamServiceReceipt[] }>(`fetch('/hima/api/team-runtime', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({action:'status',serviceId:'hindsight'}) }).then(async r=>{if(!r.ok)throw Error('Runtime status HTTP '+r.status);return r.json();})`);
 
 async function enterSettings(browser: Awaited<ReturnType<typeof bootTeamPlaywright>>) {
-  await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-  await browser.page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await browser.wait(`document.body.innerText.includes('Configure later')`);
-  await browser.page.getByRole('button', { name: 'Configure later', exact: true }).click();
-  await browser.wait(`!document.body.innerText.includes('Configure later')`);
+  await finishTeamOnboarding(browser);
   await browser.page.getByRole('button', { name: 'Settings', exact: true }).click();
   await browser.page.getByRole('button', { name: 'HimaHarness', exact: true }).click();
   await browser.wait(`!!document.querySelector(${JSON.stringify(region)})`);
@@ -31,7 +27,8 @@ async function proveGuide(browser: Awaited<ReturnType<typeof bootTeamPlaywright>
   const registered = await browser.page.evaluate<{ result: { ok: boolean } }>(`fetch('/api/workspace/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:'p03-workspace',method:'workspace/create',payload:{args:{request:{path:${JSON.stringify(workspace)}}}}})}).then(r=>r.json())`);
   assert.equal(registered.result.ok, true);
   await browser.wait(`!!document.querySelector('[role="treegrid"], [role="tree"]')`);
-  await browser.page.locator('button:has-text("New Session")').click();
+  await browser.page.locator('[data-row-key^="workspace:"]:has(span:text-is("workspace"))').hover();
+  await browser.page.getByRole('button', { name: 'New session in workspace', exact: true }).click();
   await browser.wait(`document.querySelector('[data-hima-control="open-workbench"]')?.disabled === false`);
   await browser.page.locator('[data-hima-control="open-workbench"]').click();
   await browser.wait(`!!document.querySelector('[data-hima-control="studio-mode-team"]')`);

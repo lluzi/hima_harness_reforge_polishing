@@ -64,3 +64,11 @@ export const workbenchAddressKey = (address: WorkbenchAddress): string => addres
 /** Only an existing Campaign address carries an execution identity; all other modes are read/preparation views. */
 export const runIdForWorkbenchAddress = (address: WorkbenchAddress): string | undefined =>
   address.kind === 'campaign' ? address.runId : undefined;
+
+/** Native catalogs own references; the main view owns navigation. */
+export interface SessionNavigationSnapshot {
+  readonly byId: Readonly<Record<string, { readonly id: string; readonly retainedBy: Readonly<Partial<Record<'mainView', number>>> }>>;
+}
+export function mainViewSession(state: SessionNavigationSnapshot): string | undefined {
+  return Object.values(state.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id;
+}

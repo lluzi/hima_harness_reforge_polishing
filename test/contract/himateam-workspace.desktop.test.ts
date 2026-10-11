@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEmptyHome, repoRoot } from './support/dsh-home.ts';
-import { bootTeamPlaywright } from './support/team-playwright-electron.ts';
+import { bootTeamPlaywright, finishTeamOnboarding } from './support/team-playwright-electron.ts';
 
 test('actual App preserves task draft across navigation and renders native delivery and missing trace honestly', { timeout: 180000 }, async t => {
   const home = await createEmptyHome();
@@ -20,15 +20,12 @@ test('actual App preserves task draft across navigation and renders native deliv
   const click = async (control: string) => page.locator(`[data-hima-control="${control}"]`).click();
   const fill = async (control: string, text: string) => page.locator(`[data-hima-control="${control}"]`).fill(text);
   try {
-    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await page.getByRole('button', { name: 'Configure later', exact: true }).click();
-    await browser.wait(`!document.body.innerText.includes('Configure later')`);
+    await finishTeamOnboarding(browser);
     const registered = await page.evaluate<{ result: { ok: boolean } }>(`fetch('/api/workspace/create', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:'message-workspace',method:'workspace/create',payload:{args:{request:{path:${JSON.stringify(home.workspace)}}}}})}).then(response=>response.json())`);
     assert.equal(registered.result.ok, true);
     await browser.wait(`!!document.querySelector('[role="treegrid"], [role="tree"]')`);
-    await page.locator('button:has-text("New Session")').click();
+    await page.locator('[data-row-key^="workspace:"]:has(span:text-is("workspace"))').hover();
+    await page.getByRole('button', { name: 'New session in workspace', exact: true }).click();
     await browser.wait(`document.querySelector('[data-hima-control="open-workbench"]')?.disabled === false`);
     await click('open-workbench'); await click('studio-mode-team');
     await browser.wait(`document.querySelector('[data-hima-control="team-title"]')?.disabled === false`);

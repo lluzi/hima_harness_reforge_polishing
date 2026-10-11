@@ -21,10 +21,16 @@ test('a missing native database runtime fails actual Host startup instead of ser
   let host: Awaited<ReturnType<typeof bootHimaHost>> | undefined;
   try {
     await assert.rejects(async () => {
-      host = await bootHimaHost({ ...home, env: { ...home.env, HIMA_POSTGRES_RUNTIME: path.join(home.home, 'absent-runtime') } });
-    }, /native runtime is missing|exited before startup|exited.*startup/);
+      host = await bootHimaHost({ ...home, env: { ...home.env, HIMA_POSTGRES_RUNTIME: path.join(home.home, 'absent-runtime') } }, 6_000);
+    }, /native runtime is missing|exited before startup|exited.*startup|Hima startup was not confirmed/);
     assert.equal(existsSync(path.join(home.home, 'hima/database')), false);
-  } finally { await host?.stop().catch(() => undefined); await home.dispose(); }
+  } finally {
+    if (host) {
+      try { await host.stop(); }
+      catch { await stopChild(host.child, 5_000); } // The counterexample owns this exact child; no Hima runtime started.
+    }
+    await home.dispose();
+  }
 });
 
 test('a failed storage-domain startup closes the database it already created', async () => {

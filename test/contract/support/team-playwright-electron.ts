@@ -14,6 +14,9 @@ import { freePort } from './boot-host.ts';
 interface Locator {
   click(): Promise<void>;
   fill(value: string): Promise<void>;
+  pressSequentially(value: string): Promise<void>;
+  press(key: string): Promise<void>;
+  hover(): Promise<void>;
   selectOption(value: string): Promise<unknown>;
 }
 export interface TeamPage {
@@ -124,4 +127,21 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
         finally { await app.evaluate(({ BrowserWindow }) => { for (const win of BrowserWindow.getAllWindows()) win.hide(); }); }
       } };
   } catch (error) { await dispose(); throw error; }
+}
+
+/** Accept both actual notices, then the deferred keyless-provider dialog. */
+export async function finishTeamOnboarding(browser: Pick<Awaited<ReturnType<typeof bootTeamPlaywright>>, 'page' | 'wait'>): Promise<void> {
+  await browser.wait(`document.body.innerText.includes('Internal Testing Notice') || document.body.innerText.includes('Preview Notice')`);
+  const himaNotice = await browser.page.evaluate<boolean>(`document.body.innerText.includes('Internal Testing Notice')`);
+  if (himaNotice) {
+    await browser.page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await browser.wait(`!document.body.innerText.includes('Internal Testing Notice')`);
+  }
+  await browser.wait(`document.body.innerText.includes('Preview Notice')`);
+  await browser.page.getByRole('button', { name: 'Continue', exact: true }).click();
+  // rc.2 renders this after the preview notice settles; visible workspace text
+  // behind a modal is not proof that it is ready for interaction.
+  await browser.wait(`document.body.innerText.includes('Configure later')`);
+  await browser.page.getByRole('button', { name: 'Configure later', exact: true }).click();
+  await browser.wait(`!document.body.innerText.includes('Configure later') && !document.body.innerText.includes('Preview Notice')`);
 }

@@ -196,8 +196,9 @@ export class HostLaunchError extends Error {
 /**
  * Start one hima host and resolve once it is serving.
  *
- * Readiness is two facts, not one. The printed URL says the web app got as far as choosing an
- * address; an HTTP answer says it is actually listening on it. Both are needed: `--port <n>` can
+ * The printed URL identifies the web listener; an HTTP answer confirms transport. Hima's
+ * authenticated native control endpoint must also answer, since the upstream launcher may keep
+ * serving after an optional plugin failed. These facts are all needed: `--port <n>` can
  * still fail to bind, and a caller that navigated on the printed line alone would sometimes load
  * nothing. The probe is made against the bare origin with `redirect: 'manual'`, so it neither carries
  * the token nor follows the 303 that would spend it outside the window's own session.
@@ -328,6 +329,11 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     return unconfirmed(`dsh printed its URL but never confirmed readiness on ${origin}`);
   }
 
+  const hima = await until(deadline, async () => (await probeHima(origin, controlToken)) || undefined, checkAlive);
+  if (!hima) {
+    return unconfirmed('Hima startup was not confirmed by its authenticated native control endpoint');
+  }
+
   servingOrigin=origin;
   return {
     child,
@@ -338,6 +344,19 @@ export async function launchHimaHost(req: HostLaunchRequest): Promise<LaunchedHo
     stderr: () => err,
     stop: lifecycle.stop,
   };
+}
+
+/** Only endpoint presence/storage is a startup fact; exit readiness grants no startup authority. */
+async function probeHima(origin: string, controlToken: string): Promise<boolean> {
+  try {
+    const response = await fetch(new URL('/hima/api/lifecycle/exit', origin), {
+      redirect: 'manual', headers: { 'x-hima-desktop-control': controlToken }, signal: AbortSignal.timeout(1_000),
+    });
+    if (!response.ok) return false;
+    const answer: unknown = await response.json();
+    return answer !== null && typeof answer === 'object' && !Array.isArray(answer)
+      && 'ready' in answer && typeof answer.ready === 'boolean';
+  } catch { return false; }
 }
 
 /** One unauthenticated readiness probe. A refusal is an answer: the host is up and fencing us. */

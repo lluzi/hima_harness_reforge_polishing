@@ -35,7 +35,7 @@ export function modelCompactionDisposition(outcome: CommandOutcome): ModelCompac
   if (outcome.kind === 'success' && outcome.sourceEventSeq !== undefined
       && /^Compacted [1-9]\d* history items/.test(outcome.text)) return 'compacted';
   if (outcome.kind === 'error'
-      && /Compaction could not produce a useful summary[\s\S]*conversation is unchanged/i.test(outcome.text)
+      && /Compaction could not produce a useful summary[\s\S]*(?:conversation is unchanged|The attempt is recorded in the session log)/i.test(outcome.text)
       && outcome.commandId !== undefined && outcome.compactionError !== undefined) {
     return 'retryable';
   }

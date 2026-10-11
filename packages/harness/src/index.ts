@@ -27,7 +27,8 @@ import type { TaskEffectAdapter } from './task-effects.js';
 //
 // It is also the bundle's surface: everything a caller outside `packages/harness/src` imports from
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
-import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
+import type { MessageId } from '@deepseek-ai/dsh-llm';
+import { createHimaNotice } from './hima-messages.js';
 import path from 'node:path';
 import { setTimeout as waitForFactPoll } from 'node:timers/promises';
 import { readFileSync } from 'node:fs';
@@ -581,6 +582,18 @@ export default class Hima extends Service {
       return attempt;
     };
     this.ctx.effect(()=>()=>this.closeHostResources(),'hima: Host and local database lifetime');
+    // Cordis waits for an in-flight service initializer before invoking its effects.
+    // Fence further startup synchronously on native interruption; the original
+    // ordered disposer still awaits database creation and proves actual closure.
+    this.ctx.effect(() => {
+      const interrupt = () => { closing = true; };
+      process.on('SIGTERM', interrupt);
+      process.on('SIGINT', interrupt);
+      return () => {
+        process.off('SIGTERM', interrupt);
+        process.off('SIGINT', interrupt);
+      };
+    }, 'hima: native interruption startup fence');
     // The same product-owned lifecycle is used by the headless profile and Electron's Host.
     databaseStarting = startLocalDatabase({ home: localDatabaseHome(), runtimeDirectory: localDatabaseRuntime() });
     const database = await databaseStarting;
@@ -1466,7 +1479,7 @@ export default class Hima extends Service {
         const messages=[...agent.session.deriveMessages(),...agent.inbox.nextTurn,...agent.inbox.nextStep];
         if(!JSON.stringify(messages).includes(marker)) {
           const text=`${marker}. Source: Hima PostgreSQL Run ${original.runId}, read watermark ${view.run.sourceRevision}. ${JSON.stringify(boundary)}. Read current task facts and explain the verified outcome or actionable blocker. Workflow continuation is automatic. Current owner is ${current.owner}; this notice grants no execution authority, new Campaign, or additional budget.`;
-          agent.followup(createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text}]}));
+          agent.followup(createHimaNotice(text, `Run ${original.runId}: ${boundary.status ?? 'unknown'}`));
         }
         await this.durable.store.putFlowFact(original.runId,key,{recipient,fingerprint,sourceRevision:view.run.sourceRevision??0});
       }
@@ -1487,7 +1500,7 @@ export default class Hima extends Service {
     const guide=this.ctx.get('agents')?.get(guideId as never);if(!guide)return;
     const marker=`Hima Guide boundary ${fingerprint}`;
     if(JSON.stringify(guide.session.deriveMessages()).includes(marker)){this.guideNoticeIdentities.set(key,fingerprint);return;}
-    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:`${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`}]});
+    const message=createHimaNotice(`${marker}. Task ${runId} is ${run.status}; ${failed.length} execution(s) need review. Read the current Run facts and explain its verified outcome, blockers and next options to the user. Execution owner remains ${run.control.owner}; this notice does not authorize continuation, a new Campaign, or extra budget.`, `Task ${runId}: ${run.status}; ${failed.length} execution(s) need review`);
     const prior=this.pendingProgressNotifications.get(key);
     if(!prior||!guide.inbox.replace(prior,message))guide.followup(message);
     this.pendingProgressNotifications.set(key,message.id);this.guideNoticeIdentities.set(key,fingerprint);
@@ -1769,7 +1782,7 @@ export default class Hima extends Service {
         const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
         if (!agent) return { status: 'owner-unavailable', message: 'The control fact is recorded; the owning Campaign Agent is not currently live.' };
         try {
-          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
+          const message = createHimaNotice(`Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.`, `Run ${runId}: execution ${executionId} updated`);
           if (detail === undefined) {
             const key = `${owner}\u0000${runId}`;
             const pending = this.pendingProgressNotifications.get(key);

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdir,writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEmptyHome,repoRoot } from './support/dsh-home.ts';
-import { bootTeamPlaywright } from './support/team-playwright-electron.ts';
+import { bootTeamPlaywright, finishTeamOnboarding } from './support/team-playwright-electron.ts';
 import type { TeamServiceReceipt } from '../../packages/harness/lib/types/team-service-runtime.d.ts';
 
 for(const native of [false,true])test(`actual engine Settings ${native?'starts and stops the owned native Mac environment':'retains missing-asset diagnostics without hiding Guide'}`,{timeout:420000},async t=>{
@@ -16,9 +16,7 @@ for(const native of [false,true])test(`actual engine Settings ${native?'starts a
   const browser=await bootTeamPlaywright(home,evidence);const page=browser.page;
   const region='[data-hima-region="team-engine-settings"]';const control=(id:string)=>`[data-hima-control="team-engine-${id}"]`;
   try {
-    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);await page.getByRole('button',{name:'Continue',exact:true}).click();
-    await browser.wait(`document.body.innerText.includes('Configure later')`);await page.getByRole('button',{name:'Configure later',exact:true}).click();
-    await browser.wait(`!document.body.innerText.includes('Configure later')`);await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'HimaHarness',exact:true}).click();
+    await finishTeamOnboarding(browser);await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'HimaHarness',exact:true}).click();
     await browser.wait(`!!document.querySelector(${JSON.stringify(region)}) && !document.querySelector(${JSON.stringify(control('start'))}).disabled`);
     await page.locator(control('start')).click();await browser.wait(`!document.querySelector(${JSON.stringify(control('refresh'))}).disabled`,300000);
     const receipt=async()=>page.evaluate<{receipt:TeamServiceReceipt}>(`fetch('/hima/api/team-runtime',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status',serviceId:'engineering-engine'})}).then(async response=>{if(!response.ok)throw Error('Engine HTTP '+response.status);return response.json();})`);

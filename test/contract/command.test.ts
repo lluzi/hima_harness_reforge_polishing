@@ -8,6 +8,7 @@ import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 // Loads the `ctx.commands` declaration merge onto Context.
 import type {} from '@deepseek-ai/dsh-commands';
+import { modelCompactionDisposition } from './support/command.ts';
 
 const bundleVersion = JSON.parse(readFileSync(path.join(repoRoot, 'packages/harness/package.json'), 'utf8')).version as string;
 const hostVersion = JSON.parse(readFileSync(path.join(repoRoot, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version as string;
@@ -29,4 +30,13 @@ test('/hima version answers with the bundle and host versions, without a model t
     await host.dispose();
     await h.dispose();
   }
+});
+
+test('a recorded rc.2 summary failure is retryable while partial commit or missing receipts remain failed', () => {
+  const closed = { kind: 'error' as const, runId: undefined, commandId: 'cmd-summary', compactionError: 'No useful model summary',
+    text: 'Compaction could not produce a useful summary. The attempt is recorded in the session log.' };
+  assert.equal(modelCompactionDisposition(closed), 'retryable');
+  assert.equal(modelCompactionDisposition({ ...closed, text: 'Compaction did not finish cleanly; some session history may have changed. Inspect the current session state before retrying.' }), 'failed');
+  assert.equal(modelCompactionDisposition({ ...closed, commandId: undefined }), 'failed');
+  assert.equal(modelCompactionDisposition({ ...closed, compactionError: undefined }), 'failed');
 });

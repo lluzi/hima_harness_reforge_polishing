@@ -28,7 +28,6 @@ import { EMPTY_MEMORY_DRAFT, memoryScopeKey, type MemoryDraft } from './workbenc
 export interface WorkbenchProps {
   sessionId: string;
   teamOperations?: HimaTeamOperations;
-  useSessions<T>(selector: (state: { current?: string }) => T): T;
   openOwner(id: string): void;
   openChild(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void;
   useTabInfo(): { tab: { id: string; visible: boolean; navigation: { revision: number; params: unknown } } };
@@ -69,8 +68,8 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
 
-export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder, teamOperations }: WorkbenchProps): ReactElement {
-  const activeSessionId = useSessions((state) => state.current) ?? sessionId;
+export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder, teamOperations }: WorkbenchProps): ReactElement {
+  const activeSessionId = sessionId;
   const { tab } = useTabInfo();
   const requestedAddress = workbenchAddressOf(tab.navigation.params);
   const [address, setAddress] = useState<WorkbenchAddress>(requestedAddress);

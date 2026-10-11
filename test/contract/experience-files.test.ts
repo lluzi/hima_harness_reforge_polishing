@@ -140,7 +140,7 @@ test('a replayed native session keeps a complete source identity across Host reo
     const compact = await himaCommand(first, h.workspace, '/compact', undefined, agent);
     assert.equal(compact.kind, 'error', compact.text);
     assert.match(compact.text, /Compaction could not produce a useful summary/);
-    assert.equal(modelCompactionDisposition(compact), 'retryable');
+    assert.equal(modelCompactionDisposition(compact), 'retryable', JSON.stringify(compact));
     const preservedPrefix = await nativeSessionMemoryEvidence(first.ctx, { sessionId: String(agent.id), workspaceRef: h.workspace, throughSeq: evidence.capturedThroughSeq });
     assert.equal(preservedPrefix.transcriptIdentity, evidence.transcriptIdentity, 'the public compact command cannot rewrite the recorded source prefix');
     await first.dispose(); first = undefined;

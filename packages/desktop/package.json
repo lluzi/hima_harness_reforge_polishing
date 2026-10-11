@@ -7,7 +7,7 @@
   "type": "module",
   "main": "lib/main.js",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh": "0.2.0-rc.2",
     "@hima/harness": "workspace:*",
     "electron": "^44.2.0"
   },

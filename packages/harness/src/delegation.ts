@@ -224,7 +224,7 @@ type PersistedHeader = { readonly cwd?: string; readonly parentSession?: string 
 type Persistence = { stat(id: string): Promise<{ readonly header: PersistedHeader } | undefined> };
 type NativeSessionEvent = { readonly seq: number; readonly type: string; readonly data?: unknown };
 type SessionQuery = { readSession(id: string): Promise<{ readonly session: PersistedHeader & { readonly id: unknown }; readonly events: readonly NativeSessionEvent[] }> };
-type NativeChildEntry = { readonly kind: 'child'; readonly id: string; readonly mode: 'one-shot' | 'continuable'; readonly label?: string }
+type NativeChildEntry = { readonly kind?: 'child'; readonly id: string; readonly mode: 'one-shot' | 'continuable' | 'unknown'; readonly label?: string }
   | { readonly kind: 'diagnostic'; readonly id: string; readonly reason: string };
 type NativeSubagents = {
   startContinuable(spec: { readonly provider: string; readonly label: string; readonly childId: string;
@@ -465,8 +465,10 @@ async function verifyChild(ctx: Context, parent: Agent, childId: string, workspa
   try { childWorkspace = realDirectory(child.header.cwd, 'Persisted child workspace'); } catch { return false; }
   if (childWorkspace !== workspace) return false;
   const entries = await subagents.listChildren(String(parent.id), signal);
-  const entry = entries.find((candidate) => candidate.kind === 'child' && candidate.id === childId);
-  return entry?.kind === 'child' && entry.mode === 'continuable' && (expectedLabel === undefined || entry.label === expectedLabel);
+  // rc.2 catalogs expose descriptor rows directly; legacy adapters retain kind='child'.
+  const entry = entries.find(candidate => (candidate.kind === undefined || candidate.kind === 'child') && candidate.id === childId);
+  return entry !== undefined && entry.kind !== 'diagnostic' && entry.mode === 'continuable'
+    && (expectedLabel === undefined || entry.label === expectedLabel);
 }
 
 export function delegationTaskPrompt(contract: DelegationContract, effective: EffectiveDelegationContract): string {
@@ -697,11 +699,18 @@ function toolEvents(events: readonly NativeSessionEvent[], throughSeq: number): 
     }
     if (event.type === 'tool/result' && Number.isSafeInteger(data.turn)) {
       const message = data.message;
-      if (!message || typeof message !== 'object') continue;
-      const blocks = (message as { content?: unknown }).content;
-      const block = Array.isArray(blocks) ? blocks[0] as { type?: unknown; toolCallId?: unknown; isError?: unknown } | undefined : undefined;
-      if (block?.type !== 'tool-result' || typeof block.toolCallId !== 'string') continue;
-      results.push({ seq: event.seq, turn: data.turn as number, callId: block.toolCallId, isError: block.isError === true,
+      if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
+      const row = message as Record<string, unknown>;
+      const source = row.source as { kind?: unknown; callId?: unknown } | undefined;
+      if (typeof row.id !== 'string' || row.id === '' || !source || source.kind !== 'tool'
+          || typeof source.callId !== 'string' || source.callId === '' || !Array.isArray(row.content)) continue;
+      // V4 has a first-class tool message; retained V3 has one user-role wrapper.
+      const result = row.role === 'tool' ? row : row.role === 'user' && row.content.length === 1
+        && row.content[0]?.type === 'tool-result' ? row.content[0] as Record<string, unknown> : undefined;
+      if (!result || result.toolCallId !== source.callId || !Array.isArray(result.content)
+          || result.content.some(block => block && typeof block === 'object' && block.type === 'tool-result')
+          || (result.isError !== undefined && typeof result.isError !== 'boolean')) continue;
+      results.push({ seq: event.seq, turn: data.turn as number, callId: source.callId, isError: result.isError === true,
         ...('meta' in data ? { meta: data.meta } : {}) });
     }
   }

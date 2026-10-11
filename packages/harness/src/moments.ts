@@ -46,7 +46,7 @@
 // return `rejected` before any answerer is dispatched, which is the fail-closed answer for a session
 // with nobody to ask. The sandbox mode is left exactly as the host composed it: a moment reaches no
 // filesystem, because a moment has no tool that does.
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createHimaPrompt } from './hima-messages.js';
 import type { Context } from '@deepseek-ai/cordis';
 // Type-only: these take the `ctx.agents` and `ctx.tools` declaration merges the calls below stand on.
 import type {} from '@deepseek-ai/dsh-agent';
@@ -266,7 +266,7 @@ export async function openMoment(deps: {readonly ledger:{appendSession(runId:str
     tools,
     async ask(text: string): Promise<MomentTurn> {
       const before = agent.session.deriveMessages().length;
-      agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: 'hima' } }));
+      agent.followup(createHimaPrompt(text));
       await agent.whenIdle();
       const answer = agent.session.deriveMessages().slice(before).findLast((message) => message.role === 'assistant');
       if (!answer) throw new MomentTurnError(`the model answered nothing in session ${head.sessionId}: ${whyNothingCame(agent)}`);

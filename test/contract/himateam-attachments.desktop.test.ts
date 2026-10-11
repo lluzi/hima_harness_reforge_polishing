@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEmptyHome, repoRoot } from './support/dsh-home.ts';
-import { bootTeamPlaywright, type TeamPage } from './support/team-playwright-electron.ts';
+import { bootTeamPlaywright, finishTeamOnboarding, type TeamPage } from './support/team-playwright-electron.ts';
 
 type FileInput = ReturnType<TeamPage['locator']> & {
   setInputFiles(files: readonly { name: string; mimeType: string; buffer: Buffer }[]): Promise<void>;
@@ -36,15 +36,12 @@ test('Playwright Electron uploads, sends, reads and rediscovers retained materia
   const rowExpression = (hash: string): string => `Array.from(document.querySelectorAll('${materialRegion} [data-hima-material]')).find(row => row.querySelector('code')?.textContent === ${JSON.stringify(hash)})`;
   async function stageId(hash: string): Promise<string> { return page.evaluate<string>(`${rowExpression(hash)}.dataset.himaMaterial`); }
   try {
-    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await page.getByRole('button', { name: 'Configure later', exact: true }).click();
-    await browser.wait(`!document.body.innerText.includes('Configure later')`);
+    await finishTeamOnboarding(browser);
     const registered = await page.evaluate<{ result: { ok: boolean } }>(`fetch('/api/workspace/create', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:'p06-workspace',method:'workspace/create',payload:{args:{request:{path:${JSON.stringify(home.workspace)}}}}})}).then(response=>response.json())`);
     assert.equal(registered.result.ok, true);
     await browser.wait(`!!document.querySelector('[role="treegrid"], [role="tree"]')`);
-    await page.locator('button:has-text("New Session")').click();
+    await page.locator('[data-row-key^="workspace:"]:has(span:text-is("workspace"))').hover();
+    await page.getByRole('button', { name: 'New session in workspace', exact: true }).click();
     await browser.wait(`document.querySelector('[data-hima-control="open-workbench"]')?.disabled === false`);
     await click('open-workbench'); await click('studio-mode-team');
     await browser.wait(`document.querySelector('[data-hima-control="team-title"]')?.disabled === false`);

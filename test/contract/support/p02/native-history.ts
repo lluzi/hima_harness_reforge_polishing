@@ -10,7 +10,8 @@ export function retainTitleOnly(ctx: Context, agent: Agent): void {
 }
 
 export function retainUserText(agent: Agent, text: string): void {
-  agent.session.append('turn/start', { turn: 0 });
+  const turn = agent.session.snapshotEvents().reduce((last, event) => event.type === 'turn/start' ? Math.max(last, event.data.turn) : last, 0) + 1;
+  agent.session.append('turn/start', { turn });
   agent.session.append('user/message', createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }), { surfaceOp: 'append' });
-  agent.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } });
+  agent.session.append('turn/end', { turn, reason: { kind: 'completed' } });
 }

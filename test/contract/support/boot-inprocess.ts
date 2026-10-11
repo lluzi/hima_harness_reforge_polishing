@@ -3,13 +3,13 @@
 // Contract-test support: boot the hima profile in-process exactly the way the dsh launcher does,
 // minus the web app layer, so tests can execute commands against a real agent without a browser.
 // app-boot is documented-public and used directly — loadProfile, loadOptionalPatches,
-// healProfilesModuleFallback, boot, assertEntriesActivated. Agent creation is the seam ADR-0001
+// createRuntimeResolution, PluginPackages, boot, and a strict startup audit. Agent creation is the seam ADR-0001
 // keeps wrapped, so `createRootAgent` and `sayAsUser` below are the one place any test reaches it:
 // no test file calls `agents.create`, `agent.followup` or `createUserMessage` itself.
 import { lstatSync, writeFileSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { boot, loadProfile, loadOptionalPatches, healProfilesModuleFallback, assertEntriesActivated } from '@deepseek-ai/dsh-app-boot';
+import { boot, loadProfile, loadOptionalPatches, createRuntimeResolution, PluginPackages, auditStartupEntries } from '@deepseek-ai/dsh-app-boot';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -38,25 +38,29 @@ export async function bootInProcess(h: HimaHome, { withWebApp = false, webPort }
   const restoreEnv = () => {
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   };
-  const profile = loadProfile(BIN_NAME, 'hima', INSTALL_ANCHOR, h.home, { userLayer: true });
-  await healProfilesModuleFallback({ installAnchor: INSTALL_ANCHOR, profile, home: h.home });
-  const rootConfig = path.join(profile.dir, 'cordis.yml');
-  writeFileSync(rootConfig, ROOT_CONFIG);
-  const layers = profile.layers.filter((l) => withWebApp || l.packageName !== '@deepseek-ai/dsh-web-app');
-  // The launcher's own order, all four layers of it: the bundles, then the profile's own patch file,
-  // then the home's. `loadProfile`'s `userLayer` is the *profile's* `cordis.patch.yml` — the privacy
-  // overlay — and the home's `$DSH_HOME/cordis.patch.yml` is a fifth file dsh's CLI loads itself
-  // (`loadOptionalPatches(name, homePatchPath())` in its `composeProfile`), outranking the profile's
-  // because it is the machine's own preference layer. Loading it here is what makes this boot the
-  // launcher's composition rather than a subset of it — and it is the layer the desktop shell writes
-  // the keyless model stand-in into (#59), so without it no in-process host can be driven keylessly.
-  const patches = structuredClone([
-    ...layers.flatMap((l) => l.patches),
-    ...profile.patches,
-    ...loadOptionalPatches(BIN_NAME, homePatchFile(h.home)) ?? [],
-  ]);
-  let ctx: Context;
+  let ctx: Context | undefined;
   try {
+    const profile = loadProfile(BIN_NAME, 'hima', INSTALL_ANCHOR, h.home, { userLayer: true });
+    if (profile.skippedBundles.length > 0) {
+      throw new Error('The test profile skipped declared bundles: ' + JSON.stringify(profile.skippedBundles));
+    }
+    if (!profile.layers.some(layer => layer.packageName === '@hima/harness')) throw new Error('The Hima bundle is absent from the test profile.');
+    const resolution = await createRuntimeResolution({ installAnchor: INSTALL_ANCHOR, profile, home: h.home });
+    const rootConfig = path.join(profile.dir, 'cordis.yml');
+    writeFileSync(rootConfig, ROOT_CONFIG);
+    const layers = profile.layers.filter((l) => withWebApp || l.packageName !== '@deepseek-ai/dsh-web-app');
+    // The launcher's own order, all four layers of it: the bundles, then the profile's own patch file,
+    // then the home's. `loadProfile`'s `userLayer` is the *profile's* `cordis.patch.yml` — the privacy
+    // overlay — and the home's `$DSH_HOME/cordis.patch.yml` is a fifth file dsh's CLI loads itself
+    // (`loadOptionalPatches(name, homePatchPath())` in its `composeProfile`), outranking the profile's
+    // because it is the machine's own preference layer. Loading it here is what makes this boot the
+    // launcher's composition rather than a subset of it — and it is the layer the desktop shell writes
+    // the keyless model stand-in into (#59), so without it no in-process host can be driven keylessly.
+    const patches = structuredClone([
+      ...layers.flatMap((l) => l.patches),
+      ...profile.patches,
+      ...loadOptionalPatches(BIN_NAME, homePatchFile(h.home)) ?? [],
+    ]);
     // The web-app layer is the App's composition: it moves every model-facing row, compaction
     // included, from the host plane onto the agent presets. Its startup reads the launcher's command
     // line, so this boot provides the three services dsh's `runProfile` provides (`provideCmdline`):
@@ -67,10 +71,22 @@ export async function bootInProcess(h: HimaHome, { withWebApp = false, webPort }
       hostCtx.provide('appExit' as never, (() => undefined) as never);
       hostCtx.provide('appReady' as never, { onReady: (listener: () => void) => { queueMicrotask(listener); return () => undefined; } } as never);
     } : undefined;
-    ctx = await boot(BIN_NAME, rootConfig, patches, prepare);
-    await assertEntriesActivated(ctx, BIN_NAME);
-  } catch (err) { restoreEnv(); throw err; }
-  return { ctx, dispose: async () => { try { await ctx.fiber.dispose(); } finally { restoreEnv(); } } };
+    ctx = await boot(BIN_NAME, rootConfig, patches, async hostCtx => {
+      await hostCtx.plugin(PluginPackages, { resolution });
+      prepare?.(hostCtx);
+    });
+    // rc.2 warns for optional entry failures. This test composition retains its
+    // stronger gate: every declared enabled entry must activate.
+    if (!ctx.get('loader')) throw new Error('The test Loader was disposed during startup.');
+    await auditStartupEntries(ctx, BIN_NAME, diagnostic => { throw new Error('Hima strict startup: ' + diagnostic); });
+  } catch (err) {
+    try { await ctx?.fiber.dispose(); }
+    catch (cleanupError) { throw new AggregateError([err, cleanupError], 'Host startup and resource cleanup both failed.'); }
+    finally { restoreEnv(); }
+    throw err;
+  }
+  const hostCtx = ctx;
+  return { ctx: hostCtx, dispose: async () => { try { await hostCtx.fiber.dispose(); } finally { restoreEnv(); } } };
 }
 
 /** Create one root agent the way dsh's own headless bundle does; no model request is made until a turn runs. */
@@ -231,13 +247,11 @@ export function saidByModel(agent: Agent): string[] {
 export function toolResults(agent: Agent): { failed: boolean; text: string }[] {
   const results: { failed: boolean; text: string }[] = [];
   for (const message of agent.session.deriveMessages()) {
-    for (const block of message.content) {
-      if (block.type !== 'tool-result') continue;
-      results.push({
-        failed: block.isError === true,
-        text: block.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'),
-      });
-    }
+    if (message.role !== 'tool') continue;
+    results.push({
+      failed: message.isError === true,
+      text: message.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'),
+    });
   }
   return results;
 }

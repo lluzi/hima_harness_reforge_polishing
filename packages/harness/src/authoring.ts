@@ -66,7 +66,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
 import type { Ledger } from './ledger.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createHimaNotice } from './hima-messages.js';
 import { z } from 'zod';
 
 export interface AuthoringRequest { pack:string; create?:boolean; handoff?:{goal:string;sourcePaths:string[];inputGaps?:string[]} }
@@ -91,7 +91,7 @@ export async function openAuthoringSession(ctx: Context, packsDir: string, reque
   const deliver=(sessionId:string)=>{
     if(!handoffText)return undefined;
     const recipient=ctx.get('agents')?.get(sessionId as never);if(!recipient)throw new Error('The authoring recipient is not live.');
-    const message=createUserMessage({source:{kind:'plugin',plugin:'hima'},content:[{type:'text',text:handoffText}]});
+    const message=createHimaNotice(handoffText, `Hima authoring handoff for Pack ${request.pack}`);
     recipient.send(message,'next-step',false);return String(message.id);
   };
   const selection = (ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string } } | undefined)?.currentSelection();

@@ -227,7 +227,7 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
         slots: { inject(name: string, callback: () => unknown): unknown; register(declaration: { name: string; key?: string; id?: string }, component: unknown): unknown };
       }): void;
     };
-    assert.deepEqual(moduleExports.inject, ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'], 'the module declares its existing native UI services');
+    assert.deepEqual(moduleExports.inject, ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'uiWorkspace', 'conversation'], 'the module declares its existing native UI services');
     const registered: { name: string; key?: string; id?: string }[] = [];
     let component: unknown;
     moduleExports.apply({
@@ -251,4 +251,13 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
 
     assert.doesNotMatch(wb.host.stderr(), /plugin tree failed to load|failed to import|host preparation failed/i, 'no plugin failed to activate');
   } finally { await wb.dispose(); }
+});
+
+test('native main-view references select the current real session without admitting other retained consumers', async () => {
+  const { mainViewSession } = await import('../../packages/harness/src/client/workbench-address.ts');
+  assert.equal(mainViewSession({ byId: {} }), undefined);
+  const byId = { parent: { id: 'parent', retainedBy: { mainView: 0, sidebar: 1 } },
+    child: { id: 'child', retainedBy: { mainView: 1 } } };
+  assert.equal(mainViewSession({ byId }), 'child');
+  assert.equal(mainViewSession({ byId: { parent: byId.parent } }), undefined);
 });

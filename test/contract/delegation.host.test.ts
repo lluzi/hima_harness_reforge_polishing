@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { appendFile, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import { homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import {
   cancelDelegation, createDelegation, delegationToolDenial, followupDelegation, readDelegationResult, readDelegationTranscript,
@@ -114,6 +115,131 @@ const contractFor = (parentSessionId: string, workspace: string, privateRoot: st
   recipient: { kind: 'run-owner', sessionId: parentSessionId }, status: 'requested',
 });
 
+// Native persistence is the external input boundary here; the public candidate reader
+// still verifies lineage, completed turns and actual private-scope file bytes.
+async function retainedToolCandidate(t: TestContext) {
+  const workspace = await realpath(await mkdtemp(path.join(tmpdir(), 'hima-delegation-result-')));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const root = path.join(workspace, 'private'); await mkdir(root);
+  const file = path.join(root, 'answer.ts'); await writeFile(file, 'answer = 42;\n');
+  const effective: EffectiveDelegationContract = {
+    delegationId: 'retained-tools', parentSessionId: 'parent', childSessionId: 'child', role: 'coding',
+    workspace, model: { provider: 'replay', model: 'replay' }, tools: ['write', 'edit'], inputRefs: [],
+    writeScope: { root }, budgetShare: { maxElapsedMs: 1_000, maxFollowups: 0 },
+    recipient: { kind: 'parent', sessionId: 'parent' }, unavailable: [],
+  };
+  const requestDigest = 'a'.repeat(64);
+  const header = { id: 'child', cwd: workspace, parentSession: 'parent' };
+  const read = async (message: unknown, options: { tool?: 'write' | 'edit'; callSeq?: number; resultSeq?: number;
+    completed?: boolean; newerStart?: boolean; includeCall?: boolean; file?: string; writeScope?: boolean } = {}) => {
+    const events = [
+      { seq: 1, type: 'turn/start', data: { turn: 1 } },
+      ...(options.includeCall === false ? [] : [{ seq: options.callSeq ?? 2, type: 'tool/call',
+        data: { turn: 1, callId: 'call-write', name: options.tool ?? 'write', arguments: JSON.stringify({ file_path: options.file ?? file }) } }]),
+      { seq: options.resultSeq ?? 3, type: 'tool/result', data: { turn: 1, message,
+        meta: { diffs: [{ path: file, oldText: null, newText: 'answer = 42;\n' }] } } },
+      { seq: 4, type: 'assistant/message', data: { turn: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'Candidate only; owner verifies.' }] } } },
+      { seq: 5, type: 'turn/end', data: { turn: 1, reason: { kind: options.completed === false ? 'max-tokens' : 'completed' } } },
+      ...(options.newerStart ? [{ seq: 6, type: 'turn/start', data: { turn: 2 } }] : []),
+    ];
+    const services: Record<string, unknown> = {
+      agents: { get: (id: string) => id === 'parent' ? { id: 'parent' } : undefined },
+      subagents: { listChildren: async () => [{ id: 'child', createdAt: 1760000000000, mode: 'continuable', label: `hima:retained-tools:${requestDigest.slice(0, 16)}` }] },
+      sessionPersistence: { stat: async () => ({ header }) },
+      sessionQuery: { readSession: async () => ({ session: header, events }) },
+    };
+    return readDelegationResult({ get: (key: string) => services[key] } as never,
+      { effective: options.writeScope === false ? { ...effective, writeScope: undefined } : effective, requestDigest });
+  };
+  return { read, file, root };
+}
+
+test('retained V4 tool-role write results qualify private artifacts and contextual diffs', async (t) => {
+  const { read } = await retainedToolCandidate(t);
+  const candidate = await read({ id: 'result-write', role: 'tool', source: { kind: 'tool', callId: 'call-write' },
+    toolCallId: 'call-write', content: [{ type: 'text', text: 'Written.' }] });
+  assert.equal(candidate.status, 'candidate', candidate.unknowns.join('; '));
+  assert.equal(candidate.source, 'native-persisted-session');
+  assert.deepEqual(candidate.completedTurn, { turn: 1, endSeq: 5 });
+  assert.deepEqual(candidate.evidence.artifactRefs, [{ path: 'answer.ts', sha256: '242a1fe7b8042565bce4cac5192cc0508b8588e8f006a20830e777d90aec0b73',
+    bytes: 13, tool: 'write', toolCallId: 'call-write' }]);
+  assert.equal(candidate.evidence.diffRefs.length, 1);
+  assert.deepEqual(candidate.evidence.testRefs, []);
+});
+
+test('retained V3 and V4 write/edit results preserve the same qualified evidence boundaries', async (t) => {
+  const { read, root } = await retainedToolCandidate(t);
+  const v4 = { id: 'result-write', role: 'tool', source: { kind: 'tool', callId: 'call-write' },
+    toolCallId: 'call-write', content: [{ type: 'text', text: 'Written.' }] };
+  const wrapper = { type: 'tool-result', toolCallId: 'call-write', content: v4.content };
+  const v3 = { id: 'result-write', role: 'user', source: v4.source, content: [wrapper] };
+  for (const tool of ['write', 'edit'] as const) {
+    const current = await read(v4, { tool });
+    const historical = await read(v3, { tool });
+    assert.deepEqual(historical.evidence, current.evidence, `${tool}: encoding must not change file/diff evidence`);
+    assert.equal(current.evidence.artifactRefs[0]?.tool, tool);
+    assert.equal(current.evidence.diffRefs[0]?.path, 'answer.ts');
+    assert.equal(current.evidence.diffRefs[0]?.hunks, 1);
+    assert.match(current.evidence.diffRefs[0]?.sha256 ?? '', /^[a-f0-9]{64}$/);
+    assert.equal(current.evidence.diffRefs[0]?.toolCallId, 'call-write');
+    assert.deepEqual(current.evidence.testRefs, []);
+  }
+  for (const [label, message] of [
+    ['V4 explicit success', { ...v4, isError: false }],
+    ['V3 explicit success', { ...v3, content: [{ ...wrapper, isError: false }] }],
+  ] as const) {
+    assert.equal((await read(message)).evidence.artifactRefs.length, 1, label);
+  }
+  const rejected: readonly [string, unknown][] = [
+    ['V4 error', { ...v4, isError: true }],
+    ['V3 error', { ...v3, content: [{ ...wrapper, isError: true }] }],
+    ['V4 malformed error flag', { ...v4, isError: 'false' }],
+    ['V3 malformed error flag', { ...v3, content: [{ ...wrapper, isError: 0 }] }],
+    ['V4 mismatched call', { ...v4, toolCallId: 'another-call' }],
+    ['V3 mismatched call', { ...v3, content: [{ ...wrapper, toolCallId: 'another-call' }] }],
+    ['V4 wrong source', { ...v4, source: { kind: 'human', callId: 'call-write' } }],
+    ['V3 wrong source', { ...v3, source: { kind: 'human', callId: 'call-write' } }],
+    ['V4 missing source', { ...v4, source: undefined }],
+    ['V3 missing source id', { ...v3, source: { kind: 'tool' } }],
+    ['V4 empty call id', { ...v4, toolCallId: '', source: { kind: 'tool', callId: '' } }],
+    ['V4 wrong role', { ...v4, role: 'assistant' }],
+    ['V3 wrong role', { ...v3, role: 'assistant' }],
+    ['V4 malformed content', { ...v4, content: 'Written.' }],
+    ['V3 malformed wrapper content', { ...v3, content: [{ ...wrapper, content: 'Written.' }] }],
+    ['V3 multiple wrappers', { ...v3, content: [wrapper, wrapper] }],
+    ['V4 released wrapper', { ...v4, content: [wrapper] }],
+    ['V3 nested wrapper', { ...v3, content: [{ ...wrapper, content: [wrapper] }] }],
+    ['V4 missing message id', { ...v4, id: undefined }],
+    ['V3 missing message id', { ...v3, id: undefined }],
+    ['assistant success prose', { id: 'prose', role: 'assistant', content: [{ type: 'text', text: 'I wrote and tested answer.ts successfully.' }] }],
+  ];
+  for (const [label, message] of rejected) {
+    const result = await read(message);
+    assert.equal(result.status, 'candidate', label);
+    assert.deepEqual(result.evidence.artifactRefs, [], label);
+    assert.deepEqual(result.evidence.diffRefs, [], label);
+    assert.deepEqual(result.evidence.testRefs, [], label);
+  }
+  for (const [label, options] of [
+    ['absent call', { includeCall: false }], ['call after result', { callSeq: 4 }],
+    ['same seq', { callSeq: 3 }], ['past completed watermark', { resultSeq: 6 }],
+    ['no write scope', { writeScope: false }], ['missing file', { file: path.join(root, 'missing.ts') }],
+  ] as const) {
+    const result = await read(v4, options);
+    assert.deepEqual(result.evidence.artifactRefs, [], label);
+    assert.deepEqual(result.evidence.diffRefs, [], label);
+  }
+  const outside = path.join(path.dirname(root), 'outside.ts'); await writeFile(outside, 'outside');
+  const link = path.join(root, 'escaping.ts'); await symlink(outside, link);
+  for (const file of [outside, link]) assert.deepEqual((await read(v4, { file })).evidence.artifactRefs, []);
+  for (const options of [{ completed: false }, { newerStart: true }]) {
+    const result = await read(v4, options);
+    assert.equal(result.status, 'unavailable');
+    assert.deepEqual(result.evidence.artifactRefs, []);
+    assert.ok(result.unknowns.length > 0, 'incomplete turns preserve Unknown instead of reviving a prior candidate');
+  }
+});
+
 test('a Research child may read only an explicit private source scope without receiving write authority', async (t) => {
   const home = await createHimaHome(); t.after(() => home.dispose());
   const scenario = await writeMomentScenario(home, 'research-read', path.join(repoRoot, 'test/fixtures/delegation'));
@@ -178,7 +304,7 @@ test('a Research child may read only an explicit private source scope without re
     const candidate = await readDelegationResult(host.ctx, {
       effective: created.effectiveContract!, requestDigest: created.receipt.requestDigest,
     });
-    assert.equal(candidate.status, 'candidate'); assert.deepEqual(candidate.evidence.artifactRefs, []);
+    assert.equal(candidate.status, 'candidate', candidate.unknowns.join('; ')); assert.deepEqual(candidate.evidence.artifactRefs, []);
     assert.ok(candidate.evidence.limitations.some(item => /read-only/i.test(item)));
   } finally { await host.dispose(); }
 });
@@ -244,7 +370,7 @@ test('native bounded delegation creates, edits, follows up, guards scope, surviv
         'the transcript source must be the actual native Session, including its tool trace');
     }
     const candidate = await readDelegationResult(host.ctx, { effective: created.effectiveContract!, requestDigest: created.receipt!.requestDigest });
-    assert.equal(candidate.status, 'candidate');
+    assert.equal(candidate.status, 'candidate', candidate.unknowns.join('; '));
     assert.match(candidate.output?.filter((block) => block.type === 'text').map((block) => block.text).join('') ?? '', /owner still owns|parent still owns/i);
     assert.deepEqual(candidate.evidence.artifactRefs, [{ path: path.basename(scenario.readyFile), sha256: createHash('sha256').update(written!).digest('hex'), bytes: Buffer.byteLength(written!), tool: 'write', toolCallId: 'call-delegation-write' }]);
     assert.deepEqual(candidate.evidence.testRefs, [], 'a file write does not fabricate a test result');
