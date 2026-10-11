@@ -23,6 +23,8 @@ import { describePackCheck, describePackCheckResult, describePrepare, packCheckF
 import { checkInstalledPack, goalDeclarationOf, loadPack, runPackWords } from './packs.js';
 import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePack } from './release.js';
+import { chartRequestOf, readChartAnswer } from './chart-files.js';
+import { RunReports } from './run-reports.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import type { SiteDiscoveryResult } from './sites.js';
 import type { PreparationView } from './workbench.js';
@@ -447,7 +449,9 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
     /** A saved ssh Site's own destination/jumps and its Permit's own roots, for `rediscover` (#41
      *  task 4 review, important 3, minor 9): undefined when there is no such saved ssh Site to reuse. */
     readonly rediscoverInput: (name: string) => { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']>; readonly bindings: Readonly<Record<string, string>> } | undefined;
-  }, guidedStart?: (request: StartRunRequest) => Promise<StartRunResult>): ToolDefinition[] {
+  }, guidedStart?: (request: StartRunRequest) => Promise<StartRunResult>, reports?: RunReports): ToolDefinition[] {
+  // `hima_chart` reads Run charts through the Host's own reports reader when it is handed one.
+  const chartReports = reports ?? new RunReports(() => deps);
   return [
     ...author ? [defineTool({
       name: 'hima_author',
@@ -544,6 +548,31 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         catch { /* Keep execution facts readable when the original method is unavailable. */ }
         // What an Explore here must cite leads, so it is read before the Ledger that follows it.
         return toolJson({ runId: args.run, ...(context.cite === undefined ? {} : { cite: context.cite }), ...context, facts: runView(deps.ledger, context.run, words) });
+      },
+    }),
+    defineTool({
+      name: 'hima_chart',
+      description: 'Show one chart in the chat. The chart is a hima-chart/1 file a tool or a Pack wrote; the Host reads and validates it and the chat draws it, so you never pass numbers. Name exactly one file: a Run report {runId, path}, where path is <reports dir>/<node>/r<round>/<name>.chart.json as a hand-back or the Reports list names it; or an installed Pack\'s own chart {pack, file}, where file is charts/<name>.chart.json in that Pack\'s knowledge folder. Add note, one line of at most 200 characters, with your reading of the chart. A missing or invalid file is an error: say so plainly and never type the numbers yourself.',
+      parameters: {
+        runId: { type: 'string', description: 'Run id, for a chart in that Run\'s reports.' },
+        path: { type: 'string', description: 'Run report path: <reports dir>/<node>/r<round>/<name>.chart.json, relative to the Campaign workspace.' },
+        pack: { type: 'string', description: 'Installed Pack id, for a chart the Pack ships.' },
+        file: { type: 'string', description: 'Pack chart file: charts/<name>.chart.json, relative to the Pack\'s knowledge folder.' },
+        note: { type: 'string', description: 'Your one-line reading of the chart, at most 200 characters; shown above it.' },
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: {
+          chart: { type: 'object', required: true, additionalProperties: true, description: 'The validated hima-chart/1 chart.' },
+          source: { type: 'object', required: true, additionalProperties: true, description: '{kind: run, runId, path, sha256} or {kind: pack, pack, file, sha256}: where the bytes came from.' },
+          note: { type: 'string' },
+        } },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: async (args, execution) => {
+        const request = chartRequestOf(args);
+        if ('runId' in request) await assertProjectAccess(deps, execution.agent, request.runId);
+        const answer = toolJson(await readChartAnswer({ reports: chartReports, packsDir: deps.packsDir }, request));
+        return answer as { chart: Record<string, ToolJson>; source: Record<string, ToolJson>; note?: string };
       },
     }),
     defineTool({

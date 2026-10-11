@@ -49,6 +49,8 @@ interface Fixture {
   readonly operatorFollowups: number;
   /** An extra graph edit, for the load-refusal cases. */
   readonly graphEdit?: (graph: Record<string, any>) => void;
+  /** An extra contract edit (e.g. a reports folder). */
+  readonly contractEdit?: (contract: Record<string, any>) => void;
   /**
    * Native children (#66 H2b): the autopilot reads each child's own completed turn, and every live
    * model session replays this script. Absent, children are played through the Ledger.
@@ -84,7 +86,7 @@ async function writePack(packsDir: string, tclsh: string, fixture: Fixture): Pro
   const dir = path.join(packsDir, packId);
   for (const sub of ['flow', 'readers', 'rules', 'tools']) await mkdir(path.join(dir, sub), { recursive: true });
   const repl = ['${WORKSPACE}/flow/atcs-repl.tcl', '${WORKSPACE}/research/branch-${SLOT}'];
-  const contract = {
+  const contract: Record<string, any> = {
     id: packId, version: '1', title: 'Two self-driving interactive Team branches joined at one judge',
     inputs: [
       { name: 'flowRoot', description: 'Unused legacy flow root' },
@@ -151,6 +153,7 @@ async function writePack(packsDir: string, tclsh: string, fixture: Fixture): Pro
     autopilot: [{ fork: 'start', revisions: 1, author: { maxElapsedMs: fixture.authorMs, maxFollowups: 3 } }],
   };
   fixture.graphEdit?.(graph);
+  fixture.contractEdit?.(contract);
   const values = {
     plan_action_count: { unit: 'count', description: 'Actions in one branch plan' },
     plan_problem_count: { unit: 'count', description: 'Problems the Reader counted in one branch plan' },
@@ -834,6 +837,38 @@ test('a Run the owner\'s own tool left on a self-driving segment node is picked 
   });
 });
 
+test('a hand-back names the chart files the steps that just finished left in the newest round, and says to show them with hima_chart', async (t) => {
+  // Strip demo v3: pre (the owner's) → mid (a self-driving segment) → start, with a reports folder.
+  // When the segment hands back at start, the detail names the *.chart.json files pre and mid left in
+  // the Run's newest round — not an older round's, not another node's, not a non-chart report.
+  const graphEdit = (graph: Record<string, any>) => {
+    graph.entry = 'pre';
+    graph.nodes.unshift({ id: 'pre', kind: 'act', label: 'Prepare the plan', parameters: { observes: 'seed' } },
+      { id: 'mid', kind: 'act', label: 'Check the plan', parameters: { observes: 'seed' } });
+    graph.edges.unshift({ from: 'pre', to: 'mid' }, { from: 'mid', to: 'start' });
+    graph.autopilot.push({ from: ['mid'], until: ['start'] });
+  };
+  const contractEdit = (contract: Record<string, any>) => { contract.reports = { dir: 'reports' }; };
+  await campaign(t, { ...defaults, graphEdit, contractEdit }, 300_000, async (driven) => {
+    const p = players(driven);
+    const put = async (relative: string) => {
+      await mkdir(path.dirname(path.join(driven.workspace, relative)), { recursive: true });
+      await writeFile(path.join(driven.workspace, relative), '{}\n');
+    };
+    for (const file of ['reports/pre/r1/old.chart.json', 'reports/pre/r2/proposal.chart.json', 'reports/pre/r2/analysis.md',
+      'reports/mid/r2/check.chart.json', 'reports/start/r2/later.chart.json']) await put(file);
+    await p.ownerNode('pre');
+    await waitUntil('the owner is told', () => driven.host.ctx.hima.autopilotNotices(driven.runId).length > 0, 30_000, 25);
+    const notices = driven.host.ctx.hima.autopilotNotices(driven.runId);
+    assert.equal(notices.length, 1, JSON.stringify(notices));
+    const [, detail] = notices[0]!.split('\n\n');
+    assert.match(detail!, new RegExp(`the Run now stands at start, which is yours\. Show the charts the steps that just finished left, one hima_chart call each with runId ${driven.runId} and path: `
+      + 'reports/pre/r2/proposal\\.chart\\.json \\(Prepare the plan\\), reports/mid/r2/check\\.chart\\.json \\(Check the plan\\); '
+      + 'with each, say in one sentence what it shows and why it leads to the next step\\.'), detail);
+    assert.doesNotMatch(detail!, /old\.chart\.json|later\.chart\.json|analysis\.md/);
+  });
+});
+
 test('the time box still ends a Run whose self-driving branches are waiting for their children', async (t) => {
   await campaign(t, { ...defaults, authorMs: 4_000 }, 12_000, async (driven) => {
     const p = players(driven);
@@ -939,4 +974,39 @@ test('every hand-back of a round with two forks names exactly the outsourced nod
   // Nothing outsourced available: no instruction, and the plain next step.
   assert.equal(nextStepInstruction(pack, ['cells-verified']), undefined);
   assert.equal(nextStepPhrase(pack, ['cells-verified']), 'Next: Local gain confirmed.');
+});
+
+
+test('the hand-back chart sentence: the finished nodes\' charts of the newest round, before beginning the available agents', async () => {
+  const { finishedNodeCharts, chartInstruction, handBackChartLimit } = await import(new URL('../../packages/harness/lib/autopilot.js', import.meta.url).href);
+  const act = (id: string, tool: string, label?: string) => ({ id, kind: 'act', ...(label === undefined ? {} : { label }), parameters: { tool } });
+  const pack = {
+    contract: { tools: [{ id: 'flow' }, { id: 'agent', outsourcing: { role: 'resident-engineering-agent' } }] },
+    graph: { entry: 'load-timing', autopilot: [], nodes: [
+      act('load-timing', 'flow', 'Load into HimaTime'), act('himatime-agent', 'agent', 'HimaTime agent'), act('qualib-agent', 'agent', 'Qualib agent'),
+      { id: 'requirements-joined', kind: 'judge', label: 'Both requirement lists ready', parameters: { rules: ['r'] } },
+      act('andescell-agent', 'agent', 'AndesCell agent'),
+    ], edges: [] },
+  };
+  const file = (node: string, round: number, name: string) => ({ node, round, name, path: `reports/${node}/r${String(round)}/${name}` });
+  // The Reports listing's order: newest round first, then graph order, then name.
+  const listing = [
+    file('load-timing', 2, 'stage-breakdown.chart.json'), file('himatime-agent', 2, 'analysis.md'), file('himatime-agent', 2, 'proposal.chart.json'),
+    file('qualib-agent', 2, 'proposal.chart.json'), file('himatime-agent', 1, 'proposal.chart.json'), file('qualib-agent', 1, 'proposal.chart.json'),
+  ];
+  const finished = new Set(['himatime-agent', 'qualib-agent', 'requirements-joined']);
+  const charts = finishedNodeCharts(finished, listing);
+  assert.deepEqual(charts.map((chart: { path: string }) => chart.path), ['reports/himatime-agent/r2/proposal.chart.json', 'reports/qualib-agent/r2/proposal.chart.json']);
+  assert.equal(chartInstruction(pack, 'run-1', ['andescell-agent'], charts),
+    'Before you begin AndesCell agent, show the charts the steps that just finished left, one hima_chart call each with runId run-1 and path: '
+    + 'reports/himatime-agent/r2/proposal.chart.json (HimaTime agent), reports/qualib-agent/r2/proposal.chart.json (Qualib agent); '
+    + 'with each, say in one sentence what it shows and why it leads to the next step.');
+  // Nothing outsourced to begin (an Explore decision, or the end): the same sentence, standing alone.
+  assert.equal(chartInstruction(pack, 'run-1', [], charts.slice(0, 1)),
+    'Show the chart the steps that just finished left, one hima_chart call each with runId run-1 and path: '
+    + 'reports/himatime-agent/r2/proposal.chart.json (HimaTime agent); with each, say in one sentence what it shows and why it leads to the next step.');
+  // No chart left by a finished node: no sentence. A node that left a chart only in an older round is not shown it.
+  assert.equal(chartInstruction(pack, 'run-1', ['andescell-agent'], finishedNodeCharts(new Set(['requirements-joined']), listing)), undefined);
+  assert.deepEqual(finishedNodeCharts(new Set(['himatime-agent']), listing.filter((entry) => !(entry.round === 2 && entry.node === 'himatime-agent'))), []);
+  assert.equal(finishedNodeCharts(new Set(['n']), Array.from({ length: 10 }, (_, i) => file('n', 1, `c${String(i)}.chart.json`))).length, handBackChartLimit);
 });
