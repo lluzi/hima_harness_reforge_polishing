@@ -2,7 +2,7 @@
 // value with its unit, and reads the tool's answer back without trusting anything else in the text.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chartGeometry, chartValueSaid, readChartAnswer } from '../../packages/harness/src/client/chart-geometry.ts';
+import { chartGeometry, chartValueSaid, metricDelta, metricsTable, numberSaid, readChartAnswer } from '../../packages/harness/src/client/chart-geometry.ts';
 import { himaChart } from '../../packages/harness/src/charts.ts';
 
 const proposal = himaChart.parse({
@@ -70,4 +70,64 @@ test('the tool answer is read from its JSON text; anything else is not a chart',
   assert.equal(readChartAnswer('not json'), undefined);
   assert.equal(readChartAnswer(JSON.stringify({ chart: { ...proposal, schema: 'other' } })), undefined);
   assert.equal(readChartAnswer(JSON.stringify({ chart: { ...proposal, series: [{ name: 'x', values: [1], role: 'neutral' }] } })), undefined, 'one value per category');
+});
+
+// The metrics kind: the reference build's summary and the round's comparison with it.
+const M = ['Fmax', 'Worst slack', 'TNS', 'Violating endpoints', 'Cell area', 'Utilization', 'Route DRC', 'New-cell instances'];
+const comparison = himaChart.parse({
+  schema: 'hima-chart/1', kind: 'metrics', title: 'Round 1: new library against the reference', unit: '', categories: M,
+  units: ['MHz', 'ps', 'ns', '', 'µm²', '%', '', ''], digits: [2, 1, 3, 0, 0, 1, 0, 0],
+  betterEach: ['higher', 'higher', 'higher', 'lower', 'lower', 'none', 'lower', 'none'],
+  series: [{ name: 'Reference build', values: [1951.6, -12.4, -0.596, 74, 41200, 68.4, 0, 0], role: 'baseline' },
+    { name: 'Round 1 new library', values: [1980.98, -4.8, -0.1, 33, 41481, 68.9, 0, 474], role: 'measured' }],
+  highlight: ['Fmax'], source: 'RTL2GDS compare-round, round 1 (round-1.md)',
+});
+
+test('a metrics chart validates through himaChart; its per-row arrays must match the categories and are for metrics only', () => {
+  assert.equal(comparison.kind, 'metrics');
+  const bad = (patch: Record<string, unknown>) => himaChart.safeParse({ ...comparison, ...patch }).success;
+  assert.equal(bad({ units: ['MHz'] }), false, 'one unit for eight rows');
+  assert.equal(bad({ betterEach: [...comparison.betterEach!.slice(1), 'sideways'] }), false);
+  assert.equal(bad({ kind: 'bar' }), false, 'units, digits and betterEach belong to a metrics chart');
+  const answer = readChartAnswer(JSON.stringify({ chart: comparison, source: { kind: 'run', runId: 'r', path: 'reports/compare-round/r1/before-after.chart.json', sha256: 'x' } }));
+  assert.equal(answer?.chart.kind, 'metrics', 'the card keeps the kind it was given');
+  assert.deepEqual(answer?.chart.digits, comparison.digits);
+});
+
+test('numbers: digits are kept as given; without them, two decimals at most, trimmed', () => {
+  assert.equal(numberSaid(1951.6, 2), '1951.60');
+  assert.equal(numberSaid(-0.1, 3), '\u22120.100');
+  assert.equal(numberSaid(41481, 0), '41\u2009481');
+  assert.equal(numberSaid(68.4), '68.4');
+  assert.equal(numberSaid(0, 1), '0.0');
+});
+
+test('the change: signed, with a relative change only where it means something, toned by which way is better', () => {
+  assert.deepEqual(metricDelta(1951.6, 1980.98, 'MHz', 2, 'higher'), { display: '+29.38', percent: '+1.51 %', tone: 'better' });
+  assert.deepEqual(metricDelta(-12.4, -4.8, 'ps', 1, 'higher'), { display: '+7.6', percent: '+61.3 %', tone: 'better' });
+  assert.deepEqual(metricDelta(74, 33, '', 0, 'lower'), { display: '\u221241', percent: '\u221255.4 %', tone: 'better' });
+  assert.deepEqual(metricDelta(41200, 41481, 'µm²', 0, 'lower'), { display: '+281', percent: '+0.68 %', tone: 'worse' });
+  assert.deepEqual(metricDelta(-3.2, 1.4, 'ps', 1, 'higher'), { display: '+4.6', tone: 'better' }, 'no % for a slack that crosses zero');
+  assert.deepEqual(metricDelta(0, 474, '', 0, 'none'), { display: '+474', tone: 'none' }, 'no % from a zero baseline; no better way');
+  assert.deepEqual(metricDelta(68.4, 68.9, '%', 1, 'none'), { display: '+0.5', tone: 'none' }, 'no % of a %');
+  assert.deepEqual(metricDelta(0, 0, '', 0, 'lower'), { display: '0', tone: 'same' });
+  assert.deepEqual(metricDelta(18.6, 18.6, 'min', 1, 'lower'), { display: '0.0', tone: 'same' });
+  assert.equal(metricDelta(10, 9, '', 0, undefined).tone, 'none', 'no better way named: muted');
+});
+
+test('the metrics table: one row per measure with its unit, a value per series, the change from the first to the last', () => {
+  const table = metricsTable(comparison);
+  assert.equal(table.change, true);
+  assert.deepEqual(table.columns.map((c) => c.name), ['Reference build', 'Round 1 new library']);
+  assert.deepEqual(table.legend.map((c) => c.role), ['baseline', 'measured']);
+  const fmax = table.rows[0]!;
+  assert.deepEqual([fmax.category, fmax.highlight, fmax.unit, fmax.values.map((v) => v.display), fmax.delta?.tone], ['Fmax', true, 'MHz', ['1951.60', '1980.98'], 'better']);
+  assert.deepEqual(table.rows[2]!.values.map((v) => v.display), ['\u22120.596', '\u22120.100']);
+  assert.equal(table.rows[4]!.delta?.tone, 'worse', 'more area is worse');
+  const single = metricsTable({ ...comparison, series: [comparison.series[0]!] });
+  assert.equal(single.change, false);
+  assert.deepEqual(single.legend, [], 'one series: no legend, no change column');
+  assert.ok(single.rows.every((row) => row.delta === undefined));
+  const gap = metricsTable({ ...comparison, series: [comparison.series[0]!, { ...comparison.series[1]!, values: [null, ...comparison.series[1]!.values.slice(1)] }] });
+  assert.deepEqual([gap.rows[0]!.values[1]!.display, gap.rows[0]!.delta], ['—', undefined], 'a missing value has no change');
 });
