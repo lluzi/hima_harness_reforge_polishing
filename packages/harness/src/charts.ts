@@ -18,11 +18,21 @@ export const himaChart = z.strictObject({
   schema: z.literal(HIMA_CHART_SCHEMA),
   title: z.string().min(1).max(80),
   subtitle: z.string().min(1).max(120).optional(),
-  /** Horizontal bars, one row per category (the only kind for now). */
-  kind: z.literal('bar').default('bar'),
+  /**
+   * `bar`: horizontal bars, one row per category. `metrics`: a metric table, one row per category
+   * (a measure such as Fmax or cell area) and one value column per series, with the change from the
+   * first series to the last when there are two or more; each row carries its own unit and digits.
+   */
+  kind: z.enum(['bar', 'metrics']).default('bar'),
   unit: z.string().max(16).default(''),
   categories: z.array(z.string().min(1).max(24)).min(1).max(16),
   series: z.array(himaChartSeries).min(1).max(3),
+  /** `metrics` only: one unit per category ('' for a count), in category order. */
+  units: z.array(z.string().max(16)).max(16).optional(),
+  /** `metrics` only: decimal places per category, in category order. */
+  digits: z.array(z.number().int().min(0).max(4)).max(16).optional(),
+  /** `metrics` only: which way is better per category, so the change can be coloured; 'none' for neither. */
+  betterEach: z.array(z.enum(['higher', 'lower', 'none'])).max(16).optional(),
   /** Categories drawn emphasised (e.g. the proposed cell families). */
   highlight: z.array(z.string().min(1).max(24)).max(16).default([]),
   better: z.enum(['higher', 'lower']).optional(),
@@ -33,6 +43,14 @@ export const himaChart = z.strictObject({
   for (const [index, series] of chart.series.entries()) {
     if (series.values.length !== chart.categories.length) {
       ctx.addIssue({ code: 'custom', path: ['series', index, 'values'], message: `has ${String(series.values.length)} values for ${String(chart.categories.length)} categories` });
+    }
+  }
+  for (const key of ['units', 'digits', 'betterEach'] as const) {
+    const list = chart[key];
+    if (list === undefined) continue;
+    if (chart.kind !== 'metrics') ctx.addIssue({ code: 'custom', path: [key], message: 'is for a metrics chart only' });
+    else if (list.length !== chart.categories.length) {
+      ctx.addIssue({ code: 'custom', path: [key], message: `has ${String(list.length)} entries for ${String(chart.categories.length)} categories` });
     }
   }
   for (const name of chart.highlight) {
