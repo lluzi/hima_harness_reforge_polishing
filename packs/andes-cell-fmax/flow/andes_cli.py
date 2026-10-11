@@ -148,10 +148,18 @@ def publish(ws, node, k, files):
 # (`<WS>/reports/<node id>/r<k>/<name>.chart.json`, or the Pack's knowledge/charts/). No timestamp, so
 # the same tool output always gives the same bytes. The words follow the App: no internal names.
 
-def chart(title, unit, categories, series, source, subtitle=None, highlight=(), better=None, caption=None):
-    doc = dict(schema=CHART_SCHEMA, title=title, kind="bar", unit=unit, categories=list(categories),
-               series=[dict(name=n, values=[None if v is None else round(float(v), 2) for v in vals], role=role) for n, vals, role in series],
+def chart(title, unit, categories, series, source, subtitle=None, highlight=(), better=None, caption=None, metrics=None):
+    """One hima-chart/1 document. metrics: for a metric table (kind metrics), a list of one
+    (unit, digits, better) per category; values then keep their row's digits."""
+    places = [m[1] for m in metrics] if metrics else [2] * len(categories)
+    doc = dict(schema=CHART_SCHEMA, title=title, kind="metrics" if metrics else "bar", unit=unit, categories=list(categories),
+               series=[dict(name=n, values=[None if v is None else round(float(v), max(2, d)) for v, d in zip(vals, places)], role=role)
+                       for n, vals, role in series],
                highlight=[h for h in highlight if h in categories], source=source)
+    if metrics:
+        doc["units"] = [m[0] for m in metrics]
+        doc["digits"] = [m[1] for m in metrics]
+        doc["betterEach"] = [m[2] for m in metrics]
     if subtitle:
         doc["subtitle"] = subtitle
     if better:
@@ -205,6 +213,38 @@ def _version(doc):
     """'4.2.0' from a tool line such as 'HimaTime static timing analysis (himatime) version 4.2.0, linux64'."""
     m = re.search(r"version ([^ ,]+)", str(doc.get("tool") or ""))
     return m.group(1) if m else ""
+
+
+# The RTL2GDS metric table: (category, unit, digits, better, value of a build record or sapr summary)
+BUILD_METRICS = [
+    ("Fmax", "MHz", 2, "higher", lambda b: b.get("fmaxMhz")),
+    ("Worst slack", "ps", 1, "higher", lambda b: None if b.get("wnsNs") is None else 1000.0 * b["wnsNs"]),
+    ("Total negative slack", "ns", 3, "higher", lambda b: b.get("tnsNs")),
+    ("Violating endpoints", "", 0, "lower", lambda b: b.get("violatingEndpoints")),
+    ("Cell area", "\u00b5m\u00b2", 1, "lower", lambda b: b.get("areaUm2")),
+    ("Instances", "", 0, "none", lambda b: b.get("instances")),
+    ("Utilization", "%", 1, "none", lambda b: b.get("coreUtilizationPct")),
+    ("Route DRC errors", "", 0, "lower", lambda b: b.get("routeDrcErrors")),
+    ("Flow runtime", "min", 2, "lower", lambda b: None if not b.get("stages") else sum(st["runtimeS"] for st in b["stages"]) / 60.0),
+]
+NEW_CELLS_METRIC = ("New-cell instances", "", 0, "none", lambda b: b.get("newCellInstances", 0))
+
+
+def metrics_chart(title, builds, source, subtitle=None, caption=None, new_cells=False):
+    """The RTL2GDS metric table of one or more builds: builds = [(series name, role, record)]."""
+    rows = BUILD_METRICS + ([NEW_CELLS_METRIC] if new_cells else [])
+    return chart(title, "", [r[0] for r in rows], [(name, [r[4](b) for r in rows], role) for name, role, b in builds], source,
+                 subtitle=subtitle, caption=caption, metrics=[(r[1], r[2], r[3]) for r in rows])
+
+
+def flow_stages_chart(builds, source, subtitle=None):
+    """Worst slack (ps) at the end of every Synthesis and APR flow stage: builds = [(name, role, record)]."""
+    stages = builds[0][2].get("stages") or []
+    return chart("Worst slack through the RTL2GDS flow", "ps", [st["label"] for st in stages],
+                 [(name, [1000.0 * st["wnsNs"] for st in (b.get("stages") or [])], role) for name, role, b in builds], source,
+                 subtitle=subtitle, better="higher",
+                 caption="Synthesis times the netlist with wire-load estimates; placement, CTS and routing add real wires and the clock; "
+                         "post-route optimization ends at the final slack.")
 
 
 def tool_query(inputs, name, argv):
@@ -370,6 +410,7 @@ def build_record(ws, kind, k, out_dir, result, extra_libs=()):
                violatingEndpoints=s.get("violatingEndpoints"), areaUm2=s.get("areaUm2"), instances=s.get("instances"),
                routeDrcErrors=s.get("routeDrcErrors"), newCellInstances=s.get("newCellInstances", 0),
                newCellInstancesByCell=s.get("newCellInstancesByCell") or {}, newFamiliesUsed=s.get("newFamiliesUsed") or [],
+               coreUtilizationPct=s.get("coreUtilizationPct"), stages=s.get("stages") or [], flowRuntimeS=s.get("flowRuntimeS"),
                extraLibraries=[dict(dir=rel(ws, d), dontUse=list(u)) for d, u in extra_libs], tool=s.get("tool"),
                writtenAt=now(), claimBoundary=CLAIM_BOUNDARY)
     return rec
@@ -385,6 +426,13 @@ def cmd_reference(ws, timeout_min):
     publish(ws, "reference-build", 1, [(out / "reports" / name, name) for name in BUILD_REPORTS])
     if not rec["finished"]:
         raise ToolError("the reference build did not finish: %s" % rec["failure"])
+    publish(ws, "reference-build", 1, [(out / "reports" / "flow_summary.rpt", "flow_summary.rpt")])
+    sapr_source = "Synthesis and APR %s, the reference build (sapr_summary.json, flow_summary.rpt)" % _version(result["summary"])
+    write_chart(ws, "reference-build", 1, "summary", metrics_chart(
+        "RTL2GDS reference build: summary", [("Reference build", "baseline", rec)], sapr_source,
+        subtitle="aes_cipher_top on the stock library std9t_svt at 0.500 ns (2 GHz)", caption=SHOWN_BOUNDARY))
+    write_chart(ws, "reference-build", 1, "flow-stages", flow_stages_chart([("Reference build", "baseline", rec)], sapr_source,
+                                                                           subtitle="The reference build, stage by stage"))
     report = tool_query(inputs, "himatime", ["report", "--db", str(out), "--paths", "8", "--json"])
     write_chart(ws, "reference-build", 1, "timing", slack_chart(
         report["paths"], "HimaTime %s, the routed reference build (himatime report --paths 8)" % _version(report),
@@ -946,7 +994,7 @@ def cmd_build(ws, timeout_min):
     rec = build_record(ws, "round", k, out, result, extra)
     rec["acceptedCells"] = accepted
     write_json(state(ws, "round-build.json"), rec)
-    publish(ws, "new-library-build", k, [(out / "reports" / name, name) for name in BUILD_REPORTS])
+    publish(ws, "new-library-build", k, [(out / "reports" / name, name) for name in BUILD_REPORTS + ("flow_summary.rpt",)])
     if not rec["finished"]:
         raise ToolError("the new-library build did not finish: %s" % rec["failure"])
     report = subprocess.run([tool(inputs, "himatime"), "report", "--db", str(out), "--paths", "5"], capture_output=True, text=True, timeout=120)
@@ -1035,14 +1083,14 @@ def cmd_compare(ws):
         write_json(state(ws, "library.json"), library)
     write_text(ws / "derived" / ("round-%d.md" % k), round_markdown(record))
     publish(ws, "compare-round", k, [(ws / "derived" / ("round-%d.md" % k), "round-%d.md" % k)])
-    write_chart(ws, "compare-round", k, "before-after", chart(
-        "Before and after: the reference build against the new library", "", ["Fmax, MHz", "Worst slack, ps", "TNS, ps"],
-        [("Reference build", [ref["fmaxMhz"], 1000.0 * ref["wnsNs"], 1000.0 * ref["tnsNs"]], "baseline"),
-         ("Round %d new library" % k, [fmax, None if build.get("wnsNs") is None else 1000.0 * build["wnsNs"],
-                                       None if build.get("tnsNs") is None else 1000.0 * build["tnsNs"]], "measured")],
-        "Synthesis and APR post-route summaries, reference and round %d builds (report_qor.rpt)" % k,
-        subtitle="Fmax gain %s %% over the reference build" % _fmt(gain), better="higher",
-        caption=SHOWN_BOUNDARY))
+    source = "Synthesis and APR post-route summaries of the reference and round %d builds (sapr_summary.json, flow_summary.rpt)" % k
+    builds = [("Reference build", "baseline", ref), ("Round %d new library" % k, "measured", build)]
+    write_chart(ws, "compare-round", k, "comparison", metrics_chart(
+        "RTL2GDS comparison: reference against the new library", builds, source, new_cells=True,
+        subtitle="Fmax gain %s %% over the reference build" % _fmt(gain), caption=SHOWN_BOUNDARY))
+    if ref.get("stages") and build.get("stages"):
+        write_chart(ws, "compare-round", k, "flow-stages", flow_stages_chart(builds, source,
+                                                                               subtitle="Every flow stage, reference against round %d" % k))
     write_summary(ws)
     print("round %d: Fmax %s MHz vs reference %.2f MHz (%s %%), best %s %%, improved %s, valid %s"
           % (k, fmax, ref["fmaxMhz"], gain, best_gain, improved, valid))

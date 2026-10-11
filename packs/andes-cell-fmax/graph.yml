@@ -15,7 +15,7 @@
 # twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
 # next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
 id: andes-cell-fmax
-version: "0.3.0"
+version: "0.3.1"
 entry: bind-inputs
 autopilot:
   - from: [bind-inputs]

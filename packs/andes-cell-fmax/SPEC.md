@@ -46,6 +46,8 @@ Charts (`hima-chart/1`), one per step beside its reports:
 
 | Step | File under `reports/<step>/r<k>/` | Written by | Shows |
 | --- | --- | --- | --- |
+| `reference-build` | `summary.chart.json` (metrics) | `andes_cli.py reference` (sapr summary) | the RTL2GDS baseline: Fmax, worst slack, TNS, violating endpoints, area, instances, utilization, route DRC, flow runtime |
+| `reference-build` | `flow-stages.chart.json` | `andes_cli.py reference` (sapr stages) | worst slack after each flow stage |
 | `reference-build` | `timing.chart.json` | `andes_cli.py reference` (`himatime report --json`) | slack of the 8 worst paths |
 | `load-timing` | `stage-breakdown.chart.json` | `andes_cli.py timing` | share of the worst path's delay by cell family |
 | `himatime-agent` | `proposal.chart.json` | Reader `andes-requirements` on acceptance | "Why these cells: timing": worst-path share (%) and slack back (ps) per requested family |
@@ -53,9 +55,10 @@ Charts (`hima-chart/1`), one per step beside its reports:
 | `generate-cells` | `generation.chart.json` | `andes_cli.py generate` | each new cell's FO4 against its stock cell |
 | `himatime-verify` | `local-gain.chart.json` | Reader `andes-verify` on acceptance (`himatime verify --json`) | worst-path slack before and with the new cells |
 | `qualib-screen` | `screen.chart.json` | Reader `andes-verify` on acceptance (`qualib screen --json`) | area, input cap and leakage as a share of each screen limit |
-| `compare-round` | `before-after.chart.json` | `andes_cli.py compare` | Fmax, worst slack and TNS, reference against new library |
+| `compare-round` | `comparison.chart.json` (metrics) | `andes_cli.py compare` | the same metrics plus new-cell instances, reference against new library |
+| `compare-round` | `flow-stages.chart.json` | `andes_cli.py compare` | worst slack after each flow stage, reference against new library |
 
-Knowledge charts (`knowledge/charts/`): `stage-breakdown`, `worst-paths`, `library-fo4`. A chart
+Knowledge charts (`knowledge/charts/`): `reference-summary` (metrics), `stage-breakdown`, `worst-paths`, `library-fo4`. A chart
 carries no timestamp: the same tool output always gives the same bytes.
 
 ## Semantics

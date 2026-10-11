@@ -28,6 +28,11 @@ path has 20–30 levels of logic, and no single cell contributes 100+ ps. The ch
 numbers come from the tools: the Guide's design charts, each agent's "why these cells" chart before
 the AndesCell agent, the local gain and the before/after comparison.
 
+Version 0.3.1 (user, 2026-10-10): "we need some data and chart and metric on the RTL2GDS flow, a
+initial summary and ending with a comparison." Synthesis and APR reports its QoR per flow stage;
+the reference build leaves a metric summary and a slack-through-the-flow chart, and the round ends
+with a metric comparison against the reference and the same flow chart for both builds.
+
 ## Answers
 
 - Tools on screen: AndesCell (cell generation), HimaTime (STA), Synthesis and APR (synthesis + APR),

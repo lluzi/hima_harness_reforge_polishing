@@ -428,6 +428,18 @@ test('andes dry path: propose, choose, generate, verify and rebuild in one round
       assert.doesNotMatch(text, /mock/i, `${rel} never says "mock"`);
       return himaChart.parse(JSON.parse(text));
     };
+    // The RTL2GDS flow's own data: an initial summary after the reference build and a comparison at the end.
+    const refSummary = await chartOf('reference-build/r1/summary.chart.json');
+    assert.equal(refSummary.kind, 'metrics');
+    assert.deepEqual(refSummary.series.map((x) => [x.name, x.role, x.values]),
+      [['Reference build', 'baseline', [1951.6, -12.4, -0.596, 74, 41200, 18400, 70, 0, 1.33]]]);
+    assert.deepEqual(refSummary.betterEach, ['higher', 'higher', 'higher', 'lower', 'lower', 'none', 'none', 'lower', 'lower']);
+    const refStages = await chartOf('reference-build/r1/flow-stages.chart.json');
+    assert.deepEqual([refStages.kind, refStages.title, refStages.categories], ['bar', 'Worst slack through the RTL2GDS flow',
+      ['Synthesis', 'Floorplan', 'Placement', 'CTS', 'Route', 'Post-route opt']]);
+    assert.deepEqual(refStages.series[0]!.values, [9.6, 7.1, -16, -20.6, -27, -12.4]);
+    assert.match(await report('reference-build/r1/flow_summary.rpt'), /Post-route opt/);
+    assert.match(await report('new-library-build/r1/flow_summary.rpt'), /Post-route opt/);
     const timing = await chartOf('reference-build/r1/timing.chart.json');
     assert.deepEqual([timing.categories[0], timing.series[0]!.values[0]], ['A1 S-box/MixColumns', -12.4]);
     const stages = await chartOf('load-timing/r1/stage-breakdown.chart.json');
@@ -447,8 +459,15 @@ test('andes dry path: propose, choose, generate, verify and rebuild in one round
     assert.deepEqual([local.categories[0], local.series[0]!.values[0], local.series[1]!.values[0]], ['A1 S-box/MixColumns', -12.4, 4.48]);
     const screen = await chartOf('qualib-screen/r1/screen.chart.json');
     assert.deepEqual(screen.highlight.sort(), ['ANDES_BUF_XF8_R1', 'ANDES_XNOR3_XF4_R1']);
-    const compare = await chartOf('compare-round/r1/before-after.chart.json');
-    assert.deepEqual(compare.series.map((x) => x.values), [[1951.6, -12.4, -596], [1980.98, -4.8, -100]]);
+    const compare = await chartOf('compare-round/r1/comparison.chart.json');
+    assert.equal(compare.kind, 'metrics');
+    assert.equal(compare.categories.at(-1), 'New-cell instances');
+    assert.deepEqual(compare.series.map((x) => [x.name, x.role]), [['Reference build', 'baseline'], ['Round 1 new library', 'measured']]);
+    assert.deepEqual(compare.series[1]!.values.slice(0, 9), [1980.98, -4.8, -0.1, 33, 41481.2, 18366, 70, 0, 1.4]);
+    assert.ok((compare.series[1]!.values.at(-1) ?? 0) > 0, 'new-cell instances');
+    const stagesCompared = await chartOf('compare-round/r1/flow-stages.chart.json');
+    assert.deepEqual(stagesCompared.series.map((x) => x.values), [[9.6, 7.1, -16, -20.6, -27, -12.4], [17.2, 14.7, -8.4, -13, -19.4, -4.8]]);
+    await assert.rejects(report('compare-round/r1/before-after.chart.json'), 'the mixed-unit chart is gone');
     t.diagnostic(`gain 1.51 %; local gain ${String(r1.checks.localGainPs)} ps; run ${r.runId} ended ${r.run().status}`);
   } finally {
     await host.dispose(); await home.h.dispose();

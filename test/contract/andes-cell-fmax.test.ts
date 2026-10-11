@@ -29,7 +29,7 @@ const AGENTS = [
 
 test('the Pack loads at stage compiled with plain words, a results table, a reports folder and five resident agents', () => {
   const pack = loadPack(packsDir, packId);
-  assert.equal(pack.contract.version, '0.3.0');
+  assert.equal(pack.contract.version, '0.3.1');
   assert.equal(pack.graph.version, pack.contract.version);
   assert.equal(packStageOf(packsDir, packId)?.stage, 'compiled');
   assert.deepEqual(pack.contract.reports, { dir: 'reports' });
@@ -182,7 +182,7 @@ test('the resident capability runs OpenCode in the sandbox with the mock toolcha
 test('the knowledge charts are hima-chart/1 files the tools produce today, and the design notes tell the Guide to show them', async () => {
   const chartsDir = path.join(packDir, 'knowledge/charts');
   const names = (await readdir(chartsDir)).sort();
-  assert.deepEqual(names, ['library-fo4.chart.json', 'stage-breakdown.chart.json', 'worst-paths.chart.json']);
+  assert.deepEqual(names, ['library-fo4.chart.json', 'reference-summary.chart.json', 'stage-breakdown.chart.json', 'worst-paths.chart.json']);
   const fresh = await mkdtemp(path.join(os.tmpdir(), 'andes-charts-'));
   try {
     const run = spawnSync('python3', [path.join(packDir, 'flow/knowledge_charts.py'), path.join(siteDir, 'mock-eda'), fresh], { encoding: 'utf8' });
@@ -201,6 +201,11 @@ test('the knowledge charts are hima-chart/1 files the tools produce today, and t
   assert.deepEqual([paths.categories.length, paths.series[0]!.values[0]], [8, -12.4]);
   const fo4 = himaChart.parse(JSON.parse(await readFile(path.join(chartsDir, 'library-fo4.chart.json'), 'utf8')));
   assert.ok(fo4.series.every((series) => series.values.every((v) => v !== null && v > 0 && v < 40)), 'no stock or AndesCell FO4 near 100 ps');
+  const summary = himaChart.parse(JSON.parse(await readFile(path.join(chartsDir, 'reference-summary.chart.json'), 'utf8')));
+  assert.equal(summary.kind, 'metrics');
+  assert.deepEqual(summary.categories, ['Fmax', 'Worst slack', 'Total negative slack', 'Violating endpoints', 'Cell area', 'Instances',
+    'Utilization', 'Route DRC errors', 'Flow runtime']);
+  assert.deepEqual(summary.series[0]!.values, [1951.6, -12.4, -0.596, 74, 41200, 18400, 70, 0, 1.33]);
   const notes = await readFile(path.join(packDir, 'knowledge/design-notes.md'), 'utf8');
   for (const name of names) assert.ok(notes.includes(`charts/${name}`), `design-notes.md names charts/${name}`);
   assert.match(notes, /hima_chart/);

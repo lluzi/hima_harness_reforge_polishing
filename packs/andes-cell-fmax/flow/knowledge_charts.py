@@ -9,6 +9,7 @@ a scratch directory, then writes with the same chart builders the Pack's steps u
   stage-breakdown.chart.json   share of the worst path's delay by cell family (HimaTime)
   worst-paths.chart.json       slack of the 8 worst paths (HimaTime)
   library-fo4.chart.json       stock FO4 of the critical-path families against the AndesCell target (Qualib)
+  reference-summary.chart.json the RTL2GDS reference build's metric table (Synthesis and APR)
 
 The Guide shows them with hima_chart when it explains the design (design-notes.md). The Pack test
 regenerates them and holds the committed files to the result, so they match the tools exactly.
@@ -39,6 +40,7 @@ def charts(eda_root):
             if out.returncode != 0:
                 raise cli.ToolError("%s failed: %s" % (" ".join(argv[:2]), out.stderr.strip()))
         summary = cli.read_json(scratch / "ht" / "timing_summary.json", "timing_summary.json")
+        sapr = cli.read_json(scratch / "ref" / "sapr_summary.json", "sapr_summary.json")
         stock = cli.tool_query(inputs, "qualib", ["list", "--lib", "std9t_svt", "--json"])
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
@@ -53,7 +55,11 @@ def charts(eda_root):
     library = cli.library_chart(cli.fo4_rows(stock, critical), "The stock library against AndesCell: FO4 of the critical families",
                                 "Qualib %s, stock library std9t_svt (qualib list); AndesCell typical speed-ups" % cli._version(stock),
                                 "Families on the 20 worst paths, by HimaTime's estimated recovery", highlight=top)
-    return {"stage-breakdown.chart.json": stage, "worst-paths.chart.json": paths, "library-fo4.chart.json": library}
+    reference = cli.metrics_chart("RTL2GDS reference build: summary", [("Reference build", "baseline", sapr)],
+                                  "Synthesis and APR %s, the reference build (sapr_summary.json, flow_summary.rpt)" % cli._version(sapr),
+                                  subtitle="aes_cipher_top on the stock library std9t_svt at 0.500 ns (2 GHz)", caption=cli.SHOWN_BOUNDARY)
+    return {"stage-breakdown.chart.json": stage, "worst-paths.chart.json": paths, "library-fo4.chart.json": library,
+            "reference-summary.chart.json": reference}
 
 
 def main(argv):
