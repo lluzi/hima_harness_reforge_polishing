@@ -7,6 +7,7 @@ and every other declared fact in that call becomes `unknown`.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -24,7 +25,35 @@ from tests import fixtures  # noqa: E402
 FLOW_DIR = Path(__file__).resolve().parents[1]
 CLI = FLOW_DIR / "mage_placement_cli.py"
 READER = FLOW_DIR.parent / "tools" / "read-mage.py"
+READERS_DIR = FLOW_DIR.parent / "readers"
 STANDIN = FLOW_DIR / "tests" / "standin_mage.py"
+
+
+def _load_read_mage_module():
+    """Import `tools/read-mage.py` (a hyphenated filename) as a plain
+    module, the way `_mage_modules` in that same script imports
+    `mage_placement.*` -- by path, not by package name."""
+    spec = importlib.util.spec_from_file_location("read_mage", READER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _reader_yaml_emits(reader_id):
+    """The `emits:` list from `readers/<reader_id>.yml`, in file order, read
+    with a tiny line-based parser (no YAML library in this Pack's own
+    runtime, per the global constraints) -- good enough for this flat
+    `key: value` / `  - item` shape."""
+    text = (READERS_DIR / f"{reader_id}.yml").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == "emits:")
+    emits = []
+    for line in lines[start + 1:]:
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            break
+        emits.append(stripped[2:].strip())
+    return emits
 
 
 def _run(args, env=None):
@@ -99,6 +128,33 @@ class ReaderNegativeTests(unittest.TestCase):
 
     def tearDown(self):
         self._tmp.cleanup()
+
+    def test_candidate_reader_emits_declared_set_in_declared_order(self):
+        # CANDIDATE_EMITS (the script's own source of truth) must agree
+        # exactly and in order with readers/mage-placement-candidate.yml's
+        # `emits:` list, and the live reader run must emit exactly that
+        # set -- including the two new ordinary-drop facts right after
+        # mage_dropped_length_um.
+        module = _load_read_mage_module()
+        yaml_emits = _reader_yaml_emits("mage-placement-candidate")
+        self.assertEqual(module.CANDIDATE_EMITS, yaml_emits)
+        self.assertEqual(
+            module.CANDIDATE_EMITS[4:6],
+            ["mage_dropped_ordinary_count", "mage_dropped_ordinary_length_um"],
+        )
+
+        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out-emits.json", self.workspace)
+        self.assertEqual([v["type"] for v in values], module.CANDIDATE_EMITS)
+        ordinary_count = next(v for v in values if v["type"] == "mage_dropped_ordinary_count")
+        ordinary_length = next(v for v in values if v["type"] == "mage_dropped_ordinary_length_um")
+        total_count = next(v for v in values if v["type"] == "mage_dropped_count")
+        total_length = next(v for v in values if v["type"] == "mage_dropped_length_um")
+        # The synthetic fixture's one drop (KEY_V) has an empty inGroup --
+        # ordinary count/length equal the totals exactly.
+        self.assertEqual(ordinary_count["value"], total_count["value"])
+        self.assertEqual(ordinary_length["value"], total_length["value"])
+        self.assertEqual(ordinary_count["unit"], "count")
+        self.assertEqual(ordinary_length["unit"], "um")
 
     def test_tampered_pla_is_refused(self):
         doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))

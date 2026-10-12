@@ -11,6 +11,12 @@ values:
   mage_dropped_length_um:
     unit: um
     description: Total long-side length of every dropped structure in the candidate.
+  mage_dropped_ordinary_count:
+    unit: count
+    description: Count of dropped structures with an empty inGroup (not Group-placed); this is the half of mage_dropped_count the external benchmark's comparison objective scores against a baseline/reference method.
+  mage_dropped_ordinary_length_um:
+    unit: um
+    description: Total long-side length of the ordinary (non-Group) dropped structures; the external benchmark's comparison objective. Always <= mage_dropped_length_um.
   mage_target_distance_max_um:
     unit: um
     description: Maximum along-lane distance from a bound target's CT point to its placed Fit's box centre, over every bound target in the candidate.

@@ -114,6 +114,18 @@ class IncumbentIdentityTest(unittest.TestCase):
         self.assertNotIn("value", evaluation["comparison"]["Q2_targetDistanceDelta"])
         # Q1/Q3/Q4 are unaffected -- still real numbers.
         self.assertIn("value", evaluation["comparison"]["Q1_dropsDelta"])
+        # Q1's ordinary/grouped length split is reported for both sides;
+        # "best" here is a hand-built metrics dict with no ordinary/grouped
+        # keys (best-effort None), the incumbent is the real measured value.
+        self.assertIsNone(evaluation["comparison"]["Q1_ordinaryLengthUm"]["best"])
+        self.assertEqual(
+            evaluation["comparison"]["Q1_ordinaryLengthUm"]["incumbent"],
+            incumbent_value["metrics"]["drops"]["ordinary"]["lengthUm"],
+        )
+        self.assertEqual(
+            evaluation["comparison"]["Q1_groupedLengthUm"]["incumbent"],
+            incumbent_value["metrics"]["drops"]["grouped"]["lengthUm"],
+        )
 
 
 if __name__ == "__main__":

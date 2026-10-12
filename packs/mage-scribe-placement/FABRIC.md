@@ -56,6 +56,35 @@ Reader Job). Full detail is in `packs/mage-scribe-placement/TEST.md`'s L2 sectio
 The machine-local offline evaluation of the real P23 package (Task 11, run by the planning session
 outside this repository) is separate from this Fabric record and is not claimed here.
 
+## Task 14 — ordinary/grouped drops, reference method, native DBU export, Python 3.8 proof
+
+`metrics.drops` now splits its drop set into `ordinary` (empty `inGroup`) and `grouped`
+(non-empty `inGroup`, a priority mark); the two Readers' `tools/read-mage.py` and
+`readers/mage-placement-candidate.yml` emit `mage_dropped_ordinary_count`/
+`mage_dropped_ordinary_length_um` right after the existing `mage_dropped_count`/
+`mage_dropped_length_um`, documented in `semantics.yml`, `SPEC.md`, and
+`knowledge/state-and-evidence.md`'s new "Ordinary versus grouped drops" paragraph. The ordinary
+length is the comparison objective against any external baseline or the new optional manifest
+`referenceMethod` field (a digest-verified `fileRef`, reusing `_load_case`'s existing
+`_verify_file`/`MageError('identity-mismatch', ...)` path — one digest-mismatch error code for
+every manifest file, `referenceMethod` included); `evaluate_placement`'s Q1 comparison now reports
+`Q1_ordinaryLengthUm`/`Q1_groupedLengthUm` for both the best state and the incumbent alongside the
+existing `Q1_dropsDelta`.
+
+Mid-task, a verified reading of a real MAGE export on the Oct-12 build (the Site's own native
+baseline PLA) found the Pack's PLA reader could not read what `-saveMark` actually writes:
+`-savePlaDBU` is the saved PLA's own braced DBU-header line, not a second export command with a
+path of its own, and the DBU shape uses `-box` (not `-umBox`) with Group target points still in
+micrometres next to integer-DBU boxes. `flow/mage_placement/pla.py`, `flow/templates/export.tcl`,
+`flow/mage_placement/native/session.py`, and `flow/tests/standin_mage.py` were corrected to match
+(detail in `TEST.md`'s L1 section); this is a bug fix inside the Task 13 native-route surface, not
+a new architectural surface, so it stayed in this task rather than opening a new one.
+
+The whole suite (184 tests) was run both on this Mac's `/usr/bin/python3` (3.9.6) and, via
+`rsync` + `podman run ... edarunner:alma8`, on the Linglong resident container's own Python
+3.8.16 — both report `OK` with no skips. No model, no licensed MAGE binary, and no GUI ran
+anything recorded in this section.
+
 ## Reviews
 
 Per-task review is recorded in `.superpowers/sdd/task-8-report.md` and the planner's own per-task

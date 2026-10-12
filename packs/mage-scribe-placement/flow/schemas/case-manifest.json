@@ -30,6 +30,7 @@
     "requestOrder": {"$ref": "#/$defs/fileRef"},
     "startState": {"$ref": "#/$defs/fileRef"},
     "incumbentState": {"$ref": "#/$defs/fileRef"},
+    "referenceMethod": {"$ref": "#/$defs/fileRef"},
     "frameSizeUm": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
     "dbuPerUm": {"type": "integer", "minimum": 1},
     "partitionRule": {

@@ -51,6 +51,8 @@ _UNITS = {
     "mage_priority_unplaced_count": "count",
     "mage_dropped_count": "count",
     "mage_dropped_length_um": "um",
+    "mage_dropped_ordinary_count": "count",
+    "mage_dropped_ordinary_length_um": "um",
     "mage_target_distance_max_um": "um",
     "mage_target_over_limit_count": "count",
     "mage_order_deviation_max": "rank",
@@ -72,7 +74,8 @@ _NATIVE_TYPE_FACT = {
 
 CANDIDATE_EMITS = [
     "mage_candidate_error_count", "mage_priority_unplaced_count", "mage_dropped_count",
-    "mage_dropped_length_um", "mage_target_distance_max_um", "mage_target_over_limit_count",
+    "mage_dropped_length_um", "mage_dropped_ordinary_count", "mage_dropped_ordinary_length_um",
+    "mage_target_distance_max_um", "mage_target_over_limit_count",
     "mage_order_deviation_max",
 ] + list(_NATIVE_TYPE_FACT.values()) + ["mage_native_violation_total", "mage_open_request_count"]
 
@@ -191,6 +194,8 @@ def _read_candidate(report_path, workspace, mods):
     values.append(_known("mage_priority_unplaced_count", len(priority_unplaced)))
     values.append(_known("mage_dropped_count", drops["count"]))
     values.append(_known("mage_dropped_length_um", float(drops["lengthUm"])))
+    values.append(_known("mage_dropped_ordinary_count", drops["ordinary"]["count"]))
+    values.append(_known("mage_dropped_ordinary_length_um", float(drops["ordinary"]["lengthUm"])))
     values.append(_known("mage_target_distance_max_um", float(target["maxUm"])))
     values.append(_known("mage_target_over_limit_count", target["overLimitCount"]))
     values.append(_known("mage_order_deviation_max", order["max"]))

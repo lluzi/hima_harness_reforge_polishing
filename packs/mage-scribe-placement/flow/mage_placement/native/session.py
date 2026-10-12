@@ -329,7 +329,6 @@ class MageSession:
 
         result = {
             "exportPla": _existing(out_dir / "export.pla"),
-            "exportDbuPla": _existing(out_dir / "export-dbu.pla"),
             "verifyFiles": verify_files,
             "summary": _existing(out_dir / "summary.txt"),
             "stdout": str(stdout_path),

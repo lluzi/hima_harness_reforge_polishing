@@ -7,9 +7,18 @@ four tables are optional in a given file (a fresh `start.pla` has no drops
 yet); a missing table parses to an empty list.
 
 Coordinates are either plain micrometre decimals (the common case) or, when
-the file begins with an `smPInstMgr -savePlaDBU <n>` line, plain integer
+the file begins with an `smPInstMgr -savePlaDBU <n>` line (braced,
+`{<n>}`, on a real native export; bare `<n>` also accepted), plain integer
 DBU. `read_pla()` always returns integer DBU internally (`core.um_to_dbu`
 does the exact conversion); `write_pla()` can emit either representation.
+
+`pinstGroupProperty` (Group target points) are always micrometre decimals,
+even in a DBU-header file: confirmed against a real native DBU export on
+the Oct-12 build (`smPInstMgr -saveMark` with `-savePlaDBU {10000}`), whose
+`pinstGroupProperty` rows carry micrometre values (e.g. `30.000000
+11914.600000`) next to integer-DBU `fitinsts` boxes. `_read_groups` and
+`_emit_group_rows` therefore always use micrometre conversion regardless
+of the file's own `units`.
 
 `PlaDocument` (the dict shape returned by `read_pla` and accepted by
 `write_pla`):
@@ -53,6 +62,12 @@ FIXINSTS_FOREACH = (
     "}\n"
 )
 
+FIXINSTS_FOREACH_DBU = (
+    "foreach {inst id col row l b r t} $fixinsts {\n"
+    "\tsmPInstMgr -addInstFix -inst $inst -id $id -col $col -row $row -box ($l,$b,$r,$t) -plaCheckSize\n"
+    "}\n"
+)
+
 PINST_GROUP_FOREACH = (
     "foreach {groupItem pinstGroup targetPointLeft targetPointBottom vertSL} $pinstGroupProperty {\n"
     "\tsmPInstMgr -addGroup -pinstGroup $pinstGroup -groupItem $groupItem "
@@ -67,6 +82,13 @@ FITINSTS_FOREACH = (
     "}\n"
 )
 
+FITINSTS_FOREACH_DBU = (
+    "foreach {inst l b r t pinstFitExtraRot pf pinstFit inGroup} $fitinsts {\n"
+    '\tsmPInstMgr -addInstFit -inst $inst -box ($l,$b,$r,$t) -pinstFitExtraRot $pinstFitExtraRot '
+    '-postfix "$pf" -pinstFit $pinstFit -inGroup "$inGroup" -plaCheckSize\n'
+    "}\n"
+)
+
 DROP_FIT_INSTS_FOREACH = (
     "foreach {inst l b r t pinstFitExtraRot placed pf pinstFit inGroup} $dropFitInsts {\n"
     '\tsmPInstMgr -addDropInstFit -inst $inst -umBox ($l,$b,$r,$t) -pinstFitExtraRot $pinstFitExtraRot '
@@ -74,16 +96,29 @@ DROP_FIT_INSTS_FOREACH = (
     "}\n"
 )
 
+DROP_FIT_INSTS_FOREACH_DBU = (
+    "foreach {inst l b r t pinstFitExtraRot placed pf pinstFit inGroup} $dropFitInsts {\n"
+    '\tsmPInstMgr -addDropInstFit -inst $inst -box ($l,$b,$r,$t) -pinstFitExtraRot $pinstFitExtraRot '
+    '-placed $placed -postfix "$pf" -pinstFit $pinstFit -inGroup "$inGroup" -plaCheckSize\n'
+    "}\n"
+)
+
+
+def _strip_one_brace_pair(token):
+    if token.startswith("{") and token.endswith("}") and len(token) >= 2:
+        return token[1:-1]
+    return token
+
 
 def _detect_units(text, dbu_per_um):
     match = _SAVE_PLA_DBU_RE.search(text)
     if match is None:
         return "um"
-    token = match.group(1)
+    token = _strip_one_brace_pair(match.group(1))
     try:
         saved = int(token)
     except ValueError as exc:
-        raise core.MageError("units", f"non-integer -savePlaDBU value: {token!r}") from exc
+        raise core.MageError("units", f"non-integer -savePlaDBU value: {match.group(1)!r}") from exc
     if saved != dbu_per_um:
         raise core.MageError("units", f"-savePlaDBU {saved} does not match case dbuPerUm {dbu_per_um}")
     return "dbu"
@@ -143,6 +178,10 @@ def _read_fixed(text, units, dbu_per_um):
 
 
 def _read_groups(text, units, dbu_per_um):
+    # Group target points are always micrometre decimals, even inside a
+    # DBU-header (`units == "dbu"`) file -- confirmed against a real
+    # native DBU export, whose `pinstGroupProperty` rows stay in um next
+    # to integer-DBU `fitinsts` boxes. Never pass `units` through here.
     entries = []
     for tokens in _table_rows(text, "pinstGroupProperty"):
         if len(tokens) != 5:
@@ -154,8 +193,8 @@ def _read_groups(text, units, dbu_per_um):
             "groupItem": group_item,
             "pinstGroup": pinst_group,
             "targetPointDbu": [
-                _pos_value(left, units, dbu_per_um),
-                _pos_value(bottom, units, dbu_per_um),
+                _pos_value(left, "um", dbu_per_um),
+                _pos_value(bottom, "um", dbu_per_um),
             ],
             "vertSL": bool(int(vert_sl)),
         })
@@ -247,9 +286,11 @@ def _emit_fixed_rows(fixed, units, dbu_per_um):
 
 
 def _emit_group_rows(groups, units, dbu_per_um):
+    # Group target points are always written in micrometres, regardless
+    # of `units` -- see `_read_groups`'s docstring note.
     lines = []
     for entry in groups:
-        x, y = (_emit_value(v, units, dbu_per_um) for v in entry["targetPointDbu"])
+        x, y = (_emit_value(v, "um", dbu_per_um) for v in entry["targetPointDbu"])
         vert_sl = 1 if entry["vertSL"] else 0
         lines.append(f"\t{entry['groupItem']} {entry['pinstGroup']} {x} {y} {vert_sl}")
     return lines
@@ -285,18 +326,26 @@ def write_pla(doc, dbu_per_um, units="um"):
     Writes a header comment, then `fixinsts`, `pinstGroupProperty`,
     `fitinsts`, and `dropFitInsts` (the last only when non-empty), each
     immediately followed by its vendor `foreach` replay block. With
-    `units="dbu"` it also emits `smPInstMgr -savePlaDBU <dbu_per_um>` near
-    the top and writes integer DBU instead of micrometre decimals. The
-    result round-trips through `read_pla(..., dbu_per_um)` back to an
-    equivalent document regardless of `units`.
+    `units="dbu"` it also emits the real native shape confirmed on the
+    Oct-12 build: a braced `smPInstMgr -savePlaDBU {<dbu_per_um>}` header
+    near the top, integer-DBU boxes with `-box` (not `-umBox`) in the
+    `fixinsts`/`fitinsts`/`dropFitInsts` replay blocks, and Group target
+    points still in micrometres (`pinstGroupProperty`/`-targetPoint` is
+    unaffected by `units`). The result round-trips through
+    `read_pla(..., dbu_per_um)` back to an equivalent document regardless
+    of `units`.
     """
     parts = ["############# mage-scribe-placement generated PLA #############\n"]
     if units == "dbu":
-        parts.append(f"smPInstMgr -savePlaDBU {dbu_per_um}\n")
+        parts.append(f"smPInstMgr -savePlaDBU {{{dbu_per_um}}}\n")
+
+    fixinsts_foreach = FIXINSTS_FOREACH_DBU if units == "dbu" else FIXINSTS_FOREACH
+    fitinsts_foreach = FITINSTS_FOREACH_DBU if units == "dbu" else FITINSTS_FOREACH
+    drop_fit_insts_foreach = DROP_FIT_INSTS_FOREACH_DBU if units == "dbu" else DROP_FIT_INSTS_FOREACH
 
     parts.append("############# For placed fix instances #############\n")
     parts.append("set fixinsts {\n" + "\n".join(_emit_fixed_rows(doc["fixed"], units, dbu_per_um)) + "\n}\n")
-    parts.append(FIXINSTS_FOREACH)
+    parts.append(fixinsts_foreach)
 
     parts.append("############# For group instances #############\n")
     parts.append(
@@ -306,13 +355,13 @@ def write_pla(doc, dbu_per_um, units="um"):
 
     parts.append("############# For placed fit instances #############\n")
     parts.append("set fitinsts {\n" + "\n".join(_emit_fit_rows(doc["fits"], units, dbu_per_um)) + "\n}\n")
-    parts.append(FITINSTS_FOREACH)
+    parts.append(fitinsts_foreach)
 
     if doc["drops"]:
         parts.append("############# For dropped fit instances #############\n")
         parts.append(
             "set dropFitInsts {\n" + "\n".join(_emit_drop_rows(doc["drops"], units, dbu_per_um)) + "\n}\n"
         )
-        parts.append(DROP_FIT_INSTS_FOREACH)
+        parts.append(drop_fit_insts_foreach)
 
     return "\n".join(parts) + "\n"

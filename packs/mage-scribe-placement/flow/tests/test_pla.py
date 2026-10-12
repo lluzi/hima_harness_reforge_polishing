@@ -21,8 +21,38 @@ class PlaTest(unittest.TestCase):
     def test_dbu_header_switches_units(self):
         text = Path(self.case['files']['startState']).read_text()
         dbu = pla.write_pla(pla.read_pla(text, 10000), 10000, units='dbu')
-        self.assertIn('smPInstMgr -savePlaDBU 10000', dbu)
+        self.assertIn('smPInstMgr -savePlaDBU {10000}', dbu)
+        self.assertIn('-box (', dbu)
+        self.assertNotIn('-umBox (', dbu)
         self.assertEqual(pla.read_pla(dbu, 10000)['fits'], pla.read_pla(text, 10000)['fits'])
+        self.assertEqual(pla.read_pla(dbu, 10000)['groups'], pla.read_pla(text, 10000)['groups'])
+
+    def test_bare_save_pla_dbu_header_also_accepted(self):
+        self.assertEqual(pla._detect_units('smPInstMgr -savePlaDBU 10000\n', 10000), 'dbu')
+        self.assertEqual(pla._detect_units('smPInstMgr -savePlaDBU {10000}\n', 10000), 'dbu')
+
+    def test_mismatched_braced_save_pla_dbu_is_refused(self):
+        text = Path(self.case['files']['startState']).read_text()
+        braced = 'smPInstMgr -savePlaDBU {20000}\n' + text
+        with self.assertRaises(core.MageError) as ctx:
+            pla.read_pla(braced, 10000)
+        self.assertEqual(ctx.exception.code, 'units')
+
+    def test_real_native_dbu_shape_reads_to_the_same_snapshot_as_its_um_twin(self):
+        # The real shape confirmed on the Oct-12 build: braced header,
+        # -box (not -umBox) in the three foreach forms, integer-DBU
+        # boxes, and Group target points still in micrometres.
+        um_text = Path(self.case['files']['incumbentState']).read_text()
+        um_doc = pla.read_pla(um_text, 10000)
+        native_text = pla.write_pla(um_doc, 10000, units='dbu')
+        self.assertIn('smPInstMgr -savePlaDBU {10000}', native_text)
+        self.assertIn('-box (', native_text)
+        self.assertNotIn('-umBox (', native_text)
+        native_doc = pla.read_pla(native_text, 10000)
+        self.assertEqual(native_doc['fixed'], um_doc['fixed'])
+        self.assertEqual(native_doc['groups'], um_doc['groups'])
+        self.assertEqual(native_doc['fits'], um_doc['fits'])
+        self.assertEqual(native_doc['drops'], um_doc['drops'])
     def test_write_round_trips_including_drops(self):
         text = Path(self.case['files']['incumbentState']).read_text(); doc = pla.read_pla(text, 10000)
         again = pla.read_pla(pla.write_pla(doc, 10000), 10000)

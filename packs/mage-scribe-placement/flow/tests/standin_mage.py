@@ -19,6 +19,15 @@ Lines the fill and experiment stages add (`smPFlow -autoRefine`,
 `experiment.tcl`) have no effect here and must not stop the run — the
 stand-in simply ignores every line it does not recognise and still exits 0.
 
+The `-saveMark` export is written in the real native DBU shape confirmed
+on the Oct-12 build: the µm candidate PLA is parsed and re-written with
+`pla.write_pla(..., units="dbu")` -- a braced `-savePlaDBU {10000}`
+header, `-box` boxes, integer DBU, Group target points still in µm --
+exactly as the live route's own `-saveMark` behaves on that build.
+`-savePlaDBU` itself is not treated as a second export command (it is
+just a header line a saved PLA carries, not a path-taking command on this
+build).
+
 Env knobs:
 - `MAGE_STANDIN_ROWS` — JSON `{TYPE: ["row", ...]}`; the count of rows for a
   type becomes that check's reported instance count (and the rows are
@@ -48,7 +57,6 @@ from mage_placement import pla  # noqa: E402
 
 _SOURCE_RE = re.compile(r"(?m)^source\s+\{([^}]*)\}")
 _SAVE_MARK_RE = re.compile(r"smPInstMgr\s+-saveMark\s+\{([^}]*)\}")
-_SAVE_PLA_DBU_RE = re.compile(r"smPInstMgr\s+-savePlaDBU\s+\{([^}]*)\}")
 _VERIFY_FOREACH_RE = re.compile(
     r"foreach\s+\{mage_verify_type mage_verify_cmd\}\s+\{([^}]*)\}"
 )
@@ -91,14 +99,16 @@ def main(argv):
     for mark_match in _SAVE_MARK_RE.finditer(script_text):
         target = Path(mark_match.group(1))
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(source_text if source_text is not None else "", encoding="utf-8")
-
-    dbu_match = _SAVE_PLA_DBU_RE.search(script_text)
-    if dbu_match and source_text is not None:
-        target = Path(dbu_match.group(1))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        doc = pla.read_pla(source_text, DBU_PER_UM)
-        target.write_text(pla.write_pla(doc, DBU_PER_UM, units="dbu"), encoding="utf-8")
+        if source_text is not None:
+            # The real `-saveMark` behaviour on the Oct-12 build writes the
+            # native DBU shape (braced header, `-box`, integer DBU, Group
+            # target points still in µm) -- re-emit the sourced µm
+            # candidate that way so the candidate/Reader path exercises
+            # the DBU reader exactly as the live route will.
+            doc = pla.read_pla(source_text, DBU_PER_UM)
+            target.write_text(pla.write_pla(doc, DBU_PER_UM, units="dbu"), encoding="utf-8")
+        else:
+            target.write_text("", encoding="utf-8")
 
     rows_by_type = {}
     raw_rows = os.environ.get("MAGE_STANDIN_ROWS")

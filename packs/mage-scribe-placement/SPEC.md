@@ -15,7 +15,10 @@ compares against; it cannot change the round limit, which is fixed at `graph.yml
 The case manifest, rule file, target table, request order, and consumer models stay fixed for the
 whole Run; only the Engineer's candidate PLA changes between rounds, and even then every Group's own
 `targetPointDbu` is frozen input, never edited. `siteCapabilities` names the Site's MAGE executable
-and environment; only `engineer-place` holds the `mage: 1` licence `capacity.licences` declares.
+and environment; only `engineer-place` holds the `mage: 1` licence `capacity.licences` declares. The
+manifest's optional `referenceMethod` field (a `fileRef`, digest-verified like every other manifest
+file) names an external baseline/reference method's own script; it is read-only reference material
+the Engineer may consult for compaction knobs and is never replayed as a result.
 Units are integer DBU inside the Pack; µm only at the boundaries (vendor text, reports);
 `dbuPerUm` comes from the manifest (P23: 10000); the placement grid is 100 DBU (0.01 µm) unless the
 rule file says otherwise. Python is 3.9 standard-library only; no numeric, YAML, or JSON-Schema
@@ -67,6 +70,12 @@ mutating round logged under any role but `engineer`. The review Reader checks th
 the current candidate's snapshot sha, re-runs the evaluator under the declared consumer model
 version, and refuses any Finding whose fields the code does not reproduce. Either Reader rejects a
 mismatch; the rejection returns to the same resident Task as a repair message.
+
+The candidate Reader's recomputed drops split into `mage_dropped_ordinary_count`/
+`mage_dropped_ordinary_length_um` (empty `inGroup` — not Group-placed) alongside the existing
+`mage_dropped_count`/`mage_dropped_length_um` totals; the ordinary length is the comparison
+objective against any external baseline or `referenceMethod`, never the total (a dropped
+Group-placed/priority mark is already a `priority-all-placed` failure on its own).
 
 ## Judge rules
 

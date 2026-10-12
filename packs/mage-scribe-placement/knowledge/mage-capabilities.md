@@ -34,7 +34,7 @@ templates below (V) or it is not (D).
 | `replay-pla.tcl` | `source {@PLA@}` | replay a **complete** candidate PLA — this is the one way this Pack ever changes placement |
 | `fill-autorefine.tcl` | the converge lines (from the manifest), then `g_params -set {smPFlow::s_ARTestConvergePrplaced false}`, then `smPFlow -autoRefine` | the Pack's own fill stage (only when `--fill` is given) |
 | `verify-all.tcl` | a `foreach` over `OVERLAP frbCheckOverlap SPACE frbCheckSpace BOUNDARY frbCheckBoundary`, each run plain and with `-print`, bracketed by `MAGE_VERIFY_BEGIN`/`MAGE_VERIFY_CODE`/`MAGE_VERIFY_END` markers | run the three native checks and print their results to stdout |
-| `export.tcl` | `smPInstMgr -saveMark {@OUT@/export.pla}`; `catch {smPInstMgr -savePlaDBU {@OUT@/export-dbu.pla}}`; `smPFlow -saveSummary {@OUT@/summary.txt}`; `puts [list MAGE_ROUND_END code 0]` | export the placed PLA and a text summary, then print the completion marker |
+| `export.tcl` | `smPInstMgr -saveMark {@OUT@/export.pla}`; `smPFlow -saveSummary {@OUT@/summary.txt}`; `puts [list MAGE_ROUND_END code 0]` | export the placed PLA (the saved PLA is a DBU file with a braced `-savePlaDBU {10000}` header and µm Group target points) and a text summary, then print the completion marker |
 
 `mage-round --round <n> --pla <file> --role engineer --out-dir <dir> [--fill] [--experiment <file>]`
 runs these templates in order (open-build → replay-pla → experiment, if any → fill, if `--fill` →
@@ -133,6 +133,10 @@ Recorded pitfalls from the kit evidence:
 - **Stale results.** `MageSession.run_round` refuses with `MageError('round-exists', ...)` if
   `round_dir/round.tcl` already exists — each `--round N --out-dir <dir>` call needs a fresh
   directory. Always read the files the current `mage-round` call just wrote.
-- **`-savePlaDBU` is wrapped in `catch`.** It may not exist on every build; `export.tcl` tolerates
-  its absence. Do not treat a missing `export-dbu.pla` as a round failure by itself — check
-  `export.pla`, the three verify files and the completion marker first.
+- **`-savePlaDBU` is not an export command.** Confirmed against a real native export on the Oct-12
+  build: on this build `-savePlaDBU` is the DBU header line a saved PLA itself carries, not a
+  second command that exports to its own path. `export.tcl` therefore runs `-saveMark` only;
+  `export.pla` is itself the native DBU file whenever MAGE's own `-saveMark` behaviour on this
+  build writes DBU (a braced `smPInstMgr -savePlaDBU {10000}` header, integer-DBU boxes, and
+  `pinstGroupProperty` Group target points still in micrometres — `pla.read_pla` detects this
+  automatically). There is no separate `export-dbu.pla` and no `exportDbuPla` result key.

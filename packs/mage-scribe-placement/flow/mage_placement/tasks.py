@@ -39,7 +39,14 @@ def _verify_file(workspace, ref, label):
 
 def _load_case(manifest_path):
     """Verify every manifest file digest and parse the whole case into
-    `(manifest, dbu_per_um, frame, rule_facts, block_types, targets_bound, start_pla, start_text, incumbent_pla, incumbent_text)`."""
+    `(manifest, dbu_per_um, frame, rule_facts, block_types, targets_bound, start_pla, start_text, incumbent_pla, incumbent_text)`.
+
+    `referenceMethod` (optional) is a `fileRef` naming an external
+    baseline/reference method's own script -- verified by digest exactly
+    like `frb`/`rule`/etc when present, carried into the returned case
+    dict for `case-readiness` to expose, and never replayed as a result:
+    this Pack only records its identity, it never runs it.
+    """
     manifest = core.read_artifact(manifest_path, "case-manifest")
     dbu_per_um = manifest["dbuPerUm"]
 
@@ -47,6 +54,8 @@ def _load_case(manifest_path):
         _verify_file(Path(manifest_path).parent, manifest[key], key)
     for entry in manifest.get("clusterTcl", []):
         _verify_file(Path(manifest_path).parent, entry, "clusterTcl")
+    if manifest.get("referenceMethod") is not None:
+        _verify_file(Path(manifest_path).parent, manifest["referenceMethod"], "referenceMethod")
 
     rule_text = Path(manifest["rule"]["path"]).read_text(encoding="utf-8")
     pblock_text = Path(manifest["pblock"]["path"]).read_text(encoding="utf-8")
@@ -400,8 +409,20 @@ def evaluate_placement(workspace, inputs):
     else:
         q2 = _delta(["targetDistances", "overLimitCount"])
 
+    def _drop_length(metrics_dict, group):
+        try:
+            return metrics_dict["drops"][group]["lengthUm"]
+        except (KeyError, TypeError):
+            return None
+
     comparison = {
         "Q1_dropsDelta": _delta(["drops", "count"]),
+        "Q1_ordinaryLengthUm": {
+            "best": _drop_length(best_metrics, "ordinary"), "incumbent": _drop_length(incumbent_metrics, "ordinary"),
+        },
+        "Q1_groupedLengthUm": {
+            "best": _drop_length(best_metrics, "grouped"), "incumbent": _drop_length(incumbent_metrics, "grouped"),
+        },
         "Q2_targetDistanceDelta": q2,
         "Q3_orderDeviationDelta": _delta(["orderDeviation", "max"]),
         "Q4_displacementMovedDelta": _delta(["displacement", "movedCount"]),

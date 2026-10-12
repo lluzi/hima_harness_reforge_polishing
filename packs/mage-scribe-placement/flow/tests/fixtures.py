@@ -288,7 +288,7 @@ def _mage_block(mage_executable, auto_refine_converge):
     return block
 
 
-def make_case(root, mage_executable="", auto_refine_converge=None):
+def make_case(root, mage_executable="", auto_refine_converge=None, reference_method=None):
     """Write a synthetic 2x2-die MAGE case under `<root>/case/`.
 
     Returns `{'root', 'manifest', 'consumerContext', 'files': {...}}` with
@@ -298,6 +298,11 @@ def make_case(root, mage_executable="", auto_refine_converge=None):
     is stored under `manifest['mage']['autoRefineConverge']` (the fill
     stage's converge knob); the default `None` leaves it off entirely, so
     existing fixtures build the manifest shape unchanged.
+    `reference_method`, when given a true-ish value, writes a small Tcl
+    file under `<root>/case/reference-method.tcl` and names it (with its
+    digest) under the manifest's optional top-level `referenceMethod`
+    field; the default `None` leaves the field off entirely, so existing
+    fixtures build the manifest shape unchanged.
     """
     case_dir = Path(root) / "case"
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -314,28 +319,35 @@ def make_case(root, mage_executable="", auto_refine_converge=None):
     prj_path = _write(case_dir / "synthetic.prj", "# synthetic project placeholder\n")
     cluster_tcl_path = _write(case_dir / "cluster.tcl", "# synthetic cluster placeholder\n")
 
-    manifest = core.stamp(
-        "case-manifest",
-        {
-            "frb": _file_ref(frb_path),
-            "prj": _file_ref(prj_path),
-            "rule": _file_ref(rule_path),
-            "pblock": _file_ref(pblock_path),
-            "block": _file_ref(block_path),
-            "clusterTcl": [_file_ref(cluster_tcl_path)],
-            "targetTable": _file_ref(target_table_path),
-            "requestOrder": _file_ref(request_order_path),
-            "startState": _file_ref(start_state_path),
-            "incumbentState": _file_ref(incumbent_state_path),
-            "frameSizeUm": [FRAME_WIDTH_UM, FRAME_HEIGHT_UM],
-            "dbuPerUm": DBU_PER_UM,
-            "partitionRule": {"toleranceUm": "2"},
-            "groupPlaceCommandForm": (
-                "smPFlow -placeGroup -groupItem {g} -groupTargetPoint ({x},{y}) -groupPlaceType CT"
-            ),
-            "mage": _mage_block(mage_executable, auto_refine_converge),
-        },
-    )
+    reference_method_path = None
+    if reference_method:
+        reference_method_path = _write(
+            case_dir / "reference-method.tcl", "# synthetic reference-method placeholder\n"
+        )
+
+    manifest_body = {
+        "frb": _file_ref(frb_path),
+        "prj": _file_ref(prj_path),
+        "rule": _file_ref(rule_path),
+        "pblock": _file_ref(pblock_path),
+        "block": _file_ref(block_path),
+        "clusterTcl": [_file_ref(cluster_tcl_path)],
+        "targetTable": _file_ref(target_table_path),
+        "requestOrder": _file_ref(request_order_path),
+        "startState": _file_ref(start_state_path),
+        "incumbentState": _file_ref(incumbent_state_path),
+        "frameSizeUm": [FRAME_WIDTH_UM, FRAME_HEIGHT_UM],
+        "dbuPerUm": DBU_PER_UM,
+        "partitionRule": {"toleranceUm": "2"},
+        "groupPlaceCommandForm": (
+            "smPFlow -placeGroup -groupItem {g} -groupTargetPoint ({x},{y}) -groupPlaceType CT"
+        ),
+        "mage": _mage_block(mage_executable, auto_refine_converge),
+    }
+    if reference_method_path is not None:
+        manifest_body["referenceMethod"] = _file_ref(reference_method_path)
+
+    manifest = core.stamp("case-manifest", manifest_body)
     manifest_path = case_dir / "manifest.json"
     core.write_artifact(manifest_path, manifest)
 
@@ -371,6 +383,7 @@ def make_case(root, mage_executable="", auto_refine_converge=None):
             "incumbentState": str(incumbent_state_path),
             "manifest": str(manifest_path),
             "consumerContext": str(consumer_context_path),
+            **({"referenceMethod": str(reference_method_path)} if reference_method_path is not None else {}),
         },
     }
 

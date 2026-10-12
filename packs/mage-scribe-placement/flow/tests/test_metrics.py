@@ -64,6 +64,31 @@ class DropsTest(unittest.TestCase):
         self.assertEqual(d["ids"], ["KEY_V.KEY_V"])
         self.assertEqual(d["ruleShortfallCount"], 0)
 
+    def test_drops_split_ordinary_and_grouped(self):
+        # One grouped drop (inGroup "G1", long side 616 um) and two
+        # ordinary drops (empty inGroup, long side 5188 um each) -- the
+        # ordinary/grouped split the external benchmark scores on.
+        snap = {
+            "dbuPerUm": 10000,
+            "pending": [
+                {"id": "A.A", "base": "A", "sizeDbu": [6160000, 100], "blockType": "OVL",
+                 "ruleItem": "A", "inGroup": "G1", "placedFlag": 0},
+                {"id": "B.B", "base": "B", "sizeDbu": [51880000, 100], "blockType": "OVL",
+                 "ruleItem": "B", "inGroup": "", "placedFlag": 0},
+                {"id": "C.C", "base": "C", "sizeDbu": [51880000, 100], "blockType": "OVL",
+                 "ruleItem": "C", "inGroup": "", "placedFlag": 0},
+            ],
+        }
+        d = metrics.drops(snap)
+        self.assertEqual(d["count"], 3)
+        self.assertEqual(d["lengthUm"], "10992")
+        self.assertEqual(d["ordinary"]["count"], 2)
+        self.assertEqual(d["ordinary"]["lengthUm"], "10376")
+        self.assertEqual(d["ordinary"]["ids"], ["B.B", "C.C"])
+        self.assertEqual(d["grouped"]["count"], 1)
+        self.assertEqual(d["grouped"]["lengthUm"], "616")
+        self.assertEqual(d["grouped"]["ids"], ["A.A"])
+
     def test_drops_on_start_snapshot_are_rule_shortfalls_not_drops(self):
         # pending_from_rules=True on a start snapshot yields only synthetic
         # placedFlag=None pending copies (KEY_V x1, OVL_F x2 -- no drops

@@ -52,6 +52,18 @@ gap), or a native verify file the round did not produce, is `unknown` with a sta
 guessed value, never a silent `0`, never a default `pass`. `0` means "measured and found to be
 zero"; it is not interchangeable with "not measured."
 
+## Ordinary versus grouped drops
+
+`metrics.drops` splits every dropped pending entry into `ordinary` (empty `inGroup`) and `grouped`
+(non-empty `inGroup` — a Group-placed, priority mark). The two always sum to the plain `count`/
+`lengthUm` totals; the Reader emits both splits as `mage_dropped_ordinary_count`/
+`mage_dropped_ordinary_length_um` right alongside the existing `mage_dropped_count`/
+`mage_dropped_length_um`. The comparison objective against any external baseline or
+`referenceMethod` is **ordinary dropped length** — a dropped priority mark is a correctness problem
+on its own (`priority-all-placed` already fails the round for it) and must never be folded into, or
+used to inflate or deflate, the ordinary comparison. Report both lengths together with the total
+whenever you report drops at all; never report one without the others.
+
 ## Identity: the F8 class
 
 A mark's identity can be lost across stages even when nothing you did changed its geometry: the

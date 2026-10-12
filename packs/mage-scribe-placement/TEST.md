@@ -4,7 +4,43 @@
 
 `/usr/bin/python3 -m unittest discover -s flow/tests -t flow` (run from the Pack root)
 
-174 tests pass as of Task 13 (2026-10-12), covering: PLA parsing in µm and DBU with drops and
+184 tests pass as of Task 14 (2026-10-12): Python 3.9.6 (Mac, `/usr/bin/python3`) --
+
+```
+Ran 184 tests in 9.650s
+
+OK
+```
+
+-- and, confirming the same suite on the Linglong resident container's own interpreter (rsync to
+`luzi@192.168.50.41:/home/luzi/tmp/mage-pack-flow-check/`, then `podman run ... edarunner:alma8`
+per Task 14's brief), Python 3.8.16 (Linglong resident container) --
+
+```
+Python 3.8.16
+Ran 184 tests in 15.274s
+
+OK
+```
+
+-- with no Python-version-specific skips or `--pattern` narrowing on either side: both runs
+discover and execute the identical `flow/tests/` tree. (174 tests were recorded here as of Task 13;
+184 covers Task 13's own additions plus Task 14's ordinary/grouped drop split, `referenceMethod`,
+and the native-DBU-export correction below.)
+
+Task 14 also fixed a real export-shape bug surfaced mid-task by a verified reading of a real MAGE
+export on the Oct-12 build (the Site's native baseline PLA): `-savePlaDBU` is a DBU-header line a
+saved PLA itself carries, not a second export command with its own output path; `-saveMark`'s own
+DBU shape braces the header (`smPInstMgr -savePlaDBU {10000}`), uses `-box` (not `-umBox`) in the
+three replay `foreach` forms, and keeps `pinstGroupProperty` Group target points in micrometres
+even though the box coordinates are integer DBU. `flow/mage_placement/pla.py` (`_detect_units`,
+`_read_groups`, `write_pla`'s `units="dbu"` path), `flow/templates/export.tcl` (dropped the fake
+`-savePlaDBU {path}` catch), `flow/mage_placement/native/session.py` (dropped `exportDbuPla` from
+`run_round`'s result), and `flow/tests/standin_mage.py` (the stand-in's own `-saveMark` now emits
+the real DBU shape by round-tripping the µm candidate through `pla.read_pla`/`write_pla`) were all
+updated and are covered by `test_pla.py`'s new native-DBU-shape tests and
+`test_native_session.py`'s updated export assertion. Export shape verified against a real native
+export on 2026-10-12.
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values

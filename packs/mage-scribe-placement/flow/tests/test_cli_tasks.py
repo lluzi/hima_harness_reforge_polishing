@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
-from mage_placement import core, pla  # noqa: E402
+from mage_placement import core, pla, tasks  # noqa: E402
 
 from tests import fixtures  # noqa: E402
 
@@ -60,6 +60,57 @@ def _resident_output(values, outcome="completed", summary="", stop_reason=""):
         "observations": [{"contentSha256": values["_contentSha256"], "values": values["values"]}],
         "engineering": {"outcome": outcome, "summary": summary, "stopReason": stop_reason},
     }
+
+
+class ReferenceMethodTest(unittest.TestCase):
+    """`_load_case`'s handling of the optional manifest `referenceMethod`
+    field (Task 14): present and byte-correct, it validates and loads
+    silently (exercised indirectly by `prepare_case` succeeding); a wrong
+    sha256 is refused exactly like any other manifest file reference,
+    reusing `_verify_file`'s own `MageError('identity-mismatch', ...)` --
+    this Pack has one digest-mismatch error code for every manifest file,
+    `referenceMethod` included, not a second one."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.workspace = self.root / "workspace"
+        self.workspace.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _goal(self):
+        return {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 1}
+
+    def test_reference_method_validates_and_loads(self):
+        case = fixtures.make_case(self.root, reference_method=True)
+        site_caps = fixtures.make_site_capabilities(self.root, "")
+        result = tasks.prepare_case(self.workspace, {
+            "MAGE_CASE_MANIFEST": case["files"]["manifest"], "CONSUMER_CONTEXT": case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": site_caps, **self._goal(),
+        })
+        readiness = core.read_artifact(self.workspace / "state" / "case-readiness.json", "case-readiness")
+        self.assertIn("referenceMethod", readiness["manifest"])
+        self.assertEqual(readiness["manifest"]["referenceMethod"]["path"], case["files"]["referenceMethod"])
+        self.assertIn("readinessId", result["value"])
+
+    def test_reference_method_wrong_sha_is_refused(self):
+        case = fixtures.make_case(self.root, reference_method=True)
+        site_caps = fixtures.make_site_capabilities(self.root, "")
+        manifest_path = Path(case["files"]["manifest"])
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["referenceMethod"]["sha256"] = "0" * 64
+        manifest["id"] = core.digest({k: v for k, v in manifest.items() if k != "id"})
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaises(core.MageError) as ctx:
+            tasks.prepare_case(self.workspace, {
+                "MAGE_CASE_MANIFEST": case["files"]["manifest"],
+                "CONSUMER_CONTEXT": case["files"]["consumerContext"],
+                "SITE_CAPABILITIES": site_caps, **self._goal(),
+            })
+        self.assertEqual(ctx.exception.code, "identity-mismatch")
 
 
 class CliRouteTest(unittest.TestCase):

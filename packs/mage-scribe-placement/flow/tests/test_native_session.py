@@ -65,8 +65,11 @@ class MageSessionTest(unittest.TestCase):
         self.assertEqual(len(result["verifyFiles"]), len(session.NATIVE_TYPES))
         self.assertTrue(Path(result["summary"]).exists())
 
-        doc = pla.read_pla(Path(result["exportDbuPla"]).read_text(encoding="utf-8"), 10000)
+        # The real native build's own `-saveMark` writes the DBU shape
+        # directly -- `export.pla` itself, not a separate exportDbuPla.
+        doc = pla.read_pla(Path(result["exportPla"]).read_text(encoding="utf-8"), 10000)
         self.assertEqual(doc["units"], "dbu")
+        self.assertNotIn("exportDbuPla", result)
 
         log = self._read_log()
         self.assertEqual(len(log), 1)

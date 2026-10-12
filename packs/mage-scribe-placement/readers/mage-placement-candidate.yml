@@ -8,6 +8,8 @@ emits:
   - mage_priority_unplaced_count
   - mage_dropped_count
   - mage_dropped_length_um
+  - mage_dropped_ordinary_count
+  - mage_dropped_ordinary_length_um
   - mage_target_distance_max_um
   - mage_target_over_limit_count
   - mage_order_deviation_max

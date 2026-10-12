@@ -89,13 +89,37 @@ def _signed_half_um(doubled_dbu, dbu_per_um):
     return f"-{magnitude}" if doubled_dbu < 0 and magnitude != "0" else magnitude
 
 
+def _drop_class(items, dbu_per_um):
+    total_length_dbu = 0
+    ids = []
+    for item in items:
+        total_length_dbu += max(item["sizeDbu"])
+        ids.append(item["id"])
+    return {
+        "count": len(items),
+        "lengthUm": core.dbu_to_um(total_length_dbu, dbu_per_um),
+        "ids": ids,
+    }
+
+
 def drops(snapshot):
-    """`{'count', 'lengthUm', 'byBlockType', 'ids', 'ruleShortfallCount'}`.
+    """`{'count', 'lengthUm', 'byBlockType', 'ids', 'ruleShortfallCount',
+    'ordinary', 'grouped'}`.
 
     `count`/`lengthUm`/`byBlockType`/`ids` cover `pending` entries whose
     `placedFlag` is not `None` (actual PLA drops, in snapshot order).
     `ruleShortfallCount` is the count of rule-derived synthetic pending
     copies (`placedFlag: None`) — never added to `count`.
+
+    `ordinary` and `grouped` split that same drop set by `inGroup`: a
+    dropped pending entry with a non-empty `inGroup` is a Group-placed
+    (priority) mark and counts as `grouped`; an empty `inGroup` (the
+    common case) counts as `ordinary`. `ordinary.count + grouped.count
+    == count` and likewise for `lengthUm`, always. The external
+    benchmark's comparison objective against any baseline/reference
+    method is ordinary dropped length — a priority mark being dropped is
+    already reported separately (`priority-all-placed`) and is never
+    folded into the ordinary comparison.
     """
     dbu_per_um = snapshot["dbuPerUm"]
     dropped = [p for p in snapshot["pending"] if p.get("placedFlag") is not None]
@@ -110,12 +134,17 @@ def drops(snapshot):
         total_length_dbu += max(item["sizeDbu"])
         ids.append(item["id"])
 
+    ordinary_items = [p for p in dropped if not p.get("inGroup")]
+    grouped_items = [p for p in dropped if p.get("inGroup")]
+
     return {
         "count": len(dropped),
         "lengthUm": core.dbu_to_um(total_length_dbu, dbu_per_um),
         "byBlockType": by_block_type,
         "ids": ids,
         "ruleShortfallCount": len(shortfalls),
+        "ordinary": _drop_class(ordinary_items, dbu_per_um),
+        "grouped": _drop_class(grouped_items, dbu_per_um),
     }
 
 
