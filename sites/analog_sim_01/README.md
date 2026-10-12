@@ -46,3 +46,24 @@ Checked on the EDA server (2026-10-12): an NMOS and a PMOS at 0.6 V give the sam
 Spectre 23.1 on the converted deck and in ngspice 46 on IHP's OSDI deck (18.36885 uA, 12.75485 uA);
 a two-stage OTA at three corners gives the same worst corner in both (62.8 dB, 14.79 MHz, 70.94 deg,
 144.94 uW). SKY130's decks do not read in Spectre (brace expressions).
+
+## Layout (probe, `layout/`)
+
+`layout/run_layout.sh <design.json> <out> <flow dir> <pdkRoot> <spectre wrapper>` turns a sized
+`gf180mcuD` OTA design into a layout and checks it after layout. It runs about 33 s end to end.
+
+1. **Layout:** `ota_layout.py` in the tool image draws each device at an exact W/L. It writes
+   `ota.gds` and `ota.mag`.
+2. **DRC:** both Magic and KLayout `gf180mcu.drc` (variant D) report 0. Only the die-level density
+   rules fire, because they need fill.
+3. **LVS:** netgen with `gf180mcuD_setup.tcl` reports "Circuits match uniquely" against the
+   Pack's nets and sizes. A width 2 % off is caught.
+4. **PEX:** Magic writes a C-only and an R+C netlist. `ota_postlayout.py` simulates both in
+   Spectre with the Pack's own testbench and arithmetic.
+5. **Picture:** a KLayout render.
+
+Checked 2026-10-12 on the first-cut GF180 OTA: at tt, 92.25 dB / 11.17 MHz / 63.6 deg before
+layout and 92.54 dB / 10.93 MHz / 60.95 deg with R+C extracted. At ff the post-layout phase
+margin is 57.5 deg, below the 60 deg line. The layout uses two rows and a routing channel, with
+no common centroid or dummies. Magic extracts the GF180 PNPs under the wrong device name, so a
+bandgap needs KLayout LVS for the BJTs.
