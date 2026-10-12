@@ -4,7 +4,7 @@
 block, target table, request order, start/incumbent PLA states, manifest and
 consumer context) under `<root>/case/`. No customer data: every name,
 dimension and coordinate here is invented for this fixture. It mirrors the
-vendor file *shapes* seen in the read-only P23 reference material (command
+vendor file *shapes* seen in the read-only frame-case reference material (command
 forms only — never data), so the Pack's readers/writers get exercised
 against genuinely vendor-shaped text without ever embedding real values.
 

@@ -20,7 +20,7 @@ manifest's optional `referenceMethod` field (a `fileRef`, digest-verified like e
 file) names an external baseline/reference method's own script; it is read-only reference material
 the Engineer may consult for compaction knobs and is never replayed as a result.
 Units are integer DBU inside the Pack; µm only at the boundaries (vendor text, reports);
-`dbuPerUm` comes from the manifest (P23: 10000); the placement grid is 100 DBU (0.01 µm) unless the
+`dbuPerUm` comes from the manifest (the frame case: 10000); the placement grid is 100 DBU (0.01 µm) unless the
 rule file says otherwise. Python is 3.9 standard-library only; no numeric, YAML, or JSON-Schema
 dependency ships in `flow/`.
 

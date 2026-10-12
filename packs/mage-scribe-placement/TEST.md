@@ -163,8 +163,8 @@ reason `site-capacity` and the whole repeat stalls on round 1 forever (confirmed
 
 ## L1 machine-local — not run from this repository
 
-The real P23 package evaluation (start/incumbent snapshot reproduction, the 225/225 target binding,
-60-beyond-100µm and 19-drop counts, the two-slot V-lane planner result) is Task 11's work, run by
+The real frame-case package evaluation (start/incumbent snapshot reproduction, full target binding,
+the beyond-limit and drop counts, the two-slot V-lane planner result) is Task 11's work, run by
 the planning session under
 `/Users/lluzi/code/mage_smart_conflict_resolver/research/mage-resident-agent-20261012/pack-eval/`,
 outside this repository. No customer data and no result from that evaluation appear here.

@@ -10,7 +10,7 @@ contract — that is a later version's decision, not something a resident agent 
 
 ## Why it is disabled
 
-The reference case (P23) carries no partner-wafer data, so bonding mirror-pair consistency cannot
+The reference frame case carries no partner-wafer data, so bonding mirror-pair consistency cannot
 be evaluated: the consumer model `flow/consumer_models/bonding.json` declares `"enabled": false`,
 and `consumers.evaluate()` would run it exactly like any other model if a caller ever handed it in
 — nothing in the predicate code itself refuses a disabled model. What is missing is partner-wafer

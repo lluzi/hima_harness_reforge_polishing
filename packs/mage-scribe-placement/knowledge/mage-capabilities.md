@@ -112,7 +112,7 @@ Recorded pitfalls from the kit evidence:
   records still look intact.
 - **A naive PLA replay can restore Fits without Group association.** Replaying a PLA may put the Fit
   boxes back but leave them unbound to their Groups; check the binding, do not assume replay restored it.
-- **The compaction failed on `SCRIBE_LEFT`/`SCRIBE_V_2` on this build.** That is a failed native
+- **The compaction failed on `SCRIBE_H_0`/`SCRIBE_V_1` on this build.** That is a failed native
   *strategy* on those marks for this build, not proof the placement is infeasible — say so, and do
   not report a failed strategy as native infeasibility.
 - **DBU vs µm.** The native files are MAGE's own units (µm in saved PLAs); the snapshot is DBU. Never

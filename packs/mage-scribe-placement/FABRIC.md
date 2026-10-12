@@ -53,7 +53,7 @@ task's retained Job holds its slot until collecting its own result launches a se
 Reader Job). Full detail is in `packs/mage-scribe-placement/TEST.md`'s L2 section and
 `.superpowers/sdd/task-10-report.md`.
 
-The machine-local offline evaluation of the real P23 package (Task 11, run by the planning session
+The machine-local offline evaluation of the real frame-case package (Task 11, run by the planning session
 outside this repository) is separate from this Fabric record and is not claimed here.
 
 ## Task 14 — ordinary/grouped drops, reference method, native DBU export, Python 3.8 proof

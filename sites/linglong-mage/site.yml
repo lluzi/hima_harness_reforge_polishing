@@ -3,9 +3,9 @@ kind: ssh
 workspaceRoot: /data/eda/project/hima_harness/mage-runs
 permit: ./permit.yml
 bindings:
-  mageCaseManifest: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/manifest.json
-  consumerContext: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/consumer-context.json
-  siteCapabilities: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/site-capabilities.json
+  mageCaseManifest: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/manifest.json
+  consumerContext: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/consumer-context.json
+  siteCapabilities: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/site-capabilities.json
   engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json
   workspaceRoot: /data/eda/project/hima_harness/mage-runs
 ssh:

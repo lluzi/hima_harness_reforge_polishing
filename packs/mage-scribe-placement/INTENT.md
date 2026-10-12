@@ -7,8 +7,8 @@ marks) must be placed in the scribe lanes of a reticle Frame. No single document
 downstream engineer's unwritten requirement ("keep my marks where my recipe expects them", "put
 every key somewhere, in one straight row", "do not empty a field corner"), and these requirements
 conflict over a few lanes of 60 µm. Today the customer runs a vendor script flow and accepts whatever
-MAGE Auto Refine drops; on the reference case (P23) that is 19 dropped structures and 60 to 64
-priority marks more than 100 µm from their target.
+MAGE Auto Refine drops; on the reference frame case the vendor flow drops structures and leaves
+some priority marks beyond their target distance limit.
 
 This Pack gives several agents the roles a human placement team already plays: one MAGE Engineer
 operates MAGE each round; four consumer agents (Litho/PIE, Overlay & CD metrology, Scanner
@@ -62,7 +62,7 @@ are not engineering victory conditions.
   `mage-frb <script> -noterm` invocation per round; this is the verified shape (replaying a complete
   PLA). A long-lived queue-fed session is an S2 optimisation, not qualified here.
 - **No customer data in this repository.** Every fixture under `flow/tests/` is synthetic. The real
-  P23 package is evaluated only machine-locally
+  frame-case package is evaluated only machine-locally
   (`/Users/lluzi/code/mage_smart_conflict_resolver/research/mage-resident-agent-20261012/pack-eval/`),
   outside this repo, by the planning session (Task 11), not by this Task.
 

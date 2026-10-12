@@ -34,7 +34,7 @@ of the file's own `units`.
 
 For `fits`/`drops`, the vendor `inst` field is usually `"<base>.<base>"` but
 not always: Auto-Refine-placed instances can carry a suffixed `inst` token
-(confirmed against the P23 reference material, where a meaningful fraction
+(confirmed against the frame-case reference material, where a meaningful fraction
 of `fitinsts` rows in a post-refine PLA have an `inst` that is not simply
 `base` repeated around the dot). `inst` is therefore stored verbatim
 alongside `base` (the part before the first `.`) and written back out

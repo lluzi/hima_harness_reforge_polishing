@@ -1064,8 +1064,8 @@ Spacing overlap found!
 1 spacing overlapped instance(s)
 Inst                                            NumOLap  Dist X     Dist Y    Pos  SpaceOLap
 ----------------------------------------------  -------  ---------  --------  ---  -------------
-P_BEVG_location15_PEP.P_BEVG_location15_PEP_BR  2        10.000000  0.000000       (25497.2,140)
---MCHIP_0_0                                                                        (25557.2,60)
+MARK_A.MARK_A_1                                 2        10.000000  0.000000       (1000.0,140)
+--MCHIP_0_0                                                                        (1060.0,60)
 ```
 
 `instances` is the integer from the first stdout line in the slice matching `^(\d+) .* instance\(s\)$`.

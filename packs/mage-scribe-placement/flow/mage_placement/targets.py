@@ -1,5 +1,5 @@
-"""Reader/binder for the customer target table (`LayoutTarget_in.csv`-shaped
-CSV) and the generated request order (`group_*_load.t`-shaped Tcl).
+"""Reader/binder for the customer target CSV and the generated request
+order (`group_*_load.t`-shaped Tcl).
 
 CT conversion. The customer's placement-request generator emits
 `smPFlow -placeGroup -groupItem G -groupTargetPoint (x,y) -groupPlaceType CT`
@@ -9,7 +9,7 @@ frame-absolute). `read_targets` performs that same conversion into
 the whole computation stays exact integer arithmetic.
 
 Partition. `split_csv` (the customer's own `run.tcl` procedure, confirmed
-against the read-only P23 reference material) is: `abs(y - ymax) <= tol or
+against the read-only frame-case reference material) is: `abs(y - ymax) <= tol or
 abs(y - ymin) <= tol -> TB`; otherwise `abs(x - xmax) <= tol or
 abs(x - xmin) <= tol -> LR`; otherwise `IN`. `ymin`/`ymax`/`xmin`/`xmax`
 are the min/max `LOC Y`/`LOC X` over the whole table; `tol` is
