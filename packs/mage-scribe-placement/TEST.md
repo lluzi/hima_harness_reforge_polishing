@@ -31,75 +31,71 @@ licences, the Goal/strategy knobs, the absence of `agentTeams`/Workshops — and
 synthetic local Site declaring `licences: {mage: 1}`, confirming Reader argv and emitted facts line
 up with the rules' own `requires`.
 
-## L2 dry route — BLOCKED on a real resident/Campaign path mismatch
+## L2 dry route — passes on the real Host
+
+`export HIMA_POSTGRES_RUNTIME=.../.hima-tmp/dbos-migration/u2/runtime-final CI=true
+PATH="$HOME/.local/node24/bin:$PATH"; pnpm run build && node scripts/run-contract-tests.mjs
+atcs-dry --files test/contract/mage-scribe-placement-durable.host.test.ts`
 
 Task 10 built `test/fixtures/mage-resident-dry/{prepare.py,acp.py}` (an ACP v1 stand-in Engineer
 and the four stand-in consumers, driving the real, deployed `mage_placement_cli.py` through the
 exact `snapshot`/`mage-round`/`candidate` and `evaluate`/`review` sequences
-`flow/tests/test_cli_tasks.py` already proves) and, before wiring the TypeScript Host worker,
-reproduced the whole resident round loop in Python against a real two-workspace layout (a private
-resident workspace separate from the Campaign workspace, exactly as the real Harness separates
-them, instead of `test_cli_tasks.py`'s single shared workspace) — program tasks run against the
-Campaign workspace; the Engineer's and each consumer's resident CLI calls run against their own
-private workspace, with `state/case-readiness.json`, `state/start-snapshot.json`,
-`state/incumbent.json`, `state/round-decision.json` and `state/round/placement-candidate.json`
-copied in from the Campaign per round (mirroring exactly what `task.inputs` gives a real resident
-task), and every `placement/round-NN/...` support file materialized back into the Campaign workspace
-at the same relative path (mirroring `materializeEngineeringResult`'s own join of
-`identity.workspace` + `artifact.path`).
+`flow/tests/test_cli_tasks.py` already proves) and `test/contract/support/mage-resident-durable-
+worker.ts` / `test/contract/mage-scribe-placement-durable.host.test.ts` (registered under
+`test/contract-groups.json`'s `atcs-dry` group), booting the real Host in-process against a
+genuine private-resident-workspace-vs-Campaign-workspace layout (never the Pack-local test's
+single shared workspace): `sandbox.kind: none, testOnly: true`, `HIMA_RESIDENT_TESTING=1`, the real
+`sites/linglong-atcs28/templates/resident-engineering-wrapper.py`, the real
+`tools/read-mage.py`/`readers/*.yml` Readers, zero model calls, zero commercial EDA.
 
-Both scripted round sequences (`converge`: round 1 OVL_B 150µm off target and KEY_V dropped, hard
-fails on both, round 2 corrects both, `route: stop` / `"no consumer hard failure and no open
-request"` at round 2 — 16 task executions, matching the brief's prediction exactly; `conflict`: KEY_V
-stays dropped every round, litho-pie's hard fail clears in round 2 then it files a `keep` Request
-conflicting with WAT's standing `place` Request, `route: stop` / `"no improvement for two
-consecutive rounds"` at round 4 — 28 executions, not the 22/3-round number the brief predicted; the
-Pack's own proven `decide()` math needs round 2's genuine hard-fail-count improvement and round 3's
-non-improvement before round 4's second non-improvement triggers the stop rule, exactly as
-`flow/tests/test_cli_tasks.py:test_no_improvement_for_two_rounds_stops_with_a_decision_request`
-already establishes for this identical request/ledger pattern) ran their expected rounds and routed
-correctly. But **every** round's `placement-candidate` Reader (`tools/read-mage.py`) fails with
-`mage_candidate_error_count: 1` and every other declared fact `unknown`, reason:
+Both scripted scenarios ran their full round sequence and committed through evaluation and
+delivery:
 
-```
-FileNotFoundError: [Errno 2] No such file or directory:
-'<campaign>/state/session.jsonl'
-```
+- **converge** (`run-5f02ee49...`): round 1 continues (`openRequestCount: 2`), round 2 stops —
+  `"no consumer hard failure and no open request"`. 16 task executions (`2 + 2×6 + 2`), 10
+  `engineering-*` Jobs and 10 `reader-mage-*` Jobs launched (one of each per resident task
+  execution), `productModelCalls: 0`, `goalState: "met"`, `deliver.value.goalMet === true`, all
+  seven delivery rules PASS, `openRequests: 0`.
+- **conflict** (`run-8653bd2f...`): KEY_V never gets placed; WAT keeps filing a `place` Request on
+  it, litho-pie's own hard fail clears in round 2 (a genuine improvement) then it files a `keep`
+  Request on the very same target from round 2 on — a real cross-consumer conflict every round
+  after. Round 2 continues (improved), round 3 continues (no change from round 2, not improved
+  alone), round 4 stops — `"no improvement for two consecutive rounds"` (round 3 and round 4 both
+  not improved). 28 task executions (`2 + 4×6 + 2`), 20 `engineering-*` and 20 `reader-mage-*` Jobs,
+  `productModelCalls: 0`, `goalState: "not-met"`, `goalMet: false`, `drops-within-goal` is the one
+  FAILing rule (every other rule PASSes), `openRequests: 2`, `decisionRequests: 1`. This is the
+  Pack's own proven `decide()` math for this exact request/ledger shape (matching
+  `flow/tests/test_cli_tasks.py:test_no_improvement_for_two_rounds_stops_with_a_decision_request`'s
+  4-round result), not the 3-round/22-execution number this section originally predicted before
+  anyone had actually run it.
 
-Root cause: `mage_placement_cli.py:_cmd_mage_round` writes the MAGE session JSONL log at a fixed,
-cumulative, non-round-scoped path, `<WORKSPACE>/state/session.jsonl` (`log_path = Path(workspace) /
-"state" / "session.jsonl"`), and `_cmd_candidate` records that exact path as
-`files.sessionLog.path` (a literal `"state/session.jsonl"`, not `round_dir`-relative) inside the
-published `placement-candidate` document. The Reader (`_check_session_log`) resolves that path
-against the Campaign workspace — correctly, per its own module docstring ("this script is shipped
-... into the Campaign workspace's `hima-readers/<reader-id>/` directory"). But the resident
-delivery mechanism (`engineering-executor.ts:materializeEngineeringResult`) only ever copies a
-support artifact into the Campaign workspace when its path starts with the tool's own
-`artifactPrefix` (`placement/` for `engineer-place`) — `collect_delivery` in
-`resident-engineering-wrapper.py` validates every delivered artifact path against the *private*
-resident workspace, and the wrapper's own schema requires exactly one `result` artifact and rejects
-any other kind outside that prefix. `state/session.jsonl` can never satisfy that prefix check (it
-is not under `placement/`), so it can never be delivered, and the Campaign workspace never receives
-it — only the round's own private workspace does. `flow/tests/test_cli_tasks.py` never catches
-this because it drives every program task and every resident subcommand against one shared
-workspace, where no such copy step exists at all.
+Getting here surfaced two real integration gaps the Pack-local single-workspace test could not
+have caught, both now fixed:
 
-This is a genuine Pack/Harness contract mismatch between the one-writer `MageSession` log design
-(assumed one shared workspace per the Pack-local test) and the real two-workspace resident
-architecture (private resident workspace vs. Campaign workspace, artifactPrefix-scoped delivery)
-that only running the actual two-workspace shape — not the Pack-local test's single shared one —
-surfaces. Per Task 10's own dispatch resolution, this is **not** worked around by weakening the
-Pack (e.g. silently dropping the `sessionLog` check, or fabricating the file): the TypeScript Host
-worker and `test/contract/mage-scribe-placement-durable.host.test.ts` were therefore **not**
-written, since they would hit this identical, deterministic failure on round 1 of either scenario
-(the flow itself does not halt — `decide_round` does not require clean Reader values — but
-`evaluate_placement`'s `placement-delivery-ready` rule FAILs and every drops/target/order/native
-rule reads UNKNOWN, so `goalMet` can never legitimately reach `true`, contradicting this milestone's
-own point). Full reproduction, the exact simulation script, and the controller's options are in
-`.superpowers/sdd/task-10-report.md`. **BLOCKED — the controller decides** whether to scope the
-session-log path under the Engineer's own round prefix (a Pack fix, likely
-`placement/round-NN/session.jsonl` instead of the cumulative `state/session.jsonl`, in a follow-up
-task) before Task 10's TypeScript Host worker is written.
+1. **Session-log delivery path** (fixed in `89c17979`): `mage-round`/`candidate` now write/record
+   the MAGE session log at `placement/round-NN/session.jsonl` (inside the Engineer's own
+   `artifactPrefix`) instead of a cumulative `state/session.jsonl` the resident delivery mechanism
+   could never actually publish into the Campaign workspace — the `placement-candidate` Reader
+   failed every round with `mage_candidate_error_count: 1` until this landed. (This Pack change
+   also needed `chmod +x` on the stand-in ACP/`prepare.py` scripts — the wrapper execs
+   `native.executable` directly, and without the bit the ACP process never started, with no
+   diagnostic beyond the task sitting `"waiting"` forever.)
+2. **`decisionRequests` dropped from the committed decide-round output** (fixed in `b6f40829`):
+   `task-decide-round`'s own `TASK_OUTPUT` value carried `decisionRequestCount` (a number) but not
+   the actual `decisionRequests` list; `evaluate_placement` reads `decision.get("decisionRequests",
+   [])` from that same committed value (never the on-disk `state/round-decision.json`), so it
+   always silently defaulted to empty — the delivered report never carried a real Decision Request
+   even when one was genuinely open. `test_cli_tasks.py`'s own conflict test never asserted
+   `evaluation["decisionRequests"]`, only `goalMet`/`rules`; this dry route's own
+   `decisionRequests.length >= 1` assertion on the conflict scenario is what caught it. Full
+   diagnosis of both gaps is in `.superpowers/sdd/task-10-report.md`.
+
+Also needed: Site `capacity.parallelJobs: 2`, not 1 (the dispatch's own first guess) — each
+resident task's retained engineering Job holds one job slot until its own `release()` runs right
+after its result is collected, but collecting that result launches a second, concurrent Job (its
+own Reader); with `parallelJobs: 1` every resident task after the first permanently refuses with
+reason `site-capacity` and the whole repeat stalls on round 1 forever (confirmed by inspecting
+`task.projection.reason` on a live, unmolested run before raising it to 2).
 
 ## L1 machine-local — not run from this repository
 

@@ -31,24 +31,22 @@ fixture is synthetic. `knowledge/mage-capabilities.md` separates the V-status te
 run, here and on the real Oct-12 build replaying `pre_place_all.pla`) from the D-status commands
 (documented in the vendor manual, never run against a real design in this session).
 
-The Host-level **L2 dry route** is Task 10's work. Task 10 built the stand-in ACP residents
-(`test/fixtures/mage-resident-dry/{prepare.py,acp.py}`) and, before wiring the TypeScript Host
-worker, reproduced the real two-workspace resident shape (private resident workspace vs. Campaign
-workspace, `artifactPrefix`-scoped delivery) in Python and found a genuine Pack/Harness contract
-mismatch: `mage_placement_cli.py`'s `mage-round`/`candidate` subcommands record the MAGE session
-log at a fixed, cumulative `state/session.jsonl` path that is never under the Engineer's own
-`placement/` `artifactPrefix`, so the resident delivery mechanism can never copy it into the
-Campaign workspace, and the `placement-candidate` Reader (which resolves `files.sessionLog` against
-the Campaign workspace, correctly per its own contract) fails every round with
-`mage_candidate_error_count: 1`. `flow/tests/test_cli_tasks.py` never catches this because it
-drives every program task and every resident subcommand against one shared workspace, where the
-Campaign/private-workspace split (and the copy step between them) does not exist at all. Task 10's
-TypeScript Host worker and `test/contract/mage-scribe-placement-durable.host.test.ts` were not
-written as a result — see `packs/mage-scribe-placement/TEST.md`'s L2 section and
-`.superpowers/sdd/task-10-report.md` for the full reproduction. This Pack's only Host-level evidence
-remains the L0/L2 contract test below (`loadPack`/`checkPack` against a synthetic local Site) — it
-proves the Pack is well-formed and checks cleanly, not that a Run through the repeat actually
-converges on the real Host.
+The Host-level **L2 dry route** is Task 10's work and now passes:
+`test/contract/support/mage-resident-durable-worker.ts` plus
+`test/contract/mage-scribe-placement-durable.host.test.ts` (registered under
+`test/contract-groups.json`'s `atcs-dry` group) boot the real Host in-process, with the stand-in
+ACP residents (`test/fixtures/mage-resident-dry/{prepare.py,acp.py}`) standing in only for the
+licensed MAGE binary and the native engineering/review agents, and run the whole `repeat` of
+engineer-place -> four review-* -> decide-round to completion for both a converging
+(`goalMet: true`, 2 rounds, 16 task executions) and a stalled/conflicting (`goalMet: false`, 4
+rounds, 28 executions, 1 Decision Request) round sequence, with zero model calls. Getting there
+surfaced and fixed two real Pack/Harness integration gaps the Pack-local single-workspace test
+could not catch — a session-log delivery path outside the Engineer's own `artifactPrefix` (fixed
+in `89c17979`) and `decisionRequests` silently dropped from `decide-round`'s committed output
+(fixed in `b6f40829`) — plus a Site capacity correction (`parallelJobs: 2`, not 1: each resident
+task's retained Job holds its slot until collecting its own result launches a second, concurrent
+Reader Job). Full detail is in `packs/mage-scribe-placement/TEST.md`'s L2 section and
+`.superpowers/sdd/task-10-report.md`.
 
 The machine-local offline evaluation of the real P23 package (Task 11, run by the planning session
 outside this repository) is separate from this Fabric record and is not claimed here.
