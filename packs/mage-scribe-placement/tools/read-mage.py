@@ -118,7 +118,12 @@ def _priority_unplaced(snap):
 def _check_session_log(workspace, doc, mods):
     log_ref = doc.get("files", {}).get("sessionLog")
     if not log_ref:
-        return
+        # Fail closed, never skip: a candidate that omits its session log
+        # entirely must never let the one-writer audit go unperformed.
+        # (`records.validate_record` already refuses this via the schema's
+        # own `required: ["sessionLog"]` on `files` before this function
+        # ever runs; this is the defense-in-depth half of the same rule.)
+        raise mods["core"].MageError("missing-input", "candidate has no files.sessionLog to audit")
     # Fail closed on prefix: a resident's support files only reach the
     # Campaign workspace when they sit under its own `artifactPrefix`
     # (`placement/round-NN/` for the Engineer) and are listed in the

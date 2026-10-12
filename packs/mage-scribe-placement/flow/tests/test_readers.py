@@ -161,6 +161,19 @@ class ReaderNegativeTests(unittest.TestCase):
         _assert_all_unknown_except(values, "mage_candidate_error_count")
 
 
+    def test_missing_session_log_is_refused_not_skipped(self):
+        """A candidate that omits `files.sessionLog` entirely must still be
+        refused -- the one-writer audit may never be silently skipped."""
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        del doc["files"]["sessionLog"]
+        doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
+        self.live_candidate_path.write_text(json.dumps(doc), encoding="utf-8")
+
+        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out7.json", self.workspace)
+        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
+        self.assertEqual(error["value"], 1)
+        _assert_all_unknown_except(values, "mage_candidate_error_count")
+
     def test_session_log_outside_round_prefix_is_refused(self):
         """Even a genuine, correctly-hashed session log is refused when its
         declared path sits outside this round's own `placement/round-NN/`

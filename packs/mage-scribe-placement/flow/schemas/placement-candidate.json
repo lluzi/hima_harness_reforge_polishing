@@ -26,7 +26,17 @@
     "startSnapshotSha256": {"type": "string", "minLength": 1},
     "snapshotSha256": {"type": "string", "minLength": 1},
     "buildBanner": {"type": "string"},
-    "files": {"type": "object"},
+    "files": {
+      "type": "object",
+      "required": ["sessionLog"],
+      "properties": {
+        "sessionLog": {
+          "type": "object",
+          "required": ["path", "sha256"],
+          "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
     "metrics": {"type": "object"},
     "ledger": {"type": "array"},
     "remaining": {"type": "array"},
