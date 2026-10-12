@@ -70,6 +70,30 @@ try {
  const rounds=resultTasks.filter((task:any)=>task.taskId==='decide-round').length;
  const expectedTasks=2+rounds*6+2;
  assert.equal(resultTasks.length,expectedTasks,`expected ${expectedTasks} task executions for ${rounds} round(s); got ${resultTasks.length}`);
+ // Every resident task's committed Reader observation must be clean (C1): the
+ // Reader fails closed on refusal, so a dry route that admits a delivery must
+ // carry mage_candidate_error_count / mage_review_error_count == 0 on every
+ // reader-mage-* reading. A broken Reader (the Task 10 session-log class) would
+ // otherwise slip through `conflict`/route unnoticed.
+ const readerErrorFacts=['mage_candidate_error_count','mage_review_error_count'];
+ const dirtyReaders:any[]=[];
+ let readerReadingsSeen=0;
+ for(const task of resultTasks){
+  let value=task.result?.value;
+  if(typeof value==='string'){try{value=JSON.parse(value);}catch{value=undefined;}}
+  const observations=Array.isArray(value?.observations)?value.observations:[];
+  for(const observation of observations){
+   const values=Array.isArray(observation?.values)?observation.values:[];
+   for(const fact of values){
+    if(readerErrorFacts.includes(fact?.type)){
+     readerReadingsSeen+=1;
+     if(fact.value!==0)dirtyReaders.push({taskId:task.taskId,type:fact.type,value:fact.value});
+    }
+   }
+  }
+ }
+ assert.ok(readerReadingsSeen>=rounds*5,`expected at least ${rounds*5} reader readings; saw ${readerReadingsSeen}`);
+ assert.equal(dirtyReaders.length,0,`every reader-mage-* reading must report error_count 0: ${JSON.stringify(dirtyReaders)}`);
  const deliver=tasksById.get('deliver');
  const deliverValue=deliver.result.value;
  const records=await readers.readRunRecords(runId,'job'),launched=records.filter((record:any)=>record.event==='launched');
