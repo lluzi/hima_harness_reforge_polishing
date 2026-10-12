@@ -29,7 +29,9 @@ agent another round with the lessons.
   sheet at both supplies on GF180MCU; it stays in the CLI as the recorded negative result.
 - Simulator: Cadence Spectre on the Site (user, 2026-10-12: "Spectre and open PDK"); the agent
   iterates with ngspice in its sandbox through the Pack's `sim`; one piece of Pack arithmetic computes
-  every measurement from either simulator's raw output. Monte Carlo runs on Spectre only.
+  every measurement from either simulator's raw output. Monte Carlo runs on the measuring simulator
+  (Spectre `montecarlo`, or ngspice re-drawing the PDK's `agauss` mismatch per seeded run; on
+  GF180MCU the two sigmas agree within 1 %).
 - PDK: GF180MCU 3.3 V devices (open), supplies 2.0 and 3.3 V. Tests use a synthetic process
   (`synth180` with a made-up PNP and poly resistor) committed as fixtures.
 - Spec (defaults mirror the competitor's sheet): VBG 1.2 V +/- 2 %, IQ < 8 uA, ISD <= 2 nA at 27 C,

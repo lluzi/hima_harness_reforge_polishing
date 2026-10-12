@@ -2,7 +2,7 @@ HEADER
 "PSFversion" "1.00"
 "simulator" "spectre"
 "version" "23.1.0.722.isr15"
-"date" "6:27:10 AM, Mon Oct 12, 2026"
+"date" "6:59:56 AM, Mon Oct 12, 2026"
 "design" "// Kuijk bandgap Monte Carlo (mismatch): synth180 tt, 27 C, vdd 3.3 V"
 "analysis type" "dc"
 "analysis name" "mc1-010_op1"
@@ -87,8 +87,8 @@ TYPE
 "sigtype" "optical"
 )
 VALUE
-"VDD1:p" "I" -5.069150303203921e-06 PROP(
+"VDD1:p" "I" -4.410709568801881e-06 PROP(
 "units" "A"
 )
-"vbg1" "V" 1.168978419013158e+00
+"vbg1" "V" 1.168817646765602e+00
 END

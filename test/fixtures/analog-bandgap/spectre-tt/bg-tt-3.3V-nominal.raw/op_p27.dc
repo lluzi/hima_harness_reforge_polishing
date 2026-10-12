@@ -2,7 +2,7 @@ HEADER
 "PSFversion" "1.00"
 "simulator" "spectre"
 "version" "23.1.0.722.isr15"
-"date" "6:27:04 AM, Mon Oct 12, 2026"
+"date" "6:59:49 AM, Mon Oct 12, 2026"
 "design" "// Kuijk bandgap bench: synth180 corner tt, vdd 3.3 V, copy 1 (nominal)"
 "analysis type" "dc"
 "analysis name" "op_p27"
@@ -87,14 +87,14 @@ TYPE
 "sigtype" "optical"
 )
 VALUE
-"VDD1:p" "I" -5.098361214129667e-06 PROP(
+"VDD1:p" "I" -4.434398808348765e-06 PROP(
 "units" "A"
 )
-"g1" "V" 2.360458442366890e+00
-"X1.tail" "V" 1.852249103427562e+00
-"X1.d1" "V" 8.730202280705934e-01
-"X1.a" "V" 6.418746522353209e-01
-"X1.b" "V" 6.424971433957676e-01
-"X1.su" "V" 5.938012758877196e-03
-"vbg1" "V" 1.173746703343050e+00
+"g1" "V" 2.352684003436810e+00
+"X1.tail" "V" 1.847696605791604e+00
+"X1.d1" "V" 8.726394412637970e-01
+"X1.a" "V" 6.360803932791800e-01
+"X1.b" "V" 6.366835529453493e-01
+"X1.su" "V" 5.940016826161674e-03
+"vbg1" "V" 1.173609130644175e+00
 END

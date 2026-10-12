@@ -188,6 +188,7 @@
       "mismatch": {
         "mosInstance": "X",
         "params": {
+          "sw_stat_global": 0,
           "sw_stat_mismatch": 1
         }
       },
@@ -602,6 +603,7 @@
       "mismatch": {
         "mosInstance": "X",
         "params": {
+          "sw_stat_global": 0,
           "sw_stat_mismatch": 1
         }
       },

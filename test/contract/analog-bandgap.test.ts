@@ -8,10 +8,12 @@
 // on the characterized PNP and resistor. The simulator-backed steps are in analog-bandgap-sim.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { himaChart } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 
 const packDir = path.join(repoRoot, 'packs/analog-bandgap');
@@ -99,7 +101,7 @@ test('the bench: one Spectre netlist per copy of the cell, all seven copies in o
     'print(json.dumps(dict(parts=parts, ng=ng, files=files)))',
   ].join('\n'));
   const parts: Record<string, string[]> = out.parts;
-  assert.deepEqual(Object.keys(parts), ['nominal', 'loopv', 'loopi', 'off', 'powerUp', 'en1us', 'en50us']);
+  assert.deepEqual(Object.keys(parts), ['nominal', 'loopv', 'loopi', 'off', 'powerUp', 'en1us', 'en50us', 'offref']);
   for (const [part, lines] of Object.entries(parts)) {
     assert.ok(lines.includes('.lib "/pdk/synth180/bandgap.lib" mos_ss') && lines.includes('.lib "/pdk/synth180/bandgap.lib" bjt_ss'),
       `${part}: the process corner's MOS and BJT sections`);
@@ -112,7 +114,10 @@ test('the bench: one Spectre netlist per copy of the cell, all seven copies in o
   assert.ok(parts.nominal!.includes('GIB1 (ib1 0 en1 0) vccs gm=2.5e-07'), 'the reference current follows en');
   assert.ok(parts.loopv!.includes('VI2 (g2 go2) vsource dc=0 mag=1') && parts.loopv!.includes('X2 (vdd2 0 en2 ib2 vbg2 go2 g2) bandgap_lb'));
   assert.ok(parts.loopi!.includes('II3 (0 g3) isource dc=0 mag=1') && parts.loopi!.includes('VI3 (g3 go3) vsource dc=0'));
-  assert.ok(parts.off!.includes('VEN4 (en4 0) vsource dc=0'));
+  assert.ok(parts.off!.includes('VEN4 (en4 0) vsource dc=0') && parts.off!.includes('GIB4 (ib4 0 en4 0) vccs gm=2.5e-07'),
+    'shutdown: en low turns the reference off too');
+  assert.ok(parts.offref!.includes('VEN8 (en8 0) vsource dc=0') && parts.offref!.includes('GIB8 (ib8 0 vdd8 0) vccs gm=2.5e-07'),
+    'information only: en low with the reference left on');
   assert.ok(parts.powerUp!.includes('VDD5 (vdd5 0) vsource type=pwl wave=[0 0 10u 2]') && parts.powerUp!.includes('X5 (vdd5 0 vdd5 ib5 vbg5 g5 g5) bandgap_lb'),
     'power-up: vdd ramps from 0 with en tied to it');
   assert.ok(parts.en1us!.includes('VEN6 (en6 0) vsource type=pwl wave=[0 0 10u 0 11u 2]'));
@@ -120,7 +125,7 @@ test('the bench: one Spectre netlist per copy of the cell, all seven copies in o
   for (const p of ['powerUp', 'en1us', 'en50us']) assert.ok(parts[p]!.some((l) => /^tr_p27 tran stop=300u maxstep=1u/.test(l)));
   const ng: string[] = out.ng;
   assert.ok(ng.includes('.lib "/pdk/synth180/bandgap.lib" mos_ss') && ng.includes('.options tnom=27 cshunt=1e-14'));
-  assert.equal(ng.filter((l) => /^X\d /.test(l)).length, 7, 'ngspice holds all seven copies');
+  assert.equal(ng.filter((l) => /^X\d /.test(l)).length, 8, 'ngspice holds all eight copies');
   assert.ok(ng.includes('dc temp -40 125 5') && ng.includes('option temp=125') && ng.includes('VDD5 vdd5 0 dc 0 pwl(0u 0 10u 2)'));
   assert.ok(ng.includes(`wrdata ${out.files.ac_p27} v(vbg1) v(go2) v(g2) i(vi3)`));
 });
@@ -247,10 +252,13 @@ test('start-up: a copy that settles away from its DC solution did not start; a s
     'time = [k * 1e-7 for k in range(3001)]',
     'tau = 5e-6',
     'v = [0.0 if t < 10e-6 else 1.2 * (1 - math.exp(-(t - 10e-6) / tau)) for t in time]',
-    'print(json.dumps(dict(ok=bg.start_time_us(time, v, 10.0, 1.2), stuck=bg.start_time_us(time, [0.56] * len(time), 10.0, 1.2))))',
+    'dead = [0.05] * len(time)',
+    'print(json.dumps(dict(ok=bg.start_time_us(time, v, 10.0, 1.2), stuck=bg.start_time_us(time, [0.56] * len(time), 10.0, 1.2),',
+    '                      dead=bg.start_time_us(time, dead, 10.0, 0.05))))',
   ].join('\n'));
   assert.ok(Math.abs(out.ok[0] - 5 * Math.log(50)) < 0.05, `${out.ok[0]} vs ${5 * Math.log(50)} us`);
   assert.equal(out.stuck[0], null);
+  assert.equal(out.dead[0], null, 'a dead circuit that "settles" at its dead DC solution did not start');
 });
 
 test('Monte Carlo statistics from recorded Spectre iterations', () => {
@@ -293,7 +301,8 @@ test('the first cut follows the Kuijk equations on the characterized PNP and res
   const aff = Math.min(...Object.keys(dev.res.r).map((c) => fit(c, 2, 27)[0]));
   // IQ budget: 80 % of the line less the reference, tail and start-up, two branches at hot, low R.
   const kHot = (398.15 / 300.15) * (a27 / a125) * (a27 / aff);
-  const iCore = (0.8 * SPEC.iqMaxUa - 0.5 - 1.0 - 0.025) / (2 * kHot);
+  // kuijk-p5t-mirror: the drive branch M5/M6 carries 2 iCore / driveRatio too.
+  const iCore = (0.8 * SPEC.iqMaxUa - 0.5 - 1.0 - 0.025) / ((2 + 2 / intent.driveRatio) * kHot);
   assert.ok(Math.abs(intent.iCoreUa - iCore) < 1e-3, `core current ${intent.iCoreUa} vs ${iCore}`);
   // R1 = VT ln n / I at 27 C.
   const R = (r: Json) => r.s * (a27 * r.lUm + b27);
@@ -346,6 +355,8 @@ test('precheck refuses what is not a legal design of the template and the intent
     const intent = bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json'));
     assert.equal(intent.status, 0, intent.stderr);
     assert.equal(JSON.parse(intent.stdout).n, 24, 'a choice is kept');
+    await writeFile(path.join(ws, 'sheet-ib.json'), JSON.stringify({ ...SPEC, choices: { ibiasUa: 1 } }));
+    assert.match(bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet-ib.json')).stderr, /ibiasUa must be 0.5 uA/);
     await writeFile(path.join(ws, 'intent.json'), intent.stdout);
     const drafted = bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json'));
     assert.equal(drafted.status, 0, drafted.stderr);
@@ -367,6 +378,7 @@ test('precheck refuses what is not a legal design of the template and the intent
       ['sizes that are not the intent\'s', (d) => { d.devices.MO.wUm += 1; d.devices.M6.wUm += 0; }, /do not follow the intent/],
       ['a report elsewhere', (d) => { d.report = 'reports/size-agent/r1/notes.md'; }, /report must be reports\/size-agent\/r1\/analysis.md/],
       ['a capacitor multiplicity', (d) => { d.caps.CC.m = 0; }, /CC m \(capacitors in parallel\)/],
+      ['another reference current', (d) => { d.ibiasUa = 0.6; }, /ibiasUa must be 0.5, the reference current the bench provides/],
       ['an unknown intent field', (d) => { d.intent.vbgV = 1.2; }, /intent has unknown field\(s\) vbgV/],
     ];
     for (const [label, edit, why] of cases) {
@@ -432,10 +444,10 @@ test('the round record takes only measurements of the accepted design under this
     await writeFile(path.join(ws, 'intent.json'), bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json')).stdout);
     const doc = { ...JSON.parse(bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json')).stdout), summary: 's', reason: 'r' };
     await writeFile(path.join(ws, 'state/design.json'), JSON.stringify(doc));
-    // A Monte Carlo run needs Spectre.
-    const mc = bgcli(ws, 'mc', '20', '1.2', '2');
+    // Monte Carlo needs at least two runs.
+    const mc = bgcli(ws, 'mc', '1', '1.2', '2');
     assert.notEqual(mc.status, 0);
-    assert.match(mc.stderr, /Monte Carlo runs on Spectre/);
+    assert.match(mc.stderr, /N must be 2 to 1000 runs/);
     await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify({ round: 1, designSha256: '0'.repeat(64) }));
     const args = ['1.2', '2', '8', '2', '100', '60', '100', '40'];
     const run = bgcli(ws, 'record', ...args);
@@ -446,4 +458,191 @@ test('the round record takes only measurements of the accepted design under this
     assert.ok(round.problems.includes('no PVT measurement of the accepted design this round'));
     assert.equal(round.failing, null, 'nothing measured is not "no failing line"');
   } finally { await done(); }
+});
+
+test('a missing saved trace is an error, never a zero; ngspice tables are checked for shape', async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'bandgap-trace-'));
+  try {
+    await cp(path.join(fixtures, 'spectre-tt'), path.join(tmp, 'tt'), { recursive: true });
+    const ac = path.join(tmp, 'tt/bg-tt-3.3V-loopv.raw/ac_p27.ac');
+    await writeFile(ac, (await readFile(ac, 'utf8')).replace(/"go2"/g, '"gox"'));
+    await writeFile(path.join(tmp, 'bad.dat'), ' frequency v(vbg1)\n1 2 3\n4 5\n');
+    const out = py([
+      'from pathlib import Path',
+      `F = Path(${JSON.stringify(path.join(tmp, 'tt'))})`,
+      'res = {}',
+      'try:',
+      '    bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+      'except bg.ToolError as e:',
+      '    res["spectre"] = str(e)',
+      'try:',
+      `    bg.checked_rows(${JSON.stringify(path.join(tmp, 'bad.dat'))}, 3, None)`,
+      'except bg.ToolError as e:',
+      '    res["rows"] = str(e)',
+      'print(json.dumps(res))',
+    ].join('\n'));
+    assert.match(out.spectre, /loopv output .* lacks go2/);
+    assert.match(out.rows, /rows of \[2, 3\] numbers/);
+  } finally { await rm(tmp, { recursive: true, force: true }); }
+});
+
+test('worst corner and verdicts: a missing PSRR is unknown, a missing PM is a miss, the smallest of several crossings counts', () => {
+  const out = py([
+    'from pathlib import Path',
+    `F = Path(${JSON.stringify(path.join(fixtures, 'spectre-tt'))})`,
+    'facts = bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+    'facts.update(process="tt", vdd=3.3)',
+    'b = bg.bench_measures(facts)',
+    'import copy',
+    'b2 = copy.deepcopy(b); b2["vdd"] = 2.0; b2["temps"]["27"]["psrrDb"] = None',
+    'b3 = copy.deepcopy(b); b3["process"] = "ss"; b3["temps"]["27"]["pmDeg"] = None',
+    'spec = dict(vbgV=1.2, vbgTolPct=2, iqMaxUa=8, isdMaxNa=2, tcMaxPpm=100, pmMinDeg=60, tStartMaxUs=100, psrrMinDb=40)',
+    'w = bg.worst_of([b, b2, b3], 1.2)',
+    'freq = [1.0, 10.0, 100.0, 1000.0, 1e4]',
+    'mag = [10, 0.5, 2, 0.5, 0.1]; ph = [-10, -100, -120, -150, -170]',
+    'T = [m * complex(math.cos(math.radians(p)), math.sin(math.radians(p))) for m, p in zip(mag, ph)]',
+    'print(json.dumps(dict(w=w, met=bg.line_met(w, spec), pm=bg.phase_margins(freq, T), mag=mag, ph=ph, freq=freq), default=lambda x: None))',
+  ].join('\n'));
+  assert.equal(out.w.psrr.value, null);
+  assert.deepEqual(out.w.psrr.missing, ['tt 2V 27C']);
+  assert.equal(out.met.psrr, null, 'a missing PSRR is unknown');
+  assert.equal(out.w.pm.value, null);
+  assert.equal(out.met.pm, false, 'a missing phase margin (no crossing) is a miss');
+  // Three crossings; the margin at each, interpolated in log |T|.
+  const expected: number[] = [];
+  for (let i = 1; i < out.mag.length; i += 1) {
+    const a = out.mag[i - 1], b = out.mag[i];
+    if ((a - 1) * (b - 1) >= 0) continue;
+    const u = Math.log10(a) / (Math.log10(a) - Math.log10(b));
+    expected.push(180 + out.ph[i - 1] + u * (out.ph[i] - out.ph[i - 1]));
+  }
+  assert.equal(out.pm.crossings.length, 3);
+  assert.deepEqual(out.pm.crossings.map((c: Json) => c.falling), [true, false, true]);
+  assert.ok(Math.abs(out.pm.pmDeg - Math.min(...expected)) < 0.01, `${out.pm.pmDeg} vs ${Math.min(...expected)}`);
+});
+
+test('the post-layout cell must be the clean extraction of the accepted design; the record recomputes its verdict and takes N', async () => {
+  const { ws, done } = await workspace();
+  try {
+    await writeFile(path.join(ws, 'sheet.json'), JSON.stringify(SPEC));
+    await writeFile(path.join(ws, 'intent.json'), bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json')).stdout);
+    const doc = { ...JSON.parse(bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json')).stdout), summary: 's', reason: 'r' };
+    await writeFile(path.join(ws, 'state/design.json'), JSON.stringify(doc));
+    const designSha = createHash('sha256').update(await readFile(path.join(ws, 'state/design.json'))).digest('hex');
+    const args = ['1.2', '2', '8', '2', '100', '60', '100', '40'];
+    // C1: no layout record, a stale extraction, a dirty layout: refused before any simulation.
+    const cell = '.subckt bandgap_lb vdd vss en ibias vbg go g\nR1 vdd vss 1k\n.ends\n';
+    await writeFile(path.join(ws, 'state/cell-post.spice'), cell);
+    const cellSha = createHash('sha256').update(cell).digest('hex');
+    assert.match(bgcli(ws, 'simulate', 'post', ...args).stderr, /not bound to the accepted design/);
+    const layout = { round: 1, designSha256: designSha, postCellSha256: cellSha, clean: true, drcMagic: 0, drcKlayout: 0, lvsNetgen: true,
+      lvsKlayout: true, areaUm2: 1 };
+    await writeFile(path.join(ws, 'state/layout.json'), JSON.stringify({ ...layout, postCellSha256: '0'.repeat(64) }));
+    assert.match(bgcli(ws, 'simulate', 'post', ...args).stderr, /not the extraction state\/layout.json recorded/);
+    await writeFile(path.join(ws, 'state/layout.json'), JSON.stringify({ ...layout, clean: false }));
+    assert.match(bgcli(ws, 'simulate', 'post', ...args).stderr, /layout of the accepted design is not clean/);
+    await writeFile(path.join(ws, 'state/layout.json'), JSON.stringify(layout));
+    // C2 and I5: a post-layout result that claims meetsSpec while its worst corner misses PSRR, and a
+    // Monte Carlo of 50 runs where the Pack asks for 100.
+    const worst = { vbg: { value: 1.2, where: 'tt' }, iq: { value: 5, where: 'tt' }, isd: { value: 0.1, where: 'tt' }, tc: { value: 20, where: 'tt' },
+      pm: { value: 70, where: 'tt' }, start: { value: 50, where: 'tt' }, psrr: { value: 30, where: 'ss 2V -40C' } };
+    const spec = { vbgV: 1.2, vbgTolPct: 2, iqMaxUa: 8, isdMaxNa: 2, tcMaxPpm: 100, pmMinDeg: 60, tStartMaxUs: 100, psrrMinDb: 40 };
+    const measure = { round: 1, designSha256: designSha, spec, worst: { ...worst, psrr: { value: 50, where: 'tt' } } };
+    await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify(measure));
+    await writeFile(path.join(ws, 'state/measure-post.json'), JSON.stringify({ ...measure, worst, cellSha256: cellSha, meetsSpec: true }));
+    await writeFile(path.join(ws, 'state/mc.json'), JSON.stringify({ round: 1, designSha256: designSha, spec: { vbgV: 1.2, vbgTolPct: 2, n: 50 },
+      stats: { n: 50, meanV: 1.2, sigmaV: 0.002, inBand: true } }));
+    const run = bgcli(ws, 'record', ...args, '100');
+    assert.equal(run.status, 0, run.stderr);
+    const round = JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
+    assert.equal(round.postMet, false, 'the post verdict is recomputed from its worst corner');
+    assert.equal(round.postLineMet.psrr, false);
+    assert.ok(round.problems.includes('the Monte Carlo result has 50 runs, fewer than the 100 the Pack requires'));
+    assert.equal(round.signedOff, false);
+  } finally { await done(); }
+});
+
+test('a step refuses to record when the accepted design changed while it ran', async () => {
+  const { ws, done } = await workspace();
+  try {
+    await writeFile(path.join(ws, 'sheet.json'), JSON.stringify(SPEC));
+    await writeFile(path.join(ws, 'intent.json'), bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json')).stdout);
+    const doc = { ...JSON.parse(bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json')).stdout), summary: 's', reason: 'r' };
+    await writeFile(path.join(ws, 'state/design.json'), JSON.stringify(doc));
+    const run = spawnSync('python3', ['-B', '-c', [
+      'import json, sys', `sys.path.insert(0, ${JSON.stringify(path.join(ws, 'flow'))})`, 'import bg_cli as bg',
+      `ws = ${JSON.stringify(ws)}`,
+      'doc, facts = bg.validate_design(ws)',
+      'first = bg.unchanged(ws, facts)',
+      'doc["summary"] = "changed"; open(bg.design_path(ws), "w").write(json.dumps(doc))',
+      'try:', '    bg.unchanged(ws, facts); print("recorded")', 'except bg.ToolError as e:', '    print(json.dumps(dict(first=first, error=str(e))))',
+    ].join('\n')], { encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    const out = JSON.parse(run.stdout);
+    assert.match(out.first, /^[0-9a-f]{64}$/);
+    assert.match(out.error, /state\/design.json changed while this step ran/);
+  } finally { await done(); }
+});
+
+test('layout: every step of the layout tool must exit 0, and the extraction must be this run\'s', async () => {
+  const { ws, done } = await workspace();
+  try {
+    await writeFile(path.join(ws, 'sheet.json'), JSON.stringify(SPEC));
+    await writeFile(path.join(ws, 'intent.json'), bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json')).stdout);
+    const doc = { ...JSON.parse(bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json')).stdout), summary: 's', reason: 'r' };
+    await writeFile(path.join(ws, 'state/design.json'), JSON.stringify(doc));
+    // A stand-in layout tool: `<tool> <netlist> bandgap_lb <out>` writes its facts; RC names the failing step.
+    const tool = path.join(ws, 'fake-layout.py');
+    await writeFile(tool, [
+      '#!/usr/bin/env python3',
+      'import json, os, sys',
+      'netlist, cell, out = sys.argv[1:4]',
+      'os.makedirs(out, exist_ok=True)',
+      'bad = os.environ.get("FAKE_BAD", "")',
+      'rc = lambda name: 1 if name == bad else 0',
+      'facts = dict(schema="hima-cell-layout/1", cell=cell, netlist=netlist,',
+      '             draw=dict(rc=rc("draw"), magicDrcErrors=0), klayoutDrc=dict(block=dict(rc=rc("block"), total=0), density=dict(rc=rc("density"), total=3)),',
+      '             lvs=dict(rc=[0, rc("lvs")], match=True), klayoutLvs=dict(rc=rc("klvs"), match=True), pex=dict(rc=[0, 0], netlists={}),',
+      '             render=dict(rc=rc("render"), bboxUm=[10, 20]))',
+      'if bad == "norender": del facts["render"]["rc"]',
+      'json.dump(facts, open(os.path.join(out, "layout.json"), "w"))',
+      'open(os.path.join(out, "bandgap_lb_pex_c.spice"), "w").write(".subckt bandgap_lb vdd vss en ibias vbg go g\\n.ends\\n")',
+    ].join('\n'));
+    // The CLI passes the tool path as one argv entry; wrap the script in an executable.
+    const wrapper = path.join(ws, 'layout-tool');
+    await writeFile(wrapper, `#!/bin/sh\nexec python3 ${tool} "$@"\n`, { mode: 0o755 });
+    const run = (bad: string) => spawnSync('python3', ['-B', path.join(ws, 'flow/bg_cli.py'), 'layout', ws, wrapper, 'c'],
+      { encoding: 'utf8', cwd: ws, env: { ...process.env, FAKE_BAD: bad } });
+    for (const [bad, why] of [['draw', /draw exit code 1/], ['density', /klayoutDrc.density exit code 1/], ['lvs', /lvs exit code \[0, 1\]/],
+      ['klvs', /klayoutLvs exit code 1/], ['norender', /render exit code missing/]] as const) {
+      const r = run(bad);
+      assert.notEqual(r.status, 0, `${bad} is refused`);
+      assert.match(r.stderr, why);
+    }
+    const good = run('');
+    assert.equal(good.status, 0, good.stderr);
+    assert.equal(JSON.parse(await readFile(path.join(ws, 'state/layout.json'), 'utf8')).clean, true);
+  } finally { await done(); }
+});
+
+test('every chart the flow writes is a valid hima-chart', () => {
+  const out = py([
+    'from pathlib import Path',
+    'import ota_cli as ota',
+    `F = Path(${JSON.stringify(path.join(fixtures, 'spectre-tt'))})`,
+    'facts = bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+    'facts.update(process="tt", vdd=3.3)',
+    'b = bg.bench_measures(facts)',
+    'spec_ = dict(vbgV=1.2, vbgTolPct=2, iqMaxUa=8, isdMaxNa=2, tcMaxPpm=100, pmMinDeg=60, tStartMaxUs=100, psrrMinDb=40)',
+    'record = dict(spec=spec_, worst=bg.worst_of([b], 1.2), benches=[b])',
+    `v, _ = bg.mc_values(${JSON.stringify(path.join(fixtures, 'spectre-mc/mc.raw'))})`,
+    'mc = dict(stats=bg.mc_stats(v, 1.2, 2.0), simulator="spectre-23.1.0", conditions=dict(vdd=3.3))',
+    'lay = dict(drcMagic=0, drcKlayout=0, lvsNetgen=True, lvsKlayout=True, areaUm2=12345.6, pdk="gf180mcuD", clean=True)',
+    'print(json.dumps(dict(lines=bg.lines_chart(record, "Bandgap spec lines, worst corner (schematic)", "spectre, 10 corners (simulate-pvt)"),',
+    '                      mc=bg.mc_chart(mc), layout=bg.layout_chart(lay), gmid=ota.gmid_chart(table))))',
+  ].join('\n'));
+  for (const [kind, doc] of Object.entries(out)) {
+    const parsed = himaChart.safeParse(doc);
+    assert.ok(parsed.success, `${kind}: ${JSON.stringify(parsed.error?.issues ?? [])}`);
+  }
 });

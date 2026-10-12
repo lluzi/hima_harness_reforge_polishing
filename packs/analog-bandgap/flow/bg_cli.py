@@ -26,7 +26,8 @@ Kuijk equations on the characterized PNP, gm/Id lookup, the Pelgrom input-pair a
                                        schematic) or of its extracted netlist (STAGE post)
   mc           <WS> <N> <VBG_V> <VBG_TOL_PCT> [<SEED>]   Monte Carlo mismatch, tt, 27 C, top supply
   record       <WS> <VBG_V> <VBG_TOL_PCT> <IQ_MAX_UA> <ISD_MAX_NA> <TC_MAX_PPM> <PM_MIN_DEG>
-               <TSTART_MAX_US> <PSRR_MIN_DB>   the round record
+               <TSTART_MAX_US> <PSRR_MIN_DB> [<MC_RUNS>]   the round record (a Monte Carlo result with
+                                       fewer than MC_RUNS runs is a problem)
   cell         <WS> [<FILE>]           the cell netlist (SPICE: bandgap_lb with the loop pins go/g, and
                                        bandgap) of the accepted design (checked) or of a design file
 
@@ -35,6 +36,7 @@ Pack's (`ota_cli.py`, a byte-identical copy). `sim` uses OTA_SIM / OTA_PDK_ROOT 
 does. Every output carries the design's SHA-256; no simulator output is ever deleted (each run
 takes a fresh stem). Reports land at <WS>/reports/<node id>/r<k>/.
 """
+import hashlib
 import json
 import math
 import os
@@ -73,7 +75,7 @@ TRAN_STOP_US, TRAN_STEP_US = 300.0, 0.2
 # voltage-dependent `r=` expression becomes a compiled `bsource`); a run that found that code already
 # compiled in its <netlist>.ahdlSimDB never crashed. It also crashed in transients that held several
 # copies of the cell (and see CMIN_F). So every Spectre run starts from a copy of the compiled code of
-# the runs before it (AHDL_SEED, merged after each run), runs single-threaded (+mt=1), holds one copy
+# the successful runs before it (AHDL_SEED, merged after each success), runs single-threaded (+mt=1), holds one copy
 # of the cell, and is retried on a crash, up to SPECTRE_ATTEMPTS times, each attempt with its own
 # files; the measurement records the attempts.
 SPECTRE_ATTEMPTS = 5
@@ -83,12 +85,16 @@ SPECTRE_TRAN = "maxstep=1u errpreset=moderate"
 # measurement of this cell (its start-up nodes are a few fF, the rest tens of fF and more).
 CMIN_F = 1e-14
 RAMPS = {"powerUp": ("vdd", 0.0, 10.0), "en1us": ("en", 10.0, 1.0), "en50us": ("en", 10.0, 50.0)}   # what ramps, start, ramp time (us)
+VBG_TARGET_V = 1.2                       # the default VBG target (the spec sheet's, when given, replaces it)
 START_BAND_PCT = 2.0                     # start-up ends when VBG is within this of its final value and stays
 STARTED_PCT = 1.0                        # the final value must be this close to the DC solution, or it did not start
-LIMITS = {"ibiasUa": (0.05, 10.0), "n": (2, 24)}
+LIMITS = {"n": (2, 24)}
+IBIAS_UA = 0.5                           # the reference current the bench provides (the ibias pin's ideal sink)
 CLAIM_BOUNDARY = ("Every number is the Site simulator's (Spectre or ngspice, as each measurement states) on the stated PDK's "
                   "open models at the stated corners, schematic level unless the stage says post-layout, with an ideal "
-                  "reference current; Monte Carlo covers device mismatch only (global process spread is the corners); "
+                  "0.5 uA reference current that the bench turns off with en (the shutdown current excludes it; "
+                  "isdRefOnNa, information only, leaves it on), and a 10 fF capacitance floor on every node; Monte Carlo "
+                  "covers device mismatch only (sw_stat_global = 0: global process spread is the corners); "
                   "no package stress, no trimming; not silicon.")
 
 # The templates: MOS name -> (kind, group, drain, gate, source, bulk). Groups take their gm/Id and L
@@ -151,7 +157,7 @@ GROUPS = ("pair", "load", "mirror", "out")
 GROUP_KEYS = {"gmId", "lUm"}
 # Spec lines: key, label, unit, digits, better
 LINES = (("vbg", "VBG (all corners)", "V", 4, "band"), ("iq", "Quiescent current", "uA", 2, "lower"),
-         ("isd", "Shutdown current at 27 C", "nA", 3, "lower"), ("tc", "Temperature coefficient (box)", "ppm/C", 1, "lower"),
+         ("isd", "Shutdown current at 27 C", "nA", 3, "lower"), ("tc", "TC (box method)", "ppm/C", 1, "lower"),
          ("pm", "Loop phase margin", "deg", 1, "higher"), ("start", "Start-up time", "us", 1, "lower"),
          ("psrr", "PSRR at 1 kHz", "dB", 1, "higher"))
 SPEC_KEYS = ("vbgV", "vbgTolPct", "iqMaxUa", "isdMaxNa", "tcMaxPpm", "pmMinDeg", "tStartMaxUs", "psrrMinDb")
@@ -280,10 +286,12 @@ def lib_lines(inputs, corner, sim, mismatch=False):
 # supply, so one DC sweep, one AC and one transient analysis per temperature measure everything:
 #   1 nominal (en high; vdd carries the AC source: PSRR; the DC sweep: VBG(T), IQ(T))
 #   2, 3 the loop broken at the OTA output: series voltage injection (2), shunt current injection (3)
-#   4 en low (shutdown current)
+#   4 en low (shutdown current; the reference current follows en, so it is off)
 #   5 power-up: vdd ramps from 0 with en tied to vdd; 6, 7 en ramps in 1 us and 50 us
-# The reference current is an ideal sink from the ibias pin, on while en is high (a VCCS on en).
-DUTS = (1, 2, 3, 4, 5, 6, 7)
+#   8 en low with the reference current left on (information only, never judged)
+# The reference current is an ideal sink from the ibias pin, on while en is high (a VCCS on en; copy 8's
+# follows vdd instead).
+DUTS = (1, 2, 3, 4, 5, 6, 7, 8)
 NODES = ("g", "tail", "d1", "a", "b", "su")      # the nominal copy's nodes reported at each temperature (g is the pin)
 
 
@@ -305,7 +313,7 @@ def ramp_points(vdd):
     return out
 
 
-SPECTRE_PARTS = (("nominal", 1), ("loopv", 2), ("loopi", 3), ("off", 4), ("powerUp", 5), ("en1us", 6), ("en50us", 7))
+SPECTRE_PARTS = (("nominal", 1), ("loopv", 2), ("loopi", 3), ("off", 4), ("powerUp", 5), ("en1us", 6), ("en50us", 7), ("offref", 8))
 
 
 def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_opts=SPECTRE_TRAN):
@@ -329,8 +337,8 @@ def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_op
     if k in (6, 7):
         lines.append("VEN%d (en%d 0) vsource %s" % (k, k, pwl(ramps[part])))
     elif k != 5:
-        lines.append("VEN%d (en%d 0) vsource dc=%g" % (k, k, 0.0 if k == 4 else vdd))
-    lines.append("GIB%d (ib%d 0 %s 0) vccs gm=%.6g" % (k, k, en, g))
+        lines.append("VEN%d (en%d 0) vsource dc=%g" % (k, k, 0.0 if k in (4, 8) else vdd))
+    lines.append("GIB%d (ib%d 0 %s 0) vccs gm=%.6g" % (k, k, "vdd8" if k == 8 else en, g))
     vk = "vdd5" if k == 5 else "vdd%d" % k
     if k in (2, 3):
         lines.append("X%d (%s 0 %s ib%d vbg%d go%d g%d) bandgap_lb" % (k, vk, en, k, k, k, k))
@@ -340,17 +348,17 @@ def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_op
     else:
         lines.append("X%d (%s 0 %s ib%d vbg%d g%d g%d) bandgap_lb" % (k, vk, en, k, k, k, k))
     saves = {"nominal": ["vbg1", "VDD1:p"] + [node_name("spectre", x) for x in NODES], "loopv": ["go2", "g2"], "loopi": ["VI3:p"],
-             "off": ["VDD4:p"]}.get(part, ["vbg%d" % k])
+             "off": ["VDD4:p"], "offref": ["VDD8:p"]}.get(part, ["vbg%d" % k])
     lines.append("save " + " ".join(saves))
     if part == "nominal":
         lines.append("dcT dc param=temp start=%g stop=%g step=%g" % SWEEP)
     for t in temps:
         lines.append("al_%s alter param=temp value=%g" % (tag(t), t))
-        if part in ("nominal", "off"):
+        if part in ("nominal", "off", "offref"):
             lines.append("op_%s dc" % tag(t))
         if part in ("nominal", "loopv", "loopi"):
             lines.append("ac_%s ac start=%g stop=%g dec=%d" % (tag(t), AC_START_HZ, AC_STOP_HZ, AC_PER_DECADE))
-        if k >= 5:
+        if k in (5, 6, 7):
             lines.append("tr_%s tran stop=%gu %s" % (tag(t), TRAN_STOP_US, tran_opts))
     return lines + [""]
 
@@ -373,8 +381,8 @@ def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
         if k in (6, 7):
             lines.append("VEN%d en%d 0 dc 0 %s" % (k, k, pwl(ramps["en1us" if k == 6 else "en50us"])))
         elif k != 5:
-            lines.append("VEN%d en%d 0 dc %g" % (k, k, 0.0 if k == 4 else vdd))
-        lines.append("GIB%d ib%d 0 %s 0 %.6g" % (k, k, en, g))
+            lines.append("VEN%d en%d 0 dc %g" % (k, k, 0.0 if k in (4, 8) else vdd))
+        lines.append("GIB%d ib%d 0 %s 0 %.6g" % (k, k, "vdd8" if k == 8 else en, g))
         vk = "vdd5" if k == 5 else "vdd%d" % k
         if k in (2, 3):
             lines.append("X%d %s 0 %s ib%d vbg%d go%d g%d bandgap_lb" % (k, vk, en, k, k, k, k))
@@ -390,9 +398,9 @@ def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
         files["ac_" + tag(t)] = "%s-ac-%s.dat" % (stem.name, tag(t))
         files["tr_" + tag(t)] = "%s-tr-%s.dat" % (stem.name, tag(t))
         lines += ["option temp=%g" % t, "op",
-                  "let hv = v(vbg1)", "let hq = -i(vdd1)", "let hs = -i(vdd4)"] + \
+                  "let hv = v(vbg1)", "let hq = -i(vdd1)", "let hs = -i(vdd4)", "let hr = -i(vdd8)"] + \
                  ["let hn%d = v(%s)" % (i, node_name("ngspice", x)) for i, x in enumerate(NODES)] + \
-                 ["echo HIMA op %s $&hv $&hq $&hs %s" % (tag(t), " ".join("$&hn%d" % i for i in range(len(NODES)))),
+                 ["echo HIMA op %s $&hv $&hq $&hs $&hr %s" % (tag(t), " ".join("$&hn%d" % i for i in range(len(NODES)))),
                   "ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ),
                   "wrdata %s v(vbg1) v(go2) v(g2) i(vi3)" % files["ac_" + tag(t)],
                   "tran %gu %gu 0 %gu" % (TRAN_STEP_US, TRAN_STOP_US, TRAN_STEP_US),
@@ -449,11 +457,9 @@ def spectre_retry(command, out_dir, name, lines, timeout_s=1800):
         if seed.is_dir():
             shutil.copytree(str(seed), str(db))
         try:
-            try:
-                run_spectre(command, netlist, raw, out_dir, timeout_s=timeout_s)
-            finally:
-                if db.is_dir():
-                    shutil.copytree(str(db), str(seed), dirs_exist_ok=True)
+            run_spectre(command, netlist, raw, out_dir, timeout_s=timeout_s)
+            if db.is_dir():                       # only a successful run's compiled code seeds the others
+                shutil.copytree(str(db), str(seed), dirs_exist_ok=True)
             return raw, netlist, attempt
         except ToolError:
             log = Path(str(netlist) + ".log")
@@ -486,6 +492,20 @@ def run_bench(sim, command, inputs, corner, vdd, ibias_ua, cell_path, out_dir, n
     return facts
 
 
+SWEEP_POINTS = int(round((SWEEP[1] - SWEEP[0]) / SWEEP[2])) + 1
+AC_POINTS = int(round(AC_PER_DECADE * math.log10(AC_STOP_HZ / AC_START_HZ))) + 1
+
+
+def checked_rows(path, width, count):
+    """An ngspice wrdata file's rows, each `width` numbers wide, `count` of them (or at least 10)."""
+    rows = read_wrdata(path)
+    if any(len(r) != width for r in rows):
+        raise ToolError("ngspice wrote rows of %s numbers in %s, not %d" % (sorted({len(r) for r in rows}), path, width))
+    if (count is not None and len(rows) != count) or len(rows) < 10:
+        raise ToolError("ngspice wrote %d rows in %s, not %s" % (len(rows), path, count if count is not None else "at least 10"))
+    return rows
+
+
 def ngspice_facts(text, out_dir, files, temps, netlist):
     if "HIMA done" not in text:
         raise ToolError("ngspice did not finish the bench %s (log %s.log)" % (netlist, netlist))
@@ -494,16 +514,19 @@ def ngspice_facts(text, out_dir, files, temps, netlist):
         parts = line.split()
         if len(parts) >= 3 and parts[0] == "HIMA" and parts[1] == "op":
             ops[parts[2]] = [float(x) for x in parts[3:]]
-    dc = read_wrdata(Path(out_dir) / files["dc"])
+    dc = checked_rows(Path(out_dir) / files["dc"], 3, SWEEP_POINTS)
     facts = dict(dc=dict(temp=[r[0] for r in dc], vbg=[r[1] for r in dc], iq=[-r[2] for r in dc]), temps={})
     for t in temps:
         v = ops.get(tag(t))
-        if not v or len(v) != 3 + len(NODES):
+        if not v or len(v) != 4 + len(NODES):
             raise ToolError("ngspice gave no operating point at %g C (%s)" % (t, netlist))
-        ac = read_wrdata(Path(out_dir) / files["ac_" + tag(t)], complex_cols=True)
-        tr = read_wrdata(Path(out_dir) / files["tr_" + tag(t)])
+        ac = checked_rows(Path(out_dir) / files["ac_" + tag(t)], 9, AC_POINTS)
+        ac = [[r[0]] + [complex(r[i], r[i + 1]) for i in range(1, len(r) - 1, 2)] for r in ac]
+        tr = checked_rows(Path(out_dir) / files["tr_" + tag(t)], 4, None)
+        if tr[-1][0] < 0.999 * TRAN_STOP_US * 1e-6:
+            raise ToolError("ngspice's transient at %g C stopped at %g s, not %g us (%s)" % (t, tr[-1][0], TRAN_STOP_US, netlist))
         facts["temps"][str(t)] = dict(
-            vbg=v[0], iq=v[1], isd=v[2], nodes=dict(zip(NODES, v[3:])),
+            vbg=v[0], iq=v[1], isd=v[2], isdRefOn=v[3], nodes=dict(zip(NODES, v[4:])),
             ac=dict(freq=[r[0].real if isinstance(r[0], complex) else r[0] for r in ac], vbg=[r[1] for r in ac],
                     vl=[r[2] for r in ac], vr=[r[3] for r in ac], s=[-r[4] for r in ac]),
             tran={key: dict(time=[r[0] for r in tr], v=[r[1 + i] for r in tr]) for i, key in enumerate(("powerUp", "en1us", "en50us"))})
@@ -520,26 +543,34 @@ def psf_file(raw, *names):
 def spectre_facts(raws, temps):
     """The bench's facts from Spectre's PSF ASCII output, one directory per copy of the cell (Spectre
     names a transient result <name>.tran.tran or <name>.tran)."""
-    psf = lambda part, *names: ota.psf_ascii(psf_file(raws[part], *names))[0]
+    psf = lambda part, *names: (ota.psf_ascii(psf_file(raws[part], *names))[0], part)
+
+    def need(points, name):
+        """Every point's value of a saved name; a missing one is an error, never a zero."""
+        rows, part = points
+        if not rows or any(name not in p for p in rows):
+            raise ToolError("spectre's %s output in %s lacks %s at some point" % (part, raws[part], name))
+        return [p[name] for p in rows]
+
     dc = psf("nominal", "dcT.dc")
-    facts = dict(dc=dict(temp=[p["temp"] for p in dc], vbg=[p["vbg1"] for p in dc], iq=[-p["VDD1:p"] for p in dc]), temps={})
-    c = lambda p, k: complex(p[k]) if k in p else complex(0.0)
+    facts = dict(dc=dict(temp=need(dc, "temp"), vbg=need(dc, "vbg1"), iq=[-x for x in need(dc, "VDD1:p")]), temps={})
+    c = lambda pts, k: [complex(x) for x in need(pts, k)]
     for t in temps:
-        op, off = psf("nominal", "op_%s.dc" % tag(t)), psf("off", "op_%s.dc" % tag(t))
-        if not op or not off:
-            raise ToolError("spectre gave no operating point at %g C" % t)
-        op = op[0]
+        op_pts, off, offref = psf("nominal", "op_%s.dc" % tag(t)), psf("off", "op_%s.dc" % tag(t)), psf("offref", "op_%s.dc" % tag(t))
+        vbg, iq = need(op_pts, "vbg1")[0], -need(op_pts, "VDD1:p")[0]
+        op = op_pts[0][0]
         ac, acv, aci = (psf(part, "ac_%s.ac" % tag(t)) for part in ("nominal", "loopv", "loopi"))
-        if not (len(ac) == len(acv) == len(aci)):
-            raise ToolError("spectre's AC sweeps at %g C have different lengths" % t)
+        freq = need(ac, "freq")
+        if not (len(freq) == len(acv[0]) == len(aci[0])) or need(acv, "freq") != freq or need(aci, "freq") != freq:
+            raise ToolError("spectre's AC sweeps at %g C are not on one frequency grid" % t)
         tran = {}
         for key, k in (("powerUp", 5), ("en1us", 6), ("en50us", 7)):
             tr = psf(key, "tr_%s.tran.tran" % tag(t), "tr_%s.tran" % tag(t))
-            tran[key] = dict(time=[p["time"] for p in tr], v=[p["vbg%d" % k] for p in tr])
+            tran[key] = dict(time=need(tr, "time"), v=need(tr, "vbg%d" % k))
         facts["temps"][str(t)] = dict(
-            vbg=op["vbg1"], iq=-op["VDD1:p"], isd=-off[0]["VDD4:p"], nodes={x: op.get(node_name("spectre", x)) for x in NODES},
-            ac=dict(freq=[p["freq"] for p in ac], vbg=[c(p, "vbg1") for p in ac], vl=[c(p, "go2") for p in acv],
-                    vr=[c(p, "g2") for p in acv], s=[-c(p, "VI3:p") for p in aci]),
+            vbg=vbg, iq=iq, isd=-need(off, "VDD4:p")[0], isdRefOn=-need(offref, "VDD8:p")[0],
+            nodes={x: op.get(node_name("spectre", x)) for x in NODES},
+            ac=dict(freq=freq, vbg=c(ac, "vbg1"), vl=c(acv, "go2"), vr=c(acv, "g2"), s=[-x for x in c(aci, "VI3:p")]),
             tran=tran)
     return facts
 
@@ -583,12 +614,17 @@ def loop_gain(vl, vr, s):
     T = (Tv Ti - 1) / (Tv + Ti + 2). Negative feedback is T > 0 at low frequency."""
     out = []
     for a, b, c in zip(vl, vr, s):
-        if b == 0 or (c + 1) == 0:
+        tiny = 1e-12 * max(1.0, abs(c))
+        if b == 0 and abs(c + 1) <= tiny:
             out.append(None)
-            continue
-        tv, ti = -a / b, -c / (c + 1)
-        den = tv + ti + 2
-        out.append(None if den == 0 else (tv * ti - 1) / den)
+        elif b == 0:                  # an ideal current driver: Tv is infinite, T is Ti
+            out.append(-c / (c + 1))
+        elif abs(c + 1) <= tiny:      # an ideal voltage driver takes all the injected current: T is Tv
+            out.append(-a / b)
+        else:
+            tv, ti = -a / b, -c / (c + 1)
+            den = tv + ti + 2
+            out.append(None if den == 0 else (tv * ti - 1) / den)
     return out
 
 
@@ -622,13 +658,14 @@ def phase_margins(freq, t):
                 ugfHz=[c for c in crossings if c["falling"]][-1]["freqHz"] if any(c["falling"] for c in crossings) else None)
 
 
-def start_time_us(time_s, v, t0_us, vref):
+def start_time_us(time_s, v, t0_us, vref, vmin=0.5 * VBG_TARGET_V):
     """The start-up time from the trigger at 50 % (t0) until VBG enters +/-2 % of its final value and
-    stays; None when the final value is more than 1 % away from the DC solution vref (it did not start)."""
+    stays; None when the final value is more than 1 % away from the DC solution vref, or when the DC
+    solution itself is a dead circuit (|vref| at most vmin, half the VBG target): it did not start."""
     if not time_s or not v:
         return None, None
     final = v[-1]
-    if vref is None or abs(final - vref) > STARTED_PCT / 100.0 * abs(vref):
+    if vref is None or abs(vref) <= vmin or abs(final - vref) > STARTED_PCT / 100.0 * abs(vref):
         return None, final
     band = START_BAND_PCT / 100.0 * abs(final)
     last_out = None
@@ -663,7 +700,7 @@ def interp(xs, ys, x):
     return None
 
 
-def bench_measures(facts):
+def bench_measures(facts, vbg_target=None):
     """One (process corner, supply)'s measurements from a simulator's facts. A measurement the
     simulator did not produce is None, never a guess."""
     dc = facts["dc"]
@@ -680,10 +717,12 @@ def bench_measures(facts):
         starts = {}
         for key, (_what, start, dur) in RAMPS.items():
             t0 = start + dur / 2.0
-            value, final = start_time_us(f["tran"][key]["time"], f["tran"][key]["v"], t0, f["vbg"])
+            value, final = start_time_us(f["tran"][key]["time"], f["tran"][key]["v"], t0, f["vbg"], 0.5 * (vbg_target or VBG_TARGET_V))
             starts[key] = dict(us=None if value is None else round(value, 3), finalV=None if final is None else round(final, 6))
         h0 = abs(f["ac"]["vbg"][0]) if f["ac"]["vbg"] else 0.0
-        out["temps"][t] = dict(vbgV=f["vbg"], iqUa=1e6 * f["iq"], isdNa=1e9 * f["isd"], psrrDb=psrr_db(f["ac"]["freq"], f["ac"]["vbg"]),
+        out["temps"][t] = dict(vbgV=f["vbg"], iqUa=1e6 * f["iq"], isdNa=1e9 * f["isd"],
+                               isdRefOnNa=None if f.get("isdRefOn") is None else 1e9 * f["isdRefOn"],
+                               psrrDb=psrr_db(f["ac"]["freq"], f["ac"]["vbg"]),
                                psrrDcDb=None if h0 <= 0 else round(-20 * math.log10(h0), 2),
                                pmDeg=loop["pmDeg"], loop=dict((k, v) for k, v in loop.items() if k != "pmDeg"),
                                startUs=None if any(s["us"] is None for s in starts.values()) else max(s["us"] for s in starts.values()),
@@ -993,8 +1032,9 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     - n = 8 PNPs; the reference ibias from the sheet (default 0.5 uA); the OTA tail at 2 ibias; the
       start-up pull-up at 25 nA.
     - The core current per branch from the IQ budget: 80 % of the IQ line, less the reference, the tail
-      and the start-up, shared by the two branches at the hot, low-resistance corner (the current is
-      PTAT over R(T), and the ff resistor is the lowest).
+      and the start-up, shared by the two branches (and, in kuijk-p5t-mirror, the drive branch at
+      2 iCore / driveRatio) at the hot, low-resistance corner (the current is PTAT over R(T), and the ff
+      resistor is the lowest).
     - R1 = VT ln n / I at 27 C; R2/R1 = -(dVBE/dT + (k/q)(1 - T TCR)) / ((k/q) ln n), so that dVBG/dT
       = 0 at 27 C with the PTAT core current (dVBE/dT measured on the PNP at that current).
     - The input pair at gm/Id 20 (weak inversion: the smallest |VGS|, headroom at the low supply), the
@@ -1020,7 +1060,9 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
             raise ToolError("choices %s must be a number" % key)
     pick = lambda key, default: float(ch[key]) if key in ch else default
     n = int(pick("n", 8))
-    ib = pick("ibiasUa", float(spec.get("ibiasUa", 0.5)))
+    ib = pick("ibiasUa", IBIAS_UA)
+    if ib != IBIAS_UA:
+        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % IBIAS_UA)
     itail = pick("itailUa", 2.0 * ib)
     isu = pick("isuNa", 25.0)
     wres = pick("resWUm", card["devices"]["res"]["defaultWUm"])
@@ -1028,7 +1070,11 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     a125, _ = res_fit(devices, "tt", wres, 125.0)
     a_ff = min(res_fit(devices, c, wres, 27.0)[0] for c in devices["res"]["r"])
     k_hot = ((125.0 + T0K) / (27.0 + T0K)) * (a27 / a125) * (a27 / a_ff)
-    icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3) / (2.0 * k_hot)
+    # The branches that scale with the core current: the two core branches, and in kuijk-p5t-mirror
+    # the drive branch M5/M6 (2 iCore / driveRatio).
+    drive = pick("driveRatio", 4.0) if "driveRatio" in keys else None
+    branches = 2.0 + (2.0 / drive if drive else 0.0)
+    icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3) / (branches * k_hot)
     if "iCoreUa" not in ch and icore <= 0:
         raise ToolError("the IQ line %g uA leaves no current for the core" % spec["iqMaxUa"])
     icore = pick("iCoreUa", round(icore, 3))
@@ -1137,6 +1183,8 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     if n != int(n) or not LIMITS["n"][0] <= n <= min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"]):
         raise ToolError("n must be a whole number from %d to %d" % (LIMITS["n"][0], min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"])))
     ib, itail = intent["ibiasUa"], intent["itailUa"]
+    if ib != IBIAS_UA:
+        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % IBIAS_UA)
     g = {k: intent[k] for k in GROUPS}
     out = {}
     w0, _ = ota.width_for(table, card, "pmos", g["mirror"]["lUm"], g["mirror"]["gmId"], ib)
@@ -1266,7 +1314,15 @@ def validate_design(ws, path=None, files_root=None):
     tpl = template(topology)
     k = ota.current_round(ws)
     path = Path(path) if path else design_path(ws)
-    doc = read_json(path, "the design %s" % path)
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        raise ToolError("the design %s not found" % path)
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except ValueError as error:
+        raise ToolError("the design %s is not valid JSON (%s)" % (path, error))
+    read_sha = hashlib.sha256(data).hexdigest()
     if not isinstance(doc, dict):
         raise ToolError("the design is not a JSON object")
     problems = []
@@ -1280,9 +1336,8 @@ def validate_design(ws, path=None, files_root=None):
     nmax = min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"])
     if not isinstance(n, int) or isinstance(n, bool) or not LIMITS["n"][0] <= n <= nmax:
         problems.append("n (the PNP ratio) must be a whole number from %d to %d (found %r)" % (LIMITS["n"][0], nmax, n))
-    lo, hi = LIMITS["ibiasUa"]
-    if not number(doc.get("ibiasUa")) or not lo <= doc["ibiasUa"] <= hi:
-        problems.append("ibiasUa must be a number in [%g, %g] (found %r)" % (lo, hi, doc.get("ibiasUa")))
+    if doc.get("ibiasUa") != IBIAS_UA or isinstance(doc.get("ibiasUa"), bool):
+        problems.append("ibiasUa must be %g, the reference current the bench provides (found %r)" % (IBIAS_UA, doc.get("ibiasUa")))
     devices = doc.get("devices")
     if not isinstance(devices, dict) or sorted(devices) != sorted(tpl["mos"]):
         problems.append("devices must be exactly %s" % ", ".join(tpl["mos"]))
@@ -1349,7 +1404,15 @@ def validate_design(ws, path=None, files_root=None):
         problems.append("the report %s is not in your workspace (%s)" % (report, files_root))
     if problems:
         raise ToolError("design refused:\n- " + "\n- ".join(problems))
-    return doc, dict(round=k, pdk=doc["pdk"])
+    return doc, dict(round=k, pdk=doc["pdk"], sha256=read_sha)
+
+
+def unchanged(ws, facts):
+    """The accepted design is still the one read at the start of the step (its SHA-256 then)."""
+    now_sha = sha256_file(design_path(ws)) if design_path(ws).is_file() else None
+    if now_sha != facts["sha256"]:
+        raise ToolError("state/design.json changed while this step ran (read %s, now %s): nothing is recorded" % (facts["sha256"][:12], (now_sha or "gone")[:12]))
+    return facts["sha256"]
 
 
 def cmd_design(ws):
@@ -1415,9 +1478,20 @@ def cell_file(ws, stage, design, card, out_dir, mismatch=False):
         path = state(ws, "cell-post.spice")
         if not path.is_file():
             raise ToolError("post-layout simulation needs state/cell-post.spice (a .subckt bandgap_lb vdd vss en ibias vbg go g)")
+        lay_path = state(ws, "layout.json")
+        lay = read_json(lay_path) if lay_path.is_file() else None
+        design_sha = sha256_file(design_path(ws)) if design_path(ws).is_file() else None
+        cell_sha = sha256_file(path)
+        if lay is None or lay.get("designSha256") != design_sha:
+            raise ToolError("state/cell-post.spice is not bound to the accepted design: state/layout.json must name its SHA-256 (run layout)")
+        if lay.get("postCellSha256") != cell_sha:
+            raise ToolError("state/cell-post.spice is not the extraction state/layout.json recorded (SHA-256 %s, layout.json %s)" % (
+                cell_sha[:12], str(lay.get("postCellSha256"))[:12]))
+        if lay.get("clean") is not True:
+            raise ToolError("the layout of the accepted design is not clean (state/layout.json): no post-layout simulation of it")
         if not re.search(r"(?im)^\.subckt\s+bandgap_lb\s+vdd\s+vss\s+en\s+ibias\s+vbg\s+go\s+g\b", path.read_text()):
             raise ToolError("state/cell-post.spice does not define .subckt bandgap_lb vdd vss en ibias vbg go g")
-        return path.resolve(), sha256_file(path)
+        return path.resolve(), cell_sha
     name = "cell-mc" if mismatch else "cell"
     stem = ota.fresh_stem(out_dir, name, (".spice",))
     path = Path(str(stem) + ".spice")
@@ -1425,7 +1499,7 @@ def cell_file(ws, stage, design, card, out_dir, mismatch=False):
     return path.resolve(), sha256_file(path)
 
 
-def simulate_pvt(ws, inputs, stage, design, out_dir, corners=None, own=False):
+def simulate_pvt(ws, inputs, stage, design, out_dir, corners=None, own=False, vbg_target=None):
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     sim, command = simulator_for(inputs, own=own)
@@ -1436,7 +1510,7 @@ def simulate_pvt(ws, inputs, stage, design, out_dir, corners=None, own=False):
     for corner in corners or corners_of(inputs, sim.name):
         for vdd in card["supplies"]:
             facts = run_bench(sim, command, inputs, corner, vdd, design["ibiasUa"], cell, out_dir, "bg-%s-%gV" % (corner, vdd))
-            benches.append(bench_measures(facts))
+            benches.append(bench_measures(facts, vbg_target))
     return benches, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, elapsedS=round(time.time() - started, 1),
                          benchElapsedS={label(b): b["elapsedS"] for b in benches})
 
@@ -1517,10 +1591,10 @@ def cmd_simulate(ws, stage, *spec_args):
     k = facts["round"]
     spec = spec_of(spec_args)
     out_dir = report_dir(ws, SIM_NODES[stage], k)
-    benches, run = simulate_pvt(ws, inputs, stage, design, out_dir)
+    benches, run = simulate_pvt(ws, inputs, stage, design, out_dir, vbg_target=spec["vbgV"])
     worst, met, marg = judge(benches, spec)
     record = dict(schema=MEASURE_SCHEMA, stage=stage, round=k, pdk=inputs["pdks"][PDK_KEY]["name"],
-                  simulator=inputs["pdks"][PDK_KEY]["simulator"]["version"], designSha256=sha256_file(design_path(ws)),
+                  simulator=inputs["pdks"][PDK_KEY]["simulator"]["version"], designSha256=unchanged(ws, facts),
                   cellSha256=run["cellSha256"], design=design_summary(design),
                   conditions=dict(corners=sorted({b["process"] for b in benches}, key=[b["process"] for b in benches].index),
                                   supplies=card_of(inputs)["supplies"], temps=list(TEMPS), ibiasUa=design["ibiasUa"]),
@@ -1564,27 +1638,70 @@ def mc_spectre_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
               "VDD1 (vdd1 0) vsource dc=%g" % vdd, "VEN1 (en1 0) vsource dc=%g" % vdd,
               "GIB1 (ib1 0 en1 0) vccs gm=%.6g" % (ibias_ua * 1e-6 / vdd), "X1 (vdd1 0 en1 ib1 vbg1 g1 g1) bandgap_lb",
               "save vbg1 VDD1:p",
-              "mc1 montecarlo numruns=%d seed=%d variations=all donominal=yes savefamilyplots=yes {" % (n, seed), "  op1 dc", "}", ""]
+              "mc1 montecarlo numruns=%d seed=%d variations=mismatch donominal=yes savefamilyplots=yes {" % (n, seed), "  op1 dc", "}", ""]
     return lines
 
 
+# Spectre honours variations=mismatch with these decks: on gf180mcuD, 20 runs drew exactly the values of
+# variations=all (sw_stat_global = 0), and variations=process drew others.
+MC_METHODS = {"spectre": "Spectre montecarlo, variations=mismatch, seed S, sw_stat_mismatch = 1 and sw_stat_global = 0",
+              "ngspice": "ngspice: one operating point per run, the netlist re-read (mc_source) after setseed S+i, so every "
+                         "agauss draws anew; sw_stat_mismatch = 1 and sw_stat_global = 0 (mismatch only)"}
+
+
+def mc_ngspice_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
+    """ngspice Monte Carlo: the PDK's mismatch on (its switches set after the includes: a later .param
+    wins in ngspice), then N runs in one process, each re-reading the netlist after its own seed, so
+    each run draws every agauss anew; run i uses seed S + i."""
+    card = card_of(inputs)
+    lines = ["* Kuijk bandgap Monte Carlo (mismatch): %s tt, 27 C, vdd %g V" % (inputs["pdks"][PDK_KEY]["name"], vdd)]
+    lines += lib_lines(inputs, "tt", "ngspice", mismatch=True)
+    lines += [".param %s=%g" % kv for kv in sorted(card["mismatch"]["params"].items())]
+    lines += [".include \"%s\"" % cell_path, ".temp 27", ".options tnom=%g" % card["temperatureC"],
+              "VDD1 vdd1 0 dc %g" % vdd, "VEN1 en1 0 dc %g" % vdd, "GIB1 ib1 0 en1 0 %.6g" % (ibias_ua * 1e-6 / vdd),
+              "X1 vdd1 0 en1 ib1 vbg1 g1 g1 bandgap_lb", ".control", "set noaskquit"]
+    for i in range(1, n + 1):
+        lines += ["setseed %d" % (seed + i), "mc_source", "op", "let hv = v(vbg1)", "let hq = -i(vdd1)", "echo HIMA mc %d" % i, "print hv hq"]
+    return lines + ["echo HIMA done 1", "quit", ".endc", ".end", ""]
+
+
 def run_mc(ws, inputs, design, n, seed, out_dir, own=False):
+    """Monte Carlo of the design's operating point with the PDK's mismatch, on the measuring
+    simulator (Spectre or ngspice; MC_METHODS says how each draws)."""
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     sim, command = simulator_for(inputs, own=own)
-    if sim.name != "spectre":
-        raise ToolError("Monte Carlo runs on Spectre (montecarlo with the PDK's mismatch); the bound simulator is %s" % sim.name)
     card = card_of(inputs)
     cell, cell_sha = cell_file(ws, "schematic", design, card, out_dir, mismatch=True)
     vdd = max(card["supplies"])
     started = time.time()
+    if sim.name == "ngspice":
+        stem = ota.fresh_stem(out_dir, "mc", (".cir", ".cir.log"))
+        netlist = Path(str(stem) + ".cir")
+        write_text(netlist, "\n".join(mc_ngspice_lines(inputs, cell, vdd, design["ibiasUa"], n, seed)))
+        text = ota.run([command, "-b", str(netlist)], out_dir, Path(str(netlist) + ".log"), timeout_s=3600)
+        if "HIMA done" not in text:
+            raise ToolError("ngspice did not finish the Monte Carlo (log %s.log)" % netlist)
+        runs, current = {}, None
+        for line in text.splitlines():          # "HIMA mc <i>", then "hv = <VBG>" and "hq = <IQ>" (print keeps 7 digits)
+            parts = line.split()
+            if len(parts) == 3 and parts[:2] == ["HIMA", "mc"]:
+                current = int(parts[2])
+            elif current is not None and len(parts) == 3 and parts[0] in ("hv", "hq") and parts[1] == "=":
+                runs.setdefault(current, {})[parts[0]] = float(parts[2])
+        runs = {i: (r["hv"], r["hq"]) for i, r in runs.items() if set(r) == {"hv", "hq"}}
+        if sorted(runs) != list(range(1, n + 1)):
+            raise ToolError("Monte Carlo asked for %d runs and ngspice gave %d (log %s.log)" % (n, len(runs), netlist))
+        values, iq = [runs[i][0] for i in range(1, n + 1)], [runs[i][1] for i in range(1, n + 1)]
+        return values, iq, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, netlist=netlist.name,
+                                elapsedS=round(time.time() - started, 1), vdd=vdd, spectreAttempts=None, method=MC_METHODS["ngspice"])
     raw, netlist, attempts = spectre_retry(command, out_dir, "mc", mc_spectre_lines(inputs, cell, vdd, design["ibiasUa"], n, seed), timeout_s=3600)
     elapsed = round(time.time() - started, 1)
     values, iq = mc_values(raw)
     if len(values) != n:
         raise ToolError("Monte Carlo asked for %d runs and Spectre wrote %d (log %s.log)" % (n, len(values), netlist))
     return values, iq, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, netlist=netlist.name, elapsedS=elapsed, vdd=vdd,
-                            spectreAttempts=attempts)
+                            spectreAttempts=attempts, method=MC_METHODS["spectre"])
 
 
 def mc_values(raw):
@@ -1601,10 +1718,21 @@ def mc_values(raw):
     return [v for _, v, _ in found], [q for _, _, q in found]
 
 
+def mc_chart(rec):
+    """The Monte Carlo spread against the band (hima-chart/1; every category at most 24 characters)."""
+    stats = rec["stats"]
+    lo, hi = stats["bandV"]
+    return ota.chart("Monte Carlo VBG, %d runs" % stats["n"], ["Band low", "Mean - 3 sigma", "Mean", "Mean + 3 sigma", "Band high"],
+                     [("VBG", [lo, stats["lo3V"], stats["meanV"], stats["hi3V"], hi], "measured")],
+                     "%s Monte Carlo, mismatch, tt 27 C %g V (monte-carlo)" % (rec["simulator"], rec["conditions"]["vdd"]), [("V", 4, "none")] * 5,
+                     subtitle="sigma %.3f mV" % (1e3 * stats["sigmaV"]))
+
+
 def mc_rpt(rec):
     s = rec["stats"]
     lines = ["# Monte Carlo of the bandgap in %s (mismatch)" % rec["pdk"], "",
              "%d runs, tt, 27 C, vdd %g V, seed %d; %s, %.1f s." % (s["n"], rec["conditions"]["vdd"], rec["conditions"]["seed"], rec["simulator"], rec["elapsedS"]),
+             "", "How: %s." % rec["conditions"].get("method", "Spectre montecarlo"),
              "", "| quantity | value |", "| --- | --- |",
              "| mean VBG | %.4f V |" % s["meanV"], "| sigma VBG | %.3f mV |" % (1e3 * s["sigmaV"]),
              "| mean - 3 sigma | %.4f V |" % s["lo3V"], "| mean + 3 sigma | %.4f V |" % s["hi3V"],
@@ -1645,20 +1773,16 @@ def cmd_mc(ws, n, vbg_v, tol_pct, seed="1"):
     values, iq, run = run_mc(ws, inputs, design, n, seed, out_dir)
     stats = mc_stats(values, float(vbg_v), float(tol_pct))
     rec = dict(schema=MC_SCHEMA, round=k, pdk=inputs["pdks"][PDK_KEY]["name"], simulator=inputs["pdks"][PDK_KEY]["simulator"]["version"],
-               designSha256=sha256_file(design_path(ws)), cellSha256=run["cellSha256"],
-               conditions=dict(process="tt", tempC=27, vdd=run["vdd"], seed=seed, variations="mismatch", ibiasUa=design["ibiasUa"]),
+               designSha256=unchanged(ws, facts), cellSha256=run["cellSha256"],
+               conditions=dict(process="tt", tempC=27, vdd=run["vdd"], seed=seed, variations="mismatch", method=run["method"],
+                               ibiasUa=design["ibiasUa"]),
                spec=dict(vbgV=float(vbg_v), vbgTolPct=float(tol_pct), n=n), stats=stats, meetsSpec=stats["inBand"],
                vbgV=[round(v, 7) for v in values], iqUa=[round(1e6 * q, 5) for q in iq],
                pelgrom=pelgrom_estimate(card_of(inputs), design), elapsedS=run["elapsedS"], spectreAttempts=run["spectreAttempts"],
                claimBoundary=CLAIM_BOUNDARY, measuredAt=now())
     write_json(state(ws, "mc.json"), rec)
     write_text(out_dir / "mc.rpt", mc_rpt(rec))
-    lo, hi = stats["bandV"]
-    ota.write_chart(ws, "monte-carlo", k, "spread", ota.chart(
-        "Monte Carlo VBG, %d runs" % n, ["Band low", "Mean - 3 sigma", "Mean", "Mean + 3 sigma", "Band high"],
-        [("VBG", [lo, stats["lo3V"], stats["meanV"], stats["hi3V"], hi], "measured")],
-        "%s montecarlo, mismatch, tt 27 C %g V (monte-carlo)" % (rec["simulator"], run["vdd"]), [("V", 4, "none")] * 5,
-        subtitle="sigma %.3f mV" % (1e3 * stats["sigmaV"])))
+    ota.write_chart(ws, "monte-carlo", k, "spread", mc_chart(rec))
     print("Monte Carlo round %d: %d runs, mean %.4f V, sigma %.3f mV, mean-3sigma %.4f V, mean+3sigma %.4f V; inside 1.2 V band: %s (%.1f s)" % (
         k, n, stats["meanV"], 1e3 * stats["sigmaV"], stats["lo3V"], stats["hi3V"], stats["inBand"], run["elapsedS"]))
 
@@ -1667,7 +1791,8 @@ def cmd_mc(ws, n, vbg_v, tol_pct, seed="1"):
 
 def cmd_sim(ws, path, scope, spec_file, out_dir=None):
     """The Pack's bench on an agent's own draft: the same netlists and the same measurements, printed
-    as JSON (never a delivery). SCOPE: pvt, a process corner (tt, ss, ...), or mc:<N> (Spectre)."""
+    as JSON (never a delivery). SCOPE: pvt, a process corner (tt, ss, ...), or mc:<N> (Monte Carlo on the
+    agent's simulator, Spectre or ngspice)."""
     ws = Path(ws)
     inputs = dict(load_inputs(ws))
     if os.environ.get("OTA_PDK_ROOT"):
@@ -1684,13 +1809,15 @@ def cmd_sim(ws, path, scope, spec_file, out_dir=None):
         n = int(scope[3:])
         values, _iq, run = run_mc(ws, inputs, design, n, 1, out_dir, own=True)
         tol = spec["vbgTolPct"] if spec else 2.0
-        print(json.dumps(dict(simulator=run["simulator"], stats=mc_stats(values, spec["vbgV"] if spec else 1.2, tol), elapsedS=run["elapsedS"]), indent=2, sort_keys=True))
+        print(json.dumps(dict(simulator=run["simulator"], method=run["method"], stats=mc_stats(values, spec["vbgV"] if spec else 1.2, tol),
+                              elapsedS=run["elapsedS"]), indent=2, sort_keys=True))
         return
     sim, _ = simulator_for(inputs, own=True)
     corners = corners_of(inputs, sim.name)
     if scope != "pvt" and scope not in corners:
         raise ToolError("scope must be pvt, mc:<N> or one of the corners %s" % ", ".join(corners))
-    benches, run = simulate_pvt(ws, inputs, "schematic", design, out_dir, corners=None if scope == "pvt" else [scope], own=True)
+    benches, run = simulate_pvt(ws, inputs, "schematic", design, out_dir, corners=None if scope == "pvt" else [scope], own=True,
+                                vbg_target=spec["vbgV"] if spec else None)
     out = dict(simulator=run["simulator"], scope=scope, elapsedS=run["elapsedS"],
                benches=[{k: v for k, v in b.items() if k != "sweep"} for b in benches])
     if spec:
@@ -1728,6 +1855,34 @@ def layout_clean(facts):
     return (facts["drcMagic"] == 0 and facts["drcKlayout"] == 0 and facts["lvsNetgen"] is True and facts["lvsKlayout"] is True)
 
 
+LAYOUT_STEPS = (("draw",), ("klayoutDrc", "block"), ("klayoutDrc", "density"), ("lvs",), ("klayoutLvs",), ("pex",), ("render",))
+
+
+def layout_tool_failures(found):
+    """Every step the layout tool records must have exit code 0 (a list of codes: all 0); a missing
+    code is a failure."""
+    bad = []
+    for path in LAYOUT_STEPS:
+        node = found
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        rc = node.get("rc") if isinstance(node, dict) else None
+        codes = rc if isinstance(rc, list) else [rc]
+        if rc is None or not codes or any(c != 0 or isinstance(c, bool) for c in codes):
+            bad.append("%s exit code %s" % (".".join(path), "missing" if rc is None else json.dumps(rc)))
+    return bad
+
+
+def layout_chart(rec):
+    """The layout checks (hima-chart/1; every category at most 24 characters)."""
+    return ota.chart(
+        "Layout checks of the sized bandgap", ["DRC errors (Magic)", "DRC errors (KLayout)", "LVS netgen", "LVS KLayout", "Area"],
+        [("Layout", [rec["drcMagic"], rec["drcKlayout"], 1 if rec["lvsNetgen"] else 0, 1 if rec["lvsKlayout"] else 0, rec["areaUm2"]], "measured")],
+        "Magic, KLayout and netgen with the %s decks (layout)" % rec["pdk"], [("count", 0, "lower"), ("count", 0, "lower"), ("match", 0, "higher"),
+                                                                              ("match", 0, "higher"), ("um2", 0, "lower")],
+        subtitle="clean" if rec["clean"] else "not clean")
+
+
 def cmd_layout(ws, tool, pex):
     """Lay out the accepted design with the Site's layout tool (`<tool> <netlist> bandgap_lb <out>`:
     layout, DRC, LVS against this netlist, extraction, picture), keep its facts bound to the design,
@@ -1752,13 +1907,18 @@ def cmd_layout(ws, tool, pex):
         raise ToolError("%s is not the layout tool's record of bandgap_lb" % (run_dir / "layout.json"))
     if Path(found.get("netlist", "")).resolve() != netlist.resolve():
         raise ToolError("the layout tool laid out %s, not this design's netlist %s" % (found.get("netlist"), netlist))
+    bad = layout_tool_failures(found)
+    if bad:
+        raise ToolError("the layout tool's steps did not all succeed (%s): %s" % (run_dir / "layout.json", "; ".join(bad)))
     extracted = run_dir / ("bandgap_lb" + PEX_KINDS[pex])
     if not extracted.is_file():
         raise ToolError("the layout tool wrote no %s extraction (%s)" % (pex, extracted))
+    if extracted.stat().st_mtime < started:
+        raise ToolError("the %s extraction %s is older than this run: it is not this layout's" % (pex, extracted))
     gds = run_dir / "bandgap_lb.gds"
     drc = found["klayoutDrc"]
     bbox = found.get("render", {}).get("bboxUm")
-    rec = dict(schema=LAYOUT_SCHEMA, round=k, pdk=inputs["pdks"][PDK_KEY]["name"], designSha256=sha256_file(design_path(ws)),
+    rec = dict(schema=LAYOUT_SCHEMA, round=k, pdk=inputs["pdks"][PDK_KEY]["name"], designSha256=unchanged(ws, facts),
                netlistSha256=sha256_file(netlist), gdsSha256=sha256_file(gds) if gds.is_file() else None,
                drcMagic=found["draw"]["magicDrcErrors"], drcMagicInPdkPnpCells=found["draw"].get("magicDrcInPdkPnpCells", 0),
                drcKlayout=drc["block"]["total"], drcKlayoutByRule=drc["block"].get("byRule", {}),
@@ -1792,23 +1952,21 @@ def cmd_layout(ws, tool, pex):
     png = run_dir / "bandgap_lb.png"
     if png.is_file():
         (out_dir / "bandgap-layout.png").write_bytes(png.read_bytes())
-    ota.write_chart(ws, "layout", k, "checks", ota.chart(
-        "Layout checks of the sized bandgap", ["DRC errors (Magic)", "DRC errors (KLayout)", "LVS netgen", "LVS KLayout", "Area"],
-        [("Layout", [rec["drcMagic"], rec["drcKlayout"], 1 if rec["lvsNetgen"] else 0, 1 if rec["lvsKlayout"] else 0, rec["areaUm2"]], "measured")],
-        "Magic, KLayout and netgen with the %s decks (layout)" % rec["pdk"], [("count", 0, "lower"), ("count", 0, "lower"), ("match", 0, "higher"),
-                                                                              ("match", 0, "higher"), ("um2", 0, "lower")],
-        subtitle="clean" if rec["clean"] else "not clean"))
+    ota.write_chart(ws, "layout", k, "checks", layout_chart(rec))
     print("layout round %d: DRC %d/%d, LVS netgen %s, KLayout %s, %s; %s extraction left for post-layout simulation (%.1f s)" % (
         k, rec["drcMagic"], rec["drcKlayout"], rec["lvsNetgen"], rec["lvsKlayout"], "clean" if rec["clean"] else "NOT clean", pex, elapsed))
 
 
 # ---------------------------------------------------------------- the round record
 
-def cmd_record(ws, *spec_args):
+def cmd_record(ws, *args):
+    """The round record. Arguments: the 8 spec numbers, then optionally MC_RUNS, the Monte Carlo run
+    count the Pack requires (a result with fewer runs is a problem)."""
     ws = Path(ws)
     inputs = load_inputs(ws)
     k = ota.current_round(ws)
-    spec = spec_of(spec_args)
+    spec = spec_of(args[:8])
+    mc_runs = int(args[8]) if len(args) > 8 else None
     problems = []
     sha = sha256_file(design_path(ws)) if design_path(ws).is_file() else None
     found = {}
@@ -1829,6 +1987,9 @@ def cmd_record(ws, *spec_args):
     mc = found.get("mc")
     if mc is not None and (mc["spec"]["vbgV"], mc["spec"]["vbgTolPct"]) != (spec["vbgV"], spec["vbgTolPct"]):
         problems.append("the Monte Carlo result was judged against another VBG band")
+    if mc is not None and mc_runs is not None and not (number(mc["spec"].get("n")) and mc["spec"]["n"] >= mc_runs):
+        problems.append("the Monte Carlo result has %s runs, fewer than the %d the Pack requires" % (mc["spec"].get("n"), mc_runs))
+        mc = None
     met = None if pvt is None else line_met(pvt["worst"], spec)
     margin = None if pvt is None else margins_pct(pvt["worst"], spec)
     pvt_ok = met is not None and all(v is True for v in met.values())
@@ -1844,7 +2005,8 @@ def cmd_record(ws, *spec_args):
     if post is not None and {kk: post["spec"][kk] for kk in SPEC_KEYS} != spec:
         problems.append("the post-layout measurement was judged against another spec sheet")
         post = None
-    post_ok = None if post is None else post.get("meetsSpec")
+    post_met = None if post is None else line_met(post["worst"], spec)       # recomputed, never post["meetsSpec"]
+    post_ok = None if post_met is None else all(v is True for v in post_met.values())
     lay_ok = None if lay is None else lay["clean"]
     post_margin = None if post is None else margins_pct(post["worst"], spec)
     # The round is a valid result when every measurement in it is of the accepted design and the PVT
@@ -1866,7 +2028,7 @@ def cmd_record(ws, *spec_args):
                                                      lvsNetgen=lay["lvsNetgen"], lvsKlayout=lay["lvsKlayout"], areaUm2=lay["areaUm2"]),
                  postWorst=None if post is None else {x: post["worst"][x]["value"] for x, *_ in LINES},
                  postWhere=None if post is None else {x: post["worst"][x]["where"] for x, *_ in LINES},
-                 postLineMet=None if post is None else line_met(post["worst"], spec),
+                 postLineMet=post_met,
                  failing=None if met is None else [x for x, ok in met.items() if ok is not True] + ([] if mc_ok is True else ["mc"]),
                  pvtWorst=None if pvt is None else {x: pvt["worst"][x]["value"] for x, *_ in LINES},
                  pvtWhere=None if pvt is None else {x: pvt["worst"][x]["where"] for x, *_ in LINES},
@@ -1941,7 +2103,7 @@ def write_summary(ws, inputs, lessons, spec):
 COMMANDS = {
     "bind": (cmd_bind, (3, 4)), "characterize": (cmd_characterize, (0,)), "design": (cmd_design, (0,)),
     "draft": (cmd_draft, (1, 2)), "precheck": (cmd_precheck, (1, 2)), "sim": (cmd_sim, (3, 4)),
-    "simulate": (cmd_simulate, (9,)), "mc": (cmd_mc, (3, 4)), "record": (cmd_record, (8,)), "cell": (cmd_cell, (0, 1)),
+    "simulate": (cmd_simulate, (9,)), "mc": (cmd_mc, (3, 4)), "record": (cmd_record, (8, 9)), "cell": (cmd_cell, (0, 1)),
     "layout": (cmd_layout, (2,)),
 }
 

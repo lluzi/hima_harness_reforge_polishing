@@ -10,13 +10,13 @@ simulator lang=spice
 .lib "<pdkRoot>/synth180/bandgap.lib" mm
 .include "./cell-mc.spice"
 simulator lang=spectre
-parameters sw_stat_mismatch=1
+parameters sw_stat_global=0 sw_stat_mismatch=1
 opts2 options temp=27 tnom=27 rawfmt=psfascii save=selected
 VDD1 (vdd1 0) vsource dc=3.3
 VEN1 (en1 0) vsource dc=3.3
 GIB1 (ib1 0 en1 0) vccs gm=1.51515e-07
 X1 (vdd1 0 en1 ib1 vbg1 g1 g1) bandgap_lb
 save vbg1 VDD1:p
-mc1 montecarlo numruns=30 seed=1 variations=all donominal=yes savefamilyplots=yes {
+mc1 montecarlo numruns=30 seed=1 variations=mismatch donominal=yes savefamilyplots=yes {
   op1 dc
 }

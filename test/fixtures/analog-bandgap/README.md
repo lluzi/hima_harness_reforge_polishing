@@ -7,13 +7,14 @@
     `cell.spice` is its cell.
   - There is one netlist per copy of the cell: `nominal` (DC sweep, operating point, AC with the
     supply source), `loopv` and `loopi` (the loop's voltage and current injections), `off` (en low),
-    and `powerUp`, `en1us`, `en50us` (the transients).
-- `spectre-mc/`: Spectre `montecarlo` output for the same design, mismatch on, 30 runs, seed 1
-  (`mc1-<k>_op1.dc`).
+    `offref` (en low with the reference current left on), and `powerUp`, `en1us`, `en50us` (the
+    transients).
+- `spectre-mc/`: Spectre `montecarlo` output for the same design (`variations=mismatch`,
+  `sw_stat_mismatch=1`, `sw_stat_global=0`, 30 runs, seed 1; `mc1-<k>_op1.dc`).
 - `synth180-tables/`: ngspice 47 characterization of `synth180`: the gm/Id tables and the PNP and
   resistor tables. Values are rounded to 5 significant digits.
 
 Produced on the EDA server on 2026-10-12 by `flow/bg_cli.py` (`run_bench`, `run_mc`). The netlists'
 PDK root is replaced by `<pdkRoot>`, and their cell include by `./cell.spice`. Spectre's own logs are
-left out. The same design in ngspice 47 measured the same VBG (1.1738 V), PSRR, phase margin and
+left out. The same design in ngspice 47 measured the same VBG (1.1736 V), PSRR, phase margin and
 start-up as Spectre; `analog-bandgap-sim.test.ts` checks the agreement.

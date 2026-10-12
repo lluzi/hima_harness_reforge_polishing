@@ -8,8 +8,9 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
 ## The method
 
 1. **First cut:** `draft intent <spec sheet>`.
-   - Core current per branch from the IQ budget: 80 % of the IQ line, less the reference, the tail and
-     the start-up, shared by two branches at the hot, low-resistance corner.
+   - Core current per branch from the IQ budget: 80 % of the IQ line, less the reference (always
+     0.5 uA), the tail and the start-up, shared by the two core branches (and the drive branch,
+     2 iCore / driveRatio, in `kuijk-p5t-mirror`) at the hot, low-resistance corner.
    - R1 = VT ln n / I at 27 C.
    - R2/R1 = -(dVBE/dT + (k/q)(1 - T TCR)) / ((k/q) ln n), with dVBE/dT measured on the PNP at that
      current: dVBG/dT = 0 at 27 C.
@@ -22,7 +23,9 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
    (sigma measured / sigma wanted)^2 and picks the length (or, at the PDK's width limit, the gm/Id)
    that reaches it.
 4. Your own loop: `sim <campaign> design.json tt|pvt|mc:<N> <spec sheet>` prints every measurement and
-   the failing lines; it is never a delivery.
+   the failing lines; it is never a delivery. Monte Carlo runs on either simulator: Spectre's
+   `montecarlo` (variations=mismatch), or ngspice re-reading the netlist with a new seed per run.
+   On gf180mcuD the two agree on sigma(VBG) within 1 % at N = 100.
 
 ## Reading the measurements
 
@@ -64,8 +67,11 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
 - The first cut met every line at every corner, and Monte Carlo too:
   - VBG 1.2022 to 1.2105 V; TC 19.6 ppm/C worst;
   - PM 77.5 deg; start-up 70.8 us; PSRR 55.8 dB;
-  - IQ 7.61 uA (the tightest line, at ff 2.0 V);
+  - IQ 7.61 uA (the tightest line, at ff 2.0 V): the budget then left out the drive branch;
   - Monte Carlo mean 1.2053 V, sigma 4.75 mV.
+- With the drive branch in the IQ budget the first cut runs at 1.097 uA per branch and still meets
+  every line: IQ 6.39 uA, VBG 1.2108 V worst, TC 21.6 ppm/C, PM 75.7 deg, start-up 71.3 us,
+  PSRR 53.3 dB; Monte Carlo mean 1.2053 V, sigma 4.79 mV.
 - Sigma was above the 4.0 mV that 50 % of the band allows. `draft mc` asked for 1.41 times the area:
   - the pair at L 10 um and the widest device, gm/Id 18.41;
   - the load at gm/Id 11.33.
@@ -85,4 +91,7 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
     code;
   - it crashed in transients holding several copies of the cell, and on nodes with almost no
     capacitance; the Pack runs one copy per netlist with a 10 fF node floor;
+  - the floor (tt, both supplies, all three temperatures, against no floor) moves no phase margin
+    (to 0.01 deg) and the en-ramp start-up by at most 6 us. It shortens the power-up from vdd = 0:
+    48 to 75 us become 36 us at 2.0 V. Without the floor Spectre crashed on that run at 3.3 V;
   - a crashed run is retried, and the record counts the attempts.

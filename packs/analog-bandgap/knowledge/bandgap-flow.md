@@ -12,7 +12,7 @@ the Pack's own command on the Site; you (the design agent) propose sizes, and th
 | Monte Carlo | `bg_cli.py mc <ws> <N> <vbg> <tol%>` | `state/mc.json` | `mc-in-band` |
 | Layout, DRC, LVS | `bg_cli.py layout <ws> <layoutTool> <c|rc>` | `state/layout.json`, `state/cell-post.spice` | `layout-clean` |
 | After layout | `bg_cli.py simulate <ws> post <8 spec numbers>` | `state/measure-post.json` | `meets-spec` |
-| Round record | `bg_cli.py record <ws> <8 spec numbers>` | `state/round.json`, `state/lessons.json`, `derived/` | `round-valid`, `signed-off` |
+| Round record | `bg_cli.py record <ws> <8 spec numbers> <Monte Carlo runs>` | `state/round.json`, `state/lessons.json`, `derived/` | `round-valid`, `signed-off` |
 
 A stage that fails skips the later stages that round; the record says which line failed at which
 corner (`pvtWhere`, `postWhere`), and the next round starts with you again, with the lessons.
@@ -25,7 +25,7 @@ corner (`pvtWhere`, `postWhere`), and the next round starts with you again, with
   loop gain broken between `go` and `g` (phase margin over every unity crossing; none is a miss),
   start-up from power-up and for two enable ramps (1 us, 50 us) until VBG enters +/- 2 % of its final
   value and stays, PSRR at 1 kHz.
-- **Monte Carlo:** N runs on Spectre with the PDK's mismatch models at tt, 27 C, 3.3 V: mean, sigma,
+- **Monte Carlo:** N runs on the measuring simulator with the PDK's mismatch models at tt, 27 C, 3.3 V: mean, sigma,
   mean +/- 3 sigma against the band, with the Pelgrom estimate beside it.
 - **Layout:** the Site's tool draws the netlist the Pack simulates (`bandgap_lb`), checks DRC with the
   PDK's Magic and KLayout decks and LVS with netgen and the PDK's KLayout deck, and extracts it
@@ -36,5 +36,5 @@ corner (`pvtWhere`, `postWhere`), and the next round starts with you again, with
 
 `OTA_SIM=ngspice OTA_PDK_ROOT=<your PDK root> python3 <campaign>/flow/bg_cli.py sim <campaign>
 design.json <tt|pvt|corner> spec.json ./sim` runs the same benches on your draft and prints the worst
-values as JSON (`mc:<N>` needs Spectre). Use one corner while you iterate and `pvt` before you
+values as JSON (`mc:<N>` runs Monte Carlo on your ngspice). Use one corner while you iterate and `pvt` before you
 deliver; your numbers are evidence of your loop, the Pack measures the delivery again.

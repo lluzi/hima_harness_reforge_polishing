@@ -159,6 +159,7 @@ nodes:
         PM_MIN_DEG: { from: goal, name: min_pm_deg }
         TSTART_MAX_US: { from: goal, name: max_tstart_us }
         PSRR_MIN_DB: { from: goal, name: min_psrr_db }
+        MC_RUNS: { from: strategy, name: mcRuns }
   - id: read-round
     kind: act
     label: Read the round result

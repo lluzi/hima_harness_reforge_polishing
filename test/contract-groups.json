@@ -177,7 +177,8 @@
     "test/contract/andes-cell-fmax-dry-path.host.test.ts"
   ],
   "analog-dry": [
-    "test/contract/analog-ota-migrate-dry-path.host.test.ts"
+    "test/contract/analog-ota-migrate-dry-path.host.test.ts",
+    "test/contract/analog-bandgap-dry-path.host.test.ts"
   ],
   "analog-sim": [
     "test/contract/analog-ota-migrate-sim.test.ts",

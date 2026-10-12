@@ -149,7 +149,7 @@ tools:
   - id: monte-carlo
     file: flow/bg_cli.py
     description: >-
-      Monte Carlo of the accepted design on Spectre with the PDK's mismatch models (tt, 27 C, the
+      Monte Carlo of the accepted design on the measuring simulator with the PDK's mismatch models (tt, 27 C, the
       higher supply): N runs, mean, sigma and mean +/- 3 sigma of VBG against the band, and the
       Pelgrom estimate beside the measurement; write state/mc.json and reports/monte-carlo/r<k>/.
     inputs: [WORKSPACE, MC_RUNS, VBG_V, VBG_TOL_PCT]
@@ -180,8 +180,8 @@ tools:
       or missed at its worst corner, Monte Carlo, layout and post-layout results, the worst margin,
       the best so far and whether the round is signed off; append lessons; write derived/round-<k>.md,
       derived/summary.md and reports/record-round/r<k>/. Uses no model text as a fact.
-    inputs: [WORKSPACE, VBG_V, VBG_TOL_PCT, IQ_MAX_UA, ISD_MAX_NA, TC_MAX_PPM, PM_MIN_DEG, TSTART_MAX_US, PSRR_MIN_DB]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', record, '${WORKSPACE}', '${VBG_V}', '${VBG_TOL_PCT}', '${IQ_MAX_UA}', '${ISD_MAX_NA}', '${TC_MAX_PPM}', '${PM_MIN_DEG}', '${TSTART_MAX_US}', '${PSRR_MIN_DB}']
+    inputs: [WORKSPACE, VBG_V, VBG_TOL_PCT, IQ_MAX_UA, ISD_MAX_NA, TC_MAX_PPM, PM_MIN_DEG, TSTART_MAX_US, PSRR_MIN_DB, MC_RUNS]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', record, '${WORKSPACE}', '${VBG_V}', '${VBG_TOL_PCT}', '${IQ_MAX_UA}', '${ISD_MAX_NA}', '${TC_MAX_PPM}', '${PM_MIN_DEG}', '${TSTART_MAX_US}', '${PSRR_MIN_DB}', '${MC_RUNS}']
 
 reports: { dir: reports }
 

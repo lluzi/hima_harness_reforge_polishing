@@ -9,13 +9,13 @@ XQ2_5 vss vss c spnp
 XQ2_6 vss vss c spnp 
 XQ2_7 vss vss c spnp 
 XQ2_8 vss vss c spnp 
-XR1 b c vss sres r_length=36.98u r_width=2u s=2
-XR2a vbg a vss sres r_length=37.94u r_width=2u s=19
-XR2b vbg b vss sres r_length=37.94u r_width=2u s=19
+XR1 b c vss sres r_length=30.75u r_width=2u s=3
+XR2a vbg a vss sres r_length=39.63u r_width=2u s=23
+XR2b vbg b vss sres r_length=39.63u r_width=2u s=23
 XMB0 ibias ibias vdd vdd pch33 w=3.89u l=5u
 XMT tail ibias vdd vdd pch33 w=7.78u l=5u
 XM3 d1 d1 ls vss nch33 w=9.29u l=40u
-XMO vbg g vdd vdd pch33 w=8.77u l=2u
+XMO vbg g vdd vdd pch33 w=7.01u l=2u
 XMSU1 su ibias vdd vdd pch33 w=0.22u l=5.66u
 XMSU2 su vbg vss vss nch33 w=0.5u l=20u
 XMSU3 g su sux vss nch33 w=1u l=1u
@@ -26,8 +26,8 @@ XMEN3 ls en vss vss nch33 w=1u l=1u
 XM1 d1 a tail vdd pch33 w=86.17u l=10u
 XM2 o1 b tail vdd pch33 w=86.17u l=10u
 XM4 o1 d1 ls vss nch33 w=9.29u l=40u
-XM5 go o1 ls vss nch33 w=13.37u l=40u
-XM6 go go vdd vdd pch33 w=2.19u l=2u
+XM5 go o1 ls vss nch33 w=10.7u l=40u
+XM6 go go vdd vdd pch33 w=1.75u l=2u
 XCC o1 vss scap c_length=70.71u c_width=70.71u
 .ends bandgap_lb
 

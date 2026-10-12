@@ -17,18 +17,18 @@ the same path in the Campaign; `report` names your `analysis.md` there.
     "MB0": {"wUm": 5.61, "lUm": 5.0}, "MT": {"wUm": 11.22, "lUm": 5.0},
     "M1": {"wUm": 86.215, "lUm": 5.0}, "M2": {"wUm": 86.215, "lUm": 5.0},
     "M3": {"wUm": 10.5, "lUm": 40.0}, "M4": {"wUm": 10.5, "lUm": 40.0},
-    "M5": {"wUm": 14.395, "lUm": 40.0}, "M6": {"wUm": 2.87, "lUm": 2.0},
-    "MO": {"wUm": 11.48, "lUm": 2.0},
+    "M5": {"wUm": 11.515, "lUm": 40.0}, "M6": {"wUm": 2.295, "lUm": 2.0},
+    "MO": {"wUm": 9.185, "lUm": 2.0},
     "MSU1": {"wUm": 0.28, "lUm": 5.0}, "MSU2": {"wUm": 0.5, "lUm": 20.0}, "MSU3": {"wUm": 1.0, "lUm": 1.0},
     "MSU4": {"wUm": 1.0, "lUm": 1.0}, "MEN1": {"wUm": 1.0, "lUm": 1.0}, "MEN2": {"wUm": 1.0, "lUm": 1.0},
     "MEN3": {"wUm": 1.0, "lUm": 1.0}
   },
   "resistors": {
-    "R1": {"wUm": 2.0, "lUm": 38.555, "s": 2},
-    "R2a": {"wUm": 2.0, "lUm": 38.7, "s": 21}, "R2b": {"wUm": 2.0, "lUm": 38.7, "s": 21}
+    "R1": {"wUm": 2.0, "lUm": 32.095, "s": 3},
+    "R2a": {"wUm": 2.0, "lUm": 39.465, "s": 26}, "R2b": {"wUm": 2.0, "lUm": 39.465, "s": 26}
   },
   "caps": {"CC": {"wUm": 70.71, "lUm": 70.71, "m": 1}},
-  "intent": {"n": 8, "ibiasUa": 0.5, "itailUa": 1.0, "iCoreUa": 1.371, "r2r1": 10.5397, "isuNa": 25.0,
+  "intent": {"n": 8, "ibiasUa": 0.5, "itailUa": 1.0, "iCoreUa": 1.097, "r2r1": 10.6471, "isuNa": 25.0,
              "resWUm": 2.0, "resSegMaxUm": 40.0, "ccPf": 10.0, "coutPf": 0.0, "mcBandSharePct": 50.0,
              "driveRatio": 4.0,
              "pair": {"gmId": 20.0, "lUm": 5.0}, "load": {"gmId": 10.0, "lUm": 40.0},
@@ -70,7 +70,8 @@ The sizes above are the method's first cut on gf180mcuD (`draft size` computed t
   resistors of different widths;
 - capacitors other than CC and CO, or not `{wUm, lUm, m}` with m from 1 to 16;
 - an L or W outside the PDK's limits or off its grid; M1 different from M2, M3 different from M4;
-- n not a whole number from 2 to 24; ibiasUa outside 0.05 to 10 uA;
+- n not a whole number from 2 to 24; ibiasUa other than 0.5 uA (the reference current the bench
+  provides);
 - any field that is not part of the design (a VBG or a PSRR you computed, for example), and any field
   in `intent` other than the design choices;
 - sizes that do not follow the intent;
