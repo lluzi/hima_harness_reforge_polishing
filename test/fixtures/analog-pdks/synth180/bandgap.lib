@@ -1,0 +1,60 @@
+* synth180 bandgap devices: 3.3 V MOS at five corners, a vertical PNP, a poly resistor, a MIM-style capacitor
+* and a MOS mismatch section. Made up for tests only (no foundry data); read by ngspice and Spectre.
+.lib mos_tt
+.param dvn=0 dvp=0 kmu=1
+.include synth180_33.inc
+.endl mos_tt
+.lib mos_ss
+.param dvn=0.06 dvp=-0.06 kmu=0.9
+.include synth180_33.inc
+.endl mos_ss
+.lib mos_ff
+.param dvn=-0.06 dvp=0.06 kmu=1.1
+.include synth180_33.inc
+.endl mos_ff
+.lib mos_sf
+.param dvn=0.06 dvp=0.06 kmu=1
+.include synth180_33.inc
+.endl mos_sf
+.lib mos_fs
+.param dvn=-0.06 dvp=-0.06 kmu=1
+.include synth180_33.inc
+.endl mos_fs
+.lib bjt_tt
+.param ispnp=1 bfpnp=1
+.include synth180_bjt.inc
+.endl bjt_tt
+.lib bjt_ss
+.param ispnp=0.7 bfpnp=0.8
+.include synth180_bjt.inc
+.endl bjt_ss
+.lib bjt_ff
+.param ispnp=1.4 bfpnp=1.2
+.include synth180_bjt.inc
+.endl bjt_ff
+.lib res_tt
+.param rsh_sres=1000
+.include synth180_res.inc
+.endl res_tt
+.lib res_ss
+.param rsh_sres=1150
+.include synth180_res.inc
+.endl res_ss
+.lib res_ff
+.param rsh_sres=850
+.include synth180_res.inc
+.endl res_ff
+.lib mm
+.subckt nch33 d g s b w=1e-5 l=1e-6
+.param p_sqrtarea='sqrt(w*l)'
+.param var_vth='0.7071*5e-9/p_sqrtarea'
+.param mis_vth='agauss(0,var_vth,1)'
+m0 d g s b nch33 w=w l=l delvto='mis_vth*sw_stat_mismatch'
+.ends nch33
+.subckt pch33 d g s b w=1e-5 l=1e-6
+.param p_sqrtarea='sqrt(w*l)'
+.param var_vth='0.7071*5e-9/p_sqrtarea'
+.param mis_vth='agauss(0,var_vth,1)'
+m0 d g s b pch33 w=w l=l delvto='mis_vth*sw_stat_mismatch'
+.ends pch33
+.endl mm

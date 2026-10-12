@@ -1,0 +1,36 @@
+* Kuijk bandgap, topology kuijk-p5t-mirror, PDK synth180, round 1
+.subckt bandgap_lb vdd vss en ibias vbg go g
+XQ1 vss vss a spnp 
+XQ2_1 vss vss c spnp 
+XQ2_2 vss vss c spnp 
+XQ2_3 vss vss c spnp 
+XQ2_4 vss vss c spnp 
+XQ2_5 vss vss c spnp 
+XQ2_6 vss vss c spnp 
+XQ2_7 vss vss c spnp 
+XQ2_8 vss vss c spnp 
+XR1 b c vss sres r_length=36.98u r_width=2u s=2
+XR2a vbg a vss sres r_length=37.94u r_width=2u s=19
+XR2b vbg b vss sres r_length=37.94u r_width=2u s=19
+MB0 ibias ibias vdd vdd pch33 w=3.89u l=5u
+MT tail ibias vdd vdd pch33 w=7.78u l=5u
+M3 d1 d1 ls vss nch33 w=9.29u l=40u
+MO vbg g vdd vdd pch33 w=8.77u l=2u
+MSU1 su ibias vdd vdd pch33 w=0.22u l=5.66u
+MSU2 su vbg vss vss nch33 w=0.5u l=20u
+MSU3 g su sux vss nch33 w=1u l=1u
+MSU4 sux en vss vss nch33 w=1u l=1u
+MEN1 ibias en vdd vdd pch33 w=1u l=1u
+MEN2 g en vdd vdd pch33 w=1u l=1u
+MEN3 ls en vss vss nch33 w=1u l=1u
+M1 d1 a tail vdd pch33 w=86.17u l=10u
+M2 o1 b tail vdd pch33 w=86.17u l=10u
+M4 o1 d1 ls vss nch33 w=9.29u l=40u
+M5 go o1 ls vss nch33 w=13.37u l=40u
+M6 go go vdd vdd pch33 w=2.19u l=2u
+XCC o1 vss scap c_length=70.71u c_width=70.71u
+.ends bandgap_lb
+
+.subckt bandgap vdd vss en ibias vbg
+xlb vdd vss en ibias vbg g g bandgap_lb
+.ends bandgap

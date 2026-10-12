@@ -33,6 +33,25 @@ migration.
   Pelgrom `delvto`/`mulu0`). Per device, σVth = 0.7071 · 7.148 mV·µm / √(W·L) for nfet and
   0.7071 · 6.66 mV·µm / √(W·L) for pfet.
 
+## Template decision (main agent, 2026-10-12, on measured evidence)
+
+The first template below, `kuijk-p5t`, drives the output PMOS gate straight from the OTA. Spectre on
+GF180MCU shows it cannot meet the sheet:
+
+- The gate must sit at vdd − |VGS| ≈ 1.6–1.9 V below the supply, and that shifts 0.35 V over
+  temperature.
+- At 2.0 V and 125 °C the OTA's load leaves saturation.
+- At 3.3 V and the fast-PMOS corners the input pair is starved.
+- The window that serves both supplies is about 0.05 V at tt and closes at the corners.
+
+Three rounds that changed only the intent all failed VBG, TC, phase margin and PSRR.
+
+The Pack's template is therefore `kuijk-p5t-mirror`. The same OTA drives an NMOS stage into a PMOS
+diode, and the output device mirrors it 4:1. The method's first cut then meets every line at every
+corner plus Monte Carlo. `kuijk-p5t` stays in the CLI (`bind ... kuijk-p5t`) as the recorded
+negative result. The evidence is on the server in `analog-sim-01/bg-probe/` (`ws-a`: kuijk-p5t,
+`ws-b`: mirror), and in the playbook.
+
 ## Circuit (template; the agent chooses sizes, never topology)
 
 - **Core (Kuijk).** Q1 (1×) at node `a`; R1 then Q2 (n×, default n = 8) at node `b`; R2a from

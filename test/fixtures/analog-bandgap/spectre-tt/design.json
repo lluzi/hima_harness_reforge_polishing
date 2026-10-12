@@ -1,0 +1,131 @@
+{
+  "caps": {
+    "CC": {
+      "lUm": 70.71,
+      "m": 1,
+      "wUm": 70.71
+    }
+  },
+  "devices": {
+    "M1": {
+      "lUm": 10.0,
+      "wUm": 86.17
+    },
+    "M2": {
+      "lUm": 10.0,
+      "wUm": 86.17
+    },
+    "M3": {
+      "lUm": 40.0,
+      "wUm": 9.29
+    },
+    "M4": {
+      "lUm": 40.0,
+      "wUm": 9.29
+    },
+    "M5": {
+      "lUm": 40.0,
+      "wUm": 13.37
+    },
+    "M6": {
+      "lUm": 2.0,
+      "wUm": 2.19
+    },
+    "MB0": {
+      "lUm": 5.0,
+      "wUm": 3.89
+    },
+    "MEN1": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN2": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN3": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MO": {
+      "lUm": 2.0,
+      "wUm": 8.77
+    },
+    "MSU1": {
+      "lUm": 5.66,
+      "wUm": 0.22
+    },
+    "MSU2": {
+      "lUm": 20.0,
+      "wUm": 0.5
+    },
+    "MSU3": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MSU4": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MT": {
+      "lUm": 5.0,
+      "wUm": 7.78
+    }
+  },
+  "ibiasUa": 0.5,
+  "intent": {
+    "ccPf": 10.0,
+    "coutPf": 0.0,
+    "driveRatio": 4.0,
+    "iCoreUa": 1.439,
+    "ibiasUa": 0.5,
+    "isuNa": 25.0,
+    "itailUa": 1.0,
+    "load": {
+      "gmId": 10.0,
+      "lUm": 40.0
+    },
+    "mcBandSharePct": 50.0,
+    "mirror": {
+      "gmId": 10.0,
+      "lUm": 5.0
+    },
+    "n": 8,
+    "out": {
+      "gmId": 10.0,
+      "lUm": 2.0
+    },
+    "pair": {
+      "gmId": 20.0,
+      "lUm": 10.0
+    },
+    "r2r1": 9.7448,
+    "resSegMaxUm": 40.0,
+    "resWUm": 2.0
+  },
+  "n": 8,
+  "pdk": "synth180",
+  "reason": "",
+  "report": "reports/size-agent/r1/analysis.md",
+  "resistors": {
+    "R1": {
+      "lUm": 36.98,
+      "s": 2,
+      "wUm": 2.0
+    },
+    "R2a": {
+      "lUm": 37.94,
+      "s": 19,
+      "wUm": 2.0
+    },
+    "R2b": {
+      "lUm": 37.94,
+      "s": 19,
+      "wUm": 2.0
+    }
+  },
+  "round": 1,
+  "schema": "hima-bandgap-design/1",
+  "summary": "",
+  "topology": "kuijk-p5t-mirror"
+}

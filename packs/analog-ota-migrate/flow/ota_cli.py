@@ -444,7 +444,8 @@ def psf_ascii(path):
             if m and m.group(2) in structs:
                 inst, fields, values = m.group(1), structs[m.group(2)], []
                 continue
-            m = re.match(r'^"([^"]+)"(?: "[^"]*")? (?:\(([-+0-9.eE]+) ([-+0-9.eE]+)\)|([-+0-9.eE]+))$', line)
+            # A value may carry its own properties (a DC operating point: `"VSUP:p" "I" -1.2e-06 PROP(`).
+            m = re.match(r'^"([^"]+)"(?: "[^"]*")? (?:\(([-+0-9.eE]+) ([-+0-9.eE]+)\)|([-+0-9.eE]+))(?: PROP\()?$', line)
             if not m:
                 continue
             key = m.group(1)

@@ -1,0 +1,20 @@
+// Kuijk bandgap bench: synth180 corner tt, vdd 3.3 V, copy 1 (nominal)
+simulator lang=spectre
+global 0
+simulator lang=spice
+.include "<pdkRoot>/synth180/design.inc"
+.lib "<pdkRoot>/synth180/bandgap.lib" mos_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" bjt_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" res_tt
+.include "./cell.spice"
+simulator lang=spectre
+opts options temp=27 tnom=27 rawfmt=psfascii save=selected cmin=1e-14
+VDD1 (vdd1 0) vsource dc=3.3 mag=1
+VEN1 (en1 0) vsource dc=3.3
+GIB1 (ib1 0 en1 0) vccs gm=1.51515e-07
+X1 (vdd1 0 en1 ib1 vbg1 g1 g1) bandgap_lb
+save vbg1 VDD1:p g1 X1.tail X1.d1 X1.a X1.b X1.su
+dcT dc param=temp start=-40 stop=125 step=5
+al_p27 alter param=temp value=27
+op_p27 dc
+ac_p27 ac start=0.1 stop=1e+09 dec=40

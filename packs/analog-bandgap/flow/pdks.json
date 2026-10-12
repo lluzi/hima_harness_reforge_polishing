@@ -1,0 +1,714 @@
+{
+  "schema": "hima-pdk-cards/4",
+  "about": "The PDK cards of the analog-bandgap Pack: hima-pdk-cards/3 (the OTA Pack's) plus a vertical PNP (pnp), a poly resistor (res) and a capacitor (cap); every process corner lists the MOS, BJT, resistor and capacitor sections (BJT, resistor and capacitor follow the process corner; the cross corners sf/fs take their typical sections); mismatch lists the sections Monte Carlo adds (MOS become subcircuits with Pelgrom mismatch, so their instance prefix is X), with the switches it sets after the includes. supplies are the supply voltages every corner is simulated at; vdd is the characterization supply. avtMvUm is the per-device sigma(Vth) times sqrt(Weff Leff) in mV um, with Leff = L - dlUm and Weff = W - dwUm.",
+  "cards": {
+    "synth180": {
+      "title": "Synthetic 180 nm-class test process, 3.3 V devices",
+      "synthetic": true,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 3.3,
+      "supplies": [
+        2.0,
+        3.3
+      ],
+      "temperatureC": 27,
+      "decks": {
+        "spectre": {
+          "includes": [
+            "synth180/design.inc"
+          ],
+          "corners": {
+            "tt": [
+              [
+                "synth180/bandgap.lib",
+                "mos_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth180/bandgap.lib",
+                "mos_ss"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_ss"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth180/bandgap.lib",
+                "mos_ff"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_ff"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_ff"
+              ]
+            ],
+            "sf": [
+              [
+                "synth180/bandgap.lib",
+                "mos_sf"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ],
+            "fs": [
+              [
+                "synth180/bandgap.lib",
+                "mos_fs"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ]
+          },
+          "mismatch": [
+            [
+              "synth180/bandgap.lib",
+              "mm"
+            ]
+          ],
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [
+            "synth180/design.inc"
+          ],
+          "corners": {
+            "tt": [
+              [
+                "synth180/bandgap.lib",
+                "mos_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth180/bandgap.lib",
+                "mos_ss"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_ss"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth180/bandgap.lib",
+                "mos_ff"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_ff"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_ff"
+              ]
+            ],
+            "sf": [
+              [
+                "synth180/bandgap.lib",
+                "mos_sf"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ],
+            "fs": [
+              [
+                "synth180/bandgap.lib",
+                "mos_fs"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "bjt_tt"
+              ],
+              [
+                "synth180/bandgap.lib",
+                "res_tt"
+              ]
+            ]
+          },
+          "mismatch": [
+            [
+              "synth180/bandgap.lib",
+              "mm"
+            ]
+          ],
+          "osdi": []
+        }
+      },
+      "mismatch": {
+        "mosInstance": "X",
+        "params": {
+          "sw_stat_mismatch": 1
+        }
+      },
+      "devices": {
+        "nmos": {
+          "model": "nch33",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
+          "lMinUm": 0.18,
+          "lMaxUm": 50.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 100.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.5,
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            20.0,
+            40.0
+          ],
+          "avtMvUm": 3.5355,
+          "dlUm": 0.0,
+          "dwUm": 0.0
+        },
+        "pmos": {
+          "model": "pch33",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
+          "lMinUm": 0.18,
+          "lMaxUm": 50.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 100.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.5,
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            20.0,
+            40.0
+          ],
+          "avtMvUm": 3.5355,
+          "dlUm": 0.0,
+          "dwUm": 0.0
+        },
+        "pnp": {
+          "model": "spnp",
+          "instance": "X",
+          "params": "",
+          "emitterUm2": 100.0,
+          "nMax": 24,
+          "charCurrentsUa": [
+            0.25,
+            0.5,
+            1.0,
+            2.0,
+            4.0,
+            8.0,
+            16.0
+          ]
+        },
+        "res": {
+          "model": "sres",
+          "instance": "X",
+          "params": "r_length={l}u r_width={w}u s={s}",
+          "lMinUm": 1.0,
+          "lMaxUm": 200.0,
+          "wMinUm": 0.5,
+          "wMaxUm": 20.0,
+          "gridUm": 0.01,
+          "charWidthsUm": [
+            1.0,
+            2.0,
+            4.0
+          ],
+          "charLengthsUm": [
+            10.0,
+            40.0
+          ],
+          "segMaxUm": 40.0,
+          "defaultWUm": 2.0
+        },
+        "cap": {
+          "model": "scap",
+          "instance": "X",
+          "params": "c_length={l}u c_width={w}u",
+          "fFPerUm2": 2.0,
+          "lMinUm": 1.0,
+          "lMaxUm": 200.0,
+          "wMinUm": 1.0,
+          "wMaxUm": 200.0,
+          "gridUm": 0.01
+        }
+      }
+    },
+    "gf180mcuD": {
+      "title": "GF180MCU open PDK, 3.3 V devices, vertical PNP, high-Rs poly, MIM",
+      "synthetic": false,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 3.3,
+      "supplies": [
+        2.0,
+        3.3
+      ],
+      "temperatureC": 27,
+      "decks": {
+        "spectre": {
+          "includes": [
+            "gf180mcuD/libs.tech/ngspice/design.spice"
+          ],
+          "corners": {
+            "tt": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ],
+            "ss": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_ss"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_ss"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_ff"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_ff"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_ff"
+              ]
+            ],
+            "sf": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_sf"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_sf"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ],
+            "fs": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_fs"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_fs"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ]
+          },
+          "mismatch": [
+            [
+              "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+              "fets_mm"
+            ]
+          ],
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [
+            "gf180mcuD/libs.tech/ngspice/design.spice"
+          ],
+          "corners": {
+            "tt": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ],
+            "ss": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_ss"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_ss"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_ff"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_ff"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_ff"
+              ]
+            ],
+            "sf": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_sf"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_sf"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ],
+            "fs": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_fs"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_fs"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "bjt_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "res_typical"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "mimcap_typical"
+              ]
+            ]
+          },
+          "mismatch": [
+            [
+              "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+              "fets_mm"
+            ]
+          ],
+          "osdi": []
+        }
+      },
+      "mismatch": {
+        "mosInstance": "X",
+        "params": {
+          "sw_stat_mismatch": 1
+        }
+      },
+      "devices": {
+        "nmos": {
+          "model": "nfet_03v3",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
+          "lMinUm": 0.28,
+          "lMaxUm": 50.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 100.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.56,
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            20.0,
+            40.0
+          ],
+          "avtMvUm": 5.0544,
+          "dlUm": 0.15,
+          "dwUm": -0.1
+        },
+        "pmos": {
+          "model": "pfet_03v3",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
+          "lMinUm": 0.28,
+          "lMaxUm": 50.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 100.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.56,
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            20.0,
+            40.0
+          ],
+          "avtMvUm": 4.7093,
+          "dlUm": 0.15,
+          "dwUm": -0.1
+        },
+        "pnp": {
+          "model": "pnp_10p00x10p00",
+          "instance": "X",
+          "params": "",
+          "emitterUm2": 100.0,
+          "nMax": 24,
+          "charCurrentsUa": [
+            0.25,
+            0.5,
+            1.0,
+            2.0,
+            4.0,
+            8.0,
+            16.0
+          ]
+        },
+        "res": {
+          "model": "ppolyf_u_1k",
+          "instance": "X",
+          "params": "r_length={l}u r_width={w}u s={s}",
+          "lMinUm": 1.0,
+          "lMaxUm": 200.0,
+          "wMinUm": 1.0,
+          "wMaxUm": 20.0,
+          "gridUm": 0.005,
+          "charWidthsUm": [
+            1.0,
+            2.0,
+            4.0
+          ],
+          "charLengthsUm": [
+            10.0,
+            40.0
+          ],
+          "segMaxUm": 40.0,
+          "defaultWUm": 2.0
+        },
+        "cap": {
+          "model": "cap_mim_2f0_m4m5_noshield",
+          "instance": "X",
+          "params": "c_length={l}u c_width={w}u",
+          "fFPerUm2": 2.0,
+          "lMinUm": 5.0,
+          "lMaxUm": 100.0,
+          "wMinUm": 5.0,
+          "wMaxUm": 100.0,
+          "gridUm": 0.005
+        }
+      }
+    }
+  }
+}

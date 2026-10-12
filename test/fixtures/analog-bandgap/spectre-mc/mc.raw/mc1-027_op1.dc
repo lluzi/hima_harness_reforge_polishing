@@ -1,0 +1,94 @@
+HEADER
+"PSFversion" "1.00"
+"simulator" "spectre"
+"version" "23.1.0.722.isr15"
+"date" "6:27:10 AM, Mon Oct 12, 2026"
+"design" "// Kuijk bandgap Monte Carlo (mismatch): synth180 tt, 27 C, vdd 3.3 V"
+"analysis type" "dc"
+"analysis name" "mc1-027_op1"
+"analysis description" "DC Analysis `mc1-027_op1'"
+"xVecSorted" "unsorted"
+"tolerance.relative" 1.000000000000000e-03
+"reltol" 1.000000000000000e-03
+"abstol(V)" 1.000000000000000e-06
+"abstol(I)" 1.000000000000000e-12
+"temp" 2.700000000000000e+01
+"tnom" 2.700000000000000e+01
+"tempeffects" "all"
+"gmindc" 1.000000000000000e-12
+TYPE
+"LogicV" FLOAT DOUBLE PROP(
+"key" "node"
+)
+"V" FLOAT DOUBLE PROP(
+"units" "V"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"I" FLOAT DOUBLE PROP(
+"units" "A"
+"key" "branch"
+"tolerance" 1.000000000000000e-12
+)
+"MMF" FLOAT DOUBLE PROP(
+"units" "A*turn"
+"key" "node"
+"tolerance" 1.000000000000000e-12
+)
+"Wb" FLOAT DOUBLE PROP(
+"units" "Wb"
+"key" "node"
+"tolerance" 1.000000000000000e-09
+)
+"Temp" FLOAT DOUBLE PROP(
+"units" "C"
+"key" "node"
+"tolerance" 1.000000000000000e-04
+)
+"Pwr" FLOAT DOUBLE PROP(
+"units" "W"
+"key" "node"
+"tolerance" 1.000000000000000e-09
+)
+"U" FLOAT DOUBLE PROP(
+"units" ""
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"V/Sec" FLOAT DOUBLE PROP(
+"units" "V/s"
+"key" "node"
+"tolerance" 9.999999999999999e-05
+)
+"I/Sec" FLOAT DOUBLE PROP(
+"units" "A/s"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"1/Sec" FLOAT DOUBLE PROP(
+"units" "1/s"
+"key" "node"
+"tolerance" 9.999999999999999e-05
+)
+"HOD" FLOAT DOUBLE PROP(
+"units" ""
+"key" "node"
+"tolerance" 1.000000000000000e-02
+)
+"Q" FLOAT DOUBLE PROP(
+"units" "Coul"
+"key" "node"
+"tolerance" 1.000000000000000e-15
+)
+"Efield" FLOAT DOUBLE PROP(
+"units" "V/m"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+"sigtype" "optical"
+)
+VALUE
+"VDD1:p" "I" -5.089344580997801e-06 PROP(
+"units" "A"
+)
+"vbg1" "V" 1.174725265807203e+00
+END

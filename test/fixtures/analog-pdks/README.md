@@ -12,3 +12,16 @@ inversion, finite output resistance, a lower-voltage second process) and simulat
 
 The `ss`/`ff` corners shift the threshold by +/-50 mV (+/-40 mV for synth130) and the mobility by
 -/+10 %. Real open PDKs (SKY130, IHP SG13G2, GF180MCU) are installed per Site and never in git.
+
+`synth180` also carries the `analog-bandgap` Pack's devices, all made up:
+
+- `bandgap.lib`:
+  - 3.3 V MOS cards (`nch33`, `pch33` in `synth180_33.inc`) at tt, ss, ff, sf and fs;
+  - the sections `bjt_<c>` (a Gummel-Poon vertical PNP `spnp` and the capacitor `scap`, in
+    `synth180_bjt.inc`) and `res_<c>` (the 3-terminal poly resistor `sres`, in `synth180_res.inc`);
+  - a mismatch section `mm` that turns `nch33`/`pch33` into subcircuits with Pelgrom `delvto`.
+- `design.inc`: the Monte Carlo switches `sw_stat_mismatch` and `sw_stat_global`.
+
+Both simulators read every file. A parameter expression passes only named parameters to `agauss`,
+as the open PDKs do, because Spectre refuses a nested call there.
+
