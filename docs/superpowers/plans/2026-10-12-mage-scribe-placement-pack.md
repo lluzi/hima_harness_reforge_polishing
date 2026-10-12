@@ -151,7 +151,8 @@ def brute_force_max_slots(items, slot) -> int   # test oracle, exponential, smal
 # metrics.py
 def drops(snapshot) -> {'count': int, 'lengthUm': str, 'byBlockType': {...}, 'ids': [...]}
 def target_distances(snapshot, limit_um: str) -> {'overLimitCount': int, 'maxUm': str, 'perTarget': [{row, fitId, alongUm, crossUm}]}
-def order_deviation(snapshot) -> {'max': int, 'byPartition': {'TB': int, 'LR': int, 'IN': int}, 'missing': [...]}
+def order_deviation(snapshot) -> {'max': int, 'byPartition': {'TB-bottom': int, 'TB-top': int, 'LR-left': int, 'LR-right': int, 'IN': None}, 'flags': {'LR': 3, 'TB': 2}, 'missing': [...]}
+      # customer procedure: per side, placed vs requested Group-name lists sorted along the lane (TB x asc, LR y desc), k-th occurrence matching; IN not checked
 def displacement(start_snapshot, snapshot) -> {'movedCount': int, 'totalUm': str, 'perFit': [...]}
 def native_rows(verify_files: dict[str, str]) -> {'byType': {TYPE: int|None}, 'total': int|None, 'unknown': [...]}
       # TYPE in OVERLAP SPACE BOUNDARY CROSS OFFGRID DIECORNER PEPPER PADS LOCATION AUTOREFINE; row = non-empty,
