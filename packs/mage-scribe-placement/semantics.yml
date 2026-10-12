@@ -22,37 +22,16 @@ values:
     description: Maximum placement-order deviation (customer check_dev) over the TB/LR/IN partitions.
   mage_native_overlap_rows:
     unit: rows
-    description: Row count of the candidate's native OVERLAP verify report.
+    description: MAGE's own instance count from the candidate's native OVERLAP check (frbCheckOverlap).
   mage_native_space_rows:
     unit: rows
-    description: Row count of the candidate's native SPACE verify report.
+    description: MAGE's own instance count from the candidate's native SPACE check (frbCheckSpace); each row is one offending instance, not a pair count.
   mage_native_boundary_rows:
     unit: rows
-    description: Row count of the candidate's native BOUNDARY verify report.
-  mage_native_cross_rows:
-    unit: rows
-    description: Row count of the candidate's native CROSS verify report.
-  mage_native_offgrid_rows:
-    unit: rows
-    description: Row count of the candidate's native OFFGRID verify report.
-  mage_native_diecorner_rows:
-    unit: rows
-    description: Row count of the candidate's native DIECORNER verify report.
-  mage_native_pepper_rows:
-    unit: rows
-    description: Row count of the candidate's native PEPPER verify report.
-  mage_native_pads_rows:
-    unit: rows
-    description: Row count of the candidate's native PADS verify report.
-  mage_native_location_rows:
-    unit: rows
-    description: Row count of the candidate's native LOCATION verify report.
-  mage_native_autorefine_rows:
-    unit: rows
-    description: Row count of the candidate's native AUTOREFINE verify report.
+    description: MAGE's own instance count from the candidate's native BOUNDARY check (frbCheckBoundary).
   mage_native_violation_total:
     unit: rows
-    description: Sum of all ten native verify-report row counts; unknown whenever any one type's row count is itself unknown.
+    description: Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any one is unknown.
   mage_open_request_count:
     unit: count
     description: Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.

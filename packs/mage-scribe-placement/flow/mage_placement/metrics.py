@@ -20,9 +20,11 @@ Five functions, each returning a plain JSON-able dict:
 - `displacement(start_snapshot, snapshot)` — Fit-by-id box movement from the
   frozen start, independent of `target_distances` (which measures distance
   to the *target*, not to the start).
-- `native_rows(verify_files)` — row counts from MAGE's own native verify
-  reports, one of ten fixed types; a missing or unreadable file reports
-  `None` for that type (and for the grand `total`), never a bare `0`.
+- `native_rows(verify_files)` — instance counts from MAGE's own native
+  verify reports, one of the three fixed checks (OVERLAP, SPACE, BOUNDARY);
+  a missing or unreadable file, or one without the canonical instance-count
+  header, reports `None` for that type (and for the grand `total`), never a
+  bare `0`.
 
 Units: every distance is produced through `_half_um`, an exact-or-refuse
 doubled-coordinate conversion (a box's bbox centre can land on a half-DBU
@@ -34,6 +36,7 @@ not centred, stay whole).
 """
 from __future__ import annotations
 
+import re
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
@@ -41,10 +44,15 @@ from pathlib import Path
 from . import core
 
 
-NATIVE_TYPES = [
-    "OVERLAP", "SPACE", "BOUNDARY", "CROSS", "OFFGRID",
-    "DIECORNER", "PEPPER", "PADS", "LOCATION", "AUTOREFINE",
-]
+NATIVE_TYPES = ["OVERLAP", "SPACE", "BOUNDARY"]
+
+# The canonical first line the native driver writes to each verify report:
+# `# mage-verify/1 type=<T> command=<cmd> instances=<N>`. The instance count
+# is MAGE's own, sliced from the round's stdout; `native_rows` reads it and
+# nothing else from the file.
+_VERIFY_HEADER_RE = re.compile(
+    r"^# mage-verify/1 type=\S+ command=\S+ instances=(\d+)\s*$"
+)
 
 
 def _half_um(doubled_dbu, dbu_per_um):
@@ -327,12 +335,15 @@ def displacement(start_snapshot, snapshot):
 
 
 def native_rows(verify_files):
-    """`{'byType', 'total', 'unknown'}` row counts over the ten native types.
+    """`{'byType', 'total', 'unknown'}` instance counts over the three native
+    checks (`OVERLAP`, `SPACE`, `BOUNDARY`).
 
-    A row is a non-empty, non-comment (`#`-prefixed, after stripping)
-    line. A type missing from `verify_files`, or whose file cannot be
-    read, reports `None` and is listed in `unknown`; `total` is `None`
-    whenever any type is unknown, never a partial sum.
+    The count for a type is the integer MAGE itself reported, read from the
+    first line of its `verify-<TYPE>.txt` report, which the native driver
+    wrote as `# mage-verify/1 type=<T> command=<cmd> instances=<N>`. Any
+    other first line (or a type missing from `verify_files`, or a file that
+    cannot be read) reports `None` and is listed in `unknown`; `total` is
+    `None` whenever any type is unknown, never a partial sum.
     """
     by_type = {}
     unknown_types = []
@@ -345,7 +356,10 @@ def native_rows(verify_files):
             except OSError:
                 text = None
             if text is not None:
-                count = sum(1 for line in text.splitlines() if line.strip() and not line.strip().startswith("#"))
+                lines = text.splitlines()
+                match = _VERIFY_HEADER_RE.match(lines[0]) if lines else None
+                if match:
+                    count = int(match.group(1))
         by_type[type_name] = count
         if count is None:
             unknown_types.append(type_name)

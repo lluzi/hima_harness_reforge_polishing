@@ -44,7 +44,16 @@
       "properties": {
         "executable": {},
         "setupScript": {"type": "string"},
-        "buildBanner": {"type": "string"}
+        "buildBanner": {"type": "string"},
+        "autoRefineConverge": {
+          "type": "object",
+          "required": ["VERT", "HORZ"],
+          "additionalProperties": false,
+          "properties": {
+            "VERT": {"type": "integer", "minimum": 1},
+            "HORZ": {"type": "integer", "minimum": 1}
+          }
+        }
       }
     }
   }

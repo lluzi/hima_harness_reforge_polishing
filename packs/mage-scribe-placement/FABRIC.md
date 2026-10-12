@@ -20,16 +20,21 @@ version only); this Task (8) wrote their content and the four Pack documents.
 
 No model, no commercial EDA, and no GUI were used to produce anything in this repository. Every
 MAGE round in `flow/tests/` runs against `flow/tests/standin_mage.py`, a stand-in interpreter that
-reproduces the four templates' own control flow (open, replay, verify, export) without a licensed
-binary — it proves the driver's wiring (one-writer enforcement, round-exists refusal, session-log
-tagging), not MAGE's own effectiveness or the D-status commands' real behaviour. Every schema-
+reproduces the five templates' own control flow (open-build, replay, experiment/fill, the three
+native checks via `MAGE_VERIFY_*` stdout markers, export with the `MAGE_ROUND_END` completion
+marker) without a licensed binary — it proves the driver's wiring (one-writer enforcement,
+round-exists refusal, session-log tagging, verify-file slicing from stdout, completion judged by
+the marker and not the vendor launcher's unconditional exit 0), not MAGE's own effectiveness or the
+D-status commands' real behaviour. Every schema-
 validated document (`placement-candidate`, `consumer-review`, `round-decision`, `placement-result`,
 and the four record kinds) has an admitted example fixture, a schema validator, and at least one
 Reader negative (tampered PLA, untagged mutation, unanswered Request, fabricated review number,
 wrong snapshot binding) under `flow/tests/`. No customer data exists in this repository; every
-fixture is synthetic. `knowledge/mage-capabilities.md` separates the V-status templates (actually
-run, here and on the real Oct-12 build replaying `pre_place_all.pla`) from the D-status commands
-(documented in the vendor manual, never run against a real design in this session).
+fixture is synthetic. `knowledge/mage-capabilities.md` separates the V-status templates (the Site's
+proven native route — open/build without an Auto-Refine disable, replay, the fill stage, the three
+native `frbCheck*` checks, export — confirmed by the resident kit evidence on the Oct-12 build)
+from the D-status commands (documented in the vendor manual, including the old ten-way `smVerify`
+family this Pack no longer runs, never qualified against a real design in this session).
 
 The Host-level **L2 dry route** is Task 10's work and now passes:
 `test/contract/support/mage-resident-durable-worker.ts` plus

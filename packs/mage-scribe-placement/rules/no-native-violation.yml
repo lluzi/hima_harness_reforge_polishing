@@ -1,6 +1,6 @@
 id: no-native-violation
 version: "1"
-title: No native MAGE verify-check row remains across the best state
+title: No native MAGE verify-check row remains across the three native MAGE checks
 requires: [{ type: mage_native_violation_total }]
 subject: { type: mage_native_violation_total }
 predicate: { op: eq, threshold: 0, unit: rows }

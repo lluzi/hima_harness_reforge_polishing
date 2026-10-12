@@ -23,9 +23,13 @@ declared CT target is fixed input, not something you edit.
 ## The loop: observe, diagnose, plan, apply, judge
 
 **Observe.** One MAGE round = `mage-round --round <n> --pla <candidate.pla> --role engineer
---out-dir placement/round-NN`, which runs the four templates (`mage-capabilities.md`) and returns
-an exported PLA plus ten native verify files. Parse them into a snapshot with `candidate
---round <n> --round-dir <dir> --ledger <file> --out state/round/placement-candidate.json`.
+--out-dir placement/round-NN [--fill] [--experiment <file>]`, which runs the five templates
+(`mage-capabilities.md`) and returns an exported PLA plus the three native verify files (OVERLAP,
+SPACE, BOUNDARY). Pass `--fill` to run the Pack's auto-refine stage after the replay (MAGE compacts
+from your move, as the proven native route does); round 1 replays the frozen start with `--fill` to
+reproduce the native incumbent before you change anything. Parse the round into a snapshot with
+`candidate --round <n> --round-dir <dir> --ledger <file> --out
+state/round/placement-candidate.json`.
 
 **Diagnose** every drop or every target-distance/order deviation beyond the Goal limit with a
 named, deterministic cause before acting on it — never guess which fix to try first:
@@ -61,8 +65,13 @@ every Group's `targetPointDbu` untouched, and add any newly placed pending struc
 with `-plaCheckSize`. Never write a partial PLA — `pla.write_pla` always emits a complete,
 replayable document, and `source`-ing anything less replaces the whole Frame's placement state.
 
-**Judge** by the round's own native checks (`metrics.native_rows`) and this round's Q1–Q4 metrics
-(`metrics_mod.drops`/`target_distances`/`order_deviation`/`displacement`). Keep the new candidate
+**Judge** by the round's own native checks (`metrics.native_rows`, the three checks OVERLAP/SPACE/
+BOUNDARY) and this round's Q1–Q4 metrics
+(`metrics_mod.drops`/`target_distances`/`order_deviation`/`displacement`). Two of these measure
+different things and must never be conflated: **movement from the start** (`displacement`, how far
+each Fit moved from the frozen start) versus **absolute error from the CT target**
+(`targetDistances`, how far a bound Fit sits from its own CT point). Report both; never rename one as
+the other. Keep the new candidate
 only if it is no worse than the previous best by the best-state order below; otherwise deliver it
 anyway as the honest best-effort result and say why in `stopReason`.
 

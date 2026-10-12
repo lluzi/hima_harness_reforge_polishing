@@ -3,16 +3,36 @@
 
 Invoked exactly as the real vendor binary would be: `<this> <script.tcl>
 -noterm`. It does not parse Tcl in general — only the brace-quoted forms
-the four round templates in `flow/templates/` actually produce, matched
+this Pack's round templates in `flow/templates/` actually produce, matched
 with plain regexes. It replays a round deterministic enough for
 `MageSession` and its callers to exercise the whole round lifecycle
-(exports, verify reports, summary, round log) without a licence.
+(exports, native-check markers, summary, round log) without a licence.
+
+It emulates the Site's proven native route: the `verify-all` template runs
+`frbCheckOverlap`/`frbCheckSpace`/`frbCheckBoundary` and the driver writes
+each check's `verify-<TYPE>.txt` from the `MAGE_VERIFY_*` markers printed to
+stdout — so this stand-in prints those markers (and each check's own
+`-print` summary line) rather than writing verify files itself.
+
+Lines the fill and experiment stages add (`smPFlow -autoRefine`,
+`smPFlow -setAutoRefineSimpleConverge`, `g_params -set ...`, a sourced
+`experiment.tcl`) have no effect here and must not stop the run — the
+stand-in simply ignores every line it does not recognise and still exits 0.
 
 Env knobs:
-- `MAGE_STANDIN_ROWS` — JSON `{TYPE: ["row", ...]}`; rows written under
-  each verify file's header line. Default: no rows for any type.
+- `MAGE_STANDIN_ROWS` — JSON `{TYPE: ["row", ...]}`; the count of rows for a
+  type becomes that check's reported instance count (and the rows are
+  printed as the check's detail lines). Default: no rows for any type -> 0.
 - `MAGE_STANDIN_FAIL=1` — print `MAGE_ROUND_ERROR` to stderr and exit 2
-  before writing any export, as a real round that fails mid-script would.
+  before writing any export or marker, as a real round that fails
+  mid-script would.
+- `MAGE_STANDIN_VERIFY_FAIL=<TYPE>` — that check's `MAGE_VERIFY_CODE` line
+  reports `1` (a failed catch), so the driver writes no `verify-<TYPE>.txt`
+  and the fact stays unknown.
+- `MAGE_STANDIN_NO_END=1` — run and export normally but do NOT print the
+  `MAGE_ROUND_END code 0` completion marker, as the vendor launcher's
+  unconditional `exit 0` would mask a mid-script failure that never reached
+  the end marker. Still exits 0.
 """
 from __future__ import annotations
 
@@ -29,10 +49,29 @@ from mage_placement import pla  # noqa: E402
 _SOURCE_RE = re.compile(r"(?m)^source\s+\{([^}]*)\}")
 _SAVE_MARK_RE = re.compile(r"smPInstMgr\s+-saveMark\s+\{([^}]*)\}")
 _SAVE_PLA_DBU_RE = re.compile(r"smPInstMgr\s+-savePlaDBU\s+\{([^}]*)\}")
-_VERIFY_RE = re.compile(r"smVerify\s+-checkType\s+(\S+)\s+-doCheck\s+-save\s+\{([^}]*)\}")
+_VERIFY_FOREACH_RE = re.compile(
+    r"foreach\s+\{mage_verify_type mage_verify_cmd\}\s+\{([^}]*)\}"
+)
 _SUMMARY_RE = re.compile(r"smPFlow\s+-saveSummary\s+\{([^}]*)\}")
 
 DBU_PER_UM = 10000
+
+# Each native check's own `-print` summary phrasing (between the leading
+# instance count and the trailing `instance(s)`), as the real tool prints it.
+_SUMMARY_PHRASE = {
+    "OVERLAP": "overlapped",
+    "SPACE": "spacing overlapped",
+    "BOUNDARY": "outside-frame-boundary",
+}
+
+
+def _verify_pairs(script_text):
+    """`[(TYPE, cmd), ...]` from the verify-all foreach, in script order."""
+    match = _VERIFY_FOREACH_RE.search(script_text)
+    if not match:
+        return []
+    tokens = match.group(1).split()
+    return list(zip(tokens[0::2], tokens[1::2]))
 
 
 def main(argv):
@@ -65,26 +104,30 @@ def main(argv):
     raw_rows = os.environ.get("MAGE_STANDIN_ROWS")
     if raw_rows:
         rows_by_type = json.loads(raw_rows)
+    verify_fail = os.environ.get("MAGE_STANDIN_VERIFY_FAIL")
 
     table_counts = []
-    for match in _VERIFY_RE.finditer(script_text):
-        type_name, file_field = match.group(1), match.group(2)
-        target = Path(file_field)
-        target.parent.mkdir(parents=True, exist_ok=True)
+    for type_name, _cmd in _verify_pairs(script_text):
         rows = rows_by_type.get(type_name, [])
-        lines = [f"# {type_name} rows"] + list(rows)
-        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print("MAGE_VERIFY_BEGIN %s" % type_name)
+        for row in rows:
+            print(row)
+        phrase = _SUMMARY_PHRASE.get(type_name, "offending")
+        print("%d %s instance(s)" % (len(rows), phrase))
+        code = 1 if verify_fail == type_name else 0
+        print("MAGE_VERIFY_CODE %s %d" % (type_name, code))
+        print("MAGE_VERIFY_END %s" % type_name)
         table_counts.append((type_name, len(rows)))
-        print(f"MAGE_VERIFY {type_name} code 0")
 
     summary_match = _SUMMARY_RE.search(script_text)
     if summary_match:
         target = Path(summary_match.group(1))
         target.parent.mkdir(parents=True, exist_ok=True)
-        lines = [f"{type_name}: {count}" for type_name, count in table_counts]
+        lines = ["%s: %d" % (type_name, count) for type_name, count in table_counts]
         target.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
-    print("MAGE_ROUND_END code 0")
+    if os.environ.get("MAGE_STANDIN_NO_END") != "1":
+        print("MAGE_ROUND_END code 0")
     return 0
 
 

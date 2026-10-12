@@ -278,12 +278,26 @@ def _file_ref(path):
     return {"path": str(path), "sha256": core.file_sha256(path)}
 
 
-def make_case(root, mage_executable=""):
+def _mage_block(mage_executable, auto_refine_converge):
+    block = {"executable": mage_executable, "setupScript": "", "buildBanner": "synthetic"}
+    if auto_refine_converge is not None:
+        block["autoRefineConverge"] = {
+            "VERT": int(auto_refine_converge["VERT"]),
+            "HORZ": int(auto_refine_converge["HORZ"]),
+        }
+    return block
+
+
+def make_case(root, mage_executable="", auto_refine_converge=None):
     """Write a synthetic 2x2-die MAGE case under `<root>/case/`.
 
     Returns `{'root', 'manifest', 'consumerContext', 'files': {...}}` with
     absolute paths. `mage_executable` may be a string or a list of strings;
     it is stored verbatim under `manifest['mage']['executable']`.
+    `auto_refine_converge`, when given, is `{"VERT": int, "HORZ": int}` and
+    is stored under `manifest['mage']['autoRefineConverge']` (the fill
+    stage's converge knob); the default `None` leaves it off entirely, so
+    existing fixtures build the manifest shape unchanged.
     """
     case_dir = Path(root) / "case"
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -319,7 +333,7 @@ def make_case(root, mage_executable=""):
             "groupPlaceCommandForm": (
                 "smPFlow -placeGroup -groupItem {g} -groupTargetPoint ({x},{y}) -groupPlaceType CT"
             ),
-            "mage": {"executable": mage_executable, "setupScript": "", "buildBanner": "synthetic"},
+            "mage": _mage_block(mage_executable, auto_refine_converge),
         },
     )
     manifest_path = case_dir / "manifest.json"

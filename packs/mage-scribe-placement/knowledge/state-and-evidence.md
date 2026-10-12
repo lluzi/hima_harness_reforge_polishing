@@ -18,10 +18,15 @@ to write when a fact cannot be established.
   `evaluate` numbers on any candidate, are the Pack's own deterministic code run over a
   `mage.layout-snapshot/2`. They are real arithmetic on real geometry, but they are not a MAGE
   verdict: nothing in MAGE ran to produce them.
-- **Native.** The ten `smVerify` check files (`verify-OVERLAP.txt` ... `verify-AUTOREFINE.txt`)
-  under a round's `out/` directory are MAGE's own judgement, produced only by `mage-round`. A
-  candidate's `metrics.nativeRows` and the Reader's `mage_native_<type>_rows` facts come from these
-  files, never from the modelled snapshot.
+- **Native.** The three native check files (`verify-OVERLAP.txt`, `verify-SPACE.txt`,
+  `verify-BOUNDARY.txt`) under a round's `out/` directory are MAGE's own judgement from
+  `frbCheckOverlap`/`frbCheckSpace`/`frbCheckBoundary`, produced only by `mage-round`. The driver
+  writes each from the round's stdout markers with the header
+  `# mage-verify/1 type=<T> command=<cmd> instances=<N>`; `instances` is MAGE's own count, and a
+  SPACE row is one offending instance, not a pair. A candidate's `metrics.nativeRows` and the
+  Reader's `mage_native_<type>_rows` facts (OVERLAP, SPACE, BOUNDARY) come from these files, never
+  from the modelled snapshot. The old ten-way `smVerify -checkType` family is D-status only
+  (`mage-capabilities.md`) — unqualified, not this Pack's verified route.
 - **Device.** No device data exists in this Pack. Native verification is prediction-only; it never
   stands for post-fab signoff. Say "natively verified" or "natively clean", never "correct" or
   "manufacturable".

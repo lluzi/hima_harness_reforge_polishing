@@ -364,32 +364,58 @@ class DisplacementTest(unittest.TestCase):
         self.assertEqual(d["added"], [])
 
 
+def _verify_header(type_name, command, instances):
+    return f"# mage-verify/1 type={type_name} command={command} instances={instances}"
+
+
+_NATIVE_COMMANDS = {"OVERLAP": "frbCheckOverlap", "SPACE": "frbCheckSpace", "BOUNDARY": "frbCheckBoundary"}
+
+
 class NativeRowsTest(unittest.TestCase):
+    def test_native_rows_reads_instances_header(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        overlap_path = Path(self.tmp.name) / "verify-OVERLAP.txt"
+        overlap_path.write_text(
+            _verify_header("OVERLAP", "frbCheckOverlap", 3) + "\nP_X 1 0.0 0.0\narbitrary line\n",
+            encoding="utf-8",
+        )
+        r = metrics.native_rows({"OVERLAP": str(overlap_path)})
+        self.assertEqual(r["byType"]["OVERLAP"], 3)
+        self.tmp.cleanup()
+
+    def test_native_rows_without_header_is_unknown(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = Path(self.tmp.name) / "verify-OVERLAP.txt"
+        path.write_text("# header\nrow one\nrow two\n", encoding="utf-8")
+        r = metrics.native_rows({"OVERLAP": str(path)})
+        self.assertIsNone(r["byType"]["OVERLAP"])
+        self.assertIn("OVERLAP", r["unknown"])
+        self.assertIsNone(r["total"])
+        self.tmp.cleanup()
+
     def test_native_rows_missing_file_is_unknown(self):
         self.tmp = tempfile.TemporaryDirectory()
-        overlap_path = Path(self.tmp.name) / "overlap.rpt"
-        overlap_path.write_text("# header\nrow one\nrow two\n", encoding="utf-8")
+        overlap_path = Path(self.tmp.name) / "verify-OVERLAP.txt"
+        overlap_path.write_text(_verify_header("OVERLAP", "frbCheckOverlap", 2) + "\n", encoding="utf-8")
         r = metrics.native_rows({"OVERLAP": str(overlap_path)})
         self.assertEqual(r["byType"]["OVERLAP"], 2)
         self.assertIsNone(r["byType"]["SPACE"])
+        self.assertIsNone(r["byType"]["BOUNDARY"])
         self.assertIsNone(r["total"])
         self.assertIn("SPACE", r["unknown"])
+        self.assertIn("BOUNDARY", r["unknown"])
         self.tmp.cleanup()
 
     def test_native_rows_all_present_sums_total(self):
         self.tmp = tempfile.TemporaryDirectory()
         files = {}
-        for i, type_name in enumerate(
-            ["OVERLAP", "SPACE", "BOUNDARY", "CROSS", "OFFGRID", "DIECORNER", "PEPPER", "PADS",
-             "LOCATION", "AUTOREFINE"]
-        ):
-            path = Path(self.tmp.name) / f"{type_name}.rpt"
-            path.write_text(f"# header\n" + "\n".join(f"row {j}" for j in range(i)) + ("\n" if i else ""),
-                             encoding="utf-8")
+        for i, type_name in enumerate(["OVERLAP", "SPACE", "BOUNDARY"]):
+            path = Path(self.tmp.name) / f"verify-{type_name}.txt"
+            path.write_text(_verify_header(type_name, _NATIVE_COMMANDS[type_name], i) + "\n", encoding="utf-8")
             files[type_name] = str(path)
         r = metrics.native_rows(files)
         self.assertEqual(r["unknown"], [])
-        self.assertEqual(r["total"], sum(range(10)))
+        self.assertEqual(r["total"], sum(range(3)))
         self.tmp.cleanup()
 
     def test_native_rows_unreadable_file_is_unknown(self):

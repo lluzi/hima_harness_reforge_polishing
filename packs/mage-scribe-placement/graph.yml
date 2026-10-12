@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: mage-scribe-placement
-version: 0.1.0
+version: 0.2.0
 flow:
   kind: sequence
   id: placement

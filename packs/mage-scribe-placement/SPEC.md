@@ -1,4 +1,4 @@
-# MAGE scribe-line placement 0.1.0 run contract
+# MAGE scribe-line placement 0.2.0 run contract
 
 ## Goal template
 
@@ -30,7 +30,7 @@ dependency ships in `flow/`.
 | `prepare-case` | Run `mageCaseManifest`, `consumerContext`, `siteCapabilities`; Goal values | Verify every manifest digest; parse rule/pblock/block/target/request-order; build and stamp `startSnapshot`; write `case-readiness.json` and the round-0 `round-decision.json` (`route: continue`, no open Requests). |
 | `measure-incumbent` | Committed `prepare-case` output; strategy `incumbentComparison` | Normalise the retained incumbent PLA into a snapshot; evaluate it with the same metrics and consumer evaluators as every candidate, labelled modelled. |
 | `repeat placement-rounds` (`maxIterations: 4`, carry `roundState`, stop on `decide-round.route == stop`) | — | Runs the round `sequence` below once per iteration. |
-| `engineer-place` (resident, `licences: {mage: 1}`) | `ROUND` (carry), goal values | One MAGE round via `mage-round --role engineer`; assembles and Reader-verifies `mage.placement-candidate/1` at `state/round/placement-candidate.json`. |
+| `engineer-place` (resident, `licences: {mage: 1}`) | `ROUND` (carry), goal values | One MAGE round via `mage-round --round <n> --pla <file> --role engineer --out-dir placement/round-NN [--fill] [--experiment <file>]` on the Site's proven native route (open-build → replay-pla → experiment, if any → fill, if `--fill` → the three native checks → export); assembles and Reader-verifies `mage.placement-candidate/1` at `state/round/placement-candidate.json`. |
 | `review-litho-pie` / `review-metrology` / `review-alignment` / `review-wat` (resident, no licence) | `ROUND` (carry) | Each reads the current candidate, runs `evaluate` under its own consumer model, and assembles a Reader-verified `mage.consumer-review/1`. |
 | `decide-round` (program) | Committed Reader values of the five resident tasks; `ROUND`; goal values | Checks every previous-round open Request has a Ledger answer; updates the best measured state; turns consumer conflicts into Decision Requests; routes `continue`/`stop`; writes `round-decision.json` and the cumulative `placement-result.json`. |
 | `evaluate-placement` (`budget: closing`) | Committed `decide-round` value; `measure-incumbent` value; goal values | Evaluates the best state's own Reader values against the seven delivery rules; computes the completeness/fidelity/rework/legality comparison against the incumbent; `goalMet` explicit, unknowns kept separate. |
@@ -39,6 +39,22 @@ dependency ships in `flow/`.
 The round-decision stop rule: `stop` when (no consumer hard failure and no open Request) or (two
 consecutive rounds without improvement on any axis) or (`round == 4`, which `maxIterations` also
 enforces); otherwise `continue`.
+
+## Native route and checks
+
+`mage-round` runs the Site's proven native route (the five templates in `flow/templates/`), not the
+old `smVerify` family. It runs exactly three native checks — `OVERLAP` (`frbCheckOverlap`), `SPACE`
+(`frbCheckSpace`) and `BOUNDARY` (`frbCheckBoundary`) — and writes one `out/verify-<TYPE>.txt` per
+check from MAGE's own `MAGE_VERIFY_*` stdout markers, each headed
+`# mage-verify/1 type=<T> command=<cmd> instances=<N>` (the instance count is MAGE's own; a SPACE
+row is one offending instance, not a pair). `mage_native_violation_total` is the sum of the three,
+unknown whenever any one is unknown; `smVerify` is D-status only. The vendor launcher returns 0
+even on failure, so a round counts as `completed` only when the return code is 0, it did not time
+out, and the `MAGE_ROUND_END code 0` marker is present; otherwise the candidate's outcome is
+`blocked`. `--fill` appends the Pack's auto-refine stage (converge lines from the manifest's
+`mage.autoRefineConverge`, then `g_params ... false`, then `smPFlow -autoRefine`); `--experiment`
+sources an Engineer-authored Tcl file (refused if it contains `exit` or `frbOpen`), recording its
+sha256 in the candidate.
 
 ## Semantics
 

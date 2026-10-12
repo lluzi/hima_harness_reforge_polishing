@@ -381,11 +381,14 @@ def _cmd_mage_round(workspace, args):
     parser.add_argument("--pla", required=True)
     parser.add_argument("--role", required=True)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--fill", action="store_true")
+    parser.add_argument("--experiment", default=None)
     opts = parser.parse_args(args)
 
     readiness = _case_readiness(workspace)
     site_mage = readiness["siteCapabilities"]["mage"]
     case = readiness["manifest"]
+    auto_refine_converge = case.get("mage", {}).get("autoRefineConverge")
 
     import shutil
 
@@ -393,6 +396,12 @@ def _cmd_mage_round(workspace, args):
     round_dir.mkdir(parents=True, exist_ok=True)
     pla_copy = round_dir / "candidate.pla"
     shutil.copyfile(opts.pla, pla_copy)
+
+    experiment_path = None
+    if opts.experiment:
+        experiment_path = Path(opts.experiment)
+        if not experiment_path.is_absolute():
+            experiment_path = Path(workspace) / experiment_path
 
     env = dict(os.environ)
     env.update(site_mage.get("env", {}))
@@ -406,9 +415,13 @@ def _cmd_mage_round(workspace, args):
 
     sess = native_session.MageSession(
         executable=site_mage["executable"], env=env, workdir=str(Path(workspace)),
-        log_path=str(log_path), templates_dir=str(templates_dir), case={"frb": case["frb"]["path"]},
+        log_path=str(log_path), templates_dir=str(templates_dir),
+        case={"frb": case["frb"]["path"], "autoRefineConverge": auto_refine_converge},
     )
-    result = sess.run_round(str(round_dir), str(pla_copy), opts.role)
+    result = sess.run_round(
+        str(round_dir), str(pla_copy), opts.role,
+        fill=opts.fill, experiment_tcl=str(experiment_path) if experiment_path is not None else None,
+    )
 
     summary_path = round_dir / "round-summary.json"
     summary = core.stamp("round-summary", {"round": opts.round, "role": opts.role, **result})
@@ -469,22 +482,37 @@ def _cmd_candidate(workspace, args):
     if opts.ledger and Path(opts.ledger).is_file():
         ledger = json.loads(Path(opts.ledger).read_text(encoding="utf-8"))
 
+    # The vendor launcher returns 0 even when MAGE fails, so trust the
+    # driver's own `completed` flag (return code 0, not timed out, and the
+    # `MAGE_ROUND_END code 0` marker present), never the return code alone.
+    completed = summary.get("completed", False)
     returncode = summary.get("returncode", 0)
-    outcome = "completed" if returncode == 0 else "blocked"
-    stop_reason = "" if outcome == "completed" else f"native round returned {returncode}"
+    outcome = "completed" if completed else "blocked"
+    if completed:
+        stop_reason = ""
+    elif returncode == 0:
+        stop_reason = "native round did not reach MAGE_ROUND_END"
+    else:
+        stop_reason = f"native round returned {returncode}"
 
     pla_copy_path = round_dir / "candidate.pla"
     # The session log lives inside this round's own directory (under the
     # Engineer tool's `artifactPrefix`), not at a Pack-wide `state/` path
     # -- see `_cmd_mage_round`'s own comment.
     session_log_path = round_dir / "session.jsonl"
+    scripts = [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)),
+                "sha256": core.file_sha256(round_dir / "round.tcl")}]
+    if summary.get("experimentTcl"):
+        experiment_path = round_dir / "experiment.tcl"
+        scripts.append({"path": str(experiment_path.relative_to(workspace_path)),
+                        "sha256": core.file_sha256(experiment_path)})
     files = {
         "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
         "snapshot": {"path": str(snapshot_path.relative_to(workspace_path)), "sha256": core.file_sha256(snapshot_path)},
         "export": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)},
         "verify": _native_verify_refs(workspace_path, round_dir),
         "sessionLog": {"path": str(session_log_path.relative_to(workspace_path)), "sha256": core.file_sha256(session_log_path)},
-        "scripts": [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)), "sha256": core.file_sha256(round_dir / "round.tcl")}],
+        "scripts": scripts,
     }
 
     pending_remaining = [p["id"] for p in candidate_snapshot["pending"]]
@@ -497,7 +525,11 @@ def _cmd_candidate(workspace, args):
         "files": files, "metrics": computed_metrics, "ledger": ledger,
         "remaining": pending_remaining, "blocked": [], "unknown": computed_metrics["nativeRows"].get("unknown", []),
         "outcome": outcome, "stopReason": stop_reason,
-        "reproduction": {"roundDir": str(round_dir.relative_to(workspace_path)), "script": "round.tcl"},
+        "reproduction": {
+            "roundDir": str(round_dir.relative_to(workspace_path)), "script": "round.tcl",
+            "fill": bool(summary.get("fill", False)),
+            "experimentSha256": summary.get("experimentSha256"),
+        },
     })
     errors = records.validate_record("placement-candidate", body)
     if errors:

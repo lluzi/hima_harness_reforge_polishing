@@ -1,6 +1,9 @@
 frbOpen {@FRB@}
 frbSetCur frame
+smPFlow -updateUsedFiles
 frbSetup -obj BuildFrame
-smPFlow -setAutoRefine -arEnabled 0
+smPFlow -clear
 smPFlow -bindBlocks
 smPFlow -buildFrame frame -mchip mainchip -mblock mainchip
+smPFlow -sortFix
+smPFlow -sortFit

@@ -441,6 +441,133 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(evaluation["rules"]["drops-within-goal"], "FAIL")
         self.assertEqual(evaluation["decisionRequests"], decisions[4]["decisionRequests"])
 
+    def test_fill_and_experiment_route(self):
+        """Round 1 replays with `--fill` (the Pack's auto-refine stage,
+        converge lines from the manifest); round 2 sources an
+        Engineer-authored `--experiment` file. The candidate records the
+        fill flag, the experiment sha256, and both scripts with real
+        hashes, and the Reader reports the three native facts and a known
+        violation total."""
+        root = self.root / "fe"
+        root.mkdir()
+        workspace = root / "workspace"
+        workspace.mkdir()
+        os.symlink(FLOW_DIR, workspace / "flow")
+        case = fixtures.make_case(
+            root, mage_executable=[sys.executable, str(STANDIN)],
+            auto_refine_converge={"VERT": 7, "HORZ": 5},
+        )
+        site_caps = fixtures.make_site_capabilities(root, [sys.executable, str(STANDIN)])
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+
+        task_input = _write_json(root / "fe-prepare-input.json", {
+            "MAGE_CASE_MANIFEST": case["files"]["manifest"],
+            "CONSUMER_CONTEXT": case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": site_caps,
+            **goal,
+        })
+        _run(["task-prepare-case", workspace, task_input, root / "fe-prepare-output.json"])
+
+        dbu_per_um = case["manifest"]["dbuPerUm"]
+        start_text = Path(case["files"]["startState"]).read_text(encoding="utf-8")
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+
+        # Round 1 with --fill.
+        pla1 = root / "fe-r1.pla"
+        pla1.write_text(start_text, encoding="utf-8")
+        round1_dir = workspace / "placement" / "round-01"
+        result = subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(workspace), "--round", "1",
+             "--pla", str(pla1), "--role", "engineer", "--out-dir", str(round1_dir), "--fill"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        round1_tcl = (round1_dir / "round.tcl").read_text(encoding="utf-8")
+        self.assertIn("smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum 7", round1_tcl)
+
+        candidate1_path = root / "fe-r1-candidate.json"
+        _run(["candidate", workspace, "--round", "1", "--round-dir", str(round1_dir),
+              "--ledger", _write_json(root / "fe-r1-ledger.json", []), "--out", candidate1_path])
+        candidate1 = json.loads(candidate1_path.read_text(encoding="utf-8"))
+        self.assertTrue(candidate1["reproduction"]["fill"])
+        self.assertIsNone(candidate1["reproduction"]["experimentSha256"])
+        self.assertEqual(candidate1["outcome"], "completed")
+        self.assertEqual(len(candidate1["files"]["scripts"]), 1)
+
+        live_candidate = workspace / "state" / "round" / "placement-candidate.json"
+        live_candidate.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate1_path, live_candidate)
+        values1 = _run_reader("placement-candidate", live_candidate, root / "fe-r1-values.json", workspace)["values"]
+        by_type = {v["type"]: v for v in values1}
+        for fact in ("mage_native_overlap_rows", "mage_native_space_rows", "mage_native_boundary_rows"):
+            self.assertIsNotNone(by_type[fact]["value"], fact)
+        self.assertEqual(by_type["mage_native_violation_total"]["value"], 0)
+        self.assertEqual(by_type["mage_candidate_error_count"]["value"], 0)
+
+        # Round 2 with --experiment.
+        experiment_src = root / "fe-experiment.tcl"
+        experiment_src.write_text("smPFlow -autoRefine\n", encoding="utf-8")
+        pla2 = root / "fe-r2.pla"
+        pla2.write_text(start_text, encoding="utf-8")
+        round2_dir = workspace / "placement" / "round-02"
+        result2 = subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(workspace), "--round", "2",
+             "--pla", str(pla2), "--role", "engineer", "--out-dir", str(round2_dir),
+             "--experiment", str(experiment_src)],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result2.returncode, 0, result2.stderr)
+
+        candidate2_path = root / "fe-r2-candidate.json"
+        _run(["candidate", workspace, "--round", "2", "--round-dir", str(round2_dir),
+              "--ledger", _write_json(root / "fe-r2-ledger.json", []), "--out", candidate2_path])
+        candidate2 = json.loads(candidate2_path.read_text(encoding="utf-8"))
+        self.assertFalse(candidate2["reproduction"]["fill"])
+        self.assertEqual(
+            candidate2["reproduction"]["experimentSha256"],
+            core.file_sha256(round2_dir / "experiment.tcl"),
+        )
+        scripts = candidate2["files"]["scripts"]
+        self.assertEqual(len(scripts), 2)
+        script_names = {Path(s["path"]).name for s in scripts}
+        self.assertEqual(script_names, {"round.tcl", "experiment.tcl"})
+        for ref in scripts:
+            self.assertEqual(core.file_sha256(workspace / ref["path"]), ref["sha256"])
+
+    def test_round_without_end_marker_is_blocked(self):
+        """The vendor launcher returns 0 even on failure; a round whose
+        stdout never carries `MAGE_ROUND_END code 0` is `completed=False`,
+        and `candidate` derives outcome `blocked` from it, not from the
+        return code."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps,
+            **goal,
+        })
+        pla_path = self.root / "noend.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_NO_END"] = "1"
+        result = subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads((round_dir / "round-summary.json").read_text(encoding="utf-8"))
+        self.assertFalse(summary["completed"])
+
+        candidate_path = self.root / "noend-candidate.json"
+        _run(["candidate", self.workspace, "--round", "1", "--round-dir", str(round_dir),
+              "--ledger", _write_json(self.root / "noend-ledger.json", []), "--out", candidate_path])
+        candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(candidate["outcome"], "blocked")
+        self.assertEqual(candidate["stopReason"], "native round did not reach MAGE_ROUND_END")
+
     def test_tampered_review_findings_refused_by_reader(self):
         """A review whose findings were edited after the evaluator receipt
         was written is refused by the consumer-review Reader."""

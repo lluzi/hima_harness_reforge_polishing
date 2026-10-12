@@ -11,7 +11,7 @@ const packId = 'mage-scribe-placement';
 
 test('the MAGE Pack runs five serial resident roles inside one Fabric repeat and only the Engineer holds the MAGE seat', async () => {
   const pack = loadPack(path.join(repoRoot, 'packs'), packId);
-  assert.equal(pack.contract.version, '0.1.0');
+  assert.equal(pack.contract.version, '0.2.0');
   assert.equal(pack.contract.budget.timeBoxMs, 21_600_000);
   assert.equal(pack.contract.budget.closingReserveMs, 900_000);
 

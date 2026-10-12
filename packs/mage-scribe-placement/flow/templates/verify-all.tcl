@@ -1,20 +1,10 @@
-set mage_verify_code [catch {smVerify -checkType OVERLAP -doCheck -save {@OUT@/verify-OVERLAP.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY OVERLAP code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType SPACE -doCheck -save {@OUT@/verify-SPACE.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY SPACE code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType BOUNDARY -doCheck -save {@OUT@/verify-BOUNDARY.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY BOUNDARY code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType CROSS -doCheck -save {@OUT@/verify-CROSS.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY CROSS code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType OFFGRID -doCheck -save {@OUT@/verify-OFFGRID.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY OFFGRID code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType DIECORNER -doCheck -save {@OUT@/verify-DIECORNER.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY DIECORNER code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType PEPPER -doCheck -save {@OUT@/verify-PEPPER.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY PEPPER code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType PADS -doCheck -save {@OUT@/verify-PADS.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY PADS code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType LOCATION -doCheck -save {@OUT@/verify-LOCATION.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY LOCATION code $mage_verify_code]
-set mage_verify_code [catch {smVerify -checkType AUTOREFINE -doCheck -save {@OUT@/verify-AUTOREFINE.txt}} mage_verify_msg]
-puts [list MAGE_VERIFY AUTOREFINE code $mage_verify_code]
+foreach {mage_verify_type mage_verify_cmd} {OVERLAP frbCheckOverlap SPACE frbCheckSpace BOUNDARY frbCheckBoundary} {
+    puts [list MAGE_VERIFY_BEGIN $mage_verify_type]
+    flush stdout
+    set mage_verify_code [catch {$mage_verify_cmd} mage_verify_msg]
+    set mage_verify_code2 [catch {$mage_verify_cmd -print} mage_verify_msg2]
+    flush stdout
+    puts [list MAGE_VERIFY_CODE $mage_verify_type [expr {$mage_verify_code || $mage_verify_code2}]]
+    puts [list MAGE_VERIFY_END $mage_verify_type]
+    flush stdout
+}

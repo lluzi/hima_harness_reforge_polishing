@@ -21,12 +21,27 @@ own native checks, and answer every open Request in the Ledger. You alone hold t
   [--relaxed] [--movable-nonpriority] --out <file>`
 - `lane-view --snapshot <file> --lane <id> [--along <lo,hi>] [--cross <lo,hi>]` (prints to stdout;
   no `--out`)
-- `mage-round --round <n> --pla <candidate.pla> --role engineer --out-dir placement/round-NN`
+- `mage-round --round <n> --pla <candidate.pla> --role engineer --out-dir placement/round-NN
+  [--fill] [--experiment <file>]`
 - `candidate --round <n> --round-dir placement/round-NN --ledger <file> --out
   state/round/placement-candidate.json`
 - `evaluate --consumer <id> --candidate <snapshot.json> --out-dir <dir> [--start <snapshot.json>]`
   — you may run this on your own candidate before delivering, to see what a consumer will see, but
   it never substitutes for that consumer's own round.
+
+## How to use the round, by round
+
+- **Round 1 — reproduce the native incumbent before you change anything.** Replay the frozen start
+  state with `--fill`, so MAGE runs its own auto-refine from the frozen start exactly as the proven
+  native route does. This is your native baseline; read its three verify counts before planning any
+  move.
+- **Later rounds — your planned change, applied natively.** Replay a planner-made complete PLA
+  (usually with `--fill`, so MAGE compacts after your move), or, when a full replay cannot express
+  what you need, author an `--experiment` file (sourced after the replay; `exit`/`frbOpen` refused).
+  Qualify any D-status command with one passing and one failing experiment first
+  (`mage-capabilities.md`).
+- When `state/case-readiness.json` names a `referenceMethod`, read it for the method's own
+  compaction knobs — it is reference material, never replayed as a result.
 
 ## What to produce, exact paths
 

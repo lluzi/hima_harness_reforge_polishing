@@ -430,7 +430,11 @@ def _collect_round_files(workspace, round_entry):
             if "path" in value and "sha256" in value and isinstance(value["path"], str):
                 target = workspace / value["path"] if not os.path.isabs(value["path"]) else Path(value["path"])
                 if target.is_file() and core.file_sha256(target) == value["sha256"]:
-                    files.add(target.relative_to(workspace).as_posix() if target.is_relative_to(workspace) else str(target))
+                    try:
+                        relative = target.relative_to(workspace).as_posix()
+                    except ValueError:
+                        relative = str(target)
+                    files.add(relative)
             for child in value.values():
                 _walk(child)
         elif isinstance(value, list):

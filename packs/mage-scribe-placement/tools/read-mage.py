@@ -57,13 +57,6 @@ _UNITS = {
     "mage_native_overlap_rows": "rows",
     "mage_native_space_rows": "rows",
     "mage_native_boundary_rows": "rows",
-    "mage_native_cross_rows": "rows",
-    "mage_native_offgrid_rows": "rows",
-    "mage_native_diecorner_rows": "rows",
-    "mage_native_pepper_rows": "rows",
-    "mage_native_pads_rows": "rows",
-    "mage_native_location_rows": "rows",
-    "mage_native_autorefine_rows": "rows",
     "mage_native_violation_total": "rows",
     "mage_open_request_count": "count",
     "mage_review_error_count": "count",
@@ -74,10 +67,7 @@ _UNITS = {
 
 _NATIVE_TYPE_FACT = {
     "OVERLAP": "mage_native_overlap_rows", "SPACE": "mage_native_space_rows",
-    "BOUNDARY": "mage_native_boundary_rows", "CROSS": "mage_native_cross_rows",
-    "OFFGRID": "mage_native_offgrid_rows", "DIECORNER": "mage_native_diecorner_rows",
-    "PEPPER": "mage_native_pepper_rows", "PADS": "mage_native_pads_rows",
-    "LOCATION": "mage_native_location_rows", "AUTOREFINE": "mage_native_autorefine_rows",
+    "BOUNDARY": "mage_native_boundary_rows",
 }
 
 CANDIDATE_EMITS = [

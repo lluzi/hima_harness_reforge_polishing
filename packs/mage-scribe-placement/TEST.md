@@ -1,24 +1,34 @@
-# MAGE scribe-line placement 0.1.0 test record
+# MAGE scribe-line placement 0.2.0 test record
 
 ## L1 — Pack-local unittest on synthetic fixtures
 
-`cd packs/mage-scribe-placement/flow && /usr/bin/python3 -m unittest discover -s tests -v`
+`/usr/bin/python3 -m unittest discover -s flow/tests -t flow` (run from the Pack root)
 
-148 tests pass as of this Task (2026-10-12), covering: PLA parsing in µm and DBU with drops and
+174 tests pass as of Task 13 (2026-10-12), covering: PLA parsing in µm and DBU with drops and
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values
 (`test_metrics.py`); the consumer evaluator's `unknown` behaviour on missing parameters
 (`test_consumers.py`); record/schema validation (`test_schemas.py`, `test_records.py`); the
 decide-round best-state order and stop rule (`test_rounds.py`); the stand-in MAGE session driver,
-one-writer enforcement, and round-exists refusal (`test_native_session.py`); the two Readers'
+one-writer enforcement, round-exists refusal, the fill stage (manifest converge lines) and Engineer
+`--experiment` (byte-copy, sha256, `exit`/`frbOpen` refusal, consumer refusal), the three native
+checks sliced from stdout markers, and completion judged by the `MAGE_ROUND_END` marker rather than
+the vendor launcher's unconditional exit 0 (`test_native_session.py`); the two Readers'
 negatives — tampered PLA, untagged mutation, unanswered Request, fabricated review number, wrong
 snapshot binding (`test_readers.py`); the end-to-end two-round CLI route exercising every program
-task and every resident subcommand in sequence (`test_cli_tasks.py`); and this Task's own
+task and every resident subcommand in sequence, plus the `--fill`/`--experiment` route and the
+blocked-outcome path (`test_cli_tasks.py`); and this Task's own
 `flow/tests/test_knowledge.py` (every `contract.yml`-named knowledge file exists, is flat-named, has
 no placeholder text, and each resident's own knowledge set stays under 12,000 words; every CLI
 subcommand/flag a playbook names is real; every `state/...` path a playbook names is a declared
 output or a documented support-path pattern).
+
+The native route under test is the Site's proven one: exactly three native checks — `OVERLAP`
+(`frbCheckOverlap`), `SPACE` (`frbCheckSpace`), `BOUNDARY` (`frbCheckBoundary`) — each report
+sliced from MAGE's own `MAGE_VERIFY_*` stdout markers and counted by the `instances=<N>` header a
+SPACE row being one offending instance, not a pair. The old ten-way `smVerify -checkType` family is
+D-status only (unqualified) and this Pack no longer runs it.
 
 ## L0/L2 — Host contract test
 

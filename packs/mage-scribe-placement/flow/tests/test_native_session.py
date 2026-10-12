@@ -28,15 +28,23 @@ class MageSessionTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _session(self, executable=None):
+    def _session(self, executable=None, env=None, auto_refine_converge=None):
+        case = {"frb": self.frb_path}
+        if auto_refine_converge is not None:
+            case["autoRefineConverge"] = auto_refine_converge
         return session.MageSession(
             executable=executable or [sys.executable, STANDIN],
-            env=self.env,
+            env=env or self.env,
             workdir=self.tmp.name,
             log_path=self.log_path,
             templates_dir=TEMPLATES_DIR,
-            case={"frb": self.frb_path},
+            case=case,
         )
+
+    def _write_experiment(self, text):
+        path = Path(self.tmp.name) / "experiment-src.tcl"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
 
     def _read_log(self):
         if not Path(self.log_path).exists():
@@ -129,6 +137,159 @@ class MageSessionTest(unittest.TestCase):
         with self.assertRaises(core.MageError) as ctx:
             s.run_round(str(round_dir), candidate_pla, role="engineer")
         self.assertEqual(ctx.exception.code, "round-exists")
+
+    def test_fill_round_adds_converge_and_autorefine(self):
+        s = self._session(auto_refine_converge={"VERT": 7, "HORZ": 5})
+        round_dir = Path(self.tmp.name) / "round-fill"
+        candidate_pla = self.case_info["files"]["startState"]
+
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer", fill=True)
+        self.assertTrue(result["fill"])
+
+        script = (round_dir / "round.tcl").read_text(encoding="utf-8")
+        vert = "smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum 7"
+        horz = "smPFlow -setAutoRefineSimpleConverge -arSLType HORZ -arConvergeNum 5"
+        g_params = "g_params -set {smPFlow::s_ARTestConvergePrplaced false}"
+        autorefine = "smPFlow -autoRefine"
+        for token in (vert, horz, g_params, autorefine):
+            self.assertIn(token, script)
+
+        source_pos = script.index(f"source {{{candidate_pla}}}")
+        verify_pos = script.index("MAGE_VERIFY_BEGIN")
+        self.assertLess(source_pos, script.index(vert))
+        self.assertLess(script.index(vert), script.index(horz))
+        self.assertLess(script.index(horz), script.index(g_params))
+        self.assertLess(script.index(g_params), script.index(autorefine))
+        self.assertLess(script.index(autorefine), verify_pos)
+
+        log = self._read_log()
+        self.assertTrue(log[-1]["fill"])
+
+    def test_fill_without_converge_emits_comment(self):
+        s = self._session()  # no autoRefineConverge in the case
+        round_dir = Path(self.tmp.name) / "round-fill-nocv"
+        candidate_pla = self.case_info["files"]["startState"]
+
+        s.run_round(str(round_dir), candidate_pla, role="engineer", fill=True)
+        script = (round_dir / "round.tcl").read_text(encoding="utf-8")
+        self.assertIn("# no autoRefineConverge in the case manifest", script)
+        self.assertNotIn("-setAutoRefineSimpleConverge", script)
+        self.assertIn("smPFlow -autoRefine", script)
+
+    def test_experiment_is_copied_hashed_and_sourced(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment("smPFlow -autoRefine\n")
+
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer", experiment_tcl=experiment_src)
+
+        dest = round_dir / "experiment.tcl"
+        self.assertEqual(dest.read_bytes(), Path(experiment_src).read_bytes())
+        self.assertEqual(result["experimentSha256"], core.file_sha256(dest))
+        self.assertEqual(result["experimentTcl"], str(dest))
+
+        script = (round_dir / "round.tcl").read_text(encoding="utf-8")
+        source_pos = script.index(f"source {{{candidate_pla}}}")
+        exp_pos = script.index(f"source {{{dest}}}")
+        verify_pos = script.index("MAGE_VERIFY_BEGIN")
+        self.assertLess(source_pos, exp_pos)
+        self.assertLess(exp_pos, verify_pos)
+
+        log = self._read_log()
+        self.assertEqual(log[-1]["experimentSha256"], result["experimentSha256"])
+
+    def test_experiment_with_exit_is_refused(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp-exit"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment("smPFlow -autoRefine\nexit 0\n")
+
+        with self.assertRaises(core.MageError) as ctx:
+            s.run_round(str(round_dir), candidate_pla, role="engineer", experiment_tcl=experiment_src)
+        self.assertEqual(ctx.exception.code, "experiment")
+        self.assertFalse(round_dir.exists())
+        self.assertEqual(self._read_log(), [])
+
+    def test_experiment_with_frbopen_is_refused(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp-frbopen"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment("frbOpen {/some/other.frb}\n")
+
+        with self.assertRaises(core.MageError) as ctx:
+            s.run_round(str(round_dir), candidate_pla, role="engineer", experiment_tcl=experiment_src)
+        self.assertEqual(ctx.exception.code, "experiment")
+        self.assertFalse(round_dir.exists())
+
+    def test_consumer_cannot_run_experiment(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp-consumer"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment("smPFlow -autoRefine\n")
+
+        with self.assertRaises(core.MageError) as ctx:
+            s.run_round(str(round_dir), candidate_pla, role="metrology", experiment_tcl=experiment_src)
+        self.assertEqual(ctx.exception.code, "writer")
+        self.assertFalse((round_dir / "round.tcl").exists())
+
+    def test_verify_files_come_from_stdout_markers(self):
+        env = dict(self.env)
+        env["MAGE_STANDIN_ROWS"] = '{"SPACE": ["P_X 2 10.0 0.0 (1,2)"]}'
+        s = self._session(env=env)
+        round_dir = Path(self.tmp.name) / "round-verify"
+        candidate_pla = self.case_info["files"]["startState"]
+
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer")
+        self.assertEqual(set(result["verifyFiles"]), {"OVERLAP", "SPACE", "BOUNDARY"})
+
+        space = Path(result["verifyFiles"]["SPACE"]).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(space[0], "# mage-verify/1 type=SPACE command=frbCheckSpace instances=1")
+        overlap = Path(result["verifyFiles"]["OVERLAP"]).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(overlap[0], "# mage-verify/1 type=OVERLAP command=frbCheckOverlap instances=0")
+        boundary = Path(result["verifyFiles"]["BOUNDARY"]).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(boundary[0], "# mage-verify/1 type=BOUNDARY command=frbCheckBoundary instances=0")
+
+    def test_verify_type_with_failed_catch_is_not_written(self):
+        env = dict(self.env)
+        env["MAGE_STANDIN_VERIFY_FAIL"] = "BOUNDARY"
+        s = self._session(env=env)
+        round_dir = Path(self.tmp.name) / "round-verify-fail"
+        candidate_pla = self.case_info["files"]["startState"]
+
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer")
+        self.assertNotIn("BOUNDARY", result["verifyFiles"])
+        self.assertFalse((round_dir / "out" / "verify-BOUNDARY.txt").exists())
+        self.assertIn("OVERLAP", result["verifyFiles"])
+
+    def test_open_build_has_no_arenabled_and_has_sort(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-openbuild"
+        candidate_pla = self.case_info["files"]["startState"]
+        s.run_round(str(round_dir), candidate_pla, role="engineer")
+        script = (round_dir / "round.tcl").read_text(encoding="utf-8")
+        self.assertIn("smPFlow -sortFit", script)
+        self.assertNotIn("-arEnabled", script)
+
+    def test_round_without_end_marker_is_not_completed(self):
+        env = dict(self.env)
+        env["MAGE_STANDIN_NO_END"] = "1"
+        s = self._session(env=env)
+        round_dir = Path(self.tmp.name) / "round-noend"
+        candidate_pla = self.case_info["files"]["startState"]
+
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer")
+        self.assertEqual(result["returncode"], 0)
+        self.assertFalse(result["completed"])
+        log = self._read_log()
+        self.assertFalse(log[-1]["completed"])
+
+    def test_completed_round_sets_completed_true(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-ok"
+        candidate_pla = self.case_info["files"]["startState"]
+        result = s.run_round(str(round_dir), candidate_pla, role="engineer")
+        self.assertTrue(result["completed"])
 
 
 class TclHelpersTest(unittest.TestCase):
