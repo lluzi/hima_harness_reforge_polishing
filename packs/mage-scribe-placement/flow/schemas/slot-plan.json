@@ -38,7 +38,7 @@
       "properties": {
         "relaxations": {
           "type": "array",
-          "items": {"type": "string", "enum": ["ignoreGaps", "removeNonPriority", "splitClusters", "intrudersMovable"]}
+          "items": {"type": "string", "enum": ["ignoreGaps", "removeNonPriority", "splitClusters", "intrudersMovable", "movableNonpriority"]}
         },
         "gapsQualified": {"type": "boolean"},
         "removed": {"type": "array", "items": {"type": "string"}}

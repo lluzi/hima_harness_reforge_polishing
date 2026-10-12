@@ -46,6 +46,18 @@ reproduce the native incumbent before you change anything. Parse the round into 
 `candidate --round <n> --round-dir <dir> --ledger <file> --out
 state/round/placement-candidate.json`.
 
+**Plan on the start snapshot — always `state/start-snapshot.json`, never a filled export's
+snapshot.** The whole mechanism is: plan on the priority-only start, move the priority marks in the
+start PLA, then replay that PLA with `--fill` so MAGE places the ordinary structures into the
+windows you opened. In a filled export's snapshot every ordinary structure is already placed, so the
+planner sees each one as an immovable intruder and correctly reports no window — plan there and you
+will conclude "0 feasible slots" even when real windows exist. So the `plan-slots --snapshot`
+argument is `state/start-snapshot.json` every round (round 2 included), and the PLA you apply moves
+to is the manifest's `startState` path (from `state/case-readiness.json`), never last round's
+export. The first live rounds failed exactly this way: round 1 reproduced the incumbent correctly,
+then round 2 planned on the FILLED snapshot, found no windows, replayed the incumbent again, and
+declined every Request. Plan on the start snapshot and the windows are there.
+
 Every delivered round must carry the full ordinary population: fill it with `--fill`, or an
 `--experiment` that itself places or drops every ordinary structure. A round whose export omits
 ordinary structures is refused by the Reader as an inventory failure
@@ -74,18 +86,47 @@ planner (`plan-slots`) → relocate non-priority structures to make room → onl
 resolves a genuine consumer conflict, leave it for a Decision Request (written by `decide-round`,
 never by you).
 
-**Plan** with `plan-slots --snapshot <file> --lane <H:0|V:1|...> --length-um <um> --count <n>
---limit-um <um> [--relaxed] --out <file>` — the exact planner (`mage-capabilities.md` lists no
-heuristic substitute; see `mage-frozen-interfaces.md` for `max_slots`/`fewest_moves`/
-`least_displacement`). `--relaxed` runs the same planner with spacing/keep-out/zone ignored,
-crossing intruders and non-priority structures removable, and clusters splittable — fewer than the
-requested slots even relaxed means "infeasible within relaxed model M at limit X", never "native
-infeasible": you have not run MAGE yet at that point.
+**Plan — which keys, which lanes, exact commands.** Take the dropped structure ids from
+`state/incumbent.json` (`metrics.drops.ids`, split by `metrics.drops.byBlockType`). For each dropped
+structure, read its pending entry in `state/start-snapshot.json` and derive its long side and
+orientation from `sizeDbu` (`[widthDbu, heightDbu]`): long side along x → it belongs in an `H:*`
+lane; long side along y → a `V:*` lane. Then, for every lane of that orientation (list them from the
+start snapshot's `lanes[*].laneId`), plan the number of such keys still dropped:
 
-**Apply** by writing a new, complete candidate PLA: translate boxes to the planned positions, leave
-every Group's `targetPointDbu` untouched, and add any newly placed pending structure as a Fit record
-with `-plaCheckSize`. Never write a partial PLA — `pla.write_pla` always emits a complete,
-replayable document, and `source`-ing anything less replaces the whole Frame's placement state.
+```
+plan-slots --snapshot state/start-snapshot.json --lane <lane> --length-um <long side in um>
+  --count <number of such keys still dropped> --limit-um <Goal max_target_distance_um> --out <plan>
+```
+
+`plan-slots` is the exact planner (`mage-capabilities.md` lists no heuristic substitute; see
+`mage-frozen-interfaces.md` for `max_slots`/`fewest_moves`/`least_displacement`). Fewer than the
+requested slots means "infeasible within this model at this limit", never "native infeasible": you
+have not run MAGE yet at that point.
+
+**Apply — turn the feasible plans into one candidate PLA with `apply-plan`.** Never edit PLA text by
+hand. `apply-plan WORKSPACE --pla <manifest startState path from state/case-readiness.json> --plan
+<each feasible plan> --out placement/round-NN/candidate.pla` moves exactly the priority marks each
+plan names, along each lane's own axis, to the planned positions; it leaves every Group
+`targetPointDbu`, every Fixed instance, every drop and every unmoved Fit untouched, and refuses a
+plan that is infeasible, moves an unknown id or a Fixed instance, or moves the same id twice. Pass
+one `--plan` per feasible plan (at least one is required). Then replay and fill:
+
+```
+mage-round --round <n> --pla placement/round-NN/candidate.pla --role engineer
+  --out-dir placement/round-NN --fill
+candidate --round <n> --round-dir placement/round-NN --ledger <file>
+  --out state/round/placement-candidate.json
+```
+
+`--fill` is what makes MAGE drop the ordinary structures into the windows you opened; a replay
+without it exports no ordinary population and the Reader refuses it (see below).
+
+**Attempts, in order.** The plain `plan-slots` above is attempt 1. If a lane is infeasible, attempt
+2 adds `--relaxed` (same planner, spacing/keep-out/zone ignored, crossing intruders removable,
+clusters splittable); attempt 3 adds `--movable-nonpriority <um>`, which lets the planner shift an
+ordinary (non-priority) structure within that budget to open room — `apply-plan` only accepts an
+ordinary-fit move from a plan produced this way. Report which attempt a plan came from; a relaxed or
+movable-nonpriority plan is a weaker claim than a plain one.
 
 **Judge** by the round's own native checks (`metrics.native_rows`, the three checks OVERLAP/SPACE/
 BOUNDARY) and this round's Q1–Q4 metrics
@@ -96,6 +137,21 @@ each Fit moved from the frozen start) versus **absolute error from the CT target
 the other. Keep the new candidate
 only if it is no worse than the previous best by the best-state order below; otherwise deliver it
 anyway as the honest best-effort result and say why in `stopReason`.
+
+Compare this round's candidate `metrics.drops.ordinary` against both `state/incumbent.json` and the
+previous best, and make `stopReason` say two separate things: what the planner *opened* (how many
+windows `plan-slots` reported for the dropped keys, in which lanes) and what MAGE actually *filled*
+(the change in `drops.ordinary` the `--fill` export produced). "Planner opened 15 windows for the 3
+dropped long keys; fill placed 3, ordinary drops 26 → 23" is the shape to aim for — never report the
+planner's window count as if it were a placement.
+
+**Answer `move` Requests honestly, including about pre-existing deviations.** A target already
+beyond the limit in the frozen start is a pre-existing condition, not something this round broke. If
+no slot exists to bring it back toward its CT target, answer `declined` with a note of the form
+`pre-existing in start state; restoring it toward its CT target requires a slot the planner reports
+as <reason>` (the `<reason>` being `plan-slots`' own infeasibility: fragmentation, order-limited,
+limit-limited or capacity-limited). If the move was made, answer `satisfied`. Never silently decline
+a move you did not actually attempt to plan.
 
 ## Best measured state (lexicographic; natively measured only)
 

@@ -59,6 +59,21 @@ out, and the `MAGE_ROUND_END code 0` marker is present; otherwise the candidate'
 sources an Engineer-authored Tcl file (refused if it contains `exit` or `frbOpen`), recording its
 sha256 in the candidate.
 
+`apply-plan WORKSPACE --pla <start.pla> --plan <plan.json> [--plan ...] --out <candidate.pla>` is
+the Engineer's helper for turning one or more `plan-slots` plans into a replayable candidate PLA
+(so the resident never hand-edits PLA text). It reads the start PLA and each `mage.slot-plan/1`
+plan, moves exactly the Fit each plan's `moves` names along the lane's own axis (`H:*` along x,
+`V:*` along y) so its along-start equals the planned position — keeping the cross coordinates and
+the box size — and leaves every `pinstGroupProperty` Group target point, Fixed instance, drop and
+unmoved Fit byte-for-byte equivalent. It refuses an infeasible plan, a move of an unknown id or a
+Fixed instance, two plans moving the same id, and a move of an ordinary (empty-`inGroup`) Fit
+unless the plan was produced with `--movable-nonpriority` (recorded as the `movableNonpriority`
+token in the plan's `model.relaxations`). At least one `--plan` is required. It writes the complete
+candidate in micrometres (`pla.write_pla(..., units="um")`) and prints a
+`{movedCount, totalDisplacementUm, maxDisplacementUm, lanes, out}` summary to stdout; the replay
+mechanism is plan on `state/start-snapshot.json` → `apply-plan` the start PLA → `mage-round
+--fill`, so MAGE places the ordinary structures into the opened windows.
+
 ## Semantics
 
 Two Readers (`tools/read-mage.py`, one script backing both `readers/*.yml` declarations) re-derive

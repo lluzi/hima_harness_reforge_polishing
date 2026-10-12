@@ -161,6 +161,30 @@ checking inventory, so a non-completed round yields a blocked candidate even if 
 exists (m4). The I-1 regression (real-case counts re-entered `SPEC.md`/`snapshot.py`) is scrubbed to
 neutral wording.
 
+### `apply-plan` subcommand (2026-10-12)
+
+238 tests pass on the Mac (`/usr/bin/python3` 3.9.6: `Ran 238 tests in 19.548s / OK`). The 8 new
+tests are `flow/tests/test_apply_plan.py`: on the synthetic start state, `plan-slots` for a lane
+that needs a move then `apply-plan`, with `pla.read_pla` of the output confirming the moved Fit's
+along-start equals the plan's position, its size and cross coordinates unchanged, and every Group,
+Fixed instance, drop and unmoved Fit identical to the start; two plans moving the same id refused;
+an unknown id refused; a Fixed-instance move refused; an infeasible plan refused; a non-priority
+(empty-`inGroup`) move refused without `--movable-nonpriority` and accepted with it; an empty plan
+list refused (at least one `--plan` required); and the candidate replayed through the stand-in
+(`mage-round --fill` then `candidate`) whose `displacement.movedCount` equals the `apply-plan`
+summary's `movedCount`.
+
+**First live rounds (2026-10-12, real resident + real MAGE, no customer data).** Round 1's anchor
+replay reproduced the native incumbent correctly through the Pack. Round 2 then ran `plan-slots` on
+the FILLED export snapshot — where every ordinary structure is an immovable intruder — concluded "0
+feasible slots", replayed the incumbent again, and declined every Request. The planner does find
+windows, but only on the priority-only start state (the controller's own sweep on the real start
+snapshot found 15 windows for the dropped long keys at a 100 µm budget and 33 at 1000 µm; the
+baseline fill had dropped 26 such keys). Fix: `apply-plan` (so the Engineer never hand-edits PLA
+text) plus the knowledge rewrite making "always plan on `state/start-snapshot.json`, never a filled
+export" explicit, with the exact `plan-slots` → `apply-plan` → `mage-round --fill` → `candidate`
+command sequence.
+
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values

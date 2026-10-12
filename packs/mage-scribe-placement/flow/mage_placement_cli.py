@@ -38,7 +38,8 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parent)]
 
 from mage_placement import (  # noqa: E402
-    consumers, core, metrics as metrics_mod, pla, planner, records, snapshot, tasks,
+    apply_plan as apply_plan_mod, consumers, core, metrics as metrics_mod, pla, planner,
+    records, snapshot, tasks,
 )
 from mage_placement.native import session as native_session  # noqa: E402
 
@@ -387,6 +388,17 @@ def _cmd_plan_slots(workspace, args):
     ]
     body["slotStarts"] = [start * grid_dbu for start in body["slotStarts"]]
     body["totalDisplacementDbu"] = body["totalDisplacementDbu"] * grid_dbu
+    # `--movable-nonpriority` is the only mode that makes an ordinary
+    # (empty `inGroup`) in-lane fit movable, so it is the only mode whose
+    # plan may legitimately move one. Record it in `model.relaxations` as
+    # `movableNonpriority` -- `apply-plan` relies on exactly this token to
+    # tell a legitimate ordinary-fit move from a bogus one (a plan without
+    # it that moves an empty-`inGroup` fit is refused). It is metadata the
+    # CLI stamps, not something `plan_lane` reasons on (the item windows
+    # already carry the budget), so it is appended here beside the other
+    # unit post-processing rather than threaded through the planner.
+    if nonpriority_budget_dbu is not None:
+        body["model"]["relaxations"] = list(body["model"]["relaxations"]) + ["movableNonpriority"]
     if folded_tracks is not None:
         body["foldedTracks"] = folded_tracks
 
@@ -395,6 +407,42 @@ def _cmd_plan_slots(workspace, args):
     if errors:
         raise core.MageError("schema", "; ".join(errors))
     return out_path, body
+
+
+def _cmd_apply_plan(workspace, args):
+    """Apply one or more `plan-slots` plans to a start PLA, writing a
+    complete candidate PLA and printing a JSON move summary to stdout.
+
+    Sits next to `plan-slots`: that command plans on the start snapshot,
+    this one realises its moves as a replayable PLA. `--plan` is repeatable
+    and required at least once (an empty plan list is not allowed); every
+    move, refusal and unit conversion lives in
+    `mage_placement.apply_plan.apply_plan`. Like every other subcommand,
+    `--pla`/`--plan`/`--out` are resolved against `WORKSPACE` when relative
+    (`_resolve_in_workspace`), and `dbuPerUm` comes from the committed
+    `state/case-readiness.json` so the candidate is written in the case's
+    own micrometre representation (`pla.write_pla(..., units="um")`).
+    """
+    parser = argparse.ArgumentParser(prog="apply-plan")
+    parser.add_argument("--pla", required=True)
+    parser.add_argument("--plan", action="append", required=True, metavar="PLAN")
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+
+    dbu_per_um = _case_readiness(workspace)["manifest"]["dbuPerUm"]
+    pla_path = _resolve_in_workspace(workspace, opts.pla)
+    out_path = _resolve_in_workspace(workspace, opts.out)
+    doc = pla.read_pla(pla_path.read_text(encoding="utf-8"), dbu_per_um)
+
+    plans = [core.read_artifact(_resolve_in_workspace(workspace, plan_arg), "slot-plan")
+             for plan_arg in opts.plan]
+    candidate, summary = apply_plan_mod.apply_plan(doc, plans, dbu_per_um)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(pla.write_pla(candidate, dbu_per_um, units="um"), encoding="utf-8")
+    summary["out"] = str(out_path)
+    print(json.dumps(summary, sort_keys=True))
+    return None
 
 
 def _cmd_evaluate(workspace, args):
@@ -797,10 +845,15 @@ RESIDENT_SUBCOMMANDS = {
     "consumer-review": _cmd_consumer_review_fallback,
 }
 
-# These two print JSON to stdout and write no declared output file.
+# These print JSON to stdout and write no declared JSON artifact via
+# `core.write_artifact`. `apply-plan` belongs here (next to `plan-slots` in
+# the file above): it writes its own candidate PLA with `pla.write_pla` and
+# prints a move summary, rather than returning a `(path, body)` JSON record
+# for `main()` to write.
 PRINTING_SUBCOMMANDS = {
     "lane-view": _cmd_lane_view,
     "evaluate": _cmd_evaluate,
+    "apply-plan": _cmd_apply_plan,
 }
 
 
