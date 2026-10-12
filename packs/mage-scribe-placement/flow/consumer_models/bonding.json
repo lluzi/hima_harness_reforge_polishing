@@ -1,0 +1,18 @@
+{
+  "schema": "mage.consumer-model/1",
+  "id": "bonding",
+  "version": "0.1.0",
+  "scope": {"blockTypes": ["Bonding"]},
+  "enabled": false,
+  "requirements": [
+    {
+      "id": "pair-cohesion",
+      "kind": "cost",
+      "predicate": "pair_cohesion",
+      "parameters": {},
+      "cost": "bonding mirror-pair consistency rework when partner data is available",
+      "source": {"type": "assumption", "ref": "consumer-requirements-research#12"},
+      "confidence": "low"
+    }
+  ]
+}

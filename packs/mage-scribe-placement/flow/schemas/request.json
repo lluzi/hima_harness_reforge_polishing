@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "id", "fromFinding", "consumer", "snapshotSha256",
+    "requestedOutcome", "acceptableAlternatives", "strength"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "requestedOutcome": {
+      "type": "object",
+      "required": ["kind", "targets", "limitsUm", "text"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["move", "keep", "place", "restore_order", "other"]},
+        "targets": {"type": "array", "items": {"type": "string"}},
+        "limitsUm": {"type": "object"},
+        "text": {"type": "string"}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.request/1"},
+    "id": {"type": "string", "minLength": 1},
+    "fromFinding": {"type": "string", "minLength": 1},
+    "consumer": {"type": "string", "minLength": 1},
+    "snapshotSha256": {"type": "string", "minLength": 1},
+    "requestedOutcome": {"$ref": "#/$defs/requestedOutcome"},
+    "acceptableAlternatives": {"type": "array"},
+    "strength": {"type": "string", "enum": ["hard", "preference"]}
+  }
+}

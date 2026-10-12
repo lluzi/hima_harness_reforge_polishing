@@ -1,0 +1,38 @@
+schema: "mage.consumer-model/1"
+id: "metrology"
+version: "0.1.0"
+scope:
+  blockTypes:
+    - "OVL"
+    - "IBO_CDSEM_DBO"
+    - "markCluster"
+requirements:
+  - id: "region-coverage"
+    kind: "hard"
+    predicate: "region_coverage"
+    parameters: {}
+    source:
+      type: "public-research"
+      ref: "consumer-requirements-research#10"
+    confidence: "medium"
+  - id: "edit-on-move"
+    kind: "cost"
+    predicate: "edit_on_move"
+    parameters:
+      window_um:
+        from: "consumerContext"
+        key: "metrology.search_window_um"
+    cost: "recipe search-window edit per target moved beyond the customer's search window"
+    source:
+      type: "customer"
+      ref: "metrology-recipe-notes"
+    confidence: "medium"
+  - id: "pair-cohesion"
+    kind: "cost"
+    predicate: "pair_cohesion"
+    parameters: {}
+    cost: "addressing pattern rework when a target and its CD-SEM pair move independently"
+    source:
+      type: "public-research"
+      ref: "consumer-requirements-research#10"
+    confidence: "low"

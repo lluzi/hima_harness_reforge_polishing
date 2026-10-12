@@ -1,0 +1,37 @@
+{
+  "schema": "mage.consumer-model/1",
+  "id": "litho-pie",
+  "version": "0.1.0",
+  "scope": {"priority": true},
+  "requirements": [
+    {
+      "id": "placed",
+      "kind": "hard",
+      "predicate": "placed",
+      "parameters": {},
+      "source": {"type": "rule-file", "ref": "-setNumMin"},
+      "confidence": "high"
+    },
+    {
+      "id": "target-distance",
+      "kind": "hard",
+      "predicate": "target_distance",
+      "parameters": {
+        "limit_um": {"from": "consumerContext", "key": "litho-pie.target_limit_um"}
+      },
+      "source": {"type": "customer", "ref": "caseReadiness"},
+      "confidence": "medium"
+    },
+    {
+      "id": "order-deviation",
+      "kind": "cost",
+      "predicate": "order_deviation",
+      "parameters": {
+        "threshold": {"from": "consumerContext", "key": "litho-pie.max_order_deviation"}
+      },
+      "cost": "requested placement order drift versus the customer request file",
+      "source": {"type": "customer", "ref": "partitionRule"},
+      "confidence": "medium"
+    }
+  ]
+}

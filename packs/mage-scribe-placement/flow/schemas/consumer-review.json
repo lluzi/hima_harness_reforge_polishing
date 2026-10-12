@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "id", "identity", "consumer", "consumerModel", "snapshotSha256",
+    "findings", "requests", "receipt", "summary"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["taskId", "runId", "executionId", "nodeId", "round"],
+      "properties": {
+        "taskId": {"type": "string"},
+        "runId": {"type": "string"},
+        "executionId": {"type": "string"},
+        "nodeId": {"type": "string"},
+        "round": {"type": "integer", "minimum": 0}
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.consumer-review/1"},
+    "id": {"type": "string", "minLength": 1},
+    "identity": {"$ref": "#/$defs/identity"},
+    "consumer": {"type": "string", "minLength": 1},
+    "consumerModel": {"type": "string", "minLength": 1},
+    "snapshotSha256": {"type": "string", "minLength": 1},
+    "findings": {"type": "array"},
+    "requests": {"type": "array"},
+    "receipt": {"$ref": "#/$defs/receipt"},
+    "summary": {"type": "string"}
+  }
+}
