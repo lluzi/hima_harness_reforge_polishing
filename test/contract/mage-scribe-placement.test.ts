@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { loadPack, checkPack, loadSite } from '@hima/harness';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
@@ -110,6 +110,39 @@ test('the MAGE Pack fits a Site that declares one MAGE seat and refuses one that
   t.after(() => h2.dispose());
   const none = await writeLocalSite(h2, { bindings, licences: {}, allowedWrappers });
   const check = checkPack(pack, loadSite(none.sitesDir, none.name));
+  assert.equal(check.fit, false);
+  const mageLicence = check.licences.find((entry) => entry.name === 'mage');
+  assert.ok(mageLicence, 'the mage licence is reported');
+  assert.match(mageLicence!.error ?? '', /does not declare/);
+});
+
+test('the MAGE Pack fits the real linglong-mage Site and refuses a copy that drops its licence', async (t) => {
+  const pack = loadPack(path.join(repoRoot, 'packs'), packId);
+  const siteSourceDir = path.join(repoRoot, 'sites/linglong-mage');
+  const siteText = await readFile(path.join(siteSourceDir, 'site.yml'), 'utf8');
+  const permitText = await readFile(path.join(siteSourceDir, 'permit.yml'), 'utf8');
+
+  // Installed the way `prepareHimaHome`/the kit install Sites: the site file under its own name,
+  // the permit beside it under the name the site file gives (here, `permit.yml`, as `site.yml`
+  // itself declares `permit: ./permit.yml`).
+  const h = await createHimaHome();
+  t.after(() => h.dispose());
+  const sitesDir = path.join(h.home, 'hima/sites');
+  await mkdir(sitesDir, { recursive: true });
+  await cp(path.join(siteSourceDir, 'site.yml'), path.join(sitesDir, 'linglong-mage.yml'));
+  await cp(path.join(siteSourceDir, 'permit.yml'), path.join(sitesDir, 'permit.yml'));
+  const fitCheck = checkPack(pack, loadSite(sitesDir, 'linglong-mage'));
+  assert.equal(fitCheck.fit, true, JSON.stringify(fitCheck.errors));
+
+  const h2 = await createHimaHome();
+  t.after(() => h2.dispose());
+  const sitesDir2 = path.join(h2.home, 'hima/sites');
+  await mkdir(sitesDir2, { recursive: true });
+  const noLicenceText = siteText.replace('  licences:\n    mage: 1\n', '  licences: {}\n');
+  assert.notEqual(noLicenceText, siteText, 'the reference site file holds no "licences:\\n    mage: 1\\n" to vary');
+  await writeFile(path.join(sitesDir2, 'linglong-mage.yml'), noLicenceText);
+  await writeFile(path.join(sitesDir2, 'permit.yml'), permitText);
+  const check = checkPack(pack, loadSite(sitesDir2, 'linglong-mage'));
   assert.equal(check.fit, false);
   const mageLicence = check.licences.find((entry) => entry.name === 'mage');
   assert.ok(mageLicence, 'the mage licence is reported');
