@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "id", "identity", "startSnapshotSha256", "snapshotSha256", "buildBanner",
+    "files", "metrics", "ledger", "remaining", "blocked", "unknown", "outcome", "stopReason",
+    "reproduction"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["taskId", "runId", "executionId", "nodeId", "round"],
+      "properties": {
+        "taskId": {"type": "string"},
+        "runId": {"type": "string"},
+        "executionId": {"type": "string"},
+        "nodeId": {"type": "string"},
+        "round": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.placement-candidate/1"},
+    "id": {"type": "string", "minLength": 1},
+    "identity": {"$ref": "#/$defs/identity"},
+    "startSnapshotSha256": {"type": "string", "minLength": 1},
+    "snapshotSha256": {"type": "string", "minLength": 1},
+    "buildBanner": {"type": "string"},
+    "files": {"type": "object"},
+    "metrics": {"type": "object"},
+    "ledger": {"type": "array"},
+    "remaining": {"type": "array"},
+    "blocked": {"type": "array"},
+    "unknown": {"type": "array"},
+    "outcome": {"type": "string", "enum": ["completed", "best-effort", "blocked"]},
+    "stopReason": {"type": "string"},
+    "reproduction": {"type": "object"}
+  }
+}

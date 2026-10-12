@@ -1,0 +1,492 @@
+#!/usr/bin/env python3
+"""`mage_placement_cli.py <subcommand> <workspace> [args]` — the glue
+between the Harness graph (`graph.yml`) and the Pack's own
+`flow/mage_placement/` modules, mirroring the shape of the ATCS Pack's
+`atcs_cli.py`.
+
+Two subcommand families:
+
+- `task-<name>` (program tasks: `prepare-case`, `measure-incumbent`,
+  `decide-round`, `evaluate-placement`, `deliver`) — argv is
+  `<workspace> <task-input-path> <task-output-path>`; `TASK_INPUT` is a
+  plain JSON object keyed by the task's own bound input names
+  (`graph.yml`); this dispatcher calls `mage_placement.tasks.execute` and
+  writes its `{"schemaVersion","value","artifacts","diagnostics"}` result
+  straight to `TASK_OUTPUT` (`core.write_artifact`).
+- resident-facing subcommands (`snapshot`, `lane-view`, `plan-slots`,
+  `evaluate`, `mage-round`, `candidate`, `review`, the `placement-candidate`/
+  `consumer-review` batch fallbacks, `flow-digest`) — each either prints a
+  JSON result to stdout (`lane-view`, `evaluate` — diagnostics with no
+  single declared output file) or returns `(output_path, body)` for
+  `main()` to write atomically with `core.write_artifact`.
+
+Exit codes, exactly as `atcs_cli.py:_fail`: `0` success; `2` a malformed or
+missing declared input (`MageError` with most refusal codes, or a bare
+`OSError`/`KeyError`/`TypeError`/`ValueError` escaping a handler); `3` a
+`MageError` refusal from a module given otherwise well-formed inputs. Every
+failure writes a plain `{"code","detail"}` JSON object to stderr — never a
+raw traceback.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path[:0] = [str(Path(__file__).resolve().parent)]
+
+from mage_placement import (  # noqa: E402
+    consumers, core, metrics as metrics_mod, pla, planner, records, snapshot, tasks,
+)
+from mage_placement.native import session as native_session  # noqa: E402
+
+
+NATIVE_TYPES = metrics_mod.NATIVE_TYPES
+
+
+def _read_plain(path):
+    target = Path(path)
+    if not target.is_file():
+        raise core.MageError("missing-input", f"declared input not found: {target}")
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise core.MageError("missing-input", f"cannot parse {target}: {exc}") from exc
+
+
+def _identity():
+    return {
+        "taskId": os.environ.get("HIMA_TASK_ID", "unknown"),
+        "runId": os.environ.get("HIMA_RUN_ID", "unknown"),
+        "executionId": os.environ.get("HIMA_EXECUTION_ID", "unknown"),
+        "nodeId": os.environ.get("HIMA_NODE_ID", "unknown"),
+    }
+
+
+def _priority_unplaced(snap):
+    ids = [p["id"] for p in snap["pending"] if p.get("inGroup")]
+    return {"count": len(ids), "ids": ids}
+
+
+def _case_readiness(workspace):
+    return core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")
+
+
+# ---------------------------------------------------------------------------
+# resident subcommands
+# ---------------------------------------------------------------------------
+
+
+def _cmd_snapshot(workspace, args):
+    parser = argparse.ArgumentParser(prog="snapshot")
+    parser.add_argument("--pla", required=True)
+    parser.add_argument("--stage", required=True, choices=["start", "incumbent", "candidate"])
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+
+    start = snapshot.load_snapshot(Path(workspace) / "state" / "start-snapshot.json")
+    pla_text = Path(opts.pla).read_text(encoding="utf-8")
+    doc = pla.read_pla(pla_text, start["dbuPerUm"])
+    body = snapshot.build_snapshot(
+        opts.stage, doc, start["frame"], start["ruleFacts"], start["targets"], {},
+        {"pla": {"path": opts.pla, "sha256": core.file_sha256(opts.pla)}},
+        pending_from_rules=(opts.stage == "start"),
+    )
+    return opts.out, body
+
+
+def _cmd_lane_view(workspace, args):
+    del workspace
+    parser = argparse.ArgumentParser(prog="lane-view")
+    parser.add_argument("--snapshot", required=True)
+    parser.add_argument("--lane", required=True)
+    parser.add_argument("--along", default=None)
+    parser.add_argument("--cross", default=None)
+    opts = parser.parse_args(args)
+
+    from mage_placement import lanes
+
+    snap = snapshot.load_snapshot(opts.snapshot)
+    along = tuple(int(v) for v in opts.along.split(",")) if opts.along else None
+    cross = tuple(int(v) for v in opts.cross.split(",")) if opts.cross else None
+    boxes = [[f["id"], f["boxDbu"]] for f in snap["fits"]]
+    result = lanes.project(snap["frame"], boxes, opts.lane, along=along, cross=cross)
+    print(json.dumps(result, sort_keys=True))
+    return None
+
+
+def _cmd_plan_slots(workspace, args):
+    del workspace
+    parser = argparse.ArgumentParser(prog="plan-slots")
+    parser.add_argument("--snapshot", required=True)
+    parser.add_argument("--lane", required=True)
+    parser.add_argument("--length-um", required=True)
+    parser.add_argument("--count", required=True, type=int)
+    parser.add_argument("--limit-um", required=True)
+    parser.add_argument("--relaxed", action="store_true")
+    parser.add_argument("--movable-nonpriority", action="store_true")
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+
+    snap = snapshot.load_snapshot(opts.snapshot)
+    dbu_per_um = snap["dbuPerUm"]
+    length_dbu = core.um_to_dbu(opts.length_um, dbu_per_um)
+    limit_dbu = core.um_to_dbu(opts.limit_um, dbu_per_um)
+
+    lane_axis, _, lane_track = opts.lane.partition(":")
+    items = []
+    for fit in snap["fits"]:
+        lane = fit.get("lane")
+        if lane is None or lane["axis"] != lane_axis or str(lane["track"]) != lane_track:
+            continue
+        l, b, r, t = fit["boxDbu"]
+        is_priority = bool(fit.get("priority"))
+        along_current = l if lane_axis == "H" else b
+        along_length = (r - l) if lane_axis == "H" else (t - b)
+        movable = is_priority or opts.movable_nonpriority
+        if is_priority:
+            target = next((tg for tg in snap["targets"] if tg.get("fitId") == fit["id"]), None)
+            centre = (target["ctDbu"][0] if lane_axis == "H" else target["ctDbu"][1]) if target else along_current
+            window = (centre - limit_dbu - along_length // 2, centre + limit_dbu - along_length // 2)
+        else:
+            window = (along_current, along_current) if not movable else (along_current, along_current)
+        items.append(planner.LaneItem(
+            id=fit["id"], length=along_length, gap_after=0, window=window,
+            current=along_current, movable=movable, cluster=None, priority=is_priority,
+        ))
+    items.sort(key=lambda it: it.current)
+
+    slot = planner.SlotRequest(count=opts.count, length=length_dbu, clearance=0)
+    relaxations = {"ignoreGaps": True, "intrudersMovable": True} if opts.relaxed else None
+    body = planner.plan_lane(items, slot, relaxations=relaxations, lane_id=opts.lane)
+    body = core.stamp("slot-plan", body)
+    errors = records.validate_record("slot-plan", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return opts.out, body
+
+
+def _cmd_evaluate(workspace, args):
+    parser = argparse.ArgumentParser(prog="evaluate")
+    parser.add_argument("--consumer", required=True)
+    parser.add_argument("--candidate", required=True)
+    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--start", default=None)
+    opts = parser.parse_args(args)
+
+    readiness = _case_readiness(workspace)
+    models_dir = Path(__file__).resolve().parent / "consumer_models"
+    model = consumers.load_consumer_model(models_dir, opts.consumer)
+    candidate_snapshot = snapshot.load_snapshot(opts.candidate)
+    start_path = opts.start or str(Path(workspace) / "state" / "start-snapshot.json")
+    start_snapshot = snapshot.load_snapshot(start_path)
+
+    verify_files = {}
+    candidate_dir = Path(opts.candidate).parent
+    for type_name in NATIVE_TYPES:
+        candidate_path = candidate_dir / f"verify-{type_name}.txt"
+        if candidate_path.is_file():
+            verify_files[type_name] = str(candidate_path)
+
+    result = consumers.evaluate(
+        model, readiness["consumerContext"], candidate_snapshot, start_snapshot, verify_files,
+        Path(opts.out_dir), goal=readiness["goal"],
+    )
+    print(json.dumps(result, sort_keys=True))
+    return None
+
+
+def _cmd_mage_round(workspace, args):
+    parser = argparse.ArgumentParser(prog="mage-round")
+    parser.add_argument("--round", required=True, type=int)
+    parser.add_argument("--pla", required=True)
+    parser.add_argument("--role", required=True)
+    parser.add_argument("--out-dir", required=True)
+    opts = parser.parse_args(args)
+
+    readiness = _case_readiness(workspace)
+    site_mage = readiness["siteCapabilities"]["mage"]
+    case = readiness["manifest"]
+
+    import shutil
+
+    round_dir = Path(opts.out_dir)
+    round_dir.mkdir(parents=True, exist_ok=True)
+    pla_copy = round_dir / "candidate.pla"
+    shutil.copyfile(opts.pla, pla_copy)
+
+    env = dict(os.environ)
+    env.update(site_mage.get("env", {}))
+    templates_dir = Path(__file__).resolve().parent / "templates"
+    log_path = Path(workspace) / "state" / "session.jsonl"
+
+    sess = native_session.MageSession(
+        executable=site_mage["executable"], env=env, workdir=str(Path(workspace)),
+        log_path=str(log_path), templates_dir=str(templates_dir), case={"frb": case["frb"]["path"]},
+    )
+    result = sess.run_round(str(round_dir), str(pla_copy), opts.role)
+
+    summary_path = round_dir / "round-summary.json"
+    summary = core.stamp("round-summary", {"round": opts.round, "role": opts.role, **result})
+    core.write_artifact(summary_path, summary)
+    return str(summary_path), summary
+
+
+def _native_verify_refs(workspace, round_dir):
+    workspace = Path(workspace)
+    refs = {}
+    for type_name in NATIVE_TYPES:
+        path = round_dir / "out" / f"verify-{type_name}.txt"
+        if path.is_file():
+            refs[type_name] = {"path": str(path.relative_to(workspace)), "sha256": core.file_sha256(path)}
+    return refs
+
+
+def _cmd_candidate(workspace, args):
+    parser = argparse.ArgumentParser(prog="candidate")
+    parser.add_argument("--round", required=True, type=int)
+    parser.add_argument("--round-dir", required=True)
+    parser.add_argument("--ledger", required=False, default=None)
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+
+    workspace_path = Path(workspace)
+    round_dir = Path(opts.round_dir)
+    summary = json.loads((round_dir / "round-summary.json").read_text(encoding="utf-8"))
+
+    export_pla_path = round_dir / "out" / "export.pla"
+    export_text = export_pla_path.read_text(encoding="utf-8")
+    readiness = _case_readiness(workspace)
+    dbu_per_um = readiness["manifest"]["dbuPerUm"]
+    export_doc = pla.read_pla(export_text, dbu_per_um)
+
+    start = snapshot.load_snapshot(workspace_path / "state" / "start-snapshot.json")
+    candidate_snapshot = snapshot.build_snapshot(
+        "candidate", export_doc, start["frame"], start["ruleFacts"], start["targets"], {},
+        {"exportPla": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)}},
+        pending_from_rules=False,
+    )
+    snapshot_path = round_dir / "out" / "snapshot.json"
+    core.write_artifact(snapshot_path, candidate_snapshot)
+
+    goal = readiness["goal"]
+    verify_files = {t: str(round_dir / "out" / f"verify-{t}.txt") for t in NATIVE_TYPES
+                    if (round_dir / "out" / f"verify-{t}.txt").is_file()}
+    computed_metrics = {
+        "drops": metrics_mod.drops(candidate_snapshot),
+        "targetDistances": metrics_mod.target_distances(candidate_snapshot, str(goal["max_target_distance_um"])),
+        "orderDeviation": metrics_mod.order_deviation(candidate_snapshot),
+        "displacement": metrics_mod.displacement(start, candidate_snapshot),
+        "nativeRows": metrics_mod.native_rows(verify_files),
+        "priorityUnplaced": _priority_unplaced(candidate_snapshot),
+    }
+
+    ledger = []
+    if opts.ledger and Path(opts.ledger).is_file():
+        ledger = json.loads(Path(opts.ledger).read_text(encoding="utf-8"))
+
+    returncode = summary.get("returncode", 0)
+    outcome = "completed" if returncode == 0 else "blocked"
+    stop_reason = "" if outcome == "completed" else f"native round returned {returncode}"
+
+    pla_copy_path = round_dir / "candidate.pla"
+    files = {
+        "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
+        "snapshot": {"path": str(snapshot_path.relative_to(workspace_path)), "sha256": core.file_sha256(snapshot_path)},
+        "export": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)},
+        "verify": _native_verify_refs(workspace_path, round_dir),
+        "sessionLog": {"path": "state/session.jsonl", "sha256": core.file_sha256(workspace_path / "state" / "session.jsonl")},
+        "scripts": [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)), "sha256": core.file_sha256(round_dir / "round.tcl")}],
+    }
+
+    pending_remaining = [p["id"] for p in candidate_snapshot["pending"]]
+
+    body = core.stamp("placement-candidate", {
+        "identity": {**_identity(), "round": opts.round},
+        "startSnapshotSha256": start["snapshotSha256"],
+        "snapshotSha256": candidate_snapshot["snapshotSha256"],
+        "buildBanner": readiness["manifest"].get("mage", {}).get("buildBanner", ""),
+        "files": files, "metrics": computed_metrics, "ledger": ledger,
+        "remaining": pending_remaining, "blocked": [], "unknown": computed_metrics["nativeRows"].get("unknown", []),
+        "outcome": outcome, "stopReason": stop_reason,
+        "reproduction": {"roundDir": str(round_dir.relative_to(workspace_path)), "script": "round.tcl"},
+    })
+    errors = records.validate_record("placement-candidate", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return opts.out, body
+
+
+def _cmd_review(workspace, args):
+    parser = argparse.ArgumentParser(prog="review")
+    parser.add_argument("--consumer", required=True)
+    parser.add_argument("--round", required=True, type=int)
+    parser.add_argument("--findings", required=True)
+    parser.add_argument("--requests", required=True)
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+
+    findings_payload = json.loads(Path(opts.findings).read_text(encoding="utf-8"))
+    findings = []
+    for finding in findings_payload.get("findings", []):
+        entry = dict(finding)
+        entry["round"] = opts.round
+        findings.append(entry)
+
+    requests_raw = json.loads(Path(opts.requests).read_text(encoding="utf-8")) if Path(opts.requests).is_file() else []
+    snapshot_sha = findings[0]["snapshotSha256"] if findings else ""
+    requests = []
+    for index, raw in enumerate(requests_raw, start=1):
+        entry = dict(raw)
+        entry["schema"] = "mage.request/1"
+        entry["id"] = f"R-{index}"
+        entry.setdefault("snapshotSha256", snapshot_sha)
+        requests.append(entry)
+
+    hard_fail_count = sum(1 for f in findings if f.get("severity") == "hard" and f.get("status") == "fail")
+    consumer_model = findings[0]["consumerModel"] if findings else f"{opts.consumer}@unknown"
+
+    body = core.stamp("consumer-review", {
+        "identity": {**_identity(), "round": opts.round},
+        "consumer": opts.consumer, "consumerModel": consumer_model, "snapshotSha256": snapshot_sha,
+        "findings": findings, "requests": requests,
+        "receipt": {"path": findings_payload.get("receiptPath", ""), "sha256": findings_payload.get("receiptSha256", "")},
+        "summary": f"{len(findings)} finding(s), {hard_fail_count} hard fail(s), {len(requests)} request(s)",
+    })
+    errors = records.validate_record("consumer-review", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return opts.out, body
+
+
+def _cmd_placement_candidate_fallback(workspace, args):
+    """Batch fallback for `engineer-place`: validate the existing
+    `state/round/placement-candidate.json`, never fabricate one."""
+    del args
+    path = Path(workspace) / "state" / "round" / "placement-candidate.json"
+    if not path.is_file():
+        raise core.MageError("engineering-required", "no placement-candidate delivered for this round")
+    body = core.read_artifact(path, "placement-candidate")
+    errors = records.validate_record("placement-candidate", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return path, body
+
+
+def _cmd_consumer_review_fallback(workspace, args):
+    """Batch fallback for a `review-*` tool: validate the existing
+    `state/round/review-<role>.json`, never fabricate one."""
+    if not args:
+        raise core.MageError("missing-input", "consumer-review requires a ROLE argument")
+    role = args[0]
+    path = Path(workspace) / "state" / "round" / f"review-{role}.json"
+    if not path.is_file():
+        raise core.MageError("engineering-required", f"no consumer-review delivered for role {role!r}")
+    body = core.read_artifact(path, "consumer-review")
+    errors = records.validate_record("consumer-review", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return path, body
+
+
+RESIDENT_SUBCOMMANDS = {
+    "snapshot": _cmd_snapshot,
+    "plan-slots": _cmd_plan_slots,
+    "mage-round": _cmd_mage_round,
+    "candidate": _cmd_candidate,
+    "review": _cmd_review,
+    "placement-candidate": _cmd_placement_candidate_fallback,
+    "consumer-review": _cmd_consumer_review_fallback,
+}
+
+# These two print JSON to stdout and write no declared output file.
+PRINTING_SUBCOMMANDS = {
+    "lane-view": _cmd_lane_view,
+    "evaluate": _cmd_evaluate,
+}
+
+
+def flow_digest(flow_dir=None):
+    flow_dir = Path(flow_dir) if flow_dir else Path(__file__).resolve().parent
+    entries = []
+    for current, dirnames, filenames in os.walk(flow_dir):
+        dirnames.sort()
+        if "tests" in Path(current).relative_to(flow_dir).parts:
+            continue
+        for name in sorted(filenames):
+            full = Path(current) / name
+            rel = full.relative_to(flow_dir).as_posix()
+            if rel.startswith("tests/"):
+                continue
+            entries.append({"path": rel, "sha256": core.file_sha256(full)})
+    entries.sort(key=lambda entry: entry["path"])
+    import hashlib
+
+    return hashlib.sha256(core.canonical(entries)).hexdigest()
+
+
+def _fail(code, detail, exit_code, extra=None):
+    payload = {"code": code, "detail": detail}
+    if extra:
+        payload.update(extra)
+    sys.stderr.write(json.dumps(payload, sort_keys=True) + "\n")
+    return exit_code
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        return _fail("missing-input", "usage: mage_placement_cli.py <subcommand> <workspace> [args]", 2)
+
+    if argv[0] == "flow-digest":
+        flow_dir = argv[1] if len(argv) > 1 else None
+        try:
+            print(flow_digest(flow_dir))
+        except core.MageError as exc:
+            return _fail(exc.code, exc.detail, 3)
+        return 0
+
+    if len(argv) < 2:
+        return _fail("missing-input", "usage: mage_placement_cli.py <subcommand> <workspace> [args]", 2)
+    subcommand, workspace, *rest = argv
+    workspace = os.path.abspath(workspace)
+
+    if subcommand.startswith("task-"):
+        try:
+            task_input, task_output = rest
+            result = tasks.execute(subcommand[len("task-"):], workspace, _read_plain(task_input))
+            core.write_artifact(task_output, result)
+            return 0
+        except core.MageError as exc:
+            return _fail(exc.code, exc.detail, 3)
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            return _fail("malformed-input", f"{type(exc).__name__}: {exc}", 2)
+
+    if subcommand in PRINTING_SUBCOMMANDS:
+        try:
+            PRINTING_SUBCOMMANDS[subcommand](workspace, rest)
+            return 0
+        except core.MageError as exc:
+            return _fail(exc.code, exc.detail, 3)
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            return _fail("malformed-input", f"{type(exc).__name__}: {exc}", 2)
+
+    handler = RESIDENT_SUBCOMMANDS.get(subcommand)
+    if handler is None:
+        return _fail("missing-input", f"unknown subcommand: {subcommand!r}", 2)
+
+    try:
+        output_path, body = handler(workspace, rest)
+    except core.MageError as exc:
+        return _fail(exc.code, exc.detail, 3)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return _fail("malformed-input", f"{type(exc).__name__}: {exc}", 2)
+
+    core.write_artifact(output_path, body)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
