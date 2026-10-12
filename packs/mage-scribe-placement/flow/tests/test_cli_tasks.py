@@ -375,7 +375,7 @@ class CliRouteTest(unittest.TestCase):
         self.assertTrue(any("round-01" in n for n in names))
         self.assertTrue(any("round-02" in n for n in names))
 
-    def test_no_improvement_for_two_rounds_stops_with_a_decision_request(self):
+    def test_standing_conflict_runs_to_the_round_limit_with_a_decision_request(self):
         """KEY_V stays dropped every round (WAT keeps hard-failing and
         keeps filing a `place` Request on it); litho-pie, once its own
         OVL_B hard fail clears in round 2, files a `keep` preference
@@ -476,7 +476,11 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(decisions[2]["route"], "continue")
         self.assertEqual(decisions[3]["route"], "continue")
         self.assertEqual(decisions[4]["route"], "stop")
-        self.assertEqual(decisions[4]["stopReason"], "no improvement for two consecutive rounds")
+        # C2 + I2: round 1 counts as improved and round 2 genuinely improves
+        # (OVL_B corrected), so the stall only begins at round 3; the final
+        # round then stops on the round limit, which is now checked first and
+        # names the stop reason (the Run still delivers the best state).
+        self.assertEqual(decisions[4]["stopReason"], "round limit reached")
 
         # decisions[4]["decisionRequestCount"] >= 1 (asserted above via the round loop) is only a
         # count; `evaluate-placement`/`deliver` must carry the actual Decision Request documents

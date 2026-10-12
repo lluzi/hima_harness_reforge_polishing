@@ -240,13 +240,14 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
         if previous_best and previous_best.get("metrics")
         else None
     )
-    # A round with no prior best to compare against (round 1, with no
-    # start/incumbent native baseline wired in) cannot yet claim an actual
-    # improvement -- it is recorded as `improved: False` in `history` (the
-    # "no improvement for two consecutive rounds" stop rule's own baseline),
-    # even though it unconditionally becomes `best` below (there being
-    # nothing better yet to keep instead).
-    improved = previous_key is not None and key < previous_key
+    # I2: the first ranked round is an improvement over nothing -- a first
+    # measured state beats "no state at all" -- so it is recorded as
+    # `improved: True`. The "no improvement for two consecutive rounds" stop
+    # rule therefore needs two genuine consecutive stalls *after* round 1,
+    # never counting round 1 itself as the first of the two (the old
+    # `improved: False` on round 1 stopped the Run after a single failed
+    # round-2 attempt).
+    improved = previous_key is None or key < previous_key
 
     history = list((previous_decision or {}).get("history", []))
     history.append({"round": round_no, "key": list(key), "improved": improved})
@@ -264,20 +265,28 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
     else:
         best = previous_best
 
-    if unanswered_previous:
+    # C2 route order: the round limit is checked *first*, so a final round
+    # that still carries an unanswered previous Request stops (and delivers
+    # the best state) instead of routing `continue` into a repeat the Harness
+    # has no iteration left for -- which would fail the whole Run with
+    # nothing delivered. The unanswered ids are named in the stop reason so
+    # the delivery still records them.
+    if round_no >= MAX_ROUNDS:
+        if unanswered_previous:
+            route, stop_reason = "stop", (
+                "round limit reached with unanswered previous request(s): "
+                + ", ".join(unanswered_previous)
+            )
+        else:
+            route, stop_reason = "stop", "round limit reached"
+    elif unanswered_previous:
         route, stop_reason = "continue", "unanswered previous request: " + ", ".join(unanswered_previous)
     elif not hard_fail_count and not open_reqs:
         # Spec section 4, verbatim: stop when there is no consumer
         # hard-fail Finding AND no open Request this round.
         route, stop_reason = "stop", "no consumer hard failure and no open request"
     elif len(history) >= 2 and not history[-1]["improved"] and not history[-2]["improved"]:
-        # Checked before the round-limit condition below: when a round
-        # both hits the limit and shows no improvement over the one
-        # before it, the no-improvement reason is the more informative of
-        # the two (the limit is implied; the stall is the actual cause).
         route, stop_reason = "stop", "no improvement for two consecutive rounds"
-    elif round_no >= MAX_ROUNDS:
-        route, stop_reason = "stop", "round limit reached"
     else:
         route, stop_reason = "continue", ""
 

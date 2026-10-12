@@ -144,27 +144,56 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(decision["route"], "continue")
         self.assertEqual([r["id"] for r in decision["openRequests"]], ["R-1"])
 
-    def test_stop_after_two_rounds_without_improvement(self):
-        candidate = _candidate(metrics=_metrics(drops_count=5))
-        finding = _finding("F-1", "litho-pie", "fail", "hard")
-        request = _request("R-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-1")
+    def _stalled_round(self, round_no, previous_decision):
+        """One round whose candidate never improves (same drops) and whose
+        review carries a hard fail + Request, answering the previous round's
+        same Request."""
+        finding = _finding("F-litho-pie-1", "litho-pie", "fail", "hard")
+        request = _request("R-litho-pie-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-litho-pie-1")
+        ledger = []
+        if round_no > 1:
+            ledger = [{"schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-litho-pie-1",
+                       "answer": "declined", "answeredInSnapshot": "s" * 64, "evidence": [], "note": ""}]
+        candidate = _candidate(metrics=_metrics(drops_count=5), ledger=ledger)
         reviews = [
             _review("litho-pie", findings=[finding], requests=[request]),
             _review("metrology"), _review("alignment"), _review("wat"),
         ]
-        decision1 = rounds.decide(self.workspace, 1, {}, reviews, candidate, self._round0_decision())
+        return rounds.decide(self.workspace, round_no, {}, reviews, candidate, previous_decision)
+
+    def test_round_one_is_recorded_as_improved(self):
+        # I2: the first ranked round is an improvement over nothing, so the
+        # two-rounds-no-improvement rule cannot fire on rounds 1+2 alone.
+        decision1 = self._stalled_round(1, self._round0_decision())
+        self.assertTrue(decision1["history"][-1]["improved"])
         self.assertEqual(decision1["route"], "continue")
 
-        ledger_answer = {"schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-1",
-                          "answer": "declined", "answeredInSnapshot": "s" * 64, "evidence": [], "note": ""}
-        candidate2 = _candidate(metrics=_metrics(drops_count=5), ledger=[ledger_answer])
-        reviews2 = [
-            _review("litho-pie", findings=[finding], requests=[request]),
-            _review("metrology"), _review("alignment"), _review("wat"),
-        ]
-        decision2 = rounds.decide(self.workspace, 2, {}, reviews2, candidate2, decision1)
-        self.assertEqual(decision2["route"], "stop")
-        self.assertEqual(decision2["stopReason"], "no improvement for two consecutive rounds")
+    def test_stop_after_two_stalls_following_the_first_round(self):
+        # I2: a stall at round 2 is the FIRST non-improvement; only a second
+        # consecutive stall at round 3 stops the Run.
+        decision1 = self._stalled_round(1, self._round0_decision())
+        decision2 = self._stalled_round(2, decision1)
+        self.assertEqual(decision2["route"], "continue")
+        decision3 = self._stalled_round(3, decision2)
+        self.assertEqual(decision3["route"], "stop")
+        self.assertEqual(decision3["stopReason"], "no improvement for two consecutive rounds")
+
+    def test_round_limit_with_unanswered_previous_stops_not_continues(self):
+        # C2: at the final round an unanswered previous Request must STOP
+        # (deliver best effort), not route continue into a repeat the Harness
+        # cannot run -- which would fail the whole Run with nothing delivered.
+        finding = _finding("F-litho-pie-1", "litho-pie", "fail", "hard")
+        request = _request("R-litho-pie-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-litho-pie-1")
+        previous = core.stamp("round-decision", {
+            "round": 3, "route": "continue", "nextRound": {"round": 4}, "best": None,
+            "openRequests": [request], "decisionRequests": [], "history": [], "stopReason": "",
+        })
+        candidate = _candidate(ledger=[])  # round 4 never answers R-litho-pie-1
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        decision = rounds.decide(self.workspace, rounds.MAX_ROUNDS, {}, reviews, candidate, previous)
+        self.assertEqual(decision["route"], "stop")
+        self.assertIn("round limit reached", decision["stopReason"])
+        self.assertIn("R-litho-pie-1", decision["stopReason"])
 
     def test_best_state_order_prefers_fewer_native_rows_then_priority_then_hard_fails_then_drops(self):
         worse = _metrics(native_total=2, drops_count=5)
