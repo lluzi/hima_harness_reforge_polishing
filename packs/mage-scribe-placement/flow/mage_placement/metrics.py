@@ -149,14 +149,25 @@ def drops(snapshot):
 
 
 def target_distances(snapshot, limit_um):
-    """`{'overLimitCount', 'maxUm', 'perTarget', 'unplaced', 'laneUnknown'}`.
+    """`{'overLimitCount', 'maxUm', 'perTarget', 'unplaced', 'unbound',
+    'laneUnknown', 'unknownReason'}`.
 
     `perTarget` covers every target with a bound Fit: `alongUm`/`crossUm`
     are non-negative exact micrometre distances. A target with no bound
-    Fit (`fitId` falsy, or the id does not resolve — never expected, but
-    checked) is listed whole under `unplaced` and excluded from `maxUm`.
+    Fit (`fitId` falsy, or the id does not resolve) is listed whole under
+    `unplaced` (also exposed as `unbound`) and excluded from `perTarget`.
     A Fit with `lane: null` contributes its id to `laneUnknown` and uses
     the wider-dimension fallback (wide box -> along = x, else along = y).
+
+    C4: an unbound target makes both the over-limit count and the max
+    distance *unknown* (`None`), never `0` — a renamed or vanished Fit
+    must never read as "zero marks over the limit" or "zero distance".
+    `overLimitCount` is `None` whenever any target is unbound; `maxUm` is
+    `None` whenever any target is unbound or there is no bound target at
+    all. `unknownReason` is a human string whenever either is `None`,
+    else `None`. (A dropped mark's inventory is separately conserved by
+    the Reader's start-vs-candidate inventory check, which refuses a mark
+    that vanished entirely rather than merely being dropped.)
     """
     dbu_per_um = snapshot["dbuPerUm"]
     fits_by_id = {f["id"]: f for f in snapshot["fits"]}
@@ -195,12 +206,30 @@ def target_distances(snapshot, limit_um):
     over_limit = [p for p in per_target if Decimal(p["alongUm"]) > limit]
     max_entry = max(per_target, key=lambda p: Decimal(p["alongUm"]), default=None)
 
+    unknown_reason = None
+    if unplaced:
+        over_limit_count = None
+        max_um = None
+        unknown_reason = (
+            f"{len(unplaced)} target(s) have no bound Fit; "
+            "target-distance facts are unknown rather than 0"
+        )
+    elif max_entry is None:
+        over_limit_count = 0
+        max_um = None
+        unknown_reason = "no bound target to measure a distance from"
+    else:
+        over_limit_count = len(over_limit)
+        max_um = max_entry["alongUm"]
+
     return {
-        "overLimitCount": len(over_limit),
-        "maxUm": max_entry["alongUm"] if max_entry is not None else "0",
+        "overLimitCount": over_limit_count,
+        "maxUm": max_um,
         "perTarget": per_target,
         "unplaced": unplaced,
+        "unbound": unplaced,
         "laneUnknown": lane_unknown,
+        "unknownReason": unknown_reason,
     }
 
 
@@ -286,6 +315,13 @@ def order_deviation(snapshot):
         bound = [t for t in rows if t.get("fitId") and t["fitId"] in fits_by_id]
         missing.extend(t["groupName"] for t in rows if t not in bound)
 
+        if not bound:
+            # C4: a side that has requested targets but no placed (bound)
+            # Fit at all has no order to measure -- it reads as *unknown*,
+            # never 0. (The old code left `max_dev` at 0 for such a side.)
+            by_side[side] = None
+            continue
+
         def placed_key(t, axis=axis):
             return _placed_centre_doubled(fits_by_id[t["fitId"]], axis)
 
@@ -310,11 +346,21 @@ def order_deviation(snapshot):
 
     by_partition = dict(by_side)
     by_partition["IN"] = None
+    unknown_sides = [side for side, value in by_side.items() if value is None]
+    if unknown_sides:
+        # Any checked side being unknown makes the overall max unknown,
+        # never a number that silently ignored an unplaced side.
+        max_value = None
+        unknown_reason = "order deviation unknown on side(s): " + ", ".join(sorted(unknown_sides))
+    else:
+        max_value = max(by_side.values())
+        unknown_reason = None
     return {
-        "max": max(by_side.values()),
+        "max": max_value,
         "byPartition": by_partition,
         "missing": missing,
         "flags": dict(ORDER_DEVIATION_FLAGS),
+        "unknownReason": unknown_reason,
     }
 
 

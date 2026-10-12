@@ -450,5 +450,56 @@ class NativeRowsTest(unittest.TestCase):
         self.assertIsNone(r["total"])
 
 
+class UnboundTargetUnknownTest(unittest.TestCase):
+    """C4: an unbound target makes the target-distance facts unknown, never 0."""
+
+    def _snap(self, targets, fits):
+        return {"dbuPerUm": 1, "frame": _ORDER_FRAME, "fits": fits, "targets": targets, "pending": []}
+
+    def _bound_fit(self, fit_id, placed_x):
+        return {"id": fit_id, "base": fit_id.split(".")[0], "boxDbu": [placed_x, 0, placed_x + 100, 40],
+                "extraRot": "NULL", "postfix": "", "inGroup": "G", "blockType": "OVL",
+                "priority": True, "ruleItem": "X", "lane": {"axis": "H", "track": 0}}
+
+    def _target(self, row, fit_id, ct_x):
+        return {"row": row, "groupName": "G", "partName": "X", "target": f"T{row}", "lengthUm": "10",
+                "locXUm": "0", "locYUm": "0", "ctDbu": [ct_x, 0], "pinstGroup": "G",
+                "fitId": fit_id, "partition": "TB"}
+
+    def test_zero_bound_targets_report_unknown_not_zero(self):
+        snap = self._snap(targets=[self._target(0, None, 200)], fits=[])
+        t = metrics.target_distances(snap, "100")
+        self.assertIsNone(t["maxUm"])
+        self.assertIsNone(t["overLimitCount"])
+        self.assertEqual([x["row"] for x in t["unbound"]], [0])
+
+    def test_any_unbound_target_makes_over_limit_unknown(self):
+        # One bound over-limit fit + one unbound target -> both facts unknown.
+        fits = [self._bound_fit("F.F_1", 200)]
+        targets = [self._target(0, "F.F_1", 400), self._target(1, None, 10)]
+        t = metrics.target_distances(self._snap(targets, fits), "100")
+        self.assertIsNone(t["overLimitCount"])
+        self.assertIsNone(t["maxUm"])
+
+    def test_all_bound_targets_stay_known(self):
+        fits = [self._bound_fit("F.F_1", 200)]
+        targets = [self._target(0, "F.F_1", 400)]
+        t = metrics.target_distances(self._snap(targets, fits), "100")
+        self.assertEqual(t["overLimitCount"], 1)
+        self.assertEqual(t["maxUm"], "150")
+
+
+class AllUnboundSideOrderUnknownTest(unittest.TestCase):
+    def test_side_with_rows_but_zero_bound_is_unknown_not_zero(self):
+        marks = [
+            {"row": 0, "groupName": "A", "ct": 0, "bound": False},
+            {"row": 1, "groupName": "B", "ct": 10, "bound": False},
+        ]
+        snap = _marks_snapshot(marks, partition="TB")
+        d = metrics.order_deviation(snap)
+        self.assertIsNone(d["byPartition"]["TB-bottom"])
+        self.assertIsNone(d["max"])
+
+
 if __name__ == "__main__":
     unittest.main()
