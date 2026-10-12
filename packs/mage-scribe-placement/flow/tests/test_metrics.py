@@ -136,6 +136,32 @@ def _order_snapshot(ovl_a_x, ovl_b_x, al_x_x):
     }
 
 
+def _marks_snapshot(marks, partition="TB"):
+    """A minimal snapshot from `marks` (`{'row', 'groupName', 'x', 'y',
+    'bound': True}`), for duplicate-groupName / axis-selection cases the
+    fixed-shape `_order_snapshot` above cannot express. `bound=False`
+    omits the fit entirely (so the target's `fitId` stays `None`, i.e.
+    unbound/unplaced)."""
+    fits = []
+    targets = []
+    for index, mark in enumerate(marks):
+        x, y = mark.get("x", 0), mark.get("y", 0)
+        bound = mark.get("bound", True)
+        fit_id = f"{mark['groupName']}.MARK{index}" if bound else None
+        if bound:
+            fits.append({
+                "id": fit_id, "base": mark["groupName"], "boxDbu": [x, y, x + 10, y + 10],
+                "extraRot": "NULL", "postfix": "", "inGroup": "G", "blockType": "OVL",
+                "priority": True, "ruleItem": mark["groupName"], "lane": {"axis": "H", "track": 0},
+            })
+        targets.append({
+            "row": mark["row"], "groupName": mark["groupName"], "partName": mark["groupName"],
+            "target": f"T{mark['row']}", "lengthUm": "10", "locXUm": "0", "locYUm": "0",
+            "ctDbu": [0, 0], "pinstGroup": "G", "fitId": fit_id, "partition": partition,
+        })
+    return {"dbuPerUm": 10000, "fits": fits, "targets": targets}
+
+
 class OrderDeviationTest(unittest.TestCase):
     def test_order_matches_requested_order_is_zero(self):
         snap = _order_snapshot(ovl_a_x=0, ovl_b_x=10, al_x_x=20)
@@ -158,6 +184,83 @@ class OrderDeviationTest(unittest.TestCase):
         snap["targets"][2]["fitId"] = None
         d = metrics.order_deviation(snap)
         self.assertEqual(d["missing"], ["AL_X"])
+
+    def test_duplicate_groupname_same_name_swap_is_zero_deviation(self):
+        # Four TB marks requested in order A, A, B, C. Swapping the two
+        # same-named "A" marks' placed x-positions between themselves
+        # cannot change the *name* sequence list2 is built from (both
+        # slots are still "A", just held by a different physical mark),
+        # so k-th-occurrence matching still pairs 0th-A-in-list1 with
+        # 0th-A-in-list2 and 1st-A with 1st-A: deviation stays 0.
+        marks = [
+            {"row": 0, "groupName": "A", "x": 10},
+            {"row": 1, "groupName": "A", "x": 0},
+            {"row": 2, "groupName": "B", "x": 20},
+            {"row": 3, "groupName": "C", "x": 30},
+        ]
+        snap = _marks_snapshot(marks, partition="TB")
+        d = metrics.order_deviation(snap)
+        self.assertEqual(d["byPartition"]["TB"], 0)
+        self.assertEqual(d["missing"], [])
+
+    def test_duplicate_groupname_cross_name_swap_is_nonzero_deviation(self):
+        # Same four TB marks, but the *second* "A" (row 1) and "B" (row 2)
+        # trade placed x-positions. list1 (requested) = [A, A, B, C].
+        # Placed order by x: row0 A(x=0), row2 B(x=10), row1 A(x=20),
+        # row3 C(x=30) -> list2 = [A, B, A, C]. k-th-occurrence matching:
+        #   list1[0]=A(k=0) <-> list2 idx 0 (A's 0th)  -> dev |0-0| = 0
+        #   list1[1]=A(k=1) <-> list2 idx 2 (A's 1st)  -> dev |1-2| = 1
+        #   list1[2]=B(k=0) <-> list2 idx 1 (B's 0th)  -> dev |2-1| = 1
+        #   list1[3]=C(k=0) <-> list2 idx 3 (C's 0th)  -> dev |3-3| = 0
+        # max = 1.
+        marks = [
+            {"row": 0, "groupName": "A", "x": 0},
+            {"row": 1, "groupName": "A", "x": 20},
+            {"row": 2, "groupName": "B", "x": 10},
+            {"row": 3, "groupName": "C", "x": 30},
+        ]
+        snap = _marks_snapshot(marks, partition="TB")
+        d = metrics.order_deviation(snap)
+        self.assertEqual(d["byPartition"]["TB"], 1)
+        self.assertEqual(d["missing"], [])
+
+    def test_duplicate_groupname_one_occurrence_unbound_pairs_by_index(self):
+        # list1 (requested, full) = [A, A, B]: row0's "A" is unplaced
+        # (no fit); row1's "A" is placed at x=5; row2's "B" at x=0.
+        # list2 (placed-only) sorted by x = [B(x=0), A(x=5)].
+        # k-th-occurrence matching against the *full* list1 (not a
+        # "skip the unbound one" list) per the customer procedure:
+        #   list1[0]=A(k=0) <-> list2 idx 1 (A's 0th, the only placed A)
+        #       -> dev |0-1| = 1
+        #   list1[1]=A(k=1) -> list2 has only one "A" occurrence (k=1 is
+        #       out of range) -> unmatched, contributes no deviation
+        #   list1[2]=B(k=0) <-> list2 idx 0 (B's 0th) -> dev |2-0| = 2
+        # max = 2. The unbound row0 ("A") is reported under `missing`.
+        marks = [
+            {"row": 0, "groupName": "A", "x": 0, "bound": False},
+            {"row": 1, "groupName": "A", "x": 5},
+            {"row": 2, "groupName": "B", "x": 0},
+        ]
+        snap = _marks_snapshot(marks, partition="TB")
+        d = metrics.order_deviation(snap)
+        self.assertEqual(d["byPartition"]["TB"], 2)
+        self.assertEqual(d["missing"], ["A"])
+
+    def test_lr_partition_sorts_by_y_not_x(self):
+        # Three LR marks requested in order X, Y, Z. Their y-positions
+        # already match the requested order (0, 10, 20 -> deviation 0 if
+        # sorted by y, as LR must be); their x-positions are deliberately
+        # reversed (100, 50, 0) so sorting by x instead would produce a
+        # nonzero deviation. A passing assertion of 0 here is only
+        # possible if the implementation sorts LR by y.
+        marks = [
+            {"row": 0, "groupName": "X", "x": 100, "y": 0},
+            {"row": 1, "groupName": "Y", "x": 50, "y": 10},
+            {"row": 2, "groupName": "Z", "x": 0, "y": 20},
+        ]
+        snap = _marks_snapshot(marks, partition="LR")
+        d = metrics.order_deviation(snap)
+        self.assertEqual(d["byPartition"]["LR"], 0)
 
 
 class DisplacementTest(unittest.TestCase):

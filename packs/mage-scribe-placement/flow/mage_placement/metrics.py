@@ -178,14 +178,34 @@ def _placed_centre_doubled(fit, axis):
 def order_deviation(snapshot):
     """Reproduce `run.tcl:check_dev` exactly over each of `TB`, `LR`, `IN`.
 
-    `list1` is the CSV-row-order `groupName` of every target in the
-    partition; `list2` is the `groupName` of the bound subset sorted by
-    placed along-lane centre (ties by `row`). Duplicate names are matched
-    by occurrence index (the k-th `list1` occurrence of a name against the
-    k-th `list2` occurrence); `dev` is `|i - j|`, maxed over the partition.
-    An empty partition reports `-1` (the customer script's own initial
-    value). Unbound targets' names are never matched and are collected
-    under `missing`.
+    `list1` is the **full** CSV-row-order `groupName` of every target in
+    the partition, bound or not. `list2` is the `groupName` of only the
+    *bound* subset, sorted by placed along-lane centre (ties by `row`) —
+    an unbound target contributes no slot to `list2` at all; it is never
+    "skipped past" within list1 either, it simply occupies a `list1`
+    position with no counterpart.
+
+    Matching is by occurrence index, exactly as the customer procedure
+    does it, and is **positional, not identity-aware**: walking `list1`
+    left to right, the k-th time a given name is seen (k counted per
+    name, starting at 0) is matched against the k-th occurrence of that
+    same name in `list2`. This means: (a) permuting which physical mark
+    holds which placed position among two same-named occurrences never
+    changes the deviation, because `list2` only ever records names, not
+    which mark produced them; (b) when one of several same-named
+    occurrences in `list1` is unbound, the remaining (fewer) same-named
+    occurrences in `list2` still pair against `list1`'s occurrences in
+    strict left-to-right order — an earlier `list1` occurrence can end up
+    matched to a `list2` slot that was actually placed by a *later*
+    occurrence's mark, and a `list1` occurrence beyond `list2`'s count
+    for that name is left unmatched (contributes no deviation, but is not
+    specially flagged either — only an unbound target's own name goes to
+    `missing`).
+
+    `dev` is `|i - j|` (positions in `list1`/`list2`), maxed over the
+    partition. An empty partition reports `-1` (the customer script's own
+    initial value). Every unbound target's `groupName` is collected under
+    `missing`, independent of the occurrence-index matching above.
     """
     fits_by_id = {f["id"]: f for f in snapshot["fits"]}
     by_partition = {}
