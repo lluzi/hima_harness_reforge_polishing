@@ -19,8 +19,8 @@
   },
   "properties": {
     "schema": {"type": "string", "const": "mage.request/1"},
-    "id": {"type": "string", "minLength": 1},
-    "fromFinding": {"type": "string", "minLength": 1},
+    "id": {"type": "string", "minLength": 1, "pattern": "^R-(litho-pie|metrology|alignment|wat)-[0-9]+$"},
+    "fromFinding": {"type": "string", "minLength": 1, "pattern": "^F-(litho-pie|metrology|alignment|wat)-[0-9]+$"},
     "consumer": {"type": "string", "minLength": 1},
     "snapshotSha256": {"type": "string", "minLength": 1},
     "requestedOutcome": {"$ref": "#/$defs/requestedOutcome"},

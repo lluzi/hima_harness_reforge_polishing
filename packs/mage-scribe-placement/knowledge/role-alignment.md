@@ -48,7 +48,7 @@ this Pack version (above) regardless of context.
 ## Example Finding (hard fail) and Request
 
 ```json
-{"schema": "mage.finding/1", "id": "F-4", "round": 2, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-alignment-4", "round": 2, "snapshotSha256": "<candidate sha>",
  "consumer": "alignment", "consumerModel": "alignment@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["ASML_A.ASML_A_1"], "predicate": "orientation_unchanged", "status": "fail",
  "severity": "hard", "numbers": {"count": 1},
@@ -56,7 +56,7 @@ this Pack version (above) regardless of context.
 ```
 
 ```json
-{"fromFinding": "F-4", "consumer": "alignment", "snapshotSha256": "<candidate sha>",
+{"fromFinding": "F-alignment-4", "consumer": "alignment", "snapshotSha256": "<candidate sha>",
  "requestedOutcome": {"kind": "keep", "targets": ["ASML_A.ASML_A_1"], "limitsUm": {},
                        "text": "restore ASML_A's original orientation"},
  "acceptableAlternatives": [], "strength": "hard"}

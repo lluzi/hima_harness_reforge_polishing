@@ -182,7 +182,9 @@ class EvaluateTest(unittest.TestCase):
         model = consumers.load_consumer_model(MODELS_DIR, "wat")
         result = consumers.evaluate(model, self._context(), incumbent, start, {}, self.out_dir)
         ids = [f["id"] for f in result["findings"]]
-        self.assertEqual(ids, [f"F-{i}" for i in range(1, len(ids) + 1)])
+        # C3: Finding ids are per-consumer, F-<consumer>-<n>, so one Run's
+        # four reviews never collide on a bare F-<n>.
+        self.assertEqual(ids, [f"F-wat-{i}" for i in range(1, len(ids) + 1)])
         for finding in result["findings"]:
             self.assertEqual(records.validate_record("finding", finding), [])
 

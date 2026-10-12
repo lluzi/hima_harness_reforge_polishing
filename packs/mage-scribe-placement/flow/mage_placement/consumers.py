@@ -15,7 +15,7 @@ snapshot pair and writes one evaluator-receipt artifact per (consumer,
 candidate). **Evaluator-receipt rule**: the receipt file itself is written
 *first*, with every Finding's `evaluatorReceipt` field left out of the
 written body (findings carry every other `mage.finding/1` field already,
-including a sequence `id` -- `'F-<n>'`, numbered within this receipt -- and
+including a sequence `id` -- `'F-<consumer>-<n>'`, numbered within this receipt -- and
 `round: 0`; both are placeholders a later caller, such as Task 7's review
 assembler, may renumber for a real round). The receipt file's own sha256
 (`core.write_artifact`'s return value) is then copied onto each returned
@@ -498,7 +498,7 @@ def evaluate(consumer_model, context, candidate_snapshot, start_snapshot, verify
     for index, partial in enumerate(partials, start=1):
         finding = dict(partial)
         finding["schema"] = "mage.finding/1"
-        finding["id"] = f"F-{index}"
+        finding["id"] = f"F-{consumer_id}-{index}"
         finding["round"] = 0
         finding["snapshotSha256"] = candidate_snapshot["snapshotSha256"]
         finding["consumer"] = consumer_id

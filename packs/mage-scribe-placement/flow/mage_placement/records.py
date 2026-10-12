@@ -19,9 +19,12 @@ convention, but not every `id` is a content digest):
   SHA-256 over the canonical body with `id` removed. `validate_record`
   recomputes and checks this for these kinds (`DIGEST_ID_KINDS`).
 - Per-item records that are numbered within a containing document
-  (`finding` -- `F-<n>` within one evaluator receipt/review; `request` --
-  `R-<n>`; `decision-request` -- `D-<n>`) carry a human-assigned sequence
-  id instead, since their identity is "the nth item in this round", not a
+  (`finding` -- `F-<consumer>-<n>` within one evaluator receipt/review;
+  `request` -- `R-<consumer>-<n>`; `decision-request` -- `D-<round>-<n>`)
+  carry a human-assigned sequence id instead, now scoped by consumer so one
+  Run's four reviews never collide on a bare `F-<n>`/`R-<n>` (one Ledger
+  entry could otherwise "answer" four Requests at once). Their identity is
+  "the nth item from this consumer this round", not a
   digest of their own content (a Finding's `id` is explicitly set by the
   evaluator before the content that depends on it, such as
   `evaluatorReceipt`, is even known). `validate_record` does not attempt a

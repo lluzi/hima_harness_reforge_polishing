@@ -586,8 +586,15 @@ def _cmd_review(workspace, args):
     for index, raw in enumerate(requests_raw, start=1):
         entry = dict(raw)
         entry["schema"] = "mage.request/1"
-        entry["id"] = f"R-{index}"
+        # C3: Request ids are per-consumer (`R-<consumer>-<n>`) so one Run's
+        # four reviews never mint colliding bare `R-<n>` ids that a single
+        # Ledger entry could "answer" across consumers.
+        entry["id"] = f"R-{opts.consumer}-{index}"
         entry.setdefault("snapshotSha256", snapshot_sha)
+        entry.setdefault("consumer", opts.consumer)
+        request_errors = records.validate_record("request", entry)
+        if request_errors:
+            raise core.MageError("schema", "; ".join(request_errors))
         requests.append(entry)
 
     hard_fail_count = sum(1 for f in findings if f.get("severity") == "hard" and f.get("status") == "fail")

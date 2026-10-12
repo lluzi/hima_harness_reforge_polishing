@@ -40,7 +40,7 @@ filing this round's Findings and Requests.
 hand-written:
 
 ```json
-{"schema": "mage.finding/1", "id": "F-3", "round": 1, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-wat-3", "round": 1, "snapshotSha256": "<candidate sha>",
  "consumer": "wat", "consumerModel": "wat@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["KEY_V.KEY_V"], "predicate": "placed", "status": "fail", "severity": "hard",
  "numbers": {"blockType": "TSK/MPAD"}, "explanation": "KEY_V.KEY_V is still pending (not placed)"}
@@ -48,20 +48,22 @@ hand-written:
 
 **Request** (`mage.request/1`) — one per hard-fail Finding you want acted on; you author this one
 yourself (`requestedOutcome`/`acceptableAlternatives`/`strength`), then `review` stamps its `schema`
-and a sequence `id`:
+and a per-consumer sequence `id` (`R-<consumer>-<n>`, e.g. `R-wat-1`, so one Run's four reviews
+never collide):
 
 ```json
-{"fromFinding": "F-3", "consumer": "wat", "snapshotSha256": "<candidate sha>",
+{"fromFinding": "F-wat-3", "consumer": "wat", "snapshotSha256": "<candidate sha>",
  "requestedOutcome": {"kind": "place", "targets": ["KEY_V.KEY_V"], "limitsUm": {},
                        "text": "place KEY_V"},
  "acceptableAlternatives": [], "strength": "hard"}
 ```
 
 **Ledger entry** (`mage.ledger-entry/1`) — the Engineer writes one per open Request, passed to
-`candidate --ledger <file>`:
+`candidate --ledger <file>`; `request` names the Request's full per-consumer id (`R-<consumer>-<n>`),
+so answering litho-pie's request never silently answers wat's:
 
 ```json
-{"schema": "mage.ledger-entry/1", "id": "L-2", "request": "R-2", "answer": "declined",
+{"schema": "mage.ledger-entry/1", "id": "L-2", "request": "R-wat-2", "answer": "declined",
  "answeredInSnapshot": "<this round's candidate snapshot sha>", "evidence": [],
  "note": "capacity-limited; KEY_V stays dropped this round"}
 ```
@@ -70,12 +72,12 @@ and a sequence `id`:
 role; you only ever read one, never author it:
 
 ```json
-{"schema": "mage.decision-request/1", "id": "D-1", "round": 3,
+{"schema": "mage.decision-request/1", "id": "D-3-1", "round": 3,
  "question": "litho-pie wants OVL_B moved onto its CT target; wat's rigid-unit requirement forbids the only feasible slot",
  "options": [{"id": "O-1", "description": "move OVL_B, accept wat's rigid-unit fail",
               "perConsumer": {"litho-pie": {"targetDistanceUm": "0"}, "wat": {"rigidUnitFailCount": 1}},
               "nativeChecked": true, "snapshotSha256": "<option candidate sha>"}],
- "blockingRequests": ["R-7"]}
+ "blockingRequests": ["R-litho-pie-1", "R-wat-1"]}
 ```
 
 ## Worked round (abbreviated; the real numbers come from `evaluate`/`candidate`, never hand-copied)

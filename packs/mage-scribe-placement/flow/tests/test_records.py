@@ -6,7 +6,7 @@ sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
 from mage_placement import core, records  # noqa: E402
 
 
-def valid_request(request_id, from_finding="F-1"):
+def valid_request(request_id="R-wat-1", from_finding="F-wat-1"):
     return {
         "schema": "mage.request/1",
         "id": request_id,
@@ -24,7 +24,7 @@ def valid_request(request_id, from_finding="F-1"):
     }
 
 
-def valid_finding(finding_id="F-1"):
+def valid_finding(finding_id="F-wat-1"):
     return {
         "schema": "mage.finding/1",
         "id": finding_id,
@@ -55,20 +55,20 @@ def ledger(request_id, answer):
 
 class ValidateRecordTest(unittest.TestCase):
     def test_valid_request_has_no_errors(self):
-        self.assertEqual(records.validate_record("request", valid_request("R-1")), [])
+        self.assertEqual(records.validate_record("request", valid_request("R-wat-1")), [])
 
     def test_valid_finding_has_no_errors(self):
         self.assertEqual(records.validate_record("finding", valid_finding()), [])
 
     def test_valid_ledger_entry_has_no_errors(self):
-        self.assertEqual(records.validate_record("ledger-entry", ledger("R-1", "satisfied")), [])
+        self.assertEqual(records.validate_record("ledger-entry", ledger("R-wat-1", "satisfied")), [])
 
     def test_request_with_bad_strength_is_invalid(self):
-        broken = {**valid_request("R-3"), "strength": "maybe"}
+        broken = {**valid_request("R-wat-3"), "strength": "maybe"}
         self.assertTrue(records.validate_record("request", broken))
 
     def test_request_missing_required_field_is_invalid(self):
-        broken = valid_request("R-4")
+        broken = valid_request("R-wat-4")
         del broken["requestedOutcome"]
         self.assertTrue(records.validate_record("request", broken))
 
@@ -77,7 +77,7 @@ class ValidateRecordTest(unittest.TestCase):
         self.assertTrue(records.validate_record("finding", broken))
 
     def test_ledger_entry_tampered_id_is_invalid(self):
-        entry = ledger("R-1", "satisfied")
+        entry = ledger("R-wat-1", "satisfied")
         tampered = dict(entry)
         tampered["note"] = "tampered after stamping"
         self.assertTrue(records.validate_record("ledger-entry", tampered))
@@ -85,6 +85,17 @@ class ValidateRecordTest(unittest.TestCase):
     def test_unknown_kind_raises(self):
         with self.assertRaises(core.MageError):
             records.validate_record("not-a-real-kind", {})
+
+    def test_request_id_without_consumer_scope_is_invalid(self):
+        # C3: a bare `R-<n>` id (no consumer scope) no longer validates;
+        # the convention is `R-<consumer>-<n>`.
+        self.assertTrue(records.validate_record("request", valid_request("R-1")))
+
+    def test_finding_id_without_consumer_scope_is_invalid(self):
+        self.assertTrue(records.validate_record("finding", valid_finding("F-1")))
+
+    def test_request_fromfinding_must_be_consumer_scoped(self):
+        self.assertTrue(records.validate_record("request", valid_request("R-wat-1", from_finding="F-1")))
 
 
 def valid_decision_request(request_id="D-1"):
@@ -97,7 +108,7 @@ def valid_decision_request(request_id="D-1"):
             {"id": "keep", "description": "leave KEY_V pending", "perConsumer": {}, "nativeChecked": True,
              "snapshotSha256": "a" * 64},
         ],
-        "blockingRequests": ["R-1"],
+        "blockingRequests": ["R-wat-1"],
     }
 
 
@@ -132,37 +143,47 @@ class SchemaCoverageTest(unittest.TestCase):
 class OpenRequestsTest(unittest.TestCase):
     def test_flattens_requests_from_every_review_in_order(self):
         reviews = [
-            {"requests": [valid_request("R-1")]},
-            {"requests": [valid_request("R-2"), valid_request("R-3")]},
+            {"requests": [valid_request("R-wat-1")]},
+            {"requests": [valid_request("R-wat-2"), valid_request("R-wat-3")]},
         ]
         requests = records.open_requests(reviews)
-        self.assertEqual([r["id"] for r in requests], ["R-1", "R-2", "R-3"])
+        self.assertEqual([r["id"] for r in requests], ["R-wat-1", "R-wat-2", "R-wat-3"])
 
     def test_review_with_no_requests_contributes_nothing(self):
-        reviews = [{"requests": []}, {"requests": [valid_request("R-1")]}]
+        reviews = [{"requests": []}, {"requests": [valid_request("R-wat-1")]}]
         requests = records.open_requests(reviews)
-        self.assertEqual([r["id"] for r in requests], ["R-1"])
+        self.assertEqual([r["id"] for r in requests], ["R-wat-1"])
 
 
 class LedgerCoversTest(unittest.TestCase):
     def test_unanswered_request_is_reported(self):
-        reqs = [valid_request("R-1"), valid_request("R-2")]
-        coverage = records.ledger_covers(reqs, [ledger("R-1", "satisfied")])
-        self.assertEqual(coverage["unanswered"], ["R-2"])
-        self.assertEqual(coverage["answered"], ["R-1"])
+        reqs = [valid_request("R-wat-1"), valid_request("R-wat-2")]
+        coverage = records.ledger_covers(reqs, [ledger("R-wat-1", "satisfied")])
+        self.assertEqual(coverage["unanswered"], ["R-wat-2"])
+        self.assertEqual(coverage["answered"], ["R-wat-1"])
 
     def test_declined_and_alternative_both_count_as_answered(self):
-        reqs = [valid_request("R-1"), valid_request("R-2")]
-        entries = [ledger("R-1", "declined"), ledger("R-2", "alternative")]
+        reqs = [valid_request("R-wat-1"), valid_request("R-wat-2")]
+        entries = [ledger("R-wat-1", "declined"), ledger("R-wat-2", "alternative")]
         coverage = records.ledger_covers(reqs, entries)
         self.assertEqual(coverage["unanswered"], [])
-        self.assertEqual(sorted(coverage["answered"]), ["R-1", "R-2"])
+        self.assertEqual(sorted(coverage["answered"]), ["R-wat-1", "R-wat-2"])
 
     def test_entry_with_invalid_answer_leaves_request_unanswered(self):
-        reqs = [valid_request("R-1")]
-        entries = [{"request": "R-1", "answer": "maybe", "answeredInSnapshot": "x", "evidence": [], "note": ""}]
+        reqs = [valid_request("R-wat-1")]
+        entries = [{"request": "R-wat-1", "answer": "maybe", "answeredInSnapshot": "x", "evidence": [], "note": ""}]
         coverage = records.ledger_covers(reqs, entries)
-        self.assertEqual(coverage["unanswered"], ["R-1"])
+        self.assertEqual(coverage["unanswered"], ["R-wat-1"])
+
+    def test_cross_consumer_ids_never_collide(self):
+        # C3 regression: before per-consumer ids, litho-pie's R-1 and wat's
+        # R-1 shared one key, so a single Ledger entry "answered" both. With
+        # `R-<consumer>-<n>`, answering litho-pie's request leaves wat's open.
+        litho = {**valid_request("R-litho-pie-1"), "consumer": "litho-pie"}
+        wat = valid_request("R-wat-1")
+        coverage = records.ledger_covers([litho, wat], [ledger("R-litho-pie-1", "declined")])
+        self.assertEqual(coverage["answered"], ["R-litho-pie-1"])
+        self.assertEqual(coverage["unanswered"], ["R-wat-1"])
 
 
 if __name__ == "__main__":

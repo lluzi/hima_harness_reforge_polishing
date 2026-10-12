@@ -38,7 +38,7 @@ version adds for the partner wafer.
 ## Example Finding shape (illustrative only; not runnable in 0.1.0)
 
 ```json
-{"schema": "mage.finding/1", "id": "F-9", "round": 1, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-bonding-9", "round": 1, "snapshotSha256": "<candidate sha>",
  "consumer": "bonding", "consumerModel": "bonding@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["BOND_A.BOND_A_1", "BOND_A.BOND_A_2"], "predicate": "pair_cohesion", "status": "fail",
  "severity": "cost", "numbers": {"cluster": "BOND_A_PAIR", "memberCount": 2},
