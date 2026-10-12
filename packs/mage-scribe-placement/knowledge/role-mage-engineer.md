@@ -21,11 +21,12 @@ the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Wo
 
 - `snapshot --pla <file> --stage {start|incumbent|candidate} --out <file>`
 - `plan-slots --snapshot <file> --lane <id> --length-um <um> --count <n> --limit-um <um>
-  [--relaxed] [--movable-nonpriority] --out <file>`
+  [--relaxed] [--movable-nonpriority <um>] --out <file>`
 - `lane-view --snapshot <file> --lane <id> [--along <lo,hi>] [--cross <lo,hi>]` (prints to stdout;
-  no `--out`)
+  no `--out`; `--along`/`--cross` take integer DBU, not µm)
 - `mage-round --round <n> --pla <candidate.pla> --role engineer --out-dir placement/round-NN
-  [--fill] [--experiment <file>]`
+  [--fill] [--experiment <file>]` (retry a failed attempt with `--out-dir placement/round-NN/attempt-K`,
+  K >= 2)
 - `candidate --round <n> --round-dir placement/round-NN --ledger <file> --out
   state/round/placement-candidate.json`
 - `evaluate --consumer <id> --candidate <snapshot.json> --out-dir <dir> [--start <snapshot.json>]`
@@ -49,11 +50,15 @@ the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Wo
 ## What to produce, exact paths
 
 `state/round/placement-candidate.json` (via `candidate`, overwritten each round — this is the
-`produces` output `placementCandidate` reads). Support files under `placement/round-NN/`: the
-candidate PLA, `round.tcl`, `session.jsonl` (the MAGE session log `mage-round` writes directly in
-this round directory — it must stay under your own `artifactPrefix` to ever reach the Campaign
-workspace), and everything `mage-round` wrote to `out/`. Your private `resident-delivery.json`
-wrapper as described in `placement-playbook.md`'s "Delivery shape".
+`produces` output `placementCandidate` reads). Support files are **every file under
+`placement/round-NN/` after `candidate` has run**: the candidate PLA, `round.tcl`, `experiment.tcl`
+(when you ran one), `session.jsonl` (the MAGE session log `mage-round` writes directly in this round
+directory — it must stay under your own `artifactPrefix` to ever reach the Campaign workspace),
+`round-summary.json`, and everything under `out/` — including `out/snapshot.json`, which `candidate`
+(not `mage-round`) writes and `files.snapshot` references, plus `out/stdout.log`/`out/stderr.log`.
+A retried attempt uses `--out-dir placement/round-NN/attempt-K` (K >= 2) and you deliver that
+attempt's own directory. Your private `resident-delivery.json` wrapper as described in
+`placement-playbook.md`'s "Delivery shape".
 
 ## Uncertainty handling
 

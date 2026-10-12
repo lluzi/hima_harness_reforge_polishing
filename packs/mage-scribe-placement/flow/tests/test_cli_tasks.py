@@ -495,6 +495,9 @@ class CliRouteTest(unittest.TestCase):
         self.assertFalse(evaluation["goalMet"])
         self.assertEqual(evaluation["rules"]["drops-within-goal"], "FAIL")
         self.assertEqual(evaluation["decisionRequests"], decisions[4]["decisionRequests"])
+        # I3: a standing Decision Request / open conflict makes no-open-requests
+        # FAIL even though the Reader's own candidate open-request count is 0.
+        self.assertEqual(evaluation["rules"]["no-open-requests"], "FAIL")
 
     def test_fill_and_experiment_route(self):
         """Round 1 replays with `--fill` (the Pack's auto-refine stage,
@@ -622,6 +625,46 @@ class CliRouteTest(unittest.TestCase):
         candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
         self.assertEqual(candidate["outcome"], "blocked")
         self.assertEqual(candidate["stopReason"], "native round did not reach MAGE_ROUND_END")
+
+    def test_candidate_without_export_is_blocked_not_a_crash(self):
+        """I4b: a round whose `out/export.pla` is missing (a failed attempt)
+        yields a BLOCKED candidate with no export/snapshot refs instead of
+        crashing `candidate`, and the Reader reads it all-unknown."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        pla_path = self.root / "noexport.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        result = subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (round_dir / "out" / "export.pla").unlink()  # simulate an attempt that produced no export
+
+        candidate_path = self.root / "noexport-candidate.json"
+        _run(["candidate", self.workspace, "--round", "1", "--round-dir", str(round_dir),
+              "--ledger", _write_json(self.root / "noexport-ledger.json", []), "--out", candidate_path])
+        candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(candidate["outcome"], "blocked")
+        self.assertNotIn("export", candidate["files"])
+        self.assertNotIn("snapshot", candidate["files"])
+
+        live = self.workspace / "state" / "round" / "placement-candidate.json"
+        live.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate_path, live)
+        values = _run_reader("placement-candidate", live, self.root / "noexport-values.json", self.workspace)["values"]
+        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
+        self.assertEqual(error["value"], 0)
+        drops = next(v for v in values if v["type"] == "mage_dropped_count")
+        self.assertIsNone(drops["value"])
 
     def test_relative_out_dir_and_pla_resolve_against_workspace_not_cwd(self):
         """`mage-round --out-dir placement/round-07 --pla <relative>` and the

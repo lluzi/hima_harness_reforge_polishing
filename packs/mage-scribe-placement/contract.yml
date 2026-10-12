@@ -138,17 +138,20 @@ tools:
     limits using the exact slot planner (`plan-slots`), relocating non-priority structures, and only
     then a Decision Request when no placement resolves a genuine consumer conflict. Build a complete
     candidate PLA (`snapshot`/own editing of the PLA text; Group target points are never moved) and run
-    exactly one MAGE round through `mage-round --role engineer` (the only role this Pack ever lets run
-    a mutating script). Parse the exported PLA and native verify reports, assemble the candidate with
+    one or more MAGE attempts through `mage-round --role engineer` (the only role this Pack ever lets
+    run a mutating script); a failed attempt is retried under `--out-dir placement/round-NN/attempt-K`
+    (K >= 2), and the delivered candidate is assembled from the last attempt's own export. Parse the
+    exported PLA and native verify reports, assemble the candidate with
     `candidate --round <n> --round-dir <dir> --ledger <file> --out state/round/placement-candidate.json`,
     answering every open Request from the previous round's `state/round-decision.json` in the Ledger
     file you pass (`satisfied`, `alternative`, or `declined` with evidence) before assembling. Judge the
     new candidate by its own native checks and Q1-Q4 metrics; keep it only if it is no worse than the
     previous best by the Pack's own best-state order, otherwise record why it is still delivered as the
-    best-effort result. You alone may hold the MAGE licence, drive the one MAGE session, and write the
+    best-effort result. You alone may hold the MAGE licence, drive the MAGE session(s), and write the
     candidate PLA; you may not change the rule file, target table, consumer models or Goal limits. Never
     fabricate a candidate the `candidate` subcommand did not itself assemble and validate from an actual
-    MAGE round's own export and verify files.
+    MAGE attempt's own export and verify files (a failed attempt with no export yields a `blocked`
+    candidate, never a fabricated one).
   inputs:
   - WORKSPACE
   - ROUND

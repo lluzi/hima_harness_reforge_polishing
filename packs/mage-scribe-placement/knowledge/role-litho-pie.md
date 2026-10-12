@@ -20,9 +20,9 @@ Requests.
 
 ## Permitted CLI calls, exact flags
 
-- `evaluate --consumer litho-pie --candidate <the candidate's own snapshot.json> --out-dir <dir>
+- `evaluate --consumer litho-pie --candidate <the candidate's snapshot: files.snapshot.path of state/round/placement-candidate.json, which lives only in the read-only Campaign workspace (identity.campaignWorkspace) -- copy nothing else from there> --out-dir <dir>
   [--start <snapshot.json>]`
-- `review --consumer litho-pie --round <n> --findings <that evaluate output file> --requests
+- `review --consumer litho-pie --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/litho-pie/round-NN/findings.json and pass that path> --requests
   <your requests file> --out state/round/review-litho-pie.json`
 
 Never hand-write a Finding; every one must come from `evaluate`'s own evaluator receipt.

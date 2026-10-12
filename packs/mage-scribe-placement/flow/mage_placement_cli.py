@@ -107,14 +107,18 @@ def _cmd_snapshot(workspace, args):
     opts = parser.parse_args(args)
 
     start = snapshot.load_snapshot(Path(workspace) / "state" / "start-snapshot.json")
-    pla_text = Path(opts.pla).read_text(encoding="utf-8")
+    # `--pla`/`--out` are workspace-relative by convention (same class of
+    # bug as the Linglong cwd failure); resolve against WORKSPACE.
+    pla_path = _resolve_in_workspace(workspace, opts.pla)
+    out_path = str(_resolve_in_workspace(workspace, opts.out))
+    pla_text = pla_path.read_text(encoding="utf-8")
     doc = pla.read_pla(pla_text, start["dbuPerUm"])
     body = snapshot.build_snapshot(
         opts.stage, doc, start["frame"], start["ruleFacts"], start["targets"], {},
-        {"pla": {"path": opts.pla, "sha256": core.file_sha256(opts.pla)}},
+        {"pla": {"path": str(pla_path), "sha256": core.file_sha256(pla_path)}},
         pending_from_rules=(opts.stage == "start"),
     )
-    return opts.out, body
+    return out_path, body
 
 
 def _cmd_lane_view(workspace, args):
@@ -224,9 +228,10 @@ def _cmd_plan_slots(workspace, args):
     parser.add_argument("--movable-nonpriority", default=None, metavar="UM")
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
-    del workspace
 
-    snap = snapshot.load_snapshot(opts.snapshot)
+    # `--snapshot`/`--out` are workspace-relative by convention.
+    snap = snapshot.load_snapshot(_resolve_in_workspace(workspace, opts.snapshot))
+    out_path = str(_resolve_in_workspace(workspace, opts.out))
     dbu_per_um = snap["dbuPerUm"]
     length_dbu = core.um_to_dbu(opts.length_um, dbu_per_um)
     limit_dbu = core.um_to_dbu(opts.limit_um, dbu_per_um)
@@ -362,7 +367,7 @@ def _cmd_plan_slots(workspace, args):
     errors = records.validate_record("slot-plan", body)
     if errors:
         raise core.MageError("schema", "; ".join(errors))
-    return opts.out, body
+    return out_path, body
 
 
 def _cmd_evaluate(workspace, args):
@@ -376,20 +381,23 @@ def _cmd_evaluate(workspace, args):
     readiness = _case_readiness(workspace)
     models_dir = Path(__file__).resolve().parent / "consumer_models"
     model = consumers.load_consumer_model(models_dir, opts.consumer)
-    candidate_snapshot = snapshot.load_snapshot(opts.candidate)
-    start_path = opts.start or str(Path(workspace) / "state" / "start-snapshot.json")
+    # `--candidate`/`--start`/`--out-dir` are workspace-relative by convention.
+    candidate_path_resolved = _resolve_in_workspace(workspace, opts.candidate)
+    candidate_snapshot = snapshot.load_snapshot(candidate_path_resolved)
+    start_path = (_resolve_in_workspace(workspace, opts.start) if opts.start
+                  else Path(workspace) / "state" / "start-snapshot.json")
     start_snapshot = snapshot.load_snapshot(start_path)
 
     verify_files = {}
-    candidate_dir = Path(opts.candidate).parent
+    candidate_dir = candidate_path_resolved.parent
     for type_name in NATIVE_TYPES:
-        candidate_path = candidate_dir / f"verify-{type_name}.txt"
-        if candidate_path.is_file():
-            verify_files[type_name] = str(candidate_path)
+        candidate_verify = candidate_dir / f"verify-{type_name}.txt"
+        if candidate_verify.is_file():
+            verify_files[type_name] = str(candidate_verify)
 
     result = consumers.evaluate(
         model, readiness["consumerContext"], candidate_snapshot, start_snapshot, verify_files,
-        Path(opts.out_dir), goal=readiness["goal"],
+        _resolve_in_workspace(workspace, opts.out_dir), goal=readiness["goal"],
     )
     print(json.dumps(result, sort_keys=True))
     return None
@@ -470,20 +478,73 @@ def _cmd_candidate(workspace, args):
     opts = parser.parse_args(args)
 
     workspace_path = Path(workspace)
-    # `--round-dir` is workspace-relative by convention; resolve it against
-    # WORKSPACE (not the process cwd) so the `relative_to(workspace_path)`
-    # calls below keep working regardless of cwd -- see
-    # `_resolve_in_workspace`.
+    # `--round-dir`/`--out`/`--ledger` are workspace-relative by convention;
+    # resolve them against WORKSPACE (not the process cwd) so the
+    # `relative_to(workspace_path)` calls below keep working regardless of
+    # cwd -- see `_resolve_in_workspace`.
     round_dir = _resolve_in_workspace(workspace, opts.round_dir)
+    out_path = str(_resolve_in_workspace(workspace, opts.out))
     summary = json.loads((round_dir / "round-summary.json").read_text(encoding="utf-8"))
 
-    export_pla_path = round_dir / "out" / "export.pla"
-    export_text = export_pla_path.read_text(encoding="utf-8")
     readiness = _case_readiness(workspace)
     dbu_per_um = readiness["manifest"]["dbuPerUm"]
+    start = snapshot.load_snapshot(workspace_path / "state" / "start-snapshot.json")
+
+    ledger = []
+    ledger_path = _resolve_in_workspace(workspace, opts.ledger) if opts.ledger else None
+    if ledger_path is not None and ledger_path.is_file():
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+
+    # Support refs common to the completed and blocked paths. The session log
+    # lives inside this round's own directory (under the Engineer tool's
+    # `artifactPrefix`), not at a Pack-wide `state/` path.
+    pla_copy_path = round_dir / "candidate.pla"
+    session_log_path = round_dir / "session.jsonl"
+    scripts = [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)),
+                "sha256": core.file_sha256(round_dir / "round.tcl")}]
+    if summary.get("experimentTcl"):
+        experiment_path = round_dir / "experiment.tcl"
+        scripts.append({"path": str(experiment_path.relative_to(workspace_path)),
+                        "sha256": core.file_sha256(experiment_path)})
+    reproduction = {
+        "roundDir": str(round_dir.relative_to(workspace_path)), "script": "round.tcl",
+        "fill": bool(summary.get("fill", False)),
+        "experimentSha256": summary.get("experimentSha256"),
+    }
+    build_banner = readiness["manifest"].get("mage", {}).get("buildBanner", "")
+
+    export_pla_path = round_dir / "out" / "export.pla"
+    if not export_pla_path.is_file():
+        # I4b: a failed MAGE attempt that produced no export yields a BLOCKED
+        # candidate -- no export/snapshot refs, no metrics claimed -- instead
+        # of crashing. The round can still be delivered and the Reader reads
+        # it all-unknown (never a measured state that could become best).
+        returncode = summary.get("returncode", 0)
+        stop_reason = (f"native round returned {returncode}" if returncode != 0
+                       else "native round produced no export.pla")
+        files = {
+            "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
+            "verify": _native_verify_refs(workspace_path, round_dir),
+            "sessionLog": {"path": str(session_log_path.relative_to(workspace_path)), "sha256": core.file_sha256(session_log_path)},
+            "scripts": scripts,
+        }
+        body = core.stamp("placement-candidate", {
+            "identity": {**_identity(), "round": opts.round},
+            "startSnapshotSha256": start["snapshotSha256"],
+            "snapshotSha256": start["snapshotSha256"],
+            "buildBanner": build_banner,
+            "files": files, "metrics": {}, "ledger": ledger,
+            "remaining": [], "blocked": [], "unknown": [],
+            "outcome": "blocked", "stopReason": stop_reason, "reproduction": reproduction,
+        })
+        errors = records.validate_record("placement-candidate", body)
+        if errors:
+            raise core.MageError("schema", "; ".join(errors))
+        return out_path, body
+
+    export_text = export_pla_path.read_text(encoding="utf-8")
     export_doc = pla.read_pla(export_text, dbu_per_um)
 
-    start = snapshot.load_snapshot(workspace_path / "state" / "start-snapshot.json")
     candidate_snapshot = snapshot.build_snapshot(
         "candidate", export_doc, start["frame"], start["ruleFacts"], start["targets"], {},
         {"exportPla": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)}},
@@ -504,11 +565,6 @@ def _cmd_candidate(workspace, args):
         "priorityUnplaced": _priority_unplaced(candidate_snapshot),
     }
 
-    ledger = []
-    ledger_path = _resolve_in_workspace(workspace, opts.ledger) if opts.ledger else None
-    if ledger_path is not None and ledger_path.is_file():
-        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
-
     # The vendor launcher returns 0 even when MAGE fails, so trust the
     # driver's own `completed` flag (return code 0, not timed out, and the
     # `MAGE_ROUND_END code 0` marker present), never the return code alone.
@@ -522,17 +578,6 @@ def _cmd_candidate(workspace, args):
     else:
         stop_reason = f"native round returned {returncode}"
 
-    pla_copy_path = round_dir / "candidate.pla"
-    # The session log lives inside this round's own directory (under the
-    # Engineer tool's `artifactPrefix`), not at a Pack-wide `state/` path
-    # -- see `_cmd_mage_round`'s own comment.
-    session_log_path = round_dir / "session.jsonl"
-    scripts = [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)),
-                "sha256": core.file_sha256(round_dir / "round.tcl")}]
-    if summary.get("experimentTcl"):
-        experiment_path = round_dir / "experiment.tcl"
-        scripts.append({"path": str(experiment_path.relative_to(workspace_path)),
-                        "sha256": core.file_sha256(experiment_path)})
     files = {
         "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
         "snapshot": {"path": str(snapshot_path.relative_to(workspace_path)), "sha256": core.file_sha256(snapshot_path)},
@@ -548,20 +593,15 @@ def _cmd_candidate(workspace, args):
         "identity": {**_identity(), "round": opts.round},
         "startSnapshotSha256": start["snapshotSha256"],
         "snapshotSha256": candidate_snapshot["snapshotSha256"],
-        "buildBanner": readiness["manifest"].get("mage", {}).get("buildBanner", ""),
+        "buildBanner": build_banner,
         "files": files, "metrics": computed_metrics, "ledger": ledger,
         "remaining": pending_remaining, "blocked": [], "unknown": computed_metrics["nativeRows"].get("unknown", []),
-        "outcome": outcome, "stopReason": stop_reason,
-        "reproduction": {
-            "roundDir": str(round_dir.relative_to(workspace_path)), "script": "round.tcl",
-            "fill": bool(summary.get("fill", False)),
-            "experimentSha256": summary.get("experimentSha256"),
-        },
+        "outcome": outcome, "stopReason": stop_reason, "reproduction": reproduction,
     })
     errors = records.validate_record("placement-candidate", body)
     if errors:
         raise core.MageError("schema", "; ".join(errors))
-    return opts.out, body
+    return out_path, body
 
 
 def _cmd_review(workspace, args):
@@ -573,14 +613,19 @@ def _cmd_review(workspace, args):
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
 
-    findings_payload = json.loads(Path(opts.findings).read_text(encoding="utf-8"))
+    # `--findings`/`--requests`/`--out` are workspace-relative by convention.
+    findings_path = _resolve_in_workspace(workspace, opts.findings)
+    requests_path = _resolve_in_workspace(workspace, opts.requests)
+    out_path = str(_resolve_in_workspace(workspace, opts.out))
+
+    findings_payload = json.loads(findings_path.read_text(encoding="utf-8"))
     findings = []
     for finding in findings_payload.get("findings", []):
         entry = dict(finding)
         entry["round"] = opts.round
         findings.append(entry)
 
-    requests_raw = json.loads(Path(opts.requests).read_text(encoding="utf-8")) if Path(opts.requests).is_file() else []
+    requests_raw = json.loads(requests_path.read_text(encoding="utf-8")) if requests_path.is_file() else []
     snapshot_sha = findings[0]["snapshotSha256"] if findings else ""
     requests = []
     for index, raw in enumerate(requests_raw, start=1):
@@ -610,7 +655,7 @@ def _cmd_review(workspace, args):
     errors = records.validate_record("consumer-review", body)
     if errors:
         raise core.MageError("schema", "; ".join(errors))
-    return opts.out, body
+    return out_path, body
 
 
 def _cmd_placement_candidate_fallback(workspace, args):

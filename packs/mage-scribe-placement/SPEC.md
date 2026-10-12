@@ -21,8 +21,8 @@ file) names an external baseline/reference method's own script; it is read-only 
 the Engineer may consult for compaction knobs and is never replayed as a result.
 Units are integer DBU inside the Pack; µm only at the boundaries (vendor text, reports);
 `dbuPerUm` comes from the manifest (the frame case: 10000); the placement grid is 100 DBU (0.01 µm) unless the
-rule file says otherwise. Python is 3.9 standard-library only; no numeric, YAML, or JSON-Schema
-dependency ships in `flow/`.
+rule file says otherwise. Python is 3.8-compatible standard-library only (the Linglong resident
+container runs 3.8.16); no numeric, YAML, or JSON-Schema dependency ships in `flow/`.
 
 ## Run contract
 
@@ -83,8 +83,9 @@ Seven rule files, evaluated in `evaluate-placement` from the best state's own Re
 `placement-delivery-ready` (candidate error count = 0), `priority-all-placed` (unplaced = 0),
 `no-native-violation` (native violation total = 0), `drops-within-goal` (dropped count ≤
 `target_dropped_count`), `target-limit-met` (max target distance ≤ `max_target_distance_um`),
-`order-within-goal` (max order deviation ≤ `max_order_deviation`), `no-open-requests` (open request
-count = 0).
+`order-within-goal` (max order deviation ≤ `max_order_deviation`), `no-open-requests` (evaluated
+against the delivered state: no open Request and no outstanding Decision Request in the final
+round-decision, and no consumer hard-fail Finding in the best round's reviews).
 
 ## Endings
 

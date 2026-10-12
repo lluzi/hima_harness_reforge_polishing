@@ -57,7 +57,7 @@ are not engineering victory conditions.
   silent zero.
 - **An exact grid DP for least displacement, not an LP.** `planner.py`'s `least_displacement` is
   exact on the placement grid and needs no numeric library — the Pack stays standard-library-only
-  Python 3.9.
+  and 3.8-compatible (the Linglong resident container runs Python 3.8.16).
 - **Batch-per-round MAGE scripts, not a long-lived session.** `mage-round` runs one
   `mage-frb <script> -noterm` invocation per round; this is the verified shape (replaying a complete
   PLA). A long-lived queue-fed session is an S2 optimisation, not qualified here.

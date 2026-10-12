@@ -40,7 +40,11 @@ values:
     description: Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any one is unknown.
   mage_open_request_count:
     unit: count
-    description: Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.
+    description: >-
+      Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.
+      The delivered `no-open-requests` rule (evaluate-placement, I3) additionally FAILs on any
+      outstanding Decision Request or any best-round consumer hard-fail Finding, so a standing
+      trade-off never reads as a silent PASS.
   mage_review_error_count:
     unit: count
     description: Structural, identity, snapshot-binding or evaluator-reproduction errors found while re-verifying one consumer's review delivery; 0 only once every Finding reproduces exactly under its declared consumer-model version.

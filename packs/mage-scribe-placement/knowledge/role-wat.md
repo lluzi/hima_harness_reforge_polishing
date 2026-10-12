@@ -17,9 +17,9 @@ change the layout; you file Findings and Requests.
 
 ## Permitted CLI calls, exact flags
 
-- `evaluate --consumer wat --candidate <the candidate's own snapshot.json> --out-dir <dir>
+- `evaluate --consumer wat --candidate <the candidate's snapshot: files.snapshot.path of state/round/placement-candidate.json, which lives only in the read-only Campaign workspace (identity.campaignWorkspace) -- copy nothing else from there> --out-dir <dir>
   [--start <snapshot.json>]`
-- `review --consumer wat --round <n> --findings <that evaluate output file> --requests <your
+- `review --consumer wat --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/wat/round-NN/findings.json and pass that path> --requests <your
   requests file> --out state/round/review-wat.json`
 
 Never hand-write a Finding.

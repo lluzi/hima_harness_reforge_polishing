@@ -380,7 +380,6 @@ def evaluate_placement(workspace, inputs):
         "drops-within-goal": ("mage_dropped_count", "lte", goal["target_dropped_count"]),
         "target-limit-met": ("mage_target_distance_max_um", "lte", goal["max_target_distance_um"]),
         "order-within-goal": ("mage_order_deviation_max", "lte", goal["max_order_deviation"]),
-        "no-open-requests": ("mage_open_request_count", "eq", 0),
     }
 
     rules_result = {}
@@ -394,6 +393,19 @@ def evaluate_placement(workspace, inputs):
         value = measure["value"]
         passed = (value == threshold) if op == "eq" else (value <= threshold)
         rules_result[rule_id] = "PASS" if passed else "FAIL"
+
+    # I3: `no-open-requests` evaluates the DELIVERED state, not just the best
+    # candidate's own unanswered-previous count. It FAILs when the final
+    # decision still carries open Requests OR outstanding Decision Requests,
+    # OR the best round's own reviews carried any consumer hard-fail Finding
+    # (a quantified trade-off is a complete delivery with goalMet false).
+    open_requests_delivered = decision.get("openRequestCount")
+    if open_requests_delivered is None:
+        open_requests_delivered = len(decision.get("openRequests", []))
+    decision_request_count = len(decision.get("decisionRequests", []))
+    best_hard_fail = (best.get("metrics") or {}).get("hardFailCount", 0)
+    no_open = (open_requests_delivered == 0) and (decision_request_count == 0) and (best_hard_fail == 0)
+    rules_result["no-open-requests"] = "PASS" if no_open else "FAIL"
 
     goal_met = all(rules_result[rule_id] == "PASS" for rule_id in RULE_IDS)
 
