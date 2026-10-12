@@ -125,6 +125,12 @@ BLOCK_ITEMS = [
     ("KEY_V", "TSK/MPAD", "900", "60"),
 ]
 
+# A block defined in the vendor's quoted/braced, reordered-option form (seen
+# in real block files, unlike the fixed bare-order form above): double
+# quotes around -def/-blkType/-cell, a brace-wrapped -bbox, an unrelated
+# ${VAR}-substituted -gds, and -bbox given *before* -blkType.
+QUOTED_BLOCK_ITEM = ("BLK_Q", "OVL", "438.2", "48")
+
 
 def _block_tcl():
     lines = []
@@ -133,6 +139,14 @@ def _block_tcl():
             f"smBlockMgr -def {name} -blkType {blk_type} -bbox (0,0,{width},{height}) "
             f"-noCheck 1 -gds ./{name}.gds -cell {name}"
         )
+    name, blk_type, width, height = QUOTED_BLOCK_ITEM
+    lines.append("set MAGE_BLOCK_HOME [ file dirname [ file normalize [ info script ] ] ]")
+    lines.append(
+        f'smBlockMgr -def "{name}" -bbox {{(0,0,{width},{height})}} '
+        f'-gds "${{MAGE_BLOCK_HOME}}/output.gds" -blkType "{blk_type}" -cell "{name}"'
+    )
+    lines.append(f'smBlockType -add "{blk_type}"')
+    lines.append(f'smBListMgr -def "LIST_A" -blkType "{blk_type}"')
     return "\n".join(lines) + "\n"
 
 

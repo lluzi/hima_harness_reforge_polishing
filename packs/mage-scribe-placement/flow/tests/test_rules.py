@@ -65,6 +65,30 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(block_types['KEY_V'], {'blockType': 'TSK/MPAD', 'sizeDbu': [9000000, 600000]})
         self.assertEqual(block_types['OVL_F'], {'blockType': 'OVL', 'sizeDbu': [1000000, 560000]})
 
+    def test_read_block_types_parses_quoted_braced_vendor_form(self):
+        # BLK_Q is written with double-quoted -def/-blkType/-cell, a
+        # brace-wrapped -bbox, and -bbox *before* -blkType; surrounded by
+        # a `set ...`, `smBlockType`, and `smBListMgr` line that must be
+        # ignored rather than mistaken for a block definition.
+        block_types = rules.read_block_types(Path(self.case['files']['block']).read_text(), 10000)
+        self.assertEqual(block_types['BLK_Q'], {'blockType': 'OVL', 'sizeDbu': [4382000, 480000]})
+        self.assertNotIn('LIST_A', block_types)
+
+    def test_read_block_types_is_option_order_independent(self):
+        reordered = (
+            'smBlockMgr -cell X -bbox (0,0,10,20) -gds ./x.gds -blkType OVL -def X -noCheck 1'
+        )
+        block_types = rules.read_block_types(reordered, 10000)
+        self.assertEqual(block_types['X'], {'blockType': 'OVL', 'sizeDbu': [100000, 200000]})
+
+    def test_read_block_types_refuses_missing_bbox(self):
+        with self.assertRaises(core.MageError):
+            rules.read_block_types('smBlockMgr -def X -blkType OVL -gds ./x.gds -cell X', 10000)
+
+    def test_read_block_types_refuses_missing_blktype(self):
+        with self.assertRaises(core.MageError):
+            rules.read_block_types('smBlockMgr -def X -bbox (0,0,10,20) -cell X', 10000)
+
 
 if __name__ == '__main__':
     unittest.main()

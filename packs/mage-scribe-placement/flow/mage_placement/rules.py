@@ -50,7 +50,6 @@ _ADD_ITEM_RE = re.compile(r"smFlow\s+-addItem\s+(\S+)\s+-parent\s+(\S+)\s+-itemT
 _AREA_RE = re.compile(r"-setArea\s+\{([^}]*)\}")
 _EXT_SCRIBE_MIN_RE = re.compile(r"-setExtScribe\s+-min\s+\{([^}]*)\}")
 _BBOX_RE = re.compile(r"-bbox\s+\(([^)]*)\)")
-_BLOCKMGR_DEF_RE = re.compile(r"smBlockMgr\s+-def\s+(\S+)\s+-blkType\s+(\S+).*?-bbox\s+\(([^)]*)\)")
 
 
 def _join_continuations(text):
@@ -229,17 +228,56 @@ def frame_from_rule(rule_text, pblock_text, dbu_per_um):
     }
 
 
+def _option_map(tokens):
+    """`['-def', 'A', '-blkType', 'OVL']` -> `{'-def': 'A', '-blkType': 'OVL'}`.
+
+    Values are matched purely by preceding flag name, so option order never
+    matters; a bare positional value with no preceding flag is ignored.
+    """
+    options = {}
+    i = 0
+    while i < len(tokens) - 1:
+        if tokens[i].startswith("-"):
+            options[tokens[i]] = tokens[i + 1]
+            i += 2
+        else:
+            i += 1
+    return options
+
+
+def _strip_bbox_wrapper(raw):
+    """`{(0,0,1,1)}` / `"(0,0,1,1)"` / `(0,0,1,1)` -> `"0,0,1,1"`."""
+    value = raw.strip("{}\"").strip()
+    return value.strip("()")
+
+
 def read_block_types(block_text, dbu_per_um):
-    """`{base_name: {'blockType': str, 'sizeDbu': [w, h]}}` from `block.tcl`."""
+    """`{base_name: {'blockType': str, 'sizeDbu': [w, h]}}` from `block.tcl`.
+
+    Each `smBlockMgr -def <name> ...` line is read by option name, in
+    whatever order the vendor writes them, with `-blkType`/`-bbox` (and any
+    other option) bare, `"double-quoted"`, or `{brace-wrapped}`; `-bbox`'s
+    own value may additionally be `{(l,b,r,t)}` or `"(l,b,r,t)"` as well as
+    the bare `(l,b,r,t)`. Unrelated commands (`smBlockType`, `smBListMgr`,
+    `smClusterMgr`, a plain `set ...`) are ignored. A `-def` line missing
+    `-blkType` or `-bbox` raises `core.MageError('format', ...)` naming the
+    block — this reader never guesses a block's type or size.
+    """
     result = {}
     for line in _logical_lines(block_text):
-        match = _BLOCKMGR_DEF_RE.search(line)
-        if match is None:
+        tokens = _tokenize(line)
+        if not tokens or tokens[0] != "smBlockMgr":
             continue
-        name, blk_type, bbox = match.groups()
-        values = bbox.split(",")
+        options = _option_map(tokens[1:])
+        name = options.get("-def")
+        if name is None:
+            continue
+        blk_type, bbox_raw = options.get("-blkType"), options.get("-bbox")
+        if blk_type is None or bbox_raw is None:
+            raise core.MageError("format", f"block {name!r} is missing -blkType or -bbox")
+        values = _strip_bbox_wrapper(bbox_raw).split(",")
         if len(values) != 4:
-            raise core.MageError("format", f"-bbox expects 4 values, got {values!r}")
+            raise core.MageError("format", f"block {name!r} -bbox expects 4 values, got {values!r}")
         x0, y0, x1, y1 = (core.um_to_dbu(v.strip(), dbu_per_um) for v in values)
         result[name] = {"blockType": blk_type, "sizeDbu": [x1 - x0, y1 - y0]}
     return result
