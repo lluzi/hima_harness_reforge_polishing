@@ -831,9 +831,12 @@ def validate_design(ws, stage, path=None, files_root=None):
     for key in ("summary", "reason"):
         if not isinstance(doc.get(key), str) or not doc[key].strip():
             problems.append("%s must say in words what the design does and why" % key)
-    report = "reports/%s/r%d/analysis.md" % (AGENT_NODES[stage], k)
-    if doc.get("report") != report:
-        problems.append("report must be %s" % report)
+    # Support paths are immutable in the Campaign: a repaired delivery names a new revision of its
+    # analysis (analysis-2.md, analysis-3.md, ...) in the same round's folder.
+    folder = "reports/%s/r%d/" % (AGENT_NODES[stage], k)
+    report = doc.get("report")
+    if not isinstance(report, str) or not re.fullmatch(re.escape(folder) + r"analysis(-[2-9]|-[1-9][0-9]+)?\.md", report):
+        problems.append("report must be %sanalysis.md (a repair: %sanalysis-2.md, -3, ...)" % (folder, folder))
     elif files_root is not None and not (Path(files_root) / report).is_file():
         problems.append("the report %s is not in your workspace (%s)" % (report, files_root))
     if stage == "target":

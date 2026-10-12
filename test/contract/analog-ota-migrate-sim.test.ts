@@ -169,9 +169,13 @@ test('precheck refuses illegal designs and any number an agent types', { skip },
     await refused((d) => { d.intent.measuredGainDb = 95; }, /intent has unknown field\(s\) measuredGainDb/);
     await refused((d) => { d.devices.M6.wUm += 1; }, /the devices do not follow the intent/);
     await refused((d) => { d.report = 'reports/size-agent/r1/missing.md'; }, /report must be reports\/size-agent\/r1\/analysis\.md/);
-    // The draft itself passes.
+    await refused((d) => { d.report = 'reports/size-agent/r1/analysis-1.md'; }, /a repair: reports\/size-agent\/r1\/analysis-2\.md/);
+    // The draft itself passes, and so does a repair naming the next revision of its analysis.
     const file = await deliver(ws, 'source', structuredClone(good));
     assert.match(ok(ws, 'precheck', 'source', file, ws), /precheck PASS: source design round 1 \(synth180\)/);
+    const repaired = structuredClone(good);
+    repaired.report = 'reports/size-agent/r1/analysis-2.md';
+    assert.match(ok(ws, 'precheck', 'source', await deliver(ws, 'source', repaired), ws), /precheck PASS/);
   } finally { await done(); }
 });
 
