@@ -8,6 +8,8 @@ bindings:
   sourcePdk: gf180mcuD
   targetPdk: ihp-sg13g2
   engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering/engineering-capabilities-analog01.json
+  layoutTool: /data/eda/project/hima_harness/operator-admin/analog-sim-01/layout/run_cell.sh
+  pdk: gf180mcuD
   workspaceRoot: /data/eda/project/hima_harness/analog-runs
 ssh:
   destination: luzi@linglong

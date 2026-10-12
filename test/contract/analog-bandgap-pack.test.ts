@@ -6,10 +6,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { choose, loadPack, packStageOf, resolveChooser } from '@hima/harness';
+import { checkPack, choose, loadPack, loadSite, packStageOf, resolveChooser } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 
 const packsDir = path.join(repoRoot, 'packs');
@@ -86,6 +86,23 @@ test('the chooser ends only on a valid, signed-off round and otherwise asks for 
     assert.notEqual(next.chosen.goalMet, true, `${c}/${g}`);
     assert.equal(next.chosen.strategy.roundRevision, 1, `${c}/${g}`);
   }
+});
+
+test('the deployed analog Site analog_sim_01 fits the Pack, with its layout tool allowed', async () => {
+  const siteDir = path.join(repoRoot, 'sites/analog_sim_01');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'bg-site-'));
+  try {
+    const sitesDir = path.join(root, 'sites');
+    await mkdir(sitesDir, { recursive: true });
+    await writeFile(path.join(sitesDir, 'analog_sim_01.yml'), await readFile(path.join(siteDir, 'site.yml'), 'utf8'));
+    await writeFile(path.join(sitesDir, 'permit.yml'), await readFile(path.join(siteDir, 'permit.yml'), 'utf8'));
+    const site = loadSite(sitesDir, 'analog_sim_01');
+    const fit = checkPack(loadPack(packsDir, packId), site);
+    assert.equal(fit.fit, true, fit.errors.join('\n'));
+    const bindings = site.bindings as Record<string, string>;
+    assert.equal(bindings.pdk, 'gf180mcuD');
+    assert.ok(site.permitRules.allowedWrappers.includes(bindings.layoutTool!), 'the layout tool is an allowed wrapper');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 // ---------------------------------------------------------------- the Readers on the flow's record shapes

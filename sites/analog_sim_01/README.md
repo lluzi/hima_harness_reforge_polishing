@@ -11,6 +11,7 @@ carries the host name `linglong`; the App's saved Site holds the real address, w
 | `/data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/{spectre,ngspice}` | the simulator wrappers (copies of `bin/`) | read-only |
 | `/data/eda/project/hima_harness/operator-admin/analog-sim-01/pdks` | `gf180mcuD` and `ihp-sg13g2` copied from the pinned tool image, plus `ihp-sg13g2/libs.tech/spectre-hima` from `install/ihp_spectre.py` | read-only |
 | `/data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering` | the resident wrapper (`sites/linglong-atcs28/templates/resident-engineering-wrapper.py`) and `engineering-capabilities-analog01.json` | read-only |
+| `/data/eda/project/hima_harness/operator-admin/analog-sim-01/layout/{cell_layout.py,run_cell.sh}` | the layout tool (copies of `layout/`), bound as `layoutTool` | read-only |
 | `/data/eda/project/hima_harness/analog-runs` | Campaign workspaces | the only write root |
 
 Live check (2026-10-12, `analog-runs/site-check-20261012`, the OTA Pack's tool steps by hand):
@@ -88,3 +89,17 @@ and both LVS checks matching. The PDK's bare PNP cell carries 6 Magic-only well 
 KLayout deck reports 0. Nine wrong references are caught by both LVS checks: a PNP multiplicity of
 7, the wrong PNP size, a resistor length 1.65 % off, and a MOS width 2.47 % off, among them
 (`layout/tests/negative_lvs.py`).
+
+Bandgap chain on the Site (2026-10-12, `analog-runs/bg-site-check-20261012`, the `analog-bandgap`
+Pack's tool steps by hand, Spectre 23.1, GF180MCU):
+
+| Step | Time | Result |
+| --- | --- | --- |
+| characterize | 8 s | |
+| simulate schematic | 70 s | 30 corners, every line met on the method's first cut |
+| Monte Carlo, N=100 | 1.3 s | sigma 4.75 mV, in band |
+| layout | 18.5 s | NOT clean: DRC 2/3, both LVS checks mismatch |
+| simulate post | 70 s | |
+
+The layout tool handled the earlier hand-picked cell but not this real first cut (598.7 × 133.1 um).
+The Pack recorded the round as valid and not signed off, as it should. The fix is in progress.
