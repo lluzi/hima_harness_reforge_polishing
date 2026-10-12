@@ -10,4 +10,4 @@ here=$(dirname "$(readlink -f "$0")")
 mkdir -p "$out"
 podman run --rm --network=none --userns=keep-id \
   -v "$here:$here:ro" -v "$(dirname "$netlist"):$(dirname "$netlist"):ro" -v "$out:$out" -w "$out" \
-  --entrypoint /bin/bash "$image" -lc "python3 '$here/cell_layout.py' all '$netlist' '$cell' '$out'" 2>&1 | grep -v '^\[INFO\]'
+  --entrypoint /bin/bash "$image" -lc "python3 '$here/cell_layout.py' all '$netlist' '$cell' '$out'" 2>&1 | { grep -v '^\[INFO\]' || true; }

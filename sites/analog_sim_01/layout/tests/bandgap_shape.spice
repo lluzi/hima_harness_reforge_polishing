@@ -2,7 +2,8 @@
 * Kuijk core (Q1 1x at a; R1 then Q2 8x at b; R2a vbg-a, R2b vbg-b), a 5-transistor PMOS-input OTA
 * (inputs a and b, NMOS mirror load, PMOS tail), a PMOS output device into vbg, a PMOS bias mirror
 * from ibias, a start-up path (inverter on vbg pulling the OTA output low while vbg is low), enable
-* switches (en low: the bias node and the OTA output to vdd), and one MIM compensation capacitor.
+* switches (en low: the bias node and the OTA output to vdd), and one MIM compensation capacitor
+* (12 x 8 um: a non-square plate checks that c_width and c_length keep their orientation).
 * Pins: vdd vss en ibias vbg.
 .subckt bandgap vdd vss en ibias vbg
 * bias mirror (ibias sinks the reference current)
@@ -29,5 +30,5 @@ XR1 b e2 vss ppolyf_u_1k r_width=1u r_length=10u
 XQ1 vss vss a pnp_10p00x10p00 m=1
 XQ2 vss vss e2 pnp_10p00x10p00 m=8
 * compensation
-XCC vgo vdd cap_mim_2f0fF c_width=10u c_length=10u
+XCC vgo vdd cap_mim_2f0fF c_width=12u c_length=8u
 .ends bandgap

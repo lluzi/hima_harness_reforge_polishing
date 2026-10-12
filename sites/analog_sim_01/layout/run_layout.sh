@@ -14,7 +14,7 @@ mkdir -p "$out"
 t0=$(date +%s.%N)
 podman run --rm --network=none --userns=keep-id \
   -v "$here:$here:ro" -v "$(dirname "$design"):$(dirname "$design"):ro" -v "$out:$out" -w "$out" \
-  --entrypoint /bin/bash "$image" -lc "python3 '$here/ota_layout.py' all '$design' '$out'" 2>&1 | grep -v '^\[INFO\]'
+  --entrypoint /bin/bash "$image" -lc "python3 '$here/ota_layout.py' all '$design' '$out'" 2>&1 | { grep -v '^\[INFO\]' || true; }
 t1=$(date +%s.%N)
 for corner in tt ss ff; do
   python3 "$here/ota_postlayout.py" "$flow" "$design" "$out" "$pdk_root" "$spectre" "$corner"

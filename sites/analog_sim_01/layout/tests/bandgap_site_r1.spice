@@ -1,0 +1,39 @@
+* Regression: the analog-bandgap Pack's method first cut (round 1) as the Site's chain laid it out on 2026-10-12
+* (reports/layout/r1/bandgap.spice of the Site check). Wide pair (86.215 um), L = 40 um mirrors, 21-segment resistors,
+* a 70.71 um MIM and a 0.28 um wide start-up PMOS.
+* Kuijk bandgap, topology kuijk-p5t-mirror, PDK gf180mcuD, round 1
+.subckt bandgap_lb vdd vss en ibias vbg go g
+XQ1 vss vss a pnp_10p00x10p00 
+XQ2_1 vss vss c pnp_10p00x10p00 
+XQ2_2 vss vss c pnp_10p00x10p00 
+XQ2_3 vss vss c pnp_10p00x10p00 
+XQ2_4 vss vss c pnp_10p00x10p00 
+XQ2_5 vss vss c pnp_10p00x10p00 
+XQ2_6 vss vss c pnp_10p00x10p00 
+XQ2_7 vss vss c pnp_10p00x10p00 
+XQ2_8 vss vss c pnp_10p00x10p00 
+XR1 b c vss ppolyf_u_1k r_length=38.555u r_width=2u s=2
+XR2a vbg a vss ppolyf_u_1k r_length=38.7u r_width=2u s=21
+XR2b vbg b vss ppolyf_u_1k r_length=38.7u r_width=2u s=21
+MB0 ibias ibias vdd vdd pfet_03v3 w=5.61u l=5u
+MT tail ibias vdd vdd pfet_03v3 w=11.22u l=5u
+M3 d1 d1 ls vss nfet_03v3 w=10.5u l=40u
+MO vbg g vdd vdd pfet_03v3 w=11.48u l=2u
+MSU1 su ibias vdd vdd pfet_03v3 w=0.28u l=5u
+MSU2 su vbg vss vss nfet_03v3 w=0.5u l=20u
+MSU3 g su sux vss nfet_03v3 w=1u l=1u
+MSU4 sux en vss vss nfet_03v3 w=1u l=1u
+MEN1 ibias en vdd vdd pfet_03v3 w=1u l=1u
+MEN2 g en vdd vdd pfet_03v3 w=1u l=1u
+MEN3 ls en vss vss nfet_03v3 w=1u l=1u
+M1 d1 a tail vdd pfet_03v3 w=86.215u l=5u
+M2 o1 b tail vdd pfet_03v3 w=86.215u l=5u
+M4 o1 d1 ls vss nfet_03v3 w=10.5u l=40u
+M5 go o1 ls vss nfet_03v3 w=14.395u l=40u
+M6 go go vdd vdd pfet_03v3 w=2.87u l=2u
+XCC o1 vss cap_mim_2f0_m4m5_noshield c_length=70.71u c_width=70.71u
+.ends bandgap_lb
+
+.subckt bandgap vdd vss en ibias vbg
+xlb vdd vss en ibias vbg g g bandgap_lb
+.ends bandgap

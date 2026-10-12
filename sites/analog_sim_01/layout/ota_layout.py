@@ -11,6 +11,7 @@ capacitor sized for the design's values, then lays that netlist out through cell
 netlist-driven route (see its products there; the cell is `ota`). Pins: vdd, vss, inp, inn, out,
 ibias (the Pack's nbias node, fed by the bias current source).
 """
+import hashlib
 import json
 import math
 import sys
@@ -71,14 +72,19 @@ def main(argv):
     if len(argv) < 4 or argv[1] != "all":
         print(__doc__, file=sys.stderr)
         return 2
-    design = json.loads(Path(argv[2]).read_text())
+    design_path = Path(argv[2]).resolve()
+    design = json.loads(design_path.read_text())
     out = Path(argv[3]).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise cell_layout.Error("the output folder %s is not empty: give a new one" % out)
     out.mkdir(parents=True, exist_ok=True)
     text, facts = ref_netlist(design)
     src = out / "ota_design.spice"
     src.write_text(text)
-    cell_layout.cmd_all(str(src), "ota", str(out), extra=dict(design=argv[2], ota=facts))
-    return 0
+    sha = hashlib.sha256(design_path.read_bytes()).hexdigest()
+    result = cell_layout.cmd_all(str(src), "ota", str(out), extra=dict(design=str(design_path), designSha256=sha, ota=facts),
+                                 allowed=("ota_design.spice",))
+    return 0 if result["ok"] else 4
 
 
 if __name__ == "__main__":

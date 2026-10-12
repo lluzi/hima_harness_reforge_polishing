@@ -5,6 +5,10 @@ Runs on the Site host, where the Spectre wrapper runs Cadence Spectre:
 
   ota_postlayout.py <pack_flow_dir> <design.json> <layout_dir> <pdk_root> <spectre_command> [<corner>]
 
+It refuses a layout folder whose layout.json names another design (SHA-256 of the design file) or
+records a failed step, and an extracted subcircuit whose ports are not exactly the OTA's pins
+(vdd vss inp inn out ibias; cell_layout.py maps a Magic substrate port to vss and records it).
+
 It imports the Pack's own ota_cli.py, so the testbench (open-loop AC, 1 GH / 1 F DC feedback, the
 strategy's 2 pF load and 60 % input common mode), the Spectre netlist head and the arithmetic of the
 gain, unity-gain frequency and phase margin are the Pack's, unchanged. Four netlists are measured:
@@ -16,6 +20,7 @@ gain, unity-gain frequency and phase margin are the Pack's, unchanged. Four netl
 
 Writes <layout_dir>/postlayout.json and a table on stdout.
 """
+import hashlib
 import json
 import re
 import sys
@@ -28,6 +33,7 @@ EXTRA_LIBS = (("gf180mcuD/libs.tech/ngspice/sm141064.spice", "res_typical"),
               ("gf180mcuD/libs.tech/ngspice/sm141064.spice", "mimcap_typical"))
 CORNER_LIBS = {"tt": ("res_typical", "mimcap_typical"), "ss": ("res_ss", "mimcap_ss"), "ff": ("res_ff", "mimcap_ff")}
 PORT_NODE = {"vss": "0", "ibias": "nbias"}
+OTA_PORTS = ("vdd", "vss", "inp", "inn", "out", "ibias")
 
 
 def spice_for_spectre(text):
@@ -62,6 +68,17 @@ def main(argv):
     corner = argv[6] if len(argv) > 6 else "tt"
     sys.path.insert(0, str(flow))
     import ota_cli as ota
+    # the layout must be of this design, and clean of tool failures
+    facts_path = layout / "layout.json"
+    if not facts_path.is_file():
+        raise SystemExit("ota_postlayout: %s has no layout.json" % layout)
+    facts = json.loads(facts_path.read_text())
+    sha = hashlib.sha256(design_path.read_bytes()).hexdigest()
+    if facts.get("designSha256") != sha:
+        raise SystemExit("ota_postlayout: %s was laid out from design %s, not %s (sha256 %s)" % (
+            layout, facts.get("designSha256"), design_path, sha))
+    if not facts.get("ok"):
+        raise SystemExit("ota_postlayout: the layout run failed: %s" % "; ".join(facts.get("failures", [])))
     cards = json.loads((flow / "pdks.json").read_text())["cards"]
     design = json.loads(design_path.read_text())
     inputs = dict(pdkRoot=pdk_root, pdks=dict(source=dict(name=design["pdk"], card=cards[design["pdk"]])))
@@ -92,6 +109,8 @@ def main(argv):
         if not path.is_file():
             continue
         body, ports = spice_for_spectre(path.read_text())
+        if ports is None or sorted(ports) != sorted(OTA_PORTS):
+            raise SystemExit("ota_postlayout: %s exposes ports %s; the OTA's are exactly %s" % (name, ports, " ".join(OTA_PORTS)))
         sub = sim_dir / ("%s.spice" % tag)
         sub.write_text(body)
         nodes = " ".join(PORT_NODE.get(p, p) for p in ports)
