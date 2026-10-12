@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "id", "lane", "slot", "model", "maxSlots", "feasible",
+    "moves", "slotStarts", "totalDisplacementDbu", "movedCount", "infeasibleReason"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "move": {
+      "type": "object",
+      "required": ["id", "fromDbu", "toDbu"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "fromDbu": {"type": "integer"},
+        "toDbu": {"type": "integer"}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"const": "mage.slot-plan/1"},
+    "id": {"type": "string", "minLength": 20},
+    "lane": {"type": ["string", "null"]},
+    "slot": {
+      "type": "object",
+      "required": ["count", "length", "clearance"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "length": {"type": "integer", "minimum": 0},
+        "clearance": {"type": "integer", "minimum": 0}
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["relaxations", "gapsQualified"],
+      "additionalProperties": false,
+      "properties": {
+        "relaxations": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["ignoreGaps", "removeNonPriority", "splitClusters", "intrudersMovable"]}
+        },
+        "gapsQualified": {"type": "boolean"},
+        "removed": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "maxSlots": {"type": "integer", "minimum": 0},
+    "feasible": {"type": "boolean"},
+    "moves": {"type": "array", "items": {"$ref": "#/$defs/move"}},
+    "slotStarts": {"type": "array", "items": {"type": "integer"}},
+    "totalDisplacementDbu": {"type": "integer", "minimum": 0},
+    "movedCount": {"type": "integer", "minimum": 0},
+    "infeasibleReason": {"type": ["string", "null"]}
+  }
+}
