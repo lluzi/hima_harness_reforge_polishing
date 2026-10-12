@@ -16,9 +16,10 @@ Checked, per the Task 8 brief:
   each consumer's knowledge set (the three files each `review-*` tool
   reads) are each under 12,000 words in total;
 - every token that looks like a CLI subcommand reference in a knowledge
-  file (a backtick code span whose first word names a real
-  `mage_placement_cli.py` subcommand) only uses subcommands and `--flags`
-  that subcommand actually defines;
+  file -- a backtick span naming `mage_placement_cli.py <token>`, or a bare
+  `<token> --flag ...` span whose first word is shaped like a subcommand
+  name -- names a real subcommand (never silently skipped just because the
+  token is not recognized) and uses only `--flags` that subcommand defines;
 - every `state/...` path mentioned is either a declared `contract.yml`
   output path, the one real session-log path (`state/session.jsonl`), or
   a `state/history/round-NN/...` archive path (`rounds.py:_archive_round`).
@@ -48,10 +49,14 @@ RESIDENT_TOOL_IDS = (
 
 WORD_BUDGET = 12000
 
-# Additional `state/...` paths this Pack's own code writes that are not
-# `contract.yml` declared outputs: the one native-session log, and the
-# program's permanent per-round archive (`rounds.py:_archive_round`).
-_EXTRA_STATE_PATHS = {"state/session.jsonl"}
+# Additional `state/...` paths that are not `contract.yml` declared
+# outputs but are still legitimate for a knowledge file to name: the one
+# native-session log this Pack's own code writes
+# (`native/session.py:log_path`), and `role-bonding.md`'s own explicit
+# statement that `state/round/review-bonding.json` does NOT exist in
+# 0.1.0 (there is no `review-bonding` tool/output to declare it) -- the
+# path is named precisely to say it is absent, not as a real reference.
+_EXTRA_STATE_PATHS = {"state/session.jsonl", "state/round/review-bonding.json"}
 _ARCHIVE_STATE_PATTERN = re.compile(r"^state/history/round-\d\d/")
 
 
@@ -61,10 +66,12 @@ def _read_text(path):
 
 def _extract_yaml_block_list(text, key):
     """Return the flat string items of a top-level `<key>:` block-list in
-    `contract.yml`'s own restricted YAML subset (one `- name` or `- file`
-    style list, or a plain `- scalar` list) -- good enough for the two
-    shapes this function is used on here (`knowledge:` file names and a
-    tool's `outsourcing.knowledge` list)."""
+    `contract.yml`'s own restricted YAML subset -- a plain `- scalar` list,
+    one item per line, no continuation lines. Used only for a tool's
+    nested `outsourcing.knowledge:` list (each item is one bare filename on
+    its own line); the top-level `knowledge:` purpose table has wrapped
+    continuation lines after each item and is handled separately by
+    `_knowledge_purpose_table_files`, below."""
     pattern = re.compile(rf"^{re.escape(key)}:\s*$", re.MULTILINE)
     match = pattern.search(text)
     if not match:
@@ -90,17 +97,45 @@ def _extract_yaml_block_list(text, key):
     return items
 
 
+def _knowledge_purpose_table_files(text):
+    """Every `file:` entry of the top-level `knowledge:` purpose table in
+    `contract.yml` -- a list of `- file: <name>` items at 0 indent, each
+    followed by a `purpose: ...` entry whose text wraps onto one or more
+    further-indented continuation lines (no leading `- `). Unlike
+    `_extract_yaml_block_list`, this collects every item: an indented
+    continuation line is skipped, not treated as the end of the block; the
+    block ends at the first line back at 0 indent that is not `- file:`
+    (the next top-level contract.yml key, e.g. `tools:`)."""
+    pattern = re.compile(r"^knowledge:\s*$", re.MULTILINE)
+    match = pattern.search(text)
+    if not match:
+        return []
+    start = match.end()
+    lines = text[start:].splitlines()
+    files = []
+    for line in lines:
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = line.strip()
+        if indent == 0:
+            file_match = re.match(r"- file:\s*(\S+)", stripped)
+            if not file_match:
+                break  # the next top-level key: the purpose table ended
+            files.append(file_match.group(1))
+            continue
+        # an indented line here is always a `purpose:` entry or one of its
+        # own wrapped continuation lines -- never a new file, skip it.
+    return files
+
+
 def _knowledge_file_list_from_contract():
     """Every filename this Pack's `contract.yml` names as knowledge: the
     top-level `knowledge:` purpose table's `file:` entries, plus every
     resident tool's own `outsourcing.knowledge:` list."""
     text = _read_text(CONTRACT_PATH)
 
-    top_level = []
-    for raw in _extract_yaml_block_list(text, "knowledge"):
-        file_match = re.match(r"file:\s*(\S+)", raw)
-        if file_match:
-            top_level.append(file_match.group(1))
+    top_level = _knowledge_purpose_table_files(text)
 
     per_tool = {}
     for tool_id in RESIDENT_TOOL_IDS:
@@ -159,6 +194,61 @@ CONTRACT_OUTPUT_PATHS = _contract_output_paths()
 
 _CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 _STATE_PATH_RE = re.compile(r"\bstate/[A-Za-z0-9._/-]+")
+# A bare token shaped like one of this CLI's own subcommand names
+# (`snapshot`, `plan-slots`, `task-prepare-case`, ...): lowercase words
+# joined by single hyphens, no dots, no placeholders.
+_SUBCOMMAND_SHAPE_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+
+
+def _cli_reference_problems(text):
+    """Every CLI-subcommand-or-flag reference in `text` that is not real,
+    as a list of human-readable problem strings (empty when `text` is
+    clean). Two reference shapes are checked, both inside backtick code
+    spans only:
+
+    1. `mage_placement_cli.py <token> ...` (anywhere `mage_placement_cli.py`
+       appears as its own token in the span) -- `<token>` MUST be a real
+       subcommand; this never continues past a bad token, it fails.
+    2. a bare `<token> --flag ...` span whose first token is shaped like a
+       subcommand name (`_SUBCOMMAND_SHAPE_RE`) and is followed by at least
+       one `--flag`-looking token -- `<token>` MUST be a real subcommand,
+       for the same reason: a span that *looks* like a CLI invocation is
+       held to that standard, not silently skipped because the renamed/
+       typo'd subcommand happens not to be recognized.
+
+    In both shapes, once the subcommand is confirmed real, every
+    `--flag`-looking token after it must be one that subcommand's own
+    `argparse.ArgumentParser` actually defines.
+    """
+    problems = []
+    for span in _CODE_SPAN_RE.findall(text):
+        tokens = span.split()
+        if not tokens:
+            continue
+
+        head_index = None
+        if "mage_placement_cli.py" in tokens:
+            idx = tokens.index("mage_placement_cli.py")
+            if idx + 1 < len(tokens):
+                head_index = idx + 1
+        elif _SUBCOMMAND_SHAPE_RE.match(tokens[0]) and any(t.startswith("--") for t in tokens[1:]):
+            head_index = 0
+
+        if head_index is None:
+            continue
+
+        head = tokens[head_index]
+        if head not in SUBCOMMAND_FLAGS:
+            problems.append(f"{head!r} is not a real mage_placement_cli.py subcommand (span: {span!r})")
+            continue
+
+        for token in tokens[head_index + 1:]:
+            if not token.startswith("--"):
+                continue
+            flag = token.split("=", 1)[0].rstrip(",).")
+            if flag not in SUBCOMMAND_FLAGS[head]:
+                problems.append(f"{flag!r} is not a flag of subcommand {head!r} (span: {span!r})")
+    return problems
 
 
 def _iter_knowledge_files():
@@ -185,12 +275,25 @@ class KnowledgeFilesTest(unittest.TestCase):
             self.assertGreater(len(text.split()), 20, f"{name} looks too short to be real content")
 
     def test_role_bonding_exists_even_though_unreferenced(self):
-        # role-bonding.md ships for a later version; no tool outsourcing.knowledge
-        # names it, so it is not in self.names, but it must still exist flat-named.
+        # role-bonding.md ships for a later version; no tool's outsourcing.knowledge
+        # names it (only the top-level knowledge: purpose table does), but it must
+        # still exist flat-named and be picked up by the extraction above.
         path = KNOWLEDGE_DIR / "role-bonding.md"
         self.assertTrue(path.is_file())
         self.assertRegex("role-bonding.md", FLAT_NAME_RE)
         self.assertNotIn(PLACEHOLDER_MARKER, _read_text(path))
+        self.assertIn("role-bonding.md", self.names, "top-level knowledge: extraction missed it")
+
+    def test_top_level_knowledge_list_is_exactly_ten_and_matches_the_union(self):
+        top_level, per_tool = _knowledge_file_list_from_contract()
+        self.assertEqual(len(top_level), 10, f"expected 10 files in the top-level knowledge: table, got {top_level}")
+        self.assertEqual(len(set(top_level)), 10, "the top-level knowledge: table has a duplicate file")
+        per_tool_union = {name for files in per_tool.values() for name in files}
+        self.assertEqual(
+            set(top_level), per_tool_union | {"role-bonding.md"},
+            "the top-level knowledge: table must equal every tool's outsourcing.knowledge "
+            "union, plus role-bonding.md (the only file no tool reads)",
+        )
 
     def test_engineer_knowledge_set_under_word_budget(self):
         files = self.per_tool.get("engineer-place")
@@ -210,21 +313,35 @@ class KnowledgeFilesTest(unittest.TestCase):
         self.assertIn("--pla", SUBCOMMAND_FLAGS["snapshot"])
         for name in self.names:
             text = _read_text(KNOWLEDGE_DIR / name)
-            for span in _CODE_SPAN_RE.findall(text):
-                tokens = span.split()
-                if not tokens:
-                    continue
-                head = tokens[0]
-                if head not in SUBCOMMAND_FLAGS:
-                    continue
-                for token in tokens[1:]:
-                    if not token.startswith("--"):
-                        continue
-                    flag = token.split("=", 1)[0].rstrip(",).")
-                    self.assertIn(
-                        flag, SUBCOMMAND_FLAGS[head],
-                        f"{name}: {flag!r} is not a flag of subcommand {head!r} (span: {span!r})",
-                    )
+            problems = _cli_reference_problems(text)
+            self.assertEqual(problems, [], f"{name}: {problems}")
+
+    def test_cli_reference_checker_catches_bogus_subcommands_and_flags(self):
+        # Negative self-check: a bogus subcommand and a bogus flag on a real
+        # subcommand must both be reported -- proves the checker fails loudly
+        # on a renamed/nonexistent subcommand rather than silently skipping it
+        # (what `continue`-on-unrecognized-head used to do).
+        bogus_text = (
+            "Run `frobnicate --pla x --out y` to build the frame.\n\n"
+            "Then run `snapshot --pla x --bogus-flag y --out z` to snapshot it.\n\n"
+            "Finally run `python3 mage_placement_cli.py obsolete-subcommand WORKSPACE` to finish.\n"
+        )
+        problems = _cli_reference_problems(bogus_text)
+        self.assertTrue(
+            any("frobnicate" in p and "not a real" in p for p in problems),
+            f"bogus subcommand not caught: {problems}",
+        )
+        self.assertTrue(
+            any("bogus-flag" in p for p in problems),
+            f"bogus flag not caught: {problems}",
+        )
+        self.assertTrue(
+            any("obsolete-subcommand" in p and "not a real" in p for p in problems),
+            f"bogus mage_placement_cli.py subcommand not caught: {problems}",
+        )
+        # and a clean reference must report nothing:
+        clean_text = "Run `snapshot --pla x --stage start --out y` to build the start snapshot.\n"
+        self.assertEqual(_cli_reference_problems(clean_text), [])
 
     def test_state_paths_are_real(self):
         for name in self.names:
