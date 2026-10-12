@@ -27,6 +27,20 @@
             "python/lib/python3.12/site-packages/hindsight_api/main.py": "751d17bc090773edb5342dcad801cb1d38aca1b82ce64bc07d3fe78c3bddba95",
             "python/lib/python3.12/site-packages/hindsight_api/admin/cli.py": "dc42d3da197400e083b02b7e1d75b02f1c9379713a2d121362c596e4ad6373f2"
           }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "python/lib/python3.12/site-packages/hindsight_api/main.py",
+            "python/lib/python3.12/site-packages/hindsight_api/admin/cli.py"
+          ],
+          "notices": [
+            "python/lib/python3.12/site-packages/hindsight_api_slim-0.10.3.dist-info/licenses/LICENSE"
+          ],
+          "files": {
+            "python/lib/python3.12/site-packages/hindsight_api/main.py": "751d17bc090773edb5342dcad801cb1d38aca1b82ce64bc07d3fe78c3bddba95",
+            "python/lib/python3.12/site-packages/hindsight_api/admin/cli.py": "dc42d3da197400e083b02b7e1d75b02f1c9379713a2d121362c596e4ad6373f2",
+            "python/lib/python3.12/site-packages/hindsight_api_slim-0.10.3.dist-info/licenses/LICENSE": "01fde0bedf83bdc185065d7af524a61690efe576a67f922eaff3a1280c17b63a"
+          }
         }
       }
     },
@@ -47,6 +61,18 @@
           "files": {
             "python/lib/python3.12/LICENSE.txt": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
             "python/bin/python3.12": "a395f264e5612a2819662ed3e37fd30d39ed61179b98e5f86c3c783a008d8623"
+          }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "python/bin/python3.12"
+          ],
+          "notices": [
+            "python/lib/python3.12/LICENSE.txt"
+          ],
+          "files": {
+            "python/bin/python3.12": "202c17d1671602a4ef1d43e9b2fdbef0769443f37bf5e51f6b603e0b2c27d9d8",
+            "python/lib/python3.12/LICENSE.txt": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
           }
         }
       }
@@ -73,6 +99,22 @@
             "postgres/lib/pg_trgm.dylib": "4ca51619d921818163446f32837f95aec9fb812f27feaa87286e6e82fa14cb4d",
             "postgres/postgres-runtime.json": "05e199a9f1b51ffa63a5928c3f2bf613b90bfdb3d416b63d908ccc3190ec67ee"
           }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "postgres/bin/postgres",
+            "postgres/lib/pg_trgm.so",
+            "postgres/postgres-runtime.json"
+          ],
+          "notices": [
+            "postgres/COPYRIGHT"
+          ],
+          "files": {
+            "postgres/bin/postgres": "3fa8fff5b5f4149d6fc430648edfc9306b76fbed19a7e7424d690d8ce84abfe3",
+            "postgres/lib/pg_trgm.so": "ac87f33b83583d28e034b978894a8ffbd96d4c0829d98256ee4d5737934f21a1",
+            "postgres/postgres-runtime.json": "da9a1dfc3521d700fed1e6bd35d95869293b9e789d6f29cd00a38151978f15af",
+            "postgres/COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd"
+          }
         }
       }
     },
@@ -93,6 +135,18 @@
           "files": {
             "notices/PGVECTOR-LICENSE": "6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87",
             "postgres/lib/vector.dylib": "84af1d70630b8f976257332e7afad379d035f12092870043f404c5cb92908e4e"
+          }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "postgres/lib/vector.so"
+          ],
+          "notices": [
+            "postgres/notices/pgvector-LICENSE"
+          ],
+          "files": {
+            "postgres/lib/vector.so": "8db73774cca23b0016cd07fecf02460d9ce9bea4564f735f8646d8e5c830c1a2",
+            "postgres/notices/pgvector-LICENSE": "6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87"
           }
         }
       }
@@ -115,6 +169,18 @@
             "models/BAAI-bge-small-en-v1.5/README.md": "ddb964361a55c6e5dfca6361615854b260c9c960205d04c7520151aaa1d75837",
             "models/BAAI-bge-small-en-v1.5/model.safetensors": "3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad"
           }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "models/BAAI-bge-small-en-v1.5/model.safetensors"
+          ],
+          "notices": [
+            "models/BAAI-bge-small-en-v1.5/README.md"
+          ],
+          "files": {
+            "models/BAAI-bge-small-en-v1.5/model.safetensors": "3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad",
+            "models/BAAI-bge-small-en-v1.5/README.md": "ddb964361a55c6e5dfca6361615854b260c9c960205d04c7520151aaa1d75837"
+          }
         }
       }
     },
@@ -136,6 +202,18 @@
             "models/cross-encoder-ms-marco-MiniLM-L-6-v2/README.md": "7c0ec39941d0d1d766ccde671f592971d82fe45b7eea550a80d1ea864ebc3baa",
             "models/cross-encoder-ms-marco-MiniLM-L-6-v2/model.safetensors": "821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae"
           }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/model.safetensors"
+          ],
+          "notices": [
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/README.md"
+          ],
+          "files": {
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/model.safetensors": "821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae",
+            "models/cross-encoder-ms-marco-MiniLM-L-6-v2/README.md": "7c0ec39941d0d1d766ccde671f592971d82fe45b7eea550a80d1ea864ebc3baa"
+          }
         }
       }
     },
@@ -156,6 +234,18 @@
           "files": {
             "notices/opencode-LICENSE": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
             "opencode": "7b63b34fafabded7d9231f6a9032755d0cdeaf8b9d2b70df8e25535471469eea"
+          }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "opencode"
+          ],
+          "notices": [
+            "notices/opencode-LICENSE"
+          ],
+          "files": {
+            "opencode": "9ca0b9953d49997601655e54f846a3efa464f237e47c6f1b04716d0f2e64c4c2",
+            "notices/opencode-LICENSE": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b"
           }
         }
       }
@@ -180,6 +270,22 @@
             "notices/RG-UNLICENSE": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
             "helpers/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
           }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "helpers/rg"
+          ],
+          "notices": [
+            "notices/rg-LICENSE-MIT",
+            "notices/rg-UNLICENSE",
+            "notices/rg-COPYING"
+          ],
+          "files": {
+            "helpers/rg": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849",
+            "notices/rg-LICENSE-MIT": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+            "notices/rg-UNLICENSE": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
+            "notices/rg-COPYING": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+          }
         }
       }
     },
@@ -202,6 +308,20 @@
             "notices/FD-LICENSE-MIT": "322cfc7aa0c774d0eca3b2610f1d414de3ddbd7d8dd4b9dea941a13a6eb07455",
             "notices/FD-LICENSE-APACHE": "73c83c60d817e7df1943cb3f0af81e4939a8352c9a96c2fd00451b1116fa635c",
             "helpers/fd": "cf3bde435da174f41cf9589a2efeaf03804df7c250fc15e8b8a1e9bfc66ebc9a"
+          }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "helpers/fd"
+          ],
+          "notices": [
+            "notices/fd-LICENSE-MIT",
+            "notices/fd-LICENSE-APACHE"
+          ],
+          "files": {
+            "helpers/fd": "e79642a479d2816c887047476bbe6ad229465f30de031033574dee2a095e0037",
+            "notices/fd-LICENSE-MIT": "322cfc7aa0c774d0eca3b2610f1d414de3ddbd7d8dd4b9dea941a13a6eb07455",
+            "notices/fd-LICENSE-APACHE": "73c83c60d817e7df1943cb3f0af81e4939a8352c9a96c2fd00451b1116fa635c"
           }
         }
       }
@@ -258,9 +378,9 @@
     },
     {
       "id": "dsh",
-      "version": "0.1.5-alpha.1",
+      "version": "0.2.0-rc.2",
       "source": "https://registry.npmjs.org/@deepseek-ai/dsh",
-      "distribution": "existing pnpm-lock.yaml; upgrade cohort owned by #99"
+      "distribution": "existing pnpm-lock.yaml; actual rc.2 compatibility qualified by #99"
     },
     {
       "id": "engineering-engine",
@@ -291,6 +411,100 @@
             "engine/member-sdk-receipt.json": "e505475a0ad1416415fd799f2d64c2c53b63d221277cfd27823d67810371eb0b",
             "engine/member-sdk-sources.json": "4b66f2fbc8d5341b08025a59c18cea3404824165b924ddfa989179daefd03ca6",
             "engine/LICENSE": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+          }
+        },
+        "linux-x64": {
+          "requiredFiles": [
+            "engine/bin/podman",
+            "engine/bin/aardvark-dns",
+            "engine/bin/catatonit",
+            "engine/bin/conmon",
+            "engine/bin/crun",
+            "engine/bin/fuse-overlayfs",
+            "engine/bin/fusermount3",
+            "engine/bin/netavark",
+            "engine/bin/nft",
+            "engine/bin/nsenter",
+            "engine/bin/passt",
+            "engine/bin/passt.avx2",
+            "engine/bin/pasta",
+            "engine/bin/pasta.avx2",
+            "engine/bin/rootlessport",
+            "engine/bin/runc",
+            "engine/member-sdk.oci.tar",
+            "engine/member-sdk-receipt.json",
+            "engine/member-sdk-sources.json"
+          ],
+          "notices": [
+            "engine/LICENSE",
+            "engine/portable-helpers/notices/glibc/COPYING",
+            "engine/portable-helpers/notices/glibc/COPYING.LIB",
+            "engine/portable-helpers/notices/glibc/LICENSES",
+            "engine/portable-helpers/notices/jansson-2.13.1/LICENSE",
+            "engine/portable-helpers/notices/libmnl-1.0.4/COPYING",
+            "engine/portable-helpers/notices/libnftnl-1.3.1/COPYING",
+            "engine/portable-helpers/notices/libselinux/LICENSE",
+            "engine/portable-helpers/notices/libsepol/COPYING",
+            "engine/portable-helpers/notices/nftables-1.1.6/COPYING",
+            "engine/portable-helpers/notices/pcre2-10.32/LICENCE",
+            "engine/portable-helpers/notices/util-linux-2.37.2/AUTHORS",
+            "engine/portable-helpers/notices/util-linux-2.37.2/COPYING",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.BSD-3-Clause",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.BSD-4-Clause-UC",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.GPL-2.0-or-later",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.GPL-3.0-or-later",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.ISC",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.LGPL-2.1-or-later",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libblkid/COPYING",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libfdisk/COPYING",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libmount/COPYING",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libsmartcols/COPYING",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libuuid/COPYING"
+          ],
+          "files": {
+            "engine/bin/podman": "de445d148253add420d70202e0d0345e2d2e2417b13c89747f302e02b3f806f6",
+            "engine/bin/aardvark-dns": "b1a808b154cf33271365026510b63ff0ad0f1ca0dec832ddf55396bd8915e65f",
+            "engine/bin/catatonit": "3e341fa672d2ac97666808e6a6174b293c605936a85412e594fed9e7aff34511",
+            "engine/bin/conmon": "5363350f6e46e138015fc8aa30a7b869019740cb13107355a2b67537a86b2270",
+            "engine/bin/crun": "2717a4b0942357fe3e3bae8c929c8d1d97bf8494d934c79b055efc7592a743e8",
+            "engine/bin/fuse-overlayfs": "a02bea20b6e63006cec6c20e317a47f75b000629916511de3f50467a01b66d96",
+            "engine/bin/fusermount3": "92fcd35fe463ee7f23b9d102dd8512925a28098a8ffd8c38218537063504de0d",
+            "engine/bin/netavark": "c7c6c1b899ce26ea099730b3e5c4a0c36c04651b233cba28a138d98680b52dc4",
+            "engine/bin/nft": "6742f5caa96035b791c28b020ccc4f8dcf32866375958be54b30dd3b158c244f",
+            "engine/bin/nsenter": "8acc24f3cb9d9205caeb73cbbc0d9c71f84aaf9862e83853d08580111c25906d",
+            "engine/bin/passt": "d1e0853a7475584cd395ef99554d82b2885aea469105a0df89cfc78e4accd4fb",
+            "engine/bin/passt.avx2": "9b94f9356f27233a136c3ef4eb456ce4d9f5947d7c360df8e41b8fda94bd2288",
+            "engine/bin/pasta": "d1e0853a7475584cd395ef99554d82b2885aea469105a0df89cfc78e4accd4fb",
+            "engine/bin/pasta.avx2": "9b94f9356f27233a136c3ef4eb456ce4d9f5947d7c360df8e41b8fda94bd2288",
+            "engine/bin/rootlessport": "40a65191563a1948991df1be54a3bf034013403a5940f3e2deaa7257b5d2e2aa",
+            "engine/bin/runc": "36fd82cf21a97becd1287d05a0e35f482111a8935ffe937602aae3e0e26b5b01",
+            "engine/member-sdk.oci.tar": "40da89ed83606f0b57ebe8e8e2b374312e55b0f5cc913b023910635129e4fcf7",
+            "engine/member-sdk-receipt.json": "625652a63ba8383e80518de9cdb1ae43f688155214dec4d21f2633a89e6be669",
+            "engine/member-sdk-sources.json": "3268d6c8afff1179e423ad644a3835289ff2c697d7c9fc37841787774f1be631",
+            "engine/LICENSE": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3",
+            "engine/portable-helpers/notices/glibc/COPYING": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+            "engine/portable-helpers/notices/glibc/COPYING.LIB": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+            "engine/portable-helpers/notices/glibc/LICENSES": "35bdb41dc0bcb10702ddacbd51ec4c0fe6fb3129f734e8c85fc02e4d3eb0ce3f",
+            "engine/portable-helpers/notices/jansson-2.13.1/LICENSE": "1fff7d37d22157bcd81ab53b6c54da755d7c2f868f15807d9bde920f10730da0",
+            "engine/portable-helpers/notices/libmnl-1.0.4/COPYING": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+            "engine/portable-helpers/notices/libnftnl-1.3.1/COPYING": "98193898c663001eff2fdcfb676e210c13042bc1a05e8d570c363efa396f8e24",
+            "engine/portable-helpers/notices/libselinux/LICENSE": "86657b4c0fe868d7cbd977cb04c63b6c667e08fa51595a7bc846ad4bed8fc364",
+            "engine/portable-helpers/notices/libsepol/COPYING": "6095e9ffa777dd22839f7801aa845b31c9ed07f3d6bf8a26dc5d2dec8ccc0ef3",
+            "engine/portable-helpers/notices/nftables-1.1.6/COPYING": "4ee1e51baf5f3166712fa0c3e01338c7257e50ddef245d28bb14ad68f6070ba5",
+            "engine/portable-helpers/notices/pcre2-10.32/LICENCE": "c4a8b89cd38d6a7501d5b11a472fa15e71a051b66d6331c6cda364101389d6ee",
+            "engine/portable-helpers/notices/util-linux-2.37.2/AUTHORS": "bfb4b78315c64539fc2e33b53e57a3fe91d4ab5e9903f64617b8d0454aeea5af",
+            "engine/portable-helpers/notices/util-linux-2.37.2/COPYING": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.BSD-3-Clause": "9b718a9460fed5952466421235bc79eb49d4e9eacc920d7a9dd6285ab8fd6c6d",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.BSD-4-Clause-UC": "ba7640f00d93e72e92b94b9d71f25ec53bac2f1682f5c4adcccb0018359f60f8",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.GPL-2.0-or-later": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.GPL-3.0-or-later": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.ISC": "e53348ce276358e9997014071c5294b36a18c4b34f32f00ee57b9acce0aafd63",
+            "engine/portable-helpers/notices/util-linux-2.37.2/Documentation/licenses/COPYING.LGPL-2.1-or-later": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libblkid/COPYING": "f03b01c1251bc3bfee959aea99ed7906a0b08a2ff132d55a1ece18ee573a52a1",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libfdisk/COPYING": "f03b01c1251bc3bfee959aea99ed7906a0b08a2ff132d55a1ece18ee573a52a1",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libmount/COPYING": "5f12c2408a84be40fbff8ad7e281aa4e884fb92ee3f9a61aedf886a9503d3500",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libsmartcols/COPYING": "f03b01c1251bc3bfee959aea99ed7906a0b08a2ff132d55a1ece18ee573a52a1",
+            "engine/portable-helpers/notices/util-linux-2.37.2/libuuid/COPYING": "5068749ee9c2f2c545af4a4de9fde3c39dc8d90af47cc0b3a42700116f9b7e71"
           }
         }
       }
@@ -408,10 +622,121 @@
       }
     },
     "linux-x64": {
-      "qualification": "unavailable",
-      "missing": [
-        "Native PostgreSQL/vector/pg_trgm deployment closure",
-        "Linux native execution, owned rootless sandbox and clean installation evidence"
+      "qualification": "asset-assembly-only",
+      "manifestSha256": "5616cc4f5f4f4f328ebd7614e72b30e08fafbc4f38458b3f0b99056a4d03bac8",
+      "inventorySha256": "ef7dfe8045fb9a0e60627f6c02378320ea4507386bd71617532e78567a0fa272",
+      "fileCount": 49030,
+      "requiredComponents": [
+        "hindsight",
+        "python",
+        "postgres",
+        "pgvector",
+        "bge-model",
+        "reranker-model",
+        "opencode",
+        "ripgrep",
+        "fd",
+        "engineering-engine"
+      ],
+      "engineeringEngine": {
+        "kind": "podman",
+        "version": "6.1.3",
+        "provider": "rootless",
+        "guestPlatform": "linux-x64",
+        "executable": "engine/bin/podman",
+        "helpers": [
+          "engine/bin/aardvark-dns",
+          "engine/bin/catatonit",
+          "engine/bin/conmon",
+          "engine/bin/crun",
+          "engine/bin/fuse-overlayfs",
+          "engine/bin/fusermount3",
+          "engine/bin/netavark",
+          "engine/bin/nft",
+          "engine/bin/nsenter",
+          "engine/bin/passt",
+          "engine/bin/passt.avx2",
+          "engine/bin/pasta",
+          "engine/bin/pasta.avx2",
+          "engine/bin/podman",
+          "engine/bin/rootlessport",
+          "engine/bin/runc"
+        ],
+        "image": {
+          "file": "engine/member-sdk.oci.tar",
+          "sha256": "40da89ed83606f0b57ebe8e8e2b374312e55b0f5cc913b023910635129e4fcf7",
+          "bytes": 520769024,
+          "manifestSha256": "a2763b76794e4c30fc1b299b6b58ab2dd228e8e382485bf8e06b8028b0d45db8",
+          "configSha256": "cdd57b38d58bb46ac61725ff5b41235a1cf46b11437215238436a1797e33db31",
+          "layers": [
+            {
+              "sha256": "abf56b2f87242de589f03ea56779358079c07c4c099bd1e454d083538eb6666d",
+              "bytes": 48497362
+            },
+            {
+              "sha256": "08457856946d74c8aede7d750e185d1e479a79b8123d1b805182a580d224a6e2",
+              "bytes": 24056247
+            },
+            {
+              "sha256": "8cab6ce149c24516f80b26a762b6b9aaebcaf4fbe51d4c6844af7d7dbc372f2d",
+              "bytes": 64413065
+            },
+            {
+              "sha256": "01a6a9ffe665b63ea18491fedb646423413ae3fdefcf7776ee25a2eaff8a673e",
+              "bytes": 211662335
+            },
+            {
+              "sha256": "1252dbc77c173ad14ada4b3011a358999485a2468f5a881b8da6b18295f4c1e1",
+              "bytes": 3327
+            },
+            {
+              "sha256": "fc43bb6c3dac23ba1c5d43e9f7557ddba1efabe98f8447d50defe5b307109172",
+              "bytes": 59729700
+            },
+            {
+              "sha256": "753c789c519899755b1a7d932c7063079f3eee959f27f9680a1f65159f5c2be1",
+              "bytes": 1250673
+            },
+            {
+              "sha256": "e5a74028d13202c370e3ff67d121de73d28ab38a9c35ad9bc91fb40f43883522",
+              "bytes": 447
+            },
+            {
+              "sha256": "03e940124155b9752d7f292584a2a66ebb92f954c9d28e248aa0bc1f417346c0",
+              "bytes": 111136850
+            }
+          ],
+          "qualification": "trusted-fixture-only"
+        },
+        "guestInventory": {}
+      },
+      "services": [
+        {
+          "id": "hindsight",
+          "executable": "python/bin/python3.12",
+          "argv": [
+            "-I",
+            "-B",
+            "-m",
+            "hindsight_api.main"
+          ],
+          "backupExecutable": "python/bin/python3.12",
+          "backupArgv": [
+            "-I",
+            "-B",
+            "-m",
+            "hindsight_api.admin.cli"
+          ],
+          "timeoutMs": 120000,
+          "stopGraceMs": 10000
+        }
+      ],
+      "releaseBlockers": [
+        "trusted-fixture-only member cohort; real member activation/business unqualified",
+        "non-admin clean installer/move/upgrade and native install UI unqualified",
+        "full transitive/native source/NOTICE/relink/signature authenticity unqualified",
+        "permitted-destination connectivity and credential/peer isolation unqualified",
+        "current-budget Hindsight online C8 export not exercised; full same-cut backup owned by #108"
       ]
     }
   },
