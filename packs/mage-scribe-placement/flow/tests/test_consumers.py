@@ -317,6 +317,50 @@ class PredicateUnitTest(unittest.TestCase):
         self.assertTrue(all(f["status"] == "unknown" for f in rows))
         self.assertTrue(all(f["severity"] == "info" for f in rows))
 
+    @staticmethod
+    def _cohesion_snapshot(fit_a_box, fit_b_box, sha):
+        return {
+            "dbuPerUm": 10000,
+            "frame": {"widthDbu": 1000000, "heightDbu": 1000000, "scribeDbu": 1000,
+                      "cols": 1, "rows": 1, "dieWidthDbu": 998000, "dieHeightDbu": 998000},
+            "fits": [
+                {"id": "A.A_1", "base": "A", "boxDbu": fit_a_box, "extraRot": "NULL", "postfix": "",
+                 "inGroup": "", "blockType": "OVL", "priority": False, "ruleItem": "A", "lane": None},
+                {"id": "B.B_1", "base": "B", "boxDbu": fit_b_box, "extraRot": "NULL", "postfix": "",
+                 "inGroup": "", "blockType": "OVL", "priority": False, "ruleItem": "B", "lane": None},
+            ],
+            "pending": [],
+            "targets": [],
+            "ruleFacts": {"A": {"cluster": "CL1"}, "B": {"cluster": "CL1"}},
+            "snapshotSha256": sha,
+        }
+
+    def test_pair_cohesion_mismatch_is_cost_severity_on_the_metrology_model(self):
+        # metrology.json's pair-cohesion requirement is `kind: cost` -- its
+        # fail Finding must carry `severity: cost`, not the hard-coded
+        # "hard" the review flagged (coordinator fix-round-1).
+        start = self._cohesion_snapshot([0, 0, 100, 100], [0, 0, 100, 100], "f" * 64)
+        candidate = self._cohesion_snapshot([10, 0, 110, 100], [0, 0, 100, 100], "g" * 64)
+        model = consumers.load_consumer_model(MODELS_DIR, "metrology")
+        result = consumers.evaluate(model, {}, candidate, start, {}, self.out_dir)
+        cohesion = next(f for f in result["findings"] if f["predicate"] == "pair_cohesion")
+        self.assertEqual(cohesion["status"], "fail")
+        self.assertEqual(cohesion["severity"], "cost")
+
+    def test_pair_cohesion_mismatch_is_hard_severity_when_requirement_kind_is_hard(self):
+        start = self._cohesion_snapshot([0, 0, 100, 100], [0, 0, 100, 100], "f" * 64)
+        candidate = self._cohesion_snapshot([10, 0, 110, 100], [0, 0, 100, 100], "g" * 64)
+        model = {
+            "schema": "mage.consumer-model/1", "id": "diag-hard", "version": "0.1.0",
+            "scope": {"blockTypes": ["OVL"]},
+            "requirements": [{"id": "pair-cohesion", "kind": "hard", "predicate": "pair_cohesion",
+                               "parameters": {}, "source": {"type": "assumption"}, "confidence": "low"}],
+        }
+        result = consumers.evaluate(model, {}, candidate, start, {}, self.out_dir)
+        cohesion = next(f for f in result["findings"] if f["predicate"] == "pair_cohesion")
+        self.assertEqual(cohesion["status"], "fail")
+        self.assertEqual(cohesion["severity"], "hard")
+
 
 if __name__ == "__main__":
     unittest.main()

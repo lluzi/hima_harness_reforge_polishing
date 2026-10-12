@@ -119,6 +119,17 @@ def _resolve_parameter(spec, context):
     raise core.MageError("model", f"unrecognised parameter source: {spec!r}")
 
 
+def _severity(requirement):
+    """A Finding's `severity` for a requirement-kind-driven predicate: `'hard'` when
+    `requirement['kind'] == 'hard'`, else `'cost'`. Every predicate but the purely
+    informational `native_rows_for` (always `'info'`) and the `not_implemented`
+    sentinel (follows `requirement['kind']` directly, defaulting to `'hard'`) routes
+    its pass/fail severity through this one helper, so a model's `kind` field is the
+    single source of truth for how serious a Finding is -- never a predicate-specific
+    hard-coded literal."""
+    return "hard" if requirement.get("kind") == "hard" else "cost"
+
+
 def _partial(predicate, status, severity, targets, numbers, explanation):
     return {
         "targets": list(targets),
@@ -156,14 +167,15 @@ def _placed(requirement, scope, context, candidate, start, verify_files, goal):
     if pending_in_scope:
         return [
             _partial(
-                "placed", "fail", "hard", [item["id"]],
+                "placed", "fail", _severity(requirement), [item["id"]],
                 {"blockType": item.get("blockType")},
                 f"{item['id']} is still pending (not placed)",
             )
             for item in pending_in_scope
         ]
     placed_count = sum(1 for fit in candidate["fits"] if _in_scope(fit, scope))
-    return [_partial("placed", "pass", "hard", [], {"placedCount": placed_count}, "all in-scope items are placed")]
+    return [_partial("placed", "pass", _severity(requirement), [], {"placedCount": placed_count},
+                      "all in-scope items are placed")]
 
 
 def _target_distance(requirement, scope, context, candidate, start, verify_files, goal):
@@ -266,13 +278,14 @@ def _region_coverage(requirement, scope, context, candidate, start, verify_files
     if failed:
         return [
             _partial(
-                "region_coverage", "fail", "hard", [],
+                "region_coverage", "fail", _severity(requirement), [],
                 {"region": f"{row},{col}", "before": before.get((row, col), 0), "after": 0},
                 f"region {row},{col} (corner or centre) dropped to zero in-scope sites",
             )
             for row, col in failed
         ]
-    return [_partial("region_coverage", "pass", "hard", [], {"regions": per_region}, "corners and centre keep coverage")]
+    return [_partial("region_coverage", "pass", _severity(requirement), [], {"regions": per_region},
+                      "corners and centre keep coverage")]
 
 
 def _pair_cohesion(requirement, scope, context, candidate, start, verify_files, goal):
@@ -297,14 +310,15 @@ def _pair_cohesion(requirement, scope, context, candidate, start, verify_files, 
         if len({vector for _, vector in members}) > 1:
             findings.append(
                 _partial(
-                    "pair_cohesion", "fail", "hard", [member_id for member_id, _ in members],
+                    "pair_cohesion", "fail", _severity(requirement), [member_id for member_id, _ in members],
                     {"cluster": cluster, "memberCount": len(members)},
                     f"cluster {cluster!r} did not move together",
                 )
             )
     if findings:
         return findings
-    return [_partial("pair_cohesion", "pass", "hard", [], {"clusterCount": len(clusters)}, "paired fits moved together")]
+    return [_partial("pair_cohesion", "pass", _severity(requirement), [], {"clusterCount": len(clusters)},
+                      "paired fits moved together")]
 
 
 def _orientation_unchanged(requirement, scope, context, candidate, start, verify_files, goal):
@@ -314,9 +328,10 @@ def _orientation_unchanged(requirement, scope, context, candidate, start, verify
         if _in_scope(fit, scope) and fit["id"] in start_by_id and start_by_id[fit["id"]]["extraRot"] != fit["extraRot"]
     ]
     if mismatched:
-        return [_partial("orientation_unchanged", "fail", "hard", mismatched,
+        return [_partial("orientation_unchanged", "fail", _severity(requirement), mismatched,
                           {"count": len(mismatched)}, "orientation changed for in-scope fits")]
-    return [_partial("orientation_unchanged", "pass", "hard", [], {}, "orientation unchanged for in-scope fits")]
+    return [_partial("orientation_unchanged", "pass", _severity(requirement), [], {},
+                      "orientation unchanged for in-scope fits")]
 
 
 def _rigid_unit(requirement, scope, context, candidate, start, verify_files, goal):
@@ -327,9 +342,9 @@ def _rigid_unit(requirement, scope, context, candidate, start, verify_files, goa
         and _box_size(start_by_id[fit["id"]]["boxDbu"]) != _box_size(fit["boxDbu"])
     ]
     if mismatched:
-        return [_partial("rigid_unit", "fail", "hard", mismatched,
+        return [_partial("rigid_unit", "fail", _severity(requirement), mismatched,
                           {"count": len(mismatched)}, "rigid unit size changed for in-scope fits")]
-    return [_partial("rigid_unit", "pass", "hard", [], {}, "rigid unit size unchanged for in-scope fits")]
+    return [_partial("rigid_unit", "pass", _severity(requirement), [], {}, "rigid unit size unchanged for in-scope fits")]
 
 
 def _in_scope_moved(scope, candidate, start):
@@ -447,6 +462,19 @@ def evaluate(consumer_model, context, candidate_snapshot, start_snapshot, verify
     Returns `{'findings': [...], 'receiptPath': str, 'receiptSha256': str}`.
     See the module docstring for the evaluator-receipt rule governing each
     Finding's `evaluatorReceipt` field.
+
+    `evaluate()` does not look at `consumer_model.get('enabled')` -- a
+    disabled model (e.g. `bonding`, `enabled: false`) is evaluated exactly
+    like any other if the caller passes it in. Deciding *which* consumer
+    models to run (skipping disabled ones) is the caller's job, not this
+    function's; `evaluate()` only ever evaluates the model it is handed.
+
+    `consumerContext`'s `limitHardness` field is not consulted here in
+    0.1.0 -- it exists in `flow/schemas/consumer-context.json` for a future
+    version to use, but today `target_distance`'s severity (like every
+    other predicate's) comes from the requirement's own `kind` field in
+    the consumer model (`hard` -> `'hard'`, `cost` -> `'cost'`), never from
+    `limitHardness`.
     """
     consumer_id = consumer_model["id"]
     version = consumer_model["version"]
