@@ -1,7 +1,7 @@
 // Stage the complete pinned native PostgreSQL distribution. This does not download, build, or
 // qualify a platform: it consumes a retained official-source build and audits the staged bytes.
 import { createHash } from 'node:crypto';
-import { closeSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -123,6 +123,57 @@ export function packagePostgres({ prefix, buildManifest, output }) {
     for (const binary of ['postgres', 'psql', 'initdb', 'pg_ctl']) run(path.join(output, 'bin', binary), ['--version']);
     return manifest;
   } catch (error) { rmSync(output, { recursive: true, force: true }); throw error; }
+}
+
+// Team assets carry the extensions built against this same PostgreSQL cohort. Keep the Host's
+// default resource and cluster, while retaining that complete manifest and its source notices.
+export function stageTeamPostgres({ output, teamRuntimeDirectory, teamRuntimeIdentity }) {
+  output = realpathSync(output);
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+  const refuse = message => { throw new Error(`package-postgres: Team PostgreSQL ${message}`); };
+  const teamBytes = readFileSync(path.join(teamRuntimeDirectory, 'team-runtime.json'));
+  if (digest(teamBytes) !== teamRuntimeIdentity.manifestSha256) refuse('manifest identity differs');
+  const team = JSON.parse(teamBytes);
+  const source = realpathSync(path.join(teamRuntimeDirectory, 'postgres'));
+  const bytes = readFileSync(path.join(source, 'postgres-runtime.json'));
+  if (digest(bytes) !== team.files['postgres/postgres-runtime.json']) refuse('runtime manifest bytes differ');
+  const candidate = JSON.parse(bytes);
+  const base = JSON.parse(readFileSync(path.join(output, 'postgres-runtime.json')));
+  if (candidate.format !== 'hima-postgres-runtime/1' || candidate.version !== base.version
+    || candidate.platform !== base.platform || candidate.platform !== team.platform
+    || candidate.source?.sha256 !== base.source?.sha256) refuse('base build identity differs');
+  for (const file of ['bin/postgres', 'bin/initdb', 'bin/psql', 'bin/pg_ctl']) {
+    if (!base.files[file] || candidate.files[file] !== base.files[file]
+      || digest(readFileSync(path.join(output, file))) !== base.files[file]) refuse('base executable bytes differ');
+  }
+  const extensionSuffix = candidate.platform.startsWith('darwin-') ? 'dylib' : 'so';
+  for (const name of ['vector', 'pg_trgm']) {
+    if (!candidate.extensions?.[name] || !candidate.files[`lib/${name}.${extensionSuffix}`]
+      || !candidate.files[`share/extension/${name}.control`]) refuse(`is missing required ${name} extension`);
+  }
+  const expected = Object.keys(team.files).filter(file => file.startsWith('postgres/') && file !== 'postgres/postgres-runtime.json').sort();
+  if (JSON.stringify(expected) !== JSON.stringify(Object.keys(candidate.files).map(file => `postgres/${file}`).sort())) refuse('inventory differs');
+  for (const [file, hash] of Object.entries(candidate.files)) {
+    if (!file || path.isAbsolute(file) || file.split('/').some(part => part === '..' || !part)
+      || !/^[a-f0-9]{64}$/.test(hash) || team.files[`postgres/${file}`] !== hash) refuse('file identity is invalid');
+    const at = path.join(source, file);
+    if (!lstatSync(at).isFile() || !realpathSync(at).startsWith(source + path.sep)
+      || digest(readFileSync(at)) !== hash) refuse(`bytes differ for ${file}`);
+  }
+  const temporary = mkdtempSync(path.join(path.dirname(output), '.postgres-team-'));
+  const staged = path.join(temporary, 'postgres'); const backup = path.join(temporary, 'base');
+  try {
+    mkdirSync(staged);
+    for (const file of Object.keys(candidate.files)) {
+      mkdirSync(path.dirname(path.join(staged, file)), { recursive: true });
+      cpSync(path.join(source, file), path.join(staged, file));
+      if (digest(readFileSync(path.join(staged, file))) !== candidate.files[file]) refuse(`staged bytes differ for ${file}`);
+    }
+    writeFileSync(path.join(staged, 'postgres-runtime.json'), bytes);
+    renameSync(output, backup);
+    try { renameSync(staged, output); } catch (error) { renameSync(backup, output); throw error; }
+    return candidate;
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
-import { packagePostgres } from './package-postgres.mjs';
+import { packagePostgres, stageTeamPostgres } from './package-postgres.mjs';
 import { nativeLayout, stageRuntimeNotices, auditDistribution, stageCorrespondingSource, hashFile, finalizeNativeObligations } from './package-native-audit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -904,9 +904,10 @@ if (args[0] === '--finalize-native-obligations') {
     const libInsightSource = value('--libinsight-source');
     if (args.includes('--libinsight-source') && !libInsightSource) fail('--libinsight-source needs a LibInsight git checkout');
     const libinsight = libInsightSource ? stageLibInsight(libInsightSource, resource) : 'absent: no --libinsight-source; Data Insight says LibInsight is not installed';
-    const postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
+    let postgres = packagePostgres({ prefix: path.resolve(postgresPrefix), buildManifest: path.resolve(postgresBuildManifest), output: path.join(resource, 'postgres') });
     const teamPrefix=value('--team-runtime-prefix');
     const teamRuntime=teamPrefix ? await (await import('./package-team-runtime.mjs')).packageTeamRuntime({prefix:path.resolve(teamPrefix),output:path.join(resource,'team-runtime'),pinFile:path.join(root,'packages/desktop/team-runtime.pin.json'),internalCandidate}) : {status:'unavailable',diagnostic:'No retained complete Team runtime asset closure supplied; optional service unavailable, Guide unaffected.'};
+    if (teamPrefix) postgres = stageTeamPostgres({ output: path.join(resource, 'postgres'), teamRuntimeDirectory: path.join(resource, 'team-runtime'), teamRuntimeIdentity: teamRuntime });
     if (JSON.stringify(sourceState()) !== JSON.stringify(source)) fail('source changed while release files were staged');
     const nodeIdentity = stageRuntimeNotices({ resource, electronDist, nodeBinary: node24, nodeManifest: nodeBuildManifest, nodeArchive, electronManifest: electronBuildManifest, electronArchive });
     const sbom = auditDistribution({ app, resource, lockfile: path.join(root, 'pnpm-lock.yaml'), electronVersion: '44.2.0', noticeMaterials: value('--notice-materials'), teamRuntimeIdentity: teamRuntime });

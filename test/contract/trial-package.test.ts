@@ -1,7 +1,7 @@
 // L0/L2 release seam: inspect the product artifact without opening an Electron window.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -849,4 +849,55 @@ test('final technical-obligation report binds real evidence to immutable artifac
     await put('evidence.json', {...packet, components: []});
     const declared = run(); assert.notEqual(declared.status, 0); assert.match(declared.stderr, /actual build.*replacement evidence/);
   } finally { await (await import('node:fs/promises')).rm(output, {recursive: true, force: true}); }
+});
+
+// Assembly seam: the Host's default resource must use the verified extension-equipped cohort.
+async function teamPostgresFixture() {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-team-pg-'));
+  const output = path.join(directory, 'host-postgres'); const team = path.join(directory, 'team');
+  const postgres = path.join(team, 'postgres');
+  const vectorLibrary=process.platform==='darwin'?'lib/vector.dylib':'lib/vector.so';
+  const trigramLibrary=process.platform==='darwin'?'lib/pg_trgm.dylib':'lib/pg_trgm.so';
+  const files: Record<string, string> = {};
+  for (const name of ['bin/postgres', 'bin/initdb', 'bin/psql', 'bin/pg_ctl']) {
+    for (const root of [output, postgres]) { await mkdir(path.dirname(path.join(root, name)), {recursive:true}); await writeFile(path.join(root, name), 'same retained PG16.15 fixture'); }
+    files[name] = createHash('sha256').update('same retained PG16.15 fixture').digest('hex');
+  }
+  const base = {format:'hima-postgres-runtime/1',version:'16.15',platform:`${process.platform}-${process.arch}`,source:{sha256:'c1575341fa7bd40f5274ea465b34390f4dc64cdd0770af327005caaeb9f6b7ed'},files:{...files}};
+  await writeFile(path.join(output,'postgres-runtime.json'),JSON.stringify(base));
+  for (const name of [vectorLibrary,trigramLibrary,'share/extension/vector.control','share/extension/pg_trgm.control','notices/pgvector-LICENSE']) {
+    await mkdir(path.dirname(path.join(postgres,name)),{recursive:true}); await writeFile(path.join(postgres,name),'retained extension fixture');
+    files[name]=createHash('sha256').update('retained extension fixture').digest('hex');
+  }
+  const complete={...base,files,extensions:{vector:'0.8.7',pg_trgm:'1.6'}};
+  const pgBytes=JSON.stringify(complete);await writeFile(path.join(postgres,'postgres-runtime.json'),pgBytes);
+  const inventory=Object.fromEntries(Object.entries(files).map(([name,hash])=>['postgres/'+name,hash]));inventory['postgres/postgres-runtime.json']=createHash('sha256').update(pgBytes).digest('hex');
+  const teamBytes=JSON.stringify({format:'hima-team-runtime/1',platform:base.platform,files:inventory});await writeFile(path.join(team,'team-runtime.json'),teamBytes);
+  return {directory,output,team,complete,vectorLibrary,identity:{manifestSha256:createHash('sha256').update(teamBytes).digest('hex')}};
+}
+
+test('Team assembly makes both pinned Hindsight extensions available at the Host default PostgreSQL resource',async()=>{
+  const f=await teamPostgresFixture();
+  try {
+    const {stageTeamPostgres}=await import(path.join(repoRoot,'scripts/package-postgres.mjs'));
+    const manifest=stageTeamPostgres({output:f.output,teamRuntimeDirectory:f.team,teamRuntimeIdentity:f.identity});
+    assert.deepEqual(manifest.extensions,{vector:'0.8.7',pg_trgm:'1.6'});
+    assert.deepEqual(JSON.parse(await readFile(path.join(f.output,'postgres-runtime.json'),'utf8')),f.complete);
+    assert.equal(await readFile(path.join(f.output,'share/extension/vector.control'),'utf8'),'retained extension fixture');
+    assert.equal(await readFile(path.join(f.output,'notices/pgvector-LICENSE'),'utf8'),'retained extension fixture');
+  } finally {await rm(f.directory,{recursive:true,force:true});}
+});
+
+for (const corruption of ['unbound Team manifest','changed extension','different base executable']) test(`Team PostgreSQL assembly refuses ${corruption} without changing the Host resource`,async()=>{
+  const f=await teamPostgresFixture();
+  try {
+    const before=await readFile(path.join(f.output,'postgres-runtime.json'),'utf8');
+    if(corruption==='unbound Team manifest')f.identity.manifestSha256='0'.repeat(64);
+    if(corruption==='changed extension')await writeFile(path.join(f.team,'postgres',f.vectorLibrary),'changed dependency');
+    if(corruption==='different base executable')await writeFile(path.join(f.output,'bin/postgres'),'another installed PostgreSQL');
+    const {stageTeamPostgres}=await import(path.join(repoRoot,'scripts/package-postgres.mjs'));
+    assert.throws(()=>stageTeamPostgres({output:f.output,teamRuntimeDirectory:f.team,teamRuntimeIdentity:f.identity}),/Team PostgreSQL .*differ/);
+    assert.equal(await readFile(path.join(f.output,'postgres-runtime.json'),'utf8'),before);
+    assert.equal(existsSync(path.join(f.output,f.vectorLibrary)),false);
+  }finally{await rm(f.directory,{recursive:true,force:true});}
 });
