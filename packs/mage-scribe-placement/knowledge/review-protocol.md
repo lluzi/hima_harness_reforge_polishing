@@ -25,7 +25,11 @@ filing this round's Findings and Requests.
 2. **Each consumer reviews.** Reads the current candidate's own snapshot and native verify files
    (never a prior round's), runs `evaluate` under its own consumer model, and files Findings and
    Requests. A consumer never edits the layout, a rule file, or any consumer model — it only reads
-   and reports.
+   and reports. **If the candidate's `outcome` is `blocked`** (a failed attempt that produced no
+   snapshot), the consumer runs `review` with **no** findings file and does **not** run `evaluate`:
+   the result is an empty review (zero Findings/Requests, `candidateOutcome: blocked`) bound to the
+   candidate id, which the Reader accepts without reading a snapshot and `decide-round` treats as
+   `continue` while a round remains.
 3. **`decide-round` joins.** (Program code, not a resident role.) Checks every open Request has a
    Ledger answer, updates the best measured state, turns conflicting Requests (one consumer's
    `move`/`place` against another's `keep`) into Decision Request options with every consumer's own
@@ -48,8 +52,8 @@ hand-written:
 
 **Request** (`mage.request/1`) — one per hard-fail Finding you want acted on; you author this one
 yourself (`requestedOutcome`/`acceptableAlternatives`/`strength`), then `review` stamps its `schema`
-and a per-consumer sequence `id` (`R-<consumer>-<n>`, e.g. `R-wat-1`, so one Run's four reviews
-never collide):
+and a per-consumer, round-scoped sequence `id` (`R-<consumer>-<round>-<n>`, e.g. `R-wat-2-1`, so
+neither one Run's four reviews nor the same consumer across rounds ever collide):
 
 ```json
 {"fromFinding": "F-wat-3", "consumer": "wat", "snapshotSha256": "<candidate sha>",
@@ -59,11 +63,11 @@ never collide):
 ```
 
 **Ledger entry** (`mage.ledger-entry/1`) — the Engineer writes one per open Request, passed to
-`candidate --ledger <file>`; `request` names the Request's full per-consumer id (`R-<consumer>-<n>`),
+`candidate --ledger <file>`; `request` names the Request's full round-scoped id (`R-<consumer>-<round>-<n>`),
 so answering litho-pie's request never silently answers wat's:
 
 ```json
-{"schema": "mage.ledger-entry/1", "id": "L-2", "request": "R-wat-2", "answer": "declined",
+{"schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-wat-2-1", "answer": "declined",
  "answeredInSnapshot": "<this round's candidate snapshot sha>", "evidence": [],
  "note": "capacity-limited; KEY_V stays dropped this round"}
 ```

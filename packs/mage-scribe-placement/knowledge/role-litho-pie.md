@@ -24,6 +24,7 @@ Requests.
   [--start <snapshot.json>]`
 - `review --consumer litho-pie --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/litho-pie/round-NN/findings.json and pass that path> --requests
   <your requests file> --out state/round/review-litho-pie.json`
+- If the current candidate's `outcome` is `blocked` (a failed attempt that produced no snapshot), run `review --consumer litho-pie --round <n> --out state/round/review-litho-pie.json` with **no** `--findings` file and do **not** run `evaluate`: the result is an empty review (zero Findings/Requests, `candidateOutcome: blocked`) bound to the candidate id, which the Reader accepts without reading a snapshot.
 
 Never hand-write a Finding; every one must come from `evaluate`'s own evaluator receipt.
 
@@ -43,7 +44,7 @@ Goal's own `max_target_distance_um` — if that is also unset the Finding is `st
 ## Example Finding (hard fail) and Request
 
 ```json
-{"schema": "mage.finding/1", "id": "F-1", "round": 1, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-litho-pie-1", "round": 1, "snapshotSha256": "<candidate sha>",
  "consumer": "litho-pie", "consumerModel": "litho-pie@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["OVL_B.OVL_B_1"], "predicate": "target_distance", "status": "fail", "severity": "hard",
  "numbers": {"alongUm": "150", "limitUm": "100"},
@@ -51,7 +52,7 @@ Goal's own `max_target_distance_um` — if that is also unset the Finding is `st
 ```
 
 ```json
-{"fromFinding": "F-1", "consumer": "litho-pie", "snapshotSha256": "<candidate sha>",
+{"fromFinding": "F-litho-pie-1", "consumer": "litho-pie", "snapshotSha256": "<candidate sha>",
  "requestedOutcome": {"kind": "move", "targets": ["OVL_B.OVL_B_1"], "limitsUm": {"max": "100"},
                        "text": "move OVL_B onto its CT target"},
  "acceptableAlternatives": [], "strength": "hard"}

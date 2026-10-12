@@ -77,6 +77,25 @@ The candidate Reader's recomputed drops split into `mage_dropped_ordinary_count`
 objective against any external baseline or `referenceMethod`, never the total (a dropped
 Group-placed/priority mark is already a `priority-all-placed` failure on its own).
 
+Inventory conservation (`snapshot.check_inventory_conservation`, shared verbatim by the candidate
+assembler and the Reader) is checked at the level real MAGE output actually conserves — the Group,
+not the exact instance id or the base master. A fresh auto-refine replay fills a priority-only start
+into a much larger export (on the real frame case, 225 Fits → 525 Fits across 168 bases, 117 of them
+masters the start never named) and re-suffixes or even re-masters an in-group priority instance while
+keeping it in its Group, so an id-exact or per-base count refuses a genuine MAGE result. Conservation
+therefore requires: equal Fixed instance-id set, equal Group-label (`pinstGroup`) set, and an equal
+count of in-group (priority) instances per Group — a deleted or extra priority mark breaks a Group's
+count, while ordinary (non-group) fill is intentionally fluid.
+
+N6 — self-reported vs recomputed: the candidate document and `measure-incumbent` build their own
+`metrics` (the incumbent comparison table in the final report is assembled from `best.metrics`, the
+candidate's own numbers). The Reader recomputes only the *emitted facts* it ranks and rules on
+(`mage_*` values), not that whole report table, and never asserts `doc.metrics` equals its
+recomputation. The authoritative, model-independent check on the delivered numbers is therefore the
+external evaluation in the live-proof procedure — the kit's own `tools/evaluate.py` and the cold
+replay (Task 16) — which must run and reconcile before any Pack number is quoted as commercial
+evidence.
+
 ## Judge rules
 
 Seven rule files, evaluated in `evaluate-placement` from the best state's own Reader values:

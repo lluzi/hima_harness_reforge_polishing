@@ -42,9 +42,15 @@ values:
     unit: count
     description: >-
       Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.
-      The delivered `no-open-requests` rule (evaluate-placement, I3) additionally FAILs on any
-      outstanding Decision Request or any best-round consumer hard-fail Finding, so a standing
-      trade-off never reads as a silent PASS.
+      The delivered `no-open-requests` rule (evaluate-placement, I3) is a composite over the
+      DELIVERED state, not this single Measure: it also FAILs on any outstanding Decision Request,
+      any best-round consumer hard-fail Finding (R7: the best round's hard fails are mixed with the
+      final round's open Requests and Decision Requests, which is conservative and intended), or any
+      review the final `decide-round` recorded in `skippedReviews` (N3: a wrong-snapshot or
+      wrong-slot review means a consumer was never evaluated, a fail-open toward goalMet that must
+      FAIL, never read as a silent PASS). `mage_order_deviation_max` stays a known number when one
+      side is only partly bound but every bound target reports (R2: a partly-bound side's missing
+      names go to `missing`; a fully-dropped-or-unknown side reads unknown).
   mage_review_error_count:
     unit: count
     description: Structural, identity, snapshot-binding or evaluator-reproduction errors found while re-verifying one consumer's review delivery; 0 only once every Finding reproduces exactly under its declared consumer-model version.

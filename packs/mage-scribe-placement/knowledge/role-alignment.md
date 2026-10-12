@@ -29,6 +29,7 @@ yourself from the numbers, and never imply it passed or failed.
   [--start <snapshot.json>]`
 - `review --consumer alignment --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/alignment/round-NN/findings.json and pass that path> --requests
   <your requests file> --out state/round/review-alignment.json`
+- If the current candidate's `outcome` is `blocked` (a failed attempt that produced no snapshot), run `review --consumer alignment --round <n> --out state/round/review-alignment.json` with **no** `--findings` file and do **not** run `evaluate`: the result is an empty review (zero Findings/Requests, `candidateOutcome: blocked`) bound to the candidate id, which the Reader accepts without reading a snapshot.
 
 Never hand-write a Finding.
 

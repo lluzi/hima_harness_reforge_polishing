@@ -21,6 +21,7 @@ change the layout; you file Findings and Requests.
   [--start <snapshot.json>]`
 - `review --consumer wat --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/wat/round-NN/findings.json and pass that path> --requests <your
   requests file> --out state/round/review-wat.json`
+- If the current candidate's `outcome` is `blocked` (a failed attempt that produced no snapshot), run `review --consumer wat --round <n> --out state/round/review-wat.json` with **no** `--findings` file and do **not** run `evaluate`: the result is an empty review (zero Findings/Requests, `candidateOutcome: blocked`) bound to the candidate id, which the Reader accepts without reading a snapshot.
 
 Never hand-write a Finding.
 
@@ -42,14 +43,14 @@ nothing new to add.
 ## Example Finding (hard fail) and Request
 
 ```json
-{"schema": "mage.finding/1", "id": "F-5", "round": 1, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-wat-5", "round": 1, "snapshotSha256": "<candidate sha>",
  "consumer": "wat", "consumerModel": "wat@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["KEY_V.KEY_V"], "predicate": "placed", "status": "fail", "severity": "hard",
  "numbers": {"blockType": "TSK/MPAD"}, "explanation": "KEY_V.KEY_V is still pending (not placed)"}
 ```
 
 ```json
-{"fromFinding": "F-5", "consumer": "wat", "snapshotSha256": "<candidate sha>",
+{"fromFinding": "F-wat-5", "consumer": "wat", "snapshotSha256": "<candidate sha>",
  "requestedOutcome": {"kind": "place", "targets": ["KEY_V.KEY_V"], "limitsUm": {},
                        "text": "place KEY_V"},
  "acceptableAlternatives": [], "strength": "hard"}

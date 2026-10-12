@@ -23,6 +23,7 @@ file Findings and Requests.
   [--start <snapshot.json>]`
 - `review --consumer metrology --round <n> --findings <evaluate prints Findings JSON to stdout; redirect it into reviews/metrology/round-NN/findings.json and pass that path> --requests
   <your requests file> --out state/round/review-metrology.json`
+- If the current candidate's `outcome` is `blocked` (a failed attempt that produced no snapshot), run `review --consumer metrology --round <n> --out state/round/review-metrology.json` with **no** `--findings` file and do **not** run `evaluate`: the result is an empty review (zero Findings/Requests, `candidateOutcome: blocked`) bound to the candidate id, which the Reader accepts without reading a snapshot.
 
 Never hand-write a Finding.
 
@@ -42,7 +43,7 @@ needs no search window), but the cost finding must not guess a window.
 ## Example Finding (hard fail) and Request
 
 ```json
-{"schema": "mage.finding/1", "id": "F-2", "round": 1, "snapshotSha256": "<candidate sha>",
+{"schema": "mage.finding/1", "id": "F-metrology-2", "round": 1, "snapshotSha256": "<candidate sha>",
  "consumer": "metrology", "consumerModel": "metrology@0.1.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["OVL_D.OVL_D_1"], "predicate": "region_coverage", "status": "fail", "severity": "hard",
  "numbers": {"region": "0,2", "beforeCount": 1, "afterCount": 0},
@@ -50,7 +51,7 @@ needs no search window), but the cost finding must not guess a window.
 ```
 
 ```json
-{"fromFinding": "F-2", "consumer": "metrology", "snapshotSha256": "<candidate sha>",
+{"fromFinding": "F-metrology-2", "consumer": "metrology", "snapshotSha256": "<candidate sha>",
  "requestedOutcome": {"kind": "restore_order", "targets": ["OVL_D.OVL_D_1"], "limitsUm": {},
                        "text": "keep or restore an in-scope mark covering region 0,2"},
  "acceptableAlternatives": [{"text": "move a different OVL/CDSEM mark into that corner instead"}],

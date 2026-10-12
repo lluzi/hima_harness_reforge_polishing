@@ -91,6 +91,42 @@ blocked-candidate reading (`test_readers.py`); the experiment forbidden-marker a
 refusals (`test_native_session.py`); the candidate inventory refusal, the no-export blocked candidate and delivered-state
 `no-open-requests` (`test_cli_tasks.py`).
 
+### Fix round 2 — second final-review round (N1–N6, 2026-10-12)
+
+218 tests pass on both interpreters (Python 3.9.6 Mac `/usr/bin/python3`: `Ran 218 tests in
+13.710s / OK`; the identical `flow/tests/` tree on the Linglong resident container, Python 3.8.16:
+`Ran 218 tests in 21.599s / OK`). The 218 adds, on top of the 217 the first final-review round
+produced:
+
+- **N1 (blocked candidate → empty review):** a non-completed candidate carries no `files.snapshot`;
+  the review Reader accepts an empty review (`candidateOutcome: blocked`, zero Findings/Requests)
+  bound to the candidate id without reading a snapshot, `decide` routes `continue` while a round
+  remains, and a later completed round is delivered — `test_cli_tasks.py::test_blocked_round1_then_completed_round2_delivers`,
+  `test_readers.py::test_blocked_candidate_reads_all_unknown_without_error`.
+- **N2 (inventory conservation by Group):** `snapshot.check_inventory_conservation` (shared by the
+  candidate assembler and the Reader) conserves the Fixed id set, the Group-label set, and the
+  per-Group in-group instance count — admitting a re-suffixed/re-mastered priority instance and
+  ordinary fill, refusing a deleted or extra priority instance —
+  `test_readers.py::test_inventory_*`. Verified on the real staged frame case (Linglong 3.8
+  container): the vendor start vs the customer post-refine incumbent is **admitted**, and the same
+  export with one priority Fit row deleted is **refused**.
+- **N3 (skipped review is not clean):** a wrong-snapshot or wrong-slot review blocks the clean stop
+  and FAILs `no-open-requests`/`goalMet`; the review Reader refuses a review whose `consumer` ≠ its
+  delivery slot — `test_rounds.py::test_review_bound_to_wrong_snapshot_is_skipped_and_recorded`
+  (now asserts `continue`), `test_cli_tasks.py::test_review_delivered_into_wrong_slot_is_refused_by_reader`.
+- **N4 (round-scoped ids + Ledger validation):** Request ids are `R-<consumer>-<round>-<n>`;
+  `ledger-entry.request` is pattern-checked and every Ledger entry is schema-validated by the
+  candidate assembler and the Reader — `test_records.py`.
+- **N5 (dropped target excluded, not unknown):** a target whose Fit is a known drop is reported in
+  `droppedTargets` and excluded, so one dropped priority mark keeps target/order facts known;
+  unknown only when a Fit appears nowhere — `test_metrics.py::DroppedTargetKnownTest`.
+
+Metrics remain self-reported by the candidate and Reader-recomputed only for the emitted facts
+(N6); the authoritative delivered numbers come from the external evaluation in the live-proof
+procedure (kit `tools/evaluate.py` + cold replay), not this suite. Residual R1: the session log now
+records `exportSha256`/`stdoutSha256` binding the export to the logged run; the Reader does not yet
+re-derive the verify headers from `out/stdout.log` (the Task 16 cold replay covers this).
+
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values
@@ -147,23 +183,28 @@ single shared workspace): `sandbox.kind: none, testOnly: true`, `HIMA_RESIDENT_T
 Both scripted scenarios ran their full round sequence and committed through evaluation and
 delivery:
 
-- **converge** (`run-5f02ee49...`): round 1 continues (`openRequestCount: 2`), round 2 stops —
+(Run ids below vary per run; the structural facts — task/round/Job counts, route, goalState,
+failing rules — are stable and are what this section records. Latest fix-round-2 dry route:
+converge `run-b0e2e51f…`, conflict `run-eed2a6bb…`.)
+
+- **converge**: round 1 continues (`openRequestCount: 2`), round 2 stops —
   `"no consumer hard failure and no open request"`. 16 task executions (`2 + 2×6 + 2`), 10
   `engineering-*` Jobs and 10 `reader-mage-*` Jobs launched (one of each per resident task
   execution), `productModelCalls: 0`, `goalState: "met"`, `deliver.value.goalMet === true`, all
-  seven delivery rules PASS, `openRequests: 0`.
-- **conflict** (`run-8653bd2f...`): KEY_V never gets placed; WAT keeps filing a `place` Request on
+  seven delivery rules PASS, `openRequests: 0`, `decisionRequests: 0`.
+- **conflict**: KEY_V never gets placed; WAT keeps filing a `place` Request on
   it, litho-pie's own hard fail clears in round 2 (a genuine improvement) then it files a `keep`
   Request on the very same target from round 2 on — a real cross-consumer conflict every round
   after. Round 2 continues (improved), round 3 continues (no change from round 2, not improved
-  alone), round 4 stops — `"no improvement for two consecutive rounds"` (round 3 and round 4 both
-  not improved). 28 task executions (`2 + 4×6 + 2`), 20 `engineering-*` and 20 `reader-mage-*` Jobs,
-  `productModelCalls: 0`, `goalState: "not-met"`, `goalMet: false`, `drops-within-goal` is the one
-  FAILing rule (every other rule PASSes), `openRequests: 2`, `decisionRequests: 1`. This is the
-  Pack's own proven `decide()` math for this exact request/ledger shape (matching
-  `flow/tests/test_cli_tasks.py:test_no_improvement_for_two_rounds_stops_with_a_decision_request`'s
-  4-round result), not the 3-round/22-execution number this section originally predicted before
-  anyone had actually run it.
+  alone), and round 4 stops on the **round limit** — with C2's round-limit-first route order the
+  stop reason is `"round limit reached"`, reached before the two-consecutive-stalls rule it would
+  otherwise have matched. 28 task executions (`2 + 4×6 + 2`), 20 `engineering-*` and 20
+  `reader-mage-*` Jobs, `productModelCalls: 0`, `goalState: "not-met"`, `goalMet: false`,
+  `openRequests: 2`, `decisionRequests: 1`. Two rules FAIL: `drops-within-goal` (KEY_V stays
+  dropped) and `no-open-requests` (the delivered state still carries open Requests and a Decision
+  Request — I3/N3's composite, no longer a silent PASS); every other rule PASSes. This matches the
+  Pack's own `decide()` math for this request/ledger shape
+  (`flow/tests/test_cli_tasks.py:test_standing_conflict_runs_to_the_round_limit_with_a_decision_request`).
 
 Getting here surfaced two real integration gaps the Pack-local single-workspace test could not
 have caught, both now fixed:

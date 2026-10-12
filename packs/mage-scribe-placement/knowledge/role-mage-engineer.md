@@ -29,6 +29,7 @@ the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Wo
   K >= 2)
 - `candidate --round <n> --round-dir placement/round-NN --ledger <file> --out
   state/round/placement-candidate.json`
+- If a MAGE attempt produced no `out/export.pla` (a timeout, licence failure, or error before export), `candidate` still delivers a **blocked** candidate (no export/snapshot refs, no metrics). Deliver it: `decide-round` routes `continue` while a round remains and every consumer files an empty `review` (no `evaluate`), so an earlier good round still stays deliverable and the Run never stalls.
 - `evaluate --consumer <id> --candidate <snapshot.json> --out-dir <dir> [--start <snapshot.json>]`
   — you may run this on your own candidate before delivering, to see what a consumer will see, but
   it never substitutes for that consumer's own round.
@@ -70,11 +71,11 @@ you qualify it first (`mage-capabilities.md`).
 
 ## Example: answering an open Request in the Ledger
 
-Round k−1's `state/round-decision.json` names an open Request `R-2` (WAT's `place KEY_V`). You
+Round k−1's `state/round-decision.json` names an open Request `R-wat-2-1` (WAT's `place KEY_V`). You
 cannot place KEY_V this round — the lane has no feasible slot even relaxed. Your Ledger entry:
 
 ```json
-{"schema": "mage.ledger-entry/1", "id": "L-2", "request": "R-2", "answer": "declined",
+{"schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-wat-2-1", "answer": "declined",
  "answeredInSnapshot": "<this round's candidate snapshot sha>", "evidence": [],
  "note": "capacity-limited; plan-slots --relaxed still reports fewer than the requested slot; KEY_V stays dropped this round"}
 ```
