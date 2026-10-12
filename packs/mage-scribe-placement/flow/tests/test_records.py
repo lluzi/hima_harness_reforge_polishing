@@ -6,7 +6,7 @@ sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
 from mage_placement import core, records  # noqa: E402
 
 
-def valid_request(request_id="R-wat-1", from_finding="F-wat-1"):
+def valid_request(request_id="R-wat-1-1", from_finding="F-wat-1"):
     return {
         "schema": "mage.request/1",
         "id": request_id,
@@ -55,20 +55,20 @@ def ledger(request_id, answer):
 
 class ValidateRecordTest(unittest.TestCase):
     def test_valid_request_has_no_errors(self):
-        self.assertEqual(records.validate_record("request", valid_request("R-wat-1")), [])
+        self.assertEqual(records.validate_record("request", valid_request("R-wat-1-1")), [])
 
     def test_valid_finding_has_no_errors(self):
         self.assertEqual(records.validate_record("finding", valid_finding()), [])
 
     def test_valid_ledger_entry_has_no_errors(self):
-        self.assertEqual(records.validate_record("ledger-entry", ledger("R-wat-1", "satisfied")), [])
+        self.assertEqual(records.validate_record("ledger-entry", ledger("R-wat-1-1", "satisfied")), [])
 
     def test_request_with_bad_strength_is_invalid(self):
-        broken = {**valid_request("R-wat-3"), "strength": "maybe"}
+        broken = {**valid_request("R-wat-1-3"), "strength": "maybe"}
         self.assertTrue(records.validate_record("request", broken))
 
     def test_request_missing_required_field_is_invalid(self):
-        broken = valid_request("R-wat-4")
+        broken = valid_request("R-wat-1-4")
         del broken["requestedOutcome"]
         self.assertTrue(records.validate_record("request", broken))
 
@@ -76,11 +76,19 @@ class ValidateRecordTest(unittest.TestCase):
         broken = {**valid_finding(), "status": "maybe"}
         self.assertTrue(records.validate_record("finding", broken))
 
-    def test_ledger_entry_tampered_id_is_invalid(self):
-        entry = ledger("R-wat-1", "satisfied")
-        tampered = dict(entry)
-        tampered["note"] = "tampered after stamping"
-        self.assertTrue(records.validate_record("ledger-entry", tampered))
+    def test_ledger_entry_with_bare_request_id_is_invalid(self):
+        # N4: a Ledger entry whose `request` is a bare/mis-scoped id (not the
+        # round-scoped `R-<consumer>-<round>-<n>`) is refused -- `ledger_covers`
+        # could otherwise silently leave every real Request unanswered.
+        self.assertTrue(records.validate_record("ledger-entry", ledger("R-2", "satisfied")))
+        self.assertTrue(records.validate_record("ledger-entry", ledger("R-wat-1", "satisfied")))
+
+    def test_ledger_entry_id_is_a_sequence_not_a_digest(self):
+        # N4: a Ledger entry's `id` is a human-authored sequence (`L-<n>`),
+        # never a content digest -- a plain `L-1` id validates.
+        entry = {"schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-wat-1-1",
+                 "answer": "satisfied", "answeredInSnapshot": "c" * 64, "evidence": [], "note": ""}
+        self.assertEqual(records.validate_record("ledger-entry", entry), [])
 
     def test_unknown_kind_raises(self):
         with self.assertRaises(core.MageError):
@@ -88,14 +96,14 @@ class ValidateRecordTest(unittest.TestCase):
 
     def test_request_id_without_consumer_scope_is_invalid(self):
         # C3: a bare `R-<n>` id (no consumer scope) no longer validates;
-        # the convention is `R-<consumer>-<n>`.
+        # the convention is `R-<consumer>-<round>-<n>`.
         self.assertTrue(records.validate_record("request", valid_request("R-1")))
 
     def test_finding_id_without_consumer_scope_is_invalid(self):
         self.assertTrue(records.validate_record("finding", valid_finding("F-1")))
 
     def test_request_fromfinding_must_be_consumer_scoped(self):
-        self.assertTrue(records.validate_record("request", valid_request("R-wat-1", from_finding="F-1")))
+        self.assertTrue(records.validate_record("request", valid_request("R-wat-1-1", from_finding="F-1")))
 
 
 def valid_decision_request(request_id="D-1"):

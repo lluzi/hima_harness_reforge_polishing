@@ -33,6 +33,8 @@
     "consumer": {"type": "string", "minLength": 1},
     "consumerModel": {"type": "string", "minLength": 1},
     "snapshotSha256": {"type": "string", "minLength": 1},
+    "candidateId": {"type": "string"},
+    "candidateOutcome": {"type": "string", "enum": ["completed", "best-effort", "blocked"]},
     "findings": {"type": "array"},
     "requests": {"type": "array"},
     "receipt": {"$ref": "#/$defs/receipt"},

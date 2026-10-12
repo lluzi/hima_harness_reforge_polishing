@@ -130,31 +130,13 @@ def _check_scripts(workspace, files, mods):
 
 
 def _check_inventory(start, candidate, mods):
-    """C4: every structure in the start snapshot must still appear in the
-    candidate export as Fixed, Fit or dropped.
-
-    Fixed are matched by id; every start Fit and every real start drop
-    (a `pending` entry with a non-`None` `placedFlag`) is matched by its
-    instance id against the candidate's Fits plus drops. A start id that
-    appears nowhere in the export vanished (never merely dropped) -- a
-    silent loss that would read as a metric *improvement* -- so it is a
-    fail-closed refusal. Rule-derived synthetic pending copies
-    (`placedFlag is None`) are expectations, not instances, and are not
-    conserved here.
-    """
-    core = mods["core"]
-    missing_fixed = sorted({f["id"] for f in start["fixed"]} - {f["id"] for f in candidate["fixed"]})
-    start_instances = {f["id"] for f in start["fits"]} | {
-        p["id"] for p in start["pending"] if p.get("placedFlag") is not None
-    }
-    candidate_instances = {f["id"] for f in candidate["fits"]} | {p["id"] for p in candidate["pending"]}
-    missing_instances = sorted(start_instances - candidate_instances)
-    if missing_fixed or missing_instances:
-        raise core.MageError(
-            "inventory",
-            "start structure(s) missing from the export (neither placed nor dropped): "
-            f"fixed={missing_fixed} instances={missing_instances}",
-        )
+    """C4/N2: inventory conservation by base master, delegated to the single
+    shared `snapshot.check_inventory_conservation` -- the candidate assembler
+    (`mage_placement_cli.py`) re-checks the identical function, so the two
+    sides can never disagree on what "conserved" means. A legitimate MAGE
+    re-suffix of an instance (same base, same Group, changed suffix) is
+    admitted; a deleted, extra, or vanished structure is refused."""
+    mods["snapshot"].check_inventory_conservation(start, candidate)
 
 
 def _check_session_log(workspace, doc, mods, script_sha0):
@@ -234,6 +216,14 @@ def _read_candidate(report_path, workspace, mods):
     if errors:
         raise core.MageError("schema", "; ".join(errors))
 
+    # N4: every Ledger entry is schema-validated here too (the candidate
+    # assembler already validates on write) -- a mis-scoped or bare Request
+    # id in a Ledger entry is a fail-closed refusal, never silently ignored.
+    for entry in doc.get("ledger", []):
+        ledger_errors = records.validate_record("ledger-entry", entry)
+        if ledger_errors:
+            raise core.MageError("schema", "; ".join(ledger_errors))
+
     files = doc["files"]
     scripts = files.get("scripts", [])
     _check_scripts(workspace, files, mods)
@@ -312,6 +302,20 @@ def _read_candidate(report_path, workspace, mods):
     return values
 
 
+def _slot_from_report_path(report_path):
+    """N3: the consumer slot a review was delivered for, parsed from the
+    REPORT file name `review-<slot>.json`. The Reader receives the report
+    path as its own argv, so the on-disk delivery slot is the robust source
+    of truth (a review whose declared `consumer` disagrees with the slot it
+    was delivered into is refused). Returns `None` when the file name does
+    not match that shape (e.g. a probe or batch path), in which case the
+    slot check is skipped."""
+    name = Path(report_path).name
+    if name.startswith("review-") and name.endswith(".json"):
+        return name[len("review-"):-len(".json")]
+    return None
+
+
 def _read_review(report_path, workspace, mods):
     core, _metrics, snapshot, _pla, consumers, records = (
         mods["core"], mods["metrics"], mods["snapshot"], mods["pla"], mods["consumers"], mods["records"],
@@ -322,10 +326,51 @@ def _read_review(report_path, workspace, mods):
     if errors:
         raise core.MageError("schema", "; ".join(errors))
 
+    # N3: the review's own `consumer` must equal the slot it was delivered
+    # for (`review-<slot>.json`). A WAT resident that ran
+    # `evaluate/review --consumer litho-pie` and delivered it into the wat
+    # slot is refused here, so a wrong-consumer review can never ride through
+    # as a clean consumer.
+    slot = _slot_from_report_path(report_path)
+    if slot is not None and doc.get("consumer") != slot:
+        raise core.MageError(
+            "identity-mismatch",
+            f"review consumer {doc.get('consumer')!r} does not match its delivery slot {slot!r}",
+        )
+
     candidate_path = Path(workspace) / "state" / "round" / "placement-candidate.json"
     candidate = core.read_artifact(candidate_path, "placement-candidate")
+
+    # N1: a non-completed (blocked) candidate carries no `files.snapshot`, so
+    # its review is an *empty review* -- validated WITHOUT reading any
+    # snapshot and bound to the candidate id (not the snapshot sha, which a
+    # blocked candidate shares with the start state). It emits error 0 and
+    # zero counts.
+    if candidate.get("outcome") != "completed":
+        if doc.get("candidateOutcome") != "blocked":
+            raise core.MageError(
+                "identity-mismatch",
+                "candidate is blocked but the review does not declare candidateOutcome: blocked",
+            )
+        if doc.get("candidateId") != candidate.get("id"):
+            raise core.MageError("identity-mismatch", "blocked review is not bound to the current candidate id")
+        if doc.get("findings") or doc.get("requests"):
+            raise core.MageError("identity-mismatch", "a blocked candidate's review must carry no findings or requests")
+        if doc.get("identity", {}).get("round") != candidate.get("identity", {}).get("round"):
+            raise core.MageError("identity-mismatch", "review round does not match the current candidate's round")
+        return [
+            _known("mage_review_error_count", 0),
+            _known("mage_review_hard_fail_count", 0),
+            _known("mage_review_request_count", 0),
+            _known("mage_review_unknown_count", 0),
+        ]
+
     if doc["snapshotSha256"] != candidate["snapshotSha256"]:
         raise core.MageError("identity-mismatch", "review is bound to a different snapshot than the current candidate")
+    # N1: when a review carries a candidate id it must match the current
+    # candidate's -- binding by id as well as by snapshot sha.
+    if doc.get("candidateId") and doc.get("candidateId") != candidate.get("id"):
+        raise core.MageError("identity-mismatch", "review candidateId does not match the current candidate")
 
     consumer_id, _, version = doc["consumerModel"].partition("@")
     # I5: the review's own `consumer` must equal the consumer named by its

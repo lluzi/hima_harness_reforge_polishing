@@ -333,22 +333,37 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
     else:
         best = previous_best
 
+    # N1: a non-completed (blocked) round is never a clean stop and is never
+    # ranked best; while rounds remain it routes `continue` so the loop can
+    # still produce a real candidate (and any earlier good round stays
+    # deliverable). N3: a skipped (wrong-snapshot or wrong-slot) review is
+    # treated as an open hard failure for routing -- never a clean stop.
+    round_blocked = candidate.get("outcome") != "completed"
+    has_skipped = bool(skipped)
+    skipped_consumers = ", ".join(sorted(str(entry.get("consumer")) for entry in skipped))
+
     # C2 route order: the round limit is checked *first*, so a final round
-    # that still carries an unanswered previous Request stops (and delivers
-    # the best state) instead of routing `continue` into a repeat the Harness
-    # has no iteration left for -- which would fail the whole Run with
-    # nothing delivered. The unanswered ids are named in the stop reason so
-    # the delivery still records them.
+    # that still carries an unanswered previous Request (or a blocked
+    # candidate, or a skipped review) stops (and delivers the best state)
+    # instead of routing `continue` into a repeat the Harness has no iteration
+    # left for -- which would fail the whole Run with nothing delivered. The
+    # reasons are named in the stop reason so the delivery still records them.
     if round_no >= MAX_ROUNDS:
+        reasons = []
+        if round_blocked:
+            reasons.append(f"round {round_no} candidate is blocked ({candidate.get('stopReason') or 'no completed export'})")
         if unanswered_previous:
-            route, stop_reason = "stop", (
-                "round limit reached with unanswered previous request(s): "
-                + ", ".join(unanswered_previous)
-            )
-        else:
-            route, stop_reason = "stop", "round limit reached"
+            reasons.append("unanswered previous request(s): " + ", ".join(unanswered_previous))
+        if has_skipped:
+            reasons.append("skipped review(s): " + skipped_consumers)
+        route = "stop"
+        stop_reason = "round limit reached" + ("; " + "; ".join(reasons) if reasons else "")
+    elif round_blocked:
+        route, stop_reason = "continue", f"round {round_no} candidate is blocked; continuing"
     elif unanswered_previous:
         route, stop_reason = "continue", "unanswered previous request: " + ", ".join(unanswered_previous)
+    elif has_skipped:
+        route, stop_reason = "continue", "skipped review(s) this round: " + skipped_consumers
     elif not hard_fail_count and not open_reqs:
         # Spec section 4, verbatim: stop when there is no consumer
         # hard-fail Finding AND no open Request this round.

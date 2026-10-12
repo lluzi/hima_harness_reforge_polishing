@@ -150,12 +150,16 @@ def drops(snapshot):
 
 def target_distances(snapshot, limit_um):
     """`{'overLimitCount', 'maxUm', 'perTarget', 'unplaced', 'unbound',
-    'laneUnknown', 'unknownReason'}`.
+    'droppedTargets', 'laneUnknown', 'unknownReason'}`.
 
     `perTarget` covers every target with a bound Fit: `alongUm`/`crossUm`
     are non-negative exact micrometre distances. A target with no bound
-    Fit (`fitId` falsy, or the id does not resolve) is listed whole under
-    `unplaced` (also exposed as `unbound`) and excluded from `perTarget`.
+    Fit splits two ways (N5): one whose Fit is among the export's dropped
+    instances is a *known drop*, listed under `droppedTargets` and excluded
+    without making any fact unknown (it is already counted by
+    `priorityUnplaced`); one whose Fit appears nowhere (`fitId` falsy, or the
+    id resolves to neither a placed nor a dropped instance) is listed under
+    `unplaced` (also exposed as `unbound`). Both are excluded from `perTarget`.
     A Fit with `lane: null` contributes its id to `laneUnknown` and uses
     the wider-dimension fallback (wide box -> along = x, else along = y).
 
@@ -171,16 +175,27 @@ def target_distances(snapshot, limit_um):
     """
     dbu_per_um = snapshot["dbuPerUm"]
     fits_by_id = {f["id"]: f for f in snapshot["fits"]}
+    dropped_ids = {p["id"] for p in snapshot.get("pending", [])}
     limit = Decimal(str(limit_um))
 
     per_target = []
     unplaced = []
+    dropped_targets = []
     lane_unknown = []
     for target in snapshot["targets"]:
         fit_id = target.get("fitId")
         fit = fits_by_id.get(fit_id) if fit_id else None
         if fit is None:
-            unplaced.append(target)
+            # N5: a target whose bound Fit is a *known drop* (its id is in the
+            # export's dropped instances) is reported under `droppedTargets`
+            # and excluded; it does NOT make the whole round's target facts
+            # unknown (that mark is already counted by priorityUnplaced). Only
+            # a target whose Fit appears NOWHERE -- neither placed nor dropped,
+            # or never bound -- is `unplaced` (truly unknown).
+            if fit_id and fit_id in dropped_ids:
+                dropped_targets.append(target)
+            else:
+                unplaced.append(target)
             continue
 
         l, b, r, t = fit["boxDbu"]
@@ -228,6 +243,7 @@ def target_distances(snapshot, limit_um):
         "perTarget": per_target,
         "unplaced": unplaced,
         "unbound": unplaced,
+        "droppedTargets": dropped_targets,
         "laneUnknown": lane_unknown,
         "unknownReason": unknown_reason,
     }
@@ -295,13 +311,25 @@ def order_deviation(snapshot):
     """
     frame = snapshot["frame"]
     fits_by_id = {f["id"]: f for f in snapshot["fits"]}
+    dropped_ids = {p["id"] for p in snapshot.get("pending", [])}
     missing = []
+    dropped_targets = []
     by_side = {}
 
     for side in _SIDES:
         axis = _SIDE_AXIS[side]
         descending = _SIDE_DESCENDING[side]
-        rows = [t for t in snapshot["targets"] if _side_of(frame, t) == side]
+        all_rows = [t for t in snapshot["targets"] if _side_of(frame, t) == side]
+        # N5: a target whose bound Fit is a known drop is excluded from this
+        # side entirely (reported in `droppedTargets`), never counted in
+        # list1/list2/missing and never making the side unknown -- a single
+        # dropped priority mark therefore keeps the side's order known.
+        side_dropped = [
+            t for t in all_rows
+            if t.get("fitId") and t["fitId"] in dropped_ids and t["fitId"] not in fits_by_id
+        ]
+        dropped_targets.extend(side_dropped)
+        rows = [t for t in all_rows if t not in side_dropped]
         if not rows:
             by_side[side] = -1
             continue
@@ -359,6 +387,7 @@ def order_deviation(snapshot):
         "max": max_value,
         "byPartition": by_partition,
         "missing": missing,
+        "droppedTargets": dropped_targets,
         "flags": dict(ORDER_DEVIATION_FLAGS),
         "unknownReason": unknown_reason,
     }

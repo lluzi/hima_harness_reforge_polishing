@@ -489,6 +489,59 @@ class UnboundTargetUnknownTest(unittest.TestCase):
         self.assertEqual(t["maxUm"], "150")
 
 
+class DroppedTargetKnownTest(unittest.TestCase):
+    """N5: a target whose bound Fit is a known drop is reported under
+    `droppedTargets` and excluded -- it does NOT make the round's target or
+    order facts unknown (that mark is already counted by priorityUnplaced).
+    Only a Fit that appears *nowhere* reads unknown."""
+
+    def _snap(self, targets, fits, pending):
+        return {"dbuPerUm": 1, "frame": _ORDER_FRAME, "fits": fits, "targets": targets, "pending": pending}
+
+    def _target(self, row, fit_id, ct_x):
+        return {"row": row, "groupName": "G", "partName": "X", "target": f"T{row}", "lengthUm": "10",
+                "locXUm": "0", "locYUm": "0", "ctDbu": [ct_x, 0], "pinstGroup": "G",
+                "fitId": fit_id, "partition": "TB"}
+
+    def _fit(self, fit_id, placed_x):
+        return {"id": fit_id, "base": fit_id.split(".")[0], "boxDbu": [placed_x, 0, placed_x + 100, 40],
+                "extraRot": "NULL", "postfix": "", "inGroup": "G", "blockType": "OVL",
+                "priority": True, "ruleItem": "X", "lane": {"axis": "H", "track": 0}}
+
+    def test_one_dropped_priority_mark_keeps_target_facts_known(self):
+        fits = [self._fit("F.F_1", 200)]  # placed centre 250, ct 250 -> alongUm 0
+        targets = [self._target(0, "F.F_1", 250), self._target(1, "D.D_1", 100)]
+        pending = [{"id": "D.D_1", "base": "D", "sizeDbu": [50, 50], "blockType": "OVL",
+                    "ruleItem": "D", "inGroup": "G", "placedFlag": 0}]
+        t = metrics.target_distances(self._snap(targets, fits, pending), "100")
+        self.assertIsNotNone(t["maxUm"])
+        self.assertIsNotNone(t["overLimitCount"])
+        self.assertEqual(t["unbound"], [])
+        self.assertEqual([x["row"] for x in t["droppedTargets"]], [1])
+
+    def test_one_dropped_priority_mark_keeps_order_known(self):
+        fits = [self._fit("F.F_1", 200)]
+        targets = [self._target(0, "F.F_1", 250), self._target(1, "D.D_1", 100)]
+        pending = [{"id": "D.D_1", "base": "D", "sizeDbu": [50, 50], "blockType": "OVL",
+                    "ruleItem": "D", "inGroup": "G", "placedFlag": 0}]
+        d = metrics.order_deviation(self._snap(targets, fits, pending))
+        self.assertEqual(d["byPartition"]["TB-bottom"], 0)
+        self.assertIsNotNone(d["max"])
+        self.assertEqual([x["row"] for x in d["droppedTargets"]], [1])
+        self.assertNotIn("G", d["missing"])
+
+    def test_target_whose_fit_appears_nowhere_still_unknown(self):
+        # A target bound to an id that is neither placed nor dropped is still
+        # truly unknown (unplaced), not a drop.
+        fits = [self._fit("F.F_1", 200)]
+        targets = [self._target(0, "F.F_1", 250), self._target(1, "GHOST.G_1", 100)]
+        t = metrics.target_distances(self._snap(targets, fits, []), "100")
+        self.assertIsNone(t["maxUm"])
+        self.assertIsNone(t["overLimitCount"])
+        self.assertEqual([x["row"] for x in t["unbound"]], [1])
+        self.assertEqual(t["droppedTargets"], [])
+
+
 class AllUnboundSideOrderUnknownTest(unittest.TestCase):
     def test_side_with_rows_but_zero_bound_is_unknown_not_zero(self):
         marks = [

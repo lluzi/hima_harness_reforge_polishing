@@ -765,6 +765,127 @@ class CliRouteTest(unittest.TestCase):
             "placement-candidate", live_candidate_path, self.root / "r7-candidate-values.json", self.workspace,
         )
 
+    def _blocked_round(self, round_no):
+        """Run one Engineer round whose MAGE attempt produced no export, so
+        `candidate` assembles a BLOCKED candidate; return its resident output
+        (Reader all-unknown) after copying it to the live candidate path."""
+        pla_path = self.root / f"blocked{round_no}.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / f"round-{round_no:02d}"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", str(round_no),
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        (round_dir / "out" / "export.pla").unlink()  # a failed attempt: no export
+        candidate_path = self.root / f"blocked{round_no}-candidate.json"
+        _run(["candidate", self.workspace, "--round", str(round_no), "--round-dir", str(round_dir),
+              "--ledger", _write_json(self.root / f"blocked{round_no}-ledger.json", []), "--out", candidate_path])
+        self.assertEqual(json.loads(candidate_path.read_text())["outcome"], "blocked")
+
+        live = self.workspace / "state" / "round" / "placement-candidate.json"
+        live.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate_path, live)
+        values = _run_reader("placement-candidate", live, self.root / f"blocked{round_no}-values.json", self.workspace)
+        candidate_ro = _resident_output(
+            {"_contentSha256": core.file_sha256(live), "values": values["values"]}, outcome="blocked",
+        )
+
+        # Empty reviews for a blocked candidate: no `evaluate`, no findings.
+        review_ro = {}
+        for role in ("litho-pie", "metrology", "alignment", "wat"):
+            review_path = self.root / f"blocked{round_no}-review-{role}.json"
+            _run(["review", self.workspace, "--consumer", role, "--round", str(round_no), "--out", review_path])
+            self.assertEqual(json.loads(review_path.read_text())["candidateOutcome"], "blocked")
+            live_review = self.workspace / "state" / "round" / f"review-{role}.json"
+            shutil.copyfile(review_path, live_review)
+            review_values = _run_reader(
+                "consumer-review", live_review, self.root / f"blocked{round_no}-{role}-values.json", self.workspace,
+            )
+            # The blocked empty review reads clean: error 0, zero counts.
+            error = next(v for v in review_values["values"] if v["type"] == "mage_review_error_count")
+            self.assertEqual(error["value"], 0)
+            review_ro[role] = _resident_output(
+                {"_contentSha256": core.file_sha256(live_review), "values": review_values["values"]}, outcome="blocked",
+            )
+        return candidate_ro, review_ro
+
+    def test_blocked_round1_then_completed_round2_delivers(self):
+        """N1: a round-1 candidate that produced no export is blocked. Every
+        consumer runs an empty `review` (no findings), the review Reader reads
+        it clean, `decide-round` routes `continue` (never the clean stop) while
+        a round remains, and round 2 (completed) becomes best and is
+        delivered. This is the failure mode where the old Reader raised
+        KeyError('snapshot') and stalled all four reviews forever."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        incumbent_value = self._task("measure-incumbent", {
+            "CASE": prepare_value, "INCUMBENT_COMPARISON": "retained",
+        })
+
+        candidate1_ro, review1_ro = self._blocked_round(1)
+        decision1 = self._task("decide-round", {
+            "ROUND": 1, "CANDIDATE": candidate1_ro,
+            "REVIEW_LITHO_PIE": review1_ro["litho-pie"], "REVIEW_METROLOGY": review1_ro["metrology"],
+            "REVIEW_ALIGNMENT": review1_ro["alignment"], "REVIEW_WAT": review1_ro["wat"], **goal,
+        })
+        self.assertEqual(decision1["route"], "continue")
+        self.assertIn("blocked", decision1["stopReason"])
+
+        round2_dir, candidate2, candidate2_ro, evals2 = self._build_candidate(
+            2, ovl_b_on_target=True, ledger=[], place_key_v=True,
+        )
+        reviews2, review2_ro = self._build_reviews(2, evals2, {})
+        decision2 = self._task("decide-round", {
+            "ROUND": 2, "CANDIDATE": candidate2_ro,
+            "REVIEW_LITHO_PIE": review2_ro["litho-pie"], "REVIEW_METROLOGY": review2_ro["metrology"],
+            "REVIEW_ALIGNMENT": review2_ro["alignment"], "REVIEW_WAT": review2_ro["wat"], **goal,
+        })
+        self.assertEqual(decision2["route"], "stop")
+        self.assertEqual(decision2["best"]["round"], 2)  # the blocked round 1 never became best
+
+        evaluation = self._task("evaluate-placement", {
+            "DECISION": decision2, "INCUMBENT": incumbent_value, **goal,
+        })
+        self.assertTrue(evaluation["goalMet"])
+        report = self._task("deliver", {"EVALUATION": evaluation})
+        self.assertEqual(report["goalMet"], True)
+        package_path = self.workspace / "delivery" / "placement-artifacts.tar.gz"
+        self.assertTrue(package_path.is_file())
+        with tarfile.open(package_path) as archive:
+            names = archive.getnames()
+        self.assertTrue(any("round-02" in n for n in names))
+
+    def test_review_delivered_into_wrong_slot_is_refused_by_reader(self):
+        """N3: a review whose declared `consumer` disagrees with the slot it
+        was delivered into (`review-<slot>.json`) is refused by the Reader --
+        a wrong-consumer review can never ride through as a clean consumer."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 1}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        _round_dir, _candidate1, _candidate1_ro, evals1 = self._build_candidate(1, ovl_b_on_target=False, ledger=[])
+        self._build_reviews(1, evals1, {})
+        # Deliver the wat review into the litho-pie slot.
+        wat_review = (self.workspace / "state" / "round" / "review-wat.json").read_text(encoding="utf-8")
+        litho_slot = self.workspace / "state" / "round" / "review-litho-pie.json"
+        litho_slot.write_text(wat_review, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(READER), "consumer-review", str(litho_slot), str(self.root / "ws.json"), str(self.workspace)],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "ws.json").is_file())
+        self.assertEqual(json.loads(result.stderr.strip().splitlines()[-1])["code"], "identity-mismatch")
+
     def test_tampered_review_findings_refused_by_reader(self):
         """A review whose findings were edited after the evaluator receipt
         was written is refused by the consumer-review Reader."""

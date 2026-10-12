@@ -132,6 +132,80 @@ def snapshot_sha(body):
     return hashlib.sha256(core.canonical(stripped)).hexdigest()
 
 
+def _in_group_counts(snap):
+    """Count of in-group (priority) instances per Group label (`inGroup`),
+    over `fits` + `pending`. Rule-derived synthetic shortfall copies carry an
+    empty `inGroup`, so they never count; only real Fits and real drops with
+    a non-empty `inGroup` do."""
+    counts = {}
+    for item in list(snap.get("fits", [])) + list(snap.get("pending", [])):
+        group = item.get("inGroup")
+        if group:
+            counts[group] = counts.get(group, 0) + 1
+    return counts
+
+
+def check_inventory_conservation(start, candidate):
+    """N2: inventory conservation at the level real MAGE output actually
+    conserves -- the Group (not the exact instance id, and not the base
+    master count).
+
+    Why not per base: a fresh auto-refine replay turns a priority-only start
+    (verified on the real frame case: 225 Fits) into a filled export (525
+    Fits across 168 bases, 117 of them masters the start/rule never named);
+    and refine legitimately re-suffixes -- even re-*masters* -- an in-group
+    priority instance while keeping it in the same Group. A per-base or
+    exact-id count therefore refuses a genuine MAGE result (empirically it
+    refused the customer's own post-refine incumbent). What MAGE *does*
+    conserve, and what a structural loss breaks, is:
+
+    - **Fixed instance ids**, equal as a set (a Fixed object is never
+      renamed, moved to Fits, or dropped).
+    - **Group labels** (`pinstGroup`), equal as a set.
+    - **The count of in-group (priority) instances per Group label**, equal
+      between start and export. A priority mark re-suffixed or re-mastered
+      inside its Group keeps the Group's count (admitted); a priority mark
+      genuinely deleted drops its Group's count (refused); an extra priority
+      instance raises it (refused). Ordinary (non-group) fill is fluid and
+      is intentionally not conserved by count.
+
+    Verified on the real staged frame case (Linglong): the vendor start vs
+    the customer post-refine incumbent conserves all three (225 Groups, 10
+    Fixed, every Group's priority count equal) and is admitted, while the
+    same export with one priority Fit row deleted is refused.
+
+    Raises `MageError('inventory', ...)` on any violation; returns `None`
+    when conserved. Shared verbatim by the candidate assembler
+    (`mage_placement_cli.py`) and the Reader (`tools/read-mage.py`) so the
+    two sides can never disagree about what "conserved" means.
+    """
+    start_fixed = {f["id"] for f in start.get("fixed", [])}
+    candidate_fixed = {f["id"] for f in candidate.get("fixed", [])}
+    missing_fixed = sorted(start_fixed - candidate_fixed)
+    extra_fixed = sorted(candidate_fixed - start_fixed)
+
+    start_groups = {g["pinstGroup"] for g in start.get("groups", [])}
+    candidate_groups = {g["pinstGroup"] for g in candidate.get("groups", [])}
+    missing_groups = sorted(start_groups - candidate_groups)
+    extra_groups = sorted(candidate_groups - start_groups)
+
+    start_counts = _in_group_counts(start)
+    candidate_counts = _in_group_counts(candidate)
+    deleted = sorted(g for g in set(start_counts) | set(candidate_counts)
+                     if candidate_counts.get(g, 0) < start_counts.get(g, 0))
+    fabricated = sorted(g for g in set(start_counts) | set(candidate_counts)
+                        if candidate_counts.get(g, 0) > start_counts.get(g, 0))
+
+    if deleted or fabricated or missing_fixed or extra_fixed or missing_groups or extra_groups:
+        raise core.MageError(
+            "inventory",
+            "inventory not conserved by Group: "
+            f"groupsLosingPriorityInstance={deleted} groupsGainingPriorityInstance={fabricated} "
+            f"fixedMissing={missing_fixed} fixedExtra={extra_fixed} "
+            f"groupLabelMissing={missing_groups} groupLabelExtra={extra_groups}",
+        )
+
+
 def load_snapshot(path):
     """Read a snapshot written by `build_snapshot`; verify `snapshotSha256`."""
     target = Path(path)

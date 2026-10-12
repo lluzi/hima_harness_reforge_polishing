@@ -12,7 +12,7 @@ Two id conventions exist across the record kinds in this Pack (all of them
 carry `schema`/`id`, matching the Pack-wide "every record is stamped"
 convention, but not every `id` is a content digest):
 
-- Per-round *delivery* documents (`ledger-entry`, `placement-candidate`,
+- Per-round *delivery* documents (`placement-candidate`,
   `consumer-review`, `round-decision`, `placement-result`) are assembled
   once per round/cumulative snapshot and get the usual Pack-wide digest id
   (`core.stamp`/`core.digest`): `id` is the first 20 hex chars of the
@@ -20,15 +20,19 @@ convention, but not every `id` is a content digest):
   recomputes and checks this for these kinds (`DIGEST_ID_KINDS`).
 - Per-item records that are numbered within a containing document
   (`finding` -- `F-<consumer>-<n>` within one evaluator receipt/review;
-  `request` -- `R-<consumer>-<n>`; `decision-request` -- `D-<round>-<n>`)
-  carry a human-assigned sequence id instead, now scoped by consumer so one
-  Run's four reviews never collide on a bare `F-<n>`/`R-<n>` (one Ledger
-  entry could otherwise "answer" four Requests at once). Their identity is
-  "the nth item from this consumer this round", not a
-  digest of their own content (a Finding's `id` is explicitly set by the
-  evaluator before the content that depends on it, such as
-  `evaluatorReceipt`, is even known). `validate_record` does not attempt a
-  digest check for these kinds.
+  `request` -- `R-<consumer>-<round>-<n>`; `decision-request` --
+  `D-<round>-<n>`; `ledger-entry` -- `L-<n>` / `L-<round>-<n>`, authored by
+  the Engineer one per answered Request) carry a human-assigned sequence id
+  instead, scoped by consumer (and, for a Request, by round) so neither one
+  Run's four reviews nor the same consumer across rounds ever collide on a
+  bare `F-<n>`/`R-<n>` (one carried-over Ledger entry could otherwise
+  "answer" a Request it never saw). Their identity is "the nth item from
+  this consumer this round", not a digest of their own content (a Finding's
+  `id` is explicitly set by the evaluator before the content that depends on
+  it, such as `evaluatorReceipt`, is even known; a Ledger entry's `id` is
+  authored by the Engineer, not derived). `validate_record` does not attempt
+  a digest check for these kinds, but it does enforce each one's `id` (and a
+  Ledger entry's `request`) pattern via the schema.
 
 `open_requests(reviews)` flattens every `mage.consumer-review/1`-shaped
 dict's `requests` list, in review order. `ledger_covers(open_requests,
@@ -50,8 +54,11 @@ SCHEMAS_DIR = Path(__file__).resolve().parents[1] / "schemas"
 # (`core.stamp`), checked by `validate_record` when the document carries an
 # `id`. The remaining kinds (`finding`, `request`, `decision-request`) use a
 # human-assigned sequence id instead and are never digest-checked here.
+# `ledger-entry` is NOT here: its `id` is a human-authored sequence
+# (`L-<n>`/`L-<round>-<n>`), never a content digest (see the module
+# docstring and `acp.py`). It is still schema-validated (its `request` must
+# match the round-scoped Request id pattern), just never digest-checked.
 DIGEST_ID_KINDS = {
-    "ledger-entry",
     "placement-candidate",
     "consumer-review",
     "round-decision",

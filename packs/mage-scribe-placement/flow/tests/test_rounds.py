@@ -262,19 +262,21 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(d2["best"]["round"], 1)
 
     def test_review_bound_to_wrong_snapshot_is_skipped_and_recorded(self):
-        # C1: a review bound to a different snapshot is dropped (its hard fail
-        # and requests do not count this round) and recorded in the decision.
+        # C1/N3: a review bound to a different snapshot is dropped (its hard
+        # fail and requests do not count this round) and recorded in the
+        # decision. N3: a skipped review is NOT a clean consumer -- it blocks
+        # the clean stop and routes `continue` (fail-open toward stop and
+        # goalMet is the bug this closes), never a silent clean stop.
         finding = _finding("F-litho-pie-1", "litho-pie", "fail", "hard")
-        request = _request("R-litho-pie-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-litho-pie-1")
+        request = _request("R-litho-pie-1-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-litho-pie-1")
         stale = _review("litho-pie", findings=[finding], requests=[request], snapshot_sha="z" * 64)
         candidate = _candidate(reader_values=_reader_values())
         reviews = [stale, _review("metrology"), _review("alignment"), _review("wat")]
         decision = rounds.decide(self.workspace, 1, {}, reviews, candidate, self._round0_decision())
         self.assertEqual(decision["openRequests"], [])
         self.assertEqual([s["consumer"] for s in decision["skippedReviews"]], ["litho-pie"])
-        # With the stale litho-pie review dropped there is no hard fail and no
-        # open request this round, so the Run stops cleanly.
-        self.assertEqual(decision["route"], "stop")
+        self.assertEqual(decision["route"], "continue")
+        self.assertIn("skipped review", decision["stopReason"])
 
     def test_unanswered_previous_request_is_a_candidate_error_not_a_decision(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")

@@ -286,25 +286,74 @@ class ReaderNegativeTests(unittest.TestCase):
         self.assertEqual(error["value"], 0)
         _assert_all_unknown_except(values, "mage_candidate_error_count")
 
-    def test_inventory_refuses_a_vanished_structure(self):
-        # C4 (unit): a start Fit absent from the candidate export, neither
-        # placed nor dropped, is a fail-closed refusal.
-        module = _load_read_mage_module()
+    @staticmethod
+    def _fit(fit_id, base, group=""):
+        return {"id": fit_id, "base": base, "inGroup": group}
+
+    def test_inventory_refuses_a_vanished_priority_structure(self):
+        # C4/N2 (unit): a Group that lost a priority instance in the export
+        # (neither placed nor dropped) is a fail-closed refusal.
+        from mage_placement import snapshot as snapshot_mod
         start = {
-            "fixed": [{"id": "F.F"}],
-            "fits": [{"id": "A.A_1"}, {"id": "B.B_1"}],
-            "pending": [],
+            "fixed": [{"id": "F.F", "base": "F"}],
+            "fits": [self._fit("A.A_1", "A", "G1"), self._fit("A.A_2", "A", "G1")],
+            "pending": [], "groups": [{"pinstGroup": "G1"}],
         }
-        candidate = {"fixed": [{"id": "F.F"}], "fits": [{"id": "A.A_1"}], "pending": []}
+        candidate = {"fixed": [{"id": "F.F", "base": "F"}],
+                     "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
+                     "groups": [{"pinstGroup": "G1"}]}
         with self.assertRaises(core.MageError) as ctx:
-            module._check_inventory(start, candidate, {"core": core})
+            snapshot_mod.check_inventory_conservation(start, candidate)
         self.assertEqual(ctx.exception.code, "inventory")
 
-    def test_inventory_allows_a_dropped_structure(self):
-        module = _load_read_mage_module()
-        start = {"fixed": [], "fits": [{"id": "A.A_1"}], "pending": []}
-        candidate = {"fixed": [], "fits": [], "pending": [{"id": "A.A_1", "placedFlag": 0}]}
-        module._check_inventory(start, candidate, {"core": core})  # no raise: dropped counts
+    def test_inventory_allows_a_dropped_priority_structure(self):
+        # A priority instance moved to drops (same Group) conserves the
+        # Group's count -- admitted.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [], "fits": [],
+                     "pending": [{"id": "A.A_1", "base": "A", "inGroup": "G1", "placedFlag": 0}],
+                     "groups": [{"pinstGroup": "G1"}]}
+        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+
+    def test_inventory_admits_a_resuffixed_or_remastered_instance(self):
+        # N2: MAGE re-suffixes (even re-masters) an in-group priority instance
+        # during refine while keeping it in the same Group -- conservation by
+        # Group admits it; an id-exact or per-base check wrongly refuses a real
+        # MAGE result (verified against the customer post-refine incumbent).
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [self._fit("OVL.OVL_1", "OVL", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [], "fits": [self._fit("CLUSTER.OVL_7", "CLUSTER", "G1")],
+                     "pending": [], "groups": [{"pinstGroup": "G1"}]}
+        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+
+    def test_inventory_tolerates_ordinary_fill(self):
+        # Ordinary (non-group) fill added by auto-refine is fluid and is not
+        # conserved by count.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [self._fit("OVL.OVL_1", "OVL", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [],
+                     "fits": [self._fit("OVL.OVL_1", "OVL", "G1"),
+                              self._fit("FILL.FILL_1", "FILL"), self._fit("FILL.FILL_2", "FILL")],
+                     "pending": [], "groups": [{"pinstGroup": "G1"}]}
+        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+
+    def test_inventory_refuses_an_extra_priority_instance(self):
+        # N2: an export that invented an extra priority instance in a Group
+        # (count rises) is refused -- conservation catches a fabricated
+        # structure, not only a deleted one.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [self._fit("OVL.OVL_1", "OVL", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [],
+                     "fits": [self._fit("OVL.OVL_1", "OVL", "G1"), self._fit("OVL.OVL_2", "OVL", "G1")],
+                     "pending": [], "groups": [{"pinstGroup": "G1"}]}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate)
+        self.assertEqual(ctx.exception.code, "inventory")
 
 
 def doc_sha(path):

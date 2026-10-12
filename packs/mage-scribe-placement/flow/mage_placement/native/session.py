@@ -349,6 +349,17 @@ class MageSession:
         def _existing(path):
             return str(path) if path.exists() else None
 
+        def _sha_or_none(path):
+            return core.file_sha256(path) if path.exists() else None
+
+        # R1: bind the export to this exact logged run by recording both the
+        # captured stdout's sha256 and the export.pla's sha256 in the result
+        # and the session log. A later reader can re-derive the verify headers
+        # from the logged stdout and confirm the delivered export is the one
+        # this logged round produced.
+        export_sha256 = _sha_or_none(out_dir / "export.pla")
+        stdout_sha256 = _sha_or_none(stdout_path)
+
         result = {
             "exportPla": _existing(out_dir / "export.pla"),
             "verifyFiles": verify_files,
@@ -361,6 +372,8 @@ class MageSession:
             "fill": bool(fill),
             "experimentTcl": str(experiment_dest) if experiment_dest is not None else None,
             "experimentSha256": experiment_sha256,
+            "exportSha256": export_sha256,
+            "stdoutSha256": stdout_sha256,
         }
 
         self._append_log({
@@ -373,6 +386,8 @@ class MageSession:
             "completed": completed,
             "fill": bool(fill),
             "experimentSha256": experiment_sha256,
+            "exportSha256": export_sha256,
+            "stdoutSha256": stdout_sha256,
             "startedAt": started_at,
             "endedAt": ended_at,
         })

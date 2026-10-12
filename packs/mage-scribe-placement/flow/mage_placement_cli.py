@@ -71,20 +71,10 @@ def _priority_unplaced(snap):
 
 
 def _check_inventory_conservation(start, candidate):
-    """C4: every start structure must still appear in the candidate export as
-    Fixed/Fit/dropped; a vanished id is refused (`MageError('inventory')`)."""
-    missing_fixed = sorted({f["id"] for f in start["fixed"]} - {f["id"] for f in candidate["fixed"]})
-    start_instances = {f["id"] for f in start["fits"]} | {
-        p["id"] for p in start["pending"] if p.get("placedFlag") is not None
-    }
-    candidate_instances = {f["id"] for f in candidate["fits"]} | {p["id"] for p in candidate["pending"]}
-    missing_instances = sorted(start_instances - candidate_instances)
-    if missing_fixed or missing_instances:
-        raise core.MageError(
-            "inventory",
-            "start structure(s) missing from the export (neither placed nor dropped): "
-            f"fixed={missing_fixed} instances={missing_instances}",
-        )
+    """C4/N2: inventory conservation by base master, delegated to the single
+    shared `snapshot.check_inventory_conservation` so the candidate assembler
+    and the Reader can never disagree on what "conserved" means."""
+    snapshot.check_inventory_conservation(start, candidate)
 
 
 def _case_readiness(workspace):
@@ -511,6 +501,15 @@ def _cmd_candidate(workspace, args):
     ledger_path = _resolve_in_workspace(workspace, opts.ledger) if opts.ledger else None
     if ledger_path is not None and ledger_path.is_file():
         ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    # N4: every Ledger entry is schema-validated here (and again by the
+    # Reader) -- `mage.ledger-entry/1` with a `request` matching the
+    # round-scoped Request id pattern -- so a hand-authored entry that names
+    # a bare or mis-scoped Request id (`R-2`) is refused at assembly time
+    # instead of silently leaving every real Request unanswered.
+    for entry in ledger:
+        entry_errors = records.validate_record("ledger-entry", entry)
+        if entry_errors:
+            raise core.MageError("schema", "; ".join(entry_errors))
 
     # Support refs common to the completed and blocked paths. The session log
     # lives inside this round's own directory (under the Engineer tool's
@@ -630,15 +629,62 @@ def _cmd_review(workspace, args):
     parser = argparse.ArgumentParser(prog="review")
     parser.add_argument("--consumer", required=True)
     parser.add_argument("--round", required=True, type=int)
-    parser.add_argument("--findings", required=True)
-    parser.add_argument("--requests", required=True)
+    # N1: `--findings` is optional -- a blocked candidate's review carries no
+    # findings file (the consumer never runs `evaluate` against a candidate
+    # that produced no snapshot).
+    parser.add_argument("--findings", required=False, default=None)
+    parser.add_argument("--requests", required=False, default=None)
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
 
-    # `--findings`/`--requests`/`--out` are workspace-relative by convention.
-    findings_path = _resolve_in_workspace(workspace, opts.findings)
-    requests_path = _resolve_in_workspace(workspace, opts.requests)
     out_path = str(_resolve_in_workspace(workspace, opts.out))
+
+    # Every review is bound to the current candidate (the one the Reader also
+    # reads at `state/round/placement-candidate.json`) by that candidate's own
+    # `id` -- N1 wants the binding independent of the snapshot sha, which a
+    # blocked candidate shares with the start state.
+    candidate_live = Path(workspace) / "state" / "round" / "placement-candidate.json"
+    candidate_doc = core.read_artifact(candidate_live, "placement-candidate") if candidate_live.is_file() else None
+    candidate_id = candidate_doc.get("id", "") if candidate_doc else ""
+    candidate_outcome = candidate_doc.get("outcome") if candidate_doc else None
+    candidate_snapshot_sha = candidate_doc.get("snapshotSha256", "") if candidate_doc else ""
+
+    findings_path = _resolve_in_workspace(workspace, opts.findings) if opts.findings else None
+    has_findings = findings_path is not None and findings_path.is_file()
+
+    if not has_findings:
+        # N1: an empty review for a non-completed (blocked) candidate. Zero
+        # Findings/Requests, `candidateOutcome: blocked`, bound to the
+        # candidate id; the Reader validates this shape without reading any
+        # snapshot. A completed candidate must never take this path -- it
+        # requires a real evaluated review.
+        if candidate_doc is None:
+            raise core.MageError("missing-input", "review has no findings and no live candidate to bind to")
+        if candidate_outcome == "completed":
+            raise core.MageError(
+                "engineering-required",
+                "a completed candidate requires an evaluated review (run evaluate, then review --findings)",
+            )
+        models_dir = Path(__file__).resolve().parent / "consumer_models"
+        model = consumers.load_consumer_model(models_dir, opts.consumer)
+        body = core.stamp("consumer-review", {
+            "identity": {**_identity(), "round": opts.round},
+            "consumer": opts.consumer, "consumerModel": f"{opts.consumer}@{model['version']}",
+            "snapshotSha256": candidate_snapshot_sha or candidate_id,
+            "candidateId": candidate_id, "candidateOutcome": candidate_outcome or "blocked",
+            "findings": [], "requests": [],
+            # No evaluator receipt exists for an un-evaluated blocked candidate;
+            # the Reader's blocked path never reads it. Non-empty placeholders
+            # keep the frozen `receipt` shape valid.
+            "receipt": {"path": "blocked", "sha256": "blocked"},
+            "summary": f"blocked candidate: empty review (outcome {candidate_outcome})",
+        })
+        errors = records.validate_record("consumer-review", body)
+        if errors:
+            raise core.MageError("schema", "; ".join(errors))
+        return out_path, body
+
+    requests_path = _resolve_in_workspace(workspace, opts.requests) if opts.requests else None
 
     findings_payload = json.loads(findings_path.read_text(encoding="utf-8"))
     findings = []
@@ -647,16 +693,20 @@ def _cmd_review(workspace, args):
         entry["round"] = opts.round
         findings.append(entry)
 
-    requests_raw = json.loads(requests_path.read_text(encoding="utf-8")) if requests_path.is_file() else []
-    snapshot_sha = findings[0]["snapshotSha256"] if findings else ""
+    requests_raw = (
+        json.loads(requests_path.read_text(encoding="utf-8"))
+        if requests_path is not None and requests_path.is_file() else []
+    )
+    snapshot_sha = findings[0]["snapshotSha256"] if findings else candidate_snapshot_sha
     requests = []
     for index, raw in enumerate(requests_raw, start=1):
         entry = dict(raw)
         entry["schema"] = "mage.request/1"
-        # C3: Request ids are per-consumer (`R-<consumer>-<n>`) so one Run's
-        # four reviews never mint colliding bare `R-<n>` ids that a single
-        # Ledger entry could "answer" across consumers.
-        entry["id"] = f"R-{opts.consumer}-{index}"
+        # C3/N4: Request ids are per-consumer AND round-scoped
+        # (`R-<consumer>-<round>-<n>`) so neither two consumers in one round
+        # nor the same consumer across rounds ever mint colliding ids that a
+        # single carried-over Ledger entry could "answer".
+        entry["id"] = f"R-{opts.consumer}-{opts.round}-{index}"
         entry.setdefault("snapshotSha256", snapshot_sha)
         entry.setdefault("consumer", opts.consumer)
         request_errors = records.validate_record("request", entry)
@@ -670,6 +720,7 @@ def _cmd_review(workspace, args):
     body = core.stamp("consumer-review", {
         "identity": {**_identity(), "round": opts.round},
         "consumer": opts.consumer, "consumerModel": consumer_model, "snapshotSha256": snapshot_sha,
+        "candidateId": candidate_id, "candidateOutcome": candidate_outcome or "completed",
         "findings": findings, "requests": requests,
         "receipt": {"path": findings_payload.get("receiptPath", ""), "sha256": findings_payload.get("receiptSha256", "")},
         "summary": f"{len(findings)} finding(s), {hard_fail_count} hard fail(s), {len(requests)} request(s)",

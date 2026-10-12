@@ -404,7 +404,15 @@ def evaluate_placement(workspace, inputs):
         open_requests_delivered = len(decision.get("openRequests", []))
     decision_request_count = len(decision.get("decisionRequests", []))
     best_hard_fail = (best.get("metrics") or {}).get("hardFailCount", 0)
-    no_open = (open_requests_delivered == 0) and (decision_request_count == 0) and (best_hard_fail == 0)
+    # N3: a skipped (wrong-snapshot or wrong-slot) review means a consumer was
+    # never evaluated against the delivered state -- it is a fail-open toward
+    # `goalMet`, so `no-open-requests` FAILs (never a silent PASS) whenever the
+    # final decision recorded any skipped review.
+    skipped_count = len(decision.get("skippedReviews", []))
+    no_open = (
+        (open_requests_delivered == 0) and (decision_request_count == 0)
+        and (best_hard_fail == 0) and (skipped_count == 0)
+    )
     rules_result["no-open-requests"] = "PASS" if no_open else "FAIL"
 
     goal_met = all(rules_result[rule_id] == "PASS" for rule_id in RULE_IDS)
