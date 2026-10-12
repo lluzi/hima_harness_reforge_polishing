@@ -99,3 +99,27 @@ lessons.
 
 Comparisons stay honest. We show our own simulation count and corner coverage. We do not claim
 "faster than Aether" across different circuits and PDKs.
+
+## Measured, 2026-10-12 (branch `demo/analog-ota`)
+
+On the lab server, with Cadence Spectre 23.1 and the open GF180MCU PDK, the `analog-bandgap`
+Pack's tool chain signed off a bandgap on the Pack method's first cut. These are the Pack's own
+steps run by hand; no agent was involved yet.
+
+| | Aether Agent (video) | HimaHarness, measured |
+| --- | --- | --- |
+| Corners judged | 1 (nominal, 27 C) | 30 (5 process x 3 temperatures x 2 supplies), worst of each line |
+| VBG | 1.2015 V / 1.1843 V | worst 1.2108 V over every corner (band 1.176-1.224) |
+| IQ | 2.89 uA | 6.39 uA worst corner (< 8) |
+| TC | 95.2 ppm/C | 21.6 ppm/C worst corner (< 100) |
+| Phase margin | 64.95 deg | 75.7 deg worst corner (> 60), every crossing |
+| PSRR at 1 kHz | observed only | 53.3 dB worst corner, judged (> 40) |
+| Monte Carlo | none | 100 runs, sigma 4.79 mV, mean +/- 3 sigma inside +/- 2 % |
+| Layout | a different reference cell | the sized cell: 201 x 204 um, DRC 0 on two decks, LVS match on two checks |
+| After layout | none | every line met at every corner again (C extraction) |
+| Who decided | the agent | Readers and judges outside the agent, bound to the design's SHA-256 |
+| Wall time | ~17 min sizing + 2 min layout | ~3 min for the whole check chain |
+
+The competitor's numbers are their own circuit at one corner, on a foundry PDK; ours are a different
+sizing on an open PDK. The comparison is coverage and who decides, not the values. The agent's part
+(the App run with the resident design agent) is the next step.
