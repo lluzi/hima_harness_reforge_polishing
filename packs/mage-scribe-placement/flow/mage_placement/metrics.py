@@ -167,64 +167,93 @@ def target_distances(snapshot, limit_um):
     }
 
 
-_PARTITION_AXIS = {"TB": "x", "LR": "y", "IN": "x"}
-
-
 def _placed_centre_doubled(fit, axis):
     l, b, r, t = fit["boxDbu"]
     return (l + r) if axis == "x" else (b + t)
 
 
-def order_deviation(snapshot):
-    """Reproduce `run.tcl:check_dev` exactly over each of `TB`, `LR`, `IN`.
+_SIDES = ("TB-bottom", "TB-top", "LR-left", "LR-right")
+_SIDE_AXIS = {"TB-bottom": "x", "TB-top": "x", "LR-left": "y", "LR-right": "y"}
+_SIDE_DESCENDING = {"TB-bottom": False, "TB-top": False, "LR-left": True, "LR-right": True}
+ORDER_DEVIATION_FLAGS = {"LR": 3, "TB": 2}
 
-    `list1` is the **full** CSV-row-order `groupName` of every target in
-    the partition, bound or not. `list2` is the `groupName` of only the
-    *bound* subset, sorted by placed along-lane centre (ties by `row`) —
-    an unbound target contributes no slot to `list2` at all; it is never
-    "skipped past" within list1 either, it simply occupies a `list1`
-    position with no counterpart.
 
-    Matching is by occurrence index, exactly as the customer procedure
-    does it, and is **positional, not identity-aware**: walking `list1`
-    left to right, the k-th time a given name is seen (k counted per
-    name, starting at 0) is matched against the k-th occurrence of that
-    same name in `list2`. This means: (a) permuting which physical mark
-    holds which placed position among two same-named occurrences never
-    changes the deviation, because `list2` only ever records names, not
-    which mark produced them; (b) when one of several same-named
-    occurrences in `list1` is unbound, the remaining (fewer) same-named
-    occurrences in `list2` still pair against `list1`'s occurrences in
-    strict left-to-right order — an earlier `list1` occurrence can end up
-    matched to a `list2` slot that was actually placed by a *later*
-    occurrence's mark, and a `list1` occurrence beyond `list2`'s count
-    for that name is left unmatched (contributes no deviation, but is not
-    specially flagged either — only an unbound target's own name goes to
-    `missing`).
-
-    `dev` is `|i - j|` (positions in `list1`/`list2`), maxed over the
-    partition. An empty partition reports `-1` (the customer script's own
-    initial value). Every unbound target's `groupName` is collected under
-    `missing`, independent of the occurrence-index matching above.
+def _side_of(frame, target):
+    """`TB-bottom`/`TB-top`/`LR-left`/`LR-right`/`None`, per the customer
+    `run.tcl` side split. Membership in `TB` vs `LR` (vs `IN`, never
+    sided) comes from the existing `partition` field; a `TB` target's
+    side is the sign of its CT y relative to the Frame's vertical centre
+    (`< -> bottom`, `>= -> top`); an `LR` target's side is CT x relative
+    to the horizontal centre (`< -> left`, `>= -> right`). Compared as
+    `2 * ctDbu[axis]` against `frame['heightDbu']`/`['widthDbu']` to stay
+    exact integer arithmetic (no Decimal needed for a yes/no side pick).
     """
-    fits_by_id = {f["id"]: f for f in snapshot["fits"]}
-    by_partition = {}
-    missing = []
+    if target["partition"] == "TB":
+        return "TB-bottom" if 2 * target["ctDbu"][1] < frame["heightDbu"] else "TB-top"
+    if target["partition"] == "LR":
+        return "LR-left" if 2 * target["ctDbu"][0] < frame["widthDbu"] else "LR-right"
+    return None
 
-    for partition, axis in _PARTITION_AXIS.items():
-        rows = [t for t in snapshot["targets"] if t["partition"] == partition]
+
+def order_deviation(snapshot):
+    """Reproduce the customer `run.tcl:check_dev` exactly, per side.
+
+    Only `TB` (split into `TB-bottom`/`TB-top`) and `LR` (split into
+    `LR-left`/`LR-right`) are checked — `IN` never is, and reports `None`
+    in `byPartition`. `max` is the maximum of the four checked sides
+    (`-1` when every one of them is empty, the customer script's own
+    initial value).
+
+    For each side: `list2` ("requested") is every target's `groupName` in
+    that side — bound or not — sorted by its **requested** CT coordinate
+    along that side's axis (`TB` by x, `LR` by y; `LR` descending, `TB`
+    ascending, per the customer's own convention — note this direction
+    choice cannot itself change any `dev` value, since reversing both
+    `list1` and `list2` the same way preserves every pairwise index
+    difference; only the *axis* choice, x vs y, is observable). `list1`
+    ("placed") is only the *bound* subset's `groupName`, sorted the same
+    way by its **placed** bbox-centre coordinate. An unbound target
+    contributes no slot to `list1` and its name goes straight to
+    `missing`.
+
+    Matching is by occurrence index and is **positional, not
+    identity-aware**, exactly like the customer procedure: walking
+    `list1` left to right, the k-th time a name is seen there (k counted
+    per name, from 0) is matched against the k-th occurrence of that same
+    name in `list2`; `dev = |i - j|`, maxed per side. A `list1` occurrence
+    with no k-th counterpart in `list2` (should not happen when `list2`
+    truly is a superset, but guarded) also goes to `missing` rather than
+    silently skipped. `flags` carries the customer script's own "bad"
+    thresholds (`dev >= flags['TB']` / `dev >= flags['LR']`) as data, not
+    a judgement this function makes itself.
+    """
+    frame = snapshot["frame"]
+    fits_by_id = {f["id"]: f for f in snapshot["fits"]}
+    missing = []
+    by_side = {}
+
+    for side in _SIDES:
+        axis = _SIDE_AXIS[side]
+        descending = _SIDE_DESCENDING[side]
+        rows = [t for t in snapshot["targets"] if _side_of(frame, t) == side]
         if not rows:
-            by_partition[partition] = -1
+            by_side[side] = -1
             continue
 
-        list1 = [t["groupName"] for t in rows]
+        def requested_key(t, axis=axis):
+            return t["ctDbu"][0] if axis == "x" else t["ctDbu"][1]
+
+        requested_sorted = sorted(rows, key=lambda t: (requested_key(t), t["row"]), reverse=descending)
+        list2 = [t["groupName"] for t in requested_sorted]
+
         bound = [t for t in rows if t.get("fitId") and t["fitId"] in fits_by_id]
         missing.extend(t["groupName"] for t in rows if t not in bound)
 
-        bound_sorted = sorted(
-            bound, key=lambda t: (_placed_centre_doubled(fits_by_id[t["fitId"]], axis), t["row"])
-        )
-        list2 = [t["groupName"] for t in bound_sorted]
+        def placed_key(t, axis=axis):
+            return _placed_centre_doubled(fits_by_id[t["fitId"]], axis)
+
+        placed_sorted = sorted(bound, key=lambda t: (placed_key(t), t["row"]), reverse=descending)
+        list1 = [t["groupName"] for t in placed_sorted]
 
         positions_by_name = {}
         for index, name in enumerate(list2):
@@ -237,11 +266,19 @@ def order_deviation(snapshot):
             occurrence_cursor[name] = k + 1
             indices = positions_by_name.get(name, [])
             if k >= len(indices):
+                missing.append(name)
                 continue
             max_dev = max(max_dev, abs(i - indices[k]))
-        by_partition[partition] = max_dev
+        by_side[side] = max_dev
 
-    return {"max": max(by_partition.values()), "byPartition": by_partition, "missing": missing}
+    by_partition = dict(by_side)
+    by_partition["IN"] = None
+    return {
+        "max": max(by_side.values()),
+        "byPartition": by_partition,
+        "missing": missing,
+        "flags": dict(ORDER_DEVIATION_FLAGS),
+    }
 
 
 def displacement(start_snapshot, snapshot):
