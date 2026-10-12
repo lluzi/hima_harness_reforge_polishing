@@ -30,16 +30,16 @@ def eff_window(it):
     return (it.current, it.current) if not it.movable else tuple(it.window)
 
 
-def random_lane(rng, n_items, span=400, max_limit=20):
-    """A random ordered lane. Windows are kept narrow so the position-space
-    oracles stay cheap (<= ~max_limit*2 wide)."""
+def random_lane(rng, n_items, span=400, limits=(0, 5, 20, 60)):
+    """A random ordered lane. `limits` is the set of half-window widths to draw
+    from; the (c) oracle passes a small set to keep exhaustive enumeration cheap."""
     items, cursor = [], 0
     for i in range(n_items):
         length = rng.randint(5, 40)
         cursor += rng.randint(0, 30)
         current = cursor
         cursor += length
-        limit = rng.choice([0, 3, 8, max_limit])
+        limit = rng.choice(limits)
         movable = rng.random() > 0.2
         if movable:
             lo, hi = max(0, current - limit), min(span - length, current + limit)
@@ -183,7 +183,17 @@ class MaxSlotsPropertyTest(unittest.TestCase):
     def test_max_slots_matches_brute_force(self):
         rng = random.Random(7)
         for _ in range(300):
-            items = random_lane(rng, rng.randint(1, 5))
+            items = random_lane(rng, rng.randint(1, 6))  # brief ranges: limit {0,5,20,60}, n<=6
+            slot = planner.SlotRequest(count=rng.randint(1, 3), length=rng.randint(10, 60),
+                                       clearance=rng.randint(0, 3))
+            self.assertEqual(planner.max_slots(items, slot)['slots'],
+                             planner.brute_force_max_slots(items, slot), (items, slot))
+
+    def test_max_slots_matches_brute_force_with_sentinels(self):
+        # how the CLI calls it: the lane range fixed by @start/@end sentinels.
+        rng = random.Random(71)
+        for _ in range(300):
+            items = with_sentinels(random_lane(rng, rng.randint(1, 6)), 0, 400)
             slot = planner.SlotRequest(count=rng.randint(1, 3), length=rng.randint(10, 60),
                                        clearance=rng.randint(0, 3))
             self.assertEqual(planner.max_slots(items, slot)['slots'],
@@ -192,10 +202,15 @@ class MaxSlotsPropertyTest(unittest.TestCase):
 
 class FewestMovesPropertyTest(unittest.TestCase):
     def test_fewest_moves_is_feasible_and_minimal(self):
+        # Sentinel-bounded lanes (as the CLI calls it): the lane extent is fixed
+        # by @start/@end, so the planner's derived span_end is identical whether
+        # or not a candidate item is pinned -- making the move-subset oracle a
+        # sound equivalence (pinning a movable item to a point window no longer
+        # shrinks the lane).
         rng = random.Random(11)
         checked = 0
-        for _ in range(400):
-            items = random_lane(rng, rng.randint(1, 5))
+        for _ in range(300):
+            items = with_sentinels(random_lane(rng, rng.randint(1, 6)), 0, 400)
             slot = planner.SlotRequest(count=rng.randint(1, 2), length=rng.randint(10, 50),
                                        clearance=rng.randint(0, 2))
             feasible = planner.max_slots(items, slot)['slots'] >= slot.count
@@ -205,10 +220,14 @@ class FewestMovesPropertyTest(unittest.TestCase):
                 continue
             checked += 1
             self.assertTrue(res['feasible'], (items, slot))
-            self.assertTrue(plan_is_feasible(items, slot, res['positions'], res['slotStarts']),
+            full_pos = dict(res['positions'], **{'@start': 0, '@end': 400})
+            self.assertTrue(plan_is_feasible(items, slot, full_pos, res['slotStarts']),
                             (items, slot, res))
-            # reported movers actually changed position
+            # reported movers actually changed position (sentinels never move)
             for it in items:
+                if it.id in planner._SENTINELS:
+                    self.assertNotIn(it.id, res['positions'])
+                    continue
                 moved = res['positions'][it.id] != it.current
                 self.assertEqual(moved, it.id in res['moved'], (it.id, res))
             self.assertEqual(len(res['moved']), min_moves_oracle(items, slot), (items, slot, res))
@@ -221,7 +240,7 @@ class LeastDisplacementPropertyTest(unittest.TestCase):
         checked = 0
         for _ in range(400):
             n = rng.randint(1, 3)
-            items = random_lane(rng, n, span=120, max_limit=4)  # windows <= ~8 wide
+            items = random_lane(rng, n, span=120, limits=(0, 2, 4))  # windows <= ~8 wide
             slot = planner.SlotRequest(count=1, length=rng.randint(4, 12), clearance=rng.randint(0, 2))
             # pick a slot start that sits in some gap of the current layout
             L, c = slot.length, slot.clearance

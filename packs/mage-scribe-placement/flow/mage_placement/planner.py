@@ -290,49 +290,50 @@ def max_slots(items, slot, cyclic_period=None):
 
 
 def brute_force_max_slots(items, slot):
-    """Independent test oracle: enumerate feasible item positions (chain-pruned)
-    and, per layout, count slots in closed form. Exponential -- small inputs.
+    """Independent test oracle for (a). Enumerates every position of every item
+    and counts slots in closed form per layout, as a backward recursion
+    ``f(i, prev_end)`` = max slots for ``items[i:]`` given the previous item
+    ended at ``prev_end`` -- a different formulation from ``max_slots``'s forward
+    ``slots -> min-end`` frontier, so the two cross-check genuinely.
 
-    Sentinel items (zero-length immovable ``@start``/``@end``) need no special
-    handling: they are point-window items the closed-form count folds in."""
+    Memoised on ``(i, prev_end)`` so the brief's ``{0,5,20,60}`` half-windows and
+    ``n <= 6`` stay cheap. Sentinel items (zero-length immovable
+    ``@start``/``@end``) need no special handling -- they are point-window items.
+    """
     n = len(items)
+    if n == 0:
+        return 0
     L = slot.length + 2 * slot.clearance
     wins = [_eff_window(it) for it in items]
     lens = [it.length for it in items]
     gaps = [it.gap_after for it in items]
-    if n == 0:
-        return 0
     span_end = max(wins[i][1] + lens[i] for i in range(n))
-    pos = [0] * n
-    best = [0]
+    memo = {}
 
-    def count_layout():
-        total = max(0, pos[0]) // L
-        for k in range(n - 1):
-            total += (pos[k + 1] - (pos[k] + lens[k] + gaps[k])) // L
-        total += max(0, span_end - (pos[n - 1] + lens[n - 1] + gaps[n - 1])) // L
-        return min(slot.count, total)
-
-    def dfs(i, prev_end):
-        if best[0] >= slot.count:
-            return
+    def f(i, prev_end):
         if i == n:
-            c = count_layout()
-            if c > best[0]:
-                best[0] = c
-            return
+            return max(0, span_end - prev_end - gaps[n - 1]) // L
+        key = (i, prev_end)
+        cached = memo.get(key)
+        if cached is not None:
+            return cached
         lo, hi = wins[i]
-        start = lo if i == 0 else max(lo, prev_end + gaps[i - 1])
+        gap_before = 0 if i == 0 else gaps[i - 1]
+        floor = prev_end + gap_before
+        start = lo if i == 0 else max(lo, floor)
+        best = NEG
         p = start
         while p <= hi:
-            pos[i] = p
-            dfs(i + 1, p + lens[i])
-            if best[0] >= slot.count:
-                return
+            before = p // L if i == 0 else (p - floor) // L
+            rest = f(i + 1, p + lens[i])
+            if rest > NEG and before + rest > best:
+                best = before + rest
             p += 1
+        memo[key] = best
+        return best
 
-    dfs(0, 0)
-    return best[0]
+    total = f(0, 0)
+    return min(slot.count, total) if total > NEG else 0
 
 
 # --------------------------------------------------------------------------
