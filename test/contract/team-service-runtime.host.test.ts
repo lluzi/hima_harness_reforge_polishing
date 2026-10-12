@@ -11,7 +11,7 @@ const {TeamServiceRuntime}=await import(new URL('../../packages/harness/lib/team
 
 // Real owned subprocess substituting the selected Hindsight HTTP/CLI dependency. This verifies Host
 // mechanics through Hindsight's real HTTP/native CLI interface only. Not Hindsight qualification.
-async function fixture(delay = 0, backupDelay = 0, readinessDelay = 0) {
+async function fixture(delay = 0, backupDelay = 0, readinessDelay = 0, timeoutMs = 10000) {
   const root = await mkdtemp(path.join(tmpdir(), 'hima-service-process-'));
   const runtime = path.join(root, 'runtime'); await mkdir(runtime);
   await cp(process.execPath, path.join(runtime, 'node'));
@@ -23,7 +23,7 @@ setTimeout(()=>createServer((req,res)=>{if(req.url==='/health/ready' && ${readin
   for (const file of ['node','service.mjs','LICENSE']) files[file] = createHash('sha256').update(await readFile(path.join(runtime,file))).digest('hex');
   await writeFile(path.join(runtime,'team-runtime.json'),JSON.stringify({format:'hima-team-runtime/1',platform:`${process.platform}-${process.arch}`,qualification:'mechanism-test-only',files,
     components:[{id:'hindsight',version:'fixture',source:'https://example.invalid/test-fixture',license:'test-only',notices:['LICENSE'],requiredFiles:['node','service.mjs']}],
-    services:[{id:'hindsight',executable:'node',argv:['service.mjs'],timeoutMs:10000,stopGraceMs:500,backupExecutable:'node',backupArgv:['service.mjs']}]}));
+    services:[{id:'hindsight',executable:'node',argv:['service.mjs'],timeoutMs,stopGraceMs:500,backupExecutable:'node',backupArgv:['service.mjs']}]}));
   const receipts: TeamServiceReceipt[] = [];
   const service = new TeamServiceRuntime({home:path.join(root,'home'),runtimeDirectory:runtime,recordReceipt:async r=>{receipts.push(r);},configuration:async()=>({databaseUrl:'postgresql://fixture:private@127.0.0.1:1/hindsight'})});
   return {root,runtime,receipts,service};
@@ -38,6 +38,27 @@ test('owned service exports while live and stops the exact generation', async()=
     assert.equal(stopped.generation,start.generation); assert.throws(()=>process.kill(start.owned.pid!,0));
     await assert.rejects(f.service.export('hindsight',{cutId:'cut-2',destination:'cut-2.zip'}),/live owned/);
   } finally {await f.service.stopAll(); await rm(f.root,{recursive:true,force:true});}
+});
+test('online export may exceed thirty seconds within its installed service budget', {timeout:45000}, async()=>{
+  const f=await fixture(0,31000,0,40000);
+  try {
+    const started=await f.service.start('hindsight');assert.equal(started.state,'running');
+    const exported=await f.service.export('hindsight',{cutId:'native-cold-backup',destination:'native-cold-backup.zip'});
+    assert.equal(exported.state,'running');assert.equal(exported.generation,started.generation);
+    assert.equal(JSON.parse(await readFile(exported.export!.file,'utf8')).snapshot,'fixture-online-backup');
+    assert.equal((await f.service.status('hindsight')).state,'running');
+    assert.equal((await f.service.stop('hindsight')).owned.quiescent,true);
+  }finally{await f.service.stopAll();await rm(f.root,{recursive:true,force:true});}
+});
+test('online export exceeding its installed service budget rejects and retains the live generation', {timeout:20000}, async()=>{
+  const f=await fixture(0,6000,0,5000);
+  try {
+    const started=await f.service.start('hindsight');assert.equal(started.state,'running');
+    await assert.rejects(f.service.export('hindsight',{cutId:'over-budget',destination:'over-budget.zip'}),/online backup failed/);
+    const status=await f.service.status('hindsight');assert.equal(status.state,'running');assert.equal(status.generation,started.generation);
+    await assert.rejects(readFile(path.join(f.root,'home/hima/team-service-exports',started.generation,'over-budget.zip')),/ENOENT/);
+    assert.equal((await f.service.stop('hindsight')).owned.quiescent,true);
+  }finally{await f.service.stopAll();await rm(f.root,{recursive:true,force:true});}
 });
 test('stop fences a late ready event and missing/hash/platform failures launch nothing',async()=>{
   const f=await fixture(500);

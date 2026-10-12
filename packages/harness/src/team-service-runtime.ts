@@ -166,7 +166,8 @@ export class TeamServiceRuntime {
     if(!spec?.backupExecutable || !owned.root || !owned.environment) throw new CapabilityError('missing-export','The fixed Hindsight admin backup capability is not installed. Bank template export is not a full service backup.');
     if(!file.endsWith('.zip'))throw new Error('Hindsight admin backup requires a .zip destination.');
     try {
-      await new Promise<void>((resolve,reject)=>{const child=spawn(path.join(owned.root!,spec.backupExecutable!),[...(spec.backupArgv ?? []),'backup',file,'--schema','public'],{cwd:owned.root,env:owned.environment,stdio:'ignore',timeout:30000,killSignal:'SIGKILL'});
+      // Native CLI cold imports share the installed service's bounded operation budget.
+      await new Promise<void>((resolve,reject)=>{const child=spawn(path.join(owned.root!,spec.backupExecutable!),[...(spec.backupArgv ?? []),'backup',file,'--schema','public'],{cwd:owned.root,env:owned.environment,stdio:'ignore',timeout:spec.timeoutMs,killSignal:'SIGKILL'});
         child.once('error',()=>reject(new Error('The fixed Hindsight admin executable failed to start.')));child.once('close',code=>code===0?resolve():reject(new Error('Hindsight online backup failed; the service remains owned and running.')));});
       if(owned.child!.exitCode!==null || owned.child!.signalCode!==null) throw new Error('Service exited before export cut was verified.');
       const info=await lstat(file);if(!info.isFile() || !(await realpath(file)).startsWith(await realpath(directory)+path.sep)) throw new Error('Invalid owned export output.');
