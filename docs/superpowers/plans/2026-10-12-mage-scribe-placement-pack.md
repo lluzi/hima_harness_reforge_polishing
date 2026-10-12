@@ -178,8 +178,8 @@ class MageSession:
     def run_round(self, round_dir: str, candidate_pla: str, role: str, timeout_s: int = 1800) -> dict
         # writes round_dir/round.tcl from templates; role != 'engineer' with a mutating script -> MageError('writer');
         # runs [executable, round.tcl, '-noterm']; returns {'exportPla','verifyFiles':{TYPE:path},'summary','stdout','returncode','scriptSha256'}
-        # appends JSONL {round_dir, role, scriptSha256, mutating, returncode, startedAt, endedAt} to log_path
-def mutating(script_text: str) -> bool   # True if it contains 'source ', '-addInstFit', '-addInstFix', '-addGroup', 'frbMove', 'frbOps', 'frbAlign', 'frbGuidedMove', '-placeDropInstFit', '-refine', '-autoRefine'
+        # appends JSONL {roundDir, role, scriptSha256, mutating, returncode, timedOut, startedAt, endedAt} to log_path
+def mutating(script_text: str) -> bool   # True if it contains 'source ', '-addInstFit', '-addInstFix', '-addGroup', 'frbMove', 'frbOps', 'frbAlign', 'frbGuidedMove', '-placeDropInstFit', '-refine', '-autoRefine', '-setAutoRefine -arEnabled 1'
 ```
 
 ### CLI subcommands (`flow/mage_placement_cli.py`)
