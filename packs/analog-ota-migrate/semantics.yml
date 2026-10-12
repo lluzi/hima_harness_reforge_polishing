@@ -28,16 +28,22 @@ values:
     description: "Active area of an OTA: the sum of W x L over its eight transistors (no routing, no capacitors)."
   round_valid:
     unit: count
-    description: "One when the round has both designs simulated, each measurement is of the accepted design, and the migrated OTA has every device saturated at every corner."
+    description: "One when the round's source design met the spec, both designs were simulated as accepted with the same load and input common mode against the same spec sheet, and the migrated OTA is saturated and fully measured at every corner."
   specs_met:
     unit: count
     description: "Spec lines (gain, unity-gain frequency, phase margin, power) the migrated OTA meets at its worst corner, out of four."
   target_margin_pct:
     unit: percent
-    description: "The migrated OTA's worst normalized margin over the four spec lines in this round (negative when a line is missed)."
+    description: "The migrated OTA's worst normalized margin over the four spec lines at its worst corner in this round (negative when a line is missed); unknown when a line was not measured at some corner."
   best_margin_pct:
     unit: percent
-    description: "The best worst-margin of any valid round so far."
+    description: "The best target margin of any valid round so far; -100 (every line fully missed) before the first valid round."
+  meets_spec:
+    unit: count
+    description: "One when an OTA's worst corner meets every line of the spec sheet (the Goal) with every device saturated; unknown when a line or the saturation is unknown at some corner."
+  margin_pct:
+    unit: percent
+    description: "An OTA's worst normalized margin over the four spec lines at its worst corner (negative when a line is missed)."
   round_improved:
     unit: count
     description: "One when this round is valid and its migrated OTA's worst margin beats every earlier valid round's."

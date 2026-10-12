@@ -19,8 +19,8 @@ A first Pack slice is built and tested on branch `demo/analog-ota`:
 
 - It sizes a two-stage OTA from a spec sheet with gm/Id and migrates it to a second process.
 - It measures with Cadence Spectre on the lab server.
-- It lets the agents iterate in open ngspice, which matched Spectre to the reported digit on the
-  same device decks.
+- It lets the agents iterate in open ngspice, which agreed with Spectre within 0.1 dB, 1 % and
+  0.5° on every design checked on the same device decks.
 
 What is not yet there:
 
@@ -130,7 +130,7 @@ The concepts referred to below:
 
   | PDK decks | In Spectre 23.1 |
   | --- | --- |
-  | Synthetic BSIM4 test decks | Simulate. The Pack CLI end to end matches ngspice 47 to the reported digit: source 65.2 dB / 11.98 MHz / 69.4° / 161.6 µW. |
+  | Synthetic BSIM4 test decks | Simulate. The Pack CLI end to end gives the same printed worst corner as ngspice 47: source 65.2 dB / 11.98 MHz / 69.4° / 161.6 µW. |
   | GF180MCU 3.3 V `.spice` decks (device sections loaded per corner) | Simulate. The Pack's gm/Id characterization and a three-corner OTA run give 92.1 dB / 10.7 MHz / 63.3° / 218.2 µW at the worst corner. ngspice 46 in the sandbox gives the same worst corner. |
   | SKY130 | Fail: the decks use ngspice brace expressions. A mechanical conversion still leaves 392 errors. |
   | IHP SG13G2 | Not usable as shipped: `.if` subcircuits and OSDI `N` devices. |

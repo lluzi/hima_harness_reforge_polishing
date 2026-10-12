@@ -27,7 +27,8 @@ the agents another round with the lessons.
   Site measures with Cadence Spectre wherever the PDK's decks read in Spectre (GF180MCU and the test
   PDKs do; SKY130 and IHP SG13G2 decks are ngspice-only and are measured with ngspice). The agents
   iterate with open ngspice in their sandbox through the Pack's own `sim` command; on the same BSIM4
-  decks it agrees with Spectre to the reported digit (GF180MCU and the test PDKs, 2026-10-12). One
+  decks the two agreed within 0.1 dB, 1 % and 0.5 deg on every design checked (GF180MCU and the
+  test PDKs, 2026-10-12; one correlation is a test). One
   piece of Pack arithmetic computes every measurement from either simulator's raw output.
 - PDKs: GF180MCU 3.3 V (open, measured by Spectre) is the source; the target is open (IHP SG13G2
   1.2 V measured by ngspice is the proposal, pending the user's choice) or a customer's own Spectre

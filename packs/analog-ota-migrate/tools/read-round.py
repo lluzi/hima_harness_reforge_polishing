@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Read the round record (hima-ota-round/1) written by record-round.
 
-argv: read-round.py <REPORT> <OUT>. The judged values are round_valid and the migrated OTA's
-worst-corner gain, unity-gain frequency, phase margin and power; the converge read is
-best_margin_pct. When the source missed the spec the round has no migrated OTA: its values are
-unknown with that reason.
+argv: read-round.py <REPORT> <OUT>. The judged values are round_valid (the constraint) and
+target_margin_pct (the Goal: the migrated OTA's worst normalized margin over the four spec lines,
+at least zero when every line is met), then the per-line values. The converge read
+best_margin_pct is the best margin of a valid round so far, and -100 (every line fully missed)
+before the first valid round. A value the round does not have is unknown with its own reason.
 """
 import json
 import sys
@@ -15,28 +16,30 @@ def main(report_path, out_path):
     if record.get("schema") != "hima-ota-round/1":
         raise ValueError("not a hima-ota-round/1 record")
     target = record.get("target")
-    reason = "no migrated OTA this round: %s" % "; ".join(record.get("problems") or ["unknown"])
+    problems = "; ".join(record.get("problems") or []) or "unknown"
+    absent = "no migrated OTA this round: %s" % problems
 
-    def value(kind, unit, number, why=reason):
+    def value(kind, unit, number, why):
         item = {"type": kind, "unit": unit, "value": number}
         if number is None:
             item["unknownReason"] = why
         return item
 
     worst = (target or {}).get("worst") or {}
+    measured = absent if target is None else "the simulator did not produce it at every target corner"
     sat = worst.get("saturated")
     values = [
         {"type": "round_valid", "unit": "count", "value": 1 if record.get("roundValid") is True else 0},
-        value("specs_met", "count", None if target is None else target["specsMet"]),
-        value("target_margin_pct", "percent", record.get("targetMarginPct")),
-        value("best_margin_pct", "percent", record.get("bestMarginPct"), "no valid round yet"),
+        value("target_margin_pct", "percent", record.get("targetMarginPct"), measured),
+        value("specs_met", "count", None if target is None else target["specsMet"], absent),
+        {"type": "best_margin_pct", "unit": "percent", "value": record["bestMarginPct"]},
         {"type": "round_improved", "unit": "count", "value": 1 if record.get("roundImproved") is True else 0},
-        value("gain_db", "db", worst.get("gainDb")),
-        value("gbw_mhz", "mhz", worst.get("gbwMhz")),
-        value("pm_deg", "deg", worst.get("pmDeg")),
-        value("power_uw", "uw", worst.get("powerUw")),
-        value("saturated", "count", None if sat is None else (1 if sat else 0)),
-        value("area_um2", "um2", None if target is None else target["areaUm2"]),
+        value("gain_db", "db", worst.get("gainDb"), measured),
+        value("gbw_mhz", "mhz", worst.get("gbwMhz"), measured),
+        value("pm_deg", "deg", worst.get("pmDeg"), measured),
+        value("power_uw", "uw", worst.get("powerUw"), measured),
+        value("saturated", "count", None if sat is None else (1 if sat else 0), measured),
+        value("area_um2", "um2", None if target is None else target["areaUm2"], absent),
     ]
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)

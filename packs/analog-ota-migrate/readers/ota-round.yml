@@ -3,4 +3,4 @@ version: "0.1.0"
 file: tools/read-round.py
 argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
 reportKind: hima-ota-round/1
-emits: [round_valid, specs_met, target_margin_pct, best_margin_pct, round_improved, gain_db, gbw_mhz, pm_deg, power_uw, saturated, area_um2]
+emits: [round_valid, target_margin_pct, specs_met, best_margin_pct, round_improved, gain_db, gbw_mhz, pm_deg, power_uw, saturated, area_um2]

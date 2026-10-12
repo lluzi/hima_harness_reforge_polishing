@@ -19,11 +19,11 @@ supply, default 60), `roundRevision` (the round counter the chooser advances).
 ## Run contract
 
 Entry `bind-inputs` -> `characterize` -> `read-tables` -> `check-tables` (`tables-valid`) ->
-`size-agent` (resident; `produces` designSource, Reader `ota-design`) -> `simulate-source` ->
-`read-source` (Reader `ota-source`) -> `check-source` (`devices-saturated`, the four spec rules) ->
+`size-agent` (resident; `produces` designSource, Reader `ota-design`) -> `simulate-source` (given the Goal's lines) ->
+`read-source` (Reader `ota-source`) -> `check-source` (`source-meets-spec` first) ->
 PASS `migrate-agent` (resident; `produces` designTarget, Reader `ota-design`) -> `simulate-target` ->
 `record-round`; FAIL or UNDETERMINED at `check-source` goes straight to `record-round` -> `read-round`
-(Reader `ota-round`) -> `judge-round` (`round-valid`, the four spec rules) -> `next-round` (explore,
+(Reader `ota-round`) -> `judge-round` (`round-valid`, `target-margin`, then the per-line rules) -> `next-round` (explore,
 chooser `ota-next`, revisit `size-agent`). FAIL or UNDETERMINED at `check-tables` goes to `blocked`.
 Autopilot segments: bind -> check-tables (until `size-agent`), `simulate-source` -> check-source
 (until `migrate-agent` or `record-round`), `simulate-target` (until `record-round`), `record-round`
@@ -35,23 +35,30 @@ reserve, `generationLimit: 3`, converge on `best_margin_pct` (band 0.5, 2 genera
 
 `tables_valid`, `tables_curves` (`ota-tables`); `design_valid`, `area_um2` (`ota-design`); `gain_db`,
 `gbw_mhz`, `pm_deg`, `power_uw`, `saturated`, `area_um2` at the worst corner (`ota-source` for the
-source design; `ota-round` for the migrated design); `round_valid`, `specs_met`,
+source design, with `meets_spec` and `margin_pct`; `ota-round` for the migrated design); `round_valid`, `specs_met`,
 `target_margin_pct`, `best_margin_pct`, `round_improved` (`ota-round`). Margin of a line = (value -
 spec) / spec for at-least lines, (spec - value) / spec for at-most lines; the worst over four.
 
 ## Judge rules
 
+A judge takes its edge from its first rule; a chooser weighs the judge's first two (constraint,
+goal). The per-line rules follow for the record.
+
 - `tables-valid`: `tables_valid` = 1.
-- `devices-saturated` (constraint): `saturated` = 1.
-- `gain-spec`, `gbw-spec`, `pm-spec` (Goal): worst-corner value >= the Goal parameter.
-- `power-spec` (Goal): worst-corner power <= `max_power_uw`.
-- `round-valid` (constraint): `round_valid` = 1.
+- `source-meets-spec` (first at `check-source`): `meets_spec` = 1, stated by `simulate-source`
+  from the Goal's four lines and the saturation of every device at every corner.
+- `round-valid` (constraint, first at `judge-round`): `round_valid` = 1.
+- `target-margin` (goal, second at `judge-round`): `target_margin_pct` >= 0, the worst normalized
+  margin over the Goal's four lines.
+- `devices-saturated`: `saturated` = 1. `gain-spec`, `gbw-spec`, `pm-spec`: worst-corner value >= the
+  Goal parameter. `power-spec`: worst-corner power <= `max_power_uw`.
 
 ## Choosers
 
-`ota-next` at `next-round`: constraint PASS and Goal PASS -> goal met; otherwise
-`next: {roundRevision: roundStep}`. Reads `best_margin_pct` for convergence; changes only the round
-counter.
+`ota-next` at `next-round`: constraint PASS and Goal PASS (and every required verdict PASS) -> goal
+met; otherwise, including an undetermined goal, `next: {roundRevision: roundStep}`. Reads
+`best_margin_pct` for convergence (the best valid round's margin, -100 before the first); changes
+only the round counter.
 
 ## Endings
 

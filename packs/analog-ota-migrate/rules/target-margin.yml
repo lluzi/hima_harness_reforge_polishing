@@ -1,0 +1,6 @@
+id: target-margin
+version: "0.1.0"
+title: The migrated OTA's worst corner meets every spec line (worst normalized margin at least zero)
+requires: [{ type: target_margin_pct }]
+subject: { type: target_margin_pct }
+predicate: { op: gte, threshold: 0, unit: percent }

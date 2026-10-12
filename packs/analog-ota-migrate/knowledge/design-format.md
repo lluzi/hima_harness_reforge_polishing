@@ -39,15 +39,21 @@ A target design has `"stage": "target"`, the target PDK, and
 - an L or W outside the PDK's limits or off its grid;
 - M1 different from M2, or M3 different from M4;
 - a bias current, Cc or Rz out of range (0.5 to 500 uA, 0.05 to 20 pF, 0 to 200 kOhm);
-- any field that is not part of the design, for example a gain or a phase margin you computed;
+- any field that is not part of the design, for example a gain or a phase margin you computed,
+  and any field in `intent` other than the design choices;
+- devices that do not follow the intent;
 - an empty summary or reason, a missing analysis report;
 - a target design that does not cite the accepted source design.
 
 ## Drafting
 
 Never type sizes by hand when a draft can compute them: `draft intent`, `draft size`, `draft
-migrate` and `draft keep` print a complete design from the tables (see `analog-flow.md`). You may
-edit any W, L, bias, Cc or Rz afterwards; precheck checks legality, the simulator checks the rest.
+migrate` and `draft keep` print a complete design from the tables (see `analog-flow.md`). The
+`intent` holds only design choices (bias, the two currents, Cc, Rz, and a gm/Id and L per group, all
+numbers), and the devices must be exactly what `draft size` / `draft migrate` give for it: change
+the intent and draft again. To size by hand instead, remove `intent` and edit W, L, bias, Cc or Rz
+directly; precheck checks legality, the simulator checks the rest, and the round record says the
+design was sized by hand.
 Fill `summary` and `reason` in your own words. Then:
 
 ```

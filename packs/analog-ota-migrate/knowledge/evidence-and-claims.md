@@ -8,7 +8,8 @@ ngspice, named in every measurement) on the accepted design file with the bound 
 
 **A claim is what an agent says.** The summary, the reason and the analysis are the agents' words.
 Numbers an agent's own `sim` printed are evidence of its loop, not results: the Pack measures the
-delivered file again. A design file cannot carry a performance number at all.
+delivered file again. A design file cannot carry a performance number at all: its fields and its
+`intent` are design choices only, and the devices must follow the intent.
 
 **Unknown is not zero and not a pass.** A measurement the simulator did not produce at some corner
 is unknown; the judge treats an unknown line as not met.

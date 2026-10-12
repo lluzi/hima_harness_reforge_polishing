@@ -23,6 +23,7 @@ const packDir = path.join(repoRoot, 'packs/analog-ota-migrate');
 const pdkRoot = path.join(repoRoot, 'test/fixtures/analog-pdks');
 const SPEC = { gainDb: 60, gbwMhz: 10, pmDeg: 60, powerUw: 200 };
 const LOAD_PF = '2';
+const SPEC_ARGS = [String(SPEC.gainDb), String(SPEC.gbwMhz), String(SPEC.pmDeg), String(SPEC.powerUw)];
 const CM_PCT = '60';
 
 function findNgspice(): string | undefined {
@@ -164,7 +165,10 @@ test('precheck refuses illegal designs and any number an agent types', { skip },
     await refused((d) => { d.round = 2; }, /round must be 1/);
     await refused((d) => { delete d.devices.M8; }, /devices must be exactly M1, M2/);
     await refused((d) => { d.ccPf = 50; }, /ccPf must be a number in \[0\.05, 20\]/);
-    await refused((d) => { d.stage = 'target'; d.pdk = 'synth130'; }, /migratedFrom must name the accepted source design|no accepted source design/, 'target');
+    await refused((d) => { d.stage = 'target'; d.pdk = 'synth130'; }, /no accepted source design/, 'target');
+    await refused((d) => { d.intent.measuredGainDb = 95; }, /intent has unknown field\(s\) measuredGainDb/);
+    await refused((d) => { d.devices.M6.wUm += 1; }, /the devices do not follow the intent/);
+    await refused((d) => { d.report = 'reports/size-agent/r1/missing.md'; }, /report must be reports\/size-agent\/r1\/analysis\.md/);
     // The draft itself passes.
     const file = await deliver(ws, 'source', structuredClone(good));
     assert.match(ok(ws, 'precheck', 'source', file, ws), /precheck PASS: source design round 1 \(synth180\)/);
@@ -179,7 +183,7 @@ test('one round: the source meets the spec, the naive port to 1.2 V does not; th
     // Round 1: the sized source design.
     await writeFile(path.join(ws, 'intent.json'), JSON.stringify(SOURCE_INTENT));
     await accept(ws, 'source', JSON.parse(ok(ws, 'draft', 'size', path.join(ws, 'intent.json'))));
-    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     const source = await readJson(path.join(ws, 'state/measure-source.json'));
     assert.deepEqual(Object.keys(source.corners).sort(), ['ff', 'ss', 'tt']);
     const sourceWorst = worstOf(source.corners);
@@ -195,22 +199,22 @@ test('one round: the source meets the spec, the naive port to 1.2 V does not; th
     assert.equal(port.pdk, 'synth130');
     assert.deepEqual([port.intent.input.lUm, port.intent.load.lUm, port.intent.sink.lUm], [0.36, 0.36, 0.72], 'same multiple of the minimum length');
     await accept(ws, 'target', port);
-    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     const naive = await readJson(path.join(ws, 'state/measure-target.json'));
     assert.ok(!meets(worstOf(naive.corners)) || naive.worst.saturated !== true, 'the naive port misses the spec at 1.2 V');
-    ok(ws, 'record', String(SPEC.gainDb), String(SPEC.gbwMhz), String(SPEC.pmDeg), String(SPEC.powerUw));
+    ok(ws, 'record', ...SPEC_ARGS);
     const round1 = reader('read-round.py', path.join(ws, 'state/round.json'));
     assert.ok(valueOf(round1, 'round_valid') === 0 || valueOf(round1, 'specs_met') < 4, 'round 1 does not meet the Goal');
     // Round 2: keep the source, re-bias the port.
     await accept(ws, 'source', JSON.parse(ok(ws, 'draft', 'keep')));
-    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     await writeFile(path.join(ws, 'port.json'), JSON.stringify(REBIASED_PORT));
     await accept(ws, 'target', JSON.parse(ok(ws, 'draft', 'migrate', path.join(ws, 'port.json'))));
-    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     const rebiased = await readJson(path.join(ws, 'state/measure-target.json'));
     const targetWorst = worstOf(rebiased.corners);
     assert.ok(meets(targetWorst) && rebiased.worst.saturated === true, `the re-biased port meets the spec: ${JSON.stringify(targetWorst)}`);
-    ok(ws, 'record', String(SPEC.gainDb), String(SPEC.gbwMhz), String(SPEC.pmDeg), String(SPEC.powerUw));
+    ok(ws, 'record', ...SPEC_ARGS);
     const round2 = reader('read-round.py', path.join(ws, 'state/round.json'));
     assert.equal(valueOf(round2, 'round_valid'), 1);
     assert.equal(valueOf(round2, 'specs_met'), 4);
@@ -243,15 +247,15 @@ test('a measurement of a design that is not the accepted one makes the round inv
     ok(ws, 'characterize');
     await writeFile(path.join(ws, 'intent.json'), JSON.stringify(SOURCE_INTENT));
     await accept(ws, 'source', JSON.parse(ok(ws, 'draft', 'size', path.join(ws, 'intent.json'))));
-    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     await writeFile(path.join(ws, 'port.json'), JSON.stringify(REBIASED_PORT));
     await accept(ws, 'target', JSON.parse(ok(ws, 'draft', 'migrate', path.join(ws, 'port.json'))));
-    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT);
+    ok(ws, 'simulate', 'target', LOAD_PF, CM_PCT, ...SPEC_ARGS);
     // The target design changes after it was simulated.
     const target = await readJson(path.join(ws, 'state/design-target.json'));
     target.summary = 'edited after the simulation';
     await writeFile(path.join(ws, 'state/design-target.json'), JSON.stringify(target));
-    ok(ws, 'record', String(SPEC.gainDb), String(SPEC.gbwMhz), String(SPEC.pmDeg), String(SPEC.powerUw));
+    ok(ws, 'record', ...SPEC_ARGS);
     const round = await readJson(path.join(ws, 'state/round.json'));
     assert.equal(round.roundValid, false);
     assert.match(round.problems.join('; '), /the target measurement is not of the accepted target design/);
@@ -287,5 +291,58 @@ test('ngspice and the committed Spectre output agree on the same OTA at the same
     assert.ok(Math.abs(ng.pmDeg - sp.pmDeg) < 1, `PM ${ng.pmDeg} vs ${sp.pmDeg}`);
     assert.ok(Math.abs(ng.powerUw - sp.powerUw) / sp.powerUw < 0.02, `power ${ng.powerUw} vs ${sp.powerUw}`);
     assert.equal(ng.saturated, sp.saturated);
+  } finally { await done(); }
+});
+
+test('a target must cite the accepted source by its SHA-256, and its analysis must be in the agent workspace', { skip }, async () => {
+  const { ws, done } = await workspace();
+  try {
+    ok(ws, 'bind', `ngspice=${ngspice!}`, pdkRoot, 'synth180', 'synth130');
+    ok(ws, 'characterize');
+    await writeFile(path.join(ws, 'intent.json'), JSON.stringify(SOURCE_INTENT));
+    await accept(ws, 'source', JSON.parse(ok(ws, 'draft', 'size', path.join(ws, 'intent.json'))));
+    const port: Json = JSON.parse(ok(ws, 'draft', 'migrate'));
+    port.migratedFrom.sha256 = '0'.repeat(64);
+    const file = await deliver(ws, 'target', port);
+    const wrong = ota(ws, 'precheck', 'target', file, ws);
+    assert.notEqual(wrong.status, 0);
+    assert.match(wrong.stderr, /migratedFrom must name the accepted source design: \{pdk: synth180, sha256: [0-9a-f]{64}\}/);
+    // The analysis report must be in the agent's own workspace.
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'analog-agent-'));
+    const fresh: Json = JSON.parse(ok(ws, 'draft', 'migrate'));
+    fresh.summary = 'x'; fresh.reason = 'y';
+    await writeFile(path.join(elsewhere, 'design.json'), JSON.stringify(fresh));
+    const noReport = ota(ws, 'precheck', 'target', path.join(elsewhere, 'design.json'), elsewhere);
+    assert.notEqual(noReport.status, 0);
+    assert.match(noReport.stderr, /the report reports\/migrate-agent\/r1\/analysis\.md is not in your workspace/);
+    await rm(elsewhere, { recursive: true, force: true });
+  } finally { await done(); }
+});
+
+test('a source that misses the spec is not migrated: the round records why and is not valid', { skip }, async () => {
+  const { ws, done } = await workspace();
+  try {
+    ok(ws, 'bind', `ngspice=${ngspice!}`, pdkRoot, 'synth180', 'synth130');
+    ok(ws, 'characterize');
+    // The textbook first cut misses the unity-gain frequency at the slow corner (about 9 MHz against 10).
+    await writeFile(path.join(ws, 'spec.json'), JSON.stringify({ ...SPEC, loadPf: 2 }));
+    await writeFile(path.join(ws, 'intent.json'), ok(ws, 'draft', 'intent', path.join(ws, 'spec.json')));
+    await accept(ws, 'source', JSON.parse(ok(ws, 'draft', 'size', path.join(ws, 'intent.json'))));
+    ok(ws, 'simulate', 'source', LOAD_PF, CM_PCT, ...SPEC_ARGS);
+    const measure = await readJson(path.join(ws, 'state/measure-source.json'));
+    assert.ok(worstOf(measure.corners).gbwMhz < SPEC.gbwMhz, `the first cut misses GBW: ${worstOf(measure.corners).gbwMhz}`);
+    const read = reader('read-measure.py', path.join(ws, 'state/measure-source.json'));
+    assert.equal(valueOf(read, 'meets_spec'), 0, 'the source judge leads with meets_spec, so this round does not migrate');
+    assert.ok(valueOf(read, 'margin_pct') < 0);
+    ok(ws, 'record', ...SPEC_ARGS);
+    const round = await readJson(path.join(ws, 'state/round.json'));
+    assert.equal(round.roundValid, false);
+    assert.equal(round.target, null);
+    assert.match(round.problems.join('; '), /the source design does not meet the spec, so this round has no migration/);
+    const values = reader('read-round.py', path.join(ws, 'state/round.json'));
+    assert.equal(valueOf(values, 'round_valid'), 0);
+    assert.equal(valueOf(values, 'target_margin_pct'), null);
+    assert.match(values.find((v: Json) => v.type === 'target_margin_pct').unknownReason, /no migrated OTA this round: the source design does not meet the spec/);
+    assert.equal(valueOf(values, 'best_margin_pct'), -100, 'the floor before any valid round');
   } finally { await done(); }
 });

@@ -11,7 +11,9 @@ of rediscovering it.
   bind         <WS> <SIMULATORS> <PDK_ROOT> <SOURCE_PDK> <TARGET_PDK>   simulators, PDK files, cards
   characterize <WS>                    gm/Id tables of both PDKs (DC sweeps on the simulator)
   design       <WS> <STAGE>            check state/design-<STAGE>.json (an agent's delivery)
-  simulate     <WS> <STAGE> <LOAD_PF> <CM_PCT>   the OTA testbench at every corner of the stage's PDK
+  simulate     <WS> <STAGE> <LOAD_PF> <CM_PCT> <GAIN_DB> <GBW_MHZ> <PM_DEG> <POWER_UW>
+                                       the OTA testbench at every corner of the stage's PDK, against
+                                       the spec sheet (the Goal)
   record       <WS> <GAIN_DB> <GBW_MHZ> <PM_DEG> <POWER_UW>   the round record
   draft        <WS> <KIND> [<FILE>]    KIND intent (FILE = a spec sheet): a first-cut sizing intent
                                        from the spec by the textbook two-stage procedure in gm/Id form;
@@ -232,6 +234,18 @@ def run(argv, cwd, log_path, timeout_s=600):
     return text
 
 
+def fresh(path):
+    """path, or path.attempt-<n> when an earlier attempt left output there: a step never reads
+    another attempt's files and never deletes them."""
+    path = Path(path)
+    if not path.exists():
+        return path
+    n = 2
+    while Path("%s.attempt-%d" % (path, n)).exists():
+        n += 1
+    return Path("%s.attempt-%d" % (path, n))
+
+
 def dev_params(card, kind, w, l):
     return card["devices"][kind]["params"].format(w=um(w), l=um(l))
 
@@ -301,12 +315,14 @@ class Ngspice:
             for p in CHAR_PARAMS:
                 lines.append("let c%d_%s = %s" % (i, p, cls.op(card, kind, inst, p)))
                 vectors.append("c%d_%s" % (i, p))
-        data = "%s.dat" % name
-        lines += ["wrdata %s v(g) %s" % (data, " ".join(vectors)), "quit", ".endc", ".end", ""]
-        netlist = Path(out_dir) / ("%s.cir" % name)
+        data = fresh(Path(out_dir) / ("%s.dat" % name))
+        lines += ["wrdata %s v(g) %s" % (data.name, " ".join(vectors)), "quit", ".endc", ".end", ""]
+        netlist = fresh(Path(out_dir) / ("%s.cir" % name))
         write_text(netlist, "\n".join(lines))
-        run([command, "-b", str(netlist)], out_dir, Path(out_dir) / ("%s.log" % name))
-        with open(Path(out_dir) / data) as stream:
+        run([command, "-b", str(netlist)], out_dir, Path(str(netlist) + ".log"))
+        if not data.is_file():
+            raise ToolError("ngspice wrote no sweep data for %s (log %s.log)" % (name, netlist))
+        with open(data) as stream:
             header = stream.readline().split()
             rows = [[float(x) for x in line.split()] for line in stream if line.strip()]
         col = {h: i for i, h in enumerate(header)}
@@ -323,10 +339,12 @@ class Ngspice:
             for p in OP_PARAMS:
                 lines.append("let %s_%s = %s" % (dev.lower(), p, cls.op(card, kind, inst, p)))
             lines.append("echo HIMA op_%s %s" % (dev, " ".join("$&%s_%s" % (dev.lower(), p) for p in OP_PARAMS)))
-        lines += ["ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ), "wrdata %s-ac.dat v(out)" % name, "quit", ".endc", ".end", ""]
-        netlist = Path(out_dir) / ("%s.cir" % name)
+        netlist = fresh(Path(out_dir) / ("%s.cir" % name))
+        ac_file = Path(str(netlist)[:-4] + "-ac.dat")
+        lines += ["ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ), "wrdata %s v(out)" % ac_file.name,
+                  "echo HIMA done 1", "quit", ".endc", ".end", ""]
         write_text(netlist, "\n".join(lines))
-        text = run([command, "-b", str(netlist)], out_dir, Path(out_dir) / ("%s.log" % name))
+        text = run([command, "-b", str(netlist)], out_dir, Path(str(netlist) + ".log"))
         values = {}
         for line in text.splitlines():
             parts = line.split()
@@ -339,8 +357,10 @@ class Ngspice:
         for dev in DEVICES:
             v = values.get("op_" + dev)
             op[dev] = dict(zip(OP_PARAMS, v)) if v and len(v) == len(OP_PARAMS) else None
+        if "done" not in values:
+            raise ToolError("ngspice did not finish the testbench %s (log %s.log)" % (netlist, netlist))
         ac = []
-        path = Path(out_dir) / ("%s-ac.dat" % name)
+        path = ac_file
         if path.is_file():
             with open(path) as stream:
                 stream.readline()
@@ -354,7 +374,7 @@ def psf_ascii(path):
     {name: float or complex}; info files give {instance: {field: float}} by the TYPE section's order."""
     with open(path) as stream:
         lines = [l.rstrip("\n") for l in stream]
-    section, structs, current, depth = None, {}, None, 0
+    section, structs, current, depth, skip = None, {}, None, 0, 0
     points, insts, inst, fields, values = [], {}, None, None, []
     sweep_name = None
     for line in lines:
@@ -362,6 +382,14 @@ def psf_ascii(path):
             section = line
             continue
         if section == "TYPE":
+            # A struct's fields each carry a PROP( ... ) block; the struct itself closes with ")" or
+            # with ") PROP(" followed by the struct's own properties and their ")".
+            if skip:
+                if line.endswith("("):
+                    skip += 1
+                elif line.startswith(")"):
+                    skip -= 1
+                continue
             m = re.match(r'^"([^"]+)" STRUCT\($', line)
             if m and current is None:
                 current, depth = m.group(1), 0
@@ -371,13 +399,14 @@ def psf_ascii(path):
                 f = re.match(r'^"([^"]+)" (FLOAT|INT|STRING|COMPLEX)', line)
                 if f and depth == 0:
                     structs[current].append(f.group(1))
-                if line.endswith("PROP("):
+                if line.startswith(")") and depth == 0:
+                    current = None
+                    if line.endswith("PROP("):
+                        skip = 1
+                elif line.endswith("PROP("):
                     depth += 1
-                elif line == ")":
-                    if depth == 0:
-                        current = None
-                    else:
-                        depth -= 1
+                elif line.startswith(")"):
+                    depth -= 1
         elif section == "VALUE":
             if inst is not None:
                 if line.strip() == ")":
@@ -448,26 +477,36 @@ class Spectre:
         lines.append("save " + " ".join("%s:%s" % (inst, SPECTRE_OP[p]) for inst in insts for p in CHAR_PARAMS))
         points = int(round(vdd / SWEEP_STEP_V))
         lines += ["sw dc dev=VG param=dc start=0 stop=%g lin=%d" % (sign * vdd, points), ""]
-        netlist = Path(out_dir) / ("%s.scs" % name)
-        raw = Path(out_dir) / ("%s.raw" % name)
+        netlist = fresh(Path(out_dir) / ("%s.scs" % name))
+        raw = Path(str(netlist)[:-4] + ".raw")
         write_text(netlist, "\n".join(lines))
-        run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(out_dir) / ("%s.log" % name))
+        run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(str(netlist) + ".log"))
+        if not (raw / "sw.dc").is_file():
+            raise ToolError("spectre wrote no sweep for %s (log %s.log)" % (name, netlist))
         return cls.sweep_rows(raw / "sw.dc", insts)
 
     @staticmethod
     def sweep_rows(path, insts):
         rows, _ = psf_ascii(path)
-        return [dict(vgs=abs(r["dc"]), devices=[{p: abs(r.get("%s:%s" % (inst, SPECTRE_OP[p]), 0.0)) for p in CHAR_PARAMS} for inst in insts])
-                for r in rows]
+        out = []
+        for r in rows:
+            keys = ["%s:%s" % (inst, SPECTRE_OP[p]) for inst in insts for p in CHAR_PARAMS]
+            if "dc" not in r or any(k not in r for k in keys):
+                continue                       # a point Spectre did not state is dropped, never zero-filled
+            out.append(dict(vgs=abs(r["dc"]), devices=[{p: abs(r["%s:%s" % (inst, SPECTRE_OP[p])]) for p in CHAR_PARAMS} for inst in insts]))
+        return out
 
     @classmethod
     def ota(cls, command, inputs, stage, netlist_lines, insts, vdd, out_dir, name):
         lines = list(netlist_lines) + ["dcop dc oppoint=rawfile", "opinfo info what=oppoint where=rawfile",
                                        "acan ac start=%g stop=%g dec=%d" % (AC_START_HZ, AC_STOP_HZ, AC_PER_DECADE), ""]
-        netlist = Path(out_dir) / ("%s.scs" % name)
-        raw = Path(out_dir) / ("%s.raw" % name)
+        netlist = fresh(Path(out_dir) / ("%s.scs" % name))
+        raw = Path(str(netlist)[:-4] + ".raw")
         write_text(netlist, "\n".join(lines))
-        run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(out_dir) / ("%s.log" % name))
+        run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(str(netlist) + ".log"))
+        for f in ("dcop.dc", "opinfo.info", "acan.ac"):
+            if not (raw / f).is_file():
+                raise ToolError("spectre wrote no %s for %s (log %s.log)" % (f, name, netlist))
         return cls.facts(raw, insts, vdd)
 
     @staticmethod
@@ -493,7 +532,10 @@ CHAR_PARAMS = ("id", "gm", "gds", "cgg")
 OP_PARAMS = ("vds", "vdsat", "id", "gm", "gds")
 NGSPICE_OP = {}
 SPECTRE_OP = {"id": "ids", "gm": "gm", "gds": "gds", "cgg": "cgg", "vds": "vds", "vdsat": "vdsat"}
+# The sweep starts at 0.1 Hz: below it the testbench's DC feedback (1 GH, 1 F) starts to close the loop
+# (loop gain about 2.5e-9 x A at 0.1 Hz, 2.5e-5 x A at 1 mHz) and the open-loop gain reads high.
 AC_START_HZ, AC_STOP_HZ, AC_PER_DECADE = 0.1, 1e10, 40
+FLAT_DB, FLAT_DEG = 0.1, 5.0      # the response at the sweep start must be this flat and this close to 0 deg
 
 
 def simulator_for(inputs, stage, own=False):
@@ -598,6 +640,29 @@ def width_for(table, card, kind, length_um, gmid, id_ua):
     return snap(card, kind, id_ua / row["jdUaUm"]), row
 
 
+INTENT_KEYS = {"ibiasUa", "i1Ua", "i6Ua", "ccPf", "rzKohm", "input", "load", "sink"}
+GROUP_KEYS = {"gmId", "lUm"}
+
+
+def intent_problems(intent):
+    """What is wrong with an intent's shape: only the design choices (bias, currents, Cc, Rz, and a
+    gm/Id and L per device group), all numbers. An intent never carries a measurement."""
+    if not isinstance(intent, dict):
+        return ["intent must be an object"]
+    problems = []
+    extra = sorted(set(intent) - INTENT_KEYS)
+    if extra:
+        problems.append("intent has unknown field(s) %s: an intent states bias, currents, Cc, Rz and a gm/Id and L per group" % ", ".join(extra))
+    for key in ("ibiasUa", "i1Ua", "i6Ua", "ccPf", "rzKohm"):
+        if not number(intent.get(key)):
+            problems.append("intent %s must be a number" % key)
+    for group in ("input", "load", "sink"):
+        g = intent.get(group)
+        if not isinstance(g, dict) or set(g) != GROUP_KEYS or not all(number(g[k]) for k in GROUP_KEYS):
+            problems.append("intent %s must be {gmId, lUm} numbers" % group)
+    return problems
+
+
 def size_from_intent(table, card, intent):
     """Device sizes from a sizing intent (hima-ota-intent/1), by the gm/Id method:
 
@@ -658,7 +723,7 @@ def migrate_intent(source_design, source_card, target_card):
     intent = source_design.get("intent")
     if not isinstance(intent, dict):
         raise ToolError("the source design carries no intent; migrate needs the gm/Id choices it was sized with")
-    port = json.loads(json.dumps(intent))
+    port = {k: json.loads(json.dumps(v)) for k, v in intent.items() if k in INTENT_KEYS}
     for group, kind in (("input", "nmos"), ("load", "pmos"), ("sink", "nmos")):
         ratio = intent[group]["lUm"] / source_card["devices"][kind]["lMinUm"]
         want = ratio * target_card["devices"][kind]["lMinUm"]
@@ -720,6 +785,22 @@ def validate_design(ws, stage, path=None, files_root=None):
     for a, b in (("M1", "M2"), ("M3", "M4")):
         if a in devices and b in devices and devices[a] != devices[b]:
             problems.append("%s and %s are a matched pair and must have the same W and L" % (a, b))
+    if "intent" in doc:
+        found = intent_problems(doc["intent"])
+        problems += found
+        table_path = state(ws, "tables-%s.json" % stage)
+        if not found and table_path.is_file():
+            try:
+                sized, _ = size_from_intent(read_json(table_path), card, doc["intent"])
+            except ToolError as error:
+                problems.append("the intent cannot be sized: %s" % error)
+            else:
+                if sized != devices:
+                    problems.append("the devices do not follow the intent (draft size or draft migrate gives them): "
+                                    "re-draft from the intent, or remove the intent to deliver a hand-sized design")
+                for key in ("ibiasUa", "ccPf", "rzKohm"):
+                    if number(doc.get(key)) and doc["intent"][key] != doc[key]:
+                        problems.append("%s differs from the intent's" % key)
     for key in ("summary", "reason"):
         if not isinstance(doc.get(key), str) or not doc[key].strip():
             problems.append("%s must say in words what the design does and why" % key)
@@ -776,7 +857,7 @@ def draft(ws, kind, given=None):
     devices, facts = size_from_intent(table, card_of(inputs, stage), intent)
     doc = dict(schema=DESIGN_SCHEMA, stage=stage, pdk=inputs["pdks"][stage]["name"], topology=TOPOLOGY, round=k,
                ibiasUa=float(intent["ibiasUa"]), ccPf=float(intent["ccPf"]), rzKohm=float(intent.get("rzKohm", 0.0)),
-               devices=devices, intent=dict(intent, devices=facts), summary="", reason="",
+               devices=devices, intent={k: v for k, v in intent.items() if k in INTENT_KEYS}, summary="", reason="",
                report="reports/%s/r%d/analysis.md" % (AGENT_NODES[stage], k))
     if stage == "target":
         doc["migratedFrom"] = dict(pdk=inputs["pdks"]["source"]["name"], sha256=sha256_file(design_path(ws, "source")))
@@ -833,13 +914,17 @@ def ota_lines(sim, inputs, stage, design, corner, load_pf, cm_pct):
 
 def ac_measures(ac):
     """DC gain, unity-gain frequency and phase margin from the AC response of the output (frequency,
-    real, imaginary), the same arithmetic for every simulator. Gain at the first frequency; the
-    unity-gain frequency where |H| first falls through 1, interpolated in log-log; the phase
-    unwrapped along frequency; phase margin = 180 + (phase at unity gain - phase at the first
-    frequency). None where the response does not show it."""
+    real, imaginary), the same arithmetic for every simulator. The OTA is driven non-inverting, so
+    its response at the sweep start must be flat (the first two points within 0.1 dB) and in phase
+    (within 5 deg of 0): otherwise the DC gain and the phase margin are unknown, never shifted.
+    Gain at the first frequency; the unity-gain frequency where |H| first falls through 1,
+    interpolated in log-log; the phase unwrapped along frequency from the first point; phase
+    margin = 180 + phase at unity gain."""
     if len(ac) < 2:
         return None, None, None
     mags = [math.hypot(re_, im_) for _, re_, im_ in ac]
+    flat = mags[0] > 0 and mags[1] > 0 and abs(20.0 * math.log10(mags[1] / mags[0])) <= FLAT_DB
+    in_phase = abs(math.degrees(math.atan2(ac[0][2], ac[0][1]))) <= FLAT_DEG
     phases, prev, offset = [], None, 0.0
     for _, re_, im_ in ac:
         p = math.degrees(math.atan2(im_, re_))
@@ -850,7 +935,7 @@ def ac_measures(ac):
                 offset += 360.0
         phases.append(p + offset)
         prev = p + offset
-    gain = 20.0 * math.log10(mags[0]) if mags[0] > 0 else None
+    gain = 20.0 * math.log10(mags[0]) if flat else None
     for i in range(1, len(ac)):
         if mags[i - 1] >= 1.0 > mags[i] and mags[i] > 0:
             la, lb = math.log10(mags[i - 1]), math.log10(mags[i])
@@ -858,7 +943,7 @@ def ac_measures(ac):
             fa, fb = math.log10(ac[i - 1][0]), math.log10(ac[i][0])
             ugf = 10 ** (fa + t * (fb - fa))
             ph = phases[i - 1] + t * (phases[i] - phases[i - 1])
-            return gain, ugf / 1e6, 180.0 + (ph - phases[0])
+            return gain, ugf / 1e6, (180.0 + ph) if flat and in_phase else None
     return gain, None, None
 
 
@@ -932,7 +1017,7 @@ def measure_rpt(record):
     return "\n".join(lines)
 
 
-def cmd_simulate(ws, stage, load_pf, cm_pct):
+def cmd_simulate(ws, stage, load_pf, cm_pct, gain_db, gbw_mhz, pm_deg, power_uw):
     ws = Path(ws)
     if stage not in STAGES:
         raise ToolError("stage must be source or target")
@@ -948,12 +1033,19 @@ def cmd_simulate(ws, stage, load_pf, cm_pct):
                   loadPf=load, cmPct=cm, simulator=inputs["pdks"][stage]["simulator"]["version"], designSha256=sha256_file(design_path(ws, stage)),
                   design=dict(ibiasUa=design["ibiasUa"], ccPf=design["ccPf"], rzKohm=design["rzKohm"], devices=design["devices"]),
                   areaUm2=area_um2(design), corners=corners, worst=worst_of(corners), claimBoundary=CLAIM_BOUNDARY, measuredAt=now())
+    spec = spec_of(gain_db, gbw_mhz, pm_deg, power_uw)
+    met = spec_met(record["worst"], spec)
+    record.update(spec=spec, specMet=met, marginPct=margins(record["worst"], spec),
+                  meetsSpec=None if record["worst"]["saturated"] is None or None in met.values()
+                  else (record["worst"]["saturated"] is True and all(met.values())),
+                  unsaturated={c: sorted(n for n, d in v["devices"].items() if d is not None and not d["saturated"]) for c, v in corners.items()})
     write_json(state(ws, "measure-%s.json" % stage), record)
     write_text(out_dir / "measure.rpt", measure_rpt(record))
     write_chart(ws, SIM_NODES[stage], k, "corners", corners_chart(record))
     w = record["worst"]
-    print("%s round %d in %s: worst gain %s dB, GBW %s MHz, PM %s deg, power %s uW, saturated %s"
-          % (stage, k, record["pdk"], fmt(w["gainDb"], "%.1f"), fmt(w["gbwMhz"], "%.2f"), fmt(w["pmDeg"], "%.1f"), fmt(w["powerUw"], "%.1f"), w["saturated"]))
+    print("%s round %d in %s: worst gain %s dB, GBW %s MHz, PM %s deg, power %s uW, saturated %s; meets the spec: %s"
+          % (stage, k, record["pdk"], fmt(w["gainDb"], "%.1f"), fmt(w["gbwMhz"], "%.2f"), fmt(w["pmDeg"], "%.1f"), fmt(w["powerUw"], "%.1f"),
+             w["saturated"], record["meetsSpec"]))
 
 
 def cmd_sim(ws, stage, path, load_pf, cm_pct, out_dir=None):
@@ -992,51 +1084,87 @@ def margins(worst, spec):
     return round(min(vals), 3)
 
 
+def spec_of(gain_db, gbw_mhz, pm_deg, power_uw):
+    return dict(gainDb=float(gain_db), gbwMhz=float(gbw_mhz), pmDeg=float(pm_deg), powerUw=float(power_uw))
+
+
+NO_VALID_ROUND_PCT = -100.0   # the best margin before any valid round: the floor, every line fully missed
+
+
+def migration_of(source_design, target_design):
+    """How far the migrated design's choices moved from the source's: per group gm/Id and L, and
+    the current ratios. None when either design was sized by hand (no intent)."""
+    si, ti = (source_design or {}).get("intent"), (target_design or {}).get("intent")
+    if not isinstance(si, dict) or not isinstance(ti, dict):
+        return None
+    out = {g: dict(gmId=[si[g]["gmId"], ti[g]["gmId"]], lUm=[si[g]["lUm"], ti[g]["lUm"]]) for g in ("input", "load", "sink")}
+    out["currentRatios"] = {k: round(ti[k] / si[k], 4) for k in ("ibiasUa", "i1Ua", "i6Ua") if si.get(k)}
+    out["ccPf"], out["rzKohm"] = [si["ccPf"], ti["ccPf"]], [si["rzKohm"], ti["rzKohm"]]
+    return out
+
+
 def cmd_record(ws, gain_db, gbw_mhz, pm_deg, power_uw):
     ws = Path(ws)
     inputs = load_inputs(ws)
     k = current_round(ws)
-    spec = dict(gainDb=float(gain_db), gbwMhz=float(gbw_mhz), pmDeg=float(pm_deg), powerUw=float(power_uw))
+    spec = spec_of(gain_db, gbw_mhz, pm_deg, power_uw)
     stages, problems, measured = {}, [], {}
     for stage in STAGES:
         path = state(ws, "measure-%s.json" % stage)
         m = read_json(path) if path.is_file() else None
         if m is None or m.get("round") != k:
             stages[stage] = None
-            problems.append("no %s measurement this round" % stage)
+            if stage == "source" or (measured.get("source") or {}).get("meetsSpec") is True:
+                problems.append("no %s measurement this round" % stage)
             continue
         measured[stage] = m
         if m.get("designSha256") != sha256_file(design_path(ws, stage)):
             problems.append("the %s measurement is not of the accepted %s design" % (stage, stage))
+        if m.get("spec") != spec:
+            problems.append("the %s measurement was judged against another spec sheet" % stage)
         met = spec_met(m["worst"], spec)
-        stages[stage] = dict(pdk=m["pdk"], worst=m["worst"], areaUm2=m["areaUm2"], specMet=met,
+        stages[stage] = dict(pdk=m["pdk"], simulator=m["simulator"], worst=m["worst"], areaUm2=m["areaUm2"], specMet=met,
                              specsMet=sum(1 for v in met.values() if v is True), marginPct=margins(m["worst"], spec),
-                             saturated=m["worst"]["saturated"])
+                             saturated=m["worst"]["saturated"], unsaturated=m.get("unsaturated") or {})
+    if len({(m.get("loadPf"), m.get("cmPct")) for m in measured.values()}) > 1:
+        problems.append("the source and target were simulated with different load or input common mode")
+    source, target = stages["source"], stages["target"]
+    if source is not None and measured["source"].get("meetsSpec") is not True:
+        problems.append("the source design does not meet the spec, so this round has no migration")
+    if target is not None:
+        if target["saturated"] is not True:
+            problems.append("the target design has a device out of saturation at some corner" if target["saturated"] is False
+                            else "the target design's saturation is unknown at some corner")
+        if target["marginPct"] is None:
+            problems.append("a target measurement is unknown at some corner")
+    valid = target is not None and not problems
     lessons = read_json(state(ws, "lessons.json"))
-    target = stages["target"]
-    valid = target is not None and not problems and target["saturated"] is True
-    if target is not None and target["saturated"] is not True:
-        problems.append("the target design has a device out of saturation at some corner" if target["saturated"] is False
-                        else "the target design's saturation is unknown at some corner")
     earlier = [r["targetMarginPct"] for r in lessons["rounds"] if r.get("roundValid") and r.get("targetMarginPct") is not None]
-    margin = target["marginPct"] if valid else None
-    best = max(earlier + ([margin] if margin is not None else []), default=None)
-    load = {m.get("loadPf") for m in measured.values()}
-    record = dict(schema=ROUND_SCHEMA, round=k, loadPf=load.pop() if len(load) == 1 else None, spec=spec, source=stages["source"], target=target,
-                  roundValid=valid, problems=problems, targetMarginPct=margin, bestMarginPct=best,
-                  roundImproved=valid and (not earlier or margin > max(earlier)), claimBoundary=CLAIM_BOUNDARY, recordedAt=now())
-    write_json(state(ws, "round.json"), record)
-    lessons["rounds"].append(dict(round=k, roundValid=valid, problems=problems, targetMarginPct=margin,
-                                  sourceWorst=None if stages["source"] is None else stages["source"]["worst"],
-                                  targetWorst=None if target is None else target["worst"],
-                                  sourceSpecsMet=None if stages["source"] is None else stages["source"]["specsMet"],
-                                  targetSpecsMet=None if target is None else target["specsMet"]))
-    write_json(state(ws, "lessons.json"), lessons)
+    margin = None if target is None else target["marginPct"]
+    best = max(earlier + ([margin] if valid else []), default=None)
+    design = lambda stage: read_json(design_path(ws, stage)) if design_path(ws, stage).is_file() else None
+    record = dict(schema=ROUND_SCHEMA, round=k, loadPf=(measured.get("source") or {}).get("loadPf"),
+                  cmPct=(measured.get("source") or {}).get("cmPct"), spec=spec, source=source, target=target,
+                  roundValid=valid, problems=problems, targetMarginPct=margin,
+                  bestMarginPct=NO_VALID_ROUND_PCT if best is None else best, bestMarginBasis="valid rounds" if best is not None else "no valid round yet",
+                  roundImproved=bool(valid and margin is not None and (not earlier or margin > max(earlier))),
+                  migration=migration_of(design("source"), design("target")) if target is not None else None,
+                  claimBoundary=CLAIM_BOUNDARY, recordedAt=now())
     out = report_dir(ws, "record-round", k)
     write_text(out / ("round-%d.md" % k), round_md(record, inputs))
     write_chart(ws, "record-round", k, "migration", migration_chart(record))
     write_text(Path(ws) / "derived" / ("round-%d.md" % k), round_md(record, inputs))
+    lessons["rounds"].append(dict(round=k, roundValid=valid, problems=problems, targetMarginPct=margin,
+                                  sourceWorst=None if source is None else source["worst"],
+                                  targetWorst=None if target is None else target["worst"],
+                                  sourceSpecsMet=None if source is None else source["specsMet"],
+                                  targetSpecsMet=None if target is None else target["specsMet"],
+                                  sourceUnsaturated=None if source is None else source["unsaturated"],
+                                  targetUnsaturated=None if target is None else target["unsaturated"],
+                                  migration=record["migration"]))
     write_summary(ws, inputs, lessons, spec)
+    write_json(state(ws, "round.json"), record)
+    write_json(state(ws, "lessons.json"), lessons)
     print("round %d recorded: valid %s, target margin %s %%" % (k, valid, fmt(margin)))
 
 
@@ -1057,6 +1185,21 @@ def round_md(r, inputs):
         lines.append("| %s (%s) | %s %s | %s | %s |" % (label, unit, ">=" if better == "higher" else "<=", fmt(r["spec"][key], "%%.%df" % digits), *cells))
     lines += ["", "Round valid: %s. Target worst margin %s %% (best so far %s %%)." % ("yes" if r["roundValid"] else "no",
                                                                                      fmt(r["targetMarginPct"]), fmt(r["bestMarginPct"]))]
+    mig = r.get("migration")
+    if mig:
+        lines += ["", "How the migrated design moved from the source design:", "",
+                  "| group | gm/Id (1/V) | L (um) |", "| --- | --- | --- |"]
+        for g in ("input", "load", "sink"):
+            lines.append("| %s | %g -> %g | %s -> %s |" % (g, mig[g]["gmId"][0], mig[g]["gmId"][1], um(mig[g]["lUm"][0]), um(mig[g]["lUm"][1])))
+        lines += ["", "Current ratios (target / source): %s; Cc %g -> %g pF; Rz %g -> %g kOhm." % (
+            ", ".join("%s x%g" % (k, v) for k, v in mig["currentRatios"].items()), mig["ccPf"][0], mig["ccPf"][1], mig["rzKohm"][0], mig["rzKohm"][1])]
+    elif r.get("target") is not None:
+        lines += ["", "The migrated design was sized by hand (no gm/Id intent to compare)."]
+    for stage in STAGES:
+        s_ = r.get(stage)
+        bad = sorted({n for names in ((s_ or {}).get("unsaturated") or {}).values() for n in names})
+        if bad:
+            lines.append("%s devices out of saturation at some corner: %s." % (stage.capitalize(), ", ".join(bad)))
     if r["problems"]:
         lines += ["", "Problems: " + "; ".join(r["problems"])]
     lines += ["", CLAIM_BOUNDARY, ""]
@@ -1110,13 +1253,16 @@ def gmid_chart(table):
             digits.append(2)
             better.append("none")
             for kind in ("nmos", "pmos"):
-                try:
-                    pl = list(table["devices"][kind]["lengths"])[lengths.index(length)]
-                    series[kind].append(lookup(table, kind, float(pl), g)["jdUaUm"])
-                except (ToolError, ValueError, IndexError):
+                # Only at the same length: a pmos curve at another length is not shown under this label.
+                if length in table["devices"][kind]["lengths"]:
+                    try:
+                        series[kind].append(lookup(table, kind, float(length), g)["jdUaUm"])
+                    except ToolError:
+                        series[kind].append(None)
+                else:
                     series[kind].append(None)
     return chart("gm/Id design curves, %s" % table["pdk"], cats[:16], [("nmos", series["nmos"][:16], "measured"), ("pmos", series["pmos"][:16], "measured")],
-                 "ngspice DC sweeps of the %s device models (characterize)" % table["pdk"], list(zip(units, digits, better))[:16],
+                 "%s DC sweeps of the %s device models (characterize)" % (table["simulator"], table["pdk"]), list(zip(units, digits, better))[:16],
                  subtitle="Current per um of width at a chosen gm/Id", caption="Higher gm/Id is weaker inversion: less current per um, more gain per uA.")
 
 
@@ -1126,7 +1272,7 @@ def corners_chart(record):
     cats = [l for _, l, _, _, _ in keys]
     series = [(c, [record["corners"][c][k] for k, *_ in keys], "measured" if c == "tt" else "neutral") for c in corners[:3]]
     return chart("%s OTA in %s, by corner" % (record["stage"].capitalize(), record["pdk"]), cats, series,
-                 "ngspice testbench at each corner (simulate-%s)" % record["stage"], [(u, d, b) for _, _, u, d, b in keys],
+                 "%s testbench at each corner (simulate-%s)" % (record["simulator"], record["stage"]), [(u, d, b) for _, _, u, d, b in keys],
                  subtitle="Load %g pF, supply %.2f V, input at %g %% of supply" % (record["loadPf"], record["vdd"], record["cmPct"]))
 
 
@@ -1139,7 +1285,7 @@ def migration_chart(r):
               (r["source"]["pdk"] if r["source"] else "source", vals("source"), "measured"),
               (r["target"]["pdk"] if r["target"] else "target", vals("target"), "proposed")]
     return chart("Round %d: the OTA before and after migration" % r["round"], cats, series,
-                 "worst corner of each simulated design (record-round)", [(u, d, b) for _, _, u, d, b in SPEC] + [("um2", 1, "lower")],
+                 "worst corner of each design, %s (record-round)" % " / ".join(sorted({r[s]["simulator"] for s in STAGES if r[s]})), [(u, d, b) for _, _, u, d, b in SPEC] + [("um2", 1, "lower")],
                  caption="Worst corner per line. " + CLAIM_BOUNDARY[:120])
 
 
@@ -1147,7 +1293,7 @@ def migration_chart(r):
 
 COMMANDS = {
     "bind": (cmd_bind, (4,)), "characterize": (cmd_characterize, (0,)), "design": (cmd_design, (1,)),
-    "simulate": (cmd_simulate, (3,)), "record": (cmd_record, (4,)), "draft": (cmd_draft, (1, 2)),
+    "simulate": (cmd_simulate, (7,)), "record": (cmd_record, (4,)), "draft": (cmd_draft, (1, 2)),
     "precheck": (cmd_precheck, (2, 3)), "sim": (cmd_sim, (4, 5)),
 }
 

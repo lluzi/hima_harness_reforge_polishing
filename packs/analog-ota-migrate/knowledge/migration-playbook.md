@@ -32,7 +32,7 @@ The design must cite the accepted source design (`migratedFrom` with its SHA-256
 
 ## Re-bias against the simulator
 
-Edit the intent (start from the draft's `intent`, without its `devices` facts), then
+Edit the intent (start from the draft's `intent`), then
 `draft migrate intent.json > design.json` and `sim ... target design.json ...` again. Write each try
 in your analysis: the intent change, the worst-corner numbers, what you concluded. Deliver when every
 target corner meets every line with every device saturated. If a line cannot be met in the target

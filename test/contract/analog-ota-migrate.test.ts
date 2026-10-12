@@ -10,7 +10,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkPack, loadPack, loadSite, packStageOf } from '@hima/harness';
+import { checkPack, choose, loadPack, loadSite, packStageOf, resolveChooser } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 
 const packId = 'analog-ota-migrate';
@@ -77,10 +77,11 @@ test('the graph judges the source before migrating, records every round and loop
   assert.deepEqual(out('next-round'), [['size-agent', null, true]]);
   const source = node('check-source');
   assert.ok(source?.kind === 'judge');
-  assert.deepEqual(source.parameters.rules, ['devices-saturated', 'gain-spec', 'gbw-spec', 'pm-spec', 'power-spec']);
+  // A judge takes its edge from its FIRST rule; a chooser weighs its first two (constraint, goal).
+  assert.deepEqual(source.parameters.rules, ['source-meets-spec', 'devices-saturated', 'gain-spec', 'gbw-spec', 'pm-spec', 'power-spec']);
   const round = node('judge-round');
   assert.ok(round?.kind === 'judge');
-  assert.deepEqual(round.parameters.rules, ['round-valid', 'gain-spec', 'gbw-spec', 'pm-spec', 'power-spec']);
+  assert.deepEqual(round.parameters.rules, ['round-valid', 'target-margin', 'gain-spec', 'gbw-spec', 'pm-spec', 'power-spec']);
   for (const judge of [source, round]) {
     assert.deepEqual(Object.keys(judge.parameters.bind ?? {}).sort(), ['max_power_uw', 'min_gain_db', 'min_gbw_mhz', 'min_pm_deg']);
   }
@@ -216,4 +217,63 @@ print(json.dumps(cli.ac_measures(ac)))`);
   assert.ok(Math.abs(m[0] - 60) < 1e-6, `gain ${m[0]}`);
   assert.ok(Math.abs(m[1] - ugf / 1e6) / (ugf / 1e6) < 0.002, `ugf ${m[1]} vs ${ugf / 1e6}`);
   assert.ok(Math.abs(m[2] - pm) < 0.2, `pm ${m[2]} vs ${pm}`);
+});
+
+test('the next-round chooser ends only on a valid round whose migrated OTA meets every line, and otherwise asks for another round', () => {
+  const pack = loadPack(packsDir, packId);
+  const chooser = resolveChooser(pack, 'ota-next', 'the round').chooser;
+  const verdict = (ruleId: string, outcome: 'PASS' | 'FAIL' | 'UNDETERMINED') => ({ ruleId, outcome }) as any;
+  const observation = (best: number) => ({ id: 'round', values: [{ type: 'best_margin_pct', unit: 'percent', value: best }] }) as any;
+  const base = { bound: { roundStep: 1 }, knobs: pack.contract.strategy, strategy: { loadPf: 2, inputCmPct: 60, roundRevision: 0 } };
+  const lines = (outcome: 'PASS' | 'FAIL') => ['gain-spec', 'gbw-spec', 'pm-spec', 'power-spec'].map((id) => verdict(id, outcome));
+  // A valid round that meets every line: goal met.
+  assert.deepEqual(choose(chooser, { ...base, observation: observation(4.3), constraint: verdict('round-valid', 'PASS'),
+    goal: verdict('target-margin', 'PASS'), verdicts: [verdict('round-valid', 'PASS'), verdict('target-margin', 'PASS'), ...lines('PASS')] }),
+  { ok: true, chosen: { goalMet: true }, rationale: { bestMargin: 4.3, roundStep: 1 } });
+  // Gain met but another line missed: the composite goal fails, and the chooser asks for another round.
+  const missed = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'PASS'),
+    goal: verdict('target-margin', 'FAIL'), verdicts: [verdict('round-valid', 'PASS'), verdict('target-margin', 'FAIL'), verdict('gain-spec', 'PASS')] }) as any;
+  assert.equal(missed.ok, true, missed.reason);
+  assert.equal(missed.chosen.strategy.roundRevision, 1);
+  // An invalid round (the naive port out of saturation) before any valid round: the floor is a number, so the chooser still decides.
+  const invalid = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'FAIL'), goal: verdict('target-margin', 'FAIL') }) as any;
+  assert.equal(invalid.ok, true, invalid.reason);
+  assert.equal(invalid.chosen.strategy.roundRevision, 1);
+  // A round without a migrated OTA (the source missed the spec): the goal is undetermined; another round.
+  const undetermined = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'FAIL'), goal: verdict('target-margin', 'UNDETERMINED') }) as any;
+  assert.equal(undetermined.ok, true, undetermined.reason);
+  const unknownGoal = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'PASS'), goal: verdict('target-margin', 'UNDETERMINED') }) as any;
+  assert.equal(unknownGoal.ok, true, unknownGoal.reason);
+});
+
+test('the PSF reader keeps every struct whatever order Spectre writes them in', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'analog-psf-'));
+  try {
+    const file = path.join(root, 'op.info');
+    await writeFile(file, [
+      'HEADER', '"PSFversion" "1.00"', 'TYPE',
+      '"capacitor" STRUCT(', '"cap" FLOAT DOUBLE PROP(', '"units" "F"', ')', '"i" FLOAT DOUBLE PROP(', '"units" "A"', ')', ') PROP(', '"key" "inst"', ')',
+      '"bsim4" STRUCT(', '"ids" FLOAT DOUBLE PROP(', '"units" "A"', ')', '"vds" FLOAT DOUBLE PROP(', '"units" "V"', ')', ') PROP(', '"key" "inst"', ')',
+      'VALUE', '"CL" "capacitor" (', '2e-12', '0', ')', '"M1" "bsim4" (', '3e-06', '0.88', ')', 'END', '',
+    ].join('\n'));
+    const insts = pack(`_, insts = cli.psf_ascii(${JSON.stringify(file)})
+print(json.dumps(insts))`);
+    assert.deepEqual(insts, { CL: { cap: 2e-12, i: 0 }, M1: { ids: 3e-6, vds: 0.88 } });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('the AC arithmetic refuses to read a gain or phase margin from a response that is not flat and in phase at the sweep start', () => {
+  const m = pack(`ac = []
+for i in range(0, 521):
+    f = 1e-3 * 10 ** (i / 40.0)
+    h_low = 1e6 / (1 + 1j * f / 1e-3)          # first pole at the sweep start
+    h_inv = -1000 / (1 + 1j * f / 1e4)         # an inverting response
+    ac.append((f, h_low, h_inv))
+print(json.dumps([cli.ac_measures([(f, h.real, h.imag) for f, h, _ in ac]), cli.ac_measures([(f, h.real, h.imag) for f, _, h in ac])]))`);
+  const [low, inverted] = m;
+  assert.equal(low[0], null, 'gain unknown: not flat at the sweep start');
+  assert.equal(low[2], null, 'phase margin unknown: not flat at the sweep start');
+  assert.ok(low[1] > 0, 'the unity-gain frequency is still where |H| crosses 1');
+  assert.ok(Math.abs(inverted[0] - 60) < 1e-6, 'an inverting response still has its gain');
+  assert.equal(inverted[2], null, 'phase margin unknown: the response is not in phase');
 });

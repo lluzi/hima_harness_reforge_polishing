@@ -1,3 +1,7 @@
+# A judge takes its edge from its first rule and a chooser weighs the judge's first two (constraint,
+# goal): check-source leads with source-meets-spec (every line with every device saturated), and
+# judge-round with round-valid then target-margin; the per-line rules follow for the record.
+#
 # Characterize both PDKs once (gm/Id tables from the Site's simulator), then rounds of: the sizing
 # agent (resident) delivers an OTA in the source PDK -> the Pack simulates it at every corner -> the
 # spec judge; when the source meets the spec, the migration agent (resident) ports it to the target
@@ -73,6 +77,10 @@ nodes:
       arguments:
         LOAD_PF: { from: strategy, name: loadPf }
         CM_PCT: { from: strategy, name: inputCmPct }
+        GAIN_DB: { from: goal, name: min_gain_db }
+        GBW_MHZ: { from: goal, name: min_gbw_mhz }
+        PM_DEG: { from: goal, name: min_pm_deg }
+        POWER_UW: { from: goal, name: max_power_uw }
   - id: read-source
     kind: act
     label: Read the source results
@@ -83,7 +91,7 @@ nodes:
     label: Source meets the spec
     about: The worst corner of the source OTA meets every line of the spec sheet with every device saturated.
     parameters:
-      rules: [devices-saturated, gain-spec, gbw-spec, pm-spec, power-spec]
+      rules: [source-meets-spec, devices-saturated, gain-spec, gbw-spec, pm-spec, power-spec]
       bind:
         min_gain_db: { from: goal, name: min_gain_db }
         min_gbw_mhz: { from: goal, name: min_gbw_mhz }
@@ -104,6 +112,10 @@ nodes:
       arguments:
         LOAD_PF: { from: strategy, name: loadPf }
         CM_PCT: { from: strategy, name: inputCmPct }
+        GAIN_DB: { from: goal, name: min_gain_db }
+        GBW_MHZ: { from: goal, name: min_gbw_mhz }
+        PM_DEG: { from: goal, name: min_pm_deg }
+        POWER_UW: { from: goal, name: max_power_uw }
   - id: record-round
     kind: act
     label: Compare before and after
@@ -125,7 +137,7 @@ nodes:
     label: Migrated OTA meets the spec
     about: The round is complete and the migrated OTA's worst corner meets every line of the spec sheet.
     parameters:
-      rules: [round-valid, gain-spec, gbw-spec, pm-spec, power-spec]
+      rules: [round-valid, target-margin, gain-spec, gbw-spec, pm-spec, power-spec]
       bind:
         min_gain_db: { from: goal, name: min_gain_db }
         min_gbw_mhz: { from: goal, name: min_gbw_mhz }

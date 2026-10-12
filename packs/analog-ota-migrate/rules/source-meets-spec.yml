@@ -1,0 +1,6 @@
+id: source-meets-spec
+version: "0.1.0"
+title: The source OTA's worst corner meets every spec line with every device saturated
+requires: [{ type: meets_spec }]
+subject: { type: meets_spec }
+predicate: { op: eq, threshold: 1, unit: count }

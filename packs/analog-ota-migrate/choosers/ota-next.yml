@@ -12,6 +12,8 @@ decide:
     goalMet: true
   - when: { constraint: PASS, goal: FAIL }
     next: { roundRevision: roundStep }
+  - when: { constraint: PASS, goal: UNDETERMINED }
+    next: { roundRevision: roundStep }
   - when: { constraint: FAIL }
     next: { roundRevision: roundStep }
   - when: { constraint: UNDETERMINED }

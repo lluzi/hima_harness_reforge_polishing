@@ -24,11 +24,11 @@ inputs:
       PDK is measured with the first simulator its card lists that the Site has: Cadence Spectre where
       the PDK's decks read in Spectre, ngspice otherwise.
   - name: pdkRoot
-    description: Read-only root of the installed open PDKs, as the simulator sees it (sky130A, ihp-sg13g2, ... or the test PDKs).
+    description: Read-only root of the installed PDKs, as the simulators see them (gf180mcuD, or the test PDKs synth180 and synth130).
   - name: sourcePdk
-    description: The PDK the OTA is first sized in (a card name in flow/pdks.json, e.g. sky130A).
+    description: The PDK the OTA is first sized in (a card name in flow/pdks.json, e.g. gf180mcuD).
   - name: targetPdk
-    description: The PDK the OTA is migrated to (a card name in flow/pdks.json, e.g. ihp-sg13g2).
+    description: The PDK the OTA is migrated to (a card name in flow/pdks.json, e.g. synth130).
   - name: workspaceRoot
     description: Campaign-private output root allowed by the Site Permit.
 
@@ -132,10 +132,11 @@ tools:
     description: >-
       Simulate the accepted source design at every corner of the source PDK (operating point, AC
       open-loop response): DC gain, unity-gain frequency, phase margin, power and each device's
-      saturation; write state/measure-source.json and reports/simulate-source/r<k>/ (the netlists,
-      logs, measure.rpt and the corner chart).
-    inputs: [WORKSPACE, LOAD_PF, CM_PCT]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', source, '${LOAD_PF}', '${CM_PCT}']
+      saturation, judged against the spec sheet (the Goal: every line met at the worst corner with
+      every device saturated); write state/measure-source.json and reports/simulate-source/r<k>/
+      (the netlists, logs, measure.rpt and the corner chart).
+    inputs: [WORKSPACE, LOAD_PF, CM_PCT, GAIN_DB, GBW_MHZ, PM_DEG, POWER_UW]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', source, '${LOAD_PF}', '${CM_PCT}', '${GAIN_DB}', '${GBW_MHZ}', '${PM_DEG}', '${POWER_UW}']
 
   - id: migrate-agent
     file: flow/ota_cli.py
@@ -168,8 +169,8 @@ tools:
     description: >-
       Simulate the accepted migrated design at every corner of the target PDK, the same testbench
       and measurements as the source; write state/measure-target.json and reports/simulate-target/r<k>/.
-    inputs: [WORKSPACE, LOAD_PF, CM_PCT]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', target, '${LOAD_PF}', '${CM_PCT}']
+    inputs: [WORKSPACE, LOAD_PF, CM_PCT, GAIN_DB, GBW_MHZ, PM_DEG, POWER_UW]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', target, '${LOAD_PF}', '${CM_PCT}', '${GAIN_DB}', '${GBW_MHZ}', '${PM_DEG}', '${POWER_UW}']
 
   - id: record-round
     file: flow/ota_cli.py
@@ -185,6 +186,8 @@ reports: { dir: reports }
 
 rules:
   - tables-valid
+  - source-meets-spec
+  - target-margin
   - devices-saturated
   - gain-spec
   - gbw-spec

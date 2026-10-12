@@ -50,7 +50,7 @@ failed.
   - Cadence Spectre 23.1 is installed and licensed, and runs through the EDA container (`edarun`).
   - ngspice-46 is in the resident sandbox image.
   - Spectre reads GF180MCU and the synthetic decks, but not SKY130 or IHP.
-  - Spectre and ngspice agree to the reported digit on the same BSIM4 decks.
+  - Spectre and ngspice agree within 0.1 dB, 1 % and 0.5° on every design checked on the same BSIM4 decks.
 - **No Empyrean analog tool** (Aether/ALPS) on the lab server.
 
 ## Behaviour ownership
@@ -81,7 +81,7 @@ of 1.
 
 Per corner, the testbench measures:
 
-- gain at 0.1 Hz;
+- gain at 0.1 Hz (unknown unless the response is flat and in phase there);
 - unity-gain frequency (log-log interpolation where |H| falls through 1);
 - phase margin = 180 + (phase at unity gain − phase at 0.1 Hz), with the phase unwrapped;
 - supply power;
@@ -144,10 +144,16 @@ record-round → read-round → judge-round → next-round ─revisit→ size-ag
 check-tables ─FAIL/UNDETERMINED→ blocked
 ```
 
-There are four autopilot segments, and the owner drives the two resident nodes. The Goal is the four
-spec lines (rules `gain-spec`, `gbw-spec`, `pm-spec`, `power-spec`). The constraints are
-`devices-saturated` at the source and `round-valid` at the round; `round-valid` includes the
-migrated OTA's saturation and that each measurement is of the accepted design. Chooser `ota-next`:
+There are four autopilot segments, and the owner drives the two resident nodes. A judge takes its edge
+from its first rule and a chooser weighs the judge's first two, so:
+
+- `check-source` leads with `source-meets-spec`: every Goal line at the worst corner with every
+  device saturated, stated by `simulate-source`, which is given the Goal.
+- `judge-round` leads with `round-valid` (the source met the spec; both measurements are of the
+  accepted designs with the same load, common mode and spec; the migrated OTA is saturated and
+  fully measured), then `target-margin` (worst normalized margin ≥ 0).
+- The per-line rules (`gain-spec`, `gbw-spec`, `pm-spec`, `power-spec`, `devices-saturated`) follow
+  for the record. Chooser `ota-next`:
 goal met, or another round. Converge on `best_margin_pct`; generation limit 3; 2 h time box.
 
 ### Results the App shows
@@ -173,7 +179,7 @@ goal met, or another round. Converge on `best_margin_pct`; generation limit 3; 2
 
 | Slice | Content | Test level | Status |
 | --- | --- | --- | --- |
-| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU card | L0/L1/L2 local (`local`: 8 tests, about 1 s), real ngspice (`analog-sim`: 6 tests, about 8 s); Spectre by hand on the server | **Done** (629388c2) |
+| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU card; independent review fixes | L0/L1/L2 local (`local`: 11 tests, about 1 s), real ngspice (`analog-sim`: 8 tests, about 10 s); Spectre by hand on the server | **Done** |
 | 2 | Resident dry path: both agents through the production resident wrapper with the ACP stand-in, in the in-process Host (pattern: `andes-cell-fmax-dry-path.host.test.ts`); refused deliveries repaired in the same task; goal met in round 2 after a naive port | L2 Host (`analog-dry` group) | Next |
 | 3 | Site `analog_sim_01` (needs user approval for server writes under our project area). Contents: the Spectre wrapper through `edarun`; the ngspice wrapper through the pinned sandbox image; PDK install (GF180MCU from the image; the target PDK); Permit; resident capability (sandbox image with `/foss/pdks`); `simulators: spectre=…,ngspice=…`. The SSH destination is an alias, not an IP. | L4 live-site: bind, characterize, one round by hand, then `analog-ota-migrate.live.test.ts` | Needs decision |
 | 4 | Target PDK card. Option A: IHP SG13G2 1.2 V with ngspice (PSP via OSDI; check the PSP op-parameter names for the saturation gate; `.spiceinit` needs). Option B: the synthetic 130 nm-class process (all Spectre, not a real process). Option C: a customer's own Spectre PDK at their Site (never in this repo). | L4 | Needs decision |
@@ -203,7 +209,7 @@ goal met, or another round. Converge on `best_margin_pct`; generation limit 3; 2
 
 ## Rollback
 
-Delete the branch `demo/analog-ota`, or revert commit 629388c2. Nothing outside the new files
+Delete the branch `demo/analog-ota`, or revert its commits from 629388c2 on. Nothing outside the new files
 changed except `test/contract-groups.json`, which gains two entries.
 
 ## Model allocation

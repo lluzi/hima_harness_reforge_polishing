@@ -3,4 +3,4 @@ version: "0.1.0"
 file: tools/read-measure.py
 argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
 reportKind: hima-ota-measure/1
-emits: [gain_db, gbw_mhz, pm_deg, power_uw, saturated, area_um2]
+emits: [meets_spec, margin_pct, gain_db, gbw_mhz, pm_deg, power_uw, saturated, area_um2]

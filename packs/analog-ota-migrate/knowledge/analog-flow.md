@@ -31,9 +31,13 @@ inductor (DC unity feedback sets the operating point) and a 1 F capacitor ground
 so the AC analysis sees the open loop. The non-inverting input sits at the input common mode
 (`inputCmPct` percent of the PDK's supply) with an AC source of 1 V. Measurements:
 
-- DC gain: the gain at 0.1 Hz, dB.
+- DC gain: the gain at 0.1 Hz, dB. The response must be flat there (the first two points within
+  0.1 dB) and in phase (within 5 deg of 0): otherwise the gain and the phase margin are unknown. A
+  dominant pole below about 0.1 Hz (a very high gain with a very low bandwidth) therefore reads
+  unknown, never a shifted number. The sweep does not start lower because the testbench's DC
+  feedback starts to close the loop there.
 - Unity-gain frequency: where the gain crosses 0 dB, MHz (the GBW of a dominant-pole OTA).
-- Phase margin: 180 degrees plus the phase change from 0.1 Hz to the unity-gain frequency.
+- Phase margin: 180 degrees plus the phase at the unity-gain frequency (unwrapped from 0.1 Hz).
 - Power: supply voltage times supply current at the operating point, bias branch included.
 - Saturation: every device with |Vds| at least |Vdsat| + 50 mV.
 
@@ -50,10 +54,10 @@ unknown; an unknown never meets a line.
 | `characterize` | Pack | DC sweeps: gm/Id, current density Id/W, gm/gds, fT per device type and length, both PDKs |
 | `size-agent` | AI agent | delivers the source design (sizes, bias, Cc, Rz, the gm/Id intent) |
 | `simulate-source` | Pack | the testbench at every source corner |
-| `check-source` | judge | the source worst corner meets the spec with every device saturated |
+| `check-source` | judge | the source worst corner meets every line with every device saturated (`simulate-source` is given the spec sheet and states `meets_spec`) |
 | `migrate-agent` | AI agent | delivers the target design, citing the accepted source design |
 | `simulate-target` | Pack | the same testbench at every target corner |
-| `record-round` | Pack | both designs against the spec, the target's worst margin, lessons |
+| `record-round` | Pack | both designs against the spec, the target's worst margin, how the port moved from the source (gm/Id, L, currents), which devices left saturation at which corner, lessons |
 | `judge-round` | judge | the round is valid and the migrated OTA meets every line |
 | `next-round` | owner | goal met, or another round for the agents with the lessons |
 
@@ -73,8 +77,9 @@ python3 <campaign>/flow/ota_cli.py precheck <campaign> <stage> design.json
 ```
 
 `sim` is the Pack's own testbench and measurement code on your draft, run with the ngspice in your
-sandbox. On the same device decks ngspice agrees with Spectre to the reported digit, so the numbers
-it prints are what `simulate-source` / `simulate-target` will measure. They are for your loop only;
+sandbox. On the same device decks ngspice and Spectre agreed within 0.1 dB, 1 % and 0.5 deg on every
+design checked, so the numbers it prints are what `simulate-source` / `simulate-target` will
+measure, to that closeness. They are for your loop only;
 the delivery carries sizes, never numbers.
 
 ## What the results mean

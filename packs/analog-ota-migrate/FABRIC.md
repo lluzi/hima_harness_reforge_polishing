@@ -12,7 +12,7 @@
   spec, size from an intent, the gm/Id-preserving port, keep), precheck, sim (the testbench on an
   agent's own draft). `flow/pdks.json`: PDK cards (`synth180`, `synth130`, `gf180mcuD`).
 - `tools/read-{tables,design,measure,round}.py` with `readers/ota-{tables,design,source,round}.yml`;
-  `rules/*.yml` (seven); `choosers/ota-next.yml`; `knowledge/*.md` (five).
+  `rules/*.yml` (nine); `choosers/ota-next.yml`; `knowledge/*.md` (five).
 - Outside the Pack: `test/fixtures/analog-pdks/` (the synthetic PDKs), `test/fixtures/analog-spectre/`
   (Spectre 23.1 output on the synthetic PDKs, for the offline parser tests) and
   `test/contract/analog-ota-migrate*.test.ts`.
@@ -33,6 +33,21 @@
   Monte Carlo. One topology.
 
 ## Reviews
+
+- Independent review (Claude Opus 5.5, 2026-10-12) of 629388c2: two blockers fixed. (1) A judge
+  takes its edge from its first rule only, so `check-source` led by `devices-saturated` would have
+  migrated a saturated source that missed GBW; it now leads with `source-meets-spec`, and a round is
+  valid only when its source met the spec. (2) The chooser weighs the judge's first two rules, so
+  `judge-round` now has `round-valid` then the composite `target-margin`, a clause for an
+  undetermined goal, and a converge read that is always known (-100 before the first valid
+  round). Also fixed: a crash and a false "improved" on an unknown margin; phase margin and gain are
+  unknown, never shifted, when the response is not flat and in phase at 0.1 Hz; the PSF reader
+  missed every struct after the first (`) PROP(` terminator); a later attempt never reads an earlier
+  attempt's output (fresh names, a completion marker); the intent is choices only and the devices
+  must follow it; chart sources name the measuring simulator; the round records the port's movement
+  and the unsaturated devices per corner; the pmos curve labels. Not changed: the migration agent's
+  `reads` (the per-device lessons carry what round 2 needs, and a target output does not exist in
+  round 1); `bind` still asks every bound simulator to answer.
 
 - By hand on the EDA server (2026-10-12, temporary directory, one job at a time, Cadence licence
   only): the Pack's CLI end to end with Spectre 23.1 on the synthetic pair, the same worst corners as
