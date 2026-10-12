@@ -54,7 +54,7 @@
       "all_proxy": "",
       "NO_PROXY": "localhost,127.0.0.1,::1,linglong,.local",
       "no_proxy": "localhost,127.0.0.1,::1,linglong,.local",
-      "EMPYREAN_LICENSE_FILE_OVERRIDE": "59011@localhost",
+      "EMPYREAN_LICENSE_FILE_OVERRIDE": "59003@localhost",
       "MAGE_HOME": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012"
     },
     "toolPaths": ["/usr/local/bin", "/usr/bin", "/bin"],

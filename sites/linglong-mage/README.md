@@ -41,13 +41,13 @@ Installed and verified directly on linglong, outside this slice:
 
 ## Known constraints
 
-- **Licence window.** The MAGE licence (`EMPYREAN_LICENSE_FILE_OVERRIDE` / `EMPYREAN_LICENSE_FILE`
-  `59011@localhost`) is served inside a user-run maintenance window, not continuously: the user runs
-  `sudo bash /home/luzi/mage_smart_conflict_resolver/practice-20261006/scripts/run_mage_window.sh --maintenance-approved`,
-  at most 810 s per invocation, and closes it early with
-  `touch /home/luzi/mage_smart_conflict_resolver/practice-20261006/window/request-close`. A
-  Campaign's MAGE rounds must fall inside an open window; the resident never opens, extends or
-  closes the window itself. `/data/eda/env/empyrean-2025-env.sh` honours the override variable.
+- **Licence server.** The MAGE licence (`EMPYREAN_LICENSE_FILE_OVERRIDE` / `EMPYREAN_LICENSE_FILE`
+  `59003@localhost`) is served by the permanent `empyrean-mage-lmgrd.service` systemd unit (Empyrean
+  Mage 2026 FlexNet), which covers every MAGE feature used here (MAGE_GUI, MAGE_SHELL,
+  MAGE_AUTO_REFINE, MAGE_DRC, …; 5 seats each; features expire 31-oct-2026). Verify with
+  `<MAGE_HOME>/exe/lmutil lmstat -a -c 59003@localhost`. `/data/eda/env/empyrean-2025-env.sh`
+  honours the override variable. The earlier `59011@localhost` maintenance-window helper
+  (`run_mage_window.sh`) is historical and is not used by this Site.
 - **Parallel jobs.** `parallelJobs: 2`; a Site declaring only 1 slot stalls resident release (the
   release of one round's seat needs a second slot free to proceed), so this Site always declares 2
   even though the Pack holds the `mage` licence (seat count 1) only during `engineer-place`.
