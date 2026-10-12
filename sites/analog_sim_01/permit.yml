@@ -1,0 +1,22 @@
+allowedReadRoots:
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/pdks
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering
+- /data/eda/project/hima_harness/analog-runs
+allowedWriteRoots:
+- /data/eda/project/hima_harness/analog-runs
+allowedWrappers:
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering/resident-engineering-wrapper.py
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/spectre
+- /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/ngspice
+- /usr/bin/python3
+forbidden:
+- services
+- licence-servers
+- network-settings
+- dns
+- proxy
+- tailscale
+- deletions
+- moves-of-run-directories
+- repository-downloads

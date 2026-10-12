@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Cadence Spectre for the analog Site: runs in the server's EDA container (edarun) in the caller's
+# directory, on the Cadence licence. The caller's arguments pass through unchanged.
+set -euo pipefail
+exec /usr/local/bin/edarun spectre "$@"

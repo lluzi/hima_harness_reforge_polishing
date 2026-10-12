@@ -1,0 +1,42 @@
+name: analog_sim_01
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/analog-runs
+permit: ./permit.yml
+bindings:
+  simulators: spectre=/data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/spectre,ngspice=/data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/ngspice
+  pdkRoot: /data/eda/project/hima_harness/operator-admin/analog-sim-01/pdks
+  sourcePdk: gf180mcuD
+  targetPdk: ihp-sg13g2
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering/engineering-capabilities-analog01.json
+  workspaceRoot: /data/eda/project/hima_harness/analog-runs
+ssh:
+  destination: luzi@linglong
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 24
+  memoryGiB: 64
+  parallelJobs: 3
+  licences: {}
+allowedReadRoots:
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/pdks
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering
+  - /data/eda/project/hima_harness/analog-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/analog-runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering/resident-engineering-wrapper.py
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/spectre
+  - /data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/ngspice
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# ngspice for the analog Site: the pinned open-source tool image (the same image the resident
+# agents' sandbox runs), with no network, the Site's project area mounted at the same path, run in
+# the caller's directory. Files it writes belong to the calling user.
+set -euo pipefail
+IMAGE=c8e8a7a41e3da6fc9a14c8b4b3303df836ffe24b03d9a96fc91c8c1e76827667
+AREA=/data/eda/project/hima_harness
+exec /usr/bin/podman run --rm -i --network=none --user 0:0 \
+  -v "$AREA:$AREA" -w "$PWD" \
+  -e LD_LIBRARY_PATH=/foss/tools/ngspice/lib \
+  --entrypoint /foss/tools/ngspice/bin/ngspice "$IMAGE" "$@"

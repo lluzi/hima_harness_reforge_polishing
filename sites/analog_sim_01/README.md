@@ -1,8 +1,26 @@
-# analog_sim_01: the analog Site (not yet deployed)
+# analog_sim_01: the analog Site
 
-The Site the `analog-ota-migrate` Pack runs on: Cadence Spectre measures, open PDKs only. Only the
-install tools are in the repository so far; `site.yml`, the Permit and the resident capability come
-with the Site slice, after the server writes are approved (see `docs/specs/analog-ota-pack/spec.md`).
+The Site the `analog-ota-migrate` Pack runs on: Cadence Spectre measures, open PDKs only. Deployed on
+the lab server on 2026-10-12 (the user approved server writes under our project area). `site.yml`
+carries the host name `linglong`; the App's saved Site holds the real address, which is never in git.
+
+## Paths on the server
+
+| Path | What | Access |
+| --- | --- | --- |
+| `/data/eda/project/hima_harness/operator-admin/analog-sim-01/bin/{spectre,ngspice}` | the simulator wrappers (copies of `bin/`) | read-only |
+| `/data/eda/project/hima_harness/operator-admin/analog-sim-01/pdks` | `gf180mcuD` and `ihp-sg13g2` copied from the pinned tool image, plus `ihp-sg13g2/libs.tech/spectre-hima` from `install/ihp_spectre.py` | read-only |
+| `/data/eda/project/hima_harness/operator-admin/analog-sim-01/resident-engineering` | the resident wrapper (`sites/linglong-atcs28/templates/resident-engineering-wrapper.py`) and `engineering-capabilities-analog01.json` | read-only |
+| `/data/eda/project/hima_harness/analog-runs` | Campaign workspaces | the only write root |
+
+Live check (2026-10-12, `analog-runs/site-check-20261012`, the OTA Pack's tool steps by hand):
+`bind` found spectre-23.1.0 and ngspice-46. `characterize` built 20 curves in 3.4 s. Round 1:
+the GF180MCU source measured 92.1 dB, 11.63 MHz, 61.5 deg and 188.7 uW, and met the spec. The
+naive IHP port measured 46.8 dB, and the margin was -21.98 %. Round 2: the re-biased port measured
+62.8 dB, 14.79 MHz, 70.9 deg and 144.9 uW, with a margin of 4.67 %. All of this is Spectre, and
+each simulate step takes about 3 s. An agent's own `sim` of the same port, run with ngspice-46 in
+the sandbox image (`OTA_SIM=ngspice`, `OTA_PDK_ROOT=/foss/pdks`), gives 144.939 uW, as Spectre
+does.
 
 ## Toolchain
 
