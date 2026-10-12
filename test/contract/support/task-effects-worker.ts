@@ -19,14 +19,20 @@ const {loadPack,toolArgv}=await moduleAt('packs');
 const {loadSite}=await moduleAt('sites');
 const {executeTaskEffect,sendTaskEffectMessage,declaredCommandTaskAdapter,commandTaskAdapter,residentEngineeringTaskAdapter,taskEffectAdapterVersion,collectTaskProducerOutput}=await moduleAt('task-effects');
 const {stopRetainedJob}=await moduleAt('jobs');
-const {writeEngineeringRequest,waitEngineeringReceipt}=await moduleAt('engineering-executor');
+const {writeEngineeringRequest,waitEngineeringReceipt,readEngineeringState}=await moduleAt('engineering-executor');
 const [homeArgument,requestedMode]=process.argv.slice(2);if(!homeArgument||!requestedMode)throw new Error('Private task effect Home and mode required');
 const mode=requestedMode;
 const home=await realpath(homeArgument);
 process.env.HIMA_RESIDENT_TESTING='1';
 const workspace=path.join(home,'work'),sitesDir=path.join(home,'sites'),packDir=path.join(home,'packs','effect-fixture');
 await mkdir(workspace,{recursive:true});await mkdir(sitesDir,{recursive:true});await mkdir(path.join(packDir,'tools'),{recursive:true});await mkdir(path.join(packDir,'knowledge'),{recursive:true});
-const wrapper=path.join(root,'sites/linglong-atcs28/templates/resident-engineering-wrapper.py');
+let wrapper=path.join(root,'sites/linglong-atcs28/templates/resident-engineering-wrapper.py');
+if(mode==='resident-failure-delayed-start') {
+ const retained=await readFile(wrapper,'utf8');
+ wrapper=path.join(workspace,'delayed-start-wrapper.py');
+ await writeFile(wrapper,retained.replace('import argparse\n','import time as fixture_startup_clock\nfixture_startup_clock.sleep(3)\nimport argparse\n'));
+ await chmod(wrapper,0o755);
+}
 let native=path.join(root,'sites/linglong-atcs28/tests/fixtures/acp-standin.py');
 if(mode==='resident-inflight-message') {
  const retained=await readFile(native,'utf8');
@@ -248,9 +254,12 @@ if(mode.startsWith('resident-failure')) {
   return observed.state==='failed'?{state:'running',reason:'Fixture awaits original failed native state'}:observed;
  }};
  await executeTaskEffect(store,req,heldAdapter);
- const prepared=await store.effectFact(req.identity.effectId,'prepared'),stateAt=path.join(prepared.plan.taskDir,'state.json');
+ const prepared=await store.effectFact(req.identity.effectId,'prepared');
  let state:any;
- for(let n=0;n<100;n++){try{state=JSON.parse(await readFile(stateAt,'utf8'));}catch{}if(state?.phase==='failed')break;await new Promise(resolve=>setTimeout(resolve,20));}
+ // A submitted Job can still be bootstrapping before it creates its first state file.
+ // Observe the original task through the protocol validator; malformed/foreign state is an error.
+ const stateDeadline=Date.now()+10000;
+ while(Date.now()<stateDeadline){state=await readEngineeringState(site,prepared.plan.taskDir,prepared.plan.taskId);if(state?.phase==='failed')break;await new Promise(resolve=>setTimeout(resolve,20));}
  assert.equal(state?.phase,'failed','Real ACP prompt error must produce signed failed state');
  if(mode==='resident-failure-gone') {
   const submitted=await store.effectFact(req.identity.effectId,'submitted');

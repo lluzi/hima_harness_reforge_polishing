@@ -25,7 +25,7 @@ test('prepared-intent crash preserves human pause; replay sends zero effects unt
 test('undeclared inherited licence properties refuse; explicitly declared features count all held own properties',{timeout:90000},async()=>{
  const home=await dbosHome(),host=worker(home,'resource-prototypes');try{assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}
 });
-for(const boundary of ['live','gone'])test(`known resident failure closes original ${boundary} wrapper resources without a success result`,{timeout:90000},async()=>{
+for(const boundary of ['live','gone','delayed-start'])test(`known resident failure closes original ${boundary} wrapper resources without a success result`,{timeout:90000},async()=>{
  const home=await dbosHome(),host=worker(home,`resident-failure-${boundary}`);try{const result=await host.next();assert.equal(result.ok,true);assert.equal(result.terminal,'failed');assert.equal(result.leaseReleased,true);}finally{await host.close();await cleanDbosHome(home);}
 });
 
