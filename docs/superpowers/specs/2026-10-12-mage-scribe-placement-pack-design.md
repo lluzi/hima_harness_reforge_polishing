@@ -22,11 +22,10 @@ Test structures (overlay targets, CD-SEM targets, scanner alignment marks, WAT t
 marks) must be placed in the scribe lanes of a reticle Frame. Nobody can write the complete
 requirement down: each downstream engineer has an unwritten target ("keep my marks where my recipe
 expects them", "put every key somewhere, in one straight row", "do not empty a field corner"), and
-the targets conflict over a few lanes of 60 µm. Today the customer runs a vendor script flow: place
+the targets conflict over a few narrow scribe lanes. Today the customer runs a vendor script flow: place
 the priority Group marks at the Litho/PIE target table, compact, let MAGE Auto Refine fill the rest,
-and accept the drops. On the reference case (P23, **V**) that leaves 19 structures dropped (13 WAT
-keys, 4 L marks, 1 overlay, 1 bonding) and 60 to 64 priority marks more than 100 µm from their
-target.
+and accept the drops. On the frame case (**V**) that leaves tens of ordinary structures dropped and a block of
+priority marks more than 100 µm from their target.
 
 The user wants a HimaPack in which **several agents** play the roles: one MAGE Engineer operates
 MAGE, and consumer agents stand in for the downstream engineers, evaluate each candidate placement
@@ -57,11 +56,11 @@ state is always delivered, with any open Decision Requests.
 
 | Sub-project | Content | Needs | Status |
 |---|---|---|---|
-| **S1 (this spec, this session)** | The Pack: contract, graph with the round loop, schemas, program tasks, the offline mechanism (normaliser, rule facts, target binding, snapshot, planner, consumer evaluators, records and ledger), the native session driver with a stand-in interpreter, Readers, rules, semantics, knowledge and role playbooks, synthetic-fixture tests, a Host contract test, an L2 dry route with stand-in residents through the real Host; plus a machine-local offline evaluation of the real P23 case (Case A and Case B numbers under stated models) | no licence, no Site, no model | implement now |
+| **S1 (this spec, this session)** | The Pack: contract, graph with the round loop, schemas, program tasks, the offline mechanism (normaliser, rule facts, target binding, snapshot, planner, consumer evaluators, records and ledger), the native session driver with a stand-in interpreter, Readers, rules, semantics, knowledge and role playbooks, synthetic-fixture tests, a Host contract test, an L2 dry route with stand-in residents through the real Host; plus a machine-local offline evaluation of the frame case (Case A and Case B numbers under stated models) | no licence, no Site, no model | implement now |
 | **S2 (next)** | Site `linglong-mage` (capability JSON, licence-mode guard, display, case copy), native qualification of the D commands and `smVerify`, one model run on frozen inputs, resident runs of Cases A and B through the App | a user-opened MAGE licence window; Site work agreed with the user | blocked on the user |
 
 S1 is complete when the Pack loads and checks against a synthetic local Site, all Pack-local and
-Host tests pass including the dry route, and the offline P23 evaluation reproduces the brief's
+Host tests pass including the dry route, and the offline frame-case evaluation reproduces the brief's
 verified counts on the real bytes. S1 does not claim native legality, model behaviour or
 effectiveness.
 
@@ -266,7 +265,7 @@ Round protocol (`knowledge/review-protocol.md`):
 with `smPFlow -setAutoRefine -arEnabled 0`, source the candidate PLA, run every `smVerify` type to a
 file, `smPInstMgr -saveMark`, `-savePlaDBU` if available, `smPFlow -saveSummary`, `-saveFrame`), run
 `mage-frb <script> -noterm` in the Site environment, parse the exports into a snapshot. Replaying a
-complete PLA is the **V** path (vendor `pre_place_all.pla`, 225 Fit / 10 Fixed exact on the Oct-12
+complete PLA is the **V** path (vendor `pre_place_all.pla`, the frame case's priority Fit and Fixed counts exact on the Oct-12
 build). Everything else in MAGE is **D** until S2 qualifies it.
 
 **Diagnose** each drop or deviation with a named deterministic test (brief §6.2): fragmentation,
@@ -302,7 +301,7 @@ intersection of shifted member windows, and k requested slots of length L with c
 - **Relaxed bound**: the same planner with listed relaxations (spacing/keep-out/zone ignored, crossing
   intruders removable within the limit, non-priority structures removable, clusters split). Fewer
   than k slots → "infeasible within relaxed model M at limit X", never "native infeasible".
-- Tests: brute force on small random lanes for (a), (b) and (c); the P23 evidence counts
+- Tests: brute force on small random lanes for (a), (b) and (c); the frame case's evidence counts
   (`slot_bound.out.txt`: 2 slots at tol 0/100 µm, 11 at 1,000 µm on the outer-bbox model) are
   reproduced machine-locally, not in the repo.
 
@@ -393,7 +392,7 @@ parameter `target_dropped_count`), `target-limit-met` (lte parameter `max_target
 | L1 | Pack-local unittest on synthetic fixtures: PLA parsing µm and DBU with drops and round-trip writing; rule facts; target binding and TB/LR/IN partition; snapshot round trip and sha; planner vs brute force; metrics vs hand values; evaluator `unknown` on missing parameters; records/ledger consistency; decide-round stop rule and best-state order; stand-in MAGE round; Reader negatives (tampered PLA, untagged mutation, unanswered request, fabricated review number, wrong snapshot binding) | `cd packs/mage-scribe-placement/flow && /usr/bin/python3 -m unittest discover -s tests -v` |
 | L0/L2 | Host contract test `test/contract/mage-scribe-placement.test.ts`: `loadPack` structure (entry, the repeat block with carry/stop/maxIterations, five resident tools with their outsourcing blocks and licences, goal/strategy knobs, no agentTeams/workshops), `checkPack` against a synthetic local Site with `licences: {mage: 1}`, reader argv and emits equal semantics, rules resolve; registered in `test/contract-groups.json` `local` | `pnpm run test:local -- --files test/contract/mage-scribe-placement.test.ts` (after `pnpm run build`) |
 | L2 dry route | `test/contract/mage-scribe-placement-durable.host.test.ts` + worker, modelled on `atcs-resident-durable-worker.ts`: synthetic case files, stand-in ACP residents (`test/fixtures/mage-resident-dry/`) that run the Pack CLI to produce admitted deliveries, `sandbox.kind: none, testOnly: true`; two scripted scenarios: converge in round 2 (`route: stop`), and conflict → Decision Request with `goalMet` false; asserts the repeat ran the expected rounds, every Reader admitted, evaluation and delivery committed | registered in `test/contract-groups.json` `atcs-dry`-style group `mage-dry` |
-| L1 machine-local | Offline evaluation of the real P23 package through the Pack CLI: start snapshot from `pre_place_all.pla`, incumbent from `frame_post_refine.pla`, reproduce 225/225 target binding, 60 beyond 100 µm, 19 drops, 2 V-lane slots at ±100 µm; Case A candidate list and Case B relaxed-model result | script and outputs under `/Users/lluzi/code/mage_smart_conflict_resolver/research/mage-resident-agent-20261012/pack-eval/` (not in this repo) |
+| L1 machine-local | Offline evaluation of the frame-case package through the Pack CLI: start snapshot from `pre_place_all.pla`, incumbent from `frame_post_refine.pla`, reproduce 225/225 target binding and the incumbent's ordinary drop count/length (machine-local), 2 V-lane slots at ±100 µm; Case A candidate list and Case B relaxed-model result | script and outputs machine-local, not in this repo |
 | L4 (S2) | native qualification, model run, resident runs through the App | user-opened licence window |
 
 No model is the first producer tested against a schema: every model-written document has an admitted
@@ -416,7 +415,7 @@ example fixture, a validator and a Reader negative.
    one Task (the brief's R1/R2). Four consumer roles in 0.1.0; bonding ships as template and playbook
    only. Round limit fixed at 4 in the graph.
 3. **Fresh `mage_placement` package, not a vendored `mage_assist`.** The prototype's `Case` model is
-   baseline-relative and P23-bound and its loader fails on the new package (**V**); the Pack's snapshot
+   baseline-relative and frame-case-bound and its loader fails on the new package (**V**); the Pack's snapshot
    needs pending structures, drops, CT targets and rule facts. Proven pieces (integer Box, interval
    merge, lane projection with periodic images, PLA table parsing) are re-implemented with attribution
    in the module docstrings.
@@ -429,7 +428,7 @@ example fixture, a validator and a Reader negative.
    well-specified modules (PLA/rules/targets/snapshot, metrics, consumers, records, rounds, CLI,
    knowledge, contract test, dry-route fixtures); Opus 4.8 medium for the planner and per-task review;
    Opus 5.5 high for the final whole-branch review. Main agent: Fable 5.1 (this session).
-7. **Customer data** stays machine-local. The offline P23 evaluation script and outputs live in the
+7. **Customer data** stays machine-local. The offline frame-case evaluation script and outputs live in the
    MAGE research directory, not in this repo. Site `linglong-mage` files are S2 work with the user.
 8. **Python 3.9** on this Mac is the test interpreter; the Pack code must not use 3.10+ syntax.
 9. **Budget** six hours time box, fifteen-minute closing reserve; to be tuned after S2.
