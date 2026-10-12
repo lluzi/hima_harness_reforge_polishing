@@ -1,6 +1,6 @@
 // Packaging-owned platform layout and inventory of the bytes actually shipped. No installer/runtime.
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -54,6 +54,25 @@ function inspectMachO(file, flag) {
     return { ...result, stdout: (result.stdout ?? '').replaceAll(alias, file), stderr: (result.stderr ?? '').replaceAll(alias, file) };
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
+// Archive stdout can be hundreds of MiB. Keep it in an owned file, then use the
+// same bounded hash path as installed bytes; never retain the whole member in RAM.
+export function hashArchiveMember(command, args, maxBytes) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) fail('invalid archive member byte limit');
+  const directory = mkdtempSync(path.join(tmpdir(), 'hima-archive-member-'));
+  const member = path.join(directory, 'member');
+  let output;
+  try {
+    output = openSync(member, 'wx', 0o600);
+    const extracted = spawnSync(command, args, { stdio: ['ignore', output, 'pipe'], maxBuffer: 1024 * 1024 });
+    if (extracted.status !== 0) fail(`archive member extraction failed: ${extracted.error ?? extracted.stderr?.toString() ?? command}`);
+    if (statSync(member).size > maxBytes) fail('archive member exceeds its fixed byte limit');
+    return hashFile(member);
+  } finally {
+    if (output !== undefined) closeSync(output);
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 export function stageRuntimeNotices({ resource, electronDist, nodeBinary, nodeManifest, nodeArchive, electronManifest, electronArchive }) {
   const target = `${process.platform}-${process.arch}`;
   const nodeRoot = path.dirname(path.dirname(realpathSync(nodeBinary)));
@@ -66,8 +85,8 @@ export function stageRuntimeNotices({ resource, electronDist, nodeBinary, nodeMa
   // Bind selected binary and notice to the retained archive, not merely its version string.
   for (const relative of ['bin/node', 'LICENSE']) {
     const member = path.basename(node.source).replace(/\.tar\.(gz|xz)$/, '') + '/' + relative;
-    const archived = spawnSync('tar', ['-xOf', nodeArchive, member], { maxBuffer: 256 * 1024 * 1024 });
-    if (archived.status !== 0 || createHash('sha256').update(archived.stdout).digest('hex') !== hashFile(path.join(nodeRoot, relative))) fail(`Node ${relative} differs from its official archive`);
+    const archived = hashArchiveMember('tar', ['-xOf', nodeArchive, member], 256 * 1024 * 1024);
+    if (archived !== hashFile(path.join(nodeRoot, relative))) fail(`Node ${relative} differs from its official archive`);
   }
   const electron = JSON.parse(readFileSync(electronManifest, 'utf8'));
   const expectedElectronUrl = `https://github.com/electron/electron/releases/download/v${electron.version}/electron-v${electron.version}-${target}.zip`;
@@ -76,8 +95,8 @@ export function stageRuntimeNotices({ resource, electronDist, nodeBinary, nodeMa
     ? ['Electron.app/Contents/MacOS/Electron', 'Electron.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework', 'LICENSE', 'LICENSES.chromium.html']
     : ['electron', 'libffmpeg.so', 'LICENSE', 'LICENSES.chromium.html'];
   for (const member of electronFiles) {
-    const archived = spawnSync('unzip', ['-p', electronArchive, member], { maxBuffer: 512 * 1024 * 1024 });
-    if (archived.status !== 0 || createHash('sha256').update(archived.stdout).digest('hex') !== hashFile(path.join(electronDist, member))) fail(`Electron ${member} differs from its pinned upstream archive`);
+    const archived = hashArchiveMember('unzip', ['-p', electronArchive, member], 512 * 1024 * 1024);
+    if (archived !== hashFile(path.join(electronDist, member))) fail(`Electron ${member} differs from its pinned upstream archive`);
   }
   const notices = path.join(resource, 'third-party'); mkdirSync(notices, { recursive: true });
   for (const [from, to] of [[path.join(nodeRoot, 'LICENSE'), 'NODE-LICENSE'],

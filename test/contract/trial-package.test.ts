@@ -852,7 +852,7 @@ test('final technical-obligation report binds real evidence to immutable artifac
 });
 
 // Assembly seam: the Host's default resource must use the verified extension-equipped cohort.
-async function teamPostgresFixture() {
+async function teamPostgresFixture(extensionMetadata = true) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-team-pg-'));
   const output = path.join(directory, 'host-postgres'); const team = path.join(directory, 'team');
   const postgres = path.join(team, 'postgres');
@@ -869,7 +869,7 @@ async function teamPostgresFixture() {
     await mkdir(path.dirname(path.join(postgres,name)),{recursive:true}); await writeFile(path.join(postgres,name),'retained extension fixture');
     files[name]=createHash('sha256').update('retained extension fixture').digest('hex');
   }
-  const complete={...base,files,extensions:{vector:'0.8.7',pg_trgm:'1.6'}};
+  const complete={...base,files,...(extensionMetadata ? {extensions:{vector:'0.8.7',pg_trgm:'1.6'}} : {})};
   const pgBytes=JSON.stringify(complete);await writeFile(path.join(postgres,'postgres-runtime.json'),pgBytes);
   const inventory=Object.fromEntries(Object.entries(files).map(([name,hash])=>['postgres/'+name,hash]));inventory['postgres/postgres-runtime.json']=createHash('sha256').update(pgBytes).digest('hex');
   const teamBytes=JSON.stringify({format:'hima-team-runtime/1',platform:base.platform,files:inventory});await writeFile(path.join(team,'team-runtime.json'),teamBytes);
@@ -900,4 +900,34 @@ for (const corruption of ['unbound Team manifest','changed extension','different
     assert.equal(await readFile(path.join(f.output,'postgres-runtime.json'),'utf8'),before);
     assert.equal(existsSync(path.join(f.output,f.vectorLibrary)),false);
   }finally{await rm(f.directory,{recursive:true,force:true});}
+});
+
+// The retained Darwin /1 manifest predates the optional Linux extension summary.
+test('Team assembly accepts bound PostgreSQL /1 manifests without extension metadata',async()=>{
+  const f=await teamPostgresFixture(false);
+  try{
+    const {stageTeamPostgres}=await import(path.join(repoRoot,'scripts/package-postgres.mjs'));
+    const manifest=stageTeamPostgres({output:f.output,teamRuntimeDirectory:f.team,teamRuntimeIdentity:f.identity});
+    assert.equal('extensions' in manifest,false);
+    const retained=JSON.parse(await readFile(path.join(f.output,'postgres-runtime.json'),'utf8'));
+    assert.equal('extensions' in retained,false,'assembly must preserve the retained manifest');
+    for(const file of [f.vectorLibrary,'share/extension/vector.control','share/extension/pg_trgm.control']){
+      assert.equal(await readFile(path.join(f.output,file),'utf8'),'retained extension fixture');
+    }
+  }finally{await rm(f.directory,{recursive:true,force:true});}
+});
+
+// Use real archive extraction, with an independently known digest and byte boundary.
+test('native archive identity hashing verifies extracted bytes and rejects oversized members',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'hima-archive-hash-'));
+  try{
+    await writeFile(path.join(directory,'hello'),'hello\n');
+    const archive=path.join(directory,'fixture.tar');
+    const packed=spawnSync('tar',['-cf',archive,'-C',directory,'hello']);assert.equal(packed.status,0);
+    const {hashArchiveMember}=await import(path.join(repoRoot,'scripts/package-native-audit.mjs'));
+    const hashed=hashArchiveMember('tar',['-xOf',archive,'hello'],6);
+    assert.equal(hashed,'5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03');
+    assert.throws(()=>hashArchiveMember('tar',['-xOf',archive,'hello'],5),/archive member exceeds/);
+    assert.throws(()=>hashArchiveMember('tar',['-xOf',archive,'absent'],6),/archive member extraction failed/);
+  }finally{await rm(directory,{recursive:true,force:true});}
 });

@@ -148,7 +148,9 @@ export function stageTeamPostgres({ output, teamRuntimeDirectory, teamRuntimeIde
   }
   const extensionSuffix = candidate.platform.startsWith('darwin-') ? 'dylib' : 'so';
   for (const name of ['vector', 'pg_trgm']) {
-    if (!candidate.extensions?.[name] || !candidate.files[`lib/${name}.${extensionSuffix}`]
+    // The pinned Darwin /1 manifest has no extension-summary field; its bound files
+    // remain the authority for required extension libraries and control files.
+    if (!candidate.files[`lib/${name}.${extensionSuffix}`]
       || !candidate.files[`share/extension/${name}.control`]) refuse(`is missing required ${name} extension`);
   }
   const expected = Object.keys(team.files).filter(file => file.startsWith('postgres/') && file !== 'postgres/postgres-runtime.json').sort();
