@@ -112,8 +112,8 @@ def dbu_to_um(value: int, dbu_per_um: int) -> str          # decimal string, no 
 class PlaDocument(TypedDict-like dict): units: 'um'|'dbu'; dbuPerUm: int
     fixed: list[{id, base, boxDbu, idTriple:[int,int,int]}]
     groups: list[{groupItem, pinstGroup, targetPointDbu:[x,y], vertSL: bool}]
-    fits: list[{id, base, boxDbu, extraRot, postfix, inGroup}]
-    drops: list[{id, base, boxDbu, extraRot, placedFlag:int, postfix, inGroup}]
+    fits: list[{id, inst, base, boxDbu, extraRot, postfix, inGroup}]      # inst = exact vendor token, kept verbatim; base = inst before the first '.'
+    drops: list[{id, inst, base, boxDbu, extraRot, placedFlag:int, postfix, inGroup}]
 def read_pla(text: str, dbu_per_um: int) -> dict
 def write_pla(doc: dict, dbu_per_um: int, units: str = 'um') -> str     # complete replayable PLA (fixinsts,
       # pinstGroupProperty, fitinsts, dropFitInsts, with the vendor foreach blocks); round-trips through read_pla
