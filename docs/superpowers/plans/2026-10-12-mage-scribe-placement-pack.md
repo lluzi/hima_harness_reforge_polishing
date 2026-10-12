@@ -204,7 +204,7 @@ def mutating(script_text: str) -> bool   # True if it contains 'source ', '-addI
 
 Every subcommand writes `{"error": {"code", "detail"}}` to stdout and exits 2/3 on `MageError`, exactly like `atcs_cli.py:_fail`.
 
-### Record documents (all stamped with `core.stamp`)
+### Record documents (document kinds `placement-candidate`, `consumer-review`, `round-decision`, `placement-result`, `ledger-entry` are stamped with `core.stamp` and digest-checked; `finding`, `request`, `decision-request` carry sequence ids `F-<n>`, `R-<n>`, `D-<n>` as in the spec's examples and are schema-checked only)
 
 - `mage.finding/1`: `id, round, snapshotSha256, consumer, consumerModel, evaluatorReceipt, targets[], predicate, status(pass|fail|unknown), severity(hard|cost|info), numbers{}, explanation`.
 - `mage.request/1`: `id, fromFinding, consumer, snapshotSha256, requestedOutcome{kind(move|keep|place|restore_order|other), targets[], limitsUm{}, text}, acceptableAlternatives[], strength(hard|preference)`.
