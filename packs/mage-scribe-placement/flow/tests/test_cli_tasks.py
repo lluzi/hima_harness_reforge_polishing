@@ -626,6 +626,38 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(candidate["outcome"], "blocked")
         self.assertEqual(candidate["stopReason"], "native round did not reach MAGE_ROUND_END")
 
+    def test_candidate_refuses_a_vanished_start_structure(self):
+        """C4: a completed export that lost a start Fit (neither placed nor
+        dropped) is refused by `candidate` with code `inventory`."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        dbu_per_um = self.case["manifest"]["dbuPerUm"]
+        doc = pla.read_pla(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), dbu_per_um)
+        doc["fits"] = [f for f in doc["fits"] if f["base"] != "OVL_A"]  # OVL_A vanishes entirely
+        doc["drops"] = []
+        pla_path = self.root / "vanished.pla"
+        pla_path.write_text(pla.write_pla(doc, dbu_per_um, units="um"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        result = subprocess.run(
+            [sys.executable, str(CLI), "candidate", str(self.workspace), "--round", "1",
+             "--round-dir", str(round_dir), "--ledger", _write_json(self.root / "v-ledger.json", []),
+             "--out", str(self.root / "v-candidate.json")],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stderr.strip().splitlines()[-1])["code"], "inventory")
+
     def test_candidate_without_export_is_blocked_not_a_crash(self):
         """I4b: a round whose `out/export.pla` is missing (a failed attempt)
         yields a BLOCKED candidate with no export/snapshot refs instead of

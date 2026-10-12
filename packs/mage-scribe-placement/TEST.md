@@ -62,11 +62,11 @@ export on 2026-10-12.
 
 ### Fix round 2 (final whole-branch review findings, 2026-10-12)
 
-208 tests pass after the final-review fixes (C1-C4, I1-I6), on both interpreters with no skips or
+209 tests pass after the final-review fixes (C1-C4, I1-I6), on both interpreters with no skips or
 `--pattern` narrowing — Python 3.9.6 (Mac, `/usr/bin/python3`):
 
 ```
-Ran 208 tests in 10.944s
+Ran 209 tests in 11.086s
 
 OK
 ```
@@ -77,18 +77,18 @@ Python 3.8.16:
 
 ```
 Python 3.8.16
-Ran 208 tests in 17.252s
+Ran 209 tests in 17.223s
 
 OK
 ```
 
-The 208 covers Fix round 1's 187 plus the final-review additions: per-consumer Finding/Request id
+The 209 covers Fix round 1's 187 plus the final-review additions: per-consumer Finding/Request id
 patterns and cross-consumer Ledger coverage (`test_records.py`); round-limit-first routing, the
 first round counting as improved, ranking by Reader values, a blocked candidate never becoming
 best, and a mis-bound review being skipped (`test_rounds.py`); unbound-target and all-unbound-side
 unknowns (`test_metrics.py`); the fail-closed Reader, script re-hash, inventory conservation and
 blocked-candidate reading (`test_readers.py`); the experiment forbidden-marker and duplicate-verify
-refusals (`test_native_session.py`); the no-export blocked candidate and delivered-state
+refusals (`test_native_session.py`); the candidate inventory refusal, the no-export blocked candidate and delivered-state
 `no-open-requests` (`test_cli_tasks.py`).
 
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN

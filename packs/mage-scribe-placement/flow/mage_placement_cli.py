@@ -70,6 +70,23 @@ def _priority_unplaced(snap):
     return {"count": len(ids), "ids": ids}
 
 
+def _check_inventory_conservation(start, candidate):
+    """C4: every start structure must still appear in the candidate export as
+    Fixed/Fit/dropped; a vanished id is refused (`MageError('inventory')`)."""
+    missing_fixed = sorted({f["id"] for f in start["fixed"]} - {f["id"] for f in candidate["fixed"]})
+    start_instances = {f["id"] for f in start["fits"]} | {
+        p["id"] for p in start["pending"] if p.get("placedFlag") is not None
+    }
+    candidate_instances = {f["id"] for f in candidate["fits"]} | {p["id"] for p in candidate["pending"]}
+    missing_instances = sorted(start_instances - candidate_instances)
+    if missing_fixed or missing_instances:
+        raise core.MageError(
+            "inventory",
+            "start structure(s) missing from the export (neither placed nor dropped): "
+            f"fixed={missing_fixed} instances={missing_instances}",
+        )
+
+
 def _case_readiness(workspace):
     return core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")
 
@@ -550,6 +567,11 @@ def _cmd_candidate(workspace, args):
         {"exportPla": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)}},
         pending_from_rules=False,
     )
+    # C4: the assembler refuses a completed candidate whose export lost a
+    # start structure (neither placed nor dropped) -- the same conservation
+    # the Reader independently re-checks, caught here before a delivery that
+    # would read as a metric improvement is ever assembled.
+    _check_inventory_conservation(start, candidate_snapshot)
     snapshot_path = round_dir / "out" / "snapshot.json"
     core.write_artifact(snapshot_path, candidate_snapshot)
 
