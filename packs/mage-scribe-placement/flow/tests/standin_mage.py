@@ -56,6 +56,10 @@ from mage_placement import pla  # noqa: E402
 
 
 _SOURCE_RE = re.compile(r"(?m)^source\s+\{([^}]*)\}")
+# The fill stage (`--fill`) and a fill-like experiment both carry
+# `smPFlow -autoRefine`; a plain replay round never does. Detecting the
+# token is how this stand-in decides whether the round fills.
+_AUTOREFINE_TOKEN = "autoRefine"
 _SAVE_MARK_RE = re.compile(r"smPInstMgr\s+-saveMark\s+\{([^}]*)\}")
 _VERIFY_FOREACH_RE = re.compile(
     r"foreach\s+\{mage_verify_type mage_verify_cmd\}\s+\{([^}]*)\}"
@@ -71,6 +75,60 @@ _SUMMARY_PHRASE = {
     "SPACE": "spacing overlapped",
     "BOUNDARY": "outside-frame-boundary",
 }
+
+
+def _find_start_snapshot(script_path):
+    """Walk up from the round's own `round.tcl` to the Campaign workspace
+    (the first ancestor holding `state/start-snapshot.json`) and return that
+    file's parsed body, or `None` when it cannot be found. The stand-in is
+    sometimes driven outside a Campaign workspace (direct `MageSession`
+    unit tests); filling is then simply skipped."""
+    for ancestor in [script_path.parent, *script_path.parents]:
+        candidate = ancestor / "state" / "start-snapshot.json"
+        if candidate.is_file():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None
+    return None
+
+
+def _fill_ordinary(doc, start_snapshot):
+    """Model a completed MAGE round's fill stage (`smPFlow -autoRefine`): top
+    each ordinary (empty `inGroup`) base up to the count the start's own
+    rule-derived `pending` declares, by appending ordinary Fits. Idempotent
+    per base, so a candidate that already carries one of a base's ordinary
+    structures (e.g. a placed or dropped KEY_V) has only the shortfall added.
+    The exported ordinary population then equals the incumbent fixture's,
+    which is anchored to the same rule shortfall."""
+    needed_by_base = {}
+    for item in start_snapshot.get("pending", []):
+        if item.get("inGroup"):
+            continue
+        base = item["base"]
+        needed_by_base.setdefault(base, {"count": 0, "sizeDbu": item.get("sizeDbu")})
+        needed_by_base[base]["count"] += 1
+
+    have_by_base = {}
+    for fit in doc["fits"]:
+        if not fit.get("inGroup"):
+            have_by_base[fit["base"]] = have_by_base.get(fit["base"], 0) + 1
+    for drop in doc["drops"]:
+        if not drop.get("inGroup"):
+            have_by_base[drop["base"]] = have_by_base.get(drop["base"], 0) + 1
+
+    for base, info in sorted(needed_by_base.items()):
+        add = info["count"] - have_by_base.get(base, 0)
+        size = info["sizeDbu"] or [1000000, 560000]
+        width, height = size[0], size[1]
+        for k in range(1, add + 1):
+            left = 5500000 + (k - 1) * 11000000
+            doc["fits"].append({
+                "id": "%s.%s_fill%d" % (base, base, k), "base": base,
+                "inst": "%s.%s_fill%d" % (base, base, k),
+                "boxDbu": [left, 20000, left + width, 20000 + height],
+                "extraRot": "NULL", "postfix": "", "inGroup": "",
+            })
 
 
 def _verify_pairs(script_text):
@@ -96,6 +154,12 @@ def main(argv):
     source_match = _SOURCE_RE.search(script_text)
     source_text = Path(source_match.group(1)).read_text(encoding="utf-8") if source_match else None
 
+    # A round whose script (or sourced experiment) runs `smPFlow -autoRefine`
+    # fills the ordinary population; a plain replay does not. When it fills,
+    # the exported ordinary population is topped up to match the incumbent.
+    fills = _AUTOREFINE_TOKEN in script_text or (source_text is not None and _AUTOREFINE_TOKEN in source_text)
+    start_snapshot = _find_start_snapshot(script_path) if fills else None
+
     for mark_match in _SAVE_MARK_RE.finditer(script_text):
         target = Path(mark_match.group(1))
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +170,8 @@ def main(argv):
             # candidate that way so the candidate/Reader path exercises
             # the DBU reader exactly as the live route will.
             doc = pla.read_pla(source_text, DBU_PER_UM)
+            if start_snapshot is not None:
+                _fill_ordinary(doc, start_snapshot)
             target.write_text(pla.write_pla(doc, DBU_PER_UM, units="dbu"), encoding="utf-8")
         else:
             target.write_text("", encoding="utf-8")

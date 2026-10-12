@@ -145,19 +145,40 @@ def _in_group_counts(snap):
     return counts
 
 
-def check_inventory_conservation(start, candidate):
-    """N2: inventory conservation at the level real MAGE output actually
+def _ordinary_population_count(snap):
+    fits = sum(1 for f in snap.get("fits", []) if not f.get("inGroup"))
+    drops = sum(1 for p in snap.get("pending", []) if not p.get("inGroup"))
+    return fits + drops
+
+
+def ordinary_population(snap):
+    """Count of ordinary (non-group) structures in an export snapshot:
+    ordinary Fits (empty `inGroup`) + ordinary drops (empty `inGroup`).
+
+    Measured on an export snapshot (`pending_from_rules=False`), whose
+    `pending` is MAGE's own drops table and so carries no rule-derived
+    synthetic shortfall copies. This is the number real MAGE conserves
+    across a delivered round (the measured population of a filled export),
+    and `check_inventory_conservation` anchors it to the incumbent's own
+    value rather than to the start's rule-derived `pending` count (which is
+    larger: a priority-only start declares every rule shortfall as pending,
+    while a filled export carries only the structures MAGE actually placed
+    or dropped)."""
+    return _ordinary_population_count(snap)
+
+
+def check_inventory_conservation(start, candidate, ordinary_population):
+    """N2/N7: inventory conservation at the level real MAGE output actually
     conserves -- the Group (not the exact instance id, and not the base
-    master count).
+    master count), plus the ordinary population as a count.
 
     Why not per base: a fresh auto-refine replay turns a priority-only start
-    (verified on the real frame case: 225 Fits) into a filled export (525
-    Fits across 168 bases, 117 of them masters the start/rule never named);
-    and refine legitimately re-suffixes -- even re-*masters* -- an in-group
-    priority instance while keeping it in the same Group. A per-base or
-    exact-id count therefore refuses a genuine MAGE result (empirically it
-    refused the customer's own post-refine incumbent). What MAGE *does*
-    conserve, and what a structural loss breaks, is:
+    into a much larger filled export (new masters the start/rule never
+    named); and refine legitimately re-suffixes -- even re-*masters* -- an
+    in-group priority instance while keeping it in the same Group. A
+    per-base or exact-id count therefore refuses a genuine MAGE result
+    (empirically it refused the customer's own post-refine incumbent). What
+    MAGE *does* conserve, and what a structural loss breaks, is:
 
     - **Fixed instance ids**, equal as a set (a Fixed object is never
       renamed, moved to Fits, or dropped).
@@ -166,13 +187,28 @@ def check_inventory_conservation(start, candidate):
       between start and export. A priority mark re-suffixed or re-mastered
       inside its Group keeps the Group's count (admitted); a priority mark
       genuinely deleted drops its Group's count (refused); an extra priority
-      instance raises it (refused). Ordinary (non-group) fill is fluid and
-      is intentionally not conserved by count.
+      instance raises it (refused).
+    - **The ordinary (non-group) population as a count** (N7). Ordinary fill
+      is fluid in its ids and masters, but a legitimately delivered round
+      still carries the full ordinary set the incumbent does. An export that
+      simply omits ordinary structures (e.g. a round that skipped the fill
+      stage) would otherwise read as fewer drops and a shorter dropped
+      length -- a false improvement on the objective that the ranking loop
+      would keep as best. The required count is the incumbent's own measured
+      ordinary population (`ordinaryPopulation` in `state/incumbent.json`),
+      passed in as `ordinary_population`; it is deliberately NOT the start
+      snapshot's rule-derived ordinary `pending` count (which is larger).
+      `ordinary_population is None` means no incumbent has been measured in
+      this workspace yet (a Pack-local path that never reaches the live
+      Campaign, where `measure-incumbent` always runs before any round), and
+      the ordinary-population clause is then not enforced; the Group/Fixed
+      clauses always run.
 
     Verified on the real staged frame case (Linglong): the vendor start vs
-    the customer post-refine incumbent conserves all three (225 Groups, 10
-    Fixed, every Group's priority count equal) and is admitted, while the
-    same export with one priority Fit row deleted is refused.
+    the customer post-refine incumbent conserves the Group/Fixed identities
+    and the ordinary population and is admitted, while the same export with
+    one priority Fit row deleted, or one ordinary drop row removed, is
+    refused.
 
     Raises `MageError('inventory', ...)` on any violation; returns `None`
     when conserved. Shared verbatim by the candidate assembler
@@ -204,6 +240,16 @@ def check_inventory_conservation(start, candidate):
             f"fixedMissing={missing_fixed} fixedExtra={extra_fixed} "
             f"groupLabelMissing={missing_groups} groupLabelExtra={extra_groups}",
         )
+
+    # N7: the ordinary (non-group) population is conserved against the
+    # incumbent's own measured value, never the start's rule-derived pending.
+    if ordinary_population is not None:
+        candidate_ordinary = _ordinary_population_count(candidate)
+        if candidate_ordinary != ordinary_population:
+            raise core.MageError(
+                "inventory",
+                f"ordinary population {candidate_ordinary} != incumbent {ordinary_population}",
+            )
 
 
 def load_snapshot(path):

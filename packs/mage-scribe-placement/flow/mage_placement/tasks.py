@@ -249,16 +249,25 @@ def measure_incumbent(workspace, inputs):
         )
         consumer_findings[consumer_id] = result["findings"]
 
+    # N7: the ordinary (non-group) population of the incumbent export -- the
+    # count every delivered round must also carry, anchoring the shared
+    # inventory check so an export that simply omits ordinary structures can
+    # never read as a (false) improvement. Measured here, once, from the
+    # incumbent export and never from the start's rule-derived pending.
+    ordinary_population = snapshot.ordinary_population(incumbent_snapshot)
+
     incumbent_doc = core.stamp("incumbent-measure", {
         "stage": "incumbent", "evidence": "modelled", "nativeRequested": native_requested,
         "snapshotSha256": incumbent_snapshot["snapshotSha256"], "metrics": computed_metrics,
+        "ordinaryPopulation": ordinary_population,
         "consumerFindings": consumer_findings,
     })
     core.write_artifact(workspace / "state" / "incumbent.json", incumbent_doc)
 
     value = {
         "incumbentId": incumbent_doc["id"], "snapshotSha256": incumbent_snapshot["snapshotSha256"],
-        "metrics": computed_metrics, "evidence": "modelled", "nativeRequested": native_requested,
+        "metrics": computed_metrics, "ordinaryPopulation": ordinary_population,
+        "evidence": "modelled", "nativeRequested": native_requested,
     }
     artifacts = [_artifact("incumbent-measure", "state/incumbent.json")]
     return {"schemaVersion": "1", "value": value, "artifacts": artifacts, "diagnostics": []}

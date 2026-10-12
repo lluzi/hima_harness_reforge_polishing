@@ -303,7 +303,7 @@ class ReaderNegativeTests(unittest.TestCase):
                      "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
                      "groups": [{"pinstGroup": "G1"}]}
         with self.assertRaises(core.MageError) as ctx:
-            snapshot_mod.check_inventory_conservation(start, candidate)
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
         self.assertEqual(ctx.exception.code, "inventory")
 
     def test_inventory_allows_a_dropped_priority_structure(self):
@@ -315,7 +315,7 @@ class ReaderNegativeTests(unittest.TestCase):
         candidate = {"fixed": [], "fits": [],
                      "pending": [{"id": "A.A_1", "base": "A", "inGroup": "G1", "placedFlag": 0}],
                      "groups": [{"pinstGroup": "G1"}]}
-        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+        snapshot_mod.check_inventory_conservation(start, candidate, None)  # no raise
 
     def test_inventory_admits_a_resuffixed_or_remastered_instance(self):
         # N2: MAGE re-suffixes (even re-masters) an in-group priority instance
@@ -327,7 +327,7 @@ class ReaderNegativeTests(unittest.TestCase):
                  "groups": [{"pinstGroup": "G1"}]}
         candidate = {"fixed": [], "fits": [self._fit("CLUSTER.OVL_7", "CLUSTER", "G1")],
                      "pending": [], "groups": [{"pinstGroup": "G1"}]}
-        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+        snapshot_mod.check_inventory_conservation(start, candidate, None)  # no raise
 
     def test_inventory_tolerates_ordinary_fill(self):
         # Ordinary (non-group) fill added by auto-refine is fluid and is not
@@ -339,7 +339,7 @@ class ReaderNegativeTests(unittest.TestCase):
                      "fits": [self._fit("OVL.OVL_1", "OVL", "G1"),
                               self._fit("FILL.FILL_1", "FILL"), self._fit("FILL.FILL_2", "FILL")],
                      "pending": [], "groups": [{"pinstGroup": "G1"}]}
-        snapshot_mod.check_inventory_conservation(start, candidate)  # no raise
+        snapshot_mod.check_inventory_conservation(start, candidate, None)  # no raise
 
     def test_inventory_refuses_an_extra_priority_instance(self):
         # N2: an export that invented an extra priority instance in a Group
@@ -352,8 +352,89 @@ class ReaderNegativeTests(unittest.TestCase):
                      "fits": [self._fit("OVL.OVL_1", "OVL", "G1"), self._fit("OVL.OVL_2", "OVL", "G1")],
                      "pending": [], "groups": [{"pinstGroup": "G1"}]}
         with self.assertRaises(core.MageError) as ctx:
-            snapshot_mod.check_inventory_conservation(start, candidate)
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
         self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_a_dropped_fixed_id(self):
+        # N2 (unit, m1): the Fixed-id-set clause -- a Fixed object that
+        # vanished from the export (Fixed is never renamed, moved to Fits,
+        # or dropped) is refused.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [{"id": "F.F", "base": "F"}], "fits": [], "pending": [], "groups": []}
+        candidate = {"fixed": [], "fits": [], "pending": [], "groups": []}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_a_renamed_group_label(self):
+        # N2 (unit, m1): the Group-label-set clause -- a Group whose label
+        # (`pinstGroup`) changed between start and export is refused, even
+        # when its in-group count is conserved.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [], "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
+                     "groups": [{"pinstGroup": "G1_RENUM"}]}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    @staticmethod
+    def _ordinary_fit(fit_id, base="OVL_F"):
+        return {"id": fit_id, "base": base, "inGroup": ""}
+
+    @staticmethod
+    def _ordinary_drop(drop_id, base="KEY_V"):
+        return {"id": drop_id, "base": base, "inGroup": "", "placedFlag": 0}
+
+    def _population_case(self, ordinary_fits, ordinary_drops):
+        # Group/Fixed identities are conserved in every population case, so
+        # the ordinary-population clause is the only thing that can fire.
+        start = {"fixed": [], "fits": [self._fit("A.A_1", "A", "G1")], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}]}
+        candidate = {
+            "fixed": [],
+            "fits": [self._fit("A.A_1", "A", "G1")]
+                    + [self._ordinary_fit("OVL_F.OVL_F_%d" % k) for k in range(ordinary_fits)],
+            "pending": [self._ordinary_drop("KEY_V.KEY_V_%d" % k) for k in range(ordinary_drops)],
+            "groups": [{"pinstGroup": "G1"}],
+        }
+        return start, candidate
+
+    def test_inventory_refuses_a_no_fill_export(self):
+        # N7: a no-fill export (priority marks only, zero ordinary structures)
+        # is refused against the incumbent's ordinary population of 3.
+        from mage_placement import snapshot as snapshot_mod
+        start, candidate = self._population_case(ordinary_fits=0, ordinary_drops=0)
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, 3)
+        self.assertEqual(ctx.exception.code, "inventory")
+        self.assertEqual(str(ctx.exception), "inventory: ordinary population 0 != incumbent 3")
+
+    def test_inventory_refuses_an_export_missing_one_ordinary_drop(self):
+        # N7: an export missing one ordinary drop row reads as one fewer drop
+        # and is refused (2 ordinary != incumbent 3).
+        from mage_placement import snapshot as snapshot_mod
+        start, candidate = self._population_case(ordinary_fits=2, ordinary_drops=0)
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, 3)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_an_extra_ordinary_instance(self):
+        # N7: an export with one extra ordinary instance is refused
+        # (4 ordinary != incumbent 3).
+        from mage_placement import snapshot as snapshot_mod
+        start, candidate = self._population_case(ordinary_fits=3, ordinary_drops=1)
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, 3)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_admits_a_filled_export_with_the_same_population(self):
+        # N7: a filled export whose ordinary population equals the incumbent's
+        # (2 fits + 1 drop = 3) is admitted.
+        from mage_placement import snapshot as snapshot_mod
+        start, candidate = self._population_case(ordinary_fits=2, ordinary_drops=1)
+        snapshot_mod.check_inventory_conservation(start, candidate, 3)  # no raise
 
 
 def doc_sha(path):

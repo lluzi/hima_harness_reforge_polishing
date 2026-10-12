@@ -189,10 +189,15 @@ def _fitinsts_block(include_filler=False):
         'AL_X.AL_X -90 665 90 715 NULL "" AL_X.AL_X_1 "G2_1"',
     ]
     if include_filler:
+        # Two ordinary (empty inGroup) OVL_F fills -- exactly the ordinary
+        # OVL_F count the start's rule shortfall declares (setNumMin 2), so
+        # the incumbent's ordinary population (2 OVL_F fits + 1 KEY_V drop =
+        # 3) equals what the stand-in's `--fill` tops a round up to. The
+        # second keeps the suffix-in-`inst`-token case (OVL_F_7) for the PLA
+        # reader/writer round-trip coverage.
         rows.extend(
             [
                 'OVL_F.OVL_F 550 2 650 58 NULL "" OVL_F.OVL_F_1 ""',
-                'OVL_F.OVL_F 1550 2 1650 58 NULL "" OVL_F.OVL_F_2 ""',
                 # Auto-Refine-placed filler: the vendor `inst` token itself carries a
                 # suffix (not just the `pinstFit` id), exercising the case where `inst`
                 # is not simply `base` repeated around the dot.

@@ -195,7 +195,7 @@ class CliRouteTest(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, str(CLI), "mage-round", str(self.workspace),
              "--round", str(round_no), "--pla", str(pla_path), "--role", "engineer",
-             "--out-dir", str(round_dir)],
+             "--out-dir", str(round_dir), "--fill"],
             capture_output=True, text=True, env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -921,6 +921,190 @@ class CliRouteTest(unittest.TestCase):
         self.assertFalse(out_path.is_file())
         reason = json.loads(result.stderr.strip().splitlines()[-1])
         self.assertIn(reason["code"], ("schema", "identity-mismatch"))
+
+    def test_no_fill_round_refused_for_missing_ordinary_population(self):
+        """N7 (route): with the incumbent measured, a completed round that
+        did NOT fill -- its export carries zero ordinary structures -- is
+        refused by the `candidate` assembler, so a short export can never
+        read as fewer drops and become best."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
+        # No --fill: the stand-in replays the priority-only start verbatim,
+        # so the export carries zero ordinary structures.
+        pla_path = self.root / "nofill.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        result = subprocess.run(
+            [sys.executable, str(CLI), "candidate", str(self.workspace), "--round", "1",
+             "--round-dir", str(round_dir), "--ledger", _write_json(self.root / "nofill-ledger.json", []),
+             "--out", str(self.root / "nofill-candidate.json")],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        reason = json.loads(result.stderr.strip().splitlines()[-1])
+        self.assertEqual(reason["code"], "inventory")
+        self.assertIn("ordinary population", reason["detail"])
+
+    def test_candidate_refuses_an_invalid_ledger_entry(self):
+        """N4 (route): the `candidate` assembler schema-validates every
+        Ledger entry; one naming a bare/mis-scoped Request id (`R-2`) is
+        refused before any delivery is assembled."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        pla_path = self.root / "bl.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        bad_ledger = [{
+            "schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-2", "answer": "satisfied",
+            "answeredInSnapshot": "pending", "evidence": [], "note": "bare request id",
+        }]
+        result = subprocess.run(
+            [sys.executable, str(CLI), "candidate", str(self.workspace), "--round", "1",
+             "--round-dir", str(round_dir), "--ledger", _write_json(self.root / "bad-ledger.json", bad_ledger),
+             "--out", str(self.root / "bl-candidate.json")],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stderr.strip().splitlines()[-1])["code"], "schema")
+
+    def test_reader_refuses_an_invalid_ledger_entry(self):
+        """N4 (route): the Reader independently re-validates every Ledger
+        entry; a candidate carrying a mis-scoped Request id is refused even
+        though the top-level `placement-candidate` schema types `ledger`
+        only as an array."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._blocked_round(1)
+        live = self.workspace / "state" / "round" / "placement-candidate.json"
+        doc = json.loads(live.read_text(encoding="utf-8"))
+        doc["ledger"] = [{
+            "schema": "mage.ledger-entry/1", "id": "L-1", "request": "R-2", "answer": "satisfied",
+            "answeredInSnapshot": "pending", "evidence": [], "note": "bare request id",
+        }]
+        doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
+        live.write_text(json.dumps(doc), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(READER), "placement-candidate", str(live),
+             str(self.root / "rl.json"), str(self.workspace)],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "rl.json").is_file())
+        self.assertEqual(json.loads(result.stderr.strip().splitlines()[-1])["code"], "schema")
+
+    def test_blocked_review_refusals_by_reader(self):
+        """N1 (route): the Reader's blocked-candidate review clauses -- a
+        blocked review that carries findings, names the wrong candidate id,
+        or names the wrong round is refused (never read clean)."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._blocked_round(1)
+        slot = self.workspace / "state" / "round" / "review-wat.json"
+        base = json.loads(slot.read_text(encoding="utf-8"))
+
+        def _mutated(change):
+            doc = json.loads(json.dumps(base))
+            change(doc)
+            doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
+            slot.write_text(json.dumps(doc), encoding="utf-8")
+
+        def _set_findings(doc):
+            doc["findings"] = [{"id": "F-wat-1"}]
+
+        def _set_candidate_id(doc):
+            doc["candidateId"] = "not-the-current-candidate"
+
+        def _set_round(doc):
+            doc["identity"]["round"] = 99
+
+        for name, change in (("findings", _set_findings), ("candidateId", _set_candidate_id), ("round", _set_round)):
+            with self.subTest(mutation=name):
+                _mutated(change)
+                result = subprocess.run(
+                    [sys.executable, str(READER), "consumer-review", str(slot),
+                     str(self.root / "br.json"), str(self.workspace)],
+                    capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0, name)
+                self.assertFalse((self.root / "br.json").is_file())
+                self.assertEqual(json.loads(result.stderr.strip().splitlines()[-1])["code"], "identity-mismatch")
+
+
+class EvaluatePlacementSkippedReviewTest(unittest.TestCase):
+    """N3 (unit): `evaluate_placement` FAILs `no-open-requests` (so goalMet
+    is false) whenever the final decision recorded any skipped review, even
+    when every other delivery rule passes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _decision(self, skipped_reviews):
+        reader_values = [
+            {"type": "mage_candidate_error_count", "value": 0},
+            {"type": "mage_priority_unplaced_count", "value": 0},
+            {"type": "mage_native_violation_total", "value": 0},
+            {"type": "mage_dropped_count", "value": 0},
+            {"type": "mage_target_distance_max_um", "value": 0.0},
+            {"type": "mage_order_deviation_max", "value": 0},
+        ]
+        return {
+            "best": {"metrics": {"hardFailCount": 0}, "readerValues": reader_values, "round": 1},
+            "openRequestCount": 0, "openRequests": [], "decisionRequests": [],
+            "skippedReviews": skipped_reviews, "stopReason": "",
+        }
+
+    def _goal(self):
+        return {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+
+    def test_clean_decision_passes_no_open_requests(self):
+        evaluation = tasks.evaluate_placement(self.workspace, {
+            "DECISION": self._decision([]), "INCUMBENT": {"metrics": {}}, **self._goal(),
+        })["value"]
+        self.assertEqual(evaluation["rules"]["no-open-requests"], "PASS")
+        self.assertTrue(evaluation["goalMet"])
+
+    def test_skipped_review_fails_no_open_requests(self):
+        evaluation = tasks.evaluate_placement(self.workspace, {
+            "DECISION": self._decision([{"consumer": "wat", "reason": "wrong snapshot"}]),
+            "INCUMBENT": {"metrics": {}}, **self._goal(),
+        })["value"]
+        self.assertEqual(evaluation["rules"]["no-open-requests"], "FAIL")
+        self.assertFalse(evaluation["goalMet"])
 
 
 if __name__ == "__main__":

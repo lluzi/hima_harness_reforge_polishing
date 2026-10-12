@@ -135,9 +135,13 @@ def engineer(task, workspace, campaign, cli):
     pla_path = round_dir / "candidate-input.pla"
     pla_path.write_text(pla.write_pla(doc, dbu_per_um, units="um"), encoding="utf-8")
 
+    # N7: a delivered round must carry the full ordinary population, so the
+    # Engineer replays with the fill stage (`--fill`); the stand-in tops the
+    # export's ordinary structures up to the incumbent's measured population,
+    # which the candidate assembler and the Reader both enforce.
     _run_cli(cli, workspace, [
         "mage-round", str(workspace), "--round", str(round_no), "--pla", str(pla_path),
-        "--role", "engineer", "--out-dir", str(round_dir),
+        "--role", "engineer", "--out-dir", str(round_dir), "--fill",
     ])
 
     ledger = []

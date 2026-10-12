@@ -70,11 +70,31 @@ def _priority_unplaced(snap):
     return {"count": len(ids), "ids": ids}
 
 
-def _check_inventory_conservation(start, candidate):
-    """C4/N2: inventory conservation by base master, delegated to the single
-    shared `snapshot.check_inventory_conservation` so the candidate assembler
-    and the Reader can never disagree on what "conserved" means."""
-    snapshot.check_inventory_conservation(start, candidate)
+def _incumbent_ordinary_population(workspace):
+    """N7: the incumbent's measured ordinary population from
+    `state/incumbent.json` (`ordinaryPopulation`), or `None` when no
+    incumbent has been measured in this workspace yet. In the live Campaign
+    `measure-incumbent` always runs before any round, so the anchor is
+    always present on the real path; `None` only arises on Pack-local paths
+    that assemble a candidate without a measured incumbent."""
+    path = Path(workspace) / "state" / "incumbent.json"
+    if not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return doc.get("ordinaryPopulation")
+
+
+def _check_inventory_conservation(workspace, start, candidate):
+    """C4/N2/N7: inventory conservation (Group/Fixed identities + ordinary
+    population), delegated to the single shared
+    `snapshot.check_inventory_conservation` so the candidate assembler and
+    the Reader can never disagree on what "conserved" means."""
+    snapshot.check_inventory_conservation(
+        start, candidate, _incumbent_ordinary_population(workspace),
+    )
 
 
 def _case_readiness(workspace):
@@ -529,15 +549,27 @@ def _cmd_candidate(workspace, args):
     }
     build_banner = readiness["manifest"].get("mage", {}).get("buildBanner", "")
 
+    # m4 + controller: evaluate the round's own `completed` flag BEFORE
+    # parsing the export or checking inventory. A non-completed round yields
+    # a BLOCKED candidate even if a partial `export.pla` exists -- a partial
+    # export must never be parsed, inventory-checked, or made to back a
+    # delivery. (The vendor launcher returns 0 even when MAGE fails, so
+    # `completed` -- return code 0, not timed out, `MAGE_ROUND_END code 0`
+    # present -- is the only trustworthy signal, never the return code.)
+    completed = summary.get("completed", False)
     export_pla_path = round_dir / "out" / "export.pla"
-    if not export_pla_path.is_file():
-        # I4b: a failed MAGE attempt that produced no export yields a BLOCKED
-        # candidate -- no export/snapshot refs, no metrics claimed -- instead
-        # of crashing. The round can still be delivered and the Reader reads
+    if not completed or not export_pla_path.is_file():
+        # I4b: a failed/partial MAGE attempt yields a BLOCKED candidate -- no
+        # export/snapshot refs, no metrics claimed -- instead of crashing or
+        # delivering. The round can still be delivered and the Reader reads
         # it all-unknown (never a measured state that could become best).
         returncode = summary.get("returncode", 0)
-        stop_reason = (f"native round returned {returncode}" if returncode != 0
-                       else "native round produced no export.pla")
+        if returncode != 0:
+            stop_reason = f"native round returned {returncode}"
+        elif not export_pla_path.is_file():
+            stop_reason = "native round produced no export.pla"
+        else:
+            stop_reason = "native round did not reach MAGE_ROUND_END"
         files = {
             "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
             "verify": _native_verify_refs(workspace_path, round_dir),
@@ -566,11 +598,13 @@ def _cmd_candidate(workspace, args):
         {"exportPla": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)}},
         pending_from_rules=False,
     )
-    # C4: the assembler refuses a completed candidate whose export lost a
-    # start structure (neither placed nor dropped) -- the same conservation
-    # the Reader independently re-checks, caught here before a delivery that
-    # would read as a metric improvement is ever assembled.
-    _check_inventory_conservation(start, candidate_snapshot)
+    # C4/N7: the assembler refuses a completed candidate whose export lost a
+    # start structure (neither placed nor dropped), broke a Group/Fixed
+    # identity, or no longer carries the incumbent's ordinary population --
+    # the same conservation the Reader independently re-checks, caught here
+    # before a delivery that would read as a metric improvement is ever
+    # assembled.
+    _check_inventory_conservation(workspace, start, candidate_snapshot)
     snapshot_path = round_dir / "out" / "snapshot.json"
     core.write_artifact(snapshot_path, candidate_snapshot)
 
@@ -586,18 +620,10 @@ def _cmd_candidate(workspace, args):
         "priorityUnplaced": _priority_unplaced(candidate_snapshot),
     }
 
-    # The vendor launcher returns 0 even when MAGE fails, so trust the
-    # driver's own `completed` flag (return code 0, not timed out, and the
-    # `MAGE_ROUND_END code 0` marker present), never the return code alone.
-    completed = summary.get("completed", False)
-    returncode = summary.get("returncode", 0)
-    outcome = "completed" if completed else "blocked"
-    if completed:
-        stop_reason = ""
-    elif returncode == 0:
-        stop_reason = "native round did not reach MAGE_ROUND_END"
-    else:
-        stop_reason = f"native round returned {returncode}"
+    # This path is reached only when the round completed and produced an
+    # export (the blocked/partial path returned above).
+    outcome = "completed"
+    stop_reason = ""
 
     files = {
         "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},

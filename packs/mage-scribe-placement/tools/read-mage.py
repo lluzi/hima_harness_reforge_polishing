@@ -129,14 +129,35 @@ def _check_scripts(workspace, files, mods):
             raise mods["core"].MageError("identity-mismatch", f"candidate script changed or missing: {path}")
 
 
-def _check_inventory(start, candidate, mods):
-    """C4/N2: inventory conservation by base master, delegated to the single
-    shared `snapshot.check_inventory_conservation` -- the candidate assembler
+def _incumbent_ordinary_population(workspace, mods):
+    """N7: the incumbent's measured ordinary population from
+    `state/incumbent.json` (`ordinaryPopulation`), or `None` when no
+    incumbent has been measured in this workspace. The Reader already reads
+    Campaign `state/` files; on the live Campaign `measure-incumbent` always
+    runs before any round, so the anchor is always present on the real
+    path."""
+    path = Path(workspace) / "state" / "incumbent.json"
+    if not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return doc.get("ordinaryPopulation")
+
+
+def _check_inventory(workspace, start, candidate, mods):
+    """C4/N2/N7: inventory conservation (Group/Fixed identities + ordinary
+    population), delegated to the single shared
+    `snapshot.check_inventory_conservation` -- the candidate assembler
     (`mage_placement_cli.py`) re-checks the identical function, so the two
     sides can never disagree on what "conserved" means. A legitimate MAGE
     re-suffix of an instance (same base, same Group, changed suffix) is
-    admitted; a deleted, extra, or vanished structure is refused."""
-    mods["snapshot"].check_inventory_conservation(start, candidate)
+    admitted; a deleted, extra, or vanished structure, or an export that no
+    longer carries the incumbent's ordinary population, is refused."""
+    mods["snapshot"].check_inventory_conservation(
+        start, candidate, _incumbent_ordinary_population(workspace, mods),
+    )
 
 
 def _check_session_log(workspace, doc, mods, script_sha0):
@@ -253,9 +274,10 @@ def _read_candidate(report_path, workspace, mods):
     if rebuilt["snapshotSha256"] != doc["snapshotSha256"]:
         raise core.MageError("identity-mismatch", "rebuilt candidate snapshot does not match the declared snapshotSha256")
 
-    # C4: a start structure that vanished (neither placed nor dropped) is a
-    # fail-closed refusal, never a metric improvement.
-    _check_inventory(start, rebuilt, mods)
+    # C4/N7: a start structure that vanished (neither placed nor dropped),
+    # or an export that no longer carries the incumbent's ordinary
+    # population, is a fail-closed refusal, never a metric improvement.
+    _check_inventory(workspace, start, rebuilt, mods)
 
     case_readiness = core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")
     goal = case_readiness["goal"]
