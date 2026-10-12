@@ -67,3 +67,24 @@ layout and 92.54 dB / 10.93 MHz / 60.95 deg with R+C extracted. At ff the post-l
 margin is 57.5 deg, below the 60 deg line. The layout uses two rows and a routing channel, with
 no common centroid or dummies. Magic extracts the GF180 PNPs under the wrong device name, so a
 bandgap needs KLayout LVS for the BJTs.
+
+Generalized the same day. `layout/cell_layout.py` lays out any GF180 SPICE subcircuit; run it with
+`layout/run_cell.sh <netlist> <subckt> <out>`. It takes MOS, the two PNP sizes, `ppolyf_u(_1k)`
+segments and MIM.
+
+- **Bipolar array:** a 1:8 PNP pair becomes a 3×3 common-centroid block with the single unit in
+  the centre.
+- **Resistors:** straight segments in series.
+- **Input pair:** ABBA or AB, with poly dummies.
+- **Two LVS checks:**
+  - netgen. Magic names every PNP `pnp_10p00x00p42`, so the name is corrected from the PDK cell
+    that holds it.
+  - The PDK's KLayout `run_lvs.py`, which recognises the PNP size from the layout. It needs the
+    MIM marker GDS 117/10 added to the GDS.
+
+The OTA, a hand-written bandgap-shaped cell (`layout/tests/bandgap_shape.spice`) and the bandgap
+Pack's own netlist (`layout/tests/bandgap_pack_lb.spice`) all pass with 0 DRC errors on both decks
+and both LVS checks matching. The PDK's bare PNP cell carries 6 Magic-only well errors per unit; the
+KLayout deck reports 0. Nine wrong references are caught by both LVS checks: a PNP multiplicity of
+7, the wrong PNP size, a resistor length 1.65 % off, and a MOS width 2.47 % off, among them
+(`layout/tests/negative_lvs.py`).

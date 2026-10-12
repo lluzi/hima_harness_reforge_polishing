@@ -1,0 +1,33 @@
+* A bandgap-shaped test cell for the layout route (hand-written; plausible sizes, not a sized design).
+* Kuijk core (Q1 1x at a; R1 then Q2 8x at b; R2a vbg-a, R2b vbg-b), a 5-transistor PMOS-input OTA
+* (inputs a and b, NMOS mirror load, PMOS tail), a PMOS output device into vbg, a PMOS bias mirror
+* from ibias, a start-up path (inverter on vbg pulling the OTA output low while vbg is low), enable
+* switches (en low: the bias node and the OTA output to vdd), and one MIM compensation capacitor.
+* Pins: vdd vss en ibias vbg.
+.subckt bandgap vdd vss en ibias vbg
+* bias mirror (ibias sinks the reference current)
+XMPB ibias ibias vdd vdd pfet_03v3 w=4u l=2u
+XMPT tail ibias vdd vdd pfet_03v3 w=8u l=2u
+* 5T PMOS-input OTA
+XMP1 n1 a tail vdd pfet_03v3 w=8u l=2u
+XMP2 vgo b tail vdd pfet_03v3 w=8u l=2u
+XMN3 n1 n1 vss vss nfet_03v3 w=4u l=4u
+XMN4 vgo n1 vss vss nfet_03v3 w=4u l=4u
+* output device
+XMPO vbg vgo vdd vdd pfet_03v3 w=20u l=1u
+* enable
+XMPE1 ibias en vdd vdd pfet_03v3 w=1u l=0.28u
+XMPE2 vgo en vdd vdd pfet_03v3 w=1u l=0.28u
+* start-up
+XMPS1 su vbg vdd vdd pfet_03v3 w=0.5u l=10u
+XMNS1 su vbg vss vss nfet_03v3 w=1u l=1u
+XMNS2 vgo su vss vss nfet_03v3 w=1u l=1u
+* Kuijk core
+XR2A vbg a vss ppolyf_u_1k r_width=1u r_length=60u
+XR2B vbg b vss ppolyf_u_1k r_width=1u r_length=60u
+XR1 b e2 vss ppolyf_u_1k r_width=1u r_length=10u
+XQ1 vss vss a pnp_10p00x10p00 m=1
+XQ2 vss vss e2 pnp_10p00x10p00 m=8
+* compensation
+XCC vgo vdd cap_mim_2f0fF c_width=10u c_length=10u
+.ends bandgap

@@ -1,0 +1,37 @@
+* The analog-bandgap Pack's cell netlist (packs/analog-bandgap/flow/bg_cli.py cell_spice, gf180mcuD card)
+* for a hand-chosen design (n=8; R1 2x20 um s=1, R2a/R2b 2x40 um s=3; CC 10x10 um, CO 20x20 um); not a sized design.
+* Kuijk bandgap, topology kuijk-p5t, PDK gf180mcuD, round 0
+.subckt bandgap_lb vdd vss en ibias vbg go g
+XQ1 vss vss a pnp_10p00x10p00 
+XQ2_1 vss vss c pnp_10p00x10p00 
+XQ2_2 vss vss c pnp_10p00x10p00 
+XQ2_3 vss vss c pnp_10p00x10p00 
+XQ2_4 vss vss c pnp_10p00x10p00 
+XQ2_5 vss vss c pnp_10p00x10p00 
+XQ2_6 vss vss c pnp_10p00x10p00 
+XQ2_7 vss vss c pnp_10p00x10p00 
+XQ2_8 vss vss c pnp_10p00x10p00 
+XR1 b c vss ppolyf_u_1k r_length=20u r_width=2u s=1
+XR2a vbg a vss ppolyf_u_1k r_length=40u r_width=2u s=3
+XR2b vbg b vss ppolyf_u_1k r_length=40u r_width=2u s=3
+MB0 ibias ibias vdd vdd pfet_03v3 w=4u l=2u
+MT tail ibias vdd vdd pfet_03v3 w=8u l=2u
+M1 d1 b tail vdd pfet_03v3 w=8u l=2u
+M2 go a tail vdd pfet_03v3 w=8u l=2u
+M3 d1 d1 ls vss nfet_03v3 w=4u l=4u
+M4 go d1 ls vss nfet_03v3 w=4u l=4u
+MO vbg g vdd vdd pfet_03v3 w=20u l=1u
+MSU1 su ibias vdd vdd pfet_03v3 w=1u l=10u
+MSU2 su vbg vss vss nfet_03v3 w=1u l=1u
+MSU3 g su sux vss nfet_03v3 w=1u l=1u
+MSU4 sux en vss vss nfet_03v3 w=1u l=1u
+MEN1 ibias en vdd vdd pfet_03v3 w=1u l=0.56u
+MEN2 g en vdd vdd pfet_03v3 w=2u l=0.56u
+MEN3 ls en vss vss nfet_03v3 w=4u l=1u
+XCC g vdd cap_mim_2f0_m2m3_noshield c_length=10u c_width=10u
+XCO vbg vss cap_mim_2f0_m2m3_noshield c_length=20u c_width=20u
+.ends bandgap_lb
+
+.subckt bandgap vdd vss en ibias vbg
+xlb vdd vss en ibias vbg g g bandgap_lb
+.ends bandgap
