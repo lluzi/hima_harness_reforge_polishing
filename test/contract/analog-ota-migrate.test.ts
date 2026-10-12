@@ -146,6 +146,27 @@ test('a local Site binding the simulator, the PDK root and both PDKs fits the Pa
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('the deployed analog Site analog_sim_01 fits the Pack and binds both simulators through its wrappers', async () => {
+  const siteDir = path.join(repoRoot, 'sites/analog_sim_01');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'analog-site-real-'));
+  try {
+    const sitesDir = path.join(root, 'sites');
+    await mkdir(sitesDir, { recursive: true });
+    await writeFile(path.join(sitesDir, 'analog_sim_01.yml'), await readFile(path.join(siteDir, 'site.yml'), 'utf8'));
+    await writeFile(path.join(sitesDir, 'permit.yml'), await readFile(path.join(siteDir, 'permit.yml'), 'utf8'));
+    const site = loadSite(sitesDir, 'analog_sim_01');
+    const fit = checkPack(loadPack(packsDir, packId), site);
+    assert.equal(fit.fit, true, fit.errors.join('\n'));
+    const bindings = site.bindings as Record<string, string>;
+    const wrappers = bindings.simulators!.split(',').map((pair) => pair.split('=')[1]!);
+    assert.deepEqual(bindings.simulators!.split(',').map((pair) => pair.split('=')[0]), ['spectre', 'ngspice']);
+    for (const wrapper of wrappers) assert.ok(site.permitRules.allowedWrappers.includes(wrapper), wrapper);
+    assert.ok(site.permitRules.allowedReadRoots.includes(bindings.pdkRoot!));
+    assert.deepEqual(site.permitRules.allowedWriteRoots, [bindings.workspaceRoot]);
+    assert.doesNotMatch(await readFile(path.join(siteDir, 'site.yml'), 'utf8'), /\b\d{1,3}(\.\d{1,3}){3}\b/, 'no server address in git');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 // ---------------------------------------------------------------- the Spectre adapter, offline
 
 const spectreFixture = path.join(repoRoot, 'test/fixtures/analog-spectre');
