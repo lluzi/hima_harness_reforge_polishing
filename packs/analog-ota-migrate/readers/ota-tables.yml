@@ -1,0 +1,6 @@
+id: ota-tables
+version: "0.1.0"
+file: tools/read-tables.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-gmid-tables/1
+emits: [tables_valid, tables_curves]

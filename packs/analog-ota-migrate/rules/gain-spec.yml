@@ -1,0 +1,7 @@
+id: gain-spec
+version: "0.1.0"
+title: The worst-corner DC gain reaches the spec sheet's
+parameter: { name: min_gain_db, unit: db }
+requires: [{ type: gain_db }]
+subject: { type: gain_db }
+predicate: { op: gte, threshold: { parameter: min_gain_db }, unit: db }

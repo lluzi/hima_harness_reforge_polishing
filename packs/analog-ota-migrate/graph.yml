@@ -1,0 +1,197 @@
+# Characterize both PDKs once (gm/Id tables from the Site's simulator), then rounds of: the sizing
+# agent (resident) delivers an OTA in the source PDK -> the Pack simulates it at every corner -> the
+# spec judge; when the source meets the spec, the migration agent (resident) ports it to the target
+# PDK -> the Pack simulates the port at every corner -> the round record -> the spec judge on the
+# migrated design -> next round (owner decision) or goal met. Agents propose sizes; only the Pack's
+# simulate steps measure, and only Readers and judges decide.
+#
+# A source design that misses the spec skips the migration that round: the record says so and the
+# next round starts at the sizing agent again with the lessons. The two resident nodes are driven by
+# the owner (begin, engineering start, delivery, release, complete); everything else drives itself in
+# four segments.
+id: analog-ota-migrate
+version: "0.1.0"
+entry: bind-inputs
+autopilot:
+  - from: [bind-inputs]
+    until: [size-agent, blocked]
+    label: Simulator and design curves
+    about: Checks the simulator and both PDKs, then sweeps every device to build the gm/Id design curves.
+  - from: [simulate-source]
+    until: [migrate-agent, record-round, blocked]
+    label: Source check
+    about: Simulates the sized OTA at every corner of the source PDK and checks it against the spec sheet.
+  - from: [simulate-target]
+    until: [record-round, blocked]
+    label: Migration check
+    about: Simulates the migrated OTA at every corner of the target PDK.
+  - from: [record-round]
+    until: [next-round, blocked]
+    label: Before and after
+    about: Compares both OTAs with the spec sheet and judges the migrated one.
+
+nodes:
+  - id: bind-inputs
+    kind: act
+    label: Check simulator and PDKs
+    about: Checks that the SPICE simulators answer and both PDKs' device files are installed, and records their checksums.
+    parameters:
+      tool: bind-inputs
+      arguments:
+        SIM: { from: input, name: simulators }
+        PDK_ROOT: { from: input, name: pdkRoot }
+        SOURCE_PDK: { from: input, name: sourcePdk }
+        TARGET_PDK: { from: input, name: targetPdk }
+  - id: characterize
+    kind: act
+    label: Build gm/Id design curves
+    about: Sweeps every device type and length of both PDKs on the simulator and tabulates current density, gain and speed against gm/Id.
+    parameters:
+      tool: characterize
+  - id: read-tables
+    kind: act
+    label: Read the design curves
+    about: Reads how many gm/Id curves each PDK has.
+    parameters: { observes: tablesState }
+  - id: check-tables
+    kind: judge
+    label: Design curves complete
+    about: Every device type and characterized length of both PDKs has a usable gm/Id curve.
+    parameters: { rules: [tables-valid] }
+  - id: size-agent
+    kind: act
+    label: Sizing agent
+    about: AI agent. Sizes the two-stage OTA in the source PDK from the spec sheet with the gm/Id curves and its own simulations.
+    parameters:
+      tool: size-agent
+  - id: simulate-source
+    kind: act
+    label: Simulate the source OTA
+    about: Runs the OTA testbench at every corner of the source PDK; gain, unity-gain frequency, phase margin, power and saturation.
+    parameters:
+      tool: simulate-source
+      arguments:
+        LOAD_PF: { from: strategy, name: loadPf }
+        CM_PCT: { from: strategy, name: inputCmPct }
+  - id: read-source
+    kind: act
+    label: Read the source results
+    about: Reads the source OTA's worst-corner gain, unity-gain frequency, phase margin, power and saturation.
+    parameters: { observes: measureSource }
+  - id: check-source
+    kind: judge
+    label: Source meets the spec
+    about: The worst corner of the source OTA meets every line of the spec sheet with every device saturated.
+    parameters:
+      rules: [devices-saturated, gain-spec, gbw-spec, pm-spec, power-spec]
+      bind:
+        min_gain_db: { from: goal, name: min_gain_db }
+        min_gbw_mhz: { from: goal, name: min_gbw_mhz }
+        min_pm_deg: { from: goal, name: min_pm_deg }
+        max_power_uw: { from: goal, name: max_power_uw }
+  - id: migrate-agent
+    kind: act
+    label: Migration agent
+    about: AI agent. Ports the source OTA to the target PDK, keeping its gm/Id choices and re-biasing for the new supply and devices.
+    parameters:
+      tool: migrate-agent
+  - id: simulate-target
+    kind: act
+    label: Simulate the migrated OTA
+    about: Runs the same testbench at every corner of the target PDK.
+    parameters:
+      tool: simulate-target
+      arguments:
+        LOAD_PF: { from: strategy, name: loadPf }
+        CM_PCT: { from: strategy, name: inputCmPct }
+  - id: record-round
+    kind: act
+    label: Compare before and after
+    about: Writes the round's table of both OTAs against the spec sheet and the target's worst margin.
+    parameters:
+      tool: record-round
+      arguments:
+        GAIN_DB: { from: goal, name: min_gain_db }
+        GBW_MHZ: { from: goal, name: min_gbw_mhz }
+        PM_DEG: { from: goal, name: min_pm_deg }
+        POWER_UW: { from: goal, name: max_power_uw }
+  - id: read-round
+    kind: act
+    label: Read the round result
+    about: Reads the migrated OTA's worst-corner results and margin from the round record.
+    parameters: { observes: roundRecord }
+  - id: judge-round
+    kind: judge
+    label: Migrated OTA meets the spec
+    about: The round is complete and the migrated OTA's worst corner meets every line of the spec sheet.
+    parameters:
+      rules: [round-valid, gain-spec, gbw-spec, pm-spec, power-spec]
+      bind:
+        min_gain_db: { from: goal, name: min_gain_db }
+        min_gbw_mhz: { from: goal, name: min_gbw_mhz }
+        min_pm_deg: { from: goal, name: min_pm_deg }
+        max_power_uw: { from: goal, name: max_power_uw }
+  - id: next-round
+    kind: explore
+    label: Next round
+    about: Decide whether the migrated OTA meets the spec, or the agents get another round with this round's results.
+    parameters:
+      chooser: ota-next
+      bind: { roundStep: 1 }
+      converge: { read: bestMargin, band: 0.5, generations: 2, generationLimit: 3 }
+  - id: blocked
+    kind: wait
+    label: Needs a person
+    about: The simulator or a PDK is missing, or the design curves could not be built.
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: bind-inputs, to: characterize }
+  - { from: characterize, to: read-tables }
+  - { from: read-tables, to: check-tables }
+  - { from: check-tables, to: size-agent, outcome: PASS }
+  - { from: check-tables, to: blocked, outcome: FAIL }
+  - { from: check-tables, to: blocked, outcome: UNDETERMINED }
+  - { from: size-agent, to: simulate-source }
+  - { from: simulate-source, to: read-source }
+  - { from: read-source, to: check-source }
+  - { from: check-source, to: migrate-agent, outcome: PASS }
+  - { from: check-source, to: record-round, outcome: FAIL }
+  - { from: check-source, to: record-round, outcome: UNDETERMINED }
+  - { from: migrate-agent, to: simulate-target }
+  - { from: simulate-target, to: record-round }
+  - { from: record-round, to: read-round }
+  - { from: read-round, to: judge-round }
+  - { from: judge-round, to: next-round, outcome: PASS }
+  - { from: judge-round, to: next-round, outcome: FAIL }
+  - { from: judge-round, to: next-round, outcome: UNDETERMINED }
+  - { from: next-round, to: size-agent, revisit: true }
+loops: {}
+
+# The strip: three stations in a phone-width pane.
+view:
+  stations:
+    - id: simulator
+      label: Simulator and judges
+      about: The Site's SPICE simulator measures every design; the spec sheet judges it.
+      row: 0
+      checklist:
+        - { label: Check simulator and PDKs, nodes: [bind-inputs], rounds: first }
+        - { label: Build gm/Id design curves, nodes: [characterize, read-tables, check-tables], rounds: first }
+        - { label: Simulate the source OTA, nodes: [simulate-source, read-source, check-source] }
+        - { label: Simulate the migrated OTA, nodes: [simulate-target] }
+        - { label: Compare before and after, nodes: [record-round, read-round, judge-round] }
+        - { label: Next round, nodes: [next-round] }
+    - id: sizing
+      label: Sizing agent
+      about: AI agent that sizes the OTA in the source PDK.
+      row: 1
+      checklist:
+        - { label: Size the OTA from the spec sheet, nodes: [size-agent] }
+    - id: migration
+      label: Migration agent
+      about: AI agent that ports the OTA to the target PDK.
+      row: 1
+      checklist:
+        - { label: Port and re-bias the OTA, nodes: [migrate-agent] }
+  hidden: [blocked]

@@ -1,0 +1,14 @@
+// gm/Id characterization: synth130 nmos
+simulator lang=spice
+.lib "<pdkRoot>/synth130/models.lib" tt
+simulator lang=spectre
+opts options temp=27 rawfmt=psfascii
+VD (d 0) vsource dc=0.6
+VG (g 0) vsource dc=0
+MC0 (d g 0 0) nch w=10u l=0.13u
+MC1 (d g 0 0) nch w=10u l=0.26u
+MC2 (d g 0 0) nch w=10u l=0.36u
+MC3 (d g 0 0) nch w=10u l=0.72u
+MC4 (d g 0 0) nch w=10u l=1.44u
+save MC0:ids MC0:gm MC0:gds MC0:cgg MC1:ids MC1:gm MC1:gds MC1:cgg MC2:ids MC2:gm MC2:gds MC2:cgg MC3:ids MC3:gm MC3:gds MC3:cgg MC4:ids MC4:gm MC4:gds MC4:cgg
+sw dc dev=VG param=dc start=0 stop=1.2 lin=60

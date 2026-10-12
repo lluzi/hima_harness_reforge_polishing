@@ -1,0 +1,7 @@
+id: pm-spec
+version: "0.1.0"
+title: The worst-corner phase margin reaches the spec sheet's
+parameter: { name: min_pm_deg, unit: deg }
+requires: [{ type: pm_deg }]
+subject: { type: pm_deg }
+predicate: { op: gte, threshold: { parameter: min_pm_deg }, unit: deg }

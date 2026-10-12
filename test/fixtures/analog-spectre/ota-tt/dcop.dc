@@ -1,0 +1,102 @@
+HEADER
+"PSFversion" "1.00"
+"simulator" "spectre"
+"version" "23.1.0.722.isr15"
+"date" "3:03:40 AM, Mon Oct 12, 2026"
+"design" "// synth180 two-stage Miller OTA, source corner tt, load 2 pF, input common mode 1.08 V"
+"analysis type" "dc"
+"analysis name" "dcop"
+"analysis description" "DC Analysis `dcop'"
+"xVecSorted" "unsorted"
+"tolerance.relative" 1.000000000000000e-03
+"reltol" 1.000000000000000e-03
+"abstol(V)" 1.000000000000000e-06
+"abstol(I)" 1.000000000000000e-12
+"temp" 2.700000000000000e+01
+"tnom" 2.700000000000000e+01
+"tempeffects" "all"
+"gmindc" 1.000000000000000e-12
+TYPE
+"LogicV" FLOAT DOUBLE PROP(
+"key" "node"
+)
+"V" FLOAT DOUBLE PROP(
+"units" "V"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"I" FLOAT DOUBLE PROP(
+"units" "A"
+"key" "branch"
+"tolerance" 1.000000000000000e-12
+)
+"MMF" FLOAT DOUBLE PROP(
+"units" "A*turn"
+"key" "node"
+"tolerance" 1.000000000000000e-12
+)
+"Wb" FLOAT DOUBLE PROP(
+"units" "Wb"
+"key" "node"
+"tolerance" 1.000000000000000e-09
+)
+"Temp" FLOAT DOUBLE PROP(
+"units" "C"
+"key" "node"
+"tolerance" 1.000000000000000e-04
+)
+"Pwr" FLOAT DOUBLE PROP(
+"units" "W"
+"key" "node"
+"tolerance" 1.000000000000000e-09
+)
+"U" FLOAT DOUBLE PROP(
+"units" ""
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"V/Sec" FLOAT DOUBLE PROP(
+"units" "V/s"
+"key" "node"
+"tolerance" 9.999999999999999e-05
+)
+"I/Sec" FLOAT DOUBLE PROP(
+"units" "A/s"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+)
+"1/Sec" FLOAT DOUBLE PROP(
+"units" "1/s"
+"key" "node"
+"tolerance" 9.999999999999999e-05
+)
+"HOD" FLOAT DOUBLE PROP(
+"units" ""
+"key" "node"
+"tolerance" 1.000000000000000e-02
+)
+"Q" FLOAT DOUBLE PROP(
+"units" "Coul"
+"key" "node"
+"tolerance" 1.000000000000000e-15
+)
+"Efield" FLOAT DOUBLE PROP(
+"units" "V/m"
+"key" "node"
+"tolerance" 1.000000000000000e-06
+"sigtype" "optical"
+)
+VALUE
+"x" "V" 1.051424020387493e+00
+"inn" "V" 1.080066858280907e+00
+"tail" "V" 3.074801053331533e-01
+"y" "V" 1.051065811051294e+00
+"inp" "V" 1.080000000000000e+00
+"vdd" "V" 1.800000000000000e+00
+"nbias" "V" 7.113020149412179e-01
+"out" "V" 1.080066858280907e+00
+"cz" "V" 1.051065811051294e+00
+"LFB:1" "I" -2.646977960169689e-23
+"VIP:p" "I" 0.000000000000000e+00
+"VSUP:p" "I" -8.796182465794060e-05
+END

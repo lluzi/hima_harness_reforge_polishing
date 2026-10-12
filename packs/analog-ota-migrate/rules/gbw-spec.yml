@@ -1,0 +1,7 @@
+id: gbw-spec
+version: "0.1.0"
+title: The worst-corner unity-gain frequency reaches the spec sheet's
+parameter: { name: min_gbw_mhz, unit: mhz }
+requires: [{ type: gbw_mhz }]
+subject: { type: gbw_mhz }
+predicate: { op: gte, threshold: { parameter: min_gbw_mhz }, unit: mhz }

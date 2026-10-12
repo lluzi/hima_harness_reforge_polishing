@@ -1,0 +1,18 @@
+# Ends at the Goal (the migrated OTA meets every spec line at its worst corner, in a valid round);
+# otherwise another round with the lessons, up to the round limit. Changes only the round counter:
+# it cannot change the Goal, the load, the input common mode, a design or a measured fact.
+id: ota-next
+version: "0.1.0"
+title: End when the migrated OTA meets the spec, else run another design round
+parameter: { name: roundStep, unit: count }
+reads:
+  bestMargin: { type: best_margin_pct, unit: percent }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS, goal: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: UNDETERMINED }
+    next: { roundRevision: roundStep }

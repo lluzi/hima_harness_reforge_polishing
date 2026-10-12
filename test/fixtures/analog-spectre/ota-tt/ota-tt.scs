@@ -1,0 +1,24 @@
+// synth180 two-stage Miller OTA, source corner tt, load 2 pF, input common mode 1.08 V
+simulator lang=spice
+.lib "<pdkRoot>/synth180/models.lib" tt
+simulator lang=spectre
+opts options temp=27 rawfmt=psfascii
+M1 (x inn tail 0) nch w=1.48u l=0.5u
+M2 (y inp tail 0) nch w=1.48u l=0.5u
+M3 (x x vdd vdd) pch w=2u l=0.5u
+M4 (y x vdd vdd) pch w=2u l=0.5u
+M5 (tail nbias 0 0) nch w=2.36u l=1u
+M6 (out y vdd vdd) pch w=25u l=0.5u
+M7 (out nbias 0 0) nch w=14.78u l=1u
+M8 (nbias nbias 0 0) nch w=2.96u l=1u
+VSUP (vdd 0) vsource dc=1.8
+IB (vdd nbias) isource dc=10u
+RZ (y cz) resistor r=2k
+CC (cz out) capacitor c=0.6p
+CL (out 0) capacitor c=2p
+VIP (inp 0) vsource dc=1.08 mag=1
+LFB (out inn) inductor l=1e9
+CFB (inn 0) capacitor c=1
+dcop dc oppoint=rawfile
+opinfo info what=oppoint where=rawfile
+acan ac start=0.1 stop=1e+10 dec=40

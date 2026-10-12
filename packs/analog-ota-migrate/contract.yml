@@ -1,0 +1,237 @@
+id: analog-ota-migrate
+version: "0.1.0"
+title: Two-stage OTA sized from a spec sheet and migrated to a second PDK
+status: development
+minimumHarnessVersion: 0.2.2
+
+ontology:
+  aliases:
+    designSource: [source design, sized OTA, sizing agent design]
+    designTarget: [migrated design, ported OTA, migration agent design]
+    measureSource: [source simulation, source OTA results]
+    roundRecord: [round result, migration comparison, before and after migration]
+    tablesState: [gm/Id tables, design curves, lookup tables]
+
+budget:
+  timeBoxMs: 7200000
+  closingReserveMs: 600000
+  minimumGenerations: 1
+
+inputs:
+  - name: simulators
+    description: >-
+      The Site's SPICE simulators as name=command pairs, e.g. spectre=<wrapper>,ngspice=<wrapper>. Each
+      PDK is measured with the first simulator its card lists that the Site has: Cadence Spectre where
+      the PDK's decks read in Spectre, ngspice otherwise.
+  - name: pdkRoot
+    description: Read-only root of the installed open PDKs, as the simulator sees it (sky130A, ihp-sg13g2, ... or the test PDKs).
+  - name: sourcePdk
+    description: The PDK the OTA is first sized in (a card name in flow/pdks.json, e.g. sky130A).
+  - name: targetPdk
+    description: The PDK the OTA is migrated to (a card name in flow/pdks.json, e.g. ihp-sg13g2).
+  - name: workspaceRoot
+    description: Campaign-private output root allowed by the Site Permit.
+
+outputs:
+  - name: inputsState
+    path: state/inputs.json
+    description: The simulator versions, both PDK cards with each one's measuring simulator, and the model files' SHA-256.
+  - name: tablesState
+    path: state/tables.json
+    reader: ota-tables
+    description: >-
+      The gm/Id characterization of both PDKs: per device type and length, current density, gain
+      (gm/gds) and transit frequency against gm/Id, from DC sweeps on the Site's simulator.
+  - name: lessons
+    path: state/lessons.json
+    description: Every round so far, with both designs' worst-corner results and the spec lines met.
+  - name: designSource
+    path: state/design-source.json
+    reader: ota-design
+    description: >-
+      The sizing agent's OTA in the source PDK (hima-ota-design/1): every device's W and L, the bias
+      current, Cc and Rz, and the gm/Id intent it was sized with. No performance numbers.
+  - name: measureSource
+    path: state/measure-source.json
+    reader: ota-source
+    description: The source design simulated at every corner of the source PDK (hima-ota-measure/1).
+  - name: designTarget
+    path: state/design-target.json
+    reader: ota-design
+    description: >-
+      The migration agent's OTA in the target PDK (hima-ota-design/1), citing the accepted source
+      design by SHA-256. No performance numbers.
+  - name: measureTarget
+    path: state/measure-target.json
+    description: The migrated design simulated at every corner of the target PDK (hima-ota-measure/1).
+  - name: roundRecord
+    path: state/round.json
+    reader: ota-round
+    description: The round record (hima-ota-round/1) comparing both designs' worst corners with the spec.
+  - name: summary
+    path: derived/summary.md
+    description: Every round's spec lines met by both designs and the migrated OTA's worst margin, with the claim boundary.
+
+environment:
+  wrappers: [/usr/bin/python3]
+
+workspace:
+  source: pack
+  copy: [ota_cli.py, pdks.json]
+
+tools:
+  - id: bind-inputs
+    file: flow/ota_cli.py
+    description: >-
+      Check that the Site's simulators answer (spectre -V, ngspice --version) and that both PDKs' model
+      files are installed; choose each PDK's measuring simulator; write state/inputs.json with the
+      simulator versions, the PDK cards and the model files' SHA-256.
+    inputs: [WORKSPACE, SIM, PDK_ROOT, SOURCE_PDK, TARGET_PDK]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', bind, '${WORKSPACE}', '${SIM}', '${PDK_ROOT}', '${SOURCE_PDK}', '${TARGET_PDK}']
+
+  - id: characterize
+    file: flow/ota_cli.py
+    description: >-
+      DC sweeps of every device type and characterized length of both PDKs on each PDK's simulator;
+      write the gm/Id tables (state/tables-source.json, state/tables-target.json, state/tables.json)
+      and reports/characterize/r1/ (gmid.rpt, the netlists and logs, a design-curve chart per PDK).
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', characterize, '${WORKSPACE}']
+
+  - id: size-agent
+    file: flow/ota_cli.py
+    description: >-
+      You are the analog sizing engineer. Size a two-stage Miller OTA (NMOS input pair, PMOS mirror
+      load, PMOS common-source second stage, Miller Cc with nulling Rz) in the source PDK so that its
+      worst corner meets the spec sheet: the Goal's DC gain, unity-gain frequency, phase margin and
+      power, at the strategy's load capacitance and input common mode (percent of the supply). Read
+      inputsState, tablesState and lessons. Start from the spec: write spec.json {gainDb, gbwMhz,
+      pmDeg, powerUw, loadPf} and run `python3 <campaign>/flow/ota_cli.py draft <campaign> intent
+      spec.json > intent.json` (the textbook first cut in gm/Id form), then `draft <campaign> size
+      intent.json > design.json` (device sizes from the gm/Id tables). Simulate your own draft with
+      `OTA_SIM=ngspice OTA_PDK_ROOT=<your PDK root> python3 <campaign>/flow/ota_cli.py sim <campaign>
+      source design.json <loadPf> <cmPct> ./sim` and refine the intent (gm/Id, L, currents, Cc, Rz)
+      until every corner meets every line with every device saturated; keep each try in your analysis.
+      When last round's source design met the spec, `draft <campaign> keep > design.json` carries it
+      into this round. Fill summary and reason in your own words. Keep reports/size-agent/r<k>/analysis.md
+      in your private workspace (k = rounds in lessons + 1). Run `python3 <campaign>/flow/ota_cli.py
+      precheck <campaign> source design.json` and fix every problem it prints, then deliver the file as
+      the result and your reports as support. The Pack simulates your delivery itself. Never type a
+      performance number into the design, change the Goal, the load or the PDK.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', design, '${WORKSPACE}', source]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, tablesState, lessons]
+      knowledge: [analog-flow.md, gmid-sizing-playbook.md, design-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/size-agent
+      produces: designSource
+
+  - id: simulate-source
+    file: flow/ota_cli.py
+    description: >-
+      Simulate the accepted source design at every corner of the source PDK (operating point, AC
+      open-loop response): DC gain, unity-gain frequency, phase margin, power and each device's
+      saturation; write state/measure-source.json and reports/simulate-source/r<k>/ (the netlists,
+      logs, measure.rpt and the corner chart).
+    inputs: [WORKSPACE, LOAD_PF, CM_PCT]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', source, '${LOAD_PF}', '${CM_PCT}']
+
+  - id: migrate-agent
+    file: flow/ota_cli.py
+    description: >-
+      You are the analog migration engineer. Port the accepted source OTA (designSource, simulated in
+      measureSource) to the target PDK so that its worst corner meets the same spec sheet at the
+      target's own supply. Read inputsState, tablesState, lessons, designSource and measureSource.
+      Start with `python3 <campaign>/flow/ota_cli.py draft <campaign> migrate > design.json`: the
+      gm/Id-preserving port (same gm/Id and currents, lengths at the same multiple of the minimum,
+      widths from the target's gm/Id tables). Simulate it with `OTA_SIM=ngspice OTA_PDK_ROOT=<your PDK
+      root> python3 <campaign>/flow/ota_cli.py sim <campaign> target design.json <loadPf> <cmPct>
+      ./sim`. A lower supply leaves less headroom: when a device leaves saturation or a line is missed,
+      re-bias by editing the intent (input pair gm/Id, mirror gm/Id, lengths, currents, Cc, Rz) and
+      run `draft <campaign> migrate intent.json > design.json` again; keep each try in your analysis.
+      Fill summary and reason. Keep reports/migrate-agent/r<k>/analysis.md in your private workspace.
+      Run `python3 <campaign>/flow/ota_cli.py precheck <campaign> target design.json` and fix every
+      problem, then deliver the file as the result and your reports as support. The Pack simulates
+      your delivery itself. Never type a performance number, change the Goal or the source design.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', design, '${WORKSPACE}', target]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, tablesState, lessons, designSource, measureSource]
+      knowledge: [analog-flow.md, migration-playbook.md, gmid-sizing-playbook.md, design-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/migrate-agent
+      produces: designTarget
+
+  - id: simulate-target
+    file: flow/ota_cli.py
+    description: >-
+      Simulate the accepted migrated design at every corner of the target PDK, the same testbench
+      and measurements as the source; write state/measure-target.json and reports/simulate-target/r<k>/.
+    inputs: [WORKSPACE, LOAD_PF, CM_PCT]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', simulate, '${WORKSPACE}', target, '${LOAD_PF}', '${CM_PCT}']
+
+  - id: record-round
+    file: flow/ota_cli.py
+    description: >-
+      Deterministic round record from both measurements and the spec: each line met or missed at the
+      worst corner, the target's worst normalized margin, the best so far; append lessons; write
+      derived/round-<k>.md and reports/record-round/r<k>/ (round-<k>.md, the migration chart). Uses
+      no model text as a fact.
+    inputs: [WORKSPACE, GAIN_DB, GBW_MHZ, PM_DEG, POWER_UW]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/ota_cli.py', record, '${WORKSPACE}', '${GAIN_DB}', '${GBW_MHZ}', '${PM_DEG}', '${POWER_UW}']
+
+reports: { dir: reports }
+
+rules:
+  - tables-valid
+  - devices-saturated
+  - gain-spec
+  - gbw-spec
+  - pm-spec
+  - power-spec
+  - round-valid
+
+knowledge:
+  - file: analog-flow.md
+    purpose: The flow, every command, the round loop, what each step measures and what the results mean.
+  - file: gmid-sizing-playbook.md
+    purpose: How the sizing agent turns a spec sheet into a two-stage OTA with gm/Id tables and closes it against the simulator.
+  - file: migration-playbook.md
+    purpose: How the migration agent ports a sized OTA to a second PDK and re-biases it for the new supply and devices.
+  - file: design-format.md
+    purpose: The design file (hima-ota-design/1), the draft, sim and precheck commands, and the delivery.
+  - file: evidence-and-claims.md
+    purpose: What is a simulator result, what is a claim, and the claim boundary of this Pack.
+
+goal:
+  min_gain_db: { type: number, unit: db, min: 20, max: 120, default: 60, precision: 1 }
+  min_gbw_mhz: { type: number, unit: mhz, min: 0.1, max: 2000, default: 10, precision: 2 }
+  min_pm_deg: { type: number, unit: deg, min: 30, max: 90, default: 60, precision: 1 }
+  max_power_uw: { type: number, unit: uw, min: 1, max: 100000, default: 200, precision: 1 }
+
+strategy:
+  loadPf: { type: number, unit: pf, min: 0.05, max: 100, default: 2, precision: 2 }
+  inputCmPct: { type: number, unit: percent, min: 20, max: 80, default: 60, precision: 0 }
+  roundRevision: { type: number, unit: count, min: 0, max: 2, default: 0, precision: 0 }
+
+words:
+  min_gain_db: { label: "DC gain, at least", unit: db }
+  min_gbw_mhz: { label: "Unity-gain frequency, at least", unit: mhz }
+  min_pm_deg: { label: "Phase margin, at least", unit: deg }
+  max_power_uw: { label: "Power, at most", unit: uw }
+  loadPf: { label: Load capacitance, unit: pf }
+  inputCmPct: { label: "Input common mode, % of supply", unit: percent }
+  roundRevision: { label: another design round requested (0 before the first), unit: count }
+
+results:
+  headline: { type: target_margin_pct, label: "Worst spec margin after migration", unit: "%", better: higher, digits: 1 }
+  columns:
+    - { label: Source PDK, reader: ota-source }
+    - { label: Target PDK, reader: ota-round }
+  rows:
+    - { type: gain_db, label: "DC gain, worst corner", unit: dB, better: higher, digits: 1 }
+    - { type: gbw_mhz, label: "Unity-gain frequency, worst corner", unit: MHz, better: higher, digits: 2 }
+    - { type: pm_deg, label: "Phase margin, worst corner", unit: deg, better: higher, digits: 1 }
+    - { type: power_uw, label: "Power, worst corner", unit: uW, better: lower, digits: 1 }
+    - { type: area_um2, label: Active area, unit: um2, better: lower, digits: 1 }

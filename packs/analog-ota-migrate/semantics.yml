@@ -1,0 +1,43 @@
+values:
+  tables_valid:
+    unit: count
+    description: "One when every device type and characterized length of both PDKs has a usable gm/Id curve from the simulator."
+  tables_curves:
+    unit: count
+    description: "gm/Id curves built from the simulator's DC sweeps, both PDKs together."
+  design_valid:
+    unit: count
+    description: "One when an agent's OTA design passed the Pack's check: the topology's devices, sizes legal for its PDK, matched pairs, bias and compensation in range, a migrated design citing the accepted source design."
+  gain_db:
+    unit: db
+    description: "Open-loop DC gain of an OTA at its worst corner, from the simulator's AC analysis."
+  gbw_mhz:
+    unit: mhz
+    description: "Unity-gain frequency of an OTA at its worst corner (the lowest over the corners), from the simulator's AC analysis."
+  pm_deg:
+    unit: deg
+    description: "Phase margin of an OTA at its worst corner (the lowest over the corners), 180 degrees plus the phase change from DC to the unity-gain frequency."
+  power_uw:
+    unit: uw
+    description: "Supply power of an OTA, bias branch included, at its worst corner (the highest over the corners), from the simulator's operating point."
+  saturated:
+    unit: count
+    description: "One when every transistor of an OTA is in saturation (|Vds| at least |Vdsat| + 50 mV) at every corner."
+  area_um2:
+    unit: um2
+    description: "Active area of an OTA: the sum of W x L over its eight transistors (no routing, no capacitors)."
+  round_valid:
+    unit: count
+    description: "One when the round has both designs simulated, each measurement is of the accepted design, and the migrated OTA has every device saturated at every corner."
+  specs_met:
+    unit: count
+    description: "Spec lines (gain, unity-gain frequency, phase margin, power) the migrated OTA meets at its worst corner, out of four."
+  target_margin_pct:
+    unit: percent
+    description: "The migrated OTA's worst normalized margin over the four spec lines in this round (negative when a line is missed)."
+  best_margin_pct:
+    unit: percent
+    description: "The best worst-margin of any valid round so far."
+  round_improved:
+    unit: count
+    description: "One when this round is valid and its migrated OTA's worst margin beats every earlier valid round's."

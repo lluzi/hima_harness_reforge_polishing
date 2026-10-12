@@ -1,0 +1,7 @@
+id: power-spec
+version: "0.1.0"
+title: The worst-corner power stays within the spec sheet's
+parameter: { name: max_power_uw, unit: uw }
+requires: [{ type: power_uw }]
+subject: { type: power_uw }
+predicate: { op: lte, threshold: { parameter: max_power_uw }, unit: uw }

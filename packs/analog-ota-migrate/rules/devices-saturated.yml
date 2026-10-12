@@ -1,0 +1,6 @@
+id: devices-saturated
+version: "0.1.0"
+title: Every transistor is in saturation at every corner
+requires: [{ type: saturated }]
+subject: { type: saturated }
+predicate: { op: eq, threshold: 1, unit: count }

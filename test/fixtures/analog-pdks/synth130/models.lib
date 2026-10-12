@@ -1,0 +1,13 @@
+* synth130: synthetic BSIM4 models for tests only (made up; not any foundry's process)
+.lib tt
+.param dvn=0 dvp=0 kmu=1
+.include synth130_devices.inc
+.endl tt
+.lib ss
+.param dvn=0.04 dvp=-0.04 kmu=0.9
+.include synth130_devices.inc
+.endl ss
+.lib ff
+.param dvn=-0.04 dvp=0.04 kmu=1.1
+.include synth130_devices.inc
+.endl ff

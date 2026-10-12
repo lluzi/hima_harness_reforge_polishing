@@ -1,0 +1,6 @@
+id: ota-design
+version: "0.1.0"
+file: tools/read-design.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-ota-design/1
+emits: [design_valid, area_um2]

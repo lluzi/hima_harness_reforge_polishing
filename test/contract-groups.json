@@ -28,6 +28,7 @@
     "test/contract/command.test.ts",
     "test/contract/conversation-execution.host.test.ts",
     "test/contract/andes-cell-fmax.test.ts",
+    "test/contract/analog-ota-migrate.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/dc-reader.test.ts",
     "test/contract/delegation-input-native.host.test.ts",
@@ -172,5 +173,8 @@
   ],
   "andes-dry": [
     "test/contract/andes-cell-fmax-dry-path.host.test.ts"
+  ],
+  "analog-sim": [
+    "test/contract/analog-ota-migrate-sim.test.ts"
   ]
 }

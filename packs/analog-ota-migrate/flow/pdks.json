@@ -1,0 +1,248 @@
+{
+  "schema": "hima-pdk-cards/2",
+  "about": "How the Pack reaches each PDK's device models. Paths are relative to the Site's pdkRoot as the simulators see it; corners list the SPICE .lib sections each corner loads; simulators lists, in order of preference, the simulators that read the PDK's decks. A card states facts of the PDK, never a design choice.",
+  "cards": {
+    "synth180": {
+      "title": "Synthetic 180 nm-class test process (1.8 V)",
+      "synthetic": true,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 1.8,
+      "temperatureC": 27,
+      "includes": [],
+      "corners": {
+        "tt": [
+          [
+            "synth180/models.lib",
+            "tt"
+          ]
+        ],
+        "ss": [
+          [
+            "synth180/models.lib",
+            "ss"
+          ]
+        ],
+        "ff": [
+          [
+            "synth180/models.lib",
+            "ff"
+          ]
+        ]
+      },
+      "osdi": [],
+      "devices": {
+        "nmos": {
+          "model": "nch",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.18,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 400.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.18,
+            0.36,
+            0.5,
+            1.0,
+            2.0
+          ]
+        },
+        "pmos": {
+          "model": "pch",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.18,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 400.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.18,
+            0.36,
+            0.5,
+            1.0,
+            2.0
+          ]
+        }
+      }
+    },
+    "synth130": {
+      "title": "Synthetic 130 nm-class test process (1.2 V)",
+      "synthetic": true,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 1.2,
+      "temperatureC": 27,
+      "includes": [],
+      "corners": {
+        "tt": [
+          [
+            "synth130/models.lib",
+            "tt"
+          ]
+        ],
+        "ss": [
+          [
+            "synth130/models.lib",
+            "ss"
+          ]
+        ],
+        "ff": [
+          [
+            "synth130/models.lib",
+            "ff"
+          ]
+        ]
+      },
+      "osdi": [],
+      "devices": {
+        "nmos": {
+          "model": "nch",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.13,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.15,
+          "wMaxUm": 400.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.13,
+            0.26,
+            0.36,
+            0.72,
+            1.44
+          ]
+        },
+        "pmos": {
+          "model": "pch",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.13,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.15,
+          "wMaxUm": 400.0,
+          "gridUm": 0.01,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.13,
+            0.26,
+            0.36,
+            0.72,
+            1.44
+          ]
+        }
+      }
+    },
+    "gf180mcuD": {
+      "title": "GF180MCU open PDK, 3.3 V core devices",
+      "synthetic": false,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 3.3,
+      "temperatureC": 27,
+      "includes": [
+        "gf180mcuD/libs.tech/ngspice/design.spice"
+      ],
+      "corners": {
+        "tt": [
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "nfet_03v3_t"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "pfet_03v3_t"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "noise_corner"
+          ]
+        ],
+        "ss": [
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "nfet_03v3_s"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "pfet_03v3_s"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "noise_corner"
+          ]
+        ],
+        "ff": [
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "nfet_03v3_f"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "pfet_03v3_f"
+          ],
+          [
+            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+            "noise_corner"
+          ]
+        ]
+      },
+      "osdi": [],
+      "devices": {
+        "nmos": {
+          "model": "nfet_03v3",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.28,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 400.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.28,
+            0.56,
+            0.84,
+            1.4,
+            2.8
+          ]
+        },
+        "pmos": {
+          "model": "pfet_03v3",
+          "instance": "M",
+          "params": "w={w}u l={l}u",
+          "ngspiceOp": "@{inst}[{param}]",
+          "lMinUm": 0.28,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.22,
+          "wMaxUm": 400.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.28,
+            0.56,
+            0.84,
+            1.4,
+            2.8
+          ]
+        }
+      }
+    }
+  }
+}

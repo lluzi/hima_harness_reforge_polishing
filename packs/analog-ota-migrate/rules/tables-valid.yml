@@ -1,0 +1,6 @@
+id: tables-valid
+version: "0.1.0"
+title: Both PDKs have a gm/Id curve for every device type and characterized length
+requires: [{ type: tables_valid }]
+subject: { type: tables_valid }
+predicate: { op: eq, threshold: 1, unit: count }
