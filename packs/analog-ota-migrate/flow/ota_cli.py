@@ -162,13 +162,23 @@ def parse_simulators(text):
     return found
 
 
-def card_files(card):
-    files = list(card["includes"])
-    for libs in card["corners"].values():
+def deck(card, sim):
+    """The card's model files for one simulator: includes, the .lib sections per corner, OSDI models."""
+    return card["decks"][sim]
+
+
+def corners_of(inputs, stage):
+    return list(deck(card_of(inputs, stage), inputs["pdks"][stage]["simulator"]["name"])["corners"])
+
+
+def card_files(card, sim):
+    d = deck(card, sim)
+    files = list(d["includes"])
+    for libs in d["corners"].values():
         for path, _section in libs:
             if path not in files:
                 files.append(path)
-    return files + list(card.get("osdi", []))
+    return files + list(d.get("osdi", []))
 
 
 def cmd_bind(ws, simulators, pdk_root, source, target):
@@ -190,7 +200,7 @@ def cmd_bind(ws, simulators, pdk_root, source, target):
         if not usable:
             raise ToolError("%s is simulated with %s, and the Site binds only %s" % (name, " or ".join(card["simulators"]), ", ".join(available)))
         files = []
-        for relpath in card_files(card):
+        for relpath in card_files(card, usable[0]):
             path = Path(pdk_root) / relpath
             if not path.is_file():
                 raise ToolError("%s: %s is not on the Site (pdkRoot %s)" % (name, relpath, pdk_root))
@@ -198,7 +208,7 @@ def cmd_bind(ws, simulators, pdk_root, source, target):
         sim = dict(name=usable[0], path=available[usable[0]], version=versions[usable[0]])
         pdks[stage] = dict(name=name, card=card, files=files, simulator=sim)
         lines.append("%s PDK: %s, %s; supply %.2f V; corners %s; measured with %s" % (stage.capitalize(), name, card["title"], card["vdd"],
-                                                                                    ", ".join(card["corners"]), sim["version"]))
+                                                                                    ", ".join(deck(card, sim["name"])["corners"]), sim["version"]))
         for f in files:
             lines.append("  %s  %s" % (f["sha256"][:16], f["path"]))
     write_json(state(ws, "inputs.json"), dict(schema=INPUTS_SCHEMA, simulators={n: dict(path=available[n], version=versions[n]) for n in available},
@@ -247,16 +257,28 @@ def fresh_stem(out_dir, name, suffixes):
 
 
 def dev_params(card, kind, w, l):
-    return card["devices"][kind]["params"].format(w=um(w), l=um(l))
+    """The instance parameters; a PDK with a per-finger width limit gets ng fingers of at most that width."""
+    dev = card["devices"][kind]
+    limit = dev.get("maxFingerWUm")
+    ng = max(1, int(math.ceil(w / limit - 1e-9))) if limit else 1
+    return dev["params"].format(w=um(w), l=um(l), ng=ng)
 
 
-def lib_lines(inputs, stage, corner):
-    """The PDK's model includes in SPICE syntax (both simulators read them)."""
-    card = card_of(inputs, stage)
+def lib_lines(inputs, stage, corner, sim):
+    """The PDK's model includes for one simulator, in SPICE syntax (Spectre reads them under
+    `simulator lang=spice`)."""
+    d = deck(card_of(inputs, stage), sim)
     root = Path(inputs.get("ownPdkRoot") or inputs["pdkRoot"])
-    lines = [".include \"%s\"" % (root / inc) for inc in card["includes"]]
-    lines += [".lib \"%s\" %s" % (root / path, section) for path, section in card["corners"][corner]]
+    lines = [".include \"%s\"" % (root / inc) for inc in d["includes"]]
+    lines += [".lib \"%s\" %s" % (root / path, section) for path, section in d["corners"][corner]]
     return lines
+
+
+def op_names(card, kind, sim):
+    """The simulator's operating-point names for the Pack's id, vdsat, gm, gds, cgg, vds."""
+    names = dict(SPECTRE_OP) if sim == "spectre" else {p: p for p in SPECTRE_OP}
+    names.update(card["devices"][kind].get("opNames", {}).get(sim, {}))
+    return names
 
 
 class Ngspice:
@@ -281,18 +303,18 @@ class Ngspice:
 
     @staticmethod
     def op(card, kind, inst, param):
-        return card["devices"][kind]["ngspiceOp"].format(inst=inst.lower(), param=NGSPICE_OP.get(param, param))
+        return card["devices"][kind]["op"]["ngspice"].format(inst=inst.lower(), param=op_names(card, kind, "ngspice")[param])
 
     @classmethod
     def head(cls, inputs, stage, corner, title):
         card = card_of(inputs, stage)
-        return ["* " + title] + lib_lines(inputs, stage, corner) + [".temp %g" % card["temperatureC"]]
+        return ["* " + title] + lib_lines(inputs, stage, corner, "ngspice") + [".temp %g" % card["temperatureC"]]
 
     @classmethod
     def control(cls, inputs, stage):
         root = Path(inputs.get("ownPdkRoot") or inputs["pdkRoot"])
         return [".control", "set noaskquit", "set wr_singlescale", "set wr_vecnames"] + \
-            ["pre_osdi %s" % (root / f) for f in card_of(inputs, stage).get("osdi", [])]
+            ["pre_osdi %s" % (root / f) for f in deck(card_of(inputs, stage), "ngspice").get("osdi", [])]
 
     @classmethod
     def sweep(cls, command, inputs, stage, kind, out_dir, name):
@@ -452,13 +474,15 @@ class Spectre:
 
     @staticmethod
     def device(card, kind, name, nets, w, l):
+        """The instance line and the name its operating point is written under (the device itself,
+        or the transistor inside the PDK's subcircuit)."""
         dev = card["devices"][kind]
-        return "%s (%s) %s %s" % (name, " ".join(nets), dev["model"], dev_params(card, kind, w, l)), name
+        return "%s (%s) %s %s" % (name, " ".join(nets), dev["model"], dev_params(card, kind, w, l)), dev["op"]["spectre"].format(inst=name)
 
     @classmethod
     def head(cls, inputs, stage, corner, title):
         card = card_of(inputs, stage)
-        return ["// " + title, "simulator lang=spice"] + lib_lines(inputs, stage, corner) + \
+        return ["// " + title, "simulator lang=spice"] + lib_lines(inputs, stage, corner, "spectre") + \
             ["simulator lang=spectre", "opts options temp=%g rawfmt=psfascii" % card["temperatureC"]]
 
     @classmethod
@@ -474,7 +498,8 @@ class Spectre:
             line, inst = cls.device(card, kind, "MC%d" % i, ("d", "g", "0", "0"), dev["charWUm"], length)
             lines.append(line)
             insts.append(inst)
-        lines.append("save " + " ".join("%s:%s" % (inst, SPECTRE_OP[p]) for inst in insts for p in CHAR_PARAMS))
+        names = op_names(card, kind, "spectre")
+        lines.append("save " + " ".join("%s:%s" % (inst, names[p]) for inst in insts for p in CHAR_PARAMS))
         points = int(round(vdd / SWEEP_STEP_V))
         lines += ["sw dc dev=VG param=dc start=0 stop=%g lin=%d" % (sign * vdd, points), ""]
         stem = fresh_stem(out_dir, name, (".scs", ".scs.log", ".raw"))
@@ -483,17 +508,18 @@ class Spectre:
         run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(str(netlist) + ".log"))
         if not (raw / "sw.dc").is_file():
             raise ToolError("spectre wrote no sweep for %s (log %s.log)" % (name, netlist))
-        return cls.sweep_rows(raw / "sw.dc", insts)
+        return cls.sweep_rows(raw / "sw.dc", insts, names)
 
     @staticmethod
-    def sweep_rows(path, insts):
+    def sweep_rows(path, insts, names=None):
+        names = names or SPECTRE_OP
         rows, _ = psf_ascii(path)
         out = []
         for r in rows:
-            keys = ["%s:%s" % (inst, SPECTRE_OP[p]) for inst in insts for p in CHAR_PARAMS]
+            keys = ["%s:%s" % (inst, names[p]) for inst in insts for p in CHAR_PARAMS]
             if "dc" not in r or any(k not in r for k in keys):
                 continue                       # a point Spectre did not state is dropped, never zero-filled
-            out.append(dict(vgs=abs(r["dc"]), devices=[{p: abs(r["%s:%s" % (inst, SPECTRE_OP[p])]) for p in CHAR_PARAMS} for inst in insts]))
+            out.append(dict(vgs=abs(r["dc"]), devices=[{p: abs(r["%s:%s" % (inst, names[p])]) for p in CHAR_PARAMS} for inst in insts]))
         return out
 
     @classmethod
@@ -507,10 +533,11 @@ class Spectre:
         for f in ("dcop.dc", "opinfo.info", "acan.ac"):
             if not (raw / f).is_file():
                 raise ToolError("spectre wrote no %s for %s (log %s.log)" % (f, name, netlist))
-        return cls.facts(raw, insts, vdd)
+        card = card_of(inputs, stage)
+        return cls.facts(raw, insts, vdd, {d: op_names(card, KIND_OF[d], "spectre") for d in DEVICES})
 
     @staticmethod
-    def facts(raw, insts, vdd):
+    def facts(raw, insts, vdd, names=None):
         """The testbench's facts from Spectre's PSF ASCII output directory."""
         raw = Path(raw)
         dc, _ = psf_ascii(raw / "dcop.dc")
@@ -520,7 +547,8 @@ class Spectre:
         op = {}
         for dev in DEVICES:
             fields = info.get(insts[dev])
-            op[dev] = None if fields is None else {p: fields.get(SPECTRE_OP[p]) for p in OP_PARAMS}
+            n = (names or {}).get(dev) or SPECTRE_OP
+            op[dev] = None if fields is None else {p: fields.get(n[p]) for p in OP_PARAMS}
             if op[dev] is not None and any(v is None for v in op[dev].values()):
                 op[dev] = None
         ac = [(p["freq"], p["out"].real, p["out"].imag) for p in acp if "freq" in p and "out" in p]
@@ -530,7 +558,6 @@ class Spectre:
 SIMULATORS = {"spectre": Spectre, "ngspice": Ngspice}
 CHAR_PARAMS = ("id", "gm", "gds", "cgg")
 OP_PARAMS = ("vds", "vdsat", "id", "gm", "gds")
-NGSPICE_OP = {}
 SPECTRE_OP = {"id": "ids", "gm": "gm", "gds": "gds", "cgg": "cgg", "vds": "vds", "vdsat": "vdsat"}
 # The sweep starts at 0.1 Hz: below it the testbench's DC feedback (1 GH, 1 F) starts to close the loop
 # (loop gain about 2.5e-9 x A at 0.1 Hz, 2.5e-5 x A at 1 mHz) and the open-loop gain reads high.
@@ -987,7 +1014,7 @@ def simulate_design(ws, inputs, stage, design, load_pf, cm_pct, out_dir, own=Fal
     out_dir.mkdir(parents=True, exist_ok=True)
     sim, command = simulator_for(inputs, stage, own=own)
     corners = {}
-    for corner in card_of(inputs, stage)["corners"]:
+    for corner in deck(card_of(inputs, stage), sim.name)["corners"]:
         lines, insts, vdd = ota_lines(sim, inputs, stage, design, corner, load_pf, cm_pct)
         corners[corner] = corner_measures(sim.ota(command, inputs, stage, lines, insts, vdd, out_dir, "ota-%s" % corner))
     return corners, sim.name

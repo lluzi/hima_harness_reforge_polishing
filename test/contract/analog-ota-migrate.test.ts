@@ -284,3 +284,41 @@ print(json.dumps([cli.ac_measures([(f, h.real, h.imag) for f, h, _ in ac]), cli.
   assert.ok(Math.abs(inverted[0] - 60) < 1e-6, 'an inverting response still has its gain');
   assert.equal(inverted[2], null, 'phase margin unknown: the response is not in phase');
 });
+
+test('the IHP-to-Spectre install tool rewrites only what Spectre spells differently, on an IHP-shaped file set', async () => {
+  // A made-up file set in the shape of IHP SG13G2's ngspice models (no IHP numbers): one model card per
+  // device, the subcircuits that include it, and the corner file with typical, slow, fast, skew and
+  // mismatch sections.
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ihp-shape-'));
+  try {
+    const models = path.join(root, 'models');
+    await mkdir(models, { recursive: true });
+    const card = (name: string, type: string) => [`.model ${name} psp103va             type          =  ${type}`,
+      '+ level         =  103.60                      tr            =  27.0',
+      "+ toxo          =  '2e-09*fake_toxo'           swsoa         =  1.0                         vdb_max       =  1.5",
+      '+ vsb_max       =  1.5                         nsubo         =  1e+23', ''].join('\n');
+    await writeFile(path.join(models, 'sg13g2_moslv_parm.lib'), ['* made up', card('sg13g2_lv_nmos_psp', '+1'), card('sg13g2_lv_nmos_psp_rf', '+1'),
+      card('sg13g2_lv_pmos_psp', '-1'), card('sg13g2_lv_pmos_psp_rf', '-1')].join('\n'));
+    const sub = (kind: string) => [`.subckt sg13_lv_${kind} d g s b`, '+ w=0.35u l=0.34u ng=1 m=1 trise=0 z1=0.34e-6 z2=0.38e-6 wmin=0.15e-6 rfmode=0 pre_layout=1',
+      '.include sg13g2_moslv_parm.lib', '.if (rfmode == 0)', `Nsg13_lv_${kind} d g s b sg13g2_lv_${kind}_psp w=w l=l`, '.endif', '.ends', ''].join('\n');
+    await writeFile(path.join(models, 'sg13g2_moslv_mod.lib'), sub('nmos') + sub('pmos'));
+    const section = (name: string, include: string) => [`.LIB ${name}`, '  .param fake_toxo = 1.0', `  .include ${include}`, `.ENDL ${name}`, ''].join('\n');
+    await writeFile(path.join(models, 'cornerMOSlv.lib'), ['* corners', ...['mos_tt', 'mos_ss', 'mos_ff', 'mos_sf', 'mos_fs'].map((c) => section(c, 'sg13g2_moslv_mod.lib')),
+      section('mos_tt_mismatch', 'sg13g2_moslv_mod_mismatch.lib')].join('\n'));
+    const out = path.join(root, 'spectre-hima');
+    const run = spawnSync('python3', [path.join(repoRoot, 'sites/analog_sim_01/install/ihp_spectre.py'), models, out], { encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    const devices = await readFile(path.join(out, 'sg13g2_lv_spectre.lib'), 'utf8');
+    assert.match(devices, /^\.model sg13g2_lv_nmos_psp psp103 +type=n$/m);
+    assert.match(devices, /^\.model sg13g2_lv_pmos_psp psp103 +type=p$/m);
+    assert.equal((devices.match(/level=103 version=103\.6/g) ?? []).length, 2);
+    assert.doesNotMatch(devices, /swsoa|vdb_max|vsb_max|psp103va|_rf\b|\.if/i, 'no SOA limits, Verilog-A names, RF cards or ngspice conditionals');
+    assert.match(devices, /'2e-09\*fake_toxo'/, 'the corner-scaled parameters are kept as written');
+    assert.match(devices, /^Msg13_lv_nmos d g s b sg13g2_lv_nmos_psp w=w l=l nf=ng mult=m as='\(floor\(floor\(ng\/2\+0\.501\)\*2\+0\.001\) != ng\) \? /m);
+    assert.match(devices, /trise=trise ngcon=2 delvto=0 factuo=1$/m);
+    const corners = await readFile(path.join(out, 'cornerMOSlv_spectre.lib'), 'utf8');
+    assert.deepEqual([...corners.matchAll(/^\.LIB (\S+)$/gm)].map((m) => m[1]), ['mos_tt', 'mos_ss', 'mos_ff', 'mos_sf', 'mos_fs']);
+    assert.equal((corners.match(/\.include sg13g2_lv_spectre\.lib/g) ?? []).length, 5);
+    assert.doesNotMatch(corners, /sg13g2_moslv_mod\.lib|mismatch/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

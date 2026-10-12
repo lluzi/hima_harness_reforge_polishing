@@ -18,7 +18,8 @@ plus the testbenches, not the sized netlist.
 A first Pack slice is built and tested on branch `demo/analog-ota`:
 
 - It sizes a two-stage OTA from a spec sheet with gm/Id and migrates it to a second process.
-- It measures with Cadence Spectre on the lab server.
+- It measures with Cadence Spectre on the lab server, on two real open PDKs: GF180MCU 3.3 V and
+  IHP SG13G2 1.2 V. IHP needs a small converter of its open PSP cards for Spectre.
 - It lets the agents iterate in open ngspice, which agreed with Spectre within 0.1 dB, 1 % and
   0.5° on every design checked on the same device decks.
 
@@ -26,7 +27,6 @@ What is not yet there:
 
 - layout;
 - Monte Carlo and mismatch;
-- a second Spectre-readable open PDK;
 - the Site deployment;
 - an App run.
 
@@ -133,22 +133,30 @@ The concepts referred to below:
   | Synthetic BSIM4 test decks | Simulate. The Pack CLI end to end gives the same printed worst corner as ngspice 47: source 65.2 dB / 11.98 MHz / 69.4° / 161.6 µW. |
   | GF180MCU 3.3 V `.spice` decks (device sections loaded per corner) | Simulate. The Pack's gm/Id characterization and a three-corner OTA run give 92.1 dB / 10.7 MHz / 63.3° / 218.2 µW at the worst corner. ngspice 46 in the sandbox gives the same worst corner. |
   | SKY130 | Fail: the decks use ngspice brace expressions. A mechanical conversion still leaves 392 errors. |
-  | IHP SG13G2 | Not usable as shipped: `.if` subcircuits and OSDI `N` devices. |
+  | IHP SG13G2 as shipped | Fails: `.if` subcircuits and OSDI `N` devices. |
+  | IHP SG13G2 through `ihp_spectre.py`: the PSP 103.6 cards on Spectre's built-in `psp103` (version 103.6, `type=n/p`), with IHP's finger formulas as conditional expressions | Simulates. Identical to IHP's ngspice OSDI deck: NMOS/PMOS 18.36885/12.75485 µA at 0.6 V; an OTA's worst corner 62.8 dB / 14.79 MHz / 70.94° / 144.94 µW in both. |
 
-- **Consequence:** with "use commercial tools" (user, 2026-10-12), the Site measures with Spectre wherever the PDK reads in Spectre, which today means GF180MCU and the test decks. An open target PDK is measured with ngspice, or the target is a customer's own Spectre PDK at their Site.
+- **Consequence:** the user asked for "use commercial tools", then "Spectre and open PDK" (both 2026-10-12). The Site measures both PDKs with Spectre: GF180MCU as shipped and IHP SG13G2 through the converter. Agents iterate with ngspice on the original decks, which agree to the printed digit.
+- **The migration, all in Spectre:**
+
+  | Design | Gain | Bandwidth | Phase margin | Power | Note |
+  | --- | --- | --- | --- | --- | --- |
+  | GF180MCU source | 92.1 dB | 11.6 MHz | 61.5° | 189 µW | meets the spec |
+  | Naive gm/Id port to IHP | 46.8 dB | — | — | — | gain short; margin −22 % |
+  | Re-biased port | 62.8 dB | 14.8 MHz | 70.9° | 145 µW | margin +4.7 % |
+
+  The re-bias: input pair gm/Id 15 → 20 at L 0.84 → 3.12 µm; mirror load gm/Id 10 → 20 at L 0.78 µm; sinks at 3.12 µm; second-stage current ×2; Cc 0.8 → 1 pF.
 
 ## 4. Risks and open questions
 
 - **Vendor overlap.** Cadence ViraStack already claims agentic migration and optimization inside Virtuoso, and Synopsys ASO.ai claims 10,000 optimizer searches in about 2 h. HimaHarness should not sell "a better optimizer". It sells an independent verifier, budget and evidence, captured method, and vendor neutrality. On Empyrean-only customers there is a real gap today (no public analog optimizer or migration product), watched against Andes Analog and Aether Coder.
 - **Schematic-only claims.** A design that meets the spec in schematic simulation is not migrated silicon. The Pack's claim boundary says so on every record. Layout, PEX and Monte Carlo are later slices.
-- **Second Spectre PDK.** No second open PDK reads in Spectre. A public all-Spectre migration demo needs either a converted deck (SKY130 conversion failed; IHP would need a PSP wrapper) or a mixed-simulator demo (GF180MCU in Spectre → IHP in ngspice). A customer demo would use their foundry PDK at their Site; it must never enter this public repo.
+- **Converted IHP deck.** The Spectre IHP deck is our conversion (rfmode 0, computed diffusion areas, no mismatch or statistical sections). It matched IHP's own OSDI deck on the devices and the OTA we checked, but it is not IHP's release, and a different IHP version needs the converter re-run and re-checked. A customer demo would use their foundry PDK at their Site; that PDK must never enter this public repo.
 - **Agent quality on DeepSeek Flash** for the sizing loop is untested. The Pack's draft commands do most of the arithmetic, so the agent's job is choosing gm/Id, L and currents and reading corners.
-- **PSP saturation check.** The saturation gate reads Vdsat. PSP-based IHP devices name their operating-point outputs differently, which has to be checked before an IHP card is used.
+- **PSP saturation check.** IHP devices report `vdss` (PSP's saturation voltage) under both simulators; the card maps it.
 
 ## 5. Recommendation
 
-1. Demo the OTA Pack with GF180MCU 3.3 V as the source, measured by Spectre. For the target, choose one of:
-   - IHP SG13G2 1.2 V measured by ngspice (mixed simulators, all open data);
-   - the synthetic 130 nm-class test process (all Spectre, but not a real process).
+1. Demo the OTA Pack: GF180MCU 3.3 V → IHP SG13G2 1.2 V, both measured by Spectre.
 2. In the same Pack, add an LDO as the second circuit card, then a BO step seeded by the agent, then Monte Carlo as a judge.
 3. Pitch to customers on their own PDK at their Site: Spectre or ALPS as the measuring simulator, verify outside the vendor, and keep the method as code.

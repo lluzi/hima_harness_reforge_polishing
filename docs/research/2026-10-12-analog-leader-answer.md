@@ -25,23 +25,32 @@ analog is a new Pack plus a Site.
     over at 3.3 V — exactly the kind of miss the agent then fixes.
   - Open ngspice gives the same worst-corner numbers as Spectre on the same decks. Agents can
     iterate cheaply while Spectre stays the judge.
-- **Migration on synthetic test processes** (1.8 V → 1.2 V): the direct port misses the spec because
-  the lower supply leaves too little headroom. A re-biased port meets it with 4.3 % margin. This is
-  the story the agents will tell on screen.
+- **Migration between two real open processes, all in Spectre** (user, 2026-10-12: "Spectre and
+  open PDK"): GF180MCU 3.3 V → IHP SG13G2 1.2 V. Spectre has no ready model files for IHP, so a
+  small converter rewrites IHP's open PSP model cards for Spectre's built-in PSP. It gives the same
+  currents as IHP's own setup to every printed digit.
+
+  | Design | Gain | Bandwidth | Phase margin | Power | Spec |
+  | --- | --- | --- | --- | --- | --- |
+  | Source, GF180MCU | 92 dB | 11.6 MHz | 61.5° | 189 µW | met |
+  | Naive port to IHP | 46.8 dB | | | | missed |
+  | Re-biased port | 62.8 dB | 14.8 MHz | 71° | 145 µW | met, 4.7 % margin |
+
+  The naive port loses 45 dB of gain: short channels at 1.2 V have little intrinsic gain. The
+  re-biased port uses long input and sink transistors, a weakly inverted load and more
+  second-stage current. This is the story the agents will tell on screen.
 
 **Proposed first demo** (about 15 minutes in the App, recorded like the AndesCell demo):
 
 1. The designer gives a spec sheet: 60 dB, 10 MHz, 60°, 200 µW, 2 pF load.
 2. The Pack builds gm/Id design curves for both processes.
 3. The sizing agent sizes the OTA in GF180MCU and Spectre verifies it at three corners.
-4. The migration agent ports it to the second process; the naive port fails, the agent re-biases,
-   and the simulator confirms.
+4. The migration agent ports it to IHP SG13G2. The naive port loses 45 dB of gain; the agent
+   re-biases, and Spectre confirms.
 5. The run ends on a before/after table and charts.
 
-**Decision needed:** the second process, one of:
-
-- IHP SG13G2 1.2 V (open, real, measured with ngspice, because its models do not load in Spectre);
-- a customer's own foundry PDK at their site (all Spectre; that data never enters our public repo).
+**Decided** (2026-10-12): Spectre with open PDKs, GF180MCU → IHP SG13G2. A customer's own foundry
+PDK at their site is the same flow later; that data never enters our public repo.
 
 **Risks:**
 

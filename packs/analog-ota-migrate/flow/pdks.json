@@ -1,6 +1,6 @@
 {
-  "schema": "hima-pdk-cards/2",
-  "about": "How the Pack reaches each PDK's device models. Paths are relative to the Site's pdkRoot as the simulators see it; corners list the SPICE .lib sections each corner loads; simulators lists, in order of preference, the simulators that read the PDK's decks. A card states facts of the PDK, never a design choice.",
+  "schema": "hima-pdk-cards/3",
+  "about": "How the Pack reaches each PDK's device models. Paths are relative to the Site's pdkRoot as the simulators see it. simulators lists, in order of preference, the simulators that read the PDK; decks gives each one's include files, the SPICE .lib sections per corner and OSDI models; a device's op names where each simulator writes its operating point. IHP SG13G2's Spectre deck is the Site's conversion of IHP's own files (sites/analog_sim_01/install/ihp_spectre.py). A card states facts of the PDK, never a design choice.",
   "cards": {
     "synth180": {
       "title": "Synthetic 180 nm-class test process (1.8 V)",
@@ -11,34 +11,65 @@
       ],
       "vdd": 1.8,
       "temperatureC": 27,
-      "includes": [],
-      "corners": {
-        "tt": [
-          [
-            "synth180/models.lib",
-            "tt"
-          ]
-        ],
-        "ss": [
-          [
-            "synth180/models.lib",
-            "ss"
-          ]
-        ],
-        "ff": [
-          [
-            "synth180/models.lib",
-            "ff"
-          ]
-        ]
+      "decks": {
+        "spectre": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "synth180/models.lib",
+                "tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth180/models.lib",
+                "ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth180/models.lib",
+                "ff"
+              ]
+            ]
+          },
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "synth180/models.lib",
+                "tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth180/models.lib",
+                "ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth180/models.lib",
+                "ff"
+              ]
+            ]
+          },
+          "osdi": []
+        }
       },
-      "osdi": [],
       "devices": {
         "nmos": {
           "model": "nch",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.18,
           "lMaxUm": 10.0,
           "wMinUm": 0.22,
@@ -57,7 +88,10 @@
           "model": "pch",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.18,
           "lMaxUm": 10.0,
           "wMinUm": 0.22,
@@ -83,34 +117,65 @@
       ],
       "vdd": 1.2,
       "temperatureC": 27,
-      "includes": [],
-      "corners": {
-        "tt": [
-          [
-            "synth130/models.lib",
-            "tt"
-          ]
-        ],
-        "ss": [
-          [
-            "synth130/models.lib",
-            "ss"
-          ]
-        ],
-        "ff": [
-          [
-            "synth130/models.lib",
-            "ff"
-          ]
-        ]
+      "decks": {
+        "spectre": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "synth130/models.lib",
+                "tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth130/models.lib",
+                "ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth130/models.lib",
+                "ff"
+              ]
+            ]
+          },
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "synth130/models.lib",
+                "tt"
+              ]
+            ],
+            "ss": [
+              [
+                "synth130/models.lib",
+                "ss"
+              ]
+            ],
+            "ff": [
+              [
+                "synth130/models.lib",
+                "ff"
+              ]
+            ]
+          },
+          "osdi": []
+        }
       },
-      "osdi": [],
       "devices": {
         "nmos": {
           "model": "nch",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.13,
           "lMaxUm": 10.0,
           "wMinUm": 0.15,
@@ -129,7 +194,10 @@
           "model": "pch",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.13,
           "lMaxUm": 10.0,
           "wMinUm": 0.15,
@@ -155,60 +223,117 @@
       ],
       "vdd": 3.3,
       "temperatureC": 27,
-      "includes": [
-        "gf180mcuD/libs.tech/ngspice/design.spice"
-      ],
-      "corners": {
-        "tt": [
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "nfet_03v3_t"
+      "decks": {
+        "spectre": {
+          "includes": [
+            "gf180mcuD/libs.tech/ngspice/design.spice"
           ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "pfet_03v3_t"
+          "corners": {
+            "tt": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ],
+            "ss": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ],
+            "ff": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ]
+          },
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [
+            "gf180mcuD/libs.tech/ngspice/design.spice"
           ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "noise_corner"
-          ]
-        ],
-        "ss": [
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "nfet_03v3_s"
-          ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "pfet_03v3_s"
-          ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "noise_corner"
-          ]
-        ],
-        "ff": [
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "nfet_03v3_f"
-          ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "pfet_03v3_f"
-          ],
-          [
-            "gf180mcuD/libs.tech/ngspice/sm141064.spice",
-            "noise_corner"
-          ]
-        ]
+          "corners": {
+            "tt": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_t"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ],
+            "ss": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_s"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ],
+            "ff": [
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "nfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "pfet_03v3_f"
+              ],
+              [
+                "gf180mcuD/libs.tech/ngspice/sm141064.spice",
+                "noise_corner"
+              ]
+            ]
+          },
+          "osdi": []
+        }
       },
-      "osdi": [],
       "devices": {
         "nmos": {
           "model": "nfet_03v3",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.28,
           "lMaxUm": 10.0,
           "wMinUm": 0.22,
@@ -227,7 +352,10 @@
           "model": "pfet_03v3",
           "instance": "M",
           "params": "w={w}u l={l}u",
-          "ngspiceOp": "@{inst}[{param}]",
+          "op": {
+            "ngspice": "@{inst}[{param}]",
+            "spectre": "{inst}"
+          },
           "lMinUm": 0.28,
           "lMaxUm": 10.0,
           "wMinUm": 0.22,
@@ -241,6 +369,134 @@
             1.4,
             2.8
           ]
+        }
+      }
+    },
+    "ihp-sg13g2": {
+      "title": "IHP SG13G2 open PDK, 1.2 V core devices",
+      "synthetic": false,
+      "simulators": [
+        "spectre",
+        "ngspice"
+      ],
+      "vdd": 1.2,
+      "temperatureC": 27,
+      "decks": {
+        "spectre": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "ihp-sg13g2/libs.tech/spectre-hima/cornerMOSlv_spectre.lib",
+                "mos_tt"
+              ]
+            ],
+            "ss": [
+              [
+                "ihp-sg13g2/libs.tech/spectre-hima/cornerMOSlv_spectre.lib",
+                "mos_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "ihp-sg13g2/libs.tech/spectre-hima/cornerMOSlv_spectre.lib",
+                "mos_ff"
+              ]
+            ]
+          },
+          "osdi": []
+        },
+        "ngspice": {
+          "includes": [],
+          "corners": {
+            "tt": [
+              [
+                "ihp-sg13g2/libs.tech/ngspice/models/cornerMOSlv.lib",
+                "mos_tt"
+              ]
+            ],
+            "ss": [
+              [
+                "ihp-sg13g2/libs.tech/ngspice/models/cornerMOSlv.lib",
+                "mos_ss"
+              ]
+            ],
+            "ff": [
+              [
+                "ihp-sg13g2/libs.tech/ngspice/models/cornerMOSlv.lib",
+                "mos_ff"
+              ]
+            ]
+          },
+          "osdi": [
+            "ihp-sg13g2/libs.tech/ngspice/osdi/psp103.osdi"
+          ]
+        }
+      },
+      "devices": {
+        "nmos": {
+          "model": "sg13_lv_nmos",
+          "instance": "X",
+          "params": "w={w}u l={l}u ng={ng}",
+          "op": {
+            "ngspice": "@n.{inst}.nsg13_lv_nmos[{param}]",
+            "spectre": "{inst}.Msg13_lv_nmos"
+          },
+          "lMinUm": 0.13,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.15,
+          "wMaxUm": 400.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.13,
+            0.39,
+            0.78,
+            1.56,
+            3.12
+          ],
+          "opNames": {
+            "ngspice": {
+              "id": "ids",
+              "vdsat": "vdss"
+            },
+            "spectre": {
+              "vdsat": "vdss"
+            }
+          },
+          "maxFingerWUm": 10.0
+        },
+        "pmos": {
+          "model": "sg13_lv_pmos",
+          "instance": "X",
+          "params": "w={w}u l={l}u ng={ng}",
+          "op": {
+            "ngspice": "@n.{inst}.nsg13_lv_pmos[{param}]",
+            "spectre": "{inst}.Msg13_lv_pmos"
+          },
+          "lMinUm": 0.13,
+          "lMaxUm": 10.0,
+          "wMinUm": 0.15,
+          "wMaxUm": 400.0,
+          "gridUm": 0.005,
+          "charWUm": 10.0,
+          "lengthsUm": [
+            0.13,
+            0.39,
+            0.78,
+            1.56,
+            3.12
+          ],
+          "opNames": {
+            "ngspice": {
+              "id": "ids",
+              "vdsat": "vdss"
+            },
+            "spectre": {
+              "vdsat": "vdss"
+            }
+          },
+          "maxFingerWUm": 10.0
         }
       }
     }

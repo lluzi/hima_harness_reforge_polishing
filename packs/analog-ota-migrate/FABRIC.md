@@ -19,10 +19,10 @@
 
 ## Gaps
 
-- Real-PDK cards: `gf180mcuD` only (checked by hand on the EDA server, below). `ihp-sg13g2` (ngspice
-  with PSP through OSDI; operating-point names for the saturation check) and `sky130A` (ngspice, its
-  `.spiceinit`) are not written: SKY130 and IHP decks do not read in Spectre (SKY130's brace
-  expressions, IHP's `.if` subcircuits and OSDI devices).
+- Real-PDK cards: `gf180mcuD` and `ihp-sg13g2` (checked by hand on the EDA server, below; not in a
+  repository test, because the PDKs are installed per Site). IHP's Spectre deck is the Site's
+  conversion (`sites/analog_sim_01/install/ihp_spectre.py`), not IHP's release. No `sky130A` card:
+  SKY130's decks do not read in Spectre.
 - No Site yet: the analog Site (the Spectre wrapper through the Site's EDA container, ngspice in the
   pinned tool image, the PDK install, the Permit and the resident capability) is the next slice,
   after the user approves server writes. Cadence ADE optimization and layout migration need a
@@ -33,6 +33,13 @@
   Monte Carlo. One topology.
 
 ## Reviews
+
+- By hand on the EDA server (2026-10-12, temporary directory, removed after): GF180MCU 3.3 V →
+  IHP SG13G2 1.2 V, two rounds of the Pack's CLI, all in Spectre 23.1. Round 1: the GF180MCU
+  source meets the spec (92.1 dB, 11.63 MHz, 61.5 deg, 188.7 uW). The naive gm/Id port reaches
+  46.8 dB at 1.2 V (margin -21.98 %). Round 2: the re-biased port reaches 62.8 dB, 14.79 MHz,
+  70.9 deg, 144.9 uW (margin 4.67 %). ngspice 46 on IHP's own OSDI deck gives the same worst corner
+  for the re-biased port.
 
 - Independent review (Claude Opus 5.5, 2026-10-12) of 629388c2: two blockers fixed. (1) A judge
   takes its edge from its first rule only, so `check-source` led by `devices-saturated` would have

@@ -24,11 +24,11 @@ inputs:
       PDK is measured with the first simulator its card lists that the Site has: Cadence Spectre where
       the PDK's decks read in Spectre, ngspice otherwise.
   - name: pdkRoot
-    description: Read-only root of the installed PDKs, as the simulators see them (gf180mcuD, or the test PDKs synth180 and synth130).
+    description: Read-only root of the installed PDKs, as the simulators see them (gf180mcuD and ihp-sg13g2 with its Spectre conversion, or the test PDKs synth180 and synth130).
   - name: sourcePdk
     description: The PDK the OTA is first sized in (a card name in flow/pdks.json, e.g. gf180mcuD).
   - name: targetPdk
-    description: The PDK the OTA is migrated to (a card name in flow/pdks.json, e.g. synth130).
+    description: The PDK the OTA is migrated to (a card name in flow/pdks.json, e.g. ihp-sg13g2).
   - name: workspaceRoot
     description: Campaign-private output root allowed by the Site Permit.
 

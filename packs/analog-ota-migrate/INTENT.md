@@ -24,16 +24,16 @@ the agents another round with the lessons.
 - Topology: two-stage Miller OTA, NMOS input, eight transistors, Miller Cc with nulling Rz (ideal
   passives and bias source). One topology in 0.1; others are later cards of the same method.
 - Simulator (user, 2026-10-12: "use commercial tools, we have the Cadence analog toolchain"): the
-  Site measures with Cadence Spectre wherever the PDK's decks read in Spectre (GF180MCU and the test
-  PDKs do; SKY130 and IHP SG13G2 decks are ngspice-only and are measured with ngspice). The agents
+  Site measures with Cadence Spectre: GF180MCU and the test PDKs as shipped, IHP SG13G2 through the
+  Site's conversion of its open PSP cards for Spectre's built-in PSP 103.6 (user, 2026-10-12:
+  "Spectre and open PDK"). The agents
   iterate with open ngspice in their sandbox through the Pack's own `sim` command; on the same BSIM4
   decks the two agreed within 0.1 dB, 1 % and 0.5 deg on every design checked (GF180MCU and the
   test PDKs, 2026-10-12; one correlation is a test). One
   piece of Pack arithmetic computes every measurement from either simulator's raw output.
-- PDKs: GF180MCU 3.3 V (open, measured by Spectre) is the source; the target is open (IHP SG13G2
-  1.2 V measured by ngspice is the proposal, pending the user's choice) or a customer's own Spectre
-  PDK at their Site. Tests use two synthetic BSIM4 processes (`synth180`, `synth130`) committed as
-  fixtures.
+- PDKs: GF180MCU 3.3 V (source) and IHP SG13G2 1.2 V (target), both open, both measured by
+  Spectre; a customer's own Spectre PDK at their Site is the same flow. Tests use two synthetic
+  BSIM4 processes (`synth180`, `synth130`) committed as fixtures.
 - Spec: Goal `min_gain_db` 60, `min_gbw_mhz` 10, `min_pm_deg` 60, `max_power_uw` 200 by default;
   strategy `loadPf` 2, `inputCmPct` 60. Judged at the worst corner of each PDK.
 - Agents: two resident engineering agents (sizing, migration). They deliver sizes; the Pack measures.

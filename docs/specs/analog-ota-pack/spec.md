@@ -49,7 +49,9 @@ failed.
 - **Simulators** (lab server, 2026-10-12; [evidence D](../../research/2026-10-12-analog-design-evidence.md)):
   - Cadence Spectre 23.1 is installed and licensed, and runs through the EDA container (`edarun`).
   - ngspice-46 is in the resident sandbox image.
-  - Spectre reads GF180MCU and the synthetic decks, but not SKY130 or IHP.
+  - Spectre reads GF180MCU and the synthetic decks as shipped. It reads IHP SG13G2 after
+    `sites/analog_sim_01/install/ihp_spectre.py`, which matches IHP's own OSDI deck to the printed
+    digit. It does not read SKY130.
   - Spectre and ngspice agree within 0.1 dB, 1 % and 0.5° on every design checked on the same BSIM4 decks.
 - **No Empyrean analog tool** (Aether/ALPS) on the lab server.
 
@@ -179,10 +181,10 @@ goal met, or another round. Generation limit 3 (convergence is declared but need
 
 | Slice | Content | Test level | Status |
 | --- | --- | --- | --- |
-| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU card; independent review fixes | L0/L1/L2 local (`local`: 11 tests, about 1 s), real ngspice (`analog-sim`: 9 tests, about 10 s); Spectre by hand on the server | **Done** |
+| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU and IHP SG13G2 cards; independent review fixes | L0/L1/L2 local (`local`: 12 tests, about 1.5 s), real ngspice (`analog-sim`: 9 tests, about 10 s); Spectre by hand on the server | **Done** |
 | 2 | Resident dry path: both agents through the production resident wrapper with the ACP stand-in, in the in-process Host (pattern: `andes-cell-fmax-dry-path.host.test.ts`); refused deliveries repaired in the same task; goal met in round 2 after a naive port | L2 Host (`analog-dry` group) | Next |
-| 3 | Site `analog_sim_01` (needs user approval for server writes under our project area). Contents: the Spectre wrapper through `edarun`; the ngspice wrapper through the pinned sandbox image; PDK install (GF180MCU from the image; the target PDK); Permit; resident capability (sandbox image with `/foss/pdks`); `simulators: spectre=…,ngspice=…`. The SSH destination is an alias, not an IP. | L4 live-site: bind, characterize, one round by hand, then `analog-ota-migrate.live.test.ts` | Needs decision |
-| 4 | Target PDK card. Option A: IHP SG13G2 1.2 V with ngspice (PSP via OSDI; check the PSP op-parameter names for the saturation gate; `.spiceinit` needs). Option B: the synthetic 130 nm-class process (all Spectre, not a real process). Option C: a customer's own Spectre PDK at their Site (never in this repo). | L4 | Needs decision |
+| 3 | Site `analog_sim_01` (needs user approval for server writes under our project area). Contents: the Spectre wrapper through `edarun`; the ngspice wrapper through the pinned sandbox image; PDK install (GF180MCU and IHP SG13G2 from the image, plus the IHP Spectre conversion); Permit; resident capability (sandbox image with `/foss/pdks`); `simulators: spectre=…,ngspice=…`. The SSH destination is an alias, not an IP. | L4 live-site: bind, characterize, one round by hand, then `analog-ota-migrate.live.test.ts` | Needs approval for server writes |
+| 4 | Target PDK: **decided** (user, 2026-10-12, "Spectre and open PDK"): IHP SG13G2 1.2 V, measured by Spectre through the converter. Card `ihp-sg13g2` (lengths to 3.12 µm, 10 µm per finger, `vdss` as Vdsat). By hand on the server: GF180MCU → IHP two rounds all in Spectre (naive port 46.8 dB, margin −22 %; re-biased 62.8 dB, margin +4.7 %). | L4 by hand | **Done** (card and converter); the live test comes with slice 3 |
 | 5 | App run on Catsights with DeepSeek Flash residents; one take; demo panels per milestone from the run's reports | L5 | After 2 to 4 |
 | Later | LDO card; BO/TuRBO optimizer step seeded by the agent; Monte Carlo and mismatch judge; curve charts (product change in `charts.ts`); layout (gLayout for open PDKs, Virtuoso with a customer OA PDK) with DRC/LVS/PEX Readers | per slice | Not started |
 

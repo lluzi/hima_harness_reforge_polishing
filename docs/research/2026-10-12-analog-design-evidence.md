@@ -54,8 +54,10 @@ under `/tmp` on the server, using the Cadence licence only (no Empyrean licence 
 | GF180MCU, plus `noise_corner` | Runs: nfet_03v3 W 10 um L 0.5 um at Vgs 0.9 V, Vds 1.65 V: Id 73.5 uA, Vth 0.712 V |
 | SKY130 `combined/sky130.lib.spice tt` | Refused: brace expressions |
 | SKY130 after brace-to-quote conversion | 392 errors (nested expressions); abandoned |
-| IHP SG13G2 | Not tried in Spectre: the decks use ngspice `.if` subcircuits and OSDI `N` devices (PSP) |
+| IHP SG13G2 as shipped | Not readable: the decks use ngspice `.if` subcircuits and OSDI `N` devices (PSP); the model cards themselves are Spectre-style (quoted expressions) |
 | SAED14 educational kit | No transistor SPICE models (only a model PDF) |
+| IHP SG13G2 through `ihp_spectre.py`: cards on Spectre `psp103` | Runs; first attempt reported every NMOS as `ctype -1`: Spectre reads `type = +1` as p, so the converter writes `type=n/p`; SOA limits and `dta` dropped (Spectre warnings) |
+| Same, NMOS/PMOS W 1 um L 0.13 um at +/-0.6 V | Spectre 18.36885 / 12.75485 uA; ngspice 46 with IHP's OSDI deck 18.36885 / 12.75485 uA |
 
 **The Pack's CLI on the server (`ota_cli.py`, commit 629388c2).** The same values were measured
 locally with ngspice 47, and the local tests assert them.
@@ -67,6 +69,11 @@ locally with ngspice 47, and the local tests assert them.
 | synth130 re-biased port, round 2 | Spectre 23.1 | 62.6 / 13.63 / 68.2 / 96.7 / yes; margin 4.31 % |
 | GF180MCU first cut from the spec | Spectre 23.1 | 92.1 / 10.7 / 63.3 / 218.2 / yes |
 | GF180MCU first cut, same files | ngspice 46 in the sandbox image | 92.1 / 10.7 / 63.3 / 218.2 / yes |
+
+| GF180MCU source, round 1 (spec 60 dB / 10 MHz / 60 deg / 200 uW) | Spectre 23.1 | 92.1 / 11.63 / 61.5 / 188.7 / yes |
+| IHP SG13G2 naive gm/Id port | Spectre 23.1 | 46.8 / 10.45 / 77.2 / 93.3 / yes; margin -21.98 % |
+| IHP SG13G2 re-biased port, round 2 | Spectre 23.1 | 62.8 / 14.79 / 70.9 / 144.9 / yes; margin 4.67 % |
+| IHP re-biased port, same files | ngspice 46 (IHP OSDI deck) in the sandbox image | 62.8 / 14.79 / 70.94 / 144.94 / yes |
 
 - GF180MCU characterization in Spectre: nmos gm/Id 0.4 to 27.7 /V, Id/W up to 477 uA/um at
   L 0.28 um; pmos up to 26.5 /V.

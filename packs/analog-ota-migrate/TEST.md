@@ -14,7 +14,9 @@ BSIM4 processes (`test/fixtures/analog-pdks/`, made up, 1.8 V and 1.2 V).
   supply power, the AC sweep, a characterization sweep) and agrees with an independent reading; the
   AC arithmetic recovers gain, unity-gain frequency and phase margin of a known two-pole response and
   answers unknown for a response that is not flat or not in phase at the sweep start; the PSF reader
-  keeps every struct whatever their order.
+  keeps every struct whatever their order; the IHP-to-Spectre install tool on a made-up file set in
+  IHP's shape (type n/p, version 103.6, no SOA limits, RF cards or ngspice conditionals, the five
+  corner sections including the Spectre devices).
 - `test/contract/analog-ota-migrate-sim.test.ts` (group `analog-sim`, real ngspice; the binary is
   `HIMA_NGSPICE` or `ngspice` on PATH; without one the tests are skipped and say so): bind and
   characterize both synthetic PDKs; the first cut from the spec; refusals (a length below the

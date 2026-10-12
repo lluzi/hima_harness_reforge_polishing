@@ -25,7 +25,12 @@ The design must cite the accepted source design (`migratedFrom` with its SHA-256
   the tail out of saturation at 1.2 V. Raise the input gm/Id (lower Vgs1), raise the bias mirrors'
   gm/Id (lower Vdsat), or shorten the input L.
 - **Intrinsic gain.** gm/gds at the same gm/Id and relative length differs between processes and
-  model families (BSIM4 vs PSP): the gain may drop. Lengthen the pair and the load.
+  model families (BSIM4 vs PSP): the gain may drop a lot (GF180MCU at 3 x Lmin to IHP SG13G2 at
+  3 x Lmin lost about 45 dB in a two-stage OTA). Lengthen the input pair and the current sinks, and
+  raise the input and load gm/Id. Long mirror loads slow the mirror pole and the second stage
+  (M6 shares the load's L), which costs phase margin: keep the load moderate in length and weakly
+  inverted, buy phase margin with second-stage current, and move Rz above 1/gm6 to place a
+  left-half-plane zero.
 - **Speed and corners.** The target's corners spread differently; re-read every corner. GBW at the
   slow corner usually sets i1.
 - **Power.** The same currents at a lower supply cost less power; the margin can buy current.
