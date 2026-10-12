@@ -82,7 +82,12 @@ def _split_directives(tokens):
 
 
 def _minor_pairs(args):
-    """`['-a', '1', '-b', '2']` -> `{'-a': '1', '-b': '2'}`; ignores stray values."""
+    """`['-a', '1', '-b', '2']` -> `{'-a': '1', '-b': '2'}`; ignores stray values.
+
+    Values are matched purely by preceding flag name, so option order never
+    matters. Used both for the minor flags inside an `smSLFit`/`smSLFix`
+    directive and for a whole `smBlockMgr` option list.
+    """
     pairs = {}
     i = 0
     while i < len(args) - 1:
@@ -228,23 +233,6 @@ def frame_from_rule(rule_text, pblock_text, dbu_per_um):
     }
 
 
-def _option_map(tokens):
-    """`['-def', 'A', '-blkType', 'OVL']` -> `{'-def': 'A', '-blkType': 'OVL'}`.
-
-    Values are matched purely by preceding flag name, so option order never
-    matters; a bare positional value with no preceding flag is ignored.
-    """
-    options = {}
-    i = 0
-    while i < len(tokens) - 1:
-        if tokens[i].startswith("-"):
-            options[tokens[i]] = tokens[i + 1]
-            i += 2
-        else:
-            i += 1
-    return options
-
-
 def _strip_bbox_wrapper(raw):
     """`{(0,0,1,1)}` / `"(0,0,1,1)"` / `(0,0,1,1)` -> `"0,0,1,1"`."""
     value = raw.strip("{}\"").strip()
@@ -268,7 +256,7 @@ def read_block_types(block_text, dbu_per_um):
         tokens = _tokenize(line)
         if not tokens or tokens[0] != "smBlockMgr":
             continue
-        options = _option_map(tokens[1:])
+        options = _minor_pairs(tokens[1:])
         name = options.get("-def")
         if name is None:
             continue
