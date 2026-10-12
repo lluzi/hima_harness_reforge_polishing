@@ -1,0 +1,75 @@
+# MAGE scribe-line placement 0.1.0 run contract
+
+## Goal template
+
+The declared Goal is three knobs the final evaluation checks the best measured state against:
+`target_dropped_count` (count, default 0), `max_target_distance_um` (µm, default 100), and
+`max_order_deviation` (rank, default 1). A complete best-effort delivery can leave any of these
+false; `goalMet` stays explicit either way. Strategy knob `incumbentComparison`
+(`retained`/`native`, default `retained`) selects which incumbent basis `evaluate-placement`
+compares against; it cannot change the round limit, which is fixed at `graph.yml`'s
+`maxIterations: 4`.
+
+## Constraints
+
+The case manifest, rule file, target table, request order, and consumer models stay fixed for the
+whole Run; only the Engineer's candidate PLA changes between rounds, and even then every Group's own
+`targetPointDbu` is frozen input, never edited. `siteCapabilities` names the Site's MAGE executable
+and environment; only `engineer-place` holds the `mage: 1` licence `capacity.licences` declares.
+Units are integer DBU inside the Pack; µm only at the boundaries (vendor text, reports);
+`dbuPerUm` comes from the manifest (P23: 10000); the placement grid is 100 DBU (0.01 µm) unless the
+rule file says otherwise. Python is 3.9 standard-library only; no numeric, YAML, or JSON-Schema
+dependency ships in `flow/`.
+
+## Run contract
+
+`graph.yml` declares one `hima-flow/1` sequence:
+
+| Task | Inputs | Work and committed output |
+|---|---|---|
+| `prepare-case` | Run `mageCaseManifest`, `consumerContext`, `siteCapabilities`; Goal values | Verify every manifest digest; parse rule/pblock/block/target/request-order; build and stamp `startSnapshot`; write `case-readiness.json` and the round-0 `round-decision.json` (`route: continue`, no open Requests). |
+| `measure-incumbent` | Committed `prepare-case` output; strategy `incumbentComparison` | Normalise the retained incumbent PLA into a snapshot; evaluate it with the same metrics and consumer evaluators as every candidate, labelled modelled. |
+| `repeat placement-rounds` (`maxIterations: 4`, carry `roundState`, stop on `decide-round.route == stop`) | — | Runs the round `sequence` below once per iteration. |
+| `engineer-place` (resident, `licences: {mage: 1}`) | `ROUND` (carry), goal values | One MAGE round via `mage-round --role engineer`; assembles and Reader-verifies `mage.placement-candidate/1` at `state/round/placement-candidate.json`. |
+| `review-litho-pie` / `review-metrology` / `review-alignment` / `review-wat` (resident, no licence) | `ROUND` (carry) | Each reads the current candidate, runs `evaluate` under its own consumer model, and assembles a Reader-verified `mage.consumer-review/1`. |
+| `decide-round` (program) | Committed Reader values of the five resident tasks; `ROUND`; goal values | Checks every previous-round open Request has a Ledger answer; updates the best measured state; turns consumer conflicts into Decision Requests; routes `continue`/`stop`; writes `round-decision.json` and the cumulative `placement-result.json`. |
+| `evaluate-placement` (`budget: closing`) | Committed `decide-round` value; `measure-incumbent` value; goal values | Evaluates the best state's own Reader values against the seven delivery rules; computes the completeness/fidelity/rework/legality comparison against the incumbent; `goalMet` explicit, unknowns kept separate. |
+| `deliver` (`budget: closing`) | Committed evaluation | Rechecks every referenced digest; writes `delivery/report.json` and packages every round's candidate/review documents, PLAs, native verify files, session logs, scripts, and the result/evaluation JSON into `delivery/placement-artifacts.tar.gz`. |
+
+The round-decision stop rule: `stop` when (no consumer hard failure and no open Request) or (two
+consecutive rounds without improvement on any axis) or (`round == 4`, which `maxIterations` also
+enforces); otherwise `continue`.
+
+## Semantics
+
+Two Readers (`tools/read-mage.py`, one script backing both `readers/*.yml` declarations) re-derive
+every fact from the referenced files rather than trust the resident's own claim. The candidate
+Reader re-hashes every referenced file, re-parses the export into a snapshot and checks its sha
+against the declared `snapshotSha256`, recomputes drops/target-distance/order-deviation/native rows,
+checks every previous round's open Request has a Ledger answer, and checks the session log has no
+mutating round logged under any role but `engineer`. The review Reader checks the review binds to
+the current candidate's snapshot sha, re-runs the evaluator under the declared consumer model
+version, and refuses any Finding whose fields the code does not reproduce. Either Reader rejects a
+mismatch; the rejection returns to the same resident Task as a repair message.
+
+## Judge rules
+
+Seven rule files, evaluated in `evaluate-placement` from the best state's own Reader values:
+`placement-delivery-ready` (candidate error count = 0), `priority-all-placed` (unplaced = 0),
+`no-native-violation` (native violation total = 0), `drops-within-goal` (dropped count ≤
+`target_dropped_count`), `target-limit-met` (max target distance ≤ `max_target_distance_um`),
+`order-within-goal` (max order deviation ≤ `max_order_deviation`), `no-open-requests` (open request
+count = 0).
+
+## Endings
+
+A valid delivery proceeds through `evaluate-placement` and `deliver` even when `goalMet` is false —
+a complete best-effort result with honestly reported residual drops, distance violations, or open
+Decision Requests is not a Task failure. Missing inputs or evidence remain actionable Task failures;
+cancellation, budget enforcement, and durable recovery stay Runtime responsibilities.
+
+## Knowledge
+
+`placement-playbook.md`, `mage-capabilities.md`, `state-and-evidence.md`, and `review-protocol.md`
+carry the mechanism every role shares or needs its own slice of; the five `role-*.md` files carry
+each resident's own complete brief, consistent with its `contract.yml` tool description.
