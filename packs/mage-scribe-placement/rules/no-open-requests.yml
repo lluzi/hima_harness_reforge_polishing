@@ -1,0 +1,6 @@
+id: no-open-requests
+version: "1"
+title: No consumer Request against the best state is left unanswered
+requires: [{ type: mage_open_request_count }]
+subject: { type: mage_open_request_count }
+predicate: { op: eq, threshold: 0, unit: count }

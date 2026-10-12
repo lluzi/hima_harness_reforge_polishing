@@ -1,0 +1,70 @@
+values:
+  mage_candidate_error_count:
+    unit: count
+    description: Structural, identity, recompute-mismatch or session-log-role errors found while re-verifying one round's placement-candidate delivery; 0 only once every reference and recomputation agrees.
+  mage_priority_unplaced_count:
+    unit: count
+    description: Count of Group-placed (priority) marks the candidate's own pending list still carries (never actually placed as a Fit).
+  mage_dropped_count:
+    unit: count
+    description: Count of test structures the candidate's PLA itself records as dropped (placedFlag not null).
+  mage_dropped_length_um:
+    unit: um
+    description: Total long-side length of every dropped structure in the candidate.
+  mage_target_distance_max_um:
+    unit: um
+    description: Maximum along-lane distance from a bound target's CT point to its placed Fit's box centre, over every bound target in the candidate.
+  mage_target_over_limit_count:
+    unit: count
+    description: Count of bound targets whose along-lane distance exceeds the Goal/consumerContext target-distance limit.
+  mage_order_deviation_max:
+    unit: rank
+    description: Maximum placement-order deviation (customer check_dev) over the TB/LR/IN partitions.
+  mage_native_overlap_rows:
+    unit: rows
+    description: Row count of the candidate's native OVERLAP verify report.
+  mage_native_space_rows:
+    unit: rows
+    description: Row count of the candidate's native SPACE verify report.
+  mage_native_boundary_rows:
+    unit: rows
+    description: Row count of the candidate's native BOUNDARY verify report.
+  mage_native_cross_rows:
+    unit: rows
+    description: Row count of the candidate's native CROSS verify report.
+  mage_native_offgrid_rows:
+    unit: rows
+    description: Row count of the candidate's native OFFGRID verify report.
+  mage_native_diecorner_rows:
+    unit: rows
+    description: Row count of the candidate's native DIECORNER verify report.
+  mage_native_pepper_rows:
+    unit: rows
+    description: Row count of the candidate's native PEPPER verify report.
+  mage_native_pads_rows:
+    unit: rows
+    description: Row count of the candidate's native PADS verify report.
+  mage_native_location_rows:
+    unit: rows
+    description: Row count of the candidate's native LOCATION verify report.
+  mage_native_autorefine_rows:
+    unit: rows
+    description: Row count of the candidate's native AUTOREFINE verify report.
+  mage_native_violation_total:
+    unit: rows
+    description: Sum of all ten native verify-report row counts; unknown whenever any one type's row count is itself unknown.
+  mage_open_request_count:
+    unit: count
+    description: Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.
+  mage_review_error_count:
+    unit: count
+    description: Structural, identity, snapshot-binding or evaluator-reproduction errors found while re-verifying one consumer's review delivery; 0 only once every Finding reproduces exactly under its declared consumer-model version.
+  mage_review_hard_fail_count:
+    unit: count
+    description: Count of this review's Findings whose severity is hard and whose status is fail.
+  mage_review_request_count:
+    unit: count
+    description: Count of Requests this consumer's review files this round.
+  mage_review_unknown_count:
+    unit: count
+    description: Count of this review's Findings whose status is unknown (a required consumerContext parameter is missing).

@@ -1,0 +1,10 @@
+id: mage-consumer-review
+version: "1"
+file: tools/read-mage.py
+argv: [/usr/bin/python3, '${READER}', consumer-review, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: mage.consumer-review/1
+emits:
+  - mage_review_error_count
+  - mage_review_hard_fail_count
+  - mage_review_request_count
+  - mage_review_unknown_count
