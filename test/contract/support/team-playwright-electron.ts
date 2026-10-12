@@ -35,7 +35,7 @@ interface ElectronApplication {
   close(): Promise<void>;
 }
 interface PlaywrightModule {
-  _electron: { launch(options: { executablePath: string; args: string[]; cwd: string; env: Record<string, string>; timeout: number }): Promise<ElectronApplication> };
+  _electron: { launch(options: { executablePath: string; args: string[]; cwd: string; env: Record<string, string>; timeout: number; chromiumSandbox: boolean }): Promise<ElectronApplication> };
 }
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -68,7 +68,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
   const userData = path.join(home.home, 'electron-user-data');
   await mkdir(userData, { recursive: true });
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(userData, 'window-state.json'), JSON.stringify({ width: 1440, height: 960 }));
+  await writeFile(path.join(userData, 'window-state.json'), JSON.stringify({ width: 1280, height: 860 }));
   const env = Object.fromEntries(Object.entries({ ...home.env, HIMA_NODE: process.execPath,
     HIMA_WORKSPACE: home.workspace, HIMA_USER_DATA: userData, HIMA_DRIVER_DISPLAY: '',
     HIMA_TEST_SILENT_AGENT: '1', BROWSER: 'none', ELECTRON_RUN_AS_NODE: '' })
@@ -79,7 +79,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
   recordTestBoot('electron');
   const app = await playwright._electron.launch({ executablePath: binary.at,
     args: [`--remote-debugging-port=${await freePort()}`, path.join(repoRoot, 'packages/desktop/lib/main.js'), '--theme', 'light'],
-    cwd: home.workspace, env, timeout: 150_000 });
+    cwd: home.workspace, env, timeout: 150_000, chromiumSandbox: true });
   const child = app.process();
   let stderr = ''; let stdout = '';
   const teamRequests: { action: string; title?: string }[] = [];
@@ -96,6 +96,10 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
     if (pgPid > 1) owned.push(pgPid);
     await app.close(); // normal before-quit: real Host/DBOS/pools/PG shutdown
     await waitForExit;
+    const closureDeadline = Date.now() + 5000;
+    while (owned.some(alive) && Date.now() < closureDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     const remaining = owned.filter(alive);
     await writeFile(path.join(evidence, 'electron-stderr.log'), redact(stderr));
     await writeFile(path.join(evidence, 'electron-stdout.log'), redact(stdout));
@@ -107,6 +111,8 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
     disposed = true;
   };
   try {
+    assert.equal(child.spawnargs.includes('--no-sandbox'), false,
+      'Desktop qualification requires the Chromium sandbox');
     const page = await app.firstWindow({ timeout: 150_000 });
     page.on('request', request => {
       if (!request.url().endsWith('/hima/api/teams') || request.postData() === null) return;
@@ -131,7 +137,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
 
 /** Accept both actual notices, then the deferred keyless-provider dialog. */
 export async function finishTeamOnboarding(browser: Pick<Awaited<ReturnType<typeof bootTeamPlaywright>>, 'page' | 'wait'>): Promise<void> {
-  await browser.wait(`document.body.innerText.includes('Internal Testing Notice') || document.body.innerText.includes('Preview Notice')`);
+  await browser.wait(`document.body?.innerText.includes('Internal Testing Notice') || document.body?.innerText.includes('Preview Notice')`);
   const himaNotice = await browser.page.evaluate<boolean>(`document.body.innerText.includes('Internal Testing Notice')`);
   if (himaNotice) {
     await browser.page.getByRole('button', { name: 'Continue', exact: true }).click();

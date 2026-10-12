@@ -68,11 +68,15 @@
             "python/bin/python3.12"
           ],
           "notices": [
-            "python/lib/python3.12/LICENSE.txt"
+            "python/lib/python3.12/LICENSE.txt",
+            "python/share/hima/notices/tcl-license.terms",
+            "python/share/hima/notices/tk-license.terms"
           ],
           "files": {
             "python/bin/python3.12": "202c17d1671602a4ef1d43e9b2fdbef0769443f37bf5e51f6b603e0b2c27d9d8",
-            "python/lib/python3.12/LICENSE.txt": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+            "python/lib/python3.12/LICENSE.txt": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+            "python/share/hima/notices/tcl-license.terms": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+            "python/share/hima/notices/tk-license.terms": "2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198"
           }
         }
       }
@@ -623,9 +627,9 @@
     },
     "linux-x64": {
       "qualification": "asset-assembly-only",
-      "manifestSha256": "5616cc4f5f4f4f328ebd7614e72b30e08fafbc4f38458b3f0b99056a4d03bac8",
-      "inventorySha256": "ef7dfe8045fb9a0e60627f6c02378320ea4507386bd71617532e78567a0fa272",
-      "fileCount": 49030,
+      "manifestSha256": "f86c2616e134185a448c6c7fcec07cfcb939e81a05fecd69de5cf2d7d1d5798b",
+      "inventorySha256": "0559c17f555ac81f36d358384d6b6a8cd70291219d0cdcc822254b61731a1002",
+      "fileCount": 49032,
       "requiredComponents": [
         "hindsight",
         "python",
