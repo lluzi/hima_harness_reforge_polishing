@@ -196,19 +196,79 @@ def _read_optional(path, kind):
         return None
 
 
-def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
-    """Join one round's four consumer reviews against its candidate.
+def _reader_value(reader_values, type_name):
+    for row in reader_values or []:
+        if row.get("type") == type_name:
+            return row.get("value")
+    return None
+
+
+def _ranking_metrics(reader_values, hard_fail_count, rework_total):
+    """The best-state key's input, built only from the *Reader-confirmed*
+    values carried in the committed candidate output (C1) -- never the
+    candidate document's own self-reported `metrics`. Displacement is left
+    empty (it is not a Reader-emitted fact) so it stays a neutral,
+    non-discriminating final tiebreaker rather than ranking by an
+    unconfirmed number."""
+    return {
+        "nativeRows": {"total": _reader_value(reader_values, "mage_native_violation_total")},
+        "priorityUnplaced": {"count": _reader_value(reader_values, "mage_priority_unplaced_count")},
+        "hardFailCount": hard_fail_count,
+        "drops": {"count": _reader_value(reader_values, "mage_dropped_count"),
+                  "lengthUm": _reader_value(reader_values, "mage_dropped_length_um")},
+        "targetDistances": {"overLimitCount": _reader_value(reader_values, "mage_target_over_limit_count")},
+        "orderDeviation": {"max": _reader_value(reader_values, "mage_order_deviation_max")},
+        "reworkTotal": rework_total,
+        "displacement": {},
+    }
+
+
+def _reader_blocked(candidate, reader_values):
+    """True when this candidate must never be ranked as a measured state: it
+    did not complete, the Reader produced no values, or the Reader's own
+    error count is non-zero (C1 -- an errored Reader's candidate is blocked
+    for ranking)."""
+    if candidate.get("outcome") != "completed":
+        return True
+    if not reader_values:
+        return True
+    error_count = _reader_value(reader_values, "mage_candidate_error_count")
+    return error_count not in (0, 0.0)
+
+
+def decide(workspace, round_no, goal, reviews, candidate, previous_decision, skipped_reviews=None):
+    """Join one round's consumer reviews against its candidate.
 
     Returns the `mage.round-decision/1` body (also atomically written to
     `state/round-decision.json`); also (re)writes the cumulative
     `state/placement-result.json`. `goal` is accepted for interface
     stability with the frozen signature; the route rule itself only
-    consults the candidate/review documents and round history — the Goal
-    knobs are consulted by the Engineer and the consumers that produced
-    them, and again later by `evaluate-placement`'s rule predicates.
+    consults the candidate/review documents and round history.
+
+    C1: the round is ranked by the Reader-confirmed values the committed
+    candidate output carries (`candidate["_readerValues"]`), never by the
+    candidate document's own `metrics`; a candidate the Reader did not pass
+    clean (blocked outcome, no values, or a non-zero error count) is ranked
+    worst and can never become `best`. `skipped_reviews` (optional) are the
+    reviews `task-decide-round` dropped this round (wrong snapshot or wrong
+    consumer slot); any review here whose `snapshotSha256` does not match the
+    candidate is additionally dropped and recorded, so a mis-bound review is
+    treated as "no review from that consumer this round", never a crash.
     """
     del goal
     workspace = Path(workspace)
+
+    skipped = list(skipped_reviews or [])
+    matching = []
+    for review in reviews:
+        if review.get("snapshotSha256") != candidate.get("snapshotSha256"):
+            skipped.append({
+                "consumer": review.get("consumer"),
+                "reason": "review bound to a different snapshot than the candidate",
+            })
+        else:
+            matching.append(review)
+    reviews = matching
 
     open_reqs = records.open_requests(reviews)
     previous_open = (previous_decision or {}).get("openRequests", [])
@@ -228,16 +288,22 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
         if finding.get("severity") == "cost" and finding.get("status") == "fail"
     )
 
+    # best["metrics"] keeps the candidate's full self-reported metrics for
+    # the incumbent comparison / report (never for ranking); best["rankMetrics"]
+    # is the Reader-confirmed ranking input the key is actually computed from.
     metrics = dict(candidate.get("metrics", {}))
     metrics["hardFailCount"] = hard_fail_count
     metrics["reworkTotal"] = rework_total
 
-    key = best_state_key(metrics, None)
+    reader_values = candidate.get("_readerValues", [])
+    rank_metrics = _ranking_metrics(reader_values, hard_fail_count, rework_total)
+    blocked_for_ranking = _reader_blocked(candidate, reader_values)
+    key = (_SENTINEL,) * 10 if blocked_for_ranking else best_state_key(rank_metrics, None)
 
     previous_best = (previous_decision or {}).get("best")
     previous_key = (
-        best_state_key(previous_best["metrics"], None)
-        if previous_best and previous_best.get("metrics")
+        best_state_key(previous_best["rankMetrics"], None)
+        if previous_best and previous_best.get("rankMetrics")
         else None
     )
     # I2: the first ranked round is an improvement over nothing -- a first
@@ -259,8 +325,10 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
             "snapshotSha256": candidate["snapshotSha256"],
             "candidatePath": candidate_ref["path"],
             "metrics": metrics,
+            "rankMetrics": rank_metrics,
             "round": round_no,
-            "readerValues": candidate.get("_readerValues", []),
+            "readerValues": reader_values,
+            "blocked": blocked_for_ranking,
         }
     else:
         best = previous_best
@@ -304,6 +372,7 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
             "decisionRequests": decision_requests,
             "history": history,
             "stopReason": stop_reason,
+            "skippedReviews": skipped,
         },
     )
     core.write_artifact(workspace / "state" / "round-decision.json", decision)

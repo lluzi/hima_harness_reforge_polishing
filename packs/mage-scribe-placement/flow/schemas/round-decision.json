@@ -23,6 +23,7 @@
     "openRequests": {"type": "array"},
     "decisionRequests": {"type": "array"},
     "history": {"type": "array"},
-    "stopReason": {"type": "string"}
+    "stopReason": {"type": "string"},
+    "skippedReviews": {"type": "array"}
   }
 }

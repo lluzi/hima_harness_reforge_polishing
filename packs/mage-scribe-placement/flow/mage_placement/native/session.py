@@ -75,7 +75,15 @@ _INSTANCE_RE = re.compile(r"^(\d+) .* instance\(s\)$")
 
 # Word-boundary guards so `experiment.tcl` content that *contains* a forbidden
 # word only as a substring of a longer identifier is not falsely refused.
-_EXPERIMENT_FORBIDDEN = (re.compile(r"\bexit\b"), re.compile(r"\bfrbOpen\b"))
+# `MAGE_VERIFY`/`MAGE_ROUND_END` are refused so an experiment can never print
+# a fake native-check count or a fake round-end marker that would override
+# MAGE's own stdout (I1).
+_EXPERIMENT_FORBIDDEN = (
+    re.compile(r"\bexit\b"),
+    re.compile(r"\bfrbOpen\b"),
+    re.compile(r"MAGE_VERIFY"),
+    re.compile(r"MAGE_ROUND_END"),
+)
 
 
 def mutating(script_text):
@@ -94,11 +102,13 @@ def slice_verify(stdout_text):
     of the first `lines` entry matching `<N> ... instance(s)`.
     """
     blocks = {}
+    begin_count = {}
     current = None
     for raw_line in stdout_text.splitlines():
         stripped = raw_line.strip()
         if stripped.startswith("MAGE_VERIFY_BEGIN "):
             current = stripped[len("MAGE_VERIFY_BEGIN "):].strip()
+            begin_count[current] = begin_count.get(current, 0) + 1
             blocks.setdefault(current, {"code": None, "instances": None, "lines": []})
         elif stripped.startswith("MAGE_VERIFY_CODE "):
             parts = stripped[len("MAGE_VERIFY_CODE "):].split()
@@ -112,7 +122,18 @@ def slice_verify(stdout_text):
         elif current is not None and current in blocks:
             blocks[current]["lines"].append(raw_line)
 
-    for block in blocks.values():
+    for type_name, block in blocks.items():
+        if begin_count.get(type_name, 0) > 1:
+            # I1: a type whose BEGIN marker appears more than once is
+            # refused as unknown -- an experiment (or any earlier stage)
+            # that printed a second fake `MAGE_VERIFY_BEGIN <TYPE>` block
+            # must never let a planted count override MAGE's real one. The
+            # type reads unknown (no verify file written), never the first
+            # or a fabricated count.
+            block["code"] = None
+            block["instances"] = None
+            block["duplicate"] = True
+            continue
         for line in block["lines"]:
             match = _INSTANCE_RE.match(line.strip())
             if match:
@@ -251,9 +272,10 @@ class MageSession:
         a path to an Engineer-authored Tcl file sourced after the replay;
         its bytes are copied verbatim to `round_dir/experiment.tcl` and its
         sha256 recorded in the result, round log and (via `candidate`) the
-        delivery. An experiment containing the word `exit` or `frbOpen` is
-        refused with `core.MageError("experiment", ...)` before `round_dir`
-        is created.
+        delivery. An experiment containing `exit`, `frbOpen`, `MAGE_VERIFY`
+        or `MAGE_ROUND_END` is refused with `core.MageError("experiment",
+        ...)` before `round_dir` is created (the last two so an experiment
+        can never print a fake native count or round-end marker).
 
         Refuses with `core.MageError("writer", ...)` when `role` is not
         `"engineer"` but the assembled round script is `mutating()` —

@@ -718,14 +718,13 @@ class CliRouteTest(unittest.TestCase):
             [sys.executable, str(READER), "consumer-review", str(live_review_path), str(out_path), str(self.workspace)],
             capture_output=True, text=True,
         )
-        self.assertEqual(result.returncode, 0)
-        values = json.loads(out_path.read_text(encoding="utf-8"))["values"]
-        error_value = next(v for v in values if v["type"] == "mage_review_error_count")
-        self.assertEqual(error_value["value"], 1)
-        for value in values:
-            if value["type"] != "mage_review_error_count":
-                self.assertIsNone(value["value"])
-                self.assertIn("unknownReason", value)
+        # C1: a tampered review is refused fail-closed -- the Reader exits
+        # non-zero and writes no OUT, so the Harness returns it to the
+        # resident as a repair message instead of admitting error_count 1.
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(out_path.is_file())
+        reason = json.loads(result.stderr.strip().splitlines()[-1])
+        self.assertIn(reason["code"], ("schema", "identity-mismatch"))
 
 
 if __name__ == "__main__":

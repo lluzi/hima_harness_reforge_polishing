@@ -53,14 +53,32 @@ def _review(consumer, findings=None, requests=None, snapshot_sha="s" * 64):
     })
 
 
-def _candidate(snapshot_sha="s" * 64, metrics=None, ledger=None, outcome="completed"):
-    return core.stamp("placement-candidate", {
+def _reader_values(error=0, native=0, priority=0, drops=0, drops_len="0", over=0, order=0):
+    def v(type_name, value):
+        return {"type": type_name, "value": value}
+    return [
+        v("mage_candidate_error_count", error),
+        v("mage_native_violation_total", native),
+        v("mage_priority_unplaced_count", priority),
+        v("mage_dropped_count", drops),
+        v("mage_dropped_length_um", drops_len),
+        v("mage_target_over_limit_count", over),
+        v("mage_order_deviation_max", order),
+    ]
+
+
+def _candidate(snapshot_sha="s" * 64, metrics=None, ledger=None, outcome="completed", reader_values=None):
+    doc = core.stamp("placement-candidate", {
         "identity": {"taskId": "t", "runId": "r", "executionId": "e", "nodeId": "n", "round": 1},
         "startSnapshotSha256": "x" * 64, "snapshotSha256": snapshot_sha, "buildBanner": "synthetic",
         "files": {}, "metrics": metrics or _metrics(),
         "ledger": ledger or [], "remaining": [], "blocked": [], "unknown": [],
         "outcome": outcome, "stopReason": "", "reproduction": {},
     })
+    if reader_values is not None:
+        doc = dict(doc)
+        doc["_readerValues"] = reader_values
+    return doc
 
 
 class BestStateKeyTests(unittest.TestCase):
@@ -216,6 +234,47 @@ class DecideTests(unittest.TestCase):
         options = decision["decisionRequests"][0]["options"]
         consumers_seen = {k for opt in options for k in opt["perConsumer"]}
         self.assertEqual(consumers_seen, {"litho-pie", "metrology"})
+
+    def test_ranks_by_reader_values_not_self_reported_metrics(self):
+        # C1: round 1 has a genuinely good Reader reading (2 drops). Round 2's
+        # candidate self-reports 0 drops in its own `metrics`, but its Reader
+        # values say 5 drops -- so it must NOT beat round 1. If decide ranked
+        # by the self-reported metrics it would wrongly become best.
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        cand1 = _candidate(metrics=_metrics(drops_count=2), reader_values=_reader_values(drops=2))
+        d1 = rounds.decide(self.workspace, 1, {}, reviews, cand1, self._round0_decision())
+        self.assertEqual(d1["best"]["round"], 1)
+
+        cand2 = _candidate(metrics=_metrics(drops_count=0), reader_values=_reader_values(drops=5))
+        d2 = rounds.decide(self.workspace, 2, {}, reviews, cand2, d1)
+        self.assertEqual(d2["best"]["round"], 1)
+
+    def test_blocked_candidate_never_becomes_best(self):
+        # C1: a blocked candidate (no clean Reader reading) is ranked worst
+        # and never replaces a completed better round.
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        cand1 = _candidate(reader_values=_reader_values(drops=1))
+        d1 = rounds.decide(self.workspace, 1, {}, reviews, cand1, self._round0_decision())
+        self.assertEqual(d1["best"]["round"], 1)
+
+        cand2 = _candidate(outcome="blocked", reader_values=None)
+        d2 = rounds.decide(self.workspace, 2, {}, reviews, cand2, d1)
+        self.assertEqual(d2["best"]["round"], 1)
+
+    def test_review_bound_to_wrong_snapshot_is_skipped_and_recorded(self):
+        # C1: a review bound to a different snapshot is dropped (its hard fail
+        # and requests do not count this round) and recorded in the decision.
+        finding = _finding("F-litho-pie-1", "litho-pie", "fail", "hard")
+        request = _request("R-litho-pie-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-litho-pie-1")
+        stale = _review("litho-pie", findings=[finding], requests=[request], snapshot_sha="z" * 64)
+        candidate = _candidate(reader_values=_reader_values())
+        reviews = [stale, _review("metrology"), _review("alignment"), _review("wat")]
+        decision = rounds.decide(self.workspace, 1, {}, reviews, candidate, self._round0_decision())
+        self.assertEqual(decision["openRequests"], [])
+        self.assertEqual([s["consumer"] for s in decision["skippedReviews"]], ["litho-pie"])
+        # With the stale litho-pie review dropped there is no hard fail and no
+        # open request this round, so the Run stops cleanly.
+        self.assertEqual(decision["route"], "stop")
 
     def test_unanswered_previous_request_is_a_candidate_error_not_a_decision(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")

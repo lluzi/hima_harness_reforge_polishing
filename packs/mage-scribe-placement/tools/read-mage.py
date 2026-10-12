@@ -21,14 +21,22 @@ placeholder) lets this script find: `_mage_modules()` inserts
 ``<workspace>/flow`` onto `sys.path` and imports `mage_placement.*` as a
 top-level package, the same way `flow/tests/*.py` do.
 
-Harness contract: this script writes ``{"values": [{"type", "unit",
-"value": number|null[, "unknownReason"]}, ...]}`` to `<out path>` — the
-*set* of types written always equals the reader's own declared `emits`
-exactly, using `unknown()` wherever a fact could not be established. Any
-exception escaping `main()`'s inner recompute is caught at the outermost
-level and turned into `error_count: 1` plus every other declared fact
-`unknown` — a fail-closed Reader never leaves a stale or partial reading
-and never raises past its own `main()`.
+Harness contract: on success this script writes ``{"values": [{"type",
+"unit", "value": number|null[, "unknownReason"]}, ...]}`` to `<out path>`
+and exits 0 — the *set* of types written always equals the reader's own
+declared `emits` exactly, using `unknown()` wherever a fact could not be
+established (a missing native verify file, an unbound target), with
+``mage_candidate_error_count``/``mage_review_error_count`` always ``0``.
+
+Fail closed (C1): any structural, identity, recompute-mismatch, inventory
+or session-log/writer refusal exits NON-ZERO (code 3) with a
+``{"code","detail"}`` line on stderr and leaves `<out path>` unwritten —
+never a `0` exit carrying ``error_count: 1``. The Harness then marks the
+Reader job failed, returns it to the same resident Task as a
+``reader-rejected`` repair message, and never admits the unverified
+delivery (``durable-task-adapters.ts``). This mirrors the ATCS Reader's
+own re-raising posture. Only genuine admitted unknowns (native type /
+unbound target) ever ride a successful, ``error_count: 0`` reading.
 """
 from __future__ import annotations
 
@@ -108,7 +116,48 @@ def _priority_unplaced(snap):
     return [p["id"] for p in snap["pending"] if p.get("inGroup")]
 
 
-def _check_session_log(workspace, doc, mods):
+def _check_scripts(workspace, files, mods):
+    """Re-hash every `files.scripts[]` entry (round.tcl, experiment.tcl).
+
+    I1: the Reader "re-hashes every referenced file" -- the scripts bind the
+    export to the exact round that produced it, so a changed or missing
+    script is a fail-closed refusal exactly like a tampered PLA.
+    """
+    for ref in files.get("scripts", []):
+        path = _resolve_ref(workspace, ref)
+        if not path.is_file() or mods["core"].file_sha256(path) != ref["sha256"]:
+            raise mods["core"].MageError("identity-mismatch", f"candidate script changed or missing: {path}")
+
+
+def _check_inventory(start, candidate, mods):
+    """C4: every structure in the start snapshot must still appear in the
+    candidate export as Fixed, Fit or dropped.
+
+    Fixed are matched by id; every start Fit and every real start drop
+    (a `pending` entry with a non-`None` `placedFlag`) is matched by its
+    instance id against the candidate's Fits plus drops. A start id that
+    appears nowhere in the export vanished (never merely dropped) -- a
+    silent loss that would read as a metric *improvement* -- so it is a
+    fail-closed refusal. Rule-derived synthetic pending copies
+    (`placedFlag is None`) are expectations, not instances, and are not
+    conserved here.
+    """
+    core = mods["core"]
+    missing_fixed = sorted({f["id"] for f in start["fixed"]} - {f["id"] for f in candidate["fixed"]})
+    start_instances = {f["id"] for f in start["fits"]} | {
+        p["id"] for p in start["pending"] if p.get("placedFlag") is not None
+    }
+    candidate_instances = {f["id"] for f in candidate["fits"]} | {p["id"] for p in candidate["pending"]}
+    missing_instances = sorted(start_instances - candidate_instances)
+    if missing_fixed or missing_instances:
+        raise core.MageError(
+            "inventory",
+            "start structure(s) missing from the export (neither placed nor dropped): "
+            f"fixed={missing_fixed} instances={missing_instances}",
+        )
+
+
+def _check_session_log(workspace, doc, mods, script_sha0):
     log_ref = doc.get("files", {}).get("sessionLog")
     if not log_ref:
         # Fail closed, never skip: a candidate that omits its session log
@@ -133,12 +182,46 @@ def _check_session_log(workspace, doc, mods):
     log_path = _resolve_ref(workspace, log_ref)
     if mods["core"].file_sha256(log_path) != log_ref["sha256"]:
         raise mods["core"].MageError("identity-mismatch", "session log bytes changed")
+    entries = []
     for line in log_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         entry = json.loads(line)
         if entry.get("mutating") and entry.get("role") != "engineer":
             raise mods["core"].MageError("writer", f"mutating round logged under role {entry.get('role')!r}")
+        entries.append(entry)
+    # I1: an empty session log can never back a real export -- refuse it,
+    # never admit the candidate as if its round had been logged.
+    if not entries:
+        raise mods["core"].MageError("writer", "session log is empty; no logged round backs this candidate")
+    # I1: a candidate claiming `completed` must be backed by a logged
+    # Engineer round that itself completed, whose script sha matches the
+    # candidate's own first script (round.tcl). Anything less is a
+    # best-effort/blocked claim dressed as a completed one -- refused.
+    if doc.get("outcome") == "completed":
+        last = entries[-1]
+        if last.get("role") != "engineer":
+            raise mods["core"].MageError("writer", f"completed candidate's last logged round is role {last.get('role')!r}")
+        if not last.get("completed"):
+            raise mods["core"].MageError(
+                "identity-mismatch", "candidate claims completed but the session log's last round did not complete"
+            )
+        if script_sha0 is not None and last.get("scriptSha256") != script_sha0:
+            raise mods["core"].MageError(
+                "identity-mismatch", "completed candidate's round.tcl sha does not match the logged round"
+            )
+
+
+def _candidate_unknowns(reason):
+    """Every candidate fact unknown except `mage_candidate_error_count` (0),
+    in the declared order -- a blocked candidate claims no metric (I1)."""
+    values = []
+    for type_name in CANDIDATE_EMITS:
+        if type_name == "mage_candidate_error_count":
+            values.append(_known(type_name, 0))
+        else:
+            values.append(_unknown(type_name, reason))
+    return values
 
 
 def _read_candidate(report_path, workspace, mods):
@@ -152,13 +235,23 @@ def _read_candidate(report_path, workspace, mods):
         raise core.MageError("schema", "; ".join(errors))
 
     files = doc["files"]
+    scripts = files.get("scripts", [])
+    _check_scripts(workspace, files, mods)
+    script_sha0 = scripts[0]["sha256"] if scripts else None
+    _check_session_log(workspace, doc, mods, script_sha0)
+
+    # I1: a candidate that did not complete claims no metric -- it is read
+    # as every-fact-unknown (error_count 0), never as a measured state that
+    # could become `best`. Its export/snapshot are not required to exist.
+    outcome = doc.get("outcome")
+    if outcome != "completed":
+        return _candidate_unknowns(f"candidate outcome is {outcome!r}; no metrics claimed")
+
     pla_ref, export_ref, snapshot_ref = files["pla"], files["export"], files["snapshot"]
     for ref in (pla_ref, export_ref, snapshot_ref):
         path = _resolve_ref(workspace, ref)
         if not path.is_file() or core.file_sha256(path) != ref["sha256"]:
             raise core.MageError("identity-mismatch", f"referenced file changed or missing: {path}")
-
-    _check_session_log(workspace, doc, mods)
 
     start = snapshot.load_snapshot(Path(workspace) / "state" / "start-snapshot.json")
     export_path = _resolve_ref(workspace, export_ref)
@@ -169,6 +262,10 @@ def _read_candidate(report_path, workspace, mods):
     )
     if rebuilt["snapshotSha256"] != doc["snapshotSha256"]:
         raise core.MageError("identity-mismatch", "rebuilt candidate snapshot does not match the declared snapshotSha256")
+
+    # C4: a start structure that vanished (neither placed nor dropped) is a
+    # fail-closed refusal, never a metric improvement.
+    _check_inventory(start, rebuilt, mods)
 
     case_readiness = core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")
     goal = case_readiness["goal"]
@@ -190,15 +287,22 @@ def _read_candidate(report_path, workspace, mods):
     coverage = records.ledger_covers(previous_decision.get("openRequests", []), doc.get("ledger", []))
     open_request_count = len(coverage["unanswered"])
 
+    target_reason = target.get("unknownReason") or "target distance is unknown"
+    order_reason = order.get("unknownReason") or "order deviation is unknown"
+
     values = [_known("mage_candidate_error_count", 0)]
     values.append(_known("mage_priority_unplaced_count", len(priority_unplaced)))
     values.append(_known("mage_dropped_count", drops["count"]))
     values.append(_known("mage_dropped_length_um", float(drops["lengthUm"])))
     values.append(_known("mage_dropped_ordinary_count", drops["ordinary"]["count"]))
     values.append(_known("mage_dropped_ordinary_length_um", float(drops["ordinary"]["lengthUm"])))
-    values.append(_known("mage_target_distance_max_um", float(target["maxUm"])))
-    values.append(_known("mage_target_over_limit_count", target["overLimitCount"]))
-    values.append(_known("mage_order_deviation_max", order["max"]))
+    # C4: an unbound target reads as unknown, never 0.
+    values.append(_known("mage_target_distance_max_um", float(target["maxUm"]))
+                  if target["maxUm"] is not None else _unknown("mage_target_distance_max_um", target_reason))
+    values.append(_known("mage_target_over_limit_count", target["overLimitCount"])
+                  if target["overLimitCount"] is not None else _unknown("mage_target_over_limit_count", target_reason))
+    values.append(_known("mage_order_deviation_max", order["max"])
+                  if order["max"] is not None else _unknown("mage_order_deviation_max", order_reason))
     for type_name, fact in _NATIVE_TYPE_FACT.items():
         count = native["byType"].get(type_name)
         values.append(_known(fact, count) if count is not None else _unknown(fact, f"no verify file for {type_name}"))
@@ -224,6 +328,22 @@ def _read_review(report_path, workspace, mods):
         raise core.MageError("identity-mismatch", "review is bound to a different snapshot than the current candidate")
 
     consumer_id, _, version = doc["consumerModel"].partition("@")
+    # I5: the review's own `consumer` must equal the consumer named by its
+    # `consumerModel`, and its round must equal the candidate's round.
+    if doc.get("consumer") != consumer_id:
+        raise core.MageError("identity-mismatch", "review consumer does not match its consumerModel")
+    if doc.get("identity", {}).get("round") != candidate.get("identity", {}).get("round"):
+        raise core.MageError("identity-mismatch", "review round does not match the current candidate's round")
+    # I5: every Request must reference a Finding in THIS review and name THIS
+    # review's consumer -- a Request can never answer another consumer's
+    # Finding, and a Ledger entry can never cross consumers.
+    finding_ids = {f.get("id") for f in doc.get("findings", [])}
+    for request in doc.get("requests", []):
+        if request.get("consumer") != doc.get("consumer"):
+            raise core.MageError("identity-mismatch", f"request {request.get('id')!r} consumer does not match the review")
+        if request.get("fromFinding") not in finding_ids:
+            raise core.MageError("identity-mismatch", f"request {request.get('id')!r} fromFinding names no Finding in this review")
+
     models_dir = Path(workspace) / "flow" / "consumer_models"
     model = consumers.load_consumer_model(models_dir, consumer_id)
     if model["version"] != version:
@@ -283,12 +403,21 @@ def main(argv=None):
         else:
             sys.stderr.write(json.dumps({"code": "missing-input", "detail": f"unknown reader kind: {kind!r}"}) + "\n")
             return 2
-    except Exception as exc:  # noqa: BLE001 — fail closed: never leave OUT unwritten or raise past main()
-        emits = CANDIDATE_EMITS if kind == "placement-candidate" else REVIEW_EMITS
-        error_fact = "mage_candidate_error_count" if kind == "placement-candidate" else "mage_review_error_count"
-        values = [_known(error_fact, 1)] + [
-            _unknown(t, f"{type(exc).__name__}: {exc}") for t in emits if t != error_fact
-        ]
+    except Exception as exc:  # noqa: BLE001
+        # C1: the Reader FAILS CLOSED -- any structural, identity,
+        # recompute-mismatch, inventory or session-log/writer refusal exits
+        # non-zero (never a `0` exit carrying `error_count: 1`), so the
+        # Harness marks the Reader job failed, turns it into a
+        # `reader-rejected` repair message to the same resident Task, and
+        # never admits an unverified delivery. Exactly the ATCS Reader's
+        # own posture (`read-atcs.py` re-raises). "Native type unknown" and
+        # "unbound target unknown" are NOT refusals -- they are admitted
+        # unknowns emitted with `error_count: 0` inside the read functions,
+        # never reaching here. `OUT` is left unwritten on refusal.
+        code = getattr(exc, "code", type(exc).__name__)
+        detail = getattr(exc, "detail", str(exc))
+        sys.stderr.write(json.dumps({"code": code, "detail": detail}, sort_keys=True) + "\n")
+        return 3
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(json.dumps({"values": values}, indent=2, sort_keys=True) + "\n", encoding="utf-8")

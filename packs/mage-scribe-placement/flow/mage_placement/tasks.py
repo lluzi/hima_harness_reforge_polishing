@@ -298,13 +298,24 @@ def decide_round(workspace, inputs):
     candidate_doc = dict(candidate_doc)
     candidate_doc["_readerValues"] = _reader_values(inputs["CANDIDATE"])
 
+    # C1: a review bound to the wrong snapshot -- or delivered into the wrong
+    # consumer slot -- is treated as "no review from that consumer this round"
+    # (recorded in the decision's `skippedReviews` with a reason) and the Run
+    # continues, rather than crashing the whole Run on one mis-bound review.
     reviews = []
+    skipped = []
     for role, input_name in _REVIEW_INPUT_NAMES.items():
         review_doc = _load_committed_document(
             workspace, inputs[input_name], f"state/round/review-{role}.json", "consumer-review",
         )
+        if review_doc.get("consumer") != role:
+            skipped.append({"consumer": review_doc.get("consumer"), "slot": role,
+                            "reason": f"review delivered in slot {role!r} is a {review_doc.get('consumer')!r} review"})
+            continue
         if review_doc["snapshotSha256"] != candidate_doc["snapshotSha256"]:
-            raise core.MageError("identity-mismatch", f"{role} review is bound to a different snapshot than the candidate")
+            skipped.append({"consumer": role, "slot": role,
+                            "reason": "review bound to a different snapshot than the candidate"})
+            continue
         reviews.append(review_doc)
 
     previous_decision = core.read_artifact(workspace / "state" / "round-decision.json", "round-decision")
@@ -314,7 +325,7 @@ def decide_round(workspace, inputs):
         "max_target_distance_um": inputs["MAX_TARGET_DISTANCE_UM"],
         "max_order_deviation": inputs["MAX_ORDER_DEVIATION"],
     }
-    decision = rounds.decide(workspace, round_no, goal, reviews, candidate_doc, previous_decision)
+    decision = rounds.decide(workspace, round_no, goal, reviews, candidate_doc, previous_decision, skipped_reviews=skipped)
 
     value = {
         "route": decision["route"], "nextRound": decision["nextRound"], "best": decision["best"],
@@ -329,6 +340,7 @@ def decide_round(workspace, inputs):
         # `evaluation["decisionRequests"]`, only `openRequestCount`/`stopReason`/`rules`).
         "decisionRequests": decision["decisionRequests"],
         "stopReason": decision["stopReason"],
+        "skippedReviews": decision.get("skippedReviews", []),
     }
     artifacts = [
         _artifact("round-decision", "state/round-decision.json"),

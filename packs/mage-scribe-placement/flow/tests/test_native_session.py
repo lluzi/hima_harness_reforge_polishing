@@ -225,6 +225,39 @@ class MageSessionTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "experiment")
         self.assertFalse(round_dir.exists())
 
+    def test_experiment_printing_mage_verify_marker_is_refused(self):
+        # I1: an experiment may not print a fake native-check marker.
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp-verify"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment('puts "MAGE_VERIFY_BEGIN SPACE"\n')
+        with self.assertRaises(core.MageError) as ctx:
+            s.run_round(str(round_dir), candidate_pla, role="engineer", experiment_tcl=experiment_src)
+        self.assertEqual(ctx.exception.code, "experiment")
+        self.assertFalse(round_dir.exists())
+
+    def test_experiment_printing_round_end_marker_is_refused(self):
+        s = self._session()
+        round_dir = Path(self.tmp.name) / "round-exp-end"
+        candidate_pla = self.case_info["files"]["startState"]
+        experiment_src = self._write_experiment('puts "MAGE_ROUND_END code 0"\n')
+        with self.assertRaises(core.MageError) as ctx:
+            s.run_round(str(round_dir), candidate_pla, role="engineer", experiment_tcl=experiment_src)
+        self.assertEqual(ctx.exception.code, "experiment")
+
+    def test_duplicate_verify_begin_block_reads_unknown(self):
+        # I1: a second MAGE_VERIFY_BEGIN SPACE (e.g. a planted fake 0 before
+        # MAGE's real count) makes that type unknown, never the fake value.
+        stdout = "\n".join([
+            "MAGE_VERIFY_BEGIN SPACE", "0 spacing overlapped instance(s)",
+            "MAGE_VERIFY_CODE SPACE 0", "MAGE_VERIFY_END SPACE",
+            "MAGE_VERIFY_BEGIN SPACE", "3 spacing overlapped instance(s)",
+            "MAGE_VERIFY_CODE SPACE 0", "MAGE_VERIFY_END SPACE",
+        ])
+        blocks = session.slice_verify(stdout)
+        self.assertIsNone(blocks["SPACE"]["instances"])
+        self.assertIsNone(blocks["SPACE"]["code"])
+
     def test_consumer_cannot_run_experiment(self):
         s = self._session()
         round_dir = Path(self.tmp.name) / "round-exp-consumer"

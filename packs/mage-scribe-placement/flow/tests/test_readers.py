@@ -71,6 +71,20 @@ def _run_reader(kind, report, out, workspace):
     return json.loads(Path(out).read_text(encoding="utf-8"))["values"]
 
 
+def _run_reader_refused(kind, report, out, workspace):
+    """C1: a fail-closed refusal exits non-zero and leaves OUT unwritten.
+
+    Returns the parsed `{"code","detail"}` the Reader printed to stderr.
+    """
+    result = subprocess.run(
+        [sys.executable, str(READER), kind, str(report), str(out), str(workspace)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0, f"reader should have refused but exited 0: {result.stdout}"
+    assert not Path(out).is_file(), "a refused Reader must not write OUT"
+    return json.loads(result.stderr.strip().splitlines()[-1])
+
+
 def _write_json(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj), encoding="utf-8")
@@ -162,10 +176,8 @@ class ReaderNegativeTests(unittest.TestCase):
         full = self.workspace / pla_ref_path
         full.write_text(full.read_text(encoding="utf-8") + "\n# tampered\n", encoding="utf-8")
 
-        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out1.json", self.workspace)
-        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
-        self.assertEqual(error["value"], 1)
-        _assert_all_unknown_except(values, "mage_candidate_error_count")
+        error = _run_reader_refused("placement-candidate", self.live_candidate_path, self.root / "out1.json", self.workspace)
+        self.assertEqual(error["code"], "identity-mismatch")
 
     def test_missing_verify_file_marks_that_type_and_total_unknown_but_not_an_error(self):
         # The Engineer legitimately never reported an OVERLAP check this
@@ -211,10 +223,8 @@ class ReaderNegativeTests(unittest.TestCase):
             handle.write(json.dumps({"roundDir": "x", "role": "metrology", "scriptSha256": "a" * 64,
                                       "mutating": True, "returncode": 0, "startedAt": "t", "endedAt": "t"}) + "\n")
 
-        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out4.json", self.workspace)
-        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
-        self.assertEqual(error["value"], 1)
-        _assert_all_unknown_except(values, "mage_candidate_error_count")
+        error = _run_reader_refused("placement-candidate", self.live_candidate_path, self.root / "out4.json", self.workspace)
+        self.assertIn(error["code"], ("writer", "identity-mismatch"))
 
 
     def test_missing_session_log_is_refused_not_skipped(self):
@@ -225,10 +235,8 @@ class ReaderNegativeTests(unittest.TestCase):
         doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
         self.live_candidate_path.write_text(json.dumps(doc), encoding="utf-8")
 
-        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out7.json", self.workspace)
-        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
-        self.assertEqual(error["value"], 1)
-        _assert_all_unknown_except(values, "mage_candidate_error_count")
+        error = _run_reader_refused("placement-candidate", self.live_candidate_path, self.root / "out7.json", self.workspace)
+        self.assertIn(error["code"], ("schema", "missing-input"))
 
     def test_session_log_outside_round_prefix_is_refused(self):
         """Even a genuine, correctly-hashed session log is refused when its
@@ -245,10 +253,8 @@ class ReaderNegativeTests(unittest.TestCase):
         doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
         self.live_candidate_path.write_text(json.dumps(doc), encoding="utf-8")
 
-        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out5.json", self.workspace)
-        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
-        self.assertEqual(error["value"], 1)
-        _assert_all_unknown_except(values, "mage_candidate_error_count")
+        error = _run_reader_refused("placement-candidate", self.live_candidate_path, self.root / "out5.json", self.workspace)
+        self.assertEqual(error["code"], "identity-mismatch")
 
     def test_session_log_inside_round_prefix_is_accepted(self):
         """The ordinary, untampered case: the session log sits at
@@ -259,6 +265,46 @@ class ReaderNegativeTests(unittest.TestCase):
         self.assertEqual(error["value"], 0)
         doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
         self.assertTrue(doc["files"]["sessionLog"]["path"].startswith("placement/round-01/"))
+
+    def test_tampered_script_is_refused(self):
+        # I1: the Reader re-hashes every files.scripts[] entry.
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        round_tcl = self.workspace / doc["files"]["scripts"][0]["path"]
+        round_tcl.write_text(round_tcl.read_text(encoding="utf-8") + "\n# tampered\n", encoding="utf-8")
+        error = _run_reader_refused("placement-candidate", self.live_candidate_path, self.root / "out8.json", self.workspace)
+        self.assertEqual(error["code"], "identity-mismatch")
+
+    def test_blocked_candidate_reads_all_unknown_without_error(self):
+        # I1: a candidate that did not complete claims no metric -- every
+        # fact unknown, error_count 0, never a measured state.
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        doc["outcome"] = "blocked"
+        doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
+        self.live_candidate_path.write_text(json.dumps(doc), encoding="utf-8")
+        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out9.json", self.workspace)
+        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
+        self.assertEqual(error["value"], 0)
+        _assert_all_unknown_except(values, "mage_candidate_error_count")
+
+    def test_inventory_refuses_a_vanished_structure(self):
+        # C4 (unit): a start Fit absent from the candidate export, neither
+        # placed nor dropped, is a fail-closed refusal.
+        module = _load_read_mage_module()
+        start = {
+            "fixed": [{"id": "F.F"}],
+            "fits": [{"id": "A.A_1"}, {"id": "B.B_1"}],
+            "pending": [],
+        }
+        candidate = {"fixed": [{"id": "F.F"}], "fits": [{"id": "A.A_1"}], "pending": []}
+        with self.assertRaises(core.MageError) as ctx:
+            module._check_inventory(start, candidate, {"core": core})
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_allows_a_dropped_structure(self):
+        module = _load_read_mage_module()
+        start = {"fixed": [], "fits": [{"id": "A.A_1"}], "pending": []}
+        candidate = {"fixed": [], "fits": [], "pending": [{"id": "A.A_1", "placedFlag": 0}]}
+        module._check_inventory(start, candidate, {"core": core})  # no raise: dropped counts
 
 
 def doc_sha(path):
