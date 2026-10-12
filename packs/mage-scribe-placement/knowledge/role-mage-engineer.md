@@ -45,6 +45,13 @@ the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Wo
   what you need, author an `--experiment` file (sourced after the replay; `exit`/`frbOpen` refused).
   Qualify any D-status command with one passing and one failing experiment first
   (`mage-capabilities.md`).
+- **Every delivered round must carry the full ordinary population.** Fill it — `--fill`, or an
+  `--experiment` that itself places or drops every ordinary structure. A round whose export omits
+  ordinary structures (e.g. a `--fill`-less replay, or an `attempt-K` retry that dropped the flag)
+  is refused by the Reader as an inventory failure (`ordinary population <n> != incumbent <m>`): it
+  is **not** accepted as "fewer drops". The required count is the incumbent's own ordinary
+  population, measured once by `measure-incumbent`; a priority-only export reads as zero drops and is
+  rejected, never kept as best.
 - When `state/case-readiness.json` names a `referenceMethod`, read it for the method's own
   compaction knobs — it is reference material, never replayed as a result.
 

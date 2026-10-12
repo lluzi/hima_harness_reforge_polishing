@@ -46,6 +46,13 @@ reproduce the native incumbent before you change anything. Parse the round into 
 `candidate --round <n> --round-dir <dir> --ledger <file> --out
 state/round/placement-candidate.json`.
 
+Every delivered round must carry the full ordinary population: fill it with `--fill`, or an
+`--experiment` that itself places or drops every ordinary structure. A round whose export omits
+ordinary structures is refused by the Reader as an inventory failure
+(`ordinary population <n> != incumbent <m>`), never accepted as fewer drops — the required count is
+the incumbent's own ordinary population, so a priority-only export reads as zero drops and is
+rejected rather than kept as best.
+
 **Diagnose** every drop or every target-distance/order deviation beyond the Goal limit with a
 named, deterministic cause before acting on it — never guess which fix to try first:
 

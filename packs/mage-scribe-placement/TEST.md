@@ -114,9 +114,13 @@ produced:
   and FAILs `no-open-requests`/`goalMet`; the review Reader refuses a review whose `consumer` ≠ its
   delivery slot — `test_rounds.py::test_review_bound_to_wrong_snapshot_is_skipped_and_recorded`
   (now asserts `continue`), `test_cli_tasks.py::test_review_delivered_into_wrong_slot_is_refused_by_reader`.
-- **N4 (round-scoped ids + Ledger validation):** Request ids are `R-<consumer>-<round>-<n>`;
-  `ledger-entry.request` is pattern-checked and every Ledger entry is schema-validated by the
-  candidate assembler and the Reader — `test_records.py`.
+- **N4 (round-scoped ids + Ledger validation):** Request ids are `R-<consumer>-<round>-<n>`, and
+  `ledger-entry.request` is pattern-checked — `test_records.py` covers the schema and id patterns.
+  The candidate assembler's and the Reader's own re-validation of every Ledger entry (a mis-scoped
+  Request id refused on each side) is covered by
+  `test_cli_tasks.py::test_candidate_refuses_an_invalid_ledger_entry` and
+  `::test_reader_refuses_an_invalid_ledger_entry` (added in fix round 3; `test_records.py` tests only
+  the schema, not the two route-side validation loops).
 - **N5 (dropped target excluded, not unknown):** a target whose Fit is a known drop is reported in
   `droppedTargets` and excluded, so one dropped priority mark keeps target/order facts known;
   unknown only when a Fit appears nowhere — `test_metrics.py::DroppedTargetKnownTest`.
@@ -126,6 +130,36 @@ Metrics remain self-reported by the candidate and Reader-recomputed only for the
 procedure (kit `tools/evaluate.py` + cold replay), not this suite. Residual R1: the session log now
 records `exportSha256`/`stdoutSha256` binding the export to the logged run; the Reader does not yet
 re-derive the verify headers from `out/stdout.log` (the Task 16 cold replay covers this).
+
+### Fix round 3 — third final-review round (N7 + I-1 + m1 tests, 2026-10-12)
+
+230 tests pass on both interpreters (Python 3.9.6 Mac `/usr/bin/python3` and the Linglong resident
+container Python 3.8.16). The 230 adds, on top of the 218:
+
+- **N7 (ordinary population conserved by count):** `measure-incumbent` records the incumbent export's
+  ordinary (non-group) population as `ordinaryPopulation` in `state/incumbent.json`;
+  `snapshot.check_inventory_conservation` gains a required `ordinary_population` argument, and both
+  the candidate assembler and the Reader read it from `state/incumbent.json` and refuse an export
+  whose ordinary Fits + ordinary drops do not equal it (`ordinary population <n> != incumbent <m>`),
+  never the start's rule-derived pending count. A no-fill export, an export missing one ordinary drop
+  and an export with one extra ordinary instance are refused; a filled export with the same
+  population is admitted — `test_readers.py::test_inventory_refuses_a_no_fill_export`,
+  `::test_inventory_refuses_an_export_missing_one_ordinary_drop`,
+  `::test_inventory_refuses_an_extra_ordinary_instance`,
+  `::test_inventory_admits_a_filled_export_with_the_same_population`, and end-to-end
+  `test_cli_tasks.py::test_no_fill_round_refused_for_missing_ordinary_population`.
+- **m1 test gaps closed:** the Reader's blocked-candidate review refusals (non-empty findings, wrong
+  candidateId, wrong round — `test_cli_tasks.py::test_blocked_review_refusals_by_reader`); the
+  `evaluate_placement` skipped-review FAIL (`EvaluatePlacementSkippedReviewTest`); the candidate and
+  Reader Ledger-validation loops (the two `*_invalid_ledger_entry` tests above); and the
+  `check_inventory_conservation` Fixed-set and Group-label clauses
+  (`test_readers.py::test_inventory_refuses_a_dropped_fixed_id`,
+  `::test_inventory_refuses_a_renamed_group_label`).
+
+The `candidate` assembler now evaluates the round's own `completed` flag before parsing the export or
+checking inventory, so a non-completed round yields a blocked candidate even if a partial export
+exists (m4). The I-1 regression (real-case counts re-entered `SPEC.md`/`snapshot.py`) is scrubbed to
+neutral wording.
 
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
