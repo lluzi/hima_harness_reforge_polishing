@@ -18,18 +18,21 @@ does the exact conversion); `write_pla()` can emit either representation.
       "units": "um" | "dbu", "dbuPerUm": int,
       "fixed":  [{"id", "base", "boxDbu": [l, b, r, t], "idTriple": [int, int, int]}],
       "groups": [{"groupItem", "pinstGroup", "targetPointDbu": [x, y], "vertSL": bool}],
-      "fits":   [{"id", "base", "boxDbu": [l, b, r, t], "extraRot", "postfix", "inGroup"}],
-      "drops":  [{"id", "base", "boxDbu": [l, b, r, t], "extraRot", "placedFlag": int,
+      "fits":   [{"id", "base", "inst", "boxDbu": [l, b, r, t], "extraRot", "postfix", "inGroup"}],
+      "drops":  [{"id", "base", "inst", "boxDbu": [l, b, r, t], "extraRot", "placedFlag": int,
                   "postfix", "inGroup"}],
     }
 
-For `fits`/`drops`, the vendor `inst` field is always `"<base>.<base>"`
-(confirmed against the P23 reference material: the fit instance name is
-always the base name repeated around the dot, only the `pinstFit` id token
-carries a distinguishing suffix) so it is reconstructed on write rather than
-stored a second time. For `fixed`, the vendor `inst` field can carry a
-corner suffix after the dot (e.g. `"P_X.P_X_TL"`) that is not derivable from
-`base`, so the full token is kept verbatim as `id`.
+For `fits`/`drops`, the vendor `inst` field is usually `"<base>.<base>"` but
+not always: Auto-Refine-placed instances can carry a suffixed `inst` token
+(confirmed against the P23 reference material, where a meaningful fraction
+of `fitinsts` rows in a post-refine PLA have an `inst` that is not simply
+`base` repeated around the dot). `inst` is therefore stored verbatim
+alongside `base` (the part before the first `.`) and written back out
+exactly as read — never reconstructed — so a read/write round trip never
+silently rewrites an Auto-Refine instance's identity. For `fixed`, the
+vendor `inst` field can likewise carry a corner suffix after the dot (e.g.
+`"P_X.P_X_TL"`); it is kept verbatim as `id`.
 """
 from __future__ import annotations
 
@@ -169,6 +172,7 @@ def _read_fits(text, units, dbu_per_um):
         entries.append({
             "id": pinst_fit,
             "base": inst.split(".", 1)[0],
+            "inst": inst,
             "boxDbu": [
                 _pos_value(l, units, dbu_per_um),
                 _pos_value(b, units, dbu_per_um),
@@ -194,6 +198,7 @@ def _read_drops(text, units, dbu_per_um):
         entries.append({
             "id": pinst_fit,
             "base": inst.split(".", 1)[0],
+            "inst": inst,
             "boxDbu": [
                 _pos_value(l, units, dbu_per_um),
                 _pos_value(b, units, dbu_per_um),
@@ -254,7 +259,7 @@ def _emit_fit_rows(fits, units, dbu_per_um):
     lines = []
     for entry in fits:
         l, b, r, t = (_emit_value(v, units, dbu_per_um) for v in entry["boxDbu"])
-        inst = f"{entry['base']}.{entry['base']}"
+        inst = entry["inst"]
         lines.append(
             f'\t{inst} {l} {b} {r} {t} {entry["extraRot"]} "{entry["postfix"]}" '
             f'{entry["id"]} "{entry["inGroup"]}"'
@@ -266,7 +271,7 @@ def _emit_drop_rows(drops, units, dbu_per_um):
     lines = []
     for entry in drops:
         l, b, r, t = (_emit_value(v, units, dbu_per_um) for v in entry["boxDbu"])
-        inst = f"{entry['base']}.{entry['base']}"
+        inst = entry["inst"]
         lines.append(
             f'\t{inst} {l} {b} {r} {t} {entry["extraRot"]} {entry["placedFlag"]} '
             f'"{entry["postfix"]}" {entry["id"]} "{entry["inGroup"]}"'

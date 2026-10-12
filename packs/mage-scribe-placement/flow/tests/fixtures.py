@@ -179,6 +179,10 @@ def _fitinsts_block(include_filler=False):
             [
                 'OVL_F.OVL_F 550 2 650 58 NULL "" OVL_F.OVL_F_1 ""',
                 'OVL_F.OVL_F 1550 2 1650 58 NULL "" OVL_F.OVL_F_2 ""',
+                # Auto-Refine-placed filler: the vendor `inst` token itself carries a
+                # suffix (not just the `pinstFit` id), exercising the case where `inst`
+                # is not simply `base` repeated around the dot.
+                'OVL_F.OVL_F_7 2000 2 2100 58 NULL "" OVL_F.OVL_F_7_1 ""',
             ]
         )
     body = "\n".join(f"\t{row}" for row in rows)

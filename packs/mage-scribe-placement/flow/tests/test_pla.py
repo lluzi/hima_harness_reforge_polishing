@@ -31,4 +31,16 @@ class PlaTest(unittest.TestCase):
         text = Path(self.case['files']['startState']).read_text()
         line = [l for l in text.splitlines() if 'OVL_A.OVL_A_1' in l][0]
         with self.assertRaises(core.MageError): pla.read_pla(text.replace(line, line + '\n' + line), 10000)
+    def test_inst_tokens_survive_read_write_round_trip_verbatim(self):
+        text = Path(self.case['files']['incumbentState']).read_text()
+        doc = pla.read_pla(text, 10000)
+        insts = {f['id']: f['inst'] for f in doc['fits']}
+        self.assertIn('OVL_F.OVL_F_7_1', insts); self.assertEqual(insts['OVL_F.OVL_F_7_1'], 'OVL_F.OVL_F_7')
+        again = pla.read_pla(pla.write_pla(doc, 10000), 10000)
+        self.assertEqual([f['inst'] for f in again['fits']], [f['inst'] for f in doc['fits']])
+        self.assertEqual([d['inst'] for d in again['drops']], [d['inst'] for d in doc['drops']])
+    def test_write_pla_emits_suffixed_inst_token_verbatim(self):
+        doc = pla.read_pla(Path(self.case['files']['incumbentState']).read_text(), 10000)
+        written = pla.write_pla(doc, 10000)
+        self.assertIn('OVL_F.OVL_F_7 2000', written)
 if __name__ == '__main__': unittest.main()
