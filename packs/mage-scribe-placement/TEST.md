@@ -59,6 +59,38 @@ the real DBU shape by round-tripping the µm candidate through `pla.read_pla`/`w
 updated and are covered by `test_pla.py`'s new native-DBU-shape tests and
 `test_native_session.py`'s updated export assertion. Export shape verified against a real native
 export on 2026-10-12.
+
+### Fix round 2 (final whole-branch review findings, 2026-10-12)
+
+208 tests pass after the final-review fixes (C1-C4, I1-I6), on both interpreters with no skips or
+`--pattern` narrowing — Python 3.9.6 (Mac, `/usr/bin/python3`):
+
+```
+Ran 208 tests in 10.944s
+
+OK
+```
+
+— and the identical `flow/tests/` tree on the Linglong resident container (rsync to
+`luzi@192.168.50.41:/home/luzi/tmp/mage-pack-flow-check/`, then `podman run ... edarunner:alma8`),
+Python 3.8.16:
+
+```
+Python 3.8.16
+Ran 208 tests in 17.252s
+
+OK
+```
+
+The 208 covers Fix round 1's 187 plus the final-review additions: per-consumer Finding/Request id
+patterns and cross-consumer Ledger coverage (`test_records.py`); round-limit-first routing, the
+first round counting as improved, ranking by Reader values, a blocked candidate never becoming
+best, and a mis-bound review being skipped (`test_rounds.py`); unbound-target and all-unbound-side
+unknowns (`test_metrics.py`); the fail-closed Reader, script re-hash, inventory conservation and
+blocked-candidate reading (`test_readers.py`); the experiment forbidden-marker and duplicate-verify
+refusals (`test_native_session.py`); the no-export blocked candidate and delivered-state
+`no-open-requests` (`test_cli_tasks.py`).
+
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values
