@@ -30,6 +30,7 @@
     "test/contract/andes-cell-fmax.test.ts",
     "test/contract/analog-ota-migrate.test.ts",
     "test/contract/analog-bandgap.test.ts",
+    "test/contract/analog-bandgap-pack.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/dc-reader.test.ts",
     "test/contract/delegation-input-native.host.test.ts",

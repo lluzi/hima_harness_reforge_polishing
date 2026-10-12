@@ -1,0 +1,6 @@
+id: mc-in-band
+version: "0.1.0"
+title: Mean plus and minus three sigma of VBG in Monte Carlo lies inside the reference band
+requires: [{ type: mc_in_band }]
+subject: { type: mc_in_band }
+predicate: { op: eq, threshold: 1, unit: count }

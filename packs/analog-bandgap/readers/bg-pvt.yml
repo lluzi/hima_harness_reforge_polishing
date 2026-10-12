@@ -1,0 +1,6 @@
+id: bg-pvt
+version: "0.1.0"
+file: tools/read-measure.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-bandgap-measure/1
+emits: [meets_spec, worst_margin_pct, vbg_min_v, vbg_max_v, iq_ua, isd_na, tc_ppm, pm_deg, tstart_us, psrr_db]

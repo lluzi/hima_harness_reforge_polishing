@@ -1,0 +1,6 @@
+id: signed-off
+version: "0.1.0"
+title: The bandgap meets every line at every corner, in Monte Carlo, with a clean layout and after layout
+requires: [{ type: signed_off }]
+subject: { type: signed_off }
+predicate: { op: eq, threshold: 1, unit: count }

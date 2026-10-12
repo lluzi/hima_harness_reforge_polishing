@@ -1,0 +1,6 @@
+id: bg-mc
+version: "0.1.0"
+file: tools/read-mc.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-bandgap-mc/1
+emits: [mc_in_band, mc_runs, mc_mean_v, mc_sigma_mv, mc_lo3_v, mc_hi3_v]

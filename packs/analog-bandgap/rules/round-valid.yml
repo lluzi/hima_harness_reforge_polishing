@@ -1,0 +1,6 @@
+id: round-valid
+version: "0.1.0"
+title: Every measurement this round is of the accepted design and the corners were measured
+requires: [{ type: round_valid }]
+subject: { type: round_valid }
+predicate: { op: eq, threshold: 1, unit: count }

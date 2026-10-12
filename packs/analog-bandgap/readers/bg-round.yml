@@ -1,0 +1,6 @@
+id: bg-round
+version: "0.1.0"
+file: tools/read-round.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-bandgap-round/1
+emits: [round_valid, signed_off, worst_margin_pct, best_margin_pct, round_improved]

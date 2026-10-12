@@ -1,0 +1,6 @@
+id: bg-design
+version: "0.1.0"
+file: tools/read-design.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-bandgap-design/1
+emits: [design_valid]

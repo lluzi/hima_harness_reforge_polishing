@@ -1,0 +1,21 @@
+# Ends at the Goal (the round is valid and signed off: every line at every corner, Monte Carlo in
+# band, a clean layout and every line after layout); otherwise another round with the lessons, up to
+# the round limit. Changes only the round counter: it cannot change the Goal, the template, a design
+# or a measured fact.
+id: bg-next
+version: "0.1.0"
+title: End when the bandgap is signed off, else run another design round
+parameter: { name: roundStep, unit: count }
+reads:
+  bestMargin: { type: best_margin_pct, unit: percent }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS, goal: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: PASS, goal: UNDETERMINED }
+    next: { roundRevision: roundStep }
+  - when: { constraint: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: UNDETERMINED }
+    next: { roundRevision: roundStep }

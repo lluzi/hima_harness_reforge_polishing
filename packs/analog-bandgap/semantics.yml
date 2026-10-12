@@ -1,0 +1,82 @@
+values:
+  tables_valid:
+    unit: count
+    description: "One when every characterized transistor length has a gm/Id curve and the PNP and the poly resistor are tabulated at every corner, from the simulator's sweeps."
+  tables_curves:
+    unit: count
+    description: "gm/Id curves built from the simulator's DC sweeps, both transistor types together."
+  design_valid:
+    unit: count
+    description: "One when the design agent's bandgap passed the Pack's check: the template's devices, sizes legal for the PDK, matched pairs and resistors, no performance field, sizes that follow the intent."
+  meets_spec:
+    unit: count
+    description: "One when every spec line meets the spec sheet at its worst process corner, temperature and supply; unknown when a line is unknown at some corner. A loop with no unity-gain crossing or a copy that did not start is a miss."
+  worst_margin_pct:
+    unit: percent
+    description: "The worst normalized margin over the spec lines at their worst corners (negative when a line is missed); VBG's margin is against its tolerance band."
+  vbg_min_v:
+    unit: v
+    description: "The lowest reference voltage over every process corner, temperature and supply, from the simulator's DC analysis."
+  vbg_max_v:
+    unit: v
+    description: "The highest reference voltage over every process corner, temperature and supply, from the simulator's DC analysis."
+  iq_ua:
+    unit: ua
+    description: "The highest supply current with the reference enabled, over every corner."
+  isd_na:
+    unit: na
+    description: "The highest supply current with the reference disabled at 27 C, over every process corner and supply."
+  tc_ppm:
+    unit: ppm
+    description: "The highest box-method temperature coefficient from -40 to 125 C, over every process corner and supply."
+  pm_deg:
+    unit: deg
+    description: "The lowest loop phase margin over every unity-gain crossing of every corner, from the simulator's loop-gain analysis."
+  tstart_us:
+    unit: us
+    description: "The longest start-up time over every corner and ramp: from the enable or supply ramp until the reference enters and stays within its settling band."
+  psrr_db:
+    unit: db
+    description: "The lowest power-supply rejection at 1 kHz over every corner, from the simulator's AC analysis."
+  mc_in_band:
+    unit: count
+    description: "One when mean plus and minus three sigma of the reference voltage in Monte Carlo with the PDK's mismatch models lies inside the tolerance band."
+  mc_runs:
+    unit: count
+    description: "Monte Carlo runs the simulator completed."
+  mc_mean_v:
+    unit: v
+    description: "Mean reference voltage over the Monte Carlo runs."
+  mc_sigma_mv:
+    unit: mv
+    description: "Standard deviation of the reference voltage over the Monte Carlo runs."
+  mc_lo3_v:
+    unit: v
+    description: "Mean minus three sigma of the reference voltage in Monte Carlo."
+  mc_hi3_v:
+    unit: v
+    description: "Mean plus three sigma of the reference voltage in Monte Carlo."
+  layout_clean:
+    unit: count
+    description: "One when the layout has zero errors on the PDK's Magic and KLayout DRC decks and both LVS checks (netgen and the PDK's KLayout deck) match the netlist the Pack simulates."
+  drc_errors:
+    unit: count
+    description: "DRC errors of the layout on both decks together (the PDK's own PNP cells and the die-level density rules excluded)."
+  lvs_match:
+    unit: count
+    description: "LVS checks that match, out of two (netgen and the PDK's KLayout deck)."
+  layout_area_um2:
+    unit: um2
+    description: "Bounding-box area of the laid-out cell."
+  round_valid:
+    unit: count
+    description: "One when every measurement this round is of the accepted design and conditions and the corners were measured."
+  signed_off:
+    unit: count
+    description: "One when the round meets every line at every corner, Monte Carlo is in band, the layout is clean and the extracted layout meets every line at every corner."
+  best_margin_pct:
+    unit: percent
+    description: "The best worst-margin of any valid round so far; -100 (every line fully missed) before the first valid round."
+  round_improved:
+    unit: count
+    description: "One when this round is valid and its worst margin beats every earlier valid round's."

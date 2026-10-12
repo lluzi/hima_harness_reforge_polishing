@@ -905,7 +905,9 @@ lv.max_hier()
 lv.set_config("background-color", "#ffffff")
 lv.set_config("grid-visible", "false")
 lv.set_config("text-visible", "true")
-box = lv.active_cellview().layout().top_cell().dbbox().enlarged(2.0, 2.0)
+cell_box = lv.active_cellview().layout().top_cell().dbbox()
+open(png + ".bbox", "w").write("%.3f %.3f\n" % (cell_box.width(), cell_box.height()))
+box = cell_box.enlarged(2.0, 2.0)
 lv.zoom_box(box)
 h = 2000
 lv.save_image_with_options(png, int(h * box.width() / box.height()), h, 0, 0, 0, box, False)
@@ -916,7 +918,9 @@ def step_render(out, name):
     (out / "render.py").write_text(RENDER)
     rc, secs = run(["klayout", "-zz", "-r", "render.py", "-rd", "gds=%s.gds" % name, "-rd", "png=%s.png" % name,
                     "-rd", "lyp=" + KLAYOUT_TECH + "/gf180mcu.lyp"], out, out / "klayout_render.log")
-    return dict(rc=rc, seconds=secs, png=(out / ("%s.png" % name)).is_file())
+    bbox = out / ("%s.png.bbox" % name)
+    size = [float(x) for x in bbox.read_text().split()] if bbox.is_file() else None
+    return dict(rc=rc, seconds=secs, png=(out / ("%s.png" % name)).is_file(), bboxUm=size)
 
 
 def cmd_all(netlist, name, out_dir, extra=None):

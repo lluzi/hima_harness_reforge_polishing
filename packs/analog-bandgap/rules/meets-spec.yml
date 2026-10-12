@@ -1,0 +1,6 @@
+id: meets-spec
+version: "0.1.0"
+title: Every spec line meets the spec sheet at its worst process corner, temperature and supply
+requires: [{ type: meets_spec }]
+subject: { type: meets_spec }
+predicate: { op: eq, threshold: 1, unit: count }

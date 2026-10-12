@@ -1,0 +1,6 @@
+id: layout-clean
+version: "0.1.0"
+title: Zero DRC errors on the PDK's Magic and KLayout decks and both LVS checks match
+requires: [{ type: layout_clean }]
+subject: { type: layout_clean }
+predicate: { op: eq, threshold: 1, unit: count }

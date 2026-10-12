@@ -1,0 +1,247 @@
+id: analog-bandgap
+version: "0.1.0"
+title: Bandgap reference sized from a spec sheet, verified at every corner, in Monte Carlo and after layout
+status: development
+minimumHarnessVersion: 0.2.2
+
+ontology:
+  aliases:
+    design: [bandgap design, sized bandgap, sizing agent design]
+    measureSchematic: [PVT results, corner results, schematic simulation]
+    mcRecord: [Monte Carlo, mismatch results]
+    layoutRecord: [layout checks, DRC and LVS, layout]
+    measurePost: [post-layout results, after layout]
+    roundRecord: [round result, sign-off]
+    tablesState: [design curves, device tables]
+
+budget:
+  timeBoxMs: 7200000
+  closingReserveMs: 600000
+  minimumGenerations: 1
+
+inputs:
+  - name: simulators
+    description: >-
+      The Site's SPICE simulators as name=command pairs, e.g. spectre=<wrapper>,ngspice=<wrapper>. The
+      PDK is measured with the first simulator its card lists that the Site has (Cadence Spectre on
+      gf180mcuD).
+  - name: pdkRoot
+    description: Read-only root of the installed PDKs, as the simulators see them (gf180mcuD, or the test PDK synth180).
+  - name: pdk
+    description: The PDK the bandgap is sized in (a card name in flow/pdks.json, e.g. gf180mcuD).
+  - name: layoutTool
+    description: >-
+      The Site's layout command for one SPICE subcircuit of the PDK's devices: `<tool> <netlist>
+      <subckt> <out>` draws it and writes DRC (both PDK decks), LVS (netgen and the PDK's KLayout deck),
+      extraction and a picture, with layout.json (hima-cell-layout/1).
+  - name: workspaceRoot
+    description: Campaign-private output root allowed by the Site Permit.
+
+outputs:
+  - name: inputsState
+    path: state/inputs.json
+    description: The simulator versions, the PDK card, the bandgap template and the model files' SHA-256.
+  - name: tablesState
+    path: state/tables.json
+    reader: bg-tables
+    description: >-
+      The device tables from the Site's simulator: gm/Id curves of both MOS types, the PNP's VBE against
+      current and temperature, the poly resistor's resistance against width and temperature, at every corner.
+  - name: lessons
+    path: state/lessons.json
+    description: Every round so far, with the worst corner of each spec line, Monte Carlo, layout and post-layout results.
+  - name: design
+    path: state/design.json
+    reader: bg-design
+    description: >-
+      The sizing agent's bandgap (hima-bandgap-design/1): every transistor's W and L, the PNP ratio,
+      the resistors, the capacitors, the bias current and the intent it was sized with. No performance numbers.
+  - name: measureSchematic
+    path: state/measure-schematic.json
+    reader: bg-pvt
+    description: The design simulated at every process corner, temperature and supply (hima-bandgap-measure/1).
+  - name: mcRecord
+    path: state/mc.json
+    reader: bg-mc
+    description: Monte Carlo of the design with the PDK's mismatch models (hima-bandgap-mc/1).
+  - name: layoutRecord
+    path: state/layout.json
+    reader: bg-layout
+    description: The layout of the design and its DRC, LVS and extraction (hima-bandgap-layout/1).
+  - name: measurePost
+    path: state/measure-post.json
+    reader: bg-post
+    description: The extracted layout simulated at every process corner, temperature and supply (hima-bandgap-measure/1).
+  - name: roundRecord
+    path: state/round.json
+    reader: bg-round
+    description: The round's sign-off record (hima-bandgap-round/1).
+
+environment:
+  wrappers: [/usr/bin/python3]
+
+workspace:
+  source: pack
+  copy: [bg_cli.py, ota_cli.py, pdks.json]
+
+tools:
+  - id: bind-inputs
+    file: flow/bg_cli.py
+    description: >-
+      Check that the Site's simulators answer and the PDK's model files are installed; choose the
+      measuring simulator; fix the bandgap template (Kuijk core, PMOS-input OTA, a mirror stage
+      driving the output device); write state/inputs.json with the versions and the model files' SHA-256.
+    inputs: [WORKSPACE, SIM, PDK_ROOT, PDK]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', bind, '${WORKSPACE}', '${SIM}', '${PDK_ROOT}', '${PDK}', kuijk-p5t-mirror]
+
+  - id: characterize
+    file: flow/bg_cli.py
+    description: >-
+      DC sweeps on the Site's simulator at every corner: gm/Id tables of both MOS types, the PNP's VBE
+      against current and temperature, the poly resistor against width and temperature; write the
+      tables and reports/characterize/r1/.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', characterize, '${WORKSPACE}']
+
+  - id: size-agent
+    file: flow/bg_cli.py
+    description: >-
+      You are the analog design engineer. Size the bandgap reference (the Campaign's template: a Kuijk
+      core with n:1 PNPs, a PMOS-input OTA, a mirror stage driving the output device, start-up and
+      enable) in the PDK so that it meets the spec sheet (the Goal) at every process corner,
+      temperature and supply, in Monte Carlo and after layout. Read inputsState, tablesState and
+      lessons. Write spec.json with the Goal's numbers {vbgV, vbgTolPct, iqMaxUa, isdMaxNa, tcMaxPpm,
+      pmMinDeg, tStartMaxUs, psrrMinDb} and run `python3 <campaign>/flow/bg_cli.py draft <campaign>
+      intent spec.json > intent.json` (the method's first cut), then `draft <campaign> size intent.json >
+      design.json`. Simulate your own draft with `OTA_SIM=ngspice OTA_PDK_ROOT=<your PDK root> python3
+      <campaign>/flow/bg_cli.py sim <campaign> design.json tt spec.json ./sim` (one corner; `pvt` for
+      all). When a line fails, change a choice in spec.json's `choices` (e.g. {"pair": {"gmId": 18}})
+      and draft again; when last round's Monte Carlo was outside the band, `draft <campaign> mc >
+      intent.json` applies the Pelgrom step; when last round's design met everything but a
+      post-layout line, adjust for the layout (lessons give the corner) and draft again; `draft
+      <campaign> keep` carries last round's design. Keep each try in reports/size-agent/r<k>/analysis.md
+      in your private workspace (k = rounds in lessons + 1; a repair writes analysis-2.md). Fill summary
+      and reason in your own words. Run `python3 <campaign>/flow/bg_cli.py precheck <campaign>
+      design.json` and fix every problem, then deliver the file as the result and your reports as
+      support. The Pack simulates, runs Monte Carlo and lays out your delivery itself. Never type a
+      size by hand when a draft gives it, never type a performance number, never change the Goal or
+      the template.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', design, '${WORKSPACE}']
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, tablesState, lessons]
+      knowledge: [bandgap-flow.md, bandgap-sizing-playbook.md, design-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/size-agent
+      produces: design
+
+  - id: simulate-pvt
+    file: flow/bg_cli.py
+    description: >-
+      Simulate the accepted design at every process corner, temperature (-40, 27, 125 C) and supply:
+      VBG, quiescent and shutdown current, box-method temperature coefficient, loop phase margin over
+      every crossing, start-up time for two enable ramps and from power-up, PSRR at 1 kHz; judge the
+      worst corner of each line against the spec sheet; write state/measure-schematic.json and
+      reports/simulate-pvt/r<k>/.
+    inputs: [WORKSPACE, VBG_V, VBG_TOL_PCT, IQ_MAX_UA, ISD_MAX_NA, TC_MAX_PPM, PM_MIN_DEG, TSTART_MAX_US, PSRR_MIN_DB]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', simulate, '${WORKSPACE}', schematic, '${VBG_V}', '${VBG_TOL_PCT}', '${IQ_MAX_UA}', '${ISD_MAX_NA}', '${TC_MAX_PPM}', '${PM_MIN_DEG}', '${TSTART_MAX_US}', '${PSRR_MIN_DB}']
+
+  - id: monte-carlo
+    file: flow/bg_cli.py
+    description: >-
+      Monte Carlo of the accepted design on Spectre with the PDK's mismatch models (tt, 27 C, the
+      higher supply): N runs, mean, sigma and mean +/- 3 sigma of VBG against the band, and the
+      Pelgrom estimate beside the measurement; write state/mc.json and reports/monte-carlo/r<k>/.
+    inputs: [WORKSPACE, MC_RUNS, VBG_V, VBG_TOL_PCT]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', mc, '${WORKSPACE}', '${MC_RUNS}', '${VBG_V}', '${VBG_TOL_PCT}']
+
+  - id: layout
+    file: flow/bg_cli.py
+    description: >-
+      Lay out the accepted design with the Site's layout tool and check it: DRC with the PDK's Magic
+      and KLayout decks, LVS with netgen and the PDK's KLayout deck against the netlist the Pack
+      simulates, extraction; write state/layout.json, state/cell-post.spice (the extracted cell) and
+      reports/layout/r<k>/ (layout.rpt, the picture).
+    inputs: [WORKSPACE, LAYOUT_TOOL, PEX]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', layout, '${WORKSPACE}', '${LAYOUT_TOOL}', '${PEX}']
+
+  - id: simulate-post
+    file: flow/bg_cli.py
+    description: >-
+      Simulate the extracted layout at every process corner, temperature and supply with the same
+      benches and judgement as the schematic; write state/measure-post.json and reports/simulate-post/r<k>/.
+    inputs: [WORKSPACE, VBG_V, VBG_TOL_PCT, IQ_MAX_UA, ISD_MAX_NA, TC_MAX_PPM, PM_MIN_DEG, TSTART_MAX_US, PSRR_MIN_DB]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', simulate, '${WORKSPACE}', post, '${VBG_V}', '${VBG_TOL_PCT}', '${IQ_MAX_UA}', '${ISD_MAX_NA}', '${TC_MAX_PPM}', '${PM_MIN_DEG}', '${TSTART_MAX_US}', '${PSRR_MIN_DB}']
+
+  - id: record-round
+    file: flow/bg_cli.py
+    description: >-
+      Deterministic round record from this round's measurements of the accepted design: each line met
+      or missed at its worst corner, Monte Carlo, layout and post-layout results, the worst margin,
+      the best so far and whether the round is signed off; append lessons; write derived/round-<k>.md,
+      derived/summary.md and reports/record-round/r<k>/. Uses no model text as a fact.
+    inputs: [WORKSPACE, VBG_V, VBG_TOL_PCT, IQ_MAX_UA, ISD_MAX_NA, TC_MAX_PPM, PM_MIN_DEG, TSTART_MAX_US, PSRR_MIN_DB]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', record, '${WORKSPACE}', '${VBG_V}', '${VBG_TOL_PCT}', '${IQ_MAX_UA}', '${ISD_MAX_NA}', '${TC_MAX_PPM}', '${PM_MIN_DEG}', '${TSTART_MAX_US}', '${PSRR_MIN_DB}']
+
+reports: { dir: reports }
+
+rules:
+  - tables-valid
+  - meets-spec
+  - mc-in-band
+  - layout-clean
+  - round-valid
+  - signed-off
+
+knowledge:
+  - file: bandgap-flow.md
+    purpose: The flow, every command, the round loop, what each step measures and what the results mean.
+  - file: bandgap-sizing-playbook.md
+    purpose: How the design agent turns a spec sheet into a bandgap with the method and closes it against the simulator, Monte Carlo and layout.
+  - file: design-format.md
+    purpose: The design file (hima-bandgap-design/1), the draft, sim and precheck commands, and the delivery.
+  - file: evidence-and-claims.md
+    purpose: What is a simulator result, what is a claim, and the claim boundary of this Pack.
+
+goal:
+  vbg_v: { type: number, unit: v, min: 0.5, max: 2, default: 1.2, precision: 3 }
+  vbg_tol_pct: { type: number, unit: percent, min: 0.1, max: 10, default: 2, precision: 2 }
+  max_iq_ua: { type: number, unit: ua, min: 0.5, max: 1000, default: 8, precision: 2 }
+  max_isd_na: { type: number, unit: na, min: 0.01, max: 10000, default: 2, precision: 2 }
+  max_tc_ppm: { type: number, unit: ppm, min: 1, max: 1000, default: 100, precision: 1 }
+  min_pm_deg: { type: number, unit: deg, min: 30, max: 90, default: 60, precision: 1 }
+  max_tstart_us: { type: number, unit: us, min: 1, max: 10000, default: 100, precision: 1 }
+  min_psrr_db: { type: number, unit: db, min: 0, max: 120, default: 40, precision: 1 }
+
+strategy:
+  mcRuns: { type: number, unit: count, min: 20, max: 1000, default: 100, precision: 0 }
+  pex: { type: choice, options: [c, rc], default: c }
+  roundRevision: { type: number, unit: count, min: 0, max: 2, default: 0, precision: 0 }
+
+words:
+  vbg_v: { label: "Reference voltage", unit: v }
+  vbg_tol_pct: { label: "Reference tolerance, +/- %", unit: percent }
+  max_iq_ua: { label: "Quiescent current, at most", unit: ua }
+  max_isd_na: { label: "Shutdown current at 27 C, at most", unit: na }
+  max_tc_ppm: { label: "Temperature coefficient, at most", unit: ppm }
+  min_pm_deg: { label: "Loop phase margin, at least", unit: deg }
+  max_tstart_us: { label: "Start-up time, at most", unit: us }
+  min_psrr_db: { label: "PSRR at 1 kHz, at least", unit: db }
+  mcRuns: { label: Monte Carlo runs, unit: count }
+  pex: { label: "Extraction for post-layout simulation (c or rc)" }
+  roundRevision: { label: another design round requested (0 before the first), unit: count }
+
+results:
+  headline: { type: worst_margin_pct, label: "Worst spec margin, signed-off stage", unit: "%", better: higher, digits: 1 }
+  columns:
+    - { label: Schematic, reader: bg-pvt }
+    - { label: After layout, reader: bg-post }
+  rows:
+    - { type: vbg_min_v, label: "VBG, lowest corner", unit: V, better: higher, digits: 4 }
+    - { type: vbg_max_v, label: "VBG, highest corner", unit: V, better: lower, digits: 4 }
+    - { type: iq_ua, label: "Quiescent current, worst", unit: uA, better: lower, digits: 2 }
+    - { type: isd_na, label: "Shutdown current, 27 C", unit: nA, better: lower, digits: 3 }
+    - { type: tc_ppm, label: "Temperature coefficient, worst", unit: ppm/C, better: lower, digits: 1 }
+    - { type: pm_deg, label: "Loop phase margin, worst", unit: deg, better: higher, digits: 1 }
+    - { type: tstart_us, label: "Start-up time, worst", unit: us, better: lower, digits: 1 }
+    - { type: psrr_db, label: "PSRR at 1 kHz, worst", unit: dB, better: higher, digits: 1 }

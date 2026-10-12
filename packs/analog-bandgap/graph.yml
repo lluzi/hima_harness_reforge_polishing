@@ -1,0 +1,251 @@
+# A judge takes its edge from its first rule and a chooser weighs the judge's first two (constraint,
+# goal): every check node judges one composite rule, and judge-round has round-valid then signed-off.
+#
+# Characterize the PDK once (device tables from the Site's simulator), then rounds of: the design
+# agent (resident) delivers a sized bandgap -> the Pack simulates it at every process corner,
+# temperature and supply -> the spec judge; when it meets every line, Monte Carlo with the PDK's
+# mismatch -> the band judge; when in band, the layout with the PDK's DRC and LVS -> the layout judge;
+# when clean, the extracted layout at every corner again -> the round record -> the sign-off judge ->
+# next round (owner decision) or goal met. The agent proposes sizes; only the Pack's steps measure,
+# and only Readers and judges decide. A failing stage skips the later stages that round: the record
+# says which line failed where, and the next round starts at the design agent with the lessons.
+id: analog-bandgap
+version: "0.1.0"
+entry: bind-inputs
+autopilot:
+  - from: [bind-inputs]
+    until: [size-agent, blocked]
+    label: Simulator and device tables
+    about: Checks the simulator and the PDK, then sweeps every device to build the design tables.
+  - from: [simulate-pvt]
+    until: [next-round, blocked]
+    label: Verify and lay out
+    about: Simulates the design at every corner, runs Monte Carlo, lays it out, checks DRC and LVS, simulates the extracted layout and records the round.
+
+nodes:
+  - id: bind-inputs
+    kind: act
+    label: Check simulator and PDK
+    about: Checks that the SPICE simulators answer and the PDK's device files are installed, and records their checksums.
+    parameters:
+      tool: bind-inputs
+      arguments:
+        SIM: { from: input, name: simulators }
+        PDK_ROOT: { from: input, name: pdkRoot }
+        PDK: { from: input, name: pdk }
+  - id: characterize
+    kind: act
+    label: Build device tables
+    about: Sweeps the transistors, the PNP and the poly resistor at every corner on the simulator.
+    parameters:
+      tool: characterize
+  - id: read-tables
+    kind: act
+    label: Read the device tables
+    about: Reads how many curves and corners the tables have.
+    parameters: { observes: tablesState }
+  - id: check-tables
+    kind: judge
+    label: Device tables complete
+    about: Every transistor length has a gm/Id curve and the PNP and resistor are tabulated at every corner.
+    parameters: { rules: [tables-valid] }
+  - id: size-agent
+    kind: act
+    label: Design agent
+    about: AI agent. Sizes the bandgap from the spec sheet with the Pack's method and its own simulations.
+    parameters:
+      tool: size-agent
+  - id: simulate-pvt
+    kind: act
+    label: Simulate every corner
+    about: Runs the bandgap benches at every process corner, temperature and supply; VBG, currents, TC, phase margin, start-up and PSRR.
+    parameters:
+      tool: simulate-pvt
+      arguments:
+        VBG_V: { from: goal, name: vbg_v }
+        VBG_TOL_PCT: { from: goal, name: vbg_tol_pct }
+        IQ_MAX_UA: { from: goal, name: max_iq_ua }
+        ISD_MAX_NA: { from: goal, name: max_isd_na }
+        TC_MAX_PPM: { from: goal, name: max_tc_ppm }
+        PM_MIN_DEG: { from: goal, name: min_pm_deg }
+        TSTART_MAX_US: { from: goal, name: max_tstart_us }
+        PSRR_MIN_DB: { from: goal, name: min_psrr_db }
+  - id: read-pvt
+    kind: act
+    label: Read the corner results
+    about: Reads the worst corner of every spec line.
+    parameters: { observes: measureSchematic }
+  - id: check-pvt
+    kind: judge
+    label: Meets the spec at every corner
+    about: The worst corner of every spec line meets the spec sheet.
+    parameters: { rules: [meets-spec] }
+  - id: monte-carlo
+    kind: act
+    label: Monte Carlo
+    about: Runs the design with the PDK's mismatch models and measures the spread of VBG.
+    parameters:
+      tool: monte-carlo
+      arguments:
+        MC_RUNS: { from: strategy, name: mcRuns }
+        VBG_V: { from: goal, name: vbg_v }
+        VBG_TOL_PCT: { from: goal, name: vbg_tol_pct }
+  - id: read-mc
+    kind: act
+    label: Read the Monte Carlo spread
+    about: Reads the mean, sigma and mean +/- 3 sigma of VBG.
+    parameters: { observes: mcRecord }
+  - id: check-mc
+    kind: judge
+    label: Spread inside the band
+    about: Mean +/- 3 sigma of VBG lies inside the reference tolerance band.
+    parameters: { rules: [mc-in-band] }
+  - id: layout
+    kind: act
+    label: Layout, DRC and LVS
+    about: Draws the sized bandgap, checks it with the PDK's DRC and LVS decks and extracts it.
+    parameters:
+      tool: layout
+      arguments:
+        LAYOUT_TOOL: { from: input, name: layoutTool }
+        PEX: { from: strategy, name: pex }
+  - id: read-layout
+    kind: act
+    label: Read the layout checks
+    about: Reads the DRC errors, both LVS results and the cell area.
+    parameters: { observes: layoutRecord }
+  - id: check-layout
+    kind: judge
+    label: Layout clean
+    about: Zero DRC errors on both decks and both LVS checks match.
+    parameters: { rules: [layout-clean] }
+  - id: simulate-post
+    kind: act
+    label: Simulate after layout
+    about: Runs the same benches on the extracted layout at every corner.
+    parameters:
+      tool: simulate-post
+      arguments:
+        VBG_V: { from: goal, name: vbg_v }
+        VBG_TOL_PCT: { from: goal, name: vbg_tol_pct }
+        IQ_MAX_UA: { from: goal, name: max_iq_ua }
+        ISD_MAX_NA: { from: goal, name: max_isd_na }
+        TC_MAX_PPM: { from: goal, name: max_tc_ppm }
+        PM_MIN_DEG: { from: goal, name: min_pm_deg }
+        TSTART_MAX_US: { from: goal, name: max_tstart_us }
+        PSRR_MIN_DB: { from: goal, name: min_psrr_db }
+  - id: read-post
+    kind: act
+    label: Read the post-layout results
+    about: Reads the worst corner of every spec line after layout.
+    parameters: { observes: measurePost }
+  - id: check-post
+    kind: judge
+    label: Meets the spec after layout
+    about: The extracted layout's worst corner of every spec line meets the spec sheet.
+    parameters: { rules: [meets-spec] }
+  - id: record-round
+    kind: act
+    label: Record the round
+    about: Writes the round's sign-off table, the worst margin and the lessons.
+    parameters:
+      tool: record-round
+      arguments:
+        VBG_V: { from: goal, name: vbg_v }
+        VBG_TOL_PCT: { from: goal, name: vbg_tol_pct }
+        IQ_MAX_UA: { from: goal, name: max_iq_ua }
+        ISD_MAX_NA: { from: goal, name: max_isd_na }
+        TC_MAX_PPM: { from: goal, name: max_tc_ppm }
+        PM_MIN_DEG: { from: goal, name: min_pm_deg }
+        TSTART_MAX_US: { from: goal, name: max_tstart_us }
+        PSRR_MIN_DB: { from: goal, name: min_psrr_db }
+  - id: read-round
+    kind: act
+    label: Read the round result
+    about: Reads the round's validity, sign-off and worst margin.
+    parameters: { observes: roundRecord }
+  - id: judge-round
+    kind: judge
+    label: Signed off
+    about: The round is a valid measurement of the accepted design and it is signed off at every stage.
+    parameters: { rules: [round-valid, signed-off] }
+  - id: next-round
+    kind: explore
+    label: Next round
+    about: Decide whether the bandgap is signed off, or the design agent gets another round with this round's results.
+    parameters:
+      chooser: bg-next
+      bind: { roundStep: 1 }
+      # Convergence would need three flat moves (four rounds); the round limit is three, so the limit
+      # alone ends a Campaign that has not met the Goal, never "converged" on the -100 floor.
+      converge: { read: bestMargin, band: 0.5, generations: 3, generationLimit: 3 }
+  - id: blocked
+    kind: wait
+    label: Needs a person
+    about: The simulator, the PDK or the layout tool is missing, or the device tables could not be built.
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: bind-inputs, to: characterize }
+  - { from: characterize, to: read-tables }
+  - { from: read-tables, to: check-tables }
+  - { from: check-tables, to: size-agent, outcome: PASS }
+  - { from: check-tables, to: blocked, outcome: FAIL }
+  - { from: check-tables, to: blocked, outcome: UNDETERMINED }
+  - { from: size-agent, to: simulate-pvt }
+  - { from: simulate-pvt, to: read-pvt }
+  - { from: read-pvt, to: check-pvt }
+  - { from: check-pvt, to: monte-carlo, outcome: PASS }
+  - { from: check-pvt, to: record-round, outcome: FAIL }
+  - { from: check-pvt, to: record-round, outcome: UNDETERMINED }
+  - { from: monte-carlo, to: read-mc }
+  - { from: read-mc, to: check-mc }
+  - { from: check-mc, to: layout, outcome: PASS }
+  - { from: check-mc, to: record-round, outcome: FAIL }
+  - { from: check-mc, to: record-round, outcome: UNDETERMINED }
+  - { from: layout, to: read-layout }
+  - { from: read-layout, to: check-layout }
+  - { from: check-layout, to: simulate-post, outcome: PASS }
+  - { from: check-layout, to: record-round, outcome: FAIL }
+  - { from: check-layout, to: record-round, outcome: UNDETERMINED }
+  - { from: simulate-post, to: read-post }
+  - { from: read-post, to: check-post }
+  - { from: check-post, to: record-round, outcome: PASS }
+  - { from: check-post, to: record-round, outcome: FAIL }
+  - { from: check-post, to: record-round, outcome: UNDETERMINED }
+  - { from: record-round, to: read-round }
+  - { from: read-round, to: judge-round }
+  - { from: judge-round, to: next-round, outcome: PASS }
+  - { from: judge-round, to: next-round, outcome: FAIL }
+  - { from: judge-round, to: next-round, outcome: UNDETERMINED }
+  - { from: next-round, to: size-agent, revisit: true }
+loops: {}
+
+# The strip: three stations in a phone-width pane.
+view:
+  stations:
+    - id: simulator
+      label: Simulator and judges
+      about: The Site's SPICE simulator measures every design at every corner; the spec sheet judges it.
+      row: 0
+      checklist:
+        - { label: Check simulator and PDK, nodes: [bind-inputs], rounds: first }
+        - { label: Build device tables, nodes: [characterize, read-tables, check-tables], rounds: first }
+        - { label: Simulate every corner, nodes: [simulate-pvt, read-pvt, check-pvt] }
+        - { label: Monte Carlo, nodes: [monte-carlo, read-mc, check-mc] }
+        - { label: Simulate after layout, nodes: [simulate-post, read-post, check-post] }
+        - { label: Record and sign off, nodes: [record-round, read-round, judge-round] }
+        - { label: Next round, nodes: [next-round] }
+    - id: design
+      label: Design agent
+      about: AI agent that sizes the bandgap.
+      row: 1
+      checklist:
+        - { label: Size the bandgap from the spec sheet, nodes: [size-agent] }
+    - id: layout
+      label: Layout and checks
+      about: The Site's layout tools draw the sized bandgap and check it with the PDK's DRC and LVS decks.
+      row: 1
+      checklist:
+        - { label: "Layout, DRC and LVS", nodes: [layout, read-layout, check-layout] }
+  hidden: [blocked]

@@ -1,0 +1,6 @@
+id: bg-layout
+version: "0.1.0"
+file: tools/read-layout.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-bandgap-layout/1
+emits: [layout_clean, drc_errors, lvs_match, layout_area_um2]

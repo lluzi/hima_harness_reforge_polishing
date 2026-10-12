@@ -1715,6 +1715,93 @@ def cmd_cell(ws, path=None):
     sys.stdout.write(cell_spice(card_of(inputs), design))
 
 
+# ---------------------------------------------------------------- layout, DRC, LVS, extraction
+
+LAYOUT_SCHEMA = "hima-bandgap-layout/1"
+PEX_KINDS = {"c": "_pex_c.spice", "rc": "_pex_rc.spice"}
+
+
+def layout_clean(facts):
+    """Every check of the Site's layout tool passed: zero DRC errors on both decks (outside the PDK's
+    own PNP cells for Magic; the die-level density rules are reported, not judged: a block meets them
+    with fill), and both LVS checks match."""
+    return (facts["drcMagic"] == 0 and facts["drcKlayout"] == 0 and facts["lvsNetgen"] is True and facts["lvsKlayout"] is True)
+
+
+def cmd_layout(ws, tool, pex):
+    """Lay out the accepted design with the Site's layout tool (`<tool> <netlist> bandgap_lb <out>`:
+    layout, DRC, LVS against this netlist, extraction, picture), keep its facts bound to the design,
+    and leave the extracted cell at state/cell-post.spice for the post-layout simulation."""
+    ws = Path(ws)
+    if pex not in PEX_KINDS:
+        raise ToolError("the extraction is c (capacitance) or rc (resistance and capacitance)")
+    inputs = load_inputs(ws)
+    design, facts = validate_design(ws)
+    k = facts["round"]
+    out_dir = report_dir(ws, "layout", k).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = ota.fresh_stem(out_dir, "bandgap", (".spice", "-layout"))
+    netlist = Path(str(stem) + ".spice")
+    write_text(netlist, cell_spice(card_of(inputs), design))
+    run_dir = Path(str(stem) + "-layout")
+    started = time.time()
+    ota.run([tool, str(netlist), "bandgap_lb", str(run_dir)], out_dir, Path(str(stem) + "-layout.log"), timeout_s=1800)
+    elapsed = round(time.time() - started, 1)
+    found = read_json(run_dir / "layout.json", "the layout tool's facts (%s)" % (run_dir / "layout.json"))
+    if found.get("schema") != "hima-cell-layout/1" or found.get("cell") != "bandgap_lb":
+        raise ToolError("%s is not the layout tool's record of bandgap_lb" % (run_dir / "layout.json"))
+    if Path(found.get("netlist", "")).resolve() != netlist.resolve():
+        raise ToolError("the layout tool laid out %s, not this design's netlist %s" % (found.get("netlist"), netlist))
+    extracted = run_dir / ("bandgap_lb" + PEX_KINDS[pex])
+    if not extracted.is_file():
+        raise ToolError("the layout tool wrote no %s extraction (%s)" % (pex, extracted))
+    gds = run_dir / "bandgap_lb.gds"
+    drc = found["klayoutDrc"]
+    bbox = found.get("render", {}).get("bboxUm")
+    rec = dict(schema=LAYOUT_SCHEMA, round=k, pdk=inputs["pdks"][PDK_KEY]["name"], designSha256=sha256_file(design_path(ws)),
+               netlistSha256=sha256_file(netlist), gdsSha256=sha256_file(gds) if gds.is_file() else None,
+               drcMagic=found["draw"]["magicDrcErrors"], drcMagicInPdkPnpCells=found["draw"].get("magicDrcInPdkPnpCells", 0),
+               drcKlayout=drc["block"]["total"], drcKlayoutByRule=drc["block"].get("byRule", {}),
+               densityRules=drc["density"]["total"], lvsNetgen=found["lvs"]["match"], lvsKlayout=found["klayoutLvs"]["match"],
+               pnpNameCorrections=found["lvs"].get("pnpNameCorrections", 0), referenceNotes=found["lvs"].get("referenceNotes", []),
+               pex=pex, pexCounts=found["pex"]["netlists"].get("bandgap_lb" + PEX_KINDS[pex]),
+               bboxUm=bbox, areaUm2=round(bbox[0] * bbox[1], 1) if bbox else None,
+               toolSeconds=found.get("totalSeconds"), elapsedS=elapsed, runDir=str(run_dir.relative_to(Path(ws).resolve())),
+               claimBoundary=CLAIM_BOUNDARY + " Layout checked with the open PDK's own DRC and LVS decks; die-level density "
+                                              "rules need fill and are reported, not judged.",
+               measuredAt=now())
+    rec["clean"] = layout_clean(rec)
+    post = state(ws, "cell-post.spice")
+    write_text(post, extracted.read_text())
+    rec["postCellSha256"] = sha256_file(post)
+    write_json(state(ws, "layout.json"), rec)
+    lines = ["# Layout of the bandgap in %s, round %d" % (rec["pdk"], k), "",
+             "| check | result |", "| --- | --- |",
+             "| Cell size | %s |" % ("%.1f x %.1f um (%.0f um2)" % (bbox[0], bbox[1], rec["areaUm2"]) if bbox else "n/a"),
+             "| DRC, Magic (PDK tech file) | %d errors (%d inside the PDK's own PNP cells) |" % (rec["drcMagic"], rec["drcMagicInPdkPnpCells"]),
+             "| DRC, KLayout (PDK deck, block) | %d errors |" % rec["drcKlayout"],
+             "| Density rules (die level, need fill) | %d reported |" % rec["densityRules"],
+             "| LVS, netgen | %s |" % ("match" if rec["lvsNetgen"] else "MISMATCH"),
+             "| LVS, KLayout (PDK deck) | %s |" % ("match" if rec["lvsKlayout"] else "MISMATCH"),
+             "| Extraction for post-layout simulation | %s: %s |" % (pex, json.dumps(rec["pexCounts"], sort_keys=True)),
+             "| Verdict | %s |" % ("clean" if rec["clean"] else "NOT clean"), ""]
+    if rec["referenceNotes"]:
+        lines += ["LVS reference notes: " + "; ".join(rec["referenceNotes"]), ""]
+    lines += [rec["claimBoundary"], ""]
+    write_text(out_dir / "layout.rpt", "\n".join(lines))
+    png = run_dir / "bandgap_lb.png"
+    if png.is_file():
+        (out_dir / "bandgap-layout.png").write_bytes(png.read_bytes())
+    ota.write_chart(ws, "layout", k, "checks", ota.chart(
+        "Layout checks of the sized bandgap", ["DRC errors (Magic)", "DRC errors (KLayout)", "LVS netgen", "LVS KLayout", "Area"],
+        [("Layout", [rec["drcMagic"], rec["drcKlayout"], 1 if rec["lvsNetgen"] else 0, 1 if rec["lvsKlayout"] else 0, rec["areaUm2"]], "measured")],
+        "Magic, KLayout and netgen with the %s decks (layout)" % rec["pdk"], [("count", 0, "lower"), ("count", 0, "lower"), ("match", 0, "higher"),
+                                                                              ("match", 0, "higher"), ("um2", 0, "lower")],
+        subtitle="clean" if rec["clean"] else "not clean"))
+    print("layout round %d: DRC %d/%d, LVS netgen %s, KLayout %s, %s; %s extraction left for post-layout simulation (%.1f s)" % (
+        k, rec["drcMagic"], rec["drcKlayout"], rec["lvsNetgen"], rec["lvsKlayout"], "clean" if rec["clean"] else "NOT clean", pex, elapsed))
+
+
 # ---------------------------------------------------------------- the round record
 
 def cmd_record(ws, *spec_args):
@@ -1746,17 +1833,45 @@ def cmd_record(ws, *spec_args):
     margin = None if pvt is None else margins_pct(pvt["worst"], spec)
     pvt_ok = met is not None and all(v is True for v in met.values())
     mc_ok = None if mc is None else mc["stats"]["inBand"]
+    lay_path = state(ws, "layout.json")
+    lay = read_json(lay_path) if lay_path.is_file() else None
+    if lay is not None and (lay.get("round") != k or lay.get("designSha256") != sha):
+        lay = None
     post = found.get("measure-post")
+    if post is not None and (lay is None or post.get("cellSha256") != lay.get("postCellSha256")):
+        problems.append("the post-layout result is not of this round's extracted layout")
+        post = None
+    if post is not None and {kk: post["spec"][kk] for kk in SPEC_KEYS} != spec:
+        problems.append("the post-layout measurement was judged against another spec sheet")
+        post = None
     post_ok = None if post is None else post.get("meetsSpec")
-    valid = not problems and pvt_ok and mc_ok is True and post_ok is not False
+    lay_ok = None if lay is None else lay["clean"]
+    post_margin = None if post is None else margins_pct(post["worst"], spec)
+    # The round is a valid result when every measurement in it is of the accepted design and the PVT
+    # set was measured; it is signed off when the schematic meets every line at every corner, Monte
+    # Carlo is in band, the layout is clean, and the extracted layout meets every line at every corner.
+    valid = not problems and pvt is not None
+    signoff = bool(valid and pvt_ok and mc_ok is True and lay_ok is True and post_ok is True)
     worst_margin = None if margin is None or None in margin.values() else min(margin.values())
+    post_worst = None if post_margin is None or None in post_margin.values() else min(post_margin.values())
     lessons = read_json(state(ws, "lessons.json"))
-    entry = dict(round=k, roundValid=bool(valid), problems=problems, pvtMet=met, pvtMarginPct=margin, worstMarginPct=worst_margin,
+    earlier = [r["worstMarginPct"] for r in lessons["rounds"] if r.get("roundValid") and r.get("worstMarginPct") is not None]
+    stage_margin = post_worst if post_worst is not None else worst_margin
+    best = max(earlier + ([stage_margin] if valid and stage_margin is not None else []), default=None)
+    entry = dict(round=k, roundValid=bool(valid), signedOff=signoff, problems=problems, pvtMet=met, pvtMarginPct=margin,
+                 worstMarginPct=stage_margin if valid else None, schematicMarginPct=worst_margin, postMarginPct=post_worst,
+                 bestMarginPct=-100.0 if best is None else best,
+                 roundImproved=bool(valid and stage_margin is not None and all(stage_margin > e for e in earlier)),
+                 layout=None if lay is None else dict(clean=lay["clean"], drcMagic=lay["drcMagic"], drcKlayout=lay["drcKlayout"],
+                                                     lvsNetgen=lay["lvsNetgen"], lvsKlayout=lay["lvsKlayout"], areaUm2=lay["areaUm2"]),
+                 postWorst=None if post is None else {x: post["worst"][x]["value"] for x, *_ in LINES},
+                 postWhere=None if post is None else {x: post["worst"][x]["where"] for x, *_ in LINES},
+                 postLineMet=None if post is None else line_met(post["worst"], spec),
                  failing=None if met is None else [x for x, ok in met.items() if ok is not True] + ([] if mc_ok is True else ["mc"]),
                  pvtWorst=None if pvt is None else {x: pvt["worst"][x]["value"] for x, *_ in LINES},
                  pvtWhere=None if pvt is None else {x: pvt["worst"][x]["where"] for x, *_ in LINES},
                  mc=None if mc is None else dict(n=mc["stats"]["n"], meanV=mc["stats"]["meanV"], sigmaMv=1e3 * mc["stats"]["sigmaV"], inBand=mc_ok),
-                 postMet=post_ok, intent=(read_json(design_path(ws)).get("intent") if sha else None))
+                 postMet=post_ok, layoutClean=lay_ok, intent=(read_json(design_path(ws)).get("intent") if sha else None))
     lessons["rounds"].append(entry)
     record = dict(schema=ROUND_SCHEMA, spec=spec, claimBoundary=CLAIM_BOUNDARY, recordedAt=now(), **entry)
     out = report_dir(ws, "record-round", k)
@@ -1766,9 +1881,11 @@ def cmd_record(ws, *spec_args):
     write_summary(ws, inputs, lessons, spec)
     write_json(state(ws, "round.json"), record)
     write_json(state(ws, "lessons.json"), lessons)
-    print("round %d recorded: valid %s; failing lines %s; Monte Carlo %s" % (
-        k, valid, "not measured" if entry["failing"] is None else (", ".join(entry["failing"]) or "none"),
-        "not run" if mc is None else ("in band" if mc_ok else "outside the band")))
+    print("round %d recorded: valid %s, signed off %s; failing lines %s; Monte Carlo %s; layout %s; after layout %s" % (
+        k, valid, signoff, "not measured" if entry["failing"] is None else (", ".join(entry["failing"]) or "none"),
+        "not run" if mc is None else ("in band" if mc_ok else "outside the band"),
+        "not run" if lay_ok is None else ("clean" if lay_ok else "NOT clean"),
+        "not run" if post_ok is None else ("meets the spec" if post_ok else "misses the spec")))
 
 
 def round_md(r, inputs):
@@ -1782,7 +1899,19 @@ def round_md(r, inputs):
     lines.append("| Monte Carlo (mean +/- 3 sigma in band) | %s | %s | %s |" % (
         "n/a" if mc is None else "%.4f V, sigma %.3f mV" % (mc["meanV"], mc["sigmaMv"]), "tt 27 C" if mc else "not run",
         "unknown" if mc is None else {True: "yes", False: "no"}[mc["inBand"]]))
-    lines += ["", "Round valid: %s." % ("yes" if r["roundValid"] else "no")]
+    lay = r.get("layout")
+    lines.append("| Layout (DRC Magic/KLayout, LVS netgen/KLayout) | %s | %s | %s |" % (
+        "n/a" if lay is None else "%d / %d errors, %s / %s" % (lay["drcMagic"], lay["drcKlayout"], "match" if lay["lvsNetgen"] else "mismatch",
+                                                               "match" if lay["lvsKlayout"] else "mismatch"),
+        "not run" if lay is None else ("%.0f um2" % lay["areaUm2"] if lay.get("areaUm2") else "GF180MCU decks"),
+        "unknown" if lay is None else {True: "yes", False: "no"}[lay["clean"]]))
+    if r.get("postWorst"):
+        lines += ["", "After layout (extracted), worst over the same corners:", "", "| line | worst | where | met |", "| --- | --- | --- | --- |"]
+        for key, lab, unit, digits, _b in LINES:
+            lines.append("| %s | %s %s | %s | %s |" % (lab, fmt(r["postWorst"].get(key), "%%.%df" % digits), unit, r["postWhere"].get(key) or "n/a",
+                                                       {True: "yes", False: "no", None: "unknown"}[(r.get("postLineMet") or {}).get(key)]))
+    lines += ["", "Round valid: %s. Signed off (every line at every corner, Monte Carlo, clean layout, every line after layout): %s." % (
+        "yes" if r["roundValid"] else "no", "yes" if r.get("signedOff") else "no")]
     if r["problems"]:
         lines += ["", "Problems: " + "; ".join(r["problems"])]
     lines += ["", CLAIM_BOUNDARY, ""]
@@ -1791,11 +1920,18 @@ def round_md(r, inputs):
 
 def write_summary(ws, inputs, lessons, spec):
     lines = ["# Bandgap in %s: summary" % inputs["pdks"][PDK_KEY]["name"], "",
-             "| round | failing lines | worst margin (%) | Monte Carlo | valid |", "| --- | --- | --- | --- | --- |"]
+             "| round | failing lines (schematic) | Monte Carlo | layout | after layout | worst margin (%) | valid | signed off |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in lessons["rounds"]:
         mc = r.get("mc")
-        lines.append("| %d | %s | %s | %s | %s |" % (r["round"], "not measured" if r["failing"] is None else (", ".join(r["failing"]) or "none"), fmt(r["worstMarginPct"]),
-                                                     "not run" if mc is None else ("in band" if mc["inBand"] else "outside"), "yes" if r["roundValid"] else "no"))
+        lay = r.get("layoutClean")
+        post = r.get("postMet")
+        lines.append("| %d | %s | %s | %s | %s | %s | %s | %s |" % (
+            r["round"], "not measured" if r["failing"] is None else (", ".join(x for x in r["failing"] if x != "mc") or "none"),
+            "not run" if mc is None else ("in band" if mc["inBand"] else "outside"),
+            "not run" if lay is None else ("clean" if lay else "not clean"),
+            "not run" if post is None else ("meets" if post else "misses"),
+            fmt(r["worstMarginPct"]), "yes" if r["roundValid"] else "no", "yes" if r.get("signedOff") else "no"))
     lines += ["", CLAIM_BOUNDARY, ""]
     write_text(Path(ws) / "derived" / "summary.md", "\n".join(lines))
 
@@ -1806,6 +1942,7 @@ COMMANDS = {
     "bind": (cmd_bind, (3, 4)), "characterize": (cmd_characterize, (0,)), "design": (cmd_design, (0,)),
     "draft": (cmd_draft, (1, 2)), "precheck": (cmd_precheck, (1, 2)), "sim": (cmd_sim, (3, 4)),
     "simulate": (cmd_simulate, (9,)), "mc": (cmd_mc, (3, 4)), "record": (cmd_record, (8,)), "cell": (cmd_cell, (0, 1)),
+    "layout": (cmd_layout, (2,)),
 }
 
 

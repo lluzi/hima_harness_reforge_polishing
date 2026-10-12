@@ -1,0 +1,6 @@
+id: tables-valid
+version: "0.1.0"
+title: Every transistor length has a gm/Id curve and the PNP and resistor are tabulated at every corner
+requires: [{ type: tables_valid }]
+subject: { type: tables_valid }
+predicate: { op: eq, threshold: 1, unit: count }
