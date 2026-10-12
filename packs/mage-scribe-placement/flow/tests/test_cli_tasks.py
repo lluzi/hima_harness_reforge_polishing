@@ -427,11 +427,19 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(decisions[4]["route"], "stop")
         self.assertEqual(decisions[4]["stopReason"], "no improvement for two consecutive rounds")
 
+        # decisions[4]["decisionRequestCount"] >= 1 (asserted above via the round loop) is only a
+        # count; `evaluate-placement`/`deliver` must carry the actual Decision Request documents
+        # through to the final report (its own `DECISION` input is this committed value, never the
+        # on-disk `state/round-decision.json`), so a Host-level reader of the delivered report can
+        # still see what the open conflict actually was.
+        self.assertGreaterEqual(len(decisions[4]["decisionRequests"]), 1)
+
         evaluation = self._task("evaluate-placement", {
             "DECISION": decisions[4], "INCUMBENT": incumbent_value, **goal,
         })
         self.assertFalse(evaluation["goalMet"])
         self.assertEqual(evaluation["rules"]["drops-within-goal"], "FAIL")
+        self.assertEqual(evaluation["decisionRequests"], decisions[4]["decisionRequests"])
 
     def test_tampered_review_findings_refused_by_reader(self):
         """A review whose findings were edited after the evaluator receipt

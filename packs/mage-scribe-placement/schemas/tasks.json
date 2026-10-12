@@ -137,6 +137,7 @@
         "best": {"type": ["object", "null"]},
         "openRequestCount": {"type": "integer", "minimum": 0},
         "decisionRequestCount": {"type": "integer", "minimum": 0},
+        "decisionRequests": {"type": "array"},
         "stopReason": {"type": "string"}
       }
     },

@@ -310,6 +310,15 @@ def decide_round(workspace, inputs):
     value = {
         "route": decision["route"], "nextRound": decision["nextRound"], "best": decision["best"],
         "openRequestCount": len(decision["openRequests"]), "decisionRequestCount": len(decision["decisionRequests"]),
+        # `evaluate_placement` reads this round's actual Decision Requests from its own `DECISION`
+        # input (this committed value, not the on-disk `state/round-decision.json` document) via
+        # `decision.get("decisionRequests", [])`; without this field that lookup always silently
+        # defaulted to an empty list, so the final `deliver` report never carried a real Decision
+        # Request even when one was genuinely open (caught by Task 10's own L2 dry route, which
+        # drives `evaluate-placement` from the repeat's own committed output exactly as the real
+        # Host does -- `flow/tests/test_cli_tasks.py` never catches this because it never asserts
+        # `evaluation["decisionRequests"]`, only `openRequestCount`/`stopReason`/`rules`).
+        "decisionRequests": decision["decisionRequests"],
         "stopReason": decision["stopReason"],
     }
     artifacts = [
