@@ -995,3 +995,236 @@ Requires `HIMA_POSTGRES_RUNTIME` (see `test/contract/support/dbos-process.ts`). 
 - **Spec coverage:** §4 architecture → Task 7 graph; §5 files → Tasks 1–8; §6 roles/protocol → Tasks 7 (decide-round), 8 (knowledge), 10 (dry route); §7 mechanism → Tasks 3, 6; §8 consumers → Task 5; §9 records/Readers/rules → Tasks 5, 7; §10 testing → every task + Tasks 9, 10, 11; §11 cases → Task 11 (offline) with S2 noted; §12 decisions → Global Constraints.
 - **Placeholder scan:** none of "TBD/TODO/similar to"; descriptive steps carry code or exact command forms.
 - **Type consistency:** `LaneItem(id, length, gap_after, window, current, movable, cluster, priority?, intruder?)`; snapshot keys `fits/pending/targets/ruleFacts/lanes`; CLI subcommand names identical in Tasks 7, 8, 10; emits lists identical in Task 7 and Task 9.
+
+---
+
+# Amendment 2026-10-12 — live route against real MAGE (Tasks 13–16)
+
+**Why:** the user's handoff kit (`/Users/lluzi/code/mage_smart_conflict_resolver/benchmark/handoff/p23-pack-commercial-value-20261012`, document "How to Prove the Commercial Value of HimaHarness + mage-scribe-placement Pack") pins a fresh native MAGE baseline — P23 full Frame, priority-only start `pre_place_all.pla`, ordinary fill without compaction → **27 ordinary drops, 135,113 µm**, 225 priority Fits, 292 ordinary Fits, 10 Fixed — and a customer Tcl reference of **18 ordinary drops, 52,453 µm** (+ 1 grouped drop 616 µm). The Pack must reproduce the baseline natively through its own round, then beat it with the resident Engineer and consumer agents, on real MAGE and real OpenCode on Linglong.
+
+**Facts established before this amendment (verified 2026-10-12, see `.superpowers/sdd/progress.md`):**
+
+- The Pack's `smVerify -checkType …` native checks were **never run on real MAGE** (the research probe `mage_assist/native.py` and the kit's `tools/full_flow.tcl` both ran `frbCheckOverlap`, `frbCheckSpace`, `frbCheckBoundary`). Real output (kit `evidence/fresh-replay/mage.log`): plain call prints `No overlap found!` / `All marks are inside frame box!` / `Spacing overlap found!`; `<cmd> -print` prints `<N> overlapped instance(s)` / `<N> spacing overlapped instance(s)` / `<N> outside-frame-boundary instance(s)` followed by a table (`Inst  NumOLap  Dist X  Dist Y  Pos  SpaceOLap`, a dashes line, one instance line, `--MCHIP_…` continuation lines).
+- The proven native route (kit `tools/full_flow.tcl`, byte-identical results on two runs): `frbOpen <frb>; frbSetCur frame; smPFlow -updateUsedFiles; frbSetup -obj BuildFrame; smPFlow -clear; smPFlow -bindBlocks; smPFlow -buildFrame frame -mchip mainchip -mblock mainchip; smPFlow -sortFix; smPFlow -sortFit; source <pla>; smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum 7; smPFlow -setAutoRefineSimpleConverge -arSLType HORZ -arConvergeNum 5; g_params -set {smPFlow::s_ARTestConvergePrplaced false}; smPFlow -autoRefine; smPInstMgr -saveMark …; smPFlow -saveSummary …`. It does **not** use `smPFlow -setAutoRefine -arEnabled 0` (the kit warns that editing Auto Refine settings can clear placed Fits while Group metadata remains). MAGE runs ~11 s for the fill. Startup reports `No such tech: a` (known, not replaced). `smPFlow -loadLayouts` fails on 8 exact block mismatches (D01–D05, MPAD01, P03, P07; diagnostic, preserved).
+- Linglong resident container (`localhost/edarunner:alma8`, image `7d651dc8…`): `ldd exe/mage-ffb` resolves (0 not found), `xvfb-run -a` works in a `--read-only --tmpfs /tmp` container, `python3` after `EDA_INIT` is **Python 3.8.16** (Calibre's), the host `python3` is 3.12. The Pack suite passes on 3.12; on 3.8 exactly one call fails: `Path.is_relative_to` in `tasks.py:_collect_round_files`.
+- `/data/eda/env/empyrean-license-mode` reads `old`; the container entry guard `test "$EMPYREAN_LICENSE_MODE" = old` passes. `empyrean-2025-env.sh` exports `EMPYREAN_LICENSE_FILE="${EMPYREAN_LICENSE_FILE_OVERRIDE:-<port>@localhost}"`, so the capability may set `EMPYREAN_LICENSE_FILE_OVERRIDE=59011@localhost` for the MAGE window. The window helper (`run_mage_window.sh --maintenance-approved`, user-run with sudo) serves `59011@localhost` for at most 810 s per invocation.
+- Dry route (Task 10): a Site with `parallelJobs: 1` stalls every resident task at release (the retained engineering job holds the one slot while result collection launches a second job); `parallelJobs: 2` is required. The live Site must carry `parallelJobs: 2`.
+- The kit's `tools/core.py`/`evaluate.py` is the independent evaluator (ordinary vs grouped drop split, 319-instance ordinary inventory, 225 priority targets, Fixed preservation, known footprints, boundary); the Pack's own numbers must be reconcilable with it, never substituted for it.
+
+## Amended Global Constraints
+
+- Pack version **0.2.0** (`contract.yml` and `graph.yml` together). `minimumHarnessVersion` stays `0.3.0`.
+- **Python 3.8-compatible** standard library (resident subcommands run inside the Linglong container on Python 3.8.16; program tasks run on the host's 3.12). Forbidden: `Path.is_relative_to`, `str.removeprefix/removesuffix`, `dict | dict`, `math.lcm`, `functools.cache`, `list[str]` annotations evaluated at runtime (keep `from __future__ import annotations`), `zoneinfo`.
+- Native check set is exactly three types, in this order: `OVERLAP` (`frbCheckOverlap`), `SPACE` (`frbCheckSpace`), `BOUNDARY` (`frbCheckBoundary`). A type's row count is MAGE's own `<N> … instance(s)` count captured from the round's stdout between the markers `MAGE_VERIFY_BEGIN <TYPE>` and `MAGE_VERIFY_END <TYPE>`; no count line, a non-zero `catch` code, or a missing slice → the type's `verify-<TYPE>.txt` is **not written** and the Reader reports it unknown. `smVerify` is D-status (documented, unqualified).
+- The round script order is fixed: `open-build` → `replay-pla` → (`experiment`, only when `--experiment <file>` is given) → (`fill`, only when `--fill` is given) → `verify-all` → `export`. The experiment stage is `source {<round_dir>/experiment.tcl}` of a byte-copy of the Engineer's file; it is refused (`MageError("experiment", …)`) when the file contains the word `exit` or `frbOpen`, and it is subject to the same `mutating()`/`engineer`-only rule. Its sha256 is recorded in the session log line, `round-summary.json`, and the candidate's `files.scripts[]` and `reproduction.experimentSha256`.
+- The fill stage is a Pack template, never Engineer text: `smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum <v>` and `… HORZ … <h>` emitted only when the manifest carries `mage.autoRefineConverge: {"VERT": <int>, "HORZ": <int>}`, then `g_params -set {smPFlow::s_ARTestConvergePrplaced false}` and `smPFlow -autoRefine`. No default converge numbers are invented.
+- Drop metrics split **ordinary** (dropped instance with empty `inGroup`) from **grouped** (non-empty `inGroup`); the comparison objective against the kit baseline/reference is **ordinary dropped length**. Goal `target_dropped_count` keeps its meaning (total dropped count).
+- Case manifest gains two optional fields: `mage.autoRefineConverge` (above) and top-level `referenceMethod` (`{path, sha256}`, a prior successful native method script the Engineer may read on the Site; digest-verified by `prepare-case`; never replayed by the Pack as a result).
+- Site `linglong-mage`: `kind: ssh` to `luzi@192.168.50.41`, `workspaceRoot /data/eda/project/hima_harness/mage-runs`, capability JSON installed next to the existing resident wrapper (`/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json`, reusing wrapper sha `85d64ee8…`), `capacity.parallelJobs: 2`, `capacity.licences: {mage: 1}`. Case files live under `/data/eda/project/hima_harness/mage-inputs/p23-case-v1/` on Linglong only (customer data; never in the repo). The siteCapabilities `mage.executable` is `["/usr/bin/xvfb-run", "-a", "-s", "-screen 0 1600x1200x24 -nolisten tcp", "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012/bin/mage-frb"]` with env `MAGE_HOME=/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012` and `EMPYREAN_LICENSE_FILE=59011@localhost`.
+- Model allocation: Opus 4.8 medium implements Task 13 (integration across templates/driver/Reader/knowledge); Sonnet 5 medium implements Tasks 14 and 15; Opus 4.8 medium reviews each; Opus 5.5 high does the final whole-branch review (Task 12, moved after Task 15); the main agent runs Task 16 with the user.
+
+## Frozen interface changes
+
+```python
+# flow/mage_placement/native/session.py
+NATIVE_TYPES = ("OVERLAP", "SPACE", "BOUNDARY")
+NATIVE_COMMANDS = {"OVERLAP": "frbCheckOverlap", "SPACE": "frbCheckSpace", "BOUNDARY": "frbCheckBoundary"}
+TEMPLATE_FILES = ("open-build.tcl", "replay-pla.tcl", "fill-autorefine.tcl", "verify-all.tcl", "export.tcl")
+class MageSession:
+    def __init__(self, executable, env, workdir, log_path, templates_dir, case)  # case: {"frb": str, "autoRefineConverge": {"VERT": int, "HORZ": int} | None}
+    def run_round(self, round_dir, candidate_pla, role, timeout_s=1800, fill=False, experiment_tcl=None) -> dict
+    # result adds: "fill": bool, "experimentTcl": str|None, "experimentSha256": str|None
+    # log line adds: "fill": bool, "experimentSha256": str|None
+def slice_verify(stdout_text) -> {TYPE: {"code": int|None, "instances": int|None, "lines": [str]}}
+def write_verify_files(stdout_path, out_dir) -> {TYPE: path}   # writes only types with code == 0 and instances is not None
+
+# flow/mage_placement/metrics.py
+def native_rows(verify_files) -> {"byType": {T: int|None}, "total": int|None, "unknown": [T]}
+# a verify file's row count is the integer in its first line `# mage-verify/1 type=<T> command=<cmd> instances=<N>`; any other first line → None
+def drops(snapshot) -> {"count", "lengthUm", "byBlockType", "ids", "ruleShortfallCount",
+                        "ordinary": {"count": int, "lengthUm": str, "ids": [...]},
+                        "grouped":  {"count": int, "lengthUm": str, "ids": [...]}}
+
+# flow/mage_placement_cli.py
+#   mage-round WORKSPACE --round N --pla <file> --role engineer --out-dir <dir> [--fill] [--experiment <tcl>]
+#   candidate: files.scripts = [round.tcl, (experiment.tcl)], reproduction = {"roundDir", "script": "round.tcl", "fill": bool, "experimentSha256": str|None}
+
+# Reader emits (readers/mage-placement-candidate.yml), exact order:
+#   mage_candidate_error_count, mage_priority_unplaced_count, mage_dropped_count, mage_dropped_length_um,
+#   mage_dropped_ordinary_count, mage_dropped_ordinary_length_um, mage_target_distance_max_um,
+#   mage_target_over_limit_count, mage_order_deviation_max, mage_native_overlap_rows, mage_native_space_rows,
+#   mage_native_boundary_rows, mage_native_violation_total, mage_open_request_count
+```
+
+verify-<TYPE>.txt format (written by the driver, read by `metrics.native_rows`):
+
+```text
+# mage-verify/1 type=SPACE command=frbCheckSpace instances=1
+Spacing overlap found!
+1 spacing overlapped instance(s)
+Inst                                            NumOLap  Dist X     Dist Y    Pos  SpaceOLap
+----------------------------------------------  -------  ---------  --------  ---  -------------
+P_BEVG_location15_PEP.P_BEVG_location15_PEP_BR  2        10.000000  0.000000       (25497.2,140)
+--MCHIP_0_0                                                                        (25557.2,60)
+```
+
+`instances` is the integer from the first stdout line in the slice matching `^(\d+) .* instance\(s\)$`.
+
+---
+
+### Task 13: Proven native route, three real checks, fill stage, Engineer experiments (Opus 4.8 medium)
+
+**Files:**
+- Modify: `flow/templates/open-build.tcl`, `flow/templates/verify-all.tcl`; Create: `flow/templates/fill-autorefine.tcl`
+- Modify: `flow/mage_placement/native/session.py`, `flow/mage_placement/metrics.py` (`native_rows` only), `flow/mage_placement/tasks.py` (`is_relative_to` → `try: target.relative_to(workspace) except ValueError`), `flow/mage_placement_cli.py` (`_cmd_mage_round`, `_cmd_candidate`), `flow/schemas/case-manifest.json` (`mage.autoRefineConverge` optional), `tools/read-mage.py`, `readers/mage-placement-candidate.yml`, `semantics.yml`, `rules/no-native-violation.yml` (title: "across the three native MAGE checks"), `flow/tests/standin_mage.py`, `contract.yml` + `graph.yml` (version 0.2.0), `knowledge/mage-capabilities.md`, `knowledge/role-mage-engineer.md`, `knowledge/placement-playbook.md`, `knowledge/state-and-evidence.md`, `SPEC.md`/`FABRIC.md`/`TEST.md` (native check set, route, flags)
+- Tests: `flow/tests/test_native_session.py`, `flow/tests/test_metrics.py`, `flow/tests/test_readers.py`, `flow/tests/test_cli_tasks.py`, `flow/tests/test_knowledge.py`, `flow/tests/test_schemas.py`
+
+**Templates (exact):**
+
+`open-build.tcl`
+```tcl
+frbOpen {@FRB@}
+frbSetCur frame
+smPFlow -updateUsedFiles
+frbSetup -obj BuildFrame
+smPFlow -clear
+smPFlow -bindBlocks
+smPFlow -buildFrame frame -mchip mainchip -mblock mainchip
+smPFlow -sortFix
+smPFlow -sortFit
+```
+
+`fill-autorefine.tcl` (`@CONVERGE@` is replaced by the driver with zero or two `smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum <v>` / `… HORZ … <h>` lines joined by `\n`, or the single line `# no autoRefineConverge in the case manifest`)
+```tcl
+@CONVERGE@
+g_params -set {smPFlow::s_ARTestConvergePrplaced false}
+smPFlow -autoRefine
+```
+
+`verify-all.tcl`
+```tcl
+foreach {mage_verify_type mage_verify_cmd} {OVERLAP frbCheckOverlap SPACE frbCheckSpace BOUNDARY frbCheckBoundary} {
+    puts [list MAGE_VERIFY_BEGIN $mage_verify_type]
+    flush stdout
+    set mage_verify_code [catch {$mage_verify_cmd} mage_verify_msg]
+    set mage_verify_code2 [catch {$mage_verify_cmd -print} mage_verify_msg2]
+    flush stdout
+    puts [list MAGE_VERIFY_CODE $mage_verify_type [expr {$mage_verify_code || $mage_verify_code2}]]
+    puts [list MAGE_VERIFY_END $mage_verify_type]
+    flush stdout
+}
+```
+(`verify-all.tcl` has no placeholder; `tcl.fill` is called with `{}`. The `@OUT@` files are written by the driver from stdout, not by Tcl.)
+
+- [ ] **Step 1 — failing tests first** (`test_native_session.py`): (a) `test_fill_round_adds_converge_and_autorefine` — session built with `case={"frb": …, "autoRefineConverge": {"VERT": 7, "HORZ": 5}}`, `run_round(..., fill=True)` → `round.tcl` contains both converge lines, `g_params -set {smPFlow::s_ARTestConvergePrplaced false}`, `smPFlow -autoRefine`, in that order after `source {…candidate.pla}` and before `MAGE_VERIFY_BEGIN`; log line `fill: true`. (b) `test_fill_without_converge_emits_comment` — `autoRefineConverge: None` → the comment line, no converge lines. (c) `test_experiment_is_copied_hashed_and_sourced` — `experiment_tcl` file with `smPFlow -autoRefine` → `round_dir/experiment.tcl` byte-equal, `round.tcl` has `source {<round_dir>/experiment.tcl}` between replay and verify, result/log carry its sha256. (d) `test_experiment_with_exit_is_refused` and `test_experiment_with_frbopen_is_refused` → `MageError.code == "experiment"`, nothing written. (e) `test_consumer_cannot_run_experiment` → `writer`. (f) `test_verify_files_come_from_stdout_markers` — standin with `MAGE_STANDIN_ROWS='{"SPACE": ["P_X 2 10.0 0.0 (1,2)"]}'` → `out/verify-SPACE.txt` first line `# mage-verify/1 type=SPACE command=frbCheckSpace instances=1`, `verify-OVERLAP.txt` instances=0, `verify-BOUNDARY.txt` instances=0; exactly three files. (g) `test_verify_type_with_failed_catch_is_not_written` — `MAGE_STANDIN_VERIFY_FAIL=BOUNDARY` → no `verify-BOUNDARY.txt`; `result["verifyFiles"]` lacks it. (h) `test_open_build_has_no_arenabled_and_has_sort` — round.tcl contains `smPFlow -sortFit` and not `-arEnabled`.
+- [ ] **Step 2 — `test_metrics.py`**: `test_native_rows_reads_instances_header` (file with header `instances=3` + arbitrary lines → 3), `test_native_rows_without_header_is_unknown`, existing missing/unreadable tests kept; totals over three types.
+- [ ] **Step 3 — implement** `session.py` (`NATIVE_TYPES`, `NATIVE_COMMANDS`, `TEMPLATE_FILES`, `_build_script(candidate_pla, out_dir, fill, experiment_path)`, `slice_verify`, `write_verify_files`, refusals, log/result fields), `metrics.native_rows`, templates, `standin_mage.py` (print the markers; `-print` summary lines `0 overlapped instance(s)` / `<N> spacing overlapped instance(s)` / `0 outside-frame-boundary instance(s)`; env `MAGE_STANDIN_VERIFY_FAIL=<TYPE>` prints `MAGE_VERIFY_CODE <TYPE> 1`; must still exit 0 for `smPFlow -autoRefine`/`g_params` lines, i.e. ignore them), `tasks.py` 3.8 fix, `_cmd_mage_round --fill/--experiment` (reads `autoRefineConverge` from `readiness["manifest"]["mage"]`), `_cmd_candidate` (scripts + reproduction), schema, Reader (`_NATIVE_TYPE_FACT` three entries; emits), `readers/mage-placement-candidate.yml`, `semantics.yml` (drop the seven removed `mage_native_*_rows`; `mage_native_violation_total`: "Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any one is unknown"), rule title.
+- [ ] **Step 4 — CLI route test** (`test_cli_tasks.py`): the two-round route runs round 1 with `--fill` and round 2 with `--experiment <file containing "smPFlow -autoRefine">`; assert the candidate's `reproduction.fill` / `reproduction.experimentSha256` and that `files.scripts` lists both scripts with real hashes; Reader values include the three native facts and `mage_native_violation_total` known.
+- [ ] **Step 5 — knowledge**: rewrite `mage-capabilities.md`: V path = the five templates above as run by `mage-round` (cite the kit route as the evidence); the three checks and what their counts mean (SPACE rows are instance rows, not pair counts); D = `smVerify -checkType …` and the other markers; the experiment stage (what is refused, what is recorded, "qualify a D command with one passing and one failing experiment before relying on it"); a section "Native compaction, as the customer's successful method does it" listing verbatim: `g_params -set {smPFlow::s_ARTestConvergePrplaced true}` + converge settings + `frbGroupSetting -setObject -objectType {GROUP} -objectV {1}` / `-objectX {1}` + `smPFlow -autoRefine` for Group compaction, then restoring offsets, `g_params … false` and a second `smPFlow -autoRefine` for the fill; relaxing zero `-arOffsetRangeX/-arOffsetRangeY` rule settings to `-1.000000` as the method's documented knob; and the kit's recorded pitfalls (settings edits can clear Fits while Group metadata remains → always read back Fits and Group association after any reset; a naive PLA replay can restore Fits without Group association; the compaction failed on `SCRIBE_LEFT`/`SCRIBE_V_2` on this build — a failed native strategy, not infeasibility; DBU vs µm). Update `role-mage-engineer.md` (flags; round 1 = replay the frozen start with `--fill` to reproduce the native incumbent before changing anything; later rounds = planner-made PLA + `--fill`, or an experiment; read `referenceMethod` when the readiness names one), `placement-playbook.md` (Observe step; the fill; "movement from the start" (`displacement`) versus "absolute error from the CT target" (`targetDistances`) are two metrics, report both, never rename one as the other), `state-and-evidence.md` (three native checks; `instances` semantics). Keep every CLI flag name in the knowledge equal to the CLI (`test_knowledge.py` checks it).
+- [ ] **Step 6 — docs/version**: `contract.yml`+`graph.yml` 0.2.0; `SPEC.md`/`FABRIC.md`/`TEST.md` describe the route, the three checks, the flags; TEST.md test count updated by the suite's own output.
+- [ ] **Step 7 — run**: `/usr/bin/python3 -m unittest discover -s flow/tests -t flow` (all green) and `PATH=$HOME/.local/node24/bin:$PATH CI=true node scripts/run-contract-tests.mjs local --files test/contract/mage-scribe-placement.test.ts`. Commit `feat(mage): proven native route, three real checks, fill stage and Engineer experiments`; push `--no-verify` (say so).
+
+---
+
+### Task 14: Ordinary/grouped drops, reference method, Python 3.8 proof (Sonnet 5 medium)
+
+**Files:** Modify `flow/mage_placement/metrics.py` (`drops`), `flow/mage_placement/tasks.py` (`_load_case` verifies `referenceMethod` when present and copies it into the case dict; `measure_incumbent` and `evaluate_placement` carry `drops.ordinary`/`drops.grouped` and the Q1 comparison reports ordinary and grouped lengths separately with the total), `flow/schemas/case-manifest.json` (optional `referenceMethod` fileRef), `tools/read-mage.py` (+2 emits after `mage_dropped_length_um`), `readers/mage-placement-candidate.yml`, `semantics.yml`, `knowledge/state-and-evidence.md` (+ "Ordinary versus grouped drops" paragraph), `knowledge/role-mage-engineer.md` (`referenceMethod`), `SPEC.md`; Tests `flow/tests/test_metrics.py`, `test_readers.py`, `test_schemas.py`, `test_cli_tasks.py`.
+
+- [ ] **Step 1 — failing tests**: `test_drops_split_ordinary_and_grouped` (fixture with one grouped drop `inGroup "G1"` length 616 and two ordinary drops 5188 → `ordinary.count 2`, `ordinary.lengthUm "10376"`, `grouped.count 1`, `grouped.lengthUm "616"`, `count 3`, `lengthUm "10992"`); Reader emits the two new facts with those values; manifest with `referenceMethod` validates and a wrong sha is refused by `prepare-case` with `MageError("digest", …)`.
+- [ ] **Step 2 — implement**, run the suite under `/usr/bin/python3` (3.9) **and** on Linglong under the container's Python 3.8: `rsync -a --delete --exclude __pycache__ packs/mage-scribe-placement/ luzi@192.168.50.41:/home/luzi/tmp/mage-pack-flow-check/ && ssh luzi@192.168.50.41 'cd /home/luzi/tmp/mage-pack-flow-check && podman run --rm --read-only --tmpfs /tmp:rw,size=1g --userns keep-id --user $(id -u):$(id -g) -v /data/eda:/data/eda:ro -v /home/luzi/tmp/mage-pack-flow-check:/home/luzi/tmp/mage-pack-flow-check:rw -e HOME=/tmp -e EDA_INIT=/data/eda/env/eda_tools_2025_env.sh -e EDA_DIR=/data/eda -e EDA_ROOT=/data/eda -w /home/luzi/tmp/mage-pack-flow-check localhost/edarunner:alma8 /bin/bash --noprofile --norc -c ". \$EDA_INIT >/dev/null 2>&1; python3 --version; python3 -m unittest discover -s flow/tests -t flow 2>&1 | tail -3"'` — both must print `OK`; record both outputs in TEST.md ("Python 3.8.16 (Linglong resident container) and 3.9.6 (Mac)").
+- [ ] **Step 3 — commit** `feat(mage): ordinary/grouped drop split, reference method, Python 3.8 compatibility`; push `--no-verify`.
+
+---
+
+### Task 15: Site `linglong-mage` (Sonnet 5 medium; Linglong install by the main agent)
+
+**Files:** Create `sites/linglong-mage/site.yml`, `sites/linglong-mage/permit.yml`, `sites/linglong-mage/engineering-capabilities-mage-v1.json`, `sites/linglong-mage/inputs/site-capabilities.json`, `sites/linglong-mage/README.md`; Modify `test/contract/mage-scribe-placement.test.ts` (load `sites/linglong-mage` with `loadSite`, `checkPack(pack, site)` → `fit === true`, and a copy with `licences: {}` → not fit, exactly as the Task 9 local-Site case does).
+
+`site.yml`
+```yaml
+name: linglong-mage
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/mage-runs
+permit: ./permit.yml
+bindings:
+  mageCaseManifest: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/manifest.json
+  consumerContext: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/consumer-context.json
+  siteCapabilities: /data/eda/project/hima_harness/mage-inputs/p23-case-v1/site-capabilities.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json
+  workspaceRoot: /data/eda/project/hima_harness/mage-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 16
+  memoryGiB: 64
+  parallelJobs: 2
+  licences:
+    mage: 1
+```
+
+`permit.yml`
+```yaml
+allowedReadRoots:
+  - /data/eda/env
+  - /data/eda/software/eda_tools/empyrean
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
+  - /data/eda/project/hima_harness/mage-inputs
+  - /data/eda/project/hima_harness/mage-runs
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/mage-runs
+allowedWrappers:
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py
+  - /usr/bin/python3
+  - python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads
+```
+
+`engineering-capabilities-mage-v1.json` = `sites/linglong-atcs28/engineering-capabilities-v1.json` with these differences only: `wrapper.argv[2]` → `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json`; `sandbox.readOnlyRoots` → `["/data/eda/env", "/data/eda/software/eda_tools/empyrean", "/data/eda/project/hima_harness/mage-inputs"]`; `environment.set` adds `"EMPYREAN_LICENSE_FILE_OVERRIDE": "59011@localhost"` and `"MAGE_HOME": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012"`. Everything else (native OpenCode 1.18.34 `acp --pure`, `deepseek/deepseek-flash`, image id, podman flags, credential paths, `stopGraceSeconds`) byte-identical.
+
+`inputs/site-capabilities.json`
+```json
+{
+  "schema": "mage.site-capabilities/1",
+  "mage": {
+    "executable": ["/usr/bin/xvfb-run", "-a", "-s", "-screen 0 1600x1200x24 -nolisten tcp",
+                   "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012/bin/mage-frb"],
+    "setupScript": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012/setup.linglong.bash",
+    "env": {"MAGE_HOME": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012",
+            "EMPYREAN_LICENSE_FILE": "59011@localhost"}
+  }
+}
+```
+
+README: layout table (mage-inputs/p23-case-v1 = frozen customer bundle copy with the pblock GDS path adapted to `${MAGE_PBLOCK_HOME}/output.gds` and `case-adaptation.json` recording original/adapted sha256; `incumbent/placement.pla` = the kit's native baseline 135,113 µm, sha `0a95e89d…`; `manifest.json`, `consumer-context.json`, `site-capabilities.json` machine-local), install record (capability copied unchanged, mode 0444; `mkdir -p mage-runs mage-inputs`), the licence window procedure (user-run helper; endpoint 59011@localhost; ≤810 s per helper invocation; the Campaign's MAGE rounds must fall inside an open window), and "what is not installed".
+
+- [ ] Steps: write the five files; extend the contract test; run `PATH=$HOME/.local/node24/bin:$PATH CI=true node scripts/run-contract-tests.mjs local --files test/contract/mage-scribe-placement.test.ts`; commit `feat(mage): Site linglong-mage for the real MAGE resident route`; push `--no-verify`.
+- [ ] Main agent (not the subagent): install on Linglong — copy the capability (0444) next to the wrapper; `mkdir -p /data/eda/project/hima_harness/{mage-runs,mage-inputs/p23-case-v1}`; stage the case (`inputs/customer` copy, adapted pblock, incumbent, manifest/consumer-context/site-capabilities with absolute Linglong paths and real sha256s); run `task-prepare-case` and `task-measure-incumbent` on Linglong host Python in a scratch workspace and record: 10 Fixed, 225 Groups/Fits, 225/225 targets bound, incumbent drops 27 / ordinary 27 / 135,113 µm. Record the whole thing in the Site README's "Install record".
+
+---
+
+### Task 12 (moved): Final review (Opus 5.5 high) — after Task 15, before Task 16
+
+Unchanged scope, plus: the amended constraints above, the kit evidence the native route cites, and `.superpowers/sdd/mage-minor-findings.md`.
+
+---
+
+### Task 16: Live proof on Linglong (main agent with the user)
+
+1. **Build the App** from the final branch sha: `PATH=$HOME/.local/node24/bin:$PATH pnpm run package:trial` (see `scripts/package-trial.mjs`); the kit installs the Pack and Site from the same checkout (`kit.mjs` spec: `packId mage-scribe-placement`, `siteName linglong-mage`, `siteDir sites/linglong-mage`, `credentialFromHome` = the Andes kit's Home, `ssh luzi@192.168.50.41`, no `bindingFrom`). Preflight must be all-ok.
+2. **Licence window**: the user runs on Linglong `sudo bash /home/luzi/mage_smart_conflict_resolver/practice-20261006/scripts/run_mage_window.sh --maintenance-approved` and keeps it open; MAGE rounds run only while `READY` exists; each helper invocation lasts ≤ 810 s, so the user is asked for the acceptable total window before the Run starts and the Run is sized to it (a round's MAGE time is seconds; the resident's reasoning minutes).
+3. **Run A (customer preference as Goal)**: `target_dropped_count 0`, `max_target_distance_um 100`, `max_order_deviation 2`, `incumbentComparison retained`. Expected honest outcome: round 1 reproduces the native incumbent (27 / 135,113 µm) through the Pack's own round; later rounds reduce ordinary drops where the planner finds windows within 100 µm; `target-limit-met` fails on the 60 pre-existing deviations (max 2847.7 µm) → Decision Request(s) with each consumer's numbers.
+4. **Run B (approved variant, only if the user approves the budget)**: `max_target_distance_um 1000`, same otherwise.
+5. **Independent evaluation**: `python3 tools/evaluate.py --bundle frozen/p23-customer-v2 --candidate <final export.pla> --out <score.json>` from the kit on Linglong (with `--binding` when identities changed); reconcile ordinary drop length/count, priority 225, Fixed 10, inventory 319 with the Pack's `placement-result.json`.
+6. **Cold replay**: re-run the delivered round's `round.tcl` through `mage-round` in a fresh directory; the export must hash-match the delivered export.
+7. **Report** (user-facing, no customer names in the repo): baseline / Run A / Run B / customer reference table (ordinary drops count+length, grouped, priority placed, Fixed, max target error, max movement, order deviation per side, native check instance counts, elapsed, MAGE runtime, human interventions by class), consumer objections/alternatives/accepted conditions, open unknowns, and the proof level reached (Reproduction / Improvement / Match / Surpass / Customer completion) per the kit document §5.
