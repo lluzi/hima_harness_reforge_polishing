@@ -5,6 +5,21 @@
 - Spec §2, §4, §7, §7.1, §7.2, §9 ("best measured state"); `mage-frozen-interfaces.md` module
   signatures for `planner.py`, `metrics.py`, `rounds.py`; `flow/mage_placement_cli.py`.
 
+## Workspace convention (every role)
+
+Your task envelope names two different directories — do not confuse them. `workspace` is your own
+private, writable task workspace; `identity.campaignWorkspace` is the Campaign workspace, mounted
+read-only. Every CLI call's `WORKSPACE` positional argument is your private `workspace`, never
+`identity.campaignWorkspace`. Before your first call, copy each file named in the envelope's
+`inputs[]` from its Campaign-workspace path into your private workspace at the same
+workspace-relative path (for example `state/case-readiness.json`, `state/start-snapshot.json`), and
+verify each copy's sha256 against the envelope entry before trusting it — copy nothing else.
+Invoke the CLI from the envelope's `task.flow` copy (the Campaign's read-only `flow/`), passing your
+private workspace as `WORKSPACE`. Your result document's path and every support path in
+`resident-delivery.json` are relative to that same private `WORKSPACE`; a support path must start
+with your tool's own `artifactPrefix` (`placement/` or `reviews/<role>/`) — that is exactly the path
+the Host gives it once copied into the Campaign workspace, which is what the Reader sees.
+
 ## Objective
 
 Each round you receive the previous round's open Requests (from `state/round-decision.json`) and
@@ -94,7 +109,8 @@ execution/node + `round`), `startSnapshotSha256`, `snapshotSha256`, `buildBanner
 object, never a bare string), `outcome` (`completed`/`best-effort`/`blocked`), `stopReason`,
 `reproduction`.
 
-In the task's own private workspace (not under the Campaign `${WORKSPACE}`), write
+In your own private `WORKSPACE` (never `identity.campaignWorkspace`, the read-only Campaign
+workspace — see "Workspace convention" above), write
 `resident-delivery.json`: `{"schema": "hima-resident-engineering-candidate/1", "outcome",
 "summary", "stopReason", "artifacts": [{"path", "sha256", "kind"}]}` with exactly one
 `kind: "result"` entry naming `state/round/placement-candidate.json` and every file this round

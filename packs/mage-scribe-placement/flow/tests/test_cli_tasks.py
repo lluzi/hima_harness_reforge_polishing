@@ -619,6 +619,73 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(candidate["outcome"], "blocked")
         self.assertEqual(candidate["stopReason"], "native round did not reach MAGE_ROUND_END")
 
+    def test_relative_out_dir_and_pla_resolve_against_workspace_not_cwd(self):
+        """`mage-round --out-dir placement/round-07 --pla <relative>` and the
+        matching `candidate --round-dir placement/round-07`, run from a
+        subprocess cwd that is NOT the workspace, must still land every
+        round file under `<workspace>/placement/round-07` and must write
+        an absolute candidate-PLA path into `round.tcl` -- this is the bug
+        observed on Linglong (`MAGE_ROUND_ERROR stage replay-pla message
+        {couldn't read file "ws/placement/round-01/candidate.pla"}`), where
+        a cwd-relative `--out-dir` split one round's files across two
+        directories and left `round.tcl` pointing at a candidate PLA MAGE
+        (cwd=round_dir) could not read."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps,
+            **goal,
+        })
+        # A relative candidate PLA, placed under the workspace itself
+        # (resolving "relative to the workspace" is the whole point).
+        (self.workspace / "candidate-src.pla").write_text(
+            Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8",
+        )
+
+        # A subprocess cwd that is a sibling of the workspace, not the
+        # workspace itself.
+        other_cwd = self.root / "elsewhere"
+        other_cwd.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "7",
+             "--pla", "candidate-src.pla", "--role", "engineer", "--out-dir", "placement/round-07"],
+            cwd=str(other_cwd), capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        round_dir = self.workspace / "placement" / "round-07"
+        round_tcl_path = round_dir / "round.tcl"
+        candidate_pla_path = round_dir / "candidate.pla"
+        self.assertTrue(round_tcl_path.is_file(), f"missing {round_tcl_path}")
+        self.assertTrue(candidate_pla_path.is_file(), f"missing {candidate_pla_path}")
+        self.assertTrue((round_dir / "round-summary.json").is_file())
+        self.assertTrue((round_dir / "session.jsonl").is_file())
+        self.assertTrue((round_dir / "out" / "export.pla").is_file())
+
+        round_tcl_text = round_tcl_path.read_text(encoding="utf-8")
+        self.assertIn(str(candidate_pla_path), round_tcl_text)
+        # Nothing should have been created under the wrong cwd.
+        self.assertFalse((other_cwd / "placement").exists())
+
+        candidate_path = self.root / "r7-candidate.json"
+        result = subprocess.run(
+            [sys.executable, str(CLI), "candidate", str(self.workspace), "--round", "7",
+             "--round-dir", "placement/round-07", "--out", str(candidate_path)],
+            cwd=str(other_cwd), capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        candidate_doc = json.loads(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(candidate_doc["outcome"], "completed")
+
+        live_candidate_path = self.workspace / "state" / "round" / "placement-candidate.json"
+        live_candidate_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate_path, live_candidate_path)
+        _run_reader(
+            "placement-candidate", live_candidate_path, self.root / "r7-candidate-values.json", self.workspace,
+        )
+
     def test_tampered_review_findings_refused_by_reader(self):
         """A review whose findings were edited after the evaluator receipt
         was written is refused by the consumer-review Reader."""

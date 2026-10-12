@@ -8,6 +8,9 @@ own native checks, and answer every open Request in the Ledger. You alone hold t
 
 ## What to read, exact paths
 
+Every CLI call's `WORKSPACE` is your own private task workspace (the envelope's `workspace`), never
+the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Workspace convention".
+
 - `state/case-readiness.json` — Goal values, `siteCapabilities`, `consumerContext`, the manifest.
 - `state/start-snapshot.json` — the frozen start-state `mage.layout-snapshot/2`.
 - `state/incumbent.json` — the modelled incumbent's metrics, for your own sense of the baseline.

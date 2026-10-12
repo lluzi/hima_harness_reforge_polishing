@@ -28,6 +28,24 @@ discover and execute the identical `flow/tests/` tree. (174 tests were recorded 
 184 covers Task 13's own additions plus Task 14's ordinary/grouped drop split, `referenceMethod`,
 and the native-DBU-export correction below.)
 
+### Fix round 1 (Task 14 review findings, 2026-10-12)
+
+187 tests pass after the fix-round additions: Python 3.9.6 (Mac, `/usr/bin/python3`) --
+
+```
+Ran 187 tests in 9.909s
+
+OK
+```
+
+The three new tests, confirmed to fail against the pre-fix code before the fix landed: two in
+`flow/tests/test_pla.py` (`test_native_dbu_pla_group_points_stay_um_not_dbu`,
+`test_write_pla_dbu_emits_group_points_in_um_not_dbu`) pin the "Group target points are always
+micrometres, even in a DBU PLA" rule that previously had no test asserting it either way; one in
+`flow/tests/test_cli_tasks.py`
+(`test_relative_out_dir_and_pla_resolve_against_workspace_not_cwd`) pins `mage-round`/`candidate`
+resolving a relative `--out-dir`/`--pla`/`--round-dir` against `WORKSPACE`, not the process cwd.
+
 Task 14 also fixed a real export-shape bug surfaced mid-task by a verified reading of a real MAGE
 export on the Oct-12 build (the Site's native baseline PLA): `-savePlaDBU` is a DBU-header line a
 saved PLA itself carries, not a second export command with its own output path; `-saveMark`'s own

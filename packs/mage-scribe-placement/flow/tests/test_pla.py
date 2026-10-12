@@ -73,4 +73,45 @@ class PlaTest(unittest.TestCase):
         doc = pla.read_pla(Path(self.case['files']['incumbentState']).read_text(), 10000)
         written = pla.write_pla(doc, 10000)
         self.assertIn('OVL_F.OVL_F_7 2000', written)
+
+    def test_native_dbu_pla_group_points_stay_um_not_dbu(self):
+        # Hand-written native-shape DBU PLA text: a braced -savePlaDBU
+        # header, an integer-DBU fitinsts box, and a pinstGroupProperty
+        # row carrying a plain micrometre point. If `_read_groups` ever
+        # converted this row as DBU (the reviewer's reversion that still
+        # passed all 184 pre-existing tests) the target point would come
+        # out roughly 10000x too large instead of [300000, 119000000].
+        text = (
+            "smPInstMgr -savePlaDBU {10000}\n"
+            "set fitinsts {\n"
+            '\tBASE.BASE 67500 111266000 532500 127026000 0 "" PF1 ""\n'
+            "}\n"
+            "set pinstGroupProperty {\n"
+            "\tG1 PG1 30.000000 11900.000000 0\n"
+            "}\n"
+        )
+        doc = pla.read_pla(text, 10000)
+        self.assertEqual(doc['groups'][0]['targetPointDbu'], [300000, 119000000])
+        self.assertEqual(doc['fits'][0]['boxDbu'], [67500, 111266000, 532500, 127026000])
+
+    def test_write_pla_dbu_emits_group_points_in_um_not_dbu(self):
+        # Mirrors the read-side test on the write side: a DBU-units write
+        # must still render the group row's target point as a micrometre
+        # decimal (via `core.dbu_to_um`), while the fit row's box stays
+        # plain integer DBU. Converting the group point as DBU would
+        # render "3000000 1190000000" instead.
+        doc = {
+            "units": "dbu", "dbuPerUm": 10000,
+            "fixed": [],
+            "groups": [{"groupItem": "G1", "pinstGroup": "PG1", "targetPointDbu": [300000, 119000000], "vertSL": False}],
+            "fits": [{"id": "PF1", "base": "BASE", "inst": "BASE.BASE",
+                       "boxDbu": [67500, 111266000, 532500, 127026000],
+                       "extraRot": "0", "postfix": "", "inGroup": ""}],
+            "drops": [],
+        }
+        written = pla.write_pla(doc, 10000, units="dbu")
+        expected_x = core.dbu_to_um(300000, 10000)
+        expected_y = core.dbu_to_um(119000000, 10000)
+        self.assertIn(f"G1 PG1 {expected_x} {expected_y} 0", written)
+        self.assertIn("BASE.BASE 67500 111266000 532500 127026000", written)
 if __name__ == '__main__': unittest.main()

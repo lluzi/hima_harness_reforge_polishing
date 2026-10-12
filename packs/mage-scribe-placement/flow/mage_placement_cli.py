@@ -74,6 +74,26 @@ def _case_readiness(workspace):
     return core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")
 
 
+def _resolve_in_workspace(workspace, value):
+    """A `--out-dir`/`--pla`/`--experiment`/`--round-dir`/`--ledger` value, resolved
+    against `workspace` when relative.
+
+    These flags are documented (`placement/round-NN`, a sibling candidate
+    PLA) as workspace-relative, but `argparse` only ever hands back the
+    literal string, which Python resolves against the *process* cwd, not
+    the workspace, the moment it is joined with anything else. A caller
+    whose cwd differs from `workspace` (any real resident invocation --
+    the Harness never guarantees cwd == WORKSPACE) would otherwise split
+    one round's files across two directories and leave `round.tcl`
+    pointing at a candidate PLA that MAGE, running with cwd=round_dir,
+    cannot read. Resolving every such flag here, once, before anything
+    is created or passed onward, keeps the round's files and its
+    `round.tcl` references under one absolute root regardless of cwd.
+    """
+    path = Path(value)
+    return path if path.is_absolute() else Path(workspace) / path
+
+
 # ---------------------------------------------------------------------------
 # resident subcommands
 # ---------------------------------------------------------------------------
@@ -392,16 +412,18 @@ def _cmd_mage_round(workspace, args):
 
     import shutil
 
-    round_dir = Path(opts.out_dir)
+    # `--out-dir`/`--pla`/`--experiment` are workspace-relative by
+    # convention (knowledge says `placement/round-NN`); resolve them
+    # against WORKSPACE, not the process cwd, before anything is
+    # created -- see `_resolve_in_workspace`.
+    round_dir = _resolve_in_workspace(workspace, opts.out_dir)
     round_dir.mkdir(parents=True, exist_ok=True)
     pla_copy = round_dir / "candidate.pla"
-    shutil.copyfile(opts.pla, pla_copy)
+    shutil.copyfile(str(_resolve_in_workspace(workspace, opts.pla)), pla_copy)
 
     experiment_path = None
     if opts.experiment:
-        experiment_path = Path(opts.experiment)
-        if not experiment_path.is_absolute():
-            experiment_path = Path(workspace) / experiment_path
+        experiment_path = _resolve_in_workspace(workspace, opts.experiment)
 
     env = dict(os.environ)
     env.update(site_mage.get("env", {}))
@@ -448,7 +470,11 @@ def _cmd_candidate(workspace, args):
     opts = parser.parse_args(args)
 
     workspace_path = Path(workspace)
-    round_dir = Path(opts.round_dir)
+    # `--round-dir` is workspace-relative by convention; resolve it against
+    # WORKSPACE (not the process cwd) so the `relative_to(workspace_path)`
+    # calls below keep working regardless of cwd -- see
+    # `_resolve_in_workspace`.
+    round_dir = _resolve_in_workspace(workspace, opts.round_dir)
     summary = json.loads((round_dir / "round-summary.json").read_text(encoding="utf-8"))
 
     export_pla_path = round_dir / "out" / "export.pla"
@@ -479,8 +505,9 @@ def _cmd_candidate(workspace, args):
     }
 
     ledger = []
-    if opts.ledger and Path(opts.ledger).is_file():
-        ledger = json.loads(Path(opts.ledger).read_text(encoding="utf-8"))
+    ledger_path = _resolve_in_workspace(workspace, opts.ledger) if opts.ledger else None
+    if ledger_path is not None and ledger_path.is_file():
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
 
     # The vendor launcher returns 0 even when MAGE fails, so trust the
     # driver's own `completed` flag (return code 0, not timed out, and the

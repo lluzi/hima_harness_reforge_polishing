@@ -16,7 +16,7 @@ does the exact conversion); `write_pla()` can emit either representation.
 even in a DBU-header file: confirmed against a real native DBU export on
 the Oct-12 build (`smPInstMgr -saveMark` with `-savePlaDBU {10000}`), whose
 `pinstGroupProperty` rows carry micrometre values (e.g. `30.000000
-11914.600000`) next to integer-DBU `fitinsts` boxes. `_read_groups` and
+11900.000000`) next to integer-DBU `fitinsts` boxes. `_read_groups` and
 `_emit_group_rows` therefore always use micrometre conversion regardless
 of the file's own `units`.
 

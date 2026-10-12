@@ -6,6 +6,11 @@
   `request.json`, `ledger-entry.json`, `decision-request.json`; `flow/mage_placement_cli.py`
   (`evaluate`, `review`, `candidate` subcommands); `flow/mage_placement/rounds.py` (`decide`).
 
+## Workspace
+
+Every CLI call's `WORKSPACE` is your own private task workspace (the envelope's `workspace`), never
+the read-only `identity.campaignWorkspace` — see `placement-playbook.md`'s "Workspace convention".
+
 ## Applies when
 
 Every round, for the Engineer answering the previous round's Requests and for every consumer
