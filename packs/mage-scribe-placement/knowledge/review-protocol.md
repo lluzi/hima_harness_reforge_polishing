@@ -106,6 +106,53 @@ file live at `reviews/<role>/round-NN/`. Never reuse or overwrite a previous rou
 repair to a rejected delivery edits only the round's own result document (`state/round/...`), never
 a published support file.
 
+## Delivery: list only your own output
+
+`resident-delivery.json` lists exactly one `kind: "result"` artifact (your result document, named
+by its WORKSPACE-relative path) plus `kind: "support"` entries only for files you yourself wrote
+under your own `artifactPrefix` — `reviews/<role>/round-NN/…` for a consumer (your evaluator
+receipt/findings file, your requests file), `placement/round-NN/…` for the Engineer. Never list an
+input you merely read or copied as a support artifact — the candidate document, its
+`snapshot.json`, `state/round-decision.json`, `state/case-readiness.json`, or any knowledge file:
+these already exist in the Campaign workspace under someone else's prefix, and the Host's
+`materializeEngineeringResult` refuses the whole delivery, leaving the Run waiting with no message
+back to you, the moment one support path falls outside your own `artifactPrefix`.
+
+A correct consumer example (litho-pie, round 2):
+
+```json
+{"schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+ "summary": "...", "stopReason": "...",
+ "artifacts": [
+   {"path": "state/round/review-litho-pie.json", "sha256": "<...>", "kind": "result"},
+   {"path": "reviews/litho-pie/round-02/findings.json", "sha256": "<...>", "kind": "support"},
+   {"path": "reviews/litho-pie/round-02/requests.json", "sha256": "<...>", "kind": "support"}
+ ]}
+```
+
+A correct Engineer example (round 2) — never fewer than every file the round produced under
+`placement/round-02/`, and never an input such as `state/start-snapshot.json`:
+
+```json
+{"schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+ "summary": "...", "stopReason": "...",
+ "artifacts": [
+   {"path": "state/round/placement-candidate.json", "sha256": "<...>", "kind": "result"},
+   {"path": "placement/round-02/candidate.pla", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/round.tcl", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/session.jsonl", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/round-summary.json", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/export.pla", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/snapshot.json", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-OVERLAP.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-SPACE.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-BOUNDARY.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/summary.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/stdout.log", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/stderr.log", "sha256": "<...>", "kind": "support"}
+ ]}
+```
+
 ## Consumer prohibitions
 
 A consumer role may never: edit the candidate layout, the rule file, the target table, any consumer

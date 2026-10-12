@@ -132,6 +132,15 @@ it, and omitting it makes the candidate Reader refuse the delivery. Never invent
 recompute it from the file you just wrote. A retried attempt lives under
 `placement/round-NN/attempt-K/` (K >= 2) and you deliver that attempt's own directory the same way.
 
+List only files you yourself wrote under your own `artifactPrefix` (`placement/round-NN/…`) as
+`kind: "support"`. Never list an input you merely read or copied — `state/case-readiness.json`,
+`state/start-snapshot.json`, `state/round-decision.json`, or any file under `reviews/<role>/` —
+as a support artifact: these already exist in the Campaign workspace under someone else's prefix
+or your own read-only inputs, and the Host's `materializeEngineeringResult` refuses the whole
+delivery, leaving the Run waiting with no message back to you, the moment one support path falls
+outside your own `artifactPrefix`. See `review-protocol.md`'s "Delivery: list only your own
+output" for a worked correct example for both the Engineer and a consumer.
+
 ## Prohibitions
 
 Never fabricate a candidate the `candidate` subcommand did not itself assemble from an actual

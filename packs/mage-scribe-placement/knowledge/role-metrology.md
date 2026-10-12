@@ -63,3 +63,20 @@ needs no search window), but the cost finding must not guess a window.
 One `mage.consumer-review/1` document at `state/round/review-metrology.json`, assembled only by
 `review`, bound to the current candidate's `snapshotSha256`, with your `findings[]` verbatim from
 `evaluate`, your `requests[]`, the evaluator `receipt`, and a `summary`.
+
+List only files you yourself wrote under `reviews/metrology/round-NN/` as `kind: "support"`. Never
+list an input you merely read — the candidate document (`state/round/placement-candidate.json`),
+its `snapshot.json`, or `state/case-readiness.json` — as a support artifact: the Host's
+`materializeEngineeringResult` refuses the whole delivery, leaving the Run waiting with no message
+back to you, the moment one support path falls outside your own `artifactPrefix`. Correct example
+(round 2):
+
+```json
+{"schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+ "summary": "...", "stopReason": "...",
+ "artifacts": [
+   {"path": "state/round/review-metrology.json", "sha256": "<...>", "kind": "result"},
+   {"path": "reviews/metrology/round-02/findings.json", "sha256": "<...>", "kind": "support"},
+   {"path": "reviews/metrology/round-02/requests.json", "sha256": "<...>", "kind": "support"}
+ ]}
+```

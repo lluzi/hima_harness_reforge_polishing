@@ -93,3 +93,30 @@ One `mage.placement-candidate/1` document at `state/round/placement-candidate.js
 by `candidate` (never hand-written), with every file it references present and correctly hashed, and
 one `resident-delivery.json` wrapper in your own task workspace naming that candidate document as
 the single `kind: "result"` artifact and every round support file as `kind: "support"`.
+
+List only files you yourself wrote under `placement/round-NN/` as `kind: "support"`. Never list an
+input you merely read or copied — `state/case-readiness.json`, `state/start-snapshot.json`,
+`state/incumbent.json`, `state/round-decision.json` — as a support artifact: the Host's
+`materializeEngineeringResult` refuses the whole delivery, leaving the Run waiting with no message
+back to you, the moment one support path falls outside your own `artifactPrefix`. Correct example
+(round 2):
+
+```json
+{"schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+ "summary": "...", "stopReason": "...",
+ "artifacts": [
+   {"path": "state/round/placement-candidate.json", "sha256": "<...>", "kind": "result"},
+   {"path": "placement/round-02/candidate.pla", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/round.tcl", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/session.jsonl", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/round-summary.json", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/export.pla", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/snapshot.json", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-OVERLAP.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-SPACE.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/verify-BOUNDARY.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/summary.txt", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/stdout.log", "sha256": "<...>", "kind": "support"},
+   {"path": "placement/round-02/out/stderr.log", "sha256": "<...>", "kind": "support"}
+ ]}
+```

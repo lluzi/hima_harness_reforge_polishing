@@ -261,6 +261,15 @@ have caught, both now fixed:
    `decisionRequests.length >= 1` assertion on the conflict scenario is what caught it. Full
    diagnosis of both gaps is in `.superpowers/sdd/task-10-report.md`.
 
+First live-route finding (2026-10-12, real MAGE/OpenCode, no customer names): the Litho/PIE
+consumer's `resident-delivery.json` listed two support artifacts it did not own —
+`placement/round-01/out/snapshot.json` and `state/round/placement-candidate.json` (copies of
+inputs it had read, not files it wrote) — which the Host's `materializeEngineeringResult` refuses
+because they fall outside the consumer's own `reviews/litho-pie/` `artifactPrefix`, leaving the Run
+waiting with no message back to the resident. Knowledge-only fix: `review-protocol.md`,
+`placement-playbook.md`, and every `role-*.md` now state the rule explicitly with a correct
+example for both a consumer and the Engineer (no Pack code change).
+
 Also needed: Site `capacity.parallelJobs: 2`, not 1 (the dispatch's own first guess) — each
 resident task's retained engineering Job holds one job slot until its own `release()` runs right
 after its result is collected, but collecting that result launches a second, concurrent Job (its
