@@ -177,6 +177,22 @@ def _cmd_plan_slots(workspace, args):
     still overlaps this lane's cross/along band) is an immovable point
     item too. Two immovable zero-length sentinels, `@start`/`@end`, pin
     the lane's own along range.
+
+    Exterior fold: a frame's two opposite exterior tracks of one axis
+    (`V:0`/`V:<cols>`, `H:0`/`H:<rows>`) are one physical scribe after
+    stepping (`lanes.physical_lane` already folds their id; the lane
+    model marks both `sharedExterior: true`). Both tracks' along range is
+    the same full frame span (`V:0`/`V:<cols>` both run `[0, heightDbu]`;
+    likewise `H:0`/`H:<rows>` both run `[0, widthDbu]`) -- only their
+    *cross* range differs (opposite ends of the frame), which this
+    command's item/intruder collection already treats per-band, so an
+    occupant assigned to either track (or any crossing intruder whose box
+    falls inside either track's own cross band) is included without
+    needing a coordinate translation: both tracks already share the
+    along axis the planner actually reasons and moves items on. Requesting
+    either track's own lane id plans the identical folded result and
+    writes `lane` back as the physical lane id (`V:0`) plus
+    `foldedTracks: [0, <last>]`.
     """
     parser = argparse.ArgumentParser(prog="plan-slots")
     parser.add_argument("--snapshot", required=True)
@@ -201,14 +217,31 @@ def _cmd_plan_slots(workspace, args):
     lane_entry = next((entry for entry in snap["lanes"] if entry["laneId"] == opts.lane), None)
     if lane_entry is None:
         raise core.MageError("missing-input", f"unknown lane {opts.lane!r}")
-    lane_axis, lane_track = lane_entry["axis"], lane_entry["track"]
+    lane_axis = lane_entry["axis"]
     axis_index = 0 if lane_axis == "H" else 1
+    physical_lane_id = lane_entry["physicalLane"]
+
+    # The physical lane's own along range is shared by every band folded
+    # into it (see the exterior-fold docstring above); any one band's
+    # alongRangeDbu is therefore the physical lane's.
     along_low_dbu, along_high_dbu = lane_entry["alongRangeDbu"]
-    cross_low_dbu, cross_high_dbu = lane_entry["crossRangeDbu"]
+    bands = [
+        (entry["track"], entry["crossRangeDbu"][0], entry["crossRangeDbu"][1])
+        for entry in snap["lanes"]
+        if entry["axis"] == lane_axis and entry["physicalLane"] == physical_lane_id
+    ]
+    lane_tracks = {track for track, _lo, _hi in bands}
+    folded_tracks = sorted(lane_tracks) if len(lane_tracks) > 1 else None
+
+    def crosses_any_band(box_dbu):
+        return any(
+            _crosses_band(box_dbu, lane_axis, along_low_dbu, along_high_dbu, cross_lo, cross_hi)
+            for _track, cross_lo, cross_hi in bands
+        )
 
     fit_ids_in_lane = {
         fit["id"] for fit in snap["fits"]
-        if fit.get("lane") is not None and fit["lane"]["axis"] == lane_axis and fit["lane"]["track"] == lane_track
+        if fit.get("lane") is not None and fit["lane"]["axis"] == lane_axis and fit["lane"]["track"] in lane_tracks
     }
     grid_dbu = _grid_dbu_for_lane(snap, fit_ids_in_lane, axis_index)
 
@@ -221,8 +254,8 @@ def _cmd_plan_slots(workspace, args):
     items = []
     for fit in snap["fits"]:
         lane = fit.get("lane")
-        in_this_lane = lane is not None and lane["axis"] == lane_axis and lane["track"] == lane_track
-        crosses = _crosses_band(fit["boxDbu"], lane_axis, along_low_dbu, along_high_dbu, cross_low_dbu, cross_high_dbu)
+        in_this_lane = lane is not None and lane["axis"] == lane_axis and lane["track"] in lane_tracks
+        crosses = crosses_any_band(fit["boxDbu"])
         if not in_this_lane and not crosses:
             continue
 
@@ -269,7 +302,7 @@ def _cmd_plan_slots(workspace, args):
         ))
 
     for fixed in snap["fixed"]:
-        if not _crosses_band(fixed["boxDbu"], lane_axis, along_low_dbu, along_high_dbu, cross_low_dbu, cross_high_dbu):
+        if not crosses_any_band(fixed["boxDbu"]):
             continue
         l, b, r, t_ = fixed["boxDbu"]
         along_lo_dbu, along_hi_dbu = (l, r) if lane_axis == "H" else (b, t_)
@@ -288,10 +321,13 @@ def _cmd_plan_slots(workspace, args):
 
     slot = planner.SlotRequest(count=opts.count, length=length, clearance=0)
     relaxations = {"ignoreGaps": True, "intrudersMovable": True} if opts.relaxed else None
-    body = planner.plan_lane(items, slot, relaxations=relaxations, lane_id=opts.lane)
+    body = planner.plan_lane(items, slot, relaxations=relaxations, lane_id=physical_lane_id)
 
     # `plan_lane`'s own `*Dbu`-named fields are the frozen schema labels
     # (its docstring); the caller passed it grid units, so convert back.
+    # Moves/slotStarts are along-axis positions, which both tracks of a
+    # folded exterior pair already share verbatim (see the exterior-fold
+    # docstring above) -- no further per-track translation is needed.
     body["slot"] = {"count": opts.count, "length": length_dbu, "clearance": 0}
     body["moves"] = [
         {"id": move["id"], "fromDbu": move["fromDbu"] * grid_dbu, "toDbu": move["toDbu"] * grid_dbu}
@@ -299,6 +335,8 @@ def _cmd_plan_slots(workspace, args):
     ]
     body["slotStarts"] = [start * grid_dbu for start in body["slotStarts"]]
     body["totalDisplacementDbu"] = body["totalDisplacementDbu"] * grid_dbu
+    if folded_tracks is not None:
+        body["foldedTracks"] = folded_tracks
 
     body = core.stamp("slot-plan", body)
     errors = records.validate_record("slot-plan", body)

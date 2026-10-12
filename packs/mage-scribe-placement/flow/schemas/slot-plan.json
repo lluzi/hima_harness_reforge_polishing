@@ -50,6 +50,7 @@
     "slotStarts": {"type": "array", "items": {"type": "integer"}},
     "totalDisplacementDbu": {"type": "integer", "minimum": 0},
     "movedCount": {"type": "integer", "minimum": 0},
-    "infeasibleReason": {"type": ["string", "null"]}
+    "infeasibleReason": {"type": ["string", "null"]},
+    "foldedTracks": {"type": "array", "items": {"type": "integer", "minimum": 0}}
   }
 }
