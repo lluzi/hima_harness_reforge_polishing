@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "frb", "prj", "rule", "pblock", "block", "clusterTcl", "targetTable",
+    "requestOrder", "startState", "incumbentState", "frameSizeUm", "dbuPerUm",
+    "partitionRule", "groupPlaceCommandForm", "mage", "id"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.case-manifest/1"},
+    "id": {"type": "string", "minLength": 1},
+    "frb": {"$ref": "#/$defs/fileRef"},
+    "prj": {"$ref": "#/$defs/fileRef"},
+    "rule": {"$ref": "#/$defs/fileRef"},
+    "pblock": {"$ref": "#/$defs/fileRef"},
+    "block": {"$ref": "#/$defs/fileRef"},
+    "clusterTcl": {"type": "array", "items": {"$ref": "#/$defs/fileRef"}},
+    "targetTable": {"$ref": "#/$defs/fileRef"},
+    "requestOrder": {"$ref": "#/$defs/fileRef"},
+    "startState": {"$ref": "#/$defs/fileRef"},
+    "incumbentState": {"$ref": "#/$defs/fileRef"},
+    "frameSizeUm": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
+    "dbuPerUm": {"type": "integer", "minimum": 1},
+    "partitionRule": {
+      "type": "object",
+      "required": ["toleranceUm"],
+      "properties": {"toleranceUm": {"type": "string"}}
+    },
+    "groupPlaceCommandForm": {"type": "string", "minLength": 1},
+    "mage": {
+      "type": "object",
+      "required": ["executable", "setupScript", "buildBanner"],
+      "properties": {
+        "executable": {},
+        "setupScript": {"type": "string"},
+        "buildBanner": {"type": "string"}
+      }
+    }
+  }
+}
