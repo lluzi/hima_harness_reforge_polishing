@@ -67,9 +67,65 @@ def _load_case(manifest_path):
 
     return {
         "manifest": manifest, "dbuPerUm": dbu_per_um, "frame": frame, "ruleFacts": rule_facts,
-        "blockTypes": block_types, "targets": targets_bound, "startPla": start_pla,
-        "incumbentPla": incumbent_pla,
+        "blockTypes": block_types, "targets": targets_bound, "targetsRaw": targets_raw,
+        "startPla": start_pla, "incumbentPla": incumbent_pla,
     }
+
+
+def _incumbent_target_identity(targets_raw, start_targets_bound, start_pla, incumbent_pla):
+    """Bind `targets_raw` against the incumbent's own Group target points
+    first (`identity.method: 'group-point'`); fall back to carrying each
+    target's fit id over from the start snapshot (`identity.method:
+    'fit-id'`) when the incumbent's Group points/labels no longer match the
+    CSV one-for-one -- the real vendor post-refine incumbent PLA's own
+    Group target points differ from the CSV targets for most groups and
+    Group labels get renumbered (F8, spec section 9/13's identity-unknown
+    case), so binding by Group point there raises `MageError('identity')`.
+
+    Returns `(bound_targets, identity)`; `identity` is `{method,
+    groupPointsMatchingCsv, unmatchedTargets, inGroupRelabels}`.
+    `groupPointsMatchingCsv` counts, independent of which method actually
+    bound the result, how many CSV rows' CT point exactly matches some
+    incumbent Group's own target point. `inGroupRelabels` (fit-id method
+    only) counts incumbent Group labels (`pinstGroup`) absent from the
+    start snapshot's own Group labels -- a renumbered/relabelled Group.
+    """
+    incumbent_groups, incumbent_fits = incumbent_pla["groups"], incumbent_pla["fits"]
+    incumbent_group_points = {tuple(group["targetPointDbu"]) for group in incumbent_groups}
+    matching_points = sum(1 for row in targets_raw if tuple(row["ctDbu"]) in incumbent_group_points)
+
+    try:
+        bound = targets.bind_targets(targets_raw, incumbent_groups, incumbent_fits)
+        identity = {
+            "method": "group-point", "groupPointsMatchingCsv": matching_points,
+            "unmatchedTargets": 0, "inGroupRelabels": 0,
+        }
+        return bound, identity
+    except core.MageError as exc:
+        if exc.code != "identity":
+            raise
+
+    incumbent_fit_ids = {fit["id"] for fit in incumbent_fits}
+    start_group_names = {group["pinstGroup"] for group in start_pla["groups"]}
+    incumbent_group_names = {group["pinstGroup"] for group in incumbent_groups}
+
+    bound, unmatched = [], 0
+    for start_row in start_targets_bound:
+        entry = dict(start_row)
+        fit_id = start_row.get("fitId")
+        if fit_id in incumbent_fit_ids:
+            entry["fitId"] = fit_id
+        else:
+            entry["fitId"] = None
+            unmatched += 1
+        bound.append(entry)
+
+    identity = {
+        "method": "fit-id", "groupPointsMatchingCsv": matching_points,
+        "unmatchedTargets": unmatched,
+        "inGroupRelabels": len(incumbent_group_names - start_group_names),
+    }
+    return bound, identity
 
 
 def _priority_unplaced(snap):
@@ -148,18 +204,30 @@ def measure_incumbent(workspace, inputs):
     case_readiness = core.read_artifact(workspace / "state" / "case-readiness.json", "case-readiness")
     goal = case_readiness["goal"]
 
+    incumbent_targets, target_identity = _incumbent_target_identity(
+        case["targetsRaw"], case["targets"], case["startPla"], case["incumbentPla"],
+    )
+
     incumbent_inputs = {"incumbentState": dict(case["manifest"]["incumbentState"])}
     incumbent_snapshot = snapshot.build_snapshot(
-        "incumbent", case["incumbentPla"], case["frame"], case["ruleFacts"], case["targets"],
+        "incumbent", case["incumbentPla"], case["frame"], case["ruleFacts"], incumbent_targets,
         case["blockTypes"], incumbent_inputs, pending_from_rules=False,
     )
 
+    target_distances = metrics_mod.target_distances(incumbent_snapshot, str(goal["max_target_distance_um"]))
+    # F8 (identity-unknown): a target-distance number computed against a
+    # fit-id-fallback binding is not comparable to a real Group-point
+    # measurement -- `evaluate_placement`'s Q2 comparison must read this
+    # flag and report `unknown` rather than a delta whenever it is set.
+    target_distances["identity"] = "identity-unknown" if target_identity["method"] == "fit-id" else "known"
+
     computed_metrics = {
         "drops": metrics_mod.drops(incumbent_snapshot),
-        "targetDistances": metrics_mod.target_distances(incumbent_snapshot, str(goal["max_target_distance_um"])),
+        "targetDistances": target_distances,
         "orderDeviation": metrics_mod.order_deviation(incumbent_snapshot),
         "displacement": metrics_mod.displacement(start_snapshot, incumbent_snapshot),
         "priorityUnplaced": _priority_unplaced(incumbent_snapshot),
+        "identity": target_identity,
     }
 
     models_dir = Path(__file__).resolve().parents[1] / "consumer_models"
@@ -312,9 +380,20 @@ def evaluate_placement(workspace, inputs):
         except (KeyError, TypeError, ValueError):
             return core.unknown("comparison not available")
 
+    # Q2 is never a delta against a fit-id-fallback incumbent binding (F8,
+    # identity-unknown) -- a target-distance number measured under a
+    # carried-over fit id is not the same measurement as one bound by
+    # Group point, so comparing them would silently misreport "better" or
+    # "worse" against an incomparable baseline.
+    incumbent_identity = incumbent_metrics.get("targetDistances", {}).get("identity")
+    if incumbent_identity == "identity-unknown":
+        q2 = core.unknown("incumbent target-distance binding is identity-unknown (fit-id fallback)")
+    else:
+        q2 = _delta(["targetDistances", "overLimitCount"])
+
     comparison = {
         "Q1_dropsDelta": _delta(["drops", "count"]),
-        "Q2_targetDistanceDelta": _delta(["targetDistances", "overLimitCount"]),
+        "Q2_targetDistanceDelta": q2,
         "Q3_orderDeviationDelta": _delta(["orderDeviation", "max"]),
         "Q4_displacementMovedDelta": _delta(["displacement", "movedCount"]),
     }

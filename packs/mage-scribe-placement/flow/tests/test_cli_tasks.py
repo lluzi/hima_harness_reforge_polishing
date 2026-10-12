@@ -82,7 +82,20 @@ class CliRouteTest(unittest.TestCase):
         _run(["task-" + name, self.workspace, task_input, task_output])
         return json.loads(task_output.read_text(encoding="utf-8"))["value"]
 
-    def _candidate_pla_text(self, dbu_per_um, ovl_b_on_target):
+    def _candidate_pla_text(self, dbu_per_um, ovl_b_on_target, place_key_v=False):
+        """Build one round's candidate PLA text from the start state.
+
+        `place_key_v=True` adds KEY_V as an actual Fit record inside the
+        interior vertical scribe lane V:1 (cross range 1060-1120 um, the
+        60 um scribe band between the two die columns), oriented along
+        the lane (900 um along y, 60 um across x) with its bottom clear
+        of both the lower (0-60 um) and the die-row (860-920 um) horizontal
+        scribe bands -- y range 300-1200 um sits entirely inside V:1's own
+        along range [0, 1780] and outside every H lane's cross range, so
+        `lanes.assign_lane` resolves it to exactly `{"axis": "V", "track": 1}`.
+        `place_key_v=False` keeps the old behaviour: KEY_V stays a dropped
+        structure (`placedFlag: 0` in `drops`), never a Fit.
+        """
         start_text = Path(self.case["files"]["startState"]).read_text(encoding="utf-8")
         doc = pla.read_pla(start_text, dbu_per_um)
         if ovl_b_on_target:
@@ -93,14 +106,25 @@ class CliRouteTest(unittest.TestCase):
                     # Group G1_2's CT target is (1290, 30) um -> centre the box there.
                     new_centre_x = core.um_to_dbu("1290", dbu_per_um)
                     fit["boxDbu"] = [new_centre_x - width // 2, b, new_centre_x + width // 2, t]
-        doc["drops"] = [{
-            "id": "KEY_V.KEY_V", "base": "KEY_V", "inst": "KEY_V.KEY_V",
-            "boxDbu": [0, 0, core.um_to_dbu("900", dbu_per_um), core.um_to_dbu("60", dbu_per_um)],
-            "extraRot": "NULL", "placedFlag": 0, "postfix": "", "inGroup": "",
-        }]
+        if place_key_v:
+            doc["fits"].append({
+                "id": "KEY_V.KEY_V_1", "base": "KEY_V", "inst": "KEY_V.KEY_V_1",
+                "boxDbu": [
+                    core.um_to_dbu("1060", dbu_per_um), core.um_to_dbu("300", dbu_per_um),
+                    core.um_to_dbu("1120", dbu_per_um), core.um_to_dbu("1200", dbu_per_um),
+                ],
+                "extraRot": "NULL", "postfix": "", "inGroup": "",
+            })
+            doc["drops"] = []
+        else:
+            doc["drops"] = [{
+                "id": "KEY_V.KEY_V", "base": "KEY_V", "inst": "KEY_V.KEY_V",
+                "boxDbu": [0, 0, core.um_to_dbu("900", dbu_per_um), core.um_to_dbu("60", dbu_per_um)],
+                "extraRot": "NULL", "placedFlag": 0, "postfix": "", "inGroup": "",
+            }]
         return pla.write_pla(doc, dbu_per_um, units="um")
 
-    def _build_candidate(self, round_no, ovl_b_on_target, ledger):
+    def _build_candidate(self, round_no, ovl_b_on_target, ledger, place_key_v=False):
         """Run the Engineer's part of one round: `mage-round` + `candidate`.
 
         Returns `(round_dir, candidate_doc, candidate_resident_output,
@@ -110,7 +134,9 @@ class CliRouteTest(unittest.TestCase):
         """
         dbu_per_um = self.case["manifest"]["dbuPerUm"]
         pla_path = self.root / f"round{round_no}.pla"
-        pla_path.write_text(self._candidate_pla_text(dbu_per_um, ovl_b_on_target), encoding="utf-8")
+        pla_path.write_text(
+            self._candidate_pla_text(dbu_per_um, ovl_b_on_target, place_key_v=place_key_v), encoding="utf-8",
+        )
 
         round_dir = self.workspace / "placement" / f"round-{round_no:02d}"
         env = dict(os.environ)
@@ -186,7 +212,14 @@ class CliRouteTest(unittest.TestCase):
         return review_docs, review_resident_outputs
 
     def test_full_route_two_rounds(self):
-        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 1}
+        # MAX_ORDER_DEVIATION is 2, not the contract default of 1: this
+        # fixture's own target table places G1 twice (OVL_A, OVL_B) either
+        # side of G2's single AL_X, so the requested (CSV) order and the
+        # placed order differ by exactly 2 positions regardless of where
+        # OVL_B sits along its lane -- a structural property of this case,
+        # not something either round's candidate changes. A real Goal
+        # knob, not a rule change, is what accommodates it.
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
 
         prepare_value = self._task("prepare-case", {
             "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
@@ -237,20 +270,25 @@ class CliRouteTest(unittest.TestCase):
         self.assertEqual(decision1["route"], "continue")
         self.assertEqual(decision1["openRequestCount"], 2)
 
-        # Round 2: OVL_B corrected onto target; its previous Requests are
-        # answered in the Ledger; no new Requests are authored (WAT's
-        # Finding on KEY_V still fails mechanically -- it stays dropped --
-        # but nothing changed worth re-asking).
+        # Round 2: OVL_B is corrected onto its CT target AND KEY_V is placed
+        # as a real Fit inside the interior vertical scribe lane V:1 (see
+        # `_candidate_pla_text`'s docstring for the exact box) -- both of
+        # round 1's Requests are genuinely resolved, litho-pie and WAT both
+        # clear their hard fails, nobody files a new Request, and the
+        # round legitimately stops under the spec's own "no hard-fail
+        # Finding and no open Request" rule.
         ledger_round2 = [
             {"schema": "mage.ledger-entry/1", "id": "L-1", "request": litho_request1["id"], "answer": "satisfied",
              "answeredInSnapshot": "pending", "evidence": [], "note": "OVL_B moved onto its CT target"},
-            {"schema": "mage.ledger-entry/1", "id": "L-2", "request": wat_request1["id"], "answer": "declined",
-             "answeredInSnapshot": "pending", "evidence": [], "note": "capacity-limited; KEY_V stays dropped this round"},
+            {"schema": "mage.ledger-entry/1", "id": "L-2", "request": wat_request1["id"], "answer": "satisfied",
+             "answeredInSnapshot": "pending", "evidence": [], "note": "KEY_V placed in scribe lane V:1"},
         ]
         round2_dir, candidate2, candidate2_ro, evals2 = self._build_candidate(
-            2, ovl_b_on_target=True, ledger=ledger_round2,
+            2, ovl_b_on_target=True, ledger=ledger_round2, place_key_v=True,
         )
+        self.assertEqual(candidate2["metrics"]["drops"]["count"], 0)
         self.assertFalse(any(f["status"] == "fail" and f["severity"] == "hard" for f in evals2["litho-pie"]["findings"]))
+        self.assertFalse(any(f["status"] == "fail" and f["severity"] == "hard" for f in evals2["wat"]["findings"]))
         reviews2, review2_ro = self._build_reviews(2, evals2, {})
 
         decision2 = self._task("decide-round", {
@@ -260,21 +298,24 @@ class CliRouteTest(unittest.TestCase):
             **goal,
         })
         self.assertEqual(decision2["route"], "stop")
+        self.assertEqual(decision2["stopReason"], "no consumer hard failure and no open request")
         self.assertEqual(decision2["openRequestCount"], 0)
 
         evaluation = self._task("evaluate-placement", {
             "DECISION": decision2, "INCUMBENT": incumbent_value, **goal,
         })
-        self.assertFalse(evaluation["goalMet"])
-        self.assertEqual(evaluation["rules"]["drops-within-goal"], "FAIL")
-        self.assertEqual(evaluation["rules"]["placement-delivery-ready"], "PASS")
-        self.assertEqual(evaluation["rules"]["priority-all-placed"], "PASS")
-        self.assertEqual(evaluation["rules"]["no-native-violation"], "PASS")
-        self.assertEqual(evaluation["rules"]["target-limit-met"], "PASS")
-        self.assertEqual(evaluation["rules"]["no-open-requests"], "PASS")
+        # All seven delivery rules PASS: KEY_V is placed (drops == 0), OVL_B
+        # is on target, and the stand-in MAGE wrote zero rows for every
+        # native verify type -> goalMet is true.
+        self.assertEqual(evaluation["rules"], {
+            "placement-delivery-ready": "PASS", "priority-all-placed": "PASS",
+            "no-native-violation": "PASS", "drops-within-goal": "PASS",
+            "target-limit-met": "PASS", "order-within-goal": "PASS", "no-open-requests": "PASS",
+        })
+        self.assertTrue(evaluation["goalMet"])
 
         report = self._task("deliver", {"EVALUATION": evaluation})
-        self.assertEqual(report["goalMet"], False)
+        self.assertEqual(report["goalMet"], True)
 
         package_path = self.workspace / "delivery" / "placement-artifacts.tar.gz"
         self.assertTrue(package_path.is_file())
@@ -282,6 +323,115 @@ class CliRouteTest(unittest.TestCase):
             names = archive.getnames()
         self.assertTrue(any("round-01" in n for n in names))
         self.assertTrue(any("round-02" in n for n in names))
+
+    def test_no_improvement_for_two_rounds_stops_with_a_decision_request(self):
+        """KEY_V stays dropped every round (WAT keeps hard-failing and
+        keeps filing a `place` Request on it); litho-pie, once its own
+        OVL_B hard fail clears in round 2, files a `keep` preference
+        Request on the very same target -- a genuine consumer conflict
+        every round from round 2 on, so each of those rounds carries at
+        least one Decision Request. Round 2 improves on round 1 (litho's
+        hard fail clears); rounds 3 and 4 then repeat round 2's state
+        exactly, so round 4 is the second round in a row with no
+        improvement and stops under that rule (not the round-limit, which
+        it also happens to hit) -- `goalMet` stays false the whole time
+        because KEY_V is still dropped."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps,
+            **goal,
+        })
+        incumbent_value = self._task("measure-incumbent", {
+            "CASE": prepare_value, "INCUMBENT_COMPARISON": "retained",
+        })
+
+        # Round 1: baseline, exactly as in test_full_route_two_rounds.
+        _d1, _c1, c1_ro, evals1 = self._build_candidate(1, ovl_b_on_target=False, ledger=[])
+        litho_fail1 = next(f for f in evals1["litho-pie"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+        wat_fail1 = next(f for f in evals1["wat"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+        requests1 = {
+            "litho-pie": [{
+                "fromFinding": litho_fail1["id"], "consumer": "litho-pie",
+                "requestedOutcome": {"kind": "move", "targets": litho_fail1["targets"], "limitsUm": {}, "text": "move OVL_B onto its CT target"},
+                "acceptableAlternatives": [], "strength": "hard",
+            }],
+            "wat": [{
+                "fromFinding": wat_fail1["id"], "consumer": "wat",
+                "requestedOutcome": {"kind": "place", "targets": ["KEY_V.KEY_V"], "limitsUm": {}, "text": "place KEY_V"},
+                "acceptableAlternatives": [], "strength": "hard",
+            }],
+        }
+        reviews1, review1_ro = self._build_reviews(1, evals1, requests1)
+        decision1 = self._task("decide-round", {
+            "ROUND": 1, "CANDIDATE": c1_ro,
+            "REVIEW_LITHO_PIE": review1_ro["litho-pie"], "REVIEW_METROLOGY": review1_ro["metrology"],
+            "REVIEW_ALIGNMENT": review1_ro["alignment"], "REVIEW_WAT": review1_ro["wat"],
+            **goal,
+        })
+        self.assertEqual(decision1["route"], "continue")
+
+        previous_requests = {
+            "litho-pie": reviews1["litho-pie"]["requests"][0], "wat": reviews1["wat"]["requests"][0],
+        }
+
+        # Rounds 2, 3 and 4 all carry the SAME state: OVL_B corrected
+        # (litho-pie's hard fail cleared for good), KEY_V still dropped
+        # (WAT's hard fail never clears). From round 2 on, litho-pie files
+        # a `keep` preference on KEY_V's own target -- in real conflict
+        # with WAT's `place` Request on that same target -- so every one
+        # of these rounds' open Requests produces a Decision Request.
+        decisions = {1: decision1}
+        for round_no in (2, 3, 4):
+            ledger = [
+                {"schema": "mage.ledger-entry/1", "id": "L-litho", "request": previous_requests["litho-pie"]["id"],
+                 "answer": "declined", "answeredInSnapshot": "pending", "evidence": [],
+                 "note": "round %d: see this round's own findings" % (round_no - 1)},
+                {"schema": "mage.ledger-entry/1", "id": "L-wat", "request": previous_requests["wat"]["id"],
+                 "answer": "declined", "answeredInSnapshot": "pending", "evidence": [],
+                 "note": "capacity-limited; KEY_V stays dropped"},
+            ]
+            _dir, candidate, candidate_ro, evals = self._build_candidate(
+                round_no, ovl_b_on_target=True, ledger=ledger,
+            )
+            self.assertFalse(any(f["status"] == "fail" and f["severity"] == "hard" for f in evals["litho-pie"]["findings"]))
+            wat_fail = next(f for f in evals["wat"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+            requests = {
+                "litho-pie": [{
+                    "fromFinding": evals["litho-pie"]["findings"][0]["id"], "consumer": "litho-pie",
+                    "requestedOutcome": {"kind": "keep", "targets": ["KEY_V.KEY_V"], "limitsUm": {},
+                                          "text": "keep the current layout; do not disturb it for KEY_V"},
+                    "acceptableAlternatives": [], "strength": "preference",
+                }],
+                "wat": [{
+                    "fromFinding": wat_fail["id"], "consumer": "wat",
+                    "requestedOutcome": {"kind": "place", "targets": ["KEY_V.KEY_V"], "limitsUm": {}, "text": "place KEY_V"},
+                    "acceptableAlternatives": [], "strength": "hard",
+                }],
+            }
+            reviews, review_ro = self._build_reviews(round_no, evals, requests)
+            decision = self._task("decide-round", {
+                "ROUND": round_no, "CANDIDATE": candidate_ro,
+                "REVIEW_LITHO_PIE": review_ro["litho-pie"], "REVIEW_METROLOGY": review_ro["metrology"],
+                "REVIEW_ALIGNMENT": review_ro["alignment"], "REVIEW_WAT": review_ro["wat"],
+                **goal,
+            })
+            decisions[round_no] = decision
+            previous_requests = {"litho-pie": reviews["litho-pie"]["requests"][0], "wat": reviews["wat"]["requests"][0]}
+            self.assertGreaterEqual(decision["decisionRequestCount"], 1)
+
+        self.assertEqual(decisions[2]["route"], "continue")
+        self.assertEqual(decisions[3]["route"], "continue")
+        self.assertEqual(decisions[4]["route"], "stop")
+        self.assertEqual(decisions[4]["stopReason"], "no improvement for two consecutive rounds")
+
+        evaluation = self._task("evaluate-placement", {
+            "DECISION": decisions[4], "INCUMBENT": incumbent_value, **goal,
+        })
+        self.assertFalse(evaluation["goalMet"])
+        self.assertEqual(evaluation["rules"]["drops-within-goal"], "FAIL")
 
     def test_tampered_review_findings_refused_by_reader(self):
         """A review whose findings were edited after the evaluator receipt

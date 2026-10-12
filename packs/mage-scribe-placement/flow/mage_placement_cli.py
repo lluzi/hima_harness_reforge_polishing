@@ -117,8 +117,67 @@ def _cmd_lane_view(workspace, args):
     return None
 
 
+def _grid_dbu_for_lane(snap, fit_ids_in_lane, axis_index, default=100):
+    """The placement grid (DBU) for one lane's along axis.
+
+    Reads `gridDbu[axis_index]` off the rule fact of the first fit in
+    `fit_ids_in_lane` that names one (spec section 7.1: "unless the rule
+    file says otherwise"); falls back to `default` (100 DBU = 0.01 um,
+    the Pack's own default grid) when none of this lane's fits name a
+    grid at all.
+    """
+    for fit in snap["fits"]:
+        if fit["id"] not in fit_ids_in_lane:
+            continue
+        rule_item = fit.get("ruleItem")
+        fact = snap["ruleFacts"].get(rule_item) if rule_item else None
+        grid = fact.get("gridDbu") if fact else None
+        if grid and grid[axis_index]:
+            return grid[axis_index]
+    return default
+
+
+def _to_grid(value_dbu, grid_dbu):
+    """Exact DBU -> grid-unit conversion; refuses an inexact division."""
+    if value_dbu % grid_dbu != 0:
+        raise core.MageError(
+            "units", f"{value_dbu} dbu is not an exact multiple of the {grid_dbu} dbu placement grid",
+        )
+    return value_dbu // grid_dbu
+
+
+def _crosses_band(box_dbu, lane_axis, along_low, along_high, cross_low, cross_high):
+    l, b, r, t = box_dbu
+    cross_lo, cross_hi = (b, t) if lane_axis == "H" else (l, r)
+    along_lo, along_hi = (l, r) if lane_axis == "H" else (b, t)
+    return cross_lo < cross_high and cross_hi > cross_low and along_lo < along_high and along_hi > along_low
+
+
 def _cmd_plan_slots(workspace, args):
-    del workspace
+    """Plan `--count` slots of `--length-um` (clearance 0) inside one
+    scribe lane, following the exact slot planner (spec section 7.1).
+
+    Every DBU quantity is converted to the lane's own placement-grid
+    units before `planner.plan_lane` ever sees it, and the result's
+    `moves`/`slotStarts`/`totalDisplacementDbu` are converted back to DBU
+    before the `mage.slot-plan/1` body is written (`plan_lane`'s own
+    `*Dbu`-named fields are frozen schema labels, not a claim about which
+    units the caller passed it -- see its docstring).
+
+    Item model: a priority fit's window is the CT-target window
+    `[t - limit - len/2, t + limit - len/2]`, widened by the empty-window
+    rule when the fit is already further from its target than `limit`
+    (`effective_limit = max(limit, |current_centre - t|)`, so an
+    already-out-of-limit mark's own current position is always inside
+    its window -- a plan can only ever hold it or improve it, never ask
+    for a worse position). A non-priority fit is an immovable point item
+    unless `--movable-nonpriority <um>` gives it a `[current - budget,
+    current + budget]` baseline window. Every Fixed object and every
+    "crossing intruder" (a box of the frame's other axis whose own box
+    still overlaps this lane's cross/along band) is an immovable point
+    item too. Two immovable zero-length sentinels, `@start`/`@end`, pin
+    the lane's own along range.
+    """
     parser = argparse.ArgumentParser(prog="plan-slots")
     parser.add_argument("--snapshot", required=True)
     parser.add_argument("--lane", required=True)
@@ -126,41 +185,121 @@ def _cmd_plan_slots(workspace, args):
     parser.add_argument("--count", required=True, type=int)
     parser.add_argument("--limit-um", required=True)
     parser.add_argument("--relaxed", action="store_true")
-    parser.add_argument("--movable-nonpriority", action="store_true")
+    parser.add_argument("--movable-nonpriority", default=None, metavar="UM")
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
+    del workspace
 
     snap = snapshot.load_snapshot(opts.snapshot)
     dbu_per_um = snap["dbuPerUm"]
     length_dbu = core.um_to_dbu(opts.length_um, dbu_per_um)
     limit_dbu = core.um_to_dbu(opts.limit_um, dbu_per_um)
+    nonpriority_budget_dbu = (
+        core.um_to_dbu(opts.movable_nonpriority, dbu_per_um) if opts.movable_nonpriority is not None else None
+    )
 
-    lane_axis, _, lane_track = opts.lane.partition(":")
+    lane_entry = next((entry for entry in snap["lanes"] if entry["laneId"] == opts.lane), None)
+    if lane_entry is None:
+        raise core.MageError("missing-input", f"unknown lane {opts.lane!r}")
+    lane_axis, lane_track = lane_entry["axis"], lane_entry["track"]
+    axis_index = 0 if lane_axis == "H" else 1
+    along_low_dbu, along_high_dbu = lane_entry["alongRangeDbu"]
+    cross_low_dbu, cross_high_dbu = lane_entry["crossRangeDbu"]
+
+    fit_ids_in_lane = {
+        fit["id"] for fit in snap["fits"]
+        if fit.get("lane") is not None and fit["lane"]["axis"] == lane_axis and fit["lane"]["track"] == lane_track
+    }
+    grid_dbu = _grid_dbu_for_lane(snap, fit_ids_in_lane, axis_index)
+
+    def to_grid(value_dbu):
+        return _to_grid(value_dbu, grid_dbu)
+
+    length = to_grid(length_dbu)
+    targets_by_fit = {t["fitId"]: t for t in snap["targets"] if t.get("fitId")}
+
     items = []
     for fit in snap["fits"]:
         lane = fit.get("lane")
-        if lane is None or lane["axis"] != lane_axis or str(lane["track"]) != lane_track:
+        in_this_lane = lane is not None and lane["axis"] == lane_axis and lane["track"] == lane_track
+        crosses = _crosses_band(fit["boxDbu"], lane_axis, along_low_dbu, along_high_dbu, cross_low_dbu, cross_high_dbu)
+        if not in_this_lane and not crosses:
             continue
-        l, b, r, t = fit["boxDbu"]
+
+        l, b, r, t_ = fit["boxDbu"]
+        along_lo_dbu, along_hi_dbu = (l, r) if lane_axis == "H" else (b, t_)
+        along_length_dbu = along_hi_dbu - along_lo_dbu
+        along_current_dbu = along_lo_dbu
+
+        if not in_this_lane:
+            # A crossing intruder from a different lane: immovable point item.
+            point = to_grid(along_current_dbu)
+            items.append(planner.LaneItem(
+                id=fit["id"], length=to_grid(along_length_dbu), gap_after=0,
+                window=(point, point), current=point, movable=False, cluster=None, intruder=True,
+            ))
+            continue
+
         is_priority = bool(fit.get("priority"))
-        along_current = l if lane_axis == "H" else b
-        along_length = (r - l) if lane_axis == "H" else (t - b)
-        movable = is_priority or opts.movable_nonpriority
         if is_priority:
-            target = next((tg for tg in snap["targets"] if tg.get("fitId") == fit["id"]), None)
-            centre = (target["ctDbu"][0] if lane_axis == "H" else target["ctDbu"][1]) if target else along_current
-            window = (centre - limit_dbu - along_length // 2, centre + limit_dbu - along_length // 2)
+            target = targets_by_fit.get(fit["id"])
+            if target is not None:
+                centre_dbu = (along_lo_dbu + along_hi_dbu) // 2
+                ct_dbu = target["ctDbu"][0] if lane_axis == "H" else target["ctDbu"][1]
+                deviation_dbu = abs(centre_dbu - ct_dbu)
+                effective_limit_dbu = max(limit_dbu, deviation_dbu)
+                lo_dbu = ct_dbu - effective_limit_dbu - along_length_dbu // 2
+                hi_dbu = ct_dbu + effective_limit_dbu - along_length_dbu // 2
+                window = (to_grid(lo_dbu), to_grid(hi_dbu))
+            else:
+                point = to_grid(along_current_dbu)
+                window = (point, point)
+            movable = True
+        elif nonpriority_budget_dbu is not None:
+            lo_dbu, hi_dbu = along_current_dbu - nonpriority_budget_dbu, along_current_dbu + nonpriority_budget_dbu
+            window = (to_grid(lo_dbu), to_grid(hi_dbu))
+            movable = True
         else:
-            window = (along_current, along_current) if not movable else (along_current, along_current)
+            point = to_grid(along_current_dbu)
+            window, movable = (point, point), False
+
         items.append(planner.LaneItem(
-            id=fit["id"], length=along_length, gap_after=0, window=window,
-            current=along_current, movable=movable, cluster=None, priority=is_priority,
+            id=fit["id"], length=to_grid(along_length_dbu), gap_after=0, window=window,
+            current=to_grid(along_current_dbu), movable=movable, cluster=None, priority=is_priority,
         ))
+
+    for fixed in snap["fixed"]:
+        if not _crosses_band(fixed["boxDbu"], lane_axis, along_low_dbu, along_high_dbu, cross_low_dbu, cross_high_dbu):
+            continue
+        l, b, r, t_ = fixed["boxDbu"]
+        along_lo_dbu, along_hi_dbu = (l, r) if lane_axis == "H" else (b, t_)
+        point = to_grid(along_lo_dbu)
+        items.append(planner.LaneItem(
+            id=fixed["id"], length=to_grid(along_hi_dbu - along_lo_dbu), gap_after=0,
+            window=(point, point), current=point, movable=False, cluster=None,
+        ))
+
+    start_point, end_point = to_grid(along_low_dbu), to_grid(along_high_dbu)
+    items.append(planner.LaneItem(id="@start", length=0, gap_after=0, window=(start_point, start_point),
+                                   current=start_point, movable=False))
+    items.append(planner.LaneItem(id="@end", length=0, gap_after=0, window=(end_point, end_point),
+                                   current=end_point, movable=False))
     items.sort(key=lambda it: it.current)
 
-    slot = planner.SlotRequest(count=opts.count, length=length_dbu, clearance=0)
+    slot = planner.SlotRequest(count=opts.count, length=length, clearance=0)
     relaxations = {"ignoreGaps": True, "intrudersMovable": True} if opts.relaxed else None
     body = planner.plan_lane(items, slot, relaxations=relaxations, lane_id=opts.lane)
+
+    # `plan_lane`'s own `*Dbu`-named fields are the frozen schema labels
+    # (its docstring); the caller passed it grid units, so convert back.
+    body["slot"] = {"count": opts.count, "length": length_dbu, "clearance": 0}
+    body["moves"] = [
+        {"id": move["id"], "fromDbu": move["fromDbu"] * grid_dbu, "toDbu": move["toDbu"] * grid_dbu}
+        for move in body["moves"]
+    ]
+    body["slotStarts"] = [start * grid_dbu for start in body["slotStarts"]]
+    body["totalDisplacementDbu"] = body["totalDisplacementDbu"] * grid_dbu
+
     body = core.stamp("slot-plan", body)
     errors = records.validate_record("slot-plan", body)
     if errors:

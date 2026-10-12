@@ -130,7 +130,7 @@ class DecideTests(unittest.TestCase):
         reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
         decision = rounds.decide(self.workspace, 1, {}, reviews, candidate, self._round0_decision())
         self.assertEqual(decision["route"], "stop")
-        self.assertEqual(decision["stopReason"], "no open request remains for this round")
+        self.assertEqual(decision["stopReason"], "no consumer hard failure and no open request")
 
     def test_continue_when_open_requests(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")

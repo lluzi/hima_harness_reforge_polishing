@@ -266,20 +266,18 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision):
 
     if unanswered_previous:
         route, stop_reason = "continue", "unanswered previous request: " + ", ".join(unanswered_previous)
-    elif not open_reqs:
-        # "No hard-fail finding and no open Request" (spec section 4): a
-        # consumer whose Finding is hard-fail but which has nothing left to
-        # ask for this round (either nothing changed it could usefully
-        # request, or a prior Request covering it was already answered in
-        # this candidate's Ledger -- checked above) has nothing "open"
-        # left; `hard_fail_count` still ranks candidates in
-        # `best_state_key` below, but it is the *open* Request, not the
-        # raw Finding count, that gates whether this round can stop.
-        route, stop_reason = "stop", "no open request remains for this round"
+    elif not hard_fail_count and not open_reqs:
+        # Spec section 4, verbatim: stop when there is no consumer
+        # hard-fail Finding AND no open Request this round.
+        route, stop_reason = "stop", "no consumer hard failure and no open request"
+    elif len(history) >= 2 and not history[-1]["improved"] and not history[-2]["improved"]:
+        # Checked before the round-limit condition below: when a round
+        # both hits the limit and shows no improvement over the one
+        # before it, the no-improvement reason is the more informative of
+        # the two (the limit is implied; the stall is the actual cause).
+        route, stop_reason = "stop", "no improvement for two consecutive rounds"
     elif round_no >= MAX_ROUNDS:
         route, stop_reason = "stop", "round limit reached"
-    elif len(history) >= 2 and not history[-1]["improved"] and not history[-2]["improved"]:
-        route, stop_reason = "stop", "no improvement for two consecutive rounds"
     else:
         route, stop_reason = "continue", ""
 
