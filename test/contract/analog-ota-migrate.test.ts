@@ -163,7 +163,10 @@ test('the deployed analog Site analog_sim_01 fits the Pack and binds both simula
     for (const wrapper of wrappers) assert.ok(site.permitRules.allowedWrappers.includes(wrapper), wrapper);
     assert.ok(site.permitRules.allowedReadRoots.includes(bindings.pdkRoot!));
     assert.deepEqual(site.permitRules.allowedWriteRoots, [bindings.workspaceRoot]);
-    assert.doesNotMatch(await readFile(path.join(siteDir, 'site.yml'), 'utf8'), /\b\d{1,3}(\.\d{1,3}){3}\b/, 'no server address in git');
+    const siteText = await readFile(path.join(siteDir, 'site.yml'), 'utf8');
+    assert.doesNotMatch(siteText, /\b\d{1,3}(\.\d{1,3}){3}\b/, 'no server address in git');
+    // The App's Site review refuses policy fields in site.yml: they live in the Permit only.
+    assert.doesNotMatch(siteText, /^(allowedReadRoots|allowedWriteRoots|allowedWrappers|forbidden):/m);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
