@@ -21,8 +21,11 @@ Checked, per the Task 8 brief:
   name -- names a real subcommand (never silently skipped just because the
   token is not recognized) and uses only `--flags` that subcommand defines;
 - every `state/...` path mentioned is either a declared `contract.yml`
-  output path, the one real session-log path (`state/session.jsonl`), or
-  a `state/history/round-NN/...` archive path (`rounds.py:_archive_round`).
+  output path or a `state/history/round-NN/...` archive path
+  (`rounds.py:_archive_round`). The session log lives inside the
+  Engineer's own round directory (`placement/round-NN/session.jsonl`,
+  under its `artifactPrefix`), not under `state/`, so it is not part of
+  this check.
 """
 from __future__ import annotations
 
@@ -50,13 +53,15 @@ RESIDENT_TOOL_IDS = (
 WORD_BUDGET = 12000
 
 # Additional `state/...` paths that are not `contract.yml` declared
-# outputs but are still legitimate for a knowledge file to name: the one
-# native-session log this Pack's own code writes
-# (`native/session.py:log_path`), and `role-bonding.md`'s own explicit
-# statement that `state/round/review-bonding.json` does NOT exist in
-# 0.1.0 (there is no `review-bonding` tool/output to declare it) -- the
-# path is named precisely to say it is absent, not as a real reference.
-_EXTRA_STATE_PATHS = {"state/session.jsonl", "state/round/review-bonding.json"}
+# outputs but are still legitimate for a knowledge file to name:
+# `role-bonding.md`'s own explicit statement that
+# `state/round/review-bonding.json` does NOT exist in 0.1.0 (there is no
+# `review-bonding` tool/output to declare it) -- the path is named
+# precisely to say it is absent, not as a real reference. The session
+# log itself is not a `state/...` path at all (it lives at
+# `placement/round-NN/session.jsonl`, under the Engineer's own
+# `artifactPrefix`), so it needs no entry here.
+_EXTRA_STATE_PATHS = {"state/round/review-bonding.json"}
 _ARCHIVE_STATE_PATTERN = re.compile(r"^state/history/round-\d\d/")
 
 

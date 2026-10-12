@@ -397,7 +397,12 @@ def _cmd_mage_round(workspace, args):
     env = dict(os.environ)
     env.update(site_mage.get("env", {}))
     templates_dir = Path(__file__).resolve().parent / "templates"
-    log_path = Path(workspace) / "state" / "session.jsonl"
+    # The session log lives inside the round directory, under the
+    # Engineer tool's own `artifactPrefix` (`placement/round-NN/`) --
+    # a resident's support files only reach the Campaign workspace when
+    # they sit under its artifact prefix and are listed in the delivery,
+    # so a log at a Pack-wide `state/` path would never actually publish.
+    log_path = round_dir / "session.jsonl"
 
     sess = native_session.MageSession(
         executable=site_mage["executable"], env=env, workdir=str(Path(workspace)),
@@ -469,12 +474,16 @@ def _cmd_candidate(workspace, args):
     stop_reason = "" if outcome == "completed" else f"native round returned {returncode}"
 
     pla_copy_path = round_dir / "candidate.pla"
+    # The session log lives inside this round's own directory (under the
+    # Engineer tool's `artifactPrefix`), not at a Pack-wide `state/` path
+    # -- see `_cmd_mage_round`'s own comment.
+    session_log_path = round_dir / "session.jsonl"
     files = {
         "pla": {"path": str(pla_copy_path.relative_to(workspace_path)), "sha256": core.file_sha256(pla_copy_path)},
         "snapshot": {"path": str(snapshot_path.relative_to(workspace_path)), "sha256": core.file_sha256(snapshot_path)},
         "export": {"path": str(export_pla_path.relative_to(workspace_path)), "sha256": core.file_sha256(export_pla_path)},
         "verify": _native_verify_refs(workspace_path, round_dir),
-        "sessionLog": {"path": "state/session.jsonl", "sha256": core.file_sha256(workspace_path / "state" / "session.jsonl")},
+        "sessionLog": {"path": str(session_log_path.relative_to(workspace_path)), "sha256": core.file_sha256(session_log_path)},
         "scripts": [{"path": str((round_dir / "round.tcl").relative_to(workspace_path)), "sha256": core.file_sha256(round_dir / "round.tcl")}],
     }
 

@@ -90,7 +90,8 @@ In the task's own private workspace (not under the Campaign `${WORKSPACE}`), wri
 "summary", "stopReason", "artifacts": [{"path", "sha256", "kind"}]}` with exactly one
 `kind: "result"` entry naming `state/round/placement-candidate.json` and every file this round
 produced under `placement/round-NN/` (the candidate PLA, `round.tcl`, `out/export.pla`, every
-`out/verify-<TYPE>.txt`, `out/summary.txt`) plus `state/session.jsonl` as `kind: "support"`, each
+`out/verify-<TYPE>.txt`, `out/summary.txt`, and `session.jsonl` -- the MAGE session log, written
+inside this same round directory, under your own `artifactPrefix`) as `kind: "support"`, each
 hashed with its real sha256. Never invent an artifact's hash; recompute it from the file you just
 wrote.
 

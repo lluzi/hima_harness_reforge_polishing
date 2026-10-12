@@ -149,7 +149,8 @@ class ReaderNegativeTests(unittest.TestCase):
         self.assertEqual(open_count["value"], 1)
 
     def test_session_log_mutation_under_wrong_role_is_refused(self):
-        log_path = self.workspace / "state" / "session.jsonl"
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        log_path = self.workspace / doc["files"]["sessionLog"]["path"]
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps({"roundDir": "x", "role": "metrology", "scriptSha256": "a" * 64,
                                       "mutating": True, "returncode": 0, "startedAt": "t", "endedAt": "t"}) + "\n")
@@ -158,6 +159,37 @@ class ReaderNegativeTests(unittest.TestCase):
         error = next(v for v in values if v["type"] == "mage_candidate_error_count")
         self.assertEqual(error["value"], 1)
         _assert_all_unknown_except(values, "mage_candidate_error_count")
+
+
+    def test_session_log_outside_round_prefix_is_refused(self):
+        """Even a genuine, correctly-hashed session log is refused when its
+        declared path sits outside this round's own `placement/round-NN/`
+        artifact prefix: a resident's support files only reach the
+        Campaign workspace under their own `artifactPrefix`, so a path
+        outside it could never really have been published this way."""
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        real_path = self.workspace / doc["files"]["sessionLog"]["path"]
+        outside_path = self.workspace / "state" / "escaped-session.jsonl"
+        outside_path.parent.mkdir(parents=True, exist_ok=True)
+        outside_path.write_text(real_path.read_text(encoding="utf-8"), encoding="utf-8")
+        doc["files"]["sessionLog"] = {"path": "state/escaped-session.jsonl", "sha256": core.file_sha256(outside_path)}
+        doc["id"] = core.digest({k: v for k, v in doc.items() if k != "id"})
+        self.live_candidate_path.write_text(json.dumps(doc), encoding="utf-8")
+
+        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out5.json", self.workspace)
+        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
+        self.assertEqual(error["value"], 1)
+        _assert_all_unknown_except(values, "mage_candidate_error_count")
+
+    def test_session_log_inside_round_prefix_is_accepted(self):
+        """The ordinary, untampered case: the session log sits at
+        `placement/round-NN/session.jsonl`, inside the Engineer's own
+        artifact prefix, and the Reader accepts it without error."""
+        values = _run_reader("placement-candidate", self.live_candidate_path, self.root / "out6.json", self.workspace)
+        error = next(v for v in values if v["type"] == "mage_candidate_error_count")
+        self.assertEqual(error["value"], 0)
+        doc = json.loads(self.live_candidate_path.read_text(encoding="utf-8"))
+        self.assertTrue(doc["files"]["sessionLog"]["path"].startswith("placement/round-01/"))
 
 
 def doc_sha(path):

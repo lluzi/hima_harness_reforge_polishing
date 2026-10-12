@@ -119,6 +119,19 @@ def _check_session_log(workspace, doc, mods):
     log_ref = doc.get("files", {}).get("sessionLog")
     if not log_ref:
         return
+    # Fail closed on prefix: a resident's support files only reach the
+    # Campaign workspace when they sit under its own `artifactPrefix`
+    # (`placement/round-NN/` for the Engineer) and are listed in the
+    # delivery -- a sessionLog path outside that round's own directory
+    # could never actually have been published this way, so it is
+    # refused before any read, exactly like a tampered sha256.
+    round_no = doc.get("identity", {}).get("round")
+    expected_prefix = f"placement/round-{round_no:02d}/" if isinstance(round_no, int) else None
+    if expected_prefix is None or not log_ref["path"].startswith(expected_prefix):
+        raise mods["core"].MageError(
+            "identity-mismatch",
+            f"session log path {log_ref['path']!r} is not under this round's own artifact prefix",
+        )
     log_path = _resolve_ref(workspace, log_ref)
     if mods["core"].file_sha256(log_path) != log_ref["sha256"]:
         raise mods["core"].MageError("identity-mismatch", "session log bytes changed")

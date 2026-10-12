@@ -32,8 +32,10 @@ own native checks, and answer every open Request in the Ledger. You alone hold t
 
 `state/round/placement-candidate.json` (via `candidate`, overwritten each round — this is the
 `produces` output `placementCandidate` reads). Support files under `placement/round-NN/`: the
-candidate PLA, `round.tcl`, and everything `mage-round` wrote to `out/`. Your private
-`resident-delivery.json` wrapper as described in `placement-playbook.md`'s "Delivery shape".
+candidate PLA, `round.tcl`, `session.jsonl` (the MAGE session log `mage-round` writes directly in
+this round directory — it must stay under your own `artifactPrefix` to ever reach the Campaign
+workspace), and everything `mage-round` wrote to `out/`. Your private `resident-delivery.json`
+wrapper as described in `placement-playbook.md`'s "Delivery shape".
 
 ## Uncertainty handling
 
