@@ -9,7 +9,7 @@ Reports live in your private workspace at `reports/<your step>/r<k>/` (the step 
 {
   "schema": "hima-ota-design/1",
   "stage": "source",
-  "pdk": "sky130A",
+  "pdk": "gf180mcuD",
   "topology": "miller2",
   "round": 1,
   "ibiasUa": 10.0,

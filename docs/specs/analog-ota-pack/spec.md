@@ -154,7 +154,7 @@ from its first rule and a chooser weighs the judge's first two, so:
   fully measured), then `target-margin` (worst normalized margin ≥ 0).
 - The per-line rules (`gain-spec`, `gbw-spec`, `pm-spec`, `power-spec`, `devices-saturated`) follow
   for the record. Chooser `ota-next`:
-goal met, or another round. Converge on `best_margin_pct`; generation limit 3; 2 h time box.
+goal met, or another round. Generation limit 3 (convergence is declared but needs four rounds, so the limit ends a Campaign that misses the Goal); 2 h time box.
 
 ### Results the App shows
 
@@ -179,7 +179,7 @@ goal met, or another round. Converge on `best_margin_pct`; generation limit 3; 2
 
 | Slice | Content | Test level | Status |
 | --- | --- | --- | --- |
-| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU card; independent review fixes | L0/L1/L2 local (`local`: 11 tests, about 1 s), real ngspice (`analog-sim`: 8 tests, about 10 s); Spectre by hand on the server | **Done** |
+| 1 | Pack 0.1.0: method, adapters, Readers, rules, chooser, playbooks; synthetic PDKs; GF180MCU card; independent review fixes | L0/L1/L2 local (`local`: 11 tests, about 1 s), real ngspice (`analog-sim`: 9 tests, about 10 s); Spectre by hand on the server | **Done** |
 | 2 | Resident dry path: both agents through the production resident wrapper with the ACP stand-in, in the in-process Host (pattern: `andes-cell-fmax-dry-path.host.test.ts`); refused deliveries repaired in the same task; goal met in round 2 after a naive port | L2 Host (`analog-dry` group) | Next |
 | 3 | Site `analog_sim_01` (needs user approval for server writes under our project area). Contents: the Spectre wrapper through `edarun`; the ngspice wrapper through the pinned sandbox image; PDK install (GF180MCU from the image; the target PDK); Permit; resident capability (sandbox image with `/foss/pdks`); `simulators: spectre=…,ngspice=…`. The SSH destination is an alias, not an IP. | L4 live-site: bind, characterize, one round by hand, then `analog-ota-migrate.live.test.ts` | Needs decision |
 | 4 | Target PDK card. Option A: IHP SG13G2 1.2 V with ngspice (PSP via OSDI; check the PSP op-parameter names for the saturation gate; `.spiceinit` needs). Option B: the synthetic 130 nm-class process (all Spectre, not a real process). Option C: a customer's own Spectre PDK at their Site (never in this repo). | L4 | Needs decision |

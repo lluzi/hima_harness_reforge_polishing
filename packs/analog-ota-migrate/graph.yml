@@ -150,7 +150,10 @@ nodes:
     parameters:
       chooser: ota-next
       bind: { roundStep: 1 }
-      converge: { read: bestMargin, band: 0.5, generations: 2, generationLimit: 3 }
+      # Convergence would need three flat moves (four rounds); the round limit is three, so the limit
+      # alone ends a Campaign that has not met the Goal (ended-budget-exhausted), never "converged" on
+      # the -100 floor of rounds that were never valid.
+      converge: { read: bestMargin, band: 0.5, generations: 3, generationLimit: 3 }
   - id: blocked
     kind: wait
     label: Needs a person

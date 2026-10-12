@@ -346,3 +346,19 @@ test('a source that misses the spec is not migrated: the round records why and i
     assert.equal(valueOf(values, 'best_margin_pct'), -100, 'the floor before any valid round');
   } finally { await done(); }
 });
+
+test('every attempt into the same folder gets its own files, so no run reads another attempt\'s output', { skip }, async () => {
+  const { ws, done } = await workspace();
+  try {
+    ok(ws, 'bind', `ngspice=${ngspice!}`, pdkRoot, 'synth180', 'synth130');
+    ok(ws, 'characterize');
+    await writeFile(path.join(ws, 'intent.json'), JSON.stringify(SOURCE_INTENT));
+    await writeFile(path.join(ws, 'd.json'), ok(ws, 'draft', 'size', path.join(ws, 'intent.json')));
+    for (let i = 0; i < 3; i += 1) ok(ws, 'sim', 'source', path.join(ws, 'd.json'), LOAD_PF, CM_PCT, path.join(ws, 'own'));
+    const files = (await readdir(path.join(ws, 'own'))).filter((f) => f.startsWith('ota-tt')).sort();
+    assert.deepEqual(files, ['ota-tt-ac.dat', 'ota-tt.attempt-2-ac.dat', 'ota-tt.attempt-2.cir', 'ota-tt.attempt-2.cir.log',
+      'ota-tt.attempt-3-ac.dat', 'ota-tt.attempt-3.cir', 'ota-tt.attempt-3.cir.log', 'ota-tt.cir', 'ota-tt.cir.log']);
+    const third = await readFile(path.join(ws, 'own', 'ota-tt.attempt-3.cir'), 'utf8');
+    assert.match(third, /wrdata ota-tt\.attempt-3-ac\.dat v\(out\)/);
+  } finally { await done(); }
+});

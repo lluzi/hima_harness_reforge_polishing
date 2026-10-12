@@ -3,7 +3,7 @@
 
 A two-stage Miller OTA is sized from a spec sheet in a source PDK and migrated to a target PDK.
 The agents propose designs (device sizes, bias current, compensation); every performance number
-this file writes comes from the Site's SPICE simulator (ngspice), never from model text. The
+this file writes comes from the Site's SPICE simulator (Cadence Spectre or ngspice), never from model text. The
 method an analog designer would apply by hand (gm/Id lookup tables, mirror ratios, the zero
 systematic-offset condition, the gm/Id-preserving port) is code here, so an agent runs it instead
 of rediscovering it.
@@ -234,16 +234,16 @@ def run(argv, cwd, log_path, timeout_s=600):
     return text
 
 
-def fresh(path):
-    """path, or path.attempt-<n> when an earlier attempt left output there: a step never reads
-    another attempt's files and never deletes them."""
-    path = Path(path)
-    if not path.exists():
-        return path
-    n = 2
-    while Path("%s.attempt-%d" % (path, n)).exists():
-        n += 1
-    return Path("%s.attempt-%d" % (path, n))
+def fresh_stem(out_dir, name, suffixes):
+    """A stem in out_dir none of whose files (stem + each suffix) exist yet: name, then
+    name.attempt-<n>. Every file of one run shares the stem, so a run never reads another attempt's
+    output, and no attempt's files are deleted."""
+    out_dir = Path(out_dir)
+    taken = lambda stem: any((out_dir / (stem + suffix)).exists() for suffix in suffixes)
+    stem, n = name, 2
+    while taken(stem):
+        stem, n = "%s.attempt-%d" % (name, n), n + 1
+    return out_dir / stem
 
 
 def dev_params(card, kind, w, l):
@@ -315,9 +315,9 @@ class Ngspice:
             for p in CHAR_PARAMS:
                 lines.append("let c%d_%s = %s" % (i, p, cls.op(card, kind, inst, p)))
                 vectors.append("c%d_%s" % (i, p))
-        data = fresh(Path(out_dir) / ("%s.dat" % name))
+        stem = fresh_stem(out_dir, name, (".cir", ".cir.log", ".dat"))
+        data, netlist = Path(str(stem) + ".dat"), Path(str(stem) + ".cir")
         lines += ["wrdata %s v(g) %s" % (data.name, " ".join(vectors)), "quit", ".endc", ".end", ""]
-        netlist = fresh(Path(out_dir) / ("%s.cir" % name))
         write_text(netlist, "\n".join(lines))
         run([command, "-b", str(netlist)], out_dir, Path(str(netlist) + ".log"))
         if not data.is_file():
@@ -339,8 +339,8 @@ class Ngspice:
             for p in OP_PARAMS:
                 lines.append("let %s_%s = %s" % (dev.lower(), p, cls.op(card, kind, inst, p)))
             lines.append("echo HIMA op_%s %s" % (dev, " ".join("$&%s_%s" % (dev.lower(), p) for p in OP_PARAMS)))
-        netlist = fresh(Path(out_dir) / ("%s.cir" % name))
-        ac_file = Path(str(netlist)[:-4] + "-ac.dat")
+        stem = fresh_stem(out_dir, name, (".cir", ".cir.log", "-ac.dat"))
+        netlist, ac_file = Path(str(stem) + ".cir"), Path(str(stem) + "-ac.dat")
         lines += ["ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ), "wrdata %s v(out)" % ac_file.name,
                   "echo HIMA done 1", "quit", ".endc", ".end", ""]
         write_text(netlist, "\n".join(lines))
@@ -477,8 +477,8 @@ class Spectre:
         lines.append("save " + " ".join("%s:%s" % (inst, SPECTRE_OP[p]) for inst in insts for p in CHAR_PARAMS))
         points = int(round(vdd / SWEEP_STEP_V))
         lines += ["sw dc dev=VG param=dc start=0 stop=%g lin=%d" % (sign * vdd, points), ""]
-        netlist = fresh(Path(out_dir) / ("%s.scs" % name))
-        raw = Path(str(netlist)[:-4] + ".raw")
+        stem = fresh_stem(out_dir, name, (".scs", ".scs.log", ".raw"))
+        netlist, raw = Path(str(stem) + ".scs"), Path(str(stem) + ".raw")
         write_text(netlist, "\n".join(lines))
         run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(str(netlist) + ".log"))
         if not (raw / "sw.dc").is_file():
@@ -500,8 +500,8 @@ class Spectre:
     def ota(cls, command, inputs, stage, netlist_lines, insts, vdd, out_dir, name):
         lines = list(netlist_lines) + ["dcop dc oppoint=rawfile", "opinfo info what=oppoint where=rawfile",
                                        "acan ac start=%g stop=%g dec=%d" % (AC_START_HZ, AC_STOP_HZ, AC_PER_DECADE), ""]
-        netlist = fresh(Path(out_dir) / ("%s.scs" % name))
-        raw = Path(str(netlist)[:-4] + ".raw")
+        stem = fresh_stem(out_dir, name, (".scs", ".scs.log", ".raw"))
+        netlist, raw = Path(str(stem) + ".scs"), Path(str(stem) + ".raw")
         write_text(netlist, "\n".join(lines))
         run([command, "-64", str(netlist), "-raw", str(raw)], out_dir, Path(str(netlist) + ".log"))
         for f in ("dcop.dc", "opinfo.info", "acan.ac"):
@@ -1129,8 +1129,10 @@ def cmd_record(ws, gain_db, gbw_mhz, pm_deg, power_uw):
     if len({(m.get("loadPf"), m.get("cmPct")) for m in measured.values()}) > 1:
         problems.append("the source and target were simulated with different load or input common mode")
     source, target = stages["source"], stages["target"]
-    if source is not None and measured["source"].get("meetsSpec") is not True:
+    if source is not None and measured["source"].get("meetsSpec") is False:
         problems.append("the source design does not meet the spec, so this round has no migration")
+    elif source is not None and measured["source"].get("meetsSpec") is None:
+        problems.append("whether the source design meets the spec is unknown (a measurement or the saturation is unknown at some corner)")
     if target is not None:
         if target["saturated"] is not True:
             problems.append("the target design has a device out of saturation at some corner" if target["saturated"] is False
@@ -1140,7 +1142,9 @@ def cmd_record(ws, gain_db, gbw_mhz, pm_deg, power_uw):
     valid = target is not None and not problems
     lessons = read_json(state(ws, "lessons.json"))
     earlier = [r["targetMarginPct"] for r in lessons["rounds"] if r.get("roundValid") and r.get("targetMarginPct") is not None]
-    margin = None if target is None else target["marginPct"]
+    # A margin is shown only for the accepted design measured under this round's conditions.
+    identity = any(("not of the accepted" in p) or ("another spec sheet" in p) or ("different load" in p) for p in problems)
+    margin = None if target is None or identity else target["marginPct"]
     best = max(earlier + ([margin] if valid else []), default=None)
     design = lambda stage: read_json(design_path(ws, stage)) if design_path(ws, stage).is_file() else None
     record = dict(schema=ROUND_SCHEMA, round=k, loadPf=(measured.get("source") or {}).get("loadPf"),
@@ -1183,8 +1187,9 @@ def round_md(r, inputs):
             ok = s["specMet"][key]
             cells.append("%s %s" % (fmt(s["worst"][key], "%%.%df" % digits), {True: "(met)", False: "(missed)", None: "(unknown)"}[ok]))
         lines.append("| %s (%s) | %s %s | %s | %s |" % (label, unit, ">=" if better == "higher" else "<=", fmt(r["spec"][key], "%%.%df" % digits), *cells))
-    lines += ["", "Round valid: %s. Target worst margin %s %% (best so far %s %%)." % ("yes" if r["roundValid"] else "no",
-                                                                                     fmt(r["targetMarginPct"]), fmt(r["bestMarginPct"]))]
+    best = "none yet" if r.get("bestMarginBasis") == "no valid round yet" else "%s %%" % fmt(r["bestMarginPct"])
+    lines += ["", "Round valid: %s. Target worst margin %s %% (best of a valid round so far: %s)." % (
+        "yes" if r["roundValid"] else "no", fmt(r["targetMarginPct"]), best)]
     mig = r.get("migration")
     if mig:
         lines += ["", "How the migrated design moved from the source design:", "",

@@ -48,6 +48,13 @@
   and the unsaturated devices per corner; the pmos curve labels. Not changed: the migration agent's
   `reads` (the per-device lessons carry what round 2 needs, and a target output does not exist in
   round 1); `bind` still asks every bound simulator to answer.
+- Re-review of 5c00f979 (same reviewer): both blockers and the should-fix items confirmed fixed; two
+  issues the fixes introduced are fixed in the next commit: attempt files now share one stem per run
+  (`ota-tt.attempt-3.cir`, `ota-tt.attempt-3-ac.dat`, `ota-tt.attempt-3.raw`), and `converge` needs
+  three flat moves so three never-valid rounds end at the round limit, not "converged" on the -100
+  floor (the report says "none yet"). A margin is withheld when a measurement is not of the accepted
+  design or conditions; an unknown source verdict is worded as unknown. Spectre path rerun by hand on
+  the server after the fixes: same numbers; the temporary directory was removed.
 
 - By hand on the EDA server (2026-10-12, temporary directory, one job at a time, Cadence licence
   only): the Pack's CLI end to end with Spectre 23.1 on the synthetic pair, the same worst corners as

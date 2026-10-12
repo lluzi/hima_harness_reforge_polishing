@@ -24,4 +24,5 @@ BSIM4 processes (`test/fixtures/analog-pdks/`, made up, 1.8 V and 1.2 V).
   design accepted and simulated at three corners with every value a Reader emits; the naive port
   missing the spec at the 1.2 V process; a re-biased port meeting it; the round record and the Goal
   verdict the round Reader gives; every chart validates against `himaChart`; ngspice and the
-  committed Spectre output agree on the same OTA at the same corner.
+  committed Spectre output agree on the same OTA at the same corner; three `sim` attempts into one
+  folder each get their own files.

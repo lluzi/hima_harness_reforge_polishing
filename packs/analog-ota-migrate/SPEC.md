@@ -29,7 +29,8 @@ Autopilot segments: bind -> check-tables (until `size-agent`), `simulate-source`
 (until `migrate-agent` or `record-round`), `simulate-target` (until `record-round`), `record-round`
 -> judge-round (until `next-round`). The
 owner drives both resident nodes and decides `next-round`. Budget: 2 h time box, 10 min closing
-reserve, `generationLimit: 3`, converge on `best_margin_pct` (band 0.5, 2 generations).
+reserve, `generationLimit: 3`; `converge` on `best_margin_pct` needs three flat moves (band 0.5), which the
+three-round limit never reaches, so a Campaign that does not meet the Goal ends at the limit.
 
 ## Semantics
 
@@ -62,8 +63,8 @@ only the round counter.
 
 ## Endings
 
-`ended-goal-met` (the migrated OTA meets every line in a valid round), `ended-converged` (best margin
-flat over two rounds), `ended-budget-exhausted` (round limit or time box), `ended-goal-not-met`
+`ended-goal-met` (the migrated OTA meets every line in a valid round), `ended-converged` (declared for the
+harness, not reachable within the three-round limit), `ended-budget-exhausted` (round limit or time box), `ended-goal-not-met`
 (owner ends early); `blocked` (wait) when the simulator, a PDK or the design curves fail.
 
 ## Workshops

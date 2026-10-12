@@ -244,6 +244,13 @@ test('the next-round chooser ends only on a valid round whose migrated OTA meets
   assert.equal(undetermined.ok, true, undetermined.reason);
   const unknownGoal = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'PASS'), goal: verdict('target-margin', 'UNDETERMINED') }) as any;
   assert.equal(unknownGoal.ok, true, unknownGoal.reason);
+  // Three rounds that were never valid do not end as "converged" on the -100 floor: the round limit ends them.
+  const next = pack.graph.nodes.find((n) => n.id === 'next-round')!;
+  assert.ok(next.kind === 'explore');
+  const third = choose(chooser, { ...base, observation: observation(-100), constraint: verdict('round-valid', 'FAIL'), goal: verdict('target-margin', 'FAIL'),
+    converge: next.parameters.converge, earlier: [-100, -100] }) as any;
+  assert.equal(third.ok, true, third.reason);
+  assert.equal(third.chosen.converged, undefined, 'not converged on the floor');
 });
 
 test('the PSF reader keeps every struct whatever order Spectre writes them in', async () => {
