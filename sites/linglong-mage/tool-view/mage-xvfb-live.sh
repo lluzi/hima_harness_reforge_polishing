@@ -4,7 +4,9 @@
 # When the live-display marker file is absent, unreadable, or names a display whose X11 socket is
 # not present, this behaves identically to the original: run mage-frb under a private per-round
 # Xvfb (absolute X server path: after the EDA init script a broken vendor Xvfb wrapper shadows
-# /usr/bin/Xvfb on PATH), no xauth, unix socket only, exit code is MAGE's.
+# /usr/bin/Xvfb on PATH), no xauth, unix socket only, exit code is MAGE's. The fallback block below
+# (from `tmp=$(mktemp …)` on) is byte-for-byte the original `mage-xvfb.sh`, diagnostic prefix
+# `mage-xvfb:` included; the only additions are the marker check above it.
 #
 # When the marker names a display backed by a live X11 socket (the shared xpra display started by
 # tool-view/xpra-start.sh, enabled by writing that display name to the marker), this runs mage-frb
@@ -31,7 +33,7 @@ mkfifo "$tmp/fd" || exit 97
 /usr/bin/Xvfb -displayfd 4 -screen 0 1600x1200x24 -nolisten tcp 4>"$tmp/fd" 2>"$tmp/xvfb.log" &
 xpid=$!
 if ! read -r -t 20 num <"$tmp/fd"; then
-  echo "mage-xvfb-live: Xvfb did not report a display" >&2; cat "$tmp/xvfb.log" >&2
+  echo "mage-xvfb: Xvfb did not report a display" >&2; cat "$tmp/xvfb.log" >&2
   kill "$xpid" 2>/dev/null; rm -rf "$tmp"; exit 97
 fi
 export DISPLAY=":$num"
