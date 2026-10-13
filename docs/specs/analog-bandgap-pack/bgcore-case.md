@@ -92,7 +92,7 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
 
 - The same tool as the base Pack.
 - **The ladder** is one serpentine of unit segments. Each of the 120 taps is a labelled pin, and
-  LVS matches all 127 pins.
+  LVS matches all 128 pins of `bandgap_lb`.
 - **The BGOK inverters** sit on the cell's edge.
 - **Gates:** DRC 0 on both decks, LVS matched on both checks, and the post-layout re-check at every
   corner.
@@ -102,7 +102,7 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
 1. This case and its knowledge file.
 2. Engine: the template, bench pins, BGOK and causal-start checks, and the first cut with the
    ladder in the IQ budget.
-3. Layout: the ladder and 127 pins.
+3. Layout: the ladder and 128 pins.
 4. Site sign-off in Spectre.
 5. App run with the resident agent.
 6. Recording. Each step is reported before the next large one.

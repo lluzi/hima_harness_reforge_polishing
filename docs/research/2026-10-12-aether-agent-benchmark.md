@@ -115,7 +115,7 @@ steps run by hand; no agent was involved yet.
 | Phase margin | 64.95 deg | 75.7 deg worst corner (> 60), every crossing |
 | PSRR at 1 kHz | observed only | 53.3 dB worst corner, judged (> 40) |
 | Monte Carlo | none | 100 runs, sigma 4.79 mV, mean +/- 3 sigma inside +/- 2 % |
-| Layout | a different reference cell | the sized cell: 201 x 204 um, DRC 0 on two decks, LVS match on two checks |
+| Layout | a different reference cell | the sized cell: 201 x 204 um, block DRC 0 on two decks (Magic, KLayout), LVS match on two checks; 6 die-level minimum-density hits reported (they need metal fill), as in their 95 |
 | After layout | none | every line met at every corner again (C extraction) |
 | Who decided | the agent | Readers and judges outside the agent, bound to the design's SHA-256 |
 | Wall time | ~17 min sizing + 2 min layout | ~3 min for the whole check chain |
@@ -220,7 +220,7 @@ live round.
 - **30 PVT corners and 100-run Monte Carlo**, judged outside the agent.
 - **A refusal shown on screen.** When the agent claims a pass, the judge checks it and refuses
   wherever a line fails at some corner.
-- **Layout of the cell we sized,** with DRC 0 on two decks rather than 95 waived violations, LVS
+- **Layout of the cell we sized,** with block DRC 0 on two decks rather than 95 waived violations, LVS
   matched on two checks, and a post-layout re-check at every corner.
 - **A start-up metric that is hard to fool.** It measures entry into ±2 % of the final value and
   staying there, and it refuses a final value off the DC solution. A first threshold crossing does
@@ -234,3 +234,11 @@ live round.
 **A useful extra panel: what one condition hides.** Size a cut that just meets the sheet at
 nominal, with margins like theirs, then show the same design failing lines across the 30 corners
 and Monte Carlo. This uses our own PDK and design; we cannot run their design.
+
+### Correction (2026-10-13): what "DRC 0" covered
+
+Our signed-off layout (2026-10-12) had 0 errors on the block rules of both decks (Magic, and the PDK's
+KLayout deck). The PDK's die-level minimum-density deck reported 6 hits (one per metal layer). Only
+metal fill clears those, and the Pack records them without judging them. The competitor's 95
+include the same 6 density hits, so the fair comparison is block rules: 0 against 89. The next step
+runs the PDK's own fill scripts, so that density is judged as well.
