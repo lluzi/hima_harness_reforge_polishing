@@ -320,7 +320,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
             : activeSection === 'evidence' ? <EvidenceView view={view} />
               : activeSection === 'report' ? <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} /> : null}
       </div>
-      {toolSeen && toolView !== undefined ? <ToolViewPanel sessionId={sessionId} site={toolView.site} label={toolView.label} hidden={activeSection !== 'tool'} /> : null}
+      {toolSeen && toolView !== undefined ? <ToolViewPanel key={toolView.site} sessionId={sessionId} site={toolView.site} label={toolView.label} hidden={activeSection !== 'tool'} /> : null}
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>
           Showing the last read at {readAt === undefined ? '—' : shortTime(readAt)}; the Host could not be reached.

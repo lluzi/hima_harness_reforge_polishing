@@ -7,11 +7,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { ToolViewStatus } from '../tool-view.js';
 import { fetchToolView, openToolView } from './api.js';
-
-/** Whether the person is only watching the tool, or driving it. Default `viewing` on every mount and
- *  whenever the forward leaves `ready`, so a frame that reloads or drops never lands a person in a
- *  live tool they did not ask to touch. */
-type Control = 'viewing' | 'controlling';
+import { toolViewReaction, type ToolControl } from './tool-view-reaction.js';
 
 export function ToolViewPanel({ sessionId, site, label, hidden }: {
   readonly sessionId: string; readonly site: string; readonly label: string; readonly hidden: boolean;
@@ -19,45 +15,61 @@ export function ToolViewPanel({ sessionId, site, label, hidden }: {
   const [status, setStatus] = useState<ToolViewStatus>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [control, setControl] = useState<Control>('viewing');
+  const [control, setControl] = useState<ToolControl>('viewing');
   const frame = useRef<HTMLIFrameElement>(null);
+  const opening = useRef(false);
 
-  const open = async (restart?: boolean) => {
+  // Fold a fresh forward status into the pane: `toolViewReaction` decides the control state (view-only
+  // unless `ready`) in one tested place. The open decision belongs to the poll engine below, so a
+  // status learned by any path — a poll, or the answer to `open()` itself — can set this without
+  // risking a reopen loop.
+  const applyStatus = (value: ToolViewStatus): void => {
+    setStatus(value);
+    setControl(previous => toolViewReaction(previous, value.state).control);
+  };
+
+  const open = async (restart?: boolean): Promise<void> => {
+    if (opening.current) return;
+    opening.current = true;
     setBusy(true); setError(undefined);
     const answer = await openToolView(sessionId, site, restart);
+    opening.current = false;
     setBusy(false);
     if (!answer.ok) { setError(answer.error.message); return; }
-    setStatus(answer.value);
+    applyStatus(answer.value);
   };
-  // The first look only reads the forward's status, and opens it when it is down — so revealing this
-  // tab never restarts a session a person is already using, exactly as LibInsight's own panel does.
-  useEffect(() => {
-    if (hidden || status !== undefined) return;
-    const controller = new AbortController();
-    void fetchToolView(sessionId, site, controller.signal).then(answer => {
-      if (controller.signal.aborted) return;
-      if (!answer.ok) { setError(answer.error.message); return; }
-      setStatus(answer.value);
-      if (answer.value.state === 'stopped' || answer.value.state === 'starting') void open();
-    });
-    return () => controller.abort();
-  }, [hidden, sessionId, site, status === undefined]);
-  // A forward that dropped behind an open frame is followed to whatever it becomes, and one restarted
-  // from elsewhere to its new address; a plain tab switch never triggers it (the frame is only hidden).
+
+  // One poll engine for the whole life of the pane. It keeps polling while visible for every live
+  // state (`stopped`/`starting`/`ready`) so a forward that drops behind an open frame, or is restarted
+  // from elsewhere, is followed to whatever it becomes — and a `stopped` one is reopened on its own,
+  // instead of the pane sticking on "Opening…" for good. A failed forward (Retry only) and an
+  // unavailable Site (no tab) stop the poll. The first look only reads status and opens a down forward,
+  // so revealing this tab never restarts a session a person is already using. Re-keyed on the forward's
+  // own state and url so Retry and a changed address restart the engine; a plain tab switch only hides.
+  const state = status?.state;
   const readyUrl = status?.state === 'ready' ? status.url : undefined;
   useEffect(() => {
-    if (hidden || readyUrl === undefined) return;
-    const timer = setInterval(() => {
-      void fetchToolView(sessionId, site).then(answer => { if (answer.ok && (answer.value.state !== 'ready' || answer.value.url !== readyUrl)) setStatus(answer.value); });
-    }, 15_000);
-    return () => clearInterval(timer);
-  }, [hidden, sessionId, site, readyUrl]);
-  // Leaving `ready` — a reload, a drop, a restart — always hands control back to view-only.
-  const state = status?.state;
-  useEffect(() => { if (state !== 'ready') setControl('viewing'); }, [state]);
+    if (hidden) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async (): Promise<void> => {
+      const answer = await fetchToolView(sessionId, site);
+      if (cancelled) return;
+      if (!answer.ok) { setError(answer.error.message); return; }
+      const value = answer.value;
+      applyStatus(value);
+      // `open`/`poll` depend only on the forward's state, not on who holds control, so the control
+      // argument here is immaterial; `applyStatus` is what carries the control reset.
+      const reaction = toolViewReaction('viewing', value.state);
+      if (reaction.open) void open();
+      if (reaction.poll && !cancelled) timer = setTimeout(() => { void tick(); }, 15_000);
+    };
+    void tick();
+    return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer); };
+  }, [hidden, sessionId, site, state, readyUrl]);
 
   const toggleControl = () => setControl(previous => {
-    const next: Control = previous === 'viewing' ? 'controlling' : 'viewing';
+    const next: ToolControl = previous === 'viewing' ? 'controlling' : 'viewing';
     // Handing back takes the keyboard off the tool too, not only the mouse: the shield returns and
     // the frame is blurred so a key pressed afterwards never reaches it.
     if (next === 'viewing') frame.current?.blur();
