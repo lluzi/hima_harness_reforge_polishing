@@ -102,4 +102,69 @@ Pack's tool steps by hand, Spectre 23.1, GF180MCU):
 | simulate post | 70 s | |
 
 The layout tool handled the earlier hand-picked cell but not this real first cut (598.7 × 133.1 um).
-The Pack recorded the round as valid and not signed off, as it should. The fix is in progress.
+The Pack recorded the round as valid and not signed off, as it should. Fixed the same day: the cell
+is folded into stripes with serpentine resistor bands, 164.2 × 189.2 um, DRC 0 on both decks, both
+LVS checks matching.
+
+### Reference ladder, 128 pins and fill (2026-10-13)
+
+The bgcore case adds a 120-tap ladder and a BGOK monitor (`layout/tests/bgcore_shape.spice`).
+`bandgap_lb` has 128 pins: `vdd vss en ibias vbg go g bgok vref_1 … vref_120`.
+
+- **Ladder.** A chain of at least 8 equal unit resistors (one model, width and length, `s=1`) is
+  found from the netlist. Each junction must join exactly two of its elements, and an element may
+  be up to 4 units in parallel (`m=`, `par=` or repeated instances). It is drawn as one serpentine
+  block:
+  - each junction is a short metal1 strap between neighbouring segments;
+  - a tap that is a pin and used by nothing else carries its pin label on its strap (a Magic port
+    on metal1, GDS 34/10, which the KLayout deck reads);
+  - only the ends (`vbg`, `vss`) and the taps other devices use (`vref_100`) reach the routing
+    channel, so the channel does not grow with the tap count.
+
+  Both references write parallel units as separate resistors.
+- **KLayout LVS** runs with `--top_lvl_pins`. Without it the layout's top cell has no pins, and
+  `--combine` merges the series ladder through its tap nets while the reference keeps them apart.
+  The deck matches topology, not labels, so the tool also reads the LVS database. Every reference
+  pin's net must be cross-referenced to a layout net of the same name. A swapped tap label fails
+  this check.
+- **netgen** "Top level cell failed pin matching" counts as a mismatch, as "do not match" and
+  "Property errors" do.
+- **Fill.** After the drawing, the PDK's `scripts/fill_all.rb` fills a copy of the GDS:
+  - it fills COMP, Poly2 and Metal1–5 dummy squares, with the script's own keep-outs, DM.4–DM.7
+    included;
+  - two markers move its 26 um scribe-line ring outside the block, then are removed again;
+  - the output is `<cell>_filled.gds`, with each layer's coverage before and after in `layout.json`
+    (`fill`);
+  - the block and density decks and KLayout LVS (which counts dummy metal as metal) run again on
+    the filled GDS;
+  - netgen LVS and the extraction stay on the unfilled GDS (`pexOn: "unfilled"`);
+  - `klayoutDrc` and `densityRules` keep the unfilled results, and `densityRulesFilled`,
+    `drcKlayoutFilled`, `klayoutLvsFilled` and `filledGdsSha256` are new.
+
+Checked on the Site (`analog-runs/bgcore-layout-20261013-1029`):
+
+| Cell | Size (um) | Magic | KLayout block, unfilled / filled | Density rules, unfilled / filled | LVS netgen, KLayout, KLayout filled | Tool time |
+| --- | --- | --- | --- | --- | --- | --- |
+| bgcore shape | 200.7 × 223.0 | 0 | 0 / 0 | 6 / 5 | match, match (128/128 pins), match | 41 s |
+| site r1 | 164.2 × 189.2 | 0 | 0 / 0 | 6 / 3 | match, match, match | 45 s |
+
+The PDK fill does not reach the die-level 30 % metal density on a block of this size. Its pattern
+is 2 um squares at a 3.2 um pitch: at most 40 % where it may fill, and 25 % on Metal5 (4 um pitch).
+It also keeps 2 um from circuit metal on the same and the adjacent layers. On bgcore it reaches,
+after / before fill:
+
+| Layer | Metal1 | Metal2 | Metal3 | Metal4 | Metal5 |
+| --- | --- | --- | --- | --- | --- |
+| Coverage after / before fill (%) | 18.6 / 5.0 | 17.3 / 0.6 | 25.8 / 3.9 | 37.7 / 13.5 | 28.7 / 10.9 |
+
+Turning off the script's adjacent-layer keep-outs (`MetalN_ignore_active`) gives 26.0 / 29.3 /
+29.9 / 41.5 / 32.1 %, still short on Metal1–3. The kept scribe ring gives 10.0 / 8.9 / 15.6 / 26.1 /
+21.0 %. The density lines stay a reported verdict, not a tool failure: die-level density is closed
+at chip assembly.
+
+Negatives on the earlier runs (`analog-runs/bgcore-layout-20261013-1005`):
+- 13 of 14 wrong references are caught by both LVS checks, two of them new on bgcore: a ladder unit
+  10 % long and a BGOK width. The miss is a MIM with its width and length swapped at the same area,
+  which only netgen sees; the baseline missed it too.
+- All six layout faults are caught by both: four on the pack cell, plus a dropped ladder unit and two
+  swapped tap labels on bgcore.

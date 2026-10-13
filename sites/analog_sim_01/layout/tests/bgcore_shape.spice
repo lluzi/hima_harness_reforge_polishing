@@ -1,0 +1,202 @@
+* Layout test: the bgcore cell shape (written by hand for the layout tool, 2026-10-13).
+* The bandgap of bandgap_site_r1.spice (a signed-off sizing) plus the 120-tap reference ladder and a BGOK
+* monitor, in the engine's device-line format. Device composition only: the sizes and the BGOK logic are
+* not a design; the engine emits the real bgcore netlist.
+* Ladder: RL0 vbg-vref_122 is two unit segments in parallel (m=2); RLk joins vref_k and vref_(k-1), vref_0 = vss.
+* Unit: ppolyf_u_1k 1 um x 10 um (1 kOhm/sq, about 10 kOhm).
+.subckt bandgap_lb vdd vss en ibias vbg go g bgok
++ vref_1 vref_2 vref_3 vref_4 vref_5 vref_6 vref_7 vref_8 vref_9 vref_10 vref_11 vref_12
++ vref_13 vref_14 vref_15 vref_16 vref_17 vref_18 vref_19 vref_20 vref_21 vref_22 vref_23 vref_24
++ vref_25 vref_26 vref_27 vref_28 vref_29 vref_30 vref_31 vref_32 vref_33 vref_34 vref_35 vref_36
++ vref_37 vref_38 vref_39 vref_40 vref_41 vref_42 vref_43 vref_44 vref_45 vref_46 vref_47 vref_48
++ vref_49 vref_50 vref_51 vref_52 vref_53 vref_54 vref_55 vref_56 vref_57 vref_58 vref_59 vref_60
++ vref_61 vref_62 vref_63 vref_64 vref_65 vref_66 vref_67 vref_68 vref_69 vref_70 vref_71 vref_72
++ vref_73 vref_74 vref_75 vref_76 vref_77 vref_78 vref_79 vref_80 vref_81 vref_82 vref_83 vref_84
++ vref_85 vref_86 vref_87 vref_88 vref_89 vref_90 vref_91 vref_92 vref_93 vref_94 vref_95 vref_96
++ vref_97 vref_98 vref_99 vref_100 vref_101 vref_102 vref_103 vref_104 vref_105 vref_106 vref_107 vref_108
++ vref_109 vref_110 vref_111 vref_112 vref_113 vref_114 vref_115 vref_116 vref_117 vref_118 vref_119 vref_120
+XQ1 vss vss a pnp_10p00x10p00 
+XQ2_1 vss vss c pnp_10p00x10p00 
+XQ2_2 vss vss c pnp_10p00x10p00 
+XQ2_3 vss vss c pnp_10p00x10p00 
+XQ2_4 vss vss c pnp_10p00x10p00 
+XQ2_5 vss vss c pnp_10p00x10p00 
+XQ2_6 vss vss c pnp_10p00x10p00 
+XQ2_7 vss vss c pnp_10p00x10p00 
+XQ2_8 vss vss c pnp_10p00x10p00 
+XR1 b c vss ppolyf_u_1k r_length=38.555u r_width=2u s=2
+XR2a vbg a vss ppolyf_u_1k r_length=38.7u r_width=2u s=21
+XR2b vbg b vss ppolyf_u_1k r_length=38.7u r_width=2u s=21
+MB0 ibias ibias vdd vdd pfet_03v3 w=5.61u l=5u
+MT tail ibias vdd vdd pfet_03v3 w=11.22u l=5u
+M3 d1 d1 ls vss nfet_03v3 w=10.5u l=40u
+MO vbg g vdd vdd pfet_03v3 w=11.48u l=2u
+MSU1 su ibias vdd vdd pfet_03v3 w=0.28u l=5u
+MSU2 su vbg vss vss nfet_03v3 w=0.5u l=20u
+MSU3 g su sux vss nfet_03v3 w=1u l=1u
+MSU4 sux en vss vss nfet_03v3 w=1u l=1u
+MEN1 ibias en vdd vdd pfet_03v3 w=1u l=1u
+MEN2 g en vdd vdd pfet_03v3 w=1u l=1u
+MEN3 ls en vss vss nfet_03v3 w=1u l=1u
+M1 d1 a tail vdd pfet_03v3 w=86.215u l=5u
+M2 o1 b tail vdd pfet_03v3 w=86.215u l=5u
+M4 o1 d1 ls vss nfet_03v3 w=10.5u l=40u
+M5 go o1 ls vss nfet_03v3 w=14.395u l=40u
+M6 go go vdd vdd pfet_03v3 w=2.87u l=2u
+XCC o1 vss cap_mim_2f0_m4m5_noshield c_length=70.71u c_width=70.71u
+XRL0 vbg vref_122 vss ppolyf_u_1k r_length=10u r_width=1u s=1 m=2
+XRL122 vref_122 vref_121 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL121 vref_121 vref_120 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL120 vref_120 vref_119 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL119 vref_119 vref_118 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL118 vref_118 vref_117 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL117 vref_117 vref_116 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL116 vref_116 vref_115 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL115 vref_115 vref_114 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL114 vref_114 vref_113 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL113 vref_113 vref_112 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL112 vref_112 vref_111 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL111 vref_111 vref_110 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL110 vref_110 vref_109 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL109 vref_109 vref_108 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL108 vref_108 vref_107 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL107 vref_107 vref_106 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL106 vref_106 vref_105 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL105 vref_105 vref_104 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL104 vref_104 vref_103 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL103 vref_103 vref_102 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL102 vref_102 vref_101 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL101 vref_101 vref_100 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL100 vref_100 vref_99 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL99 vref_99 vref_98 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL98 vref_98 vref_97 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL97 vref_97 vref_96 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL96 vref_96 vref_95 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL95 vref_95 vref_94 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL94 vref_94 vref_93 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL93 vref_93 vref_92 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL92 vref_92 vref_91 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL91 vref_91 vref_90 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL90 vref_90 vref_89 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL89 vref_89 vref_88 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL88 vref_88 vref_87 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL87 vref_87 vref_86 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL86 vref_86 vref_85 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL85 vref_85 vref_84 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL84 vref_84 vref_83 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL83 vref_83 vref_82 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL82 vref_82 vref_81 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL81 vref_81 vref_80 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL80 vref_80 vref_79 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL79 vref_79 vref_78 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL78 vref_78 vref_77 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL77 vref_77 vref_76 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL76 vref_76 vref_75 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL75 vref_75 vref_74 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL74 vref_74 vref_73 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL73 vref_73 vref_72 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL72 vref_72 vref_71 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL71 vref_71 vref_70 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL70 vref_70 vref_69 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL69 vref_69 vref_68 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL68 vref_68 vref_67 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL67 vref_67 vref_66 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL66 vref_66 vref_65 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL65 vref_65 vref_64 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL64 vref_64 vref_63 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL63 vref_63 vref_62 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL62 vref_62 vref_61 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL61 vref_61 vref_60 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL60 vref_60 vref_59 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL59 vref_59 vref_58 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL58 vref_58 vref_57 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL57 vref_57 vref_56 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL56 vref_56 vref_55 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL55 vref_55 vref_54 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL54 vref_54 vref_53 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL53 vref_53 vref_52 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL52 vref_52 vref_51 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL51 vref_51 vref_50 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL50 vref_50 vref_49 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL49 vref_49 vref_48 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL48 vref_48 vref_47 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL47 vref_47 vref_46 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL46 vref_46 vref_45 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL45 vref_45 vref_44 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL44 vref_44 vref_43 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL43 vref_43 vref_42 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL42 vref_42 vref_41 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL41 vref_41 vref_40 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL40 vref_40 vref_39 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL39 vref_39 vref_38 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL38 vref_38 vref_37 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL37 vref_37 vref_36 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL36 vref_36 vref_35 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL35 vref_35 vref_34 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL34 vref_34 vref_33 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL33 vref_33 vref_32 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL32 vref_32 vref_31 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL31 vref_31 vref_30 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL30 vref_30 vref_29 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL29 vref_29 vref_28 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL28 vref_28 vref_27 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL27 vref_27 vref_26 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL26 vref_26 vref_25 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL25 vref_25 vref_24 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL24 vref_24 vref_23 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL23 vref_23 vref_22 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL22 vref_22 vref_21 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL21 vref_21 vref_20 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL20 vref_20 vref_19 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL19 vref_19 vref_18 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL18 vref_18 vref_17 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL17 vref_17 vref_16 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL16 vref_16 vref_15 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL15 vref_15 vref_14 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL14 vref_14 vref_13 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL13 vref_13 vref_12 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL12 vref_12 vref_11 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL11 vref_11 vref_10 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL10 vref_10 vref_9 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL9 vref_9 vref_8 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL8 vref_8 vref_7 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL7 vref_7 vref_6 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL6 vref_6 vref_5 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL5 vref_5 vref_4 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL4 vref_4 vref_3 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL3 vref_3 vref_2 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL2 vref_2 vref_1 vss ppolyf_u_1k r_length=10u r_width=1u s=1
+XRL1 vref_1 vss vss ppolyf_u_1k r_length=10u r_width=1u s=1
+MBK1 sn vref_100 vss vss nfet_03v3 w=1u l=1u
+MBK2 sn ibias vdd vdd pfet_03v3 w=1u l=1u
+MBK3 sn en vdd vdd pfet_03v3 w=1u l=1u
+MBK4 sb sn vss vss nfet_03v3 w=1u l=1u
+MBK5 sb sn vdd vdd pfet_03v3 w=1u l=1u
+MBK6 bgok sb vss vss nfet_03v3 w=1u l=1u
+MBK7 bgok sb vdd vdd pfet_03v3 w=1u l=1u
+.ends bandgap_lb
+
+.subckt bandgap vdd vss en ibias vbg bgok
++ vref_1 vref_2 vref_3 vref_4 vref_5 vref_6 vref_7 vref_8 vref_9 vref_10 vref_11 vref_12
++ vref_13 vref_14 vref_15 vref_16 vref_17 vref_18 vref_19 vref_20 vref_21 vref_22 vref_23 vref_24
++ vref_25 vref_26 vref_27 vref_28 vref_29 vref_30 vref_31 vref_32 vref_33 vref_34 vref_35 vref_36
++ vref_37 vref_38 vref_39 vref_40 vref_41 vref_42 vref_43 vref_44 vref_45 vref_46 vref_47 vref_48
++ vref_49 vref_50 vref_51 vref_52 vref_53 vref_54 vref_55 vref_56 vref_57 vref_58 vref_59 vref_60
++ vref_61 vref_62 vref_63 vref_64 vref_65 vref_66 vref_67 vref_68 vref_69 vref_70 vref_71 vref_72
++ vref_73 vref_74 vref_75 vref_76 vref_77 vref_78 vref_79 vref_80 vref_81 vref_82 vref_83 vref_84
++ vref_85 vref_86 vref_87 vref_88 vref_89 vref_90 vref_91 vref_92 vref_93 vref_94 vref_95 vref_96
++ vref_97 vref_98 vref_99 vref_100 vref_101 vref_102 vref_103 vref_104 vref_105 vref_106 vref_107 vref_108
++ vref_109 vref_110 vref_111 vref_112 vref_113 vref_114 vref_115 vref_116 vref_117 vref_118 vref_119 vref_120
+xlb vdd vss en ibias vbg g g bgok
++ vref_1 vref_2 vref_3 vref_4 vref_5 vref_6 vref_7 vref_8 vref_9 vref_10 vref_11 vref_12
++ vref_13 vref_14 vref_15 vref_16 vref_17 vref_18 vref_19 vref_20 vref_21 vref_22 vref_23 vref_24
++ vref_25 vref_26 vref_27 vref_28 vref_29 vref_30 vref_31 vref_32 vref_33 vref_34 vref_35 vref_36
++ vref_37 vref_38 vref_39 vref_40 vref_41 vref_42 vref_43 vref_44 vref_45 vref_46 vref_47 vref_48
++ vref_49 vref_50 vref_51 vref_52 vref_53 vref_54 vref_55 vref_56 vref_57 vref_58 vref_59 vref_60
++ vref_61 vref_62 vref_63 vref_64 vref_65 vref_66 vref_67 vref_68 vref_69 vref_70 vref_71 vref_72
++ vref_73 vref_74 vref_75 vref_76 vref_77 vref_78 vref_79 vref_80 vref_81 vref_82 vref_83 vref_84
++ vref_85 vref_86 vref_87 vref_88 vref_89 vref_90 vref_91 vref_92 vref_93 vref_94 vref_95 vref_96
++ vref_97 vref_98 vref_99 vref_100 vref_101 vref_102 vref_103 vref_104 vref_105 vref_106 vref_107 vref_108
++ vref_109 vref_110 vref_111 vref_112 vref_113 vref_114 vref_115 vref_116 vref_117 vref_118 vref_119 vref_120
++ bandgap_lb
+.ends bandgap

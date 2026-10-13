@@ -7,10 +7,13 @@
   wrong-pnp     the centre PNP unit is the PDK's 5x5 cell instead of the 10x10 one
   short         two neighbouring signal tracks of the first stripe joined by a metal3 strap
   cap-wl:<dev>  capacitor <dev> drawn 1.25 x wider and 0.8 x shorter (about the same area)
+  drop-ladder-unit[:<n>]   the ladder's unit segment in column n (default 50, counted along the chain) is not drawn
+  swap-taps:<a>:<b>        the ladder's pin labels a and b trade places (each on the other's strap)
 
 The whole cell_layout.py run is repeated with the fault injected. A fault counts as caught only
 when every step ran (all exit codes 0) and both LVS checks printed a mismatch (netgen "Netlists do
-not match" or "Property errors were found"; KLayout "Netlists don't match"). This shows that the
+not match", "Property errors were found" or "failed pin matching"; KLayout "Netlists don't match" or
+a reference pin on a layout net of another name). This shows that the
 PNP rename and the MIM marker cannot hide a drawing fault. Writes <out_dir>/fault.json; exit 0 when
 caught.
 """
@@ -68,6 +71,40 @@ def inject(fault):
                 self.y1 = self.l + 600 + 2500
                 note["capacitor"] = "%s drawn %d x %d nm instead of %d x %d nm" % (dev, self.w, self.l, w, l)
         cl.CapBlock.__init__ = init
+    elif fault.startswith("drop-ladder-unit"):
+        n = int(fault.split(":", 1)[1]) if ":" in fault else 50
+        orig = cl.LadderBlock.segment
+        calls = {"n": 0}
+
+        def segment(self, f, x, yt, yb):
+            i = calls["n"]
+            calls["n"] += 1
+            if i == n:
+                el = self.ladder["elements"][self.columns[i][2]]
+                note["dropped"] = "ladder unit %d (%s, %s-%s)" % (n, el["devs"][0]["name"], el["a"], el["b"])
+                head = self.spec["pc0"] + 230 + 75
+                return dict(x=x, top=(yt + head - 380, yt + head), bot=(yb - head, yb - head + 380))
+            return orig(self, f, x, yt, yb)
+        cl.LadderBlock.segment = segment
+    elif fault.startswith("swap-taps:"):
+        _f, a, b = fault.split(":")
+        orig = cl.LadderBlock.draw
+
+        def draw(self, cell, ox, oy, flip):
+            label = cell.label
+
+            def swapped(text, layer, x1, y1, x2, y2, port=None, use="signal"):
+                if text in (a, b) and port is not None:
+                    text = b if text == a else a
+                    port = self.pins.index(text) + 1
+                    note.setdefault("swapped", []).append(text)
+                return label(text, layer, x1, y1, x2, y2, port=port, use=use)
+            cell.label = swapped
+            try:
+                return orig(self, cell, ox, oy, flip)
+            finally:
+                cell.label = label
+        cl.LadderBlock.draw = draw
     else:
         raise SystemExit("layout_faults: unknown fault %s" % fault)
     return note

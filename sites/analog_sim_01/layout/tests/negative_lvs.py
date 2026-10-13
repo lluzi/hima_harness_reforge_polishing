@@ -7,7 +7,8 @@ Writes a wrong reference (one device's parameter or model changed) in a new fold
 <layout_out_dir>/negative/<tag>/ (refused if it exists), then runs both LVS checks of cell_layout.py
 against the unchanged layout: netgen on the Magic extraction (PNP names corrected as in the run)
 and the PDK's KLayout deck. A case counts as caught only when both tools ran (exit 0) and each
-printed a mismatch: netgen "Netlists do not match" or "Property errors were found", KLayout
+printed a mismatch: netgen "Netlists do not match", "Property errors were found" or "failed pin
+matching", KLayout
 "Netlists don't match". A crash or a missing verdict is not a catch. Exit 0 when caught.
 """
 import json
@@ -55,7 +56,7 @@ def main(argv):
     rc, _secs = cl.run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), cl.NETGEN_SETUP,
                         "lvs.out", "-json"], d, d / "netgen.log")
     lvs = (d / "lvs.out").read_text() if (d / "lvs.out").is_file() else ""
-    netgen_mismatch = "Netlists do not match" in lvs or "Property errors were found" in lvs
+    netgen_mismatch = any(m in lvs for m in cl.NETGEN_MISMATCH)
     netgen_lines = sorted(set(re.findall(r"^(Final result:.*|Netlists do not match\.|.*Property errors.*|.*\(delta=.*|Circuits match uniquely\.)$", lvs, re.M)))
     k = cl.step_klayout_lvs(d, name, ref=ref)
     result = dict(change="%s %s" % (dev, " ".join(change)), folder=str(d), netgenRc=rc, netgenMismatch=netgen_mismatch,

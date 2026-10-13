@@ -10,7 +10,8 @@ The input is one SPICE subcircuit of PDK device instances, its pins on the .subc
 
   X.. d g s b nfet_03v3|pfet_03v3 w= l= [nf=] [m=]     w is the total width; drawn as equal fingers
   X.. c b e pnp_10p00x10p00|pnp_05p00x05p00 [m=]       the PDK's fixed vertical-PNP cells (b = c = substrate)
-  X.. p n sub ppolyf_u|ppolyf_u_1k r_width= r_length= [s=]   s segments of r_length in series
+  X.. p n sub ppolyf_u|ppolyf_u_1k r_width= r_length= [s=] [m=|par=]   s segments of r_length in series
+                                                       (m/par > 1 only for a ladder's parallel units)
   X.. top bot cap_mim_2f0_m4m5_noshield|cap_mim_2f0fF c_width= c_length=   (c_width along x)
 
 M instances of nfet_03v3/pfet_03v3 are read too. MOS are fingers of at most 20 um (two finger
@@ -19,7 +20,12 @@ a finger narrower than a contact (0.36 um) gets dog-bone source/drain diffusion.
 (same model, W, L, a common source that is not the bulk, different gates and drains) is
 interdigitated ABBA with poly dummies at both ends; a 1:8 PNP pair is a 3x3 common-centroid block
 with the 1x unit in the centre; resistors are straight segments in series (the model's s, else an
-even count of at most 20 um), folded into serpentine bands of columns.
+even count of at most 20 um), folded into serpentine bands of columns. A reference ladder (a chain of
+at least 8 equal unit resistors, s = 1, each junction joining exactly two of its elements; an element
+may be up to 4 units in parallel) is one serpentine block: every junction is a short metal1 strap
+between neighbouring segments, and a tap that is a pin and used by nothing else carries its pin label
+(a Magic port on metal1, GDS 34/10) on that strap. Only the chain's ends and the taps other devices
+use reach the routing channel.
 
 Floorplan: a stack of stripes. Each is a lower row (NMOS and resistors in a substrate-tap ring, the
 PNP block beside it in the first stripe), a routing channel (one metal3 track per net the stripe
@@ -36,9 +42,15 @@ Writes, in <out_dir> (cell = the subcircuit name):
   drc_klayout_block.* / _density.* KLayout DRC with the PDK's deck (variant D), without and with
                                   only the die-level density decks
   <cell>_lvs.spice, lvs.out       Magic extraction of the GDS and netgen LVS (PDK setup file)
-  klayout_lvs/                    KLayout LVS with the PDK's deck (run_lvs.py, --combine), the
-                                  BJT-aware check
-  <cell>_pex_c.spice / _rc.spice  extraction with parasitic C, and with R (extresist)
+  klayout_lvs/                    KLayout LVS with the PDK's deck (run_lvs.py, --combine
+                                  --top_lvl_pins), the BJT-aware check; a match also needs every
+                                  reference pin's net cross-referenced to a layout net of the same
+                                  name (the deck alone matches topology, not labels)
+  <cell>_pex_c.spice / _rc.spice  extraction with parasitic C, and with R (extresist), of the unfilled layout
+  <cell>_filled.gds, fill/        the PDK's metal fill (scripts/fill_all.rb, its scribe-line ring moved
+                                  outside the block) and each layer's coverage before and after
+  drc_klayout_filled_block.* / _filled_density.*, klayout_lvs_filled/
+                                  the block and density decks and KLayout LVS on the filled GDS
   <cell>.png                      a KLayout render
   layout.json                     the facts, every step's exit code and time, and `ok`
 
@@ -54,6 +66,7 @@ The MIM length marker (GDS 117/10, which the KLayout deck needs) is drawn by the
 itself as Magic's CAP_LENGTH mask hint, along the plate's bottom edge.
 Sizes in this file are nm on the 5 nm manufacturing grid.
 """
+import hashlib
 import json
 import math
 import os
@@ -155,6 +168,8 @@ class Cell:
         self.tcl = []
         self.minx = 0
         self.hints = []                                  # CAP_LENGTH mask hints (nm)
+        self.rects = []                                  # (layer, x1, y1, x2, y2) nm, as painted
+        self.labels = []                                 # (text, layer, x1, y1, x2, y2, port)
 
     def hint(self, x1, y1, x2, y2):
         self.hints.append((x1, y1, x2, y2))
@@ -176,6 +191,7 @@ class Cell:
         if x2 <= x1 or y2 <= y1:
             raise Error("empty %s rectangle %s" % (layer, (x1, y1, x2, y2)))
         self.minx = min(self.minx, x1)
+        self.rects.append((layer, x1, y1, x2, y2))
         self.tcl += ["box %s %s %s %s" % (um(x1), um(y1), um(x2), um(y2)), "paint %s" % layer]
 
     def place(self, cellname, x1, y1):
@@ -183,6 +199,9 @@ class Cell:
         self.tcl += ["box %s %s %s %s" % (um(x1), um(y1), um(x1), um(y1)), "getcell %s" % cellname]
 
     def label(self, text, layer, x1, y1, x2, y2, port=None, use="signal"):
+        x1, x2 = sorted((x1, x2))
+        y1, y2 = sorted((y1, y2))
+        self.labels.append((text, layer, x1, y1, x2, y2, port))
         self.tcl += ["box %s %s %s %s" % (um(x1), um(y1), um(x2), um(y2)), "label %s c %s" % (text, layer)]
         if port is not None:
             self.tcl += ["port make %d" % port, "port use %s" % use]
@@ -385,6 +404,21 @@ def mos_blocks(devices):
     return mos, blocks
 
 
+def res_segment(f, sp, x, w, yt, yb):
+    """One straight poly resistor segment, body x..x+w by yb..yt in frame f, with a contact head at
+    each end. Returns its metal1 heads: dict(x, top=(y0, y1), bot=(y0, y1))."""
+    e, p0 = sp["end"], sp["pc0"]
+    p1 = p0 + 230
+    f.paint(sp["layer"], x, yb, x + w, yt)
+    f.paint("poly", x, yt, x + w, yt + e)
+    f.paint("pc", x + 65, yt + p0, x + w - 65, yt + p1)
+    f.paint("metal1", x + 10, yt + p0 - 75, x + w - 10, yt + p1 + 75)
+    f.paint("poly", x, yb - e, x + w, yb)
+    f.paint("pc", x + 65, yb - p1, x + w - 65, yb - p0)
+    f.paint("metal1", x + 10, yb - p1 - 75, x + w - 10, yb - p0 + 75)
+    return dict(x=x, top=(yt + p0 - 75, yt + p1 + 75), bot=(yb - p1 - 75, yb - p0 + 75))
+
+
 class ResBlock:
     """A poly resistor as straight segments in series (body along y), joined by metal1 at alternate
     ends, folded into `bands` serpentine bands of columns (every band but the last has an odd count,
@@ -449,8 +483,6 @@ class ResBlock:
 
     def draw(self, cell, ox, oy, flip):
         w, sp = self.w, self.spec
-        e, p0 = sp["end"], sp["pc0"]
-        p1 = p0 + 230
         f0 = Frame(cell, ox, oy, flip)
         place = []                                       # (column, band) per segment
         col, step = 0, 1
@@ -462,17 +494,8 @@ class ResBlock:
             step = -step
         heads = []
         for (c, band), ls in zip(place, self.segs):
-            x = c * self.pitch
             yt = self.yt - band * self.band_pitch
-            yb = yt - ls
-            f0.paint(sp["layer"], x, yb, x + w, yt)
-            f0.paint("poly", x, yt, x + w, yt + e)
-            f0.paint("pc", x + 65, yt + p0, x + w - 65, yt + p1)
-            f0.paint("metal1", x + 10, yt + p0 - 75, x + w - 10, yt + p1 + 75)
-            f0.paint("poly", x, yb - e, x + w, yb)
-            f0.paint("pc", x + 65, yb - p1, x + w - 65, yb - p0)
-            f0.paint("metal1", x + 10, yb - p1 - 75, x + w - 10, yb - p0 + 75)
-            heads.append(dict(x=x, top=(yt + p0 - 75, yt + p1 + 75), bot=(yb - p1 - 75, yb - p0 + 75), band=band))
+            heads.append(dict(res_segment(f0, sp, c * self.pitch, w, yt, yt - ls), band=band))
         # the chain: within a band, k -> k+1 at the far (bottom) end when k is even, else at the top;
         # a band's last segment (odd count, so it exits at the bottom) meets the next band's top head
         exits, k_in_band = [], 0
@@ -507,6 +530,246 @@ class ResBlock:
             f0.paint("metal1", jx - PAD, last[side][0], last["x"] + w - 10, last[side][1])
         out.append((self.dev["nets"][1],) + f0.point(jx, y))
         return out
+
+
+# ---------------------------------------------------------------- the reference ladder
+#
+# A chain of at least LADDER_MIN equal unit resistors (one model, width and length, s = 1) whose
+# junctions each join exactly two of its elements (an element: the units between one pair of nets,
+# several in parallel when m, par or repeated instances say so) is drawn as one serpentine block.
+# Each junction is a metal1 strap between neighbouring segments. A junction that is a pin and used
+# by nothing else carries its pin label (a Magic port on metal1, GDS 34/10) on its strap and never
+# reaches the routing channel; only the chain's two ends and the junctions other devices use do.
+
+LADDER_MIN = 8
+LADDER_MAX_PARALLEL = 4
+
+
+def unit_count(d):
+    p = d["params"]
+    return int(spice_number(p.get("m", "1"))) * int(spice_number(p.get("par", "1")))
+
+
+def res_unit(d):
+    p = d["params"]
+    return (d["model"], to_nm(p.get("r_width", p.get("w"))), to_nm(p.get("r_length", p.get("l"))),
+            int(spice_number(p.get("s", "1"))))
+
+
+def find_ladders(devices, sub):
+    """The ladders among the resistors: [dict(elements=[dict(a, b, devs, k)], start, end, junctions,
+    unit)], each element running from net a to net b along the chain (start = the first element's a,
+    end = the last one's b, junctions = the nets between elements, in order)."""
+    elems = {}
+    for d in devices:
+        if d["model"] in RES and d["nets"][0] != d["nets"][1]:
+            elems.setdefault(frozenset(d["nets"][:2]), []).append(d)
+    touch = {}
+    for key in elems:
+        for n in key:
+            touch.setdefault(n, []).append(key)
+
+    def links(key):
+        return [(n, [k for k in touch[n] if k != key][0]) for n in key if n != sub and len(touch[n]) == 2]
+    seen, out = set(), []
+    for key in sorted(elems, key=lambda k: sorted(k)):
+        if key in seen:
+            continue
+        comp, stack = [], [key]
+        while stack:
+            k = stack.pop()
+            if k in seen:
+                continue
+            seen.add(k)
+            comp.append(k)
+            stack += [o for _n, o in links(k)]
+        ends = [k for k in comp if len(links(k)) < 2]
+        if len(comp) < LADDER_MIN or not ends:
+            continue                                     # too short, or a ring
+        units = {res_unit(d) for k in comp for d in elems[k]}
+        if len(units) != 1 or list(units)[0][3] != 1:
+            continue
+        ks = {k: sum(unit_count(d) for d in elems[k]) for k in comp}
+        if max(ks.values()) > LADDER_MAX_PARALLEL:
+            continue
+        chains = []
+        for first in ends:                               # walk from each end; start at the end that is not the substrate
+            inner = {n for n, _o in links(first)}
+            a = [n for n in first if n not in inner]
+            a = a[0] if a else sorted(first)[0]
+            order, cur, prev_net = [], first, a
+            while True:
+                b = [n for n in cur if n != prev_net][0]
+                order.append(dict(a=prev_net, b=b, devs=sorted(elems[cur], key=lambda d: d["name"]), k=ks[cur]))
+                nxt = [o for n, o in links(cur) if n == b]
+                if not nxt:
+                    break
+                cur, prev_net = nxt[0], b
+            chains.append(order)
+        order = sorted(chains, key=lambda o: (o[0]["a"] == sub, o[0]["a"]))[0]
+        out.append(dict(elements=order, start=order[0]["a"], end=order[-1]["b"], junctions=[e["b"] for e in order[:-1]],
+                        unit=list(units)[0]))
+    return out
+
+
+class LadderBlock:
+    """A ladder as one serpentine: each element is k adjacent unit columns (body along y), the
+    columns run in bands (left to right, then back), every band but the last holds an odd number of
+    elements, so a band ends at its bottom where the next one begins (a metal1 strap down the shared
+    column). Element j of a band enters at its top when j is even. The start net's terminal sits above
+    the first column; the end net, unless it ends at the channel-side top, is taken by a metal1 jog to
+    a free column beside the block. A junction other devices use gets a via on its strap at an x no
+    other terminal's riser uses; a pin junction used by nothing else gets its pin label there."""
+
+    def __init__(self, ladder, bands, outside, pins):
+        self.ladder, self.pins = ladder, list(pins)
+        model, self.w, self.l, _s = ladder["unit"]
+        self.spec = RES[model]
+        if self.w < self.spec["wmin"]:
+            raise Error("ladder %s: width %d nm below the PDK minimum %d" % (self.name(), self.w, self.spec["wmin"]))
+        els = ladder["elements"]
+        self.external = []
+        for n in [ladder["start"]] + [j for j in ladder["junctions"] if j in outside] + [ladder["end"]]:
+            if n not in self.external:
+                self.external.append(n)
+        total = sum(e["k"] for e in els)
+        target = max(1, -(-total // max(1, bands)))
+        self.band_els, cur, cols = [], [], 0             # element indices per band
+        for i, e in enumerate(els):
+            if cur and cols + e["k"] > target:
+                if len(cur) % 2 == 0 and len(cur) > 1:   # a band ends at its bottom: an odd element count
+                    cur.pop()
+                self.band_els.append(cur)
+                cur = list(range(cur[-1] + 1, i))
+                cols = sum(els[j]["k"] for j in cur)
+            cur.append(i)
+            cols += e["k"]
+        self.band_els.append(cur)
+        # columns: (col, band, element)
+        self.columns, col, step = [], 0, 1
+        for band, idx in enumerate(self.band_els):
+            first = True
+            for i in idx:
+                for _u in range(els[i]["k"]):
+                    if not first:
+                        col += step
+                    first = False
+                    self.columns.append((col, band, i))
+            step = -step
+        self.bands = len(self.band_els)
+        self.pitch = self.w + self.spec["gap"]
+        self.head = self.spec["pc0"] + 230 + 75
+        self.band_pitch = self.l + 2 * self.head + 2000
+        self.yt = HEAD - self.head - 2 * PAD
+        cmin, cmax = min(c for c, _b, _i in self.columns), max(c for c, _b, _i in self.columns)
+        self.cmin, self.cmax = cmin, cmax
+        self.x0, self.x1 = cmin * self.pitch - 1300, cmax * self.pitch + self.w + 1300
+        self.y0 = self.yt - (self.bands - 1) * self.band_pitch - self.l - max(self.spec["end"], self.head) - 300
+        self.y1 = HEAD
+        self.label = "ladder %s..%s: %d elements, %d units of %s %.3f x %.3f um, %d bands of at most %d columns" % (
+            self.ladder["start"], self.ladder["end"], len(els), total, model, self.w / 1000.0, self.l / 1000.0, self.bands,
+            max(len([c for c in self.columns if c[1] == b]) for b in range(self.bands)))
+        self.labelled = []
+
+    def name(self):
+        return "%s..%s" % (self.ladder["start"], self.ladder["end"])
+
+    def segment(self, f, x, yt, yb):
+        return res_segment(f, self.spec, x, self.w, yt, yb)
+
+    def draw(self, cell, ox, oy, flip):
+        w, els = self.w, self.ladder["elements"]
+        f = Frame(cell, ox, oy, flip)
+        heads = []
+        for col, band, _i in self.columns:
+            yt = self.yt - band * self.band_pitch
+            heads.append(dict(self.segment(f, col * self.pitch, yt, yt - self.l), band=band, col=col))
+        self.heads = [dict(h, element=i) for h, (_c, _b, i) in zip(heads, self.columns)]   # local frame
+        cols_of = {}
+        for h, (_c, _b, i) in zip(heads, self.columns):
+            cols_of.setdefault(i, []).append(h)
+        pos = {}                                         # element -> (band, index in band)
+        for band, idx in enumerate(self.band_els):
+            for j, i in enumerate(idx):
+                pos[i] = (band, j)
+
+        def entry(i):
+            return "top" if pos[i][1] % 2 == 0 else "bot"
+
+        def exit_(i):
+            return "bot" if entry(i) == "top" else "top"
+
+        def hstrap(hs, side):
+            lo = max(h[side][0] for h in hs)
+            hi = min(h[side][1] for h in hs)
+            x0, x1 = min(h["x"] for h in hs) + 10, max(h["x"] for h in hs) + w - 10
+            f.paint("metal1", x0, lo, x1, hi)
+            return lo, hi
+        for i in range(len(els)):                        # parallel units: their heads joined on both sides
+            if els[i]["k"] > 1:
+                hstrap(cols_of[i], "top")
+                hstrap(cols_of[i], "bot")
+        spots = []                                       # (net, [(x, y) candidates], label point)
+        for i in range(len(els) - 1):
+            net = els[i]["b"]
+            a, b = cols_of[i][-1], cols_of[i + 1][0]
+            if pos[i][0] == pos[i + 1][0]:
+                side = exit_(i)
+                lo, hi = hstrap(cols_of[i] + cols_of[i + 1], side)
+                y = (lo + hi) // 2 // GRID * GRID
+                gx = snap((min(a["x"], b["x"]) + w + max(a["x"], b["x"])) // 2)
+                cx = [h["x"] + (w // 2) // GRID * GRID for h in cols_of[i] + cols_of[i + 1]]
+                spots.append((net, [(gx, y)] + [(x, y) for x in cx], (gx, y)))
+            else:                                        # band to band, down the shared column
+                f.paint("metal1", a["x"] + 10, b["top"][0], a["x"] + w - 10, a["bot"][1])
+                x = a["x"] + (w // 2) // GRID * GRID
+                y = snap((b["top"][1] + a["bot"][0]) // 2)
+                spots.append((net, [(x, y)], (x, y)))
+        cx = (w // 2) // GRID * GRID
+        first = cols_of[0][0]
+        out = [(self.ladder["start"],) + f.point(first["x"] + cx, first["top"][1] + PAD)]
+        used = [first["x"] + cx]
+        last_i = len(els) - 1
+        side = exit_(last_i)
+        last = cols_of[last_i][-1]
+        if self.bands == 1 and side == "top":
+            out.append((self.ladder["end"],) + f.point(last["x"] + cx, last["top"][1] + PAD))
+            used.append(last["x"] + cx)
+        else:                                            # jog to the free column on the side the last band runs toward
+            going_right = (self.bands - 1) % 2 == 0
+            y = (last[side][0] + last[side][1]) // 2
+            if going_right:
+                jx = self.cmax * self.pitch + w + 700
+                f.paint("metal1", last["x"] + 10, last[side][0], jx + PAD, last[side][1])
+            else:
+                jx = self.cmin * self.pitch - 700
+                f.paint("metal1", jx - PAD, last[side][0], last["x"] + w - 10, last[side][1])
+            out.append((self.ladder["end"],) + f.point(jx, y))
+            used.append(jx)
+        self.terminal_x = {}
+        for net, cands, lp in spots:
+            if net in self.external:
+                pick = [c for c in cands if all(abs(c[0] - u) >= 800 for u in used)]
+                if not pick:
+                    raise Error("ladder %s: no free riser position for junction %s" % (self.name(), net))
+                x, y = pick[0]
+                used.append(x)
+                self.terminal_x[net] = x
+                out.append((net,) + f.point(x, y))
+            elif net in self.pins:
+                x, y = lp
+                px, py = f.point(x, y)
+                cell.label(net, "metal1", px - 100, py - 100, px + 100, py + 100, port=self.pins.index(net) + 1, use="signal")
+                self.labelled.append(net)
+        return out
+
+    def facts(self):
+        els = self.ladder["elements"]
+        return dict(start=self.ladder["start"], end=self.ladder["end"], elements=len(els), units=sum(e["k"] for e in els),
+                    parallel={els[i]["devs"][0]["name"]: e["k"] for i, e in enumerate(els) if e["k"] > 1},
+                    model=self.ladder["unit"][0], wUm=self.w / 1000.0, lUm=self.l / 1000.0, bands=self.bands,
+                    elementsPerBand=[len(b) for b in self.band_els], columns=self.cmax - self.cmin + 1,
+                    routedNets=self.external, labelledPins=len(self.labelled), sizeUm=[bw(self) / 1000.0, bh(self) / 1000.0])
 
 
 class PnpBlock:
@@ -657,6 +920,8 @@ def block_nets(b):
         return list(b.dev["nets"][:2])
     if isinstance(b, PnpBlock):
         return [e for row in b.grid for _n, e in row]
+    if isinstance(b, LadderBlock):
+        return list(b.external)
     return []
 
 
@@ -688,7 +953,7 @@ def pack(groups, stripes, pnp):
     for blocks, sides in sorted(groups, key=lambda t: -sum(bw(b) for b in t[0])):
         cand = sorted(((width[(s, side)], s, side) for s in range(stripes) for side in sides))
         _w, s, side = cand[0]
-        kind = type(blocks[0]).__name__ + (blocks[0].kind if isinstance(blocks[0], MosBlock) else "")
+        kind = "ResBlock" if isinstance(blocks[0], LadderBlock) else type(blocks[0]).__name__ + (blocks[0].kind if isinstance(blocks[0], MosBlock) else "")
         if kind not in kinds[(s, side)]:
             kinds[(s, side)].add(kind)
             width[(s, side)] += RING_OVER + GROUP_GAP
@@ -702,9 +967,9 @@ def pack(groups, stripes, pnp):
     return where, w, h
 
 
-def groups_of(mblocks, res, caps):
+def groups_of(mblocks, res, caps, ladders=()):
     """Blocks that stay together: one device's blocks, a pair, MOS of one kind sharing a gate net (a
-    mirror), and resistors of one model, width and segmentation."""
+    mirror), and resistors of one model, width and segmentation; a ladder is a group of its own."""
     parent = list(range(len(mblocks)))
 
     def find(i):
@@ -728,6 +993,7 @@ def groups_of(mblocks, res, caps):
         rgroups.setdefault((r.dev["model"], r.w, tuple(r.segs)), []).append(r)
     groups += [(rl, "bt") for rl in rgroups.values()]
     groups += [([c], "t") for c in caps]
+    groups += [([lb], "bt") for lb in ladders]
     return groups
 
 
@@ -747,20 +1013,33 @@ def build(pins, devices):
     sub = subs.pop() if subs else None
     well = wells.pop() if wells else None
     pb = PnpBlock(pnps, sub) if pnps else None
+    ladders = find_ladders(devices, sub)
+    in_ladder = {d["name"] for lad in ladders for e in lad["elements"] for d in e["devs"]}
+    res_devs = [d for d in res_devs if d["name"] not in in_ladder]
+    outside = set()
+    for d in devices:
+        if d["name"] not in in_ladder:
+            outside |= set(d["nets"])
+    outside |= {sub}
 
     best = None
-    for bands in (1, 2, 3):
-        res = [ResBlock(d, bands) for d in res_devs]
-        groups = groups_of(mblocks, res, caps)
-        for stripes in (1, 2, 3, 4):
-            where, w, h = pack(groups, stripes, pb)
-            key = (max(w, h), w * h)
-            if best is None or key < best[0]:
-                best = (key, bands, stripes, res, where, w, h)
-    _key, bands, nstripes, res, where, est_w, est_h = best
+    for lbands in (range(1, 25) if ladders else (1,)):
+        lblocks = [LadderBlock(lad, lbands, outside, pins) for lad in ladders]
+        if any(lb.bands != lbands for lb in lblocks):
+            continue
+        for bands in (1, 2, 3):
+            res = [ResBlock(d, bands) for d in res_devs]
+            groups = groups_of(mblocks, res, caps, lblocks)
+            for stripes in (1, 2, 3, 4):
+                where, w, h = pack(groups, stripes, pb)
+                key = (max(w, h), w * h)
+                if best is None or key < best[0]:
+                    best = (key, bands, stripes, res, where, w, h, lblocks)
+    _key, bands, nstripes, res, where, est_w, est_h, lblocks = best
 
     cell = Cell()
-    facts = dict(blocks=[], pnp=None, floorplan=dict(stripes=nstripes, resistorBands=bands, estimateUm=[round(est_w / 1000.0, 1), round(est_h / 1000.0, 1)]))
+    facts = dict(blocks=[], pnp=None, floorplan=dict(stripes=nstripes, resistorBands=bands, ladderBands=[lb.bands for lb in lblocks],
+                                                     estimateUm=[round(est_w / 1000.0, 1), round(est_h / 1000.0, 1)]))
     terms = []                                       # (stripe, (net, x, y), side)
     stripe_nets = []
     base = 0
@@ -768,7 +1047,8 @@ def build(pins, devices):
     for s in range(nstripes):
         low = [b for b, (ss, side) in where.items() if ss == s and side == "b" and b is not pb]
         up = [b for b, (ss, side) in where.items() if ss == s and side == "t"]
-        nlow = [b for b in low if isinstance(b, MosBlock)] + [b for b in low if isinstance(b, ResBlock)]
+        nlow = [b for b in low if isinstance(b, MosBlock)] + [b for b in low if isinstance(b, ResBlock)] + \
+            [b for b in low if isinstance(b, LadderBlock)]
         has_pnp = pb is not None and where.get(pb, (None,))[0] == s
         # nets of this stripe, the channel's tracks: substrate first, well last
         nets = []
@@ -776,7 +1056,7 @@ def build(pins, devices):
             for n in block_nets(b):
                 if n not in nets:
                     nets.append(n)
-        rings = bool(nlow) or any(isinstance(b, ResBlock) for b in up)
+        rings = bool(nlow) or any(isinstance(b, (ResBlock, LadderBlock)) for b in up)
         if (rings or has_pnp) and sub and sub not in nets:
             nets.append(sub)
         if any(isinstance(b, MosBlock) for b in up) and well and well not in nets:
@@ -840,13 +1120,13 @@ def build(pins, devices):
             facts["blocks"].append("stripe %d upper: %s" % (s, c.dev["name"]))
         rbox = None
         x0r = x
-        for b in [b for b in up if isinstance(b, ResBlock)]:
+        for b in [b for b in up if isinstance(b, ResBlock)] + [b for b in up if isinstance(b, LadderBlock)]:
             ox = x - b.x0
             for t in b.draw(cell, ox, yp, True):
                 terms.append((s, t, "p"))
             rbox = merge(rbox, (x, yp - b.y1, x + bw(b), yp - b.y0))
             x += bw(b) + ROW_GAP
-            facts["blocks"].append("stripe %d upper: %s" % (s, b.dev["name"]))
+            facts["blocks"].append("stripe %d upper: %s" % (s, getattr(b, "label", None) or b.dev["name"]))
         if rbox:
             ring = tap_ring(cell, grow(rbox, RING_GAP), "p", "bottom")
             cell.paint("pwell", ring[0] - 110, ring[1] - 110, ring[2] + 110, ring[3] + 110)
@@ -878,7 +1158,7 @@ def build(pins, devices):
     spined = sorted(n for n, ss in used.items() if len(ss) > 1)
     left = cell.minx - 2000
     spine_x = {n: left - i * TRACK_PITCH for i, n in enumerate(spined)}
-    labelled = set()
+    labelled = {n for lb in lblocks for n in lb.labelled}
     track_ext = {}
     for s in range(nstripes):
         for net in stripe_nets[s]:
@@ -912,6 +1192,7 @@ def build(pins, devices):
                                              fingers=[[c, w / 1000.0] for c, w in m["plan"]]) for m in mos},
                  resistors={r.dev["name"]: dict(model=r.dev["model"], wUm=r.w / 1000.0, lUm=r.length / 1000.0, bands=r.counts,
                                                 segmentsUm=[x / 1000.0 for x in r.segs]) for r in res},
+                 ladders=[lb.facts() for lb in lblocks],
                  caps={c.dev["name"]: dict(model=c.dev["model"], wUm=c.w / 1000.0, lUm=c.l / 1000.0) for c in caps},
                  capModelAliases={d["name"]: d["model"] for d in devices if d["model"] in CAP_ALIASES})
     return cell, facts
@@ -1045,6 +1326,11 @@ def step_draw(netlist, name, out):
                        magicDrcInPdkPnpCells=in_cells, magicDrcInPdkPnpCellsRule=PNP_CELL_DRC, mimLengthMarks=mim, pins=pins)
 
 
+# netgen's mismatch verdicts: a different netlist, a property outside tolerance, or ports that sit on
+# other nets than the reference pins of the same name (a swapped pin label)
+NETGEN_MISMATCH = ("do not match", "Property errors were found", "failed pin matching")
+
+
 def step_lvs(out, name):
     rc1, s1 = extract(out, name, "lvs", "extract do local", "ext2spice lvs\next2spice -o ../%s_lvs.spice" % name)
     fixed = fix_pnp_names(out / ("%s_lvs.spice" % name)) if (out / ("%s_lvs.spice" % name)).is_file() else []
@@ -1052,9 +1338,9 @@ def step_lvs(out, name):
     rc2, s2 = run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), NETGEN_SETUP,
                    "lvs.out", "-json"], out, out / "netgen.log")
     text = (out / "lvs.out").read_text() if (out / "lvs.out").is_file() else ""
-    match = "Circuits match uniquely." in text and "Property errors were found" not in text and "do not match" not in text
+    mismatch = any(m in text for m in NETGEN_MISMATCH)
+    match = "Circuits match uniquely." in text and not mismatch
     final = re.findall(r"^(Final result:.*|Circuits match uniquely\.|Netlists do not match\.|.*Property errors.*)$", text, re.M)
-    mismatch = "do not match" in text or "Property errors were found" in text
     return dict(rc=[rc1, rc2], seconds=round(s1 + s2, 2), match=match, mismatch=mismatch, verdict=match or mismatch,
                 lines=sorted(set(final)), referenceNotes=notes, pnpNameCorrections=len(fixed), pnpNameCorrectionExamples=fixed[:3],
                 pnpSizeCheck="circular: the PNP name comes from the placed PDK cell; see klayoutLvs for the geometric check")
@@ -1087,6 +1373,14 @@ def lvs_reference(src, name, dst):
             if model in CAP_ALIASES:
                 notes.append("%s: %s read as cap_mim_2f0_m4m5_noshield (%s)" % (tok[0], model, CAP_ALIASES[model]))
                 plain[-1] = "cap_mim_2f0_m4m5_noshield"
+            count = 1
+            if model in RES:
+                for k in [k for k in params if k.lower() in ("m", "par")]:
+                    count *= int(spice_number(params.pop(k)))
+            if count > 1:                                 # parallel units, drawn as that many segments
+                notes.append("%s: %d parallel units written as %d resistors" % (tok[0], count, count))
+                out += [" ".join(["%s_%d" % (plain[0], i + 1)] + plain[1:] + ["%s=%s" % kv for kv in params.items()]) for i in range(count)]
+                continue
             line = " ".join(plain + ["%s=%s" % kv for kv in params.items()])
         out.append(line)
     Path(dst).write_text("* netgen reference of %s (from %s)\n" % (name, src) + "\n".join(out) + "\n")
@@ -1106,8 +1400,11 @@ def klayout_reference(src, name, dst):
         if d["model"] in MOS:
             lines.append("M%s %s %s W=%gU L=%gU" % (base, " ".join(n), d["model"], spice_number(p["w"]) * 1e6 * m, spice_number(p["l"]) * 1e6))
         elif d["model"] in RES:
-            lines.append("R%s %s %s W=%gU L=%gU" % (base, " ".join(n), d["model"], spice_number(p.get("r_width", p.get("w"))) * 1e6,
-                                                    spice_number(p.get("r_length", p.get("l"))) * 1e6 * spice_number(p.get("s", "1"))))
+            k = unit_count(d)
+            for i in range(k):                           # parallel units, drawn as that many segments
+                lines.append("R%s%s %s %s W=%gU L=%gU" % (base, "_%d" % (i + 1) if k > 1 else "", " ".join(n), d["model"],
+                                                          spice_number(p.get("r_width", p.get("w"))) * 1e6,
+                                                          spice_number(p.get("r_length", p.get("l"))) * 1e6 * spice_number(p.get("s", "1"))))
         elif d["model"] in CAPS:
             lines.append("C%s %s cap_mim_2f0fF W=%gU L=%gU" % (base, " ".join(n), spice_number(p.get("c_width", p.get("w"))) * 1e6,
                                                                spice_number(p.get("c_length", p.get("l"))) * 1e6))
@@ -1118,18 +1415,53 @@ def klayout_reference(src, name, dst):
     Path(dst).write_text("\n".join(lines))
 
 
-def step_klayout_lvs(out, name, ref=None):
-    d = out / "klayout_lvs"
+def step_klayout_lvs(out, name, ref=None, gds=None, sub="klayout_lvs"):
+    d = out / sub
     d.mkdir(exist_ok=True)
     klayout_reference(ref or (out / ("%s_ref.spice" % name)), name, d / ("%s_ref.spice" % name))
-    rc, secs = run(["python3", KLAYOUT_TECH + "/lvs/run_lvs.py", "--layout=../%s.gds" % name, "--netlist=%s_ref.spice" % name,
-                    "--variant=D", "--topcell=%s" % name, "--run_dir=.", "--run_mode=flat", "--combine"], d, d / "run_lvs.log")
+    rc, secs = run(["python3", KLAYOUT_TECH + "/lvs/run_lvs.py", "--layout=../%s" % (gds or "%s.gds" % name), "--netlist=%s_ref.spice" % name,
+                    "--variant=D", "--topcell=%s" % name, "--run_dir=.", "--run_mode=flat", "--combine", "--top_lvl_pins"], d, d / "run_lvs.log")
     log = (d / "run_lvs.log").read_text()
-    match = "Congratulations! Netlists match" in log
-    mismatch = "Netlists don't match" in log
+    deck_match = "Congratulations! Netlists match" in log
+    deck_mismatch = "Netlists don't match" in log
     lines = sorted(set(l.split(" : ", 1)[-1].strip() for l in log.splitlines() if "Netlists" in l and ("match" in l or "don't" in l)))
-    return dict(rc=rc, seconds=secs, match=match, mismatch=mismatch, verdict=match != mismatch, lines=lines,
-                pnpSizeCheck="geometric: the deck extracts each PNP from the drawn layers")
+    stem = Path(gds or "%s.gds" % name).stem              # the deck names its database after the layout file
+    pins = lvsdb_pins(d / ("%s.lvsdb" % stem), name) if deck_match else None
+    pins_ok = bool(pins) and pins["total"] > 0 and not pins["wrong"]
+    if pins and pins["wrong"]:
+        lines.append("pin names: %d of %d reference pins sit on a layout net of another name (%s)" % (
+            len(pins["wrong"]), pins["total"], ", ".join(pins["wrong"][:5])))
+    return dict(rc=rc, seconds=secs, match=deck_match and pins_ok, mismatch=deck_mismatch or (deck_match and not pins_ok),
+                verdict=deck_match != deck_mismatch, deckMatch=deck_match, pins=pins, lines=lines,
+                pnpSizeCheck="geometric: the deck extracts each PNP from the drawn layers",
+                pinCheck="every reference pin's net must cross-reference a layout net of the same name (its label)")
+
+
+def lvsdb_pins(path, name):
+    """From KLayout's LVS database: each reference pin's net, the layout net it was matched to, and that
+    net's name (from its label). Returns dict(total, matched, wrong=[pin names]) or None."""
+    if not path.is_file():
+        return None
+    section, layout, sch, sch_pins, xref = None, {}, {}, [], {}
+    for line in path.read_text().splitlines():
+        if line and not line[0].isspace():
+            section = line[0]
+            continue
+        m = re.match(r"^\s+N\((\d+) I\('?([^)']*)'?\)", line)
+        if section == "J" and m and line.startswith("  N("):
+            layout[m.group(1)] = m.group(2)
+        elif section == "H" and m and line.startswith("  N("):
+            sch[m.group(2).lower()] = m.group(1)
+        elif section == "H" and line.startswith("  P("):
+            p = re.match(r"^\s+P\(\d+ I\('?([^)']*)'?\)", line)
+            if p:
+                sch_pins.append(p.group(1).lower())
+        elif section == "Z":
+            x = re.match(r"^\s+N\((\d+|\(\)) (\d+|\(\))", line)
+            if x:
+                xref[x.group(2)] = x.group(1)
+    wrong = [p for p in sch_pins if layout.get(xref.get(sch.get(p, "?"), "?"), "").lower() != p]
+    return dict(total=len(sch_pins), matched=len(sch_pins) - len(wrong), wrong=wrong)
 
 
 SUBSTRATE_PORTS = ("VSUBS", "vsubs", "SUB", "sub!")
@@ -1140,10 +1472,11 @@ def check_ports(path, name, pins, substrate):
     adds (VSUBS) is mapped to the substrate net, which must be a pin, and recorded; anything else is
     an error. Returns (ok, notes)."""
     text = Path(path).read_text()
-    m = re.search(r"(?im)^\.subckt\s+%s\s+([^\n]*)$" % re.escape(name), text)
+    head = r"(?im)^\.subckt\s+%s\s+((?:[^\n]*)(?:\n\+[^\n]*)*)" % re.escape(name)   # with its + continuation lines
+    m = re.search(head, text)
     if not m:
         return False, ["%s: no .subckt %s" % (Path(path).name, name)]
-    ports = [t for t in m.group(1).split() if "=" not in t]
+    ports = [t for t in m.group(1).replace("\n+", " ").split() if "=" not in t]
     notes = []
     extra = [p for p in ports if p not in pins]
     for p in extra:
@@ -1151,13 +1484,14 @@ def check_ports(path, name, pins, substrate):
             text = re.sub(r"(?<![\w.])%s(?![\w.])" % re.escape(p), substrate, text)
             notes.append("%s: Magic's substrate port %s mapped to %s" % (Path(path).name, p, substrate))
     if notes:
-        m = re.search(r"(?im)^\.subckt\s+%s\s+([^\n]*)$" % re.escape(name), text)
+        m = re.search(head, text)
         kept, seen = [], set()
-        for t in m.group(1).split():
+        for t in m.group(1).replace("\n+", " ").split():
             if t not in seen:
                 kept.append(t)
                 seen.add(t)
-        text = text[:m.start(1)] + " ".join(kept) + text[m.end(1):]
+        wrapped = " ".join(kept[:12]) + "".join("\n+ " + " ".join(kept[i:i + 12]) for i in range(12, len(kept), 12))
+        text = text[:m.start(1)] + wrapped + text[m.end(1):]
         Path(path).write_text(text)
         ports = [t for t in kept if "=" not in t]
     ok = sorted(ports) == sorted(pins)
@@ -1191,8 +1525,8 @@ def step_pex(out, name, pnp_model=None):
     return dict(rc=[rc1, rc2], seconds=round(s1 + s2, 2), netlists=counts)
 
 
-def klayout_drc(out, name, tag, decks):
-    rc, secs = run(["klayout", "-b", "-r", KLAYOUT_TECH + "/drc/gf180mcu.drc", "-rd", "input=%s.gds" % name,
+def klayout_drc(out, name, tag, decks, gds=None):
+    rc, secs = run(["klayout", "-b", "-r", KLAYOUT_TECH + "/drc/gf180mcu.drc", "-rd", "input=%s" % (gds or "%s.gds" % name),
                     "-rd", "report=drc_klayout_%s.lyrdb" % tag, "-rd", "variant=D", "-rd", "topcell=%s" % name,
                     "-rd", "run_mode=flat", "-rd", "decks=" + decks], out, out / ("klayout_drc_%s.log" % tag))
     cats = lyrdb_counts(out / ("drc_klayout_%s.lyrdb" % tag))
@@ -1210,6 +1544,84 @@ def lyrdb_counts(path):
         cat = item.findtext("category", "").strip().strip("'")
         counts[cat] = counts.get(cat, 0) + 1
     return counts
+
+
+# ---------------------------------------------------------------- metal fill
+#
+# The PDK's own KLayout fill (scripts/fill_all.rb: COMP, Poly2 and Metal1..5 dummy squares on their
+# dummy datatypes, every keep-out the script applies, DM.4..DM.7 included) on a copy of the GDS. The
+# script keeps a 26 um scribe-line ring of the frame free, which is a die's edge, not a block's: two
+# 10 nm markers 26 um outside the cell (GDS 255/255) move that ring outside it, and are removed again.
+# The density deck counts drawn plus dummy metal. LVS and extraction stay on the unfilled GDS; the
+# KLayout LVS deck, which also counts dummy metal as metal, is rerun on the filled one to show the fill
+# floats.
+
+FILL_FRAME = r"""
+import json
+import pya
+ly = pya.Layout()
+ly.read(gds)
+top = ly.top_cell()
+m = ly.layer(255, 255)
+if mode == "add":
+    b = top.bbox()
+    d = int(round(26.0 / ly.dbu))
+    top.shapes(m).insert(pya.Box(b.left - d, b.bottom - d, b.left - d + 10, b.bottom - d + 10))
+    top.shapes(m).insert(pya.Box(b.right + d - 10, b.top + d - 10, b.right + d, b.top + d))
+    ly.write(out)
+else:
+    ly.clear_layer(m)
+    ly.delete_layer(m)
+    ly.write(out)
+    ref = pya.Layout()
+    ref.read(orig)
+    rtop = ref.top_cell()
+    cover = {}
+    for name, (l, dt) in (("poly2", (30, 0)), ("metal1", (34, 0)), ("metal2", (36, 0)), ("metal3", (42, 0)), ("metal4", (46, 0)),
+                          ("metal5", (81, 0))):
+        row = {}
+        for tag, lay, t in (("unfilled", ref, rtop), ("filled", ly, top)):
+            r = pya.Region(t.begin_shapes_rec(lay.layer(l, dt))) + pya.Region(t.begin_shapes_rec(lay.layer(l, 4)))
+            r.merge()
+            box = t.bbox()
+            row[tag] = round(100.0 * r.area() / (box.width() * box.height()), 2)
+        cover[name] = row
+    print("FILL_FACTS " + json.dumps(dict(bboxSame=top.bbox() == rtop.bbox(), coveragePercent=cover)))
+"""
+
+
+def step_fill(out, name):
+    """The PDK's fill on a copy of <cell>.gds: <cell>_filled.gds, and each layer's coverage before and
+    after (drawn plus dummy, over the cell's box)."""
+    d = out / "fill"
+    d.mkdir(exist_ok=True)
+    (d / "fill_frame.py").write_text(FILL_FRAME)
+    secs, rcs = 0.0, []
+    for argv, log in ((["klayout", "-b", "-r", "fill_frame.py", "-rd", "gds=../%s.gds" % name, "-rd", "mode=add", "-rd", "out=framed.gds"], "frame.log"),
+                      (["klayout", "-b", "-r", KLAYOUT_TECH + "/scripts/fill_all.rb", "-rd", "input=framed.gds", "-rd", "output=filled_framed.gds"], "fill_all.log"),
+                      (["klayout", "-b", "-r", "fill_frame.py", "-rd", "gds=filled_framed.gds", "-rd", "mode=strip", "-rd", "out=../%s_filled.gds" % name,
+                        "-rd", "orig=../%s.gds" % name], "strip.log")):
+        if rcs and rcs[-1] != 0:
+            rcs.append(None)
+            continue
+        rc, t = run(argv, d, d / log)
+        rcs.append(rc)
+        secs += t
+    found = re.findall(r"^FILL_FACTS (.*)$", (d / "strip.log").read_text(), re.M) if (d / "strip.log").is_file() else []
+    facts = json.loads(found[-1]) if found else {}
+    filled = out / ("%s_filled.gds" % name)
+    if facts and not facts.get("bboxSame"):
+        rcs.append(5)                                   # fill outside the cell's box
+    return dict(rc=rcs, seconds=round(secs, 2), script=KLAYOUT_TECH + "/scripts/fill_all.rb", scribeRing="moved outside the cell (block, not die)",
+                gds=filled.name, sha256=sha256_file(filled) if filled.is_file() else None, **facts)
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 RENDER = r"""
@@ -1260,20 +1672,34 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
     result = dict(schema="hima-cell-layout/1", pdk="gf180mcuD", netlist=str(netlist), cell=name, layout=facts, draw=draw)
     result.update(extra or {})
     result["klayoutDrc"] = dict(block=klayout_drc(out, name, "block", "all,-density"), density=klayout_drc(out, name, "density", "density"))
+    result["fill"] = fill = step_fill(out, name)
+    filled = "%s_filled.gds" % name
+    if (out / filled).is_file():
+        result["klayoutDrcFilled"] = dict(block=klayout_drc(out, name, "filled_block", "all,-density", gds=filled),
+                                          density=klayout_drc(out, name, "filled_density", "density", gds=filled))
+    else:
+        result["klayoutDrcFilled"] = dict(block=dict(rc=None, total=None), density=dict(rc=None, total=None))
+    result.update(densityRules=result["klayoutDrc"]["density"]["total"], densityRulesFilled=result["klayoutDrcFilled"]["density"]["total"],
+                  drcKlayoutFilled=result["klayoutDrcFilled"]["block"]["total"], filledGdsSha256=fill["sha256"], pexOn="unfilled",
+                  lvsOn="unfilled (KLayout LVS repeated on the filled GDS)")
     result["lvs"] = step_lvs(out, name)
     result["klayoutLvs"] = step_klayout_lvs(out, name)
+    result["klayoutLvsFilled"] = step_klayout_lvs(out, name, gds=filled, sub="klayout_lvs_filled") if (out / filled).is_file() else dict(rc=None, match=False, verdict=False)
     pnp = facts.get("pnp")
     result["pex"] = step_pex(out, name, pnp["cell"][:-2] if pnp else None)
     result["render"] = step_render(out, name)
 
     failures = []
     rcs = dict(magicDraw=draw["rc"], mimCheck=draw["mimCheckRc"], klayoutDrcBlock=result["klayoutDrc"]["block"]["rc"],
-               klayoutDrcDensity=result["klayoutDrc"]["density"]["rc"], magicLvsExtract=result["lvs"]["rc"][0],
+               klayoutDrcDensity=result["klayoutDrc"]["density"]["rc"], fill=fill["rc"],
+               klayoutDrcFilledBlock=result["klayoutDrcFilled"]["block"]["rc"], klayoutDrcFilledDensity=result["klayoutDrcFilled"]["density"]["rc"],
+               klayoutLvsFilled=result["klayoutLvsFilled"]["rc"], magicLvsExtract=result["lvs"]["rc"][0],
                netgen=result["lvs"]["rc"][1], klayoutLvs=result["klayoutLvs"]["rc"], magicPexC=result["pex"]["rc"][0],
                magicPexRc=result["pex"]["rc"][1], klayoutRender=result["render"]["rc"])
-    failures += ["%s exited %s" % (k, v) for k, v in rcs.items() if v != 0]
+    failures += ["%s exited %s" % (k, v) for k, v in rcs.items() if (any(c != 0 for c in v) if isinstance(v, list) else v != 0)]
     products = ["%s.gds" % name, "%s_lvs.spice" % name, "lvs.out", "%s_pex_c.spice" % name, "%s_pex_rc.spice" % name,
-                "%s.png" % name, "drc_klayout_block.lyrdb", "drc_klayout_density.lyrdb", "klayout_lvs/%s.cir" % name]
+                "%s.png" % name, "drc_klayout_block.lyrdb", "drc_klayout_density.lyrdb", "klayout_lvs/%s.cir" % name,
+                "%s_filled.gds" % name, "drc_klayout_filled_block.lyrdb", "drc_klayout_filled_density.lyrdb", "klayout_lvs_filled/%s_filled.cir" % name]
     failures += ["%s was not written" % p for p in products if not (out / p).is_file()]
     if draw["magicDrcErrors"] is None:
         failures.append("Magic DRC wrote no result")
@@ -1283,6 +1709,10 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
         failures.append("netgen printed no verdict")
     if not result["klayoutLvs"]["verdict"]:
         failures.append("KLayout LVS printed no verdict")
+    if not result["klayoutLvsFilled"]["verdict"]:
+        failures.append("KLayout LVS of the filled GDS printed no verdict")
+    if "coveragePercent" not in fill:
+        failures.append("the fill step reported no coverage")
     ports = {}
     pins = draw["pins"]
     for tag, f in (("lvs", "%s_lvs.spice" % name), ("pexC", "%s_pex_c.spice" % name), ("pexRc", "%s_pex_rc.spice" % name)):
@@ -1293,16 +1723,23 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
                 failures.append("; ".join(notes))
     result.update(rcs=rcs, ports=ports, failures=failures, ok=not failures, limitations=LIMITATIONS,
                   verdict=dict(magicDrcClean=draw["magicDrcErrors"] == 0, klayoutDrcBlockClean=result["klayoutDrc"]["block"]["total"] == 0,
-                               netgenMatch=result["lvs"]["match"], klayoutLvsMatch=result["klayoutLvs"]["match"]))
+                               netgenMatch=result["lvs"]["match"], klayoutLvsMatch=result["klayoutLvs"]["match"],
+                               filledKlayoutDrcBlockClean=result["drcKlayoutFilled"] == 0, filledDensityClean=result["densityRulesFilled"] == 0,
+                               filledKlayoutLvsMatch=result["klayoutLvsFilled"]["match"]))
     result["totalSeconds"] = round(time.time() - t0, 2)
     (out / "layout.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     brief = dict(ok=not failures, failures=failures, magicDrc=draw["magicDrcErrors"], magicDrcInPdkPnpCells=draw["magicDrcInPdkPnpCells"],
                  klayoutDrcBlock=result["klayoutDrc"]["block"]["total"], klayoutDrcDensity=result["klayoutDrc"]["density"]["total"],
+                 filled=dict(klayoutDrcBlock=result["drcKlayoutFilled"], density=result["densityRulesFilled"],
+                             densityByRule=result["klayoutDrcFilled"]["density"].get("byRule"), klayoutLvs=result["klayoutLvsFilled"]["match"],
+                             coveragePercent={k: v["filled"] for k, v in (fill.get("coveragePercent") or {}).items()}),
                  netgenLvs=result["lvs"]["match"], pnpNameCorrections=result["lvs"]["pnpNameCorrections"],
                  klayoutLvs=result["klayoutLvs"]["match"], mim=draw["mimLengthMarks"], ports={k: v["ok"] for k, v in ports.items()},
                  pex=result["pex"]["netlists"], blocks=facts["blocks"],
                  seconds=dict(draw=draw["seconds"], klayoutDrc=result["klayoutDrc"]["block"]["seconds"],
-                              netgenLvs=result["lvs"]["seconds"], klayoutLvs=result["klayoutLvs"]["seconds"],
+                              netgenLvs=result["lvs"]["seconds"], klayoutLvs=result["klayoutLvs"]["seconds"], fill=fill["seconds"],
+                              filledChecks=round(sum(result["klayoutDrcFilled"][k].get("seconds", 0) for k in ("block", "density")) +
+                                                 result["klayoutLvsFilled"].get("seconds", 0), 2),
                               pex=result["pex"]["seconds"], render=result["render"]["seconds"], total=result["totalSeconds"]))
     print(json.dumps(brief, indent=1, sort_keys=True))
     return result
