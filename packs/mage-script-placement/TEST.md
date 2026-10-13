@@ -18,10 +18,17 @@ Ran 155 tests in 5.943s
 OK
 ```
 
-No skips, no `--pattern` narrowing. Python 3.9.6 (Mac, `/usr/bin/python3`); the Linglong resident
-container's own Python 3.8.16 has not yet been checked for this Task's additions (test code is
-written to the 3.8-compatible standard-library-only constraint: no f-string syntax beyond 3.8, no
-`match` statements, no walrus-dependent control flow).
+No skips, no `--pattern` narrowing. Python 3.9.6 (Mac, `/usr/bin/python3`), and the identical
+`flow/tests/` tree on the Linglong resident container's own Python 3.8.16 (rsync of the Pack to
+`/home/luzi/tmp/mage-script-flow-check/`, then `podman run … localhost/edarunner:alma8 … python3 -m
+unittest discover -s flow/tests -t flow`, 2026-10-13):
+
+```
+Python 3.8.16
+Ran 155 tests in 10.411s
+
+OK
+```
 
 ## L0/L2 — Host contract test (pending)
 
