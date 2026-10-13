@@ -50,10 +50,16 @@ const MEMBER_SAID: Record<TeamNodeState, string> = { pending: 'Waiting', active:
 
 const KIND_SAID: Record<string, string> = { read: 'Reading', edit: 'Editing', execute: 'Running', search: 'Searching', plan: 'Planning', message: 'Thinking', other: 'Working' };
 
+/** A path-like token keeps its last two segments: "…/flow/rounds.py", not the Site's long root. */
+export function shortPaths(text: string): string {
+  return text.replace(/\/?(?:[\w.-]+\/){2,}[\w.-]+/g, (path) => `…/${path.split('/').slice(-2).join('/')}`);
+}
+
 /** What a working agent is doing now: its latest action, then its tool-call and plan counters. */
 function LiveLine({ activity, fallback }: { activity: ResidentActivity | undefined; fallback: string }): ReactElement {
   const latest = activity?.latest;
-  const text = latest === undefined ? fallback : latest.kind === 'message' ? `${KIND_SAID.message}: ${latest.title}` : `${KIND_SAID[latest.kind] ?? KIND_SAID.other} ${latest.title}`;
+  const title = latest === undefined ? '' : shortPaths(latest.title);
+  const text = latest === undefined ? fallback : latest.kind === 'message' ? `${KIND_SAID.message}: ${title}` : `${KIND_SAID[latest.kind] ?? KIND_SAID.other} ${title}`;
   const counter = activity === undefined ? undefined
     : `${String(activity.toolCalls)} tool call${activity.toolCalls === 1 ? '' : 's'}${activity.planTotal > 0 ? ` · plan ${String(activity.planDone)}/${String(activity.planTotal)}` : ''}`;
   return <>
@@ -217,6 +223,7 @@ export const TEAM_STYLE = `
 .hima-team-head-text strong{font-size:var(--hima-fs-title);line-height:var(--hima-lh-tight)}
 .hima-team-about,.hima-team-role{font-size:12px;color:var(--hima-ink-3)}
 .hima-team-live{font-size:12px;color:var(--hima-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;animation:hima-team-in .35s ease-out}
+.hima-team-member .hima-team-live{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .hima-team-count{font-size:11px;color:var(--hima-ink-3);font-variant-numeric:tabular-nums}
 @keyframes hima-team-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .hima-team-lines{list-style:none;margin:var(--hima-sp-2) 0 0 44px;padding:0;display:flex;flex-direction:column;gap:3px;font-size:var(--hima-fs-label)}

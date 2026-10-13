@@ -376,6 +376,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'For a declared resident engineering task, the workflow starts the Site executor, collects its contract-checked delivery and closes its resources automatically. The Campaign owner may use hima_execute engineering message on the recorded execution to give business steering, and hima_context to inspect current facts. A status reply is one snapshot: when no actionable fact changed, explain that work remains active and yield instead of busy-polling. The external engineering session executes this task and does not acquire Run ownership.',
   'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
   'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
+  'When you write to the person, talk as to a chip designer about the design and its numbers, in a few short lines. Name steps and agents by their Pack labels, not task ids. Never paste hashes, run, execution or record ids, revision numbers or file paths unless the person asks for them.',
   'Data Insight shows the default library analyses. For a library question those pages do not answer, the Guide uses hima_insight_analysis: propose, show the proposal, confirm only after the person agrees in this conversation, then report the admitted result with its analysis page link.',
 ].join('\n');
 
