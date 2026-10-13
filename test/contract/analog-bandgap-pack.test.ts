@@ -20,7 +20,7 @@ const HARNESS_ARGV = new Set(['WORKSPACE']);
 test('the Pack loads at stage compiled with the eight-line spec sheet as its Goal and one resident design agent', async () => {
   const pack = loadPack(packsDir, packId);
   assert.equal(packStageOf(packsDir, packId)?.stage, 'compiled');
-  assert.equal(pack.contract.version, '0.2.0');
+  assert.equal(pack.contract.version, '0.3.0');
   const goal = pack.contract.goal!;
   assert.deepEqual(Object.fromEntries(Object.entries(goal).map(([k, v]) => [k, (v as any).default])), {
     vbg_v: 1.2, vbg_tol_pct: 2, max_iq_ua: 8, max_isd_na: 2, max_tc_ppm: 100, min_pm_deg: 60, max_tstart_us: 100, min_psrr_db: 40,

@@ -80,8 +80,14 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
   - Comparators built only from core nodes trip at a VBG proportional to VBE (about 1.7× from −40
     to 125 °C), so the delay is what lifts the trip. The worst trip is 61.7 % of final VBG, at
     ss 2 V 125 °C on the 1 µs edge. That meets the 50 % rule but not the 70 % aim.
-- `bgok` is high exactly when the cell is enabled and VBG is up.
-- It is low and defined (no floating node) while `en` is low.
+- `bgok` is high when the cell is enabled and VBG is up.
+  - This is verified for the bench's ramps only: power-up in 10 µs, and `en` edges of 1 µs and
+    50 µs.
+  - It is not verified for a supply ramp much slower than the ~60 µs start-up. There the delay
+    adds nothing, and the comparator alone trips at about half of VBG at 125 °C.
+  - That limit is open (2026-10-13 review).
+- It is low and driven while `en` is low. Every gate is defined; a few internal nodes between two
+  off devices are not.
 - Its current counts in IQ, and its leakage counts in ISD.
 
 **Pins, in order.**

@@ -36,7 +36,8 @@ A bandgap core front end, with five blocks.
    - In the core's stuck state VBG ≈ VBE1, so every tap sits below `a` and `bgok` stays low.
    - `bgok` can rise only through bias current, after a bias-charged delay. So it is low while the
      bias starts, and its edge is slow.
-   - `bgok` is high only when the cell is enabled and VBG is up, and low while `en` is low.
+   - `bgok` is high only when the cell is enabled and VBG is up, and low while `en` is low. This is
+     verified for the bench's ramps: power-up in 10 µs, and `en` edges of 1 µs and 50 µs.
    - While `en` is low, the OTA output and the start-up node are held at `vss`.
 
 Every transistor is a 3.3 V device. The PDK's 6 V and native devices have typical models only, and

@@ -1,5 +1,5 @@
 id: analog-bandgap
-version: "0.2.0"
+version: "0.3.0"
 title: Bandgap reference sized from a spec sheet, verified at every corner, in Monte Carlo and after layout
 status: development
 minimumHarnessVersion: 0.2.2
