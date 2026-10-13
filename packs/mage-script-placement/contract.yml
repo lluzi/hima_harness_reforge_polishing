@@ -152,8 +152,18 @@ goal:
 strategy:
   incumbentComparison: {type: choice, options: [retained, native], default: retained}
 knowledge:
-- {file: script-method-playbook.md, purpose: The Engineer's whole method -- the four stages, the known failures, the action order, the journal discipline and prohibitions.}
-- {file: mage-capabilities.md, purpose: The prelude/epilogue the Pack runs and the reference method's MAGE command surface with V/D status and pitfalls.}
-- {file: state-and-evidence.md, purpose: Modelled versus native versus device facts, snapshot binding, unknown stays unknown, ordinary versus grouped drops, identity.}
-- {file: reference-method-guide.md, purpose: How to read the Site's reference method files and probe notes as evidence, never as results.}
-- {file: role-script-engineer.md, purpose: The Engineer's own role brief -- inputs, permitted CLI calls, round protocol, deliverable shape.}
+- file: script-method-playbook.md
+  purpose: The Engineer's whole method -- the four stages, the known failures, the action order,
+    the journal discipline and prohibitions.
+- file: mage-capabilities.md
+  purpose: The prelude/epilogue the Pack runs and the reference method's MAGE command surface with
+    V/D status and pitfalls.
+- file: state-and-evidence.md
+  purpose: Modelled versus native versus device facts, snapshot binding, unknown stays unknown,
+    ordinary versus grouped drops, identity.
+- file: reference-method-guide.md
+  purpose: How to read the Site's reference method files and probe notes as evidence, never as
+    results.
+- file: role-script-engineer.md
+  purpose: The Engineer's own role brief -- inputs, permitted CLI calls, round protocol, deliverable
+    shape.

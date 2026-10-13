@@ -1,10 +1,13 @@
 """Checks on the Pack's `knowledge/*.md` files (Task 8).
 
 Ported from the sibling Pack's `mage-scribe-placement/flow/tests/test_knowledge.py`
-and adapted to this Pack's single resident tool and `contract.yml`'s own flow-style
-YAML (`- {file: x, purpose: ...}` for the top-level `knowledge:` table,
-`knowledge: [a.md, b.md, ...]` for a tool's nested `outsourcing.knowledge`), instead
-of the sibling's block-style lists.
+and adapted to this Pack's single resident tool. The top-level `knowledge:` table
+uses the sibling's own block style (`- file: x` then a wrapped `purpose:`
+continuation) -- a flow-mapping `- {file: x, purpose: <prose with commas>}` broke
+on every purpose whose prose itself contained a comma, since YAML reads each
+unescaped comma inside `{...}` as another mapping key. A tool's nested
+`outsourcing.knowledge` stays the single-line flow list `[a.md, b.md, ...]`, which
+only ever holds comma-free filenames.
 
 This module never imports PyYAML (not a Pack runtime dependency) -- it reads
 `contract.yml` and `mage_placement_cli.py` with small regex-based extraction, the
@@ -67,11 +70,14 @@ def _read_text(path):
 
 def _knowledge_purpose_table_files(text):
     """Every `file:` name of the top-level `knowledge:` purpose table in this
-    Pack's own `contract.yml`, which writes each entry as one flow-style mapping
-    per line (`- {file: <name>, purpose: <text>}`), not the sibling's block-style
-    `- file: <name>` plus a wrapped `purpose:` continuation. The block ends at the
-    first line that is not a `- {file: ...}` entry (e.g. end of file or a stray
-    blank line followed by a new top-level key)."""
+    Pack's own `contract.yml`, written the sibling's block style: one
+    `- file: <name>` line starts an entry, followed by a `purpose:` line that may
+    wrap onto further indented continuation lines. An entry's file name is taken
+    from the `- file: <name>` line only; its (possibly wrapped) `purpose:` text is
+    skipped over, not parsed, by continuing past every line indented under the
+    entry. The block ends at the first line that starts neither a new `- file:`
+    entry nor an indented continuation (end of file, in this Pack, since
+    `knowledge:` is its own `contract.yml`'s last top-level key)."""
     pattern = re.compile(r"^knowledge:\s*$", re.MULTILINE)
     match = pattern.search(text)
     if not match:
@@ -80,13 +86,17 @@ def _knowledge_purpose_table_files(text):
     lines = text[start:].splitlines()
     files = []
     for line in lines:
-        stripped = line.strip()
-        if not stripped:
+        if not line.strip():
             continue
-        file_match = re.match(r"-\s*\{file:\s*([^\s,}]+)", stripped)
-        if not file_match:
-            break
-        files.append(file_match.group(1))
+        entry_match = re.match(r"-\s*file:\s*(\S+)\s*$", line)
+        if entry_match:
+            files.append(entry_match.group(1))
+            continue
+        if line[:1] in (" ", "\t"):
+            # a `purpose:` line or one of its wrapped continuation lines,
+            # indented under the `- file:` entry above it.
+            continue
+        break
     return files
 
 
