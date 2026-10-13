@@ -54,6 +54,7 @@ import { handleHimaCommand, himaCommandDescription, versionLine } from './comman
 import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { createLibInsightViewer, libInsightViewerOptions } from './libinsight-viewer.js';
+import { createToolView } from './tool-view.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { createDurableViewReaders, readDurableSourceBytes } from './durable-views.js';
 import { analysisSettled, createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses } from './libinsight-analyses.js';
@@ -643,6 +644,10 @@ export default class Hima extends Service {
       // Data Insight's LibInsight pages (ADR-0019): started on the first look, stopped with the face.
       const libInsight = createLibInsightViewer(libInsightViewerOptions(localDatabaseHome()));
       webCtx.effect(() => () => libInsight.stop(), 'hima: the LibInsight viewer process');
+      // The live tool view a Site declares: opened on the first look at the Tool tab, every forward
+      // torn down with the face. The remembered local ports live beside the other Host state.
+      const toolView = createToolView({ sitesDir: this.config.sitesDir, home: localDatabaseHome() });
+      webCtx.effect(() => () => toolView.stop(), 'hima: the Site tool-view forwards');
       const analyses = this.libInsightAnalyses();
       const asked = <T,>(work: () => Promise<T>): Promise<T> => work().catch((error: unknown) => {
         if (error instanceof LibInsightAnalysisError) throw new BadRequest(error.message);
@@ -652,6 +657,7 @@ export default class Hima extends Service {
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
           libInsight: request => request.action === 'status' ? libInsight.status() : libInsight.open(request),
+          toolView: request => request.action === 'status' ? toolView.status(request.site) : toolView.open(request.site, { ...(request.restart === undefined ? {} : { restart: request.restart }) }),
           libInsightAnalyses: {
             list: sessionId => asked(() => analyses.list(sessionId)),
             detail: (sessionId, runId) => asked(() => analyses.detail(sessionId, runId)),

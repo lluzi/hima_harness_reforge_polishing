@@ -664,6 +664,9 @@ export interface RemoteOperations {
   readSessionContext?(request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number}):Promise<object>;
   /** The LibInsight pages Data Insight frames (ADR-0019): the Host's one local viewer process. */
   libInsight?(request: { readonly action: 'status' } | { readonly action: 'open'; readonly dataFolder?: string; readonly restart?: boolean }): Promise<import('./libinsight-viewer.js').LibInsightViewerStatus>;
+  /** The live tool display a Site declares (`tool-view.ts`): where the Host forwards it and whether it
+   *  is up. Status is a read; open starts (or keeps) the forward. Never carries the Site's own port. */
+  toolView?(request: { readonly action: 'status' | 'open'; readonly site: string; readonly restart?: boolean }): Promise<import('./tool-view.js').ToolViewStatus>;
   readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
   /** Custom library analyses (ADR-0020, ADR-0021), read only: the Guide alone proposes and starts them. */
   libInsightAnalyses?: {
@@ -1686,6 +1689,25 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     const body = parsed.data;
     if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
     return ok(await ops.libInsight({ action: 'open', ...(body.dataFolder === undefined ? {} : { dataFolder: body.dataFolder }), ...(body.restart === undefined ? {} : { restart: body.restart }) }));
+  }
+
+  // The live tool view a Site declares (Campaign pane Tool tab). A live conversation is the viewer,
+  // as for every other workbench read; the answer is where the Host forwards the Site's tool display
+  // and whether it is up, never the Site's own port and never any data.
+  if (rest === '/tool-view') {
+    if (!ops.toolView) return failure(503, 'hima/internal', 'This Host has no tool view.');
+    if (method === 'GET') {
+      if (!ops.validateSession?.(url.searchParams.get('sessionId') ?? '')) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+      const site = url.searchParams.get('site');
+      if (!site) throw new BadRequest('name a site');
+      return ok(await ops.toolView({ action: 'status', site }));
+    }
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
+    const parsed = z.strictObject({ sessionId: z.string(), action: z.literal('open'), site: z.string().min(1).max(200), restart: z.boolean().optional() }).safeParse(await readJsonBody(req));
+    if (!parsed.success) throw new BadRequest(zodSentence(parsed.error));
+    const body = parsed.data;
+    if (!ops.validateSession?.(body.sessionId)) return failure(403, 'hima/not-authorized', 'Choose a live project conversation.');
+    return ok(await ops.toolView({ action: 'open', site: body.site, ...(body.restart === undefined ? {} : { restart: body.restart }) }));
   }
 
   // Custom library analyses (ADR-0020, ADR-0021), read only. They are proposed and started from the

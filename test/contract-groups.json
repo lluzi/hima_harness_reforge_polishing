@@ -108,6 +108,7 @@
     "test/contract/terminal.host.test.ts",
     "test/contract/test-entry.test.ts",
     "test/contract/tool-view.test.ts",
+    "test/contract/tool-view.host.test.ts",
     "test/contract/trial-home.test.ts",
     "test/contract/trial-package.test.ts",
     "test/contract/value-measurement.test.ts",

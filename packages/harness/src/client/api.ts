@@ -12,6 +12,7 @@ import type { RunDelegationView } from '../delegation-runtime.js';
 import type { DelegationCandidateResult, DelegationResult } from '../delegation.js';
 import type { ExperienceAdoptionRecord } from '../ledger.js';
 import type { LibInsightViewerStatus } from '../libinsight-viewer.js';
+import type { ToolViewStatus } from '../tool-view.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -135,6 +136,15 @@ export const fetchLibInsightViewer = (sessionId: string, signal?: AbortSignal): 
 /** Start (or keep) the viewer; a data folder is the person's own choice and is remembered by the Host. */
 export const openLibInsightViewer = (body: { sessionId: string; dataFolder?: string; restart?: boolean }, signal?: AbortSignal): Promise<HimaResult<LibInsightViewerStatus>> =>
   runRequest('/hima/api/libinsight', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, action: 'open' }) });
+
+/** Where the Host forwards a Site's declared live tool display, and whether that forward is up. The
+ *  client never learns the Site's own port — only the `localhost` URL the Host publishes for the frame. */
+export const fetchToolView = (sessionId: string, site: string, signal?: AbortSignal): Promise<HimaResult<ToolViewStatus>> =>
+  runRequest(`/hima/api/tool-view?sessionId=${encodeURIComponent(sessionId)}&site=${encodeURIComponent(site)}`, { signal });
+
+/** Open (or keep) the forward to a Site's tool display; `restart` tears the current one down first. */
+export const openToolView = (sessionId: string, site: string, restart?: boolean, signal?: AbortSignal): Promise<HimaResult<ToolViewStatus>> =>
+  runRequest('/hima/api/tool-view', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, site, action: 'open', ...(restart === undefined ? {} : { restart }) }) });
 
 type MemoryEvidence =Pick<WorkMemorySummary, 'references' | 'sources' | 'nativeSources'>;
 export type MemoryAnswer = WorkMemoryRead & { readonly scope: WorkMemoryScope } & Partial<MemoryEvidence>;
