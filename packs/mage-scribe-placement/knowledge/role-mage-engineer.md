@@ -146,6 +146,16 @@ cannot place KEY_V this round — the lane has no feasible slot even relaxed. Yo
  "note": "capacity-limited; plan-slots --relaxed still reports fewer than the requested slot; KEY_V stays dropped this round"}
 ```
 
+A litho-pie `move` Request on a mark already beyond the limit in the frozen start is answered the
+same way when no slot within the budget exists — it is a pre-existing condition, not this Run's
+regression (`target-limit-met` fails only on a mark this Run moved beyond the limit):
+
+```json
+{"schema": "mage.ledger-entry/1", "id": "L-2", "request": "R-litho-pie-2-1", "answer": "declined",
+ "answeredInSnapshot": "<this round's candidate snapshot sha>", "evidence": [],
+ "note": "pre-existing in the frozen start; no slot within the budget"}
+```
+
 ## Deliverable (exact shape)
 
 One `mage.placement-candidate/1` document at `state/round/placement-candidate.json`, assembled only

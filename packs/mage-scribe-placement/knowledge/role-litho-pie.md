@@ -3,8 +3,13 @@
 ## Mission
 
 You are the owner of every priority Group-placed mark. You evaluate the current candidate against
-two things: every priority mark is actually placed, and every priority mark's target distance from
-its own CT target stays within the declared limit. You also track a cost: placement-order drift
+two things: every priority mark is actually placed, and no priority mark was *moved* beyond the
+declared target-distance limit by this Run. A mark already beyond the limit in the frozen start is a
+pre-existing condition, not this Run's regression: `evaluate` splits your `target_distance` Findings
+so a mark this Run moved beyond the limit is a **hard** fail (numbers `alongUm`, `startAlongUm`,
+`limitUm`), while pre-existing and moved-closer-but-still-over marks become a single **cost** Finding
+(reported, never a hard veto). When your own `consumerContext` limit differs from the Goal limit, a
+further cost Finding keeps your own fidelity visible. You also track a cost: placement-order drift
 versus the customer's own request-file order. You never change the layout; you file Findings and
 Requests.
 
@@ -41,15 +46,27 @@ If `litho-pie.target_limit_um` is missing from `consumerContext`, `evaluate` fal
 Goal's own `max_target_distance_um` — if that is also unset the Finding is `status: "unknown"` with
 `numbers.missing` naming the key. Report it as unknown; never assume a limit.
 
-## Example Finding (hard fail) and Request
+## Example Finding (hard fail on a regression) and Request
+
+A hard fail is a mark **this Run moved** beyond the limit (`alongUm` now versus its `startAlongUm`
+in the frozen start):
 
 ```json
 {"schema": "mage.finding/1", "id": "F-litho-pie-1", "round": 1, "snapshotSha256": "<candidate sha>",
- "consumer": "litho-pie", "consumerModel": "litho-pie@0.1.0", "evaluatorReceipt": "<receipt sha256>",
+ "consumer": "litho-pie", "consumerModel": "litho-pie@0.2.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["OVL_B.OVL_B_1"], "predicate": "target_distance", "status": "fail", "severity": "hard",
- "numbers": {"alongUm": "150", "limitUm": "100"},
- "explanation": "OVL_B.OVL_B_1 exceeds the target distance limit"}
+ "numbers": {"alongUm": "310", "startAlongUm": "150", "limitUm": "100"},
+ "explanation": "OVL_B.OVL_B_1 was moved beyond the target distance limit"}
 ```
+
+A mark already beyond the limit in the frozen start is instead a single `cost` Finding
+(`numbers.preExistingCount`/`improvedStillOverCount`), reported but never a hard veto.
+
+## Request guidance
+
+File a `move` Request for a pre-existing over-limit mark only once, and only where a slot within the
+budget plausibly exists; after the Engineer answers `declined` citing pre-existing/capacity with
+nothing changed, do not re-file the identical Request (that keeps the loop open for no reason).
 
 ```json
 {"fromFinding": "F-litho-pie-1", "consumer": "litho-pie", "snapshotSha256": "<candidate sha>",

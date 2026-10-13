@@ -35,6 +35,22 @@ The rule file, the target table, any consumer model, or the Goal limits
 (`targetPointDbu`) never move — a Group mark may be repositioned within its own window, but its own
 declared CT target is fixed input, not something you edit.
 
+## What this Run is judged on (its own contribution, not the inheritance)
+
+`max_target_distance_um` is the budget a mark *you move* may end from its requested CT target. A mark
+already beyond it in the frozen start is pre-existing — reported, never counted as this Run's
+regression, and never a reason to decline the whole round. Move a pre-existing-over mark closer only
+when `plan-slots` finds a slot within the budget; otherwise leave it and answer its Request
+`declined … pre-existing` (below). `target-limit-met` fails only on a mark this Run moved beyond the
+limit, never on inherited excess.
+
+The native checks are read the same way, against a native anchor. Round 1 replays the frozen start
+with `--fill` and moves nothing: that faithful reproduction is the native anchor, so the incumbent's
+own native fill (which may already carry, say, a SPACE row) is never counted as this Run's
+violation — `no-native-violation` then counts only rows a later round introduces beyond the anchor.
+A round-1 that moves any mark forfeits the anchor for the whole Run, and `no-native-violation` falls
+back to judging the absolute native-row total (zero rows in all).
+
 ## The loop: observe, diagnose, plan, apply, judge
 
 **Observe.** One MAGE round = `mage-round --round <n> --pla <candidate.pla> --role engineer

@@ -111,7 +111,18 @@ The candidate Reader's recomputed drops split into `mage_dropped_ordinary_count`
 `mage_dropped_ordinary_length_um` (empty `inGroup` — not Group-placed) alongside the existing
 `mage_dropped_count`/`mage_dropped_length_um` totals; the ordinary length is the comparison
 objective against any external baseline or `referenceMethod`, never the total (a dropped
-Group-placed/priority mark is already a `priority-all-placed` failure on its own).
+Group-placed/priority mark is already a `priority-all-placed` failure on its own). The Reader also
+emits `mage_target_over_limit_new_count` (marks this Run moved beyond the limit, from
+`metrics.target_regressions` against the frozen start) and `mage_moved_count` (Fits moved from the
+start, which `decide()` uses to recognise the native anchor).
+
+Consumer severities follow the Run owner's Goal. A consumer's `target_distance` limit resolves
+Goal-first (`max_target_distance_um`), then its own `consumerContext` key; a hard `target_distance`
+requirement fails only on a mark this Run moved beyond the limit, while pre-existing and
+moved-closer-but-still-over marks become one `cost` Finding, and a differing consumerContext limit
+is kept as a further `cost` Finding. WAT's `placed` requirement is `cost` (a dropped ordinary test
+key's acceptability is the Run's `target_dropped_count`, not a consumer hard veto); litho-pie's
+`placed` stays hard for priority marks.
 
 Inventory conservation (`snapshot.check_inventory_conservation`, shared verbatim by the candidate
 assembler and the Reader) is checked at the level real MAGE output actually conserves — the Group,
@@ -139,13 +150,18 @@ evidence.
 
 ## Judge rules
 
-Seven rule files, evaluated in `evaluate-placement` from the best state's own Reader values:
+Seven rule files, evaluated in `evaluate-placement` from the best state's own Reader values. Three
+of them judge the Run's own contribution, never conditions it inherited from the frozen start:
 `placement-delivery-ready` (candidate error count = 0), `priority-all-placed` (unplaced = 0),
-`no-native-violation` (native violation total = 0), `drops-within-goal` (dropped count ≤
-`target_dropped_count`), `target-limit-met` (max target distance ≤ `max_target_distance_um`),
-`order-within-goal` (max order deviation ≤ `max_order_deviation`), `no-open-requests` (evaluated
-against the delivered state: no open Request and no outstanding Decision Request in the final
-round-decision, and no consumer hard-fail Finding in the best round's reviews).
+`no-native-violation` (a composite: when a native anchor exists — round 1's faithful reproduction of
+the start, recorded by `decide()` — zero native rows *beyond* that anchor per type; with no anchor,
+the absolute native-row total = 0), `drops-within-goal` (dropped count ≤ `target_dropped_count`),
+`target-limit-met` (zero marks this Run *moved* beyond `max_target_distance_um`; a mark already
+beyond it in the frozen start is pre-existing, reported but never counted), `order-within-goal` (max
+order deviation ≤ `max_order_deviation`), `no-open-requests` (evaluated against the delivered state:
+no open Request and no outstanding Decision Request in the final round-decision, and no consumer
+hard-fail Finding in the best round's reviews). `evaluate-placement` reports both the absolute and
+the Run-owned view under `regressionBasis`.
 
 ## Endings
 

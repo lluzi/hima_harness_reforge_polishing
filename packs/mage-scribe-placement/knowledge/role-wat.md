@@ -2,11 +2,13 @@
 
 ## Mission
 
-You own every TSK/MPAD-typed key. You evaluate two hard requirements (every in-scope key is
-actually placed; its rigid-unit footprint and orientation are unchanged from the start state) and
-one cost-tracked finding converting any in-scope movement into pad-pitch units, flagging wrong-pad
-risk at or beyond half a pitch and whether the test program/probe card needs remaking. You never
-change the layout; you file Findings and Requests.
+You own every TSK/MPAD-typed key. A dropped in-scope key is a **cost** Finding, not a hard veto:
+whether N dropped ordinary test keys are acceptable is the Run owner's `target_dropped_count` Goal
+(the `drops-within-goal` rule), and you may still Request placement. You also evaluate two hard
+requirements (an in-scope key's rigid-unit footprint and orientation are unchanged from the start
+state) and one cost-tracked finding converting any in-scope movement into pad-pitch units, flagging
+wrong-pad risk at or beyond half a pitch and whether the test program/probe card needs remaking. You
+never change the layout; you file Findings and Requests.
 
 ## What to read, exact paths
 
@@ -36,16 +38,17 @@ round support files as `kind: "support"`.
 
 If `wat.pad_pitch_um` is missing from `consumerContext`, the `move_in_pitch_units` Finding is
 `status: "unknown"` with `numbers.missing` naming the key — `placed` and `rigid_unit` are still
-checked (they need no pitch value). If a key stays dropped for a genuine capacity reason the
-Engineer already explained in the Ledger, you need not re-file an identical Request every round with
-nothing new to add.
+checked (they need no pitch value). File a `place` Request once per dropped key. After the Engineer
+answers `declined … capacity-limited` with the drop set unchanged, do not re-file the identical
+Request — record the accepted trade-off in your review `summary` instead; the drop's acceptability
+is the Run's `target_dropped_count`, not a WAT veto.
 
-## Example Finding (hard fail) and Request
+## Example Finding (cost) and Request
 
 ```json
 {"schema": "mage.finding/1", "id": "F-wat-5", "round": 1, "snapshotSha256": "<candidate sha>",
- "consumer": "wat", "consumerModel": "wat@0.1.0", "evaluatorReceipt": "<receipt sha256>",
- "targets": ["KEY_V.KEY_V"], "predicate": "placed", "status": "fail", "severity": "hard",
+ "consumer": "wat", "consumerModel": "wat@0.2.0", "evaluatorReceipt": "<receipt sha256>",
+ "targets": ["KEY_V.KEY_V"], "predicate": "placed", "status": "fail", "severity": "cost",
  "numbers": {"blockType": "TSK/MPAD"}, "explanation": "KEY_V.KEY_V is still pending (not placed)"}
 ```
 

@@ -45,7 +45,7 @@ hand-written:
 
 ```json
 {"schema": "mage.finding/1", "id": "F-wat-3", "round": 1, "snapshotSha256": "<candidate sha>",
- "consumer": "wat", "consumerModel": "wat@0.1.0", "evaluatorReceipt": "<receipt sha256>",
+ "consumer": "wat", "consumerModel": "wat@0.2.0", "evaluatorReceipt": "<receipt sha256>",
  "targets": ["KEY_V.KEY_V"], "predicate": "placed", "status": "fail", "severity": "hard",
  "numbers": {"blockType": "TSK/MPAD"}, "explanation": "KEY_V.KEY_V is still pending (not placed)"}
 ```
@@ -81,7 +81,7 @@ role; you only ever read one, never author it:
  "options": [{"id": "O-1", "description": "move OVL_B, accept wat's rigid-unit fail",
               "perConsumer": {"litho-pie": {"targetDistanceUm": "0"}, "wat": {"rigidUnitFailCount": 1}},
               "nativeChecked": true, "snapshotSha256": "<option candidate sha>"}],
- "blockingRequests": ["R-litho-pie-1", "R-wat-1"]}
+ "blockingRequests": ["R-litho-pie-3-1", "R-wat-3-1"]}
 ```
 
 ## Worked round (abbreviated; the real numbers come from `evaluate`/`candidate`, never hand-copied)
@@ -96,6 +96,16 @@ dropped for a capacity reason already explained (declined in the Ledger). `revie
 Finding now passes, so it files no new Request. `review-wat`'s Finding still fails mechanically, but
 with nothing new to add it need not re-file an identical Request. `decide-round` sees zero open
 Requests and routes `stop`.
+
+## When to re-file a Request (and when not to)
+
+A Request is re-filed only when its subject genuinely changed since the last round — the mark moved,
+the drop set changed, a new slot opened — or when an `alternative` answer is rejected. An identical
+Request filed again after a `declined` answer whose subject is unchanged does not advance anything:
+it keeps the loop open for no reason and is the consumer's own protocol failure, not an open
+question for the Run. A pre-existing over-limit mark the Engineer declined as `pre-existing` with no
+slot within the budget, or a key declined as `capacity-limited` with the drop set unchanged, is a
+settled trade-off — record it in your review `summary` instead of re-asking.
 
 ## Round-numbered support paths
 

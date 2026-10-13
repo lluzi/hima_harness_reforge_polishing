@@ -420,7 +420,7 @@ words:
     label: target dropped test-structure count
     unit: count
   max_target_distance_um:
-    label: maximum target distance
+    label: maximum target distance for marks this Run moves
     unit: um
   max_order_deviation:
     label: maximum placement order deviation
