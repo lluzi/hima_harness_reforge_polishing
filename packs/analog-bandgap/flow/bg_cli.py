@@ -2172,6 +2172,9 @@ def cmd_layout(ws, tool, pex):
                claimBoundary=claim_boundary(design["ibiasUa"]) + " Layout checked with the open PDK's own DRC and LVS decks; die-level density "
                                               "rules need fill and are reported, not judged.",
                measuredAt=now())
+    if "densityRulesFilled" in found:       # the tool's fill step: reported beside the judged checks, never judged
+        rec["fill"] = dict(densityRules=found["densityRulesFilled"], drcKlayout=found.get("drcKlayoutFilled"),
+                           lvsKlayout=(found.get("klayoutLvsFilled") or {}).get("match"), pexOn=found.get("pexOn"))
     rec["clean"] = layout_clean(rec)
     post = state(ws, "cell-post.spice")
     write_text(post, extracted.read_text())
@@ -2182,7 +2185,9 @@ def cmd_layout(ws, tool, pex):
              "| Cell size | %s |" % ("%.1f x %.1f um (%.0f um2)" % (bbox[0], bbox[1], rec["areaUm2"]) if bbox else "n/a"),
              "| DRC, Magic (PDK tech file) | %d errors (%d inside the PDK's own PNP cells) |" % (rec["drcMagic"], rec["drcMagicInPdkPnpCells"]),
              "| DRC, KLayout (PDK deck, block) | %d errors |" % rec["drcKlayout"],
-             "| Density rules (die level, need fill) | %d reported |" % rec["densityRules"],
+             "| Density rules (die level, need fill) | %d reported%s |" % (rec["densityRules"], "" if not rec.get("fill") else
+                 "; with the PDK's fill: %s, block DRC %s, KLayout LVS %s" % (rec["fill"]["densityRules"], rec["fill"]["drcKlayout"],
+                                                                           {True: "match", False: "MISMATCH"}.get(rec["fill"]["lvsKlayout"], "n/a"))),
              "| LVS, netgen | %s |" % ("match" if rec["lvsNetgen"] else "MISMATCH"),
              "| LVS, KLayout (PDK deck) | %s |" % ("match" if rec["lvsKlayout"] else "MISMATCH"),
              "| Extraction for post-layout simulation | %s: %s |" % (pex, json.dumps(rec["pexCounts"], sort_keys=True)),

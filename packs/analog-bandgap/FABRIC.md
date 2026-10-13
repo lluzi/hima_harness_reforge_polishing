@@ -39,3 +39,38 @@
   Monte Carlo N=100 sigma 4.79 mV, mean +/- 3 sigma 1.1909 to 1.2196 V (1.5 s); layout 201.0 x 203.5
   um, DRC 0 on both decks, netgen and KLayout LVS match (17.7 s); after layout (C extraction) every
   line met at every corner (PM 73.8 deg, start-up 42.5 us; 80 s); round recorded signed off.
+- **0.2.0, the bgcore case** (2026-10-13). This is the competitor's bandgap case on GF180: a
+  120-tap ladder, a BGOK monitor and a 0.2 uA reference on the mirror core. The case is
+  `knowledge/bgcore-case.md` and `docs/specs/analog-bandgap-pack/bgcore-case.md`.
+  - **Engine and layout.** Built by two workers and checked on the server.
+  - **Defects found and fixed on the way:**
+    - **Spectre crash.** Spectre 23.1 crashed on every attempt to compile the PDK resistor's code
+      in a fresh workspace. The fix: the Site ships `bin/spectre.ahdl-seed/`, and the Pack seeds
+      from it.
+    - **netgen false alarm.** netgen merged the ladder's series pair before RL0's parallel pair.
+      It then reported "match with property errors" for a correct layout. The fix: a tool-owned
+      netgen setup that never merges poly resistors in parallel.
+  - **Signed off on the Site by hand, the method's first cut with no agent.**
+    - Run: 2026-10-13, `analog-runs/bgcore-site-20261013-1145`, Spectre 23.1, a fresh workspace, no Spectre crash.
+    - **Corners (30, 64 s).** Every line met at the worst corner:
+
+      | Line | Worst | Corner |
+      | --- | --- | --- |
+      | VBG | 1.2109 V | ss 3.3 V |
+      | IQ | 6.40 uA | ff 2 V |
+      | ISD | 0.047 nA | |
+      | TC | 22.3 ppm/C | |
+      | PM | 70.9 deg | ss 3.3 V -40 C |
+      | Start-up | 50.4 us | |
+      | PSRR | 49.0 dB | |
+      | BGOK | correct | |
+
+    - **Monte Carlo.** N=100: sigma 4.77 mV, mean +/- 3 sigma 1.1908 to 1.2194 V (1.7 s).
+    - **Layout.** 228.1 x 252.7 um in 35 s.
+      - Magic DRC 0. KLayout block DRC 0, both unfilled and with the PDK's fill.
+      - netgen: "Circuits match uniquely", no property errors.
+      - KLayout LVS: match, 128/128 pins (the filled GDS too).
+      - Density rules: 6 unfilled, 4 with the PDK's fill; die level, reported only.
+    - **After layout** (C extraction, 69 s): every line met at every corner (PM 68.3 deg, start-up
+      51.4 us).
+    - **Round:** signed off, worst margin 13.8 % (PM after layout). The whole chain took 176 s.

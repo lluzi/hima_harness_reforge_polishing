@@ -242,3 +242,32 @@ KLayout deck). The PDK's die-level minimum-density deck reported 6 hits (one per
 metal fill clears those, and the Pack records them without judging them. The competitor's 95
 include the same 6 density hits, so the fair comparison is block rules: 0 against 89. The next step
 runs the PDK's own fill scripts, so that density is judged as well.
+
+## The same case, measured (2026-10-13)
+
+The bgcore case is their case from the recordings: the same blocks, pins, bias, spec sheet and test
+conditions, on GF180MCU with 3.3 V devices
+([case](../specs/analog-bandgap-pack/bgcore-case.md)). The Pack's chain signed it off on the lab
+Site in Spectre 23.1, in 176 s from a fresh workspace. It ran the method's first cut, by hand, with
+no agent yet.
+
+| | Aether Agent (recording, 27 C typical only) | HimaHarness, bgcore on GF180 (worst of 30 corners) |
+| --- | --- | --- |
+| VBG at 3.3 V / 2.0 V | 1.2015 / 1.1843 V (8 mV inside the band) | worst 1.2109 V anywhere (band 1.176-1.224) |
+| IQ | 2.89 uA | 6.40 uA |
+| ISD | 0.162 nA | 0.047 nA |
+| TC | 95.2 ppm/C (3 temperatures) | 22.3 ppm/C (5 C sweep) |
+| Phase margin | 64.95 deg | 70.9 deg; 68.3 deg after layout |
+| Start-up | -48.88 ns marked pass; 29.6 us slow edge | 50.4 us worst over the 1 us edge, the 50 us edge and power-up |
+| PSRR at 1 kHz | 46.4 dB, recorded only | 49.0 dB, judged |
+| BGOK | not judged | judged at every corner |
+| Monte Carlo | none | 100 runs, sigma 4.77 mV, every run in the band |
+| Layout | none of this cell (a reference replay of another cell: 95 DRC violations waived) | this cell: 228 x 253 um, block DRC 0, LVS match on 128 pins in two tools |
+| After layout | none | every line at every corner again |
+| Who judged | the agent's script wrote limits and expressions | Readers outside the agent; every result bound to the design's SHA-256 |
+| Wall time | about 15 min, prompt to nominal re-simulation | 176 s for the whole check chain; the agent's sizing time is not yet measured |
+
+**Fair limits on this comparison:**
+- Their IQ is lower, at one condition. Ours is the worst corner at 2 V, ff, within the 8 uA line.
+- Their 5 V native-input process differs from our 3.3 V open PDK.
+- Our agent has not sized this case in the App yet.

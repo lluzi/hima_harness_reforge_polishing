@@ -605,6 +605,7 @@ test('layout: every step of the layout tool must exit 0, and the extraction must
       '             lvs=dict(rc=[0, rc("lvs")], match=True), klayoutLvs=dict(rc=rc("klvs"), match=True), pex=dict(rc=[0, 0], netlists={}),',
       '             render=dict(rc=rc("render"), bboxUm=[10, 20]))',
       'if bad == "norender": del facts["render"]["rc"]',
+      'if bad == "": facts.update(densityRulesFilled=1, drcKlayoutFilled=0, klayoutLvsFilled=dict(match=True), pexOn="unfilled")',
       'json.dump(facts, open(os.path.join(out, "layout.json"), "w"))',
       'open(os.path.join(out, "bandgap_lb_pex_c.spice"), "w").write(".subckt bandgap_lb vdd vss en ibias vbg go g\\n.ends\\n")',
     ].join('\n'));
@@ -621,7 +622,9 @@ test('layout: every step of the layout tool must exit 0, and the extraction must
     }
     const good = run('');
     assert.equal(good.status, 0, good.stderr);
-    assert.equal(JSON.parse(await readFile(path.join(ws, 'state/layout.json'), 'utf8')).clean, true);
+    const rec = JSON.parse(await readFile(path.join(ws, 'state/layout.json'), 'utf8'));
+    assert.equal(rec.clean, true);
+    assert.deepEqual(rec.fill, { densityRules: 1, drcKlayout: 0, lvsKlayout: true, pexOn: 'unfilled' }, 'the fill step is carried, not judged');
   } finally { await done(); }
 });
 
