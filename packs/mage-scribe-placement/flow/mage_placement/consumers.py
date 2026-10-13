@@ -180,9 +180,11 @@ def _placed(requirement, scope, context, candidate, start, verify_files, goal):
 
 def _target_distance(requirement, scope, context, candidate, start, verify_files, goal):
     spec = requirement.get("parameters", {}).get("limit_um")
-    limit_value, missing_key = _resolve_parameter(spec, context) if spec is not None else (None, None)
-    if limit_value is None and goal is not None:
-        limit_value = goal.get("max_target_distance_um")
+    context_limit, missing_key = _resolve_parameter(spec, context) if spec is not None else (None, None)
+    goal_limit = goal.get("max_target_distance_um") if goal is not None else None
+    # The Run owner's Goal governs first (its explicit decision); then the
+    # consumer's own consumerContext limit; else unknown.
+    limit_value = goal_limit if goal_limit is not None else context_limit
     if limit_value is None:
         return [
             _partial(
@@ -191,33 +193,72 @@ def _target_distance(requirement, scope, context, candidate, start, verify_files
                 "target distance limit is unknown",
             )
         ]
-    limit_decimal = Decimal(str(limit_value))
-    result = metrics.target_distances(candidate, str(limit_value))
-    over = [entry for entry in result["perTarget"] if Decimal(entry["alongUm"]) > limit_decimal]
 
-    if requirement["kind"] == "hard":
-        if not over:
-            return [
-                _partial("target_distance", "pass", "hard", [], {"maxUm": result["maxUm"]},
-                          "all in-scope targets are within the limit")
-            ]
+    if requirement["kind"] != "hard":
+        # kind: cost keeps today's behaviour (absolute over-limit rework).
+        limit_decimal = Decimal(str(limit_value))
+        result = metrics.target_distances(candidate, str(limit_value))
+        over = [entry for entry in result["perTarget"] if Decimal(entry["alongUm"]) > limit_decimal]
+        status = "fail" if over else "pass"
         return [
             _partial(
-                "target_distance", "fail", "hard", [entry["fitId"]],
-                {"alongUm": entry["alongUm"], "limitUm": str(limit_value)},
-                f"{entry['fitId']} exceeds the target distance limit",
+                "target_distance", status, "cost", [entry["fitId"] for entry in over],
+                {"overLimitCount": result["overLimitCount"], "maxUm": result["maxUm"], "limitUm": str(limit_value)},
+                "target distance rework beyond the limit",
             )
-            for entry in over
         ]
 
-    status = "fail" if over else "pass"
-    return [
-        _partial(
-            "target_distance", status, "cost", [entry["fitId"] for entry in over],
-            {"overLimitCount": result["overLimitCount"], "maxUm": result["maxUm"], "limitUm": str(limit_value)},
-            "target distance rework beyond the limit",
-        )
-    ]
+    # kind: hard -- judge the Run's own contribution against the frozen start.
+    # A mark this Run moved beyond the limit is a hard regression; a mark
+    # already beyond it in the frozen start is pre-existing, reported as a
+    # cost, never this Run's regression.
+    regressions = metrics.target_regressions(start, candidate, str(limit_value))
+    if regressions["newOverLimitCount"] is None:
+        return [
+            _partial("target_distance", "unknown", "hard", [], {"limitUm": str(limit_value)},
+                     regressions.get("unknownReason") or "target distances are unknown")
+        ]
+
+    per_target = regressions["perTarget"]
+    regression_rows = [p for p in per_target if p["class"] == "regression"]
+    findings = []
+    if regression_rows:
+        for row in regression_rows:
+            findings.append(_partial(
+                "target_distance", "fail", "hard", [row["fitId"]],
+                {"alongUm": row["alongUm"], "startAlongUm": row["startAlongUm"], "limitUm": str(limit_value)},
+                f"{row['fitId']} was moved beyond the target distance limit",
+            ))
+    else:
+        result = metrics.target_distances(candidate, str(limit_value))
+        findings.append(_partial(
+            "target_distance", "pass", "hard", [], {"maxUm": result["maxUm"]},
+            "no mark was moved beyond the target distance limit",
+        ))
+
+    # Pre-existing / improved-still-over excess inherited from the frozen
+    # start, reported as a cost (never this Run's regression).
+    pre_count = regressions["preExistingOverLimitCount"]
+    improved_count = regressions["improvedStillOverCount"]
+    inherited = [row["fitId"] for row in per_target if row["class"] in ("pre-existing", "improved-still-over")]
+    findings.append(_partial(
+        "target_distance", "fail" if (pre_count + improved_count) > 0 else "pass", "cost", inherited,
+        {"preExistingCount": pre_count, "improvedStillOverCount": improved_count, "limitUm": str(limit_value)},
+        "pre-existing over-limit marks inherited from the frozen start; reported, not this Run's regression",
+    ))
+
+    # Keep the consumer's own fidelity visible when its consumerContext limit
+    # exists and differs from the Goal limit.
+    if context_limit is not None and str(context_limit) != str(limit_value):
+        consumer_td = metrics.target_distances(candidate, str(context_limit))
+        over_consumer = consumer_td["overLimitCount"]
+        findings.append(_partial(
+            "target_distance", "fail" if (over_consumer or 0) > 0 else "pass", "cost", [],
+            {"consumerLimitUm": str(context_limit), "overConsumerLimitCount": over_consumer},
+            "target distance beyond the consumer's own limit (reported alongside the Run's Goal limit)",
+        ))
+
+    return findings
 
 
 def _order_deviation(requirement, scope, context, candidate, start, verify_files, goal):

@@ -146,14 +146,17 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(edit["status"], "unknown")
         self.assertIn("metrology.search_window_um", edit["numbers"]["missing"])
 
-    def test_wat_dropped_key_is_hard_fail(self):
+    def test_wat_dropped_key_is_cost(self):
+        # Part C: WAT's `placed` requirement is now kind: cost -- a dropped
+        # ordinary test key is a cost whose acceptability is the Run's
+        # target_dropped_count, not a consumer hard veto.
         start = build_start(self.case)
         incumbent = build_incumbent(self.case)
         model = consumers.load_consumer_model(MODELS_DIR, "wat")
         context = self._context()
         result = consumers.evaluate(model, context, incumbent, start, {}, self.out_dir)
         placed = next(f for f in result["findings"] if f["predicate"] == "placed")
-        self.assertEqual((placed["status"], placed["severity"]), ("fail", "hard"))
+        self.assertEqual((placed["status"], placed["severity"]), ("fail", "cost"))
         self.assertEqual(placed["targets"], ["KEY_V.KEY_V"])
 
     def test_receipt_sha_matches_file(self):
@@ -228,6 +231,92 @@ class EvaluateTest(unittest.TestCase):
         move_cost = next(f for f in result["findings"] if f["predicate"] == "move_in_pitch_units")
         self.assertEqual(move_cost["status"], "fail")
         self.assertIn("KEY_V.KEY_V_1", move_cost["numbers"]["wrongPadRisk"])
+
+
+class TargetDistanceRegressionTest(unittest.TestCase):
+    """Part C: litho-pie's hard target_distance judges the Run's own
+    contribution (Goal-first limit); pre-existing/improved-still-over excess
+    inherited from the frozen start is a cost, never a hard veto."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.case = fixtures.make_case(self.tmp.name)
+        self.out_dir = str(Path(self.tmp.name) / "receipts")
+        self.start = build_start(self.case)
+        self.model = consumers.load_consumer_model(MODELS_DIR, "litho-pie")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _goal(self, limit="100"):
+        return {"max_target_distance_um": limit, "max_order_deviation": 5, "target_dropped_count": 0}
+
+    def _move_ovl_b(self, centre_x_um, sha):
+        snap = dict(build_start(self.case))
+        snap["fits"] = [dict(f) for f in snap["fits"]]
+        for fit in snap["fits"]:
+            if fit["base"] == "OVL_B":
+                l, b, r, t = fit["boxDbu"]
+                width = r - l
+                centre = core.um_to_dbu(centre_x_um, 10000)
+                fit["boxDbu"] = [centre - width // 2, b, centre + width // 2, t]
+        snap["snapshotSha256"] = sha * 64
+        return snap
+
+    def _target_findings(self, candidate, context=None, goal=None):
+        result = consumers.evaluate(self.model, context or dict(self.case["consumerContext"]),
+                                    candidate, self.start, {}, self.out_dir, goal=goal or self._goal())
+        return [f for f in result["findings"] if f["predicate"] == "target_distance"]
+
+    def test_moved_beyond_the_limit_is_a_hard_fail(self):
+        # OVL_B moved to 310 um off its CT target -- a regression this Run
+        # introduced (the start had it at 150).
+        candidate = self._move_ovl_b("1600", "a")
+        findings = self._target_findings(candidate)
+        hard_fail = [f for f in findings if f["severity"] == "hard" and f["status"] == "fail"]
+        self.assertEqual(len(hard_fail), 1)
+        self.assertEqual(hard_fail[0]["targets"], ["OVL_B.OVL_B_1"])
+        self.assertEqual(hard_fail[0]["numbers"]["startAlongUm"], "150")
+
+    def test_unmoved_pre_existing_is_a_cost_not_a_hard_fail(self):
+        # OVL_B stays at its frozen-start position (150 um off, over 100).
+        candidate = self._move_ovl_b("1440", "b")
+        findings = self._target_findings(candidate)
+        self.assertFalse(any(f["severity"] == "hard" and f["status"] == "fail" for f in findings))
+        cost = next(f for f in findings if f["severity"] == "cost")
+        self.assertEqual(cost["status"], "fail")
+        self.assertEqual(cost["numbers"]["preExistingCount"], 1)
+
+    def test_moved_closer_but_still_over_is_a_cost(self):
+        # OVL_B moved from 150 to 120 um off -- closer, still over 100.
+        candidate = self._move_ovl_b("1410", "c")
+        findings = self._target_findings(candidate)
+        self.assertFalse(any(f["severity"] == "hard" and f["status"] == "fail" for f in findings))
+        cost = next(f for f in findings if f["severity"] == "cost")
+        self.assertEqual(cost["status"], "fail")
+        self.assertEqual(cost["numbers"]["improvedStillOverCount"], 1)
+
+    def test_goal_limit_governs_and_consumer_limit_is_a_separate_cost(self):
+        # The consumerContext names a stricter litho-pie limit (50) than the
+        # Goal (100); the Goal governs the hard reading, and the consumer's
+        # own limit stays visible as a separate cost Finding.
+        context = dict(self.case["consumerContext"])
+        context["litho-pie"] = {"target_limit_um": {"value": "50", "source": "assumption"}}
+        candidate = self._move_ovl_b("1440", "d")  # 150 off: over both 100 and 50
+        findings = self._target_findings(candidate, context=context, goal=self._goal("100"))
+        self.assertFalse(any(f["severity"] == "hard" and f["status"] == "fail" for f in findings))
+        consumer_cost = next(f for f in findings if "consumerLimitUm" in f["numbers"])
+        self.assertEqual(consumer_cost["numbers"]["consumerLimitUm"], "50")
+        self.assertEqual(consumer_cost["status"], "fail")
+
+    def test_incumbent_produces_no_hard_target_distance_fail(self):
+        # The incumbent carries OVL_B at its pre-existing 150 um -- a cost,
+        # never a hard target_distance fail (measure-incumbent path).
+        incumbent = build_incumbent(self.case)
+        result = consumers.evaluate(self.model, dict(self.case["consumerContext"]),
+                                    incumbent, self.start, {}, self.out_dir, goal=self._goal())
+        target = [f for f in result["findings"] if f["predicate"] == "target_distance"]
+        self.assertFalse(any(f["severity"] == "hard" and f["status"] == "fail" for f in target))
 
 
 class PredicateUnitTest(unittest.TestCase):

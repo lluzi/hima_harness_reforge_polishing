@@ -1,14 +1,15 @@
 schema: "mage.consumer-model/1"
 id: "wat"
-version: "0.1.0"
+version: "0.2.0"
 scope:
   blockTypes:
     - "TSK/MPAD"
 requirements:
   - id: "placed"
-    kind: "hard"
+    kind: "cost"
     predicate: "placed"
     parameters: {}
+    cost: "dropped ordinary test key; acceptability is the Run's target_dropped_count (drops-within-goal), WAT may Request placement"
     source:
       type: "rule-file"
       ref: "-setNumMin"

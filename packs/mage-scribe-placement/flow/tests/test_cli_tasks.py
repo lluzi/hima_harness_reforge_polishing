@@ -291,20 +291,24 @@ class CliRouteTest(unittest.TestCase):
             1, ovl_b_on_target=False, ledger=[],
         )
         litho_findings1 = evals1["litho-pie"]["findings"]
-        self.assertTrue(any(f["status"] == "fail" and f["severity"] == "hard" for f in litho_findings1))
-
-        # Author the round-1 Requests now that we can see their Finding ids.
-        litho_fail1 = next(f for f in litho_findings1 if f["status"] == "fail" and f["severity"] == "hard")
-        wat_fail1 = next(f for f in evals1["wat"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+        # Part C: OVL_B sits 150 um off its CT target in the FROZEN START, so
+        # it is a pre-existing cost (never this Run's regression), not a
+        # litho-pie hard fail; WAT's dropped KEY_V is likewise a cost now. A
+        # consumer may still file a Request on a cost Finding.
+        litho_cost1 = next(f for f in litho_findings1 if f["predicate"] == "target_distance"
+                           and f["severity"] == "cost" and f["status"] == "fail")
+        self.assertEqual(litho_cost1["numbers"]["preExistingCount"], 1)
+        wat_cost1 = next(f for f in evals1["wat"]["findings"]
+                         if f["predicate"] == "placed" and f["severity"] == "cost" and f["status"] == "fail")
         requests_round1 = {
             "litho-pie": [{
-                "fromFinding": litho_fail1["id"], "consumer": "litho-pie",
-                "requestedOutcome": {"kind": "move", "targets": litho_fail1["targets"], "limitsUm": {}, "text": "move OVL_B onto its CT target"},
-                "acceptableAlternatives": [], "strength": "hard",
+                "fromFinding": litho_cost1["id"], "consumer": "litho-pie",
+                "requestedOutcome": {"kind": "move", "targets": litho_cost1["targets"], "limitsUm": {}, "text": "move OVL_B onto its CT target"},
+                "acceptableAlternatives": [], "strength": "preference",
             }],
             "wat": [{
-                "fromFinding": wat_fail1["id"], "consumer": "wat",
-                "requestedOutcome": {"kind": "place", "targets": wat_fail1["targets"], "limitsUm": {}, "text": "place KEY_V"},
+                "fromFinding": wat_cost1["id"], "consumer": "wat",
+                "requestedOutcome": {"kind": "place", "targets": wat_cost1["targets"], "limitsUm": {}, "text": "place KEY_V"},
                 "acceptableAlternatives": [], "strength": "hard",
             }],
         }
@@ -462,13 +466,17 @@ class CliRouteTest(unittest.TestCase):
 
         # Round 1: baseline, exactly as in test_full_route_two_rounds.
         _d1, _c1, c1_ro, evals1 = self._build_candidate(1, ovl_b_on_target=False, ledger=[])
-        litho_fail1 = next(f for f in evals1["litho-pie"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
-        wat_fail1 = next(f for f in evals1["wat"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+        # Part C: OVL_B's start excess and KEY_V's drop are pre-existing costs,
+        # not hard fails; the consumers still file Requests on them.
+        litho_fail1 = next(f for f in evals1["litho-pie"]["findings"] if f["predicate"] == "target_distance"
+                           and f["severity"] == "cost" and f["status"] == "fail")
+        wat_fail1 = next(f for f in evals1["wat"]["findings"]
+                         if f["predicate"] == "placed" and f["severity"] == "cost" and f["status"] == "fail")
         requests1 = {
             "litho-pie": [{
                 "fromFinding": litho_fail1["id"], "consumer": "litho-pie",
                 "requestedOutcome": {"kind": "move", "targets": litho_fail1["targets"], "limitsUm": {}, "text": "move OVL_B onto its CT target"},
-                "acceptableAlternatives": [], "strength": "hard",
+                "acceptableAlternatives": [], "strength": "preference",
             }],
             "wat": [{
                 "fromFinding": wat_fail1["id"], "consumer": "wat",
@@ -509,7 +517,8 @@ class CliRouteTest(unittest.TestCase):
                 round_no, ovl_b_on_target=True, ledger=ledger,
             )
             self.assertFalse(any(f["status"] == "fail" and f["severity"] == "hard" for f in evals["litho-pie"]["findings"]))
-            wat_fail = next(f for f in evals["wat"]["findings"] if f["status"] == "fail" and f["severity"] == "hard")
+            wat_fail = next(f for f in evals["wat"]["findings"]
+                            if f["predicate"] == "placed" and f["severity"] == "cost" and f["status"] == "fail")
             requests = {
                 "litho-pie": [{
                     "fromFinding": evals["litho-pie"]["findings"][0]["id"], "consumer": "litho-pie",

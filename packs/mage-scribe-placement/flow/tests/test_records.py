@@ -31,7 +31,7 @@ def valid_finding(finding_id="F-wat-1"):
         "round": 0,
         "snapshotSha256": "a" * 64,
         "consumer": "wat",
-        "consumerModel": "wat@0.1.0",
+        "consumerModel": "wat@0.2.0",
         "evaluatorReceipt": "b" * 64,
         "targets": ["KEY_V.KEY_V"],
         "predicate": "placed",
@@ -124,7 +124,7 @@ def valid_consumer_review(consumer_id="wat"):
     body = {
         "identity": {"taskId": "t1", "runId": "r1", "executionId": "e1", "nodeId": "n1", "round": 0},
         "consumer": consumer_id,
-        "consumerModel": f"{consumer_id}@0.1.0",
+        "consumerModel": f"{consumer_id}@0.2.0",
         "snapshotSha256": "a" * 64,
         "findings": [valid_finding()],
         "requests": [],
