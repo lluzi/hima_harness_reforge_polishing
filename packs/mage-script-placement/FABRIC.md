@@ -63,7 +63,22 @@ visible as boundary rows in `stage-report` (0 in-group Fits after the offset edi
 unbound from their Groups by a plain re-source; the preplaced sort failure under converge mode).
 No resident, no model and no Harness ran in those probes; the live resident Run is Task 13.
 
+Task 13's live resident Run (`TEST.md` L4 S3, 2026-10-13) closed the gap this section opened: on the
+real Host, with a real resident Engineer writing its own Tcl against the licensed MAGE on the
+Site, the `repeat` ran 4 rounds / 19 stages, every stage completed or failed at a named boundary,
+every round delivered a Reader-clean candidate, and the Run stopped honestly on the two-stall rule
+with proof level **Improvement** (16 ordinary drops / 78,045 µm against the native baseline's
+27 / 135,113 µm; the reference's 18 / 52,453 µm is beaten on count, not on length; the Goal's
+movement, order and target limits are exceeded by the delivered candidate). The kit's independent
+evaluator and a cold replay of the delivered stage chain both confirm the delivered export
+byte-for-byte. What remains open is method, not wiring: the Engineer's journal names the ordinary
+marks' lane capacity under the compacted priority geometry as the floor and a clearance-aware
+packer as the next lever; the ranking key's order (drops before rule compliance) is a Goal-design
+question recorded in `TEST.md`.
+
 ## Reviews
 
 Per-task review is recorded in `.superpowers/sdd/task-8-report.md`. The final whole-branch review
-(Opus 5.5 high, per `docs/agents/model-policy.md`) has not run yet.
+(Opus 5.5 high, per `docs/agents/model-policy.md`) ran on 2026-10-13 (`.superpowers/sdd/final-review-1.md`):
+NO-GO with four Important findings, all fixed in the same round (commits `36cfe5fb`, `36dbbdcd`),
+GO on re-review; the remaining minors landed in `f0d280b5`.
