@@ -1,0 +1,7 @@
+id: priority-move-within-budget
+version: "1"
+title: No priority mark moved further from the frozen start than the declared movement budget
+parameter: { name: max_priority_move_um, unit: um }
+requires: [{ type: mage_priority_move_max_um }]
+subject: { type: mage_priority_move_max_um }
+predicate: { op: lte, threshold: { parameter: max_priority_move_um }, unit: um }

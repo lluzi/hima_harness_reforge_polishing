@@ -1,0 +1,7 @@
+id: order-lr-within-goal
+version: "1"
+title: The best state's LR-side placement order deviation meets the Run target
+parameter: { name: max_order_deviation_lr, unit: rank }
+requires: [{ type: mage_order_deviation_max_lr }]
+subject: { type: mage_order_deviation_max_lr }
+predicate: { op: lte, threshold: { parameter: max_order_deviation_lr }, unit: rank }

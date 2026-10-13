@@ -1,0 +1,7 @@
+id: order-tb-within-goal
+version: "1"
+title: The best state's TB-side placement order deviation meets the Run target
+parameter: { name: max_order_deviation_tb, unit: rank }
+requires: [{ type: mage_order_deviation_max_tb }]
+subject: { type: mage_order_deviation_max_tb }
+predicate: { op: lte, threshold: { parameter: max_order_deviation_tb }, unit: rank }

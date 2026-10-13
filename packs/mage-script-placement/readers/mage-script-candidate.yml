@@ -1,0 +1,23 @@
+id: mage-script-candidate
+version: "1"
+file: tools/read-mage.py
+argv: [/usr/bin/python3, '${READER}', script-candidate, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: mage.script-candidate/1
+emits:
+  - mage_candidate_error_count
+  - mage_priority_unplaced_count
+  - mage_dropped_count
+  - mage_dropped_length_um
+  - mage_dropped_ordinary_count
+  - mage_dropped_ordinary_length_um
+  - mage_target_distance_max_um
+  - mage_target_over_limit_count
+  - mage_order_deviation_max
+  - mage_order_deviation_max_lr
+  - mage_order_deviation_max_tb
+  - mage_priority_move_max_um
+  - mage_priority_moved_count
+  - mage_native_overlap_rows
+  - mage_native_space_rows
+  - mage_native_boundary_rows
+  - mage_native_violation_total
