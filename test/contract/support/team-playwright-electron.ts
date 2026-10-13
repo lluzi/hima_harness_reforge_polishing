@@ -55,7 +55,7 @@ function redact(text: string): string {
     .replace(/((?:api[_-]?key|password|cookieValue|cookie|authorization)["']?\s*[:=]\s*)[^\s,}\n]+/giu, '$1[redacted]');
 }
 
-export async function bootTeamPlaywright(home: HimaHome, evidence: string, options: { hindsightFixture?: boolean } = {}): Promise<{
+export async function bootTeamPlaywright(home: HimaHome, evidence: string, options: { hindsightFixture?: boolean; hindsightLive?: boolean } = {}): Promise<{
   page: TeamPage;
   wait(expression: string, timeoutMs?: number): Promise<void>;
   dispose(): Promise<void>;
@@ -73,8 +73,8 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
     HIMA_WORKSPACE: home.workspace, HIMA_USER_DATA: userData, HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights',
     HIMA_TEST_SILENT_AGENT: '1', BROWSER: 'none', ELECTRON_RUN_AS_NODE: '' })
     .filter((entry): entry is [string, string] => entry[1] !== undefined));
-  // Authentication is absent in this no-model scenario, including inherited credentials.
-  for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN/u.test(key)) delete env[key];
+  // Ordinary UI fixtures are keyless. A specifically admitted Hindsight L4 preserves only its existing shared credential.
+  for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN/u.test(key) && !(options.hindsightLive && key === 'DEEPSEEK_API_KEY')) delete env[key];
   if (options.hindsightFixture) env.HIMA_HINDSIGHT_LLM_API_KEY = 'qualification-only';
   recordTestBoot('electron');
   const app = await playwright._electron.launch({ executablePath: binary.at,
@@ -136,7 +136,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
 }
 
 /** Accept both actual notices, then the deferred keyless-provider dialog. */
-export async function finishTeamOnboarding(browser: Pick<Awaited<ReturnType<typeof bootTeamPlaywright>>, 'page' | 'wait'>): Promise<void> {
+export async function finishTeamOnboarding(browser: Pick<Awaited<ReturnType<typeof bootTeamPlaywright>>, 'page' | 'wait'>, options: {providerConfigured?:boolean} = {}): Promise<void> {
   await browser.wait(`document.body?.innerText.includes('Internal Testing Notice') || document.body?.innerText.includes('Preview Notice')`);
   const himaNotice = await browser.page.evaluate<boolean>(`document.body.innerText.includes('Internal Testing Notice')`);
   if (himaNotice) {
@@ -147,7 +147,9 @@ export async function finishTeamOnboarding(browser: Pick<Awaited<ReturnType<type
   await browser.page.getByRole('button', { name: 'Continue', exact: true }).click();
   // rc.2 renders this after the preview notice settles; visible workspace text
   // behind a modal is not proof that it is ready for interaction.
-  await browser.wait(`document.body.innerText.includes('Configure later')`);
-  await browser.page.getByRole('button', { name: 'Configure later', exact: true }).click();
+  if(!options.providerConfigured) {
+    await browser.wait(`document.body.innerText.includes('Configure later')`);
+    await browser.page.getByRole('button', { name: 'Configure later', exact: true }).click();
+  }
   await browser.wait(`!document.body.innerText.includes('Configure later') && !document.body.innerText.includes('Preview Notice')`);
 }

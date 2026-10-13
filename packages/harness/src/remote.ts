@@ -1,3 +1,4 @@
+export interface WorkMemoryRequest { action:'read'|'sources'|'save'|'query'|'feedback'|'propose'|'adopt'|'correct'|'status'|'corrections';runId?:string;summary?:unknown;teamId?:string;taskId?:string;request?:unknown }
 import { taskToolOutput } from './task-contract.js';
 import { TeamError } from './team-contract.js';
 // @hima-seam webserver wrapped
@@ -660,7 +661,7 @@ export interface RemoteOperations {
   exitStatus?(): import('./host-exit.js').HostExitStatus | Promise<import('./host-exit.js').HostExitStatus>;
   authorizeDesktopExit?(token: string | undefined): boolean;
   authorizeRunAccess?(sessionId: string, runId: string): Promise<unknown>;
-  workMemory?(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  workMemory?(sessionId: string, request: WorkMemoryRequest): Promise<object>;
   experienceCandidates?(sessionId:string,runId:string):Promise<object>;
   correctExperience?(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>): Promise<object>;
   readSessionContext?(request:{sessionId:string;targetSessionId:string;parentSessionId?:string;fromSeq?:number}):Promise<object>;
@@ -1782,7 +1783,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live conversation in this project.');
     try {
       if (rest === '/memory' && ops.workMemory) {
-        const request = z.strictObject({ sessionId: z.string(), action: z.enum(['read', 'sources', 'save']), runId: z.string().optional(), summary: z.unknown().optional() }).parse(body);
+        const request = z.strictObject({ sessionId: z.string(), action: z.enum(['read','sources','save','query','feedback','propose','adopt','correct','status','corrections']), runId: z.string().optional(), summary: z.unknown().optional(), teamId:z.string().optional(),taskId:z.string().optional(),request:z.unknown().optional() }).parse(body);
         return ok(await ops.workMemory(sessionId, request));
       }
       if(rest==='/experience/candidates' && ops.experienceCandidates)return ok(await ops.experienceCandidates(sessionId,requiredString(body,'runId')));
@@ -1799,6 +1800,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
       }
       return failure(503, 'hima/internal', 'This Host cannot provide that memory operation.');
     } catch (error) {
+      if(error instanceof TeamError)return failure(error.code==='hima/not-authorized'?403:error.code==='hima/not-found'?404:error.code==='hima/team-invalid'?400:error.code==='hima/team-not-ready'?503:409,error.code==='hima/not-authorized'||error.code==='hima/not-found'?error.code:'hima/bad-request',error.message);
       if (error instanceof ZodError) throw new BadRequest(zodSentence(error));
       if (error instanceof GuideContextError) return failure(error.code === 'hima/not-authorized' ? 403 : 404, error.code, error.message);
       throw error;

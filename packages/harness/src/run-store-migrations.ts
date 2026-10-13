@@ -70,7 +70,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       ALTER TABLE hima.flow_derived_effects ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'business';
     `);
     const { rows } = await client.query<{version: number}>('SELECT version FROM hima.schema_version');
-    if (rows.length !== 1 || ![1, 2, 3, 4].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
+    if (rows.length !== 1 || ![1, 2, 3, 4, 5].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
     if (rows[0]!.version === 1) {
       await client.query(`
         CREATE TABLE hima.host_operator(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), actor_id text NOT NULL UNIQUE);
@@ -113,6 +113,25 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
           stage_id text NOT NULL REFERENCES hima.team_attachments, message_id text NOT NULL REFERENCES hima.team_messages,
           member_ids jsonb NOT NULL, PRIMARY KEY(task_id,stage_id,message_id));
         UPDATE hima.schema_version SET version=4;
+      `);
+    }
+    if (rows[0]!.version < 5) {
+      await client.query(`
+        CREATE TABLE hima.team_memory_records(memory_id text NOT NULL, version integer NOT NULL CHECK(version>0),
+          project_id text NOT NULL, team_id text NOT NULL REFERENCES hima.teams, scope_kind text NOT NULL,
+          member_id text, record jsonb NOT NULL, PRIMARY KEY(memory_id,version),
+          CHECK(scope_kind IN ('member','project','team')), CHECK((scope_kind='member')=(member_id IS NOT NULL)));
+        CREATE TABLE hima.team_memory_events(seq bigint GENERATED ALWAYS AS IDENTITY UNIQUE, event_id text PRIMARY KEY,
+          project_id text NOT NULL, team_id text NOT NULL REFERENCES hima.teams, memory_id text NOT NULL, version integer NOT NULL,
+          revision integer NOT NULL CHECK(revision>0), request_id text NOT NULL, digest text NOT NULL, event jsonb NOT NULL,
+          UNIQUE(project_id,team_id,request_id), UNIQUE(memory_id,revision),
+          FOREIGN KEY(memory_id,version) REFERENCES hima.team_memory_records);
+        CREATE TABLE hima.team_memory_index_operations(operation_id uuid PRIMARY KEY, memory_id text NOT NULL, version integer NOT NULL,
+          bank_id text NOT NULL, document_id text NOT NULL, payload_sha256 text NOT NULL, revision integer NOT NULL,
+          operation jsonb NOT NULL, UNIQUE(bank_id,document_id), FOREIGN KEY(memory_id,version) REFERENCES hima.team_memory_records);
+        CREATE INDEX team_memory_scope ON hima.team_memory_records(project_id,team_id,scope_kind,member_id);
+        CREATE INDEX team_memory_pending ON hima.team_memory_index_operations((operation->>'state')) WHERE operation->>'state' IN ('pending','unknown','submitted');
+        UPDATE hima.schema_version SET version=5;
       `);
     }
     await client.query('COMMIT');

@@ -241,9 +241,13 @@ export async function teamRequest<T>(sessionId:string,request:unknown,signal?:Ab
   if(!result.ok)throw new Error(result.error.message);
   return result.value;
 }
+export async function teamMemoryRequest(sessionId:string,ref:{teamId:string;taskId:string},action:import('./WorkMemoryPanel.js').TeamMemoryOperations extends {call(action:infer A,...args:any[]):any}?A:never,request:unknown,signal?:AbortSignal):Promise<unknown> {
+  const result=await runRequest<unknown>('/hima/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,...ref,action,request}),signal});
+  if(!result.ok)throw new Error(result.error.message);return result.value;
+}
 export function teamOperations(sessionId:string,projectId:string):import('./HimaTeamPanel.js').HimaTeamOperations {
   const request=<T,>(action:string,ref:{teamId:string;taskId:string},payload:unknown,signal?:AbortSignal)=>teamRequest<T>(sessionId,{action,teamId:ref.teamId,taskId:ref.taskId,request:payload},signal);
-  return {projectId,
+  return {projectId,sessionId,memory:(ref,action,request,signal)=>teamMemoryRequest(sessionId,ref,action,request,signal),
     listModels:async signal=>(await teamRequest<{models:readonly import('../oar-member-process.js').TeamModelView[]}>(sessionId,{action:'list-models'},signal)).models,
     configureModel:(profile,signal)=>teamRequest(sessionId,{action:'configure-model',request:profile},signal),
     readArtifact:({teamId,taskId,effectId,name},signal)=>request('read-task-artifact',{teamId,taskId},{effectId,name},signal),

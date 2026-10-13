@@ -1,9 +1,10 @@
+import { WorkMemoryPanel, type TeamMemoryOperations } from './WorkMemoryPanel.js';
 import { TeamTaskPanel, type TeamTaskOperations, type TeamMessageDraft } from './TeamTaskPanel.js';
 import { TeamMemberPanel, type TeamMemberOperations } from './TeamMemberPanel.js';
 import { TeamMaterialPanel, type TeamMaterialOperations } from './TeamMaterialPanel.js';
 import { TeamModelPanel, type TeamModelOperations } from './TeamModelPanel.js';
 import type { StagedAttachment } from '../team-attachments.js';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { TeamDefinition, TeamTaskRequest, TeamTaskView, TeamView } from '../team-contract.js';
 import type { WorkbenchAddress } from './workbench-address.js';
 
@@ -12,6 +13,8 @@ type ReadRequest = { readonly teamId: string; readonly version?: number };
 /** Operations are bound to the authenticated project by the Host API adapter, never by member/session fields. */
 export interface HimaTeamOperations extends Partial<TeamModelOperations> {
   readonly projectId: string;
+  readonly sessionId?:string;
+  memory?(ref:{teamId:string;taskId:string},action:Parameters<TeamMemoryOperations['call']>[0],request:unknown,signal?:AbortSignal):Promise<unknown>;
   readonly messages?:TeamTaskOperations;
   readonly memberWork?:TeamMemberOperations;
   readonly materials?:TeamMaterialOperations;
@@ -51,6 +54,7 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
   const [outputSchema, setOutputSchema] = useState(() => JSON.stringify(emptyDefinition().delivery.output, null, 2));
   const [tasks, setTasks] = useState<readonly TeamTaskView[]>([]);
   const [task, setTask] = useState<TeamTaskView>();
+  const memoryOperations=useMemo<TeamMemoryOperations|undefined>(()=>operations?.memory&&task?{call:(action,request,signal)=>operations.memory!({teamId:task.team.teamId,taskId:task.taskId},action,request,signal)}:undefined,[operations,task?.team.teamId,task?.taskId]);
   const [exported, setExported] = useState<string>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -239,9 +243,10 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
     </>}
     {task ? <>
       <TeamMaterialPanel task={{projectId:task.projectId,teamId:task.team.teamId,taskId:task.taskId}} operations={operations?.materials} materials={materials} draftStageIds={draftStageIds} onDraftChange={ids=>{setDraftStageIds(ids);setMaterials(previous=>previous.filter(item=>!draftStageIds.includes(item.stageId)||ids.includes(item.stageId)));}} onStaged={value=>setMaterials(previous=>[...previous.filter(item=>item.stageId!==value.stageId),value])}/>
+      <WorkMemoryPanel sessionId={operations?.sessionId??''} draft={{subject:'',decisions:'',openQuestions:'',todo:''}} onDraft={()=>{}} teamTarget={{teamId:task.team.teamId,taskId:task.taskId,members:draft.members}} teamOperations={memoryOperations}/>
       <TeamTaskPanel task={task} members={draft.members} operations={operations?.messages} drafts={messageDrafts.current} stagedAttachmentIds={draftStageIds} onSent={sent=>{const sentIds=new Set(sent.message.materialRefs.map(value=>value.materialId));setDraftStageIds(previous=>previous.filter(id=>!sentIds.has(id)));}} onMember={memberId=>onAddress({...address,memberId})}/>
     </> : null}
-    <fieldset disabled><legend>Capabilities awaiting Host integration</legend><button type='button'>Query member memory</button><button type='button'>Apply definition to running tasks</button></fieldset>
-    <p className='hima-small'>Task readiness reports the configured OAR runtime and model. Native reception, verified delivery and resource closure are separate retained facts. Member memory remains unavailable.</p>
+    <fieldset disabled><legend>Capabilities awaiting Host integration</legend><button type='button'>Apply definition to running tasks</button></fieldset>
+    <p className='hima-small'>Task readiness reports the configured OAR runtime and model. Native reception, verified delivery and resource closure are separate retained facts.</p>
   </section>;
 }

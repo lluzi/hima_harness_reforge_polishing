@@ -233,7 +233,7 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       const source='source' in p.identity?p.identity.source:undefined;if(source?.kind!=='team')throw new Error('OAR member requires its exact independent Team source.');
       if(!await store.readTeamGrant(grantId(p)))await memberCallbacks.runInAsyncScope(()=>store.issueTeamGrant({grantId:grantId(p),actorId:p.memberId,projectId:p.projectId,teamId:source.team.teamId,
         taskId:source.taskId,memberId:p.memberId,runId:p.identity.runId,effectId:p.identity.effectId,generation:p.generation,
-        capabilities:['read-task','send-message','read-material'],expiresAt:p.deadlineAt,revokedAt:null}));
+        capabilities:['read-task','send-message','read-material','query-memory'],expiresAt:p.deadlineAt,revokedAt:null}));
       const config=await model(p),bound=await fact(p,'model-binding'),digest=jsonDigest(config);
       if(bound&&bound!==digest)throw new Error('Member model configuration changed after original preparation; restore it before recovery.');
       await record(p,'model-binding',digest);

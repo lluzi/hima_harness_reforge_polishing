@@ -111,6 +111,13 @@ export const HIMA_STYLE = `
 .hima-libinsight-note p{margin:0;max-width:640px}.hima-libinsight-note pre{white-space:pre-wrap;max-height:240px;overflow:auto}
 .hima-workbench-body>.hima-campaign{height:clamp(420px,70vh,680px);min-height:420px;flex:none}
 .hima-memory-panel,.hima-team-panel{margin:var(--hima-sp-3);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:grid;gap:var(--hima-sp-3)}
+.hima-team-panel{grid-template-columns:minmax(0,1fr);flex:none;min-width:0;overflow-wrap:anywhere}
+.hima-team-panel .hima-button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.hima-team-panel>.hima-memory-panel{grid-template-columns:minmax(0,1fr);min-width:0;margin:0;overflow-wrap:anywhere}
+.hima-team-panel fieldset,.hima-team-panel .hima-memory-panel>*{min-width:0}
+.hima-team-panel pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.hima-team-panel input,.hima-team-panel textarea,.hima-team-panel select{box-sizing:border-box}
+.hima-team-panel input[type=checkbox]{width:auto;min-height:0}
 .hima-memory-panel>header,.hima-team-panel>header,.hima-team-card>header,.hima-child-transcript article>header,.hima-child-context article>header{display:flex;justify-content:space-between;align-items:center;gap:var(--hima-sp-2)}
 .hima-memory-panel h3,.hima-memory-panel h4,.hima-memory-panel p,.hima-team-panel h3,.hima-team-panel p{margin:0}
 .hima-memory-panel ul{margin:0;padding-left:20px}.hima-memory-warning{color:var(--hima-warn)}

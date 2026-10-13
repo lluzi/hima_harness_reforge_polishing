@@ -230,7 +230,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, ope
       : address.kind === 'invalid'
         ? <InvalidAddress message={address.message} />
         : address.kind === 'team'
-          ? <HimaTeamPanel key={JSON.stringify([activeSessionId, teamOperations?.projectId])} address={address} operations={teamOperations} onAddress={next => { lastTeamAddress.current = next; setAddress(next); }} />
+          ? <div className='hima-workbench-body'><HimaTeamPanel key={JSON.stringify([activeSessionId, teamOperations?.projectId])} address={address} operations={teamOperations} onAddress={next => { lastTeamAddress.current = next; setAddress(next); }} /></div>
         : address.kind === 'insight'
         ? showingLibInsight ? null : <InsightView sessionId={activeSessionId} scope={address.scope} reportRef={address.reportRef} availableReports={lastInsightReports.current} onReference={askGuide ?? draftToGuide} onSelectReportRef={reportRef => chooseInsight({ kind: 'insight', ...(reportRef === undefined ? {} : { reportRef }) })} onShowLibInsight={() => { setInsightSurface('libinsight'); chooseInsight({ kind: 'insight' }); }} />
         : address.kind === 'child'

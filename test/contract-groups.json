@@ -134,7 +134,12 @@
     "test/contract/oar-sandbox.host.test.ts",
     "test/contract/oar-member.host.test.ts",
     "test/contract/oar-model-configuration.test.ts",
-    "test/contract/oar-local-member.host.test.ts"
+    "test/contract/oar-local-member.host.test.ts",
+    "test/contract/himateam-memory-panel.test.ts",
+    "test/contract/himateam-memory.host.test.ts",
+    "test/contract/hindsight-configuration.test.ts",
+    "test/contract/hindsight.test.ts",
+    "test/contract/team-memory.test.ts"
   ],
   "desktop": [
     "test/contract/agent-execution.desktop.test.ts",
@@ -159,7 +164,8 @@
     "test/contract/himateam-attachments.desktop.test.ts",
     "test/contract/himateam-workspace.desktop.test.ts",
     "test/contract/himateam-engine.desktop.test.ts",
-    "test/contract/oar-model.desktop.test.ts"
+    "test/contract/oar-model.desktop.test.ts",
+    "test/contract/himateam-memory.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/resident-engineering-release.live.test.ts",
@@ -175,6 +181,7 @@
   ],
   "live-model": [
     "test/contract/child-compaction.live.test.ts",
-    "test/contract/oar-member.live.test.ts"
+    "test/contract/oar-member.live.test.ts",
+    "test/contract/himateam-memory.live.test.ts"
   ]
 }

@@ -1,4 +1,7 @@
+import { saveFeedback, proposeExperience, changeExperienceAdoption, correctExperience as correctTeamExperience, readTeamMemoryContext, readTeamMemory, readTeamMemoryCorrections, flushPendingTeamMemory, type TeamMemoryPorts, type MemorySourceReader } from './team-memory.js';
+import type { WorkMemoryRequest } from './remote.js';
 import { readHostDeepSeekConfiguration, readSharedDeepSeekEnvironment } from './oar-model-configuration.js';
+import { resolveHindsightServiceEnvironment } from './hindsight-configuration.js';
 import { createOarMemberExecutor, listTeamModels, saveTeamModel } from './oar-member-process.js';
 import { sendTeamMessage, readTeamMessages, readTaskActivity, readPendingTeamRequests, readMemberWork, reconcileTeamMessageDelivery, type TeamTransport, type TeamMessageActor, type TaskRef } from './team-messages.js';
 import { stageAttachment, readAttachment, materializeAttachment, readAttachmentExcerpt, type TeamAttachmentPorts } from './team-attachments.js';
@@ -34,7 +37,7 @@ import { createHimaNotice } from './hima-messages.js';
 import path from 'node:path';
 import { setTimeout as waitForFactPoll } from 'node:timers/promises';
 import { readFileSync } from 'node:fs';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { installedExecutableManifest, startDurableRuntime, type DurableRuntime } from './durable-runtime.js';
 import { flowWorkflowDefinitions } from './flow-workflow.js';
 import { resolveDurableTaskAdapter } from './durable-task-adapters.js';
@@ -507,6 +510,8 @@ export default class Hima extends Service {
   durable!: DurableRuntime;
   teamTransport:TeamTransport|undefined;
   private teamServices:TeamServiceRuntime|undefined;
+  private readonly memoryAbort=new AbortController();
+  private readonly memoryRequests=new Set<Promise<unknown>>();
   private interruptedTeamServices:readonly TeamServiceReceipt[]=[];
   private releaseDurableAdapters!: () => void;
   private readonly durableAdaptersReady = new Promise<void>(resolve => { this.releaseDurableAdapters = resolve; });
@@ -552,6 +557,8 @@ export default class Hima extends Service {
     let closeHostResources = async () => {
       const database = await databaseStarting;
       const durable = await durableStarting?.catch(() => undefined);
+      this.memoryAbort.abort();
+      await Promise.allSettled([...this.memoryRequests]);
       if(this.teamServices) {
         const stopped=await this.teamServices.stopAll();
         if(this.interruptedTeamServices.length || stopped.some(receipt=>!receipt.owned.quiescent))throw new Error('Team service closure is unproved; retain the original Host database and service generation.');
@@ -634,9 +641,8 @@ export default class Hima extends Service {
     this.teamServices=new TeamServiceRuntime({home:localDatabaseHome(),runtimeDirectory:process.env.HIMA_TEAM_RUNTIME,
       recordReceipt:receipt=>this.durable.store.recordTeamServiceReceipt(receipt),configuration:async()=>{
         // Provider credentials stay in the existing Host environment; public status never carries them.
-        const environment:Record<string,string>={};
-        for(const [key,value] of Object.entries(process.env))if(key.startsWith('HIMA_HINDSIGHT_')&&value!==undefined)environment[key.replace(/^HIMA_HINDSIGHT_/,'HINDSIGHT_API_')]=value;
-        if(!environment.HINDSIGHT_API_LLM_PROVIDER || !environment.HINDSIGHT_API_LLM_MODEL)throw new Error('Configure the explicit Hindsight model provider.');
+        const environment=await resolveHindsightServiceEnvironment(process.env,readSharedDeepSeekEnvironment(this.ctx),
+          readCredential=>readHostDeepSeekConfiguration(this.ctx,readCredential));
         const connection=await database.prepareHindsight();
         const url=new URL(`postgresql://127.0.0.1:${connection.port}/${connection.database}`);url.username=connection.user;url.password=connection.password;
         return {databaseUrl:url.href,environment};
@@ -1073,7 +1079,48 @@ export default class Hima extends Service {
     const metadata=await readAttachment(ports,actor,scope,ref.stageId);
     return {stream:materializeAttachment(ports,actor,scope,ref.stageId,signal),sha256:metadata.material.sha256,mediaType:metadata.material.mediaType};
   }
+  private teamMemoryPorts():TeamMemoryPorts {
+    const sourceReader:MemorySourceReader={verify:async(actor,ref,sources)=>{
+      const descriptors=await this.durable.store.memorySources(actor,ref,sources);
+      for(const {source,original} of descriptors) {
+        if(source.kind==='material') {
+          if(!original)throw new TeamError('hima/not-authorized','Retained source is unavailable.');
+          let bytes=0;const hash=createHash('sha256');
+          for await(const chunk of this.teamAttachmentPorts().native.readFileStream(original.fileRef,this.memoryAbort.signal)){bytes+=chunk.byteLength;if(bytes>source.bytes)throw new TeamError('hima/not-authorized','Source bytes changed.');hash.update(chunk);}
+          if(bytes!==source.bytes||hash.digest('hex')!==source.sha256)throw new TeamError('hima/not-authorized','Source bytes changed.');
+        } else if(source.kind==='artifact') {
+          const asset=await this.viewReaders().readTaskArtifact(source.runId,source.effectId,source.name);
+          if(asset.kind!=='file'||asset.bytes.byteLength!==source.bytes||createHash('sha256').update(asset.bytes).digest('hex')!==source.sha256)throw new TeamError('hima/not-authorized','Committed source bytes are unavailable or changed.');
+        } else if(source.kind==='archive') {
+          const deps=this.deps();
+          if(await deps.projectOfRun?.(source.runId)!==ref.projectId)throw new TeamError('hima/not-authorized','Archive belongs to another project.');
+          const archive=await readRunAssets(deps,source.runId),material=await readArchivedMaterial(deps,source.runId,source.materialPath);
+          const completion=this.ledger.records({runId:source.runId,type:'archive'}).findLast(record=>record.type==='archive'&&record.delivery==='complete');
+          if(archive.kind!=='read'||completion?.type!=='archive'||completion.manifestSha256!==source.manifestSha256||material.kind!=='read'||material.material.sha256!==source.sha256||material.material.bytes!==source.bytes)throw new TeamError('hima/not-authorized','Exact source archive is unavailable or changed.');
+        }
+      }
+      // Recheck persisted authorization/link/hash after potentially delayed source byte reads.
+      await this.durable.store.memorySources(actor,ref,sources);return sources;
+    }};
+    return {store:this.durable.store.teamMemory(sourceReader),sourceReader,hindsight:{connection:()=>{
+      const connection=this.teamServices?.connection('hindsight');return connection?{origin:connection.origin,apiKey:connection.apiKey,generation:connection.generation}:undefined;
+    },signal:this.memoryAbort.signal},track:promise=>{this.memoryRequests.add(promise);void promise.finally(()=>this.memoryRequests.delete(promise)).catch(()=>{});}};
+  }
+  private async teamMemoryOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown):Promise<object> {
+    const ports=this.teamMemoryPorts();
+    if(action==='feedback')return saveFeedback(ports,actor,ref,raw);
+    if(action==='propose')return proposeExperience(ports,actor,ref,raw);
+    if(action==='adopt')return changeExperienceAdoption(ports,actor,ref,raw);
+    if(action==='correct')return correctTeamExperience(ports,actor,ref,raw);
+    if(action==='query') {await flushPendingTeamMemory(ports,actor,ref,8);return readTeamMemoryContext(ports,actor,ref,raw);}
+    if(action==='corrections')return readTeamMemoryCorrections(ports,actor,ref,raw);
+    const request=teamZ.strictObject({page:teamZ.strictObject({limit:teamZ.number().int().min(1).max(100),cursor:teamZ.number().int().nonnegative().optional()}),reconcile:teamZ.boolean().optional()}).parse(raw);
+    if(request.reconcile)await flushPendingTeamMemory(ports,actor,ref,8);
+    return readTeamMemory(ports,actor,ref,request.page);
+  }
   private async teamWorkspaceOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown,sessionId?:string):Promise<object> {
+    const memoryAction=({'query-memory':'query','propose-memory':'propose','memory-status':'status','memory-corrections':'corrections'} as Record<string,string>)[action];
+    if(memoryAction)return this.teamMemoryOperation(actor,ref,memoryAction,raw);
     const store=this.durable.store.teamMessages();
     if(action==='read-task-artifact') {
       await store.readMessages(actor,ref,{limit:1});
@@ -1121,13 +1168,13 @@ export default class Hima extends Service {
   }
 
   async memberTeamContext(token:string,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
     const grant=await this.durable.store.resolveTeamGrant(token);
     return this.memberActorContext(grant,request);
   }
   private async memberActorContext(grant:import('./team-contract.js').ActorGrant,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact']),request:teamZ.unknown().optional()}).parse(raw);
-    await this.durable.store.authorizeTeamGrant(grant,request.action==='send-message'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
+    await this.durable.store.authorizeTeamGrant(grant,['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='send-message'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
     if(request.action!=='readTask')return this.teamWorkspaceOperation({kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},request.action,request.request);
     if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
     const task=await this.durable.store.readTeamTask(grant.projectId,grant.teamId,grant.taskId);
@@ -1135,7 +1182,9 @@ export default class Hima extends Service {
     const invocation=(await this.durable.store.flowInvocations(grant.runId)).find(row=>row.identity.effectId===grant.effectId);
     if(!invocation)throw new TeamError('hima/not-authorized','Original member input is unavailable.');
     const {input:_wholeTaskInput,...metadata}=task;
-    return {actor:{kind:'member',teamId:grant.teamId,memberId:grant.memberId,taskId:grant.taskId,generation:grant.generation},task:metadata,
+    const memory=grant.capabilities.includes('query-memory')?await readTeamMemoryContext(this.teamMemoryPorts(),{kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},{query:task.goal.slice(0,4000),memberId:grant.memberId}):{records:[],diagnostics:['Memory access has not been granted.']};
+    await this.durable.store.authorizeTeamGrant(grant,grant.capabilities.includes('query-memory')?'query-memory':'read-task');
+    return {memory,actor:{kind:'member',teamId:grant.teamId,memberId:grant.memberId,taskId:grant.taskId,generation:grant.generation},task:metadata,
       artifactIdentity:{runId:invocation.identity.runId,taskId:invocation.identity.taskId,effectId:invocation.identity.effectId},input:(invocation.context as {input?:unknown}).input};
   }
   async teamRuntimeOperation(raw:unknown):Promise<object> {
@@ -1163,7 +1212,7 @@ export default class Hima extends Service {
     if(!this.ctx.get('agents')?.list().some(agent=>String(agent.id)===sessionId))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
     const projectId=await sessionProject(this.ctx,sessionId,true);
     const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
-    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','read','save','clone','export','startTask','listTasks','readTask','control','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','read','save','clone','export','startTask','listTasks','readTask','control','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
     if(['configure-model','save','clone','startTask'].includes(value.action))await this.waitForBusinessAdmission();
     if(!['context','list-models','configure-model','list','read','save','clone','export','startTask','listTasks','readTask','control'].includes(value.action)) {
       if(!value.teamId||!value.taskId)throw new TeamError('hima/team-invalid','Choose a team and task identity.');
@@ -1206,8 +1255,13 @@ export default class Hima extends Service {
     await this.durable.store.putFlowFact(run.runId,`team-control-result:${request.requestId}`,result as import('./task-contract.js').JsonValue);
     return result as object;
   }
-  async workMemory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
+  async workMemory(sessionId: string, request: WorkMemoryRequest, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
     const workspaceRef = await sessionProject(this.ctx, sessionId, true);
+    if(!['read','sources','save'].includes(request.action)) {
+      if(!request.teamId||!request.taskId)throw new TeamError('hima/team-invalid','Select a Team task for experience memory.');
+      const actor:TeamMessageActor=authoredBy==='person'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId:workspaceRef}:{kind:'guide',actorId:sessionId,projectId:workspaceRef};
+      return this.teamMemoryOperation(actor,{projectId:workspaceRef,teamId:request.teamId,taskId:request.taskId},request.action,request.request);
+    }
     if (request.runId) await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
     const parentSessionId=this.ctx.get('agents')?.get(sessionId as never)?.session.header.parentSession;
     const scope: WorkMemoryScope = request.runId ? { kind: 'campaign', workspaceRef, runId: request.runId }
@@ -2029,3 +2083,6 @@ export { commandTaskAdapter } from './task-effects.js';
 
 export * from './team-messages.js';
 export * from './team-attachments.js';
+
+export * from './hindsight.js';
+export * from './team-memory.js';

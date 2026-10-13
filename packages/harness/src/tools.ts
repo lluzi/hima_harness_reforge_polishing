@@ -206,7 +206,7 @@ type ToolDefinition = ReturnType<typeof defineTool>;
 export function guideTools(operations: {
   team?(sessionId:string,request:unknown):Promise<object>;
   inspect(sessionId: string, requestId: string, target: unknown): Promise<object>;
-  memory(sessionId: string, request: { action: 'read' | 'sources' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  memory(sessionId: string, request: import('./remote.js').WorkMemoryRequest): Promise<object>;
   delegate?(request: import('./delegation-runtime.js').RunDelegationRequest):Promise<object>;
   interactive?(sessionId:string,request:unknown):Promise<object>;
   delegationInput?(sessionId:string,request:{runId:string;recordId:string;path?:string;offset?:number;limit?:number}):Promise<object>;
@@ -268,8 +268,8 @@ export function guideTools(operations: {
     },
   }), defineTool({
     name: 'hima_memory',
-    description: 'Read or save a source-linked working summary in this project. It never resumes work or changes measurements, authority, pauses, or budgets. Re-read current sources on recovery; stale or unavailable memory must not direct execution. Use sources first to obtain Host-minted Run or retained native-session references; then save semantic text with those references. Newer events make an older source-linked summary stale, not current authority.',
-    parameters: { action: { type: 'string', required: true, enum: ['read', 'sources', 'save'] }, runId: { type: 'string' }, summary: { type: 'object', additionalProperties: true } },
+    description: 'Read/save source-linked working summaries or query/propose scoped Team experience. Team status/request actions require teamId and taskId; service faults remain visible; only the human can adopt, correct or revoke experience. It never resumes work or changes measurements, authority, pauses, or budgets. Re-read current sources on recovery; stale or unavailable memory must not direct execution. Use sources first to obtain Host-minted Run or retained native-session references; then save semantic text with those references. Newer events make an older source-linked summary stale, not current authority.',
+    parameters: { action: { type: 'string', required: true, enum: ['read','sources','save','query','propose','status','corrections'] }, runId: { type: 'string' }, summary: { type: 'object', additionalProperties: true },teamId:{type:'string'},taskId:{type:'string'},request:{type:'object',additionalProperties:true} },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     execute: async (args, execution) => {
       if (!execution.agent) throw new Error('a live conversation is required');
