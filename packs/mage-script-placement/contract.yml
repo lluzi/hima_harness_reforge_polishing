@@ -1,0 +1,460 @@
+id: mage-script-placement
+version: 0.1.0
+title: MAGE script-method test-structure placement
+status: development
+minimumHarnessVersion: 0.3.0
+ontology:
+  aliases:
+    placementResult:
+    - scribe-line placement result
+    - test structure placement delivery
+budget:
+  timeBoxMs: 21600000
+  closingReserveMs: 900000
+  minimumGenerations: 1
+inputs:
+- name: mageCaseManifest
+  description: Site path of one mage.case-manifest/1 JSON file naming the rule, pblock, block, cluster,
+    target-table, request-order, start-state and incumbent-state files for this case, each with a sha256
+    the Pack re-verifies, plus frameSizeUm, dbuPerUm, partitionRule and the mage executable/setupScript/
+    buildBanner. No customer data is copied into this Pack; every file stays on the Site.
+- name: consumerContext
+  description: Site path of one mage.consumer-context/1 JSON file naming per-consumer known values
+    (target limits, pad pitch, search windows, capture ranges) with their source and confirmation. A
+    missing value makes the evaluator return unknown for any predicate that needs it, never a guessed
+    default.
+- name: siteCapabilities
+  description: Site path of one mage.site-capabilities/1 JSON file naming the Site's MAGE executable
+    (string or list), setup script and environment. Only the Engineer's resident tool holds the mage
+    licence this capability guards.
+- name: workspaceRoot
+  description: Campaign-private output root allowed by the Site Permit.
+outputs:
+- name: caseReadiness
+  path: state/case-readiness.json
+  description: Verified case digests, Goal values, rule-fact and block-type summary counts, and the
+    full siteCapabilities/consumerContext/manifest documents later resident subcommands read without a
+    separate TASK_INPUT file.
+- name: startSnapshot
+  path: state/start-snapshot.json
+  description: The case's frozen start-state mage.layout-snapshot/2 (Fixed/Group/Fit/rule-derived
+    pending, targets, rule facts, lane model).
+- name: incumbentMeasure
+  path: state/incumbent.json
+  description: Modelled (non-native) metrics and consumer findings for the retained incumbent state,
+    for the Q1-Q4 comparison in the final evaluation.
+- name: roundDecision
+  path: state/round-decision.json
+  description: The latest round's route (continue/stop), best measured state so far, open Requests,
+    Decision Requests and improvement history. Round 0 (written by prepare-case) has no open Requests
+    yet, so the first Engineer round can proceed.
+- name: placementCandidate
+  path: state/round/placement-candidate.json
+  reader: mage-placement-candidate
+  description: The current round's Engineer delivery (mage.placement-candidate/1) -- candidate/export/
+    verify/session-log files with sha256, Q1-Q4 metrics, Ledger answers to the previous round's Requests,
+    and outcome/stopReason. Overwritten every round; the Pack's own round history keeps a permanent copy.
+- name: reviewLithoPie
+  path: state/round/review-litho-pie.json
+  reader: mage-consumer-review
+  description: The Litho/PIE placement owner's current-round mage.consumer-review/1 delivery.
+- name: reviewMetrology
+  path: state/round/review-metrology.json
+  reader: mage-consumer-review
+  description: The Overlay/CD metrology owner's current-round mage.consumer-review/1 delivery.
+- name: reviewAlignment
+  path: state/round/review-alignment.json
+  reader: mage-consumer-review
+  description: The scanner alignment owner's current-round mage.consumer-review/1 delivery.
+- name: reviewWat
+  path: state/round/review-wat.json
+  reader: mage-consumer-review
+  description: The WAT/parametric test owner's current-round mage.consumer-review/1 delivery.
+- name: placementResult
+  path: state/placement-result.json
+  description: Cumulative best measured state, every round's candidate/review references, consumer
+    models used, Decision Requests and outcome (mage.placement-result/1).
+- name: placementEvaluation
+  path: state/placement-evaluation.json
+  description: Explicit goalMet against the seven delivery rules evaluated on the best state's Reader
+    values, the Q1-Q4 comparison against the incumbent, and any Decision Requests still open.
+- name: finalReport
+  path: delivery/report.json
+  description: Final goalMet, rules, metrics and report/package paths for the delivered placement.
+environment:
+  wrappers:
+  - python3
+  - /usr/bin/python3
+workspace:
+  source: pack
+  copy:
+  - mage_placement_cli.py
+  - mage_placement
+  - consumer_models
+  - schemas
+  - templates
+tools:
+- id: prepare-case
+  file: flow/mage_placement_cli.py
+  description: Verify every case-manifest file digest, parse the rule/pblock/block/target/request-order
+    files, build and stamp the frozen start-state snapshot, and write the round-0 decision so the first
+    Engineer round can proceed.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - task-prepare-case
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: measure-incumbent
+  file: flow/mage_placement_cli.py
+  description: Normalise the retained incumbent PLA into a snapshot and evaluate it with the same
+    metrics and consumer evaluators used on every candidate, labelled modelled (no native MAGE run).
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - task-measure-incumbent
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: engineer-place
+  file: flow/mage_placement_cli.py
+  description: >
+    Own one round of the MAGE scribe-line test-structure placement task, end to end. Read
+    `state/case-readiness.json` (Goal values, siteCapabilities, consumerContext, manifest),
+    `state/start-snapshot.json` (the frozen start state), `state/incumbent.json` (the modelled
+    incumbent) and `state/round-decision.json` (the previous round's open Requests and best state so
+    far). Diagnose every drop or target-distance/order deviation beyond the Goal limits with a named
+    deterministic cause (fragmentation, order-limited, limit-limited, capacity-limited, rule-unknown,
+    identity-unknown) before acting. Prefer, in order: reserve-first placement, squeezing within
+    limits using the exact slot planner (`plan-slots`), relocating non-priority structures, and only
+    then a Decision Request when no placement resolves a genuine consumer conflict. Build a complete
+    candidate PLA (`snapshot`/own editing of the PLA text; Group target points are never moved) and run
+    one or more MAGE attempts through `mage-round --role engineer` (the only role this Pack ever lets
+    run a mutating script); a failed attempt is retried under `--out-dir placement/round-NN/attempt-K`
+    (K >= 2), and the delivered candidate is assembled from the last attempt's own export. Parse the
+    exported PLA and native verify reports, assemble the candidate with
+    `candidate --round <n> --round-dir <dir> --ledger <file> --out state/round/placement-candidate.json`,
+    answering every open Request from the previous round's `state/round-decision.json` in the Ledger
+    file you pass (`satisfied`, `alternative`, or `declined` with evidence) before assembling. Judge the
+    new candidate by its own native checks and Q1-Q4 metrics; keep it only if it is no worse than the
+    previous best by the Pack's own best-state order, otherwise record why it is still delivered as the
+    best-effort result. You alone may hold the MAGE licence, drive the MAGE session(s), and write the
+    candidate PLA; you may not change the rule file, target table, consumer models or Goal limits. Never
+    fabricate a candidate the `candidate` subcommand did not itself assemble and validate from an actual
+    MAGE attempt's own export and verify files (a failed attempt with no export yields a `blocked`
+    candidate, never a fabricated one).
+  inputs:
+  - WORKSPACE
+  - ROUND
+  - SITE_CAPABILITIES
+  - TARGET_DROPPED
+  - MAX_TARGET_DISTANCE_UM
+  - MAX_ORDER_DEVIATION
+  licences:
+    mage: 1
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - placement-candidate
+  - ${WORKSPACE}
+  - ${TARGET_DROPPED}
+  - ${MAX_TARGET_DISTANCE_UM}
+  - ${MAX_ORDER_DEVIATION}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - caseReadiness
+    - startSnapshot
+    - incumbentMeasure
+    - roundDecision
+    knowledge:
+    - placement-playbook.md
+    - mage-capabilities.md
+    - state-and-evidence.md
+    - review-protocol.md
+    - role-mage-engineer.md
+    artifactPrefix: placement
+    produces: placementCandidate
+- id: review-litho-pie
+  file: flow/mage_placement_cli.py
+  description: >
+    Act as the Litho/PIE placement owner for one review round. You evaluate every Group-placed
+    (priority) mark the current candidate carries against two hard requirements -- every priority mark
+    is actually placed, and every priority mark's target distance from its own CT target stays within
+    the Goal/consumerContext limit -- plus a cost-tracked placement-order deviation versus the customer's
+    own request-file order. Read `state/case-readiness.json`, `state/start-snapshot.json` and
+    `state/round/placement-candidate.json` (the current candidate; never a prior round's file). Run
+    `evaluate --consumer litho-pie --candidate <the candidate's own snapshot.json> --out-dir <a
+    directory you choose>` to get this round's Findings (never hand-write a Finding; the evaluator
+    receipt backing every Finding must come from that command), then author this round's Requests (one
+    per hard-fail Finding you want acted on, each with a kind of move/keep/place/restore_order/other and
+    the Finding's own targets/strength) as a plain JSON list, and assemble your delivery with
+    `review --consumer litho-pie --round <n> --findings <that file> --requests <your requests file>
+    --out state/round/review-litho-pie.json`. You never edit the layout, the rule file, any consumer
+    model, or any other consumer's review; you hold no MAGE licence. If a previous round's Request this
+    consumer filed is still open, check whether this round's candidate addressed it before deciding
+    whether to re-file it -- do not mechanically repeat an already-declined ask with nothing new to add.
+  inputs:
+  - WORKSPACE
+  - ROUND
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - consumer-review
+  - ${WORKSPACE}
+  - litho-pie
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - caseReadiness
+    - startSnapshot
+    - placementCandidate
+    knowledge:
+    - review-protocol.md
+    - state-and-evidence.md
+    - role-litho-pie.md
+    artifactPrefix: reviews/litho-pie
+    produces: reviewLithoPie
+- id: review-metrology
+  file: flow/mage_placement_cli.py
+  description: >
+    Act as the Overlay & CD metrology owner for one review round. You evaluate every OVL/
+    IBO_CDSEM_DBO/markCluster-typed mark the current candidate carries: a hard requirement that every
+    watched region of the frame (the four corners and the centre) keeps at least one in-scope mark after
+    this round if it had one before, plus two cost-tracked findings -- a recipe search-window edit per
+    target moved beyond the customer's search window, and addressing-pattern rework when a target and
+    its CD-SEM pair move independently (pair cohesion). Read `state/case-readiness.json`,
+    `state/start-snapshot.json` and `state/round/placement-candidate.json` (the current candidate). Run
+    `evaluate --consumer metrology --candidate <the candidate's own snapshot.json> --out-dir <a
+    directory you choose>` to get this round's Findings, author this round's Requests as a plain JSON
+    list (one per Finding you want acted on), and assemble your delivery with
+    `review --consumer metrology --round <n> --findings <that file> --requests <your requests file>
+    --out state/round/review-metrology.json`. You never edit the layout, the rule file, any consumer
+    model, or any other consumer's review; you hold no MAGE licence.
+  inputs:
+  - WORKSPACE
+  - ROUND
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - consumer-review
+  - ${WORKSPACE}
+  - metrology
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - caseReadiness
+    - startSnapshot
+    - placementCandidate
+    knowledge:
+    - review-protocol.md
+    - state-and-evidence.md
+    - role-metrology.md
+    artifactPrefix: reviews/metrology
+    produces: reviewMetrology
+- id: review-alignment
+  file: flow/mage_placement_cli.py
+  description: >
+    Act as the scanner alignment owner (ASML/Canon) for one review round. You evaluate every ASML_AL/
+    CANON_AL-typed mark the current candidate carries: a hard requirement that no in-scope mark's
+    orientation changed from the start state, plus a cost-tracked finding for a job edit per mark moved
+    beyond the customer's capture range. Canon's own side rule and TVPA separation thresholds are a
+    known, named gap in this Pack version -- the evaluator reports that specific requirement as unknown
+    with its reason; never answer it yourself. Read `state/case-readiness.json`,
+    `state/start-snapshot.json` and `state/round/placement-candidate.json` (the current candidate). Run
+    `evaluate --consumer alignment --candidate <the candidate's own snapshot.json> --out-dir <a
+    directory you choose>` to get this round's Findings, author this round's Requests as a plain JSON
+    list, and assemble your delivery with `review --consumer alignment --round <n> --findings <that
+    file> --requests <your requests file> --out state/round/review-alignment.json`. You never edit the
+    layout, the rule file, any consumer model, or any other consumer's review; you hold no MAGE licence.
+  inputs:
+  - WORKSPACE
+  - ROUND
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - consumer-review
+  - ${WORKSPACE}
+  - alignment
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - caseReadiness
+    - startSnapshot
+    - placementCandidate
+    knowledge:
+    - review-protocol.md
+    - state-and-evidence.md
+    - role-alignment.md
+    artifactPrefix: reviews/alignment
+    produces: reviewAlignment
+- id: review-wat
+  file: flow/mage_placement_cli.py
+  description: >
+    Act as the WAT/parametric test owner for one review round. You evaluate every TSK/MPAD-typed key
+    the current candidate carries: two hard requirements -- every in-scope key is actually placed, and
+    its rigid-unit footprint and orientation are unchanged from the start state -- plus a cost-tracked
+    finding converting any in-scope movement into pad-pitch units, flagging wrong-pad risk at or beyond
+    half a pitch and whether the test program/probe card needs remaking (any rotation, or any pitch/
+    count change). Read `state/case-readiness.json`, `state/start-snapshot.json` and
+    `state/round/placement-candidate.json` (the current candidate). Run `evaluate --consumer wat
+    --candidate <the candidate's own snapshot.json> --out-dir <a directory you choose>` to get this
+    round's Findings, author this round's Requests as a plain JSON list, and assemble your delivery with
+    `review --consumer wat --round <n> --findings <that file> --requests <your requests file> --out
+    state/round/review-wat.json`. You never edit the layout, the rule file, any consumer model, or any
+    other consumer's review; you hold no MAGE licence. If a key stays dropped for a genuine capacity
+    reason the Engineer already explained in the Ledger, you need not re-file an identical Request
+    every round with nothing new to add.
+  inputs:
+  - WORKSPACE
+  - ROUND
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - consumer-review
+  - ${WORKSPACE}
+  - wat
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - caseReadiness
+    - startSnapshot
+    - placementCandidate
+    knowledge:
+    - review-protocol.md
+    - state-and-evidence.md
+    - role-wat.md
+    artifactPrefix: reviews/wat
+    produces: reviewWat
+- id: decide-round
+  file: flow/mage_placement_cli.py
+  description: Join one round's four consumer reviews against its candidate -- Ledger coverage of the
+    previous round's open Requests, best-measured-state comparison, consumer conflicts turned into
+    Decision Requests, and the continue/stop route.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - task-decide-round
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: evaluate-placement
+  file: flow/mage_placement_cli.py
+  description: Evaluate the best measured state's own Reader values against the seven delivery rules
+    and compute the Q1-Q4 comparison against the modelled incumbent, keeping unknowns separate from
+    Goal.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - task-evaluate-placement
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: deliver
+  file: flow/mage_placement_cli.py
+  description: Recheck every referenced digest and package every round's candidate/review documents,
+    PLAs, native verify files, session logs, scripts and the result/evaluation JSON into the final
+    delivery.
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/mage_placement_cli.py
+  - task-deliver
+  - ${WORKSPACE}
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+rules:
+- placement-delivery-ready
+- priority-all-placed
+- no-native-violation
+- drops-within-goal
+- target-limit-met
+- order-within-goal
+- no-open-requests
+goal:
+  target_dropped_count:
+    type: number
+    unit: count
+    min: 0
+    max: 100000
+    default: 0
+  max_target_distance_um:
+    type: number
+    unit: um
+    min: 0
+    max: 100000
+    default: 100
+  max_order_deviation:
+    type: number
+    unit: rank
+    min: 0
+    max: 1000
+    default: 1
+strategy:
+  incumbentComparison:
+    type: choice
+    options: [retained, native]
+    default: retained
+words:
+  target_dropped_count:
+    label: target dropped test-structure count
+    unit: count
+  max_target_distance_um:
+    label: maximum target distance
+    unit: um
+  max_order_deviation:
+    label: maximum placement order deviation
+    unit: rank
+  incumbentComparison:
+    label: incumbent comparison basis
+knowledge:
+- file: placement-playbook.md
+  purpose: Whole-task MAGE placement engineering goal, diagnosis ladder, planner-first mechanism and
+    best-state selection the resident Engineer follows every round.
+- file: mage-capabilities.md
+  purpose: MAGE native session, PLA replay, verify-check and export capabilities available to the
+    Engineer's one round.
+- file: state-and-evidence.md
+  purpose: Snapshot/candidate/Ledger identity and unknown boundaries every resident role shares; native
+    results are prediction-only, never final physical signoff.
+- file: review-protocol.md
+  purpose: The per-round protocol every role follows -- Engineer delivers and answers the Ledger, each
+    consumer evaluates and files Findings/Requests, decide-round joins them and routes the next round.
+- file: role-mage-engineer.md
+  purpose: The Engineer's own complete role brief (diagnosis, planning, native round, candidate
+    assembly, Ledger answers).
+- file: role-litho-pie.md
+  purpose: The Litho/PIE placement owner's complete role brief (priority-mark placement and target
+    distance, order-deviation cost).
+- file: role-metrology.md
+  purpose: The Overlay & CD metrology owner's complete role brief (region coverage, search-window edit
+    cost, pair cohesion).
+- file: role-alignment.md
+  purpose: The scanner alignment owner's complete role brief (no-rotation, capture-range edit cost, the
+    Canon side-rule gap).
+- file: role-wat.md
+  purpose: The WAT/parametric test owner's complete role brief (placement, rigid unit, pad-pitch move
+    cost and card-remake flag).
+- file: role-bonding.md
+  purpose: The bonding-mark consistency role brief, shipped for a later version; this version has no
+    bonding review Task because the reference case carries no partner-wafer data.

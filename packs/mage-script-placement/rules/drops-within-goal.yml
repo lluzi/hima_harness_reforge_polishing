@@ -1,0 +1,7 @@
+id: drops-within-goal
+version: "1"
+title: The best state's dropped test-structure count meets the Run target
+parameter: { name: target_dropped_count, unit: count }
+requires: [{ type: mage_dropped_count }]
+subject: { type: mage_dropped_count }
+predicate: { op: lte, threshold: { parameter: target_dropped_count }, unit: count }

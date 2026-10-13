@@ -1,0 +1,65 @@
+values:
+  mage_candidate_error_count:
+    unit: count
+    description: Structural, identity, recompute-mismatch or session-log-role errors found while re-verifying one round's placement-candidate delivery; 0 only once every reference and recomputation agrees.
+  mage_priority_unplaced_count:
+    unit: count
+    description: Count of Group-placed (priority) marks the candidate's own pending list still carries (never actually placed as a Fit).
+  mage_dropped_count:
+    unit: count
+    description: Count of test structures the candidate's PLA itself records as dropped (placedFlag not null).
+  mage_dropped_length_um:
+    unit: um
+    description: Total long-side length of every dropped structure in the candidate.
+  mage_dropped_ordinary_count:
+    unit: count
+    description: Count of dropped structures with an empty inGroup (not Group-placed); this is the half of mage_dropped_count the external benchmark's comparison objective scores against a baseline/reference method.
+  mage_dropped_ordinary_length_um:
+    unit: um
+    description: Total long-side length of the ordinary (non-Group) dropped structures; the external benchmark's comparison objective. Always <= mage_dropped_length_um.
+  mage_target_distance_max_um:
+    unit: um
+    description: Maximum along-lane distance from a bound target's CT point to its placed Fit's box centre, over every bound target in the candidate.
+  mage_target_over_limit_count:
+    unit: count
+    description: Count of bound targets whose along-lane distance exceeds the Goal/consumerContext target-distance limit.
+  mage_order_deviation_max:
+    unit: rank
+    description: Maximum placement-order deviation (customer check_dev) over the TB/LR/IN partitions.
+  mage_native_overlap_rows:
+    unit: rows
+    description: MAGE's own instance count from the candidate's native OVERLAP check (frbCheckOverlap).
+  mage_native_space_rows:
+    unit: rows
+    description: MAGE's own instance count from the candidate's native SPACE check (frbCheckSpace); each row is one offending instance, not a pair count.
+  mage_native_boundary_rows:
+    unit: rows
+    description: MAGE's own instance count from the candidate's native BOUNDARY check (frbCheckBoundary).
+  mage_native_violation_total:
+    unit: rows
+    description: Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any one is unknown.
+  mage_open_request_count:
+    unit: count
+    description: >-
+      Count of the previous round's open Requests this candidate's own Ledger leaves unanswered.
+      The delivered `no-open-requests` rule (evaluate-placement, I3) is a composite over the
+      DELIVERED state, not this single Measure: it also FAILs on any outstanding Decision Request,
+      any best-round consumer hard-fail Finding (R7: the best round's hard fails are mixed with the
+      final round's open Requests and Decision Requests, which is conservative and intended), or any
+      review the final `decide-round` recorded in `skippedReviews` (N3: a wrong-snapshot or
+      wrong-slot review means a consumer was never evaluated, a fail-open toward goalMet that must
+      FAIL, never read as a silent PASS). `mage_order_deviation_max` stays a known number when one
+      side is only partly bound but every bound target reports (R2: a partly-bound side's missing
+      names go to `missing`; a fully-dropped-or-unknown side reads unknown).
+  mage_review_error_count:
+    unit: count
+    description: Structural, identity, snapshot-binding or evaluator-reproduction errors found while re-verifying one consumer's review delivery; 0 only once every Finding reproduces exactly under its declared consumer-model version.
+  mage_review_hard_fail_count:
+    unit: count
+    description: Count of this review's Findings whose severity is hard and whose status is fail.
+  mage_review_request_count:
+    unit: count
+    description: Count of Requests this consumer's review files this round.
+  mage_review_unknown_count:
+    unit: count
+    description: Count of this review's Findings whose status is unknown (a required consumerContext parameter is missing).

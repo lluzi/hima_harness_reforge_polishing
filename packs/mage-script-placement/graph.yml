@@ -1,0 +1,102 @@
+schema: hima-flow/1
+id: mage-script-placement
+version: 0.1.0
+flow:
+  kind: sequence
+  id: placement
+  steps:
+  - kind: task
+    id: prepare-case
+    tool: prepare-case
+    inputs:
+      MAGE_CASE_MANIFEST: {source: runInput, path: [mageCaseManifest]}
+      CONSUMER_CONTEXT: {source: runInput, path: [consumerContext]}
+      SITE_CAPABILITIES: {source: runInput, path: [siteCapabilities]}
+      TARGET_DROPPED: {source: goal, path: [target_dropped_count]}
+      MAX_TARGET_DISTANCE_UM: {source: goal, path: [max_target_distance_um]}
+      MAX_ORDER_DEVIATION: {source: goal, path: [max_order_deviation]}
+    contract:
+      input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-input'}}
+      output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-output'}}
+  - kind: task
+    id: measure-incumbent
+    tool: measure-incumbent
+    inputs:
+      CASE: {source: committedOutput, taskId: prepare-case, path: []}
+      INCUMBENT_COMPARISON: {source: strategy, path: [incumbentComparison]}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/measure-incumbent-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/measure-incumbent-output'}}}
+  - kind: repeat
+    id: placement-rounds
+    maxIterations: 4
+    budget: original-run
+    carry:
+      roundState:
+        initial: {source: literal, value: {round: 1}}
+        next: {taskId: decide-round, path: [nextRound]}
+    stop: {output: {taskId: decide-round, path: [route]}, equals: stop}
+    body:
+      kind: sequence
+      id: round
+      steps:
+      - kind: task
+        id: engineer-place
+        tool: engineer-place
+        inputs:
+          ROUND: {source: carry, path: [roundState, round]}
+          SITE_CAPABILITIES: {source: committedOutput, taskId: prepare-case, path: [SITE_CAPABILITIES]}
+          TARGET_DROPPED: {source: goal, path: [target_dropped_count]}
+          MAX_TARGET_DISTANCE_UM: {source: goal, path: [max_target_distance_um]}
+          MAX_ORDER_DEVIATION: {source: goal, path: [max_order_deviation]}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/engineer-place-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: review-litho-pie
+        tool: review-litho-pie
+        inputs: {ROUND: {source: carry, path: [roundState, round]}}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/review-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: review-metrology
+        tool: review-metrology
+        inputs: {ROUND: {source: carry, path: [roundState, round]}}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/review-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: review-alignment
+        tool: review-alignment
+        inputs: {ROUND: {source: carry, path: [roundState, round]}}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/review-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: review-wat
+        tool: review-wat
+        inputs: {ROUND: {source: carry, path: [roundState, round]}}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/review-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: decide-round
+        tool: decide-round
+        inputs:
+          ROUND: {source: carry, path: [roundState, round]}
+          CANDIDATE: {source: committedOutput, taskId: engineer-place, path: []}
+          REVIEW_LITHO_PIE: {source: committedOutput, taskId: review-litho-pie, path: []}
+          REVIEW_METROLOGY: {source: committedOutput, taskId: review-metrology, path: []}
+          REVIEW_ALIGNMENT: {source: committedOutput, taskId: review-alignment, path: []}
+          REVIEW_WAT: {source: committedOutput, taskId: review-wat, path: []}
+          TARGET_DROPPED: {source: goal, path: [target_dropped_count]}
+          MAX_TARGET_DISTANCE_UM: {source: goal, path: [max_target_distance_um]}
+          MAX_ORDER_DEVIATION: {source: goal, path: [max_order_deviation]}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/decide-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/decide-round-output'}}}
+  - kind: task
+    id: evaluate-placement
+    budget: closing
+    tool: evaluate-placement
+    inputs:
+      DECISION: {source: committedOutput, taskId: decide-round, path: []}
+      INCUMBENT: {source: committedOutput, taskId: measure-incumbent, path: []}
+      TARGET_DROPPED: {source: goal, path: [target_dropped_count]}
+      MAX_TARGET_DISTANCE_UM: {source: goal, path: [max_target_distance_um]}
+      MAX_ORDER_DEVIATION: {source: goal, path: [max_order_deviation]}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/evaluate-placement-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/evaluate-placement-output'}}}
+  - kind: task
+    id: deliver
+    budget: closing
+    tool: deliver
+    inputs:
+      EVALUATION: {source: committedOutput, taskId: evaluate-placement, path: []}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/deliver-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/deliver-output'}}}

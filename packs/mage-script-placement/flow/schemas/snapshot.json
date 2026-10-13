@@ -1,0 +1,178 @@
+{
+  "type": "object",
+  "required": [
+    "schema", "id", "stage", "dbuPerUm", "frame", "fixed", "groups", "fits", "pending",
+    "targets", "ruleFacts", "lanes", "inputs", "warnings", "snapshotSha256"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer"}},
+    "point": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+    "lanePlacement": {
+      "type": ["object", "null"],
+      "properties": {
+        "axis": {"type": "string", "enum": ["H", "V"]},
+        "track": {"type": "integer", "minimum": 0}
+      }
+    },
+    "fixedItem": {
+      "type": "object",
+      "required": ["id", "base", "boxDbu"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "base": {"type": "string", "minLength": 1},
+        "boxDbu": {"$ref": "#/$defs/box"}
+      }
+    },
+    "groupItem": {
+      "type": "object",
+      "required": ["groupItem", "pinstGroup", "targetPointDbu", "vertSL", "targetRow"],
+      "properties": {
+        "groupItem": {"type": "string", "minLength": 1},
+        "pinstGroup": {"type": "string", "minLength": 1},
+        "targetPointDbu": {"$ref": "#/$defs/point"},
+        "vertSL": {"type": "boolean"},
+        "targetRow": {"type": ["integer", "null"]}
+      }
+    },
+    "fitItem": {
+      "type": "object",
+      "required": [
+        "id", "base", "boxDbu", "extraRot", "postfix", "inGroup", "blockType",
+        "priority", "ruleItem", "lane"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "base": {"type": "string", "minLength": 1},
+        "boxDbu": {"$ref": "#/$defs/box"},
+        "extraRot": {"type": "string"},
+        "postfix": {"type": "string"},
+        "inGroup": {"type": "string"},
+        "blockType": {"type": ["string", "null"]},
+        "priority": {"type": "boolean"},
+        "ruleItem": {"type": ["string", "null"]},
+        "lane": {"$ref": "#/$defs/lanePlacement"}
+      }
+    },
+    "pendingItem": {
+      "type": "object",
+      "required": ["id", "base", "sizeDbu", "blockType", "ruleItem", "inGroup", "placedFlag"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "base": {"type": "string", "minLength": 1},
+        "sizeDbu": {"type": ["array", "null"], "minItems": 2, "maxItems": 2},
+        "blockType": {"type": ["string", "null"]},
+        "ruleItem": {"type": ["string", "null"]},
+        "inGroup": {"type": "string"},
+        "placedFlag": {"type": ["integer", "null"]}
+      }
+    },
+    "targetRow": {
+      "type": "object",
+      "required": [
+        "row", "groupName", "partName", "target", "lengthUm", "locXUm", "locYUm",
+        "ctDbu", "partition", "pinstGroup", "fitId"
+      ],
+      "properties": {
+        "row": {"type": "integer", "minimum": 0},
+        "groupName": {"type": "string"},
+        "partName": {"type": "string"},
+        "target": {"type": "string"},
+        "lengthUm": {"type": "string"},
+        "locXUm": {"type": "string"},
+        "locYUm": {"type": "string"},
+        "ctDbu": {"$ref": "#/$defs/point"},
+        "partition": {"type": "string", "enum": ["TB", "LR", "IN"]},
+        "pinstGroup": {"type": ["string", "null"]},
+        "fitId": {"type": ["string", "null"]}
+      }
+    },
+    "ruleFact": {
+      "type": "object",
+      "required": [
+        "itemType", "blockType", "scribeInc", "scribeExc", "turnable", "priority",
+        "setNum", "spaceDbu", "padCross", "zoneRaw", "gridDbu", "cluster", "qualified"
+      ],
+      "properties": {
+        "itemType": {"type": ["string", "null"]},
+        "blockType": {"type": ["string", "null"]},
+        "scribeInc": {"type": "array", "items": {"type": "string"}},
+        "scribeExc": {"type": "array", "items": {"type": "string"}},
+        "turnable": {"type": "boolean"},
+        "priority": {"type": ["integer", "null"]},
+        "setNum": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer"}},
+        "spaceDbu": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}
+        },
+        "padCross": {"type": ["boolean", "null"]},
+        "zoneRaw": {"type": "string"},
+        "gridDbu": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+        "cluster": {"type": ["string", "null"]},
+        "qualified": {
+          "type": "object",
+          "required": ["space", "zone", "padCross"],
+          "properties": {
+            "space": {"type": "boolean"}, "zone": {"type": "boolean"}, "padCross": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "required": [
+        "laneId", "axis", "track", "alongRangeDbu", "crossRangeDbu", "physicalLane", "sharedExterior"
+      ],
+      "properties": {
+        "laneId": {"type": "string", "minLength": 1},
+        "axis": {"type": "string", "enum": ["H", "V"]},
+        "track": {"type": "integer", "minimum": 0},
+        "alongRangeDbu": {"$ref": "#/$defs/point"},
+        "crossRangeDbu": {"$ref": "#/$defs/point"},
+        "physicalLane": {"type": "string", "minLength": 1},
+        "sharedExterior": {"type": "boolean"}
+      }
+    },
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1}
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["code", "id"],
+      "properties": {"code": {"type": "string"}, "id": {"type": "string"}}
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.layout-snapshot/2"},
+    "id": {"type": "string", "minLength": 1},
+    "stage": {"type": "string", "enum": ["start", "incumbent", "candidate"]},
+    "dbuPerUm": {"type": "integer", "minimum": 1},
+    "frame": {
+      "type": "object",
+      "required": [
+        "widthDbu", "heightDbu", "scribeDbu", "cols", "rows", "dieWidthDbu", "dieHeightDbu"
+      ],
+      "properties": {
+        "widthDbu": {"type": "integer"}, "heightDbu": {"type": "integer"},
+        "scribeDbu": {"type": "integer"}, "cols": {"type": "integer"}, "rows": {"type": "integer"},
+        "dieWidthDbu": {"type": "integer"}, "dieHeightDbu": {"type": "integer"}
+      }
+    },
+    "fixed": {"type": "array", "items": {"$ref": "#/$defs/fixedItem"}},
+    "groups": {"type": "array", "items": {"$ref": "#/$defs/groupItem"}},
+    "fits": {"type": "array", "items": {"$ref": "#/$defs/fitItem"}},
+    "pending": {"type": "array", "items": {"$ref": "#/$defs/pendingItem"}},
+    "targets": {"type": "array", "items": {"$ref": "#/$defs/targetRow"}},
+    "ruleFacts": {"type": "object"},
+    "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+    "inputs": {"type": "object"},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}},
+    "snapshotSha256": {"type": "string", "minLength": 1}
+  }
+}
