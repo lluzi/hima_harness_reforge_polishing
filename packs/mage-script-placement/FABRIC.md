@@ -55,6 +55,14 @@ execution carried exactly one Reader Job reading `mage_candidate_error_count == 
 `TEST.md`'s L2 section. This remains Harness/Pack wiring only — it does not touch MAGE's real
 behaviour, which still waits on the live proof procedure.
 
+Task 12's host-side native probes (`TEST.md` L4) then ran this Pack's own `mage-stage` driver against
+the real tool on the Site: the round-1 baseline stage reproduced the native incumbent exactly (export
+byte-identical to the kit's baseline PLA; 27 ordinary drops / 135,113 µm; Reader clean), and the two
+compaction failure signatures the reference method hits on this build were reproduced and are
+visible as boundary rows in `stage-report` (0 in-group Fits after the offset edits; Fits restored
+unbound from their Groups by a plain re-source; the preplaced sort failure under converge mode).
+No resident, no model and no Harness ran in those probes; the live resident Run is Task 13.
+
 ## Reviews
 
 Per-task review is recorded in `.superpowers/sdd/task-8-report.md`. The final whole-branch review

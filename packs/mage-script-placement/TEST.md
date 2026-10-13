@@ -63,14 +63,37 @@ resident execution reading `mage_candidate_error_count == 0`, journal entries, `
 `proofLevel`) against a stand-in MAGE interpreter that accepts this Pack's own baseline and improved
 scripts verbatim — not MAGE's own behaviour.
 
-## L4 (S2) — native qualification (pending — Tasks 10, 12, 13)
+## L4 (S2) — native probes on the Site (Task 12: host-side, no resident, no model)
 
-Not started. Needs the permanent MAGE licence server, a stamped Site manifest version carrying
-`referenceMethod`/`referenceFiles`/`referenceNotes`, and the user's own live, watched Run before any
-D-status command in `knowledge/mage-capabilities.md` can move from documented to qualified, and
-before the knowledge's exact Tcl command text (the four reference-method stages, the two known
-failure signatures, the compatibility repairs) can be confirmed against the real build rather than
-only against the Pack's own code.
+Run 2026-10-13 02:36–02:37 UTC on the Site host against the staged frame case through this Pack's
+own `mage-stage` driver (Pack flow as of commit `5d8ac199`; the permanent MAGE licence server; the
+stamped Site manifest `manifest-script.json`, sha recorded in `sites/linglong-mage-script/README.md`,
+carrying `referenceMethod`, 54 `referenceFiles`, 24 `referenceNotes` and the reference ordinary
+drop length). Evidence stays on the Site (`/home/luzi/tmp/mage-script-probe-01/ws-baseline/`).
+
+- **Baseline stage** (the playbook's round-1 script, with the two converge lines): completed in
+  12 s; boundaries `priority-start` and `filled`; export sha
+  `0a95e89d61cf46bcd4575227ff4be11d7c0a37b5690522f27eae2173b0f61901`, byte-identical to the kit's
+  native baseline PLA; 27 ordinary drops / 135,113 µm, 0 grouped drops, 225 priority Fits, 10 Fixed,
+  292 ordinary Fits (inventory pass against the incumbent population); native OVERLAP 0, SPACE 1
+  (the known instance row), BOUNDARY 0; 60 priority marks beyond 100 µm (pre-existing in the start
+  state), order deviation LR 2 / TB 1, priority movement 0. `candidate` assembled a `completed`
+  candidate and the Reader exited 0 with all 17 values known. **Proof level: Reproduction.**
+- **Compaction failure probe, invalidation** (relax the 129 zero-offset items after point
+  placement, then the reference converge call): the `after-offsets` boundary reads 225 Groups and
+  **0 in-group Fits** (the invalidation signature); `smPFlow -autoRefine` failed; the stage ended
+  `MAGE_STAGE_ERROR boundary after-offsets`, 3 s.
+- **Compaction failure probe, restored** (same, then `source $hima_start_pla` again before the
+  converge call): the `priority-restored` boundary reads 225 Fits but **0 in-group / 225 ordinary** —
+  a plain re-source after the offset edits restores the Fits unbound from their Groups; the converge
+  call then printed `Sort sl <lane> preplaced fits failed` twice and `Failed at auto refinement`;
+  blocked at `priority-restored`, 3 s.
+
+Both signatures the handoff describes are therefore reproducible and visible in `stage-report`
+rows within seconds, and a blocked stage yields a blocked candidate (no metrics claimed). The
+session log of that round holds three entries, one completed. The live resident Run (Task 13) has
+not run yet; D-status commands in `knowledge/mage-capabilities.md` remain unqualified until an
+Engineer qualifies them with a passing and a failing stage.
 
 ## No model, no EDA
 

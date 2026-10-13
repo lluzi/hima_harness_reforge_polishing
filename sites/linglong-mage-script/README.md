@@ -27,7 +27,7 @@ block:
   scores a candidate's own `mage_dropped_ordinary_length_um` against. Its sha is recorded here
   after Task 12 stamps the manifest:
 
-  *(pending Task 12 stamping -- sha256 not yet recorded)*
+  *(`a609aa5adb1386edb2c4a6d09d44ee4863582b9fe35356c869c963067bafd3e5` (id `1c44e5625d4c24cfe0a7`, stamped 2026-10-12: 54 reference files, 24 reference notes, reference ordinary drop length 52,453 µm) stamping -- sha256 not yet recorded)*
 
 ## Known constraints
 
