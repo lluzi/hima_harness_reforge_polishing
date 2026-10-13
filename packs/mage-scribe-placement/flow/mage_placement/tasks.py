@@ -233,6 +233,9 @@ def measure_incumbent(workspace, inputs):
     computed_metrics = {
         "drops": metrics_mod.drops(incumbent_snapshot),
         "targetDistances": target_distances,
+        "targetRegressions": metrics_mod.target_regressions(
+            start_snapshot, incumbent_snapshot, str(goal["max_target_distance_um"]),
+        ),
         "orderDeviation": metrics_mod.order_deviation(incumbent_snapshot),
         "displacement": metrics_mod.displacement(start_snapshot, incumbent_snapshot),
         "priorityUnplaced": _priority_unplaced(incumbent_snapshot),
@@ -387,7 +390,10 @@ def evaluate_placement(workspace, inputs):
         "priority-all-placed": ("mage_priority_unplaced_count", "eq", 0),
         "no-native-violation": ("mage_native_violation_total", "eq", 0),
         "drops-within-goal": ("mage_dropped_count", "lte", goal["target_dropped_count"]),
-        "target-limit-met": ("mage_target_distance_max_um", "lte", goal["max_target_distance_um"]),
+        # Part A: target-limit-met judges the Run-owned reading -- marks THIS
+        # Run moved beyond the limit (eq 0), never marks already beyond it in
+        # the frozen start (those are pre-existing, reported, never counted).
+        "target-limit-met": ("mage_target_over_limit_new_count", "eq", 0),
         "order-within-goal": ("mage_order_deviation_max", "lte", goal["max_order_deviation"]),
     }
 
@@ -402,6 +408,22 @@ def evaluate_placement(workspace, inputs):
         value = measure["value"]
         passed = (value == threshold) if op == "eq" else (value <= threshold)
         rules_result[rule_id] = "PASS" if passed else "FAIL"
+
+    def _reader_number(type_name):
+        for row in reader_values:
+            if row.get("type") == type_name:
+                return row.get("value")
+        return None
+
+    # Part B records the native regression basis: the absolute total today,
+    # replaced by the anchor-delta reading when a native anchor exists.
+    native_basis = {
+        "basis": "absolute",
+        "anchorRound": None,
+        "anchorRows": None,
+        "bestRows": {t: _reader_number(f"mage_native_{t.lower()}_rows") for t in NATIVE_TYPES},
+        "newRows": _reader_number("mage_native_violation_total"),
+    }
 
     # I3: `no-open-requests` evaluates the DELIVERED state, not just the best
     # candidate's own unanswered-previous count. It FAILs when the final
@@ -469,9 +491,25 @@ def evaluate_placement(workspace, inputs):
         "Q4_displacementMovedDelta": _delta(["displacement", "movedCount"]),
     }
 
+    # Report both the absolute and the Run-owned view of the delivered
+    # state, so a reader of the report can see the distinction the rules now
+    # draw (Part A: target distance; Part B: native rows against the anchor).
+    target_regressions = best_metrics.get("targetRegressions") or {}
+    regression_basis = {
+        "targetDistance": {
+            "limitUm": goal["max_target_distance_um"],
+            "overLimitCount": _reader_number("mage_target_over_limit_count"),
+            "newOverLimitCount": _reader_number("mage_target_over_limit_new_count"),
+            "preExistingOverLimitCount": target_regressions.get("preExistingOverLimitCount"),
+            "improvedStillOverCount": target_regressions.get("improvedStillOverCount"),
+        },
+        "native": native_basis,
+    }
+
     value = {
         "goalMet": goal_met, "metrics": best_metrics, "incumbent": incumbent, "comparison": comparison,
         "rules": rules_result, "unknowns": unknowns, "decisionRequests": decision.get("decisionRequests", []),
+        "regressionBasis": regression_basis,
         "domainReport": {"round": best.get("round"), "candidatePath": best.get("candidatePath")},
     }
     core.write_artifact(workspace / "state" / "placement-evaluation.json", value)

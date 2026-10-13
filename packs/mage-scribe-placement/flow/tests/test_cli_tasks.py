@@ -375,6 +375,67 @@ class CliRouteTest(unittest.TestCase):
         self.assertTrue(any("round-01" in n for n in names))
         self.assertTrue(any("round-02" in n for n in names))
 
+    def test_target_over_limit_new_count_counts_only_moved_marks(self):
+        # Part A: an unmoved pre-existing over-limit mark reads new_count 0
+        # (with over_limit_count 1); a mark this Run moved beyond the limit
+        # reads new_count 1.
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
+
+        def _reader_values_for(pla_text, tag, round_no):
+            pla_path = self.root / f"{tag}.pla"
+            pla_path.write_text(pla_text, encoding="utf-8")
+            round_dir = self.workspace / "placement" / f"round-{round_no:02d}"
+            env = dict(os.environ)
+            env["MAGE_STANDIN_ROWS"] = "{}"
+            subprocess.run(
+                [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", str(round_no),
+                 "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir), "--fill"],
+                capture_output=True, text=True, env=env, check=True,
+            )
+            candidate_path = self.root / f"{tag}-candidate.json"
+            _run(["candidate", self.workspace, "--round", str(round_no), "--round-dir", str(round_dir),
+                  "--ledger", _write_json(self.root / f"{tag}-ledger.json", []), "--out", candidate_path])
+            live = self.workspace / "state" / "round" / "placement-candidate.json"
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(candidate_path, live)
+            values = _run_reader("placement-candidate", live, self.root / f"{tag}-values.json", self.workspace)["values"]
+            return {v["type"]: v["value"] for v in values}
+
+        dbu = self.case["manifest"]["dbuPerUm"]
+
+        # Candidate 1: OVL_B stays at its frozen-start position (150 um off its
+        # CT target, over the 100 um limit) -- a pre-existing excess, nothing
+        # moved -> new_count 0 but over_limit_count 1.
+        pre_existing = self._candidate_pla_text(dbu, ovl_b_on_target=False)
+        pre = _reader_values_for(pre_existing, "preexisting", 1)
+        self.assertEqual(pre["mage_target_over_limit_count"], 1)
+        self.assertEqual(pre["mage_target_over_limit_new_count"], 0)
+
+        # Candidate 2: OVL_A moved 150 um off its own CT target (it was on
+        # target in the frozen start) -- a regression this Run introduced.
+        doc = pla.read_pla(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), dbu)
+        for fit in doc["fits"]:
+            if fit["base"] == "OVL_A":
+                l, b, r, t = fit["boxDbu"]
+                shift = core.um_to_dbu("150", dbu)
+                fit["boxDbu"] = [l + shift, b, r + shift, t]
+        doc["drops"] = [{
+            "id": "KEY_V.KEY_V", "base": "KEY_V", "inst": "KEY_V.KEY_V",
+            "boxDbu": [0, 0, core.um_to_dbu("900", dbu), core.um_to_dbu("60", dbu)],
+            "extraRot": "NULL", "placedFlag": 0, "postfix": "", "inGroup": "",
+        }]
+        moved = _reader_values_for(pla.write_pla(doc, dbu, units="um"), "moved", 2)
+        # OVL_A regression (1) plus OVL_B still pre-existing over -> 2 over the
+        # limit in all, but only 1 of them is this Run's own regression.
+        self.assertEqual(moved["mage_target_over_limit_count"], 2)
+        self.assertEqual(moved["mage_target_over_limit_new_count"], 1)
+
     def test_standing_conflict_runs_to_the_round_limit_with_a_decision_request(self):
         """KEY_V stays dropped every round (WAT keeps hard-failing and
         keeps filing a `place` Request on it); litho-pie, once its own
@@ -1080,6 +1141,7 @@ class EvaluatePlacementSkippedReviewTest(unittest.TestCase):
             {"type": "mage_native_violation_total", "value": 0},
             {"type": "mage_dropped_count", "value": 0},
             {"type": "mage_target_distance_max_um", "value": 0.0},
+            {"type": "mage_target_over_limit_new_count", "value": 0},
             {"type": "mage_order_deviation_max", "value": 0},
         ]
         return {
@@ -1104,6 +1166,58 @@ class EvaluatePlacementSkippedReviewTest(unittest.TestCase):
             "INCUMBENT": {"metrics": {}}, **self._goal(),
         })["value"]
         self.assertEqual(evaluation["rules"]["no-open-requests"], "FAIL")
+        self.assertFalse(evaluation["goalMet"])
+
+
+class EvaluatePlacementTargetLimitTest(unittest.TestCase):
+    """Part A: target-limit-met judges the Run-owned reading
+    (mage_target_over_limit_new_count), so a pre-existing over-limit mark
+    passes and only a mark this Run moved beyond the limit fails."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _decision(self, new_count):
+        reader_values = [
+            {"type": "mage_candidate_error_count", "value": 0},
+            {"type": "mage_priority_unplaced_count", "value": 0},
+            {"type": "mage_native_violation_total", "value": 0},
+            {"type": "mage_dropped_count", "value": 0},
+            {"type": "mage_target_over_limit_count", "value": 1},  # one mark over the limit
+            {"type": "mage_target_over_limit_new_count", "value": new_count},
+            {"type": "mage_order_deviation_max", "value": 0},
+        ]
+        return {
+            "best": {"metrics": {"hardFailCount": 0,
+                                 "targetRegressions": {"preExistingOverLimitCount": 1,
+                                                       "improvedStillOverCount": 0}},
+                     "readerValues": reader_values, "round": 1},
+            "openRequestCount": 0, "openRequests": [], "decisionRequests": [],
+            "skippedReviews": [], "stopReason": "",
+        }
+
+    def _goal(self):
+        return {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+
+    def test_rule_passes_with_a_pre_existing_over_limit_mark(self):
+        evaluation = tasks.evaluate_placement(self.workspace, {
+            "DECISION": self._decision(0), "INCUMBENT": {"metrics": {}}, **self._goal(),
+        })["value"]
+        self.assertEqual(evaluation["rules"]["target-limit-met"], "PASS")
+        basis = evaluation["regressionBasis"]["targetDistance"]
+        self.assertEqual(basis["overLimitCount"], 1)
+        self.assertEqual(basis["newOverLimitCount"], 0)
+        self.assertEqual(basis["preExistingOverLimitCount"], 1)
+
+    def test_rule_fails_on_a_regression(self):
+        evaluation = tasks.evaluate_placement(self.workspace, {
+            "DECISION": self._decision(1), "INCUMBENT": {"metrics": {}}, **self._goal(),
+        })["value"]
+        self.assertEqual(evaluation["rules"]["target-limit-met"], "FAIL")
         self.assertFalse(evaluation["goalMet"])
 
 

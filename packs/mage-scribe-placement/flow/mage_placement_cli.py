@@ -760,6 +760,7 @@ def _cmd_candidate(workspace, args):
     computed_metrics = {
         "drops": metrics_mod.drops(candidate_snapshot),
         "targetDistances": metrics_mod.target_distances(candidate_snapshot, str(goal["max_target_distance_um"])),
+        "targetRegressions": metrics_mod.target_regressions(start, candidate_snapshot, str(goal["max_target_distance_um"])),
         "orderDeviation": metrics_mod.order_deviation(candidate_snapshot),
         "displacement": metrics_mod.displacement(start, candidate_snapshot),
         "nativeRows": metrics_mod.native_rows(verify_files),

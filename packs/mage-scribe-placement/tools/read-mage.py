@@ -63,6 +63,7 @@ _UNITS = {
     "mage_dropped_ordinary_length_um": "um",
     "mage_target_distance_max_um": "um",
     "mage_target_over_limit_count": "count",
+    "mage_target_over_limit_new_count": "count",
     "mage_order_deviation_max": "rank",
     "mage_native_overlap_rows": "rows",
     "mage_native_space_rows": "rows",
@@ -84,6 +85,7 @@ CANDIDATE_EMITS = [
     "mage_candidate_error_count", "mage_priority_unplaced_count", "mage_dropped_count",
     "mage_dropped_length_um", "mage_dropped_ordinary_count", "mage_dropped_ordinary_length_um",
     "mage_target_distance_max_um", "mage_target_over_limit_count",
+    "mage_target_over_limit_new_count",
     "mage_order_deviation_max",
 ] + list(_NATIVE_TYPE_FACT.values()) + ["mage_native_violation_total", "mage_open_request_count"]
 
@@ -291,6 +293,7 @@ def _read_candidate(report_path, workspace, mods):
 
     drops = metrics.drops(rebuilt)
     target = metrics.target_distances(rebuilt, str(goal["max_target_distance_um"]))
+    regressions = metrics.target_regressions(start, rebuilt, str(goal["max_target_distance_um"]))
     order = metrics.order_deviation(rebuilt)
     native = metrics.native_rows(verify_files)
     priority_unplaced = _priority_unplaced(rebuilt)
@@ -313,6 +316,13 @@ def _read_candidate(report_path, workspace, mods):
                   if target["maxUm"] is not None else _unknown("mage_target_distance_max_um", target_reason))
     values.append(_known("mage_target_over_limit_count", target["overLimitCount"])
                   if target["overLimitCount"] is not None else _unknown("mage_target_over_limit_count", target_reason))
+    # Part A: the Run-owned reading -- marks THIS Run moved beyond the limit,
+    # never marks already beyond it in the frozen start (those are reported
+    # as pre-existing, never counted as this Run's regression).
+    new_over_reason = regressions.get("unknownReason") or target_reason
+    values.append(_known("mage_target_over_limit_new_count", regressions["newOverLimitCount"])
+                  if regressions["newOverLimitCount"] is not None
+                  else _unknown("mage_target_over_limit_new_count", new_over_reason))
     values.append(_known("mage_order_deviation_max", order["max"])
                   if order["max"] is not None else _unknown("mage_order_deviation_max", order_reason))
     for type_name, fact in _NATIVE_TYPE_FACT.items():

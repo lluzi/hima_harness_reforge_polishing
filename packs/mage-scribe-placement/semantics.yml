@@ -23,6 +23,15 @@ values:
   mage_target_over_limit_count:
     unit: count
     description: Count of bound targets whose along-lane distance exceeds the Goal/consumerContext target-distance limit.
+  mage_target_over_limit_new_count:
+    unit: count
+    description: >-
+      Count of bound targets this Run moved beyond the target-distance limit that were not already
+      beyond it in the frozen start (the Run-owned reading, from metrics.target_regressions). A mark
+      already beyond the limit in the frozen start is pre-existing -- reported, never counted here as
+      this Run's regression; an unmoved pre-existing over-limit mark reads 0 even though
+      mage_target_over_limit_count is non-zero. The target-limit-met rule judges this Measure (eq 0),
+      not the absolute mage_target_over_limit_count. Unknown whenever a candidate target is unbound.
   mage_order_deviation_max:
     unit: rank
     description: Maximum placement-order deviation (customer check_dev) over the TB/LR/IN partitions.

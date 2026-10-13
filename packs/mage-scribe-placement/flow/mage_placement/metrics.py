@@ -249,6 +249,87 @@ def target_distances(snapshot, limit_um):
     }
 
 
+def target_regressions(start_snapshot, candidate_snapshot, limit_um):
+    """`{'newOverLimitCount', 'preExistingOverLimitCount',
+    'improvedStillOverCount', 'perTarget', 'unknownReason'}`.
+
+    Classifies each of the candidate's bound targets against the frozen
+    start, so a Run is judged on target-distance excess it *introduced*,
+    never on excess it inherited. `max_target_distance_um` is the budget a
+    mark *this Run moves* may end from its requested CT target; a mark
+    already beyond the limit in the frozen start is pre-existing — reported,
+    never counted as this Run's regression.
+
+    Distances for both snapshots are computed with `target_distances` at
+    `limit_um` and matched by target `row`. Each candidate `perTarget` entry
+    is classed:
+
+    - `alongUm <= limit` → `within`;
+    - over the limit, a start entry with `startAlongUm > limit` and
+      `alongUm == startAlongUm` → `pre-existing`;
+    - over the limit, a start entry with `startAlongUm > limit` and
+      `alongUm < startAlongUm` → `improved-still-over`;
+    - otherwise over the limit (start within the limit, farther than at the
+      start, or no start entry at all) → `regression`.
+
+    `perTarget` rows carry `row, fitId, alongUm, startAlongUm (or None),
+    class`. `newOverLimitCount` counts `regression` rows,
+    `preExistingOverLimitCount` the `pre-existing` rows, and
+    `improvedStillOverCount` the `improved-still-over` rows.
+
+    C4: if the candidate's `target_distances` has `overLimitCount is None`
+    (an unbound target), every count is `None` and `unknownReason` is the
+    candidate's own reason — never 0; `perTarget` is empty. A start-side
+    unbound target does not make anything unknown (it simply contributes no
+    start entry, so a candidate target over the limit with no start entry
+    classes as a `regression`).
+    """
+    limit = Decimal(str(limit_um))
+    candidate = target_distances(candidate_snapshot, str(limit_um))
+    if candidate["overLimitCount"] is None:
+        return {
+            "newOverLimitCount": None,
+            "preExistingOverLimitCount": None,
+            "improvedStillOverCount": None,
+            "perTarget": [],
+            "unknownReason": candidate.get("unknownReason") or "candidate target distances are unknown",
+        }
+
+    start = target_distances(start_snapshot, str(limit_um))
+    start_by_row = {entry["row"]: entry for entry in start["perTarget"]}
+
+    per_target = []
+    new_over = pre_existing = improved_still = 0
+    for entry in candidate["perTarget"]:
+        along = Decimal(entry["alongUm"])
+        start_entry = start_by_row.get(entry["row"])
+        start_along = Decimal(start_entry["alongUm"]) if start_entry is not None else None
+        if along <= limit:
+            cls = "within"
+        elif start_along is not None and start_along > limit and along == start_along:
+            cls = "pre-existing"
+            pre_existing += 1
+        elif start_along is not None and start_along > limit and along < start_along:
+            cls = "improved-still-over"
+            improved_still += 1
+        else:
+            cls = "regression"
+            new_over += 1
+        per_target.append({
+            "row": entry["row"], "fitId": entry["fitId"], "alongUm": entry["alongUm"],
+            "startAlongUm": start_entry["alongUm"] if start_entry is not None else None,
+            "class": cls,
+        })
+
+    return {
+        "newOverLimitCount": new_over,
+        "preExistingOverLimitCount": pre_existing,
+        "improvedStillOverCount": improved_still,
+        "perTarget": per_target,
+        "unknownReason": None,
+    }
+
+
 def _placed_centre_doubled(fit, axis):
     l, b, r, t = fit["boxDbu"]
     return (l + r) if axis == "x" else (b + t)

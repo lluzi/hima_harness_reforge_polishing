@@ -542,6 +542,79 @@ class DroppedTargetKnownTest(unittest.TestCase):
         self.assertEqual(t["droppedTargets"], [])
 
 
+class TargetRegressionsTest(unittest.TestCase):
+    """Part A: a Run is judged on target-distance excess it introduced, not
+    excess inherited from the frozen start."""
+
+    def _fit(self, fit_id, placed_x):
+        # lane H -> along axis is x; centre x = placed_x + 50 (dbuPerUm 1).
+        return {"id": fit_id, "base": fit_id.split(".")[0], "boxDbu": [placed_x, 0, placed_x + 100, 40],
+                "extraRot": "NULL", "postfix": "", "inGroup": "G", "blockType": "OVL",
+                "priority": True, "ruleItem": "X", "lane": {"axis": "H", "track": 0}}
+
+    def _target(self, row, fit_id, ct_x=0):
+        return {"row": row, "groupName": "G", "partName": "X", "target": f"T{row}", "lengthUm": "10",
+                "locXUm": "0", "locYUm": "0", "ctDbu": [ct_x, 0], "pinstGroup": "G",
+                "fitId": fit_id, "partition": "TB"}
+
+    def _snap(self, rows):
+        # rows: list of (row, fit_id, placed_x). ct_x fixed at 0, so
+        # alongUm == placed_x + 50.
+        targets = [self._target(row, fit_id) for row, fit_id, _ in rows]
+        fits = [self._fit(fit_id, placed_x) for _, fit_id, placed_x in rows]
+        return {"dbuPerUm": 1, "frame": _ORDER_FRAME, "fits": fits, "targets": targets, "pending": []}
+
+    def test_four_classes(self):
+        # along == placed_x + 50; limit 100.
+        start = self._snap([
+            (0, "F0.F0", 0),    # along 50 within
+            (1, "F1.F1", 0),    # along 50 within (start)
+            (2, "F2.F2", 100),  # along 150 over (start)
+            (3, "F3.F3", 200),  # along 250 over (start)
+        ])
+        candidate = self._snap([
+            (0, "F0.F0", 0),    # along 50 -> within
+            (1, "F1.F1", 100),  # along 150, start 50 within -> regression
+            (2, "F2.F2", 100),  # along 150 == start 150 -> pre-existing
+            (3, "F3.F3", 100),  # along 150 < start 250, still over -> improved-still-over
+        ])
+        r = metrics.target_regressions(start, candidate, "100")
+        self.assertEqual(r["newOverLimitCount"], 1)
+        self.assertEqual(r["preExistingOverLimitCount"], 1)
+        self.assertEqual(r["improvedStillOverCount"], 1)
+        by_row = {p["row"]: p for p in r["perTarget"]}
+        self.assertEqual(by_row[0]["class"], "within")
+        self.assertEqual(by_row[1]["class"], "regression")
+        self.assertEqual(by_row[2]["class"], "pre-existing")
+        self.assertEqual(by_row[3]["class"], "improved-still-over")
+        self.assertEqual(by_row[1]["startAlongUm"], "50")
+        self.assertIsNone(r["unknownReason"])
+
+    def test_candidate_target_over_with_no_start_entry_is_a_regression(self):
+        # A start whose matching target is unbound contributes no start
+        # entry; a candidate target over the limit then classes as a
+        # regression (never pre-existing), and nothing is unknown.
+        start = self._snap([(0, "F0.F0", 0)])
+        start["targets"].append(self._target(1, None))  # unbound start target, row 1
+        candidate = self._snap([(0, "F0.F0", 0), (1, "F1.F1", 100)])  # row 1 over at 150
+        r = metrics.target_regressions(start, candidate, "100")
+        self.assertEqual(r["newOverLimitCount"], 1)
+        self.assertEqual(r["preExistingOverLimitCount"], 0)
+        self.assertIsNone(r["unknownReason"])
+        self.assertEqual(next(p for p in r["perTarget"] if p["row"] == 1)["class"], "regression")
+
+    def test_unbound_candidate_target_propagates_unknown_never_zero(self):
+        start = self._snap([(0, "F0.F0", 0)])
+        candidate = self._snap([(0, "F0.F0", 0)])
+        candidate["targets"].append(self._target(1, None))  # unbound candidate target
+        r = metrics.target_regressions(start, candidate, "100")
+        self.assertIsNone(r["newOverLimitCount"])
+        self.assertIsNone(r["preExistingOverLimitCount"])
+        self.assertIsNone(r["improvedStillOverCount"])
+        self.assertEqual(r["perTarget"], [])
+        self.assertIsNotNone(r["unknownReason"])
+
+
 class AllUnboundSideOrderUnknownTest(unittest.TestCase):
     def test_side_with_rows_but_zero_bound_is_unknown_not_zero(self):
         marks = [

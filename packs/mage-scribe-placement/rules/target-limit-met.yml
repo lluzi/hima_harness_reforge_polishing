@@ -1,7 +1,7 @@
 id: target-limit-met
 version: "1"
-title: The best state's maximum target distance meets the Run target
+title: No mark ends farther beyond the target-distance limit than it started; marks already beyond it in the frozen start are reported as pre-existing, never counted
 parameter: { name: max_target_distance_um, unit: um }
-requires: [{ type: mage_target_distance_max_um }]
-subject: { type: mage_target_distance_max_um }
-predicate: { op: lte, threshold: { parameter: max_target_distance_um }, unit: um }
+requires: [{ type: mage_target_over_limit_new_count }]
+subject: { type: mage_target_over_limit_new_count }
+predicate: { op: eq, threshold: 0, unit: count }
