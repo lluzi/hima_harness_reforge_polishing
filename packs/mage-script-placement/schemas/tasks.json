@@ -44,24 +44,35 @@
       }
     },
 
+    "goal-fields": {
+      "type": "object",
+      "properties": {
+        "TARGET_DROPPED": {"type": "number"},
+        "MAX_TARGET_DISTANCE_UM": {"type": "number"},
+        "MAX_ORDER_DEVIATION_LR": {"type": "number"},
+        "MAX_ORDER_DEVIATION_TB": {"type": "number"},
+        "MAX_PRIORITY_MOVE_UM": {"type": "number"}
+      }
+    },
+
     "prepare-case-input": {
       "type": "object",
-      "required": ["MAGE_CASE_MANIFEST", "CONSUMER_CONTEXT", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "required": ["MAGE_CASE_MANIFEST", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION_LR", "MAX_ORDER_DEVIATION_TB", "MAX_PRIORITY_MOVE_UM"],
       "properties": {
         "MAGE_CASE_MANIFEST": {"type": "string", "minLength": 1},
-        "CONSUMER_CONTEXT": {"type": "string", "minLength": 1},
         "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
         "TARGET_DROPPED": {"type": "number"},
         "MAX_TARGET_DISTANCE_UM": {"type": "number"},
-        "MAX_ORDER_DEVIATION": {"type": "number"}
+        "MAX_ORDER_DEVIATION_LR": {"type": "number"},
+        "MAX_ORDER_DEVIATION_TB": {"type": "number"},
+        "MAX_PRIORITY_MOVE_UM": {"type": "number"}
       }
     },
     "prepare-case-output": {
       "type": "object",
-      "required": ["MAGE_CASE_MANIFEST", "CONSUMER_CONTEXT", "SITE_CAPABILITIES", "readinessId", "startSnapshotSha256"],
+      "required": ["MAGE_CASE_MANIFEST", "SITE_CAPABILITIES", "readinessId", "startSnapshotSha256"],
       "properties": {
         "MAGE_CASE_MANIFEST": {"type": "string"},
-        "CONSUMER_CONTEXT": {"type": "string"},
         "SITE_CAPABILITIES": {"type": "string"},
         "readinessId": {"type": "string", "minLength": 1},
         "startSnapshotSha256": {"type": "string", "minLength": 1}
@@ -78,55 +89,47 @@
     },
     "measure-incumbent-output": {
       "type": "object",
-      "required": ["incumbentId", "snapshotSha256", "metrics", "evidence", "nativeRequested"],
+      "required": ["incumbentId", "snapshotSha256", "metrics", "ordinaryPopulation", "evidence", "nativeRequested"],
       "properties": {
         "incumbentId": {"type": "string", "minLength": 1},
         "snapshotSha256": {"type": "string", "minLength": 1},
         "metrics": {"type": "object"},
+        "ordinaryPopulation": {"type": "integer", "minimum": 0},
         "evidence": {"type": "string", "const": "modelled"},
         "nativeRequested": {"type": "boolean"}
       }
     },
 
-    "engineer-place-input": {
+    "engineer-script-input": {
       "type": "object",
-      "required": ["ROUND", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "required": ["ROUND", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION_LR", "MAX_ORDER_DEVIATION_TB", "MAX_PRIORITY_MOVE_UM"],
       "properties": {
         "ROUND": {"type": "integer", "minimum": 1},
         "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
         "TARGET_DROPPED": {"type": "number"},
         "MAX_TARGET_DISTANCE_UM": {"type": "number"},
-        "MAX_ORDER_DEVIATION": {"type": "number"}
+        "MAX_ORDER_DEVIATION_LR": {"type": "number"},
+        "MAX_ORDER_DEVIATION_TB": {"type": "number"},
+        "MAX_PRIORITY_MOVE_UM": {"type": "number"}
       }
-    },
-
-    "review-input": {
-      "type": "object",
-      "required": ["ROUND"],
-      "properties": {"ROUND": {"type": "integer", "minimum": 1}}
     },
 
     "decide-round-input": {
       "type": "object",
-      "required": [
-        "ROUND", "CANDIDATE", "REVIEW_LITHO_PIE", "REVIEW_METROLOGY", "REVIEW_ALIGNMENT", "REVIEW_WAT",
-        "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"
-      ],
+      "required": ["ROUND", "CANDIDATE", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION_LR", "MAX_ORDER_DEVIATION_TB", "MAX_PRIORITY_MOVE_UM"],
       "properties": {
         "ROUND": {"type": "integer", "minimum": 1},
         "CANDIDATE": {"$ref": "#/$defs/resident-output"},
-        "REVIEW_LITHO_PIE": {"$ref": "#/$defs/resident-output"},
-        "REVIEW_METROLOGY": {"$ref": "#/$defs/resident-output"},
-        "REVIEW_ALIGNMENT": {"$ref": "#/$defs/resident-output"},
-        "REVIEW_WAT": {"$ref": "#/$defs/resident-output"},
         "TARGET_DROPPED": {"type": "number"},
         "MAX_TARGET_DISTANCE_UM": {"type": "number"},
-        "MAX_ORDER_DEVIATION": {"type": "number"}
+        "MAX_ORDER_DEVIATION_LR": {"type": "number"},
+        "MAX_ORDER_DEVIATION_TB": {"type": "number"},
+        "MAX_PRIORITY_MOVE_UM": {"type": "number"}
       }
     },
     "decide-round-output": {
       "type": "object",
-      "required": ["route", "nextRound", "best", "openRequestCount", "decisionRequestCount", "stopReason"],
+      "required": ["route", "nextRound", "best", "stopReason", "goalMet", "rules", "journalEntries"],
       "properties": {
         "route": {"type": "string", "enum": ["continue", "stop"]},
         "nextRound": {
@@ -135,27 +138,29 @@
           "properties": {"round": {"type": "integer", "minimum": 0}}
         },
         "best": {"type": ["object", "null"]},
-        "openRequestCount": {"type": "integer", "minimum": 0},
-        "decisionRequestCount": {"type": "integer", "minimum": 0},
-        "decisionRequests": {"type": "array"},
-        "stopReason": {"type": "string"}
+        "stopReason": {"type": "string"},
+        "goalMet": {"type": "boolean"},
+        "rules": {"type": "object"},
+        "journalEntries": {"type": "integer", "minimum": 0}
       }
     },
 
     "evaluate-placement-input": {
       "type": "object",
-      "required": ["DECISION", "INCUMBENT", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "required": ["DECISION", "INCUMBENT", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION_LR", "MAX_ORDER_DEVIATION_TB", "MAX_PRIORITY_MOVE_UM"],
       "properties": {
         "DECISION": {"$ref": "#/$defs/decide-round-output"},
         "INCUMBENT": {"$ref": "#/$defs/measure-incumbent-output"},
         "TARGET_DROPPED": {"type": "number"},
         "MAX_TARGET_DISTANCE_UM": {"type": "number"},
-        "MAX_ORDER_DEVIATION": {"type": "number"}
+        "MAX_ORDER_DEVIATION_LR": {"type": "number"},
+        "MAX_ORDER_DEVIATION_TB": {"type": "number"},
+        "MAX_PRIORITY_MOVE_UM": {"type": "number"}
       }
     },
     "evaluate-placement-output": {
       "type": "object",
-      "required": ["goalMet", "metrics", "incumbent", "comparison", "rules", "unknowns", "decisionRequests", "domainReport"],
+      "required": ["goalMet", "metrics", "incumbent", "comparison", "rules", "unknowns", "proofLevel", "domainReport"],
       "properties": {
         "goalMet": {"type": "boolean"},
         "metrics": {"type": "object"},
@@ -163,7 +168,7 @@
         "comparison": {"type": "object"},
         "rules": {"type": "object"},
         "unknowns": {"type": "array"},
-        "decisionRequests": {"type": "array"},
+        "proofLevel": {"type": "string", "enum": ["none", "reproduction", "improvement", "match", "surpass", "completion"]},
         "domainReport": {"type": "object"}
       }
     },
@@ -175,9 +180,10 @@
     },
     "deliver-output": {
       "type": "object",
-      "required": ["goalMet", "reportPath", "packagePath"],
+      "required": ["goalMet", "proofLevel", "reportPath", "packagePath"],
       "properties": {
         "goalMet": {"type": "boolean"},
+        "proofLevel": {"type": "string", "enum": ["none", "reproduction", "improvement", "match", "surpass", "completion"]},
         "reportPath": {"type": "string", "minLength": 1},
         "packagePath": {"type": "string", "minLength": 1}
       }

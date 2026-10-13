@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import json
 import os
+import tarfile
 from pathlib import Path
 
-from . import core, metrics as metrics_mod, pla, rules, snapshot, targets
+from . import core, metrics as metrics_mod, pla, records, rounds, rules, snapshot, targets
 
 
 NATIVE_TYPES = metrics_mod.NATIVE_TYPES
-RULE_IDS = ()
+RULE_IDS = rounds.RULE_IDS
 
 
 def _artifact(name, path):
@@ -49,8 +50,13 @@ def _load_case(manifest_path):
         _verify_file(Path(manifest_path).parent, manifest[key], key)
     for entry in manifest.get("clusterTcl", []):
         _verify_file(Path(manifest_path).parent, entry, "clusterTcl")
-    if manifest.get("referenceMethod") is not None:
-        _verify_file(Path(manifest_path).parent, manifest["referenceMethod"], "referenceMethod")
+    if manifest.get("referenceMethod") is None:
+        raise core.MageError("missing-input", "manifest names no referenceMethod")
+    _verify_file(Path(manifest_path).parent, manifest["referenceMethod"], "referenceMethod")
+    for entry in manifest.get("referenceFiles", []):
+        _verify_file(Path(manifest_path).parent, entry, "referenceFiles")
+    for entry in manifest.get("referenceNotes", []):
+        _verify_file(Path(manifest_path).parent, entry, "referenceNotes")
 
     rule_text = Path(manifest["rule"]["path"]).read_text(encoding="utf-8")
     pblock_text = Path(manifest["pblock"]["path"]).read_text(encoding="utf-8")
@@ -157,11 +163,10 @@ def prepare_case(workspace, inputs):
         raise core.MageError("schema-mismatch", "siteCapabilities is not a mage.site-capabilities/1 document")
     site_capabilities_sha256 = core.file_sha256(site_capabilities_path)
 
-    goal = {
-        "target_dropped_count": inputs["TARGET_DROPPED"],
-        "max_target_distance_um": inputs["MAX_TARGET_DISTANCE_UM"],
-        "max_order_deviation": inputs["MAX_ORDER_DEVIATION"],
-    }
+    goal = _goal(inputs)
+    manifest = case["manifest"]
+    reference = {k: manifest.get(k) for k in
+                 ("referenceMethod", "referenceFiles", "referenceNotes", "referenceOrdinaryDropLengthUm")}
 
     case_readiness = core.stamp("case-readiness", {
         "goal": goal,
@@ -169,16 +174,20 @@ def prepare_case(workspace, inputs):
         "siteCapabilitiesSha256": site_capabilities_sha256,
         "ruleFactsSummary": {"count": len(case["ruleFacts"])},
         "blockTypes": {"count": len(case["blockTypes"])},
-        "manifest": case["manifest"],
+        "manifest": manifest,
         "siteCapabilities": site_capabilities,
+        "reference": reference,
     })
     core.write_artifact(workspace / "state" / "case-readiness.json", case_readiness)
 
     round0 = core.stamp("round-decision", {
         "round": 0, "route": "continue", "nextRound": {"round": 1}, "best": None,
-        "openRequests": [], "decisionRequests": [], "history": [], "stopReason": "",
+        "history": [], "stopReason": "", "goalMet": False, "rules": {}, "blockedRound": False,
     })
     core.write_artifact(workspace / "state" / "round-decision.json", round0)
+
+    journal = core.stamp("method-journal", {"entries": [], "bestRound": None})
+    core.write_artifact(workspace / "state" / "method-journal.json", journal)
 
     value = {
         "MAGE_CASE_MANIFEST": manifest_path,
@@ -189,6 +198,7 @@ def prepare_case(workspace, inputs):
         _artifact("case-readiness", "state/case-readiness.json"),
         _artifact("start-snapshot", "state/start-snapshot.json"),
         _artifact("round-decision", "state/round-decision.json"),
+        _artifact("method-journal", "state/method-journal.json"),
     ]
     return {"schemaVersion": "1", "value": value, "artifacts": artifacts, "diagnostics": []}
 
@@ -252,9 +262,174 @@ def measure_incumbent(workspace, inputs):
     return {"schemaVersion": "1", "value": value, "artifacts": artifacts, "diagnostics": []}
 
 
+def _goal(inputs):
+    return {"target_dropped_count": inputs.get("TARGET_DROPPED", 0),
+            "max_target_distance_um": inputs.get("MAX_TARGET_DISTANCE_UM", 100),
+            "max_order_deviation_lr": inputs.get("MAX_ORDER_DEVIATION_LR", 2),
+            "max_order_deviation_tb": inputs.get("MAX_ORDER_DEVIATION_TB", 1),
+            "max_priority_move_um": inputs.get("MAX_PRIORITY_MOVE_UM", 100)}
+
+
+def _committed_document(workspace, resident_output, path, kind):
+    observations = resident_output.get("observations", [])
+    if len(observations) != 1:
+        raise core.MageError("identity-mismatch", f"expected exactly one observation for {kind}")
+    full = Path(workspace) / path
+    if not full.is_file() or core.file_sha256(full) != observations[0]["contentSha256"]:
+        raise core.MageError("identity-mismatch", f"{kind} bytes at {full} do not match the committed observation")
+    doc = dict(core.read_artifact(full, kind))
+    doc["_readerValues"] = observations[0].get("values", [])
+    return doc
+
+
+def decide_round(workspace, inputs):
+    workspace = Path(workspace)
+    round_no = int(inputs["ROUND"])
+    candidate = _committed_document(workspace, inputs["CANDIDATE"], "state/round/script-candidate.json", "script-candidate")
+    previous = core.read_artifact(workspace / "state" / "round-decision.json", "round-decision")
+    decision = rounds.decide(workspace, round_no, _goal(inputs), candidate, previous)
+    value = {"route": decision["route"], "nextRound": decision["nextRound"], "best": decision["best"],
+             "stopReason": decision["stopReason"], "goalMet": decision["goalMet"], "rules": decision["rules"],
+             "journalEntries": decision.get("_journalEntries", 0)}
+    artifacts = [_artifact("round-decision", "state/round-decision.json"), _artifact("script-result", "state/script-result.json"),
+                 _artifact("method-journal", "state/method-journal.json")]
+    return {"schemaVersion": "1", "value": value, "artifacts": artifacts, "diagnostics": []}
+
+
+def proof_level(best_ordinary_um, incumbent_ordinary_um, reference_um, rules, inventory_ok):
+    if best_ordinary_um is None or not inventory_ok:
+        return "none"
+    best, incumbent = float(best_ordinary_um), float(incumbent_ordinary_um)
+    all_pass = all(v == "PASS" for v in rules.values())
+    priority_ok = rules.get("priority-all-placed") == "PASS"
+    others_pass = all(v == "PASS" for k, v in rules.items() if k != "drops-within-goal")
+    if all_pass and best == 0:
+        return "completion"
+    if reference_um is not None and best < float(reference_um) and others_pass:
+        return "surpass"
+    if reference_um is not None and best <= float(reference_um) and priority_ok:
+        return "match"
+    if best < incumbent and priority_ok:
+        return "improvement"
+    if abs(best - incumbent) <= 0.5:
+        return "reproduction"
+    return "none"
+
+
+def evaluate_placement(workspace, inputs):
+    workspace = Path(workspace)
+    decision, incumbent = inputs["DECISION"], inputs["INCUMBENT"]
+    best = decision.get("best") or {}
+    reader_values = best.get("readerValues", [])
+    goal = _goal(inputs)
+    rules_result = rounds.rule_results(reader_values, goal) if best else {r: "UNKNOWN" for r in rounds.RULE_IDS}
+    unknowns = [{"rule": r, "reason": "no measured best state" if not best else "fact unknown"} for r, v in rules_result.items() if v == "UNKNOWN"]
+    goal_met = bool(best) and all(v == "PASS" for v in rules_result.values())
+    readiness = core.read_artifact(workspace / "state" / "case-readiness.json", "case-readiness")
+    reference_um = (readiness.get("reference") or {}).get("referenceOrdinaryDropLengthUm")
+    best_ordinary = rounds.reader_value(reader_values, "mage_dropped_ordinary_length_um")
+    incumbent_ordinary = incumbent.get("metrics", {}).get("drops", {}).get("ordinary", {}).get("lengthUm")
+    level = proof_level(best_ordinary, incumbent_ordinary, reference_um, rules_result, inventory_ok=bool(best)) if incumbent_ordinary is not None else "none"
+    comparison = {
+        "ordinaryLengthUm": {"best": best_ordinary, "incumbent": incumbent_ordinary, "reference": reference_um},
+        "ordinaryCount": {"best": rounds.reader_value(reader_values, "mage_dropped_ordinary_count"),
+                          "incumbent": incumbent.get("metrics", {}).get("drops", {}).get("ordinary", {}).get("count")},
+        "priorityMoveMaxUm": rounds.reader_value(reader_values, "mage_priority_move_max_um"),
+        "targetOverLimitCount": {"best": rounds.reader_value(reader_values, "mage_target_over_limit_count"),
+                                 "incumbent": incumbent.get("metrics", {}).get("targetDistances", {}).get("overLimitCount")},
+    }
+    value = {"goalMet": goal_met, "metrics": best.get("metrics", {}), "incumbent": incumbent, "comparison": comparison,
+             "rules": rules_result, "unknowns": unknowns, "proofLevel": level,
+             "domainReport": {"round": best.get("round"), "candidatePath": best.get("candidatePath"), "stopReason": decision.get("stopReason")}}
+    core.write_artifact(workspace / "state" / "placement-evaluation.json", value)
+    return {"schemaVersion": "1", "value": value, "artifacts": [_artifact("placement-evaluation", "state/placement-evaluation.json")], "diagnostics": []}
+
+
+def _collect_round_files(workspace, round_entry):
+    workspace = Path(workspace)
+    files = set()
+    candidate_ref = round_entry["candidate"]
+    candidate_path = _verify_file(workspace, candidate_ref, "round candidate")
+    files.add(candidate_path.relative_to(workspace).as_posix())
+    candidate_doc = json.loads(candidate_path.read_text(encoding="utf-8"))
+
+    def _walk(value):
+        if isinstance(value, dict):
+            if "path" in value and "sha256" in value and isinstance(value["path"], str):
+                target = workspace / value["path"] if not os.path.isabs(value["path"]) else Path(value["path"])
+                if target.is_file() and core.file_sha256(target) == value["sha256"]:
+                    try:
+                        relative = target.relative_to(workspace).as_posix()
+                    except ValueError:
+                        relative = str(target)
+                    files.add(relative)
+            for child in value.values():
+                _walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                _walk(child)
+
+    _walk(candidate_doc.get("files", {}))
+    return files
+
+
+def deliver(workspace, inputs):
+    workspace = Path(workspace)
+    evaluation = inputs["EVALUATION"]
+
+    result_doc = core.read_artifact(workspace / "state" / "script-result.json", "script-result")
+    journal = core.read_artifact(workspace / "state" / "method-journal.json", "method-journal")
+
+    all_files = {"state/method-journal.json", "state/script-result.json", "state/placement-evaluation.json"}
+    for round_entry in result_doc.get("rounds", []):
+        all_files |= _collect_round_files(workspace, round_entry)
+
+    delivery_dir = workspace / "delivery"
+    delivery_dir.mkdir(parents=True, exist_ok=True)
+    package_path = delivery_dir / "placement-artifacts.tar.gz"
+    with tarfile.open(package_path, "w:gz") as archive:
+        for relative in sorted(all_files):
+            full = workspace / relative
+            if full.is_file():
+                archive.add(full, arcname=relative, recursive=False)
+
+    report = dict(evaluation)
+    report["reportPath"] = "delivery/REPORT.md"
+    report["packagePath"] = "delivery/placement-artifacts.tar.gz"
+    core.write_artifact(delivery_dir / "report.json", report)
+
+    comparison = report.get("comparison", {})
+    journal_lines = "".join(
+        "- round %s: %s -> %s\n" % (entry.get("round"), entry.get("hypothesis", ""), entry.get("conclusion", ""))
+        for entry in journal.get("entries", [])
+    ) or "- (no journal entries)\n"
+    report_md = (
+        "# MAGE script-method test-structure placement delivery\n\n"
+        f"Goal met: {str(report['goalMet']).lower()}\n\n"
+        f"Proof level: {report.get('proofLevel')}\n\n"
+        f"Rules:\n\n```json\n{json.dumps(report['rules'], indent=2)}\n```\n\n"
+        f"Comparison against incumbent and reference:\n\n```json\n{json.dumps(comparison, indent=2)}\n```\n\n"
+        f"Stop reason: {report.get('domainReport', {}).get('stopReason', '')}\n\n"
+        f"Method journal:\n\n{journal_lines}\n"
+        f"Metrics (best state):\n\n```json\n{json.dumps(report['metrics'], indent=2)}\n```\n\n"
+        "Placement artifacts: placement-artifacts.tar.gz\n"
+    )
+    (delivery_dir / "REPORT.md").write_text(report_md, encoding="utf-8")
+
+    artifacts = [
+        _artifact("final-report-json", "delivery/report.json"),
+        {"name": "final-report", "path": "delivery/REPORT.md", "mediaType": "text/markdown"},
+        {"name": "placement-package", "path": "delivery/placement-artifacts.tar.gz", "mediaType": "application/gzip"},
+    ]
+    return {"schemaVersion": "1", "value": report, "artifacts": artifacts, "diagnostics": []}
+
+
 TASKS = {
     "prepare-case": prepare_case,
     "measure-incumbent": measure_incumbent,
+    "decide-round": decide_round,
+    "evaluate-placement": evaluate_placement,
+    "deliver": deliver,
 }
 
 
