@@ -6,7 +6,7 @@ bindings:
   mageCaseManifest: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/manifest.json
   consumerContext: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/consumer-context.json
   siteCapabilities: /data/eda/project/hima_harness/mage-inputs/scribe-case-v1/site-capabilities.json
-  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-mage-team/engineering-capabilities-mage-v1.json
   workspaceRoot: /data/eda/project/hima_harness/mage-runs
 ssh:
   destination: luzi@192.168.50.41

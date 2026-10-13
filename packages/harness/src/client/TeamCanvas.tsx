@@ -8,7 +8,7 @@ import { runWaitingReason } from '../card-labels.js';
 import type { PackContract, PackGraph } from '../packs.js';
 import type { RunView } from '../remote.js';
 import { teamViewState, type TeamEdge, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
-import { useLastLogLine } from './FabricNode.js';
+import type { ResidentActivity } from '../resident-activity.js';
 
 export interface TeamCanvasProps {
   readonly runId: string;
@@ -48,10 +48,18 @@ function Square({ ai, state, motionOff }: { ai: boolean; state: string; motionOf
 
 const MEMBER_SAID: Record<TeamNodeState, string> = { pending: 'Waiting', active: 'Working', done: 'Delivered', failed: 'Failed' };
 
-function LiveLine({ runId, node, fallback }: { runId: string; node: string; fallback: string }): ReactElement {
-  const line = useLastLogLine(runId, node, true);
-  const text = line === undefined || line.trim() === '' ? fallback : line.trim();
-  return <span className="hima-team-live" title={text}>{text}</span>;
+const KIND_SAID: Record<string, string> = { read: 'Reading', edit: 'Editing', execute: 'Running', search: 'Searching', plan: 'Planning', message: 'Thinking', other: 'Working' };
+
+/** What a working agent is doing now: its latest action, then its tool-call and plan counters. */
+function LiveLine({ activity, fallback }: { activity: ResidentActivity | undefined; fallback: string }): ReactElement {
+  const latest = activity?.latest;
+  const text = latest === undefined ? fallback : latest.kind === 'message' ? `${KIND_SAID.message}: ${latest.title}` : `${KIND_SAID[latest.kind] ?? KIND_SAID.other} ${latest.title}`;
+  const counter = activity === undefined ? undefined
+    : `${String(activity.toolCalls)} tool call${activity.toolCalls === 1 ? '' : 's'}${activity.planTotal > 0 ? ` · plan ${String(activity.planDone)}/${String(activity.planTotal)}` : ''}`;
+  return <>
+    <span className="hima-team-live" title={text} key={latest?.at ?? 'none'}>{text}</span>
+    {counter === undefined ? null : <span className="hima-team-count">{counter}</span>}
+  </>;
 }
 
 function Member({ runId, member, motionOff }: { runId: string; member: TeamMember; motionOff: boolean }): ReactElement {
@@ -62,7 +70,7 @@ function Member({ runId, member, motionOff }: { runId: string; member: TeamMembe
         <strong>{member.label}</strong>
         {member.role === undefined ? null : <span className="hima-team-role">{member.role}</span>}
         {member.state === 'active'
-          ? <LiveLine runId={runId} node={member.node} fallback="Reviewing the candidate" />
+          ? <LiveLine activity={member.activity} fallback="Reviewing the candidate" />
           : <span className={`hima-team-status hima-team-status-${member.state}`}>{MEMBER_SAID[member.state]}</span>}
         {member.summary === undefined ? null : <span className="hima-team-summary" title={member.summary}>{member.summary}</span>}
       </div>
@@ -81,7 +89,7 @@ function Station({ runId, station, motionOff, refFor }: { runId: string; station
         <div className="hima-team-head-text">
           <strong>{station.label}</strong>
           {station.activeNode !== undefined && team === undefined
-            ? <LiveLine runId={runId} node={station.activeNode} fallback="Working" />
+            ? <LiveLine activity={station.activity} fallback="Working" />
             : station.about === undefined || team === undefined ? null : <span className="hima-team-about">{station.about}</span>}
         </div>
       </header>
@@ -208,7 +216,9 @@ export const TEAM_STYLE = `
 .hima-team-head-text{display:flex;flex-direction:column;min-width:0}
 .hima-team-head-text strong{font-size:var(--hima-fs-title);line-height:var(--hima-lh-tight)}
 .hima-team-about,.hima-team-role{font-size:12px;color:var(--hima-ink-3)}
-.hima-team-live{font-size:12px;color:var(--hima-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.hima-team-live{font-size:12px;color:var(--hima-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;animation:hima-team-in .35s ease-out}
+.hima-team-count{font-size:11px;color:var(--hima-ink-3);font-variant-numeric:tabular-nums}
+@keyframes hima-team-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .hima-team-lines{list-style:none;margin:var(--hima-sp-2) 0 0 44px;padding:0;display:flex;flex-direction:column;gap:3px;font-size:var(--hima-fs-label)}
 .hima-team-line{display:flex;gap:var(--hima-sp-2);align-items:center;color:var(--hima-ink-3)}
 .hima-team-line-done,.hima-team-line-active{color:var(--hima-ink)} .hima-team-line-active{font-weight:600}

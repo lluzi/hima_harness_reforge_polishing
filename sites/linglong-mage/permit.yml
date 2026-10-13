@@ -1,13 +1,13 @@
 allowedReadRoots:
   - /data/eda/env
   - /data/eda/software/eda_tools/empyrean
-  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-mage-team
   - /data/eda/project/hima_harness/mage-inputs
   - /data/eda/project/hima_harness/mage-runs
 allowedWriteRoots:
   - /data/eda/project/hima_harness/mage-runs
 allowedWrappers:
-  - /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py
+  - /data/eda/project/hima_harness/operator-admin/resident-engineering-mage-team/resident-engineering-wrapper.py
   - /usr/bin/python3
   - python3
 forbidden:

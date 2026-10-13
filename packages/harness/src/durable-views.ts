@@ -2,6 +2,7 @@
 import type { FabricDeps, ExecutionContext } from './fabric.js';
 import { ledgerRecord, jobIdentity, type LedgerRecord, type RunRecord } from './ledger.js';
 import { createHash } from 'node:crypto';
+import { residentActivity } from './resident-activity.js';
 import { taskEffectStep } from './task-effects.js';
 import { isUtf8 } from 'node:buffer';
 import { loadSite, pathsOf } from './sites.js';
@@ -141,6 +142,7 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
       if(retainedSource){const source=await runtime.store.fact(retainedSource);if(!source||source.runId!==context.run.id||source.kind!=='effect-fact'||jsonDigest(object(source.payload).fact)!==jsonDigest(retained))throw new Error('Retained verified delivery source is unavailable');}
       return {taskId:task.identity.taskId,identity:task.identity,projection,current:task.valid,rootFlow:object(data.flow).irSha256===pack.flow?.irSha256,iterations:(data.iterations??[]) as {repeatId:string;iteration:number}[],...(retained?{retainedResult:retained}:{}),...(definition?.tool?{tool:definition.tool}:{}),sourceFactIds:task.result?[factIdentity('task-result',task.identity.effectId)]:retainedSource?[retainedSource]:[],...(definition?.contract?{contract:definition.contract}:{}),...(data.input===undefined?{}:{input:data.input as JsonValue}),...(task.result?{result:task.result}:{})};
     }));
+    for(const [index,view] of views.entries()) if(view.projection.state==='running'){const activity=residentActivity(context.run.id,view.taskId);if(activity)views[index]={...view,activity};}
     for(const [taskId,definition] of Object.entries(pack.flow?.tasks??{})) if(!views.some(task=>task.taskId===taskId))views.push({taskId,projection:{state:'pending'},tool:definition.tool,contract:definition.contract,sourceFactIds:[]});
     return views;
   }

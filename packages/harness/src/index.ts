@@ -1727,6 +1727,8 @@ export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Fra
 // renders from the very function the contract suite asserts on.
 export { sceneInputs } from './scene.js';
 export { teamViewState, outputAt as teamOutputAt } from './team-view.js';
+export { residentActivityOf } from './resident-activity.js';
+export type { ResidentActivity } from './resident-activity.js';
 export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric } from './team-view.js';
 // The Campaign file (#41 task 3): `hima-campaign/1`'s schema, parse/serialize, read/write under a
 // session workspace, and the overrides it hands Preparation. Exported here for the same reason every

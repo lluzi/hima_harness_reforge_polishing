@@ -32,6 +32,7 @@ import threading
 
 lock = threading.Lock()
 first = True
+_calls = 0
 
 
 def send(value):
@@ -39,7 +40,16 @@ def send(value):
         print(json.dumps(value), flush=True)
 
 
+def _update(update):
+    # Display traffic like a real native session's: the wrapper turns it into state.json activity.
+    send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "mage-dry-session-1", "update": update}})
+
+
 def _run_cli(cli, workspace, args):
+    global _calls
+    _calls += 1
+    _update({"sessionUpdate": "tool_call", "toolCallId": f"call-{_calls}", "kind": "execute",
+             "title": f"python3 {cli} {args[0]}", "status": "in_progress"})
     result = subprocess.run(
         [sys.executable, str(cli)] + [str(a) for a in args],
         cwd=str(workspace), capture_output=True, text=True,
@@ -324,6 +334,7 @@ def handle_initial_prompt():
 def prompt(request_id, initial):
     try:
         if initial:
+            _update({"sessionUpdate": "plan", "entries": [{"content": "read the task", "status": "completed"}, {"content": "deliver", "status": "pending"}]})
             handle_initial_prompt()
         send({"jsonrpc": "2.0", "id": request_id, "result": {"stopReason": "end_turn"}})
     except Exception as error:

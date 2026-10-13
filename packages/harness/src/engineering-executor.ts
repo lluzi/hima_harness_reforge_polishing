@@ -60,7 +60,9 @@ const digestHex = z.string().regex(/^[0-9a-f]{64}$/);
 const statePhase = z.enum(['starting', 'running', 'waiting', 'delivered', 'cancelling', 'stopped', 'failed', 'released']);
 const engineeringStateBody = z.strictObject({
   schema: z.literal(engineeringProtocol), taskId: z.string(), sessionId: z.string().optional(), phase: statePhase,
-  activeRequestId: z.string().optional(), detail: z.json().optional(), updatedAt: z.string(),
+  activeRequestId: z.string().optional(), detail: z.json().optional(),
+  /** Display facts from the native session (`resident-activity.ts`); never authority. */
+  activity: z.json().optional(), updatedAt: z.string(),
 });
 const engineeringState = engineeringStateBody.extend({ sha256: digestHex });
 const engineeringReceiptBody = z.strictObject({

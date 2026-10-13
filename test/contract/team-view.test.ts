@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadPack, teamViewState } from '@hima/harness';
+import { loadPack, residentActivityOf, teamViewState } from '@hima/harness';
 import type { RunView } from '@hima/harness';
 
 type DurableTaskView = NonNullable<RunView['tasks']>[number];
@@ -74,4 +74,17 @@ test('a view that names a node the graph does not have is refused, naming view.y
     writeFileSync(path.join(dir, packId, 'view.yml'), 'stations:\n  - id: a\n    label: A\n    checklist:\n      - { label: x, nodes: [no-such-node] }\n');
     assert.throws(() => loadPack(dir, packId), /view\.yml station "a" names "no-such-node"/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a working agent carries its live activity; a malformed activity is dropped, never an error', () => {
+  const activity = { toolCalls: 4, planDone: 1, planTotal: 3, latest: { kind: 'execute', title: 'python3 mage_placement_cli.py mage-round', at: '2026-10-13T08:00:00Z' } };
+  assert.deepEqual(residentActivityOf(activity), activity);
+  assert.equal(residentActivityOf({ toolCalls: -1, planDone: 0, planTotal: 0 }), undefined);
+  assert.equal(residentActivityOf('busy'), undefined);
+  assert.deepEqual(residentActivityOf({ toolCalls: 1, planDone: 0, planTotal: 0, latest: { kind: 7 } }), { toolCalls: 1, planDone: 0, planTotal: 0 });
+  const working = { ...task('engineer-place', 'running', 0), activity };
+  const state = teamViewState(pack.graph, pack.contract.tools, run([...before, working]))!;
+  assert.deepEqual(state.stations.find((s) => s.id === 'engineer')!.activity, activity);
+  const ended = teamViewState(pack.graph, pack.contract.tools, run([...before, working], 'ended-goal-met'))!;
+  assert.equal(ended.stations.find((s) => s.id === 'engineer')!.activity, undefined);
 });

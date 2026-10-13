@@ -106,7 +106,14 @@ try {
  const decideRoundTasks=resultTasks.filter((task:any)=>task.taskId==='decide-round');
  const finalDecision=decideRoundTasks.map((task:any)=>task.result.value).find((value:any)=>value.route==='stop');
  const openRequests=Number(finalDecision?.openRequestCount??NaN);
- const proof={mode,runId,tasks:resultTasks.length,rounds,readerJobs,engineeringJobs,productModelCalls:0,
+ // Every resident wrapper published live activity from the stand-in's session/update traffic, and the
+ // Host accepted those signed states (a refused state.json fails reconcile long before this line).
+ const {readdir:list,readFile:read}=await import('node:fs/promises');
+ const states=(await list(workspace,{recursive:true})).filter(name=>String(name).endsWith('state.json'));
+ let withActivity=0;
+ for(const name of states){try{const body=JSON.parse(await read(path.join(workspace,String(name)),'utf8'));if(body?.schema==='hima-resident-engineering/1'&&body.activity?.toolCalls>=1)withActivity++;}catch{}}
+ assert.ok(withActivity>=engineeringJobs,`expected live activity in every resident state.json (${engineeringJobs}); saw ${withActivity}`);
+ const proof={mode,runId,tasks:resultTasks.length,rounds,readerJobs,engineeringJobs,withActivity,productModelCalls:0,
   goalState:view.run.goalState,goalMet:deliverValue.goalMet,openRequests,decisionRequests,elapsedMs:Date.now()-startedAt};
  await writeFile(path.join(repoRoot,'.hima-tmp/dbos-migration/u8/dry',`mage-${mode}-proof.json`),JSON.stringify({...proof,rules:deliverValue.rules},null,2));
  console.log('mage dry phase: '+JSON.stringify(proof));

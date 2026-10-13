@@ -17,6 +17,7 @@
 //   in this round (the hand-over that is happening now).
 import type { PackContract, PackGraph, PackView } from './packs.js';
 import type { DurableTaskView, RunView } from './remote.js';
+import type { ResidentActivity } from './resident-activity.js';
 
 export type TeamNodeState = 'pending' | 'active' | 'done' | 'failed';
 export type TeamStationState = 'waiting' | 'active' | 'done' | 'failed';
@@ -32,6 +33,8 @@ export interface TeamMember {
   readonly summary?: string;
   /** How many rounds this member has delivered in. */
   readonly delivered: number;
+  /** While it works: its wrapper's live display facts. */
+  readonly activity?: ResidentActivity;
 }
 export interface TeamStation {
   readonly id: string;
@@ -45,6 +48,8 @@ export interface TeamStation {
   readonly activeNode?: string;
   /** For a single-agent station: its delivery summary in this round. */
   readonly summary?: string;
+  /** The active AI node's live display facts. */
+  readonly activity?: ResidentActivity;
 }
 export interface TeamEdge { readonly from: string; readonly to: string; readonly label?: string; readonly back: boolean; readonly lit: boolean }
 export interface TeamMetric { readonly label: string; readonly value: string; readonly goal?: string; readonly better?: 'lower' | 'higher' }
@@ -132,8 +137,10 @@ export function teamViewState(graph: Pick<PackGraph, 'nodes'> & { readonly view?
       const task = inRound(member.node);
       const state = stateOf(task);
       const summary = state === 'done' ? summaryOf(task) : undefined;
+      const activity = state === 'active' && !ended ? task?.activity : undefined;
       return { node: member.node, label: member.label, ...(member.role === undefined ? {} : { role: member.role }),
-        ai: aiNodes.has(member.node), state, ...(summary === undefined ? {} : { summary }), delivered: delivered(member.node) };
+        ai: aiNodes.has(member.node), state, ...(summary === undefined ? {} : { summary }), delivered: delivered(member.node),
+        ...(activity === undefined ? {} : { activity }) };
     });
     const nodeIds = [...station.checklist.flatMap((item) => item.nodes), ...(station.team ?? []).map((member) => member.node)];
     const shown = [...lines.filter((line) => line.state !== 'hidden').map((line) => line.state as TeamNodeState), ...(team ?? []).map((m) => m.state)];
@@ -144,7 +151,8 @@ export function teamViewState(graph: Pick<PackGraph, 'nodes'> & { readonly view?
     const summary = soleAi === undefined ? undefined : stateOf(inRound(soleAi)) === 'done' ? summaryOf(inRound(soleAi)) : undefined;
     return { id: station.id, label: station.label, ...(station.about === undefined ? {} : { about: station.about }),
       ai: nodeIds.some((id) => aiNodes.has(id)), state, lines, ...(team === undefined ? {} : { team }),
-      ...(activeNode === undefined || ended ? {} : { activeNode }), ...(summary === undefined ? {} : { summary }) };
+      ...(activeNode === undefined || ended ? {} : { activeNode }), ...(summary === undefined ? {} : { summary }),
+      ...(activeNode === undefined || ended || inRound(activeNode)?.activity === undefined ? {} : { activity: inRound(activeNode)!.activity! }) };
   });
 
   const byId = new Map(stations.map((station) => [station.id, station]));
