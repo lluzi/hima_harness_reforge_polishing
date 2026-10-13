@@ -151,6 +151,24 @@ goal:
   max_priority_move_um: {type: number, unit: um, min: 0, max: 100000, default: 100}
 strategy:
   incumbentComparison: {type: choice, options: [retained, native], default: retained}
+words:
+  target_dropped_count:
+    label: Dropped structures allowed
+    unit: count
+  max_target_distance_um:
+    label: Priority mark distance from its CT target
+    unit: um
+  max_order_deviation_lr:
+    label: Left/right placement-order deviation allowed
+    unit: rank
+  max_order_deviation_tb:
+    label: Top/bottom placement-order deviation allowed
+    unit: rank
+  max_priority_move_um:
+    label: Priority mark movement budget from the frozen start
+    unit: um
+  incumbentComparison:
+    label: Incumbent comparison basis
 knowledge:
 - file: script-method-playbook.md
   purpose: The Engineer's whole method -- the four stages, the known failures, the action order,
