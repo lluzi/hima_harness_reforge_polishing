@@ -123,3 +123,114 @@ steps run by hand; no agent was involved yet.
 The competitor's numbers are their own circuit at one corner, on a foundry PDK; ours are a different
 sizing on an open PDK. The comparison is coverage and who decides, not the values. The agent's part
 (the App run with the resident design agent) is the next step.
+
+## Three more recordings, read frame by frame (2026-10-13)
+
+The user shared three more silent screen recordings. As before, their foundry process, PDK cell
+names, user accounts, host and library names are left out of this note.
+
+| Recording | Length | What it is |
+| --- | --- | --- |
+| A | 16 min, real time | One full bandgap run on Oct 12, 17:02 to 17:18 |
+| B | 1 min, edited | Three sessions from three days and three users, spliced into one reel |
+| C | 2 min, real time | The output-buffer layout run from the first video, Oct 11 |
+
+### What the bandgap run does (recording A)
+
+1. **Input and approvals.** The prompt is one line: "generate a bandgap-core front-end circuit".
+   - The agent reads a prepared IP package: `topology.md`, `interface.yaml` and `metrics.yaml`. The
+     topology, pins and specs all come from that package.
+   - It explains the plan, and the person types "continue". Nobody touches the screen again until
+     the run ends.
+2. **Execution.** Each stage is one call to the same script, `run_fullflow.sh --from N --to N`:
+
+   | Stage | Time | What it produced |
+   | --- | --- | --- |
+   | Schematic and stability variant | 31 s | 46 devices, 30 nets, 345 wires; "0 errors, 6 warnings" left unaddressed |
+   | Testbenches | 18 s | Two testbenches |
+   | Simulation platform and baseline | 5 min 57 s | Platform with 8 tests; about 3.5 min shows nothing on screen |
+   | Optimizer: differential evolution, then pattern search | 4 min 12 s | 14 variables, 134 evaluations, about 1.9 s each, run headless |
+   | Write-back and re-run | 2 min 1 s | Sizes written back, platform re-run |
+
+   Total: about 15 min, on a local Qwen3.8 27B model.
+3. **Conditions simulated.** One condition, 27 °C, typical process.
+   - The Corner Setup tab is never opened, and Min = Max = Nominal in every result row.
+   - TC is a box over three temperatures.
+   - There are no process corners and no Monte Carlo.
+4. **Results.** The final values are the same as in the first video: VBG 1.2015 V at 3.3 V and
+   1.1843 V at 2.0 V, IQ 2.89 µA, TC 95.2 ppm/°C, PM 64.95°. The margins are thin even at that one
+   condition:
+   - VBG at 2.0 V sits 8 mV inside its limit;
+   - TC is 4.8 % inside its limit;
+   - PSRR fell from 49.2 to 46.4 dB, and the agent does not mention it;
+   - the bias transistors sit at the minimum width the optimizer allowed.
+5. **Who judges.** The pass/fail column belongs to the vendor's simulation platform, but the
+   agent's script wrote the limits and the measurement expressions.
+   - **The final table marks the fast start-up time as −48.88 ns, a pass against "< 100 µs".** The
+     expression is the first crossing of VBG at 1.176 V minus the crossing of EN at 1.65 V, so a
+     negative time means VBG crossed the threshold before EN reached the trigger. Nobody flags it.
+   - The agent's own counts disagree with its tables: "4 hard specs fail" with 5 listed, and "11
+     items pass" with 10 rows.
+6. **Not done:** no layout, DRC, LVS, extraction or post-layout simulation of this bandgap.
+
+### What the layout run does (recording C)
+
+- **The run.** The prompt is "draw the layout of" the output-buffer cell, which already exists in a
+  reference library. The flow replays it:
+  - it mounts the stored reference layout;
+  - then it wipes, realizes from the schematic, aligns 13 groups and routes;
+  - the pass rule is a zero difference from the reference: 557/557 shapes and 323/323 vias.
+- **Sign-off.** The vendor's sign-off tool reports **LVS PASS**, with the warning "Unequally merged
+  mosfets were matched".
+  - DRC reports **95 violations over 16 rules**, so the layout is not DRC-clean. The agent waives
+    them as "identical to the golden baseline, chip-level false alarms".
+  - The DRC report is never shown.
+  - There is no extraction and no post-layout simulation.
+- **Size and time.** The cell is 68.4 × 29.7 µm with 8 nets, and the run takes about 2 min.
+
+### What the edited reel shows (recording B)
+
+The 1-minute reel joins three separate sessions:
+
+| Part | When and who | What it shows | How it is cut |
+| --- | --- | --- | --- |
+| Bandgap run | Oct 12, one user | The front-end run from prompt to re-simulation | About 8 min cut, then roughly 40× time-lapse during the optimizer |
+| Layout run | Oct 11, another user | The output-buffer layout from recording C | |
+| Top-level layout | Oct 13, a third user | The agent opening a top-level layout and an LVS report | |
+
+The last part's LVS report was made on Oct 12 by a fourth person, so the agent only opens files. The
+reel reads as "front end, then layout, then top-level LVS", but none of the three parts uses the
+bandgap from the first. Only the desktop clock shows the dates.
+
+### What this changes for our demo
+
+**Where they are stronger:**
+- **In the vendor's tools.** The agent draws real cellviews in the vendor's editor and builds a
+  native simulation platform with colour-coded pass/fail tables.
+- **Simple to drive.** A one-word approval is enough, there is a stage chart, and every result has
+  a baseline-versus-final table.
+- **Built-in optimizer.** It runs about 2 evaluations per second, with area as part of the
+  objective.
+- **Fast.** About 15 min from prompt to a sized schematic.
+
+The App run should match these on screen: a stage strip, a baseline-versus-final table, and the
+live round.
+
+**What we lead with**, all on one cell in one continuous take with an honest clock:
+- **30 PVT corners and 100-run Monte Carlo**, judged outside the agent.
+- **A refusal shown on screen.** When the agent claims a pass, the judge checks it and refuses
+  wherever a line fails at some corner.
+- **Layout of the cell we sized,** with DRC 0 on two decks rather than 95 waived violations, LVS
+  matched on two checks, and a post-layout re-check at every corner.
+- **A start-up metric that is hard to fool.** It measures entry into ±2 % of the final value and
+  staying there, and it refuses a final value off the DC solution. A first threshold crossing does
+  not count.
+
+**Fair limits on our side:**
+- Both flows start from a given topology.
+- Our start-up metric clamps an early entry to 0 µs rather than flagging it.
+- Our agent has not yet driven the run in the App.
+
+**A useful extra panel: what one condition hides.** Size a cut that just meets the sheet at
+nominal, with margins like theirs, then show the same design failing lines across the 30 corners
+and Monte Carlo. This uses our own PDK and design; we cannot run their design.
