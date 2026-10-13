@@ -1,4 +1,5 @@
 {
+  "bgokTap": 90,
   "caps": {
     "CC": {
       "lUm": 44.72,
@@ -25,11 +26,11 @@
     },
     "M5": {
       "lUm": 40.0,
-      "wUm": 13.12
+      "wUm": 13.01
     },
     "M6": {
       "lUm": 2.0,
-      "wUm": 2.15
+      "wUm": 2.13
     },
     "MB0": {
       "lUm": 5.0,
@@ -47,17 +48,33 @@
       "lUm": 1.0,
       "wUm": 1.0
     },
-    "MEN4": {
+    "MEN5": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN6": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN7": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MENI1": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MENI2": {
       "lUm": 1.0,
       "wUm": 1.0
     },
     "MO": {
       "lUm": 2.0,
-      "wUm": 8.6
+      "wUm": 8.53
     },
     "MOK1": {
       "lUm": 1.0,
-      "wUm": 4.0
+      "wUm": 1.0
     },
     "MOK2": {
       "lUm": 5.0,
@@ -68,6 +85,62 @@
       "wUm": 1.0
     },
     "MOK4": {
+      "lUm": 1.0,
+      "wUm": 4.0
+    },
+    "MOK5": {
+      "lUm": 1.0,
+      "wUm": 10.0
+    },
+    "MOK6": {
+      "lUm": 1.0,
+      "wUm": 10.0
+    },
+    "MOK7": {
+      "lUm": 4.0,
+      "wUm": 2.0
+    },
+    "MOK8": {
+      "lUm": 4.0,
+      "wUm": 8.0
+    },
+    "MOKB": {
+      "lUm": 5.0,
+      "wUm": 0.39
+    },
+    "MOKC": {
+      "lUm": 10.0,
+      "wUm": 10.0
+    },
+    "MOKCB": {
+      "lUm": 8.0,
+      "wUm": 8.0
+    },
+    "MOKF1": {
+      "lUm": 22.56,
+      "wUm": 0.22
+    },
+    "MOKF2": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MOKF3": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MOKI1": {
+      "lUm": 5.0,
+      "wUm": 0.39
+    },
+    "MOKI2": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MOKO1": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MOKO2": {
       "lUm": 1.0,
       "wUm": 1.0
     },
@@ -95,10 +168,11 @@
   "ibiasUa": 0.2,
   "intent": {
     "bgokNa": 50.0,
+    "bgokTap": 90,
     "ccPf": 4.0,
     "coutPf": 0.0,
     "driveRatio": 4.0,
-    "iCoreUa": 1.169,
+    "iCoreUa": 1.157,
     "ibiasUa": 0.2,
     "isuNa": 25.0,
     "itailUa": 0.4,
@@ -121,7 +195,7 @@
       "gmId": 20.0,
       "lUm": 10.0
     },
-    "r2r1": 9.8516,
+    "r2r1": 9.8565,
     "resSegMaxUm": 40.0,
     "resWUm": 2.0
   },
@@ -135,17 +209,17 @@
   "report": "reports/size-agent/r1/analysis.md",
   "resistors": {
     "R1": {
-      "lUm": 30.27,
+      "lUm": 30.59,
       "s": 3,
       "wUm": 2.0
     },
     "R2a": {
-      "lUm": 39.01,
+      "lUm": 39.44,
       "s": 23,
       "wUm": 2.0
     },
     "R2b": {
-      "lUm": 39.01,
+      "lUm": 39.44,
       "s": 23,
       "wUm": 2.0
     }

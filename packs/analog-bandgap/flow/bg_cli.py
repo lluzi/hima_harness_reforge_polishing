@@ -98,7 +98,10 @@ BGOK_LEVEL_PCT = 10.0                    # bgok must be within this % of vdd of 
 # reference (start_time_us), and a monitor that follows en or vdd asserts with VBG near 0. The trip VBG (VBG when bgok first
 # leaves its low level) is reported at every corner.
 BGOK_TRIP_MIN_PCT = 50.0
-LADDER_TAPS, LADDER_UNITS, BGOK_TAP = 120, 122, 100   # bgcore: tap pins vref_1..120; RL1..RL122 units plus RL0 (half a unit); BGOK senses vref_100
+LADDER_TAPS, LADDER_UNITS = 120, 122     # bgcore: tap pins vref_1..120; RL1..RL122 units plus RL0 (half a unit)
+BGOK_MARGIN_V = 0.05                     # bgcore: the BGOK tap sits this far above the coldest VBE1 plus the comparator's offset
+BGOK_MIRROR_RATIO = 4.0                  # bgcore: MOK8 / MOK7, the comparator's built-in offset toward "not OK"
+BGOK_SLOPE_N = 1.3                       # bgcore: the weak-inversion slope factor used for that offset (n VT ln ratio)
 
 
 def claim_boundary(ibias_ua=IBIAS_UA):
@@ -148,20 +151,61 @@ TEMPLATES = {
         about="PMOS-input five-transistor OTA, then an NMOS transconductor into a PMOS diode that the output device mirrors"),
 }
 # bgcore (the competitor's case on an open PDK): kuijk-p5t-mirror plus a 122.5-unit reference ladder from vbg (taps vref_1..120
-# are pins) and a BGOK monitor: MOK1 senses vref_100 against the pull-up MOK2 (a mirror of the bias, so it follows en),
-# MOK3/MOK4 invert ok1 into bgok; with en low MEN4 holds ok1 at vdd, so bgok is driven low. The bench's reference is 0.2 uA.
+# are pins), an en inverter (enb), and a BGOK monitor. The bench's reference is 0.2 uA.
+#
+# Start-up: with en low, MEN5 holds the OTA output o1 (and CC) at vss. Without it o1 floated up to about 3 V in shutdown on
+# gf180mcuD; at en the precharged o1 drove M5 hard, VBG overshot to about vdd for 10-15 us (en1us), and on a slow en ramp the
+# falling o1 dragged the input pair's gates a and b (through the inverted pair's gate capacitance) to -1.2 V, VBG to -1.05 V
+# (en50us, ff 3.3 V 125 C; the same with errpreset=conservative and maxstep=20 ns, 2026-10-13). MEN7 holds the start-up
+# node su at vss too: it floated to 1.3-1.65 V in shutdown, so at en MSU3 pulled g down at once and VBG spiked to 1.7 V
+# (2.2 V after layout) on the 1 us en ramp at 3.3 V; held low, su rises through MSU1's 25 nA after en.
+#
+# BGOK: a comparator of the ladder tap vref_<bgokTap> (MOK5) against the core node a (= VBE1, MOK6), a 10/1 PMOS pair (deep weak
+# inversion at bgokNa, so the n VT ln 4 offset holds; at 4/2 it read "not OK" at 2.0 V, -40 C on the synthetic decks) on the tail
+# MOK2 (a bias mirror at bgokNa), NMOS mirror MOK7/MOK8 with MOK8 4 x MOK7, so equal inputs read "not OK" and the pair (in weak
+# inversion) needs tap - a above n VT ln 4: a PTAT offset that partly offsets VBE's fall with temperature. The tap is the
+# method's: it sits above the coldest VBE with margin when VBG is settled, and in the core's stuck state (VBG close to VBE,
+# no current in R2) every tap is below a, so the comparator reads "not OK" there at any temperature. okc (high = OK) drives
+# MOKI2 against the bias pull-up MOKI1 into okcb (low = OK); okcb lets the bias mirror MOKF1 charge the node okf (MOS cap
+# MOKC) through MOKF2, and discharges it fast through MOKF3. okf is buffered (MOKO1/MOKO2) into okg, which switches bgok's
+# pull-up, the bias mirror MOKB through MOK3, against the strong pull-down MOK4; MOKCB slows bgok's rise to about 10-20 us.
+# After layout on gf180mcuD, bgok coupled about 10 fF each into b, d1 and the sensed tap: a fast bgok edge pulled VBG out of
+# its band 60 us after it had settled, and with a full-swing inverter bgok followed vdd to 0.27 V early in the power-up ramp
+# (subthreshold leakage division, okg lagging). With no bias current bgok has no pull-up at all. So bgok
+# can rise only through bias current (power-on safe: no bias, no bgok) and only after okf has charged (a deglitch delay of
+# tens of us, bgokNa / 8 into MOKC, while VBG settles: the VBE-referenced comparator alone trips at about half of VBG at
+# 125 C). With en low: MOK1 holds okc low, MEN6 holds okcb high, so okf and bgok are driven low.
 TEMPLATES["bgcore"] = dict(
     mos=dict(TEMPLATES["kuijk-p5t-mirror"]["mos"],
-             MOK1=("nmos", "switch", "ok1", "vref_%d" % BGOK_TAP, "vss", "vss"),   # sense: on once vref_100 is up
-             MOK2=("pmos", "bgok", "ok1", "ibias", "vdd", "vdd"),                  # pull-up from the bias mirror (bgokNa)
-             MOK3=("pmos", "switch", "bgok", "ok1", "vdd", "vdd"),                 # the output inverter
-             MOK4=("nmos", "switch", "bgok", "ok1", "vss", "vss"),
-             MEN4=("pmos", "switch", "ok1", "en", "vdd", "vdd")),                  # en low: ok1 high, so bgok is driven low
-    caps=TEMPLATES["kuijk-p5t-mirror"]["caps"], extra={"driveRatio", "ladderRUnitKohm", "bgokNa"}, ibiasUa=0.2, ladder=True,
+             MENI1=("pmos", "switch", "enb", "en", "vdd", "vdd"),     # the en inverter: enb
+             MENI2=("nmos", "switch", "enb", "en", "vss", "vss"),
+             MEN5=("nmos", "switch", "o1", "enb", "vss", "vss"),      # en low: the OTA output (and CC) at vss
+             MEN7=("nmos", "switch", "su", "enb", "vss", "vss"),      # en low: the start-up node at vss
+             MOK2=("pmos", "bgok", "okt", "ibias", "vdd", "vdd"),     # comparator tail, a bias mirror (bgokNa)
+             MOK5=("pmos", "switch", "okd", "@tap", "okt", "vdd"),    # pair: the ladder tap ...
+             MOK6=("pmos", "switch", "okc", "a", "okt", "vdd"),       # ... against VBE1 (gate only on a)
+             MOK7=("nmos", "switch", "okd", "okd", "vss", "vss"),     # mirror load; MOK8 is 4 x MOK7
+             MOK8=("nmos", "switch", "okc", "okd", "vss", "vss"),
+             MOK1=("nmos", "switch", "okc", "enb", "vss", "vss"),     # en low: okc low
+             MOKI1=("pmos", "bgok", "okcb", "ibias", "vdd", "vdd"),   # okcb pull-up, a bias mirror (bgokNa)
+             MOKI2=("nmos", "switch", "okcb", "okc", "vss", "vss"),
+             MEN6=("pmos", "switch", "okcb", "en", "vdd", "vdd"),     # en low: okcb high
+             MOKF1=("pmos", "bgokslow", "okp", "ibias", "vdd", "vdd"),  # okf's charger, a bias mirror (bgokNa / 8)
+             MOKF2=("pmos", "switch", "okf", "okcb", "okp", "vdd"),
+             MOKF3=("nmos", "switch", "okf", "okcb", "vss", "vss"),   # okf's fast discharge
+             MOKC=("nmos", "switch", "vss", "okf", "vss", "vss"),     # okf's capacitance (a MOS capacitor)
+             MOKO1=("pmos", "switch", "okg", "okf", "vdd", "vdd"),    # buffer: okf -> okg -> bgok
+             MOKO2=("nmos", "switch", "okg", "okf", "vss", "vss"),
+             MOKB=("pmos", "bgok", "okq", "ibias", "vdd", "vdd"),     # bgok's pull-up: a bias mirror (bgokNa) ...
+             MOK3=("pmos", "switch", "bgok", "okg", "okq", "vdd"),    # ... switched by okg
+             MOK4=("nmos", "switch", "bgok", "okg", "vss", "vss"),    # bgok's pull-down, strong
+             MOKCB=("nmos", "switch", "vss", "bgok", "vss", "vss")),  # bgok's capacitance (a MOS capacitor): a slow rise
+    caps=TEMPLATES["kuijk-p5t-mirror"]["caps"], extra={"driveRatio", "ladderRUnitKohm", "bgokNa", "bgokTap"}, ibiasUa=0.2, ladder=True,
     # MSU3's gate is the start-up node su, which a ~25 nA pull-up drives at 0.2 uA. With MSU3 at 1 x 1 um Spectre 23.1
     # crashed (segmentation fault) at a random time in every attempt of the power-up transient at sf, 2.0 V, 125 C on
     # gf180mcuD; 30 fF on su, or MSU3 at 2 x 4 um, ended it (2026-10-13, 3 of 3 attempts each).
-    switchUm={"MOK1": (4.0, 1.0), "MSU3": (2.0, 4.0)},
+    switchUm={"MSU3": (2.0, 4.0), "MOK5": (10.0, 1.0), "MOK6": (10.0, 1.0), "MOK7": (2.0, 4.0), "MOK8": (2.0 * BGOK_MIRROR_RATIO, 4.0),
+              "MOKC": (10.0, 10.0), "MOK4": (4.0, 1.0), "MOKCB": (8.0, 8.0)},
     about="kuijk-p5t-mirror with a 120-tap reference ladder and a BGOK monitor (the bgcore case)")
 TOPOLOGY = "kuijk-p5t"                   # the spec's template, the default
 
@@ -204,7 +248,7 @@ def switch_um(name):
 SWITCH_UM = {"MSU2": (0.5, 20.0)}         # W, L of the switches (others 1 x 1 um; a template's switchUm overrides)
 RESISTORS = {"R1": ("b", "c"), "R2a": ("vbg", "a"), "R2b": ("vbg", "b")}
 CAP_KEYS = {"CC": "ccPf", "CO": "coutPf"}
-DESIGN_KEYS = {"schema", "pdk", "topology", "round", "n", "ibiasUa", "devices", "resistors", "caps", "ladder", "intent", "summary", "reason", "report"}
+DESIGN_KEYS = {"schema", "pdk", "topology", "round", "n", "ibiasUa", "devices", "resistors", "caps", "ladder", "bgokTap", "intent", "summary", "reason", "report"}
 INTENT_KEYS = {"n", "ibiasUa", "itailUa", "iCoreUa", "r2r1", "isuNa", "resWUm", "resSegMaxUm", "ccPf", "coutPf", "mcBandSharePct",
                "pair", "load", "mirror", "out"}
 GROUPS = ("pair", "load", "mirror", "out")
@@ -330,9 +374,10 @@ def cell_spice(card, design, mismatch=False):
     for name, p, q in ladder_resistors(topology):
         u = design["ladder"]
         lines.append("%s %s %s vss %s %s" % (inst(card, "res", name), p, q, res["model"], res["params"].format(w=um(u["wUm"]), l=um(u["lUm"]), s=1)))
+    net = lambda x: "vref_%d" % int(design["bgokTap"]) if x == "@tap" else x     # bgcore: the tap BGOK senses
     for name, (kind, _group, d, g, s, b) in tpl["mos"].items():
         dv = design["devices"][name]
-        lines.append(mos_line(card, kind, name, (d, g, s, b), dv["wUm"], dv["lUm"], mismatch))
+        lines.append(mos_line(card, kind, name, tuple(net(x) for x in (d, g, s, b)), dv["wUm"], dv["lUm"], mismatch))
     for name, (p, q) in tpl["caps"].items():
         c = (design.get("caps") or {}).get(name)
         for k in range(1, int(c["m"]) + 1) if c else ():
@@ -588,12 +633,17 @@ def seed_facts():
     return None if AHDL_ORIGIN[0] is None else dict(AHDL_ORIGIN[0])
 
 
-def spectre_retry(command, out_dir, name, lines, timeout_s=1800):
+class SpectreCrash(ToolError):
+    """Spectre crashed (segmentation fault) on every attempt."""
+
+
+def spectre_retry(command, out_dir, name, lines, timeout_s=1800, attempts=None):
     """Write the netlist under a fresh stem and run Spectre; on a crash, again under a new stem (the
     crashed attempt's files stay). Returns the raw directory, the netlist and the attempts used."""
     import shutil
     seed = AHDL_SEED[0] or (Path(out_dir) / ".spectre-ahdl")
-    for attempt in range(1, SPECTRE_ATTEMPTS + 1):
+    attempts = attempts or SPECTRE_ATTEMPTS
+    for attempt in range(1, attempts + 1):
         stem = ota.fresh_stem(out_dir, name, (".scs", ".scs.log", ".raw", ".ahdlSimDB"))
         netlist, raw, db = Path(str(stem) + ".scs"), Path(str(stem) + ".raw"), Path(str(stem) + ".ahdlSimDB")
         write_text(netlist, "\n".join(lines))
@@ -607,9 +657,11 @@ def spectre_retry(command, out_dir, name, lines, timeout_s=1800):
         except ToolError:
             log = Path(str(netlist) + ".log")
             text = log.read_text(errors="replace") if log.is_file() else ""
-            if "Segmentation fault" not in text or attempt == SPECTRE_ATTEMPTS:
+            if "Segmentation fault" not in text:
                 raise
-            print("spectre crashed on %s (segmentation fault); attempt %d of %d" % (netlist.name, attempt + 1, SPECTRE_ATTEMPTS), file=sys.stderr)
+            if attempt == attempts:
+                raise SpectreCrash("spectre crashed (segmentation fault) on %s, %d attempt(s); log %s" % (netlist.name, attempts, log))
+            print("spectre crashed on %s (segmentation fault); attempt %d of %d" % (netlist.name, attempt + 1, attempts), file=sys.stderr)
 
 
 def run_bench(sim, command, inputs, corner, vdd, ibias_ua, cell_path, out_dir, name, temps=TEMPS):
@@ -1300,6 +1352,7 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
       through the 122.5 units at the VBG target (0.5 uA at an 8 uA line), and the BGOK pull-up (bgokNa)
       50 nA. Both come out of the IQ budget first: the ladder at its lowest resistance over the corners
       and temperatures, times (1 + 1 / driveRatio) because the output device and its drive branch carry it.
+      The BGOK tap from the coldest VBE1 (bgok_tap).
       CC scales with the tail: 10 pF per uA (4 pF at 0.4 uA), so the OTA keeps the slew rate itail/CC and the
       unity-gain frequency gm/CC of the 0.5 uA design; at 10 pF the power-up from vdd = 0 slewed for 116 us
       at ss 2.0 V 125 C on gf180mcuD, at 4 pF it took 50 us (2026-10-13)."""
@@ -1349,7 +1402,7 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     vbg_est = spec["vbgV"]
     for _pass in range(2 if a_min else 1):
         il_hot = ladder_ua(ru, vbg_est) * a27 / a_min if a_min else 0.0
-        icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3 - ibgok * 1e-3 - il_hot * (1.0 + (1.0 / drive if drive else 0.0))) / (branches * k_hot)
+        icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3 - BGOK_MIRRORS_DC * ibgok * 1e-3 - il_hot * (1.0 + (1.0 / drive if drive else 0.0))) / (branches * k_hot)
         if "iCoreUa" not in ch and icore <= 0:
             raise ToolError("the IQ line %g uA leaves no current for the core" % spec["iqMaxUa"])
         icore = pick("iCoreUa", round(icore, 3))
@@ -1403,11 +1456,29 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     if "driveRatio" in keys:
         intent["driveRatio"] = pick("driveRatio", 4.0)
     if has_ladder(topology):
-        intent.update(ladderRUnitKohm=ru, bgokNa=ibgok)
+        intent.update(ladderRUnitKohm=ru, bgokNa=ibgok, bgokTap=int(pick("bgokTap", bgok_tap(devices, icore, vbg_est))))
     return intent
 
 
-BGOK_NA = 50.0                           # bgcore: the BGOK pull-up's default current (nA), a mirror of the reference
+BGOK_NA = 50.0                           # bgcore: the BGOK mirrors' default current (nA), each a mirror of the reference
+# bgcore: okf's charger runs at bgokNa / 8: tens of us from "OK" to bgok high. The delay scales with the buffer's threshold
+# (about vdd / 2): at / 16 bgok had not risen by the end of the 300 us transient at 3.3 V and -40 C (synthetic decks).
+BGOK_DELAY_DIV = 8
+BGOK_MIRRORS_DC = 2                      # bgcore: BGOK mirrors that draw DC current (the comparator tail; okcb's pull-up when OK)
+
+
+def bgok_tap(devices, icore_ua, vbg_v):
+    """bgcore's BGOK tap: the lowest ladder tap k whose settled voltage, VBG k / 122.5, sits BGOK_MARGIN_V above the
+    highest VBE1 the PNP shows at -40 C (its coldest) at the core current over the characterized corners, plus the
+    comparator's built-in offset there (n VT ln BGOK_MIRROR_RATIO). The comparator then reads "OK" with margin at every
+    corner once VBG is settled; a lower tap raises the trip VBG at the hot corners (the trip is VBG = (VBE1 + offset) x
+    122.5 / k: VBE-referenced, so it falls with temperature; the PTAT offset takes back part of that)."""
+    vbe = max(vbe_at(devices, c, icore_ua, -40.0) for c in devices["pnp"]["vbe"])
+    offset = BGOK_SLOPE_N * K_Q * (T0K - 40.0) * math.log(BGOK_MIRROR_RATIO)
+    k = int(math.ceil((LADDER_UNITS + 0.5) * (vbe + offset + BGOK_MARGIN_V) / vbg_v - 1e-9))
+    if not 1 <= k <= LADDER_TAPS:
+        raise ToolError("no ladder tap sits %g V above VBE1 at -40 C (%.3f V) with VBG %.3f V" % (BGOK_MARGIN_V, vbe, vbg_v))
+    return k
 CC_PF_PER_UA = 10.0                      # bgcore: CC per uA of tail current (the 0.5 uA design's 10 pF at 1 uA)
 
 
@@ -1466,14 +1537,15 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     - CC (on the OTA output) and CO (vbg to vss) as square capacitors; 0 pF leaves one out;
     - bgcore: the output device (and so M5, M6) also carries the ladder's current, the core's VBG (core_vbg)
       over 122.5 units of ladderRUnitKohm; the ladder's unit is one segment of ladderRUnitKohm at resWUm
-      (`ladder`: {wUm, lUm}); the BGOK pull-up MOK2 mirrors MB0 at bgokNa like MSU1; MOK1, MOK3, MOK4 and
+      (`ladder`: {wUm, lUm}); the BGOK mirrors mirror MB0 like MSU1: MOK2, MOKI1 and MOKB at bgokNa, MOKF1 at bgokNa / 8;
+      the BGOK comparator senses vref_<bgokTap> (`bgokTap`); its other devices and
       MEN4 are fixed small devices."""
     tpl = template(topology)
     problems = intent_problems(intent, topology)
     if problems:
         raise ToolError("the intent is refused:\n- " + "\n- ".join(problems))
     for key in ("ibiasUa", "itailUa", "iCoreUa", "r2r1", "isuNa", "resWUm", "resSegMaxUm") + \
-            (("ladderRUnitKohm", "bgokNa") if has_ladder(topology) else ()):
+            (("ladderRUnitKohm", "bgokNa", "bgokTap") if has_ladder(topology) else ()):
         if intent[key] <= 0:
             raise ToolError("the intent needs a positive %s" % key)
     n = intent["n"]
@@ -1501,7 +1573,12 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     i_out = 2 * intent["iCoreUa"]
     ladder = None
     if has_ladder(topology):
-        out["MOK2"] = pull_up(intent["bgokNa"])
+        for name, (_kind, group, *_n) in tpl["mos"].items():
+            if group in ("bgok", "bgokslow"):
+                out[name] = pull_up(intent["bgokNa"] / (BGOK_DELAY_DIV if group == "bgokslow" else 1))
+        tap = intent["bgokTap"]
+        if tap != int(tap) or not 1 <= tap <= LADDER_TAPS:
+            raise ToolError("bgokTap must be a whole number from 1 to %d (a tap pin)" % LADDER_TAPS)
         i_out += ladder_ua(intent["ladderRUnitKohm"], core_vbg(devices, n, intent["iCoreUa"], intent["r2r1"]))
         res = card["devices"]["res"]
         ladder = res_geometry(card, devices, intent["ladderRUnitKohm"] * 1e3, intent["resWUm"], res["lMaxUm"])
@@ -1538,7 +1615,7 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     devices_out = {name: out[name] for name in tpl["mos"]}
     sized = dict(n=int(n), ibiasUa=float(ib), devices=devices_out, resistors=resistors, caps=caps)
     if ladder is not None:
-        sized["ladder"] = ladder
+        sized.update(ladder=ladder, bgokTap=int(intent["bgokTap"]))
     return sized
 
 
@@ -1691,8 +1768,13 @@ def validate_design(ws, path=None, files_root=None):
             problems.append("ladder (the reference ladder's unit segment, {wUm, lUm}) is missing")
         else:
             sized("ladder", doc["ladder"], card["devices"]["res"])
-    elif "ladder" in doc:
-        problems.append("ladder: the %s template has no reference ladder" % topology)
+        tap = doc.get("bgokTap")
+        if not isinstance(tap, int) or isinstance(tap, bool) or not 1 <= tap <= LADDER_TAPS:
+            problems.append("bgokTap (the ladder tap BGOK senses) must be a whole number from 1 to %d (found %r)" % (LADDER_TAPS, tap))
+    else:
+        for key in ("ladder", "bgokTap"):
+            if key in doc:
+                problems.append("%s: the %s template has no reference ladder" % (key, topology))
     caps = doc.get("caps")
     if not isinstance(caps, dict) or not set(caps) <= set(tpl["caps"]):
         problems.append("caps must be an object with at most %s" % ", ".join(tpl["caps"]))
@@ -1711,7 +1793,7 @@ def validate_design(ws, path=None, files_root=None):
             except ToolError as error:
                 problems.append("the intent cannot be sized: %s" % error)
             else:
-                if any(want.get(key) != doc.get(key) for key in ("n", "ibiasUa", "devices", "resistors", "caps", "ladder")):
+                if any(want.get(key) != doc.get(key) for key in ("n", "ibiasUa", "devices", "resistors", "caps", "ladder", "bgokTap")):
                     problems.append("the sizes do not follow the intent (draft size gives them): re-draft from the intent, "
                                     "or remove the intent to deliver a hand-sized design")
     for key in ("summary", "reason"):
@@ -1916,7 +1998,7 @@ def measure_rpt(record):
         "x".join([um(d["resistors"]["R2a"]["wUm"]), um(d["resistors"]["R2a"]["lUm"]), str(d["resistors"]["R2a"]["s"])]),
         cap_text(d["caps"].get("CC")), cap_text(d["caps"].get("CO"))) + (
         "" if not d.get("ladder") else " Ladder unit %s x %s um (W x L), 122.5 units; bgok monitor on vref_%d." % (
-            um(d["ladder"]["wUm"]), um(d["ladder"]["lUm"]), BGOK_TAP)), "",
+            um(d["ladder"]["wUm"]), um(d["ladder"]["lUm"]), d.get("bgokTap", 0))), "",
               "| device | W (um) | L (um) |", "| --- | --- | --- |"]
     lines += ["| %s | %s | %s |" % (n_, um(v["wUm"]), um(v["lUm"])) for n_, v in d["devices"].items()]
     lines += ["", record["claimBoundary"], ""]
@@ -1940,7 +2022,7 @@ def lines_chart(record, title, source):
 def design_summary(design):
     out = dict(n=design["n"], ibiasUa=design["ibiasUa"], devices=design["devices"], resistors=design["resistors"], caps=design.get("caps") or {})
     if design.get("ladder"):
-        out["ladder"] = design["ladder"]
+        out.update(ladder=design["ladder"], bgokTap=design.get("bgokTap"))
     return out
 
 
@@ -1992,7 +2074,7 @@ def mc_stats(values, vbg_v, tol_pct):
                 outsideBand=sum(1 for v in values if not lo <= v <= hi))
 
 
-def mc_spectre_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
+def mc_spectre_lines(inputs, cell_path, vdd, ibias_ua, n, seed, first=1):
     card = card_of(inputs)
     lines = ["// Kuijk bandgap Monte Carlo (mismatch): %s tt, 27 C, vdd %g V" % (inputs["pdks"][PDK_KEY]["name"], vdd),
              "simulator lang=spectre", "global 0", "opts options redefinedparams=warning", "simulator lang=spice"]
@@ -2003,13 +2085,22 @@ def mc_spectre_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
               "GIB1 (ib1 0 en1 0) vccs gm=%.6g" % (ibias_ua * 1e-6 / vdd),
               "X1 (vdd1 0 en1 ib1 vbg1 g1 g1%s) bandgap_lb" % "".join(" " + x for x in bench_pins(inputs.get("topology", TOPOLOGY), 1)),
               "save vbg1 VDD1:p",
-              "mc1 montecarlo numruns=%d seed=%d variations=mismatch donominal=yes savefamilyplots=yes {" % (n, seed), "  op1 dc", "}", ""]
+              "mc1 montecarlo numruns=%d seed=%d%s variations=mismatch donominal=yes savefamilyplots=yes {" % (
+                  n, seed, "" if first == 1 else " firstrun=%d" % first), "  op1 dc", "}", ""]
     return lines
 
 
 # Spectre honours variations=mismatch with these decks: on gf180mcuD, 20 runs drew exactly the values of
 # variations=all (sw_stat_global = 0), and variations=process drew others.
-MC_METHODS = {"spectre": "Spectre montecarlo, variations=mismatch, seed S, sw_stat_mismatch = 1 and sw_stat_global = 0",
+# Spectre 23.1 crashed (segmentation fault) late in a 100-run montecarlo of the bgcore cell, at a different iteration on each
+# attempt (92 to 97 of 100), and in another bgcore cell at iteration 22 of 25 on every attempt, though iteration 22 alone
+# solved (2026-10-13): the crash follows the iterations before it. firstrun=K draws exactly the iterations K.. of the run
+# from 1 with the same seed (to 1e-15, the same mc1-<k> names), so the runs go in chunks of MC_CHUNK; a chunk that crashes
+# MC_CHUNK_ATTEMPTS times is split in two, down to single runs. The draws are the same however the runs are split.
+MC_CHUNK = 25
+MC_CHUNK_ATTEMPTS = 2
+MC_METHODS = {"spectre": "Spectre montecarlo, variations=mismatch, seed S, sw_stat_mismatch = 1 and sw_stat_global = 0, in chunks of %d "
+                         "runs (firstrun: the same draws as one run; a chunk that crashes is split)" % MC_CHUNK,
               "ngspice": "ngspice: one operating point per run, the netlist re-read (mc_source) after setseed S+i, so every "
                          "agauss draws anew; sw_stat_mismatch = 1 and sw_stat_global = 0 (mismatch only)"}
 
@@ -2061,22 +2152,41 @@ def run_mc(ws, inputs, design, n, seed, out_dir, own=False):
         values, iq = [runs[i][0] for i in range(1, n + 1)], [runs[i][1] for i in range(1, n + 1)]
         return values, iq, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, netlist=netlist.name,
                                 elapsedS=round(time.time() - started, 1), vdd=vdd, spectreAttempts=None, method=MC_METHODS["ngspice"])
-    raw, netlist, attempts = spectre_retry(command, out_dir, "mc", mc_spectre_lines(inputs, cell, vdd, design["ibiasUa"], n, seed), timeout_s=3600)
+    values, iq, attempts, netlists = [], [], 0, []
+    todo = [(first, min(MC_CHUNK, n - first + 1)) for first in range(1, n + 1, MC_CHUNK)]
+    while todo:
+        first, count = todo.pop(0)
+        try:
+            raw, netlist, used = spectre_retry(command, out_dir, "mc" if first == 1 else "mc-%d" % first,
+                                               mc_spectre_lines(inputs, cell, vdd, design["ibiasUa"], count, seed, first), timeout_s=3600,
+                                               attempts=MC_CHUNK_ATTEMPTS if count > 1 else None)
+        except SpectreCrash:
+            if count == 1:
+                raise
+            half = count // 2
+            attempts += MC_CHUNK_ATTEMPTS
+            print("Monte Carlo runs %d to %d crashed Spectre %d times: split in two" % (first, first + count - 1, MC_CHUNK_ATTEMPTS), file=sys.stderr)
+            todo[:0] = [(first, half), (first + half, count - half)]
+            continue
+        attempts += used
+        netlists.append(netlist.name)
+        v, q = mc_values(raw, first, count)
+        if len(v) != count:
+            raise ToolError("Monte Carlo asked for runs %d to %d and Spectre wrote %d (log %s.log)" % (first, first + count - 1, len(v), netlist))
+        values += v
+        iq += q
     elapsed = round(time.time() - started, 1)
-    values, iq = mc_values(raw)
-    if len(values) != n:
-        raise ToolError("Monte Carlo asked for %d runs and Spectre wrote %d (log %s.log)" % (n, len(values), netlist))
-    return values, iq, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, netlist=netlist.name, elapsedS=elapsed, vdd=vdd,
+    return values, iq, dict(simulator=sim.name, cell=cell.name, cellSha256=cell_sha, netlist=", ".join(netlists), elapsedS=elapsed, vdd=vdd,
                             spectreAttempts=attempts, method=MC_METHODS["spectre"])
 
 
-def mc_values(raw):
-    """VBG and IQ of each Monte Carlo iteration (mc1-<k>_op1.dc, k >= 1, in order)."""
+def mc_values(raw, first=1, count=None):
+    """VBG and IQ of each Monte Carlo iteration (mc1-<k>_op1.dc, k from first, count of them or all, in order)."""
     raw = Path(raw)
     found = []
     for f in raw.iterdir():
         m = re.fullmatch(r"mc1-0*(\d+)_op1\.dc", f.name)
-        if m and int(m.group(1)) >= 1:
+        if m and int(m.group(1)) >= first and (count is None or int(m.group(1)) < first + count):
             pts, _ = ota.psf_ascii(f)
             if pts and "vbg1" in pts[0]:
                 found.append((int(m.group(1)), pts[0]["vbg1"], -pts[0].get("VDD1:p", float("nan"))))
@@ -2300,6 +2410,8 @@ def cmd_layout(ws, tool, pex):
     if "densityRulesFilled" in found:       # the tool's fill step: reported beside the judged checks, never judged
         rec["fill"] = dict(densityRules=found["densityRulesFilled"], drcKlayout=found.get("drcKlayoutFilled"),
                            lvsKlayout=(found.get("klayoutLvsFilled") or {}).get("match"), pexOn=found.get("pexOn"))
+    if found.get("fillFailures"):            # the fill step's problems: reported, never judged (clean is unaffected)
+        rec.setdefault("fill", {})["failures"] = list(found["fillFailures"])
     rec["clean"] = layout_clean(rec)
     post = state(ws, "cell-post.spice")
     write_text(post, extracted.read_text())
@@ -2310,9 +2422,11 @@ def cmd_layout(ws, tool, pex):
              "| Cell size | %s |" % ("%.1f x %.1f um (%.0f um2)" % (bbox[0], bbox[1], rec["areaUm2"]) if bbox else "n/a"),
              "| DRC, Magic (PDK tech file) | %d errors (%d inside the PDK's own PNP cells) |" % (rec["drcMagic"], rec["drcMagicInPdkPnpCells"]),
              "| DRC, KLayout (PDK deck, block) | %d errors |" % rec["drcKlayout"],
-             "| Density rules (die level, need fill) | %d reported%s |" % (rec["densityRules"], "" if not rec.get("fill") else
+             "| Density rules (die level, need fill) | %d reported%s |" % (rec["densityRules"], "" if "densityRules" not in rec.get("fill", {}) else
                  "; with the PDK's fill: %s, block DRC %s, KLayout LVS %s" % (rec["fill"]["densityRules"], rec["fill"]["drcKlayout"],
                                                                            {True: "match", False: "MISMATCH"}.get(rec["fill"]["lvsKlayout"], "n/a"))),
+             ] + (["| Fill step problems (reported, not judged) | %s |" % "; ".join(str(x) for x in rec["fill"]["failures"])]
+                  if rec.get("fill", {}).get("failures") else []) + [
              "| LVS, netgen | %s |" % ("match" if rec["lvsNetgen"] else "MISMATCH"),
              "| LVS, KLayout (PDK deck) | %s |" % ("match" if rec["lvsKlayout"] else "MISMATCH"),
              "| Extraction for post-layout simulation | %s: %s |" % (pex, json.dumps(rec["pexCounts"], sort_keys=True)),

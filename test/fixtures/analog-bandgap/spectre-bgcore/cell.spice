@@ -9,9 +9,9 @@ XQ2_5 vss vss c spnp
 XQ2_6 vss vss c spnp 
 XQ2_7 vss vss c spnp 
 XQ2_8 vss vss c spnp 
-XR1 b c vss sres r_length=30.27u r_width=2u s=3
-XR2a vbg a vss sres r_length=39.01u r_width=2u s=23
-XR2b vbg b vss sres r_length=39.01u r_width=2u s=23
+XR1 b c vss sres r_length=30.59u r_width=2u s=3
+XR2a vbg a vss sres r_length=39.44u r_width=2u s=23
+XR2b vbg b vss sres r_length=39.44u r_width=2u s=23
 XRL0a vbg vref_122 vss sres r_length=38.8u r_width=2u s=1
 XRL0b vbg vref_122 vss sres r_length=38.8u r_width=2u s=1
 XRL122 vref_122 vref_121 vss sres r_length=38.8u r_width=2u s=1
@@ -139,7 +139,7 @@ XRL1 vref_1 vss vss sres r_length=38.8u r_width=2u s=1
 MB0 ibias ibias vdd vdd pch33 w=1.56u l=5u
 MT tail ibias vdd vdd pch33 w=3.12u l=5u
 M3 d1 d1 ls vss nch33 w=3.72u l=40u
-MO vbg g vdd vdd pch33 w=8.6u l=2u
+MO vbg g vdd vdd pch33 w=8.53u l=2u
 MSU1 su ibias vdd vdd pch33 w=0.22u l=5.64u
 MSU2 su vbg vss vss nch33 w=0.5u l=20u
 MSU3 g su sux vss nch33 w=2u l=4u
@@ -150,13 +150,31 @@ MEN3 ls en vss vss nch33 w=1u l=1u
 M1 d1 a tail vdd pch33 w=34.47u l=10u
 M2 o1 b tail vdd pch33 w=34.47u l=10u
 M4 o1 d1 ls vss nch33 w=3.72u l=40u
-M5 go o1 ls vss nch33 w=13.12u l=40u
-M6 go go vdd vdd pch33 w=2.15u l=2u
-MOK1 ok1 vref_100 vss vss nch33 w=4u l=1u
-MOK2 ok1 ibias vdd vdd pch33 w=0.39u l=5u
-MOK3 bgok ok1 vdd vdd pch33 w=1u l=1u
-MOK4 bgok ok1 vss vss nch33 w=1u l=1u
-MEN4 ok1 en vdd vdd pch33 w=1u l=1u
+M5 go o1 ls vss nch33 w=13.01u l=40u
+M6 go go vdd vdd pch33 w=2.13u l=2u
+MENI1 enb en vdd vdd pch33 w=1u l=1u
+MENI2 enb en vss vss nch33 w=1u l=1u
+MEN5 o1 enb vss vss nch33 w=1u l=1u
+MEN7 su enb vss vss nch33 w=1u l=1u
+MOK2 okt ibias vdd vdd pch33 w=0.39u l=5u
+MOK5 okd vref_90 okt vdd pch33 w=10u l=1u
+MOK6 okc a okt vdd pch33 w=10u l=1u
+MOK7 okd okd vss vss nch33 w=2u l=4u
+MOK8 okc okd vss vss nch33 w=8u l=4u
+MOK1 okc enb vss vss nch33 w=1u l=1u
+MOKI1 okcb ibias vdd vdd pch33 w=0.39u l=5u
+MOKI2 okcb okc vss vss nch33 w=1u l=1u
+MEN6 okcb en vdd vdd pch33 w=1u l=1u
+MOKF1 okp ibias vdd vdd pch33 w=0.22u l=22.56u
+MOKF2 okf okcb okp vdd pch33 w=1u l=1u
+MOKF3 okf okcb vss vss nch33 w=1u l=1u
+MOKC vss okf vss vss nch33 w=10u l=10u
+MOKO1 okg okf vdd vdd pch33 w=1u l=1u
+MOKO2 okg okf vss vss nch33 w=1u l=1u
+MOKB okq ibias vdd vdd pch33 w=0.39u l=5u
+MOK3 bgok okg okq vdd pch33 w=1u l=1u
+MOK4 bgok okg vss vss nch33 w=4u l=1u
+MOKCB vss bgok vss vss nch33 w=8u l=8u
 XCC o1 vss scap c_length=44.72u c_width=44.72u
 .ends bandgap_lb
 

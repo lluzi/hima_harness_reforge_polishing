@@ -20,7 +20,10 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
    - `bgcore`: the reference is 0.2 uA, and the tail 0.4 uA.
      - The ladder's unit `ladderRUnitKohm` is chosen so that the ladder draws IQ/16 at the VBG
        target through its 122.5 units: 19.6 kOhm and 0.5 uA at an 8 uA line.
-     - The BGOK pull-up `bgokNa` is 50 nA.
+     - The BGOK bias mirrors `bgokNa` are 50 nA. Two of them (the comparator's tail, and the
+       stage after it once OK) count in IQ.
+     - The BGOK tap `bgokTap` is the lowest tap that sits 50 mV above the PNP's highest VBE1 at
+       −40 °C, plus 1.3·VT·ln 4, with VBG settled.
      - Both come out of the IQ budget before the core current. The ladder is taken at its lowest
        resistance over the corners and temperatures, times (1 + 1/driveRatio): the output device and
        its drive branch carry the ladder's current as well as the core's. The output device, M5 and
@@ -66,6 +69,24 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
     that follows `en` or vdd trips with VBG near 0.
 
 ## Lessons (gf180mcuD, Spectre 23.1, 2026-10-12)
+
+### BGOK and the start-up in `bgcore` (gf180mcuD, Spectre 23.1, 2026-10-13)
+
+- **The first monitor failed.** MOK1 sensed `vref_100` against a bias pull-up. bgok followed vdd
+  early in the power-up ramp, then stayed high while VBG sat in the core's stuck state (about
+  0.56 V) at 125 °C. Its lowest trip was 16.5 % of VBG's final value.
+- **A trip from core nodes alone follows VBE.** Every core node is a linear function of VBE1 and
+  VBG, so a comparator of core nodes trips at VBG proportional to VBE1, which spans about 1.7x
+  from −40 to 125 °C. The tap-against-VBE1 comparator is stuck-state safe by construction. The
+  bias-charged delay after it keeps bgok low until VBG has settled at the hot corners.
+- **The OTA output must not float in shutdown.** With `o1` floating up to about 3 V, VBG overshot
+  to about vdd after `en` (`en1us`). On the 50 µs ramp, VBG dipped to −1.05 V (ff 3.3 V
+  125 °C), because the falling `o1` dragged the inverted input pair's gates. The run with
+  errpreset=conservative and maxstep=20 ns was the same. `MEN5` holds `o1` at vss.
+- **Spectre crashed late in a 100-run Monte Carlo** of the bgcore cell, at iteration 92 to 97 of
+  100 and differently each time. In another bgcore cell it crashed at iteration 22 of 25 every
+  time, although iteration 22 alone solved. The Pack now runs Monte Carlo in chunks of 25 with
+  `firstrun`, which draws the same iterations as one run, and splits a chunk that keeps crashing.
 
 ### What Monte Carlo varies on gf180mcuD (Spectre 23.1, 2026-10-13)
 

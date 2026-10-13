@@ -264,10 +264,16 @@ test('start-up: a copy that settles away from its DC solution did not start; a s
 test('Monte Carlo statistics from recorded Spectre iterations', () => {
   const out = py([
     `values, iq = bg.mc_values(${JSON.stringify(path.join(fixtures, 'spectre-mc/mc.raw'))})`,
-    'print(json.dumps(dict(values=values, stats=bg.mc_stats(values, 1.2, 2.0))))',
+    `part, _ = bg.mc_values(${JSON.stringify(path.join(fixtures, 'spectre-mc/mc.raw'))}, 11, 10)`,
+    'lines = bg.mc_spectre_lines(dict(pdkRoot="/pdk", topology="kuijk-p5t-mirror", pdks=dict(design=dict(name="synth180", card=card))), "/w/c.spice", 3.3, 0.5, 25, 7, 26)',
+    'print(json.dumps(dict(values=values, stats=bg.mc_stats(values, 1.2, 2.0), part=part, chunk=[l for l in lines if "montecarlo" in l], chunk_n=bg.MC_CHUNK)))',
   ].join('\n'));
   const v: number[] = out.values;
   assert.equal(v.length, 30, 'mc1-001 to mc1-030, the nominal run left out');
+  // A chunk: iterations 11 to 20 only; Spectre draws them as in the whole run when the netlist says firstrun.
+  assert.deepEqual(out.part, v.slice(10, 20));
+  assert.deepEqual(out.chunk, ['mc1 montecarlo numruns=25 seed=7 firstrun=26 variations=mismatch donominal=yes savefamilyplots=yes {']);
+  assert.equal(out.chunk_n, 25);
   const mean = v.reduce((a, b) => a + b, 0) / v.length;
   const sigma = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / (v.length - 1));
   assert.ok(sigma > 1e-4, 'mismatch moved VBG');
@@ -606,6 +612,8 @@ test('layout: every step of the layout tool must exit 0, and the extraction must
       '             render=dict(rc=rc("render"), bboxUm=[10, 20]))',
       'if bad == "norender": del facts["render"]["rc"]',
       'if bad == "": facts.update(densityRulesFilled=1, drcKlayoutFilled=0, klayoutLvsFilled=dict(match=True), pexOn="unfilled")',
+      'if bad in ("fillfail", "onlyfillfail"): facts["fillFailures"] = ["fill: klayout exit code 1", "filled LVS did not run"]',
+      'if bad == "fillfail": facts.update(densityRulesFilled=4, drcKlayoutFilled=None, klayoutLvsFilled={}, pexOn="unfilled")',
       'json.dump(facts, open(os.path.join(out, "layout.json"), "w"))',
       'open(os.path.join(out, "bandgap_lb_pex_c.spice"), "w").write(".subckt bandgap_lb vdd vss en ibias vbg go g\\n.ends\\n")',
     ].join('\n'));
@@ -625,6 +633,22 @@ test('layout: every step of the layout tool must exit 0, and the extraction must
     const rec = JSON.parse(await readFile(path.join(ws, 'state/layout.json'), 'utf8'));
     assert.equal(rec.clean, true);
     assert.deepEqual(rec.fill, { densityRules: 1, drcKlayout: 0, lvsKlayout: true, pexOn: 'unfilled' }, 'the fill step is carried, not judged');
+    // The fill step's problems (fillFailures) are carried and shown, never judged: the layout stays clean.
+    const failures = ['fill: klayout exit code 1', 'filled LVS did not run'];
+    const rpt = async () => {
+      const dir = path.join(ws, 'reports/layout/r1');
+      return readFile(path.join(dir, 'layout.rpt'), 'utf8');
+    };
+    for (const bad of ['fillfail', 'onlyfillfail']) {
+      const r = run(bad);
+      assert.equal(r.status, 0, r.stderr);
+      const withFail = JSON.parse(await readFile(path.join(ws, 'state/layout.json'), 'utf8'));
+      assert.equal(withFail.clean, true, `${bad}: fill problems never make a clean layout unclean`);
+      assert.deepEqual(withFail.fill.failures, failures);
+      if (bad === 'onlyfillfail') assert.deepEqual(withFail.fill, { failures }, 'fill is created for the failures alone');
+      assert.match(await rpt(), /\| Fill step problems \(reported, not judged\) \| fill: klayout exit code 1; filled LVS did not run \|/);
+      assert.match(await rpt(), /\| Verdict \| clean \|/);
+    }
   } finally { await done(); }
 });
 
@@ -654,7 +678,7 @@ test('every chart the flow writes is a valid hima-chart', () => {
 
 const TAPS = Array.from({ length: 120 }, (_, i) => `vref_${i + 1}`);
 
-test('bgcore: the cell adds bgok and 120 tap pins, a 122.5-unit ladder from vbg and a two-stage BGOK monitor', () => {
+test('bgcore: the cell adds bgok and 120 tap pins, a 122.5-unit ladder from vbg, an en inverter and a VBE-referenced, bias-charged BGOK', () => {
   const out = py([
     'd = design_of("bgcore")',
     'print(json.dumps(dict(design=d, cell=bg.cell_spice(card, d), mc=bg.cell_spice(card, d, True))))',
@@ -676,13 +700,42 @@ test('bgcore: the cell adds bgok and 120 tap pins, a 122.5-unit ladder from vbg 
   }
   // Tap k sits at VBG k / 122.5: the series resistance below vref_k over the whole.
   assert.equal(new Set(ladder.map((l) => l.split(' ').slice(3).join(' '))).size, 1, 'every segment is the same unit');
-  // BGOK: the sense device on vref_100 against a pull-up mirrored from the bias, then an inverter; en low holds ok1 high.
-  assert.ok(lines.includes('MOK1 ok1 vref_100 vss vss nch33 w=4u l=1u'));
-  assert.ok(lines.some((l) => new RegExp(`^MOK2 ok1 ibias vdd vdd pch33 w=${design.devices.MOK2.wUm}u l=${design.devices.MOK2.lUm}u$`).test(l)));
-  assert.ok(lines.includes('MOK3 bgok ok1 vdd vdd pch33 w=1u l=1u') && lines.includes('MOK4 bgok ok1 vss vss nch33 w=1u l=1u'));
-  assert.ok(lines.includes('MEN4 ok1 en vdd vdd pch33 w=1u l=1u'));
+  // The en inverter, and o1 (with CC) held at vss while en is low.
+  assert.ok(lines.includes('MENI1 enb en vdd vdd pch33 w=1u l=1u') && lines.includes('MENI2 enb en vss vss nch33 w=1u l=1u'));
+  assert.ok(lines.includes('MEN5 o1 enb vss vss nch33 w=1u l=1u'));
+  assert.ok(lines.includes('MEN7 su enb vss vss nch33 w=1u l=1u'), 'en low: the start-up node at vss');
+  // BGOK: the ladder tap the method chose against VBE1 (node a), gates only, on a bias-mirror tail; equal inputs read
+  // "not OK" (MOK8 is 1.5 x MOK7); okc drives okcb against a bias pull-up; okcb gates okf's bias charger and its discharge;
+  // okf (with the MOS capacitor MOKC) is buffered into bgok; en low holds okc low and okcb high.
+  const tap = design.bgokTap;
+  assert.ok(Number.isInteger(tap) && tap >= 1 && tap <= 120 && design.intent.bgokTap === tap);
+  const mos = (name: string) => lines.find((l) => l.startsWith(`${name} `));
+  const dev = (name: string) => `w=${design.devices[name].wUm}u l=${design.devices[name].lUm}u`;
+  assert.equal(mos('MOK2'), `MOK2 okt ibias vdd vdd pch33 ${dev('MOK2')}`);
+  assert.equal(mos('MOK5'), `MOK5 okd vref_${tap} okt vdd pch33 w=10u l=1u`);
+  assert.equal(mos('MOK6'), 'MOK6 okc a okt vdd pch33 w=10u l=1u');
+  assert.equal(mos('MOK7'), 'MOK7 okd okd vss vss nch33 w=2u l=4u');
+  assert.equal(mos('MOK8'), 'MOK8 okc okd vss vss nch33 w=8u l=4u');
+  assert.equal(mos('MOK1'), 'MOK1 okc enb vss vss nch33 w=1u l=1u');
+  assert.equal(mos('MOKI1'), `MOKI1 okcb ibias vdd vdd pch33 ${dev('MOKI1')}`);
+  assert.equal(mos('MOKI2'), 'MOKI2 okcb okc vss vss nch33 w=1u l=1u');
+  assert.equal(mos('MEN6'), 'MEN6 okcb en vdd vdd pch33 w=1u l=1u');
+  assert.equal(mos('MOKF1'), `MOKF1 okp ibias vdd vdd pch33 ${dev('MOKF1')}`);
+  assert.equal(mos('MOKF2'), 'MOKF2 okf okcb okp vdd pch33 w=1u l=1u');
+  assert.equal(mos('MOKF3'), 'MOKF3 okf okcb vss vss nch33 w=1u l=1u');
+  assert.equal(mos('MOKC'), 'MOKC vss okf vss vss nch33 w=10u l=10u');
+  assert.equal(mos('MOKO1'), 'MOKO1 okg okf vdd vdd pch33 w=1u l=1u');
+  assert.equal(mos('MOKB'), `MOKB okq ibias vdd vdd pch33 ${dev('MOKB')}`);
+  assert.equal(mos('MOK3'), 'MOK3 bgok okg okq vdd pch33 w=1u l=1u');
+  assert.equal(mos('MOK4'), 'MOK4 bgok okg vss vss nch33 w=4u l=1u');
+  assert.equal(mos('MOKCB'), 'MOKCB vss bgok vss vss nch33 w=8u l=8u');
+  assert.equal(mos('MEN4'), undefined);
+  assert.equal(lines.filter((l) => / a /.test(` ${l.split(' ').slice(1, 5).join(' ')} `) && /^M/.test(l)).map((l) => l.split(' ')[0]).sort().join(','),
+    'M1,MOK6', 'node a carries gates only (the OTA pair and the comparator)');
   assert.ok(lines.includes('MSU3 g su sux vss nch33 w=2u l=4u'), 'the start-up switch\'s gate gives su capacitance at 0.2 uA');
-  assert.equal(design.devices.MOK2.lUm, design.devices.MB0.lUm, 'the pull-up mirrors the reference diode');
+  for (const name of ['MOK2', 'MOKI1', 'MOKB']) assert.equal(design.devices[name].lUm, design.devices.MB0.lUm, `${name} mirrors the reference diode`);
+  const wl = (name: string) => design.devices[name].wUm / design.devices[name].lUm;
+  assert.ok(Math.abs(wl('MOKF1') / wl('MOK2') - 0.125) < 0.02, `the charger runs at an eighth of bgokNa (${wl('MOKF1') / wl('MOK2')})`);
   // The core is kuijk-p5t-mirror's.
   assert.ok(lines.some((l) => /^M5 go o1 ls vss nch33 /.test(l)) && lines.some((l) => /^M6 go go vdd vdd pch33 /.test(l)));
   assert.equal(lines.filter((l) => /^M/.test(l)).length, Object.keys(design.devices).length);
@@ -864,10 +917,22 @@ test('bgcore: the first cut takes the ladder and the BGOK pull-up out of the IQ 
   const iL = vbgCore / (122.5 * intent.ladderRUnitKohm * 1e3) * 1e6;
   const iLHot = iL * a27 / aMin;
   const drive = 1 + 1 / intent.driveRatio;
-  const iCore = (0.8 * 8 - 0.2 - 0.4 - 0.025 - 0.05 - iLHot * drive) / ((2 + 2 / intent.driveRatio) * kHot);
+  // The BGOK block draws two bias mirrors at bgokNa (the comparator's tail, okcb's pull-up once OK).
+  const iCore = (0.8 * 8 - 0.2 - 0.4 - 0.025 - 0.1 - iLHot * drive) / ((2 + 2 / intent.driveRatio) * kHot);
   assert.ok(Math.abs(intent.iCoreUa - iCore) < 1e-3, `core current ${intent.iCoreUa} vs ${iCore}`);
   // The worst-case IQ the budget allows: 80 % of the line, the ladder included.
-  const iq = 0.2 + 0.4 + 0.025 + 0.05 + (2 * intent.iCoreUa * kHot + iLHot) * drive;
+  const iq = 0.2 + 0.4 + 0.025 + 0.1 + (2 * intent.iCoreUa * kHot + iLHot) * drive;
+  // The tap: the lowest whose settled voltage sits 50 mV above the PNP's highest VBE1 at -40 C at the core current plus
+  // the comparator's offset there, 1.3 VT ln 4.
+  const offset = 1.3 * K_Q * 233.15 * Math.log(4);
+  const vbeCold = Math.max(...Object.keys(dev.pnp.vbe).map((c) => {
+    const k = cur.findIndex((x) => x >= intent.iCoreUa);
+    const u = Math.log(intent.iCoreUa / cur[k - 1]!) / Math.log(cur[k]! / cur[k - 1]!);
+    return dev.pnp.vbe[c][k - 1][0] + u * (dev.pnp.vbe[c][k][0] - dev.pnp.vbe[c][k - 1][0]);
+  }));
+  assert.equal(temps[0], -40);
+  assert.equal(intent.bgokTap, Math.ceil(122.5 * (vbeCold + offset + 0.05) / vbgCore - 1e-9), `tap ${intent.bgokTap}`);
+  assert.ok(intent.bgokTap / 122.5 * vbgCore >= vbeCold + offset + 0.05 && (intent.bgokTap - 1) / 122.5 * vbgCore < vbeCold + offset + 0.05);
   assert.ok(Math.abs(iq - 6.4) < 0.01, `IQ budget ${iq} uA`);
   // The unit segment is ladderRUnitKohm at the core resistors' width, one segment.
   const unit = a27 * design.ladder.lUm + b27;
@@ -1204,6 +1269,65 @@ test('the Site seed is copied whole or not at all, a concurrent first copy is us
     assert.deepEqual(out.broken.left, []);
     assert.deepEqual(out.retry.facts, site, 'the next step copies again');
     assert.equal(out.retry.code, 'site');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('Spectre Monte Carlo runs in firstrun chunks; a chunk that keeps crashing is split, and the draws are the same', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bg-mc-split-'));
+  try {
+    // A stand-in Spectre: a montecarlo of more than FAKE_MAX runs crashes; otherwise it writes run k's VBG = 1.2 + k * 1e-4.
+    const template = await readFile(path.join(fixtures, 'spectre-mc/mc.raw/mc1-001_op1.dc'), 'utf8');
+    await writeFile(path.join(dir, 'template.dc'), template);
+    const fake = path.join(dir, 'spectre');
+    await writeFile(fake, [
+      '#!/usr/bin/env python3',
+      'import os, re, sys',
+      'netlist, raw = sys.argv[3], sys.argv[5]',
+      'text = open(netlist).read()',
+      'n = int(re.search(r"numruns=(\\d+)", text).group(1)); m = re.search(r"firstrun=(\\d+)", text); first = int(m.group(1)) if m else 1',
+      'if n > int(os.environ["FAKE_MAX"]):',
+      '    print("FATAL (SPECTRE-18): Segmentation fault."); sys.exit(139)',
+      'os.makedirs(raw)',
+      `t = open(${JSON.stringify(path.join(dir, 'template.dc'))}).read()`,
+      'for k in range(first, first + n):',
+      '    open(os.path.join(raw, "mc1-%03d_op1.dc" % k), "w").write(re.sub(r\'"vbg1" "V" \\S+\', \'"vbg1" "V" %.6e\' % (1.2 + k * 1e-4), t))',
+      'print("spectre completes with 0 errors")',
+    ].join('\n'), { mode: 0o755 });
+    const run = (max: number) => {
+      const r = spawnSync('python3', ['-B', '-c', [
+        'import json, sys', `sys.path.insert(0, ${JSON.stringify(flowDir)})`, 'import bg_cli as bg',
+        `card = json.load(open(${JSON.stringify(path.join(flowDir, 'pdks.json'))}))["cards"]["synth180"]`,
+        `table = json.load(open(${JSON.stringify(path.join(fixtures, 'synth180-tables/tables-design.json'))}))`,
+        `devices = json.load(open(${JSON.stringify(path.join(fixtures, 'synth180-tables/devices.json'))}))`,
+        `spec = ${JSON.stringify(SPEC)}`,
+        'intent = bg.first_cut_intent(spec, card, table, devices, None, "kuijk-p5t-mirror")',
+        'design = dict(bg.size_from_intent(table, devices, card, intent, "kuijk-p5t-mirror"), topology="kuijk-p5t-mirror", pdk="synth180", round=1)',
+        `inputs = dict(pdkRoot="/pdk", topology="kuijk-p5t-mirror", pdks=dict(design=dict(name="synth180", card=card, simulator=dict(name="spectre", path=${JSON.stringify(fake)}))))`,
+        `out = ${JSON.stringify(path.join(dir, `out-${String(max)}`))}`,
+        'try:',
+        '    values, iq, info = bg.run_mc(out, inputs, design, 20, 1, out)',
+        '    print(json.dumps(dict(values=values, info=info)))',
+        'except bg.ToolError as e:',
+        '    print(json.dumps(dict(error=str(e), crash=isinstance(e, bg.SpectreCrash))))',
+      ].join('\n')], { encoding: 'utf8', env: { ...process.env, FAKE_MAX: String(max) } });
+      assert.equal(r.status, 0, r.stderr);
+      return { ...JSON.parse(r.stdout), stderr: r.stderr };
+    };
+    const whole = run(100);
+    const split = run(6);
+    const want = Array.from({ length: 20 }, (_, i) => Number((1.2 + (i + 1) * 1e-4).toExponential(6)));
+    assert.deepEqual(whole.values, want);
+    assert.deepEqual(split.values, want, 'split chunks give the same runs, in order');
+    assert.equal(whole.info.netlist, 'mc.scs');
+    assert.equal(split.info.netlist.split(', ').length, 4, `20 runs as 4 chunks of 5: ${split.info.netlist}`);
+    assert.match(split.stderr, /runs 1 to 20 crashed Spectre 2 times: split in two/);
+    assert.equal(split.info.spectreAttempts, 2 + 2 * 2 + 4, 'the crashed attempts count too');
+    assert.match(split.info.method, /chunks of 25 runs \(firstrun/);
+    const never = run(0);
+    assert.equal(never.crash, true, 'a single run that crashes every time is an error, never a gap');
+    assert.match(never.error, /crashed \(segmentation fault\)/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
