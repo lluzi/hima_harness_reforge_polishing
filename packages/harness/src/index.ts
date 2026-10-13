@@ -1726,6 +1726,8 @@ export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Fra
 // task 5), so it is exported beside it: both are testable at L1 without a window, and the client
 // renders from the very function the contract suite asserts on.
 export { sceneInputs } from './scene.js';
+export { teamViewState, outputAt as teamOutputAt } from './team-view.js';
+export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric } from './team-view.js';
 // The Campaign file (#41 task 3): `hima-campaign/1`'s schema, parse/serialize, read/write under a
 // session workspace, and the overrides it hands Preparation. Exported here for the same reason every
 // other business format is: `test/contract/campaign-file.host.test.ts`, `tools.ts` and `remote.ts`

@@ -1,0 +1,39 @@
+# Display only: how the Live tab draws this Pack's Run as a team (packs.ts `packView`). It never
+# reaches the flow, a task or a judge. The four reviews run one after another in each round; the
+# view groups them as the review team they are.
+title: Scribe-line placement team
+stations:
+  - id: case
+    label: Placement case
+    about: The frame, its scribe lanes and test structures, and today's placement result.
+    checklist:
+      - { label: Check the case files, nodes: [prepare-case], rounds: first }
+      - { label: Measure today's placement, nodes: [measure-incumbent], rounds: first }
+  - id: engineer
+    label: MAGE Engineer
+    about: AI agent that places the test structures in MAGE and runs MAGE's own checks.
+    checklist:
+      - { label: Place the marks in MAGE, nodes: [engineer-place] }
+  - id: reviews
+    label: Consumer review team
+    about: Each owner checks the candidate for its own needs and sends revision requests.
+    team:
+      - { node: review-litho-pie, label: Litho / PIE, role: target positions }
+      - { node: review-metrology, label: Metrology, role: overlay and CD }
+      - { node: review-alignment, label: Scanner alignment, role: alignment marks }
+      - { node: review-wat, label: WAT test, role: parametric test }
+  - id: decide
+    label: Round decision
+    about: Weighs the reviews against the Goal and sends open requests back to the Engineer.
+    checklist:
+      - { label: Weigh the reviews, nodes: [decide-round] }
+      - { label: Evaluate and deliver, nodes: [evaluate-placement, deliver] }
+edges:
+  - { from: case, to: engineer }
+  - { from: engineer, to: reviews, label: candidate }
+  - { from: reviews, to: decide, label: reviews }
+  - { from: decide, to: engineer, label: requests, back: true }
+metrics:
+  - { label: today, node: measure-incumbent, path: [metrics, drops, count], unit: dropped }
+  - { label: best, node: decide-round, path: [best, metrics, drops, count], unit: dropped, goal: target_dropped_count, better: lower }
+  - { label: length, node: decide-round, path: [best, metrics, drops, lengthUm], unit: µm, better: lower }

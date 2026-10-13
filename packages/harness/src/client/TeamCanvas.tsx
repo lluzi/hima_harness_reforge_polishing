@@ -1,0 +1,243 @@
+// The team view: the Live tab of a Run whose Pack ships a `view.yml` — a column of stations (a step
+// box with its checklist, a single AI agent, or a team of AI agents) for the current round, with the
+// hand-overs between them drawn as arrows. `team-view.ts` decides every state; this draws it with
+// HTML boxes and one SVG overlay for the arrows, measured from the boxes themselves, so it fits any
+// pane width without pan or zoom.
+import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { runWaitingReason } from '../card-labels.js';
+import type { PackContract, PackGraph } from '../packs.js';
+import type { RunView } from '../remote.js';
+import { teamViewState, type TeamEdge, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
+import { useLastLogLine } from './FabricNode.js';
+
+export interface TeamCanvasProps {
+  readonly runId: string;
+  readonly graph: PackGraph;
+  readonly tools: PackContract['tools'] | undefined;
+  readonly view: RunView | undefined;
+  readonly stale: boolean;
+  readonly reducedMotion: boolean;
+}
+
+function Spark(): ReactElement {
+  return <svg viewBox="-10 -10 20 20" width="16" height="16" aria-hidden="true"><path className="hima-team-spark" d="M0 -8C1 -2.5 2.5 -1 8 0C2.5 1 1 2.5 0 8C-1 2.5 -2.5 1 -8 0C-2.5 -1 -1 -2.5 0 -8Z" /></svg>;
+}
+function Steps(): ReactElement {
+  return <svg viewBox="-10 -10 20 20" width="16" height="16" aria-hidden="true"><path className="hima-team-steps" d="M-6 -4.5H6M-6 0H6M-6 4.5H2" /></svg>;
+}
+function Mark({ state }: { state: TeamNodeState }): ReactElement {
+  return (
+    <svg className={`hima-team-mark hima-team-mark-${state}`} viewBox="-7 -7 14 14" width="14" height="14" aria-hidden="true">
+      {state === 'done' ? <><circle r="6.2" /><path d="M-3 0.2L-0.8 2.4L3.2 -2.2" /></>
+        : state === 'failed' ? <><circle r="6.2" /><path d="M-2.5 -2.5L2.5 2.5M2.5 -2.5L-2.5 2.5" /></>
+          : state === 'active' ? <><circle r="6.2" /><circle className="hima-team-mark-dot" r="2.6" /></>
+            : <circle r="5.6" />}
+    </svg>
+  );
+}
+
+/** The square at the left of a box: a spark for an AI agent, steps for a tool station. */
+function Square({ ai, state, motionOff }: { ai: boolean; state: string; motionOff: boolean }): ReactElement {
+  const live = ai && state === 'active' && !motionOff;
+  return (
+    <span className={`hima-team-square${ai ? ' hima-team-square-ai' : ''}${live ? ' hima-team-square-live' : ''} hima-team-square-${state}`}>
+      <span className="hima-team-square-face">{ai ? <Spark /> : <Steps />}</span>
+    </span>
+  );
+}
+
+const MEMBER_SAID: Record<TeamNodeState, string> = { pending: 'Waiting', active: 'Working', done: 'Delivered', failed: 'Failed' };
+
+function LiveLine({ runId, node, fallback }: { runId: string; node: string; fallback: string }): ReactElement {
+  const line = useLastLogLine(runId, node, true);
+  const text = line === undefined || line.trim() === '' ? fallback : line.trim();
+  return <span className="hima-team-live" title={text}>{text}</span>;
+}
+
+function Member({ runId, member, motionOff }: { runId: string; member: TeamMember; motionOff: boolean }): ReactElement {
+  return (
+    <div className={`hima-team-member hima-team-member-${member.state}`} data-hima-region={`team-member-${member.node}`} data-hima-state-state={member.state}>
+      <Square ai={member.ai} state={member.state} motionOff={motionOff} />
+      <div className="hima-team-member-text">
+        <strong>{member.label}</strong>
+        {member.role === undefined ? null : <span className="hima-team-role">{member.role}</span>}
+        {member.state === 'active'
+          ? <LiveLine runId={runId} node={member.node} fallback="Reviewing the candidate" />
+          : <span className={`hima-team-status hima-team-status-${member.state}`}>{MEMBER_SAID[member.state]}</span>}
+        {member.summary === undefined ? null : <span className="hima-team-summary" title={member.summary}>{member.summary}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Station({ runId, station, motionOff, refFor }: { runId: string; station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void }): ReactElement {
+  const team = station.team;
+  const lines = station.lines.filter((line) => line.state !== 'hidden');
+  return (
+    <section ref={refFor} className={`hima-team-station hima-team-station-${station.state}${team === undefined ? '' : ' hima-team-station-team'}${station.ai ? ' hima-team-station-ai' : ''}`}
+      data-hima-region={`team-station-${station.id}`} data-hima-state-state={station.state} title={station.about}>
+      <header className="hima-team-head">
+        {team === undefined ? <Square ai={station.ai} state={station.state} motionOff={motionOff} /> : null}
+        <div className="hima-team-head-text">
+          <strong>{station.label}</strong>
+          {station.activeNode !== undefined && team === undefined
+            ? <LiveLine runId={runId} node={station.activeNode} fallback="Working" />
+            : station.about === undefined || team === undefined ? null : <span className="hima-team-about">{station.about}</span>}
+        </div>
+      </header>
+      {lines.length === 0 ? null : (
+        <ul className="hima-team-lines">
+          {lines.map((line, index) => (
+            <li key={index} className={`hima-team-line hima-team-line-${line.state}`}><Mark state={line.state as TeamNodeState} /><span>{line.label}</span></li>
+          ))}
+        </ul>
+      )}
+      {station.summary === undefined ? null : <p className="hima-team-summary hima-team-summary-station" title={station.summary}>{station.summary}</p>}
+      {team === undefined ? null : (
+        <div className="hima-team-grid">
+          {team.map((member) => <Member key={member.node} runId={runId} member={member} motionOff={motionOff} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface Box { readonly top: number; readonly bottom: number; readonly left: number; readonly right: number }
+
+function edgePath(edge: TeamEdge, from: Box, to: Box, width: number): { d: string; lx: number; ly: number } {
+  if (!edge.back && to.top >= from.bottom) {
+    const x = Math.round((Math.max(from.left, to.left) + Math.min(from.right, to.right)) / 2);
+    return { d: `M${x} ${from.bottom + 1}V${to.top - 2}`, lx: x + 8, ly: (from.bottom + to.top) / 2 + 4 };
+  }
+  // A back edge runs out of the source's right side, up the strip's right margin, into the target's right side.
+  const gutter = width - 20;
+  const y1 = (from.top + from.bottom) / 2, y2 = Math.min(to.bottom - 14, to.top + 22);
+  return { d: `M${from.right} ${y1}H${gutter}V${y2}H${to.right + 2}`, lx: width - 7, ly: (y1 + y2) / 2 };
+}
+
+export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: TeamCanvasProps): ReactElement {
+  const motionOff = reducedMotion || stale;
+  const state = useMemo(() => teamViewState(graph, tools, view), [graph, tools, view]);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const boxes = useRef(new Map<string, HTMLElement>());
+  const [measured, setMeasured] = useState<{ readonly width: number; readonly height: number; readonly at: ReadonlyMap<string, Box> }>();
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current; if (wrap === null) return;
+    const measure = (): void => {
+      const origin = wrap.getBoundingClientRect();
+      const at = new Map<string, Box>();
+      for (const [id, el] of boxes.current) {
+        const r = el.getBoundingClientRect();
+        at.set(id, { top: r.top - origin.top + wrap.scrollTop, bottom: r.bottom - origin.top + wrap.scrollTop, left: r.left - origin.left, right: r.right - origin.left });
+      }
+      setMeasured({ width: wrap.clientWidth, height: wrap.scrollHeight, at });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(wrap);
+    for (const el of boxes.current.values()) observer.observe(el);
+    return () => observer.disconnect();
+  }, [state]);
+  if (state === undefined) return <div className="hima-empty"><p>This Pack declares no team view.</p></div>;
+  const waiting = runWaitingReason(view);
+  const goalSaid = (m: (typeof state.metrics)[number]): string => m.goal === undefined ? '' : `goal ${m.better === 'lower' ? '≤ ' : m.better === 'higher' ? '≥ ' : ''}${m.goal}`;
+  return (
+    <div className="hima-canvas-wrap">
+      <style>{TEAM_STYLE}</style>
+      {waiting === undefined ? null : <div className="hima-canvas-attention hima-canvas-attention-waiting" data-hima-region="campaign-attention"><span>{waiting}</span></div>}
+      <p className="hima-team-top" data-hima-region="team-top" data-hima-state-round={String(state.round)}>
+        {state.title === undefined ? null : <strong>{state.title}</strong>}
+        <span className="hima-team-chip hima-team-chip-round">Round {state.round}</span>
+        {state.metrics.map((m) => (
+          <span key={m.label} className="hima-team-chip"><span>{m.label}</span> <b>{m.value}</b>{m.goal === undefined ? null : <i>{goalSaid(m)}</i>}</span>
+        ))}
+      </p>
+      <div className="hima-team" ref={wrapRef} data-hima-region="campaign-team" data-hima-state-round={String(state.round)}>
+        {measured === undefined ? null : (
+          <svg className="hima-team-edges" width={measured.width} height={measured.height} aria-hidden="true">
+            <defs>
+              <marker id="hima-team-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0.5L7.5 4L0 7.5z" className="hima-team-arrow" /></marker>
+              <marker id="hima-team-arrow-lit" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0.5L7.5 4L0 7.5z" className="hima-team-arrow-lit" /></marker>
+            </defs>
+            {state.edges.map((edge) => {
+              const from = measured.at.get(edge.from), to = measured.at.get(edge.to);
+              if (from === undefined || to === undefined) return null;
+              const { d, lx, ly } = edgePath(edge, from, to, measured.width);
+              return (
+                <g key={`${edge.from}>${edge.to}`} className={`hima-team-edge${edge.lit ? ' hima-team-edge-lit' : ''}${edge.lit && !motionOff ? ' hima-team-edge-flow' : ''}${edge.back ? ' hima-team-edge-back' : ''}`}
+                  data-hima-region={`team-edge-${edge.from}-${edge.to}`} data-hima-state-lit={String(edge.lit)}>
+                  <path d={d} markerEnd={`url(#${edge.lit ? 'hima-team-arrow-lit' : 'hima-team-arrow'})`} />
+                  {edge.label === undefined ? null : edge.back
+                    ? <text x={lx} y={ly} textAnchor="middle" transform={`rotate(-90 ${String(lx)} ${String(ly)})`}>{edge.label}</text>
+                    : <text x={lx} y={ly}>{edge.label}</text>}
+                </g>
+              );
+            })}
+          </svg>
+        )}
+        {state.stations.map((station) => (
+          <Station key={station.id} runId={runId} station={station} motionOff={motionOff}
+            refFor={(el) => { if (el === null) boxes.current.delete(station.id); else boxes.current.set(station.id, el); }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export const TEAM_STYLE = `
+.hima-team-top{flex:none;margin:0;padding:var(--hima-sp-2) var(--hima-sp-4);display:flex;flex-wrap:wrap;gap:var(--hima-sp-2);align-items:baseline;font-size:var(--hima-fs-label);color:var(--hima-ink-2);border-bottom:1px solid var(--hima-line)}
+.hima-team-top strong{color:var(--hima-ink);font-size:var(--hima-fs-body);flex-basis:100%}
+.hima-team-chip{display:inline-flex;gap:5px;align-items:baseline;padding:2px 9px;border-radius:999px;background:var(--hima-soft);border:1px solid var(--hima-line);white-space:nowrap}
+.hima-team-chip b{color:var(--hima-ink);font-size:var(--hima-fs-body)} .hima-team-chip i{font-style:normal;color:var(--hima-ink-3)}
+.hima-team-chip-round{background:var(--hima-accent);border-color:var(--hima-accent);color:var(--hima-on-solid);font-weight:600}
+.hima-team{position:relative;flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-4) 34px var(--hima-sp-6) var(--hima-sp-4);display:flex;flex-direction:column;gap:30px}
+.hima-team-edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.hima-team-edge path{fill:none;stroke:var(--hima-line-strong);stroke-width:1.5}
+.hima-team-edge-back path{stroke-dasharray:4 4}
+.hima-team-edge text{font-size:12px;fill:var(--hima-ink-3)}
+.hima-team-edge-lit path{stroke:var(--hima-accent);stroke-width:2;stroke-dasharray:6 5}
+.hima-team-edge-lit text{fill:var(--hima-accent);font-weight:600}
+.hima-team-edge-flow path{animation:hima-team-flow .9s linear infinite}
+@keyframes hima-team-flow{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
+.hima-team-arrow{fill:var(--hima-line-strong)} .hima-team-arrow-lit{fill:var(--hima-accent)}
+.hima-team-station{position:relative;z-index:1;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);padding:var(--hima-sp-3);box-shadow:var(--hima-shadow);transition:border-color .3s,box-shadow .3s}
+.hima-team-station-active{border-color:var(--hima-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hima-accent) 16%,transparent),var(--hima-shadow)}
+.hima-team-station-done{border-color:color-mix(in srgb,var(--hima-good) 45%,var(--hima-line))}
+.hima-team-station-failed{border-color:var(--hima-bad)}
+.hima-team-head{display:flex;gap:var(--hima-sp-3);align-items:center}
+.hima-team-head-text{display:flex;flex-direction:column;min-width:0}
+.hima-team-head-text strong{font-size:var(--hima-fs-title);line-height:var(--hima-lh-tight)}
+.hima-team-about,.hima-team-role{font-size:12px;color:var(--hima-ink-3)}
+.hima-team-live{font-size:12px;color:var(--hima-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.hima-team-lines{list-style:none;margin:var(--hima-sp-2) 0 0 44px;padding:0;display:flex;flex-direction:column;gap:3px;font-size:var(--hima-fs-label)}
+.hima-team-line{display:flex;gap:var(--hima-sp-2);align-items:center;color:var(--hima-ink-3)}
+.hima-team-line-done,.hima-team-line-active{color:var(--hima-ink)} .hima-team-line-active{font-weight:600}
+.hima-team-mark circle{fill:none;stroke:var(--hima-line-strong);stroke-width:1.3}
+.hima-team-mark path{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.hima-team-mark-done circle{fill:var(--hima-good);stroke:var(--hima-good)} .hima-team-mark-done path{stroke:var(--hima-on-solid)}
+.hima-team-mark-failed circle{fill:var(--hima-bad);stroke:var(--hima-bad)} .hima-team-mark-failed path{stroke:var(--hima-on-solid)}
+.hima-team-mark-active circle{stroke:var(--hima-accent)} .hima-team-mark-active .hima-team-mark-dot{fill:var(--hima-accent);stroke:none;animation:hima-team-blink 1.2s ease-in-out infinite}
+@keyframes hima-team-blink{50%{opacity:.25}}
+.hima-team-square{position:relative;flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;overflow:hidden;background:var(--hima-line)}
+.hima-team-square-ai{background:conic-gradient(from 0deg,#4f5fd8,#b8532f,#d9a032,#2f7a45,#4f5fd8)}
+.hima-team-square-done.hima-team-square:not(.hima-team-square-ai){background:var(--hima-good)}
+.hima-team-square-live::before{content:'';position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent 0 55%,#ffffffcc 70%,transparent 85%);animation:hima-team-spin 1.6s linear infinite}
+.hima-team-square-face{position:relative;width:28px;height:28px;border-radius:7px;background:var(--hima-paper);display:grid;place-items:center}
+.hima-team-square-ai.hima-team-square-done .hima-team-square-face{background:color-mix(in srgb,var(--hima-good) 14%,var(--hima-paper))}
+.hima-team-square-live{box-shadow:0 0 0 4px color-mix(in srgb,var(--hima-accent) 22%,transparent);animation:hima-team-glow 1.8s ease-in-out infinite}
+@keyframes hima-team-spin{to{transform:rotate(360deg)}}
+@keyframes hima-team-glow{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--hima-accent) 10%,transparent)}}
+.hima-team-spark{fill:var(--hima-accent)} .hima-team-steps{fill:none;stroke:var(--hima-ink-2);stroke-width:1.8;stroke-linecap:round}
+.hima-team-square-live .hima-team-spark{animation:hima-team-twinkle 1.4s ease-in-out infinite;transform-origin:center}
+@keyframes hima-team-twinkle{50%{transform:scale(.72) rotate(45deg)}}
+.hima-team-station-team{background:color-mix(in srgb,var(--hima-accent) 4%,var(--hima-paper))}
+.hima-team-grid{margin-top:var(--hima-sp-3);display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--hima-sp-2)}
+.hima-team-member{display:flex;gap:var(--hima-sp-2);align-items:flex-start;padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);min-width:0}
+.hima-team-member-active{border-color:var(--hima-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--hima-accent) 14%,transparent)}
+.hima-team-member-text{display:flex;flex-direction:column;min-width:0;font-size:12px}
+.hima-team-member-text strong{font-size:var(--hima-fs-label)}
+.hima-team-status{color:var(--hima-ink-3)} .hima-team-status-done{color:var(--hima-good)} .hima-team-status-failed{color:var(--hima-bad)}
+.hima-team-summary{font-size:12px;color:var(--hima-ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hima-team-summary-station{margin:var(--hima-sp-2) 0 0 44px}
+@media (prefers-reduced-motion: reduce){.hima-team-square-live::before,.hima-team-square-live,.hima-team-edge-flow path,.hima-team-mark-dot,.hima-team-spark{animation:none}}
+`;

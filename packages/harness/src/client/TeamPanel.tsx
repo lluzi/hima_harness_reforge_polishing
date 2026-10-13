@@ -11,7 +11,7 @@ export interface TeamPanelProps {
   onInspect(entry: DelegationEntry): void;
 }
 
-export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: TeamPanelProps): ReactElement {
+export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: TeamPanelProps): ReactElement | null {
   const [delegations, setDelegations] = useState<readonly DelegationEntry[]>([]);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -33,6 +33,10 @@ export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: Team
   }, [sessionId, runId, refreshToken, view?.run.control?.revision]);
 
   const changed = () => { refresh(); onChanged(); };
+  // A Campaign that delegated nothing has no team to show here: the panel stays out of the way
+  // (it keeps polling, so the first delegation still appears), rather than saying "none" under a
+  // Live view that may already draw the Pack's own agents.
+  if (!error && delegations.length === 0) return null;
   return <section className='hima-team-panel' data-hima-region='agent-team'>
     <header><span className='hima-studio-eyebrow'>AGENT TEAM</span><button type='button' className='hima-button' onClick={refresh}>Refresh team</button></header>
     {error ? <p role='alert'>Team unavailable: {error}</p> : delegations.length === 0 ? <p>{loading ? 'Reading retained delegation receipts…' : 'No child task has been delegated from this Campaign.'}</p>
