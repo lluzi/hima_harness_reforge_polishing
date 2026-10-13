@@ -9,10 +9,12 @@ import { cancelAsked, cancelObserved } from '../card-labels.js';
 import { runPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
+import type { ToolViewStatus } from '../tool-view.js';
 import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
-import { fetchStartChoices, scoped } from './api.js';
+import { fetchStartChoices, fetchToolView, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
+import { ToolViewPanel } from './ToolViewPanel.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
   TaskSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
@@ -39,7 +41,7 @@ export interface CampaignTabProps {
   openFiles(): void;
 }
 
-type Section = 'live' | 'generations' | 'evidence' | 'report';
+type Section = 'live' | 'generations' | 'evidence' | 'report' | 'tool';
 const SECTIONS: readonly { readonly key: Section; readonly said: string }[] = [
   { key: 'live', said: 'Live' }, { key: 'generations', said: 'Generations' },
   { key: 'evidence', said: 'Evidence' }, { key: 'report', said: 'Report' },
@@ -199,6 +201,27 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   const isOwner = isOwnerOf(control, sessionId);
   const methodReference = context?.method?.reference;
 
+  // The Tool tab (live-tool-view): shown only when this Run's own Site declares a tool view. The
+  // Host is asked once per Run — on mount and whenever the Site changes — never on a poll: the status
+  // GET spawns nothing and carries no data, so this is a cheap one-shot that decides the tab's
+  // presence and its label. `unavailable` (or no answer) means no tab and nothing mounted; any other
+  // state means a tab labelled with the Site's own label. The panel itself owns the forward's
+  // lifecycle from there.
+  const siteId = view?.run.siteId;
+  const [toolStatus, setToolStatus] = useState<ToolViewStatus>();
+  useEffect(() => {
+    setToolStatus(undefined);
+    if (siteId === undefined) return;
+    const controller = new AbortController();
+    void fetchToolView(sessionId, siteId, controller.signal).then((answer) => {
+      if (controller.signal.aborted || !answer.ok) return;
+      setToolStatus(answer.value);
+    });
+    return () => controller.abort();
+  }, [sessionId, siteId]);
+  const toolView = toolStatus !== undefined && toolStatus.state !== 'unavailable' && siteId !== undefined
+    ? { site: siteId, label: toolStatus.label } : undefined;
+
   // A historical automatic Run (`control === undefined`) carries no `context.method` at all
   // (`executionContext`, `fabric.ts` computes it only for an owned Run) — a genuine HimaFabric fact,
   // not a reason the canvas itself cannot draw: the Pack the Run started from is still installed on
@@ -258,17 +281,27 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
 
+  // Keep the Tool panel mounted once a person has opened it (the latch LibInsight uses), so the xpra
+  // session survives a trip to Live and back. A dangling `tool` selection on a Run whose Site has no
+  // tool view falls back to Live rather than a blank pane.
+  const [toolSeen, setToolSeen] = useState(false);
+  useEffect(() => { if (section === 'tool' && toolView !== undefined) setToolSeen(true); }, [section, toolView !== undefined]);
+  const activeSection: Section = section === 'tool' && toolView === undefined ? 'live' : section;
+
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
       <nav className="hima-campaign-views" aria-label="Campaign views">
         {SECTIONS.map(({ key, said }) => (
-          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{said}</button>
+          <button key={key} type="button" aria-pressed={activeSection === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{said}</button>
         ))}
+        {toolView === undefined ? null : (
+          <button type="button" aria-pressed={activeSection === 'tool'} data-hima-control="studio-tool" onClick={() => setSection('tool')}>{toolView.label}</button>
+        )}
       </nav>
-      <div className="hima-campaign-content">
-        {section === 'live' ? (
+      <div className="hima-campaign-content" hidden={activeSection === 'tool'}>
+        {activeSection === 'live' ? (
           scene === undefined
             ? <div className="hima-empty">
                 <p>{packUnavailable && packId !== undefined
@@ -282,10 +315,12 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />
         ) : view === undefined
           ? <div className="hima-empty"><p>Reading Run records…</p></div>
-          : section === 'generations'
+          : activeSection === 'generations'
             ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}<GenerationResearch view={view}/></div>
-            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
+            : activeSection === 'evidence' ? <EvidenceView view={view} />
+              : activeSection === 'report' ? <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} /> : null}
       </div>
+      {toolSeen && toolView !== undefined ? <ToolViewPanel sessionId={sessionId} site={toolView.site} label={toolView.label} hidden={activeSection !== 'tool'} /> : null}
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>
           Showing the last read at {readAt === undefined ? '—' : shortTime(readAt)}; the Host could not be reached.

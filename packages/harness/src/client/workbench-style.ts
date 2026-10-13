@@ -167,8 +167,20 @@ export const HIMA_STYLE = `
 .hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
-.hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
+.hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}.hima-campaign-content[hidden]{display:none}
 .hima-campaign-stale{flex:none;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);color:var(--hima-warn);background:var(--hima-soft)}
+
+/* The Tool tab (live-tool-view): the Site's own live tool display, framed in place. The stage is the
+   positioning context for the shield, which covers only the frame — never the bar, so Take control
+   stays clickable while the view is shielded. */
+.hima-toolview{flex:1;min-height:0;display:flex;flex-direction:column}.hima-toolview[hidden]{display:none}
+.hima-toolview-bar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--hima-sp-2) var(--hima-sp-3);padding:var(--hima-sp-1) var(--hima-sp-4);border-bottom:1px solid var(--hima-line)}
+.hima-toolview-bar .hima-button{min-height:26px;padding:2px var(--hima-sp-2);font-size:var(--hima-fs-label);margin-inline-start:auto}
+.hima-toolview-stage{position:relative;flex:1;min-height:0;display:flex}
+.hima-toolview-frame{flex:1;min-height:0;width:100%;border:0;background:#fff}
+.hima-toolview-shield{position:absolute;inset:0;background:transparent;cursor:not-allowed}
+.hima-toolview-note{padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3);font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-toolview-note p{margin:0;max-width:640px}.hima-toolview-note pre{white-space:pre-wrap;max-height:240px;overflow:auto}
 
 .hima-canvas-wrap{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .hima-canvas-attention{flex:none;min-height:32px;box-sizing:border-box;display:flex;align-items:center;gap:var(--hima-sp-3);padding:var(--hima-sp-1) var(--hima-sp-4);font-size:var(--hima-fs-label)}

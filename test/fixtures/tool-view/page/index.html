@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clicked:0</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    /* A single full-viewport button, so a click anywhere inside the frame lands on it. It stands in
+       for the xpra HTML5 client the real Site serves; this page knows nothing of xpra and reads none
+       of the query parameters the Host appends. */
+    #hit { width: 100vw; height: 100vh; border: 0; font-size: 6vmin; cursor: pointer; background: #1d6; color: #042; }
+  </style>
+</head>
+<body>
+  <button id="hit" type="button" data-count="0">Clicks: 0</button>
+  <script>
+    (function () {
+      var button = document.getElementById('hit');
+      var count = 0;
+      button.addEventListener('click', function () {
+        count += 1;
+        button.setAttribute('data-count', String(count));
+        button.textContent = 'Clicks: ' + count;
+        document.title = 'clicked:' + count;
+        // Record the click on the fixture server too, so a test driving a cross-origin frame (which it
+        // cannot read into) can assert on the server's own tally instead.
+        try { fetch('/click', { method: 'POST' }); } catch (e) { /* observation is best-effort */ }
+      });
+    })();
+  </script>
+</body>
+</html>

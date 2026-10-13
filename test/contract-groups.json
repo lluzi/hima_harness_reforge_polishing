@@ -119,6 +119,7 @@
     "test/contract/xtop-timing-closure.test.ts"
   ],
   "desktop": [
+    "test/contract/tool-view.desktop.test.ts",
     "test/contract/campaign-graph.desktop.test.ts",
     "test/contract/remaining-ui.desktop.test.ts",
     "test/contract/pack-owner.desktop.test.ts",
