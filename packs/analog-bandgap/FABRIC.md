@@ -88,3 +88,27 @@
     - The 11:45 sign-off above was under the weaker check. The BGOK monitor needs a redesign.
   - **Monte Carlo claim corrected.** It varies the MOS and the PNPs, never the poly resistors; the
     PDK has no resistor mismatch model.
+- **BGOK redesigned, and the case signed off again** (2026-10-13, `analog-runs/bgcore-eng8-20261013-1408`,
+  a fresh workspace, the full chain).
+  - **The new monitor:** a comparator of `vref_88` against VBE1, with a bias-charged delay.
+  - **en-low clamps:** MEN5 and MEN7 hold the OTA output and the start-up node.
+  - **Every line before and after layout:**
+
+    | Line | Before layout | After layout |
+    | --- | --- | --- |
+    | VBG | 1.2109 V | |
+    | IQ | 6.39 uA | |
+    | ISD | 0.091 nA | 0.134 nA |
+    | TC | 22.3 ppm/C | |
+    | PM | 70.5 deg | 66.8 deg |
+    | Start-up | 62.8 us | 64.7 us |
+    | PSRR | 49.0 dB | 48.0 dB |
+    | bgokTrip | 61.7 % (ss 2 V 125 C) | 99.7 % |
+
+  - **Monte Carlo:** N=100, sigma 4.78 mV. Spectre crashed in 3 of the 4 chunks; the crashing
+    chunks were split, 14 attempts in all.
+  - **Layout:** 68,406 um2, DRC 0/0, both LVS match.
+  - **Open:**
+    - the 70 % trip aim at 2 V 125 C;
+    - routing the BGOK nets away from `b`, `d1`, `g` and the tap, which couple about 10 fF each
+      after layout.

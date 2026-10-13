@@ -66,7 +66,20 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
   budget, and the ladder's current counts in IQ.
 
 **BGOK.**
-- It senses `vref_100` (≈ 0.98 V when VBG is right) and drives `bgok` through two inverter stages.
+- The first design sensed `vref_100` with one NMOS and drove two inverters. The stricter check
+  below failed it at 125 C:
+  - `bgok` followed vdd before the bias existed;
+  - it then stayed high with VBG near 0.56 V.
+- **The template's monitor now.**
+  - A comparator senses a method-chosen tap (`bgokTap`: the lowest tap 50 mV plus the comparator's
+    built-in offset above the coldest VBE1; `vref_88` on GF180) against VBE1 at node `a`. It loads
+    the core only at gates.
+  - `bgok` rises only through bias current, after a bias-charged delay.
+  - MEN5 and MEN7 hold the OTA output and the start-up node at `vss` while `en` is low. Without
+    them, the precharge drove VBG near vdd after `en` rose, and to −1 V at one corner.
+  - Comparators built only from core nodes trip at a VBG proportional to VBE (about 1.7× from −40
+    to 125 °C), so the delay is what lifts the trip. The worst trip is 61.7 % of final VBG, at
+    ss 2 V 125 °C on the 1 µs edge. That meets the 50 % rule but not the 70 % aim.
 - `bgok` is high exactly when the cell is enabled and VBG is up.
 - It is low and defined (no floating node) while `en` is low.
 - Its current counts in IQ, and its leakage counts in ISD.
@@ -82,6 +95,11 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
   - With the cell enabled and settled, `bgok` is above 90 % of vdd.
   - With `en` low, `bgok` is below 10 % of vdd.
   - Either failing fails the line.
+- **BGOK trip, through start-up** (`bgokTrip`; added after the independent review).
+  - In the power-up and both `en` ramps, `bgok` must stay below 10 % of vdd until VBG reaches 50 %
+    of its final value.
+  - It must end above 90 %.
+  - A missing trace, or a `bgok` that never rises, is a miss.
 - **Start-up stays causal.** Before `en` starts to rise, VBG must stay out of its final ±2 % band.
   If VBG enters the band before the trigger, the copy did not start correctly. This is a miss, not
   a 0 µs start-up. It is the error class behind the competitor's −48.88 ns pass.

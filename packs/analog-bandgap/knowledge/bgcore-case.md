@@ -31,9 +31,13 @@ A bandgap core front end, with five blocks.
    - The unit is high-value poly. Its value is a sizing choice (`ladderRUnitKohm`), and the ladder's
      current counts in IQ.
 5. **BGOK monitor.**
-   - It senses `vref_100` (about 0.98 V when VBG is right) and drives `bgok` through two inverter
-     stages.
+   - A small comparator senses one ladder tap (`bgokTap`, chosen by the method) against VBE1 (node
+     `a`), and drives `bgok` through inverter stages. On GF180 the tap is `vref_88`.
+   - In the core's stuck state VBG ≈ VBE1, so every tap sits below `a` and `bgok` stays low.
+   - `bgok` can rise only through bias current, after a bias-charged delay. So it is low while the
+     bias starts, and its edge is slow.
    - `bgok` is high only when the cell is enabled and VBG is up, and low while `en` is low.
+   - While `en` is low, the OTA output and the start-up node are held at `vss`.
 
 Every transistor is a 3.3 V device. The PDK's 6 V and native devices have typical models only, and
 the native device has no mismatch model, so the corners and Monte Carlo could not cover them.
@@ -66,6 +70,7 @@ and `g`.
 | Start-up time | < 100 µs | `en` edges of 1 µs and 50 µs, and power-up | `max_tstart_us` |
 | PSRR at 1 kHz | > 40 dB | every corner | `min_psrr_db` |
 | BGOK | high when enabled, low when disabled | every corner | (always judged) |
+| BGOK trip | `bgok` stays low until VBG reaches 50 % of final | power-up and both `en` edges, every corner | (always judged) |
 | Monte Carlo | mean ± 3σ of VBG inside the band | N runs, tt, 27 °C, 3.3 V | `mcRuns` |
 | Layout | DRC 0, LVS match | the PDK's decks | (always judged) |
 | After layout | every line above | extracted cell, every corner | (always judged) |
