@@ -21,8 +21,10 @@ renaming any `hima_*` proc is refused before anything runs:
   mainchip`, then `smPFlow -sortFix`/`smPFlow -sortFit`); any extra arguments you pass are appended
   to the `-buildFrame` call verbatim. It is the *only* way a stage opens the case — a bare `frbOpen`
   in your own text is refused before anything is written, so a stage can never open a second file.
-  You may call `hima_open_build` more than once in one stage, exactly as the reference method does
-  when it needs to rebuild between sub-steps.
+  Calling `hima_open_build` more than once in one stage is **D (documented, not verified on this
+  build)**: nothing in the refusal gate limits how many times you call it, but that a second build in
+  the same process behaves like the first has not been confirmed here — qualify it with a passing and
+  a failing stage before relying on it for a delivered candidate.
 - `hima_snapshot <name>` — writes a boundary: `smPInstMgr -saveMark` and `smPFlow -saveSummary`
   into a numbered `snap-NN-<name>/` directory under `$hima_out`, then prints the `MAGE_SNAPSHOT`
   marker. `<name>` must match `[A-Za-z0-9][A-Za-z0-9_-]{0,40}`; anything else is a Tcl error inside
@@ -42,10 +44,14 @@ never write any of this yourself, and forging the marker text anywhere in your o
 
 A stage script is refused before anything is written or run — leaving no trace — when it contains
 any of: `exit` (as a whole word), `frbOpen` (as a whole word), `MAGE_VERIFY`, `MAGE_ROUND_END`,
-`MAGE_SNAPSHOT`, `MAGE_STAGE_ERROR`, `MAGE_CHECK`, a `proc` or `rename` of any `hima_` name, or the
-literal fence text `hima:prelude-begin`/`hima:prelude-end`/`hima:agent-begin`/`hima:agent-end`. Only
-role `engineer` may ever run a stage — any other role is refused before a single byte is written,
-because every stage is mutating by construction.
+`MAGE_SNAPSHOT`, `MAGE_STAGE_ERROR`, `MAGE_CHECK`, the literal fence text
+`hima:prelude-begin`/`hima:prelude-end`/`hima:agent-begin`/`hima:agent-end`, the word `rename`, the
+phrase `interp alias`, or a `proc` that (re)defines a name — optionally brace- or quote-wrapped and
+optionally `::`-qualified — beginning `hima_`, `frbCheck`, `smPInstMgr`, `smPFlow`, `puts`, `flush`
+or `catch`. A stage is also refused when its `{` and `}` do not balance (counting outside full-line
+`#` comments and ignoring backslash-escaped `\{`/`\}`), because an unbalanced brace would corrupt the
+driver's own `catch { ... }` wrapper. Only role `engineer` may ever run a stage — any other role is
+refused before a single byte is written, because every stage is mutating by construction.
 
 ## Stage result files
 
@@ -55,9 +61,11 @@ every snapshot's path and sha, the export path and sha, `stdoutSha256`, the veri
 timestamps). `stage-report --stage-dir <dir> --out <file>` turns every one of a stage's boundary
 snapshots, plus the final export when the stage completed, into one row each: Fixed count, Group
 count, in-group (priority) Fits, ordinary Fits, ordinary/grouped drops, an inventory check
-(`pass`/`fail`/`n/a`), target distance (max, over-limit count, identity label), order deviation per
-side, priority movement from the frozen start, and the native row counts when `hima_check` preceded
-that boundary. A stage that failed mid-script still writes every snapshot taken before the failure,
+(`pass`/`fail`), target distance (max, over-limit count, identity label), order deviation per side,
+priority movement from the frozen start, and the native row counts tagged to the last snapshot
+index — a `hima_check` run after a given `hima_snapshot` reports for that boundary, and any
+`hima_check` run before the first snapshot is tagged index 0 and is not reported in any row. A stage
+that failed mid-script still writes every snapshot taken before the failure,
 plus `MAGE_STAGE_ERROR boundary <last> message <msg>` on stderr naming the last boundary reached.
 
 ## Command surface
@@ -100,9 +108,10 @@ with one passing and one failing stage before relying on either for a delivered 
 - **`-savePlaDBU` is a header, not a command.** A saved PLA's own braced `-savePlaDBU {10000}` line
   is the file's own DBU-unit header, not a second export call with a path of its own; there is no
   separate DBU export command.
-- **`hima_open_build` may run more than once in a stage.** The reference method itself rebuilds
-  between sub-steps; nothing in the refusal gate limits how many times you call it, only that you
-  never call bare `frbOpen` yourself.
+- **A second `hima_open_build` in one stage is unverified (D).** The reference method rebuilds
+  between sub-steps and nothing in the refusal gate limits how many times you call `hima_open_build`
+  (only that you never call bare `frbOpen` yourself), but a second build in the same process has not
+  been confirmed on this build — treat it as a D-status step and qualify it before you rely on it.
 - **One MAGE process, one licence seat, per stage.** Each `mage-stage` call is one MAGE process and
   checks out the one `mage` licence seat this Pack ever holds; a stage that hangs or exceeds
   `--timeout-s` is killed and reported `timedOut`, not retried silently.

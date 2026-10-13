@@ -62,13 +62,47 @@ Round 1 always runs the baseline reproduction script given verbatim in
 level; your hypothesis for round 1 is simply that the fixed script reproduces the incumbent's
 ordinary dropped length.
 
+## The stop rule (verbatim)
+
+The program decides, after your round, whether the Run continues. Know it so you pace your stages:
+
+1. If the round limit (6 rounds) is reached → **stop**.
+2. Else if this round's candidate is **blocked** → **continue** ("round N blocked; continuing"). A
+   blocked round is transparent to the stall rule below: it neither counts as a stall nor resets the
+   counter.
+3. Else if all eight delivery rules PASS on the best state → **stop** ("goal met").
+4. Else if there have been **two consecutive completed, non-improving rounds after round 1** →
+   **stop** ("no improvement for two consecutive rounds").
+5. Otherwise → **continue**.
+
+Round 1 counts as improved over nothing. Because only completed, ranked rounds count toward the
+two-stall rule, a round that delivers a *blocked* honest attempt buys the method another round; a
+round that delivers a baseline re-run it already has does not — it is a non-improving completed round
+and moves you toward the two-stall stop. This is why, after round 1, you deliver the next action's
+attempt (§8 of the playbook), not a baseline re-run.
+
 ## What to produce
 
 `state/round/script-candidate.json`, written only by `candidate`. `placement/round-NN/journal-entry.json`,
 written by you and referenced by the candidate. Every file under `placement/round-NN/` — every
 stage's `script.tcl`/`stage.tcl`/`stage-summary.json`, every boundary snapshot, the round's
 `session.jsonl`, and the journal entry itself — as `kind: support` in `resident-delivery.json`, with
-the candidate document as the sole `kind: result` entry.
+the candidate document as the sole `kind: result` entry. The result file lives outside `placement/`
+(at `state/round/script-candidate.json`) and is never listed as a support artifact.
+
+## Operational notes
+
+- **A refused stage leaves no stage directory** — no `stage.tcl`, no `stage-summary.json`, nothing.
+  The refusal gate runs before the first byte is written. After a refusal, author the corrected
+  script into a **fresh** stage directory (`placement/round-NN/stage-(K+1)`); never reuse the
+  refused stage's number.
+- **Give the bash tool you run `mage-stage` from a timeout at least as long as `--timeout-s`.** The
+  driver kills a stage that exceeds `--timeout-s` and reports it `timedOut`; a shorter outer timeout
+  would kill the wrapper first and lose that boundary report.
+- **After the first `candidate` delivery in a round, run no further `mage-stage` in that round.** The
+  round's `session.jsonl` is a published support file, and the Host refuses changed bytes at a
+  published path — a later stage would append to it and fail the delivery. Run every stage you need,
+  read every boundary, choose the stage, *then* assemble the candidate once.
 
 ## Uncertainty handling
 

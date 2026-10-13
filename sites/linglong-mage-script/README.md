@@ -27,7 +27,7 @@ block:
   scores a candidate's own `mage_dropped_ordinary_length_um` against. Its sha is recorded here
   after Task 12 stamps the manifest:
 
-  *(`a609aa5adb1386edb2c4a6d09d44ee4863582b9fe35356c869c963067bafd3e5` (id `1c44e5625d4c24cfe0a7`, stamped 2026-10-12: 54 reference files, 24 reference notes, reference ordinary drop length 52,453 µm) stamping -- sha256 not yet recorded)*
+  `manifest-script.json` sha256 `a609aa5adb1386edb2c4a6d09d44ee4863582b9fe35356c869c963067bafd3e5` (id `1c44e5625d4c24cfe0a7`), stamped 2026-10-12 with 54 reference files, 24 reference notes, and the reference ordinary drop length 52,453 µm.
 
 ## Known constraints
 
@@ -41,9 +41,10 @@ Copied from `linglong-mage/README.md`; unchanged for this sibling Site.
 - **Parallel jobs.** `parallelJobs: 2`; a Site declaring only 1 slot stalls resident release (the
   release of one round's seat needs a second slot free to proceed), so this Site always declares 2
   even though the Pack holds the `mage` licence (seat count 1) only during `engineer-script`.
-- **Round-end detection.** The vendor `mage-stage` tooling does not reliably signal outcome by
-  process exit code alone, so the Pack judges each stage by its own boundary report, not by the
-  process exit code.
+- **Round-end detection.** `mage-stage` is this Pack's own stage driver (not vendor tooling); it
+  wraps the agent's Tcl in the Pack's prelude/epilogue and runs MAGE. The vendor launcher exits 0
+  unconditionally, so the Pack judges each stage's outcome by the `MAGE_ROUND_END code 0` marker its
+  own epilogue prints to stdout, never by the process exit code.
 - **Python version.** Inside the resident container, after the EDA init script runs, `python3` is
   3.8.16; the Pack's Python stays 3.8-compatible for this Site.
 

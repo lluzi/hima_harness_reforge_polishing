@@ -91,7 +91,9 @@ tools:
     round 1. Later rounds follow the playbook's action order: reproduce the compaction stage and
     isolate its failure at an exact boundary, try documented native variants, then explicit
     compaction you compute and apply yourself from a boundary snapshot, then freeze and fill once
-    a priority placement survives. Author one or more Tcl stage scripts under placement/round-NN/,
+    a priority placement survives. These are stages within a round, each running in seconds: run
+    several per round and reach explicit compaction by round 2, or round 3 at the latest -- do not
+    spend a whole round on isolation. Author one or more Tcl stage scripts under placement/round-NN/,
     run each through mage-stage, and read every boundary with stage-report before drawing a
     conclusion -- never infer a cause from the final export alone. You never edit the rule file,
     the pblock/block files, the target table, the request order, the Goal limits, or any other
@@ -100,7 +102,11 @@ tools:
     every stage you ran with its outcome and boundaries, and assemble the candidate with the
     candidate subcommand -- never hand-build or fabricate one. Deliver the best completed stage
     you have, or a blocked candidate naming the exact boundary it stopped at, every round -- never
-    deliver a stage whose export lost inventory as though it were an improvement. Distance from a
+    deliver a stage whose export lost inventory as though it were an improvement. After round 1,
+    never deliver a bare baseline re-run as the round's completed candidate: deliver the attempt at
+    the next action, blocked if it failed. A blocked honest attempt neither counts as a stall nor
+    resets the stall counter; a baseline re-run you already have is a non-improving completed round
+    that moves the Run toward its two-stall stop. Distance from a
     mark's own CT target and movement from the frozen start are two different measures -- report
     both, never substitute one for the other. You alone hold the MAGE licence and run mage-stage;
     no other role in this Pack ever opens the case or writes a mutating script. Every round is a

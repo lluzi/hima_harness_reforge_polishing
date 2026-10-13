@@ -35,7 +35,10 @@ proof levels, from the weakest honest result to the strongest:
 - **Match/Surpass** — your round's ordinary dropped length reaches or beats
   `case-readiness.reference.referenceOrdinaryDropLengthUm` when the manifest names one (the
   customer's own retained result: 18 ordinary drops / 52,453 µm, plus one dropped priority Group of
-  616 µm not counted in the ordinary figure). Absent that field, this level simply reads `n/a`.
+  616 µm not counted in the ordinary figure). The evaluation never emits an `n/a` string: when the
+  manifest names no reference figure, `referenceLengthUm` is `null` and
+  `comparison.ordinaryLengthUm.reference` is `null`, and the match/surpass comparison is simply
+  absent — not a literal `n/a`.
 - **Customer completion** — every one of the eight delivery rules PASSes and zero structures are
   dropped.
 
@@ -91,6 +94,16 @@ compaction in converge mode fails with **`Sort sl <lane> preplaced fits failed`*
 where it is harmless — it is fatal only when converge mode (`s_ARTestConvergePrplaced true`) is
 active at the time it runs.
 
+Third, established by host-side probe: **re-running `source $hima_start_pla` after a settings edit,
+in the same stage, restores the Fits but unbound from their Groups** — the boundary snapshot after
+the re-source reads its full Fit count (e.g. 225) with every one of those priority Fits reading as
+ordinary (0 in-group / 225 ordinary), the Group records intact; the converge compaction call then
+still fails with the same `Sort sl … preplaced fits failed` / `Failed at auto refinement`. So a
+plain re-source does *not* recover from the invalidation of signature one — it trades "0 placed
+Fits" for "every priority Fit reads as ordinary", which is just as unusable for compaction. Recover
+a clean, Group-bound priority placement by rebuilding from `hima_open_build` and re-placing, or by
+replaying a complete PLA you authored (§10), not by re-sourcing mid-stage after an edit.
+
 The compatibility repairs that keep the reference text itself replayable, as exact Tcl: a Tcl
 `regexp` call matching with a double-dash option-end marker and a brace-quoted pattern (so the
 pattern text is never mistaken for a flag), with every literal closing brace inside that pattern
@@ -116,15 +129,27 @@ candidate — choose an earlier, conserved boundary as the stage's export instea
 
 ## 8. Action order
 
-Exactly in this order, each round:
+These are **stages within a round, not one step per round**. Each stage runs in seconds, so a single
+round normally authors and runs several `mage-stage` calls: isolate the failures, try a native
+variant, and attempt explicit compaction can all happen in one round. Pace the work so that
+**explicit compaction (step 4) is reached by round 2, or round 3 at the latest** — do not spend a
+whole round on isolation alone.
 
-1. Reproduce the baseline (round 1, fixed — §9 below).
+1. Reproduce the baseline (round 1 only, fixed — §9 below). This is the one round whose delivered
+   candidate is a baseline re-run.
 2. Reproduce the compaction stage and isolate the two known failures at their exact boundaries.
 3. Try documented native variants: offset ranges configured before build rather than after, different
    converge counts, the `frbGroupSetting` object settings, restore-after-settings-edit ordering.
-4. Explicit compaction authored by you (§9 below — the agent computes and applies the moves itself).
+4. Explicit compaction authored by you (§10 below — the agent computes and applies the moves itself).
 5. Freeze and fill (stage 3 and 4 of §5) once a priority placement survives, whichever stage produced
    it.
+
+**In every round after round 1, never deliver a bare baseline re-run as the round's completed
+candidate.** The round's job is to advance the method; deliver the stage that attempted the next
+action in this order — completed if it worked, or a *blocked* candidate naming the boundary it
+stopped at if it did not. A blocked attempt is honest progress the stop rule tolerates (it neither
+counts as a stall nor resets the counter, §9 of `role-script-engineer.md`); a baseline re-run
+dressed as this round's result is a stall in disguise.
 
 ## 9. Round 1 is fixed to the baseline reproduction script, verbatim
 
@@ -152,8 +177,34 @@ it with `lane-view` and, if useful, plan exact slots with `plan-slots`, then wri
 keeping every Group's own target point untouched, respecting request order per side, and staying
 within the movement budget `max_priority_move_um` measured from the *frozen start* snapshot, never
 from an intermediate boundary. Write the PLA with a small helper Python file under
-`placement/round-NN/tools/` (using `pla.write_pla`), replay it with `source <file>`, run
-`hima_check`, then proceed to freeze and fill. Alternatively, for smaller, targeted corrections,
+`placement/round-NN/tools/`. Import the Pack's own `pla` module from the task flow the envelope
+names — do not re-implement the format:
+
+```python
+import sys
+sys.path.insert(0, TASK_FLOW)          # the envelope's task.flow path (the Campaign's read-only flow/)
+from mage_placement import pla
+doc = pla.read_pla(open(boundary_pla).read(), dbuPerUm)   # dbuPerUm comes from the start snapshot
+# ... edit doc's fits within the budget, leaving Group target points untouched ...
+open(out_pla, "w").write(pla.write_pla(doc, dbuPerUm, units="dbu"))
+```
+
+Then run the computed placement in a fresh stage — rebuild, source the PLA you wrote, snapshot,
+check, and fill (the converge lines only when the manifest's `autoRefineConverge` has them):
+
+```
+hima_open_build
+source <computed.pla>
+hima_snapshot computed
+hima_check
+smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum <VERT>   ;# only if the manifest names them
+smPFlow -setAutoRefineSimpleConverge -arSLType HORZ -arConvergeNum <HORZ>
+g_params -set {smPFlow::s_ARTestConvergePrplaced false}
+smPFlow -autoRefine
+hima_snapshot filled
+```
+
+Alternatively, for smaller, targeted corrections,
 apply `frbSelect -type Sel -inst <FULLID>` followed by `frbMove -off (<dx>,<dy>)` per mark — this is
 a D-status command pair here (never run in this Pack's own prelude/epilogue), so qualify it first
 with one stage you expect to pass and one you expect to fail, and record both outcomes in the

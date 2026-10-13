@@ -10,29 +10,35 @@ knowledge file exists and is flat-named, no placeholder text remains, the top-le
 table equals the `engineer-script` tool's own `outsourcing.knowledge` union, the Engineer's five
 files stay under the 12,000-word budget, every CLI subcommand/flag a knowledge file names is real
 (including the checker's own negative self-test), and every `state/...` path named is a declared
-`contract.yml` output or a `state/history/round-NN/...` archive path). Current total:
+`contract.yml` output or a `state/history/round-NN/...` archive path). Task 8 total was 155.
+
+The final whole-branch review fix round (2026-10-13) added 7 regression tests — one per behavioural
+change: the stall rule ignoring blocked rounds (`test_rounds`), each new refusal pattern and the
+unbalanced-brace guard (`test_native_session`), the Reader refusing a swapped verify file, a swapped
+stdout and a missing incumbent (`test_readers`), and `lane-view`'s relative snapshot path
+(`test_cli_stage`). Current total:
 
 ```
-Ran 155 tests in 5.943s
+Ran 162 tests in 5.853s
 
 OK
 ```
 
-No skips, no `--pattern` narrowing. Python 3.9.6 (Mac, `/usr/bin/python3`), and the identical
-`flow/tests/` tree on the Linglong resident container's own Python 3.8.16 (rsync of the Pack to
+No skips, no `--pattern` narrowing. Python 3.9.6 (Mac, `/usr/bin/python3`). The Task 8 count (155)
+was also reproduced on the Linglong resident container's own Python 3.8.16 (rsync of the Pack to
 `/home/luzi/tmp/mage-script-flow-check/`, then `podman run … localhost/edarunner:alma8 … python3 -m
-unittest discover -s flow/tests -t flow`, 2026-10-13):
+unittest discover -s flow/tests -t flow`, 2026-10-13, `Ran 155 tests … OK`); the fix round's 7
+additions use the same 3.8-compatible standard library and have not been re-run in the container.
 
-```
-Python 3.8.16
-Ran 155 tests in 10.411s
+## L0/L2 — Host contract test
 
-OK
-```
+`test/contract/mage-script-placement.test.ts` (Task 9): `loadPack` structure (entry, `repeat` with
+`maxIterations: 6`, one resident tool with `licences {mage: 1}` and `produces: scriptCandidate`, the
+five goal knobs, the eight rules, no `agentTeams`/workshops), Reader emits == semantics, and
+`checkPack` against a synthetic Site with `licences {mage: 1}` (fit), without it (refuse), and
+against the real `sites/linglong-mage-script` files including an extra `consumerContext` binding
+(tolerated, fit). Passing 3/3; the run is recorded in the Task 9 report. Command:
 
-## L0/L2 — Host contract test (pending)
-
-Not run by this Task. Expected command, once the Host contract test exists:
 `pnpm run build && pnpm run test:local -- --files test/contract/mage-script-placement.test.ts`.
 
 ## L2 dry route (Task 10 — passing, 3/3)

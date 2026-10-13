@@ -2978,3 +2978,35 @@ Pre-conditions: `lmstat -a -c 59003@localhost` shows free MAGE seats; the siblin
 3. Run the kit's `tools/evaluate.py` on the delivered export (with `--binding` if identities changed); reconcile ordinary length/count, 225 priority, 10 Fixed, 319 inventory with `state/script-result.json`.
 4. Cold replay: copy the delivered `stage.tcl`'s agent text to a fresh probe directory and re-run it through `mage-stage`; the export sha must match the delivered export sha (if the agent's method is randomized, record that and the repeat outcome instead).
 5. Report (machine-local, then a customer-neutral summary into `TEST.md` L4 and `FABRIC.md`): baseline / Run / customer reference table (ordinary drops count+length, grouped, priority placed, Fixed, max target error, max priority movement, order deviation per side, native counts, elapsed, MAGE time, human interventions), the proof level reached, the journal digest (what the Engineer tried and concluded), open checks (SPACE instance row, 8 exact-block mismatches, missing tech `a`).
+
+---
+
+## Amendment 2026-10-13 (final review)
+
+The final whole-branch review (Opus 5.5 high, `.superpowers/sdd/final-review-1.md`) returned NO-GO
+pending one fix round. Two amendments and two accepted deviations are recorded here as the binding
+record.
+
+### Stop-rule amendment (finding 1, controller-approved)
+
+Only completed, ranked rounds count toward the two-stall rule. A **blocked round neither counts as a
+stall nor resets the stall counter** — it is transparent. The two-stall rule counts consecutive
+completed, non-improving rounds **after round 1**; round 1 counts as improved over nothing. The
+round limit (`maxIterations: 6`) stays the hard cap and is checked first. Route order (unchanged
+otherwise): round limit reached → stop; candidate blocked → continue; all eight rules PASS → stop
+(goal met); two consecutive completed non-improving rounds after round 1 → stop; else continue.
+
+Implemented in `flow/mage_placement/rounds.py` `decide` (each `history` entry now carries `blocked`,
+and the stall loop skips blocked entries). The knowledge and the `engineer-script` contract
+description were updated so the method runs isolation and native-variant steps as stages inside one
+round (each stage takes seconds), reaches explicit compaction by round 2 — round 3 at the latest —
+and, in every round after round 1, delivers the next action's attempt (blocked if it failed) rather
+than a bare baseline re-run. The stop rule is stated verbatim in `role-script-engineer.md`.
+
+### Accepted deviations (recorded, no change)
+
+- `best` carries an extra `key` field, and the `evaluate` output has no top-level `referenceLengthUm`
+  (the reference sits under `comparison.ordinaryLengthUm.reference`). Accepted as-is.
+- The dry-route ACP writes the candidate under `placement/round-NN/` and omits it from support; the
+  knowledge keeps the result at `state/round/script-candidate.json` (the Host copies the single
+  `kind: result` artifact to the `produces` path from wherever it is). Accepted as-is.
