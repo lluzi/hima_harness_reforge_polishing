@@ -71,6 +71,7 @@
     "test/contract/live-check-continuation.test.ts",
     "test/contract/local-database.host.test.ts",
     "test/contract/mage-scribe-placement.test.ts",
+    "test/contract/mage-script-placement.test.ts",
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",
     "test/contract/native-task-effects.host.test.ts",
