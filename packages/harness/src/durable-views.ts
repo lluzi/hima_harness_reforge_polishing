@@ -270,6 +270,13 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     if(!result||result.identity.runId!==runId||result.identity.effectId!==effectId)throw new Error('No verified task result belongs to this Run/effect');
     const artifact=result.artifacts.find(item=>item.name===name);
     if(!artifact||artifact.runId!==runId||artifact.effectId!==effectId||artifact.taskId!==result.identity.taskId)throw new Error('No original named task artifact belongs to this result');
+    if('source' in result.identity&&result.identity.source.kind==='team') {
+      const retained=await deps.durable!.store.externalEffectFact(result.identity,'oar:artifact:'+artifact.name) as unknown as {runId:string;effectId:string;taskId:string;path:string;sha256:string;bytes:number;retainedPath:string}|undefined;
+      if(!retained||!options.retainedMaterialsDir||retained.effectId!==effectId||retained.taskId!==result.identity.taskId||retained.path!==artifact.path||retained.sha256!==artifact.sha256)throw new Error('Original member artifact has no verified retained bytes.');
+      const bytes=await readDurableSourceBytes(options.retainedMaterialsDir,runId,{...retained,type:'code'});
+      const text=isUtf8(bytes)&&!bytes.includes(0)?bytes.toString('utf8',0,1024*1024):undefined;
+      return {kind:'file',ref:{id:artifact.name,path:artifact.path,kind:'file',sha256:artifact.sha256,bytes:bytes.length},bytes,...(text===undefined?{}:{text}),truncated:text!==undefined&&bytes.length>1024*1024,references:[]};
+    }
     const product=(original.opening.data as unknown as {product:{siteId:string;siteDigest:string;workspace:string}}).product;
     const site=loadSite(deps.sitesDir,product.siteId);
     // Reading verified retained bytes uses today's Site Permit and the original content hash.

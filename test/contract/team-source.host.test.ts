@@ -58,6 +58,14 @@ test('Host-issued member access rejects forged scope, retired generation and rev
     const issued=await host.ctx.hima.durable.store.issueTeamGrant(grant);
     const context=await host.ctx.hima.memberTeamContext(issued.token,{action:'readTask'}) as any;
     assert.equal(context.actor.kind,'member');assert.equal(context.task.taskId,task.taskId);
+    assert.deepEqual(context.artifactIdentity,{runId:task.currentRunId,taskId:invocation.identity.taskId,effectId:invocation.identity.effectId});
+    assert.notEqual(context.artifactIdentity.taskId,context.task.taskId,'artifact identity uses the execution node, not the containing team task');
+    // Explicit retained-event fixture tests projection text, not native runtime provenance.
+    await host.ctx.hima.durable.store.prepareEffect(invocation.identity,{fixture:'retained projection only'});
+    await host.ctx.hima.durable.store.recordExternalEffectFact(invocation.identity,'oar:observation:fixture:0',{schema:'hima-oar-observation/1',sessionKey:'fixture',generation:0,memberId:'lead',nativeSession:'fixture-native',streamGeneration:'fixture',seq:0,time:new Date().toISOString(),kind:'received',payload:{inputId:'fixture'}});
+    const retained=await host.ctx.hima.teamOperation(sessionId,{action:'read-member-work',teamId:created.teamId,taskId:task.taskId,request:{memberId:'lead',page:{limit:10}}}) as any;
+    assert.equal(retained.trace.state,'retained');assert.ok(retained.records.some((row:any)=>row.kind==='transcript'));
+    assert.ok(retained.records.every((row:any)=>!row.text.includes('Native transcript has not been observed')));
     const base=`http://127.0.0.1:${(host.ctx.get('webServer' as never) as unknown as {port:number}).port}`;
     const memberRequest=(token:string,body:unknown,extra:Record<string,string>={})=>fetch(base+'/hima/api/member/task',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token,...extra},body:JSON.stringify(body)});
     assert.equal((await memberRequest(issued.token,{action:'readTask'})).status,200,'real member-only route accepts its current capability without a human cookie');

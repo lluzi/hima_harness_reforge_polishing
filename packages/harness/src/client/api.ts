@@ -244,6 +244,9 @@ export async function teamRequest<T>(sessionId:string,request:unknown,signal?:Ab
 export function teamOperations(sessionId:string,projectId:string):import('./HimaTeamPanel.js').HimaTeamOperations {
   const request=<T,>(action:string,ref:{teamId:string;taskId:string},payload:unknown,signal?:AbortSignal)=>teamRequest<T>(sessionId,{action,teamId:ref.teamId,taskId:ref.taskId,request:payload},signal);
   return {projectId,
+    listModels:async signal=>(await teamRequest<{models:readonly import('../oar-member-process.js').TeamModelView[]}>(sessionId,{action:'list-models'},signal)).models,
+    configureModel:(profile,signal)=>teamRequest(sessionId,{action:'configure-model',request:profile},signal),
+    readArtifact:({teamId,taskId,effectId,name},signal)=>request('read-task-artifact',{teamId,taskId},{effectId,name},signal),
     messages:{send:(value,signal)=>{const {projectId:_project,teamId,taskId,...payload}=value;return request('send-message',{teamId,taskId},payload,signal);},readMessages:(ref,page,signal)=>request('read-messages',ref,{page},signal),readActivity:(ref,page,signal)=>request('read-activity',ref,{page},signal),readPendingRequests:(ref,page,signal)=>request('read-pending-requests',ref,{page},signal)},
     memberWork:{readMemberWork:(ref,memberId,page,signal)=>request('read-member-work',ref,{memberId,page},signal)},
     listMaterials:(ref,signal)=>request('list-materials',ref,{},signal),

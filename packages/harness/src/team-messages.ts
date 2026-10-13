@@ -70,6 +70,8 @@ export interface TeamMessageStore {
 }
 /** No run creation, wake loop, retries or scheduling. Delivery is native receive evidence only. */
 export interface TeamTransport {
+  /** Read-only native readiness. Missing runtime identity leaves the durable message pending. */
+  canDeliver?(message:TeamMessageEnvelope,delivery:TeamMessageDelivery):Promise<boolean>;
   deliver(message: TeamMessageEnvelope, delivery: TeamMessageDelivery): Promise<TeamDeliveryResult>;
   observeDelivery(delivery: TeamMessageDelivery): Promise<TeamDeliveryResult | { readonly state: 'unavailable'; readonly reason: string }>;
 }
@@ -125,6 +127,7 @@ export async function sendTeamMessage(store: TeamMessageStore, actor: TeamMessag
   const deliveries: TeamMessageDelivery[] = [];
   for (const retained of committed.deliveries) {
     if (retained.state !== 'pending') { deliveries.push(retained); continue; }
+    if(transport.canDeliver&&!await transport.canDeliver(committed.message,retained)) {deliveries.push(retained);continue;}
     const claimed = await claimTeamDelivery(store, actor, requestRef(request), retained.deliveryId, retained.revision);
     if (claimed?.target === undefined) { deliveries.push(claimed ?? await store.readDelivery(actor, requestRef(request), retained.deliveryId)); continue; }
     let result: TeamDeliveryResult;

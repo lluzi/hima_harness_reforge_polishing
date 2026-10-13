@@ -1,4 +1,4 @@
-// Private C7 engine lifecycle; this is not a member adapter or execution scheduler.
+// Private C7 engine and member namespace lifecycle; no execution scheduler.
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
@@ -20,35 +20,54 @@ export const engineeringEngineManifest=z.strictObject({kind:z.literal('podman'),
 });
 export type EngineeringEngineManifest=z.infer<typeof engineeringEngineManifest>;
 const tuple=z.strictObject({family:z.union([z.literal(4),z.literal(6)]),address:z.string(),protocol:z.literal('tcp'),port:z.number().int().min(1).max(65535)});
-const policySchema=z.strictObject({policyId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),approvedOrigins:z.array(z.string()).min(1).max(32),resolvedTuples:z.array(tuple).min(1).max(128),deniedPrivateTuples:z.array(tuple).max(128),resolvedAt:z.string().datetime(),validUntil:z.string().datetime(),sha256:hash});
+const policySchema=z.strictObject({policyId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),approvedOrigins:z.array(z.string()).min(1).max(32),resolvedTuples:z.array(tuple).min(1).max(128),deniedPrivateTuples:z.array(tuple).max(128),resolvedAt:z.string().datetime(),validUntil:z.string().datetime(),sha256:hash,approvedModelTuples:z.array(tuple).min(1).max(128).optional(),nativeLoopbackPort:z.literal(4096).optional()});
 export type EngineeringEgressPolicy=z.infer<typeof policySchema>;
 export interface EngineeringNamespaceRequest {engineGeneration:string;taskIdentity:{taskId:string;fixture:'trusted-namespace-test'};policy:EngineeringEgressPolicy;}
-export interface EngineeringNamespaceLease {readonly engineGeneration:string;readonly namespaceGeneration:string;readonly containerId:string;readonly guestPidIdentity:string;readonly imageDigest:string;readonly policySha256:string;readonly observedRulesSha256:string;readonly validUntil:string;readonly qualification:'trusted-fixture-only';}
-export interface EngineeringOwnedFacts {provider:'applehv'|'rootless';platform:string;canonicalStorage:string;shortHome:string;machineName?:string;machineCreatedAt?:string;configSha256?:string;connectionSha256?:string;imageDigest?:string;helpers:Array<{pid:number;startIdentity:string}>;namespaces:EngineeringNamespaceLease[];closure:{containers:boolean;machine:boolean;helpers:boolean};qualification:'trusted-fixture-only';}
+export interface EngineeringNamespaceLease {readonly engineGeneration:string;readonly namespaceGeneration:string;readonly containerId:string;readonly guestPidIdentity:string;readonly imageDigest:string;readonly policySha256:string;readonly observedRulesSha256:string;readonly validUntil:string;readonly qualification:'trusted-fixture-only';readonly memberKey?:string;readonly memberHosts?:readonly string[];}
+export interface EngineeringOwnedFacts {provider:'applehv'|'rootless';platform:string;canonicalStorage:string;shortHome:string;machineName?:string;machineCreatedAt?:string;configSha256?:string;connectionSha256?:string;imageDigest?:string;helpers:Array<{pid:number;startIdentity:string}>;namespaces:EngineeringNamespaceLease[];memberClosures?:Array<{lease:EngineeringNamespaceLease;proof:{containerId:string;namespaceGeneration:string;observedAbsent:true}}>;closure:{containers:boolean;machine:boolean;helpers:boolean};qualification:'trusted-fixture-only';}
 function freezeSnapshot<T>(value:T):T {if(value!==null&&typeof value==='object'){for(const child of Object.values(value))freezeSnapshot(child);Object.freeze(value);}return value;}
 const sha=(bytes:string)=>createHash('sha256').update(bytes).digest('hex');
 const privateAddress=(raw:string)=> {const address=isIP(raw)===6?new URL(`http://[${raw}]`).hostname.slice(1,-1):raw;return isIP(address)===4?/^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address):/^(::|fc|fd|fe[89ab])/i.test(address);};
-interface CompiledEngineeringPolicy {bytes:string;policySha256:string;tuples:EngineeringEgressPolicy['resolvedTuples'];validUntil:string;deadlineEpochSeconds:number;timeoutSeconds:number;}
+// IPv6 URL canonicalization also exposes IPv4-mapped and compatible addresses.
+const canonicalAddress=(raw:string)=>isIP(raw)===6?new URL(`http://[${raw}]`).hostname.slice(1,-1):raw;
+function forbiddenModelAddress(raw:string):boolean {
+  const address=canonicalAddress(raw);
+  if(isIP(address)===4){const parts=address.split('.').map(Number);return parts[0]===0||parts[0]===127||parts[0]!>=224||parts[0]===169&&parts[1]===254;}
+  if(address==='::'||address==='::1'||/^fe[89ab][a-f0-9]:/i.test(address)||/^ff/i.test(address))return true;
+  const mapped=address.match(/^::(?:ffff:)?([a-f0-9]{1,4}):([a-f0-9]{1,4})$/i);
+  if(mapped){const high=parseInt(mapped[1]!,16),low=parseInt(mapped[2]!,16);return forbiddenModelAddress(`${high>>>8}.${high&255}.${low>>>8}.${low&255}`);}
+  return false;
+}
+const exactTupleKey=(t:EngineeringEgressPolicy['resolvedTuples'][number])=>JSON.stringify([t.family,t.address,t.protocol,t.port]);
+const destinationKey=(t:EngineeringEgressPolicy['resolvedTuples'][number])=>{const address=canonicalAddress(t.address),mapped=address.match(/^::(?:ffff:)?([a-f0-9]{1,4}):([a-f0-9]{1,4})$/i);if(mapped){const high=parseInt(mapped[1]!,16),low=parseInt(mapped[2]!,16);return JSON.stringify([4,`${high>>>8}.${high&255}.${low>>>8}.${low&255}`,t.protocol,t.port]);}return JSON.stringify([t.family,address,t.protocol,t.port]);};
+interface CompiledEngineeringPolicy {approvedOrigins:string[];bytes:string;policySha256:string;tuples:EngineeringEgressPolicy['resolvedTuples'];validUntil:string;deadlineEpochSeconds:number;timeoutSeconds:number;nativeLoopbackPort?:4096;}
 const installationGuardMs=1000;
-function engineeringPolicyBytes(tuples:EngineeringEgressPolicy['resolvedTuples'],deadlineEpochSeconds:number,timeoutSeconds:number):string {
+function engineeringPolicyBytes(tuples:EngineeringEgressPolicy['resolvedTuples'],deadlineEpochSeconds:number,timeoutSeconds:number,nativeLoopbackPort?:4096):string {
+  const native=nativeLoopbackPort?`  oifname "lo" ip daddr 127.0.0.1 tcp dport ${nativeLoopbackPort} meta time < ${deadlineEpochSeconds} accept\n  oifname "lo" ip daddr 127.0.0.1 tcp sport ${nativeLoopbackPort} meta time < ${deadlineEpochSeconds} accept\n`:"";
   const sets=([4,6] as const).map(family=>{const elements=tuples.filter(t=>t.family===family).map(t=>`${t.address} . ${t.port} timeout ${timeoutSeconds}s`);return ` set allow${family} { type ipv${family}_addr . inet_service; flags timeout;${elements.length?` elements = { ${elements.join(', ')} };`:''} }`;});
-  return `table inet hima {\n${sets.join('\n')}\n chain output { type filter hook output priority 0; policy drop;\n  meta l4proto tcp ip daddr . tcp dport @allow4 meta time < ${deadlineEpochSeconds} accept\n  meta l4proto tcp ip6 daddr . tcp dport @allow6 meta time < ${deadlineEpochSeconds} accept\n }\n}\n`;
+  return `table inet hima {\n${sets.join('\n')}\n chain output { type filter hook output priority 0; policy drop;\n${native}  meta l4proto tcp ip daddr . tcp dport @allow4 meta time < ${deadlineEpochSeconds} accept\n  meta l4proto tcp ip6 daddr . tcp dport @allow6 meta time < ${deadlineEpochSeconds} accept\n }\n}\n`;
 }
 export function compileEngineeringPolicy(input:EngineeringEgressPolicy,now=Date.now(),offsetLowerMs=0):CompiledEngineeringPolicy {
   if(!Number.isSafeInteger(now)||now<0||!Number.isFinite(offsetLowerMs)||Math.abs(offsetLowerMs)>1000)throw new Error('Egress policy clock is invalid or outside the bounded skew.');
   const p=policySchema.parse(input);const {sha256,...body}=p;
   if(sha(JSON.stringify(body))!==sha256)throw new Error('Egress policy digest differs.');
   if(Date.parse(p.resolvedAt)>now || Date.parse(p.validUntil)<=now || Date.parse(p.validUntil)-Date.parse(p.resolvedAt)>300000)throw new Error('Egress policy resolution is expired or outside the bounded validity.');
-  for(const origin of p.approvedOrigins){const url=new URL(origin);if(url.protocol!=='https:'||url.port&&url.port!=='443'||url.username||url.password||url.origin!==origin)throw new Error('Approved origin must be an exact HTTPS origin.');}
-  for(const t of [...p.resolvedTuples,...p.deniedPrivateTuples])if(isIP(t.address)!==t.family)throw new Error('Egress policy address family differs.');
-  const denied=new Set(p.deniedPrivateTuples.map(t=>`${t.address}:${t.port}`));
-  const tuples=p.resolvedTuples;
-  for(const t of tuples)if(t.port!==443||privateAddress(t.address)||denied.has(`${t.address}:${t.port}`))throw new Error('Egress policy admits a private collision or non-HTTPS port.');
-  if(new Set(tuples.map(t=>`${t.address}:${t.port}`)).size!==tuples.length)throw new Error('Egress policy contains duplicate tuples.');
+  const modelApprovals=p.approvedModelTuples,originPorts=new Set<number>();
+  for(const origin of p.approvedOrigins){const url=new URL(origin);if((modelApprovals?url.protocol!=='https:'&&url.protocol!=='http:':url.protocol!=='https:'||url.port&&url.port!=='443')||url.username||url.password||url.origin!==origin)throw new Error(modelApprovals?'Approved model origin must be an exact HTTP/HTTPS origin without credentials.':'Approved origin must be an exact HTTPS origin.');const originHost=url.hostname.startsWith('[')?url.hostname.slice(1,-1):url.hostname;if(originHost.toLowerCase()==='localhost'||originHost.toLowerCase().endsWith('.localhost')||originHost.includes('*')||isIP(originHost)&&forbiddenModelAddress(originHost))throw new Error('Approved model origin cannot be localhost, wildcard or a forbidden model address.');originPorts.add(Number(url.port||(url.protocol==='https:'?443:80)));}
+  for(const t of [...p.resolvedTuples,...p.deniedPrivateTuples,...(modelApprovals??[])])if(isIP(t.address)!==t.family)throw new Error('Egress policy address family differs.');
+  const denied=new Set(p.deniedPrivateTuples.map(destinationKey));const tuples=p.resolvedTuples,resolved=new Set(tuples.map(exactTupleKey)),approved=new Set((modelApprovals??[]).map(exactTupleKey));
+  if(modelApprovals&&(approved.size!==modelApprovals.length||modelApprovals.some(t=>!resolved.has(exactTupleKey(t)))))throw new Error('Approved model tuples must be distinct exact resolved destinations.');
+  for(const t of tuples){
+    if(denied.has(destinationKey(t)))throw new Error('Egress policy admits a denied private collision.');
+    if(forbiddenModelAddress(t.address))throw new Error('Egress policy refuses loopback, unspecified, link-local, multicast or reserved model destinations.');
+    if(modelApprovals&&!originPorts.has(t.port))throw new Error('Model destination port differs from declared origin effective port.');
+    if((t.port!==443||privateAddress(t.address))&&!approved.has(exactTupleKey(t)))throw new Error('Egress policy admits a private collision or non-HTTPS port without an exact approved model tuple.');
+  }
+  if(new Set(tuples.map(destinationKey)).size!==tuples.length)throw new Error('Egress policy contains duplicate tuples.');
   const deadlineEpochSeconds=Math.floor((Date.parse(p.validUntil)+Math.min(0,offsetLowerMs)-100)/1000);
   const timeoutSeconds=Math.floor((deadlineEpochSeconds*1000-now-installationGuardMs)/1000);
   if(timeoutSeconds<=0)throw new Error('Egress policy has insufficient remaining validity for a bounded installation.');
-  return {bytes:engineeringPolicyBytes(tuples,deadlineEpochSeconds,timeoutSeconds),policySha256:sha256,tuples,validUntil:p.validUntil,deadlineEpochSeconds,timeoutSeconds};
+  return {approvedOrigins:p.approvedOrigins,bytes:engineeringPolicyBytes(tuples,deadlineEpochSeconds,timeoutSeconds,p.nativeLoopbackPort),policySha256:sha256,tuples,validUntil:p.validUntil,deadlineEpochSeconds,timeoutSeconds,...(p.nativeLoopbackPort?{nativeLoopbackPort:p.nativeLoopbackPort}:{})};
 }
 interface HostClockTiming {hostBeforeMs:number;hostAfterMs:number;}
 interface RootlessKeeper {file:string;pid:number;startIdentity:string;}
@@ -56,6 +75,11 @@ interface Generation {id:string;state:TeamServiceReceipt['state'];fenced:boolean
 export interface EngineeringRuntimeOptions {home:string;runtimeDirectory?:string;recordReceipt:(receipt:TeamServiceReceipt)=>Promise<void>;readManifest:()=>Promise<{engineeringEngine?:EngineeringEngineManifest;files?:Record<string,string>}>;}
 export class EngineeringEngineRuntime {
   private generation?:Generation;private closed=false;
+  private readonly memberPreparations=new Map<string,Promise<EngineeringNamespaceLease>>();
+  private readonly memberStaged=new Map<string,Set<string>>();
+  private readonly memberStarted=new Set<string>();
+  private readonly memberClosing=new Set<string>();
+  private readonly memberDeadlines=new Map<string,number>();
   private readonly options:EngineeringRuntimeOptions;
   constructor(options:EngineeringRuntimeOptions){this.options=options;}
   private async receipt(g:Generation,operation:TeamServiceReceipt['operation'],extra:Partial<TeamServiceReceipt>={}):Promise<TeamServiceReceipt>{const closure=g.facts?.closure;const receipt:TeamServiceReceipt={schema:'hima-team-service-receipt/1',receiptId:randomUUID(),serviceId:'engineering-engine',generation:g.id,operation,state:g.state,recordedAt:new Date().toISOString(),owned:{quiescent:(!g.facts&&['unavailable','stopped'].includes(g.state)&&g.pending.size===0)||!!closure&&closure.containers&&closure.machine&&closure.helpers&&g.pending.size===0,...(g.facts?{engine:g.facts}:{})},...(g.diagnostic?{diagnostic:g.diagnostic}:{}),...extra};const snapshot=freezeSnapshot(structuredClone(receipt));if(g.facts)await writeFile(path.join(g.facts.canonicalStorage,'generation.json'),JSON.stringify({generation:g.id,shortHome:g.facts.shortHome,state:g.state,quiescent:snapshot.owned.quiescent}),{mode:0o600});await this.options.recordReceipt(snapshot);return snapshot;}
@@ -189,9 +213,113 @@ export class EngineeringEngineRuntime {
   prepareNamespace(request:EngineeringNamespaceRequest):Promise<EngineeringNamespaceLease>{const g=this.generation;
     if(!g||g.fenced||g.exporting||g.state!=='running'||request.engineGeneration!==g.id)return Promise.reject(new Error('Current unfenced engine generation required.'));
     if(request.taskIdentity.fixture!=='trusted-namespace-test'||!/^[A-Za-z0-9_-]{1,128}$/.test(request.taskIdentity.taskId))return Promise.reject(new Error('Only the explicit trusted namespace fixture is admitted; member activation remains blocked.'));
-    let compiled:ReturnType<typeof compileEngineeringPolicy>;try{compiled=compileEngineeringPolicy(request.policy);}catch(error){return Promise.reject(error);}
+    let compiled:ReturnType<typeof compileEngineeringPolicy>;try{compiled=compileEngineeringPolicy(request.policy);if(compiled.nativeLoopbackPort)throw new Error('Native loopback requires an owned member namespace.');}catch(error){return Promise.reject(error);}
     const frozenRequest=freezeSnapshot(structuredClone(request));
     const pending=this.prepare(g,frozenRequest,compiled).catch(async error=>{g.fenced=true;g.state='failed';g.diagnostic={code:'namespace-policy',message:(error as Error).message};await this.receipt(g,'status');throw error;});g.pending.add(pending);void pending.finally(()=>g.pending.delete(pending)).catch(()=>{});return pending;
+  }
+  prepareMemberNamespace(request:{engineGeneration:string;memberKey:string;policy:EngineeringEgressPolicy;deadlineAt:string}):Promise<EngineeringNamespaceLease> {
+    const g=this.generation;
+    if(!g||g.fenced||g.exporting||g.state!=='running'||request.engineGeneration!==g.id)return Promise.reject(new Error('Current unfenced engine generation required.'));
+    if(!/^[A-Za-z0-9_-]{1,128}$/.test(request.memberKey))return Promise.reject(new Error('Member key must be stable safe ASCII.'));
+    const deadline=Date.parse(request.deadlineAt);
+    if(!Number.isFinite(deadline)||deadline<=Date.now())return Promise.reject(new Error('Member deadline must be live.'));
+    let compiled:CompiledEngineeringPolicy;try{compiled=compileEngineeringPolicy(request.policy);this.memberHostBindings(request.policy);}catch(error){return Promise.reject(error);}
+    const key=`${g.id}:${request.memberKey}`,inFlight=this.memberPreparations.get(key);if(inFlight)return inFlight;
+    const existing=g.facts!.namespaces.find(n=>n.memberKey===request.memberKey);
+    const operation=existing?(async()=>{if(existing.policySha256!==request.policy.sha256)throw new Error('Existing member policy differs.');await this.memberIdentity(existing);return Object.freeze({...existing});})():this.prepare(g,freezeSnapshot({engineGeneration:g.id,taskIdentity:{taskId:request.memberKey,fixture:'trusted-namespace-test' as const},policy:structuredClone(request.policy)}),compiled,request.memberKey,request.deadlineAt).then(lease=>{this.memberStaged.set(lease.namespaceGeneration,new Set());this.memberDeadlines.set(lease.namespaceGeneration,deadline);return lease;});
+    this.memberPreparations.set(key,operation);g.pending.add(operation);void operation.finally(()=>{this.memberPreparations.delete(key);g.pending.delete(operation);}).catch(()=>{});return operation;
+  }
+  private memberHostBindings(policy:EngineeringEgressPolicy):string[] {
+    if(policy.approvedOrigins.length!==1)throw new Error('Member namespace requires exactly one approved origin for an exact hostname mapping.');
+    const hostname=new URL(policy.approvedOrigins[0]!).hostname;const address=hostname.startsWith('[')&&hostname.endsWith(']')?hostname.slice(1,-1):hostname;
+    if(isIP(address)){if(policy.resolvedTuples.some(tuple=>tuple.address!==address))throw new Error('Literal member origin differs from admitted destination tuples.');return [];}
+    if(hostname.length>253||!hostname.split('.').every(label=>/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)))throw new Error('Member origin requires an ordinary canonical hostname or literal IP.');
+    return policy.resolvedTuples.map(tuple=>`${hostname}:${tuple.address}`);
+  }
+  private verifyMemberHosts(c:any,expected:readonly string[]):void {
+    const observed=c.HostConfig?.ExtraHosts??c.Config?.ExtraHosts;
+    if(observed!==undefined&&observed!==null&&(!Array.isArray(observed)||!isDeepStrictEqual([...observed].sort(),[...expected].sort())))throw new Error('Owned member hostname bindings differ from admitted policy.');
+  }
+  private async memberIdentity(lease:EngineeringNamespaceLease,cleanup=false):Promise<Generation> {
+    const g=this.generation;
+    if(!g||g.id!==lease.engineGeneration||!lease.memberKey||!g.facts?.namespaces.some(n=>isDeepStrictEqual(n,lease)))throw new Error('Current owned member lease required.');
+    if(!cleanup&&(this.memberClosing.has(lease.namespaceGeneration)||this.closed||g.fenced||g.exporting||g.state!=='running'||Date.parse(lease.validUntil)<=Date.now()))throw new Error('Member lease fenced or expired.');
+    const c=await this.container(g,lease.containerId);this.verifyMemberHosts(c,lease.memberHosts??[]);
+    if(c.Config?.Labels?.['hima.namespace-generation']!==lease.namespaceGeneration||c.Config?.Labels?.['hima.member-key']!==lease.memberKey||(c.State.Running?`${c.State.Pid}:${c.State.StartedAt}`!==lease.guestPidIdentity:!cleanup||c.State.StartedAt!==lease.guestPidIdentity.slice(lease.guestPidIdentity.indexOf(':')+1))||c.Image!==undefined&&String(c.Image).replace(/^sha256:/,'')!==lease.imageDigest.replace(/^sha256:/,''))throw new Error('Owned member container birth identity differs.',{cause:{expected:{namespaceGeneration:lease.namespaceGeneration,memberKey:lease.memberKey,guestPidIdentity:lease.guestPidIdentity,image:lease.imageDigest},observed:{namespaceGeneration:c.Config?.Labels?.['hima.namespace-generation'],memberKey:c.Config?.Labels?.['hima.member-key'],pid:c.State.Pid,startedAt:c.State.StartedAt,running:c.State.Running,image:c.Image}}});
+    if(!cleanup){const policy=g.policies.get(lease.containerId);if(!policy)throw new Error('Member policy admission is missing.');const timing={hostBeforeMs:0,hostAfterMs:0};const rules=await this.guest(g,['podman','unshare','nsenter',`--net=/proc/${c.State.Pid}/ns/net`,'nft','-j','-T','list','ruleset'],undefined,timing);verifyObservedEngineeringRules(rules,policy.tuples,policy,timing.hostAfterMs);if(g.fenced||Date.parse(lease.validUntil)<=Date.now())throw new Error('Member lease fenced or expired during observation.');}
+    return g;
+  }
+  private memberOperation<T>(lease:EngineeringNamespaceLease,work:(g:Generation)=>Promise<T>):Promise<T> {
+    const g=this.generation;if(!g||g.id!==lease.engineGeneration)return Promise.reject(new Error('Current owned member lease required.'));
+    const pending=(async()=>work(await this.memberIdentity(lease)))();g.pending.add(pending);void pending.finally(()=>g.pending.delete(pending)).catch(()=>{});return pending;
+  }
+  stageMember(lease:EngineeringNamespaceLease,files:readonly {path:string;bytes:Uint8Array}[]):Promise<void> {
+    const copy=files.map(file=>({path:file.path,bytes:Buffer.from(file.bytes)}));
+    if(copy.length>64||new Set(copy.map(f=>f.path)).size!==copy.length||copy.some(f=>!/^\/hima-home\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+$/.test(f.path)||f.path.split('/').some(p=>p==='.'||p==='..')||f.bytes.length>1024*1024))return Promise.reject(new Error('Stage requires bounded plain /hima-home paths.'));
+    return this.memberOperation(lease,async g=>{
+      if(this.memberStarted.has(lease.namespaceGeneration)&&copy.some(file=>!file.path.startsWith('/hima-home/replies/')&&!file.path.startsWith('/hima-home/inbox/')))throw new Error('Running member accepts only scoped replies.');
+      for(const file of copy){
+        const name=`member-${randomUUID()}`,host=path.join(g.facts!.canonicalStorage,'transfer',name),guest=`/tmp/${name}`;
+        await writeFile(host,file.bytes,{flag:'wx',mode:0o600});
+        try{await this.memberIdentity(lease);await this.cli(g,this.command(g,['cp',host,`${lease.containerId}:${guest}`]));
+          await this.memberIdentity(lease);
+          const script="const fs=require('node:fs'),p=require('node:path');const [source,target]=process.argv.slice(1);const root='/hima-home',flags=fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW;let dir=fs.openSync(root,flags);try{for(const part of p.relative(root,p.dirname(target)).split('/').filter(Boolean)){const entry='/proc/self/fd/'+dir+'/'+part;try{fs.mkdirSync(entry,{mode:448});}catch(e){if(e.code!=='EEXIST')throw e;}const next=fs.openSync(entry,flags);fs.closeSync(dir);dir=next;}const input=fs.openSync(source,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{const info=fs.fstatSync(input);if(!info.isFile()||info.size>1048576)throw Error('Stage source not bounded plain file');const entry='/proc/self/fd/'+dir+'/'+p.basename(target);const out=fs.openSync(entry,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK,384);try{if(!fs.fstatSync(out).isFile())throw Error('Stage target not plain');fs.ftruncateSync(out,0);fs.writeFileSync(out,fs.readFileSync(input));}finally{fs.closeSync(out);}}finally{fs.closeSync(input);fs.unlinkSync(source);}}finally{fs.closeSync(dir);}";
+          await this.cli(g,this.command(g,['exec',lease.containerId,'/usr/local/bin/node','-e',script,guest,file.path]));this.memberStaged.get(lease.namespaceGeneration)?.add(file.path);
+        }finally{await rm(host,{force:true});}
+      }
+    });
+  }
+  startMember(lease:EngineeringNamespaceLease):Promise<void> {
+    return this.memberOperation(lease,async g=>{const staged=this.memberStaged.get(lease.namespaceGeneration);if(!staged?.has('/hima-home/runner.mjs')||!staged.has('/hima-home/config.json')||!staged.has('/hima-home/confinement.py'))throw new Error('Member runner and config must be staged before start.');
+      if(this.memberStarted.has(lease.namespaceGeneration))throw new Error('Member start already submitted; observe retained state.');
+      await this.memberIdentity(lease);if(this.memberStarted.has(lease.namespaceGeneration))throw new Error('Member start already submitted; observe retained state.');this.memberStarted.add(lease.namespaceGeneration);
+      await this.cli(g,this.command(g,['exec','--detach',lease.containerId,'/bin/sh','-c','exec /usr/local/bin/node /hima-home/runner.mjs /hima-home/config.json > /hima-home/supervisor.log 2>&1']));
+      await this.receipt(g,'status');
+    });
+  }
+  readMember(lease:EngineeringNamespaceLease):Promise<{journal:string;result:string|null;state:string|null;requests:readonly {id:string;body:string}[]}> {
+    return this.memberOperation(lease,async g=>{
+      const script="const fs=require('node:fs');const root='/hima-home',dirFlags=fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW;const rootFd=fs.openSync(root,dirFlags);function read(dir,name,limit){let fd;try{fd=fs.openSync('/proc/self/fd/'+dir+'/'+name,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);}catch(e){if(e.code==='ENOENT')return null;throw e;}try{const st=fs.fstatSync(fd);if(!st.isFile()||st.size>limit)throw Error('Member retained file exceeds bound or is not plain');const bytes=Buffer.alloc(limit+1);let count=0,n;while((n=fs.readSync(fd,bytes,count,bytes.length-count,null))>0){count+=n;if(count>limit)throw Error('Member retained file exceeds bound');}return bytes.subarray(0,count).toString('base64');}finally{fs.closeSync(fd);}}try{if(process.argv[1]==='files')console.log(JSON.stringify({journal:read(rootFd,'journal.jsonl',1048576),result:read(rootFd,'result.json',262144),state:read(rootFd,'state.json',65536)}));else{let dir;try{const native=fs.openSync('/proc/self/fd/'+rootFd+'/native',dirFlags);try{dir=fs.openSync('/proc/self/fd/'+native+'/requests',dirFlags);}finally{fs.closeSync(native);}}catch(e){if(e.code!=='ENOENT')throw e;}if(dir===undefined)console.log('[]');else try{const names=fs.readdirSync('/proc/self/fd/'+dir);if(names.length>64)throw Error('Request count exceeds bound');console.log(JSON.stringify(names.sort().map(name=>{if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.json$/.test(name))throw Error('Request id invalid');return {id:name.slice(0,-5),body:read(dir,name,16384)};})));}finally{fs.closeSync(dir);}}}finally{fs.closeSync(rootFd);} ";
+      const command=(mode:string)=>this.cli(g,this.command(g,['exec',lease.containerId,'/usr/local/bin/node','-e',script,mode]));
+      const files=JSON.parse(await command('files'));await this.memberIdentity(lease);const requests=JSON.parse(await command('requests')) as Array<{id:string;body:string|null}>;const decode=(value:string|null)=>value===null?null:Buffer.from(value,'base64').toString('utf8');
+      await this.memberIdentity(lease);return {journal:decode(files.journal)??'',result:decode(files.result),state:decode(files.state),requests:requests.filter(r=>r.body!==null).map(r=>({id:r.id,body:decode(r.body)!}))};
+    });
+  }
+  readMemberArtifact(lease:EngineeringNamespaceLease,relativePath:string,offset=0,limit=65536):Promise<{bytes:Uint8Array;total:number}> {
+    if(!relative.safeParse(relativePath).success||relativePath.includes('\\')||!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>65536)return Promise.reject(new Error('Artifact read requires a plain relative path and bounded offset/chunk.'));
+    return this.memberOperation(lease,async g=>{
+      const script="const fs=require('node:fs');const [name,rawOffset,rawLimit]=process.argv.slice(1),offset=Number(rawOffset),limit=Number(rawLimit),parts=name.split('/'),flags=fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW;let dir=fs.openSync('/hima-work',flags);try{for(const part of parts.slice(0,-1)){const next=fs.openSync('/proc/self/fd/'+dir+'/'+part,flags);fs.closeSync(dir);dir=next;}const fd=fs.openSync('/proc/self/fd/'+dir+'/'+parts.at(-1),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{const before=fs.fstatSync(fd);if(!before.isFile()||before.size>16777216||offset>before.size)throw Error('Member artifact is not a bounded regular file or offset exceeds size');const bytes=Buffer.alloc(Math.min(limit,before.size-offset));let count=0,n;while(count<bytes.length&&(n=fs.readSync(fd,bytes,count,bytes.length-count,offset+count))>0)count+=n;const after=fs.fstatSync(fd);if(count!==bytes.length||before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs)throw Error('Member artifact changed during chunk read');console.log(JSON.stringify({bytes:bytes.toString('base64'),total:before.size}));}finally{fs.closeSync(fd);}}finally{fs.closeSync(dir);}";
+      const result=JSON.parse(await this.cli(g,this.command(g,['exec',lease.containerId,'/usr/local/bin/node','-e',script,relativePath,String(offset),String(limit)]))) as {bytes:string;total:number};
+      if(!Number.isSafeInteger(result.total)||result.total<offset||result.total>16777216||typeof result.bytes!=='string')throw new Error('Member artifact chunk response is invalid.');const bytes=Buffer.from(result.bytes,'base64');await this.memberIdentity(lease);if(bytes.length!==Math.min(limit,result.total-offset))throw new Error('Member artifact chunk byte count differs.');return {bytes,total:result.total};
+    });
+  }
+  replyMember(lease:EngineeringNamespaceLease,id:string,body:string):Promise<void> {
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)||Buffer.byteLength(body)>16384)return Promise.reject(new Error('Reply requires a safe UUID and bounded body.'));
+    return this.stageMember(lease,[{path:`/hima-home/replies/${id}.json`,bytes:Buffer.from(body)}]);
+  }
+  sendMemberInput(lease:EngineeringNamespaceLease,id:string,input:string):Promise<void> {
+    if(!/^(?:delivery-)?[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)||Buffer.byteLength(input)>16384)return Promise.reject(new Error('Input requires a safe UUID and bounded body.'));
+    return this.stageMember(lease,[{path:`/hima-home/inbox/${id}.json`,bytes:Buffer.from(input)}]);
+  }
+  renewMemberPolicy(lease:EngineeringNamespaceLease,policy:EngineeringEgressPolicy):Promise<EngineeringNamespaceLease> {
+    return this.memberOperation(lease,async g=>{const prior=g.policies.get(lease.containerId)!;const next=compileEngineeringPolicy(policy);if(!isDeepStrictEqual(prior.approvedOrigins,next.approvedOrigins)||!isDeepStrictEqual(prior.tuples,next.tuples)||prior.nativeLoopbackPort!==next.nativeLoopbackPort)throw new Error('Member renewal cannot widen resolved destinations.');let compiled=await this.clockPolicy(g,policy);compiled=await this.installPolicy(g,Number(lease.guestPidIdentity.split(':')[0]),compiled);const timing={hostBeforeMs:0,hostAfterMs:0};const rules=await this.guest(g,['podman','unshare','nsenter',`--net=/proc/${lease.guestPidIdentity.split(':')[0]}/ns/net`,'nft','-j','-T','list','ruleset'],undefined,timing);verifyObservedEngineeringRules(rules,compiled.tuples,compiled,timing.hostAfterMs);if(g.fenced)throw new Error('Member renewal fenced.');const renewed=Object.freeze({...lease,policySha256:policy.sha256,validUntil:new Date(Math.min(this.memberDeadlines.get(lease.namespaceGeneration)!,Date.parse(policy.validUntil))).toISOString(),observedRulesSha256:sha(rules)});g.policies.set(lease.containerId,compiled);g.facts!.namespaces=g.facts!.namespaces.map(value=>value.containerId===lease.containerId?renewed:value);await this.receipt(g,'status');if(this.generation!==g||g.fenced||this.closed||Date.parse(renewed.validUntil)<=Date.now())throw new Error('Member renewal readiness handoff fenced or expired.');return renewed;});
+  }
+  private retainMemberClosure(g:Generation,lease:EngineeringNamespaceLease):{closed:true;proof:{containerId:string;namespaceGeneration:string;observedAbsent:true}} {
+    const proof={containerId:lease.containerId,namespaceGeneration:lease.namespaceGeneration,observedAbsent:true as const};
+    const rows=g.facts!.memberClosures??(g.facts!.memberClosures=[]);if(!rows.some(row=>isDeepStrictEqual(row.lease,lease)))rows.push({lease:Object.freeze({...lease}),proof});
+    return {closed:true,proof};
+  }
+  async closeMember(lease:EngineeringNamespaceLease):Promise<{closed:boolean;reason?:string;proof?:unknown}> {
+    try{
+      const g=this.generation;if(!g||g.id!==lease.engineGeneration||!lease.memberKey)throw new Error('Current owned member lease required.');
+      const retained=g.facts?.memberClosures?.find(row=>isDeepStrictEqual(row.lease,lease));if(retained)return {closed:true,proof:structuredClone(retained.proof)};
+      if(!g.facts?.namespaces.some(value=>isDeepStrictEqual(value,lease)))throw new Error('Current owned member lease required.');
+      this.memberClosing.add(lease.namespaceGeneration);await Promise.allSettled([...g.pending]);const closedDuringWait=g.facts.memberClosures?.find(row=>isDeepStrictEqual(row.lease,lease));if(closedDuringWait)return {closed:true,proof:structuredClone(closedDuringWait.proof)};
+      const inventory=JSON.parse(await this.cli(g,this.command(g,['ps','--all','--filter',`label=hima.namespace-generation=${lease.namespaceGeneration}`,'--format','json'])));
+      if(!Array.isArray(inventory)||inventory.length>1||inventory.length===1&&(inventory[0].Id??inventory[0].ID)!==lease.containerId)throw new Error('Owned member closure inventory identity differs.');
+      if(inventory.length){await this.memberIdentity(lease,true);await this.discardNamespace(g,lease);}else{g.facts.namespaces=g.facts.namespaces.filter(value=>value.containerId!==lease.containerId);g.policies.delete(lease.containerId);}
+      this.memberStaged.delete(lease.namespaceGeneration);const result=this.retainMemberClosure(g,lease);await this.receipt(g,'status');return result;
+    }catch(error){return {closed:false,reason:(error as Error).message};}
   }
   private async rootlessController(g:Generation):Promise<{python:string;nsenter:string;nft:string}> {
     const paths={python:'python/bin/python3.12',nsenter:'engine/bin/nsenter',nft:'engine/bin/nft'};
@@ -274,7 +402,7 @@ sys.exit(0 if admitted else 3)
     const before=ns('wallBeforeNs'),after=ns('wallAfterNs'),monoBefore=ns('monoBeforeNs'),monoAfter=ns('monoAfterNs'),remainingMs=Number((BigInt(compiled.deadlineEpochSeconds)*1000000000n-before)/1000000n);
     const timeoutSeconds=Math.min(Math.floor((remainingMs-installationGuardMs)/1000),compiled.timeoutSeconds),elapsedMs=Number(monoAfter-monoBefore)/1000000;
     if(after<before||after>=BigInt(compiled.deadlineEpochSeconds)*1000000000n||monoAfter<monoBefore||!Number.isFinite(value.elapsedMs)||value.elapsedMs!==elapsedMs||elapsedMs>installationGuardMs||!Number.isSafeInteger(remainingMs)||remainingMs<=0||remainingMs>300000||value.remainingMs!==remainingMs||!Number.isSafeInteger(value.timeoutSeconds)||value.timeoutSeconds!==timeoutSeconds||timeoutSeconds<=0||!Number.isSafeInteger(timing.hostAfterMs)||timing.hostAfterMs+timeoutSeconds*1000>Date.parse(compiled.validUntil))throw new Error('Namespace installation clock, guard or Host deadline admission failed.');
-    return {...compiled,bytes:engineeringPolicyBytes(compiled.tuples,compiled.deadlineEpochSeconds,timeoutSeconds),timeoutSeconds};
+    return {...compiled,bytes:engineeringPolicyBytes(compiled.tuples,compiled.deadlineEpochSeconds,timeoutSeconds,compiled.nativeLoopbackPort),timeoutSeconds};
   }
   private async discardNamespace(g:Generation,lease:EngineeringNamespaceLease):Promise<void> {
     const c=await this.container(g,lease.containerId);
@@ -284,14 +412,15 @@ sys.exit(0 if admitted else 3)
     if(!Array.isArray(remaining)||remaining.length)throw new Error('Failed namespace removal is not observed; retain it for reconciliation.');
     g.facts!.namespaces=g.facts!.namespaces.filter(value=>value.containerId!==lease.containerId);g.policies.delete(lease.containerId);
   }
-  private async prepare(g:Generation,request:EngineeringNamespaceRequest,compiled:ReturnType<typeof compileEngineeringPolicy>):Promise<EngineeringNamespaceLease>{
+  private async prepare(g:Generation,request:EngineeringNamespaceRequest,compiled:ReturnType<typeof compileEngineeringPolicy>,memberKey?:string,deadlineAt?:string):Promise<EngineeringNamespaceLease>{
     if(g.manifest!.provider==='rootless')await this.rootlessController(g);
-    const ns=randomUUID();const id=await this.cli(g,this.command(g,['run','--pull=never','--http-proxy=false','--detach','--read-only','--tmpfs','/hima-home:rw,nosuid,nodev,size=128m,mode=0700','--tmpfs','/hima-work:rw,nosuid,nodev,size=128m,mode=0700','--tmpfs','/tmp:rw,nosuid,nodev,size=64m,mode=1777','--env','HOME=/hima-home','--env','XDG_CONFIG_HOME=/hima-home/.config','--env','XDG_DATA_HOME=/hima-home/.local/share','--env','XDG_CACHE_HOME=/hima-home/.cache','--env','XDG_STATE_HOME=/hima-home/.local/state','--env','TMPDIR=/tmp','--workdir','/hima-work','--cap-drop=ALL','--security-opt=no-new-privileges','--label',`hima.engine-generation=${g.id}`,'--label',`hima.namespace-generation=${ns}`,'--network','bridge',g.facts!.imageDigest!,'/bin/sleep','infinity']));
+    const memberHosts=memberKey?this.memberHostBindings(request.policy):[];const ns=randomUUID();const id=await this.cli(g,this.command(g,['run','--pull=never','--http-proxy=false','--detach','--read-only','--tmpfs','/hima-home:rw,nosuid,nodev,size=128m,mode=0700','--tmpfs','/hima-work:rw,nosuid,nodev,size=128m,mode=0700','--tmpfs','/tmp:rw,nosuid,nodev,size=64m,mode=1777','--env','HOME=/hima-home','--env','XDG_CONFIG_HOME=/hima-home/.config','--env','XDG_DATA_HOME=/hima-home/.local/share','--env','XDG_CACHE_HOME=/hima-home/.cache','--env','XDG_STATE_HOME=/hima-home/.local/state','--env','TMPDIR=/tmp','--workdir','/hima-work','--cap-drop=ALL','--security-opt=no-new-privileges','--label',`hima.engine-generation=${g.id}`,'--label',`hima.namespace-generation=${ns}`,...(memberKey?['--hosts-file=none',...memberHosts.flatMap(value=>['--add-host',value]),'--memory=768m','--cpus=1','--pids-limit=96','--label',`hima.member-key=${memberKey}`]:[]),'--network','bridge',g.facts!.imageDigest!,'/bin/sleep','infinity']));
     if(!/^[a-f0-9]{64}$/.test(id))throw new Error('Bootstrap container ID is invalid; retain generation for reconciliation.');
-    const c=await this.container(g,id);const pid=c.State.Pid;if(!Number.isSafeInteger(pid)||pid<=0||!c.State.Running)throw new Error('Owned guest PID was not observed.');
+    const c=await this.container(g,id);if(memberKey)this.verifyMemberHosts(c,memberHosts);if(memberKey&&(c.Config?.Labels?.['hima.namespace-generation']!==ns||c.Config?.Labels?.['hima.member-key']!==memberKey))throw new Error('Member bootstrap label identity differs; retain generation for reconciliation.');const pid=c.State.Pid;if(!Number.isSafeInteger(pid)||pid<=0||!c.State.Running)throw new Error('Owned guest PID was not observed.');
     // Register the owned container before policy I/O so stop reaps policy failures too.
-    const mutable:{-readonly [K in keyof EngineeringNamespaceLease]:EngineeringNamespaceLease[K]}={engineGeneration:g.id,namespaceGeneration:ns,containerId:id,guestPidIdentity:`${pid}:${c.State.StartedAt}`,imageDigest:g.facts!.imageDigest!,policySha256:compiled.policySha256,observedRulesSha256:'',validUntil:request.policy.validUntil,qualification:'trusted-fixture-only'};g.facts!.namespaces.push(mutable);
+    const mutable:{-readonly [K in keyof EngineeringNamespaceLease]:EngineeringNamespaceLease[K]}={engineGeneration:g.id,namespaceGeneration:ns,containerId:id,guestPidIdentity:`${pid}:${c.State.StartedAt}`,imageDigest:g.facts!.imageDigest!,policySha256:compiled.policySha256,observedRulesSha256:'',validUntil:new Date(Math.min(Date.parse(deadlineAt??request.policy.validUntil),Date.parse(request.policy.validUntil))).toISOString(),qualification:'trusted-fixture-only',...(memberKey?{memberKey,memberHosts}: {})};g.facts!.namespaces.push(mutable);
     try {
+    if(memberKey)await this.receipt(g,'status');
     compiled=await this.clockPolicy(g,request.policy);
     compiled=await this.installPolicy(g,pid,compiled);g.policies.set(id,compiled);
     const timing:HostClockTiming={hostBeforeMs:0,hostAfterMs:0};
@@ -329,11 +458,11 @@ sys.exit(0 if admitted else 3)
           g.facts.closure.helpers=!g.rootlessCommandUnknown&&(await this.visibleHelperIdentities(g)).length===0;
         }
         }
-      }g.state=!g.facts||Object.values(g.facts.closure).every(Boolean)?'stopped':'failed';if(g.state==='stopped'&&g.facts){if(g.manifest!.provider==='applehv'&&g.facts.machineCreatedAt){await this.cli(g,['machine','rm','--force',g.facts.machineName!]);const machines=JSON.parse(await this.cli(g,['machine','list','--format','json']));if(!Array.isArray(machines)||machines.some((m:any)=>m.Name===g.facts!.machineName))throw new Error('Owned machine removal was not observed.');}await writeFile(path.join(g.facts.canonicalStorage,'final-owned-facts.json'),JSON.stringify(g.facts),{mode:0o600});if(await realpath(g.facts.shortHome)!==g.facts.canonicalStorage||(await lstat(path.dirname(g.facts.shortHome))).uid!==process.getuid?.())throw new Error('Short Home alias ownership changed; retain unknown path.');await rm(path.dirname(g.facts.shortHome),{recursive:true,force:true});}if(g.state==='failed')throw new Error('Closure observations are incomplete; retain private generation.');
+      }if(g.facts?.closure.containers)for(const lease of g.facts.namespaces)if(lease.memberKey)this.retainMemberClosure(g,lease);g.state=!g.facts||Object.values(g.facts.closure).every(Boolean)?'stopped':'failed';if(g.state==='stopped'&&g.facts){if(g.manifest!.provider==='applehv'&&g.facts.machineCreatedAt){await this.cli(g,['machine','rm','--force',g.facts.machineName!]);const machines=JSON.parse(await this.cli(g,['machine','list','--format','json']));if(!Array.isArray(machines)||machines.some((m:any)=>m.Name===g.facts!.machineName))throw new Error('Owned machine removal was not observed.');}await writeFile(path.join(g.facts.canonicalStorage,'final-owned-facts.json'),JSON.stringify(g.facts),{mode:0o600});if(await realpath(g.facts.shortHome)!==g.facts.canonicalStorage||(await lstat(path.dirname(g.facts.shortHome))).uid!==process.getuid?.())throw new Error('Short Home alias ownership changed; retain unknown path.');await rm(path.dirname(g.facts.shortHome),{recursive:true,force:true});}if(g.state==='failed')throw new Error('Closure observations are incomplete; retain private generation.');
     }catch(error){g.state='failed';g.diagnostic={code:'engine-closure',message:(error as Error).message};}return this.receipt(g,'stop');}
   async stopAll():Promise<TeamServiceReceipt[]>{this.closed=true;return this.generation?[await this.stop()]:[];}
 }
-export function verifyObservedEngineeringRules(raw:string,tuples:EngineeringEgressPolicy['resolvedTuples'],admission?:Pick<CompiledEngineeringPolicy,'deadlineEpochSeconds'|'timeoutSeconds'|'validUntil'>,observedAtMs=Date.now()):void {
+export function verifyObservedEngineeringRules(raw:string,tuples:EngineeringEgressPolicy['resolvedTuples'],admission?:Pick<CompiledEngineeringPolicy,'deadlineEpochSeconds'|'timeoutSeconds'|'validUntil'|'nativeLoopbackPort'>,observedAtMs=Date.now()):void {
   const fail=(message:string):never=>{throw new Error(`Observed ${message}.`);};
   if(!admission||!Number.isSafeInteger(admission.deadlineEpochSeconds)||admission.deadlineEpochSeconds<=0||!Number.isSafeInteger(admission.timeoutSeconds)||admission.timeoutSeconds<=0||admission.timeoutSeconds>300||!Number.isSafeInteger(observedAtMs)||observedAtMs<0)fail('bounded deadline admission is missing or invalid');
   const expected=admission!;const validUntilMs=Date.parse(expected.validUntil);
@@ -363,7 +492,7 @@ export function verifyObservedEngineeringRules(raw:string,tuples:EngineeringEgre
       const element=row?.elem;
       if(!keys(row,['elem'])||!keys(element,['val','timeout','expires'])||!keys(element?.val,['concat'])||!Array.isArray(element?.val?.concat)||element.val.concat.length!==2)fail('explicit timed element missing');
       const key=JSON.stringify(element.val.concat);
-      if(!wanted.has(key)||seen.has(key)||element.val.concat[1]!==443)fail('approved tuple differs');
+      if(!wanted.has(key)||seen.has(key))fail('approved tuple differs');
       seen.add(key);
       if(!Number.isSafeInteger(element.timeout)||element.timeout!==expected.timeoutSeconds||!Number.isSafeInteger(element.expires)||element.expires<=0||element.expires>element.timeout)fail('element timeout or expires is missing, permanent or overlong');
       // nft 1.1.6 JSON truncates duration to seconds. Use an upper bound, never milliseconds.
@@ -371,9 +500,16 @@ export function verifyObservedEngineeringRules(raw:string,tuples:EngineeringEgre
     }
   }
   const actual=rules.filter((r:any)=>r.rule).map((r:any)=>r.rule);
-  if(actual.length!==2)fail('lookup rule count differs');
+  if(actual.length!==(expected.nativeLoopbackPort?4:2))fail('lookup rule count differs');
   const seenRules=new Set<string>(),utcDeadline=new Date(expected.deadlineEpochSeconds*1000).toISOString().slice(0,19).replace('T',' ');
   for(const rule of actual){
+    if(rule?.expr?.[0]?.match?.right==='lo'){
+      const direction=rule?.expr?.[2]?.match?.left?.payload?.field;
+      const label='native:'+direction;
+      const expression=[{match:{op:'==',left:{meta:{key:'oifname'}},right:'lo'}},{match:{op:'==',left:{payload:{protocol:'ip',field:'daddr'}},right:'127.0.0.1'}},{match:{op:'==',left:{payload:{protocol:'tcp',field:direction}},right:expected.nativeLoopbackPort}},{match:{op:'<',left:{meta:{key:'time'}},right:utcDeadline}},{accept:null}];
+      if(!expected.nativeLoopbackPort||!['dport','sport'].includes(direction)||seenRules.has(label)||!keys(rule,['family','table','chain','handle','expr'])||rule.family!=='inet'||rule.table!=='hima'||rule.chain!=='output'||!isDeepStrictEqual(rule.expr,expression))fail('native loopback boundary or absolute guard differs');
+      seenRules.add(label);continue;
+    }
     const target=rule?.expr?.[0]?.match?.right;const family=target==='@allow4'?4:target==='@allow6'?6:undefined;
     const expression=[{match:{op:'==',left:{concat:[{payload:{protocol:family===4?'ip':'ip6',field:'daddr'}},{payload:{protocol:'tcp',field:'dport'}}]},right:target}},{match:{op:'<',left:{meta:{key:'time'}},right:utcDeadline}},{accept:null}];
     if(!family||seenRules.has(target)||!keys(rule,['family','table','chain','handle','expr'])||rule.family!=='inet'||rule.table!=='hima'||rule.chain!=='output'||!isDeepStrictEqual(rule.expr,expression))fail('tuple lookup, absolute guard or accept differs');

@@ -96,7 +96,7 @@ function memberInputProjection(input:JsonValue,label='Retained controlled task i
     return value;
   };
   const body=JSON.stringify(hide(input));const truncated=body.length>2400;
-  return {text:`${label}: ${body.slice(0,2400)}${truncated?' [input excerpt truncated]':''}. Native transcript has not been observed.`,redacted,truncated};
+  return {text:`${label}: ${body.slice(0,2400)}${truncated?' [input excerpt truncated]':''}.`,redacted,truncated};
 }
 
 export class RunStore {
@@ -268,7 +268,17 @@ export class RunStore {
         const rows=(await client.query<{invocation:FlowInvocationRecord;created_at:Date|null;admitted_generation:number|null;result:TaskResult|null;result_sha256:string|null}>(`SELECT i.invocation,i.created_at,i.admitted_generation,r.result,r.result_sha256 FROM hima.flow_invocations i LEFT JOIN hima.results r USING(effect_id)
           WHERE i.run_id=$1 AND i.invocation->'context'->'flow'->'tasks'->i.task_id->>'memberId'=$2 ORDER BY i.effect_id LIMIT $3 OFFSET $4`,[scope.run.runId,memberId,page.limit+1,page.cursor??0])).rows;
         const records=rows.slice(0,page.limit).map(row=>({recordId:row.invocation.identity.effectId,runId:scope.run.runId,effectId:row.invocation.identity.effectId,generation:row.admitted_generation,createdAt:row.created_at?.toISOString()??null,kind:'work' as const,...memberInputProjection((row.invocation.context as unknown as {input:JsonValue}).input),...(row.result&&row.result_sha256?{result:{sha256:row.result_sha256,effectId:row.invocation.identity.effectId,...memberInputProjection(row.result.value,'Retained committed task result')}}:{}),source:'retained' as const}));
-        return {...ref,memberId,records,connection:'unavailable' as const,trace:{state:'missing' as const,reason:'Native member transcript/connection is not qualified. No internal activity is invented.'},...(rows.length>page.limit?{nextCursor:(page.cursor??0)+page.limit}:{})};
+        const transcripts:import('./team-messages.js').TeamMemberWorkRecord[]=[];let allClosed=rows.length>0;
+        for(const row of rows.slice(0,page.limit)) {
+          const observed=(await client.query<{phase:string;fact:JsonValue}>(`SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1 AND phase LIKE 'native:oar:observation:%' ORDER BY (fact->>'seq')::bigint DESC LIMIT 40`,[row.invocation.identity.effectId])).rows.reverse();
+          const closed=(await client.query('SELECT 1 FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',[row.invocation.identity.effectId,'native:oar:closed'])).rowCount;
+          if(!closed)allClosed=false;
+          if(observed.length) {
+            const native=observed.map(value=>value.fact).find(value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&typeof value.nativeSession==='string') as {nativeSession:string}|undefined;
+            transcripts.push({recordId:factIdentity('oar-transcript',row.invocation.identity.effectId,observed.at(-1)!.phase),runId:scope.run.runId,effectId:row.invocation.identity.effectId,generation:row.admitted_generation,createdAt:row.created_at?.toISOString()??null,kind:'transcript',source:'retained',...(native?{sessionId:native.nativeSession}:{}),...memberInputProjection(observed.map(value=>value.fact),'Retained native OAR observation excerpt')});
+          }
+        }
+        return {...ref,memberId,records:[...records,...transcripts],connection:allClosed?'disconnected' as const:'unavailable' as const,trace:transcripts.length?{state:'retained' as const,reason:'Retained native observations; this view does not assert a current live connection. Each excerpt contains at most 40 recent observations per invocation. Native subagent internals omitted by the runtime are not reconstructed; OpenCode ACP exposes root activity.'}:{state:'missing' as const,reason:'No native member observation is retained for this page.'},...(rows.length>page.limit?{nextCursor:(page.cursor??0)+page.limit}:{})};
       },'hima.readTeamMemberWork'),
     };
   }
@@ -360,6 +370,13 @@ export class RunStore {
       await client.query('INSERT INTO hima.task_actor_grants(grant_id,task_id,token_sha256,grant_data) VALUES($1,$2,$3,$4)',[grant.grantId,grant.taskId,jsonDigest(token),JSON.stringify(grant)]);
       return {grant,token};
     },'hima.issueTeamGrant');
+  }
+  async readTeamGrant(grantId:string):Promise<ActorGrant|undefined> {
+    const row=(await this.#pool.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE grant_id=$1',[grantId])).rows[0];
+    return row?actorGrant.parse(row.grant_data):undefined;
+  }
+  async authorizeTeamGrant(grant:ActorGrant,capability:'read-task'|'send-message'|'read-material'):Promise<void> {
+    await this.transaction(async client=>{await this.workspaceAccess(client,{kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},capability);},'hima.authorizeTeamGrant');
   }
   async resolveTeamGrant(token:string):Promise<ActorGrant> {
     const row=(await this.#pool.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE token_sha256=$1',[jsonDigest(token)])).rows[0];

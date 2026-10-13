@@ -70,7 +70,7 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
   await mkdir(evidence, { recursive: true });
   await writeFile(path.join(userData, 'window-state.json'), JSON.stringify({ width: 1280, height: 860 }));
   const env = Object.fromEntries(Object.entries({ ...home.env, HIMA_NODE: process.execPath,
-    HIMA_WORKSPACE: home.workspace, HIMA_USER_DATA: userData, HIMA_DRIVER_DISPLAY: '',
+    HIMA_WORKSPACE: home.workspace, HIMA_USER_DATA: userData, HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights',
     HIMA_TEST_SILENT_AGENT: '1', BROWSER: 'none', ELECTRON_RUN_AS_NODE: '' })
     .filter((entry): entry is [string, string] => entry[1] !== undefined));
   // Authentication is absent in this no-model scenario, including inherited credentials.

@@ -69,6 +69,15 @@ export class TeamServiceRuntime {
   private readonly options:TeamServiceRuntimeOptions;
   constructor(options:TeamServiceRuntimeOptions){this.options=options;this.engine=new EngineeringEngineRuntime({...options,readManifest:async()=>{if(!options.runtimeDirectory)throw new Error('Fixed engineering engine assets are missing.');return readTeamRuntimeManifest(options.runtimeDirectory);}});}
   prepareNamespace(request:EngineeringNamespaceRequest):Promise<EngineeringNamespaceLease>{if(this.shuttingDown)return Promise.reject(new Error('Host shutdown rejects namespace readiness.'));return this.engine.prepareNamespace(request);}
+  prepareMemberNamespace(request:Parameters<EngineeringEngineRuntime['prepareMemberNamespace']>[0]) {if(this.shuttingDown)throw new Error('Host shutdown rejects member creation.');return this.engine.prepareMemberNamespace(request);}
+  stageMember(...args:Parameters<EngineeringEngineRuntime['stageMember']>) {if(this.shuttingDown)throw new Error('Host shutdown rejects member staging.');return this.engine.stageMember(...args);}
+  startMember(...args:Parameters<EngineeringEngineRuntime['startMember']>) {if(this.shuttingDown)throw new Error('Host shutdown rejects member execution.');return this.engine.startMember(...args);}
+  readMember(...args:Parameters<EngineeringEngineRuntime['readMember']>) {return this.engine.readMember(...args);}
+  readMemberArtifact(...args:Parameters<EngineeringEngineRuntime['readMemberArtifact']>) {return this.engine.readMemberArtifact(...args);}
+  replyMember(...args:Parameters<EngineeringEngineRuntime['replyMember']>) {if(this.shuttingDown)throw new Error('Host shutdown rejects member replies.');return this.engine.replyMember(...args);}
+  sendMemberInput(...args:Parameters<EngineeringEngineRuntime['sendMemberInput']>) {if(this.shuttingDown)throw new Error('Host shutdown rejects member input.');return this.engine.sendMemberInput(...args);}
+  renewMemberPolicy(...args:Parameters<EngineeringEngineRuntime['renewMemberPolicy']>) {if(this.shuttingDown)throw new Error('Host shutdown rejects policy renewal.');return this.engine.renewMemberPolicy(...args);}
+  closeMember(...args:Parameters<EngineeringEngineRuntime['closeMember']>) {return this.engine.closeMember(...args);}
   private groupPresent(owned:OwnedService):boolean {
     if(!owned.child?.pid)return false;
     try{process.kill(-owned.child.pid,0);return true;}catch(error){return (error as NodeJS.ErrnoException).code!=='ESRCH';}

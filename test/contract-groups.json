@@ -129,7 +129,12 @@
     "test/contract/himateam-stream.host.test.ts",
     "test/contract/team-engine-runtime.host.test.ts",
     "test/contract/team-member-image-package.test.ts",
-    "test/contract/team-runtime-native-audit.test.ts"
+    "test/contract/team-runtime-native-audit.test.ts",
+    "test/contract/oar-task-effects.host.test.ts",
+    "test/contract/oar-sandbox.host.test.ts",
+    "test/contract/oar-member.host.test.ts",
+    "test/contract/oar-model-configuration.test.ts",
+    "test/contract/oar-local-member.host.test.ts"
   ],
   "desktop": [
     "test/contract/agent-execution.desktop.test.ts",
@@ -153,7 +158,8 @@
     "test/contract/window.test.ts",
     "test/contract/himateam-attachments.desktop.test.ts",
     "test/contract/himateam-workspace.desktop.test.ts",
-    "test/contract/himateam-engine.desktop.test.ts"
+    "test/contract/himateam-engine.desktop.test.ts",
+    "test/contract/oar-model.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/resident-engineering-release.live.test.ts",
@@ -168,6 +174,7 @@
     "test/contract/libinsight-resident-durable.host.test.ts"
   ],
   "live-model": [
-    "test/contract/child-compaction.live.test.ts"
+    "test/contract/child-compaction.live.test.ts",
+    "test/contract/oar-member.live.test.ts"
   ]
 }
