@@ -10,7 +10,7 @@
 # and only Readers and judges decide. A failing stage skips the later stages that round: the record
 # says which line failed where, and the next round starts at the design agent with the lessons.
 id: analog-bandgap
-version: "0.1.0"
+version: "0.2.0"
 entry: bind-inputs
 autopilot:
   - from: [bind-inputs]

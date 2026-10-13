@@ -20,7 +20,7 @@ const HARNESS_ARGV = new Set(['WORKSPACE']);
 test('the Pack loads at stage compiled with the eight-line spec sheet as its Goal and one resident design agent', async () => {
   const pack = loadPack(packsDir, packId);
   assert.equal(packStageOf(packsDir, packId)?.stage, 'compiled');
-  assert.equal(pack.contract.version, '0.1.0');
+  assert.equal(pack.contract.version, '0.2.0');
   const goal = pack.contract.goal!;
   assert.deepEqual(Object.fromEntries(Object.entries(goal).map(([k, v]) => [k, (v as any).default])), {
     vbg_v: 1.2, vbg_tol_pct: 2, max_iq_ua: 8, max_isd_na: 2, max_tc_ppm: 100, min_pm_deg: 60, max_tstart_us: 100, min_psrr_db: 40,
@@ -32,7 +32,7 @@ test('the Pack loads at stage compiled with the eight-line spec sheet as its Goa
     [['size-agent', 'reports/size-agent', 'design']]);
   for (const file of agents[0]!.outsourcing.knowledge) await readFile(path.join(packDir, 'knowledge', file), 'utf8');
   const bind = pack.contract.tools.find((tool: any) => tool.id === 'bind-inputs')!;
-  assert.equal(bind.argv.at(-1), 'kuijk-p5t-mirror', 'the Pack fixes the mirror template');
+  assert.equal(bind.argv.at(-1), 'bgcore', 'the Pack fixes the bgcore case template');
   const shown = JSON.stringify([pack.contract.words, pack.contract.results, pack.graph.nodes.map((n: any) => [n.label, n.about])]);
   assert.doesNotMatch(shown, /\bmock\b|\bmodel\b/i, 'App words are plain');
 });
@@ -140,6 +140,14 @@ test('the measurement Reader states the worst corner of every line and an unknow
   assert.equal(v(unknown, 'worst_margin_pct'), null, 'a margin over an unknown line is unknown, not the others\' worst');
   assert.equal(v(unknown, 'pm_deg'), null);
   assert.notEqual((await read('read-measure.py', { schema: 'hima-bandgap-mc/1' })).status, 0, 'another record kind is refused');
+  assert.equal(v(ok, 'bgok_level_pct'), null, 'a template without the BGOK monitor states it unknown');
+  assert.match(ok.values.bgok_level_pct.unknownReason, /no BGOK/);
+  const bgcore = measure(true, 77.5);
+  (bgcore.worst as any).bgok = { value: 0.0055, where: 'tt 3.3V 27C (en high)' };
+  const withBgok = await read('read-measure.py', bgcore);
+  assert.equal(v(withBgok, 'bgok_level_pct'), 0.0055, 'bgcore: the worst BGOK level error, in % of vdd');
+  (bgcore.worst as any).bgok = { value: null };
+  assert.ok((await read('read-measure.py', bgcore)).values.bgok_level_pct.unknownReason, 'a missing BGOK reading is unknown, never 0');
 });
 
 test('the Monte Carlo, layout and round Readers state the record, and the layout is clean only with zero DRC and both LVS', async () => {

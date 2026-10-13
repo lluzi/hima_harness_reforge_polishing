@@ -953,3 +953,37 @@ test('bgcore: precheck, cell, the post-layout pins and the record judge the case
     } finally { await done2(); }
   } finally { await done(); }
 });
+
+test('a fresh workspace seeds its Spectre runs from the Site\'s copy beside the wrapper; its own copy wins after', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bg-seed-'));
+  try {
+    const ws = path.join(dir, 'ws');
+    const wrapper = path.join(dir, 'bin', 'spectre');
+    await mkdir(path.join(ws, 'state'), { recursive: true });
+    await mkdir(`${wrapper}.ahdl-seed/mod.ahdlcmi`, { recursive: true });
+    await writeFile(`${wrapper}.ahdl-seed/mod.ahdlcmi/code`, 'site');
+    await writeFile(path.join(ws, 'state', 'inputs.json'), JSON.stringify({ simulators: { spectre: { path: wrapper } } }));
+    const seeded = py([
+      'from pathlib import Path',
+      `ws = Path(${JSON.stringify(ws)})`,
+      'seed = ws / "work" / "spectre-ahdl"',
+      'bg.ahdl_seed(seed, ws)',
+      'first = (seed / "mod.ahdlcmi" / "code").read_text()',
+      '(seed / "mod.ahdlcmi" / "code").write_text("own")',
+      'bg.ahdl_seed(seed, ws)',
+      'print(json.dumps(dict(first=first, after=(seed / "mod.ahdlcmi" / "code").read_text(), current=str(bg.AHDL_SEED[0]))))',
+    ].join('\n'));
+    assert.equal(seeded.first, 'site', 'a fresh workspace starts from the Site\'s copy');
+    assert.equal(seeded.after, 'own', 'a workspace that has its own compiled code keeps it');
+    assert.equal(seeded.current, path.join(ws, 'work', 'spectre-ahdl'));
+    const none = py([
+      'from pathlib import Path',
+      `ws = Path(${JSON.stringify(path.join(dir, 'other'))})`,
+      'bg.ahdl_seed(ws / "work" / "spectre-ahdl", ws)',
+      'print(json.dumps((ws / "work" / "spectre-ahdl").exists()))',
+    ].join('\n'));
+    assert.equal(none, false, 'no inputs and no Site copy: nothing is invented');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

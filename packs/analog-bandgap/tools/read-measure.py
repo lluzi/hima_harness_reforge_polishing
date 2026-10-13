@@ -5,7 +5,8 @@ argv: read-measure.py <REPORT> <OUT>. meets_spec is one when every spec line mee
 its worst corner (unknown when a line is unknown at some corner); worst_margin_pct is the worst
 normalized margin over the lines; then each line's worst value over every process corner,
 temperature and supply. A loop with no unity-gain crossing or a copy that did not start is a miss,
-never a pass.
+never a pass. bgok_level_pct is the BGOK output's worst level error in % of vdd (enabled
+below vdd, disabled above vss); unknown for a template without the monitor.
 """
 import json
 import sys
@@ -27,6 +28,10 @@ def main(report_path, out_path):
 
     benches = record["benches"]
     met = record.get("meetsSpec")
+    bgok = ({"type": "bgok_level_pct", "unit": "percent", "value": worst["bgok"]["value"]} if "bgok" in worst
+            else {"type": "bgok_level_pct", "unit": "percent", "value": None, "unknownReason": "the template has no BGOK monitor"})
+    if bgok["value"] is None and "unknownReason" not in bgok:
+        bgok["unknownReason"] = why
     values = [
         {"type": "meets_spec", "unit": "count", "value": None if met is None else (1 if met else 0),
          **({"unknownReason": "a spec line is unknown at some corner"} if met is None else {})},
@@ -39,6 +44,7 @@ def main(report_path, out_path):
         value("pm_deg", "deg", worst["pm"]["value"]),
         value("tstart_us", "us", worst["start"]["value"]),
         value("psrr_db", "db", worst["psrr"]["value"]),
+        bgok,
     ]
     with open(out_path, "x") as stream:
         json.dump({"values": values}, stream)

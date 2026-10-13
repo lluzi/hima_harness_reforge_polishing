@@ -1,5 +1,5 @@
 id: analog-bandgap
-version: "0.1.0"
+version: "0.2.0"
 title: Bandgap reference sized from a spec sheet, verified at every corner, in Monte Carlo and after layout
 status: development
 minimumHarnessVersion: 0.2.2
@@ -89,10 +89,10 @@ tools:
     file: flow/bg_cli.py
     description: >-
       Check that the Site's simulators answer and the PDK's model files are installed; choose the
-      measuring simulator; fix the bandgap template (Kuijk core, PMOS-input OTA, a mirror stage
-      driving the output device); write state/inputs.json with the versions and the model files' SHA-256.
+      measuring simulator; fix the bandgap template bgcore (Kuijk core, PMOS-input OTA, a mirror stage
+      driving the output device, a 120-tap reference ladder and a BGOK monitor); write state/inputs.json with the versions and the model files' SHA-256.
     inputs: [WORKSPACE, SIM, PDK_ROOT, PDK]
-    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', bind, '${WORKSPACE}', '${SIM}', '${PDK_ROOT}', '${PDK}', kuijk-p5t-mirror]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/bg_cli.py', bind, '${WORKSPACE}', '${SIM}', '${PDK_ROOT}', '${PDK}', bgcore]
 
   - id: characterize
     file: flow/bg_cli.py
@@ -106,11 +106,11 @@ tools:
   - id: size-agent
     file: flow/bg_cli.py
     description: >-
-      You are the analog design engineer. Size the bandgap reference (the Campaign's template: a Kuijk
-      core with n:1 PNPs, a PMOS-input OTA, a mirror stage driving the output device, start-up and
-      enable) in the PDK so that it meets the spec sheet (the Goal) at every process corner,
-      temperature and supply, in Monte Carlo and after layout. Read inputsState, tablesState and
-      lessons. Write spec.json with the Goal's numbers {vbgV, vbgTolPct, iqMaxUa, isdMaxNa, tcMaxPpm,
+      You are the analog design engineer. Size the bgcore bandgap core front end (the IP package in
+      bgcore-case.md: a Kuijk core with n:1 PNPs, a PMOS-input OTA, a mirror stage driving the output
+      device, start-up and enable, a 120-tap reference ladder and a BGOK monitor) in the PDK so that
+      it meets the spec sheet (the Goal) at every process corner, temperature and supply, in Monte
+      Carlo and after layout. Read inputsState, tablesState and lessons. Write spec.json with the Goal's numbers {vbgV, vbgTolPct, iqMaxUa, isdMaxNa, tcMaxPpm,
       pmMinDeg, tStartMaxUs, psrrMinDb} and run `python3 <campaign>/flow/bg_cli.py draft <campaign>
       intent spec.json > intent.json` (the method's first cut), then `draft <campaign> size intent.json >
       design.json`. Simulate your own draft with `OTA_SIM=ngspice OTA_PDK_ROOT=<your PDK root> python3
@@ -131,7 +131,7 @@ tools:
     outsourcing:
       role: resident-engineering-agent
       reads: [inputsState, tablesState, lessons]
-      knowledge: [bandgap-flow.md, bandgap-sizing-playbook.md, design-format.md, evidence-and-claims.md]
+      knowledge: [bgcore-case.md, bandgap-flow.md, bandgap-sizing-playbook.md, design-format.md, evidence-and-claims.md]
       artifactPrefix: reports/size-agent
       produces: design
 
@@ -194,6 +194,8 @@ rules:
   - signed-off
 
 knowledge:
+  - file: bgcore-case.md
+    purpose: The IP package of the case being sized (topology, interface, metrics), the competitor's bgcore case on GF180.
   - file: bandgap-flow.md
     purpose: The flow, every command, the round loop, what each step measures and what the results mean.
   - file: bandgap-sizing-playbook.md
@@ -245,3 +247,4 @@ results:
     - { type: pm_deg, label: "Loop phase margin, worst", unit: deg, better: higher, digits: 1 }
     - { type: tstart_us, label: "Start-up time, worst", unit: us, better: lower, digits: 1 }
     - { type: psrr_db, label: "PSRR at 1 kHz, worst", unit: dB, better: higher, digits: 1 }
+    - { type: bgok_level_pct, label: "BGOK level error, worst", unit: "% vdd", better: lower, digits: 3 }

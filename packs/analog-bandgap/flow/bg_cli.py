@@ -522,8 +522,24 @@ def run_spectre(command, netlist, raw, out_dir, timeout_s=1800):
 AHDL_SEED = [None]          # the directory holding the compiled AHDL code of this workspace's runs
 
 
-def ahdl_seed(path):
+SITE_AHDL_SEED = ".ahdl-seed"   # a Site may ship known-good compiled code beside its Spectre wrapper: <wrapper>.ahdl-seed/
+
+
+def ahdl_seed(path, ws=None):
+    """Seed this workspace's Spectre runs from <path>. A fresh workspace (no <path> yet) starts from the
+    Site's copy beside the Spectre wrapper, when the Site ships one: the first compile of the PDK's
+    resistor code is where Spectre 23.1 crashed, every attempt, in a fresh workspace on the lab server."""
+    import shutil
     AHDL_SEED[0] = Path(path)
+    if ws is None or Path(path).is_dir():
+        return
+    try:
+        spectre = read_json(state(ws, "inputs.json"), "state/inputs.json")["simulators"]["spectre"]["path"]
+    except (ToolError, KeyError, TypeError):
+        return
+    site = Path(spectre + SITE_AHDL_SEED)
+    if site.is_dir():
+        shutil.copytree(str(site), str(path))
 
 
 def spectre_retry(command, out_dir, name, lines, timeout_s=1800):
@@ -1004,7 +1020,7 @@ def characterize_devices(sim, command, inputs, out_dir):
 
 def cmd_characterize(ws):
     ws = Path(ws)
-    ahdl_seed(ws / "work" / "spectre-ahdl")
+    ahdl_seed(ws / "work" / "spectre-ahdl", ws)
     inputs = load_inputs(ws)
     out_dir = report_dir(ws, "characterize", 1).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1807,7 +1823,7 @@ def design_summary(design):
 
 def cmd_simulate(ws, stage, *spec_args):
     ws = Path(ws)
-    ahdl_seed(ws / "work" / "spectre-ahdl")
+    ahdl_seed(ws / "work" / "spectre-ahdl", ws)
     if stage not in STAGES:
         raise ToolError("stage must be schematic or post")
     inputs = load_inputs(ws)
@@ -1988,7 +2004,7 @@ def pelgrom_estimate(card, design):
 
 def cmd_mc(ws, n, vbg_v, tol_pct, seed="1"):
     ws = Path(ws)
-    ahdl_seed(ws / "work" / "spectre-ahdl")
+    ahdl_seed(ws / "work" / "spectre-ahdl", ws)
     inputs = load_inputs(ws)
     design, facts = validate_design(ws)
     k = facts["round"]

@@ -5,7 +5,7 @@ the Pack's own command on the Site; you (the design agent) propose sizes, and th
 
 | Step | Command | Writes | Judged by |
 | --- | --- | --- | --- |
-| Check simulator and PDK | `bg_cli.py bind <ws> <simulators> <pdkRoot> <pdk> kuijk-p5t-mirror` | `state/inputs.json` | (fails the Campaign if a file is missing) |
+| Check simulator and PDK | `bg_cli.py bind <ws> <simulators> <pdkRoot> <pdk> bgcore` | `state/inputs.json` | (fails the Campaign if a file is missing) |
 | Device tables | `bg_cli.py characterize <ws>` | `state/tables*.json`, `state/devices.json` | `tables-valid` |
 | Design (you) | `draft`, `sim`, `precheck`, then delivery | `state/design.json` | `bg-design` Reader at delivery |
 | Every corner | `bg_cli.py simulate <ws> schematic <8 spec numbers>` | `state/measure-schematic.json` | `meets-spec` |

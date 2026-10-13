@@ -38,6 +38,9 @@ values:
   psrr_db:
     unit: db
     description: "The lowest power-supply rejection at 1 kHz over every corner, from the simulator's AC analysis."
+  bgok_level_pct:
+    unit: percent
+    description: "The BGOK output's worst level error over every corner, in percent of vdd: how far below vdd it sits with the cell enabled, or above vss with en low. The line fails at 10 or more."
   mc_in_band:
     unit: count
     description: "One when mean plus and minus three sigma of the reference voltage in Monte Carlo with the PDK's mismatch models lies inside the tolerance band."

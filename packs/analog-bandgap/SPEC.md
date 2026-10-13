@@ -12,7 +12,8 @@ temperature and supply, in Monte Carlo and after layout. Goal parameters: `vbg_v
   `flow/pdks.json`), `layoutTool` (`<tool> <netlist> <subckt> <out>`, writing `layout.json`
   `hima-cell-layout/1`), `workspaceRoot`, `engineeringCapabilities`. Simulators, PDKs and the layout
   tool are read-only; Campaigns write only under `workspaceRoot`; at most three Site jobs at once.
-- Template `kuijk-p5t-mirror` only (bind fixes it); devices, resistors and capacitors exactly the
+- Template `bgcore` only (bind fixes it: `kuijk-p5t-mirror` plus a 120-tap ladder and a BGOK monitor, 0.2 uA
+  reference; the case is `knowledge/bgcore-case.md`); devices, resistors and capacitors exactly the
   template's; matched pairs; sizes within the card's limits and grid; resistor segments as the model's
   `s`, no `m` on resistors.
 - Every performance number comes from the Pack's simulate, mc and layout steps; a design file carries none.
@@ -37,7 +38,7 @@ limit never reaches.
 
 `tables_valid`, `tables_curves` (`bg-tables`); `design_valid` (`bg-design`); `meets_spec`,
 `worst_margin_pct`, `vbg_min_v`, `vbg_max_v`, `iq_ua`, `isd_na`, `tc_ppm`, `pm_deg`, `tstart_us`,
-`psrr_db` (`bg-pvt` for the schematic, `bg-post` for the extracted layout); `mc_in_band`, `mc_runs`,
+`psrr_db`, `bgok_level_pct` (`bg-pvt` for the schematic, `bg-post` for the extracted layout); `mc_in_band`, `mc_runs`,
 `mc_mean_v`, `mc_sigma_mv`, `mc_lo3_v`, `mc_hi3_v` (`bg-mc`); `layout_clean`, `drc_errors`,
 `lvs_match`, `layout_area_um2` (`bg-layout`); `round_valid`, `signed_off`, `worst_margin_pct`,
 `best_margin_pct`, `round_improved` (`bg-round`). Margin of a line = (value - spec) / spec for
