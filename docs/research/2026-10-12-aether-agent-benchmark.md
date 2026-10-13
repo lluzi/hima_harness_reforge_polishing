@@ -271,3 +271,14 @@ no agent yet.
 - Their IQ is lower, at one condition. Ours is the worst corner at 2 V, ff, within the 8 uA line.
 - Their 5 V native-input process differs from our 3.3 V open PDK.
 - Our agent has not sized this case in the App yet.
+
+**Update (2026-10-13, after the independent review):** the table above is under the first BGOK check,
+which tested two DC states: `bgok` high when enabled, low when disabled.
+- **The stricter check.** BGOK is now also judged through start-up: `bgok` must stay low until VBG
+  reaches 50 % of its final value. Under it, the method's first cut fails at 125 C.
+  - `bgok` follows vdd before the bias exists.
+  - It then stays high while VBG is still near 0.56 V.
+- **What changes.** The monitor is being redesigned, and the sign-off will be re-run and reported
+  here.
+- **Monte Carlo coverage.** It varies MOS and PNP mismatch only. The open PDK has no resistor mismatch
+  model.
