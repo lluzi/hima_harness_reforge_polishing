@@ -1,35 +1,34 @@
-"""One-writer MAGE round driver.
+"""One agent-authored MAGE stage driver.
 
-A round is: fill this Pack's Tcl templates (`open-build`, `replay-pla`,
-optionally an Engineer-authored `experiment`, optionally the Pack's own
-`fill-autorefine`, then `verify-all` and `export`) with the case's paths,
-wrap them in a single `catch { ... } message options` block with a stage
-variable (the pattern verified in
-`mage_smart_conflict_resolver/product/src/mage_assist/native.py` `_PROBE`),
-write the result as `<round_dir>/round.tcl`, and run `<executable> round.tcl
--noterm` once with `cwd=round_dir`. Exactly one role per Pack run —
-`engineer` — may run a round whose script is `mutating()`; every other role
-asking for one is refused before anything is written or executed, so a
-consumer role can never become a second writer against the licensed tool.
+A stage is one call to `MageSession.run_stage`: the resident Engineer
+authors a Tcl "stage script", and this driver wraps it between the
+Pack-owned `prelude.tcl` and `epilogue.tcl` (filled with the case's paths),
+inside a single `catch { ... } message options` block with a boundary
+variable, writes the result as `<stage_dir>/stage.tcl`, and runs
+`<executable> stage.tcl -noterm` once with `cwd=stage_dir`.
 
-The verified native route is the Site's own proven kit route: open and
-build the Frame (no Auto-Refine disable), replay the candidate PLA, run the
-three native checks `frbCheckOverlap`/`frbCheckSpace`/`frbCheckBoundary`,
-and export. The driver captures the round's stdout and writes each check's
-own `out/verify-<TYPE>.txt` report from the `MAGE_VERIFY_*` markers the
-`verify-all` template prints — it does not trust any Tcl-side `-save`.
+The prelude is the only way a stage may open the case (`hima_open_build`),
+take a boundary snapshot (`hima_snapshot`), or run the three native checks
+mid-script (`hima_check`); the epilogue is the only final native check,
+export and completion marker. Before anything is written, the agent's own
+text runs a refusal gate (`FORBIDDEN_PATTERNS`): a stage that tries to
+`exit`, call `frbOpen`, redefine the `hima_*` procs, forge a `MAGE_*`
+marker, or re-emit a `hima:` fence is refused with
+`core.MageError("experiment", ...)` and leaves no trace. Exactly one role
+— `engineer` — may run a stage; every other role is refused with
+`core.MageError("writer", ...)` before any write.
 
-Completion is judged by the `MAGE_ROUND_END code 0` marker and the files,
-never by the process return code alone: the Site's vendor launcher
+Completion is judged by the `MAGE_ROUND_END code 0` marker in the captured
+stdout, never by the process return code alone: the Site's vendor launcher
 (`bin/mage-frb`) is a bash wrapper that runs the real binary and then
 unconditionally `exit 0`, so a licence-checkout failure or a mid-script
-error can still return 0. `run_round` sets `result["completed"]` only when
-the return code is 0, the round did not time out, and the end marker is
+error can still return 0. `run_stage` sets `result["completed"]` only when
+the return code is 0, the stage did not time out, and the end marker is
 present in the captured stdout.
 
-Every round, successful or not, appends one line to the session's JSONL
+Every stage, successful or not, appends one line to the session's JSONL
 log (`log_path`) recording what ran and what it returned — a failed,
-timed-out or incomplete round is data for the next round's decision, never
+timed-out or incomplete stage is data for the next stage's decision, never
 swallowed.
 """
 from __future__ import annotations
@@ -47,52 +46,35 @@ from . import tcl
 
 
 NATIVE_TYPES = ("OVERLAP", "SPACE", "BOUNDARY")
-
-NATIVE_COMMANDS = {
-    "OVERLAP": "frbCheckOverlap",
-    "SPACE": "frbCheckSpace",
-    "BOUNDARY": "frbCheckBoundary",
-}
-
-TEMPLATE_FILES = (
-    "open-build.tcl", "replay-pla.tcl", "fill-autorefine.tcl", "verify-all.tcl", "export.tcl",
-)
-
-MUTATING_MARKERS = (
-    "source ", "-addInstFit", "-addInstFix", "-addGroup", "frbMove", "frbOps",
-    "frbAlign", "frbGuidedMove", "-placeDropInstFit", "-refine", "-autoRefine",
-    "-setAutoRefine -arEnabled 1",
-)
-
+NATIVE_COMMANDS = {"OVERLAP": "frbCheckOverlap", "SPACE": "frbCheckSpace", "BOUNDARY": "frbCheckBoundary"}
 ENGINEER_ROLE = "engineer"
-
 END_MARKER = "MAGE_ROUND_END code 0"
+AGENT_BEGIN = "# hima:agent-begin"
+AGENT_END = "# hima:agent-end"
+FORBIDDEN_PATTERNS = tuple(re.compile(p) for p in (
+    r"\bexit\b", r"\bfrbOpen\b", r"MAGE_VERIFY", r"MAGE_ROUND_END", r"MAGE_SNAPSHOT",
+    r"MAGE_STAGE_ERROR", r"MAGE_CHECK", r"\b(proc|rename)\s+hima_", r"hima:(prelude|agent)-(begin|end)",
+))
+_PRELUDE = Path(__file__).resolve().parent / "prelude.tcl"
+_EPILOGUE = Path(__file__).resolve().parent / "epilogue.tcl"
+_SNAPSHOT_RE = re.compile(r"^MAGE_SNAPSHOT (\d+) (\S+)$")
+_STAGE_ERROR_RE = re.compile(r"^MAGE_STAGE_ERROR boundary (\S+) message (.*)$")
+MIN_TIMEOUT_S, MAX_TIMEOUT_S = 60, 14400
 
 # A native check's own `-print` summary line, e.g. `0 overlapped instance(s)`
 # or `3 spacing overlapped instance(s)`: the leading integer is MAGE's own
 # instance count for that check.
 _INSTANCE_RE = re.compile(r"^(\d+) .* instance\(s\)$")
 
-# Word-boundary guards so `experiment.tcl` content that *contains* a forbidden
-# word only as a substring of a longer identifier is not falsely refused.
-# `MAGE_VERIFY`/`MAGE_ROUND_END` are refused so an experiment can never print
-# a fake native-check count or a fake round-end marker that would override
-# MAGE's own stdout (I1).
-_EXPERIMENT_FORBIDDEN = (
-    re.compile(r"\bexit\b"),
-    re.compile(r"\bfrbOpen\b"),
-    re.compile(r"MAGE_VERIFY"),
-    re.compile(r"MAGE_ROUND_END"),
-)
 
-
-def mutating(script_text):
-    """True when `script_text` contains any marker that changes placement state."""
-    return any(marker in script_text for marker in MUTATING_MARKERS)
+def refuse_forbidden(script_text):
+    for pattern in FORBIDDEN_PATTERNS:
+        if pattern.search(script_text):
+            raise core.MageError("experiment", f"stage script contains forbidden text {pattern.pattern!r}")
 
 
 def slice_verify(stdout_text):
-    """Parse the `MAGE_VERIFY_*` markers in one round's stdout.
+    """Parse the `MAGE_VERIFY_*` markers in one stage's stdout.
 
     Returns `{TYPE: {"code": int|None, "instances": int|None, "lines": [str]}}`
     for every `MAGE_VERIFY_BEGIN <TYPE>` block. `lines` are the raw command
@@ -142,6 +124,46 @@ def slice_verify(stdout_text):
     return blocks
 
 
+def slice_checks(stdout_text):
+    """`{str(snap_index): {TYPE: {"code", "instances"}}}` from the prelude's MAGE_CHECK_* blocks."""
+    blocks, current = {}, None
+    for raw in stdout_text.splitlines():
+        s = raw.strip()
+        if s.startswith("MAGE_CHECK_BEGIN "):
+            _, idx, t = s.split(" ", 2); current = (idx, t)
+            blocks.setdefault(idx, {})[t] = {"code": None, "instances": None, "lines": []}
+        elif s.startswith("MAGE_CHECK_CODE "):
+            parts = s.split()
+            if len(parts) == 4 and parts[1] in blocks and parts[2] in blocks[parts[1]]:
+                blocks[parts[1]][parts[2]]["code"] = int(parts[3]) if parts[3].isdigit() else None
+        elif s.startswith("MAGE_CHECK_END "):
+            current = None
+        elif current is not None:
+            blocks[current[0]][current[1]]["lines"].append(raw)
+    for idx in blocks:
+        for t, block in blocks[idx].items():
+            for line in block["lines"]:
+                m = _INSTANCE_RE.match(line.strip())
+                if m:
+                    block["instances"] = int(m.group(1)); break
+            del block["lines"]
+    return blocks
+
+
+def snapshots_from_stdout(stdout_text, out_dir):
+    found = []
+    for raw in stdout_text.splitlines():
+        m = _SNAPSHOT_RE.match(raw.strip())
+        if not m:
+            continue
+        index, name = int(m.group(1)), m.group(2)
+        d = Path(out_dir) / ("snap-%02d-%s" % (index, name))
+        if (d / "placement.pla").is_file():
+            found.append({"index": index, "name": name, "pla": str(d / "placement.pla"),
+                          "summary": str(d / "summary.txt") if (d / "summary.txt").is_file() else None})
+    return found
+
+
 def write_verify_files(stdout_path, out_dir):
     """Write each native check's `out/verify-<TYPE>.txt` from captured stdout.
 
@@ -180,216 +202,97 @@ def _unbraced(value):
     return tcl.quote(value)[1:-1]
 
 
-def _converge_lines(auto_refine_converge):
-    """The `@CONVERGE@` substitution for `fill-autorefine.tcl`.
-
-    Two `smPFlow -setAutoRefineSimpleConverge` lines (VERT then HORZ) when
-    the case manifest names `autoRefineConverge {VERT, HORZ}`, otherwise a
-    single comment line. The substituted text never contains an `@NAME@`
-    token, so `tcl.fill` accepts it under the `{"CONVERGE": ...}` mapping.
-    """
-    if not auto_refine_converge:
-        return "# no autoRefineConverge in the case manifest"
-    vert = int(auto_refine_converge["VERT"])
-    horz = int(auto_refine_converge["HORZ"])
-    return "\n".join([
-        f"smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum {vert}",
-        f"smPFlow -setAutoRefineSimpleConverge -arSLType HORZ -arConvergeNum {horz}",
-    ])
-
-
 class MageSession:
-    """Drives one Site's MAGE binary, one round at a time."""
+    """Drives one Site's MAGE binary, one agent-authored stage at a time."""
 
-    def __init__(self, executable, env, workdir, log_path, templates_dir, case):
-        self.executable = executable
-        self.env = env
-        self.workdir = workdir
-        self.log_path = log_path
-        self.templates_dir = templates_dir
-        self.case = case
+    def __init__(self, executable, env, workdir, log_path, case):
+        self.executable, self.env, self.workdir, self.log_path, self.case = executable, env, workdir, log_path, case
 
-    def _read_template(self, name):
-        return (Path(self.templates_dir) / name).read_text(encoding="utf-8")
+    def _resolve(self, path):
+        p = Path(path)
+        return p if p.is_absolute() or not self.workdir else Path(self.workdir) / p
 
-    def _resolve_round_dir(self, round_dir):
-        path = Path(round_dir)
-        if not path.is_absolute() and self.workdir:
-            path = Path(self.workdir) / path
-        return path
-
-    def _build_script(self, candidate_pla, out_dir, fill, experiment_path):
-        frb_path = self.case["frb"]
-        open_build = tcl.fill(self._read_template("open-build.tcl"), {"FRB": _unbraced(frb_path)})
-        replay = tcl.fill(self._read_template("replay-pla.tcl"), {"PLA": _unbraced(candidate_pla)})
-        out_value = _unbraced(str(out_dir))
-        verify = tcl.fill(self._read_template("verify-all.tcl"), {})
-        export = tcl.fill(self._read_template("export.tcl"), {"OUT": out_value})
-
-        stages = [
-            'set mage_round_stage "open-build"',
-            open_build.rstrip("\n"),
-            'set mage_round_stage "replay-pla"',
-            replay.rstrip("\n"),
-        ]
-        if experiment_path is not None:
-            stages.append('set mage_round_stage "experiment"')
-            stages.append("source " + tcl.quote(str(experiment_path)))
-        if fill:
-            converge = _converge_lines(self.case.get("autoRefineConverge"))
-            fill_text = tcl.fill(self._read_template("fill-autorefine.tcl"), {"CONVERGE": converge})
-            stages.append('set mage_round_stage "fill"')
-            stages.append(fill_text.rstrip("\n"))
-        stages.extend([
-            'set mage_round_stage "verify-all"',
-            verify.rstrip("\n"),
-            'set mage_round_stage "export"',
-            export.rstrip("\n"),
-        ])
-        body = "\n".join(stages)
-        return (
-            "set mage_round_code [catch {\n"
-            + body
-            + "\n} mage_round_message mage_round_options]\n"
-            "if {$mage_round_code} {\n"
-            "    puts stderr [list MAGE_ROUND_ERROR stage $mage_round_stage message $mage_round_message]\n"
-            "    exit 2\n"
-            "}\n"
-            "exit 0\n"
-        )
+    def _assemble(self, agent_text, out_dir):
+        prelude = tcl.fill(_PRELUDE.read_text(encoding="utf-8"), {
+            "FRB": _unbraced(self.case["frb"]), "CASE_DIR": _unbraced(self.case["caseDir"]),
+            "START_PLA": _unbraced(self.case["startPla"]), "OUT": _unbraced(str(out_dir)),
+        })
+        epilogue = tcl.fill(_EPILOGUE.read_text(encoding="utf-8"), {"OUT": _unbraced(str(out_dir))})
+        body = "\n".join([prelude.rstrip("\n"), AGENT_BEGIN, agent_text.rstrip("\n"), AGENT_END,
+                          'set hima_stage_boundary "epilogue"', epilogue.rstrip("\n")])
+        return ("set mage_stage_code [catch {\n" + body + "\n} mage_stage_message mage_stage_options]\n"
+                "if {$mage_stage_code} {\n"
+                "    puts stderr [list MAGE_STAGE_ERROR boundary $hima_stage_boundary message $mage_stage_message]\n"
+                "    exit 2\n}\nexit 0\n")
 
     def _append_log(self, entry):
-        log_path = Path(self.log_path)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, sort_keys=True) + "\n")
+        Path(self.log_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(self.log_path, "a", encoding="utf-8") as h:
+            h.write(json.dumps(entry, sort_keys=True) + "\n")
 
-    def run_round(self, round_dir, candidate_pla, role, timeout_s=1800, fill=False, experiment_tcl=None):
-        """Run one MAGE round and return its export/verify/log summary.
+    def run_stage(self, stage_dir, script_path, role, timeout_s=1800):
+        if not (MIN_TIMEOUT_S <= int(timeout_s) <= MAX_TIMEOUT_S):
+            raise core.MageError("timeout", f"timeout_s must be within {MIN_TIMEOUT_S}..{MAX_TIMEOUT_S}")
+        stage_dir = self._resolve(stage_dir)
+        if (stage_dir / "stage.tcl").exists():
+            raise core.MageError("stage-exists", f"{stage_dir} already holds a stage.tcl")
+        agent_bytes = Path(script_path).read_bytes()
+        agent_text = agent_bytes.decode("utf-8", errors="replace")
+        refuse_forbidden(agent_text)
+        if role != ENGINEER_ROLE:
+            raise core.MageError("writer", f"role {role!r} may not run a MAGE stage")
 
-        `fill=True` appends this Pack's `fill-autorefine` stage after the
-        replay (and after any experiment). `experiment_tcl`, when given, is
-        a path to an Engineer-authored Tcl file sourced after the replay;
-        its bytes are copied verbatim to `round_dir/experiment.tcl` and its
-        sha256 recorded in the result, round log and (via `candidate`) the
-        delivery. An experiment containing `exit`, `frbOpen`, `MAGE_VERIFY`
-        or `MAGE_ROUND_END` is refused with `core.MageError("experiment",
-        ...)` before `round_dir` is created (the last two so an experiment
-        can never print a fake native count or round-end marker).
-
-        Refuses with `core.MageError("writer", ...)` when `role` is not
-        `"engineer"` but the assembled round script is `mutating()` —
-        checked before anything is written or executed, so a refused role
-        leaves no trace. Refuses with `core.MageError("round-exists", ...)`
-        when `round_dir` already contains a `round.tcl` from an earlier
-        round.
-        """
-        round_dir = self._resolve_round_dir(round_dir)
-        round_tcl_path = round_dir / "round.tcl"
-        if round_tcl_path.exists():
-            raise core.MageError("round-exists", f"{round_tcl_path} already has a round.tcl")
-
-        experiment_dest = round_dir / "experiment.tcl" if experiment_tcl is not None else None
-        experiment_bytes = None
-        if experiment_tcl is not None:
-            experiment_bytes = Path(experiment_tcl).read_bytes()
-            experiment_text = experiment_bytes.decode("utf-8", errors="replace")
-            for pattern in _EXPERIMENT_FORBIDDEN:
-                if pattern.search(experiment_text):
-                    raise core.MageError(
-                        "experiment",
-                        f"experiment Tcl contains forbidden command {pattern.pattern!r}",
-                    )
-
-        out_dir = round_dir / "out"
-        script = self._build_script(candidate_pla, out_dir, fill, experiment_dest)
-        is_mutating = mutating(script)
-        if role != ENGINEER_ROLE and is_mutating:
-            raise core.MageError("writer", f"role {role!r} may not run a mutating MAGE round")
-
-        round_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = stage_dir / "out"
         out_dir.mkdir(parents=True, exist_ok=True)
-        experiment_sha256 = None
-        if experiment_bytes is not None:
-            experiment_dest.write_bytes(experiment_bytes)
-            experiment_sha256 = core.file_sha256(experiment_dest)
-        round_tcl_path.write_text(script, encoding="utf-8")
-        script_sha256 = core.file_sha256(round_tcl_path)
+        script_copy = stage_dir / "script.tcl"; script_copy.write_bytes(agent_bytes)
+        stage_tcl = stage_dir / "stage.tcl"; stage_tcl.write_text(self._assemble(agent_text, out_dir), encoding="utf-8")
+        script_sha, stage_sha = core.file_sha256(script_copy), core.file_sha256(stage_tcl)
 
-        stdout_path = out_dir / "stdout.log"
-        stderr_path = out_dir / "stderr.log"
-        executable_prefix = self.executable if isinstance(self.executable, list) else [self.executable]
-        argv = list(executable_prefix) + [str(round_tcl_path), "-noterm"]
-
-        started_at = _iso_now()
-        timed_out = False
-        with open(stdout_path, "wb") as out_handle, open(stderr_path, "wb") as err_handle:
-            process = subprocess.Popen(
-                argv, cwd=str(round_dir), env=self.env,
-                stdout=out_handle, stderr=err_handle, start_new_session=True,
-            )
+        stdout_path, stderr_path = out_dir / "stdout.log", out_dir / "stderr.log"
+        prefix = self.executable if isinstance(self.executable, list) else [self.executable]
+        started = _iso_now(); timed_out = False
+        with open(stdout_path, "wb") as o, open(stderr_path, "wb") as e:
+            proc = subprocess.Popen(list(prefix) + [str(stage_tcl), "-noterm"], cwd=str(stage_dir), env=self.env,
+                                    stdout=o, stderr=e, start_new_session=True)
             try:
-                returncode = process.wait(timeout=timeout_s)
+                rc = proc.wait(timeout=int(timeout_s))
             except subprocess.TimeoutExpired:
                 timed_out = True
-                try:
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
-                    process.kill()
-                process.wait()
-                returncode = -9
-        ended_at = _iso_now()
+                try: os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError): proc.kill()
+                proc.wait(); rc = -9
+        ended = _iso_now()
 
-        stdout_text = stdout_path.read_text(encoding="utf-8") if stdout_path.exists() else ""
-        end_marker_present = any(line.strip() == END_MARKER for line in stdout_text.splitlines())
-        completed = (returncode == 0) and (not timed_out) and end_marker_present
-
+        stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+        stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        completed = rc == 0 and not timed_out and any(l.strip() == END_MARKER for l in stdout_text.splitlines())
+        stage_error, last_boundary = None, None
+        for line in stderr_text.splitlines():
+            m = _STAGE_ERROR_RE.match(line.strip())
+            if m:
+                stage_error, last_boundary = line.strip(), m.group(1); break
+        snapshots = snapshots_from_stdout(stdout_text, out_dir)
+        for s in snapshots:
+            s["sha256"] = core.file_sha256(s["pla"])
+        if last_boundary is None and snapshots:
+            last_boundary = snapshots[-1]["name"]
+        if timed_out and stage_error is None:
+            stage_error = f"timeout after {int(timeout_s)} s"
         verify_files = write_verify_files(stdout_path, out_dir)
-
-        def _existing(path):
-            return str(path) if path.exists() else None
-
-        def _sha_or_none(path):
-            return core.file_sha256(path) if path.exists() else None
-
-        # R1: bind the export to this exact logged run by recording both the
-        # captured stdout's sha256 and the export.pla's sha256 in the result
-        # and the session log. A later reader can re-derive the verify headers
-        # from the logged stdout and confirm the delivered export is the one
-        # this logged round produced.
-        export_sha256 = _sha_or_none(out_dir / "export.pla")
-        stdout_sha256 = _sha_or_none(stdout_path)
-
+        export = out_dir / "export.pla"
         result = {
-            "exportPla": _existing(out_dir / "export.pla"),
-            "verifyFiles": verify_files,
-            "summary": _existing(out_dir / "summary.txt"),
-            "stdout": str(stdout_path),
-            "returncode": returncode,
-            "scriptSha256": script_sha256,
-            "timedOut": timed_out,
-            "completed": completed,
-            "fill": bool(fill),
-            "experimentTcl": str(experiment_dest) if experiment_dest is not None else None,
-            "experimentSha256": experiment_sha256,
-            "exportSha256": export_sha256,
-            "stdoutSha256": stdout_sha256,
+            "stageDir": str(stage_dir), "scriptTcl": str(script_copy), "scriptSha256": script_sha,
+            "stageTcl": str(stage_tcl), "stageSha256": stage_sha, "returncode": rc, "timedOut": timed_out,
+            "completed": completed, "lastBoundary": last_boundary, "stageError": stage_error,
+            "exportPla": str(export) if export.is_file() else None,
+            "exportSha256": core.file_sha256(export) if export.is_file() else None,
+            "summary": str(out_dir / "summary.txt") if (out_dir / "summary.txt").is_file() else None,
+            "stdout": str(stdout_path), "stdoutSha256": core.file_sha256(stdout_path),
+            "verifyFiles": verify_files, "snapshots": snapshots, "checks": slice_checks(stdout_text),
+            "startedAt": started, "endedAt": ended,
         }
-
-        self._append_log({
-            "roundDir": str(round_dir),
-            "role": role,
-            "scriptSha256": script_sha256,
-            "mutating": is_mutating,
-            "returncode": returncode,
-            "timedOut": timed_out,
-            "completed": completed,
-            "fill": bool(fill),
-            "experimentSha256": experiment_sha256,
-            "exportSha256": export_sha256,
-            "stdoutSha256": stdout_sha256,
-            "startedAt": started_at,
-            "endedAt": ended_at,
-        })
-
+        self._append_log({"stageDir": str(stage_dir), "role": role, "scriptSha256": script_sha, "stageSha256": stage_sha,
+                          "mutating": True, "returncode": rc, "timedOut": timed_out, "completed": completed,
+                          "exportSha256": result["exportSha256"], "stdoutSha256": result["stdoutSha256"],
+                          "startedAt": started, "endedAt": ended})
         return result
