@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "round", "stage", "role", "stageDir", "scriptTcl", "scriptSha256", "stageTcl", "stageSha256",
+               "returncode", "timedOut", "completed", "lastBoundary", "stageError", "exportPla", "exportSha256",
+               "summary", "stdout", "stdoutSha256", "verifyFiles", "snapshots", "checks", "startedAt", "endedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "string", "const": "mage.stage-summary/1"},
+    "id": {"type": "string", "minLength": 1},
+    "round": {"type": "integer", "minimum": 1}, "stage": {"type": "integer", "minimum": 1},
+    "role": {"type": "string"}, "stageDir": {"type": "string"},
+    "scriptTcl": {"type": "string"}, "scriptSha256": {"type": "string"},
+    "stageTcl": {"type": "string"}, "stageSha256": {"type": "string"},
+    "returncode": {"type": "integer"}, "timedOut": {"type": "boolean"}, "completed": {"type": "boolean"},
+    "lastBoundary": {"type": ["string", "null"]}, "stageError": {"type": ["string", "null"]},
+    "exportPla": {"type": ["string", "null"]}, "exportSha256": {"type": ["string", "null"]},
+    "summary": {"type": ["string", "null"]}, "stdout": {"type": "string"}, "stdoutSha256": {"type": ["string", "null"]},
+    "verifyFiles": {"type": "object"},
+    "snapshots": {"type": "array", "items": {"type": "object", "required": ["index", "name", "pla", "summary", "sha256"]}},
+    "checks": {"type": "object"},
+    "startedAt": {"type": "string"}, "endedAt": {"type": "string"}
+  }
+}

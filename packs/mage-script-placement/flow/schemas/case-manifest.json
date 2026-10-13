@@ -31,6 +31,10 @@
     "startState": {"$ref": "#/$defs/fileRef"},
     "incumbentState": {"$ref": "#/$defs/fileRef"},
     "referenceMethod": {"$ref": "#/$defs/fileRef"},
+    "referenceFiles": {"type": "array", "items": {"$ref": "#/$defs/fileRef"}},
+    "referenceNotes": {"type": "array", "items": {"type": "object", "required": ["path", "sha256", "title"], "additionalProperties": false,
+                       "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "minLength": 1}, "title": {"type": "string", "minLength": 1}}}},
+    "referenceOrdinaryDropLengthUm": {"type": "number", "minimum": 0},
     "frameSizeUm": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
     "dbuPerUm": {"type": "integer", "minimum": 1},
     "partitionRule": {

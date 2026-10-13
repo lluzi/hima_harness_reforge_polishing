@@ -1,29 +1,19 @@
 {
   "type": "object",
-  "required": [
-    "schema", "id", "round", "route", "nextRound", "best", "openRequests",
-    "decisionRequests", "history", "stopReason"
-  ],
+  "required": ["schema", "id", "round", "route", "nextRound", "best", "history", "stopReason", "goalMet", "rules", "blockedRound"],
   "additionalProperties": false,
-  "$defs": {
-    "nextRound": {
-      "type": "object",
-      "required": ["round"],
-      "additionalProperties": false,
-      "properties": {"round": {"type": "integer", "minimum": 0}}
-    }
-  },
   "properties": {
     "schema": {"type": "string", "const": "mage.round-decision/1"},
     "id": {"type": "string", "minLength": 1},
     "round": {"type": "integer", "minimum": 0},
     "route": {"type": "string", "enum": ["continue", "stop"]},
-    "nextRound": {"$ref": "#/$defs/nextRound"},
+    "nextRound": {"type": "object", "required": ["round"], "additionalProperties": false,
+                  "properties": {"round": {"type": "integer", "minimum": 0}}},
     "best": {"type": ["object", "null"]},
-    "openRequests": {"type": "array"},
-    "decisionRequests": {"type": "array"},
     "history": {"type": "array"},
     "stopReason": {"type": "string"},
-    "skippedReviews": {"type": "array"}
+    "goalMet": {"type": "boolean"},
+    "rules": {"type": "object"},
+    "blockedRound": {"type": "boolean"}
   }
 }

@@ -283,6 +283,37 @@ def _file_ref(path):
     return {"path": str(path), "sha256": core.file_sha256(path)}
 
 
+def _reference_run_tcl():
+    """A customer-neutral stand-in for a reference method's entry script:
+    the four stages in order, in the command forms the playbook names."""
+    return "\n".join([
+        "# synthetic reference method (fixture; no customer values)",
+        "proc openFrb {} { frbOpen ../synthetic.frb }",
+        "proc buildFrame {} { smPFlow -updateUsedFiles; frbSetup -obj BuildFrame; smPFlow -clear; smPFlow -bindBlocks",
+        "    smPFlow -buildFrame frame -mchip mainchip -mblock mainchip; smPFlow -sortFix; smPFlow -sortFit }",
+        "openFrb", "buildFrame",
+        "source request-order.t",
+        "smPInstMgr -saveMark pre_place_all.pla",
+        "g_params -set {smPFlow::s_ARTestConvergePrplaced true}",
+        "smPFlow -setAutoRefineSimpleConverge -arSLType VERT -arConvergeNum 7",
+        "smPFlow -setAutoRefineSimpleConverge -arSLType HORZ -arConvergeNum 5",
+        "smPFlow -autoRefine",
+        "g_params -set {smPFlow::s_ARTestConvergePrplaced false}",
+        "smPFlow -autoRefine", "",
+    ])
+
+
+def journal_entry(round_no, script_sha256, outcome="completed", conclusion="baseline reproduced"):
+    return {
+        "schema": "mage.journal-entry/1", "round": round_no,
+        "hypothesis": "replaying the frozen start and filling reproduces the incumbent",
+        "stages": [{"stage": 1, "scriptSha256": script_sha256, "outcome": outcome,
+                    "boundaries": ["open-build", "priority-start", "filled"], "stageError": None, "note": ""}],
+        "observations": ["ordinary drops equal the incumbent"],
+        "conclusion": conclusion, "nextStep": "try explicit compaction",
+    }
+
+
 def _mage_block(mage_executable, auto_refine_converge):
     block = {"executable": mage_executable, "setupScript": "", "buildBanner": "synthetic"}
     if auto_refine_converge is not None:
@@ -293,7 +324,7 @@ def _mage_block(mage_executable, auto_refine_converge):
     return block
 
 
-def make_case(root, mage_executable="", auto_refine_converge=None, reference_method=None):
+def make_case(root, mage_executable="", auto_refine_converge=None, reference=True):
     """Write a synthetic 2x2-die MAGE case under `<root>/case/`.
 
     Returns `{'root', 'manifest', 'consumerContext', 'files': {...}}` with
@@ -303,11 +334,12 @@ def make_case(root, mage_executable="", auto_refine_converge=None, reference_met
     is stored under `manifest['mage']['autoRefineConverge']` (the fill
     stage's converge knob); the default `None` leaves it off entirely, so
     existing fixtures build the manifest shape unchanged.
-    `reference_method`, when given a true-ish value, writes a small Tcl
-    file under `<root>/case/reference-method.tcl` and names it (with its
-    digest) under the manifest's optional top-level `referenceMethod`
-    field; the default `None` leaves the field off entirely, so existing
-    fixtures build the manifest shape unchanged.
+    `reference`, when true (the default), writes a reference-method bundle
+    under `<root>/case/reference/` (`run.tcl`, `request-order.t`,
+    `notes.md`) and sets the manifest's `referenceMethod`,
+    `referenceFiles`, `referenceNotes` and `referenceOrdinaryDropLengthUm`
+    fields; pass `reference=False` to omit all four, so the manifest shape
+    matches a case with no reference method at all.
     """
     case_dir = Path(root) / "case"
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -324,11 +356,19 @@ def make_case(root, mage_executable="", auto_refine_converge=None, reference_met
     prj_path = _write(case_dir / "synthetic.prj", "# synthetic project placeholder\n")
     cluster_tcl_path = _write(case_dir / "cluster.tcl", "# synthetic cluster placeholder\n")
 
-    reference_method_path = None
-    if reference_method:
-        reference_method_path = _write(
-            case_dir / "reference-method.tcl", "# synthetic reference-method placeholder\n"
-        )
+    reference_refs = {}
+    if reference:
+        reference_dir = case_dir / "reference"
+        run_tcl = _write(reference_dir / "run.tcl", _reference_run_tcl())
+        request_copy = _write(reference_dir / "request-order.t", _request_t())
+        notes = _write(reference_dir / "notes.md",
+                       "# synthetic probe notes\n\nObservation only: the converge call failed at boundary `priority-restored`.\n")
+        reference_refs = {
+            "referenceMethod": _file_ref(run_tcl),
+            "referenceFiles": [_file_ref(run_tcl), _file_ref(request_copy)],
+            "referenceNotes": [dict(_file_ref(notes), title="synthetic probe notes")],
+            "referenceOrdinaryDropLengthUm": 450,
+        }
 
     manifest_body = {
         "frb": _file_ref(frb_path),
@@ -348,9 +388,8 @@ def make_case(root, mage_executable="", auto_refine_converge=None, reference_met
             "smPFlow -placeGroup -groupItem {g} -groupTargetPoint ({x},{y}) -groupPlaceType CT"
         ),
         "mage": _mage_block(mage_executable, auto_refine_converge),
+        **reference_refs,
     }
-    if reference_method_path is not None:
-        manifest_body["referenceMethod"] = _file_ref(reference_method_path)
 
     manifest = core.stamp("case-manifest", manifest_body)
     manifest_path = case_dir / "manifest.json"
@@ -388,7 +427,6 @@ def make_case(root, mage_executable="", auto_refine_converge=None, reference_met
             "incumbentState": str(incumbent_state_path),
             "manifest": str(manifest_path),
             "consumerContext": str(consumer_context_path),
-            **({"referenceMethod": str(reference_method_path)} if reference_method_path is not None else {}),
         },
     }
 
@@ -404,3 +442,31 @@ def make_site_capabilities(root, mage_executable):
     path = case_dir / "site-capabilities.json"
     core.write_artifact(path, doc)
     return str(path)
+
+
+def write_workspace_state(workspace, case, site_caps_path, goal):
+    """Write state/start-snapshot.json, state/case-readiness.json and state/incumbent.json
+    (ordinaryPopulation only) into `workspace` for the synthetic case. Returns the start snapshot."""
+    from mage_placement import pla, rules, snapshot, targets  # local import: fixtures is imported by tests that patch sys.path
+    import json as _json
+    workspace = Path(workspace)
+    m = case["manifest"]; dbu = m["dbuPerUm"]
+    rule_text = Path(m["rule"]["path"]).read_text(encoding="utf-8")
+    frame = rules.frame_from_rule(rule_text, Path(m["pblock"]["path"]).read_text(encoding="utf-8"), dbu)
+    facts = rules.read_rule_facts(rule_text, dbu)
+    blocks = rules.read_block_types(Path(m["block"]["path"]).read_text(encoding="utf-8"), dbu)
+    raw = targets.read_targets(Path(m["targetTable"]["path"]).read_text(encoding="utf-8"), frame, dbu, "2")
+    start_doc = pla.read_pla(Path(m["startState"]["path"]).read_text(encoding="utf-8"), dbu)
+    bound = targets.bind_targets(raw, start_doc["groups"], start_doc["fits"])
+    start = snapshot.build_snapshot("start", start_doc, frame, facts, bound, blocks,
+                                    {"startState": dict(m["startState"])}, pending_from_rules=True)
+    core.write_artifact(workspace / "state" / "start-snapshot.json", start)
+    site_caps = _json.loads(Path(site_caps_path).read_text(encoding="utf-8"))
+    reference = {k: m.get(k) for k in ("referenceMethod", "referenceFiles", "referenceNotes", "referenceOrdinaryDropLengthUm")}
+    core.write_artifact(workspace / "state" / "case-readiness.json",
+                        core.stamp("case-readiness", {"goal": goal, "manifest": m, "siteCapabilities": site_caps, "reference": reference}))
+    inc_doc = pla.read_pla(Path(m["incumbentState"]["path"]).read_text(encoding="utf-8"), dbu)
+    inc = snapshot.build_snapshot("incumbent", inc_doc, frame, facts, bound, blocks, {}, pending_from_rules=False)
+    core.write_artifact(workspace / "state" / "incumbent.json",
+                        core.stamp("incumbent-measure", {"ordinaryPopulation": snapshot.ordinary_population(inc)}))
+    return start

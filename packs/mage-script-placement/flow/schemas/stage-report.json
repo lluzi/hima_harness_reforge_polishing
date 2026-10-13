@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "stageDir", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "string", "const": "mage.stage-report/1"},
+    "id": {"type": "string", "minLength": 1},
+    "stageDir": {"type": "string"},
+    "rows": {"type": "array", "items": {"type": "object", "required": ["boundary", "index", "source", "fixed", "groups",
+             "inGroupFits", "ordinaryFits", "drops", "inventory", "targetDistances", "orderDeviation", "priorityMovement", "nativeRows"]}}
+  }
+}

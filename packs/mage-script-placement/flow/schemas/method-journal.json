@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "entries", "bestRound"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "string", "const": "mage.method-journal/1"},
+    "id": {"type": "string", "minLength": 1},
+    "entries": {"type": "array", "items": {"type": "object"}},
+    "bestRound": {"type": ["integer", "null"]}
+  }
+}

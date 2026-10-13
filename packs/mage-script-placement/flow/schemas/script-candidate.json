@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "identity", "startSnapshotSha256", "snapshotSha256", "buildBanner", "files",
+               "metrics", "remaining", "blocked", "unknown", "outcome", "stopReason", "reproduction"],
+  "additionalProperties": false,
+  "$defs": {
+    "ref": {"type": "object", "required": ["path", "sha256"],
+            "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "minLength": 1}}}
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.script-candidate/1"},
+    "id": {"type": "string", "minLength": 1},
+    "identity": {"type": "object", "required": ["taskId", "runId", "executionId", "nodeId", "round"],
+                 "properties": {"round": {"type": "integer", "minimum": 1}}},
+    "startSnapshotSha256": {"type": "string", "minLength": 1},
+    "snapshotSha256": {"type": "string", "minLength": 1},
+    "buildBanner": {"type": "string"},
+    "files": {
+      "type": "object",
+      "required": ["script", "stageScript", "sessionLog", "journal", "verify", "snapshots"],
+      "properties": {
+        "script": {"$ref": "#/$defs/ref"}, "stageScript": {"$ref": "#/$defs/ref"},
+        "sessionLog": {"$ref": "#/$defs/ref"}, "journal": {"$ref": "#/$defs/ref"},
+        "export": {"$ref": "#/$defs/ref"}, "snapshot": {"$ref": "#/$defs/ref"}, "summary": {"$ref": "#/$defs/ref"},
+        "verify": {"type": "object"},
+        "snapshots": {"type": "array", "items": {"type": "object", "required": ["index", "name", "path", "sha256"]}}
+      }
+    },
+    "metrics": {"type": "object"},
+    "remaining": {"type": "array"}, "blocked": {"type": "array"}, "unknown": {"type": "array"},
+    "outcome": {"type": "string", "enum": ["completed", "blocked"]},
+    "stopReason": {"type": "string"},
+    "reproduction": {"type": "object", "required": ["stageDir", "script", "stageScript"]}
+  }
+}
