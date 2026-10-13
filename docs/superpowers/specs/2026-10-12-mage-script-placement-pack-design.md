@@ -470,6 +470,20 @@ gate, journal entry, candidate) has an admitted fixture, a validator and a Reade
    Fable 5.1 (this session). Native probes and the live Run: the main agent with the user.
 8. Python 3.8-compatible standard library only (the resident container runs 3.8.16).
 
+## Amendment 2026-10-12 (planning) — own Site and manifest file
+
+§4 and §5.3 said the Site `linglong-mage` is reused with the same manifest. The sibling Pack's manifest
+schema is closed (`additionalProperties: false`), so a manifest carrying the new reference fields would
+break the sibling's `prepare-case`. The new Pack therefore binds its own Site-local manifest file
+(`scribe-case-v1/manifest-script.json` on Linglong) through its own Site `sites/linglong-mage-script/`
+(same host, permit, capability, workspace root and `mage: 1` seat as `linglong-mage`; no `consumerContext`
+binding). `referenceMethod` stays a `fileRef` to the reference method's entry script (required by this
+Pack's `prepare-case`); the directory's other files are `referenceFiles[]`; `referenceNotes[]` and
+`referenceOrdinaryDropLengthUm` are as described. The contract test still asserts that an extra
+`consumerContext` binding on a Site is tolerated. The plan
+(`docs/superpowers/plans/2026-10-12-mage-script-placement-pack.md`) is the binding record of these
+field names.
+
 ## 14. Risks and falsifiers
 
 - The agent's Tcl may need commands the stand-in does not model → the stand-in ignores unknown
