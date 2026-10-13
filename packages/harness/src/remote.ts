@@ -63,7 +63,7 @@ import type { CampaignFile, CampaignFileReadResult, CampaignFileWriteResult, Pre
 // module is bundled into the browser half, where a runtime import of it would ship both to every
 // browser. What Site discovery actually does is `RemoteOperations.discoverSite`/`sites`, implemented
 // in `index.ts` (#41 task 4).
-import type { SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
+import type { SiteDiscoveryRequest, SiteDiscoveryResult, ToolViewKind } from './sites.js';
 // Runtime, unlike the type-only imports above: this route is the one place in the namespace that
 // must tell a caller's malformed Site discovery request (a `ZodError` from `discoverSshSite`'s own
 // schema) apart from every other fault. Safe beside the browser bundle for the same reason
@@ -585,6 +585,9 @@ export interface SiteHeadView {
   readonly capacity: { readonly cores: number; readonly memoryGiB: number; readonly parallelJobs: number; readonly licences: Readonly<Record<string, number>> };
   /** When this Site's discovery was last observed. Absent for `local`, which is never discovered. */
   readonly observedAt?: string;
+  /** This Site's live tool display, when it declares one. Never carries the Site's own port — the
+   *  client never dials the Site; the Host alone opens the forward and publishes a ready URL. */
+  readonly toolView?: { readonly kind: ToolViewKind; readonly label: string };
 }
 
 /**

@@ -91,7 +91,7 @@ import {
 // and the commands it has run, and the contract suite reads both.
 export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, processProbes, quote, LocalChannel, SshChannel } from './channel.js';
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
-export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
+export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError, toolViewSchema } from './sites.js';
 export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, workMemoryEvidence, recordExperienceAdoption } from './experience.js';
 export * from './delegation.js';
 export { runDelegations, delegationRuntimePolicy } from './delegation-runtime.js';
@@ -107,7 +107,7 @@ export { nativeSessionMemoryEvidence } from './native-session-memory.js';
 export type { NativeSessionMemoryEvidence, NativeSessionMemoryReader } from './experience.js';
 export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, WorkMemoryAuthority, ExperienceAdoptionRequest } from './experience.js';
 export type { ExperienceAdoptionRecord, DelegationRecord } from './ledger.js';
-export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity } from './sites.js';
+export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity, ToolViewDeclaration, ToolViewKind } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
@@ -428,6 +428,7 @@ function siteHeadViewOf(site: Site): SiteHeadView {
   return {
     name: site.name, kind: site.kind, readiness: siteHeadReadiness(site), capacity: site.capacity,
     ...(site.discovery === undefined ? {} : { observedAt: site.discovery.observedAt }),
+    ...(site.toolView === undefined ? {} : { toolView: { kind: site.toolView.kind, label: site.toolView.label ?? 'Tool' } }),
   };
 }
 

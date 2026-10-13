@@ -112,6 +112,21 @@ export const licenceName = z
   .string()
   .regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, 'a licence name is a letter followed by letters, digits, ".", "_" or "-"');
 
+/**
+ * A Site's declared live tool display: a loopback port on the Site where an xpra HTML5 server
+ * already serves the tool's real display (today: MAGE on `linglong-mage`). This is the only kind
+ * in this slice. The Host, not the client, dials this port — `SiteHeadView.toolView` carries `kind`
+ * and `label` but never `port`, so the client never learns where on the Site this listens.
+ */
+export const toolViewSchema = z.object({
+  kind: z.literal('xpra-html5'),
+  port: z.number().int().min(1).max(65535),
+  /** Shown on the Campaign pane's Tool tab button; defaults to "Tool" when the Site owner omits it. */
+  label: z.string().min(1).max(40).optional(),
+});
+export type ToolViewDeclaration = z.infer<typeof toolViewSchema>;
+export type ToolViewKind = ToolViewDeclaration['kind'];
+
 export const siteSchema = z
   .object({
     name: z.string(),
@@ -131,6 +146,9 @@ export const siteSchema = z
     ssh: sshSchema.optional(),
     /** Facts seen during the last bounded profile discovery. They are descriptive, never a Permit. */
     discovery: discoverySchema.optional(),
+    /** The Site's live tool display, if it has one. Allowed on `kind: local` too (the Host then
+     *  publishes `http://localhost:<port>/` directly — what every local test exercises). */
+    toolView: toolViewSchema.optional(),
     capacity: z.object({
       cores: z.number().int().positive(),
       memoryGiB: z.number().positive(),
@@ -298,11 +316,12 @@ function reviewedSite(sitesDir: string, name: string): ReviewedSite | undefined 
   // Discovery never has authority to discard an owner field it cannot understand.  `loadSite`
   // remains backwards-compatible for reads; save is deliberately stricter because it writes.
   const rawSite = parse(siteBytes);
-  rejectUnknownPolicyKeys(rawSite, ['name', 'kind', 'workspaceRoot', 'permit', 'bindings', 'ssh', 'discovery', 'capacity'], 'Site');
+  rejectUnknownPolicyKeys(rawSite, ['name', 'kind', 'workspaceRoot', 'permit', 'bindings', 'ssh', 'discovery', 'capacity', 'toolView'], 'Site');
   if (rawSite !== null && typeof rawSite === 'object' && !Array.isArray(rawSite)) {
-    const policy = rawSite as { capacity?: unknown; ssh?: unknown };
+    const policy = rawSite as { capacity?: unknown; ssh?: unknown; toolView?: unknown };
     rejectUnknownPolicyKeys(policy.capacity, ['cores', 'memoryGiB', 'parallelJobs', 'licences'], 'Site capacity');
     rejectUnknownPolicyKeys(policy.ssh, ['destination', 'jumps', 'controlPersistSeconds'], 'Site SSH');
+    rejectUnknownPolicyKeys(policy.toolView, ['kind', 'port', 'label'], 'Site toolView');
   }
   const site = siteSchema.strict().parse(rawSite);
   if (site.name !== name) {
