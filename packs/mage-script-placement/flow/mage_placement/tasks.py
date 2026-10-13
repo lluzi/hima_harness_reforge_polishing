@@ -263,11 +263,11 @@ def measure_incumbent(workspace, inputs):
 
 
 def _goal(inputs):
-    return {"target_dropped_count": inputs.get("TARGET_DROPPED", 0),
-            "max_target_distance_um": inputs.get("MAX_TARGET_DISTANCE_UM", 100),
-            "max_order_deviation_lr": inputs.get("MAX_ORDER_DEVIATION_LR", 2),
-            "max_order_deviation_tb": inputs.get("MAX_ORDER_DEVIATION_TB", 1),
-            "max_priority_move_um": inputs.get("MAX_PRIORITY_MOVE_UM", 100)}
+    return {"target_dropped_count": inputs["TARGET_DROPPED"],
+            "max_target_distance_um": inputs["MAX_TARGET_DISTANCE_UM"],
+            "max_order_deviation_lr": inputs["MAX_ORDER_DEVIATION_LR"],
+            "max_order_deviation_tb": inputs["MAX_ORDER_DEVIATION_TB"],
+            "max_priority_move_um": inputs["MAX_PRIORITY_MOVE_UM"]}
 
 
 def _committed_document(workspace, resident_output, path, kind):
@@ -356,8 +356,21 @@ def _collect_round_files(workspace, round_entry):
     def _walk(value):
         if isinstance(value, dict):
             if "path" in value and "sha256" in value and isinstance(value["path"], str):
-                target = workspace / value["path"] if not os.path.isabs(value["path"]) else Path(value["path"])
-                if target.is_file() and core.file_sha256(target) == value["sha256"]:
+                raw_path = value["path"]
+                if os.path.isabs(raw_path):
+                    target = Path(raw_path)
+                    try:
+                        target.relative_to(workspace)
+                        inside_workspace = True
+                    except ValueError:
+                        inside_workspace = False
+                else:
+                    target = workspace / raw_path
+                    inside_workspace = True
+                if inside_workspace:
+                    if not target.is_file() or core.file_sha256(target) != value["sha256"]:
+                        raise core.MageError(
+                            "identity-mismatch", f"referenced file bytes changed or are missing: {target}")
                     try:
                         relative = target.relative_to(workspace).as_posix()
                     except ValueError:

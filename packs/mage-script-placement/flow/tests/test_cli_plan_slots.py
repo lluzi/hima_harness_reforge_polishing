@@ -40,10 +40,10 @@ class PlanSlotsTest(unittest.TestCase):
         self.case = fixtures.make_case(self.root)
         site_caps = fixtures.make_site_capabilities(self.root, "")
 
-        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION_LR": 2,
+                "MAX_ORDER_DEVIATION_TB": 1, "MAX_PRIORITY_MOVE_UM": 200}
         task_input = _write_json(self.root / "prepare-input.json", {
             "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
-            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
             "SITE_CAPABILITIES": site_caps,
             **goal,
         })

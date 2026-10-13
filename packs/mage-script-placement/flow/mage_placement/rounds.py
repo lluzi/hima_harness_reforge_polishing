@@ -110,7 +110,8 @@ def decide(workspace, round_no, goal, candidate, previous_decision):
     previous_best = (previous_decision or {}).get("best")
     previous_key = tuple(previous_best["key"]) if previous_best else None
     improved = (not blocked) and (previous_key is None or key < previous_key)
-    history = list((previous_decision or {}).get("history", [])) + [{"round": round_no, "key": list(key), "improved": improved}]
+    history = [h for h in (previous_decision or {}).get("history", []) if h.get("round") != round_no] + [
+        {"round": round_no, "key": list(key), "improved": improved}]
     candidate_ref = _archive(workspace, round_no, candidate)
     if improved:
         best = {"snapshotSha256": candidate["snapshotSha256"], "candidatePath": candidate_ref["path"],
@@ -146,7 +147,8 @@ def decide(workspace, round_no, goal, candidate, previous_decision):
 
     result_path = workspace / "state" / "script-result.json"
     previous_result = core.read_artifact(result_path, "script-result") if result_path.is_file() else {}
-    rounds_list = list(previous_result.get("rounds", [])) + [{"round": round_no, "candidate": candidate_ref}]
+    rounds_list = [r for r in previous_result.get("rounds", []) if r.get("round") != round_no] + [
+        {"round": round_no, "candidate": candidate_ref}]
     outcome = "blocked" if best is None else ("completed" if goal_met else "best-effort")
     result = core.stamp("script-result", {
         "best": best, "rounds": rounds_list, "journal": journal_ref, "metrics": (best or {}).get("metrics", {}),

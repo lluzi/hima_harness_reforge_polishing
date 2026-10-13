@@ -105,6 +105,15 @@ class DecideTest(unittest.TestCase):
         self._journal_for(3); d3 = rounds.decide(self.ws, 3, GOAL, candidate(3, values(mage_dropped_ordinary_length_um=800.0)), d2)
         self.assertEqual(d3["route"], "continue"); self.assertEqual(d3["best"]["round"], 3)
 
+    def test_decide_rerun_of_the_same_round_does_not_duplicate_history_or_rounds(self):
+        d1 = rounds.decide(self.ws, 1, GOAL, candidate(1, values()), self.round0)
+        self._journal_for(2)
+        rounds.decide(self.ws, 2, GOAL, candidate(2, values()), d1)
+        result = rounds.decide(self.ws, 2, GOAL, candidate(2, values()), d1)
+        self.assertEqual(len(result["history"]), 2)
+        script_result = core.read_artifact(self.ws / "state" / "script-result.json", "script-result")
+        self.assertEqual(len(script_result["rounds"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

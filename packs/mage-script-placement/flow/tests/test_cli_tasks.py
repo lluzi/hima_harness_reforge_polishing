@@ -139,6 +139,40 @@ class CliRouteTest(unittest.TestCase):
         d2 = self._round(2, BASELINE)
         self.assertEqual(d2["best"]["round"], 2)
 
+    def test_prepare_case_missing_goal_knob_exits_malformed_input(self):
+        inputs = dict(GOAL_INPUTS)
+        del inputs["MAX_PRIORITY_MOVE_UM"]
+        in_path = self.root / "in-prepare-missing.json"
+        out_path = self.root / "out-prepare-missing.json"
+        in_path.write_text(json.dumps({
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"], "SITE_CAPABILITIES": self.caps, **inputs,
+        }), encoding="utf-8")
+        result = run_cli(["task-prepare-case", self.workspace, in_path, out_path], expect=2)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "malformed-input")
+        self.assertIn("KeyError", payload["detail"])
+
+    def test_deliver_refuses_a_tampered_stage_file(self):
+        prepare, measure = self._prepare_and_measure()
+        d1 = self._round(1, BASELINE)
+        self.assertEqual(d1["route"], "continue")
+        d2 = self._round(2, self._improved_stage(2))
+        self.assertEqual(d2["route"], "stop")
+
+        tampered = self.workspace / "placement" / "round-02" / "stage-1" / "script.tcl"
+        data = bytearray(tampered.read_bytes())
+        data[0] ^= 0xFF
+        tampered.write_bytes(bytes(data))
+
+        evaluation = self._task("evaluate-placement", {"DECISION": d2, "INCUMBENT": measure, **GOAL_INPUTS})
+
+        in_path = self.root / "in-deliver-tampered.json"
+        out_path = self.root / "out-deliver-tampered.json"
+        in_path.write_text(json.dumps({"EVALUATION": evaluation}), encoding="utf-8")
+        result = run_cli(["task-deliver", self.workspace, in_path, out_path], expect=3)
+        payload = json.loads(result.stderr)
+        self.assertEqual(payload["code"], "identity-mismatch")
+
 
 if __name__ == "__main__":
     unittest.main()
