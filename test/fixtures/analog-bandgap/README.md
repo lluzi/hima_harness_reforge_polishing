@@ -11,6 +11,10 @@
     transients).
 - `spectre-mc/`: Spectre `montecarlo` output for the same design (`variations=mismatch`,
   `sw_stat_mismatch=1`, `sw_stat_global=0`, 30 runs, seed 1; `mc1-<k>_op1.dc`).
+- `spectre-bgcore/`: the same bench for the `bgcore` template (the method's first cut on `synth180`,
+  `design.json`, cell `cell.spice`) at tt, 3.3 V, 27 C, with `bgok` saved in the operating points
+  (copies 1 and 4) and in the three start-up transients. Produced on 2026-10-13 by `run_bench` on
+  the same server and decks, with the same path substitutions.
 - `synth180-tables/`: ngspice 47 characterization of `synth180`: the gm/Id tables and the PNP and
   resistor tables. Values are rounded to 5 significant digits.
 

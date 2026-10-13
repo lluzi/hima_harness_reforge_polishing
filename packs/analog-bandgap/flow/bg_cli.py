@@ -93,6 +93,11 @@ STARTED_PCT = 1.0                        # the final value must be this close to
 LIMITS = {"n": (2, 24)}
 IBIAS_UA = 0.5                           # the reference current the bench provides (the ibias pin's ideal sink); bgcore: 0.2
 BGOK_LEVEL_PCT = 10.0                    # bgok must be within this % of vdd of its rail: above 90 % enabled, below 10 % with en low
+# bgok must stay below BGOK_LEVEL_PCT of vdd in every start-up transient (power-up, en ramps) until VBG has reached this % of
+# its final value, and end above 100 - BGOK_LEVEL_PCT: half the final VBG is the Pack's boundary between a dead and a started
+# reference (start_time_us), and a monitor that follows en or vdd asserts with VBG near 0. The trip VBG (VBG when bgok first
+# leaves its low level) is reported at every corner.
+BGOK_TRIP_MIN_PCT = 50.0
 LADDER_TAPS, LADDER_UNITS, BGOK_TAP = 120, 122, 100   # bgcore: tap pins vref_1..120; RL1..RL122 units plus RL0 (half a unit); BGOK senses vref_100
 
 
@@ -208,8 +213,12 @@ GROUP_KEYS = {"gmId", "lUm"}
 LINES = (("vbg", "VBG (all corners)", "V", 4, "band"), ("iq", "Quiescent current", "uA", 2, "lower"),
          ("isd", "Shutdown current at 27 C", "nA", 3, "lower"), ("tc", "TC (box method)", "ppm/C", 1, "lower"),
          ("pm", "Loop phase margin", "deg", 1, "higher"), ("start", "Start-up time", "us", 1, "lower"),
-         ("psrr", "PSRR at 1 kHz", "dB", 1, "higher"), ("bgok", "BGOK level error", "% vdd", 1, "lower"))
+         ("psrr", "PSRR at 1 kHz", "dB", 1, "higher"), ("bgok", "BGOK level error", "% vdd", 1, "lower"),
+         ("bgokTrip", "BGOK trip VBG", "% final", 1, "higher"))
 SPEC_KEYS = ("vbgV", "vbgTolPct", "iqMaxUa", "isdMaxNa", "tcMaxPpm", "pmMinDeg", "tStartMaxUs", "psrrMinDb")
+
+
+BGOK_LINES = ("bgok", "bgokTrip")         # bgcore's lines (no other template carries them)
 
 
 def lines_of(worst):
@@ -424,7 +433,7 @@ def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_op
         lines.append("X%d (%s 0 %s ib%d vbg%d g%d g%d%s) bandgap_lb" % (k, vk, en, k, k, k, k, rest))
     bgok = ["bgok%d" % k] if extra_pins(topology) else []
     saves = {"nominal": ["vbg1", "VDD1:p"] + [node_name("spectre", x) for x in NODES] + bgok, "loopv": ["go2", "g2"], "loopi": ["VI3:p"],
-             "off": ["VDD4:p"] + bgok, "offref": ["VDD8:p"]}.get(part, ["vbg%d" % k])
+             "off": ["VDD4:p"] + bgok, "offref": ["VDD8:p"]}.get(part, ["vbg%d" % k] + bgok)
     lines.append("save " + " ".join(saves))
     if part == "nominal":
         lines.append("dcT dc param=temp start=%g stop=%g step=%g" % SWEEP)
@@ -485,7 +494,7 @@ def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
                   "ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ),
                   "wrdata %s v(vbg1) v(go2) v(g2) i(vi3)" % files["ac_" + tag(t)],
                   "tran %gu %gu 0 %gu" % (TRAN_STEP_US, TRAN_STOP_US, TRAN_STEP_US),
-                  "wrdata %s v(vbg5) v(vbg6) v(vbg7)" % files["tr_" + tag(t)]]
+                  "wrdata %s v(vbg5) v(vbg6) v(vbg7)%s" % (files["tr_" + tag(t)], " v(bgok5) v(bgok6) v(bgok7)" if bgok else "")]
     lines += ["echo HIMA done 1", "quit", ".endc", ".end", ""]
     return lines, files
 
@@ -525,21 +534,58 @@ AHDL_SEED = [None]          # the directory holding the compiled AHDL code of th
 SITE_AHDL_SEED = ".ahdl-seed"   # a Site may ship known-good compiled code beside its Spectre wrapper: <wrapper>.ahdl-seed/
 
 
+AHDL_ORIGIN = [None]        # where this step's seed came from: {"origin": "site", "site": <dir>} | {"origin": "workspace"} | {"origin": "none"}
+
+
 def ahdl_seed(path, ws=None):
     """Seed this workspace's Spectre runs from <path>. A fresh workspace (no <path> yet) starts from the
     Site's copy beside the Spectre wrapper, when the Site ships one: the first compile of the PDK's
-    resistor code is where Spectre 23.1 crashed, every attempt, in a fresh workspace on the lab server."""
+    resistor code is where Spectre 23.1 crashed, every attempt, in a fresh workspace on the lab server.
+    The copy lands in a temporary directory beside <path> and is renamed into place, so a partial copy is
+    never taken for a seed; when another step renamed its copy first, that one is used. <path>.origin.json
+    records that the seed came from the Site (AHDL_ORIGIN; the measurements carry it as spectreSeed)."""
     import shutil
-    AHDL_SEED[0] = Path(path)
-    if ws is None or Path(path).is_dir():
+    import tempfile
+    path = Path(path)
+    AHDL_SEED[0] = path
+    origin = Path(str(path) + ".origin.json")
+    if path.is_dir():
+        AHDL_ORIGIN[0] = read_json(origin) if origin.is_file() else dict(origin="workspace")
+        return
+    AHDL_ORIGIN[0] = dict(origin="none")
+    if ws is None:
         return
     try:
         spectre = read_json(state(ws, "inputs.json"), "state/inputs.json")["simulators"]["spectre"]["path"]
     except (ToolError, KeyError, TypeError):
         return
     site = Path(spectre + SITE_AHDL_SEED)
-    if site.is_dir():
-        shutil.copytree(str(site), str(path))
+    if not site.is_dir():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=".%s." % path.name, dir=str(path.parent)))
+    try:
+        try:
+            shutil.copytree(str(site), str(tmp / "seed"))
+        except (OSError, shutil.Error) as error:                # no seed: this step compiles afresh (and may retry)
+            print("the Site's Spectre seed %s was not copied (%s); compiling afresh" % (site, error), file=sys.stderr)
+            return
+        record = dict(origin="site", site=str(site))
+        write_json(tmp / "origin.json", record)
+        os.replace(str(tmp / "origin.json"), str(origin))      # before the seed: a seed in place always has its origin
+        try:
+            os.rename(str(tmp / "seed"), str(path))
+        except OSError:                                         # another step's copy is in place first: use it
+            if not path.is_dir():
+                raise
+        AHDL_ORIGIN[0] = read_json(origin) if origin.is_file() else record
+    finally:
+        shutil.rmtree(str(tmp), ignore_errors=True)
+
+
+def seed_facts():
+    """The provenance of this step's Spectre seed, for the measurement records (None: no seed was set up)."""
+    return None if AHDL_ORIGIN[0] is None else dict(AHDL_ORIGIN[0])
 
 
 def spectre_retry(command, out_dir, name, lines, timeout_s=1800):
@@ -578,6 +624,7 @@ def run_bench(sim, command, inputs, corner, vdd, ibias_ua, cell_path, out_dir, n
             attempts += n
         facts = spectre_facts(raws, temps, bgok=bool(extra_pins(inputs.get("topology", TOPOLOGY))))
         facts["spectreAttempts"] = attempts
+        facts["spectreSeed"] = seed_facts()
     else:
         stem = ota.fresh_stem(out_dir, name, (".cir", ".cir.log", "-dc.dat"))
         netlist = Path(str(stem) + ".cir")
@@ -619,7 +666,7 @@ def ngspice_facts(text, out_dir, files, temps, netlist, bgok=False):
             raise ToolError("ngspice gave no operating point at %g C (%s)" % (t, netlist))
         ac = checked_rows(Path(out_dir) / files["ac_" + tag(t)], 9, AC_POINTS)
         ac = [[r[0]] + [complex(r[i], r[i + 1]) for i in range(1, len(r) - 1, 2)] for r in ac]
-        tr = checked_rows(Path(out_dir) / files["tr_" + tag(t)], 4, None)
+        tr = checked_rows(Path(out_dir) / files["tr_" + tag(t)], 7 if bgok else 4, None)
         if tr[-1][0] < 0.999 * TRAN_STOP_US * 1e-6:
             raise ToolError("ngspice's transient at %g C stopped at %g s, not %g us (%s)" % (t, tr[-1][0], TRAN_STOP_US, netlist))
         facts["temps"][str(t)] = dict(
@@ -628,6 +675,8 @@ def ngspice_facts(text, out_dir, files, temps, netlist, bgok=False):
                     vl=[r[2] for r in ac], vr=[r[3] for r in ac], s=[-r[4] for r in ac]),
             tran={key: dict(time=[r[0] for r in tr], v=[r[1 + i] for r in tr]) for i, key in enumerate(("powerUp", "en1us", "en50us"))})
         if bgok:
+            for i, key in enumerate(("powerUp", "en1us", "en50us")):
+                facts["temps"][str(t)]["tran"][key]["bgok"] = [r[4 + i] for r in tr]
             facts["temps"][str(t)].update(bgokOn=v[4 + len(NODES)], bgokOff=v[5 + len(NODES)])
     return facts
 
@@ -667,6 +716,8 @@ def spectre_facts(raws, temps, bgok=False):
         for key, k in (("powerUp", 5), ("en1us", 6), ("en50us", 7)):
             tr = psf(key, "tr_%s.tran.tran" % tag(t), "tr_%s.tran" % tag(t))
             tran[key] = dict(time=need(tr, "time"), v=need(tr, "vbg%d" % k))
+            if bgok:
+                tran[key]["bgok"] = need(tr, "bgok%d" % k)
         facts["temps"][str(t)] = dict(
             vbg=vbg, iq=iq, isd=-need(off, "VDD4:p")[0], isdRefOn=-need(offref, "VDD8:p")[0],
             nodes={x: op.get(node_name("spectre", x)) for x in NODES},
@@ -820,6 +871,7 @@ def bench_measures(facts, vbg_target=None):
     dc = facts["dc"]
     v27 = interp(dc["temp"], dc["vbg"], 27.0)
     out = dict(process=facts["process"], vdd=facts["vdd"], elapsedS=facts.get("elapsedS"), spectreAttempts=facts.get("spectreAttempts"),
+               spectreSeed=facts.get("spectreSeed"),
                tcPpm=tc_ppm(dc["temp"], dc["vbg"], v27), vbgMinV=min(dc["vbg"]), vbgMaxV=max(dc["vbg"]),
                iqMaxUa=1e6 * max(dc["iq"]), sweep=dict(temp=dc["temp"], vbg=[round(x, 6) for x in dc["vbg"]]), temps={})
     for t, f in facts["temps"].items():
@@ -851,7 +903,33 @@ def bench_measures(facts, vbg_target=None):
             on, off = f["bgokOn"], f["bgokOff"]
             out["temps"][t].update(bgokOnV=on, bgokOffV=off, bgokOnRatio=None if on is None else on / facts["vdd"],
                                    bgokOffRatio=None if off is None else off / facts["vdd"])
+            trips = {key: bgok_trip(f["tran"][key].get("time"), f["tran"][key].get("v"), f["tran"][key].get("bgok"), facts["vdd"])
+                     for key in RAMPS}
+            out["temps"][t]["bgokTrips"] = trips
+            pcts = [x["pct"] for x in trips.values()]
+            out["temps"][t]["bgokTripPct"] = None if None in pcts else min(pcts)
     return out
+
+
+def bgok_trip(time_s, vbg, bgok, vdd):
+    """bgcore's BGOK in one start-up transient: the trip, VBG when bgok first rises above BGOK_LEVEL_PCT of vdd
+    (interpolated), as volts and as % of VBG's final value, the time (us), and why there is no trip value. bgok
+    must end above 100 - BGOK_LEVEL_PCT of vdd; a missing trace, or a bgok that never leaves its low level or
+    never reaches its high level, has no trip (a miss)."""
+    if not time_s or not vbg or not bgok or len(bgok) != len(time_s) or len(vbg) != len(time_s):
+        return dict(v=None, pct=None, us=None, reason="the simulator wrote no bgok trace beside VBG")
+    final, lo, hi = vbg[-1], BGOK_LEVEL_PCT / 100.0 * vdd, (1 - BGOK_LEVEL_PCT / 100.0) * vdd
+    if final <= 0:
+        return dict(v=None, pct=None, us=None, reason="VBG ends at %.4f V" % final)
+    if bgok[-1] <= hi:
+        return dict(v=None, pct=None, us=None, reason="bgok ends at %.3f V, not above %g %% of vdd" % (bgok[-1], 100 - BGOK_LEVEL_PCT))
+    for i, b in enumerate(bgok):
+        if b > lo:
+            u = 0.0 if i == 0 or b == bgok[i - 1] else (lo - bgok[i - 1]) / (b - bgok[i - 1])
+            v = vbg[i] if i == 0 else vbg[i - 1] + u * (vbg[i] - vbg[i - 1])
+            t = time_s[i] if i == 0 else time_s[i - 1] + u * (time_s[i] - time_s[i - 1])
+            return dict(v=round(v, 6), pct=round(100.0 * v / final, 3), us=round(t * 1e6, 3), reason=None)
+    return dict(v=None, pct=None, us=None, reason="bgok never rose")  # unreachable: it ends high
 
 
 def label(b, t=None):
@@ -884,7 +962,27 @@ def worst_of(benches, vbg_target):
         w["start"]["reasons"] = reasons
     if any("bgokOnRatio" in tt for b in benches for tt in b["temps"].values()):
         w["bgok"] = bgok_worst(benches)
+        w["bgokTrip"] = bgok_trip_worst(benches)
     return w
+
+
+def bgok_trip_worst(benches):
+    """bgcore's BGOK trip line: the lowest VBG (% of its final value) at which bgok left its low level in any start-up
+    transient at any corner, where, and the trip in volts; per corner, the lowest and highest trip. A transient
+    without a trip value (no bgok trace, bgok never high) makes it None, a miss, with the reasons."""
+    rows = [(x["pct"], x["v"], "%s %s" % (label(b, t), key), x.get("reason"))
+            for b in benches for t, tt in b["temps"].items() for key, x in (tt.get("bgokTrips") or {key: {"pct": None, "v": None,
+                                                                                                         "reason": "no bgok trace"} for key in RAMPS}).items()]
+    missing = {where: why for pct, _v, where, why in rows if pct is None}
+    per = {}
+    for b in benches:
+        for t, tt in b["temps"].items():
+            vs = [x["v"] for x in (tt.get("bgokTrips") or {}).values() if x.get("v") is not None]
+            per[label(b, t)] = [min(vs), max(vs)] if vs else None
+    if missing:
+        return dict(value=None, where=next(iter(missing)), reasons=missing, perCornerV=per)
+    pct, v, where, _ = min(rows, key=lambda e: e[0])
+    return dict(value=pct, where=where, tripV=v, perCornerV=per)
 
 
 def bgok_worst(benches):
@@ -928,6 +1026,8 @@ def line_met(worst, spec):
                psrr=None if v("psrr") is None else v("psrr") > spec["psrrMinDb"])
     if "bgok" in worst:                     # bgcore: a missing BGOK reading is a miss
         out["bgok"] = False if v("bgok") is None else v("bgok") < BGOK_LEVEL_PCT
+    if "bgokTrip" in worst:
+        out["bgokTrip"] = False if v("bgokTrip") is None else v("bgokTrip") >= BGOK_TRIP_MIN_PCT
     return out
 
 
@@ -943,6 +1043,8 @@ def margins_pct(worst, spec):
         m[key] = None if x is None else 100.0 * ((x - spec[sk]) if better == "higher" else (spec[sk] - x)) / abs(spec[sk])
     if "bgok" in worst:
         m["bgok"] = None if v("bgok") is None else 100.0 * (BGOK_LEVEL_PCT - v("bgok")) / BGOK_LEVEL_PCT
+    if "bgokTrip" in worst:
+        m["bgokTrip"] = None if v("bgokTrip") is None else 100.0 * (v("bgokTrip") - BGOK_TRIP_MIN_PCT) / BGOK_TRIP_MIN_PCT
     return {k: None if x is None else round(x, 2) for k, x in m.items()}
 
 
@@ -1043,7 +1145,8 @@ def cmd_characterize(ws):
     elapsed = round(time.time() - started, 1)
     write_json(state(ws, "tables.json"), dict(schema="hima-bandgap-tables/1", pdk=name, curves=curves, expected=expected,
                                              pnpCorners=sorted(devices["pnp"]["vbe"]), resCorners=sorted(devices["res"]["r"]),
-                                             simulator=table["simulator"], elapsedS=elapsed))
+                                             simulator=table["simulator"], elapsedS=elapsed,
+                                             spectreSeed=seed_facts() if sim.name == "spectre" else None))
     lines = ["# Characterization of %s (%s, %.1f s)" % (name, table["simulator"], elapsed), "",
              "gm/Id curves: %d of %d (nmos and pmos at %s um)." % (curves, expected, ", ".join(um(l) for l in card["devices"]["nmos"]["lengthsUm"])), "",
              "| corner | VBE at 1 uA, 27 C (V) | dVBE/dT at 1 uA (mV/C) | R per um at W %s um, 27 C (Ohm) |" % um(card["devices"]["res"]["defaultWUm"]),
@@ -1125,7 +1228,8 @@ def pelgrom_areas(card, spec_or_tol, r2r1, share_pct, gmid_pair, gmid_load):
     """The input pair's and the load's gate areas (Weff Leff, um2) at which 3 sigma(VBG) fits in
     share_pct of the VBG band: sigma(VBG) = (1 + R2/R1) sigma(Vos); sigma(Vos)^2 = 2 sigma(Vth,pair)^2 +
     2 sigma(Vth,load)^2 (gm_load/gm_pair)^2, sigma(Vth) = A_VT / sqrt(Weff Leff); the pair takes 80 % of
-    the variance, the load 20 %. PNP and resistor mismatch are left to the share's remainder."""
+    the variance, the load 20 %. PNP mismatch (and resistor mismatch, where the PDK models it: GF180MCU's poly has
+    none) is left to the share's remainder."""
     tol = spec_or_tol
     sigma_vbg = tol * share_pct / 100.0 / 3.0
     sigma_vos = sigma_vbg / (1.0 + r2r1)
@@ -1230,22 +1334,28 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     drive = pick("driveRatio", 4.0) if "driveRatio" in keys else None
     branches = 2.0 + (2.0 / drive if drive else 0.0)
     # bgcore: the ladder (through the output device, so its drive branch too) and the BGOK pull-up.
-    ru = ibgok = il_hot = 0.0
+    ru = ibgok = 0.0
+    a_min = None
     if has_ladder(topology):
         ru = pick("ladderRUnitKohm", round(spec["vbgV"] / (LADDER_UNITS + 0.5) / (spec["iqMaxUa"] / 16.0 * 1e-6) / 1e3, 1))
         if ru <= 0:
             raise ToolError("ladderRUnitKohm must be positive")
         a_min = min(res_fit(devices, c, wres, t)[0] for c in devices["res"]["r"] for t in TEMPS)
-        il_hot = ladder_ua(ru, spec["vbgV"]) * a27 / a_min
         ibgok = pick("bgokNa", BGOK_NA)
-    icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3 - ibgok * 1e-3 - il_hot * (1.0 + (1.0 / drive if drive else 0.0))) / (branches * k_hot)
-    if "iCoreUa" not in ch and icore <= 0:
-        raise ToolError("the IQ line %g uA leaves no current for the core" % spec["iqMaxUa"])
-    icore = pick("iCoreUa", round(icore, 3))
     t27 = 27.0 + T0K
     tcr = (a125 - a27) / a27 / 98.0
-    slope = vbe_slope(devices, "tt", icore, 27.0)
-    r2r1 = pick("r2r1", round(-(slope + K_Q * (1.0 - t27 * tcr)) / (K_Q * math.log(n)), 4))
+    # The ladder carries the VBG the core makes (core_vbg), which depends on the core current it leaves: from the
+    # target, two passes settle it (VBE moves by VT ln of the current's change).
+    vbg_est = spec["vbgV"]
+    for _pass in range(2 if a_min else 1):
+        il_hot = ladder_ua(ru, vbg_est) * a27 / a_min if a_min else 0.0
+        icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3 - ibgok * 1e-3 - il_hot * (1.0 + (1.0 / drive if drive else 0.0))) / (branches * k_hot)
+        if "iCoreUa" not in ch and icore <= 0:
+            raise ToolError("the IQ line %g uA leaves no current for the core" % spec["iqMaxUa"])
+        icore = pick("iCoreUa", round(icore, 3))
+        slope = vbe_slope(devices, "tt", icore, 27.0)
+        r2r1 = pick("r2r1", round(-(slope + K_Q * (1.0 - t27 * tcr)) / (K_Q * math.log(n)), 4))
+        vbg_est = core_vbg(devices, n, icore, r2r1)
     share = pick("mcBandSharePct", 50.0)
     tol = spec["vbgV"] * spec["vbgTolPct"] / 100.0
     lengths = {k: card["devices"][k]["lengthsUm"] for k in ("nmos", "pmos")}
@@ -1301,9 +1411,15 @@ BGOK_NA = 50.0                           # bgcore: the BGOK pull-up's default cu
 CC_PF_PER_UA = 10.0                      # bgcore: CC per uA of tail current (the 0.5 uA design's 10 pF at 1 uA)
 
 
-def ladder_ua(ru_kohm, vbg_v=VBG_TARGET_V):
+def ladder_ua(ru_kohm, vbg_v):
     """The ladder's current (uA): VBG over its 122.5 units."""
     return vbg_v / ((LADDER_UNITS + 0.5) * ru_kohm * 1e3) * 1e6
+
+
+def core_vbg(devices, n, icore_ua, r2r1):
+    """The VBG the Kuijk core makes at tt, 27 C: VBE of Q1 at the core current plus (R2/R1) VT ln n. R2/R1 comes from
+    the zero-TC condition, not from the spec's VBG, so this (not the target) is what the ladder carries."""
+    return vbe_at(devices, "tt", icore_ua, 27.0) + r2r1 * K_Q * (27.0 + T0K) * math.log(n)
 
 
 def intent_problems(intent, topology=TOPOLOGY):
@@ -1348,7 +1464,7 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     - kuijk-p5t-mirror: M5 at the load's gm/Id and L carrying 2 iCore / driveRatio, M6 at the output
       device's L and 1 / driveRatio of its width;
     - CC (on the OTA output) and CO (vbg to vss) as square capacitors; 0 pF leaves one out;
-    - bgcore: the output device (and so M5, M6) also carries the ladder's current, VBG (the 1.2 V target)
+    - bgcore: the output device (and so M5, M6) also carries the ladder's current, the core's VBG (core_vbg)
       over 122.5 units of ladderRUnitKohm; the ladder's unit is one segment of ladderRUnitKohm at resWUm
       (`ladder`: {wUm, lUm}); the BGOK pull-up MOK2 mirrors MB0 at bgokNa like MSU1; MOK1, MOK3, MOK4 and
       MEN4 are fixed small devices."""
@@ -1386,7 +1502,7 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     ladder = None
     if has_ladder(topology):
         out["MOK2"] = pull_up(intent["bgokNa"])
-        i_out += ladder_ua(intent["ladderRUnitKohm"])
+        i_out += ladder_ua(intent["ladderRUnitKohm"], core_vbg(devices, n, intent["iCoreUa"], intent["r2r1"]))
         res = card["devices"]["res"]
         ladder = res_geometry(card, devices, intent["ladderRUnitKohm"] * 1e3, intent["resWUm"], res["lMaxUm"])
         if ladder.pop("s") != 1:
@@ -1755,7 +1871,8 @@ def measure_rpt(record):
     tol = s["vbgV"] * s["vbgTolPct"] / 100.0
     specs = dict(vbg="%.3f +/- %.1f mV" % (s["vbgV"], 1e3 * tol), iq="< %g uA" % s["iqMaxUa"], isd="<= %g nA" % s["isdMaxNa"],
                  tc="< %g ppm/C" % s["tcMaxPpm"], pm="> %g deg" % s["pmMinDeg"], start="< %g us" % s["tStartMaxUs"], psrr="> %g dB" % s["psrrMinDb"],
-                 bgok="> %g %% vdd en high, < %g %% en low" % (100 - BGOK_LEVEL_PCT, BGOK_LEVEL_PCT))
+                 bgok="> %g %% vdd en high, < %g %% en low" % (100 - BGOK_LEVEL_PCT, BGOK_LEVEL_PCT),
+                 bgokTrip=">= %g %% of final VBG" % BGOK_TRIP_MIN_PCT)
     lines = ["# Bandgap in %s, %s: every process corner, temperature and supply" % (record["pdk"], record["stage"]), "",
              "Corners %s; supplies %s V; temperatures %s C (DC sweep -40 to 125 C in 5 C steps); %s, %d runs, %.1f s." % (
                  ", ".join(record["conditions"]["corners"]), ", ".join("%g" % v for v in record["conditions"]["supplies"]),
@@ -1779,11 +1896,17 @@ def measure_rpt(record):
             "n/a" if None in pms else fmt(min(pms), "%.1f"), "n/a" if None in st else fmt(max(st), "%.1f"),
             "n/a" if None in ps else fmt(min(ps), "%.1f"), fmt(tt.get("27", {}).get("nodes", {}).get("g"), "%.3f"), fmt(b["elapsedS"], "%.1f")))
     if "bgok" in w:
-        lines += ["", "BGOK (bgok over vdd at -40 / 27 / 125 C):", "", "| corner | en high, settled | en low |", "| --- | --- | --- |"]
+        lines += ["", "BGOK (bgok over vdd, and the lowest trip VBG of the power-up and en ramps, at -40 / 27 / 125 C):", "",
+                  "| corner | en high, settled | en low | trip VBG (V) |", "| --- | --- | --- | --- |"]
         for b in record["benches"]:
             tt = b["temps"]
-            lines.append("| %s | %s | %s |" % (label(b), " / ".join(fmt(tt[str(t)].get("bgokOnRatio"), "%.3f") for t in TEMPS if str(t) in tt),
-                                              " / ".join(fmt(tt[str(t)].get("bgokOffRatio"), "%.3f") for t in TEMPS if str(t) in tt)))
+            trip = lambda x: min([y["v"] for y in (x.get("bgokTrips") or {}).values() if y.get("v") is not None] or [None])
+            lines.append("| %s | %s | %s | %s |" % (label(b), " / ".join(fmt(tt[str(t)].get("bgokOnRatio"), "%.3f") for t in TEMPS if str(t) in tt),
+                                                   " / ".join(fmt(tt[str(t)].get("bgokOffRatio"), "%.3f") for t in TEMPS if str(t) in tt),
+                                                   " / ".join(fmt(trip(tt[str(t)]), "%.3f") for t in TEMPS if str(t) in tt)))
+        trip_reasons = (w.get("bgokTrip") or {}).get("reasons") or {}
+        if trip_reasons:
+            lines += ["", "BGOK trip misses:"] + ["- %s: %s" % kv for kv in sorted(trip_reasons.items())]
     reasons = (w.get("start") or {}).get("reasons") or {}
     if reasons:
         lines += ["", "Start-up misses:"] + ["- %s: %s" % kv for kv in sorted(reasons.items())]
@@ -1804,7 +1927,7 @@ def lines_chart(record, title, source):
     cats, series_w, series_s, metrics = [], [], [], []
     s = record["spec"]
     spec_val = dict(vbg=s["vbgV"], iq=s["iqMaxUa"], isd=s["isdMaxNa"], tc=s["tcMaxPpm"], pm=s["pmMinDeg"], start=s["tStartMaxUs"], psrr=s["psrrMinDb"],
-                    bgok=BGOK_LEVEL_PCT)
+                    bgok=BGOK_LEVEL_PCT, bgokTrip=BGOK_TRIP_MIN_PCT)
     for key, lab, unit, digits, better in lines_of(record["worst"]):
         cats.append(lab)
         series_w.append(record["worst"][key]["value"])
@@ -1842,6 +1965,7 @@ def cmd_simulate(ws, stage, *spec_args):
                   meetsSpec=None if None in met.values() else all(met.values()),
                   failing=[key for key, ok in met.items() if ok is not True], elapsedS=run["elapsedS"],
                   simulatorRuns=sum(b.get("spectreAttempts") or 1 for b in benches),
+                  spectreSeed=seed_facts() if run["simulator"] == "spectre" else None,
                   claimBoundary=claim_boundary(design["ibiasUa"]), measuredAt=now())
     write_json(state(ws, "measure-%s.json" % stage), record)
     write_text(out_dir / "measure.rpt", measure_rpt(record))
@@ -2021,6 +2145,7 @@ def cmd_mc(ws, n, vbg_v, tol_pct, seed="1"):
                spec=dict(vbgV=float(vbg_v), vbgTolPct=float(tol_pct), n=n), stats=stats, meetsSpec=stats["inBand"],
                vbgV=[round(v, 7) for v in values], iqUa=[round(1e6 * q, 5) for q in iq],
                pelgrom=pelgrom_estimate(card_of(inputs), design), elapsedS=run["elapsedS"], spectreAttempts=run["spectreAttempts"],
+               spectreSeed=seed_facts() if run["simulator"] == "spectre" else None,
                claimBoundary=claim_boundary(design["ibiasUa"]), measuredAt=now())
     write_json(state(ws, "mc.json"), rec)
     write_text(out_dir / "mc.rpt", mc_rpt(rec))
@@ -2233,8 +2358,9 @@ def cmd_record(ws, *args):
         problems.append("the PVT measurement was judged against another spec sheet")
     if has_ladder(inputs.get("topology", TOPOLOGY)):
         for name in ("measure-schematic", "measure-post"):
-            if name in found and "bgok" not in (found[name].get("worst") or {}):
-                problems.append("the %s result has no BGOK line (the %s template judges it)" % (name, inputs["topology"]))
+            lacking = [x for x in BGOK_LINES if x not in ((found.get(name) or {}).get("worst") or {})]
+            if name in found and lacking:
+                problems.append("the %s result has no %s line (the %s template judges it)" % (name, " or ".join(lacking), inputs["topology"]))
                 if name == "measure-schematic":
                     pvt = None
                 else:
@@ -2309,7 +2435,7 @@ def cmd_record(ws, *args):
 def round_md(r, inputs):
     lines = ["# Round %d: bandgap in %s" % (r["round"], inputs["pdks"][PDK_KEY]["name"]), "",
              "| line | worst | where | met |", "| --- | --- | --- | --- |"]
-    judged = [line for line in LINES if line[0] != "bgok" or "bgok" in (r.get("pvtMet") or {}) or "bgok" in (r.get("postLineMet") or {})]
+    judged = [line for line in LINES if line[0] not in BGOK_LINES or line[0] in (r.get("pvtMet") or {}) or line[0] in (r.get("postLineMet") or {})]
     for key, lab, unit, digits, _b in judged:
         w = (r.get("pvtWorst") or {}).get(key)
         lines.append("| %s | %s %s | %s | %s |" % (lab, fmt(w, "%%.%df" % digits), unit, (r.get("pvtWhere") or {}).get(key) or "n/a",

@@ -74,3 +74,17 @@
     - **After layout** (C extraction, 69 s): every line met at every corner (PM 68.3 deg, start-up
       51.4 us).
     - **Round:** signed off, worst margin 13.8 % (PM after layout). The whole chain took 176 s.
+- **Independent review of the bgcore slice** (Claude Opus 5.5, 2026-10-13): no Critical findings,
+  two Important ones, both fixed with tests.
+  - **BGOK checked only two of four states.** A monitor that followed `en` would have passed.
+  - **A failed fill stopped a clean layout.**
+  - **The fix's result: the design no longer signs off.** BGOK is now also judged in the start-up
+    transients: `bgokTrip` requires VBG at 50 % or more of its final value before `bgok` rises. On
+    the method's first cut it fails (`analog-runs/bgcore-eng2-20261013-1228`):
+    - schematic: trip at 16.5 % of final VBG, at ff 3.3 V 125 C on power-up;
+    - after layout: 11.4 %.
+    - Cause: `bgok` follows vdd before the bias exists, then stays high while VBG sits near 0.56 V
+      at 125 C.
+    - The 11:45 sign-off above was under the weaker check. The BGOK monitor needs a redesign.
+  - **Monte Carlo claim corrected.** It varies the MOS and the PNPs, never the poly resistors; the
+    PDK has no resistor mismatch model.

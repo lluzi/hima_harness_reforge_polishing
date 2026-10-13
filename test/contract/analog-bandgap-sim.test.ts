@@ -320,9 +320,19 @@ test('bgcore on ngspice at tt: the ladder and BGOK in the cell, bgok high when e
       }
     }
     assert.equal(own.specMet.bgok, true);
+    // ngspice writes bgok beside VBG in every start-up transient: each has a trip.
+    for (const b of own.benches) {
+      for (const [t, x] of Object.entries(b.temps) as [string, Json][]) {
+        for (const key of ['powerUp', 'en1us', 'en50us']) {
+          assert.ok(x.bgokTrips[key].v !== null, `tt ${b.vdd} V ${t} C ${key}: a trip (${x.bgokTrips[key].reason ?? ''})`);
+        }
+      }
+    }
+    assert.ok(own.worst.bgokTrip.value !== null && typeof own.specMet.bgokTrip === 'boolean');
     assert.ok(own.worst.bgok.value < 10 && /^tt /.test(own.worst.bgok.where));
     assert.equal(typeof own.specMet.start, 'boolean');
-    // Monte Carlo on the accepted design: the bench wires every tap, the ladder's resistors draw mismatch too.
+    // Monte Carlo on the accepted design: the bench wires every tap and the cell keeps its ladder (a load on vbg). The
+    // synthetic decks give their resistor a made-up mismatch; GF180MCU's poly resistors have none (the playbook's lessons).
     await cp(path.join(ws, 'design.json'), path.join(ws, 'state/design.json'));
     assert.match(ok(ws, 'mc', '5', '1.2', '2', '3'), /Monte Carlo round 1: 5 runs/);
     const mc = await readJson(path.join(ws, 'state/mc.json'));

@@ -53,8 +53,34 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
   max(100 − 100 · bgok/vdd with `en` high and settled, 100 · bgok/vdd with `en` low). It must be
   below 10 %. `worst.bgok` names the worst corner and copy (`en high` or `en low`) and carries
   `onMinRatio` and `offMaxRatio`. A missing reading is a miss.
+- BGOK trip (`bgcore`): the line `bgokTrip` covers every start-up transient (power-up from
+  vdd = 0, `en` in 1 us and in 50 us) at every corner.
+  - bgok must stay below 10 % of vdd until VBG has reached 50 % of its final value, and end
+    above 90 %.
+  - The value is the lowest trip VBG, as a % of final, and it must be at least 50 %. The trip is
+    VBG when bgok first leaves its low level.
+  - `worst.bgokTrip` names the corner and ramp, and carries `tripV` and the per-corner trip range
+    `perCornerV`.
+  - A missing trace, or a bgok that never goes high, is a miss with its reason.
+  - Half of the final VBG is the Pack's boundary between a dead and a started reference. A monitor
+    that follows `en` or vdd trips with VBG near 0.
 
 ## Lessons (gf180mcuD, Spectre 23.1, 2026-10-12)
+
+### What Monte Carlo varies on gf180mcuD (Spectre 23.1, 2026-10-13)
+
+Under the Pack's setup (`fets_mm` loaded, sw_stat_global = 0, sw_stat_mismatch = 1,
+`variations=mismatch`), a 20-run probe measured:
+
+- **MOS:** varies, from `fets_mm`. A 4/1 um nfet's drain current had sigma 1.3 %.
+- **Vertical PNP:** varies, from `bjt_mc` (loaded by `bjt_typical`), on IS and BF. VBE of one
+  10 x 10 um device at 1 uA had sigma 24 uV, and the VBE difference of two devices 32 uV.
+- **`ppolyf_u_1k`:** does not vary. A divider and a lone resistor had sigma 0. The model has
+  only global terms, scaled by sw_stat_global and zeroed in `res_statistical_par`, and no
+  mismatch term.
+
+So on this PDK, Monte Carlo covers neither the core resistors (R1, R2) nor the ladder. VBG's
+sigma is the transistors' and the PNPs'.
 
 ### `kuijk-p5t`: the spec's template cannot meet the sheet at 2.0 V and 3.3 V
 

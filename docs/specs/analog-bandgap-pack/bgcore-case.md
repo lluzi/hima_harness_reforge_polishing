@@ -85,8 +85,18 @@ in our own words. It contains none of their netlist, foundry, PDK cell names or 
 - **Start-up stays causal.** Before `en` starts to rise, VBG must stay out of its final ±2 % band.
   If VBG enters the band before the trigger, the copy did not start correctly. This is a miss, not
   a 0 µs start-up. It is the error class behind the competitor's −48.88 ns pass.
-- **Monte Carlo** varies the resistors as well as the transistors. That includes the ladder, but VBG
-  is judged at `vbg`.
+- **Monte Carlo** varies the transistors (`fets_mm`) and the PNPs (`bjt_mc`), and judges VBG at
+  `vbg`. It does not vary the poly resistors: GF180MCU's open models give `ppolyf_u_1k` global
+  statistics only, with no mismatch term. A Spectre probe (2026-10-13, N=20) found:
+
+  | Device | Spread |
+  | --- | --- |
+  | Resistor dividers | σ = 0 |
+  | PNP | σVBE 24 µV |
+  | MOS | σId 1.3 % |
+
+  The R1/R2 and ladder mismatch of real silicon is therefore outside this Monte Carlo, and the claim
+  boundary says so.
 
 ## Layout
 

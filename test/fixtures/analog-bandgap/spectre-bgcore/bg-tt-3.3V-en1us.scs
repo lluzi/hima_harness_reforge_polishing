@@ -1,0 +1,18 @@
+// Kuijk bandgap bench: synth180 corner tt, vdd 3.3 V, copy 6 (en1us)
+simulator lang=spectre
+global 0
+simulator lang=spice
+.include "<pdkRoot>/synth180/design.inc"
+.lib "<pdkRoot>/synth180/bandgap.lib" mos_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" bjt_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" res_tt
+.include "./cell.spice"
+simulator lang=spectre
+opts options temp=27 tnom=27 rawfmt=psfascii save=selected cmin=1e-14
+VDD6 (vdd6 0) vsource dc=3.3
+VEN6 (en6 0) vsource type=pwl wave=[0 0 10u 0 11u 3.3]
+GIB6 (ib6 0 en6 0) vccs gm=6.06061e-08
+X6 (vdd6 0 en6 ib6 vbg6 g6 g6 bgok6 vr6_1 vr6_2 vr6_3 vr6_4 vr6_5 vr6_6 vr6_7 vr6_8 vr6_9 vr6_10 vr6_11 vr6_12 vr6_13 vr6_14 vr6_15 vr6_16 vr6_17 vr6_18 vr6_19 vr6_20 vr6_21 vr6_22 vr6_23 vr6_24 vr6_25 vr6_26 vr6_27 vr6_28 vr6_29 vr6_30 vr6_31 vr6_32 vr6_33 vr6_34 vr6_35 vr6_36 vr6_37 vr6_38 vr6_39 vr6_40 vr6_41 vr6_42 vr6_43 vr6_44 vr6_45 vr6_46 vr6_47 vr6_48 vr6_49 vr6_50 vr6_51 vr6_52 vr6_53 vr6_54 vr6_55 vr6_56 vr6_57 vr6_58 vr6_59 vr6_60 vr6_61 vr6_62 vr6_63 vr6_64 vr6_65 vr6_66 vr6_67 vr6_68 vr6_69 vr6_70 vr6_71 vr6_72 vr6_73 vr6_74 vr6_75 vr6_76 vr6_77 vr6_78 vr6_79 vr6_80 vr6_81 vr6_82 vr6_83 vr6_84 vr6_85 vr6_86 vr6_87 vr6_88 vr6_89 vr6_90 vr6_91 vr6_92 vr6_93 vr6_94 vr6_95 vr6_96 vr6_97 vr6_98 vr6_99 vr6_100 vr6_101 vr6_102 vr6_103 vr6_104 vr6_105 vr6_106 vr6_107 vr6_108 vr6_109 vr6_110 vr6_111 vr6_112 vr6_113 vr6_114 vr6_115 vr6_116 vr6_117 vr6_118 vr6_119 vr6_120) bandgap_lb
+save vbg6 bgok6
+al_p27 alter param=temp value=27
+tr_p27 tran stop=300u maxstep=1u errpreset=moderate

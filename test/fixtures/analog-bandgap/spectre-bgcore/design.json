@@ -1,0 +1,157 @@
+{
+  "caps": {
+    "CC": {
+      "lUm": 44.72,
+      "m": 1,
+      "wUm": 44.72
+    }
+  },
+  "devices": {
+    "M1": {
+      "lUm": 10.0,
+      "wUm": 34.47
+    },
+    "M2": {
+      "lUm": 10.0,
+      "wUm": 34.47
+    },
+    "M3": {
+      "lUm": 40.0,
+      "wUm": 3.72
+    },
+    "M4": {
+      "lUm": 40.0,
+      "wUm": 3.72
+    },
+    "M5": {
+      "lUm": 40.0,
+      "wUm": 13.12
+    },
+    "M6": {
+      "lUm": 2.0,
+      "wUm": 2.15
+    },
+    "MB0": {
+      "lUm": 5.0,
+      "wUm": 1.56
+    },
+    "MEN1": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN2": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN3": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MEN4": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MO": {
+      "lUm": 2.0,
+      "wUm": 8.6
+    },
+    "MOK1": {
+      "lUm": 1.0,
+      "wUm": 4.0
+    },
+    "MOK2": {
+      "lUm": 5.0,
+      "wUm": 0.39
+    },
+    "MOK3": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MOK4": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MSU1": {
+      "lUm": 5.64,
+      "wUm": 0.22
+    },
+    "MSU2": {
+      "lUm": 20.0,
+      "wUm": 0.5
+    },
+    "MSU3": {
+      "lUm": 4.0,
+      "wUm": 2.0
+    },
+    "MSU4": {
+      "lUm": 1.0,
+      "wUm": 1.0
+    },
+    "MT": {
+      "lUm": 5.0,
+      "wUm": 3.12
+    }
+  },
+  "ibiasUa": 0.2,
+  "intent": {
+    "bgokNa": 50.0,
+    "ccPf": 4.0,
+    "coutPf": 0.0,
+    "driveRatio": 4.0,
+    "iCoreUa": 1.169,
+    "ibiasUa": 0.2,
+    "isuNa": 25.0,
+    "itailUa": 0.4,
+    "ladderRUnitKohm": 19.6,
+    "load": {
+      "gmId": 10.0,
+      "lUm": 40.0
+    },
+    "mcBandSharePct": 50.0,
+    "mirror": {
+      "gmId": 10.0,
+      "lUm": 5.0
+    },
+    "n": 8,
+    "out": {
+      "gmId": 10.0,
+      "lUm": 2.0
+    },
+    "pair": {
+      "gmId": 20.0,
+      "lUm": 10.0
+    },
+    "r2r1": 9.8516,
+    "resSegMaxUm": 40.0,
+    "resWUm": 2.0
+  },
+  "ladder": {
+    "lUm": 38.8,
+    "wUm": 2.0
+  },
+  "n": 8,
+  "pdk": "synth180",
+  "reason": "",
+  "report": "reports/size-agent/r1/analysis.md",
+  "resistors": {
+    "R1": {
+      "lUm": 30.27,
+      "s": 3,
+      "wUm": 2.0
+    },
+    "R2a": {
+      "lUm": 39.01,
+      "s": 23,
+      "wUm": 2.0
+    },
+    "R2b": {
+      "lUm": 39.01,
+      "s": 23,
+      "wUm": 2.0
+    }
+  },
+  "round": 1,
+  "schema": "hima-bandgap-design/1",
+  "summary": "",
+  "topology": "bgcore"
+}

@@ -28,7 +28,9 @@ migration.
   not tuned.
 - Spectre `montecarlo` (variations=all; `sw_stat_mismatch=1` set after the includes, with
   `options redefinedparams=warning`; `savefamilyplots=yes` keeps every iteration) reads the deck's
-  `agauss` mismatch: 30 runs give σVBG 0.43 mV (PNPs and resistors only, ideal amplifier).
+  `agauss` mismatch: 30 runs give σVBG 0.43 mV (ideal amplifier).
+  - Correction (2026-10-13): that spread is the PNPs'. A mismatch-only probe found no spread at all
+    in `ppolyf_u_1k`. Its statistics are global-only, and they are zeroed when `sw_stat_global = 0`.
 - MOS mismatch lives in the section `fets_mm` (subcircuits `nfet_03v3` and `pfet_03v3` with
   Pelgrom `delvto`/`mulu0`). Per device, σVth = 0.7071 · 7.148 mV·µm / √(W·L) for nfet and
   0.7071 · 6.66 mV·µm / √(W·L) for pfet.

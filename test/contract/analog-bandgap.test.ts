@@ -762,7 +762,8 @@ test('bgcore: the BGOK line passes high-when-enabled and low-with-en-low, fails 
   assert.match(pass.rpt, /0\.2 uA reference current/);
   const chart = himaChart.safeParse(pass.chart);
   assert.ok(chart.success, JSON.stringify(chart.error?.issues ?? []));
-  assert.equal(pass.chart.categories.at(-1), 'BGOK level error');
+  assert.deepEqual(pass.chart.categories.slice(-2), ['BGOK level error', 'BGOK trip VBG']);
+  assert.equal(pass.met.bgokTrip, false, 'no bgok trace in the transients: the trip line misses');
   // Enabled but low (an 0.85 vdd bgok): the line fails, at the enabled copy.
   const low = bgokCase(0.85 * 3.3, 0.0);
   assert.equal(low.met.bgok, false);
@@ -781,6 +782,7 @@ test('bgcore: the BGOK line passes high-when-enabled and low-with-en-low, fails 
   assert.equal(pass.plain.w.bgok, undefined);
   assert.deepEqual(Object.keys(pass.plain.met).sort(), ['iq', 'isd', 'pm', 'psrr', 'start', 'tc', 'vbg']);
   assert.equal(pass.plain.margin.bgok, undefined);
+  assert.equal(pass.plain.w.bgokTrip, undefined);
 });
 
 test('start-up is causal: VBG inside its final band before en starts rising is a miss with a reason, never 0 us', () => {
@@ -850,7 +852,16 @@ test('bgcore: the first cut takes the ladder and the BGOK pull-up out of the IQ 
   assert.equal(intent.bgokNa, 50);
   assert.deepEqual([intent.ibiasUa, intent.itailUa], [0.2, 0.4]);
   assert.equal(intent.ccPf, 4, 'CC scales with the tail: the 0.5 uA design\'s slew rate and gm/CC');
-  const iL = 1.2 / (122.5 * intent.ladderRUnitKohm * 1e3) * 1e6;
+  // The ladder carries the VBG the core makes: VBE of Q1 at the core current plus (R2/R1) VT ln n (tt, 27 C).
+  const cur: number[] = dev.pnp.currentsUa;
+  const vbeAt = (i: number) => {
+    const k = cur.findIndex((c) => c >= i);
+    const u = Math.log(i / cur[k - 1]!) / Math.log(cur[k]! / cur[k - 1]!);
+    return at(dev.pnp.vbe.tt[k - 1], 27) + u * (at(dev.pnp.vbe.tt[k], 27) - at(dev.pnp.vbe.tt[k - 1], 27));
+  };
+  const vbgCore = vbeAt(intent.iCoreUa) + intent.r2r1 * K_Q * 300.15 * Math.log(intent.n);
+  assert.ok(vbgCore > 1.1 && vbgCore < 1.3, `the core's VBG ${vbgCore}`);
+  const iL = vbgCore / (122.5 * intent.ladderRUnitKohm * 1e3) * 1e6;
   const iLHot = iL * a27 / aMin;
   const drive = 1 + 1 / intent.driveRatio;
   const iCore = (0.8 * 8 - 0.2 - 0.4 - 0.025 - 0.05 - iLHot * drive) / ((2 + 2 / intent.driveRatio) * kHot);
@@ -933,21 +944,51 @@ test('bgcore: precheck, cell, the post-layout pins and the record judge the case
     let run = bgcli(ws, 'record', ...args);
     assert.equal(run.status, 0, run.stderr);
     let round = JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
-    assert.ok(round.problems.includes('the measure-schematic result has no BGOK line (the bgcore template judges it)'));
+    assert.ok(round.problems.includes('the measure-schematic result has no bgok or bgokTrip line (the bgcore template judges it)'));
     assert.equal(round.roundValid, false);
     await writeFile(path.join(ws, 'state/lessons.json'), JSON.stringify({ schema: 'hima-bandgap-lessons/1', rounds: [] }));
     await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify({ round: 1, designSha256: designSha, spec,
-      worst: { ...worst, bgok: { value: 24.2, where: 'ss 2V -40C (en high)' } } }));
+      worst: { ...worst, bgok: { value: 24.2, where: 'ss 2V -40C (en high)' }, bgokTrip: { value: 70, where: 'tt 3.3V 27C powerUp' } } }));
     run = bgcli(ws, 'record', ...args);
     assert.equal(run.status, 0, run.stderr);
     round = JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
     assert.deepEqual(round.problems, []);
     assert.equal(round.pvtMet.bgok, false);
+    assert.equal(round.pvtMet.bgokTrip, true);
     assert.deepEqual(round.failing, ['bgok', 'mc']);
     assert.equal(round.pvtWorst.bgok, 24.2);
     assert.equal(round.signedOff, false);
     assert.match(round.claimBoundary, /ideal 0\.2 uA reference current/);
     assert.match(await readFile(path.join(ws, 'derived/round-1.md'), 'utf8'), /\| BGOK level error \| 24\.2 % vdd \| ss 2V -40C \(en high\) \| no \|/);
+    // After layout: the extracted cell's measurement is judged on both BGOK lines too; one without them is dropped.
+    const post128 = `.subckt bandgap_lb vdd vss en ibias vbg go g bgok ${TAPS.join(' ')}\n.ends\n`;
+    await writeFile(path.join(ws, 'state/cell-post.spice'), post128);
+    const postSha = createHash('sha256').update(post128).digest('hex');
+    await writeFile(path.join(ws, 'state/layout.json'), JSON.stringify({ round: 1, designSha256: designSha, postCellSha256: postSha, clean: true,
+      drcMagic: 0, drcKlayout: 0, lvsNetgen: true, lvsKlayout: true, areaUm2: 1 }));
+    const passing = { ...worst, bgok: { value: 0.1, where: 'tt' }, bgokTrip: { value: 70, where: 'tt' } };
+    await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify({ round: 1, designSha256: designSha, spec, worst: passing }));
+    await writeFile(path.join(ws, 'state/mc.json'), JSON.stringify({ round: 1, designSha256: designSha, spec: { vbgV: 1.2, vbgTolPct: 2, n: 100 },
+      stats: { n: 100, meanV: 1.2, sigmaV: 0.002, inBand: true } }));
+    const postRecord = async (w: Json) => {
+      await writeFile(path.join(ws, 'state/lessons.json'), JSON.stringify({ schema: 'hima-bandgap-lessons/1', rounds: [] }));
+      await writeFile(path.join(ws, 'state/measure-post.json'), JSON.stringify({ round: 1, designSha256: designSha, spec, worst: w, cellSha256: postSha }));
+      const r = bgcli(ws, 'record', ...args, '100');
+      assert.equal(r.status, 0, r.stderr);
+      return JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
+    };
+    round = await postRecord(passing);
+    assert.deepEqual(round.problems, []);
+    assert.equal(round.signedOff, true, 'every line before and after layout, Monte Carlo and a clean layout');
+    round = await postRecord({ ...passing, bgokTrip: { value: 16.5, where: 'ff 3.3V 125C powerUp' } });
+    assert.equal(round.postLineMet.bgokTrip, false);
+    assert.equal(round.postMet, false);
+    assert.equal(round.signedOff, false);
+    assert.match(await readFile(path.join(ws, 'derived/round-1.md'), 'utf8'), /\| BGOK trip VBG \| 16\.5 % final \| ff 3\.3V 125C powerUp \| no \|/);
+    round = await postRecord(worst);
+    assert.ok(round.problems.includes('the measure-post result has no bgok or bgokTrip line (the bgcore template judges it)'));
+    assert.equal(round.postMet, null, 'a post-layout result without the BGOK lines is not taken');
+    assert.equal(round.signedOff, false);
     // The other template's record keeps its seven lines and its 0.5 uA boundary.
     const { ws: ws2, done: done2 } = await workspace('kuijk-p5t-mirror');
     try {
@@ -986,6 +1027,183 @@ test('a fresh workspace seeds its Spectre runs from the Site\'s copy beside the 
       'print(json.dumps((ws / "work" / "spectre-ahdl").exists()))',
     ].join('\n'));
     assert.equal(none, false, 'no inputs and no Site copy: nothing is invented');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('bgcore: BGOK stays low until VBG reaches half its final value in every start-up transient, and ends high', () => {
+  const out = py([
+    'time = [k * 1e-7 for k in range(3001)]',
+    'vbg = [0.0 if t < 10e-6 else 1.2 * (1 - math.exp(-(t - 10e-6) / 5e-6)) for t in time]',
+    'at = lambda frac: [3.3 if v >= frac * 1.2 and t >= 10e-6 else 0.0 for t, v in zip(time, vbg)]',
+    'cases = dict(good=bg.bgok_trip(time, vbg, at(0.7), 3.3), early=bg.bgok_trip(time, vbg, at(0.3), 3.3),',
+    '             follows=bg.bgok_trip(time, vbg, [3.3 if t >= 10e-6 else 0.0 for t in time], 3.3),',
+    '             never=bg.bgok_trip(time, vbg, [0.0] * len(time), 3.3), missing=bg.bgok_trip(time, vbg, None, 3.3))',
+    'from pathlib import Path',
+    `F = Path(${JSON.stringify(path.join(fixtures, 'spectre-tt'))})`,
+    'res = {}',
+    'for name, frac in (("pass", 0.7), ("early", 0.3), ("never", None)):',
+    '    facts = bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+    '    facts.update(process="tt", vdd=3.3)',
+    '    f = facts["temps"]["27"]',
+    '    f.update(bgokOn=3.3, bgokOff=0.0)',
+    '    for key, tr in f["tran"].items():',
+    '        fin = tr["v"][-1]',
+    '        k = None if frac is None else next(i for i, x in enumerate(tr["v"]) if x >= frac * fin)',
+    '        tr["bgok"] = [0.0 if k is None or i <= k else 3.3 for i in range(len(tr["v"]))]   # high from the sample after VBG passed frac',
+    '    b = bg.bench_measures(facts)',
+    '    spec_ = dict(vbgV=1.2, vbgTolPct=2, iqMaxUa=8, isdMaxNa=2, tcMaxPpm=100, pmMinDeg=60, tStartMaxUs=100, psrrMinDb=40)',
+    '    w = bg.worst_of([b], 1.2)',
+    '    res[name] = dict(trips=b["temps"]["27"]["bgokTrips"], w=w["bgokTrip"], met=bg.line_met(w, spec_)["bgokTrip"], margin=bg.margins_pct(w, spec_)["bgokTrip"])',
+    'print(json.dumps(dict(cases=cases, bench=res)))',
+  ].join('\n'));
+  const { cases, bench } = out;
+  // The trip is VBG when bgok first leaves its low level (10 % vdd), as a fraction of VBG's final value.
+  assert.ok(Math.abs(cases.good.pct - 70) < 1.5 && cases.good.reason === null, JSON.stringify(cases.good));
+  assert.ok(Math.abs(cases.early.pct - 30) < 1.5);
+  assert.ok(cases.follows.pct < 1, 'a monitor that follows en trips with VBG near 0');
+  assert.equal(cases.never.pct, null);
+  assert.match(cases.never.reason, /bgok ends at 0\.000 V, not above 90 % of vdd/);
+  assert.equal(cases.missing.pct, null);
+  assert.match(cases.missing.reason, /no bgok trace/);
+  // Judged at every transient of every corner: the lowest trip counts, with where.
+  assert.equal(bench.pass.met, true);
+  assert.ok(Math.abs(bench.pass.w.value - Math.min(...Object.values(bench.pass.trips).map((x: any) => x.pct))) < 1e-9);
+  assert.match(bench.pass.w.where, /^tt 3\.3V 27C (powerUp|en1us|en50us)$/);
+  assert.ok(bench.pass.w.tripV > 0 && bench.pass.margin > 0);
+  assert.deepEqual(Object.keys(bench.pass.w.perCornerV), ['tt 3.3V 27C']);
+  assert.equal(bench.early.met, false, 'an early trip fails');
+  assert.ok(bench.early.margin < 0);
+  assert.equal(bench.never.met, false, 'a bgok that never rises fails');
+  assert.equal(bench.never.w.value, null);
+  assert.equal(Object.keys(bench.never.w.reasons).length, 3, 'each transient says why');
+});
+
+test('bgcore on recorded Spectre output: bgok read from the operating points and the start-up transients, the trip recomputed', () => {
+  const F = path.join(fixtures, 'spectre-bgcore');
+  const out = py([
+    'from pathlib import Path',
+    `F = Path(${JSON.stringify(F)})`,
+    'raws = {p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}',
+    'facts = bg.spectre_facts(raws, (27,), bgok=True)',
+    'facts.update(process="tt", vdd=3.3)',
+    'm = bg.bench_measures(facts)',
+    'old = Path(' + JSON.stringify(path.join(fixtures, 'spectre-tt')) + ')',
+    'try:',
+    '    bg.spectre_facts({p: old / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,), bgok=True)',
+    '    err = None',
+    'except bg.ToolError as e:',
+    '    err = str(e)',
+    'design = json.load(open(F / "design.json"))',
+    'print(json.dumps(dict(f=facts["temps"]["27"], m=m["temps"]["27"], err=err, same=bg.cell_spice(card, dict(design, topology="bgcore")) == (F / "cell.spice").read_text()),',
+    '                 default=lambda x: None))',
+  ].join('\n'));
+  const { f, m } = out;
+  assert.ok(out.same, 'the fixture is this engine\'s bgcore cell');
+  assert.ok(f.bgokOn > 0.9 * 3.3 && f.bgokOff < 0.1 * 3.3, `op: bgok ${f.bgokOn} V enabled, ${f.bgokOff} V with en low`);
+  for (const key of ['powerUp', 'en1us', 'en50us']) {
+    const tr = f.tran[key];
+    assert.equal(tr.bgok.length, tr.time.length, `${key}: one bgok sample per time point`);
+    // Independent trip: VBG where bgok first passes 0.33 V, interpolated.
+    const i = tr.bgok.findIndex((b: number) => b > 0.33);
+    assert.ok(i > 0, `${key}: bgok starts low`);
+    const u = (0.33 - tr.bgok[i - 1]) / (tr.bgok[i] - tr.bgok[i - 1]);
+    const v = tr.v[i - 1] + u * (tr.v[i] - tr.v[i - 1]);
+    assert.ok(Math.abs(m.bgokTrips[key].v - v) < 1e-5, `${key}: trip ${m.bgokTrips[key].v} vs ${v} V`);
+    assert.ok(Math.abs(m.bgokTrips[key].pct - 100 * v / tr.v.at(-1)) < 1e-2);
+  }
+  assert.equal(m.bgokTripPct, Math.min(...Object.values(m.bgokTrips).map((x: any) => x.pct)));
+  assert.match(out.err, /lacks bgok\d/, 'a missing bgok trace is an error, never a zero');
+});
+
+test('bgcore: the ladder carries the core\'s VBG at any spec target; the first cut and the sizes agree', () => {
+  const out = py([
+    'res = {}',
+    'for target in (1.2, 1.25):',
+    '    sp = dict(spec, vbgV=target)',
+    '    intent = bg.first_cut_intent(sp, card, table, devices, None, "bgcore")',
+    '    d = bg.size_from_intent(table, devices, card, intent, "bgcore")',
+    '    vbg = bg.core_vbg(devices, intent["n"], intent["iCoreUa"], intent["r2r1"])',
+    '    import ota_cli as ota',
+    '    i_out = 2 * intent["iCoreUa"] + vbg / (122.5 * intent["ladderRUnitKohm"] * 1e3) * 1e6',
+    '    w, _ = ota.width_for(table, card, "pmos", intent["out"]["lUm"], intent["out"]["gmId"], i_out)',
+    '    w12, _ = ota.width_for(table, card, "pmos", intent["out"]["lUm"], intent["out"]["gmId"], 2 * intent["iCoreUa"] + 1.2 / (122.5 * intent["ladderRUnitKohm"] * 1e3) * 1e6)',
+    '    res[str(target)] = dict(intent=intent, mo=d["devices"]["MO"]["wUm"], want=w, at12=w12, vbg=vbg)',
+    'print(json.dumps(res))',
+  ].join('\n'));
+  for (const [target, r] of Object.entries(out) as [string, Json][]) {
+    assert.equal(r.mo, r.want, `${target} V: MO sized for 2 iCore plus the core's VBG over the ladder`);
+    assert.equal(r.intent.ladderRUnitKohm, Math.round(Number(target) / 122.5 / (8 / 16 * 1e-6) / 1e3 * 10) / 10, 'the unit from the target');
+  }
+  assert.notEqual(out['1.25'].intent.ladderRUnitKohm, out['1.2'].intent.ladderRUnitKohm);
+  assert.ok(Math.abs(out['1.25'].vbg - out['1.2'].vbg) < 0.01, 'the core makes the same VBG whatever the target');
+  assert.ok(Math.abs(out['1.2'].vbg - 1.2) > 0.01 && out['1.2'].mo !== out['1.2'].at12, 'on these decks the core sits below 1.2 V: a 1.2 V constant would size MO wrong');
+});
+
+test('the Site seed is copied whole or not at all, a concurrent first copy is used, and the measurements say where the seed came from', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bg-seed2-'));
+  try {
+    const wrapper = path.join(dir, 'bin', 'spectre');
+    await mkdir(`${wrapper}.ahdl-seed/mod.ahdlcmi`, { recursive: true });
+    await writeFile(`${wrapper}.ahdl-seed/mod.ahdlcmi/code`, 'site');
+    const wsOf = async (name: string) => {
+      const ws = path.join(dir, name);
+      await mkdir(path.join(ws, 'state'), { recursive: true });
+      await writeFile(path.join(ws, 'state', 'inputs.json'), JSON.stringify({ simulators: { spectre: { path: wrapper } } }));
+      return ws;
+    };
+    const [plain, race, broken] = [await wsOf('plain'), await wsOf('race'), await wsOf('broken')];
+    const out = py([
+      'import os, shutil',
+      'from pathlib import Path',
+      'leftovers = lambda ws: sorted(n for n in os.listdir(Path(ws) / "work") if n.startswith("."))',
+      'res = {}',
+      `ws = Path(${JSON.stringify(plain)}); seed = ws / "work" / "spectre-ahdl"`,
+      'bg.ahdl_seed(seed, ws)',
+      'res["plain"] = dict(facts=bg.seed_facts(), code=(seed / "mod.ahdlcmi" / "code").read_text(), left=leftovers(ws),',
+      '                    origin=json.load(open(str(seed) + ".origin.json")))',
+      'bg.ahdl_seed(seed, ws)',
+      'res["again"] = bg.seed_facts()',
+      'facts = dict(process="tt", vdd=3.3, dc=dict(temp=[-40, 27, 125], vbg=[1.2, 1.2, 1.2], iq=[1e-6] * 3), temps={}, spectreSeed=bg.seed_facts())',
+      'res["bench"] = bg.bench_measures(facts)["spectreSeed"]',
+      'real_copy = shutil.copytree',
+      // Another step renames its copy into place while this one is still copying: this one keeps the other's.
+      `ws = Path(${JSON.stringify(race)}); seed = ws / "work" / "spectre-ahdl"`,
+      'def racing(src, dst, *a, **k):',
+      '    real_copy(src, dst, *a, **k)',
+      '    os.makedirs(seed / "other", exist_ok=True); (seed / "other" / "mark").write_text("first")',
+      'shutil.copytree = racing',
+      'bg.ahdl_seed(seed, ws)',
+      'shutil.copytree = real_copy',
+      'res["race"] = dict(facts=bg.seed_facts(), names=sorted(os.listdir(seed)), left=leftovers(ws))',
+      // A copy that fails half-way leaves no seed behind: the step compiles afresh.
+      `ws = Path(${JSON.stringify(broken)}); seed = ws / "work" / "spectre-ahdl"`,
+      'def failing(src, dst, *a, **k):',
+      '    os.makedirs(Path(dst) / "half"); raise OSError("disk full")',
+      'shutil.copytree = failing',
+      'bg.ahdl_seed(seed, ws)',
+      'shutil.copytree = real_copy',
+      'res["broken"] = dict(facts=bg.seed_facts(), seeded=seed.exists(), left=leftovers(ws))',
+      'bg.ahdl_seed(seed, ws)',
+      'res["retry"] = dict(facts=bg.seed_facts(), code=(seed / "mod.ahdlcmi" / "code").read_text())',
+      'print(json.dumps(res))',
+    ].join('\n'));
+    const site = { origin: 'site', site: `${wrapper}.ahdl-seed` };
+    assert.deepEqual(out.plain.facts, site);
+    assert.equal(out.plain.code, 'site');
+    assert.deepEqual(out.plain.origin, site);
+    assert.deepEqual(out.plain.left, [], 'no temporary copy is left beside the seed');
+    assert.deepEqual(out.again, site, 'a later step reads where the seed came from');
+    assert.deepEqual(out.bench, site, 'each bench\'s measurement carries the provenance');
+    assert.deepEqual(out.race.facts, site);
+    assert.deepEqual(out.race.names, ['other'], 'the copy renamed first is the seed; this step\'s copy is dropped');
+    assert.deepEqual(out.race.left, []);
+    assert.deepEqual(out.broken.facts, { origin: 'none' }, 'a failed copy is not a seed');
+    assert.equal(out.broken.seeded, false);
+    assert.deepEqual(out.broken.left, []);
+    assert.deepEqual(out.retry.facts, site, 'the next step copies again');
+    assert.equal(out.retry.code, 'site');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,0 +1,18 @@
+// Kuijk bandgap bench: synth180 corner tt, vdd 3.3 V, copy 4 (off)
+simulator lang=spectre
+global 0
+simulator lang=spice
+.include "<pdkRoot>/synth180/design.inc"
+.lib "<pdkRoot>/synth180/bandgap.lib" mos_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" bjt_tt
+.lib "<pdkRoot>/synth180/bandgap.lib" res_tt
+.include "./cell.spice"
+simulator lang=spectre
+opts options temp=27 tnom=27 rawfmt=psfascii save=selected cmin=1e-14
+VDD4 (vdd4 0) vsource dc=3.3
+VEN4 (en4 0) vsource dc=0
+GIB4 (ib4 0 en4 0) vccs gm=6.06061e-08
+X4 (vdd4 0 en4 ib4 vbg4 g4 g4 bgok4 vr4_1 vr4_2 vr4_3 vr4_4 vr4_5 vr4_6 vr4_7 vr4_8 vr4_9 vr4_10 vr4_11 vr4_12 vr4_13 vr4_14 vr4_15 vr4_16 vr4_17 vr4_18 vr4_19 vr4_20 vr4_21 vr4_22 vr4_23 vr4_24 vr4_25 vr4_26 vr4_27 vr4_28 vr4_29 vr4_30 vr4_31 vr4_32 vr4_33 vr4_34 vr4_35 vr4_36 vr4_37 vr4_38 vr4_39 vr4_40 vr4_41 vr4_42 vr4_43 vr4_44 vr4_45 vr4_46 vr4_47 vr4_48 vr4_49 vr4_50 vr4_51 vr4_52 vr4_53 vr4_54 vr4_55 vr4_56 vr4_57 vr4_58 vr4_59 vr4_60 vr4_61 vr4_62 vr4_63 vr4_64 vr4_65 vr4_66 vr4_67 vr4_68 vr4_69 vr4_70 vr4_71 vr4_72 vr4_73 vr4_74 vr4_75 vr4_76 vr4_77 vr4_78 vr4_79 vr4_80 vr4_81 vr4_82 vr4_83 vr4_84 vr4_85 vr4_86 vr4_87 vr4_88 vr4_89 vr4_90 vr4_91 vr4_92 vr4_93 vr4_94 vr4_95 vr4_96 vr4_97 vr4_98 vr4_99 vr4_100 vr4_101 vr4_102 vr4_103 vr4_104 vr4_105 vr4_106 vr4_107 vr4_108 vr4_109 vr4_110 vr4_111 vr4_112 vr4_113 vr4_114 vr4_115 vr4_116 vr4_117 vr4_118 vr4_119 vr4_120) bandgap_lb
+save VDD4:p bgok4
+al_p27 alter param=temp value=27
+op_p27 dc
