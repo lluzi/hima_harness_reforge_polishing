@@ -25,13 +25,13 @@ class RulesTest(unittest.TestCase):
         self.assertFalse(key['qualified']['zone'])
         self.assertTrue(key['zoneRaw'].startswith('-by PCT'))
 
-    def test_rule_facts_for_ovl_f_setnummin_two(self):
+    def test_rule_facts_for_ovl_f_setnummin_three(self):
         facts = rules.read_rule_facts(Path(self.case['files']['rule']).read_text(), 10000)
         ovl_f = facts['OVL_F']
         self.assertEqual(ovl_f['itemType'], 'SLFIT')
         self.assertEqual(ovl_f['blockType'], 'OVL')
         self.assertEqual(ovl_f['scribeInc'], ['HORIZ'])
-        self.assertEqual(ovl_f['setNum'], [0, 2, 1])
+        self.assertEqual(ovl_f['setNum'], [0, 3, 1])
 
     def test_frame_from_rule(self):
         rule_text = Path(self.case['files']['rule']).read_text()

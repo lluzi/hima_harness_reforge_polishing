@@ -77,38 +77,75 @@ _SUMMARY_PHRASE = {
 }
 
 
-def _find_start_snapshot(script_path):
-    """Walk up from the round's own `round.tcl` to the Campaign workspace
-    (the first ancestor holding `state/start-snapshot.json`) and return that
-    file's parsed body, or `None` when it cannot be found. The stand-in is
-    sometimes driven outside a Campaign workspace (direct `MageSession`
-    unit tests); filling is then simply skipped."""
+def _find_state_dir(script_path):
+    """Walk up from the round's own `round.tcl` to the first ancestor holding
+    `state/start-snapshot.json`, and return that `state/` directory, or `None`
+    when it cannot be found. The stand-in is sometimes driven outside a
+    Campaign workspace (direct `MageSession` unit tests); filling is then
+    simply skipped."""
     for ancestor in [script_path.parent, *script_path.parents]:
-        candidate = ancestor / "state" / "start-snapshot.json"
-        if candidate.is_file():
-            try:
-                return json.loads(candidate.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                return None
+        state_dir = ancestor / "state"
+        if (state_dir / "start-snapshot.json").is_file():
+            return state_dir
     return None
 
 
-def _fill_ordinary(doc, start_snapshot):
-    """Model a completed MAGE round's fill stage (`smPFlow -autoRefine`): top
-    each ordinary (empty `inGroup`) base up to the count the start's own
-    rule-derived `pending` declares, by appending ordinary Fits. Idempotent
-    per base, so a candidate that already carries one of a base's ordinary
-    structures (e.g. a placed or dropped KEY_V) has only the shortfall added.
-    The exported ordinary population then equals the incumbent fixture's,
-    which is anchored to the same rule shortfall."""
-    needed_by_base = {}
+def _ordinary_targets(script_path):
+    """Per-base ordinary (empty `inGroup`) population the fill should top up
+    to, as `{base: {"count": int, "sizeDbu": [w, h] | None}}`, or `None` when
+    there is no workspace to read.
+
+    I-2: the target is the INCUMBENT's own measured ordinary population (read
+    from `state/case-readiness.json`'s `manifest.incumbentState.path`), never
+    the start's (larger) rule-derived pending -- so a de-degenerated fixture
+    whose start-pending exceeds the incumbent population still fills to the
+    incumbent and passes inventory. Only when no `case-readiness.json` exists
+    (direct `MageSession` unit tests) does it fall back to the start-pending
+    behaviour."""
+    state_dir = _find_state_dir(script_path)
+    if state_dir is None:
+        return None
+
+    case_readiness = state_dir / "case-readiness.json"
+    if case_readiness.is_file():
+        try:
+            readiness = json.loads(case_readiness.read_text(encoding="utf-8"))
+            incumbent_path = Path(readiness["manifest"]["incumbentState"]["path"])
+            incumbent_doc = pla.read_pla(incumbent_path.read_text(encoding="utf-8"), DBU_PER_UM)
+        except (OSError, ValueError, KeyError):
+            return None
+        counts = {}
+        for item in list(incumbent_doc.get("fits", [])) + list(incumbent_doc.get("drops", [])):
+            if item.get("inGroup"):
+                continue
+            base = item["base"]
+            l, b, r, t = item["boxDbu"]
+            counts.setdefault(base, {"count": 0, "sizeDbu": [r - l, t - b]})
+            counts[base]["count"] += 1
+        return counts
+
+    # Fallback: the start's rule-derived ordinary pending.
+    try:
+        start_snapshot = json.loads((state_dir / "start-snapshot.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    counts = {}
     for item in start_snapshot.get("pending", []):
         if item.get("inGroup"):
             continue
         base = item["base"]
-        needed_by_base.setdefault(base, {"count": 0, "sizeDbu": item.get("sizeDbu")})
-        needed_by_base[base]["count"] += 1
+        counts.setdefault(base, {"count": 0, "sizeDbu": item.get("sizeDbu")})
+        counts[base]["count"] += 1
+    return counts
 
+
+def _fill_ordinary(doc, needed_by_base):
+    """Model a completed MAGE round's fill stage (`smPFlow -autoRefine`): top
+    each ordinary (empty `inGroup`) base up to `needed_by_base[base]["count"]`
+    by appending ordinary Fits. Idempotent per base, so a candidate that
+    already carries one of a base's ordinary structures (e.g. a placed or
+    dropped KEY_V) has only the shortfall added. The exported ordinary
+    population then equals the incumbent's own measured ordinary population."""
     have_by_base = {}
     for fit in doc["fits"]:
         if not fit.get("inGroup"):
@@ -151,14 +188,26 @@ def main(argv):
         sys.stderr.write("MAGE_ROUND_ERROR stage standin message forced\n")
         return 2
 
-    source_match = _SOURCE_RE.search(script_text)
-    source_text = Path(source_match.group(1)).read_text(encoding="utf-8") if source_match else None
+    # The candidate PLA is the FIRST sourced file (replayed and exported);
+    # an experiment round sources its experiment file after it.
+    source_paths = _SOURCE_RE.findall(script_text)
+    first_source = source_paths[0] if source_paths else None
+    source_text = Path(first_source).read_text(encoding="utf-8") if first_source else None
 
-    # A round whose script (or sourced experiment) runs `smPFlow -autoRefine`
-    # fills the ordinary population; a plain replay does not. When it fills,
-    # the exported ordinary population is topped up to match the incumbent.
-    fills = _AUTOREFINE_TOKEN in script_text or (source_text is not None and _AUTOREFINE_TOKEN in source_text)
-    start_snapshot = _find_start_snapshot(script_path) if fills else None
+    # A round whose script (or ANY sourced file, e.g. an Engineer experiment)
+    # runs `smPFlow -autoRefine` fills the ordinary population; a plain replay
+    # does not. When it fills, the exported ordinary population is topped up to
+    # match the incumbent.
+    fills = _AUTOREFINE_TOKEN in script_text
+    if not fills:
+        for src in source_paths:
+            try:
+                if _AUTOREFINE_TOKEN in Path(src).read_text(encoding="utf-8"):
+                    fills = True
+                    break
+            except OSError:
+                pass
+    needed_by_base = _ordinary_targets(script_path) if fills else None
 
     for mark_match in _SAVE_MARK_RE.finditer(script_text):
         target = Path(mark_match.group(1))
@@ -170,8 +219,8 @@ def main(argv):
             # candidate that way so the candidate/Reader path exercises
             # the DBU reader exactly as the live route will.
             doc = pla.read_pla(source_text, DBU_PER_UM)
-            if start_snapshot is not None:
-                _fill_ordinary(doc, start_snapshot)
+            if needed_by_base is not None:
+                _fill_ordinary(doc, needed_by_base)
             target.write_text(pla.write_pla(doc, DBU_PER_UM, units="dbu"), encoding="utf-8")
         else:
             target.write_text("", encoding="utf-8")

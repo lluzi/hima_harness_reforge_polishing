@@ -91,13 +91,14 @@ class DropsTest(unittest.TestCase):
 
     def test_drops_on_start_snapshot_are_rule_shortfalls_not_drops(self):
         # pending_from_rules=True on a start snapshot yields only synthetic
-        # placedFlag=None pending copies (KEY_V x1, OVL_F x2 -- no drops
-        # table exists yet); those are rule shortfalls, never PLA drops.
+        # placedFlag=None pending copies (KEY_V x1, OVL_F x3 -- setNumMin 3,
+        # one more than MAGE can place; no drops table exists yet); those are
+        # rule shortfalls, never PLA drops.
         snap = build_start(self.case)
         d = metrics.drops(snap)
         self.assertEqual(d["count"], 0)
         self.assertEqual(d["lengthUm"], "0")
-        self.assertEqual(d["ruleShortfallCount"], 3)
+        self.assertEqual(d["ruleShortfallCount"], 4)
 
 
 class TargetDistancesTest(unittest.TestCase):

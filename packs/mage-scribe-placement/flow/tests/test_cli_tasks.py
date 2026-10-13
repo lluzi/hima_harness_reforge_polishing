@@ -596,6 +596,13 @@ class CliRouteTest(unittest.TestCase):
         })
         _run(["task-prepare-case", workspace, task_input, root / "fe-prepare-output.json"])
 
+        # The Reader reads the incumbent's ordinary-population anchor, so
+        # measure it before any round (m13: the Reader refuses when absent).
+        prepare_value = json.loads((root / "fe-prepare-output.json").read_text(encoding="utf-8"))["value"]
+        _run(["task-measure-incumbent", workspace,
+              _write_json(root / "fe-measure-input.json", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"}),
+              root / "fe-measure-output.json"])
+
         dbu_per_um = case["manifest"]["dbuPerUm"]
         start_text = Path(case["files"]["startState"]).read_text(encoding="utf-8")
         env = dict(os.environ)
@@ -786,6 +793,9 @@ class CliRouteTest(unittest.TestCase):
             "SITE_CAPABILITIES": self.site_caps,
             **goal,
         })
+        # This round is a no-fill replay (ordinary population 0); a minimal
+        # incumbent anchor of 0 lets the Reader admit it (m13).
+        _write_json(self.workspace / "state" / "incumbent.json", {"ordinaryPopulation": 0})
         # A relative candidate PLA, placed under the workspace itself
         # (resolving "relative to the workspace" is the whole point).
         (self.workspace / "candidate-src.pla").write_text(
@@ -937,11 +947,12 @@ class CliRouteTest(unittest.TestCase):
         was delivered into (`review-<slot>.json`) is refused by the Reader --
         a wrong-consumer review can never ride through as a clean consumer."""
         goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 1}
-        self._task("prepare-case", {
+        prepare_value = self._task("prepare-case", {
             "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
             "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
             "SITE_CAPABILITIES": self.site_caps, **goal,
         })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
         _round_dir, _candidate1, _candidate1_ro, evals1 = self._build_candidate(1, ovl_b_on_target=False, ledger=[])
         self._build_reviews(1, evals1, {})
         # Deliver the wat review into the litho-pie slot.
@@ -960,12 +971,13 @@ class CliRouteTest(unittest.TestCase):
         """A review whose findings were edited after the evaluator receipt
         was written is refused by the consumer-review Reader."""
         goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 1}
-        self._task("prepare-case", {
+        prepare_value = self._task("prepare-case", {
             "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
             "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
             "SITE_CAPABILITIES": self.site_caps,
             **goal,
         })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
         _round_dir, candidate1, candidate1_ro, evals1 = self._build_candidate(
             1, ovl_b_on_target=False, ledger=[],
         )
@@ -1026,6 +1038,87 @@ class CliRouteTest(unittest.TestCase):
         reason = json.loads(result.stderr.strip().splitlines()[-1])
         self.assertEqual(reason["code"], "inventory")
         self.assertIn("ordinary population", reason["detail"])
+
+    def test_reader_refuses_a_no_fill_export_against_the_incumbent_anchor(self):
+        """I-2: the Reader's own N7 check (not just the candidate side). A
+        no-fill export (ordinary population 0) is assembled with the incumbent
+        anchor moved aside so the candidate-side check is skipped; with the
+        anchor restored, the Reader independently refuses it."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
+        incumbent_path = self.workspace / "state" / "incumbent.json"
+        aside = self.workspace / "state" / "incumbent.aside.json"
+        incumbent_path.rename(aside)  # candidate-side check skipped (fail-open)
+
+        pla_path = self.root / "nofill-reader.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        candidate_path = self.root / "nofill-reader-candidate.json"
+        _run(["candidate", self.workspace, "--round", "1", "--round-dir", str(round_dir),
+              "--ledger", _write_json(self.root / "nfr-ledger.json", []), "--out", candidate_path])
+        self.assertEqual(json.loads(candidate_path.read_text())["outcome"], "completed")
+        live = self.workspace / "state" / "round" / "placement-candidate.json"
+        live.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate_path, live)
+
+        aside.rename(incumbent_path)  # restore the anchor for the Reader
+        result = subprocess.run(
+            [sys.executable, str(READER), "placement-candidate", str(live),
+             str(self.root / "nfr-values.json"), str(self.workspace)],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "nfr-values.json").is_file())
+        reason = json.loads(result.stderr.strip().splitlines()[-1])
+        self.assertEqual(reason["code"], "inventory")
+        self.assertIn("ordinary population", reason["detail"])
+
+    def test_non_completed_round_with_failing_partial_export_is_blocked_not_an_inventory_raise(self):
+        """m14 (pinning m4): with the incumbent measured, a non-completed
+        round (no MAGE_ROUND_END, no fill) whose partial export would fail the
+        ordinary-population check yields `outcome: blocked` -- the candidate
+        assembler evaluates `completed` before it parses the export or checks
+        inventory, so a blocked round never raises inventory."""
+        goal = {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+        prepare_value = self._task("prepare-case", {
+            "MAGE_CASE_MANIFEST": self.case["files"]["manifest"],
+            "CONSUMER_CONTEXT": self.case["files"]["consumerContext"],
+            "SITE_CAPABILITIES": self.site_caps, **goal,
+        })
+        self._task("measure-incumbent", {"CASE": prepare_value, "INCUMBENT_COMPARISON": "retained"})
+        pla_path = self.root / "noend-nofill.pla"
+        pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        env["MAGE_STANDIN_NO_END"] = "1"  # the round never reaches MAGE_ROUND_END
+        subprocess.run(
+            [sys.executable, str(CLI), "mage-round", str(self.workspace), "--round", "1",
+             "--pla", str(pla_path), "--role", "engineer", "--out-dir", str(round_dir)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        candidate_path = self.root / "noend-nofill-candidate.json"
+        result = subprocess.run(
+            [sys.executable, str(CLI), "candidate", str(self.workspace), "--round", "1",
+             "--round-dir", str(round_dir), "--ledger", _write_json(self.root / "nen-ledger.json", []),
+             "--out", str(candidate_path)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(candidate["outcome"], "blocked")
 
     def test_candidate_refuses_an_invalid_ledger_entry(self):
         """N4 (route): the `candidate` assembler schema-validates every
@@ -1118,7 +1211,13 @@ class CliRouteTest(unittest.TestCase):
         def _set_round(doc):
             doc["identity"]["round"] = 99
 
-        for name, change in (("findings", _set_findings), ("candidateId", _set_candidate_id), ("round", _set_round)):
+        def _set_candidate_outcome(doc):
+            # m12: a blocked candidate's review that does not declare
+            # candidateOutcome: blocked is refused.
+            doc["candidateOutcome"] = "completed"
+
+        for name, change in (("findings", _set_findings), ("candidateId", _set_candidate_id),
+                             ("round", _set_round), ("candidateOutcome", _set_candidate_outcome)):
             with self.subTest(mutation=name):
                 _mutated(change)
                 result = subprocess.run(

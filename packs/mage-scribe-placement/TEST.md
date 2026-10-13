@@ -95,7 +95,7 @@ refusals (`test_native_session.py`); the candidate inventory refusal, the no-exp
 
 218 tests pass on both interpreters (Python 3.9.6 Mac `/usr/bin/python3`: `Ran 218 tests in
 13.710s / OK`; the identical `flow/tests/` tree on the Linglong resident container, Python 3.8.16:
-`Ran 218 tests in 21.599s / OK`). The 218 adds, on top of the 217 the first final-review round
+`Ran 218 tests in 21.599s / OK`). The 218 adds, on top of the 209 the first final-review round
 produced:
 
 - **N1 (blocked candidate → empty review):** a non-completed candidate carries no `files.snapshot`;
@@ -203,24 +203,37 @@ lane's range. `test_apply_plan.py` adds the CLI `--follow-groups`/`--keep-group-
 refusing a mixed-axis reserve, requiring `--reserve-length-um`, and one full V-then-H reserve-first
 sequence through the stand-in whose candidate validates with the reserved key in the export.
 
-round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
-partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
-planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values
-(`test_metrics.py`); the consumer evaluator's `unknown` behaviour on missing parameters
-(`test_consumers.py`); record/schema validation (`test_schemas.py`, `test_records.py`); the
-decide-round best-state order and stop rule (`test_rounds.py`); the stand-in MAGE session driver,
-one-writer enforcement, round-exists refusal, the fill stage (manifest converge lines) and Engineer
-`--experiment` (byte-copy, sha256, `exit`/`frbOpen` refusal, consumer refusal), the three native
-checks sliced from stdout markers, and completion judged by the `MAGE_ROUND_END` marker rather than
-the vendor launcher's unconditional exit 0 (`test_native_session.py`); the two Readers'
-negatives — tampered PLA, untagged mutation, unanswered Request, fabricated review number, wrong
-snapshot binding (`test_readers.py`); the end-to-end two-round CLI route exercising every program
-task and every resident subcommand in sequence, plus the `--fill`/`--experiment` route and the
-blocked-outcome path (`test_cli_tasks.py`); and this Task's own
-`flow/tests/test_knowledge.py` (every `contract.yml`-named knowledge file exists, is flat-named, has
-no placeholder text, and each resident's own knowledge set stays under 12,000 words; every CLI
-subcommand/flag a playbook names is real; every `state/...` path a playbook names is a declared
-output or a documented support-path pattern).
+### Task 17 — delivery rules measure the Run's own contribution (2026-10-13)
+
+282 tests pass on the Mac (`/usr/bin/python3` 3.9.6: `Ran 282 tests … / OK`). The Site runs Python
+3.8; that run is verified by the controller on the Site, not on this Mac. This is the current
+authoritative count, superseding the per-round counts above. The new coverage:
+
+- **Part A (target-distance regressions).** `metrics.target_regressions` over the four classes
+  (within / regression / pre-existing / improved-still-over) and its unknown propagation
+  (`test_metrics.py::TargetRegressionsTest`); the candidate Reader's
+  `mage_target_over_limit_new_count` reads 0 for an unmoved pre-existing over-limit mark and 1 for a
+  moved one (`test_cli_tasks.py::CliRouteTest::test_target_over_limit_new_count_counts_only_moved_marks`);
+  `target-limit-met` passing on pre-existing excess and failing on a regression
+  (`EvaluatePlacementTargetLimitTest`).
+- **Part B (native anchor).** `decide()` records the anchor on a round-1 reproduction and carries it,
+  and does not record it when round 1 moved a mark (`test_rounds.py`); `no-native-violation` PASSes
+  when the best rows equal the anchor, FAILs when a type grows, and falls back to the absolute total
+  with no anchor (`EvaluatePlacementNativeAnchorTest`).
+- **Part C (consumer severities).** Goal-first limit resolution, the three target-distance
+  classifications, the consumer-limit cost Finding, and no hard target_distance fail on the incumbent
+  (`test_consumers.py::TargetDistanceRegressionTest`); WAT's dropped key is a `cost` Finding
+  (`test_wat_dropped_key_is_cost`); the two end-to-end CLI routes updated to the new severities.
+- **Part E (fix-before-merge Minors).** The Reader's own N7 refusal of a no-fill export against the
+  incumbent anchor with the candidate-side check skipped (I-2,
+  `test_reader_refuses_a_no_fill_export_against_the_incumbent_anchor`, pinned by a `None`-anchor
+  mutation); a present `state/incumbent.json` with no integer `ordinaryPopulation`, and (Reader only)
+  an absent one, refused (m13); the Reader blocked-review `candidateOutcome` clause and the
+  Fixed-`extra` and each Group-label-direction inventory clauses (m12); and a non-completed, no-fill
+  round whose partial export would fail inventory yielding `blocked` rather than an inventory raise
+  (m14). The synthetic fixture's OVL_F `setNumMin` is 3 (one more than MAGE places), so start-pending
+  ordinary (4) is strictly greater than the incumbent population (3), and the stand-in fills to the
+  incumbent's own per-base population.
 
 The native route under test is the Site's proven one: exactly three native checks — `OVERLAP`
 (`frbCheckOverlap`), `SPACE` (`frbCheckSpace`), `BOUNDARY` (`frbCheckBoundary`) — each report

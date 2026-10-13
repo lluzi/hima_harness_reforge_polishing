@@ -120,6 +120,12 @@ class ReaderNegativeTests(unittest.TestCase):
         task_output = self.root / "prepare-output.json"
         _run(["task-prepare-case", self.workspace, task_input, task_output])
 
+        # m13: the Reader refuses when state/incumbent.json is absent. These
+        # tests replay the priority-only start without --fill (ordinary
+        # population 0), so a minimal anchor of 0 lets the untampered reads
+        # pass while every tampering test still fails earlier on its own cause.
+        _write_json(self.workspace / "state" / "incumbent.json", {"ordinaryPopulation": 0})
+
         pla_path = self.root / "round1.pla"
         pla_path.write_text(Path(self.case["files"]["startState"]).read_text(encoding="utf-8"), encoding="utf-8")
         self.round_dir = self.workspace / "placement" / "round-01"
@@ -362,6 +368,40 @@ class ReaderNegativeTests(unittest.TestCase):
         from mage_placement import snapshot as snapshot_mod
         start = {"fixed": [{"id": "F.F", "base": "F"}], "fits": [], "pending": [], "groups": []}
         candidate = {"fixed": [], "fits": [], "pending": [], "groups": []}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_an_extra_fixed_id(self):
+        # m12: the Fixed-id `extra` clause on its own -- a Fixed object that
+        # appeared in the export but not the start is refused.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [{"id": "F.F", "base": "F"}], "fits": [], "pending": [], "groups": []}
+        candidate = {"fixed": [{"id": "F.F", "base": "F"}, {"id": "G.G", "base": "G"}],
+                     "fits": [], "pending": [], "groups": []}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_a_missing_group_label_alone(self):
+        # m12: the Group-label `missing` direction on its own -- a start Group
+        # label (with no in-group instances, so the per-Group count clause
+        # cannot fire) absent from the export is refused by the label clause.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [], "pending": [],
+                 "groups": [{"pinstGroup": "G1"}, {"pinstGroup": "G2"}]}
+        candidate = {"fixed": [], "fits": [], "pending": [], "groups": [{"pinstGroup": "G1"}]}
+        with self.assertRaises(core.MageError) as ctx:
+            snapshot_mod.check_inventory_conservation(start, candidate, None)
+        self.assertEqual(ctx.exception.code, "inventory")
+
+    def test_inventory_refuses_an_extra_group_label_alone(self):
+        # m12: the Group-label `extra` direction on its own -- an export Group
+        # label (no in-group instances) absent from the start is refused.
+        from mage_placement import snapshot as snapshot_mod
+        start = {"fixed": [], "fits": [], "pending": [], "groups": [{"pinstGroup": "G1"}]}
+        candidate = {"fixed": [], "fits": [], "pending": [],
+                     "groups": [{"pinstGroup": "G1"}, {"pinstGroup": "G2"}]}
         with self.assertRaises(core.MageError) as ctx:
             snapshot_mod.check_inventory_conservation(start, candidate, None)
         self.assertEqual(ctx.exception.code, "inventory")

@@ -62,7 +62,7 @@ class SnapshotTest(unittest.TestCase):
     def test_start_snapshot_has_priority_fits_and_pending_from_rules(self):
         snap = build_start(self.case)
         self.assertEqual(sorted(f["base"] for f in snap["fits"] if f["priority"]), ["AL_X", "OVL_A", "OVL_B"])
-        self.assertEqual(sorted(p["base"] for p in snap["pending"]), ["KEY_V", "OVL_F", "OVL_F"])
+        self.assertEqual(sorted(p["base"] for p in snap["pending"]), ["KEY_V", "OVL_F", "OVL_F", "OVL_F"])
 
     def test_incumbent_snapshot_pending_from_drops(self):
         snap = build_incumbent(self.case)

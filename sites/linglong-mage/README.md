@@ -24,7 +24,7 @@ Installed and verified directly on linglong, outside this slice:
    `24a771a3496e302a8cb2ddadd4d55f54e4e2738431accfe36b7a7c6d518b4812` (byte-identical to this repo's
    `engineering-capabilities-mage-v1.json`), mode 0444, at
    `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-mage-v1.json`,
-   next to the existing wrapper. Its `wrapper.argv` names that exact path. It reuses the installed
+   next to the existing wrapper. Its `wrapper.argv` named that exact path. It reused the installed
    `resident-engineering-wrapper.py` (identical to the repo template), the OpenCode 1.18.34
    executable, and the same podman image as the other resident capabilities on this host.
 2. `mkdir -p /data/eda/project/hima_harness/{mage-runs,mage-inputs/scribe-case-v1}`.

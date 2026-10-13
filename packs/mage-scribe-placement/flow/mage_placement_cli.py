@@ -80,12 +80,19 @@ def _incumbent_ordinary_population(workspace):
     that assemble a candidate without a measured incumbent."""
     path = Path(workspace) / "state" / "incumbent.json"
     if not path.is_file():
+        # Candidate side stays fail-open for Pack-local paths that assemble a
+        # candidate without a measured incumbent; live, the Reader refuses.
         return None
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return doc.get("ordinaryPopulation")
+    population = doc.get("ordinaryPopulation")
+    # m13: a present incumbent.json that carries no integer ordinaryPopulation
+    # is a fail-closed refusal, never a silent skip of the population check.
+    if not isinstance(population, int) or isinstance(population, bool):
+        raise core.MageError("inventory", "state/incumbent.json carries no integer ordinaryPopulation")
+    return population
 
 
 def _check_inventory_conservation(workspace, start, candidate):

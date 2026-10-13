@@ -140,13 +140,23 @@ def _incumbent_ordinary_population(workspace, mods):
     runs before any round, so the anchor is always present on the real
     path."""
     path = Path(workspace) / "state" / "incumbent.json"
+    # m13: the Reader only ever runs after `measure-incumbent` on the live
+    # Campaign, so an absent anchor is a fail-closed refusal here (never a
+    # silent skip of the ordinary-population check), unlike the candidate side.
     if not path.is_file():
-        return None
+        raise mods["core"].MageError(
+            "inventory", "state/incumbent.json missing; the Reader runs after measure-incumbent",
+        )
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return doc.get("ordinaryPopulation")
+    except (OSError, ValueError) as exc:
+        raise mods["core"].MageError("inventory", f"cannot read state/incumbent.json: {exc}")
+    population = doc.get("ordinaryPopulation")
+    if not isinstance(population, int) or isinstance(population, bool):
+        raise mods["core"].MageError(
+            "inventory", "state/incumbent.json carries no integer ordinaryPopulation",
+        )
+    return population
 
 
 def _check_inventory(workspace, start, candidate, mods):

@@ -89,7 +89,7 @@ def _rule_tcl():
         "    -setGrid -gridX 0.010000 -gridY 0.010000 \\",
         "    -setSpace -xSpcType BOUND -xSpc 0.000000 \\",
         "    -ySpcType BOUND -ySpc 0.000000 -spcWithRot 0 \\",
-        "    -setNum 0 -setNumMin 2 -setNumMax 1",
+        "    -setNum 0 -setNumMin 3 -setNumMax 1",
         "",
         "smFlow -addItem KEY_V -parent frame -itemType SLFIT",
         "smSLFit KEY_V -setBlock KEY_V -entityType Block -bindBlkType TSK/MPAD \\",
@@ -189,12 +189,15 @@ def _fitinsts_block(include_filler=False):
         'AL_X.AL_X -90 665 90 715 NULL "" AL_X.AL_X_1 "G2_1"',
     ]
     if include_filler:
-        # Two ordinary (empty inGroup) OVL_F fills -- exactly the ordinary
-        # OVL_F count the start's rule shortfall declares (setNumMin 2), so
-        # the incumbent's ordinary population (2 OVL_F fits + 1 KEY_V drop =
-        # 3) equals what the stand-in's `--fill` tops a round up to. The
-        # second keeps the suffix-in-`inst`-token case (OVL_F_7) for the PLA
-        # reader/writer round-trip coverage.
+        # Two ordinary (empty inGroup) OVL_F fills. The start's rule shortfall
+        # declares THREE OVL_F (setNumMin 3), one more than MAGE can actually
+        # place, so start-pending ordinary (3 OVL_F + 1 KEY_V = 4) is strictly
+        # greater than the incumbent's ordinary population (2 OVL_F fits +
+        # 1 KEY_V drop = 3). That de-degenerates the fixture (I-2): the
+        # inventory anchor is the incumbent's 3, never the start's 4, and the
+        # stand-in's `--fill` tops a round up to the incumbent's per-base
+        # population. The second fill keeps the suffix-in-`inst`-token case
+        # (OVL_F_7) for the PLA reader/writer round-trip coverage.
         rows.extend(
             [
                 'OVL_F.OVL_F 550 2 650 58 NULL "" OVL_F.OVL_F_1 ""',
