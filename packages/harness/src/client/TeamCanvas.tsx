@@ -52,7 +52,10 @@ const KIND_SAID: Record<string, string> = { read: 'Reading', edit: 'Editing', ex
 
 /** A path-like token keeps its last two segments: "…/flow/rounds.py", not the Site's long root. */
 export function shortPaths(text: string): string {
-  return text.replace(/\/?(?:[\w.-]+\/){2,}[\w.-]+/g, (path) => `…/${path.split('/').slice(-2).join('/')}`);
+  return text
+    .replace(/\b([A-Za-z][\w-]*?)-[0-9a-f]{12,}\b/g, '$1')
+    .replace(/^(?:cd \S+ *(?:&&|;) *|export \S+ *(?:&&|;) *|[A-Z_]+=\S+ +)+/, '')
+    .replace(/\/?(?:[\w.~$-]+\/){2,}[\w.-]+/g, (path) => `…/${path.split('/').slice(-2).join('/')}`);
 }
 
 /** What a working agent is doing now: its latest action, then its tool-call and plan counters. */
@@ -144,7 +147,8 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
         const r = el.getBoundingClientRect();
         at.set(id, { top: r.top - origin.top + wrap.scrollTop, bottom: r.bottom - origin.top + wrap.scrollTop, left: r.left - origin.left, right: r.right - origin.left });
       }
-      setMeasured({ width: wrap.clientWidth, height: wrap.scrollHeight, at });
+      const bottom = Math.max(0, ...[...at.values()].map((box) => box.bottom));
+      setMeasured({ width: wrap.clientWidth, height: Math.ceil(bottom) + 4, at });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -256,5 +260,27 @@ export const TEAM_STYLE = `
 .hima-team-status{color:var(--hima-ink-3)} .hima-team-status-done{color:var(--hima-good)} .hima-team-status-failed{color:var(--hima-bad)}
 .hima-team-summary{font-size:12px;color:var(--hima-ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .hima-team-summary-station{margin:var(--hima-sp-2) 0 0 44px}
+/* Compact: the whole team fits a ~450 x 520 px pane (2026-10-13 take). */
+.hima-workbench-body>.hima-campaign:has([data-hima-region="campaign-team"]){height:100%;min-height:520px}
+.hima-team-top{padding:6px 12px;gap:6px;font-size:12px}
+.hima-team-top strong{flex-basis:auto;font-size:13px;margin-right:4px}
+.hima-team-chip{padding:1px 8px}
+.hima-team-chip b{font-size:13px}
+.hima-team{padding:8px 30px 10px 12px;gap:14px}
+.hima-team-station{padding:8px 10px;border-radius:10px}
+.hima-team-head{gap:10px}
+.hima-team-head-text strong{font-size:14px}
+.hima-team-square{width:30px;height:30px;border-radius:8px}
+.hima-team-square-face{width:25px;height:25px;border-radius:6px}
+.hima-team-lines{margin:4px 0 0 40px;gap:1px;font-size:12px}
+.hima-team-station-team .hima-team-about{display:none}
+.hima-team-grid{margin-top:6px;gap:6px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.hima-team-member{padding:6px;gap:7px}
+.hima-team-member .hima-team-square{width:26px;height:26px;border-radius:7px}
+.hima-team-member .hima-team-square-face{width:22px;height:22px;border-radius:5px}
+.hima-team-role{display:none}
+.hima-team-summary{-webkit-line-clamp:1}
+.hima-team-summary-station{margin:4px 0 0 40px}
+.hima-team-top strong{display:none}
 @media (prefers-reduced-motion: reduce){.hima-team-square-live::before,.hima-team-square-live,.hima-team-edge-flow path,.hima-team-mark-dot,.hima-team-spark{animation:none}}
 `;
