@@ -56,7 +56,9 @@ Writes, in <out_dir> (cell = the subcircuit name):
 
 The output folder must be new or empty. The tool exits 0 only when every step ran (exit code 0)
 and wrote its product; a DRC count or an LVS mismatch is a verdict in layout.json, not a tool
-failure. A failed step makes it exit 4 with the failures listed in layout.json.
+failure. A failed step makes it exit 4 with the failures listed in layout.json. The fill and the
+checks of the filled GDS are reported, never judged: their exit codes are in `fillRcs` and their
+problems in `fillFailures`, neither of which touches `failures`, `ok`, `rcs` or the exit code.
 
 Magic names every PDK PNP cell's device pnp_10p00x00p42 (its area rule does not separate them);
 its LVS netlist is corrected by the PDK cell that holds the device (pnp_10p00x10p00_0 holds a
@@ -1326,9 +1328,12 @@ def step_draw(netlist, name, out):
                        magicDrcInPdkPnpCells=in_cells, magicDrcInPdkPnpCellsRule=PNP_CELL_DRC, mimLengthMarks=mim, pins=pins)
 
 
-# netgen's mismatch verdicts: a different netlist, a property outside tolerance, or ports that sit on
-# other nets than the reference pins of the same name (a swapped pin label)
-NETGEN_MISMATCH = ("do not match", "Property errors were found", "failed pin matching")
+# netgen's mismatch verdicts (Netgen 1.5.321 wording, tests/fixtures/netgen_*.out): a different netlist
+# ("Netlists do not match."), a property outside tolerance ("Property errors were found."), ports that
+# sit on other nets than the reference pins of the same name ("Final result: Top level cell failed pin
+# matching.", after a swapped pin label netgen otherwise says "Netlists match with 1 symmetry."), and
+# netgen's per-line marker "**Mismatch**" (summary counts, pin rows), which a clean run never prints
+NETGEN_MISMATCH = ("do not match", "Property errors were found", "failed pin matching", "**Mismatch**")
 
 # netgen merges parallel and then series resistors in device order, so the same ladder can combine
 # differently in the layout and the reference (two parallel units beside a series pair: one side
@@ -1635,8 +1640,6 @@ def step_fill(out, name):
     found = re.findall(r"^FILL_FACTS (.*)$", (d / "strip.log").read_text(), re.M) if (d / "strip.log").is_file() else []
     facts = json.loads(found[-1]) if found else {}
     filled = out / ("%s_filled.gds" % name)
-    if facts and not facts.get("bboxSame"):
-        rcs.append(5)                                   # fill outside the cell's box
     return dict(rc=rcs, seconds=round(secs, 2), script=KLAYOUT_TECH + "/scripts/fill_all.rb", scribeRing="moved outside the cell (block, not die)",
                 gds=filled.name, sha256=sha256_file(filled) if filled.is_file() else None, **facts)
 
@@ -1697,35 +1700,56 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
     result = dict(schema="hima-cell-layout/1", pdk="gf180mcuD", netlist=str(netlist), cell=name, layout=facts, draw=draw)
     result.update(extra or {})
     result["klayoutDrc"] = dict(block=klayout_drc(out, name, "block", "all,-density"), density=klayout_drc(out, name, "density", "density"))
-    result["fill"] = fill = step_fill(out, name)
+    # The fill is reported, never judged: nothing it does (a failed or crashed step, a missing product)
+    # reaches `failures`, `ok` or the exit code; its problems are listed in `fillFailures`.
     filled = "%s_filled.gds" % name
+    fill_failures = []
+    try:
+        fill = step_fill(out, name)
+    except Exception as e:                               # noqa: BLE001 - a fill problem never stops the layout
+        fill = dict(rc=[None], seconds=0, gds=filled, sha256=None, error="%s: %s" % (type(e).__name__, e))
+        fill_failures.append("the fill step raised %s" % fill["error"])
+    result["fill"] = fill
+    drc_none = dict(rc=None, total=None, seconds=0)
+    result["klayoutDrcFilled"] = dict(block=drc_none, density=drc_none)
     if (out / filled).is_file():
-        result["klayoutDrcFilled"] = dict(block=klayout_drc(out, name, "filled_block", "all,-density", gds=filled),
-                                          density=klayout_drc(out, name, "filled_density", "density", gds=filled))
-    else:
-        result["klayoutDrcFilled"] = dict(block=dict(rc=None, total=None), density=dict(rc=None, total=None))
+        try:
+            result["klayoutDrcFilled"] = dict(block=klayout_drc(out, name, "filled_block", "all,-density", gds=filled),
+                                              density=klayout_drc(out, name, "filled_density", "density", gds=filled))
+        except Exception as e:                           # noqa: BLE001
+            fill_failures.append("KLayout DRC of the filled GDS raised %s: %s" % (type(e).__name__, e))
     result.update(densityRules=result["klayoutDrc"]["density"]["total"], densityRulesFilled=result["klayoutDrcFilled"]["density"]["total"],
-                  drcKlayoutFilled=result["klayoutDrcFilled"]["block"]["total"], filledGdsSha256=fill["sha256"], pexOn="unfilled",
+                  drcKlayoutFilled=result["klayoutDrcFilled"]["block"]["total"], filledGdsSha256=fill.get("sha256"), pexOn="unfilled",
                   lvsOn="unfilled (KLayout LVS repeated on the filled GDS)")
     result["lvs"] = step_lvs(out, name)
     result["klayoutLvs"] = step_klayout_lvs(out, name)
-    result["klayoutLvsFilled"] = step_klayout_lvs(out, name, gds=filled, sub="klayout_lvs_filled") if (out / filled).is_file() else dict(rc=None, match=False, verdict=False)
+    result["klayoutLvsFilled"] = dict(rc=None, match=False, verdict=False, seconds=0)
+    if (out / filled).is_file():
+        try:
+            result["klayoutLvsFilled"] = step_klayout_lvs(out, name, gds=filled, sub="klayout_lvs_filled")
+        except Exception as e:                           # noqa: BLE001
+            fill_failures.append("KLayout LVS of the filled GDS raised %s: %s" % (type(e).__name__, e))
     pnp = facts.get("pnp")
     result["pex"] = step_pex(out, name, pnp["cell"][:-2] if pnp else None)
     result["render"] = step_render(out, name)
 
     failures = []
     rcs = dict(magicDraw=draw["rc"], mimCheck=draw["mimCheckRc"], klayoutDrcBlock=result["klayoutDrc"]["block"]["rc"],
-               klayoutDrcDensity=result["klayoutDrc"]["density"]["rc"], fill=fill["rc"],
-               klayoutDrcFilledBlock=result["klayoutDrcFilled"]["block"]["rc"], klayoutDrcFilledDensity=result["klayoutDrcFilled"]["density"]["rc"],
-               klayoutLvsFilled=result["klayoutLvsFilled"]["rc"], magicLvsExtract=result["lvs"]["rc"][0],
+               klayoutDrcDensity=result["klayoutDrc"]["density"]["rc"], magicLvsExtract=result["lvs"]["rc"][0],
                netgen=result["lvs"]["rc"][1], klayoutLvs=result["klayoutLvs"]["rc"], magicPexC=result["pex"]["rc"][0],
                magicPexRc=result["pex"]["rc"][1], klayoutRender=result["render"]["rc"])
-    failures += ["%s exited %s" % (k, v) for k, v in rcs.items() if (any(c != 0 for c in v) if isinstance(v, list) else v != 0)]
+    failures += ["%s exited %s" % (k, v) for k, v in rcs.items() if v != 0]
     products = ["%s.gds" % name, "%s_lvs.spice" % name, "lvs.out", "%s_pex_c.spice" % name, "%s_pex_rc.spice" % name,
-                "%s.png" % name, "drc_klayout_block.lyrdb", "drc_klayout_density.lyrdb", "klayout_lvs/%s.cir" % name,
-                "%s_filled.gds" % name, "drc_klayout_filled_block.lyrdb", "drc_klayout_filled_density.lyrdb", "klayout_lvs_filled/%s_filled.cir" % name]
+                "%s.png" % name, "drc_klayout_block.lyrdb", "drc_klayout_density.lyrdb", "klayout_lvs/%s.cir" % name]
     failures += ["%s was not written" % p for p in products if not (out / p).is_file()]
+    fill_rcs = dict(fill=fill["rc"], klayoutDrcFilledBlock=result["klayoutDrcFilled"]["block"]["rc"],
+                    klayoutDrcFilledDensity=result["klayoutDrcFilled"]["density"]["rc"], klayoutLvsFilled=result["klayoutLvsFilled"]["rc"])
+    fill_failures += ["%s exited %s" % (k, v) for k, v in fill_rcs.items() if (any(c != 0 for c in v) if isinstance(v, list) else v != 0)]
+    fill_products = ["%s_filled.gds" % name, "drc_klayout_filled_block.lyrdb", "drc_klayout_filled_density.lyrdb",
+                     "klayout_lvs_filled/%s_filled.cir" % name]
+    fill_failures += ["%s was not written" % p for p in fill_products if not (out / p).is_file()]
+    if fill.get("bboxSame") is False:
+        fill_failures.append("the fill reaches outside the cell's box")
     if draw["magicDrcErrors"] is None:
         failures.append("Magic DRC wrote no result")
     if not (draw["mimLengthMarks"] or {}).get("ok", False):
@@ -1735,9 +1759,9 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
     if not result["klayoutLvs"]["verdict"]:
         failures.append("KLayout LVS printed no verdict")
     if not result["klayoutLvsFilled"]["verdict"]:
-        failures.append("KLayout LVS of the filled GDS printed no verdict")
+        fill_failures.append("KLayout LVS of the filled GDS printed no verdict")
     if "coveragePercent" not in fill:
-        failures.append("the fill step reported no coverage")
+        fill_failures.append("the fill step reported no coverage")
     ports = {}
     pins = draw["pins"]
     for tag, f in (("lvs", "%s_lvs.spice" % name), ("pexC", "%s_pex_c.spice" % name), ("pexRc", "%s_pex_rc.spice" % name)):
@@ -1746,14 +1770,14 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
             ports[tag] = dict(ok=ok, notes=notes)
             if not ok:
                 failures.append("; ".join(notes))
-    result.update(rcs=rcs, ports=ports, failures=failures, ok=not failures, limitations=LIMITATIONS,
+    result.update(rcs=rcs, fillRcs=fill_rcs, fillFailures=fill_failures, ports=ports, failures=failures, ok=not failures, limitations=LIMITATIONS,
                   verdict=dict(magicDrcClean=draw["magicDrcErrors"] == 0, klayoutDrcBlockClean=result["klayoutDrc"]["block"]["total"] == 0,
                                netgenMatch=result["lvs"]["match"], klayoutLvsMatch=result["klayoutLvs"]["match"],
                                filledKlayoutDrcBlockClean=result["drcKlayoutFilled"] == 0, filledDensityClean=result["densityRulesFilled"] == 0,
                                filledKlayoutLvsMatch=result["klayoutLvsFilled"]["match"]))
     result["totalSeconds"] = round(time.time() - t0, 2)
     (out / "layout.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    brief = dict(ok=not failures, failures=failures, magicDrc=draw["magicDrcErrors"], magicDrcInPdkPnpCells=draw["magicDrcInPdkPnpCells"],
+    brief = dict(ok=not failures, failures=failures, fillFailures=fill_failures, magicDrc=draw["magicDrcErrors"], magicDrcInPdkPnpCells=draw["magicDrcInPdkPnpCells"],
                  klayoutDrcBlock=result["klayoutDrc"]["block"]["total"], klayoutDrcDensity=result["klayoutDrc"]["density"]["total"],
                  filled=dict(klayoutDrcBlock=result["drcKlayoutFilled"], density=result["densityRulesFilled"],
                              densityByRule=result["klayoutDrcFilled"]["density"].get("byRule"), klayoutLvs=result["klayoutLvsFilled"]["match"],
@@ -1762,7 +1786,7 @@ def cmd_all(netlist, name, out_dir, extra=None, allowed=()):
                  klayoutLvs=result["klayoutLvs"]["match"], mim=draw["mimLengthMarks"], ports={k: v["ok"] for k, v in ports.items()},
                  pex=result["pex"]["netlists"], blocks=facts["blocks"],
                  seconds=dict(draw=draw["seconds"], klayoutDrc=result["klayoutDrc"]["block"]["seconds"],
-                              netgenLvs=result["lvs"]["seconds"], klayoutLvs=result["klayoutLvs"]["seconds"], fill=fill["seconds"],
+                              netgenLvs=result["lvs"]["seconds"], klayoutLvs=result["klayoutLvs"]["seconds"], fill=fill.get("seconds", 0),
                               filledChecks=round(sum(result["klayoutDrcFilled"][k].get("seconds", 0) for k in ("block", "density")) +
                                                  result["klayoutLvsFilled"].get("seconds", 0), 2),
                               pex=result["pex"]["seconds"], render=result["render"]["seconds"], total=result["totalSeconds"]))

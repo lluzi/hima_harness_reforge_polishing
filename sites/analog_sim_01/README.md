@@ -155,6 +155,9 @@ The bgcore case adds a 120-tap ladder and a BGOK monitor (`layout/tests/bgcore_s
   - netgen LVS and the extraction stay on the unfilled GDS (`pexOn: "unfilled"`);
   - `klayoutDrc` and `densityRules` keep the unfilled results, and `densityRulesFilled`,
     `drcKlayoutFilled`, `klayoutLvsFilled` and `filledGdsSha256` are new.
+  - The fill is reported, never judged. Its exit codes go to `fillRcs` (not `rcs`) and its problems
+    to `fillFailures`: a failed or crashed step, a missing filled product, no coverage, or fill
+    outside the cell's box. Neither changes `failures`, `ok` or the exit code.
 
 Checked on the Site (`analog-runs/bgcore-layout-20261013-1029`):
 

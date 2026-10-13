@@ -1,0 +1,14 @@
+* Netgen 1.5.321 lvs.out excerpt (verbatim lines), layout fault swap-taps:vref_10:vref_11 on bgcore_shape.spice, Site run bgcore-layout-20261013-1133
+Netlists match with 1 symmetry.
+vref_111                                   |vref_111                                   
+vref_110                                   |vref_110                                   
+vref_90                                    |vref_90                                    
+vref_11                                    |vref_10 **Mismatch**                       
+vref_89                                    |vref_89                                    
+vref_10                                    |vref_11 **Mismatch**                       
+bgok                                       |bgok                                       
+---------------------------------------------------------------------------------------
+Cell pin lists for bandgap_lb and bandgap_lb altered to match.
+Device classes bandgap_lb and bandgap_lb are equivalent.
+
+Final result: Top level cell failed pin matching.

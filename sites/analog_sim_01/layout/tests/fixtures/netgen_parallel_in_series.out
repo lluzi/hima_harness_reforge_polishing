@@ -1,0 +1,20 @@
+* Netgen 1.5.321 lvs.out excerpt (verbatim lines), layout fault ladder-parallel-in-series on the engine bgcore netlist, Site run bgcore-layout-20261013-1133
+-------------------------------------------|-------------------------------------------
+pnp_10p00x10p00 (9->2)                     |pnp_10p00x10p00 (9->2)                     
+ppolyf_u_1k (179->124)                     |ppolyf_u_1k (127->126) **Mismatch**        
+pfet_03v3 (18->12)                         |pfet_03v3 (12)                             
+cap_mim_2f0_m4m5_noshield (1)              |cap_mim_2f0_m4m5_noshield (1)              
+nfet_03v3 (9)                              |nfet_03v3 (9)                              
+Number of devices: 148 **Mismatch**        |Number of devices: 150 **Mismatch**        
+Number of nets: 138 **Mismatch**           |Number of nets: 139 **Mismatch**           
+---------------------------------------------------------------------------------------
+NET mismatches: Class fragments follow (with fanout counts):
+Circuit 1: bandgap_lb                      |Circuit 2: bandgap_lb                      
+(no matching net)                          |Net: vref_122                              
+(no matching instance)                     |Instance: ppolyf_u_1k:RL0a                 
+Netlists do not match.
+Port matching may fail to disambiguate symmetries.
+Cell pin lists for bandgap_lb and bandgap_lb altered to match.
+Device classes bandgap_lb and bandgap_lb are equivalent.
+
+Final result: Top level cell failed pin matching.

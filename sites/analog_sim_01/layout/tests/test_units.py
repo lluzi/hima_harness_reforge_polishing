@@ -302,6 +302,97 @@ Z(
             self.assertIn("parallel disable", text)
             self.assertNotIn("series disable", text)
 
+    # ---------------------------------------------------------------- fill is reported, never judged
+
+    def run_all_faked(self, fill_mode):
+        """cmd_all through main() with every tool step faked (no tools): a clean layout, and the fill
+        step either fine, failing (exit 1, no filled GDS) or raising."""
+        name = "bandgap"
+        saved = {k: getattr(cl, k) for k in ("step_draw", "klayout_drc", "step_fill", "step_lvs", "step_klayout_lvs", "step_pex",
+                                             "step_render", "check_ports")}
+        pins = ["vdd", "vss"]
+
+        def touch(out, *paths):
+            for q in paths:
+                (out / q).parent.mkdir(parents=True, exist_ok=True)
+                (out / q).write_text("x")
+
+        def step_draw(netlist, nm, out):
+            touch(out, "%s.gds" % nm)
+            return dict(blocks=[], substrate="vss"), dict(rc=0, mimCheckRc=0, seconds=0, magicDrcErrors=0, magicDrcInPdkPnpCells=0,
+                                                          mimLengthMarks=dict(ok=True), pins=pins)
+
+        def klayout_drc(out, nm, tag, decks, gds=None):
+            touch(out, "drc_klayout_%s.lyrdb" % tag)
+            return dict(decks=decks, rc=0, seconds=0, total=0, byRule={})
+
+        def step_fill(out, nm):
+            if fill_mode == "raise":
+                raise OSError("klayout not found")
+            if fill_mode == "fail":
+                return dict(rc=[0, 1, None], seconds=0, gds="%s_filled.gds" % nm, sha256=None)
+            touch(out, "%s_filled.gds" % nm)
+            return dict(rc=[0, 0, 0], seconds=0, gds="%s_filled.gds" % nm, sha256="0" * 64, bboxSame=True,
+                        coveragePercent={"metal1": dict(unfilled=1.0, filled=2.0)})
+
+        def step_lvs(out, nm):
+            touch(out, "%s_lvs.spice" % nm, "lvs.out", "%s_pex_c.spice" % nm, "%s_pex_rc.spice" % nm)
+            return dict(rc=[0, 0], seconds=0, match=True, mismatch=False, verdict=True, lines=[], pnpNameCorrections=0)
+
+        def step_klayout_lvs(out, nm, ref=None, gds=None, sub="klayout_lvs"):
+            touch(out, "%s/%s.cir" % (sub, Path(gds or "%s.gds" % nm).stem))
+            return dict(rc=0, seconds=0, match=True, mismatch=False, verdict=True, pins=None, lines=[])
+
+        def step_pex(out, nm, pnp=None):
+            return dict(rc=[0, 0], seconds=0, netlists={})
+
+        def step_render(out, nm):
+            touch(out, "%s.png" % nm)
+            return dict(rc=0, seconds=0, png=True, bboxUm=[1.0, 1.0])
+        try:
+            for k, v in dict(step_draw=step_draw, klayout_drc=klayout_drc, step_fill=step_fill, step_lvs=step_lvs, step_klayout_lvs=step_klayout_lvs,
+                             step_pex=step_pex, step_render=step_render, check_ports=lambda *a: (True, [])).items():
+                setattr(cl, k, v)
+            with tempfile.TemporaryDirectory() as t:
+                out = Path(t) / "out"
+                code = cl.main(["cell_layout.py", "all", str(HERE / "bandgap_shape.spice"), name, str(out)])
+                import json
+                return code, json.loads((out / "layout.json").read_text())
+        finally:
+            for k, v in saved.items():
+                setattr(cl, k, v)
+
+    def test_fill_failure_never_fails_the_tool(self):
+        import contextlib
+        import io
+        for mode in ("fail", "raise"):
+            with contextlib.redirect_stdout(io.StringIO()):
+                code, j = self.run_all_faked(mode)
+            self.assertEqual(code, 0, mode)
+            self.assertTrue(j["ok"], mode)
+            self.assertEqual(j["failures"], [], mode)
+            self.assertTrue(j["fillFailures"], mode)
+            self.assertFalse(any(isinstance(v, list) or v is None for v in j["rcs"].values()), j["rcs"])
+            self.assertEqual(j["pexOn"], "unfilled")
+        with contextlib.redirect_stdout(io.StringIO()):
+            code, j = self.run_all_faked("ok")
+        self.assertEqual((code, j["ok"], j["fillFailures"]), (0, True, []))
+        self.assertEqual(j["fillRcs"]["fill"], [0, 0, 0])
+
+    def test_netgen_verdict_on_real_reports(self):
+        """Excerpts of Netgen 1.5.321 reports from the Site (tests/fixtures/netgen_*.out)."""
+        fx = HERE / "fixtures"
+        self.assertEqual(cl.netgen_verdict((fx / "netgen_clean.out").read_text()), (True, False))
+        swap = (fx / "netgen_swap_taps.out").read_text()
+        self.assertIn("Final result: Top level cell failed pin matching.", swap)
+        self.assertIn("Netlists match with 1 symmetry.", swap)          # no "do not match" after a label swap
+        self.assertNotIn("do not match", swap)
+        self.assertEqual(cl.netgen_verdict(swap), (False, True))
+        self.assertEqual(cl.netgen_verdict(swap.replace("failed pin matching", "")), (False, True))   # the **Mismatch** rows alone
+        series = (fx / "netgen_parallel_in_series.out").read_text()
+        self.assertIn("Netlists do not match.", series)
+        self.assertEqual(cl.netgen_verdict(series), (False, True))
+
 
 if __name__ == "__main__":
     unittest.main()

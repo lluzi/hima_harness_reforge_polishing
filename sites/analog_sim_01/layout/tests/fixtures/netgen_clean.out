@@ -1,0 +1,21 @@
+* Netgen 1.5.321 lvs.out excerpt (verbatim lines), the engine bgcore netlist laid out clean, Site run bgcore-layout-20261013-1133
+Class bandgap_lb (0):  Merged 13 parallel devices.
+Class bandgap_lb (0):  Merged 53 series devices.
+Class bandgap_lb (1):  Merged 7 parallel devices.
+Class bandgap_lb (1):  Merged 1 series devices.
+Subcircuit summary:
+Circuit 1: bandgap_lb                      |Circuit 2: bandgap_lb                      
+-------------------------------------------|-------------------------------------------
+pnp_10p00x10p00 (9->2)                     |pnp_10p00x10p00 (9->2)                     
+ppolyf_u_1k (179->126)                     |ppolyf_u_1k (127->126)                     
+pfet_03v3 (18->12)                         |pfet_03v3 (12)                             
+nfet_03v3 (9)                              |nfet_03v3 (9)                              
+cap_mim_2f0_m4m5_noshield (1)              |cap_mim_2f0_m4m5_noshield (1)              
+Number of devices: 150                     |Number of devices: 150                     
+Number of nets: 139                        |Number of nets: 139                        
+---------------------------------------------------------------------------------------
+Resolving symmetries by property value.
+Resolving symmetries by pin name.
+Resolving symmetries by net name.
+Netlists match with 1 symmetry.
+Final result: Circuits match uniquely.
