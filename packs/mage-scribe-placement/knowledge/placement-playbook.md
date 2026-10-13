@@ -48,8 +48,10 @@ The native checks are read the same way, against a native anchor. Round 1 replay
 with `--fill` and moves nothing: that faithful reproduction is the native anchor, so the incumbent's
 own native fill (which may already carry, say, a SPACE row) is never counted as this Run's
 violation — `no-native-violation` then counts only rows a later round introduces beyond the anchor.
-A round-1 that moves any mark forfeits the anchor for the whole Run, and `no-native-violation` falls
-back to judging the absolute native-row total (zero rows in all).
+A round that moved any mark can never be the anchor; the anchor is the first completed round that
+moved nothing — round 1 in the proven workflow. If round 1 moved a mark, a later faithful
+reproduction can still become the anchor; until one exists, `no-native-violation` judges the
+absolute native-row total (zero rows in all).
 
 ## The loop: observe, diagnose, plan, apply, judge
 
@@ -205,6 +207,12 @@ each Fit moved from the frozen start) versus **absolute error from the CT target
 the other. Keep the new candidate
 only if it is no worse than the previous best by the best-state order below; otherwise deliver it
 anyway as the honest best-effort result and say why in `stopReason`.
+
+`decide-round` ends the loop only when the Goal's six measurable rules all PASS on this round's
+Reader values with no consumer hard failure and no open Request, or after two consecutive
+non-improving rounds, or at round 4. It will keep spending rounds while the Goal is unmet and you
+are still improving, even on a quiet round where no consumer filed a Request — the loop works toward
+the Goal, not merely toward silencing consumers, so use every round you are given to close the Goal.
 
 Compare this round's candidate `metrics.drops.ordinary` against both `state/incumbent.json` and the
 previous best, and make `stopReason` say two separate things: what the planner *opened* (how many

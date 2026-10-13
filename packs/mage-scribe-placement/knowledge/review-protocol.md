@@ -94,8 +94,9 @@ authors a `move` Request. `review-wat` gets a hard-fail Finding on KEY_V's `plac
 Round 2: the Engineer moves OVL_B onto its CT target (satisfied in the Ledger) but KEY_V stays
 dropped for a capacity reason already explained (declined in the Ledger). `review-litho-pie`'s
 Finding now passes, so it files no new Request. `review-wat`'s Finding still fails mechanically, but
-with nothing new to add it need not re-file an identical Request. `decide-round` sees zero open
-Requests and routes `stop`.
+with nothing new to add it need not re-file an identical Request. `decide-round` sees the Goal met
+on this round's Reader values and zero open Requests, and routes `stop` — had the Goal still been
+unmet with no Request open, it would have routed `continue` to keep improving toward the Goal.
 
 ## When to re-file a Request (and when not to)
 

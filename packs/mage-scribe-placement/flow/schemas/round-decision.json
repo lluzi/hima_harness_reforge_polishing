@@ -25,6 +25,8 @@
     "history": {"type": "array"},
     "stopReason": {"type": "string"},
     "skippedReviews": {"type": "array"},
-    "nativeAnchor": {"type": ["object", "null"]}
+    "nativeAnchor": {"type": ["object", "null"]},
+    "goalRules": {"type": "object"},
+    "goalMetThisRound": {"type": "boolean"}
   }
 }

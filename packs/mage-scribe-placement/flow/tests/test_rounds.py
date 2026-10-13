@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
-from mage_placement import core, rounds  # noqa: E402
+from mage_placement import core, records, rounds  # noqa: E402
 
 
 def _metrics(native_total=0, priority_unplaced=0, hard_fail=0, drops_count=0, drops_length="0",
@@ -63,6 +63,29 @@ def _reader_values(error=0, native=0, priority=0, drops=0, drops_len="0", over=0
         v("mage_dropped_count", drops),
         v("mage_dropped_length_um", drops_len),
         v("mage_target_over_limit_count", over),
+        v("mage_order_deviation_max", order),
+    ]
+
+
+def _goal(dropped=0, max_distance=100, max_order=2):
+    return {"target_dropped_count": dropped, "max_target_distance_um": max_distance,
+            "max_order_deviation": max_order}
+
+
+def _goal_reader_values(error=0, native=0, priority=0, drops=0, new_over=0, order=0):
+    """A full six-rule Reader reading: every type `goal_rules()` consults,
+    including the Part A `mage_target_over_limit_new_count` the older
+    `_reader_values` helper omits (so goal-met routing can be exercised)."""
+    def v(type_name, value):
+        return {"type": type_name, "value": value}
+    return [
+        v("mage_candidate_error_count", error),
+        v("mage_native_violation_total", native),
+        v("mage_priority_unplaced_count", priority),
+        v("mage_dropped_count", drops),
+        v("mage_dropped_length_um", "0"),
+        v("mage_target_over_limit_count", new_over),
+        v("mage_target_over_limit_new_count", new_over),
         v("mage_order_deviation_max", order),
     ]
 
@@ -161,12 +184,64 @@ class DecideTests(unittest.TestCase):
             "openRequests": [], "decisionRequests": [], "history": [], "stopReason": "",
         })
 
-    def test_stop_when_no_hard_fail_and_no_open_requests(self):
-        candidate = _candidate()
+    def test_stop_when_goal_met_and_nothing_open(self):
+        # Goal met on this round's values + no hard fail + no open Request =
+        # the clean stop. (A completed candidate with all six rules PASS.)
+        candidate = _candidate(reader_values=_goal_reader_values())
         reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
-        decision = rounds.decide(self.workspace, 1, {}, reviews, candidate, self._round0_decision())
+        decision = rounds.decide(self.workspace, 1, _goal(), reviews, candidate, self._round0_decision())
         self.assertEqual(decision["route"], "stop")
-        self.assertEqual(decision["stopReason"], "no consumer hard failure and no open request")
+        self.assertEqual(decision["stopReason"], "Goal met; no consumer hard failure and no open request")
+        self.assertTrue(decision["goalMetThisRound"])
+        self.assertTrue(all(v == "PASS" for v in decision["goalRules"].values()))
+
+    def test_continue_when_goal_unmet_and_nothing_open(self):
+        # The defect this fix closes: no consumer is asking, but the Goal is
+        # not met on this round's values (a dropped mark over the knob), so
+        # the loop keeps going toward the Goal rather than stopping quiet.
+        candidate = _candidate(reader_values=_goal_reader_values(drops=3))
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        decision = rounds.decide(self.workspace, 1, _goal(dropped=0), reviews, candidate, self._round0_decision())
+        self.assertEqual(decision["route"], "continue")
+        self.assertEqual(
+            decision["stopReason"],
+            "Goal not yet met on this round's values; no consumer hard failure "
+            "or open Request; continuing to improve",
+        )
+        self.assertFalse(decision["goalMetThisRound"])
+        self.assertEqual(decision["goalRules"]["drops-within-goal"], "FAIL")
+
+    def test_continue_when_goal_met_but_a_request_is_open(self):
+        # Goal met this round, but a consumer still has an open Request:
+        # continue (never a stop) while someone is asking for something.
+        finding = _finding("F-1", "litho-pie", "fail", "cost")
+        request = _request("R-1", "litho-pie", "move", ["OVL_B.OVL_B_1"], finding="F-1")
+        candidate = _candidate(reader_values=_goal_reader_values())
+        reviews = [
+            _review("litho-pie", findings=[finding], requests=[request]),
+            _review("metrology"), _review("alignment"), _review("wat"),
+        ]
+        decision = rounds.decide(self.workspace, 1, _goal(), reviews, candidate, self._round0_decision())
+        self.assertEqual(decision["route"], "continue")
+        self.assertEqual(decision["stopReason"], "")
+        self.assertTrue(decision["goalMetThisRound"])
+
+    def test_two_stalls_with_goal_unmet_and_nothing_open_stop(self):
+        # Two consecutive non-improving rounds after round 1 stop the Run on
+        # the best state even when the Goal is still unmet and no Request is
+        # open -- the Engineer has stopped making progress.
+        def _round(round_no, previous):
+            candidate = _candidate(reader_values=_goal_reader_values(drops=5))
+            reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+            return rounds.decide(self.workspace, round_no, _goal(dropped=0), reviews, candidate, previous)
+
+        d1 = _round(1, self._round0_decision())
+        self.assertEqual(d1["route"], "continue")
+        d2 = _round(2, d1)
+        self.assertEqual(d2["route"], "continue")
+        d3 = _round(3, d2)
+        self.assertEqual(d3["route"], "stop")
+        self.assertEqual(d3["stopReason"], "no improvement for two consecutive rounds")
 
     def test_continue_when_open_requests(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")
@@ -320,6 +395,17 @@ class DecideTests(unittest.TestCase):
         cand1 = _candidate(reader_values=_anchor_reader_values(moved=2, space=1))
         d1 = rounds.decide(self.workspace, 1, {}, reviews, cand1, self._round0_decision())
         self.assertIsNone(d1["nativeAnchor"])
+
+    def test_decision_with_goal_fields_validates_against_the_schema(self):
+        # The round-decision schema (additionalProperties: false) must accept
+        # the new optional `goalRules`/`goalMetThisRound` fields decide() now
+        # records, or every real Run's decision would fail record validation.
+        candidate = _candidate(reader_values=_goal_reader_values())
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        decision = rounds.decide(self.workspace, 1, _goal(), reviews, candidate, self._round0_decision())
+        self.assertIn("goalRules", decision)
+        self.assertIn("goalMetThisRound", decision)
+        self.assertEqual(records.validate_record("round-decision", decision), [])
 
     def test_unanswered_previous_request_is_a_candidate_error_not_a_decision(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")

@@ -353,7 +353,8 @@ class CliRouteTest(unittest.TestCase):
             **goal,
         })
         self.assertEqual(decision2["route"], "stop")
-        self.assertEqual(decision2["stopReason"], "no consumer hard failure and no open request")
+        self.assertEqual(decision2["stopReason"], "Goal met; no consumer hard failure and no open request")
+        self.assertTrue(decision2["goalMetThisRound"])
         self.assertEqual(decision2["openRequestCount"], 0)
 
         evaluation = self._task("evaluate-placement", {

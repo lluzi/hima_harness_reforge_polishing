@@ -39,9 +39,10 @@ container runs 3.8.16); no numeric, YAML, or JSON-Schema dependency ships in `fl
 | `evaluate-placement` (`budget: closing`) | Committed `decide-round` value; `measure-incumbent` value; goal values | Evaluates the best state's own Reader values against the seven delivery rules; computes the completeness/fidelity/rework/legality comparison against the incumbent; `goalMet` explicit, unknowns kept separate. |
 | `deliver` (`budget: closing`) | Committed evaluation | Rechecks every referenced digest; writes `delivery/report.json` and packages every round's candidate/review documents, PLAs, native verify files, session logs, scripts, and the result/evaluation JSON into `delivery/placement-artifacts.tar.gz`. |
 
-The round-decision stop rule: `stop` when (no consumer hard failure and no open Request) or (two
-consecutive rounds without improvement on any axis) or (`round == 4`, which `maxIterations` also
-enforces); otherwise `continue`.
+The round-decision stop rule: `stop` when (the Goal's six measurable rules all PASS on this round's
+Reader values AND no consumer hard failure AND no open Request) or (two consecutive rounds without
+improvement) or (`round == 4`, which `maxIterations` also enforces); otherwise `continue` — the loop
+keeps working toward the Goal even when no consumer is asking for anything.
 
 ## Native route and checks
 

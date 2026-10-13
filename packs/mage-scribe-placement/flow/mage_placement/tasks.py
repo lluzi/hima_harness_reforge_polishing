@@ -357,23 +357,16 @@ def decide_round(workspace, inputs):
         # (whose DECISION input is this committed value, not the on-disk
         # round-decision) can judge new native rows against it.
         "nativeAnchor": decision.get("nativeAnchor"),
+        # Goal-aware routing: this round's six-rule Goal reading and whether
+        # the Goal was met on this round's values, carried for the report.
+        "goalRules": decision.get("goalRules"),
+        "goalMetThisRound": decision.get("goalMetThisRound"),
     }
     artifacts = [
         _artifact("round-decision", "state/round-decision.json"),
         _artifact("placement-result", "state/placement-result.json"),
     ]
     return {"schemaVersion": "1", "value": value, "artifacts": artifacts, "diagnostics": []}
-
-
-def _measure(value):
-    return {"unknown": value.get("unknownReason")} if value.get("value") is None else {"value": value.get("value")}
-
-
-def _rule_measure(reader_values, type_name):
-    for row in reader_values:
-        if row.get("type") == type_name:
-            return _measure(row)
-    return {"unknown": f"{type_name} was not emitted"}
 
 
 def evaluate_placement(workspace, inputs):
@@ -389,79 +382,21 @@ def evaluate_placement(workspace, inputs):
         "max_order_deviation": inputs["MAX_ORDER_DEVIATION"],
     }
 
-    checks = {
-        "placement-delivery-ready": ("mage_candidate_error_count", "eq", 0),
-        "priority-all-placed": ("mage_priority_unplaced_count", "eq", 0),
-        "drops-within-goal": ("mage_dropped_count", "lte", goal["target_dropped_count"]),
-        # Part A: target-limit-met judges the Run-owned reading -- marks THIS
-        # Run moved beyond the limit (eq 0), never marks already beyond it in
-        # the frozen start (those are pre-existing, reported, never counted).
-        "target-limit-met": ("mage_target_over_limit_new_count", "eq", 0),
-        "order-within-goal": ("mage_order_deviation_max", "lte", goal["max_order_deviation"]),
-    }
-
-    rules_result = {}
-    unknowns = []
-    for rule_id, (type_name, op, threshold) in checks.items():
-        measure = _rule_measure(reader_values, type_name)
-        if "value" not in measure:
-            rules_result[rule_id] = "UNKNOWN"
-            unknowns.append({"rule": rule_id, "type": type_name, "reason": measure.get("unknown")})
-            continue
-        value = measure["value"]
-        passed = (value == threshold) if op == "eq" else (value <= threshold)
-        rules_result[rule_id] = "PASS" if passed else "FAIL"
+    # The six measurable delivery rules are the Goal reading, computed in one
+    # place (`rounds._goal_rule_report`, which `rounds.goal_rules` also wraps
+    # for decide()'s per-round goal-met check) so `decide-round` and
+    # `evaluate-placement` can never drift apart. `no-open-requests` is the
+    # delivery-time composite this function still owns (below); the report
+    # helper returns the six-rule result, the UNKNOWN records, and the
+    # `regressionBasis.native` block (Part B: anchor delta / absolute fallback).
+    native_anchor = decision.get("nativeAnchor")
+    rules_result, unknowns, native_basis = rounds._goal_rule_report(reader_values, goal, native_anchor)
 
     def _reader_number(type_name):
         for row in reader_values:
             if row.get("type") == type_name:
                 return row.get("value")
         return None
-
-    # Part B: `no-native-violation` is a composite over the delivered state.
-    # When a native anchor exists (round 1's faithful reproduction of the
-    # frozen start, recorded by decide()), it PASSes iff the best round
-    # introduced no native row beyond that anchor per type -- a row the
-    # incumbent's own fill already carried, reproduced by the anchor round,
-    # is never this Run's new violation. With no anchor it falls back to the
-    # absolute total (eq 0); when a best per-type row is unknown it is UNKNOWN.
-    best_native_rows = {t: _reader_number(f"mage_native_{t.lower()}_rows") for t in NATIVE_TYPES}
-    per_type_known = all(best_native_rows[t] is not None for t in NATIVE_TYPES)
-    native_anchor = decision.get("nativeAnchor")
-    if native_anchor and per_type_known:
-        anchor_rows = native_anchor.get("rows", {})
-        new_rows = sum(max(0, best_native_rows[t] - (anchor_rows.get(t) or 0)) for t in NATIVE_TYPES)
-        rules_result["no-native-violation"] = "PASS" if new_rows == 0 else "FAIL"
-        native_basis = {
-            "basis": "anchor", "anchorRound": native_anchor.get("round"), "anchorRows": anchor_rows,
-            "bestRows": best_native_rows, "newRows": new_rows,
-        }
-    elif native_anchor:
-        # An anchor exists but a best per-type row is unknown: the delta
-        # cannot be computed, so the composite is UNKNOWN (never a silent 0).
-        rules_result["no-native-violation"] = "UNKNOWN"
-        unknowns.append({"rule": "no-native-violation", "type": "mage_native_violation_total",
-                         "reason": "a native per-type row is unknown; anchor delta cannot be computed"})
-        native_basis = {
-            "basis": "anchor", "anchorRound": native_anchor.get("round"),
-            "anchorRows": native_anchor.get("rows"), "bestRows": best_native_rows, "newRows": None,
-        }
-    else:
-        # No anchor: the previous absolute check (mage_native_violation_total eq 0).
-        total_measure = _rule_measure(reader_values, "mage_native_violation_total")
-        if "value" not in total_measure:
-            rules_result["no-native-violation"] = "UNKNOWN"
-            unknowns.append({"rule": "no-native-violation", "type": "mage_native_violation_total",
-                             "reason": total_measure.get("unknown")})
-            new_rows = None
-        else:
-            total = total_measure["value"]
-            rules_result["no-native-violation"] = "PASS" if total == 0 else "FAIL"
-            new_rows = total
-        native_basis = {
-            "basis": "absolute", "anchorRound": None, "anchorRows": None,
-            "bestRows": best_native_rows, "newRows": new_rows,
-        }
 
     # I3: `no-open-requests` evaluates the DELIVERED state, not just the best
     # candidate's own unanswered-previous count. It FAILs when the final

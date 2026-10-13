@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import core, records
+from . import core, metrics, records
 
 
 MAX_ROUNDS = 4
@@ -114,6 +114,124 @@ def conflicts(requests):
             if kinds in _INCOMPATIBLE_KIND_PAIRS:
                 found.append((a, b))
     return found
+
+
+# The six measurable delivery rules the Goal is judged on (the seventh rule,
+# `no-open-requests`, is a delivery-time composite that depends on the final
+# decision's open/decision/skipped counts, so it stays in `evaluate_placement`
+# and is deliberately NOT part of this per-round, values-only reading).
+_GOAL_RULE_CHECKS = (
+    ("placement-delivery-ready", "mage_candidate_error_count", "eq", 0),
+    ("priority-all-placed", "mage_priority_unplaced_count", "eq", 0),
+    ("drops-within-goal", "mage_dropped_count", "lte", "target_dropped_count"),
+    # Part A: target-limit-met judges the Run-owned reading -- marks this Run
+    # moved beyond the limit, never marks already beyond it in the frozen start.
+    ("target-limit-met", "mage_target_over_limit_new_count", "eq", 0),
+    ("order-within-goal", "mage_order_deviation_max", "lte", "max_order_deviation"),
+)
+
+
+def _reader_measure(reader_values, type_name):
+    """`{"value": x}` for a known Reader value, or `{"unknown": reason}` when the
+    type was not emitted or carries a `None` value (the Reader-value reading
+    `evaluate_placement` once did inline for every delivery rule)."""
+    for row in reader_values or []:
+        if row.get("type") == type_name:
+            if row.get("value") is None:
+                return {"unknown": row.get("unknownReason")}
+            return {"value": row.get("value")}
+    return {"unknown": "%s was not emitted" % type_name}
+
+
+def _goal_rule_report(reader_values, goal, native_anchor):
+    """The six measurable delivery rules, evaluated on ONE round's Reader
+    values exactly as `evaluate_placement` computes them today.
+
+    Returns `(rules, unknowns, native_basis)`:
+      * `rules` — `{rule_id: "PASS"|"FAIL"|"UNKNOWN"}` for the six measurable
+        rules (`no-open-requests` is not included; it is the delivery-time
+        composite `evaluate_placement` owns);
+      * `unknowns` — the `{"rule","type","reason"}` records for every rule
+        that read UNKNOWN, in the same order `evaluate_placement` emitted them
+        (the five simple checks first, then the native composite);
+      * `native_basis` — the `regressionBasis.native` block.
+
+    `goal_rules()` is the thin public wrapper returning only `rules`; both
+    `decide()` (per-round goal-met check) and `evaluate_placement()` (the
+    delivered rules plus the report detail) read through this one helper, so
+    the goal reading is computed in exactly one place.
+    """
+    goal = goal or {}
+    rules = {}
+    unknowns = []
+
+    for rule_id, type_name, op, threshold_spec in _GOAL_RULE_CHECKS:
+        measure = _reader_measure(reader_values, type_name)
+        if "value" not in measure:
+            rules[rule_id] = "UNKNOWN"
+            unknowns.append({"rule": rule_id, "type": type_name, "reason": measure.get("unknown")})
+            continue
+        threshold = threshold_spec if op == "eq" else goal.get(threshold_spec)
+        if op == "lte" and threshold is None:
+            rules[rule_id] = "UNKNOWN"
+            unknowns.append({"rule": rule_id, "type": type_name,
+                             "reason": "%s goal threshold is unknown" % threshold_spec})
+            continue
+        value = measure["value"]
+        passed = (value == threshold) if op == "eq" else (value <= threshold)
+        rules[rule_id] = "PASS" if passed else "FAIL"
+
+    # Part B native composite (anchor delta / absolute fallback), identical to
+    # the reading `evaluate_placement` performed inline.
+    def _reader_number(type_name):
+        for row in reader_values or []:
+            if row.get("type") == type_name:
+                return row.get("value")
+        return None
+
+    best_native_rows = {t: _reader_number("mage_native_%s_rows" % t.lower()) for t in metrics.NATIVE_TYPES}
+    per_type_known = all(best_native_rows[t] is not None for t in metrics.NATIVE_TYPES)
+    if native_anchor and per_type_known:
+        anchor_rows = native_anchor.get("rows", {})
+        new_rows = sum(max(0, best_native_rows[t] - (anchor_rows.get(t) or 0)) for t in metrics.NATIVE_TYPES)
+        rules["no-native-violation"] = "PASS" if new_rows == 0 else "FAIL"
+        native_basis = {
+            "basis": "anchor", "anchorRound": native_anchor.get("round"), "anchorRows": anchor_rows,
+            "bestRows": best_native_rows, "newRows": new_rows,
+        }
+    elif native_anchor:
+        rules["no-native-violation"] = "UNKNOWN"
+        unknowns.append({"rule": "no-native-violation", "type": "mage_native_violation_total",
+                         "reason": "a native per-type row is unknown; anchor delta cannot be computed"})
+        native_basis = {
+            "basis": "anchor", "anchorRound": native_anchor.get("round"),
+            "anchorRows": native_anchor.get("rows"), "bestRows": best_native_rows, "newRows": None,
+        }
+    else:
+        total_measure = _reader_measure(reader_values, "mage_native_violation_total")
+        if "value" not in total_measure:
+            rules["no-native-violation"] = "UNKNOWN"
+            unknowns.append({"rule": "no-native-violation", "type": "mage_native_violation_total",
+                             "reason": total_measure.get("unknown")})
+            new_rows = None
+        else:
+            total = total_measure["value"]
+            rules["no-native-violation"] = "PASS" if total == 0 else "FAIL"
+            new_rows = total
+        native_basis = {
+            "basis": "absolute", "anchorRound": None, "anchorRows": None,
+            "bestRows": best_native_rows, "newRows": new_rows,
+        }
+
+    return rules, unknowns, native_basis
+
+
+def goal_rules(reader_values, goal, native_anchor):
+    """`{rule_id: "PASS"|"FAIL"|"UNKNOWN"}` for the six measurable delivery
+    rules on ONE round's Reader values. UNKNOWN whenever a needed Reader value
+    was not emitted (or carries `None`) or a Goal threshold is missing. See
+    `_goal_rule_report` for the shared computation."""
+    return _goal_rule_report(reader_values, goal, native_anchor)[0]
 
 
 def _finding_numbers(reviews, consumer, finding_id):
@@ -241,9 +359,13 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
 
     Returns the `mage.round-decision/1` body (also atomically written to
     `state/round-decision.json`); also (re)writes the cumulative
-    `state/placement-result.json`. `goal` is accepted for interface
-    stability with the frozen signature; the route rule itself only
-    consults the candidate/review documents and round history.
+    `state/placement-result.json`. `goal` carries the Run owner's three
+    knobs (`target_dropped_count`, `max_target_distance_um`,
+    `max_order_deviation`); the route rule reads it through `goal_rules()`
+    so the loop keeps working toward the Goal even when no consumer is
+    asking for anything -- a round whose Goal is not yet met (UNKNOWN
+    counts as not met) routes `continue` even with no hard failure and no
+    open Request, and only a Goal-met round with nothing open stops clean.
 
     C1: the round is ranked by the Reader-confirmed values the committed
     candidate output carries (`candidate["_readerValues"]`), never by the
@@ -255,7 +377,6 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
     candidate is additionally dropped and recorded, so a mis-bound review is
     treated as "no review from that consumer this round", never a crash.
     """
-    del goal
     workspace = Path(workspace)
 
     skipped = list(skipped_reviews or [])
@@ -368,6 +489,16 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
     has_skipped = bool(skipped)
     skipped_consumers = ", ".join(sorted(str(entry.get("consumer")) for entry in skipped))
 
+    # The Run's purpose is the Goal, not a quiet consumer set. `goal_rules`
+    # reads THIS round's Reader values (UNKNOWN counts as not met); a blocked
+    # round that produced no measured state is never goal-met regardless of
+    # what it read. So the loop keeps going while the Goal is unmet and rounds
+    # remain, instead of stopping the moment no consumer is filing a Request.
+    goal_rules_result = goal_rules(reader_values, goal, native_anchor)
+    goal_met_this_round = (not blocked_for_ranking) and all(
+        value == "PASS" for value in goal_rules_result.values()
+    )
+
     # C2 route order: the round limit is checked *first*, so a final round
     # that still carries an unanswered previous Request (or a blocked
     # candidate, or a skipped review) stops (and delivers the best state)
@@ -390,14 +521,25 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
         route, stop_reason = "continue", "unanswered previous request: " + ", ".join(unanswered_previous)
     elif has_skipped:
         route, stop_reason = "continue", "skipped review(s) this round: " + skipped_consumers
-    elif not hard_fail_count and not open_reqs:
-        # Spec section 4, verbatim: stop when there is no consumer
-        # hard-fail Finding AND no open Request this round.
-        route, stop_reason = "stop", "no consumer hard failure and no open request"
     elif len(history) >= 2 and not history[-1]["improved"] and not history[-2]["improved"]:
+        # Two consecutive non-improving rounds after round 1 (I2): the
+        # Engineer has stopped making progress, so the loop ends on the best
+        # state even if the Goal is still unmet or a Request is still open.
         route, stop_reason = "stop", "no improvement for two consecutive rounds"
-    else:
+    elif hard_fail_count or open_reqs:
+        # A consumer is still asking for something: keep the loop open.
         route, stop_reason = "continue", ""
+    elif not goal_met_this_round:
+        # No consumer is asking, but the Goal is not yet met on this round's
+        # values -- the Run's purpose is the Goal, so keep improving toward it
+        # (this is the defect fix: the Run no longer stops at the first quiet
+        # round with the Goal unmet and rounds still to spend).
+        route, stop_reason = ("continue",
+                              "Goal not yet met on this round's values; no consumer hard failure "
+                              "or open Request; continuing to improve")
+    else:
+        # Goal met and nothing open: the clean stop.
+        route, stop_reason = "stop", "Goal met; no consumer hard failure and no open request"
 
     conflict_pairs = conflicts(open_reqs)
     decision_requests = _decision_requests(round_no, reviews, conflict_pairs)
@@ -415,6 +557,8 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
             "stopReason": stop_reason,
             "skippedReviews": skipped,
             "nativeAnchor": native_anchor,
+            "goalRules": goal_rules_result,
+            "goalMetThisRound": goal_met_this_round,
         },
     )
     core.write_artifact(workspace / "state" / "round-decision.json", decision)
