@@ -40,6 +40,21 @@ not MAGE's own behaviour on the real build. The live proof procedure is the only
 confirm the knowledge's exact Tcl command text actually runs, and whether the compaction failure
 signatures this knowledge documents still hold on the licensed build at the time of that Run.
 
+The dry route landed in Task 10 and passes 3/3 on the real Host and durable runtime with zero model
+calls (`test/contract/mage-script-placement-durable.host.test.ts`, group `atcs-dry`). A stand-in ACP
+Engineer (`test/fixtures/mage-script-dry/acp.py`, the `native.executable` the resident wrapper
+launches) authors a real Tcl stage script and drives the deployed `mage_placement_cli.py` through
+`mage-stage → stage-report → candidate` exactly as the playbook instructs, with
+`flow/tests/standin_mage.py` in place of the licensed binary. It proved the wiring predicted above
+across three env-selected scenarios (`converge`, `stall`, `blocked`): the `repeat` ran its expected
+number of rounds (2, 3, 2), each round executed exactly `2 + rounds*2 + 2` tasks, each resident
+execution carried exactly one Reader Job reading `mage_candidate_error_count == 0`
+(`readerJobs == engineeringJobs == rounds`), the blocked round 1 (failing after boundary
+`priority-start`) still let the Run continue to a goal-met round 2, and the final `goalMet` /
+`proofLevel` / `journalEntries` matched the Pack-local route test. The proof lines are recorded in
+`TEST.md`'s L2 section. This remains Harness/Pack wiring only — it does not touch MAGE's real
+behaviour, which still waits on the live proof procedure.
+
 ## Reviews
 
 Per-task review is recorded in `.superpowers/sdd/task-8-report.md`. The final whole-branch review

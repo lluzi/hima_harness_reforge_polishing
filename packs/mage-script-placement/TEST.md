@@ -28,15 +28,40 @@ written to the 3.8-compatible standard-library-only constraint: no f-string synt
 Not run by this Task. Expected command, once the Host contract test exists:
 `pnpm run build && pnpm run test:local -- --files test/contract/mage-script-placement.test.ts`.
 
-## L2 dry route (pending — Task 9)
+## L2 dry route (Task 10 — passing, 3/3)
 
-Not run by this Task. Expected command, once `test/contract/mage-script-placement-durable.host.test.ts`
-and its stand-in ACP Engineer/MAGE fixtures exist: registered in `test/contract-groups.json`'s
-`atcs-dry` group, run via `node scripts/run-contract-tests.mjs atcs-dry --files
-test/contract/mage-script-placement-durable.host.test.ts`. This will prove the Harness/Pack wiring
-(rounds, task counts, one Reader Job per resident execution, journal entries, `goalMet`) against a
-stand-in MAGE interpreter that accepts this Task's own round-1 baseline script verbatim — not MAGE's
-own behaviour.
+The whole `repeat` of `engineer-script → decide-round` runs on the real Host and durable runtime
+with zero model calls. A stand-in ACP Engineer (`test/fixtures/mage-script-dry/acp.py`, the
+`native.executable` the resident wrapper launches) authors a real Tcl stage script and drives the
+deployed `mage_placement_cli.py` through `mage-stage → stage-report → candidate` exactly as the
+Pack's knowledge instructs, with the stand-in MAGE (`flow/tests/standin_mage.py`) in place of the
+licensed binary. Three scenarios are selected by env `MAGE_SCRIPT_DRY_CASE`:
+`converge` (round 1 baseline → continue, round 2 improved PLA → goal met, stop at 2),
+`stall` (baseline every round → stop at 3 by two consecutive stalls),
+`blocked` (round 1 fails after boundary `priority-start` via `MAGE_STANDIN_FAIL_AFTER_SNAPSHOT` so
+its candidate is blocked and the round continues with no best, round 2 improved → goal met, stop at 2).
+
+Registered in `test/contract-groups.json`'s `atcs-dry` group. Run from the worktree root:
+
+```bash
+export PATH="$HOME/.local/node24/bin:$PATH" HIMA_POSTGRES_RUNTIME=/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/dbos-migration/u2/runtime-final CI=true
+mkdir -p .hima-tmp/dbos-migration/u8/dry
+pnpm run build && node scripts/run-contract-tests.mjs atcs-dry --files test/contract/mage-script-placement-durable.host.test.ts
+```
+
+Result: 3 passing. The three proof lines the worker printed (`productModelCalls` 0; `readerJobs ==
+engineeringJobs == rounds` on every run):
+
+```
+{"ok":true,"mode":"converge","runId":"run-6e672532-2e4d-49f7-aaf8-3a020dd15296","tasks":8,"rounds":2,"readerJobs":2,"engineeringJobs":2,"productModelCalls":0,"goalState":"met","goalMet":true,"proofLevel":"completion","journalEntries":2,"elapsedMs":16895}
+{"ok":true,"mode":"stall","runId":"run-8390ec0b-fb1e-4f39-a723-40b50051b288","tasks":10,"rounds":3,"readerJobs":3,"engineeringJobs":3,"productModelCalls":0,"goalState":"not-met","goalMet":false,"proofLevel":"reproduction","journalEntries":3,"elapsedMs":14220}
+{"ok":true,"mode":"blocked","runId":"run-4f474182-ff98-4445-bb29-9fa7f1470bc7","tasks":8,"rounds":2,"readerJobs":2,"engineeringJobs":2,"productModelCalls":0,"goalState":"met","goalMet":true,"proofLevel":"completion","journalEntries":2,"elapsedMs":9708}
+```
+
+This proves the Harness/Pack wiring (rounds, task counts `2 + rounds*2 + 2`, one Reader Job per
+resident execution reading `mage_candidate_error_count == 0`, journal entries, `goalMet`,
+`proofLevel`) against a stand-in MAGE interpreter that accepts this Pack's own baseline and improved
+scripts verbatim — not MAGE's own behaviour.
 
 ## L4 (S2) — native qualification (pending — Tasks 10, 12, 13)
 
