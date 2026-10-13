@@ -19,9 +19,15 @@ Five functions, each returning a plain JSON-able dict:
   exactly: per partition (`TB`, `LR`, `IN`), compare the CSV request order
   of `groupName` against the placed order (sorted by along-lane centre;
   `TB`/`IN` by x, `LR` by y), matching duplicate names by occurrence index.
+  Also reports `maxLr`/`maxTb`, the per-side-pair maxima (`LR-left`/
+  `LR-right` and `TB-bottom`/`TB-top` respectively), each `None` whenever
+  either of its two sides is unknown.
 - `displacement(start_snapshot, snapshot)` — Fit-by-id box movement from the
   frozen start, independent of `target_distances` (which measures distance
-  to the *target*, not to the start).
+  to the *target*, not to the start). Also reports `priority`, the same
+  movement restricted to Group-placed (priority) Fits and matched by id or
+  by Group (see `_priority_displacement`), so a priority Fit's renamed id
+  still counts as moved rather than as added/removed.
 - `native_rows(verify_files)` — instance counts from MAGE's own native
   verify reports, one of the three fixed checks (OVERLAP, SPACE, BOUNDARY);
   a missing or unreadable file, or one without the canonical instance-count
@@ -286,7 +292,11 @@ def order_deviation(snapshot):
     `LR-left`/`LR-right`) are checked — `IN` never is, and reports `None`
     in `byPartition`. `max` is the maximum of the four checked sides
     (`-1` when every one of them is empty, the customer script's own
-    initial value).
+    initial value). `maxLr` is the maximum of `LR-left`/`LR-right` alone
+    (`None` if either is `None`); `maxTb` is the same for
+    `TB-bottom`/`TB-top` — each axis's unknown-ness is independent of the
+    other's, so one side being unbound makes only that axis's max `None`,
+    never both.
 
     For each side: `list2` ("requested") is every target's `groupName` in
     that side — bound or not — sorted by its **requested** CT coordinate
@@ -385,8 +395,19 @@ def order_deviation(snapshot):
     else:
         max_value = max(by_side.values())
         unknown_reason = None
+
+    def _axis_max(sides):
+        values = [by_side[s] for s in sides]
+        if any(v is None for v in values):
+            return None
+        return max(values)
+
+    max_lr = _axis_max(("LR-left", "LR-right"))
+    max_tb = _axis_max(("TB-bottom", "TB-top"))
     return {
         "max": max_value,
+        "maxLr": max_lr,
+        "maxTb": max_tb,
         "byPartition": by_partition,
         "missing": missing,
         "droppedTargets": dropped_targets,
@@ -395,9 +416,59 @@ def order_deviation(snapshot):
     }
 
 
+def _single_in_group_fit(fits, group_label):
+    members = [f for f in fits if f.get("inGroup") == group_label]
+    return members[0] if len(members) == 1 else None
+
+
+def _priority_displacement(start_snapshot, snapshot, dbu_per_um):
+    """Movement of every start priority (in-group) Fit, matched by exact id,
+    else by its Group when that Group holds exactly one in-group Fit on both
+    sides; otherwise `unmatched` (identity-unknown: `maxUm` is None).
+    `distanceUm` is |dx| + |dy| of the box centre."""
+    current_by_id = {f["id"]: f for f in snapshot["fits"]}
+    per_fit, unmatched = [], []
+    total_doubled = max_doubled = 0
+    matched = 0
+    for start_fit in start_snapshot["fits"]:
+        if not start_fit.get("inGroup"):
+            continue
+        current = current_by_id.get(start_fit["id"])
+        if current is None:
+            start_single = _single_in_group_fit(start_snapshot["fits"], start_fit["inGroup"])
+            current_single = _single_in_group_fit(snapshot["fits"], start_fit["inGroup"])
+            if start_single is not None and current_single is not None and start_single["id"] == start_fit["id"]:
+                current = current_single
+        if current is None:
+            unmatched.append(start_fit["id"])
+            continue
+        matched += 1
+        l0, b0, r0, t0 = start_fit["boxDbu"]
+        l1, b1, r1, t1 = current["boxDbu"]
+        dx_doubled, dy_doubled = (l1 + r1) - (l0 + r0), (b1 + t1) - (b0 + t0)
+        if dx_doubled == 0 and dy_doubled == 0:
+            continue
+        distance_doubled = abs(dx_doubled) + abs(dy_doubled)
+        per_fit.append({
+            "id": current["id"], "startId": start_fit["id"],
+            "dxUm": _signed_half_um(dx_doubled, dbu_per_um), "dyUm": _signed_half_um(dy_doubled, dbu_per_um),
+            "distanceUm": _half_um(distance_doubled, dbu_per_um),
+        })
+        total_doubled += distance_doubled
+        max_doubled = max(max_doubled, distance_doubled)
+    return {
+        "movedCount": len(per_fit),
+        "maxUm": None if unmatched else _half_um(max_doubled, dbu_per_um),
+        "totalUm": _half_um(total_doubled, dbu_per_um),
+        "matched": matched,
+        "unmatched": unmatched,
+        "perFit": per_fit,
+    }
+
+
 def displacement(start_snapshot, snapshot):
-    """`{'movedCount', 'totalUm', 'perFit', 'added', 'removed'}` between two
-    snapshots' `fits`, matched by `id`.
+    """`{'movedCount', 'totalUm', 'perFit', 'added', 'removed', 'priority'}`
+    between two snapshots' `fits`, matched by `id`.
 
     `perFit` lists only moved fits (`boxDbu` differs), with each
     `dxUm`/`dyUm` the signed centre displacement. `totalUm` sums
@@ -405,6 +476,14 @@ def displacement(start_snapshot, snapshot):
     exact. Fits present in only one snapshot's `fits` list are `added`
     (only in `snapshot`) or `removed` (only in `start_snapshot`), never
     counted as moved.
+
+    `priority` is a separate sub-report (see `_priority_displacement`)
+    covering only the frozen start's Group-placed (priority) Fits,
+    matched by id or, when a Fit has been renamed/resuffixed, by its
+    Group holding exactly one in-group Fit on both sides; a Fit that
+    cannot be matched either way is `unmatched` and makes `priority`'s
+    own `maxUm` unknown (`None`), independent of the top-level
+    `movedCount`/`totalUm`, which stay id-matched only.
     """
     dbu_per_um = snapshot["dbuPerUm"]
     start_by_id = {f["id"]: f for f in start_snapshot["fits"]}
@@ -430,6 +509,7 @@ def displacement(start_snapshot, snapshot):
 
     added = sorted(set(current_by_id) - set(start_by_id))
     removed = sorted(set(start_by_id) - set(current_by_id))
+    priority = _priority_displacement(start_snapshot, snapshot, dbu_per_um)
 
     return {
         "movedCount": len(per_fit),
@@ -437,6 +517,7 @@ def displacement(start_snapshot, snapshot):
         "perFit": per_fit,
         "added": added,
         "removed": removed,
+        "priority": priority,
     }
 
 

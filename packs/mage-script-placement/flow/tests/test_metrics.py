@@ -554,5 +554,113 @@ class AllUnboundSideOrderUnknownTest(unittest.TestCase):
         self.assertIsNone(d["max"])
 
 
+class PerSideOrderAndPriorityMovementTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.case = fixtures.make_case(self.tmp.name)
+        manifest = self.case["manifest"]
+        self.dbu = manifest["dbuPerUm"]
+        rule_text = Path(manifest["rule"]["path"]).read_text(encoding="utf-8")
+        pblock_text = Path(manifest["pblock"]["path"]).read_text(encoding="utf-8")
+        block_text = Path(manifest["block"]["path"]).read_text(encoding="utf-8")
+        self.frame = rules.frame_from_rule(rule_text, pblock_text, self.dbu)
+        self.rule_facts = rules.read_rule_facts(rule_text, self.dbu)
+        self.block_types = rules.read_block_types(block_text, self.dbu)
+        csv_text = Path(manifest["targetTable"]["path"]).read_text(encoding="utf-8")
+        targets_raw = targets.read_targets(csv_text, self.frame, self.dbu, "2")
+        self.start_doc = pla.read_pla(Path(manifest["startState"]["path"]).read_text(encoding="utf-8"), self.dbu)
+        self.targets = targets.bind_targets(targets_raw, self.start_doc["groups"], self.start_doc["fits"])
+        self.start = snapshot.build_snapshot("start", self.start_doc, self.frame, self.rule_facts, self.targets,
+                                             self.block_types, {}, pending_from_rules=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _candidate(self, doc):
+        return snapshot.build_snapshot("candidate", doc, self.frame, self.rule_facts, self.targets,
+                                       self.block_types, {}, pending_from_rules=False)
+
+    def _copy_doc(self):
+        return pla.read_pla(pla.write_pla(self.start_doc, self.dbu), self.dbu)
+
+    def test_order_deviation_reports_lr_and_tb_maxima(self):
+        result = metrics.order_deviation(self.start)
+        self.assertEqual(result["maxLr"], max(result["byPartition"]["LR-left"], result["byPartition"]["LR-right"]))
+        self.assertEqual(result["maxTb"], max(result["byPartition"]["TB-bottom"], result["byPartition"]["TB-top"]))
+        self.assertEqual(result["max"], max(result["maxLr"], result["maxTb"]))
+
+    def test_order_deviation_side_unknown_makes_that_axis_unknown_only(self):
+        # The shared `make_case` fixture never produces an LR-partitioned
+        # target (its target rows' y-values are always at one of the two
+        # y-extremes, so `targets.read_targets` classifies every one of
+        # them as TB; see task-2-report.md). Build a synthetic snapshot via
+        # `_marks_snapshot` instead, with one bound TB mark and one bound
+        # LR mark, so both axes start out known.
+        tb_snap = _marks_snapshot(
+            [{"row": 0, "groupName": "A", "ct": 0, "placed": 0}], partition="TB")
+        lr_snap = _marks_snapshot(
+            [{"row": 1, "groupName": "B", "ct": 0, "placed": 0}], partition="LR")
+        snap = {
+            "dbuPerUm": 1, "frame": tb_snap["frame"],
+            "fits": tb_snap["fits"] + lr_snap["fits"],
+            "targets": tb_snap["targets"] + lr_snap["targets"],
+        }
+        result = metrics.order_deviation(snap)
+        self.assertIsNotNone(result["maxLr"])
+        self.assertIsNotNone(result["maxTb"])
+        self.assertEqual(result["max"], max(result["maxLr"], result["maxTb"]))
+
+        # Now drop the LR mark's fit: that side has a requested target but
+        # no bound fit, so only its axis goes unknown.
+        lr_fit_id = lr_snap["fits"][0]["id"]
+        snap_unbound = dict(snap)
+        snap_unbound["fits"] = [f for f in snap["fits"] if f["id"] != lr_fit_id]
+        result_unbound = metrics.order_deviation(snap_unbound)
+        self.assertIsNone(result_unbound["maxLr"])
+        self.assertIsNotNone(result_unbound["maxTb"])
+        self.assertIsNone(result_unbound["max"])
+
+    def test_priority_movement_by_id(self):
+        doc = self._copy_doc()
+        for fit in doc["fits"]:
+            if fit["base"] == "OVL_B":
+                l, b, r, t = fit["boxDbu"]
+                fit["boxDbu"] = [l - 1500000, b, r - 1500000, t]   # 150 um left
+        priority = metrics.displacement(self.start, self._candidate(doc))["priority"]
+        self.assertEqual(priority["movedCount"], 1)
+        self.assertEqual(priority["maxUm"], "150")
+        self.assertEqual(priority["totalUm"], "150")
+        self.assertEqual(priority["unmatched"], [])
+        self.assertEqual(priority["perFit"][0]["id"], "OVL_B.OVL_B_1")
+        self.assertEqual(priority["perFit"][0]["distanceUm"], "150")
+
+    def test_priority_movement_matches_a_resuffixed_fit_by_group(self):
+        doc = self._copy_doc()
+        for fit in doc["fits"]:
+            if fit["base"] == "OVL_A":
+                fit["id"] = "OVL_A.OVL_A_9"
+                fit["inst"] = "OVL_A.OVL_A_9"
+                l, b, r, t = fit["boxDbu"]
+                fit["boxDbu"] = [l + 200000, b, r + 200000, t]   # 20 um right
+        priority = metrics.displacement(self.start, self._candidate(doc))["priority"]
+        self.assertEqual(priority["unmatched"], [])
+        self.assertEqual(priority["movedCount"], 1)
+        self.assertEqual(priority["maxUm"], "20")
+        self.assertEqual(priority["perFit"][0]["startId"], "OVL_A.OVL_A_1")
+        self.assertEqual(priority["perFit"][0]["id"], "OVL_A.OVL_A_9")
+
+    def test_priority_movement_unmatched_makes_max_unknown(self):
+        doc = self._copy_doc()
+        doc["fits"] = [f for f in doc["fits"] if f["base"] != "AL_X"]
+        priority = metrics.displacement(self.start, self._candidate(doc))["priority"]
+        self.assertEqual(priority["unmatched"], ["AL_X.AL_X_1"])
+        self.assertIsNone(priority["maxUm"])
+
+    def test_priority_movement_zero_when_nothing_moved(self):
+        priority = metrics.displacement(self.start, self._candidate(self.start_doc))["priority"]
+        self.assertEqual(priority["movedCount"], 0)
+        self.assertEqual(priority["maxUm"], "0")
+
+
 if __name__ == "__main__":
     unittest.main()
