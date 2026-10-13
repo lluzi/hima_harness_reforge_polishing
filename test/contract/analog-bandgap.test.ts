@@ -646,3 +646,310 @@ test('every chart the flow writes is a valid hima-chart', () => {
     assert.ok(parsed.success, `${kind}: ${JSON.stringify(parsed.error?.issues ?? [])}`);
   }
 });
+
+// ---------------------------------------------------------------- bgcore: the competitor's case (ladder, BGOK, 0.2 uA)
+
+const TAPS = Array.from({ length: 120 }, (_, i) => `vref_${i + 1}`);
+
+test('bgcore: the cell adds bgok and 120 tap pins, a 122.5-unit ladder from vbg and a two-stage BGOK monitor', () => {
+  const out = py([
+    'd = design_of("bgcore")',
+    'print(json.dumps(dict(design=d, cell=bg.cell_spice(card, d), mc=bg.cell_spice(card, d, True))))',
+  ].join('\n'));
+  const { design, cell, mc } = out;
+  const lines: string[] = cell.split('\n');
+  assert.ok(lines.includes(`.subckt bandgap_lb vdd vss en ibias vbg go g bgok ${TAPS.join(' ')}`), 'bandgap_lb pins, in order, on one line');
+  assert.ok(lines.includes(`.subckt bandgap vdd vss en ibias vbg bgok ${TAPS.join(' ')}`), 'bandgap: the same without go and g');
+  assert.ok(lines.includes(`xlb vdd vss en ibias vbg g g bgok ${TAPS.join(' ')} bandgap_lb`), 'the closed cell joins go and g');
+  assert.equal(design.ibiasUa, 0.2, 'the bgcore reference is 0.2 uA');
+  const u = design.ladder;
+  assert.deepEqual(Object.keys(u).sort(), ['lUm', 'wUm'], 'the ladder unit is one segment: W and L');
+  const unit = (p: string, q: string, name: string) => `X${name} ${p} ${q} vss sres r_length=${u.lUm}u r_width=${u.wUm}u s=1`;
+  const ladder = lines.filter((l) => /^XRL/.test(l));
+  assert.equal(ladder.length, 124, 'RL0 as two parallel halves, then RL1..RL122');
+  assert.ok(lines.includes(unit('vbg', 'vref_122', 'RL0a')) && lines.includes(unit('vbg', 'vref_122', 'RL0b')), 'RL0: two units in parallel');
+  for (let k = 1; k <= 122; k += 1) {
+    assert.ok(lines.includes(unit(`vref_${k}`, k === 1 ? 'vss' : `vref_${k - 1}`, `RL${k}`)), `RL${k} joins vref_${k} and vref_${k - 1}`);
+  }
+  // Tap k sits at VBG k / 122.5: the series resistance below vref_k over the whole.
+  assert.equal(new Set(ladder.map((l) => l.split(' ').slice(3).join(' '))).size, 1, 'every segment is the same unit');
+  // BGOK: the sense device on vref_100 against a pull-up mirrored from the bias, then an inverter; en low holds ok1 high.
+  assert.ok(lines.includes('MOK1 ok1 vref_100 vss vss nch33 w=4u l=1u'));
+  assert.ok(lines.some((l) => new RegExp(`^MOK2 ok1 ibias vdd vdd pch33 w=${design.devices.MOK2.wUm}u l=${design.devices.MOK2.lUm}u$`).test(l)));
+  assert.ok(lines.includes('MOK3 bgok ok1 vdd vdd pch33 w=1u l=1u') && lines.includes('MOK4 bgok ok1 vss vss nch33 w=1u l=1u'));
+  assert.ok(lines.includes('MEN4 ok1 en vdd vdd pch33 w=1u l=1u'));
+  assert.ok(lines.includes('MSU3 g su sux vss nch33 w=2u l=4u'), 'the start-up switch\'s gate gives su capacitance at 0.2 uA');
+  assert.equal(design.devices.MOK2.lUm, design.devices.MB0.lUm, 'the pull-up mirrors the reference diode');
+  // The core is kuijk-p5t-mirror's.
+  assert.ok(lines.some((l) => /^M5 go o1 ls vss nch33 /.test(l)) && lines.some((l) => /^M6 go go vdd vdd pch33 /.test(l)));
+  assert.equal(lines.filter((l) => /^M/.test(l)).length, Object.keys(design.devices).length);
+  // Mismatch: the MOS become the PDK's mismatch subcircuits; the ladder's resistors are in the cell either way.
+  assert.equal(mc.split('\n').filter((l: string) => /^XRL/.test(l)).length, 124);
+  assert.equal(mc.split('\n').filter((l: string) => /^M/.test(l)).length, 0);
+});
+
+test('bgcore: both benches wire bgok and the taps per copy, save bgok, and draw the design\'s 0.2 uA', () => {
+  const out = py([
+    'inputs = dict(pdkRoot="/pdk", topology="bgcore", pdks=dict(design=dict(name="synth180", card=card)))',
+    'parts = {p: bg.bench_spectre(inputs, "tt", 3.3, 0.2, "/w/cell.spice", bg.TEMPS, p) for p, _ in bg.SPECTRE_PARTS}',
+    'from pathlib import Path',
+    'ng, files = bg.bench_ngspice(inputs, "tt", 3.3, 0.2, "/w/cell.spice", bg.TEMPS, Path("/w/bg-tt-3.3V"))',
+    'mcs = bg.mc_spectre_lines(inputs, "/w/cell.spice", 3.3, 0.2, 10, 1)',
+    'mcn = bg.mc_ngspice_lines(inputs, "/w/cell.spice", 3.3, 0.2, 10, 1)',
+    'old = dict(inputs, topology="kuijk-p5t-mirror")',
+    'print(json.dumps(dict(parts=parts, ng=ng, mcs=mcs, mcn=mcn, old=bg.mc_spectre_lines(old, "/w/cell.spice", 3.3, 0.5, 10, 1))))',
+  ].join('\n'));
+  const taps = (k: number) => TAPS.map((t) => `vr${k}_${t.split('_')[1]}`).join(' ');
+  const parts: Record<string, string[]> = out.parts;
+  for (const [part, k] of [['nominal', 1], ['loopv', 2], ['loopi', 3], ['off', 4], ['powerUp', 5], ['en1us', 6], ['en50us', 7], ['offref', 8]] as const) {
+    const x = parts[part]!.filter((l) => /^X\d /.test(l));
+    assert.equal(x.length, 1, part);
+    const head = k === 5 ? 'X5 (vdd5 0 vdd5 ib5 vbg5 g5 g5' : k === 2 || k === 3 ? `X${k} (vdd${k} 0 en${k} ib${k} vbg${k} go${k} g${k}` : `X${k} (vdd${k} 0 en${k} ib${k} vbg${k} g${k} g${k}`;
+    assert.equal(x[0], `${head} bgok${k} ${taps(k)}) bandgap_lb`, `${part}: copy ${k}'s pins`);
+    assert.ok(parts[part]!.includes(`GIB${k} (ib${k} 0 ${k === 5 ? 'vdd5' : k === 8 ? 'vdd8' : `en${k}`} 0) vccs gm=6.06061e-08`), `${part}: 0.2 uA at 3.3 V`);
+  }
+  const save = (p: string) => parts[p]!.find((l) => l.startsWith('save '))!.split(' ').slice(1);
+  assert.ok(save('nominal').includes('bgok1') && save('off').includes('bgok4'), 'bgok saved enabled and with en low');
+  assert.ok(!save('offref').includes('bgok8') && !save('loopv').some((s) => s.startsWith('bgok')));
+  const ng: string[] = out.ng;
+  const nx = ng.filter((l) => /^X\d /.test(l));
+  assert.equal(nx.length, 8);
+  assert.equal(nx[0], `X1 vdd1 0 en1 ib1 vbg1 g1 g1 bgok1 ${taps(1)} bandgap_lb`);
+  assert.equal(nx[1], `X2 vdd2 0 en2 ib2 vbg2 go2 g2 bgok2 ${taps(2)} bandgap_lb`);
+  assert.ok(ng.includes('let hb1 = v(bgok1)') && ng.includes('let hb4 = v(bgok4)'));
+  assert.ok(ng.some((l) => /^echo HIMA op p27 .* \$&hb1 \$&hb4$/.test(l)));
+  assert.ok(out.mcs.includes(`X1 (vdd1 0 en1 ib1 vbg1 g1 g1 bgok1 ${taps(1)}) bandgap_lb`) && out.mcs.includes('GIB1 (ib1 0 en1 0) vccs gm=6.06061e-08'));
+  assert.ok(out.mcn.includes(`X1 vdd1 0 en1 ib1 vbg1 g1 g1 bgok1 ${taps(1)} bandgap_lb`));
+  assert.ok(out.old.includes('X1 (vdd1 0 en1 ib1 vbg1 g1 g1) bandgap_lb'), 'the other templates keep their pins');
+});
+
+/** The recorded tt 3.3 V bench with BGOK readings (bgcore) set per case; the judge's view of it. */
+function bgokCase(on: number | null, off: number | null): Json {
+  return py([
+    'from pathlib import Path',
+    `F = Path(${JSON.stringify(path.join(fixtures, 'spectre-tt'))})`,
+    'facts = bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+    'facts.update(process="tt", vdd=3.3)',
+    'plain = bg.bench_measures(facts)',
+    `facts["temps"]["27"].update(bgokOn=${on ?? 'None'}, bgokOff=${off ?? 'None'})`,
+    'b = bg.bench_measures(facts)',
+    'spec_ = dict(vbgV=1.2, vbgTolPct=2, iqMaxUa=8, isdMaxNa=2, tcMaxPpm=100, pmMinDeg=60, tStartMaxUs=100, psrrMinDb=40)',
+    'w = bg.worst_of([b], 1.2)',
+    'pw = bg.worst_of([plain], 1.2)',
+    'record = dict(spec=spec_, worst=w, benches=[b], specMet=bg.line_met(w, spec_), marginPct=bg.margins_pct(w, spec_), meetsSpec=None,',
+    '              pdk="synth180", stage="schematic", conditions=dict(corners=["tt"], supplies=[3.3]), simulator="spectre", elapsedS=1.0,',
+    '              design=dict(n=8, ibiasUa=0.2, devices={}, resistors=json.load(open(F / "design.json"))["resistors"], caps={},',
+    '                          ladder=dict(wUm=2.0, lUm=38.8)), claimBoundary=bg.claim_boundary(0.2))',
+    'print(json.dumps(dict(t27=b["temps"]["27"], w=w, met=record["specMet"], margin=record["marginPct"], rpt=bg.measure_rpt(record),',
+    '                      chart=bg.lines_chart(record, "Bandgap spec lines, worst corner (schematic)", "spectre, 1 corner (simulate-pvt)"),',
+    '                      plain=dict(w=pw, met=bg.line_met(pw, spec_), margin=bg.margins_pct(pw, spec_))), default=lambda x: None))',
+  ].join('\n'));
+}
+
+test('bgcore: the BGOK line passes high-when-enabled and low-with-en-low, fails either level, and is absent elsewhere', () => {
+  const pass = bgokCase(3.29, 0.002);
+  assert.ok(Math.abs(pass.t27.bgokOnRatio - 3.29 / 3.3) < 1e-12 && Math.abs(pass.t27.bgokOffRatio - 0.002 / 3.3) < 1e-12);
+  const err = Math.max(100 * (1 - 3.29 / 3.3), 100 * 0.002 / 3.3);
+  assert.ok(Math.abs(pass.w.bgok.value - err) < 1e-9, `the worst level error ${pass.w.bgok.value} vs ${err} % of vdd`);
+  assert.equal(pass.w.bgok.onWhere, 'tt 3.3V 27C');
+  assert.equal(pass.met.bgok, true);
+  assert.ok(Math.abs(pass.margin.bgok - Math.round(100 * (10 - err) / 10 * 100) / 100) < 1e-9);
+  assert.match(pass.rpt, /\| BGOK level error \| > 90 % vdd en high, < 10 % en low \| 0\.3 % vdd \| tt 3\.3V 27C \(en high\) \| /);
+  assert.match(pass.rpt, /\| tt 3\.3V \| 0\.997 \| 0\.001 \|/);
+  assert.match(pass.rpt, /0\.2 uA reference current/);
+  const chart = himaChart.safeParse(pass.chart);
+  assert.ok(chart.success, JSON.stringify(chart.error?.issues ?? []));
+  assert.equal(pass.chart.categories.at(-1), 'BGOK level error');
+  // Enabled but low (an 0.85 vdd bgok): the line fails, at the enabled copy.
+  const low = bgokCase(0.85 * 3.3, 0.0);
+  assert.equal(low.met.bgok, false);
+  assert.match(low.w.bgok.where, /\(en high\)$/);
+  assert.ok(low.margin.bgok < 0);
+  // Disabled but high (0.2 vdd with en low): fails at the en-low copy.
+  const high = bgokCase(3.3, 0.2 * 3.3);
+  assert.equal(high.met.bgok, false);
+  assert.match(high.w.bgok.where, /\(en low\)$/);
+  assert.ok(Math.abs(high.w.bgok.offMaxRatio - 0.2) < 1e-12);
+  // A missing reading is a miss, never a pass.
+  const missing = bgokCase(null, 0.0);
+  assert.equal(missing.w.bgok.value, null);
+  assert.equal(missing.met.bgok, false);
+  // The other templates: no BGOK line anywhere.
+  assert.equal(pass.plain.w.bgok, undefined);
+  assert.deepEqual(Object.keys(pass.plain.met).sort(), ['iq', 'isd', 'pm', 'psrr', 'start', 'tc', 'vbg']);
+  assert.equal(pass.plain.margin.bgok, undefined);
+});
+
+test('start-up is causal: VBG inside its final band before en starts rising is a miss with a reason, never 0 us', () => {
+  const out = py([
+    'time = [k * 1e-7 for k in range(3001)]',
+    'early = [1.2 if t >= 9.45e-6 else 0.0 for t in time]',
+    'late = [1.2 * (1 - math.exp(-(t - 10e-6) / 5e-6)) if t >= 10e-6 else 0.0 for t in time]',
+    'from pathlib import Path',
+    `F = Path(${JSON.stringify(path.join(fixtures, 'spectre-tt'))})`,
+    'facts = bg.spectre_facts({p: F / ("bg-tt-3.3V-%s.raw" % p) for p, _ in bg.SPECTRE_PARTS}, (27,))',
+    'facts.update(process="tt", vdd=3.3)',
+    'tr = facts["temps"]["27"]["tran"]',
+    'final = tr["en1us"]["v"][-1]',
+    'tr["en1us"]["v"] = [final] * len(tr["en1us"]["v"])',
+    'tr["powerUp"]["v"] = [final] * len(tr["powerUp"]["v"])',
+    'b = bg.bench_measures(facts)',
+    'spec_ = dict(vbgV=1.2, vbgTolPct=2, iqMaxUa=8, isdMaxNa=2, tcMaxPpm=100, pmMinDeg=60, tStartMaxUs=100, psrrMinDb=40)',
+    'w = bg.worst_of([b], 1.2)',
+    'print(json.dumps(dict(early=bg.start_time_us(time, early, 10.5, 1.2, trigger_us=10.0), untriggered=bg.start_time_us(time, early, 10.5, 1.2),',
+    '                      late=bg.start_time_us(time, late, 10.5, 1.2, trigger_us=10.0), t27=b["temps"]["27"], w=w["start"],',
+    '                      met=bg.line_met(w, spec_)), default=lambda x: None))',
+  ].join('\n'));
+  assert.equal(out.early[0], null, 'in band 0.5 us before en rises: a miss');
+  assert.match(out.early[2], /inside its final \+\/-2 % band at 9\.500 us, before en started rising at 10 us/);
+  assert.equal(out.untriggered[0], 0, 'without a trigger (the power-up ramp) the same trace is not refused');
+  assert.ok(Math.abs(out.late[0] - (5 * Math.log(50) - 0.5)) < 0.05, `a causal start is timed (${out.late[0]} us)`);
+  assert.equal(out.late[2], null);
+  // In the bench: the en ramp that was already up is a miss; the power-up ramp is unaffected.
+  assert.equal(out.t27.starts.en1us.us, null);
+  assert.match(out.t27.starts.en1us.reason, /before en started rising at 10 us/);
+  assert.equal(out.t27.starts.powerUp.us, 0);
+  assert.ok(out.t27.starts.en50us.us > 0);
+  assert.equal(out.t27.startUs, null);
+  assert.match(out.t27.startReason, /^en1us: VBG was inside/);
+  assert.equal(out.w.value, null);
+  assert.match(out.w.reasons['tt 3.3V 27C'], /en1us: .*en did not start it/);
+  assert.equal(out.met.start, false, 'the start-up line misses');
+});
+
+test('bgcore: the first cut takes the ladder and the BGOK pull-up out of the IQ budget at 0.2 uA', () => {
+  const out = py([
+    'd = design_of("bgcore")',
+    'm = design_of("kuijk-p5t-mirror")',
+    'print(json.dumps(dict(design=d, mirror=m)))',
+  ].join('\n'));
+  const { design, mirror } = out;
+  const intent = design.intent;
+  const dev = JSON.parse(spawnSync('cat', [path.join(fixtures, 'synth180-tables/devices.json')], { encoding: 'utf8' }).stdout);
+  const temps: number[] = dev.temps;
+  const at = (row: number[], t: number) => {
+    const i = temps.findIndex((x) => x >= t);
+    return temps[i] === t ? row[i]! : row[i - 1]! + (t - temps[i - 1]!) / (temps[i]! - temps[i - 1]!) * (row[i]! - row[i - 1]!);
+  };
+  const fit = (corner: string, w: number, t: number) => {
+    const r10 = at(dev.res.r[corner][`${w}/10`], t), r40 = at(dev.res.r[corner][`${w}/40`], t);
+    const a = (r40 - r10) / 30;
+    return [a, r10 - 10 * a] as const;
+  };
+  const [a27, b27] = fit('tt', 2, 27);
+  const [a125] = fit('tt', 2, 125);
+  const corners = Object.keys(dev.res.r);
+  const aff = Math.min(...corners.map((c) => fit(c, 2, 27)[0]));
+  const aMin = Math.min(...corners.flatMap((c) => [-40, 27, 125].map((t) => fit(c, 2, t)[0])));
+  const kHot = (398.15 / 300.15) * (a27 / a125) * (a27 / aff);
+  // The ladder draws IQ/16 at the VBG target through 122.5 units; the unit rounds to 0.1 kOhm.
+  assert.equal(intent.ladderRUnitKohm, Math.round(1.2 / 122.5 / (8 / 16 * 1e-6) / 1e3 * 10) / 10);
+  assert.equal(intent.bgokNa, 50);
+  assert.deepEqual([intent.ibiasUa, intent.itailUa], [0.2, 0.4]);
+  assert.equal(intent.ccPf, 4, 'CC scales with the tail: the 0.5 uA design\'s slew rate and gm/CC');
+  const iL = 1.2 / (122.5 * intent.ladderRUnitKohm * 1e3) * 1e6;
+  const iLHot = iL * a27 / aMin;
+  const drive = 1 + 1 / intent.driveRatio;
+  const iCore = (0.8 * 8 - 0.2 - 0.4 - 0.025 - 0.05 - iLHot * drive) / ((2 + 2 / intent.driveRatio) * kHot);
+  assert.ok(Math.abs(intent.iCoreUa - iCore) < 1e-3, `core current ${intent.iCoreUa} vs ${iCore}`);
+  // The worst-case IQ the budget allows: 80 % of the line, the ladder included.
+  const iq = 0.2 + 0.4 + 0.025 + 0.05 + (2 * intent.iCoreUa * kHot + iLHot) * drive;
+  assert.ok(Math.abs(iq - 6.4) < 0.01, `IQ budget ${iq} uA`);
+  // The unit segment is ladderRUnitKohm at the core resistors' width, one segment.
+  const unit = a27 * design.ladder.lUm + b27;
+  assert.ok(Math.abs(unit - intent.ladderRUnitKohm * 1e3) / unit < 0.002, `unit ${unit} Ohm`);
+  assert.equal(design.ladder.wUm, intent.resWUm);
+  // The output device carries the core and the ladder; M6 is 1 / driveRatio of it.
+  assert.equal(design.intent.out.gmId, 10, 'the mirror templates\' output device in moderate inversion');
+  assert.ok(design.devices.MO.wUm > mirror.devices.MO.wUm * (2 * intent.iCoreUa + iL) / (2 * mirror.intent.iCoreUa) * 0.97);
+  assert.ok(Math.abs(design.devices.MO.wUm / design.devices.M6.wUm - intent.driveRatio) < 0.05);
+  // kuijk-p5t-mirror is unchanged: no ladder, no BGOK, 0.5 uA.
+  assert.equal(mirror.ladder, undefined);
+  assert.equal(mirror.intent.ladderRUnitKohm, undefined);
+  assert.equal(mirror.intent.bgokNa, undefined);
+  assert.equal(mirror.ibiasUa, 0.5);
+  assert.equal(mirror.intent.ccPf, 10);
+  assert.equal(mirror.devices.MOK1, undefined);
+  assert.deepEqual(mirror.devices.MSU3, { wUm: 1, lUm: 1 });
+});
+
+test('bgcore: precheck, cell, the post-layout pins and the record judge the case\'s own fields and lines', async () => {
+  const { ws, done } = await workspace('bgcore');
+  try {
+    await writeFile(path.join(ws, 'sheet.json'), JSON.stringify(SPEC));
+    const intentRun = bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet.json'));
+    assert.equal(intentRun.status, 0, intentRun.stderr);
+    await writeFile(path.join(ws, 'intent.json'), intentRun.stdout);
+    await writeFile(path.join(ws, 'sheet-ib.json'), JSON.stringify({ ...SPEC, choices: { ibiasUa: 0.5 } }));
+    assert.match(bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet-ib.json')).stderr, /ibiasUa must be 0.2 uA/);
+    await writeFile(path.join(ws, 'sheet-big.json'), JSON.stringify({ ...SPEC, choices: { ladderRUnitKohm: 500 } }));
+    const big = bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet-big.json'));
+    assert.equal(big.status, 0, big.stderr);
+    await writeFile(path.join(ws, 'intent-big.json'), big.stdout);
+    assert.match(bgcli(ws, 'draft', 'size', path.join(ws, 'intent-big.json')).stderr, /a ladder unit of 500 kOhm is longer than one 200 um segment/);
+    const drafted = bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json'));
+    assert.equal(drafted.status, 0, drafted.stderr);
+    const good: Json = { ...JSON.parse(drafted.stdout), summary: 'first cut', reason: 'the method' };
+    const check = async (doc: Json) => {
+      await writeFile(path.join(ws, 'd.json'), JSON.stringify(doc));
+      return bgcli(ws, 'precheck', path.join(ws, 'd.json'), ws);
+    };
+    assert.equal((await check(good)).status, 0);
+    const cases: [string, (d: Json) => void, RegExp][] = [
+      ['no ladder', (d) => { delete d.ladder; }, /ladder \(the reference ladder's unit segment, \{wUm, lUm\}\) is missing/],
+      ['a ladder off grid', (d) => { d.ladder.lUm = 38.805; }, /ladder L=38.805 um is off the 0.01 um grid/],
+      ['the old reference', (d) => { d.ibiasUa = 0.5; }, /ibiasUa must be 0.2, the reference current the bench provides/],
+      ['no BGOK pull-up', (d) => { delete d.devices.MOK2; }, /devices must be exactly/],
+      ['a ladder that is not the intent\'s', (d) => { d.ladder.lUm += 1; }, /do not follow the intent/],
+    ];
+    for (const [label, edit, why] of cases) {
+      const doc = JSON.parse(JSON.stringify(good));
+      edit(doc);
+      const run = await check(doc);
+      assert.notEqual(run.status, 0, `${label} is refused`);
+      assert.match(run.stderr, why, label);
+    }
+    await writeFile(path.join(ws, 'state/design.json'), JSON.stringify(good));
+    const cell = bgcli(ws, 'cell');
+    assert.equal(cell.status, 0, cell.stderr);
+    assert.match(cell.stdout, new RegExp(`^\\.subckt bandgap_lb vdd vss en ibias vbg go g bgok ${TAPS.join(' ')}$`, 'm'));
+    // The extracted cell must carry the 128 pins in order: a 7-pin extraction is refused before any simulation.
+    const designSha = createHash('sha256').update(await readFile(path.join(ws, 'state/design.json'))).digest('hex');
+    const post = '.subckt bandgap_lb vdd vss en ibias vbg go g\nR1 vdd vss 1k\n.ends\n';
+    await writeFile(path.join(ws, 'state/cell-post.spice'), post);
+    await writeFile(path.join(ws, 'state/layout.json'), JSON.stringify({ round: 1, designSha256: designSha, clean: true,
+      postCellSha256: createHash('sha256').update(post).digest('hex') }));
+    const args = ['1.2', '2', '8', '2', '100', '60', '100', '40'];
+    assert.match(bgcli(ws, 'simulate', 'post', ...args).stderr, /bandgap_lb pins are not, in order, vdd vss en ibias vbg go g bgok \.\.\. vref_120/);
+    await rm(path.join(ws, 'state/layout.json'));
+    // The record: a bgcore measurement without a BGOK line is a problem; a failing BGOK line keeps the round unsigned.
+    const worst = { vbg: { value: 1.2, where: 'tt' }, iq: { value: 5, where: 'tt' }, isd: { value: 0.1, where: 'tt' }, tc: { value: 20, where: 'tt' },
+      pm: { value: 70, where: 'tt' }, start: { value: 50, where: 'tt' }, psrr: { value: 50, where: 'tt' } };
+    const spec = { vbgV: 1.2, vbgTolPct: 2, iqMaxUa: 8, isdMaxNa: 2, tcMaxPpm: 100, pmMinDeg: 60, tStartMaxUs: 100, psrrMinDb: 40 };
+    await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify({ round: 1, designSha256: designSha, spec, worst }));
+    let run = bgcli(ws, 'record', ...args);
+    assert.equal(run.status, 0, run.stderr);
+    let round = JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
+    assert.ok(round.problems.includes('the measure-schematic result has no BGOK line (the bgcore template judges it)'));
+    assert.equal(round.roundValid, false);
+    await writeFile(path.join(ws, 'state/lessons.json'), JSON.stringify({ schema: 'hima-bandgap-lessons/1', rounds: [] }));
+    await writeFile(path.join(ws, 'state/measure-schematic.json'), JSON.stringify({ round: 1, designSha256: designSha, spec,
+      worst: { ...worst, bgok: { value: 24.2, where: 'ss 2V -40C (en high)' } } }));
+    run = bgcli(ws, 'record', ...args);
+    assert.equal(run.status, 0, run.stderr);
+    round = JSON.parse(await readFile(path.join(ws, 'state/round.json'), 'utf8'));
+    assert.deepEqual(round.problems, []);
+    assert.equal(round.pvtMet.bgok, false);
+    assert.deepEqual(round.failing, ['bgok', 'mc']);
+    assert.equal(round.pvtWorst.bgok, 24.2);
+    assert.equal(round.signedOff, false);
+    assert.match(round.claimBoundary, /ideal 0\.2 uA reference current/);
+    assert.match(await readFile(path.join(ws, 'derived/round-1.md'), 'utf8'), /\| BGOK level error \| 24\.2 % vdd \| ss 2V -40C \(en high\) \| no \|/);
+    // The other template's record keeps its seven lines and its 0.5 uA boundary.
+    const { ws: ws2, done: done2 } = await workspace('kuijk-p5t-mirror');
+    try {
+      await writeFile(path.join(ws2, 'd.json'), JSON.stringify(good));
+      assert.match(bgcli(ws2, 'precheck', path.join(ws2, 'd.json'), ws2).stderr, /ladder: the kuijk-p5t-mirror template has no reference ladder/);
+    } finally { await done2(); }
+  } finally { await done(); }
+});

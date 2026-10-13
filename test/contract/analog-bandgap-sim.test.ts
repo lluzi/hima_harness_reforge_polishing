@@ -13,6 +13,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -287,5 +288,49 @@ test('the bench\'s loop injection on an ideal two-pole loop gives the analytic p
     assert.ok(Math.abs(t27.loop.ugfHz - lo) / lo < 0.01, `UGF ${t27.loop.ugfHz} vs ${lo}`);
     assert.ok(Math.abs(t27.loop.dcGainDb - 40) < 0.01, `T0 ${t27.loop.dcGainDb} dB`);
     assert.equal(t27.startUs, null, 'a dead circuit never counts as started');
+  } finally { await done(); }
+});
+
+test('bgcore on ngspice at tt: the ladder and BGOK in the cell, bgok high when enabled and low with en low, Monte Carlo with the ladder', { skip }, async () => {
+  const { ws, done } = await workspace();
+  try {
+    assert.match(ok(ws, 'bind', `ngspice=${ngspice!}`, pdkRoot, 'synth180', 'bgcore'), /template bgcore/);
+    ok(ws, 'characterize');
+    await writeFile(path.join(ws, 'sheet.json'), JSON.stringify(SPEC));
+    await writeFile(path.join(ws, 'intent.json'), ok(ws, 'draft', 'intent', path.join(ws, 'sheet.json')));
+    const design: Json = { ...JSON.parse(ok(ws, 'draft', 'size', path.join(ws, 'intent.json'))), summary: 'first cut', reason: 'the method' };
+    assert.equal(design.ibiasUa, 0.2);
+    await mkdir(path.join(ws, 'reports/size-agent/r1'), { recursive: true });
+    await writeFile(path.join(ws, 'reports/size-agent/r1/analysis.md'), '# analysis\n');
+    await writeFile(path.join(ws, 'design.json'), JSON.stringify(design));
+    ok(ws, 'precheck', path.join(ws, 'design.json'), ws);
+    const own = JSON.parse(ok(ws, 'sim', path.join(ws, 'design.json'), 'tt', path.join(ws, 'sheet.json'), path.join(ws, 'own')));
+    assert.deepEqual(own.benches.map((b: Json) => [b.process, b.vdd]), [['tt', 2], ['tt', 3.3]]);
+    const iLadder = 1.2 / (122.5 * design.intent.ladderRUnitKohm * 1e3) * 1e6;
+    for (const b of own.benches) {
+      for (const [t, x] of Object.entries(b.temps) as [string, Json][]) {
+        const where = `tt ${b.vdd} V ${t} C`;
+        assert.ok(x.vbgV > 1.1 && x.vbgV < 1.3, `${where}: VBG ${x.vbgV}`);
+        assert.ok(x.bgokOnRatio > 0.9, `${where}: bgok high when enabled (${x.bgokOnRatio} vdd)`);
+        assert.ok(x.bgokOffRatio < 0.1, `${where}: bgok low with en low (${x.bgokOffRatio} vdd)`);
+        assert.ok(x.startUs !== null && x.startUs < 300, `${where}: it starts (${x.startUs} us, ${x.startReason ?? ''})`);
+        assert.ok(x.isdNa < 1, `${where}: shutdown is leakage only, the ladder and BGOK included (${x.isdNa} nA)`);
+        assert.ok(x.iqUa > 0.2 + 0.4 + iLadder, `${where}: IQ ${x.iqUa} uA carries the reference, the tail and the ladder`);
+        assert.ok(x.pmDeg > 45, `${where}: a stable loop with the ladder on vbg (${x.pmDeg} deg)`);
+      }
+    }
+    assert.equal(own.specMet.bgok, true);
+    assert.ok(own.worst.bgok.value < 10 && /^tt /.test(own.worst.bgok.where));
+    assert.equal(typeof own.specMet.start, 'boolean');
+    // Monte Carlo on the accepted design: the bench wires every tap, the ladder's resistors draw mismatch too.
+    await cp(path.join(ws, 'design.json'), path.join(ws, 'state/design.json'));
+    assert.match(ok(ws, 'mc', '5', '1.2', '2', '3'), /Monte Carlo round 1: 5 runs/);
+    const mc = await readJson(path.join(ws, 'state/mc.json'));
+    assert.equal(mc.conditions.ibiasUa, 0.2);
+    assert.match(mc.claimBoundary, /0\.2 uA reference current/);
+    assert.equal(new Set(mc.vbgV).size, 5, 'every run draws its own mismatch');
+    const mcDir = path.join(ws, 'reports/monte-carlo/r1');
+    const cell = await readFile(path.join(mcDir, readdirSync(mcDir).find((f) => /^cell-mc.*\.spice$/.test(f))!), 'utf8');
+    assert.equal(cell.split('\n').filter((l) => /^XRL/.test(l)).length, 124);
   } finally { await done(); }
 });

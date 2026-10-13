@@ -17,6 +17,16 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
    - The input pair and the load from the Pelgrom area at which 3 sigma(VBG) takes `mcBandSharePct`
      of the VBG band, with sigma(VBG) = (1 + R2/R1) sigma(Vos) and
      sigma(Vos)^2 = 2 sigma(Vth,pair)^2 + 2 sigma(Vth,load)^2 (gm_load/gm_pair)^2.
+   - `bgcore`: the reference is 0.2 uA, and the tail 0.4 uA.
+     - The ladder's unit `ladderRUnitKohm` is chosen so that the ladder draws IQ/16 at the VBG
+       target through its 122.5 units: 19.6 kOhm and 0.5 uA at an 8 uA line.
+     - The BGOK pull-up `bgokNa` is 50 nA.
+     - Both come out of the IQ budget before the core current. The ladder is taken at its lowest
+       resistance over the corners and temperatures, times (1 + 1/driveRatio): the output device and
+       its drive branch carry the ladder's current as well as the core's. The output device, M5 and
+       M6 are sized for 2 iCore plus the ladder.
+     - CC scales with the tail current, 10 pF per uA: 4 pF at 0.4 uA. The OTA then keeps the slew
+       rate (itail/CC) and the unity-gain frequency (gm/CC) of the 0.5 uA design.
 2. **Choices, not numbers:** put choices in the sheet's `choices` (n, a group's gm/Id or L, CC, the
    tail current, ...) and draft again. The method re-derives what depends on them.
 3. **Monte Carlo:** `draft mc` scales the pair's and load's gate area by
@@ -35,6 +45,14 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
   loop gain while the loop's dominant pole is above 1 kHz.
 - A loop with no unity crossing (gain below 1: an amplifier device out of saturation), or a copy that
   does not settle within 1 % of its DC solution, fails its line; it is never "unknown".
+- Start-up is causal. If VBG is inside its final ±2 % band at any time before `en` starts rising
+  (the `en1us` and `en50us` copies), `en` did not start the copy: the line misses, and the reason
+  is recorded (`starts.<ramp>.reason`, `startReason`, `worst.start.reasons`). It is never a time of
+  0 µs or less. This is the error behind a −48.88 ns start-up marked as a pass.
+- BGOK (`bgcore`): the line `bgok` is the worst level error in % of vdd at every corner,
+  max(100 − 100 · bgok/vdd with `en` high and settled, 100 · bgok/vdd with `en` low). It must be
+  below 10 %. `worst.bgok` names the worst corner and copy (`en high` or `en low`) and carries
+  `onMinRatio` and `offMaxRatio`. A missing reading is a miss.
 
 ## Lessons (gf180mcuD, Spectre 23.1, 2026-10-12)
 

@@ -10,7 +10,8 @@ comes from the Site's SPICE simulator (Cadence Spectre or ngspice). The designer
 Kuijk equations on the characterized PNP, gm/Id lookup, the Pelgrom input-pair area) is code here.
 
   bind         <WS> <SIMULATORS> <PDK_ROOT> <PDK> [<TOPOLOGY>]   simulators, PDK files, the PDK card and
-                                       the template (kuijk-p5t, the default, or kuijk-p5t-mirror)
+                                       the template (kuijk-p5t, the default, kuijk-p5t-mirror, or bgcore:
+                                       the mirror cell plus a 120-tap ladder and a BGOK monitor, 0.2 uA reference)
   characterize <WS>                    gm/Id tables, PNP VBE(I, T) and resistor R(W, L, T) per corner
   design       <WS>                    check state/design.json (an agent's delivery)
   draft        <WS> <KIND> [<FILE>]    KIND intent (FILE = a spec sheet): the first cut from the spec;
@@ -29,7 +30,8 @@ Kuijk equations on the characterized PNP, gm/Id lookup, the Pelgrom input-pair a
                <TSTART_MAX_US> <PSRR_MIN_DB> [<MC_RUNS>]   the round record (a Monte Carlo result with
                                        fewer than MC_RUNS runs is a problem)
   cell         <WS> [<FILE>]           the cell netlist (SPICE: bandgap_lb with the loop pins go/g, and
-                                       bandgap) of the accepted design (checked) or of a design file
+                                       bandgap; bgcore adds bgok vref_1 .. vref_120) of the accepted design
+                                       (checked) or of a design file
 
 The simulator adapters, the PSF ASCII reader, the gm/Id tables and the file helpers are the OTA
 Pack's (`ota_cli.py`, a byte-identical copy). `sim` uses OTA_SIM / OTA_PDK_ROOT as the OTA Pack's
@@ -89,13 +91,21 @@ VBG_TARGET_V = 1.2                       # the default VBG target (the spec shee
 START_BAND_PCT = 2.0                     # start-up ends when VBG is within this of its final value and stays
 STARTED_PCT = 1.0                        # the final value must be this close to the DC solution, or it did not start
 LIMITS = {"n": (2, 24)}
-IBIAS_UA = 0.5                           # the reference current the bench provides (the ibias pin's ideal sink)
-CLAIM_BOUNDARY = ("Every number is the Site simulator's (Spectre or ngspice, as each measurement states) on the stated PDK's "
-                  "open models at the stated corners, schematic level unless the stage says post-layout, with an ideal "
-                  "0.5 uA reference current that the bench turns off with en (the shutdown current excludes it; "
-                  "isdRefOnNa, information only, leaves it on), and a 10 fF capacitance floor on every node; Monte Carlo "
-                  "covers device mismatch only (sw_stat_global = 0: global process spread is the corners); "
-                  "no package stress, no trimming; not silicon.")
+IBIAS_UA = 0.5                           # the reference current the bench provides (the ibias pin's ideal sink); bgcore: 0.2
+BGOK_LEVEL_PCT = 10.0                    # bgok must be within this % of vdd of its rail: above 90 % enabled, below 10 % with en low
+LADDER_TAPS, LADDER_UNITS, BGOK_TAP = 120, 122, 100   # bgcore: tap pins vref_1..120; RL1..RL122 units plus RL0 (half a unit); BGOK senses vref_100
+
+
+def claim_boundary(ibias_ua=IBIAS_UA):
+    return ("Every number is the Site simulator's (Spectre or ngspice, as each measurement states) on the stated PDK's "
+            "open models at the stated corners, schematic level unless the stage says post-layout, with an ideal "
+            "%g uA reference current that the bench turns off with en (the shutdown current excludes it; "
+            "isdRefOnNa, information only, leaves it on), and a 10 fF capacitance floor on every node; Monte Carlo "
+            "covers device mismatch only (sw_stat_global = 0: global process spread is the corners); "
+            "no package stress, no trimming; not silicon." % ibias_ua)
+
+
+CLAIM_BOUNDARY = claim_boundary()
 
 # The templates: MOS name -> (kind, group, drain, gate, source, bulk). Groups take their gm/Id and L
 # from the intent ("drive": the load's gm/Id and L); the switches are fixed small devices (SWITCH_UM).
@@ -132,6 +142,22 @@ TEMPLATES = {
         caps={"CC": ("o1", "vss"), "CO": ("vbg", "vss")}, extra={"driveRatio"},
         about="PMOS-input five-transistor OTA, then an NMOS transconductor into a PMOS diode that the output device mirrors"),
 }
+# bgcore (the competitor's case on an open PDK): kuijk-p5t-mirror plus a 122.5-unit reference ladder from vbg (taps vref_1..120
+# are pins) and a BGOK monitor: MOK1 senses vref_100 against the pull-up MOK2 (a mirror of the bias, so it follows en),
+# MOK3/MOK4 invert ok1 into bgok; with en low MEN4 holds ok1 at vdd, so bgok is driven low. The bench's reference is 0.2 uA.
+TEMPLATES["bgcore"] = dict(
+    mos=dict(TEMPLATES["kuijk-p5t-mirror"]["mos"],
+             MOK1=("nmos", "switch", "ok1", "vref_%d" % BGOK_TAP, "vss", "vss"),   # sense: on once vref_100 is up
+             MOK2=("pmos", "bgok", "ok1", "ibias", "vdd", "vdd"),                  # pull-up from the bias mirror (bgokNa)
+             MOK3=("pmos", "switch", "bgok", "ok1", "vdd", "vdd"),                 # the output inverter
+             MOK4=("nmos", "switch", "bgok", "ok1", "vss", "vss"),
+             MEN4=("pmos", "switch", "ok1", "en", "vdd", "vdd")),                  # en low: ok1 high, so bgok is driven low
+    caps=TEMPLATES["kuijk-p5t-mirror"]["caps"], extra={"driveRatio", "ladderRUnitKohm", "bgokNa"}, ibiasUa=0.2, ladder=True,
+    # MSU3's gate is the start-up node su, which a ~25 nA pull-up drives at 0.2 uA. With MSU3 at 1 x 1 um Spectre 23.1
+    # crashed (segmentation fault) at a random time in every attempt of the power-up transient at sf, 2.0 V, 125 C on
+    # gf180mcuD; 30 fF on su, or MSU3 at 2 x 4 um, ended it (2026-10-13, 3 of 3 attempts each).
+    switchUm={"MOK1": (4.0, 1.0), "MSU3": (2.0, 4.0)},
+    about="kuijk-p5t-mirror with a 120-tap reference ladder and a BGOK monitor (the bgcore case)")
 TOPOLOGY = "kuijk-p5t"                   # the spec's template, the default
 
 
@@ -145,12 +171,35 @@ def intent_keys(topology):
     return INTENT_KEYS | template(topology)["extra"]
 
 
+def ibias_of(topology):
+    """The reference current (uA) the bench draws from the ibias pin for this template."""
+    return template(topology).get("ibiasUa", IBIAS_UA)
+
+
+def has_ladder(topology):
+    return bool(template(topology).get("ladder"))
+
+
+def extra_pins(topology):
+    """The cell's pins after `vdd vss en ibias vbg [go g]`: bgcore's bgok and its tap pins vref_1..vref_120."""
+    return ["bgok"] + ["vref_%d" % i for i in range(1, LADDER_TAPS + 1)] if has_ladder(topology) else []
+
+
+def lb_pins(topology):
+    return ["vdd", "vss", "en", "ibias", "vbg", "go", "g"] + extra_pins(topology)
+
+
+def bench_pins(topology, k):
+    """The bench's nets on copy k's extra pins (bgok<k>, vr<k>_<i>)."""
+    return [("bgok%d" % k) if p == "bgok" else ("vr%d_%s" % (k, p.split("_")[1])) for p in extra_pins(topology)]
+
+
 def switch_um(name):
     return SWITCH_UM.get(name, (1.0, 1.0))
-SWITCH_UM = {"MSU2": (0.5, 20.0)}         # W, L of the switches (others 1 x 1 um)
+SWITCH_UM = {"MSU2": (0.5, 20.0)}         # W, L of the switches (others 1 x 1 um; a template's switchUm overrides)
 RESISTORS = {"R1": ("b", "c"), "R2a": ("vbg", "a"), "R2b": ("vbg", "b")}
 CAP_KEYS = {"CC": "ccPf", "CO": "coutPf"}
-DESIGN_KEYS = {"schema", "pdk", "topology", "round", "n", "ibiasUa", "devices", "resistors", "caps", "intent", "summary", "reason", "report"}
+DESIGN_KEYS = {"schema", "pdk", "topology", "round", "n", "ibiasUa", "devices", "resistors", "caps", "ladder", "intent", "summary", "reason", "report"}
 INTENT_KEYS = {"n", "ibiasUa", "itailUa", "iCoreUa", "r2r1", "isuNa", "resWUm", "resSegMaxUm", "ccPf", "coutPf", "mcBandSharePct",
                "pair", "load", "mirror", "out"}
 GROUPS = ("pair", "load", "mirror", "out")
@@ -159,8 +208,13 @@ GROUP_KEYS = {"gmId", "lUm"}
 LINES = (("vbg", "VBG (all corners)", "V", 4, "band"), ("iq", "Quiescent current", "uA", 2, "lower"),
          ("isd", "Shutdown current at 27 C", "nA", 3, "lower"), ("tc", "TC (box method)", "ppm/C", 1, "lower"),
          ("pm", "Loop phase margin", "deg", 1, "higher"), ("start", "Start-up time", "us", 1, "lower"),
-         ("psrr", "PSRR at 1 kHz", "dB", 1, "higher"))
+         ("psrr", "PSRR at 1 kHz", "dB", 1, "higher"), ("bgok", "BGOK level error", "% vdd", 1, "lower"))
 SPEC_KEYS = ("vbgV", "vbgTolPct", "iqMaxUa", "isdMaxNa", "tcMaxPpm", "pmMinDeg", "tStartMaxUs", "psrrMinDb")
+
+
+def lines_of(worst):
+    """The spec lines a measurement judges: every line it carries (the BGOK line only in bgcore)."""
+    return [line for line in LINES if line[0] in worst]
 
 
 # ---------------------------------------------------------------- inputs and the card
@@ -252,9 +306,11 @@ def cell_spice(card, design, mismatch=False):
     """The bandgap cell in SPICE syntax (both simulators read it): `bandgap_lb` with the loop broken
     between the OTA output (go) and the output device's gate (g), and `bandgap` with them joined."""
     pnp, res, cap = card["devices"]["pnp"], card["devices"]["res"], card["devices"]["cap"]
-    tpl = template(design.get("topology", TOPOLOGY))
-    lines = ["* Kuijk bandgap, topology %s, PDK %s, round %s" % (design.get("topology", TOPOLOGY), design.get("pdk"), design.get("round")),
-             ".subckt bandgap_lb vdd vss en ibias vbg go g"]
+    topology = design.get("topology", TOPOLOGY)
+    tpl = template(topology)
+    pins = lb_pins(topology)
+    lines = ["* Kuijk bandgap, topology %s, PDK %s, round %s" % (topology, design.get("pdk"), design.get("round")),
+             ".subckt bandgap_lb " + " ".join(pins)]
     lines.append("%s vss vss a %s %s" % (inst(card, "pnp", "Q1"), pnp["model"], pnp["params"]))
     for k in range(1, int(design["n"]) + 1):
         lines.append("%s vss vss c %s %s" % (inst(card, "pnp", "Q2_%d" % k), pnp["model"], pnp["params"]))
@@ -262,6 +318,9 @@ def cell_spice(card, design, mismatch=False):
         r = design["resistors"][name]
         lines.append("%s %s %s vss %s %s" % (inst(card, "res", name), p, q, res["model"],
                                              res["params"].format(w=um(r["wUm"]), l=um(r["lUm"]), s=int(r["s"]))))
+    for name, p, q in ladder_resistors(topology):
+        u = design["ladder"]
+        lines.append("%s %s %s vss %s %s" % (inst(card, "res", name), p, q, res["model"], res["params"].format(w=um(u["wUm"]), l=um(u["lUm"]), s=1)))
     for name, (kind, _group, d, g, s, b) in tpl["mos"].items():
         dv = design["devices"][name]
         lines.append(mos_line(card, kind, name, (d, g, s, b), dv["wUm"], dv["lUm"], mismatch))
@@ -270,8 +329,22 @@ def cell_spice(card, design, mismatch=False):
         for k in range(1, int(c["m"]) + 1) if c else ():
             label = name if int(c["m"]) == 1 else "%s_%d" % (name, k)
             lines.append("%s %s %s %s %s" % (inst(card, "cap", label), p, q, cap["model"], cap["params"].format(w=um(c["wUm"]), l=um(c["lUm"]))))
-    lines += [".ends bandgap_lb", "", ".subckt bandgap vdd vss en ibias vbg", "xlb vdd vss en ibias vbg g g bandgap_lb", ".ends bandgap", ""]
+    rest = " ".join([""] + extra_pins(topology))
+    lines += [".ends bandgap_lb", "", ".subckt bandgap vdd vss en ibias vbg" + rest, "xlb vdd vss en ibias vbg g g%s bandgap_lb" % rest,
+              ".ends bandgap", ""]
     return "\n".join(lines)
+
+
+def ladder_resistors(topology):
+    """bgcore's reference ladder, (name, p, q) per unit segment: RL0 (half a unit: RL0a and RL0b in parallel) from vbg to
+    vref_122, then RLk from vref_k to vref_(k-1), vref_0 being vss; tap k sits at VBG k / 122.5."""
+    if not has_ladder(topology):
+        return []
+    top = "vref_%d" % LADDER_UNITS
+    out = [("RL0a", "vbg", top), ("RL0b", "vbg", top)]
+    for k in range(LADDER_UNITS, 0, -1):
+        out.append(("RL%d" % k, "vref_%d" % k, "vref_%d" % (k - 1) if k > 1 else "vss"))
+    return out
 
 
 def lib_lines(inputs, corner, sim, mismatch=False):
@@ -340,15 +413,18 @@ def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_op
         lines.append("VEN%d (en%d 0) vsource dc=%g" % (k, k, 0.0 if k in (4, 8) else vdd))
     lines.append("GIB%d (ib%d 0 %s 0) vccs gm=%.6g" % (k, k, "vdd8" if k == 8 else en, g))
     vk = "vdd5" if k == 5 else "vdd%d" % k
+    topology = inputs.get("topology", TOPOLOGY)
+    rest = "".join(" " + x for x in bench_pins(topology, k))
     if k in (2, 3):
-        lines.append("X%d (%s 0 %s ib%d vbg%d go%d g%d) bandgap_lb" % (k, vk, en, k, k, k, k))
+        lines.append("X%d (%s 0 %s ib%d vbg%d go%d g%d%s) bandgap_lb" % (k, vk, en, k, k, k, k, rest))
         lines.append("VI%d (g%d go%d) vsource dc=0%s" % (k, k, k, " mag=1" if k == 2 else ""))
         if k == 3:
             lines.append("II3 (0 g3) isource dc=0 mag=1")
     else:
-        lines.append("X%d (%s 0 %s ib%d vbg%d g%d g%d) bandgap_lb" % (k, vk, en, k, k, k, k))
-    saves = {"nominal": ["vbg1", "VDD1:p"] + [node_name("spectre", x) for x in NODES], "loopv": ["go2", "g2"], "loopi": ["VI3:p"],
-             "off": ["VDD4:p"], "offref": ["VDD8:p"]}.get(part, ["vbg%d" % k])
+        lines.append("X%d (%s 0 %s ib%d vbg%d g%d g%d%s) bandgap_lb" % (k, vk, en, k, k, k, k, rest))
+    bgok = ["bgok%d" % k] if extra_pins(topology) else []
+    saves = {"nominal": ["vbg1", "VDD1:p"] + [node_name("spectre", x) for x in NODES] + bgok, "loopv": ["go2", "g2"], "loopi": ["VI3:p"],
+             "off": ["VDD4:p"] + bgok, "offref": ["VDD8:p"]}.get(part, ["vbg%d" % k])
     lines.append("save " + " ".join(saves))
     if part == "nominal":
         lines.append("dcT dc param=temp start=%g stop=%g step=%g" % SWEEP)
@@ -365,6 +441,8 @@ def bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part, tran_op
 
 def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
     card = card_of(inputs)
+    topology = inputs.get("topology", TOPOLOGY)
+    bgok = bool(extra_pins(topology))
     g = ibias_ua * 1e-6 / vdd
     ramps = ramp_points(vdd)
     pwl = lambda pts: "pwl(%s)" % " ".join("%gu %g" % (t, v) for t, v in pts)
@@ -384,13 +462,14 @@ def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
             lines.append("VEN%d en%d 0 dc %g" % (k, k, 0.0 if k in (4, 8) else vdd))
         lines.append("GIB%d ib%d 0 %s 0 %.6g" % (k, k, "vdd8" if k == 8 else en, g))
         vk = "vdd5" if k == 5 else "vdd%d" % k
+        rest = "".join(" " + x for x in bench_pins(topology, k))
         if k in (2, 3):
-            lines.append("X%d %s 0 %s ib%d vbg%d go%d g%d bandgap_lb" % (k, vk, en, k, k, k, k))
+            lines.append("X%d %s 0 %s ib%d vbg%d go%d g%d%s bandgap_lb" % (k, vk, en, k, k, k, k, rest))
             lines.append("VI%d g%d go%d dc 0%s" % (k, k, k, " ac 1" if k == 2 else ""))
             if k == 3:
                 lines.append("II3 0 g3 dc 0 ac 1")
         else:
-            lines.append("X%d %s 0 %s ib%d vbg%d g%d g%d bandgap_lb" % (k, vk, en, k, k, k, k))
+            lines.append("X%d %s 0 %s ib%d vbg%d g%d g%d%s bandgap_lb" % (k, vk, en, k, k, k, k, rest))
     files = {"dc": stem.name + "-dc.dat"}
     lines += [".control", "set noaskquit", "set wr_singlescale", "set wr_vecnames", "option numdgt=10",
               "dc temp %g %g %g" % SWEEP, "wrdata %s v(vbg1) i(vdd1)" % files["dc"]]
@@ -400,7 +479,9 @@ def bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem):
         lines += ["option temp=%g" % t, "op",
                   "let hv = v(vbg1)", "let hq = -i(vdd1)", "let hs = -i(vdd4)", "let hr = -i(vdd8)"] + \
                  ["let hn%d = v(%s)" % (i, node_name("ngspice", x)) for i, x in enumerate(NODES)] + \
-                 ["echo HIMA op %s $&hv $&hq $&hs $&hr %s" % (tag(t), " ".join("$&hn%d" % i for i in range(len(NODES)))),
+                 (["let hb1 = v(bgok1)", "let hb4 = v(bgok4)"] if bgok else []) + \
+                 ["echo HIMA op %s $&hv $&hq $&hs $&hr %s%s" % (tag(t), " ".join("$&hn%d" % i for i in range(len(NODES))),
+                                                              " $&hb1 $&hb4" if bgok else ""),
                   "ac dec %d %g %g" % (AC_PER_DECADE, AC_START_HZ, AC_STOP_HZ),
                   "wrdata %s v(vbg1) v(go2) v(g2) i(vi3)" % files["ac_" + tag(t)],
                   "tran %gu %gu 0 %gu" % (TRAN_STEP_US, TRAN_STOP_US, TRAN_STEP_US),
@@ -479,7 +560,7 @@ def run_bench(sim, command, inputs, corner, vdd, ibias_ua, cell_path, out_dir, n
             lines = bench_spectre(inputs, corner, vdd, ibias_ua, cell_path, temps, part)
             raws[part], netlist, n = spectre_retry(command, out_dir, "%s-%s" % (name, part), lines)
             attempts += n
-        facts = spectre_facts(raws, temps)
+        facts = spectre_facts(raws, temps, bgok=bool(extra_pins(inputs.get("topology", TOPOLOGY))))
         facts["spectreAttempts"] = attempts
     else:
         stem = ota.fresh_stem(out_dir, name, (".cir", ".cir.log", "-dc.dat"))
@@ -487,7 +568,7 @@ def run_bench(sim, command, inputs, corner, vdd, ibias_ua, cell_path, out_dir, n
         lines, files = bench_ngspice(inputs, corner, vdd, ibias_ua, cell_path, temps, stem)
         write_text(netlist, "\n".join(lines))
         text = ota.run([command, "-b", str(netlist)], out_dir, Path(str(netlist) + ".log"), timeout_s=1800)
-        facts = ngspice_facts(text, out_dir, files, temps, netlist)
+        facts = ngspice_facts(text, out_dir, files, temps, netlist, bgok=bool(extra_pins(inputs.get("topology", TOPOLOGY))))
     facts.update(process=corner, vdd=vdd, elapsedS=round(time.time() - started, 2), netlist=netlist.name)
     return facts
 
@@ -506,7 +587,7 @@ def checked_rows(path, width, count):
     return rows
 
 
-def ngspice_facts(text, out_dir, files, temps, netlist):
+def ngspice_facts(text, out_dir, files, temps, netlist, bgok=False):
     if "HIMA done" not in text:
         raise ToolError("ngspice did not finish the bench %s (log %s.log)" % (netlist, netlist))
     ops = {}
@@ -518,7 +599,7 @@ def ngspice_facts(text, out_dir, files, temps, netlist):
     facts = dict(dc=dict(temp=[r[0] for r in dc], vbg=[r[1] for r in dc], iq=[-r[2] for r in dc]), temps={})
     for t in temps:
         v = ops.get(tag(t))
-        if not v or len(v) != 4 + len(NODES):
+        if not v or len(v) != 4 + len(NODES) + (2 if bgok else 0):
             raise ToolError("ngspice gave no operating point at %g C (%s)" % (t, netlist))
         ac = checked_rows(Path(out_dir) / files["ac_" + tag(t)], 9, AC_POINTS)
         ac = [[r[0]] + [complex(r[i], r[i + 1]) for i in range(1, len(r) - 1, 2)] for r in ac]
@@ -526,10 +607,12 @@ def ngspice_facts(text, out_dir, files, temps, netlist):
         if tr[-1][0] < 0.999 * TRAN_STOP_US * 1e-6:
             raise ToolError("ngspice's transient at %g C stopped at %g s, not %g us (%s)" % (t, tr[-1][0], TRAN_STOP_US, netlist))
         facts["temps"][str(t)] = dict(
-            vbg=v[0], iq=v[1], isd=v[2], isdRefOn=v[3], nodes=dict(zip(NODES, v[4:])),
+            vbg=v[0], iq=v[1], isd=v[2], isdRefOn=v[3], nodes=dict(zip(NODES, v[4:4 + len(NODES)])),
             ac=dict(freq=[r[0].real if isinstance(r[0], complex) else r[0] for r in ac], vbg=[r[1] for r in ac],
                     vl=[r[2] for r in ac], vr=[r[3] for r in ac], s=[-r[4] for r in ac]),
             tran={key: dict(time=[r[0] for r in tr], v=[r[1 + i] for r in tr]) for i, key in enumerate(("powerUp", "en1us", "en50us"))})
+        if bgok:
+            facts["temps"][str(t)].update(bgokOn=v[4 + len(NODES)], bgokOff=v[5 + len(NODES)])
     return facts
 
 
@@ -540,9 +623,10 @@ def psf_file(raw, *names):
     raise ToolError("spectre wrote no %s in %s" % (names[0], raw))
 
 
-def spectre_facts(raws, temps):
+def spectre_facts(raws, temps, bgok=False):
     """The bench's facts from Spectre's PSF ASCII output, one directory per copy of the cell (Spectre
-    names a transient result <name>.tran.tran or <name>.tran)."""
+    names a transient result <name>.tran.tran or <name>.tran); bgok: bgcore's bgok of the enabled copy
+    (1) and of the en-low copy (4)."""
     psf = lambda part, *names: (ota.psf_ascii(psf_file(raws[part], *names))[0], part)
 
     def need(points, name):
@@ -572,6 +656,8 @@ def spectre_facts(raws, temps):
             nodes={x: op.get(node_name("spectre", x)) for x in NODES},
             ac=dict(freq=freq, vbg=c(ac, "vbg1"), vl=c(acv, "go2"), vr=c(acv, "g2"), s=[-x for x in c(aci, "VI3:p")]),
             tran=tran)
+        if bgok:
+            facts["temps"][str(t)].update(bgokOn=need(op_pts, "bgok1")[0], bgokOff=need(off, "bgok4")[0])
     return facts
 
 
@@ -658,29 +744,41 @@ def phase_margins(freq, t):
                 ugfHz=[c for c in crossings if c["falling"]][-1]["freqHz"] if any(c["falling"] for c in crossings) else None)
 
 
-def start_time_us(time_s, v, t0_us, vref, vmin=0.5 * VBG_TARGET_V):
+def start_time_us(time_s, v, t0_us, vref, vmin=0.5 * VBG_TARGET_V, trigger_us=None):
     """The start-up time from the trigger at 50 % (t0) until VBG enters +/-2 % of its final value and
-    stays; None when the final value is more than 1 % away from the DC solution vref, or when the DC
-    solution itself is a dead circuit (|vref| at most vmin, half the VBG target): it did not start."""
+    stays, with the final value and, when there is no time, why: None when the final value is more than
+    1 % away from the DC solution vref, or when the DC solution itself is a dead circuit (|vref| at most
+    vmin, half the VBG target): it did not start. Start-up is causal: when the trigger begins at
+    trigger_us (an en ramp) and VBG is inside the final band at any time before it, en did not start the
+    copy, and that is a miss, never a time of 0 or less."""
     if not time_s or not v:
-        return None, None
+        return None, None, "the simulator wrote no transient"
     final = v[-1]
-    if vref is None or abs(vref) <= vmin or abs(final - vref) > STARTED_PCT / 100.0 * abs(vref):
-        return None, final
+    if vref is None or abs(vref) <= vmin:
+        return None, final, "the DC solution (%s V) is a dead circuit" % fmt(vref, "%.4f")
+    if abs(final - vref) > STARTED_PCT / 100.0 * abs(vref):
+        return None, final, "it settled at %.4f V, more than %g %% from its DC solution %.4f V: it did not start" % (final, STARTED_PCT, vref)
     band = START_BAND_PCT / 100.0 * abs(final)
+    if trigger_us is not None:
+        for t, x in zip(time_s, v):
+            if t * 1e6 >= trigger_us:
+                break
+            if abs(x - final) <= band:
+                return None, final, ("VBG was inside its final +/-%g %% band at %.3f us, before en started rising at %g us: "
+                                     "en did not start it" % (START_BAND_PCT, t * 1e6, trigger_us))
     last_out = None
     for i in range(len(v)):
         if abs(v[i] - final) > band:
             last_out = i
     if last_out is None:
-        return 0.0, final
+        return 0.0, final, None
     if last_out + 1 >= len(v):
-        return None, final
+        return None, final, "VBG was still outside its final band at the end of the transient"
     # Interpolate the entry into the band between the last outside point and the next one.
     a, b = abs(v[last_out] - final), abs(v[last_out + 1] - final)
     u = 0.0 if a == b else (a - band) / (a - b)
     t = time_s[last_out] + u * (time_s[last_out + 1] - time_s[last_out])
-    return max(0.0, t * 1e6 - t0_us), final
+    return max(0.0, t * 1e6 - t0_us), final, None
 
 
 def tc_ppm(temps, vbg, vref):
@@ -715,11 +813,15 @@ def bench_measures(facts, vbg_target=None):
             t1k = interp_loglog(f["ac"]["freq"], [abs(x) for x in tf], PSRR_HZ)
             loop["gainAt1kHzDb"] = None if not t1k else round(20 * math.log10(t1k), 2)
         starts = {}
-        for key, (_what, start, dur) in RAMPS.items():
+        for key, (what, start, dur) in RAMPS.items():
             t0 = start + dur / 2.0
-            value, final = start_time_us(f["tran"][key]["time"], f["tran"][key]["v"], t0, f["vbg"], 0.5 * (vbg_target or VBG_TARGET_V))
+            value, final, why = start_time_us(f["tran"][key]["time"], f["tran"][key]["v"], t0, f["vbg"], 0.5 * (vbg_target or VBG_TARGET_V),
+                                              trigger_us=start if what == "en" else None)
             starts[key] = dict(us=None if value is None else round(value, 3), finalV=None if final is None else round(final, 6))
+            if why:
+                starts[key]["reason"] = why
         h0 = abs(f["ac"]["vbg"][0]) if f["ac"]["vbg"] else 0.0
+        missed = [(key, x["reason"]) for key, x in starts.items() if x["us"] is None]
         out["temps"][t] = dict(vbgV=f["vbg"], iqUa=1e6 * f["iq"], isdNa=1e9 * f["isd"],
                                isdRefOnNa=None if f.get("isdRefOn") is None else 1e9 * f["isdRefOn"],
                                psrrDb=psrr_db(f["ac"]["freq"], f["ac"]["vbg"]),
@@ -727,6 +829,12 @@ def bench_measures(facts, vbg_target=None):
                                pmDeg=loop["pmDeg"], loop=dict((k, v) for k, v in loop.items() if k != "pmDeg"),
                                startUs=None if any(s["us"] is None for s in starts.values()) else max(s["us"] for s in starts.values()),
                                starts=starts, nodes={k: (None if v is None else round(v, 4)) for k, v in f["nodes"].items()})
+        if missed:
+            out["temps"][t]["startReason"] = "%s: %s" % missed[0]
+        if "bgokOn" in f:
+            on, off = f["bgokOn"], f["bgokOff"]
+            out["temps"][t].update(bgokOnV=on, bgokOffV=off, bgokOnRatio=None if on is None else on / facts["vdd"],
+                                   bgokOffRatio=None if off is None else off / facts["vdd"])
     return out
 
 
@@ -755,7 +863,27 @@ def worst_of(benches, vbg_target):
             w[key] = dict(value=None, where=missing[0], missing=missing)
         else:
             w[key] = dict(zip(("value", "where"), fn(vals, key=lambda e: e[0])))
+    reasons = {label(b, t): tt["startReason"] for b in benches for t, tt in b["temps"].items() if tt.get("startReason")}
+    if reasons:
+        w["start"]["reasons"] = reasons
+    if any("bgokOnRatio" in tt for b in benches for tt in b["temps"].values()):
+        w["bgok"] = bgok_worst(benches)
     return w
+
+
+def bgok_worst(benches):
+    """bgcore's BGOK line: at every corner the enabled, settled copy's bgok above 90 % of vdd and the en-low
+    copy's below 10 %. The value is the worst level error in % of vdd: max(100 - 100 bgok/vdd enabled,
+    100 bgok/vdd with en low); a corner that lacks either reading makes it None (a miss)."""
+    on = [(tt.get("bgokOnRatio"), label(b, t)) for b in benches for t, tt in b["temps"].items()]
+    off = [(tt.get("bgokOffRatio"), label(b, t)) for b in benches for t, tt in b["temps"].items()]
+    missing = [where for value, where in on + off if value is None]
+    if missing:
+        return dict(value=None, where=missing[0], missing=missing)
+    lo, hi = min(on, key=lambda e: e[0]), max(off, key=lambda e: e[0])
+    err_on, err_off = 100.0 * (1.0 - lo[0]), 100.0 * hi[0]
+    where = "%s (en high)" % lo[1] if err_on >= err_off else "%s (en low)" % hi[1]
+    return dict(value=max(err_on, err_off), where=where, onMinRatio=lo[0], onWhere=lo[1], offMaxRatio=hi[0], offWhere=hi[1])
 
 
 def spec_of(args):
@@ -782,6 +910,8 @@ def line_met(worst, spec):
                pm=False if v("pm") is None else v("pm") > spec["pmMinDeg"],
                start=False if v("start") is None else v("start") < spec["tStartMaxUs"],
                psrr=None if v("psrr") is None else v("psrr") > spec["psrrMinDb"])
+    if "bgok" in worst:                     # bgcore: a missing BGOK reading is a miss
+        out["bgok"] = False if v("bgok") is None else v("bgok") < BGOK_LEVEL_PCT
     return out
 
 
@@ -795,6 +925,8 @@ def margins_pct(worst, spec):
                             ("pm", "pmMinDeg", "higher"), ("start", "tStartMaxUs", "lower"), ("psrr", "psrrMinDb", "higher")):
         x = v(key)
         m[key] = None if x is None else 100.0 * ((x - spec[sk]) if better == "higher" else (spec[sk] - x)) / abs(spec[sk])
+    if "bgok" in worst:
+        m["bgok"] = None if v("bgok") is None else 100.0 * (BGOK_LEVEL_PCT - v("bgok")) / BGOK_LEVEL_PCT
     return {k: None if x is None else round(x, 2) for k, x in m.items()}
 
 
@@ -1043,7 +1175,14 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     - kuijk-p5t: the output device at the gm/Id whose |VGS| puts its gate mid-way in the OTA's output
       range at both supplies. kuijk-p5t-mirror: the output device in moderate inversion (gm/Id 10, L
       near 2 um) at 4 times the diode M6 (driveRatio 4); its gate no longer meets the OTA's range.
-    - 10 pF on the OTA output (to vdd in kuijk-p5t, to vss in kuijk-p5t-mirror); no load capacitor."""
+    - 10 pF on the OTA output (to vdd in kuijk-p5t, to vss in kuijk-p5t-mirror); no load capacitor.
+    - bgcore: the reference is 0.2 uA (the tail 0.4 uA); the ladder's unit (ladderRUnitKohm) draws IQ/16
+      through the 122.5 units at the VBG target (0.5 uA at an 8 uA line), and the BGOK pull-up (bgokNa)
+      50 nA. Both come out of the IQ budget first: the ladder at its lowest resistance over the corners
+      and temperatures, times (1 + 1 / driveRatio) because the output device and its drive branch carry it.
+      CC scales with the tail: 10 pF per uA (4 pF at 0.4 uA), so the OTA keeps the slew rate itail/CC and the
+      unity-gain frequency gm/CC of the 0.5 uA design; at 10 pF the power-up from vdd = 0 slewed for 116 us
+      at ss 2.0 V 125 C on gf180mcuD, at 4 pF it took 50 us (2026-10-13)."""
     keys = intent_keys(topology)
     for key in ("vbgV", "vbgTolPct", "iqMaxUa"):
         if not number(spec.get(key)) or spec[key] <= 0:
@@ -1060,9 +1199,9 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
             raise ToolError("choices %s must be a number" % key)
     pick = lambda key, default: float(ch[key]) if key in ch else default
     n = int(pick("n", 8))
-    ib = pick("ibiasUa", IBIAS_UA)
-    if ib != IBIAS_UA:
-        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % IBIAS_UA)
+    ib = pick("ibiasUa", ibias_of(topology))
+    if ib != ibias_of(topology):
+        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % ibias_of(topology))
     itail = pick("itailUa", 2.0 * ib)
     isu = pick("isuNa", 25.0)
     wres = pick("resWUm", card["devices"]["res"]["defaultWUm"])
@@ -1074,7 +1213,16 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     # the drive branch M5/M6 (2 iCore / driveRatio).
     drive = pick("driveRatio", 4.0) if "driveRatio" in keys else None
     branches = 2.0 + (2.0 / drive if drive else 0.0)
-    icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3) / (branches * k_hot)
+    # bgcore: the ladder (through the output device, so its drive branch too) and the BGOK pull-up.
+    ru = ibgok = il_hot = 0.0
+    if has_ladder(topology):
+        ru = pick("ladderRUnitKohm", round(spec["vbgV"] / (LADDER_UNITS + 0.5) / (spec["iqMaxUa"] / 16.0 * 1e-6) / 1e3, 1))
+        if ru <= 0:
+            raise ToolError("ladderRUnitKohm must be positive")
+        a_min = min(res_fit(devices, c, wres, t)[0] for c in devices["res"]["r"] for t in TEMPS)
+        il_hot = ladder_ua(ru, spec["vbgV"]) * a27 / a_min
+        ibgok = pick("bgokNa", BGOK_NA)
+    icore = (0.8 * spec["iqMaxUa"] - ib - itail - isu * 1e-3 - ibgok * 1e-3 - il_hot * (1.0 + (1.0 / drive if drive else 0.0))) / (branches * k_hot)
     if "iCoreUa" not in ch and icore <= 0:
         raise ToolError("the IQ line %g uA leaves no current for the core" % spec["iqMaxUa"])
     icore = pick("iCoreUa", round(icore, 3))
@@ -1092,7 +1240,7 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     load["lUm"] = float(ch.get("load", {}).get("lUm") or length_for_area(table, card, "nmos", load["gmId"], itail / 2.0, a_load)[0])
     mirror = dict(gmId=float(ch.get("mirror", {}).get("gmId", 10.0)), lUm=float(ch.get("mirror", {}).get("lUm", nearest(lengths["pmos"], 5.0))))
     out = dict(ch.get("out", {}))
-    if topology == "kuijk-p5t-mirror":
+    if "driveRatio" in keys:                # the mirror templates (kuijk-p5t-mirror, bgcore)
         out.setdefault("gmId", 10.0)
         out.setdefault("lUm", float(nearest(lengths["pmos"], 2.0)))
     if "gmId" not in out:
@@ -1123,11 +1271,23 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     elif "lUm" not in out:
         out["lUm"] = float(nearest(lengths["pmos"], 5.0))
     intent = dict(n=n, ibiasUa=ib, itailUa=itail, iCoreUa=icore, r2r1=r2r1, isuNa=isu, resWUm=wres,
-                  resSegMaxUm=pick("resSegMaxUm", card["devices"]["res"]["segMaxUm"]), ccPf=pick("ccPf", 10.0), coutPf=pick("coutPf", 0.0),
+                  resSegMaxUm=pick("resSegMaxUm", card["devices"]["res"]["segMaxUm"]),
+                  ccPf=pick("ccPf", round(CC_PF_PER_UA * itail, 2) if has_ladder(topology) else 10.0), coutPf=pick("coutPf", 0.0),
                   mcBandSharePct=share, pair=pair, load=load, mirror=mirror, out={"gmId": float(out["gmId"]), "lUm": float(out["lUm"])})
     if "driveRatio" in keys:
         intent["driveRatio"] = pick("driveRatio", 4.0)
+    if has_ladder(topology):
+        intent.update(ladderRUnitKohm=ru, bgokNa=ibgok)
     return intent
+
+
+BGOK_NA = 50.0                           # bgcore: the BGOK pull-up's default current (nA), a mirror of the reference
+CC_PF_PER_UA = 10.0                      # bgcore: CC per uA of tail current (the 0.5 uA design's 10 pF at 1 uA)
+
+
+def ladder_ua(ru_kohm, vbg_v=VBG_TARGET_V):
+    """The ladder's current (uA): VBG over its 122.5 units."""
+    return vbg_v / ((LADDER_UNITS + 0.5) * ru_kohm * 1e3) * 1e6
 
 
 def intent_problems(intent, topology=TOPOLOGY):
@@ -1171,33 +1331,52 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     - R1 = VT ln n / iCore at 27 C; R2a = R2b = r2r1 R1; segments at resWUm, at most resSegMaxUm long;
     - kuijk-p5t-mirror: M5 at the load's gm/Id and L carrying 2 iCore / driveRatio, M6 at the output
       device's L and 1 / driveRatio of its width;
-    - CC (on the OTA output) and CO (vbg to vss) as square capacitors; 0 pF leaves one out."""
+    - CC (on the OTA output) and CO (vbg to vss) as square capacitors; 0 pF leaves one out;
+    - bgcore: the output device (and so M5, M6) also carries the ladder's current, VBG (the 1.2 V target)
+      over 122.5 units of ladderRUnitKohm; the ladder's unit is one segment of ladderRUnitKohm at resWUm
+      (`ladder`: {wUm, lUm}); the BGOK pull-up MOK2 mirrors MB0 at bgokNa like MSU1; MOK1, MOK3, MOK4 and
+      MEN4 are fixed small devices."""
     tpl = template(topology)
     problems = intent_problems(intent, topology)
     if problems:
         raise ToolError("the intent is refused:\n- " + "\n- ".join(problems))
-    for key in ("ibiasUa", "itailUa", "iCoreUa", "r2r1", "isuNa", "resWUm", "resSegMaxUm"):
+    for key in ("ibiasUa", "itailUa", "iCoreUa", "r2r1", "isuNa", "resWUm", "resSegMaxUm") + \
+            (("ladderRUnitKohm", "bgokNa") if has_ladder(topology) else ()):
         if intent[key] <= 0:
             raise ToolError("the intent needs a positive %s" % key)
     n = intent["n"]
     if n != int(n) or not LIMITS["n"][0] <= n <= min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"]):
         raise ToolError("n must be a whole number from %d to %d" % (LIMITS["n"][0], min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"])))
     ib, itail = intent["ibiasUa"], intent["itailUa"]
-    if ib != IBIAS_UA:
-        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % IBIAS_UA)
+    if ib != ibias_of(topology):
+        raise ToolError("ibiasUa must be %g uA, the reference current the bench provides" % ibias_of(topology))
     g = {k: intent[k] for k in GROUPS}
     out = {}
     w0, _ = ota.width_for(table, card, "pmos", g["mirror"]["lUm"], g["mirror"]["gmId"], ib)
     lm = float(um(g["mirror"]["lUm"]))
     out["MB0"] = dict(wUm=w0, lUm=lm)
     out["MT"] = dict(wUm=snap(card, "pmos", w0 * itail / ib), lUm=lm)
-    wsu = w0 * intent["isuNa"] * 1e-3 / ib
     pm = card["devices"]["pmos"]
-    if wsu >= pm["wMinUm"]:
-        out["MSU1"] = dict(wUm=snap(card, "pmos", wsu), lUm=lm)
-    else:
-        out["MSU1"] = dict(wUm=pm["wMinUm"], lUm=min(pm["lMaxUm"], snap(card, "pmos", lm * pm["wMinUm"] / wsu)))
-    for name, group, kind, cur in (("M1", "pair", "pmos", itail / 2), ("M3", "load", "nmos", itail / 2), ("MO", "out", "pmos", 2 * intent["iCoreUa"])):
+
+    def pull_up(na):
+        """A small mirror of MB0 at na nA: a width below the minimum is taken back by length."""
+        w = w0 * na * 1e-3 / ib
+        if w >= pm["wMinUm"]:
+            return dict(wUm=snap(card, "pmos", w), lUm=lm)
+        return dict(wUm=pm["wMinUm"], lUm=min(pm["lMaxUm"], snap(card, "pmos", lm * pm["wMinUm"] / w)))
+
+    out["MSU1"] = pull_up(intent["isuNa"])
+    i_out = 2 * intent["iCoreUa"]
+    ladder = None
+    if has_ladder(topology):
+        out["MOK2"] = pull_up(intent["bgokNa"])
+        i_out += ladder_ua(intent["ladderRUnitKohm"])
+        res = card["devices"]["res"]
+        ladder = res_geometry(card, devices, intent["ladderRUnitKohm"] * 1e3, intent["resWUm"], res["lMaxUm"])
+        if ladder.pop("s") != 1:
+            raise ToolError("a ladder unit of %g kOhm is longer than one %s um segment at W %s um: lower ladderRUnitKohm or narrow resWUm" % (
+                intent["ladderRUnitKohm"], um(res["lMaxUm"]), um(intent["resWUm"])))
+    for name, group, kind, cur in (("M1", "pair", "pmos", itail / 2), ("M3", "load", "nmos", itail / 2), ("MO", "out", "pmos", i_out)):
         w, _ = ota.width_for(table, card, kind, g[group]["lUm"], g[group]["gmId"], cur)
         out[name] = dict(wUm=w, lUm=float(um(g[group]["lUm"])))
     out["M2"], out["M4"] = dict(out["M1"]), dict(out["M3"])
@@ -1205,12 +1384,12 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
         k = intent["driveRatio"]
         if not 1 <= k <= 20:
             raise ToolError("driveRatio must be from 1 to 20")
-        w5, _ = ota.width_for(table, card, "nmos", g["load"]["lUm"], g["load"]["gmId"], 2 * intent["iCoreUa"] / k)
+        w5, _ = ota.width_for(table, card, "nmos", g["load"]["lUm"], g["load"]["gmId"], i_out / k)
         out["M5"] = dict(wUm=w5, lUm=float(um(g["load"]["lUm"])))
         out["M6"] = dict(wUm=snap(card, "pmos", out["MO"]["wUm"] / k), lUm=out["MO"]["lUm"])
     for name, (kind, group, *_n) in tpl["mos"].items():
         if group == "switch":
-            w, l = switch_um(name)
+            w, l = tpl.get("switchUm", {}).get(name) or switch_um(name)
             out[name] = dict(wUm=w, lUm=l)
     for name, d in out.items():
         lim = card["devices"][tpl["mos"][name][0]]
@@ -1225,7 +1404,10 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     resistors["R2b"] = dict(resistors["R2a"])
     caps = {name: cap_dims(card, intent[key]) for name, key in CAP_KEYS.items() if intent[key] > 0 and name in tpl["caps"]}
     devices_out = {name: out[name] for name in tpl["mos"]}
-    return dict(n=int(n), ibiasUa=float(ib), devices=devices_out, resistors=resistors, caps=caps)
+    sized = dict(n=int(n), ibiasUa=float(ib), devices=devices_out, resistors=resistors, caps=caps)
+    if ladder is not None:
+        sized["ladder"] = ladder
+    return sized
 
 
 def gmid_for_jd(table, kind, length, jd):
@@ -1336,8 +1518,8 @@ def validate_design(ws, path=None, files_root=None):
     nmax = min(LIMITS["n"][1], card["devices"]["pnp"]["nMax"])
     if not isinstance(n, int) or isinstance(n, bool) or not LIMITS["n"][0] <= n <= nmax:
         problems.append("n (the PNP ratio) must be a whole number from %d to %d (found %r)" % (LIMITS["n"][0], nmax, n))
-    if doc.get("ibiasUa") != IBIAS_UA or isinstance(doc.get("ibiasUa"), bool):
-        problems.append("ibiasUa must be %g, the reference current the bench provides (found %r)" % (IBIAS_UA, doc.get("ibiasUa")))
+    if doc.get("ibiasUa") != ibias_of(topology) or isinstance(doc.get("ibiasUa"), bool):
+        problems.append("ibiasUa must be %g, the reference current the bench provides (found %r)" % (ibias_of(topology), doc.get("ibiasUa")))
     devices = doc.get("devices")
     if not isinstance(devices, dict) or sorted(devices) != sorted(tpl["mos"]):
         problems.append("devices must be exactly %s" % ", ".join(tpl["mos"]))
@@ -1372,6 +1554,13 @@ def validate_design(ws, path=None, files_root=None):
         problems.append("R2a and R2b are matched and must be the same")
     if len({r.get("wUm") for r in resistors.values() if isinstance(r, dict)}) > 1:
         problems.append("the resistors must share one width (they are matched)")
+    if has_ladder(topology):
+        if "ladder" not in doc:
+            problems.append("ladder (the reference ladder's unit segment, {wUm, lUm}) is missing")
+        else:
+            sized("ladder", doc["ladder"], card["devices"]["res"])
+    elif "ladder" in doc:
+        problems.append("ladder: the %s template has no reference ladder" % topology)
     caps = doc.get("caps")
     if not isinstance(caps, dict) or not set(caps) <= set(tpl["caps"]):
         problems.append("caps must be an object with at most %s" % ", ".join(tpl["caps"]))
@@ -1390,7 +1579,7 @@ def validate_design(ws, path=None, files_root=None):
             except ToolError as error:
                 problems.append("the intent cannot be sized: %s" % error)
             else:
-                if any(want[key] != doc.get(key) for key in ("n", "ibiasUa", "devices", "resistors", "caps")):
+                if any(want.get(key) != doc.get(key) for key in ("n", "ibiasUa", "devices", "resistors", "caps", "ladder")):
                     problems.append("the sizes do not follow the intent (draft size gives them): re-draft from the intent, "
                                     "or remove the intent to deliver a hand-sized design")
     for key in ("summary", "reason"):
@@ -1491,12 +1680,31 @@ def cell_file(ws, stage, design, card, out_dir, mismatch=False):
             raise ToolError("the layout of the accepted design is not clean (state/layout.json): no post-layout simulation of it")
         if not re.search(r"(?im)^\.subckt\s+bandgap_lb\s+vdd\s+vss\s+en\s+ibias\s+vbg\s+go\s+g\b", path.read_text()):
             raise ToolError("state/cell-post.spice does not define .subckt bandgap_lb vdd vss en ibias vbg go g")
+        topology = design.get("topology", TOPOLOGY)
+        if extra_pins(topology) and subckt_pins(path.read_text(), "bandgap_lb") != lb_pins(topology):
+            raise ToolError("state/cell-post.spice's bandgap_lb pins are not, in order, %s ... %s (the %s cell's %d pins)" % (
+                " ".join(lb_pins(topology)[:8]), lb_pins(topology)[-1], topology, len(lb_pins(topology))))
         return path.resolve(), cell_sha
     name = "cell-mc" if mismatch else "cell"
     stem = ota.fresh_stem(out_dir, name, (".spice",))
     path = Path(str(stem) + ".spice")
     write_text(path, cell_spice(card, design, mismatch))
     return path.resolve(), sha256_file(path)
+
+
+def subckt_pins(text, name):
+    """The pins of `.subckt name` (continuation lines joined; parameters left out), or None."""
+    joined = []
+    for line in text.splitlines():
+        if line.startswith("+") and joined:
+            joined[-1] += " " + line[1:]
+        else:
+            joined.append(line)
+    for line in joined:
+        tok = line.split()
+        if len(tok) >= 2 and tok[0].lower() == ".subckt" and tok[1].lower() == name.lower():
+            return [t for t in tok[2:] if "=" not in t]
+    return None
 
 
 def simulate_pvt(ws, inputs, stage, design, out_dir, corners=None, own=False, vbg_target=None):
@@ -1530,13 +1738,14 @@ def measure_rpt(record):
     sign = {True: "met", False: "MISSED", None: "unknown"}
     tol = s["vbgV"] * s["vbgTolPct"] / 100.0
     specs = dict(vbg="%.3f +/- %.1f mV" % (s["vbgV"], 1e3 * tol), iq="< %g uA" % s["iqMaxUa"], isd="<= %g nA" % s["isdMaxNa"],
-                 tc="< %g ppm/C" % s["tcMaxPpm"], pm="> %g deg" % s["pmMinDeg"], start="< %g us" % s["tStartMaxUs"], psrr="> %g dB" % s["psrrMinDb"])
+                 tc="< %g ppm/C" % s["tcMaxPpm"], pm="> %g deg" % s["pmMinDeg"], start="< %g us" % s["tStartMaxUs"], psrr="> %g dB" % s["psrrMinDb"],
+                 bgok="> %g %% vdd en high, < %g %% en low" % (100 - BGOK_LEVEL_PCT, BGOK_LEVEL_PCT))
     lines = ["# Bandgap in %s, %s: every process corner, temperature and supply" % (record["pdk"], record["stage"]), "",
              "Corners %s; supplies %s V; temperatures %s C (DC sweep -40 to 125 C in 5 C steps); %s, %d runs, %.1f s." % (
                  ", ".join(record["conditions"]["corners"]), ", ".join("%g" % v for v in record["conditions"]["supplies"]),
                  ", ".join("%g" % t for t in TEMPS), record["simulator"], len(record["benches"]), record["elapsedS"]), "",
              "| line | spec | worst | where | margin | verdict |", "| --- | --- | --- | --- | --- | --- |"]
-    for key, lab, unit, digits, _b in LINES:
+    for key, lab, unit, digits, _b in lines_of(w):
         v = w[key]["value"]
         lines.append("| %s | %s | %s %s | %s | %s %% | %s |" % (lab, specs[key], fmt(v, "%%.%df" % digits), unit, w[key]["where"],
                                                                fmt(record["marginPct"][key], "%.1f"), sign[met[key]]))
@@ -1553,11 +1762,22 @@ def measure_rpt(record):
             label(b), vb, fmt(b["tcPpm"], "%.1f"), fmt(b["iqMaxUa"], "%.2f"), fmt(tt.get("27", {}).get("isdNa"), "%.3f"),
             "n/a" if None in pms else fmt(min(pms), "%.1f"), "n/a" if None in st else fmt(max(st), "%.1f"),
             "n/a" if None in ps else fmt(min(ps), "%.1f"), fmt(tt.get("27", {}).get("nodes", {}).get("g"), "%.3f"), fmt(b["elapsedS"], "%.1f")))
+    if "bgok" in w:
+        lines += ["", "BGOK (bgok over vdd at -40 / 27 / 125 C):", "", "| corner | en high, settled | en low |", "| --- | --- | --- |"]
+        for b in record["benches"]:
+            tt = b["temps"]
+            lines.append("| %s | %s | %s |" % (label(b), " / ".join(fmt(tt[str(t)].get("bgokOnRatio"), "%.3f") for t in TEMPS if str(t) in tt),
+                                              " / ".join(fmt(tt[str(t)].get("bgokOffRatio"), "%.3f") for t in TEMPS if str(t) in tt)))
+    reasons = (w.get("start") or {}).get("reasons") or {}
+    if reasons:
+        lines += ["", "Start-up misses:"] + ["- %s: %s" % kv for kv in sorted(reasons.items())]
     d = record["design"]
     lines += ["", "Design: n %d, ibias %g uA; R1 %s, R2 %s (W x L x segments, um); CC %s, CO %s." % (
         d["n"], d["ibiasUa"], "x".join([um(d["resistors"]["R1"]["wUm"]), um(d["resistors"]["R1"]["lUm"]), str(d["resistors"]["R1"]["s"])]),
         "x".join([um(d["resistors"]["R2a"]["wUm"]), um(d["resistors"]["R2a"]["lUm"]), str(d["resistors"]["R2a"]["s"])]),
-        cap_text(d["caps"].get("CC")), cap_text(d["caps"].get("CO"))), "",
+        cap_text(d["caps"].get("CC")), cap_text(d["caps"].get("CO"))) + (
+        "" if not d.get("ladder") else " Ladder unit %s x %s um (W x L), 122.5 units; bgok monitor on vref_%d." % (
+            um(d["ladder"]["wUm"]), um(d["ladder"]["lUm"]), BGOK_TAP)), "",
               "| device | W (um) | L (um) |", "| --- | --- | --- |"]
     lines += ["| %s | %s | %s |" % (n_, um(v["wUm"]), um(v["lUm"])) for n_, v in d["devices"].items()]
     lines += ["", record["claimBoundary"], ""]
@@ -1567,8 +1787,9 @@ def measure_rpt(record):
 def lines_chart(record, title, source):
     cats, series_w, series_s, metrics = [], [], [], []
     s = record["spec"]
-    spec_val = dict(vbg=s["vbgV"], iq=s["iqMaxUa"], isd=s["isdMaxNa"], tc=s["tcMaxPpm"], pm=s["pmMinDeg"], start=s["tStartMaxUs"], psrr=s["psrrMinDb"])
-    for key, lab, unit, digits, better in LINES:
+    spec_val = dict(vbg=s["vbgV"], iq=s["iqMaxUa"], isd=s["isdMaxNa"], tc=s["tcMaxPpm"], pm=s["pmMinDeg"], start=s["tStartMaxUs"], psrr=s["psrrMinDb"],
+                    bgok=BGOK_LEVEL_PCT)
+    for key, lab, unit, digits, better in lines_of(record["worst"]):
         cats.append(lab)
         series_w.append(record["worst"][key]["value"])
         series_s.append(spec_val[key])
@@ -1578,7 +1799,10 @@ def lines_chart(record, title, source):
 
 
 def design_summary(design):
-    return dict(n=design["n"], ibiasUa=design["ibiasUa"], devices=design["devices"], resistors=design["resistors"], caps=design.get("caps") or {})
+    out = dict(n=design["n"], ibiasUa=design["ibiasUa"], devices=design["devices"], resistors=design["resistors"], caps=design.get("caps") or {})
+    if design.get("ladder"):
+        out["ladder"] = design["ladder"]
+    return out
 
 
 def cmd_simulate(ws, stage, *spec_args):
@@ -1602,13 +1826,13 @@ def cmd_simulate(ws, stage, *spec_args):
                   meetsSpec=None if None in met.values() else all(met.values()),
                   failing=[key for key, ok in met.items() if ok is not True], elapsedS=run["elapsedS"],
                   simulatorRuns=sum(b.get("spectreAttempts") or 1 for b in benches),
-                  claimBoundary=CLAIM_BOUNDARY, measuredAt=now())
+                  claimBoundary=claim_boundary(design["ibiasUa"]), measuredAt=now())
     write_json(state(ws, "measure-%s.json" % stage), record)
     write_text(out_dir / "measure.rpt", measure_rpt(record))
     ota.write_chart(ws, SIM_NODES[stage], k, "lines", lines_chart(record, "Bandgap spec lines, worst corner (%s)" % stage,
                                                                    "%s, %d corners (%s)" % (record["simulator"], len(benches), SIM_NODES[stage])))
     print("%s round %d in %s: %s; meets the spec: %s (%d runs, %.1f s)" % (
-        stage, k, record["pdk"], ", ".join("%s %s%s" % (key, fmt(worst[key]["value"], "%.4g"), "" if met[key] else " (missed)") for key, *_ in LINES),
+        stage, k, record["pdk"], ", ".join("%s %s%s" % (key, fmt(worst[key]["value"], "%.4g"), "" if met[key] else " (missed)") for key, *_ in lines_of(worst)),
         record["meetsSpec"], len(benches), run["elapsedS"]))
 
 
@@ -1636,7 +1860,8 @@ def mc_spectre_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
     lines += ["parameters %s" % " ".join("%s=%g" % kv for kv in sorted(card["mismatch"]["params"].items())),
               "opts2 options temp=27 tnom=%g rawfmt=psfascii save=selected" % card["temperatureC"],
               "VDD1 (vdd1 0) vsource dc=%g" % vdd, "VEN1 (en1 0) vsource dc=%g" % vdd,
-              "GIB1 (ib1 0 en1 0) vccs gm=%.6g" % (ibias_ua * 1e-6 / vdd), "X1 (vdd1 0 en1 ib1 vbg1 g1 g1) bandgap_lb",
+              "GIB1 (ib1 0 en1 0) vccs gm=%.6g" % (ibias_ua * 1e-6 / vdd),
+              "X1 (vdd1 0 en1 ib1 vbg1 g1 g1%s) bandgap_lb" % "".join(" " + x for x in bench_pins(inputs.get("topology", TOPOLOGY), 1)),
               "save vbg1 VDD1:p",
               "mc1 montecarlo numruns=%d seed=%d variations=mismatch donominal=yes savefamilyplots=yes {" % (n, seed), "  op1 dc", "}", ""]
     return lines
@@ -1659,7 +1884,8 @@ def mc_ngspice_lines(inputs, cell_path, vdd, ibias_ua, n, seed):
     lines += [".param %s=%g" % kv for kv in sorted(card["mismatch"]["params"].items())]
     lines += [".include \"%s\"" % cell_path, ".temp 27", ".options tnom=%g" % card["temperatureC"],
               "VDD1 vdd1 0 dc %g" % vdd, "VEN1 en1 0 dc %g" % vdd, "GIB1 ib1 0 en1 0 %.6g" % (ibias_ua * 1e-6 / vdd),
-              "X1 vdd1 0 en1 ib1 vbg1 g1 g1 bandgap_lb", ".control", "set noaskquit"]
+              "X1 vdd1 0 en1 ib1 vbg1 g1 g1%s bandgap_lb" % "".join(" " + x for x in bench_pins(inputs.get("topology", TOPOLOGY), 1)),
+              ".control", "set noaskquit"]
     for i in range(1, n + 1):
         lines += ["setseed %d" % (seed + i), "mc_source", "op", "let hv = v(vbg1)", "let hq = -i(vdd1)", "echo HIMA mc %d" % i, "print hv hq"]
     return lines + ["echo HIMA done 1", "quit", ".endc", ".end", ""]
@@ -1741,7 +1967,7 @@ def mc_rpt(rec):
     p = rec.get("pelgrom")
     if p:
         lines += ["Pelgrom estimate for this design (input pair and load only): sigma(VBG) %.3f mV; measured %.3f mV." % (p["sigmaVbgMv"], 1e3 * s["sigmaV"]), ""]
-    lines += [CLAIM_BOUNDARY, ""]
+    lines += [rec["claimBoundary"], ""]
     return "\n".join(lines)
 
 
@@ -1779,7 +2005,7 @@ def cmd_mc(ws, n, vbg_v, tol_pct, seed="1"):
                spec=dict(vbgV=float(vbg_v), vbgTolPct=float(tol_pct), n=n), stats=stats, meetsSpec=stats["inBand"],
                vbgV=[round(v, 7) for v in values], iqUa=[round(1e6 * q, 5) for q in iq],
                pelgrom=pelgrom_estimate(card_of(inputs), design), elapsedS=run["elapsedS"], spectreAttempts=run["spectreAttempts"],
-               claimBoundary=CLAIM_BOUNDARY, measuredAt=now())
+               claimBoundary=claim_boundary(design["ibiasUa"]), measuredAt=now())
     write_json(state(ws, "mc.json"), rec)
     write_text(out_dir / "mc.rpt", mc_rpt(rec))
     ota.write_chart(ws, "monte-carlo", k, "spread", mc_chart(rec))
@@ -1927,7 +2153,7 @@ def cmd_layout(ws, tool, pex):
                pex=pex, pexCounts=found["pex"]["netlists"].get("bandgap_lb" + PEX_KINDS[pex]),
                bboxUm=bbox, areaUm2=round(bbox[0] * bbox[1], 1) if bbox else None,
                toolSeconds=found.get("totalSeconds"), elapsedS=elapsed, runDir=str(run_dir.relative_to(Path(ws).resolve())),
-               claimBoundary=CLAIM_BOUNDARY + " Layout checked with the open PDK's own DRC and LVS decks; die-level density "
+               claimBoundary=claim_boundary(design["ibiasUa"]) + " Layout checked with the open PDK's own DRC and LVS decks; die-level density "
                                               "rules need fill and are reported, not judged.",
                measuredAt=now())
     rec["clean"] = layout_clean(rec)
@@ -1984,6 +2210,14 @@ def cmd_record(ws, *args):
         problems.append("no PVT measurement of the accepted design this round")
     elif {kk: pvt["spec"][kk] for kk in SPEC_KEYS} != spec:
         problems.append("the PVT measurement was judged against another spec sheet")
+    if has_ladder(inputs.get("topology", TOPOLOGY)):
+        for name in ("measure-schematic", "measure-post"):
+            if name in found and "bgok" not in (found[name].get("worst") or {}):
+                problems.append("the %s result has no BGOK line (the %s template judges it)" % (name, inputs["topology"]))
+                if name == "measure-schematic":
+                    pvt = None
+                else:
+                    found.pop(name)
     mc = found.get("mc")
     if mc is not None and (mc["spec"]["vbgV"], mc["spec"]["vbgTolPct"]) != (spec["vbgV"], spec["vbgTolPct"]):
         problems.append("the Monte Carlo result was judged against another VBG band")
@@ -2017,6 +2251,7 @@ def cmd_record(ws, *args):
     worst_margin = None if margin is None or None in margin.values() else min(margin.values())
     post_worst = None if post_margin is None or None in post_margin.values() else min(post_margin.values())
     lessons = read_json(state(ws, "lessons.json"))
+    boundary = claim_boundary(ibias_of(inputs.get("topology", TOPOLOGY)))
     earlier = [r["worstMarginPct"] for r in lessons["rounds"] if r.get("roundValid") and r.get("worstMarginPct") is not None]
     stage_margin = post_worst if post_worst is not None else worst_margin
     best = max(earlier + ([stage_margin] if valid and stage_margin is not None else []), default=None)
@@ -2026,21 +2261,21 @@ def cmd_record(ws, *args):
                  roundImproved=bool(valid and stage_margin is not None and all(stage_margin > e for e in earlier)),
                  layout=None if lay is None else dict(clean=lay["clean"], drcMagic=lay["drcMagic"], drcKlayout=lay["drcKlayout"],
                                                      lvsNetgen=lay["lvsNetgen"], lvsKlayout=lay["lvsKlayout"], areaUm2=lay["areaUm2"]),
-                 postWorst=None if post is None else {x: post["worst"][x]["value"] for x, *_ in LINES},
-                 postWhere=None if post is None else {x: post["worst"][x]["where"] for x, *_ in LINES},
+                 postWorst=None if post is None else {x: post["worst"][x]["value"] for x, *_ in lines_of(post["worst"])},
+                 postWhere=None if post is None else {x: post["worst"][x]["where"] for x, *_ in lines_of(post["worst"])},
                  postLineMet=post_met,
                  failing=None if met is None else [x for x, ok in met.items() if ok is not True] + ([] if mc_ok is True else ["mc"]),
-                 pvtWorst=None if pvt is None else {x: pvt["worst"][x]["value"] for x, *_ in LINES},
-                 pvtWhere=None if pvt is None else {x: pvt["worst"][x]["where"] for x, *_ in LINES},
+                 pvtWorst=None if pvt is None else {x: pvt["worst"][x]["value"] for x, *_ in lines_of(pvt["worst"])},
+                 pvtWhere=None if pvt is None else {x: pvt["worst"][x]["where"] for x, *_ in lines_of(pvt["worst"])},
                  mc=None if mc is None else dict(n=mc["stats"]["n"], meanV=mc["stats"]["meanV"], sigmaMv=1e3 * mc["stats"]["sigmaV"], inBand=mc_ok),
                  postMet=post_ok, layoutClean=lay_ok, intent=(read_json(design_path(ws)).get("intent") if sha else None))
     lessons["rounds"].append(entry)
-    record = dict(schema=ROUND_SCHEMA, spec=spec, claimBoundary=CLAIM_BOUNDARY, recordedAt=now(), **entry)
+    record = dict(schema=ROUND_SCHEMA, spec=spec, claimBoundary=boundary, recordedAt=now(), **entry)
     out = report_dir(ws, "record-round", k)
     text = round_md(record, inputs)
     write_text(out / ("round-%d.md" % k), text)
     write_text(Path(ws) / "derived" / ("round-%d.md" % k), text)
-    write_summary(ws, inputs, lessons, spec)
+    write_summary(ws, inputs, lessons, spec, boundary)
     write_json(state(ws, "round.json"), record)
     write_json(state(ws, "lessons.json"), lessons)
     print("round %d recorded: valid %s, signed off %s; failing lines %s; Monte Carlo %s; layout %s; after layout %s" % (
@@ -2053,7 +2288,8 @@ def cmd_record(ws, *args):
 def round_md(r, inputs):
     lines = ["# Round %d: bandgap in %s" % (r["round"], inputs["pdks"][PDK_KEY]["name"]), "",
              "| line | worst | where | met |", "| --- | --- | --- | --- |"]
-    for key, lab, unit, digits, _b in LINES:
+    judged = [line for line in LINES if line[0] != "bgok" or "bgok" in (r.get("pvtMet") or {}) or "bgok" in (r.get("postLineMet") or {})]
+    for key, lab, unit, digits, _b in judged:
         w = (r.get("pvtWorst") or {}).get(key)
         lines.append("| %s | %s %s | %s | %s |" % (lab, fmt(w, "%%.%df" % digits), unit, (r.get("pvtWhere") or {}).get(key) or "n/a",
                                                    {True: "yes", False: "no", None: "unknown"}[(r.get("pvtMet") or {}).get(key)]))
@@ -2069,18 +2305,18 @@ def round_md(r, inputs):
         "unknown" if lay is None else {True: "yes", False: "no"}[lay["clean"]]))
     if r.get("postWorst"):
         lines += ["", "After layout (extracted), worst over the same corners:", "", "| line | worst | where | met |", "| --- | --- | --- | --- |"]
-        for key, lab, unit, digits, _b in LINES:
+        for key, lab, unit, digits, _b in judged:
             lines.append("| %s | %s %s | %s | %s |" % (lab, fmt(r["postWorst"].get(key), "%%.%df" % digits), unit, r["postWhere"].get(key) or "n/a",
                                                        {True: "yes", False: "no", None: "unknown"}[(r.get("postLineMet") or {}).get(key)]))
     lines += ["", "Round valid: %s. Signed off (every line at every corner, Monte Carlo, clean layout, every line after layout): %s." % (
         "yes" if r["roundValid"] else "no", "yes" if r.get("signedOff") else "no")]
     if r["problems"]:
         lines += ["", "Problems: " + "; ".join(r["problems"])]
-    lines += ["", CLAIM_BOUNDARY, ""]
+    lines += ["", r.get("claimBoundary", CLAIM_BOUNDARY), ""]
     return "\n".join(lines)
 
 
-def write_summary(ws, inputs, lessons, spec):
+def write_summary(ws, inputs, lessons, spec, boundary=CLAIM_BOUNDARY):
     lines = ["# Bandgap in %s: summary" % inputs["pdks"][PDK_KEY]["name"], "",
              "| round | failing lines (schematic) | Monte Carlo | layout | after layout | worst margin (%) | valid | signed off |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
@@ -2094,7 +2330,7 @@ def write_summary(ws, inputs, lessons, spec):
             "not run" if lay is None else ("clean" if lay else "not clean"),
             "not run" if post is None else ("meets" if post else "misses"),
             fmt(r["worstMarginPct"]), "yes" if r["roundValid"] else "no", "yes" if r.get("signedOff") else "no"))
-    lines += ["", CLAIM_BOUNDARY, ""]
+    lines += ["", boundary, ""]
     write_text(Path(ws) / "derived" / "summary.md", "\n".join(lines))
 
 

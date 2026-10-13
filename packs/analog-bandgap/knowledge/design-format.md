@@ -43,6 +43,30 @@ The sizes above are the method's first cut on gf180mcuD (`draft size` computed t
 (bind chose it): `kuijk-p5t` (the five-transistor OTA drives the output device's gate) has no `M5`,
 `M6` or `driveRatio`; `kuijk-p5t-mirror` adds the transconductor `M5` and the diode `M6`.
 
+### `bgcore` (the competitor's case)
+
+`bgcore` is `kuijk-p5t-mirror` plus a reference ladder and a BGOK monitor, with a 0.2 uA reference.
+Its design differs in four places:
+
+- `ibiasUa` is 0.2.
+- `devices` adds `MOK1`, `MOK2`, `MOK3`, `MOK4` and `MEN4` (the BGOK monitor).
+- `ladder` is the ladder's unit segment, `{"wUm": ..., "lUm": ...}`: one `ppolyf_u_1k` segment
+  (`s` = 1).
+- `intent` adds two choices:
+  - `ladderRUnitKohm`: the unit's resistance. The ladder draws VBG / (122.5 units).
+  - `bgokNa`: the BGOK pull-up current.
+
+The method's first cut on gf180mcuD:
+
+```json
+"ladder": {"wUm": 2.0, "lUm": 38.525},
+"caps": {"CC": {"wUm": 44.72, "lUm": 44.72, "m": 1}},
+"intent": {"...": "...", "ibiasUa": 0.2, "itailUa": 0.4, "ccPf": 4.0, "ladderRUnitKohm": 19.6, "bgokNa": 50.0}
+```
+
+In `bgcore` the start-up switch MSU3 is 2 x 4 um, and its gate is the start-up node `su`. At
+1 x 1 um, Spectre crashed in the power-up transient.
+
 ## The cell
 
 - **Core:** Q1 (one PNP) at `a`; R1 then n PNPs at `b`; R2a from `vbg` to `a` and R2b from `vbg` to
@@ -61,6 +85,18 @@ The sizes above are the method's first cut on gf180mcuD (`draft size` computed t
   amplifier side) and `g` (the output device's gate); `.subckt bandgap vdd vss en ibias vbg` joins
   them. `cell_spice(card, design)` in `flow/bg_cli.py` writes both; post-layout simulation substitutes
   the extracted `bandgap_lb` (`state/cell-post.spice`).
+- **bgcore only:**
+  - **Ladder.** `RL0a` and `RL0b` (two units in parallel, half a unit) join `vbg` to `vref_122`.
+    `RLk` joins `vref_k` to `vref_(k-1)` for k = 122 … 1, and `vref_0` is `vss`. Tap k sits at
+    VBG · k / 122.5, so `vref_100` is about 0.98 V.
+  - **BGOK.**
+    - `MOK1` (nmos, 4 × 1 um) senses `vref_100` against `MOK2`, a pull-up mirrored from `MB0` at
+      `bgokNa` that follows `en`.
+    - `MOK3` and `MOK4` (1 × 1 um) invert `ok1` into `bgok`.
+    - `MEN4` holds `ok1` at vdd while `en` is low, so `bgok` is driven low.
+  - **Pins:** `bandgap_lb vdd vss en ibias vbg go g bgok vref_1 … vref_120`, and `bandgap` without
+    `go g`, all on one `.subckt` line. `vref_121` and `vref_122` are internal. An extracted
+    `bandgap_lb` must carry the same pins in the same order.
 
 ## What precheck and the Reader refuse
 
@@ -70,8 +106,10 @@ The sizes above are the method's first cut on gf180mcuD (`draft size` computed t
   resistors of different widths;
 - capacitors other than CC and CO, or not `{wUm, lUm, m}` with m from 1 to 16;
 - an L or W outside the PDK's limits or off its grid; M1 different from M2, M3 different from M4;
-- n not a whole number from 2 to 24; ibiasUa other than 0.5 uA (the reference current the bench
-  provides);
+- n not a whole number from 2 to 24; ibiasUa other than the template's reference current (0.5 uA;
+  0.2 uA in `bgcore`), the current the bench provides;
+- in `bgcore`, a missing `ladder` or one that is not `{wUm, lUm}` legal for the resistor; a `ladder`
+  in any other template;
 - any field that is not part of the design (a VBG or a PSRR you computed, for example), and any field
   in `intent` other than the design choices;
 - sizes that do not follow the intent;
