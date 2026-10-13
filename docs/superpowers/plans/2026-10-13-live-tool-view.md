@@ -72,8 +72,11 @@ export type ToolViewKind = ToolViewDeclaration['kind'];
 
 **Files**
 - Modify: `packages/harness/src/channel.ts` — extract the pure option list of `SshChannel.args()`
-  into `export function sshBaseArgs(target: SshTarget, controlPath: string): string[]` (everything
-  before `--`, dest), used by `args()` and by the new module.
+  into `export function sshBaseArgs(target: SshTarget, controlPath: string | null): string[]`
+  (everything before `--`, dest), used by `args()` (warm master) and by the new module. The tool-view
+  forward passes `controlPath: null` for a dedicated connection (`ControlMaster=no ControlPath=none`),
+  because a `-N` mux client hands its forward to the warm master and exits at once — which the Host
+  would misread as a dead forward — so the forward must own its connection.
 - Create: `packages/harness/src/tool-view.ts` — exactly the API in the spec §2.
 - Modify: `packages/harness/src/remote.ts` — `RemoteOperations.toolView?`, `/tool-view` route
   (copy `/libinsight` 1674-1686), GET `?sessionId&site`, POST `z.strictObject({sessionId, action: z.literal('open'), site, restart?: boolean})`.

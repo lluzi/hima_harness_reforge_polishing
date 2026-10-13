@@ -77,9 +77,12 @@ export function toolViewUrl(kind: ToolViewKind, localPort: number): string;   //
 ```
 
 - **ssh Site:** `open` spawns one long-lived `ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:<local>:127.0.0.1:<remote>`
-  with the same options `SshChannel.args()` uses (BatchMode, ConnectTimeout, ControlMaster=auto,
-  ControlPath = `controlPathFor(site)`, ControlPersist, `-p`, `-J`), so it rides the existing master.
-  Export the option builder from `channel.ts` as `sshBaseArgs(target)` (pure) instead of duplicating.
+  with the connection shape `SshChannel.args()` uses (BatchMode, ConnectTimeout, `-p`, `-J`) but on a
+  **dedicated connection**, not the Site's warm master: `sshBaseArgs(target, null)` emits
+  `ControlMaster=no ControlPath=none`. A `-N` mux client rides a warm master and exits with code 0 the
+  instant it hands the forward over (seen on OpenSSH 10.2), which the Host would read as a dead forward;
+  a dedicated connection makes the child's lifetime the forward's. Export the option builder from
+  `channel.ts` as `sshBaseArgs(target, controlPath)` (pure) instead of duplicating.
 - **local Site:** no process; `ready` with `local: true` once the probe answers.
 - Readiness: poll `probe(http://127.0.0.1:<local>/)` until success or `readyTimeoutMs`, then `ready`
   with `url = toolViewUrl(kind, local)`; on child exit before ready → `failed{reason, log}` (last 4 KiB
