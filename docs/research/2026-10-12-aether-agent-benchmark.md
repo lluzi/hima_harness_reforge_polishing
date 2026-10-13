@@ -282,3 +282,22 @@ which tested two DC states: `bgok` high when enabled, low when disabled.
   here.
 - **Monte Carlo coverage.** It varies MOS and PNP mismatch only. The open PDK has no resistor mismatch
   model.
+
+**Re-signed off (2026-10-13, Pack 0.3.0, commit f8f604b3)** with the redesigned BGOK monitor and the
+stricter checks: 204 s from a fresh workspace.
+
+| Line | Worst corner, before layout | After layout |
+| --- | --- | --- |
+| VBG | 1.211 V | |
+| IQ | 6.39 uA | |
+| ISD | 0.091 nA | 0.134 nA |
+| TC | 22.3 ppm/C | |
+| PM | 70.5 deg | 66.8 deg |
+| Start-up | 62.8 us | 64.7 us |
+| PSRR | 49.0 dB | 48.0 dB |
+| BGOK through start-up | stays low until VBG reaches 61.7 % of final, worst corner | 99.7 % |
+
+- **Monte Carlo:** 100 runs, sigma 4.78 mV, inside the band.
+- **Layout:** clean on both checks.
+- **BGOK limit:** the BGOK trip is verified for the bench's ramps (power-up 10 us, `en` 1 us and
+  50 us), not for much slower supply ramps.

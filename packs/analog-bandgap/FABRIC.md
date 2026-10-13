@@ -112,3 +112,22 @@
     - the 70 % trip aim at 2 V 125 C;
     - routing the BGOK nets away from `b`, `d1`, `g` and the tap, which couple about 10 fF each
       after layout.
+- **Sign-off evidence for 0.3.0** (2026-10-13). The committed code (f8f604b3) ran in a fresh
+  workspace (`analog-runs/bgcore-final-20261013-1436`), the full chain in 204 s:
+
+  | Line | Before layout | After layout |
+  | --- | --- | --- |
+  | VBG | 1.211 V | 1.211 V |
+  | IQ | 6.394 uA | 6.394 uA |
+  | ISD | 0.091 nA | 0.134 nA |
+  | TC | 22.3 ppm/C | 22.3 ppm/C |
+  | PM | 70.5 deg | 66.8 deg |
+  | Start-up | 62.8 us | 64.7 us |
+  | PSRR | 49.0 dB | 48.0 dB |
+  | BGOK level | 0.01 % vdd | 0.01 % vdd |
+  | bgokTrip | 61.7 % | 99.7 % |
+
+  - **Monte Carlo:** N=100, sigma 4.78 mV, inside the band. Spectre crashed 6 times; three chunks
+    were split.
+  - **Layout:** clean, DRC 0/0, both LVS match.
+  - **Round:** valid, signed off.
