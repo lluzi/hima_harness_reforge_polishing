@@ -35,6 +35,13 @@ values:
   mage_order_deviation_max:
     unit: rank
     description: Maximum placement-order deviation (customer check_dev) over the TB/LR/IN partitions.
+  mage_moved_count:
+    unit: count
+    description: >-
+      Count of Fits whose box moved from the frozen start (metrics.displacement movedCount). decide()
+      uses it to recognise round 1's faithful reproduction (movedCount 0) as the native anchor: a
+      round that moves nothing and whose native rows are all known establishes the anchor the
+      no-native-violation composite then measures new rows against.
   mage_native_overlap_rows:
     unit: rows
     description: MAGE's own instance count from the candidate's native OVERLAP check (frbCheckOverlap).
@@ -46,7 +53,15 @@ values:
     description: MAGE's own instance count from the candidate's native BOUNDARY check (frbCheckBoundary).
   mage_native_violation_total:
     unit: rows
-    description: Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any one is unknown.
+    description: >-
+      Sum of the three native check instance counts (OVERLAP, SPACE, BOUNDARY); unknown whenever any
+      one is unknown. The delivered no-native-violation rule (evaluate-placement, Part B) is a
+      composite: when a native anchor exists (round 1's faithful reproduction of the start, recorded
+      by decide() in the round-decision's nativeAnchor) it PASSes iff the best round introduced no
+      native row beyond that anchor per type (new rows = sum over types of max(0, best - anchor));
+      with no anchor it falls back to this absolute total (eq 0); it is UNKNOWN when a best per-type
+      row is unknown. A row the incumbent's own native fill already carried, reproduced by the anchor
+      round, is never counted as this Run's new violation.
   mage_open_request_count:
     unit: count
     description: >-

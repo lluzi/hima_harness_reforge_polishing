@@ -1,6 +1,17 @@
 id: no-native-violation
 version: "1"
-title: No native MAGE verify-check row remains across the three native MAGE checks
+# Part B: `evaluate-placement` evaluates this rule against the DELIVERED
+# state as a COMPOSITE, not only the `mage_native_violation_total` Measure
+# named in `subject`/`predicate` below. When a native anchor exists (round 1's
+# faithful reproduction of the frozen start, recorded by `decide()` in the
+# round-decision's `nativeAnchor`), it PASSes iff the best round introduced no
+# native row beyond that anchor per type (new rows = Σ_type max(0, best −
+# anchor)); a row the incumbent's own native fill already carries, reproduced
+# by the anchor round, is never this Run's new violation. With no anchor it
+# falls back to the absolute `mage_native_violation_total == 0` check below;
+# when a best per-type row is unknown it is UNKNOWN. `evaluate_placement`
+# (tasks.py) owns the full composite, as `no-open-requests.yml` does.
+title: No native MAGE verify-check row beyond the Run's own reproduction of the start (anchor round); zero rows in total when no anchor exists
 requires: [{ type: mage_native_violation_total }]
 subject: { type: mage_native_violation_total }
 predicate: { op: eq, threshold: 0, unit: rows }

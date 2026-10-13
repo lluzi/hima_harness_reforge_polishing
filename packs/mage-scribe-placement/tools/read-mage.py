@@ -65,6 +65,7 @@ _UNITS = {
     "mage_target_over_limit_count": "count",
     "mage_target_over_limit_new_count": "count",
     "mage_order_deviation_max": "rank",
+    "mage_moved_count": "count",
     "mage_native_overlap_rows": "rows",
     "mage_native_space_rows": "rows",
     "mage_native_boundary_rows": "rows",
@@ -86,7 +87,7 @@ CANDIDATE_EMITS = [
     "mage_dropped_length_um", "mage_dropped_ordinary_count", "mage_dropped_ordinary_length_um",
     "mage_target_distance_max_um", "mage_target_over_limit_count",
     "mage_target_over_limit_new_count",
-    "mage_order_deviation_max",
+    "mage_order_deviation_max", "mage_moved_count",
 ] + list(_NATIVE_TYPE_FACT.values()) + ["mage_native_violation_total", "mage_open_request_count"]
 
 REVIEW_EMITS = [
@@ -295,6 +296,7 @@ def _read_candidate(report_path, workspace, mods):
     target = metrics.target_distances(rebuilt, str(goal["max_target_distance_um"]))
     regressions = metrics.target_regressions(start, rebuilt, str(goal["max_target_distance_um"]))
     order = metrics.order_deviation(rebuilt)
+    moved = metrics.displacement(start, rebuilt)
     native = metrics.native_rows(verify_files)
     priority_unplaced = _priority_unplaced(rebuilt)
 
@@ -325,6 +327,10 @@ def _read_candidate(report_path, workspace, mods):
                   else _unknown("mage_target_over_limit_new_count", new_over_reason))
     values.append(_known("mage_order_deviation_max", order["max"])
                   if order["max"] is not None else _unknown("mage_order_deviation_max", order_reason))
+    # Part B: moved-instance count from the frozen start -- always computable
+    # for a completed candidate. decide() uses it to recognise round 1's
+    # faithful reproduction (movedCount 0) as the native anchor.
+    values.append(_known("mage_moved_count", moved["movedCount"]))
     for type_name, fact in _NATIVE_TYPE_FACT.items():
         count = native["byType"].get(type_name)
         values.append(_known(fact, count) if count is not None else _unknown(fact, f"no verify file for {type_name}"))

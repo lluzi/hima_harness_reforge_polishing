@@ -67,6 +67,24 @@ def _reader_values(error=0, native=0, priority=0, drops=0, drops_len="0", over=0
     ]
 
 
+def _anchor_reader_values(error=0, moved=0, overlap=0, space=0, boundary=0):
+    def v(type_name, value):
+        return {"type": type_name, "value": value}
+    return [
+        v("mage_candidate_error_count", error),
+        v("mage_native_violation_total", overlap + space + boundary),
+        v("mage_priority_unplaced_count", 0),
+        v("mage_dropped_count", 0),
+        v("mage_dropped_length_um", "0"),
+        v("mage_target_over_limit_count", 0),
+        v("mage_order_deviation_max", 0),
+        v("mage_moved_count", moved),
+        v("mage_native_overlap_rows", overlap),
+        v("mage_native_space_rows", space),
+        v("mage_native_boundary_rows", boundary),
+    ]
+
+
 def _candidate(snapshot_sha="s" * 64, metrics=None, ledger=None, outcome="completed", reader_values=None):
     doc = core.stamp("placement-candidate", {
         "identity": {"taskId": "t", "runId": "r", "executionId": "e", "nodeId": "n", "round": 1},
@@ -277,6 +295,31 @@ class DecideTests(unittest.TestCase):
         self.assertEqual([s["consumer"] for s in decision["skippedReviews"]], ["litho-pie"])
         self.assertEqual(decision["route"], "continue")
         self.assertIn("skipped review", decision["stopReason"])
+
+    def test_native_anchor_recorded_on_a_round1_reproduction_and_carried(self):
+        # Part B: round 1 moved nothing (movedCount 0) and all three native
+        # rows are known -> the anchor is recorded, even though the
+        # incumbent's own native fill already carries one SPACE row.
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        cand1 = _candidate(reader_values=_anchor_reader_values(moved=0, space=1))
+        d1 = rounds.decide(self.workspace, 1, {}, reviews, cand1, self._round0_decision())
+        self.assertIsNotNone(d1["nativeAnchor"])
+        self.assertEqual(d1["nativeAnchor"]["round"], 1)
+        self.assertEqual(d1["nativeAnchor"]["rows"], {"OVERLAP": 0, "SPACE": 1, "BOUNDARY": 0})
+        self.assertEqual(d1["nativeAnchor"]["total"], 1)
+
+        # Round 2 moves marks, but the anchor is carried forward unchanged.
+        cand2 = _candidate(reader_values=_anchor_reader_values(moved=4, space=1))
+        d2 = rounds.decide(self.workspace, 2, {}, reviews, cand2, d1)
+        self.assertEqual(d2["nativeAnchor"], d1["nativeAnchor"])
+
+    def test_native_anchor_not_recorded_when_round1_moved_a_mark(self):
+        # Part B: a round-1 that moved any mark forfeits the anchor for the
+        # whole Run.
+        reviews = [_review("litho-pie"), _review("metrology"), _review("alignment"), _review("wat")]
+        cand1 = _candidate(reader_values=_anchor_reader_values(moved=2, space=1))
+        d1 = rounds.decide(self.workspace, 1, {}, reviews, cand1, self._round0_decision())
+        self.assertIsNone(d1["nativeAnchor"])
 
     def test_unanswered_previous_request_is_a_candidate_error_not_a_decision(self):
         finding = _finding("F-1", "litho-pie", "fail", "hard")

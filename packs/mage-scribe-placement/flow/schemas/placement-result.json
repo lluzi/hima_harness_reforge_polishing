@@ -16,6 +16,7 @@
     "metrics": {"type": "object"},
     "incumbent": {"type": "object"},
     "outcome": {"type": "string", "enum": ["completed", "best-effort", "blocked"]},
-    "stopReason": {"type": "string"}
+    "stopReason": {"type": "string"},
+    "nativeAnchor": {"type": ["object", "null"]}
   }
 }

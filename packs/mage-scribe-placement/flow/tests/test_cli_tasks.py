@@ -1221,5 +1221,62 @@ class EvaluatePlacementTargetLimitTest(unittest.TestCase):
         self.assertFalse(evaluation["goalMet"])
 
 
+class EvaluatePlacementNativeAnchorTest(unittest.TestCase):
+    """Part B: no-native-violation measures native rows against the anchor
+    round; a row the anchor already carries is never this Run's violation."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _decision(self, best_rows, anchor_rows):
+        reader_values = [
+            {"type": "mage_candidate_error_count", "value": 0},
+            {"type": "mage_native_overlap_rows", "value": best_rows["OVERLAP"]},
+            {"type": "mage_native_space_rows", "value": best_rows["SPACE"]},
+            {"type": "mage_native_boundary_rows", "value": best_rows["BOUNDARY"]},
+            {"type": "mage_native_violation_total", "value": sum(best_rows.values())},
+        ]
+        decision = {
+            "best": {"metrics": {"hardFailCount": 0}, "readerValues": reader_values, "round": 2},
+            "openRequestCount": 0, "openRequests": [], "decisionRequests": [],
+            "skippedReviews": [], "stopReason": "",
+        }
+        if anchor_rows is not None:
+            decision["nativeAnchor"] = {"round": 1, "snapshotSha256": "s" * 64,
+                                        "rows": anchor_rows, "total": sum(anchor_rows.values())}
+        return decision
+
+    def _goal(self):
+        return {"TARGET_DROPPED": 0, "MAX_TARGET_DISTANCE_UM": 100, "MAX_ORDER_DEVIATION": 2}
+
+    def _eval(self, best_rows, anchor_rows):
+        return tasks.evaluate_placement(self.workspace, {
+            "DECISION": self._decision(best_rows, anchor_rows), "INCUMBENT": {"metrics": {}}, **self._goal(),
+        })["value"]
+
+    def test_pass_when_best_rows_equal_the_anchor(self):
+        anchor = {"OVERLAP": 0, "SPACE": 1, "BOUNDARY": 0}
+        evaluation = self._eval({"OVERLAP": 0, "SPACE": 1, "BOUNDARY": 0}, anchor)
+        self.assertEqual(evaluation["rules"]["no-native-violation"], "PASS")
+        basis = evaluation["regressionBasis"]["native"]
+        self.assertEqual(basis["basis"], "anchor")
+        self.assertEqual(basis["newRows"], 0)
+
+    def test_fail_when_a_type_grows_beyond_the_anchor(self):
+        anchor = {"OVERLAP": 0, "SPACE": 1, "BOUNDARY": 0}
+        evaluation = self._eval({"OVERLAP": 0, "SPACE": 2, "BOUNDARY": 0}, anchor)
+        self.assertEqual(evaluation["rules"]["no-native-violation"], "FAIL")
+        self.assertEqual(evaluation["regressionBasis"]["native"]["newRows"], 1)
+
+    def test_absolute_fallback_fails_on_a_space_row_with_no_anchor(self):
+        evaluation = self._eval({"OVERLAP": 0, "SPACE": 1, "BOUNDARY": 0}, None)
+        self.assertEqual(evaluation["rules"]["no-native-violation"], "FAIL")
+        self.assertEqual(evaluation["regressionBasis"]["native"]["basis"], "absolute")
+
+
 if __name__ == "__main__":
     unittest.main()

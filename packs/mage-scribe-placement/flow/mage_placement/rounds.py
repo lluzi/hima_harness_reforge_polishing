@@ -300,6 +300,32 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
     blocked_for_ranking = _reader_blocked(candidate, reader_values)
     key = (_SENTINEL,) * 10 if blocked_for_ranking else best_state_key(rank_metrics, None)
 
+    # Part B: the native anchor is round 1's faithful reproduction of the
+    # frozen start -- a completed, cleanly-read round that moved nothing and
+    # whose three native row counts are all known. The incumbent's own native
+    # fill may already carry a row (e.g. a SPACE row); reproducing it is this
+    # Run's anchor, so the no-native-violation composite can later count only
+    # rows introduced BEYOND it. Once set it is carried forward unchanged; a
+    # round-1 that moved any mark forfeits the anchor for the whole Run.
+    native_anchor = (previous_decision or {}).get("nativeAnchor")
+    if not native_anchor:
+        moved_count = _reader_value(reader_values, "mage_moved_count")
+        anchor_rows = {
+            "OVERLAP": _reader_value(reader_values, "mage_native_overlap_rows"),
+            "SPACE": _reader_value(reader_values, "mage_native_space_rows"),
+            "BOUNDARY": _reader_value(reader_values, "mage_native_boundary_rows"),
+        }
+        if (candidate.get("outcome") == "completed" and not blocked_for_ranking
+                and moved_count == 0 and all(v is not None for v in anchor_rows.values())):
+            native_anchor = {
+                "round": round_no,
+                "snapshotSha256": candidate["snapshotSha256"],
+                "rows": dict(anchor_rows),
+                "total": sum(anchor_rows.values()),
+            }
+        else:
+            native_anchor = None
+
     previous_best = (previous_decision or {}).get("best")
     previous_key = (
         best_state_key(previous_best["rankMetrics"], None)
@@ -388,6 +414,7 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
             "history": history,
             "stopReason": stop_reason,
             "skippedReviews": skipped,
+            "nativeAnchor": native_anchor,
         },
     )
     core.write_artifact(workspace / "state" / "round-decision.json", decision)
@@ -414,6 +441,7 @@ def decide(workspace, round_no, goal, reviews, candidate, previous_decision, ski
             "incumbent": (previous_result or {}).get("incumbent", {}),
             "outcome": outcome,
             "stopReason": stop_reason,
+            "nativeAnchor": native_anchor,
         },
     )
     core.write_artifact(workspace / "state" / "placement-result.json", result)

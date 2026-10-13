@@ -24,6 +24,7 @@
     "decisionRequests": {"type": "array"},
     "history": {"type": "array"},
     "stopReason": {"type": "string"},
-    "skippedReviews": {"type": "array"}
+    "skippedReviews": {"type": "array"},
+    "nativeAnchor": {"type": ["object", "null"]}
   }
 }

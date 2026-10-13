@@ -14,6 +14,7 @@ emits:
   - mage_target_over_limit_count
   - mage_target_over_limit_new_count
   - mage_order_deviation_max
+  - mage_moved_count
   - mage_native_overlap_rows
   - mage_native_space_rows
   - mage_native_boundary_rows
