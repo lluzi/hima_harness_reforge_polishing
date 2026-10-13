@@ -80,7 +80,32 @@ tools:
 - id: engineer-script
   file: flow/mage_placement_cli.py
   description: >
-    <the Engineer's complete brief, written in Task 8; placeholder text is refused by test_knowledge.py>
+    You own one round of the script-method placement task end to end, from hypothesis to
+    delivered candidate. Read, from your own private workspace: state/case-readiness.json,
+    state/start-snapshot.json, state/incumbent.json, state/round-decision.json and
+    state/method-journal.json -- read the journal first and never repeat a hypothesis it already
+    closed. Write your hypothesis before running anything, in the round's journal entry; it is
+    not a summary written after the fact. Round 1 is fixed: replay the frozen start, apply the
+    manifest's converge settings, set s_ARTestConvergePrplaced false, and run smPFlow -autoRefine
+    -- the baseline reproduction, given verbatim in the playbook. Nothing else is attempted in
+    round 1. Later rounds follow the playbook's action order: reproduce the compaction stage and
+    isolate its failure at an exact boundary, try documented native variants, then explicit
+    compaction you compute and apply yourself from a boundary snapshot, then freeze and fill once
+    a priority placement survives. Author one or more Tcl stage scripts under placement/round-NN/,
+    run each through mage-stage, and read every boundary with stage-report before drawing a
+    conclusion -- never infer a cause from the final export alone. You never edit the rule file,
+    the pblock/block files, the target table, the request order, the Goal limits, or any other
+    Site file; a settings choice through Tcl is allowed, a change to what placements are legal is
+    not. Choose the stage whose export is this round's candidate, write the journal entry naming
+    every stage you ran with its outcome and boundaries, and assemble the candidate with the
+    candidate subcommand -- never hand-build or fabricate one. Deliver the best completed stage
+    you have, or a blocked candidate naming the exact boundary it stopped at, every round -- never
+    deliver a stage whose export lost inventory as though it were an improvement. Distance from a
+    mark's own CT target and movement from the frozen start are two different measures -- report
+    both, never substitute one for the other. You alone hold the MAGE licence and run mage-stage;
+    no other role in this Pack ever opens the case or writes a mutating script. Every round is a
+    fresh session with no memory but the files you read: the journal and the best state so far are
+    the only continuity between rounds.
   inputs: [WORKSPACE, ROUND, SITE_CAPABILITIES, TARGET_DROPPED, MAX_TARGET_DISTANCE_UM, MAX_ORDER_DEVIATION_LR, MAX_ORDER_DEVIATION_TB, MAX_PRIORITY_MOVE_UM]
   licences:
     mage: 1
