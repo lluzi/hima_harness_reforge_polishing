@@ -125,8 +125,12 @@ denied (xpra clipboard/sound stay off by URL). The L3 test proves it.
 
 ### 6. Site side (Linglong; documented in `sites/linglong-mage/README.md`, scripts under `sites/linglong-mage/tool-view/`)
 
-- `xpra-start.sh`: `xpra start :1100 --bind-tcp=127.0.0.1:14500 --html=on --daemon=yes --mdns=no --notifications=no --pulseaudio=no --speaker=off --microphone=off --webcam=no --dbus-launch= --xvfb="/usr/bin/Xvfb -ac +extension Composite -screen 0 1920x1200x24 -nolisten tcp -noreset" --start=xterm`
-  (`-ac` so the resident container, which shares `/tmp/.X11-unix`, can connect without the cookie).
+- `xpra-start.sh`: `xpra start :1100 --bind-tcp=127.0.0.1:14500 --html=on --daemon=yes --mdns=no --notifications=no --pulseaudio=no --speaker=off --microphone=off --webcam=no --dbus-launch= --start-new-commands=no --file-transfer=no --open-files=no --open-url=no --printing=no --clipboard=no`
+  with xpra's own cookie-protected Xvfb (no `-ac`, no `--start=xterm`), followed by
+  `DISPLAY=:1100 xhost +SI:localuser:<operator>`: the resident container runs as the same uid and shares
+  `/tmp/.X11-unix`, so that grant alone admits MAGE. The display must hold only MAGE (any client on it can
+  observe or inject X input there); the HTML5 server is loopback-only and reached solely through the Host's
+  SSH forward. Residual risk and the fallback are written up in `tool-view/README.md`.
 - `mage-xvfb.sh` override: if `$MAGE_INPUTS/live-display` exists and names a live display, export it
   as `DISPLAY` and skip the private Xvfb; otherwise current behaviour. One MAGE session at a time,
   matching the Site's `licences.mage: 1`.

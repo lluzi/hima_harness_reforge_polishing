@@ -55,7 +55,9 @@ export function ToolViewPanel({ sessionId, site, label, hidden }: {
     const tick = async (): Promise<void> => {
       const answer = await fetchToolView(sessionId, site);
       if (cancelled) return;
-      if (!answer.ok) { setError(answer.error.message); return; }
+      // A transient status failure (Host restarting, network blip) is shown but never ends the engine:
+      // the next tick looks again, so the pane heals once the Host answers.
+      if (!answer.ok) { setError(answer.error.message); if (!cancelled) timer = setTimeout(() => { void tick(); }, 15_000); return; }
       const value = answer.value;
       applyStatus(value);
       // `open`/`poll` depend only on the forward's state, not on who holds control, so the control
