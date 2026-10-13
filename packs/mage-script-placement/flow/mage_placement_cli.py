@@ -149,7 +149,6 @@ def _cmd_snapshot(workspace, args):
 
 
 def _cmd_lane_view(workspace, args):
-    del workspace
     parser = argparse.ArgumentParser(prog="lane-view")
     parser.add_argument("--snapshot", required=True)
     parser.add_argument("--lane", required=True)
@@ -159,7 +158,10 @@ def _cmd_lane_view(workspace, args):
 
     from mage_placement import lanes
 
-    snap = snapshot.load_snapshot(opts.snapshot)
+    # Finding 5: `--snapshot` is workspace-relative by convention (same class
+    # of cwd bug as `snapshot`/`plan-slots`); resolve against WORKSPACE so a
+    # resident whose cwd differs from WORKSPACE reads the intended file.
+    snap = snapshot.load_snapshot(_resolve_in_workspace(workspace, opts.snapshot))
     along = tuple(int(v) for v in opts.along.split(",")) if opts.along else None
     cross = tuple(int(v) for v in opts.cross.split(",")) if opts.cross else None
     boxes = [[f["id"], f["boxDbu"]] for f in snap["fits"]]

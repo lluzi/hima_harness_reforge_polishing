@@ -93,6 +93,19 @@ class DecideTest(unittest.TestCase):
         self._journal_for(2); d2 = rounds.decide(self.ws, 2, GOAL, candidate(2, values()), d)
         self.assertEqual(d2["best"]["round"], 2)
 
+    def test_blocked_round_is_transparent_to_the_stall_rule(self):
+        # Finding 1: a blocked round neither counts as a stall nor resets the
+        # counter. With round 2 blocked, two *completed* non-improving rounds
+        # (3 and 4) are required to stop -- the old code counted the blocked
+        # round as a stall and stopped one round too early at round 3.
+        d1 = rounds.decide(self.ws, 1, GOAL, candidate(1, values()), self.round0)
+        self._journal_for(2); d2 = rounds.decide(self.ws, 2, GOAL, candidate(2, [], outcome="blocked"), d1)
+        self.assertEqual(d2["route"], "continue"); self.assertEqual(d2["best"]["round"], 1); self.assertTrue(d2["blockedRound"])
+        self._journal_for(3); d3 = rounds.decide(self.ws, 3, GOAL, candidate(3, values()), d2)
+        self.assertEqual(d3["route"], "continue"); self.assertEqual(d3["best"]["round"], 1)
+        self._journal_for(4); d4 = rounds.decide(self.ws, 4, GOAL, candidate(4, values()), d3)
+        self.assertEqual(d4["route"], "stop"); self.assertIn("two consecutive", d4["stopReason"])
+
     def test_round_limit_stops(self):
         prev = self.round0
         for n in range(1, 7):

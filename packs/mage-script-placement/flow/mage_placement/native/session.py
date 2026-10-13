@@ -53,7 +53,15 @@ AGENT_BEGIN = "# hima:agent-begin"
 AGENT_END = "# hima:agent-end"
 FORBIDDEN_PATTERNS = tuple(re.compile(p) for p in (
     r"\bexit\b", r"\bfrbOpen\b", r"MAGE_VERIFY", r"MAGE_ROUND_END", r"MAGE_SNAPSHOT",
-    r"MAGE_STAGE_ERROR", r"MAGE_CHECK", r"\b(proc|rename)\s+hima_", r"hima:(prelude|agent)-(begin|end)",
+    r"MAGE_STAGE_ERROR", r"MAGE_CHECK", r"hima:(prelude|agent)-(begin|end)",
+    # Finding 4: redefining or aliasing any Pack-owned proc, or a check/marker
+    # command, slips the boundary trace and the native-count binding. `rename`
+    # and `interp alias` are refused outright (they can rebind puts/flush/catch
+    # or a hima_* proc without the word `proc`); the `proc` pattern refuses a
+    # (brace/quote-wrapped, optionally `::`-qualified) redefinition of any
+    # hima_*, frbCheck*, smPInstMgr, smPFlow, puts, flush or catch command.
+    r"\brename\b", r"\binterp\s+alias\b",
+    r'\bproc\s+[{"]?(::)*(hima_|frbCheck|smPInstMgr|smPFlow|puts\b|flush\b|catch\b)',
 ))
 _PRELUDE = Path(__file__).resolve().parent / "prelude.tcl"
 _EPILOGUE = Path(__file__).resolve().parent / "epilogue.tcl"
@@ -71,6 +79,35 @@ def refuse_forbidden(script_text):
     for pattern in FORBIDDEN_PATTERNS:
         if pattern.search(script_text):
             raise core.MageError("experiment", f"stage script contains forbidden text {pattern.pattern!r}")
+
+
+def refuse_unbalanced_braces(script_text):
+    """Finding 6: refuse a stage whose `{`/`}` do not balance.
+
+    An unbalanced agent script would otherwise be wrapped verbatim inside the
+    driver's own `catch { ... }` block, so a stray brace in agent text would
+    swallow or truncate the epilogue (or never close the catch), corrupting
+    the assembled `stage.tcl` rather than failing the agent's own script. The
+    count ignores full-line `#` comments and backslash-escaped braces (`\\{`,
+    `\\}`), so the playbook's brace-escaped `regexp` patterns are not flagged.
+    """
+    depth = 0
+    for line in script_text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        i = 0
+        while i < len(line):
+            char = line[i]
+            if char == "\\":
+                i += 2
+                continue
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+            i += 1
+    if depth != 0:
+        raise core.MageError("experiment", f"stage script has unbalanced braces (depth {depth})")
 
 
 def slice_verify(stdout_text):
@@ -130,6 +167,8 @@ def slice_checks(stdout_text):
     for raw in stdout_text.splitlines():
         s = raw.strip()
         if s.startswith("MAGE_CHECK_BEGIN "):
+            if len(s.split()) != 3:   # T4 (finding 12): a malformed BEGIN line is ignored, never unpacked
+                continue
             _, idx, t = s.split(" ", 2); current = (idx, t)
             blocks.setdefault(idx, {})[t] = {"code": None, "instances": None, "lines": []}
         elif s.startswith("MAGE_CHECK_CODE "):
@@ -239,6 +278,7 @@ class MageSession:
         agent_bytes = Path(script_path).read_bytes()
         agent_text = agent_bytes.decode("utf-8", errors="replace")
         refuse_forbidden(agent_text)
+        refuse_unbalanced_braces(agent_text)
         if role != ENGINEER_ROLE:
             raise core.MageError("writer", f"role {role!r} may not run a MAGE stage")
 
@@ -253,7 +293,7 @@ class MageSession:
         started = _iso_now(); timed_out = False
         with open(stdout_path, "wb") as o, open(stderr_path, "wb") as e:
             proc = subprocess.Popen(list(prefix) + [str(stage_tcl), "-noterm"], cwd=str(stage_dir), env=self.env,
-                                    stdout=o, stderr=e, start_new_session=True)
+                                    stdin=subprocess.DEVNULL, stdout=o, stderr=e, start_new_session=True)
             try:
                 rc = proc.wait(timeout=int(timeout_s))
             except subprocess.TimeoutExpired:

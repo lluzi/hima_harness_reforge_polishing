@@ -53,8 +53,10 @@ def _mage_modules(workspace):
     flow_dir = str(Path(workspace) / "flow")
     if flow_dir not in sys.path:
         sys.path.insert(0, flow_dir)
-    names = ("core", "metrics", "snapshot", "pla", "records")
-    return {name: importlib.import_module(f"mage_placement.{name}") for name in names}
+    names = ("core", "metrics", "snapshot", "pla", "records", "native.session")
+    mods = {name: importlib.import_module(f"mage_placement.{name}") for name in names}
+    mods["session"] = mods.pop("native.session")
+    return mods
 
 
 _UNITS = {
@@ -94,19 +96,21 @@ def _resolve_ref(workspace, ref):
 
 
 def _incumbent_ordinary_population(workspace, mods):
-    """N7: the incumbent's measured ordinary population from
-    `state/incumbent.json` (`ordinaryPopulation`), or `None` when no
-    incumbent has been measured in this workspace. The Reader already reads
-    Campaign `state/` files; on the live Campaign `measure-incumbent` always
-    runs before any round, so the anchor is always present on the real
-    path."""
+    """N7 (finding 7): the incumbent's measured ordinary population from
+    `state/incumbent.json` (`ordinaryPopulation`). On the live Campaign
+    `measure-incumbent` always runs before any round, so the anchor is always
+    present; a completed candidate reaching the Reader without it is an
+    inconsistent delivery, so the Reader FAILS CLOSED rather than silently
+    dropping the ordinary-population half of the inventory check. (The
+    candidate assembler's own copy keeps tolerating `None` on Pack-local
+    paths; only the Reader hardens here.)"""
     path = Path(workspace) / "state" / "incumbent.json"
     if not path.is_file():
-        return None
+        raise mods["core"].MageError("missing-input", f"incumbent measure is missing: {path}")
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    except (OSError, ValueError) as exc:
+        raise mods["core"].MageError("missing-input", f"incumbent measure is unreadable: {path}: {exc}") from exc
     return doc.get("ordinaryPopulation")
 
 
@@ -117,7 +121,49 @@ def _check_ref(workspace, ref, label, mods):
     return path
 
 
+def _stage_dir_of(doc):
+    """The stage directory the delivered `stage.tcl` sits in, as a
+    workspace-relative posix path (finding 3): every other delivered file
+    must be bound to this one directory."""
+    return doc["files"]["stageScript"]["path"].rsplit("/", 1)[0]
+
+
+def _check_stage_binding(doc, mods):
+    """Finding 3: tie every delivered file to the one stage directory the
+    delivered `stage.tcl` lives in, so a candidate cannot point `files.verify`
+    (or the export/snapshot/boundary snapshots) at another stage's output and
+    read that stage's counts. Path equalities are exact; boundary snapshots
+    must sit under `<stage_dir>/out/`; and `reproduction.stageDir` must name
+    the same directory."""
+    core = mods["core"]
+    files = doc["files"]
+    stage_dir = _stage_dir_of(doc)
+    expected = {"script": f"{stage_dir}/script.tcl", "stageScript": f"{stage_dir}/stage.tcl"}
+    if doc.get("outcome") == "completed":
+        expected["export"] = f"{stage_dir}/out/export.pla"
+        expected["snapshot"] = f"{stage_dir}/out/snapshot.json"
+    for key, want in expected.items():
+        got = files[key]["path"]
+        if got != want:
+            raise core.MageError("identity-mismatch", f"{key} path {got!r} is not {want!r} (stage binding)")
+    for type_name, ref in files.get("verify", {}).items():
+        want = f"{stage_dir}/out/verify-{type_name}.txt"
+        if ref["path"] != want:
+            raise core.MageError("identity-mismatch", f"verify {type_name} path {ref['path']!r} is not {want!r} (stage binding)")
+    for snap_ref in files.get("snapshots", []):
+        if not snap_ref["path"].startswith(f"{stage_dir}/out/"):
+            raise core.MageError("identity-mismatch", f"boundary snapshot {snap_ref['path']!r} is not under {stage_dir}/out/ (stage binding)")
+    repro_dir = doc.get("reproduction", {}).get("stageDir")
+    if repro_dir != stage_dir:
+        raise core.MageError("identity-mismatch", f"reproduction.stageDir {repro_dir!r} is not the delivered stage dir {stage_dir!r}")
+    return stage_dir
+
+
 def _check_session_log(workspace, doc, mods):
+    """Audit the round's session log and, for a completed candidate, return
+    the logged stage entry that backs the delivered stage (its `stageSha256`,
+    `exportSha256` and `completed` all match). Returns `None` for a blocked
+    candidate."""
     files = doc["files"]
     round_no = doc.get("identity", {}).get("round")
     prefix = f"placement/round-{round_no:02d}/" if isinstance(round_no, int) else None
@@ -131,10 +177,14 @@ def _check_session_log(workspace, doc, mods):
     for entry in entries:
         if entry.get("role") != "engineer":
             raise mods["core"].MageError("writer", f"stage logged under role {entry.get('role')!r}")
-    if doc.get("outcome") == "completed":
-        stage_sha = files["stageScript"]["sha256"]; export_sha = files["export"]["sha256"]
-        if not any(e.get("completed") and e.get("stageSha256") == stage_sha and e.get("exportSha256") == export_sha for e in entries):
-            raise mods["core"].MageError("identity-mismatch", "no completed logged stage matches the delivered stage.tcl and export")
+    if doc.get("outcome") != "completed":
+        return None
+    stage_sha = files["stageScript"]["sha256"]; export_sha = files["export"]["sha256"]
+    matching = next((e for e in entries if e.get("completed") and e.get("stageSha256") == stage_sha
+                     and e.get("exportSha256") == export_sha), None)
+    if matching is None:
+        raise mods["core"].MageError("identity-mismatch", "no completed logged stage matches the delivered stage.tcl and export")
+    return matching
 
 
 def _candidate_unknowns(reason):
@@ -156,7 +206,8 @@ def _read_candidate(report_path, workspace, mods):
         raise core.MageError("schema", "; ".join(journal_errors) or "journal entry round does not match the candidate")
     for snap_ref in files.get("snapshots", []):
         _check_ref(workspace, snap_ref, f"boundary snapshot {snap_ref.get('name')}", mods)
-    _check_session_log(workspace, doc, mods)
+    stage_dir = _check_stage_binding(doc, mods)
+    log_entry = _check_session_log(workspace, doc, mods)
     if doc.get("outcome") != "completed":
         return _candidate_unknowns(f"candidate outcome is {doc.get('outcome')!r}; no metrics claimed")
 
@@ -171,6 +222,26 @@ def _read_candidate(report_path, workspace, mods):
     snapshot.check_inventory_conservation(start, rebuilt, _incumbent_ordinary_population(workspace, mods))
     goal = core.read_artifact(Path(workspace) / "state" / "case-readiness.json", "case-readiness")["goal"]
     verify_files = {t: str(_check_ref(workspace, ref, f"verify {t}", mods)) for t, ref in files.get("verify", {}).items()}
+
+    # Finding 3: bind the native counts to the stdout the logged stage
+    # actually captured. The matching session-log entry carries that stage's
+    # `stdoutSha256`; re-hash `<stage_dir>/out/stdout.log`, then re-derive
+    # every verify type's instance count straight from that stdout
+    # (`session.slice_verify`) and refuse if it disagrees with the count in
+    # the delivered verify file's header. A swapped stdout fails the sha; a
+    # swapped verify file fails the recount.
+    session = mods["session"]
+    stdout_path = Path(workspace) / stage_dir / "out" / "stdout.log"
+    expected_stdout_sha = log_entry.get("stdoutSha256")
+    if not stdout_path.is_file() or core.file_sha256(stdout_path) != expected_stdout_sha:
+        raise core.MageError("identity-mismatch", f"stage stdout changed or missing: {stdout_path}")
+    stdout_blocks = session.slice_verify(stdout_path.read_text(encoding="utf-8", errors="replace"))
+    for type_name, path in verify_files.items():
+        header = metrics.native_rows({type_name: path})["byType"][type_name]
+        recomputed = stdout_blocks.get(type_name, {}).get("instances")
+        if header != recomputed:
+            raise core.MageError("identity-mismatch",
+                                 f"verify {type_name} header count {header!r} does not match stdout recount {recomputed!r}")
 
     drops = metrics.drops(rebuilt)
     target = metrics.target_distances(rebuilt, str(goal["max_target_distance_um"]))

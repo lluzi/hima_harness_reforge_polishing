@@ -73,11 +73,28 @@ class StageDriverTest(unittest.TestCase):
     def test_forbidden_patterns_are_refused_before_any_write(self):
         for text in ("exit 0\n", "frbOpen ../x.frb\n", "puts MAGE_ROUND_END\n", "puts {MAGE_SNAPSHOT 1 x}\n",
                      "puts MAGE_CHECK_BEGIN\n", "proc hima_snapshot {n} {}\n", "rename hima_check old\n",
-                     "# hima:agent-end\n"):
+                     "# hima:agent-end\n",
+                     # Finding 4: redefinition/alias bypasses the old gate missed.
+                     "proc ::hima_snapshot {n} {}\n", "proc {hima_check} {} {}\n",
+                     "interp alias {} hima_check {} puts\n", "proc frbCheckSpace {args} {}\n",
+                     "rename puts _p\n"):
             with self.assertRaises(core.MageError) as caught:
                 self._session().run_stage(self._stage(), self._script(text), "engineer")
             self.assertEqual(caught.exception.code, "experiment", text)
             self.assertFalse(Path(self._stage()).exists(), text)
+
+    def test_unbalanced_braces_are_refused_before_any_write(self):
+        # Finding 6: an unbalanced brace in agent text would corrupt the
+        # driver's own catch { ... } wrapper, so it is refused outright.
+        with self.assertRaises(core.MageError) as caught:
+            self._session().run_stage(self._stage(), self._script("hima_open_build {\nsource $hima_start_pla\n"), "engineer")
+        self.assertEqual(caught.exception.code, "experiment")
+        self.assertFalse(Path(self._stage()).exists())
+
+    def test_escaped_and_commented_braces_do_not_trip_the_balance_check(self):
+        # Finding 6: backslash-escaped braces (the playbook's regexp patterns)
+        # and braces inside full-line comments must not be counted.
+        session.refuse_unbalanced_braces("regexp -- {a\\}b} $x\n# { an unbalanced comment\n")
 
     def test_non_engineer_role_is_refused(self):
         with self.assertRaises(core.MageError) as caught:
@@ -125,6 +142,8 @@ class StageDriverTest(unittest.TestCase):
         text = "MAGE_SNAPSHOT 1 a\nMAGE_CHECK_BEGIN 1 SPACE\n2 spacing overlapped instance(s)\nMAGE_CHECK_CODE 1 SPACE 0\nMAGE_CHECK_END 1 SPACE\n"
         checks = session.slice_checks(text)
         self.assertEqual(checks["1"]["SPACE"]["instances"], 2)
+        # Finding 12: a malformed MAGE_CHECK_BEGIN line is ignored, not unpacked.
+        self.assertEqual(session.slice_checks("MAGE_CHECK_BEGIN\nMAGE_CHECK_BEGIN 2\n"), {})
         with tempfile.TemporaryDirectory() as out:
             (Path(out) / "snap-01-a").mkdir()
             (Path(out) / "snap-01-a" / "placement.pla").write_text("x", encoding="utf-8")

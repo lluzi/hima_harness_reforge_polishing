@@ -111,7 +111,7 @@ def decide(workspace, round_no, goal, candidate, previous_decision):
     previous_key = tuple(previous_best["key"]) if previous_best else None
     improved = (not blocked) and (previous_key is None or key < previous_key)
     history = [h for h in (previous_decision or {}).get("history", []) if h.get("round") != round_no] + [
-        {"round": round_no, "key": list(key), "improved": improved}]
+        {"round": round_no, "key": list(key), "improved": improved, "blocked": blocked}]
     candidate_ref = _archive(workspace, round_no, candidate)
     if improved:
         best = {"snapshotSha256": candidate["snapshotSha256"], "candidatePath": candidate_ref["path"],
@@ -123,8 +123,16 @@ def decide(workspace, round_no, goal, candidate, previous_decision):
     goal_met = bool(best) and all(v == "PASS" for v in rules.values())
     journal_ref, entry_count = _append_journal(workspace, round_no, candidate, best["round"] if best else None)
 
+    # Plan amendment 2026-10-13 (final review, finding 1): only completed,
+    # ranked rounds count toward the two-stall rule. A blocked round neither
+    # counts as a stall nor resets the counter -- it is transparent, so that
+    # (for example) a blocked round 2 that reached explicit compaction does
+    # not conspire with a non-improving round 3 to end the Run before the
+    # method has been tried. The round limit (MAX_ROUNDS) stays the hard cap.
     stalls = 0
     for item in reversed(history[1:]):
+        if item.get("blocked"):
+            continue
         if item["improved"]:
             break
         stalls += 1

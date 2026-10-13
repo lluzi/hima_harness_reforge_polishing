@@ -131,6 +131,14 @@ class CliStageTest(unittest.TestCase):
                      "--out", self.workspace / "state" / "round" / "script-candidate.json"], expect=3)
         self.assertIn("schema", r.stderr)
 
+    def test_lane_view_resolves_a_relative_snapshot_against_the_workspace(self):
+        # Finding 5: lane-view --snapshot is workspace-relative; a resident
+        # whose cwd differs from WORKSPACE (as here, the subprocess inherits
+        # the test runner's cwd) must still read state/start-snapshot.json.
+        r = run_cli(["lane-view", self.workspace, "--snapshot", "state/start-snapshot.json", "--lane", "V:1"])
+        self.assertTrue(r.stdout.strip())
+        json.loads(r.stdout)
+
     def test_script_candidate_fallback_validates_never_fabricates(self):
         r = run_cli(["script-candidate", self.workspace, 0, 100, 2, 1, 200], expect=3)
         self.assertIn("engineering-required", r.stderr)

@@ -116,6 +116,39 @@ class ReaderTest(unittest.TestCase):
         (self.workspace / "placement" / "round-01" / "journal-entry.json").unlink()
         self.assertEqual(self._read(expect=3)["code"], "identity-mismatch")
 
+    def _restamp(self, doc):
+        body = {k: v for k, v in doc.items() if k != "id"}
+        doc["id"] = core.digest(body)
+        self.report.write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_swapped_verify_file_header_is_refused(self):
+        # Finding 3: a verify file whose header count disagrees with the stdout
+        # recount is refused, even after the candidate's own verify sha is
+        # updated to match the tampered file.
+        stage_dir = self._deliver()
+        v = stage_dir / "out" / "verify-OVERLAP.txt"
+        lines = v.read_text(encoding="utf-8").splitlines()
+        lines[0] = lines[0].replace("instances=0", "instances=7")
+        v.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        doc = json.loads(self.report.read_text(encoding="utf-8"))
+        doc["files"]["verify"]["OVERLAP"]["sha256"] = core.file_sha256(v)
+        self._restamp(doc)
+        self.assertEqual(self._read(expect=3)["code"], "identity-mismatch")
+
+    def test_swapped_stdout_is_refused(self):
+        # Finding 3: the delivered stage's stdout.log is bound by the session
+        # log's stdoutSha256; swapping its bytes is refused.
+        stage_dir = self._deliver()
+        (stage_dir / "out" / "stdout.log").write_text("MAGE_ROUND_END code 0\n", encoding="utf-8")
+        self.assertEqual(self._read(expect=3)["code"], "identity-mismatch")
+
+    def test_missing_incumbent_fails_closed(self):
+        # Finding 7: a completed candidate reaching the Reader with no measured
+        # incumbent is an inconsistent delivery; the Reader fails closed.
+        self._deliver()
+        (self.workspace / "state" / "incumbent.json").unlink()
+        self.assertEqual(self._read(expect=3)["code"], "missing-input")
+
     def test_session_log_outside_round_prefix_is_refused(self):
         self._deliver()
         doc = json.loads(self.report.read_text(encoding="utf-8"))
