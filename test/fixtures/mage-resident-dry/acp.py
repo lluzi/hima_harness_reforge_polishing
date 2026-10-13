@@ -236,23 +236,30 @@ def consumer(task, workspace, campaign, cli, role):
     ovl_b_on_target = round_no >= 2
 
     requests = []
-    hard_fail = next((f for f in findings if f.get("status") == "fail" and f.get("severity") == "hard"), None)
-    if role == "wat" and hard_fail is not None:
+    # A reasonable consumer files a Request from the first Finding it fails on,
+    # whether that fail is hard (a regression it will not accept) or cost (a
+    # trade-off it would still like improved, e.g. WAT's now-cost dropped key
+    # or litho-pie's pre-existing over-limit mark). Severity governs the
+    # Finding; it does not gate whether the consumer asks.
+    fail_finding = next((f for f in findings if f.get("status") == "fail"), None)
+    if role == "wat" and fail_finding is not None:
         requests.append({
-            "fromFinding": hard_fail["id"], "consumer": role,
+            "fromFinding": fail_finding["id"], "consumer": role,
             "requestedOutcome": {
-                "kind": "place", "targets": hard_fail["targets"], "limitsUm": {}, "text": "place KEY_V",
+                "kind": "place", "targets": fail_finding["targets"], "limitsUm": {}, "text": "place KEY_V",
             },
             "acceptableAlternatives": [], "strength": "hard",
         })
     elif role == "litho-pie":
-        if not ovl_b_on_target and hard_fail is not None:
-            # Round 1 (both scenarios): OVL_B is off its CT target -- a
-            # genuine hard fail, answered by actually moving it.
+        if not ovl_b_on_target and fail_finding is not None:
+            # Round 1 (both scenarios): OVL_B is off its CT target. After the
+            # Run-owned severity change this is a pre-existing `cost` fail (an
+            # inherited over-limit mark), but litho-pie still asks for it to be
+            # moved onto target, using the Finding's own targets.
             requests.append({
-                "fromFinding": hard_fail["id"], "consumer": role,
+                "fromFinding": fail_finding["id"], "consumer": role,
                 "requestedOutcome": {
-                    "kind": "move", "targets": hard_fail["targets"], "limitsUm": {},
+                    "kind": "move", "targets": fail_finding["targets"], "limitsUm": {},
                     "text": "move OVL_B onto its CT target",
                 },
                 "acceptableAlternatives": [], "strength": "hard",
