@@ -51,8 +51,8 @@ Its design differs in five places:
 - `ibiasUa` is 0.2.
 - `devices` adds:
   - the `en` inverter `MENI1` and `MENI2`, and `MEN5`, `MEN6` and `MEN7`;
-  - the BGOK monitor: `MOK1` to `MOK8`, `MOKI1`, `MOKI2`, `MOKF1` to `MOKF3`, `MOKC`, `MOKO1`
-    and `MOKO2`.
+  - the BGOK monitor: `MOK1` to `MOK8`, `MOKI1`, `MOKI2`, `MOKF1` to `MOKF3`, `MOKC`, `MOKO1`,
+    `MOKO2`, `MOKB` and `MOKCB`.
 - `ladder` is the ladder's unit segment, `{"wUm": ..., "lUm": ...}`: one `ppolyf_u_1k` segment
   (`s` = 1).
 - `bgokTap` is the ladder tap the BGOK comparator senses, a whole number from 1 to 120.

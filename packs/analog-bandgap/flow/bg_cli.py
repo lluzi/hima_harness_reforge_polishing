@@ -374,7 +374,11 @@ def cell_spice(card, design, mismatch=False):
     for name, p, q in ladder_resistors(topology):
         u = design["ladder"]
         lines.append("%s %s %s vss %s %s" % (inst(card, "res", name), p, q, res["model"], res["params"].format(w=um(u["wUm"]), l=um(u["lUm"]), s=1)))
-    net = lambda x: "vref_%d" % int(design["bgokTap"]) if x == "@tap" else x     # bgcore: the tap BGOK senses
+    if has_ladder(topology):
+        tap_problem = bgok_tap_problem(design.get("bgokTap"))
+        if tap_problem:
+            raise ToolError(tap_problem)
+    net = lambda x: "vref_%d" % design["bgokTap"] if x == "@tap" else x     # bgcore: the tap BGOK senses
     for name, (kind, _group, d, g, s, b) in tpl["mos"].items():
         dv = design["devices"][name]
         lines.append(mos_line(card, kind, name, tuple(net(x) for x in (d, g, s, b)), dv["wUm"], dv["lUm"], mismatch))
@@ -387,6 +391,13 @@ def cell_spice(card, design, mismatch=False):
     lines += [".ends bandgap_lb", "", ".subckt bandgap vdd vss en ibias vbg" + rest, "xlb vdd vss en ibias vbg g g%s bandgap_lb" % rest,
               ".ends bandgap", ""]
     return "\n".join(lines)
+
+
+def bgok_tap_problem(tap):
+    """Why a bgokTap is not a tap pin BGOK can sense (a whole number from 1 to 120), or None."""
+    if not isinstance(tap, int) or isinstance(tap, bool) or not 1 <= tap <= LADDER_TAPS:
+        return "bgokTap (the ladder tap BGOK senses) must be a whole number from 1 to %d (found %r)" % (LADDER_TAPS, tap)
+    return None
 
 
 def ladder_resistors(topology):
@@ -1456,7 +1467,10 @@ def first_cut_intent(spec, card, table, devices, choices=None, topology=TOPOLOGY
     if "driveRatio" in keys:
         intent["driveRatio"] = pick("driveRatio", 4.0)
     if has_ladder(topology):
-        intent.update(ladderRUnitKohm=ru, bgokNa=ibgok, bgokTap=int(pick("bgokTap", bgok_tap(devices, icore, vbg_est))))
+        tap = pick("bgokTap", bgok_tap(devices, icore, vbg_est))
+        if tap != int(tap) or isinstance(ch.get("bgokTap"), bool):
+            raise ToolError("choices bgokTap must be a whole number (a tap), not %r" % ch.get("bgokTap"))
+        intent.update(ladderRUnitKohm=ru, bgokNa=ibgok, bgokTap=int(tap))
     return intent
 
 
@@ -1538,8 +1552,8 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     - bgcore: the output device (and so M5, M6) also carries the ladder's current, the core's VBG (core_vbg)
       over 122.5 units of ladderRUnitKohm; the ladder's unit is one segment of ladderRUnitKohm at resWUm
       (`ladder`: {wUm, lUm}); the BGOK mirrors mirror MB0 like MSU1: MOK2, MOKI1 and MOKB at bgokNa, MOKF1 at bgokNa / 8;
-      the BGOK comparator senses vref_<bgokTap> (`bgokTap`); its other devices and
-      MEN4 are fixed small devices."""
+      the BGOK comparator senses vref_<bgokTap> (`bgokTap`); its other devices, the en inverter and the en-low
+      switches (MEN5 to MEN7) are fixed small devices (switchUm)."""
     tpl = template(topology)
     problems = intent_problems(intent, topology)
     if problems:
@@ -1563,11 +1577,16 @@ def size_from_intent(table, devices, card, intent, topology=TOPOLOGY):
     pm = card["devices"]["pmos"]
 
     def pull_up(na):
-        """A small mirror of MB0 at na nA: a width below the minimum is taken back by length."""
+        """A small mirror of MB0 at na nA: a width below the minimum is taken back by length. A length past the PDK's
+        limit is refused: capped there, the mirror would run above na (a shorter BGOK delay than designed)."""
         w = w0 * na * 1e-3 / ib
         if w >= pm["wMinUm"]:
             return dict(wUm=snap(card, "pmos", w), lUm=lm)
-        return dict(wUm=pm["wMinUm"], lUm=min(pm["lMaxUm"], snap(card, "pmos", lm * pm["wMinUm"] / w)))
+        length = snap(card, "pmos", lm * pm["wMinUm"] / w)
+        if length > pm["lMaxUm"]:
+            raise ToolError("a %g nA mirror of the %g uA reference needs L %s um, past the PDK's %s um: raise the current "
+                            "(isuNa or bgokNa) or shorten the mirror's L" % (na, ib, um(length), um(pm["lMaxUm"])))
+        return dict(wUm=pm["wMinUm"], lUm=length)
 
     out["MSU1"] = pull_up(intent["isuNa"])
     i_out = 2 * intent["iCoreUa"]
@@ -1768,9 +1787,9 @@ def validate_design(ws, path=None, files_root=None):
             problems.append("ladder (the reference ladder's unit segment, {wUm, lUm}) is missing")
         else:
             sized("ladder", doc["ladder"], card["devices"]["res"])
-        tap = doc.get("bgokTap")
-        if not isinstance(tap, int) or isinstance(tap, bool) or not 1 <= tap <= LADDER_TAPS:
-            problems.append("bgokTap (the ladder tap BGOK senses) must be a whole number from 1 to %d (found %r)" % (LADDER_TAPS, tap))
+        tap_problem = bgok_tap_problem(doc.get("bgokTap"))
+        if tap_problem:
+            problems.append(tap_problem)
     else:
         for key in ("ladder", "bgokTap"):
             if key in doc:
@@ -1997,8 +2016,9 @@ def measure_rpt(record):
         d["n"], d["ibiasUa"], "x".join([um(d["resistors"]["R1"]["wUm"]), um(d["resistors"]["R1"]["lUm"]), str(d["resistors"]["R1"]["s"])]),
         "x".join([um(d["resistors"]["R2a"]["wUm"]), um(d["resistors"]["R2a"]["lUm"]), str(d["resistors"]["R2a"]["s"])]),
         cap_text(d["caps"].get("CC")), cap_text(d["caps"].get("CO"))) + (
-        "" if not d.get("ladder") else " Ladder unit %s x %s um (W x L), 122.5 units; bgok monitor on vref_%d." % (
-            um(d["ladder"]["wUm"]), um(d["ladder"]["lUm"]), d.get("bgokTap", 0))), "",
+        "" if not d.get("ladder") else " Ladder unit %s x %s um (W x L), 122.5 units; bgok monitor on %s." % (
+            um(d["ladder"]["wUm"]), um(d["ladder"]["lUm"]),
+            "vref_%d" % d["bgokTap"] if bgok_tap_problem(d.get("bgokTap")) is None else "no recorded tap")), "",
               "| device | W (um) | L (um) |", "| --- | --- | --- |"]
     lines += ["| %s | %s | %s |" % (n_, um(v["wUm"]), um(v["lUm"])) for n_, v in d["devices"].items()]
     lines += ["", record["claimBoundary"], ""]

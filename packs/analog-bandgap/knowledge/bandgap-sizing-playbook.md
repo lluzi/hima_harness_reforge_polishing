@@ -67,6 +67,8 @@ Carlo mismatch (tt, 27 C, 3.3 V, N = 100). Every spec line is judged at its wors
   - A missing trace, or a bgok that never goes high, is a miss with its reason.
   - Half of the final VBG is the Pack's boundary between a dead and a started reference. A monitor
     that follows `en` or vdd trips with VBG near 0.
+  - The trip is verified only for the bench's ramps: power-up in 10 µs, and `en` in 1 µs and in
+    50 µs. A supply ramp much slower than the start-up is not checked.
 
 ## Lessons (gf180mcuD, Spectre 23.1, 2026-10-12)
 

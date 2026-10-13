@@ -705,7 +705,7 @@ test('bgcore: the cell adds bgok and 120 tap pins, a 122.5-unit ladder from vbg,
   assert.ok(lines.includes('MEN5 o1 enb vss vss nch33 w=1u l=1u'));
   assert.ok(lines.includes('MEN7 su enb vss vss nch33 w=1u l=1u'), 'en low: the start-up node at vss');
   // BGOK: the ladder tap the method chose against VBE1 (node a), gates only, on a bias-mirror tail; equal inputs read
-  // "not OK" (MOK8 is 1.5 x MOK7); okc drives okcb against a bias pull-up; okcb gates okf's bias charger and its discharge;
+  // "not OK" (MOK8 is 4 x MOK7); okc drives okcb against a bias pull-up; okcb gates okf's bias charger and its discharge;
   // okf (with the MOS capacitor MOKC) is buffered into bgok; en low holds okc low and okcb high.
   const tap = design.bgokTap;
   assert.ok(Number.isInteger(tap) && tap >= 1 && tap <= 120 && design.intent.bgokTap === tap);
@@ -966,9 +966,25 @@ test('bgcore: precheck, cell, the post-layout pins and the record judge the case
     assert.equal(big.status, 0, big.stderr);
     await writeFile(path.join(ws, 'intent-big.json'), big.stdout);
     assert.match(bgcli(ws, 'draft', 'size', path.join(ws, 'intent-big.json')).stderr, /a ladder unit of 500 kOhm is longer than one 200 um segment/);
+    // A tap choice is a whole number; a mirror too small for the PDK's longest device is refused, never capped.
+    await writeFile(path.join(ws, 'sheet-tap.json'), JSON.stringify({ ...SPEC, choices: { bgokTap: 88.7 } }));
+    assert.match(bgcli(ws, 'draft', 'intent', path.join(ws, 'sheet-tap.json')).stderr, /choices bgokTap must be a whole number \(a tap\), not 88.7/);
+    await writeFile(path.join(ws, 'intent-tiny.json'), JSON.stringify({ ...JSON.parse(intentRun.stdout), bgokNa: 0.5 }));
+    assert.match(bgcli(ws, 'draft', 'size', path.join(ws, 'intent-tiny.json')).stderr,
+      /a 0.5 nA mirror of the 0.2 uA reference needs L [\d.]+ um, past the PDK's 50 um/);
     const drafted = bgcli(ws, 'draft', 'size', path.join(ws, 'intent.json'));
     assert.equal(drafted.status, 0, drafted.stderr);
     const good: Json = { ...JSON.parse(drafted.stdout), summary: 'first cut', reason: 'the method' };
+    // The cell of a draft (cell <file>) checks the tap too: no traceback, no floating comparator gate.
+    for (const [tap, why] of [[undefined, /found None/], [500, /found 500/]] as const) {
+      const doc = JSON.parse(JSON.stringify(good));
+      if (tap === undefined) delete doc.bgokTap; else doc.bgokTap = tap;
+      await writeFile(path.join(ws, 'draft-tap.json'), JSON.stringify(doc));
+      const r = bgcli(ws, 'cell', path.join(ws, 'draft-tap.json'));
+      assert.equal(r.status, 3, r.stderr);
+      assert.match(r.stderr, why);
+      assert.doesNotMatch(r.stderr, /Traceback/);
+    }
     const check = async (doc: Json) => {
       await writeFile(path.join(ws, 'd.json'), JSON.stringify(doc));
       return bgcli(ws, 'precheck', path.join(ws, 'd.json'), ws);
@@ -980,6 +996,11 @@ test('bgcore: precheck, cell, the post-layout pins and the record judge the case
       ['the old reference', (d) => { d.ibiasUa = 0.5; }, /ibiasUa must be 0.2, the reference current the bench provides/],
       ['no BGOK pull-up', (d) => { delete d.devices.MOK2; }, /devices must be exactly/],
       ['a ladder that is not the intent\'s', (d) => { d.ladder.lUm += 1; }, /do not follow the intent/],
+      ['no BGOK tap', (d) => { delete d.bgokTap; }, /bgokTap \(the ladder tap BGOK senses\) must be a whole number from 1 to 120 \(found None\)/],
+      ['a BGOK tap of 0', (d) => { d.bgokTap = 0; }, /must be a whole number from 1 to 120 \(found 0\)/],
+      ['a BGOK tap past the pins', (d) => { d.bgokTap = 121; }, /must be a whole number from 1 to 120 \(found 121\)/],
+      ['a fractional BGOK tap', (d) => { d.bgokTap = 88.5; }, /must be a whole number from 1 to 120 \(found 88.5\)/],
+      ['a boolean BGOK tap', (d) => { d.bgokTap = true; }, /must be a whole number from 1 to 120 \(found True\)/],
     ];
     for (const [label, edit, why] of cases) {
       const doc = JSON.parse(JSON.stringify(good));
@@ -1059,6 +1080,8 @@ test('bgcore: precheck, cell, the post-layout pins and the record judge the case
     try {
       await writeFile(path.join(ws2, 'd.json'), JSON.stringify(good));
       assert.match(bgcli(ws2, 'precheck', path.join(ws2, 'd.json'), ws2).stderr, /ladder: the kuijk-p5t-mirror template has no reference ladder/);
+      await writeFile(path.join(ws2, 'd2.json'), JSON.stringify({ ...good, ladder: undefined, topology: 'kuijk-p5t-mirror' }));
+      assert.match(bgcli(ws2, 'precheck', path.join(ws2, 'd2.json'), ws2).stderr, /bgokTap: the kuijk-p5t-mirror template has no reference ladder/);
     } finally { await done2(); }
   } finally { await done(); }
 });
@@ -1287,6 +1310,7 @@ test('Spectre Monte Carlo runs in firstrun chunks; a chunk that keeps crashing i
       'netlist, raw = sys.argv[3], sys.argv[5]',
       'text = open(netlist).read()',
       'n = int(re.search(r"numruns=(\\d+)", text).group(1)); m = re.search(r"firstrun=(\\d+)", text); first = int(m.group(1)) if m else 1',
+      'first += int(os.environ.get("FAKE_SHIFT", "0"))    # a Spectre that numbers its iterations wrong',
       'if n > int(os.environ["FAKE_MAX"]):',
       '    print("FATAL (SPECTRE-18): Segmentation fault."); sys.exit(139)',
       'os.makedirs(raw)',
@@ -1295,7 +1319,7 @@ test('Spectre Monte Carlo runs in firstrun chunks; a chunk that keeps crashing i
       '    open(os.path.join(raw, "mc1-%03d_op1.dc" % k), "w").write(re.sub(r\'"vbg1" "V" \\S+\', \'"vbg1" "V" %.6e\' % (1.2 + k * 1e-4), t))',
       'print("spectre completes with 0 errors")',
     ].join('\n'), { mode: 0o755 });
-    const run = (max: number) => {
+    const run = (max: number, n = 20, shift = 0) => {
       const r = spawnSync('python3', ['-B', '-c', [
         'import json, sys', `sys.path.insert(0, ${JSON.stringify(flowDir)})`, 'import bg_cli as bg',
         `card = json.load(open(${JSON.stringify(path.join(flowDir, 'pdks.json'))}))["cards"]["synth180"]`,
@@ -1305,13 +1329,13 @@ test('Spectre Monte Carlo runs in firstrun chunks; a chunk that keeps crashing i
         'intent = bg.first_cut_intent(spec, card, table, devices, None, "kuijk-p5t-mirror")',
         'design = dict(bg.size_from_intent(table, devices, card, intent, "kuijk-p5t-mirror"), topology="kuijk-p5t-mirror", pdk="synth180", round=1)',
         `inputs = dict(pdkRoot="/pdk", topology="kuijk-p5t-mirror", pdks=dict(design=dict(name="synth180", card=card, simulator=dict(name="spectre", path=${JSON.stringify(fake)}))))`,
-        `out = ${JSON.stringify(path.join(dir, `out-${String(max)}`))}`,
+        `out = ${JSON.stringify(path.join(dir, `out-${String(max)}-${String(n)}-${String(shift)}`))}`,
         'try:',
-        '    values, iq, info = bg.run_mc(out, inputs, design, 20, 1, out)',
+        `    values, iq, info = bg.run_mc(out, inputs, design, ${String(n)}, 1, out)`,
         '    print(json.dumps(dict(values=values, info=info)))',
         'except bg.ToolError as e:',
         '    print(json.dumps(dict(error=str(e), crash=isinstance(e, bg.SpectreCrash))))',
-      ].join('\n')], { encoding: 'utf8', env: { ...process.env, FAKE_MAX: String(max) } });
+      ].join('\n')], { encoding: 'utf8', env: { ...process.env, FAKE_MAX: String(max), FAKE_SHIFT: String(shift) } });
       assert.equal(r.status, 0, r.stderr);
       return { ...JSON.parse(r.stdout), stderr: r.stderr };
     };
@@ -1325,6 +1349,18 @@ test('Spectre Monte Carlo runs in firstrun chunks; a chunk that keeps crashing i
     assert.match(split.stderr, /runs 1 to 20 crashed Spectre 2 times: split in two/);
     assert.equal(split.info.spectreAttempts, 2 + 2 * 2 + 4, 'the crashed attempts count too');
     assert.match(split.info.method, /chunks of 25 runs \(firstrun/);
+    // 60 runs: three top-level chunks (25, 25, 10); with crashes past 13 runs the two full chunks split (12 + 13), the last does not.
+    const want60 = Array.from({ length: 60 }, (_, i) => Number((1.2 + (i + 1) * 1e-4).toExponential(6)));
+    const big = run(100, 60);
+    assert.deepEqual(big.values, want60);
+    assert.deepEqual(big.info.netlist.split(', '), ['mc.scs', 'mc-26.scs', 'mc-51.scs']);
+    const bigSplit = run(13, 60);
+    assert.deepEqual(bigSplit.values, want60, 'the same 60 draws, in order');
+    assert.deepEqual(bigSplit.info.netlist.split(', ').map((x: string) => x.replace(/\.attempt-\d+/, '')),
+      ['mc.scs', 'mc-13.scs', 'mc-26.scs', 'mc-38.scs', 'mc-51.scs']);
+    // A chunk whose files carry other iteration numbers is refused, never read as these runs.
+    const shifted = run(100, 20, 3);
+    assert.match(shifted.error, /Monte Carlo asked for runs 1 to 20 and Spectre wrote 17/);
     const never = run(0);
     assert.equal(never.crash, true, 'a single run that crashes every time is an error, never a gap');
     assert.match(never.error, /crashed \(segmentation fault\)/);
