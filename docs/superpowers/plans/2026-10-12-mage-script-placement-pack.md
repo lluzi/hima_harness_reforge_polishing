@@ -1932,7 +1932,8 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(by["mage_candidate_error_count"], 0)
         self.assertEqual(by["mage_dropped_ordinary_count"], 1); self.assertEqual(by["mage_dropped_ordinary_length_um"], 900.0)
         self.assertEqual(by["mage_priority_move_max_um"], 0.0); self.assertEqual(by["mage_priority_moved_count"], 0)
-        self.assertEqual(by["mage_order_deviation_max_lr"], 0); self.assertEqual(by["mage_native_violation_total"], 0)
+        self.assertEqual(by["mage_order_deviation_max_lr"], -1)   # the synthetic case has no LR side: the customer sentinel -1
+        self.assertEqual(by["mage_order_deviation_max_tb"], 0); self.assertEqual(by["mage_native_violation_total"], 0)
         self.assertEqual(by["mage_target_over_limit_count"], 1)   # OVL_B starts 150 um off target
 
     def test_tampered_export_is_refused(self):
