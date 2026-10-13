@@ -41,7 +41,9 @@
           "items": {"type": "string", "enum": ["ignoreGaps", "removeNonPriority", "splitClusters", "intrudersMovable", "movableNonpriority"]}
         },
         "gapsQualified": {"type": "boolean"},
-        "removed": {"type": "array", "items": {"type": "string"}}
+        "removed": {"type": "array", "items": {"type": "string"}},
+        "interior": {"type": "boolean"},
+        "interiorShrunk": {"type": "array", "items": {"type": "string"}}
       }
     },
     "maxSlots": {"type": "integer", "minimum": 0},

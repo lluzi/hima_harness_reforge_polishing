@@ -115,6 +115,39 @@ class PlanSlotsTest(unittest.TestCase):
             self.assertGreaterEqual(move["toDbu"], lo_dbu)
             self.assertLessEqual(move["toDbu"], hi_dbu)
 
+    def test_interior_shrinks_an_interior_lanes_along_range_by_one_scribe_width(self):
+        out_path = self.root / "plan-interior.json"
+        result = _run([
+            "plan-slots", self.workspace, "--snapshot", self.start_snapshot_path,
+            "--lane", "V:1", "--length-um", "900", "--count", "1", "--limit-um", "1000",
+            "--interior", "--out", out_path,
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        body = json.loads(out_path.read_text(encoding="utf-8"))
+        self.assertTrue(body["model"]["interior"])
+        self.assertEqual(body["model"]["interiorShrunk"], ["V:1"])
+        self.assertTrue(body["feasible"])
+        scribe = core.um_to_dbu("60", 10000)
+        along_hi = core.um_to_dbu("1780", 10000)
+        # Every opened slot now sits inside the shrunk interior window
+        # [scribe, alongHi - scribe], clear of the exterior frame-edge band.
+        for start in body["slotStarts"]:
+            self.assertGreaterEqual(start, scribe)
+            self.assertLessEqual(start + core.um_to_dbu("900", 10000), along_hi - scribe)
+
+    def test_interior_keeps_full_range_on_a_shared_exterior_lane(self):
+        out_path = self.root / "plan-interior-ext.json"
+        result = _run([
+            "plan-slots", self.workspace, "--snapshot", self.start_snapshot_path,
+            "--lane", "V:0", "--length-um", "900", "--count", "1", "--limit-um", "1000",
+            "--interior", "--out", out_path,
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        body = json.loads(out_path.read_text(encoding="utf-8"))
+        self.assertTrue(body["model"]["interior"])
+        # V:0 is a shared-exterior lane: it is the edge band, so it is never shrunk.
+        self.assertEqual(body["model"]["interiorShrunk"], [])
+
     def _snapshot_with_blocking_fit_in_v_cols(self):
         """A copy of the start snapshot with one extra Fit occupying the
         *whole* along range of the far exterior V track (`V:2`, the right

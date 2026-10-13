@@ -106,7 +106,11 @@ class ApplyPlanTest(unittest.TestCase):
         move = plan["moves"][0]
 
         out = self.root / "candidate.pla"
-        result = _run(["apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path, "--out", out])
+        # `--keep-group-points` isolates the pure move: no Group target point
+        # follows the Fit, so "everything else byte-for-byte" still holds.
+        # (The follow-groups default is covered by its own test below.)
+        result = _run(["apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path,
+                       "--keep-group-points", "--out", out])
         summary = json.loads(result.stdout)
 
         self.assertEqual(summary["movedCount"], 1)
@@ -204,6 +208,131 @@ class ApplyPlanTest(unittest.TestCase):
         candidate = pla.read_pla(out.read_text(encoding="utf-8"), DBU_PER_UM)
         moved = next(f for f in candidate["fits"] if f["id"] == "OVL_F.OVL_F_1")
         self.assertEqual(moved["boxDbu"], [7000000, 20000, 8000000, 580000])
+
+    # -- follow-groups (default on) --------------------------------------
+
+    def test_follow_groups_default_shifts_the_moved_marks_group_point(self):
+        plan_path, plan = self._plan("plan-fg", "H:0", "1500", 1)
+        self.assertEqual(plan["movedCount"], 1)
+        move = plan["moves"][0]
+        start = self._start_doc()
+        moved_fit = next(f for f in start["fits"] if f["id"] == move["id"])
+        label = moved_fit["inGroup"]
+        start_group = next(g for g in start["groups"] if g["pinstGroup"] == label)
+        delta = move["toDbu"] - move["fromDbu"]
+
+        default_out = self.root / "fg-default.pla"
+        summary = json.loads(_run(["apply-plan", self.workspace, "--pla", self.start_pla,
+                                   "--plan", plan_path, "--out", default_out]).stdout)
+        self.assertEqual(summary["groupPointsShifted"], 1)
+        default_group = next(g for g in pla.read_pla(default_out.read_text(encoding="utf-8"), DBU_PER_UM)["groups"]
+                             if g["pinstGroup"] == label)
+        # H lane -> the Group point follows along x by the Fit's delta.
+        self.assertEqual(default_group["targetPointDbu"],
+                         [start_group["targetPointDbu"][0] + delta, start_group["targetPointDbu"][1]])
+
+        keep_out = self.root / "fg-keep.pla"
+        summary = json.loads(_run(["apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path,
+                                   "--keep-group-points", "--out", keep_out]).stdout)
+        self.assertEqual(summary["groupPointsShifted"], 0)
+        keep_group = next(g for g in pla.read_pla(keep_out.read_text(encoding="utf-8"), DBU_PER_UM)["groups"]
+                          if g["pinstGroup"] == label)
+        self.assertEqual(keep_group["targetPointDbu"], start_group["targetPointDbu"])
+
+    # -- reserve ----------------------------------------------------------
+
+    def _incumbent_pla_path(self):
+        return Path(self.case["files"]["incumbentState"])
+
+    def test_reserve_places_the_vert_key_at_a_slot_start_with_clearance(self):
+        plan_path, plan = self._plan("plan-res-v", "V:1", "902", 1, extra=("--interior",))
+        self.assertTrue(plan["feasible"])
+        slot_start = plan["slotStarts"][0]
+
+        out = self.root / "reserved-v.pla"
+        summary = json.loads(_run([
+            "apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path,
+            "--reserve", self._incumbent_pla_path(), "--reserve-length-um", "900",
+            "--keep-group-points", "--no-straddle-guard", "--out", out]).stdout)
+        self.assertEqual(summary["reserved"], {"V": 1, "H": 0})
+        self.assertEqual(summary["unreserved"], [])
+
+        candidate = pla.read_pla(out.read_text(encoding="utf-8"), DBU_PER_UM)
+        key = next(f for f in candidate["fits"] if f["id"] == "KEY_V.KEY_V")
+        v1 = next(entry for entry in json.loads(self.snapshot_path.read_text(encoding="utf-8"))["lanes"]
+                  if entry["laneId"] == "V:1")
+        lo, hi = v1["crossRangeDbu"]
+        clearance = core.um_to_dbu("1", DBU_PER_UM)
+        # Cross extent is exactly the V:1 band; along start is the slot start + 1 um;
+        # the 900 um x 60 um incumbent drop is transposed to a 60 um x 900 um lane box.
+        self.assertEqual(key["boxDbu"][0], lo)
+        self.assertEqual(key["boxDbu"][2], hi)
+        self.assertEqual(key["boxDbu"][1], slot_start + clearance)
+        self.assertEqual(key["boxDbu"][3] - key["boxDbu"][1], core.um_to_dbu("900", DBU_PER_UM))
+
+    def test_reserve_reports_a_vert_key_unreserved_in_an_h_stage(self):
+        plan_path, _ = self._plan("plan-res-h", "H:0", "100", 1)
+        out = self.root / "reserved-h.pla"
+        summary = json.loads(_run([
+            "apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path,
+            "--reserve", self._incumbent_pla_path(), "--reserve-length-um", "900",
+            "--no-straddle-guard", "--out", out]).stdout)
+        self.assertEqual(summary["reserved"], {"V": 0, "H": 0})
+        self.assertIn("KEY_V.KEY_V", summary["unreserved"])
+
+    def test_reserve_refuses_a_mixed_axis_plan_set(self):
+        plan_v, _ = self._plan("plan-mix-v", "V:1", "902", 1, extra=("--interior",))
+        plan_h, _ = self._plan("plan-mix-h", "H:0", "100", 1)
+        result = _run_raw([
+            "apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_v, "--plan", plan_h,
+            "--reserve", self._incumbent_pla_path(), "--reserve-length-um", "900", "--out", self.root / "c.pla"])
+        self.assertEqual(result.returncode, 3, result.stdout)
+        self.assertIn("apply-plan", result.stderr)
+        self.assertIn("one lane axis", result.stderr)
+
+    def test_reserve_requires_a_reserve_length(self):
+        plan_path, _ = self._plan("plan-res-nolen", "V:1", "902", 1, extra=("--interior",))
+        result = _run_raw([
+            "apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_path,
+            "--reserve", self._incumbent_pla_path(), "--out", self.root / "c.pla"])
+        self.assertEqual(result.returncode, 3, result.stdout)
+        self.assertIn("reserve-length-um", result.stderr)
+
+    # -- full V-then-H reserve-first route --------------------------------
+
+    def test_full_v_then_h_reserve_route_replays_and_validates(self):
+        # V lanes: plan interior, apply with reserve.
+        plan_v, _ = self._plan("route-v", "V:1", "902", 1, extra=("--interior",))
+        stage1 = self.root / "stage1-v.pla"
+        _run(["apply-plan", self.workspace, "--pla", self.start_pla, "--plan", plan_v,
+              "--reserve", self._incumbent_pla_path(), "--reserve-length-um", "900",
+              "--no-straddle-guard", "--out", stage1])
+
+        # Re-snapshot the V-placed PLA, then plan the H lanes on it.
+        stage1_snap = self.root / "stage1-snap.json"
+        _run(["snapshot", self.workspace, "--pla", stage1, "--stage", "candidate", "--out", stage1_snap])
+        plan_h = self.root / "route-h.json"
+        _run(["plan-slots", self.workspace, "--snapshot", stage1_snap, "--lane", "H:1",
+              "--length-um", "102", "--count", "1", "--limit-um", "1000", "--interior", "--out", plan_h])
+
+        reserved = self.root / "reserved.pla"
+        _run(["apply-plan", self.workspace, "--pla", stage1, "--plan", plan_h,
+              "--reserve", self._incumbent_pla_path(), "--reserve-length-um", "900", "--out", reserved])
+
+        # One real round (--fill) on the reserved PLA, then the candidate.
+        round_dir = self.workspace / "placement" / "round-01"
+        env = dict(os.environ)
+        env["MAGE_STANDIN_ROWS"] = "{}"
+        _run(["mage-round", self.workspace, "--round", "1", "--pla", reserved,
+              "--role", "engineer", "--out-dir", round_dir, "--fill"], env=env)
+        candidate_doc_path = self.root / "route-candidate.json"
+        _run(["candidate", self.workspace, "--round", "1", "--round-dir", round_dir, "--out", candidate_doc_path])
+        candidate_doc = json.loads(candidate_doc_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(candidate_doc["outcome"], "completed", candidate_doc.get("stopReason"))
+        # The reserved KEY_V survives the replay/fill into the exported snapshot.
+        export_snap = json.loads((round_dir / "out" / "snapshot.json").read_text(encoding="utf-8"))
+        self.assertIn("KEY_V.KEY_V", {f["id"] for f in export_snap["fits"]})
 
     def test_apply_plan_requires_at_least_one_plan(self):
         result = _run_raw(["apply-plan", self.workspace, "--pla", self.start_pla, "--out", self.root / "c.pla"])

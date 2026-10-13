@@ -47,6 +47,41 @@ def lane_model(frame):
     return lanes
 
 
+def interior_along_range(lane, occupant_boxes):
+    """Shrunk along range for one interior scribe lane (reserve-first step 1).
+
+    An interior lane's along range is pulled in by one scribe width -- the
+    lane model's own cross-range width (`crossRangeDbu[1] - crossRangeDbu[0]`,
+    never a hard-coded constant) -- at both ends, so a priority mark moved
+    into a planned slot can never slide into the exterior (frame-edge) lane
+    band, which MAGE refuses to assign ("No assigned sl"). Two lanes keep
+    their full range: a `sharedExterior` lane (it *is* the edge band), and an
+    interior lane whose own edge band already holds an occupant (shrinking it
+    would evict a legitimate incumbent there).
+
+    `lane` is a `mage.layout-snapshot/2` lane entry; `occupant_boxes` is the
+    `[l, b, r, t]` box of every Fit and Fixed object in the snapshot. Returns
+    `(along_lo_dbu, along_hi_dbu, shrunk)`; `shrunk` is False whenever the
+    full range is returned unchanged.
+    """
+    a0, a1 = lane["alongRangeDbu"]
+    if lane.get("sharedExterior"):
+        return a0, a1, False
+    c0, c1 = lane["crossRangeDbu"]
+    e = c1 - c0  # one scribe width, read from the lane's own cross range
+    axis = lane["axis"]
+
+    def in_edge_band(box):
+        l, b, r, t = box
+        if axis == "H":
+            return b < c1 and t > c0 and (l < a0 + e or r > a1 - e)
+        return l < c1 and r > c0 and (b < a0 + e or t > a1 - e)
+
+    if any(in_edge_band(box) for box in occupant_boxes):
+        return a0, a1, False
+    return a0 + e, a1 - e, True
+
+
 def physical_lane(frame, axis, track):
     """Exterior opposite lanes (track 0 and track rows/cols) fold to track 0."""
     limit = frame["rows"] if axis == "H" else frame["cols"]

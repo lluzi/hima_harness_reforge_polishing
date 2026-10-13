@@ -38,7 +38,7 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parent)]
 
 from mage_placement import (  # noqa: E402
-    apply_plan as apply_plan_mod, consumers, core, metrics as metrics_mod, pla, planner,
+    apply_plan as apply_plan_mod, consumers, core, lanes, metrics as metrics_mod, pla, planner,
     records, snapshot, tasks,
 )
 from mage_placement.native import session as native_session  # noqa: E402
@@ -254,6 +254,7 @@ def _cmd_plan_slots(workspace, args):
     parser.add_argument("--limit-um", required=True)
     parser.add_argument("--relaxed", action="store_true")
     parser.add_argument("--movable-nonpriority", default=None, metavar="UM")
+    parser.add_argument("--interior", action="store_true")
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
 
@@ -278,6 +279,17 @@ def _cmd_plan_slots(workspace, args):
     # into it (see the exterior-fold docstring above); any one band's
     # alongRangeDbu is therefore the physical lane's.
     along_low_dbu, along_high_dbu = lane_entry["alongRangeDbu"]
+    interior_shrunk = []
+    if opts.interior:
+        # Step 1 of the reserve-first method: pull an interior lane's along
+        # range in by one scribe width at both ends so a moved mark can never
+        # enter the exterior band MAGE refuses. The shrunk range drives both
+        # the @start/@end sentinels and the crossing-intruder window below, so
+        # it must be applied before either is computed.
+        occupant_boxes = [f["boxDbu"] for f in snap["fits"]] + [f["boxDbu"] for f in snap["fixed"]]
+        along_low_dbu, along_high_dbu, shrunk = lanes.interior_along_range(lane_entry, occupant_boxes)
+        if shrunk:
+            interior_shrunk = [lane_entry["laneId"]]
     bands = [
         (entry["track"], entry["crossRangeDbu"][0], entry["crossRangeDbu"][1])
         for entry in snap["lanes"]
@@ -399,6 +411,13 @@ def _cmd_plan_slots(workspace, args):
     # unit post-processing rather than threaded through the planner.
     if nonpriority_budget_dbu is not None:
         body["model"]["relaxations"] = list(body["model"]["relaxations"]) + ["movableNonpriority"]
+    if opts.interior:
+        # Record that the interior-lane along-range shrink was applied, and
+        # which lane (this physical lane) it actually shrank -- empty when the
+        # lane was exterior or its edge band was already occupied, so the plan
+        # still states the flag was requested.
+        body["model"]["interior"] = True
+        body["model"]["interiorShrunk"] = interior_shrunk
     if folded_tracks is not None:
         body["foldedTracks"] = folded_tracks
 
@@ -407,6 +426,37 @@ def _cmd_plan_slots(workspace, args):
     if errors:
         raise core.MageError("schema", "; ".join(errors))
     return out_path, body
+
+
+def _read_reserve_drops(path, dbu_per_um):
+    """Normalise a `--reserve` source into incumbent drop dicts for reserving.
+
+    The source is either an incumbent export PLA (its `dropFitInsts` entries
+    are returned verbatim) or a `mage.layout-snapshot/2` snapshot JSON (each
+    `pending` entry is turned into a drop-shaped dict: its `sizeDbu` becomes a
+    box at the origin -- only the width/height matter, the reserve places it
+    at a slot start -- and the vendor `inst`/`extraRot`/`postfix` a PLA row
+    carries are synthesised so the reserved key still writes back as a valid
+    Fit row). Detected by extension: `.json` is a snapshot, anything else a
+    PLA.
+    """
+    path = Path(path)
+    if path.suffix == ".json":
+        snap = snapshot.load_snapshot(path)
+        drops = []
+        for pending in snap["pending"]:
+            size = pending.get("sizeDbu")
+            if not size:
+                continue
+            width, height = size
+            base = pending["base"]
+            drops.append({
+                "id": pending["id"], "base": base, "inst": f"{base}.{base}",
+                "boxDbu": [0, 0, width, height], "extraRot": "NULL", "placedFlag": 0,
+                "postfix": "", "inGroup": pending.get("inGroup", ""),
+            })
+        return drops
+    return pla.read_pla(path.read_text(encoding="utf-8"), dbu_per_um)["drops"]
 
 
 def _cmd_apply_plan(workspace, args):
@@ -426,17 +476,65 @@ def _cmd_apply_plan(workspace, args):
     parser = argparse.ArgumentParser(prog="apply-plan")
     parser.add_argument("--pla", required=True)
     parser.add_argument("--plan", action="append", required=True, metavar="PLAN")
+    parser.add_argument("--follow-groups", dest="follow_groups", action="store_true", default=True)
+    parser.add_argument("--keep-group-points", dest="follow_groups", action="store_false")
+    parser.add_argument("--straddle-guard", dest="straddle_guard", action="store_true", default=True)
+    parser.add_argument("--no-straddle-guard", dest="straddle_guard", action="store_false")
+    parser.add_argument("--straddle-limit-um", default=None, metavar="UM")
+    parser.add_argument("--reserve", default=None, metavar="PATH")
+    parser.add_argument("--reserve-length-um", default=None, metavar="UM")
     parser.add_argument("--out", required=True)
     opts = parser.parse_args(args)
 
-    dbu_per_um = _case_readiness(workspace)["manifest"]["dbuPerUm"]
+    readiness = _case_readiness(workspace)
+    dbu_per_um = readiness["manifest"]["dbuPerUm"]
     pla_path = _resolve_in_workspace(workspace, opts.pla)
     out_path = _resolve_in_workspace(workspace, opts.out)
     doc = pla.read_pla(pla_path.read_text(encoding="utf-8"), dbu_per_um)
 
     plans = [core.read_artifact(_resolve_in_workspace(workspace, plan_arg), "slot-plan")
              for plan_arg in opts.plan]
-    candidate, summary = apply_plan_mod.apply_plan(doc, plans, dbu_per_um)
+
+    # The reserve and straddle-guard post-passes both reason against the
+    # frozen start snapshot (lane geometry, frame bounds, rule facts) and the
+    # frozen start PLA (every priority mark's original position and its Group
+    # CT point). Gather them once when either pass is active.
+    reserve_drops = reserve_length_dbu = rule_facts = None
+    lanes_list = frame = start_fits = start_groups = limit_dbu = None
+    if opts.straddle_guard or opts.reserve is not None:
+        start_snapshot = snapshot.load_snapshot(Path(workspace) / "state" / "start-snapshot.json")
+        lanes_list = start_snapshot["lanes"]
+        frame = start_snapshot["frame"]
+        rule_facts = start_snapshot["ruleFacts"]
+        start_doc = pla.read_pla(
+            Path(readiness["manifest"]["startState"]["path"]).read_text(encoding="utf-8"), dbu_per_um
+        )
+        start_fits = start_doc["fits"]
+        start_groups = start_doc["groups"]
+        if opts.straddle_limit_um is not None:
+            limit_dbu = core.um_to_dbu(opts.straddle_limit_um, dbu_per_um)
+        else:
+            limit_dbu = core.um_to_dbu(str(readiness["goal"]["max_target_distance_um"]), dbu_per_um)
+
+    if opts.reserve is not None:
+        if opts.reserve_length_um is None:
+            raise core.MageError("apply-plan", "--reserve requires --reserve-length-um")
+        reserve_length_dbu = core.um_to_dbu(opts.reserve_length_um, dbu_per_um)
+        reserve_drops = _read_reserve_drops(_resolve_in_workspace(workspace, opts.reserve), dbu_per_um)
+        lane_by_id = {entry["laneId"]: entry for entry in lanes_list}
+        for plan in plans:
+            entry = lane_by_id.get(plan["lane"])
+            if entry is None:
+                raise core.MageError("apply-plan", f"plan lane {plan['lane']!r} is not in the start snapshot")
+            plan["_crossRangeDbu"] = entry["crossRangeDbu"]
+
+    candidate, summary = apply_plan_mod.apply_plan(
+        doc, plans, dbu_per_um,
+        follow_groups=opts.follow_groups,
+        reserve=reserve_drops, reserve_length_dbu=reserve_length_dbu, rule_facts=rule_facts,
+        straddle_guard=opts.straddle_guard, start_fits=start_fits, start_groups=start_groups,
+        lanes=lanes_list, frame=frame, limit_dbu=limit_dbu,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(pla.write_pla(candidate, dbu_per_um, units="um"), encoding="utf-8")

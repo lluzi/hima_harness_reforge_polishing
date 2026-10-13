@@ -74,6 +74,27 @@ candidate in micrometres (`pla.write_pla(..., units="um")`) and prints a
 mechanism is plan on `state/start-snapshot.json` → `apply-plan` the start PLA → `mage-round
 --fill`, so MAGE places the ordinary structures into the opened windows.
 
+### Reserve-first method (2026-10-12)
+
+The controller proved, with real MAGE on the real case, that opening a scribe-lane window *and*
+reserving the dropped long structure into it as an ordinary Fit before the fill reduces the ordinary
+drops legally (OVERLAP 0, BOUNDARY 0). Three flags realise it on top of the plain move, all scoped
+to `plan-slots`/`apply-plan` (no new module): `plan-slots --interior` shrinks an interior lane's
+along range by one scribe width (the lane model's own cross-range width) at each end so a moved mark
+cannot enter the exterior frame-edge band MAGE refuses, keeping full range on a shared-exterior lane
+or an already-occupied edge band and recording `model.interior`/`model.interiorShrunk`;
+`apply-plan --follow-groups` (default on, `--keep-group-points` to disable) shifts each moved Fit's
+Group target point by that Fit's delta, matching MAGE's own Group-point rewrite; and `apply-plan
+--reserve <incumbent export.pla|snapshot.json> --reserve-length-um <um>` places every dropped long
+structure of the stage's lane orientation (from each item's rule-fact `scribeInc` in the start
+snapshot: `["VERT"]`→V, `["HORIZ"]`→H, else neither) into the plans' slot starts with 1 um clearance
+and a lane-direction box, reporting `reserved`/`unreserved` and refusing a mixed-axis `--plan` set.
+A default `--straddle-guard` post-pass nudges every moved mark clear of a lane crossing band within
+its CT window, or reverts it and removes the keys it then blocks, reporting
+`nudged`/`reverted`/`keysRemoved`. The full sequence is V lanes `--interior` → `apply-plan
+--reserve` → `snapshot --stage candidate` → H lanes `--interior` → `apply-plan --reserve` →
+`mage-round --fill` → `candidate`.
+
 ## Semantics
 
 Two Readers (`tools/read-mage.py`, one script backing both `readers/*.yml` declarations) re-derive

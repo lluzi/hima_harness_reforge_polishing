@@ -86,47 +86,99 @@ planner (`plan-slots`) → relocate non-priority structures to make room → onl
 resolves a genuine consumer conflict, leave it for a Decision Request (written by `decide-round`,
 never by you).
 
-**Plan — which keys, which lanes, exact commands.** Take the dropped structure ids from
-`state/incumbent.json` (`metrics.drops.ids`, split by `metrics.drops.byBlockType`). For each dropped
-structure, read its pending entry in `state/start-snapshot.json` and derive its long side and
-orientation from `sizeDbu` (`[widthDbu, heightDbu]`): long side along x → it belongs in an `H:*`
-lane; long side along y → a `V:*` lane. Then, for every lane of that orientation (list them from the
-start snapshot's `lanes[*].laneId`), plan the number of such keys still dropped:
+**Plan and apply — the reserve-first sequence, vertical lanes then horizontal.** This is the method
+the controller proved with real MAGE on the real case: it reduces the ordinary drops legally
+(OVERLAP 0, BOUNDARY 0) by opening a window in a scribe lane *and* reserving the dropped long
+structure into it as an ordinary Fit before the fill, so MAGE's own auto-refine lands it there
+instead of dropping it. You run it in two stages — all vertical lanes first, re-snapshot, then all
+horizontal lanes — because a key reserved for one axis becomes an immovable intruder the other
+axis's planner must see. Take the dropped long structures and their lengths/orientations from the
+incumbent export (`state/incumbent.json`'s `metrics.drops`, orientation from each item's rule fact
+`scribeInc` in `state/start-snapshot.json`: `["VERT"]` → a `V:*` lane, `["HORIZ"]` → an `H:*` lane;
+any other `scribeInc` is reserved by neither stage). The exact sequence, at the Goal's
+`max_target_distance_um` budget (1000 um on the real case):
+
+Stage 1 — vertical lanes, on the priority-only start. For every `V:*` lane id in the start
+snapshot's `lanes[*].laneId`, plan with `--interior` (it pulls an interior lane's along range in by
+one scribe width at each end so a moved mark can never enter the exterior frame-edge band, which
+MAGE refuses to assign — "No assigned sl"; a shared-exterior lane or an already-occupied edge band
+keeps its full range). The slot length is the key length plus 2 um; the count is the number of
+dropped keys of that orientation; when a lane is infeasible at that count but reports a positive
+`maxSlots`, re-plan it at `maxSlots`:
 
 ```
-plan-slots --snapshot state/start-snapshot.json --lane <lane> --length-um <long side in um>
-  --count <number of such keys still dropped> --limit-um <Goal max_target_distance_um> --out <plan>
+plan-slots --snapshot state/start-snapshot.json --lane <V lane> --length-um <key length + 2>
+  --count <dropped V keys> --limit-um <Goal max_target_distance_um> --interior --out <plan>
 ```
 
-`plan-slots` is the exact planner (`mage-capabilities.md` lists no heuristic substitute; see
-`mage-frozen-interfaces.md` for `max_slots`/`fewest_moves`/`least_displacement`). Fewer than the
-requested slots means "infeasible within this model at this limit", never "native infeasible": you
-have not run MAGE yet at that point.
-
-**Apply — turn the feasible plans into one candidate PLA with `apply-plan`.** Never edit PLA text by
-hand. `apply-plan WORKSPACE --pla <manifest startState path from state/case-readiness.json> --plan
-<each feasible plan> --out placement/round-NN/candidate.pla` moves exactly the priority marks each
-plan names, along each lane's own axis, to the planned positions; it leaves every Group
-`targetPointDbu`, every Fixed instance, every drop and every unmoved Fit untouched, and refuses a
-plan that is infeasible, moves an unknown id or a Fixed instance, or moves the same id twice. Pass
-one `--plan` per feasible plan (at least one is required). Then replay and fill:
+Then apply every feasible V plan to the start PLA, reserving the dropped V keys into the opened
+slots. `apply-plan` moves exactly the priority marks each plan names, reserves each dropped key of
+the stage's orientation at a slot start with 1 um clearance and a lane-direction box (the VERT
+incumbent box is transposed to a tall lane box), shifts each moved mark's Group target point by the
+mark's own delta (the default `--follow-groups`; MAGE's compaction rewrites Group points when it
+moves Groups, so the candidate must match), and runs the straddle guard (below):
 
 ```
-mage-round --round <n> --pla placement/round-NN/candidate.pla --role engineer
+apply-plan WORKSPACE --pla <manifest startState path> --plan <each V plan>
+  --reserve <incumbent export.pla> --reserve-length-um <key length>
+  --out placement/round-NN/stage1-v.pla
+```
+
+Stage 2 — re-snapshot, then horizontal lanes. Snapshot the V-placed PLA as a candidate, so the
+reserved vertical keys appear to the horizontal planner as intruders, then repeat the plan/apply for
+every `H:*` lane on that snapshot:
+
+```
+snapshot WORKSPACE --pla placement/round-NN/stage1-v.pla --stage candidate
+  --out placement/round-NN/stage1-snapshot.json
+plan-slots --snapshot placement/round-NN/stage1-snapshot.json --lane <H lane>
+  --length-um <key length + 2> --count <dropped H keys> --limit-um <Goal max_target_distance_um>
+  --interior --out <plan>
+apply-plan WORKSPACE --pla placement/round-NN/stage1-v.pla --plan <each H plan>
+  --reserve <incumbent export.pla> --reserve-length-um <key length>
+  --out placement/round-NN/reserved.pla
+```
+
+`apply-plan` reports per stage how many keys it reserved on each axis and which remained unreserved
+(keys of the other axis, or of no fixed orientation, or beyond the opened slots); it refuses a
+`--reserve` whose `--plan` set spans both axes, and refuses a plan that is infeasible, moves an
+unknown id or a Fixed instance, or moves the same id twice. Never edit PLA text by hand.
+
+**Straddle guard (apply-plan's default post-pass).** A moved priority mark that straddles a lane
+crossing band is overlapped by MAGE's fill, so `apply-plan` nudges each straddler clear within its
+own CT window, inside the frame, without touching a lane neighbour (1 um gap); when no nudge works
+it reverts the mark to its frozen-start box and removes any reserved key that then collides with it,
+and reports `nudged`/`reverted`/`keysRemoved`. It is on by default; `--no-straddle-guard` disables
+it and `--straddle-limit-um` overrides the per-mark window.
+
+**Then replay, fill and assemble the candidate:**
+
+```
+mage-round --round <n> --pla placement/round-NN/reserved.pla --role engineer
   --out-dir placement/round-NN --fill
 candidate --round <n> --round-dir placement/round-NN --ledger <file>
   --out state/round/placement-candidate.json
 ```
 
-`--fill` is what makes MAGE drop the ordinary structures into the windows you opened; a replay
-without it exports no ordinary population and the Reader refuses it (see below).
+`--fill` is what makes MAGE's auto-refine place the ordinary structures (and land the reserved keys)
+into the windows you opened; a replay without it exports no ordinary population and the Reader
+refuses it (see below). Then compare this round's `metrics.drops.ordinary` against
+`state/incumbent.json`.
 
-**Attempts, in order.** The plain `plan-slots` above is attempt 1. If a lane is infeasible, attempt
-2 adds `--relaxed` (same planner, spacing/keep-out/zone ignored, crossing intruders removable,
-clusters splittable); attempt 3 adds `--movable-nonpriority <um>`, which lets the planner shift an
-ordinary (non-priority) structure within that budget to open room — `apply-plan` only accepts an
-ordinary-fit move from a plan produced this way. Report which attempt a plan came from; a relaxed or
-movable-nonpriority plan is a weaker claim than a plain one.
+**What MAGE does with the reserved keys, confirmed on the real case.** MAGE re-places reserved
+*horizontal* keys freely during the fill but keeps the *vertical* ones where they were reserved — so
+the vertical reservation is the load-bearing half of the method and must be geometrically exact. A
+mark left straddling a crossing is overlapped by the fill (hence the straddle guard); a mark pushed
+into the exterior band is refused outright; and a target already beyond the limit in the frozen
+start stays a pre-existing condition — answer it `declined … pre-existing`, never report it as this
+round's regression (see below).
+
+**Attempts, in order.** The plain `plan-slots --interior` above is attempt 1. If a lane is
+infeasible, attempt 2 adds `--relaxed` (same planner, spacing/keep-out/zone ignored, crossing
+intruders removable, clusters splittable); attempt 3 adds `--movable-nonpriority <um>`, which lets
+the planner shift an ordinary (non-priority) structure within that budget to open room — `apply-plan`
+only accepts an ordinary-fit move from a plan produced this way. Report which attempt a plan came
+from; a relaxed or movable-nonpriority plan is a weaker claim than a plain one.
 
 **Judge** by the round's own native checks (`metrics.native_rows`, the three checks OVERLAP/SPACE/
 BOUNDARY) and this round's Q1–Q4 metrics

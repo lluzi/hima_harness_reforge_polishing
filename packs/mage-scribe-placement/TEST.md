@@ -185,6 +185,24 @@ text) plus the knowledge rewrite making "always plan on `state/start-snapshot.js
 export" explicit, with the exact `plan-slots` → `apply-plan` → `mage-round --fill` → `candidate`
 command sequence.
 
+### Reserve-first method (2026-10-12)
+
+261 tests pass on the Mac (`/usr/bin/python3` 3.9.6). The new coverage pins the controller's proven
+reserve-first method (`ceiling4.py`) at the smallest layers. `flow/tests/test_reserve_first.py`
+unit-tests each rule directly on synthetic inputs: `lanes.interior_along_range` shrinks an interior
+lane by one scribe width, keeps full range on a shared-exterior lane and on an occupied edge band,
+and is not blocked by a mid-lane occupant; `apply_plan._follow_groups` shifts a moved mark's Group
+point by its delta and leaves an ungrouped move's groups alone; `_collect_reserve_keys` transposes a
+wide VERT key to a lane box, keeps a HORIZ key, drops a sub-length key and files a non-exclusive
+`scribeInc` as `ANY`; `_reserve` lands keys at slot starts with 1 um clearance and the exact cross
+band and reports opposite-axis/overflow keys unreserved; and `_straddle_guard` nudges a straddler
+clear, reverts one it cannot nudge and removes the key it blocks, and leaves a non-straddler alone.
+`test_cli_plan_slots.py` adds `--interior` shrinking an interior lane and keeping a shared-exterior
+lane's range. `test_apply_plan.py` adds the CLI `--follow-groups`/`--keep-group-points` default,
+`--reserve` placing the VERT key at a slot start, reporting a VERT key unreserved in an H stage,
+refusing a mixed-axis reserve, requiring `--reserve-length-um`, and one full V-then-H reserve-first
+sequence through the stand-in whose candidate validates with the reserved key in the export.
+
 round-trip writing (`test_pla.py`); rule facts (`test_rules.py`); target binding and TB/LR/IN
 partition (`test_targets.py`); snapshot round trip and sha (`test_snapshot.py`); the exact slot
 planner against a brute-force oracle (`test_planner.py`); metrics against hand-computed values
