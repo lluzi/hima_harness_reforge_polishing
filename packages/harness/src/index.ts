@@ -201,6 +201,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
 export { startLocalDatabase, localDatabaseHome, localDatabaseRuntime, POSTGRES_VERSION } from './local-database.js';
 export { createLibInsightViewer, libInsightViewerOptions, type LibInsightViewer, type LibInsightViewerStatus } from './libinsight-viewer.js';
+export { createToolView, toolViewUrl, type ToolView, type ToolViewOptions, type ToolViewStatus } from './tool-view.js';
 export { analysisSettled, createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses, type LibInsightAnalysisEntry, type LibInsightAnalysisDetail } from './libinsight-analyses.js';
 export type { LocalDatabase, LocalDatabaseConnection } from './local-database.js';
 export { pickOwnedRun, isOwner, recordEndedSeenAt } from './run-ownership.js';

@@ -381,9 +381,40 @@ function controlSocket(target: SshTarget): string {
   return path.join(os.tmpdir(), `hima-ssh-${key}`);
 }
 
-function sshTargetOf(site: Site): SshTarget {
+export function sshTargetOf(site: Site): SshTarget {
   if (!site.ssh) throw new Error(`site ${site.name} is of kind ssh but names no ssh destination`);
   return site.ssh;
+}
+
+/** The ssh client options that shape every connection to this target, and nothing positional: the
+ *  warm ControlMaster (`ControlPath`, `ControlPersist`), the connect timeout, BatchMode so a lost key
+ *  is a failure and never a prompt, and `-p`/`-J` where the destination carries a port or the Site
+ *  names jump hosts. Everything before `--`, the destination, and the remote command. `SshChannel`
+ *  builds its command from this, and the tool-view forward (`tool-view.ts`) opens its `ssh -N -L`
+ *  with the very same options so it rides the one warm master rather than opening a second.
+ *
+ *  @param target - the Site's ssh destination, jumps and ControlPersist.
+ *  @param controlPath - where this target's warm master socket lives (`controlPathFor`).
+ *  @returns the option words, in order, with no positional argument among them. */
+export function sshBaseArgs(target: SshTarget, controlPath: string): string[] {
+  const { port } = parseDestination(target.destination);
+  const args = [
+    '-o', 'BatchMode=yes',
+    '-o', `ConnectTimeout=${SshChannel.connectTimeoutSeconds}`,
+    '-o', 'ControlMaster=auto',
+    '-o', `ControlPath=${controlPath}`,
+    '-o', `ControlPersist=${target.controlPersistSeconds}`,
+  ];
+  if (port !== undefined) args.push('-p', String(port));
+  if (target.jumps.length > 0) args.push('-J', target.jumps.join(','));
+  return args;
+}
+
+/** The destination ssh is given as its positional argument, with the `:port` suffix (which
+ *  `sshBaseArgs` has already turned into `-p`) stripped off. The tool-view forward appends this after
+ *  its `--`, exactly as `SshChannel.args()` does. */
+export function sshDestinationOf(target: SshTarget): string {
+  return parseDestination(target.destination).dest;
 }
 
 /** Where a Site's warm control connection lives. Removing this socket only costs the next operation a
@@ -534,21 +565,12 @@ export class SshChannel implements Channel {
    *  reuses it when it is there, so a dropped connection costs the next operation nothing but a
    *  reconnection. BatchMode keeps a lost key or an unknown host a failure, never a prompt. */
   private args(remote: string): string[] {
-    const { dest, port } = parseDestination(this.target.destination);
-    const args = [
-      '-o', 'BatchMode=yes',
-      '-o', `ConnectTimeout=${SshChannel.connectTimeoutSeconds}`,
-      '-o', 'ControlMaster=auto',
-      '-o', `ControlPath=${this.controlPath}`,
-      '-o', `ControlPersist=${this.target.controlPersistSeconds}`,
-    ];
-    if (port !== undefined) args.push('-p', String(port));
-    if (this.target.jumps.length > 0) args.push('-J', this.target.jumps.join(','));
+    // The one option list lives in `sshBaseArgs`; the tool-view forward builds from the same source,
+    // so the two can never drift into connecting two different ways to one Site.
     // `--` ends ssh's own option parsing, so a destination cannot be read as an ssh option no matter
     // what it contains; `sites.ts` already refuses a destination shaped like one, so this is the
     // second, independent layer. The remote command is the next positional either way.
-    args.push('--', dest, remote);
-    return args;
+    return [...sshBaseArgs(this.target, this.controlPath), '--', sshDestinationOf(this.target), remote];
   }
 
   private ssh(remote: string, stdin?: Uint8Array, outputLimit?: number): Promise<RemoteExit> {
