@@ -233,7 +233,7 @@ test('a local Site with nothing listening fails after the ready timeout, naming 
   } finally { await h.dispose(); }
 });
 
-test('an ssh Site opens one long-lived forward with the Site\'s ControlMaster options, and stop kills it', async () => {
+test('an ssh Site opens one long-lived forward on a dedicated connection, not the Site\'s master, and stop kills it', async () => {
   const h = await createHimaHome();
   try {
     const sitesDir = path.join(h.home, 'hima/sites');
@@ -248,7 +248,11 @@ test('an ssh Site opens one long-lived forward with the Site\'s ControlMaster op
     assert.equal(command, 'ssh');
     assert.ok(args.includes('-N'), args.join(' '));
     assert.ok(args.includes('ExitOnForwardFailure=yes'), args.join(' '));
-    assert.ok(args.includes(`ControlPath=${controlPathFor(site)}`), args.join(' '));
+    // A dedicated, non-multiplexed connection: a `-N` mux client rides the warm master and exits at
+    // once, so the forward gets its own connection and the Site's control socket never appears.
+    assert.ok(args.includes('ControlMaster=no'), args.join(' '));
+    assert.ok(args.includes('ControlPath=none'), args.join(' '));
+    assert.ok(!args.includes(`ControlPath=${controlPathFor(site)}`), args.join(' '));
     assert.ok(args.includes('tester@tool-host.invalid'), args.join(' '));
     const forward = args[args.indexOf('-L') + 1]!;
     assert.match(forward, /^127\.0\.0\.1:\d+:127\.0\.0\.1:14500$/, forward);

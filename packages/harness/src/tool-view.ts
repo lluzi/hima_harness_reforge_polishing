@@ -7,7 +7,7 @@
 // (`unavailable|stopped|starting|ready|failed`) and the same serial-per-subject start/stop with a
 // generation counter. The difference is the target. LibInsight is a local process this Host launches;
 // a tool view is a port on a Site. For an `ssh` Site the Host spawns one long-lived
-// `ssh -N -L 127.0.0.1:<local>:127.0.0.1:<remote>` that rides the Site's warm master (`sshBaseArgs`),
+// `ssh -N -L 127.0.0.1:<local>:127.0.0.1:<remote>` on a dedicated connection built from `sshBaseArgs(target, null)`,
 // so the frame dials `localhost:<local>` on this machine and never the Site. For a `local` Site the
 // port is already on this machine, so there is no process at all — only the readiness probe. The
 // frame URL is `localhost`, never `127.0.0.1`: the Host's session cookie belongs to `127.0.0.1`
@@ -16,7 +16,7 @@ import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
-import { controlPathFor, sshBaseArgs, sshDestinationOf, sshTargetOf } from './channel.js';
+import { sshBaseArgs, sshDestinationOf, sshTargetOf } from './channel.js';
 import { loadSite, type Site, type ToolViewKind } from './sites.js';
 
 export type ToolViewStatus =
@@ -49,9 +49,11 @@ export interface ToolView {
 
 /** The frame URL for a tool view published on `localPort` of this machine. Pure and unit-tested: the
  *  xpra HTML5 client reads every option from the query string, and these are the ones this slice
- *  fixes — a keyboard but no floating menu, and sound, clipboard, printing and file transfer all off,
- *  so a view that becomes interactive cannot move data off the Site by those paths. `localhost`, never
- *  `127.0.0.1`, for the cookie reason above. */
+ *  fixes — a keyboard but no floating menu, and sound, clipboard, printing and file transfer all off.
+ *  These are *our* client's preferences only; they keep this frame from moving data by those paths but
+ *  bind no other client. What stops any other client is the xpra *server* refusing those features
+ *  (`xpra-start.sh`'s `--file-transfer=no --clipboard=no …`), plus the forward being loopback-only.
+ *  `localhost`, never `127.0.0.1`, for the cookie reason above. */
 export function toolViewUrl(kind: ToolViewKind, localPort: number): string {
   switch (kind) {
     case 'xpra-html5':
@@ -161,9 +163,11 @@ export function createToolView(options: ToolViewOptions): ToolView {
       const target = sshTargetOf(site);
       // `-N` runs no remote command, only the forward; `ExitOnForwardFailure` makes a bind that the
       // Site refuses an exit rather than a connection that silently carries nothing. The option list
-      // is `SshChannel`'s own, so this `ssh` reuses the one warm master rather than opening a second.
+      // is `SshChannel`'s own minus multiplexing: through the warm master a `-N` client hands the
+      // forward over and exits with code 0 at once (seen on OpenSSH 10.2), which would read here as a
+      // dead forward, so this `ssh` is a dedicated connection whose lifetime IS the forward's.
       const argv = ['-N', '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${local}:127.0.0.1:${remote}`,
-        ...sshBaseArgs(target, controlPathFor(site)), '--', sshDestinationOf(target)];
+        ...sshBaseArgs(target, null), '--', sshDestinationOf(target)];
       proc = spawn('ssh', argv, { stdio: ['ignore', 'pipe', 'pipe'] });
       f.child = proc;
       // A Host that ends without its own shutdown still takes its forward with it.

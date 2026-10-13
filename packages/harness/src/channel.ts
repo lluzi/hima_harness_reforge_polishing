@@ -390,21 +390,26 @@ export function sshTargetOf(site: Site): SshTarget {
  *  warm ControlMaster (`ControlPath`, `ControlPersist`), the connect timeout, BatchMode so a lost key
  *  is a failure and never a prompt, and `-p`/`-J` where the destination carries a port or the Site
  *  names jump hosts. Everything before `--`, the destination, and the remote command. `SshChannel`
- *  builds its command from this, and the tool-view forward (`tool-view.ts`) opens its `ssh -N -L`
- *  with the very same options so it rides the one warm master rather than opening a second.
+ *  builds its command from this. The tool-view forward (`tool-view.ts`) builds from the same source
+ *  so the two never drift, but passes `controlPath: null` for a dedicated, non-multiplexed connection:
+ *  a `ssh -N -L` mux client hands its forward to a warm master and exits at once, which would read as a
+ *  dead forward, so that caller's connection must be its own and live as long as the forward does.
  *
  *  @param target - the Site's ssh destination, jumps and ControlPersist.
- *  @param controlPath - where this target's warm master socket lives (`controlPathFor`).
+ *  @param controlPath - where this target's warm master socket lives (`controlPathFor`), or `null` for
+ *    a dedicated connection (`ControlMaster=no ControlPath=none`, no multiplexing).
  *  @returns the option words, in order, with no positional argument among them. */
-export function sshBaseArgs(target: SshTarget, controlPath: string): string[] {
+export function sshBaseArgs(target: SshTarget, controlPath: string | null): string[] {
   const { port } = parseDestination(target.destination);
-  const args = [
-    '-o', 'BatchMode=yes',
-    '-o', `ConnectTimeout=${SshChannel.connectTimeoutSeconds}`,
-    '-o', 'ControlMaster=auto',
-    '-o', `ControlPath=${controlPath}`,
-    '-o', `ControlPersist=${target.controlPersistSeconds}`,
-  ];
+  const args = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${SshChannel.connectTimeoutSeconds}`];
+  // `null` asks for a dedicated connection with no multiplexing: a mux client that only carries a
+  // forward (`ssh -N -L` against a warm master) hands the forward to the master and exits at once,
+  // so a caller that binds the forward's lifetime to its own child must not ride the master.
+  if (controlPath !== null) {
+    args.push('-o', 'ControlMaster=auto', '-o', `ControlPath=${controlPath}`, '-o', `ControlPersist=${target.controlPersistSeconds}`);
+  } else {
+    args.push('-o', 'ControlMaster=no', '-o', 'ControlPath=none');
+  }
   if (port !== undefined) args.push('-p', String(port));
   if (target.jumps.length > 0) args.push('-J', target.jumps.join(','));
   return args;
@@ -565,8 +570,9 @@ export class SshChannel implements Channel {
    *  reuses it when it is there, so a dropped connection costs the next operation nothing but a
    *  reconnection. BatchMode keeps a lost key or an unknown host a failure, never a prompt. */
   private args(remote: string): string[] {
-    // The one option list lives in `sshBaseArgs`; the tool-view forward builds from the same source,
-    // so the two can never drift into connecting two different ways to one Site.
+    // The one option list lives in `sshBaseArgs`; the tool-view forward builds from the same source
+    // (passing `controlPath: null` for its own dedicated connection), so the two never drift on the
+    // destination, timeout and BatchMode even though the forward deliberately skips multiplexing.
     // `--` ends ssh's own option parsing, so a destination cannot be read as an ssh option no matter
     // what it contains; `sites.ts` already refuses a destination shaped like one, so this is the
     // second, independent layer. The remote command is the next positional either way.
