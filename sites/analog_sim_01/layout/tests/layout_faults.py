@@ -9,6 +9,7 @@
   cap-wl:<dev>  capacitor <dev> drawn 1.25 x wider and 0.8 x shorter (about the same area)
   drop-ladder-unit[:<n>]   the ladder's unit segment in column n (default 50, counted along the chain) is not drawn
   swap-taps:<a>:<b>        the ladder's pin labels a and b trade places (each on the other's strap)
+  ladder-parallel-in-series the ladder's first element of parallel units is drawn as those units in series
 
 The whole cell_layout.py run is repeated with the fault injected. A fault counts as caught only
 when every step ran (all exit codes 0) and both LVS checks printed a mismatch (netgen "Netlists do
@@ -105,6 +106,23 @@ def inject(fault):
             finally:
                 cell.label = label
         cl.LadderBlock.draw = draw
+    elif fault == "ladder-parallel-in-series":
+        orig = cl.find_ladders
+
+        def find_ladders(devices, sub):
+            out = orig(devices, sub)
+            for lad in out:
+                for i, e in enumerate(lad["elements"]):
+                    if e["k"] > 1:
+                        mids = ["__series_%d" % j for j in range(1, e["k"])]
+                        nets = [e["a"]] + mids + [e["b"]]
+                        lad["elements"][i:i + 1] = [dict(a=nets[j], b=nets[j + 1], devs=e["devs"], k=1) for j in range(e["k"])]
+                        lad["junctions"] = [x["b"] for x in lad["elements"][:-1]]
+                        note["series"] = "%s: %d parallel units drawn in series between %s and %s" % (
+                            e["devs"][0]["name"], e["k"], e["a"], e["b"])
+                        return out
+            return out
+        cl.find_ladders = find_ladders
     else:
         raise SystemExit("layout_faults: unknown fault %s" % fault)
     return note
@@ -119,7 +137,7 @@ def main(argv):
         raise SystemExit("layout_faults: %s exists; every case runs in a new folder" % out)
     note = inject(fault)
     r = cl.cmd_all(netlist, name, str(out))
-    ran = all(v == 0 for v in r["rcs"].values())
+    ran = all((all(c == 0 for c in v) if isinstance(v, list) else v == 0) for v in r["rcs"].values())   # the fill step records a list
     result = dict(fault=fault, injected=note, ran=ran, rcs=r["rcs"], netgenMismatch=r["lvs"]["mismatch"], netgenLines=r["lvs"]["lines"],
                   klayoutMismatch=r["klayoutLvs"]["mismatch"], klayoutLines=r["klayoutLvs"]["lines"],
                   caught=ran and bool(note) and r["lvs"]["mismatch"] and r["klayoutLvs"]["mismatch"])

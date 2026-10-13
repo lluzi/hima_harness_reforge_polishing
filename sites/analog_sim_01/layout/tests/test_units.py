@@ -255,6 +255,53 @@ Z(
             p.write_text(db.replace("A", "3 2").replace("B", "2 3"))
             self.assertEqual(cl.lvsdb_pins(p, "c")["wrong"], ["t_1", "t_2"])
 
+    def test_engine_parallel_units_drawn_in_parallel(self):
+        """The engine's form (Site run bgcore-site-20261013-1106): RL0 as two separate unit instances
+        between vbg and the top tap. Both segments must run from vbg to vref_122."""
+        unit = "ppolyf_u_1k r_length=38.525u r_width=2u s=1"
+        lines = [".subckt bandgap_lb vdd vss vbg o " + " ".join("vref_%d" % k for k in range(1, 121)),
+                 "XRL0a vbg vref_122 vss %s" % unit, "XRL0b vbg vref_122 vss %s" % unit]
+        lines += ["XRL%d vref_%d %s vss %s" % (k, k, "vref_%d" % (k - 1) if k > 1 else "vss", unit) for k in range(122, 0, -1)]
+        lines += ["MN o vref_100 vss vss nfet_03v3 w=1u l=1u", "MP o vbg vdd vdd pfet_03v3 w=1u l=1u", ".ends bandgap_lb", ""]
+        pins, devices, _ = self.read_text("\n".join(lines), "bandgap_lb")
+        (lad,) = cl.find_ladders(devices, "vss")
+        first = lad["elements"][0]
+        self.assertEqual((first["a"], first["b"], first["k"], [d["name"] for d in first["devs"]]), ("vbg", "vref_122", 2, ["XRL0a", "XRL0b"]))
+        for bands in (1, 2, 3):
+            for flip in (False, True):
+                lb = self.check_ladder_geometry(lad, bands, pins, {"vbg", "vss", "vref_100", "o", "vdd"}, flip)
+                segs = [h for h in lb.heads if h["element"] == 0]
+                self.assertEqual(len(segs), 2)
+                self.assertEqual(abs(segs[0]["x"] - segs[1]["x"]), lb.pitch)       # side by side, not one after the other
+        # what the router draws: both units' heads on the same two straps (checked above per side), and the
+        # netgen reference keeps them as two resistors for the same pair of nets
+        with tempfile.TemporaryDirectory() as t:
+            ref = Path(t) / "r.spice"
+            ref.write_text("\n".join(lines))
+            cl.lvs_reference(ref, "bandgap_lb", Path(t) / "n.spice")
+            n = (Path(t) / "n.spice").read_text()
+            self.assertIn("XRL0a vbg vref_122 vss ppolyf_u_1k", n)
+            self.assertIn("XRL0b vbg vref_122 vss ppolyf_u_1k", n)
+
+    def test_netgen_verdict(self):
+        ok = "Netlists match uniquely.\nFinal result: Circuits match uniquely.\n"
+        self.assertEqual(cl.netgen_verdict(ok), (True, False))
+        prop = ("Netlists match uniquely with property errors.\nppolyf_u_1k:73 vs. ppolyf_u_1k:RL0a:\n r_length circuit1: 7.705e-05   "
+                "circuit2: 3.8525e-05   (delta=66.7%, cutoff=1%)\nFinal result: Circuits match uniquely.\nProperty errors were found.\n")
+        self.assertEqual(cl.netgen_verdict(prop), (False, True))
+        self.assertEqual(cl.netgen_verdict("Final result: Top level cell failed pin matching.\n"), (False, True))
+        self.assertEqual(cl.netgen_verdict("Netlists do not match.\n"), (False, True))
+        self.assertEqual(cl.netgen_verdict(""), (False, False))
+
+    def test_netgen_setup_turns_off_poly_resistor_parallel_merge(self):
+        with tempfile.TemporaryDirectory() as t:
+            name = cl.netgen_setup(t)
+            text = (Path(t) / name).read_text()
+            self.assertIn("source " + cl.NETGEN_SETUP, text)
+            self.assertIn("ppolyf_u_1k", text)
+            self.assertIn("parallel disable", text)
+            self.assertNotIn("series disable", text)
+
 
 if __name__ == "__main__":
     unittest.main()

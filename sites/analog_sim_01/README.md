@@ -29,6 +29,12 @@ does.
   server's EDA container (`edarun`) in the caller's directory, on the Cadence licence (no Empyrean
   licence switch). The ngspice wrapper runs the ngspice of the pinned resident sandbox image.
 - Agents iterate in their sandbox with that image's ngspice and `/foss/pdks`.
+- **Spectre code seed (operator step):** `bin/spectre.ahdl-seed/` holds the compiled AHDL code of the
+  PDK's poly resistor from a successful run, copied from a run's `work/spectre-ahdl/`.
+  - Why it is needed: Spectre 23.1 crashed on every attempt to compile that code in a fresh workspace.
+  - What reads it: the bandgap Pack seeds a fresh workspace from this copy.
+  - When to rebuild it: after a Spectre or PDK update, from the first good run. Leave it out of git;
+    it is compiled output of a commercial tool.
 
 ## PDKs (open, Apache-2.0; installed per Site, never in git)
 
@@ -128,7 +134,16 @@ The bgcore case adds a 120-tap ladder and a BGOK monitor (`layout/tests/bgcore_s
   pin's net must be cross-referenced to a layout net of the same name. A swapped tap label fails
   this check.
 - **netgen** "Top level cell failed pin matching" counts as a mismatch, as "do not match" and
-  "Property errors" do.
+  "Property errors" do. "Match uniquely with property errors" is not a match.
+- **netgen setup.** The tool runs netgen with the PDK's setup file plus one change: parallel merging
+  of the poly resistors is off (`<out>/netgen_setup.tcl`).
+  - netgen merges parallel and series resistors in device order, so the same correct ladder can
+    combine differently on the two sides. On the engine's first bgcore (Site run
+    `bgcore-site-20261013-1106`), the layout side merged RL121 + RL122 (77 um) where the reference
+    paired that position with RL0, which gave a false r_length property error.
+  - The extraction showed RL0a and RL0b both from vbg to vref_122, in parallel as drawn.
+  - The cell draws resistors in parallel only for a ladder's parallel units, and both references
+    write those as separate resistors. Series merging stays on for the segmented resistors.
 - **Fill.** After the drawing, the PDK's `scripts/fill_all.rb` fills a copy of the GDS:
   - it fills COMP, Poly2 and Metal1–5 dummy squares, with the script's own keep-outs, DM.4–DM.7
     included;
@@ -162,9 +177,15 @@ Turning off the script's adjacent-layer keep-outs (`MetalN_ignore_active`) gives
 21.0 %. The density lines stay a reported verdict, not a tool failure: die-level density is closed
 at chip assembly.
 
-Negatives on the earlier runs (`analog-runs/bgcore-layout-20261013-1005`):
-- 13 of 14 wrong references are caught by both LVS checks, two of them new on bgcore: a ladder unit
-  10 % long and a BGOK width. The miss is a MIM with its width and length swapped at the same area,
-  which only netgen sees; the baseline missed it too.
-- All six layout faults are caught by both: four on the pack cell, plus a dropped ladder unit and two
-  swapped tap labels on bgcore.
+Negatives (`analog-runs/bgcore-layout-20261013-1133`, with the netgen setup above):
+- 14 of 15 wrong references are caught by both LVS checks. Three of them are on bgcore and the
+  engine's cell: a ladder unit 10 % long, a BGOK width, and one RL0 unit 3.8 % long.
+- The miss is a MIM with its width and length swapped at the same area. Only netgen sees it, because
+  KLayout compares the MIM's area; the baseline missed it too.
+- All eight layout faults are caught by both checks:
+  - four on the pack cell;
+  - on bgcore, a dropped ladder unit, two swapped tap labels, and RL0's parallel units drawn in
+    series;
+  - RL0's parallel units drawn in series on the engine's cell.
+- The engine's cell (228.1 × 252.7 um) gives Magic 0, KLayout block 0 unfilled and filled, netgen
+  "Circuits match uniquely" with no property errors, and KLayout LVS match with 128 of 128 pin names.

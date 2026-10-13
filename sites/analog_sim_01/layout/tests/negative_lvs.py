@@ -53,10 +53,10 @@ def main(argv):
     shutil.copy(out / ("%s_lvs.spice" % name), d / ("%s_lvs.spice" % name))
     shutil.copy(out / ("%s.gds" % name), d / ("%s.gds" % name))
     cl.lvs_reference(ref, name, d / ("%s_ref_netgen.spice" % name))
-    rc, _secs = cl.run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), cl.NETGEN_SETUP,
+    rc, _secs = cl.run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), cl.netgen_setup(d),
                         "lvs.out", "-json"], d, d / "netgen.log")
     lvs = (d / "lvs.out").read_text() if (d / "lvs.out").is_file() else ""
-    netgen_mismatch = any(m in lvs for m in cl.NETGEN_MISMATCH)
+    netgen_mismatch = cl.netgen_verdict(lvs)[1]
     netgen_lines = sorted(set(re.findall(r"^(Final result:.*|Netlists do not match\.|.*Property errors.*|.*\(delta=.*|Circuits match uniquely\.)$", lvs, re.M)))
     k = cl.step_klayout_lvs(d, name, ref=ref)
     result = dict(change="%s %s" % (dev, " ".join(change)), folder=str(d), netgenRc=rc, netgenMismatch=netgen_mismatch,

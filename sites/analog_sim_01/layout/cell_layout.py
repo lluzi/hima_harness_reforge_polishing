@@ -1330,16 +1330,41 @@ def step_draw(netlist, name, out):
 # other nets than the reference pins of the same name (a swapped pin label)
 NETGEN_MISMATCH = ("do not match", "Property errors were found", "failed pin matching")
 
+# netgen merges parallel and then series resistors in device order, so the same ladder can combine
+# differently in the layout and the reference (two parallel units beside a series pair: one side
+# merged the series pair first, and the parallel pair met a 77 um device). The cell never draws
+# resistors in parallel except a ladder's parallel units, which both references write as separate
+# resistors, so parallel merging of the poly resistors is turned off; series merging stays (segments).
+NETGEN_SETUP_LOCAL = """# netgen setup for cell_layout.py: the PDK's, with parallel merging of poly resistors off
+source %s
+foreach dev {%s} {
+    if {[lsearch $cells1 $dev] >= 0} { property "-circuit1 $dev" parallel disable }
+    if {[lsearch $cells2 $dev] >= 0} { property "-circuit2 $dev" parallel disable }
+}
+"""
+
+
+def netgen_setup(d):
+    """Write the netgen setup file into folder d; returns its name."""
+    (Path(d) / "netgen_setup.tcl").write_text(NETGEN_SETUP_LOCAL % (NETGEN_SETUP, " ".join(sorted(RES))))
+    return "netgen_setup.tcl"
+
+
+def netgen_verdict(text):
+    """(match, mismatch) from netgen's report: a match is "Circuits match uniquely." with no mismatch
+    line (property errors, different netlists, failed pin matching)."""
+    mismatch = any(m in text for m in NETGEN_MISMATCH)
+    return "Circuits match uniquely." in text and not mismatch, mismatch
+
 
 def step_lvs(out, name):
     rc1, s1 = extract(out, name, "lvs", "extract do local", "ext2spice lvs\next2spice -o ../%s_lvs.spice" % name)
     fixed = fix_pnp_names(out / ("%s_lvs.spice" % name)) if (out / ("%s_lvs.spice" % name)).is_file() else []
     notes = lvs_reference(out / ("%s_ref.spice" % name), name, out / ("%s_ref_netgen.spice" % name))
-    rc2, s2 = run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), NETGEN_SETUP,
+    rc2, s2 = run(["netgen", "-batch", "lvs", "%s_lvs.spice %s" % (name, name), "%s_ref_netgen.spice %s" % (name, name), netgen_setup(out),
                    "lvs.out", "-json"], out, out / "netgen.log")
     text = (out / "lvs.out").read_text() if (out / "lvs.out").is_file() else ""
-    mismatch = any(m in text for m in NETGEN_MISMATCH)
-    match = "Circuits match uniquely." in text and not mismatch
+    match, mismatch = netgen_verdict(text)
     final = re.findall(r"^(Final result:.*|Circuits match uniquely\.|Netlists do not match\.|.*Property errors.*)$", text, re.M)
     return dict(rc=[rc1, rc2], seconds=round(s1 + s2, 2), match=match, mismatch=mismatch, verdict=match or mismatch,
                 lines=sorted(set(final)), referenceNotes=notes, pnpNameCorrections=len(fixed), pnpNameCorrectionExamples=fixed[:3],
