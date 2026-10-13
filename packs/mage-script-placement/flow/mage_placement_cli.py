@@ -12,10 +12,12 @@ Two subcommand families:
   (`graph.yml`); this dispatcher calls `mage_placement.tasks.execute` and
   writes its `{"schemaVersion","value","artifacts","diagnostics"}` result
   straight to `TASK_OUTPUT` (`core.write_artifact`).
-- resident-facing subcommands (`snapshot`, `plan-slots`, `flow-digest`) —
-  each either prints a JSON result to stdout (`lane-view` — diagnostics
-  with no single declared output file) or returns `(output_path, body)`
-  for `main()` to write atomically with `core.write_artifact`.
+- resident-facing subcommands (`snapshot`, `plan-slots`, `mage-stage`,
+  `stage-report`, `candidate`, `script-candidate`, `lane-view`,
+  `flow-digest`) — each either prints a JSON result to stdout (`lane-view`
+  — diagnostics with no single declared output file) or returns
+  `(output_path, body)` for `main()` to write atomically with
+  `core.write_artifact`.
 
 Exit codes, exactly as `atcs_cli.py:_fail`: `0` success; `2` a malformed or
 missing declared input (`MageError` with most refusal codes, or a bare
@@ -29,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -394,9 +397,223 @@ def _cmd_plan_slots(workspace, args):
     return out_path, body
 
 
+_ROUND_DIR_RE = re.compile(r"^placement/round-(\d{2})$")
+
+
+def _round_dir_of(workspace, stage_dir, round_no):
+    """`stage_dir` must be `placement/round-NN/<stage>` for this round; returns the round dir."""
+    try:
+        rel = Path(stage_dir).resolve().relative_to(Path(workspace).resolve()).as_posix()
+    except ValueError:
+        raise core.MageError("invalid-input", f"stage dir {stage_dir} is outside the workspace")
+    parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+    match = _ROUND_DIR_RE.match(parent)
+    if not match or int(match.group(1)) != int(round_no):
+        raise core.MageError("invalid-input", f"stage dir {rel!r} is not under placement/round-{int(round_no):02d}/")
+    return Path(workspace) / parent
+
+
+def _stage_session(workspace, readiness, log_path):
+    site_mage = readiness["siteCapabilities"]["mage"]
+    manifest = readiness["manifest"]
+    env = dict(os.environ); env.update(site_mage.get("env", {}))
+    return native_session.MageSession(
+        executable=site_mage["executable"], env=env, workdir=str(Path(workspace)), log_path=str(log_path),
+        case={"frb": manifest["frb"]["path"], "caseDir": str(Path(manifest["frb"]["path"]).parent),
+              "startPla": manifest["startState"]["path"]},
+    )
+
+
+def _cmd_mage_stage(workspace, args):
+    parser = argparse.ArgumentParser(prog="mage-stage")
+    parser.add_argument("--round", required=True, type=int)
+    parser.add_argument("--script", required=True)
+    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--timeout-s", type=int, default=1800)
+    opts = parser.parse_args(args)
+    readiness = _case_readiness(workspace)
+    stage_dir = _resolve_in_workspace(workspace, opts.out_dir)
+    round_dir = _round_dir_of(workspace, stage_dir, opts.round)
+    round_dir.mkdir(parents=True, exist_ok=True)
+    sess = _stage_session(workspace, readiness, round_dir / "session.jsonl")
+    result = sess.run_stage(str(stage_dir), str(_resolve_in_workspace(workspace, opts.script)),
+                            native_session.ENGINEER_ROLE, timeout_s=opts.timeout_s)
+    stage_no = int(re.sub(r"\D", "", stage_dir.name) or 0) or 1
+    summary = core.stamp("stage-summary", {"round": opts.round, "stage": stage_no, "role": native_session.ENGINEER_ROLE, **result})
+    errors = records.validate_record("stage-summary", summary)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return str(stage_dir / "stage-summary.json"), summary
+
+
+def _snapshot_from_pla(workspace, start, pla_path, stage, inputs):
+    doc = pla.read_pla(Path(pla_path).read_text(encoding="utf-8"), start["dbuPerUm"])
+    return snapshot.build_snapshot(stage, doc, start["frame"], start["ruleFacts"], start["targets"], {},
+                                   inputs, pending_from_rules=False)
+
+
+def _report_row(workspace, start, snap, boundary, index, source, goal, native):
+    try:
+        snapshot.check_inventory_conservation(start, snap, _incumbent_ordinary_population(workspace))
+        inventory = {"status": "pass", "detail": ""}
+    except core.MageError as exc:
+        inventory = {"status": "fail", "detail": exc.detail}
+    target = metrics_mod.target_distances(snap, str(goal["max_target_distance_um"]))
+    order = metrics_mod.order_deviation(snap)
+    moved = metrics_mod.displacement(start, snap)["priority"]
+    return {
+        "boundary": boundary, "index": index, "source": source,
+        "fixed": len(snap["fixed"]), "groups": len(snap["groups"]),
+        "inGroupFits": sum(1 for f in snap["fits"] if f.get("inGroup")),
+        "ordinaryFits": sum(1 for f in snap["fits"] if not f.get("inGroup")),
+        "drops": metrics_mod.drops(snap), "inventory": inventory,
+        "targetDistances": {"maxUm": target["maxUm"], "overLimitCount": target["overLimitCount"],
+                            "identity": "known" if not target["unplaced"] else "identity-unknown"},
+        "orderDeviation": {"max": order["max"], "maxLr": order["maxLr"], "maxTb": order["maxTb"], "byPartition": order["byPartition"]},
+        "priorityMovement": {"movedCount": moved["movedCount"], "maxUm": moved["maxUm"], "totalUm": moved["totalUm"], "unmatched": moved["unmatched"]},
+        "nativeRows": native,
+    }
+
+
+def _cmd_stage_report(workspace, args):
+    parser = argparse.ArgumentParser(prog="stage-report")
+    parser.add_argument("--stage-dir", required=True)
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+    stage_dir = _resolve_in_workspace(workspace, opts.stage_dir)
+    summary = json.loads((stage_dir / "stage-summary.json").read_text(encoding="utf-8"))
+    readiness = _case_readiness(workspace)
+    start = snapshot.load_snapshot(Path(workspace) / "state" / "start-snapshot.json")
+    rows = []
+    for snap_ref in summary["snapshots"]:
+        snap = _snapshot_from_pla(workspace, start, snap_ref["pla"], "candidate", {})
+        checks = summary.get("checks", {}).get(str(snap_ref["index"]))
+        native = None
+        if checks:
+            by_type = {t: checks.get(t, {}).get("instances") for t in NATIVE_TYPES}
+            native = {"byType": by_type, "total": None if any(v is None for v in by_type.values()) else sum(by_type.values())}
+        rows.append(_report_row(workspace, start, snap, snap_ref["name"], snap_ref["index"], "snapshot", readiness["goal"], native))
+    if summary.get("completed") and summary.get("exportPla"):
+        snap = _snapshot_from_pla(workspace, start, summary["exportPla"], "candidate", {})
+        native = metrics_mod.native_rows({t: p for t, p in summary.get("verifyFiles", {}).items()})
+        rows.append(_report_row(workspace, start, snap, "export", None, "export", readiness["goal"],
+                                {"byType": native["byType"], "total": native["total"]}))
+    body = core.stamp("stage-report", {"stageDir": str(stage_dir.resolve().relative_to(Path(workspace).resolve())), "rows": rows})
+    errors = records.validate_record("stage-report", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return str(_resolve_in_workspace(workspace, opts.out)), body
+
+
+def _ref(workspace, path):
+    path = Path(path)
+    return {"path": str(path.resolve().relative_to(Path(workspace).resolve())), "sha256": core.file_sha256(path)}
+
+
+def _cmd_candidate(workspace, args):
+    parser = argparse.ArgumentParser(prog="candidate")
+    parser.add_argument("--round", required=True, type=int)
+    parser.add_argument("--stage-dir", required=True)
+    parser.add_argument("--journal", required=True)
+    parser.add_argument("--out", required=True)
+    opts = parser.parse_args(args)
+    ws = Path(workspace).resolve()
+    stage_dir = _resolve_in_workspace(workspace, opts.stage_dir)
+    round_dir = _round_dir_of(workspace, stage_dir, opts.round)
+    out_path = str(_resolve_in_workspace(workspace, opts.out))
+    summary = json.loads((stage_dir / "stage-summary.json").read_text(encoding="utf-8"))
+    readiness = _case_readiness(workspace)
+    start = snapshot.load_snapshot(ws / "state" / "start-snapshot.json")
+
+    journal_path = _resolve_in_workspace(workspace, opts.journal)
+    try:
+        entry = json.loads(journal_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise core.MageError("missing-input", f"cannot read journal entry {journal_path}: {exc}") from exc
+    errors = records.validate_record("journal-entry", entry)
+    if errors or entry.get("round") != opts.round:
+        raise core.MageError("schema", "; ".join(errors) or "journal entry round does not match --round")
+
+    files = {
+        "script": _ref(ws, stage_dir / "script.tcl"), "stageScript": _ref(ws, stage_dir / "stage.tcl"),
+        "sessionLog": _ref(ws, round_dir / "session.jsonl"), "journal": _ref(ws, journal_path),
+        "verify": {t: _ref(ws, p) for t, p in summary.get("verifyFiles", {}).items()},
+        "snapshots": [{"index": s["index"], "name": s["name"], **_ref(ws, s["pla"])} for s in summary.get("snapshots", [])],
+    }
+    reproduction = {"stageDir": str(stage_dir.resolve().relative_to(ws)), "script": "script.tcl", "stageScript": "stage.tcl"}
+    build_banner = readiness["manifest"].get("mage", {}).get("buildBanner", "")
+    identity = {**_identity(), "round": opts.round}
+
+    def _blocked(reason):
+        body = core.stamp("script-candidate", {
+            "identity": identity, "startSnapshotSha256": start["snapshotSha256"], "snapshotSha256": start["snapshotSha256"],
+            "buildBanner": build_banner, "files": files, "metrics": {}, "remaining": [], "blocked": [{"reason": reason}],
+            "unknown": [], "outcome": "blocked", "stopReason": reason, "reproduction": reproduction,
+        })
+        errs = records.validate_record("script-candidate", body)
+        if errs:
+            raise core.MageError("schema", "; ".join(errs))
+        return out_path, body
+
+    export = stage_dir / "out" / "export.pla"
+    if not summary.get("completed") or not export.is_file():
+        boundary = summary.get("lastBoundary") or "prelude"
+        detail = summary.get("stageError") or ("no export.pla" if not export.is_file() else "no MAGE_ROUND_END marker")
+        return _blocked(f"stage did not complete after boundary {boundary}: {detail}")
+
+    candidate_snapshot = _snapshot_from_pla(workspace, start, export, "candidate", {"exportPla": _ref(ws, export)})
+    try:
+        _check_inventory_conservation(workspace, start, candidate_snapshot)
+    except core.MageError as exc:
+        return _blocked(f"inventory not conserved: {exc.detail}")
+    snapshot_path = stage_dir / "out" / "snapshot.json"
+    core.write_artifact(snapshot_path, candidate_snapshot)
+    files["export"] = _ref(ws, export); files["snapshot"] = _ref(ws, snapshot_path)
+    if summary.get("summary") and Path(summary["summary"]).is_file():
+        files["summary"] = _ref(ws, summary["summary"])
+    goal = readiness["goal"]
+    verify_files = {t: str(ws / r["path"]) for t, r in files["verify"].items()}
+    computed = {
+        "drops": metrics_mod.drops(candidate_snapshot),
+        "targetDistances": metrics_mod.target_distances(candidate_snapshot, str(goal["max_target_distance_um"])),
+        "orderDeviation": metrics_mod.order_deviation(candidate_snapshot),
+        "displacement": metrics_mod.displacement(start, candidate_snapshot),
+        "nativeRows": metrics_mod.native_rows(verify_files),
+        "priorityUnplaced": _priority_unplaced(candidate_snapshot),
+    }
+    body = core.stamp("script-candidate", {
+        "identity": identity, "startSnapshotSha256": start["snapshotSha256"],
+        "snapshotSha256": candidate_snapshot["snapshotSha256"], "buildBanner": build_banner,
+        "files": files, "metrics": computed, "remaining": [p["id"] for p in candidate_snapshot["pending"]],
+        "blocked": [], "unknown": computed["nativeRows"].get("unknown", []),
+        "outcome": "completed", "stopReason": "", "reproduction": reproduction,
+    })
+    errors = records.validate_record("script-candidate", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return out_path, body
+
+
+def _cmd_script_candidate_fallback(workspace, args):
+    """Batch fallback for `engineer-script`: validate the existing delivery, never fabricate one."""
+    del args
+    path = Path(workspace) / "state" / "round" / "script-candidate.json"
+    if not path.is_file():
+        raise core.MageError("engineering-required", "no script-candidate delivered for this round")
+    body = core.read_artifact(path, "script-candidate")
+    errors = records.validate_record("script-candidate", body)
+    if errors:
+        raise core.MageError("schema", "; ".join(errors))
+    return path, body
+
+
 RESIDENT_SUBCOMMANDS = {
     "snapshot": _cmd_snapshot,
     "plan-slots": _cmd_plan_slots,
+    "mage-stage": _cmd_mage_stage,
+    "stage-report": _cmd_stage_report,
+    "candidate": _cmd_candidate,
+    "script-candidate": _cmd_script_candidate_fallback,
 }
 
 # Prints JSON to stdout and writes no declared output file.
