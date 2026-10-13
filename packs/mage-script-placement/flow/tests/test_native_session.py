@@ -91,10 +91,31 @@ class StageDriverTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "experiment")
         self.assertFalse(Path(self._stage()).exists())
 
-    def test_escaped_and_commented_braces_do_not_trip_the_balance_check(self):
+    def test_escaped_braces_do_not_trip_the_balance_check(self):
         # Finding 6: backslash-escaped braces (the playbook's regexp patterns)
-        # and braces inside full-line comments must not be counted.
-        session.refuse_unbalanced_braces("regexp -- {a\\}b} $x\n# { an unbalanced comment\n")
+        # are not counted, but braces on comment lines are counted like any
+        # other line, so a balanced comment-line brace pair is fine.
+        session.refuse_unbalanced_braces("regexp -- {a\\}b} $x\n# { a balanced comment }\n")
+
+    def test_comment_line_brace_is_counted(self):
+        # The agent text sits inside a braced `catch { ... }` body, where Tcl
+        # counts braces in comments, so an unclosed `{` on a comment line is
+        # refused just like one in live code.
+        with self.assertRaises(core.MageError) as caught:
+            session.refuse_unbalanced_braces("# open a block {\n")
+        self.assertEqual(caught.exception.code, "experiment")
+
+    def test_brace_depth_going_negative_is_refused_even_if_final_count_is_zero(self):
+        # A close-before-open corrupts the driver's own catch { ... } wrapper
+        # even when a later open brings the final count back to zero, so the
+        # gate must refuse as soon as the running depth drops below zero.
+        with self.assertRaises(core.MageError) as caught:
+            session.refuse_unbalanced_braces("set a 1 }\n{ set b 2\n")
+        self.assertEqual(caught.exception.code, "experiment")
+
+    def test_escaped_regexp_brace_pattern_is_accepted(self):
+        # The playbook's brace-escaped regexp patterns must not be flagged.
+        session.refuse_unbalanced_braces("regexp -- {-arOffsetRangeX \\{([^\\}]*)\\}}\n")
 
     def test_non_engineer_role_is_refused(self):
         with self.assertRaises(core.MageError) as caught:

@@ -148,7 +148,7 @@ whole round on isolation alone.
 candidate.** The round's job is to advance the method; deliver the stage that attempted the next
 action in this order — completed if it worked, or a *blocked* candidate naming the boundary it
 stopped at if it did not. A blocked attempt is honest progress the stop rule tolerates (it neither
-counts as a stall nor resets the counter, §9 of `role-script-engineer.md`); a baseline re-run
+counts as a stall nor resets the counter, the stop rule stated in `role-script-engineer.md`); a baseline re-run
 dressed as this round's result is a stall in disguise.
 
 ## 9. Round 1 is fixed to the baseline reproduction script, verbatim

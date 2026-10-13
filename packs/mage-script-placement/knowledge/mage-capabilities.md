@@ -48,10 +48,14 @@ any of: `exit` (as a whole word), `frbOpen` (as a whole word), `MAGE_VERIFY`, `M
 `hima:prelude-begin`/`hima:prelude-end`/`hima:agent-begin`/`hima:agent-end`, the word `rename`, the
 phrase `interp alias`, or a `proc` that (re)defines a name — optionally brace- or quote-wrapped and
 optionally `::`-qualified — beginning `hima_`, `frbCheck`, `smPInstMgr`, `smPFlow`, `puts`, `flush`
-or `catch`. A stage is also refused when its `{` and `}` do not balance (counting outside full-line
-`#` comments and ignoring backslash-escaped `\{`/`\}`), because an unbalanced brace would corrupt the
-driver's own `catch { ... }` wrapper. Only role `engineer` may ever run a stage — any other role is
-refused before a single byte is written, because every stage is mutating by construction.
+or `catch`. A stage is also refused when its `{` and `}` do not balance — every line counts, including
+full-line `#` comments (the agent text sits inside a braced `catch { ... }` body, where Tcl counts
+braces in comments too), ignoring only backslash-escaped `\{`/`\}`, and the gate refuses as soon as the
+running depth drops below zero, not only when the final count is non-zero — because an unbalanced
+brace would corrupt the driver's own `catch { ... }` wrapper. The word `rename` is refused anywhere in
+the agent text, comments included, so comments must not use that word either. Only role `engineer` may
+ever run a stage — any other role is refused before a single byte is written, because every stage is
+mutating by construction.
 
 ## Stage result files
 

@@ -90,6 +90,11 @@ stage's `script.tcl`/`stage.tcl`/`stage-summary.json`, every boundary snapshot, 
 the candidate document as the sole `kind: result` entry. The result file lives outside `placement/`
 (at `state/round/script-candidate.json`) and is never listed as a support artifact.
 
+Each stage's whole `out/` tree counts as support, not just the files named above: `out/export.pla`,
+`out/snapshot.json`, `out/summary.txt`, every `out/verify-<TYPE>.txt`, `out/stdout.log`,
+`out/stderr.log`, and every file under every `out/snap-NN-<name>/` directory. The Reader refuses a
+delivery that is missing any of them.
+
 ## Operational notes
 
 - **A refused stage leaves no stage directory** — no `stage.tcl`, no `stage-summary.json`, nothing.

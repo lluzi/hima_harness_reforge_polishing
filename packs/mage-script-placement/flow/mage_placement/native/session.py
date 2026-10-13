@@ -87,14 +87,17 @@ def refuse_unbalanced_braces(script_text):
     An unbalanced agent script would otherwise be wrapped verbatim inside the
     driver's own `catch { ... }` block, so a stray brace in agent text would
     swallow or truncate the epilogue (or never close the catch), corrupting
-    the assembled `stage.tcl` rather than failing the agent's own script. The
-    count ignores full-line `#` comments and backslash-escaped braces (`\\{`,
-    `\\}`), so the playbook's brace-escaped `regexp` patterns are not flagged.
+    the assembled `stage.tcl` rather than failing the agent's own script. Tcl
+    counts braces inside `catch { ... }` on every line, including full-line
+    `#` comments, so this count does too; it still skips backslash-escaped
+    braces (`\\{`, `\\}`), so the playbook's brace-escaped `regexp` patterns
+    are not flagged. The gate refuses as soon as the running depth drops
+    below zero — not only when the final count is non-zero — because a
+    close-before-open also corrupts the wrapper even if a later line's open
+    brings the final count back to zero.
     """
     depth = 0
     for line in script_text.splitlines():
-        if line.lstrip().startswith("#"):
-            continue
         i = 0
         while i < len(line):
             char = line[i]
@@ -105,6 +108,8 @@ def refuse_unbalanced_braces(script_text):
                 depth += 1
             elif char == "}":
                 depth -= 1
+                if depth < 0:
+                    raise core.MageError("experiment", f"stage script has unbalanced braces (depth {depth})")
             i += 1
     if depth != 0:
         raise core.MageError("experiment", f"stage script has unbalanced braces (depth {depth})")
