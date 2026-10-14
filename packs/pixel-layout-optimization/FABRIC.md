@@ -104,5 +104,5 @@ none
 
 ## Reviews
 
-- tools/read-pixel.py: not yet put to the author (review pending).
-- flow/pixel_cli.py: not yet put to the author (review pending).
+- tools/read-pixel.py: "the scripts are good to go."
+- flow/pixel_cli.py: "the scripts are good to go."
