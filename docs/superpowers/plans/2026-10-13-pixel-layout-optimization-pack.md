@@ -504,3 +504,72 @@ case, then one live Run in the App; TEST.md.
   resident's next plan (bounded edits / binding chain).
 - **Jogs:** `layout.add_jogs` on the top conductor at the levels where the binding chain's slabs
   meet, offered by the card as a lever; not automatic.
+
+## Task 6 contract (frozen for 6a and 6b, 2026-10-13)
+
+Task 6 is split: **6a numeric drivers** (`flow/pixelopt/numcmd.py`, `solve.py`, `card.py`, tests) and
+**6b orchestration and declarations** (`numeric.py`, `plan.py`, `history.py`, `rounds.py`, `tasks.py`,
+`flow/pixel_cli.py`, `contract.yml`, `graph.yml`, `schemas/tasks.json`, `flow/schemas/{plan,card,round-decision,evaluation,case-readiness}.json`,
+`semantics.yml`, `readers/*.yml`, `tools/read-pixel.py`, `rules/*.yml`, `flow/tests/test_knowledge.py`, the
+route test). `pixel_cli.py` (6b) forwards every `num-*` subcommand to `numcmd.main(argv)` (6a).
+
+### Campaign workspace layout
+
+```
+flow/                       the Pack's flow/ copy (workspace.source: pack)
+state/paths.json            {"manifest", "sitecaps"}  (written first by prepare-case)
+state/case-readiness.json   pixel.case-readiness/1 (6b): paths, manifestSha256, sitecapsSha256, manifest (raw),
+                            sitecaps (raw), goal (goal.resolve output), options {decks{authority,reference}, lvsDeck,
+                            schematic, extraction{...}}, original {outlineUm, cstDeviceFf, loads{line: fF}, tTiledPct},
+                            unmodelled [...], versions {...}  — exactly what receipt.reader_values reads, plus "paths"
+                            (judge launcher mode reads readiness["paths"])
+state/rules.json            {"authority": parse_deck(...), "reference": parse_deck(...), "table": compaction_table(authority)}
+state/original.json         written by num-prepare (6a)
+state/card.json, card.svg   num-map (6a)
+state/model.json            num-map / num-fit (6a); attribution.fit shape
+state/history.jsonl         6b: one line per judged candidate (below)
+state/round/plan.json       the resident's checked plan
+state/round-decision.json   6b (pixel.round-decision/1)
+state/trend.json, trend.svg 6b
+state/evaluation.json       6b
+cands/<id>/                 pixel.gds, pixel2x2.gds, pixel3x3.gds, geometry.json, meta.json, out/, receipt.json
+delivery/                   6b
+```
+
+Candidate ids: `original`, `mutant-contact`, `mutant-space`, `probe-NN`, `rNN-<frontPointName>`, `eval-<id>`.
+`meta.json` (6a writes): `{"id","kind": original|mutant|probe|candidate, "round", "base", "frontPoint": {...}|null,
+"exploratory": bool, "operators": [...], "edits": [...], "declaredChanges": {...}, "predicted": {"pairsFf": {...},
+"ratioPct": {"narrow","broad"}} | null, "solve": {"status", "pitchUm": [w,h], "binding": [...], "pairIterations": n,
+"residualMarkers": [...]}}`. `geometry.json` is `geometry.measure(...)` plus `declaredChanges` (judge reads it).
+
+### `num-*` subcommands (6a implements in numcmd.py; each runs inside the EDA container through
+`numeric.run`, prints exactly one JSON object as its LAST stdout line, exit 0 on success; on failure prints
+`{"code","detail"}` to stderr and exits 2 (bad input) or 3 (refusal))
+
+| Subcommand | Reads | Writes / prints |
+|---|---|---|
+| `num-prepare WS` | state/paths.json | cands/original/ (gds set from the original GDS rewritten under candidateTopCell, geometry.json, meta.json); state/original.json {outlineUm, cstDeviceFf, channels, nets, tTiledPct, tOwnPct}; prints {"versions": {python, numpy, scipy, shapely, gdstk}, "outlineUm"} |
+| `num-mutants WS` | state/rules.json, cands/original | cands/mutant-contact/, cands/mutant-space/; prints {"mutants": [{id, kind, description}]} |
+| `num-judge-one WS DIR MODE` | judge context | judge.judge_one_main (Task 5) |
+| `num-map WS` | original + its receipt caps, rules, history | state/card.json, card.svg, model.json (fit on what is judged so far; reduced if few rows); prints {"pitchBound": {"x","y"}, "sites": n, "levers": n} |
+| `num-probes WS K STEP` | card, model | cands/probe-NN/ (gds set, geometry.json, meta.json); prints {"probes": [ids], "dropped": [...]} |
+| `num-fit WS` | history.jsonl + every listed candidate's receipt caps and GDS | state/model.json; prints {"pairs": {pair: {n, rmse, r2}}} |
+| `num-solve WS ROUND` | state/round/plan.json, round-decision.json (trust radius, best), model, rules | per front point: operators, edits, compaction (legalise zones from the base's folded authority markers), exact-pair loop (authority DRC 1x1+3x3 via judge.judge_one mode drc, markers, propose_pairs, ≤ 6 iterations), cands/rNN-<name>/; prints {"candidates": [ids], "failed": [{name, status, binding}]} |
+| `num-markers WS CAND OUT` | cands/CAND/out | classified folded markers + proposed pairs/edits JSON at OUT |
+| `num-try-edit WS CAND OPS OUTDIR` | cands/CAND, OPS | edited copy in OUTDIR, authority DRC 1x1+3x3 (mode drc), prints {"authority": {"1x1": n, "3x3": n}, "byRule": {...}} |
+
+For the resident (`PIXELOPT_DIRECT=1`, no launcher), `pixel_cli.py markers/try-edit/show` read candidates from
+`--campaign CW` and write into the private WORKSPACE; they call the same numcmd functions with an explicit
+`campaign` root.
+
+### History line (6b writes, `state/history.jsonl`)
+
+`{"id","kind","round","base","frontPoint","exploratory","operators","values": {type: value|null},
+"unknown": {type: reason}, "receiptSha256","predicted","legal": bool, "hardFailures": [rule ids], "goalRules": {rule: PASS|FAIL|UNKNOWN},
+"at": iso8601}`. `legal` = every hard-limit rule PASS (SPEC Judge rules; outline and ratio rules are the Goal).
+
+### Card (`pixel.card/1`, 6a writes, ≤ 4 KB)
+
+`{"schema","sites": [top 8 {victim, aggressor, layers, sharePct, estFf}], "levers": [≤ 12 {id, kind, axis, layer, net,
+gradientFfPerUm {pair: g}, boundUm}], "pitchBound": {"x": {pitchUm, binding: [≤ 5]}, "y": {...}}, "floor": {ctFf, note},
+"front": [≤ 6 {id, outlineUm, ratioPct, legal}], "openMarkers": [≤ 8 {candidate, rule, class, bbox}]}`.
