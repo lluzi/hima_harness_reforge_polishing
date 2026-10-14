@@ -40,6 +40,8 @@ from . import (attribution, compact, core, edits, geometry, judge, layout,
 _MAX_PAIR_ITERS = 6
 _MAX_REPAIR_ROUNDS = 3
 _LEGALISE_RETRIES = 6
+# A through-chain pitch relaxes the binding places one solve at a time, at most this many times.
+_THROUGH_RETRIES = 12
 _MAX_REPAIR_EDITS = 12
 _DEFAULT_TRUST_UM = 0.5
 _ZONE_BUFFER_UM = 0.3
@@ -248,15 +250,52 @@ def _repair(lay, ctx, drc):
 # Compaction per objective
 # --------------------------------------------------------------------------- #
 
-def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
+def _through_chain(lay, case, table, tgt, pairs, out, info):
+    """Compact x past its binding chain toward ``tgt``.
+
+    The minimum-pitch solve names the rows that hold the floor; its same-layer Euclidean spacings
+    (vertex-to-edge distances at 45-degree chamfers) are relaxed, row kind and layers at their
+    place only, both ends over successive solves, until the floor reaches the target; then x is
+    compacted at the target with only those relaxed, so shapes move no further than the target
+    needs. When no such row is left in the chain, the relaxed floor is taken if any was relaxed.
+    Scanline rows, enclosures, cross-layer spacings and exact marker pairs always hold. Returns
+    ``(out, info, places)``; ``info["status"]`` is not "optimal" when nothing was gained.
+    """
+    places = []
+    for _try in range(_THROUGH_RETRIES):
+        floor_out, floor = compact.compact(lay, "x", case, table, objective="pitch",
+                                           pairs=tuple(pairs), relax_places=tuple(places))
+        if floor["status"] != "optimal":
+            break
+        if floor.get("pitch") is not None and floor["pitch"] <= tgt + 1e-6:
+            at, at_info = compact.compact(lay, "x", case, table, target_pitch=tgt,
+                                          pairs=tuple(pairs), relax_places=tuple(places))
+            if at_info["status"] == "optimal":
+                return at, at_info, places
+        more = [sp for sp in compact.relax_specs(floor.get("binding"))
+                if not any(sp[1:] == q[1:] and sp[0].distance(q[0]) < 1e-6 for q in places)]
+        if not more:
+            if places and floor_out is not None:
+                return floor_out, floor, places
+            break
+        places.extend(more)
+    return out, info, []
+
+
+def _compact_pitch_like(pre, case, table, objective, target, pairs, zones, through=False):
     """Compact y then x for ``legalise`` / ``min-pitch``.
 
     Returns ``(Layout|None, info)`` where ``info`` carries ``status`` and the
     combined ``binding`` chain. ``min-pitch`` falls back to the minimum pitch
-    when the requested outline is infeasible on an axis.
+    when the requested outline is infeasible on an axis. With ``through`` a
+    ``min-pitch`` x target below the floor first compacts past the binding
+    chain: the Euclidean rows at the places it names are relaxed one solve at a
+    time, and the few markers left there go to the verified repairs (a designer
+    reshapes those chamfers by hand the same way).
     """
     lay = pre
     binding = []
+    relaxed = []
     status = "optimal"
     if objective == "min-pitch":
         # y to its minimum first: a shorter cell frees x (chamfers and crossings move), then x to
@@ -295,6 +334,10 @@ def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
         else:  # min-pitch
             out, info = compact.compact(lay, axis, case, table, target_pitch=tgt,
                                         pairs=tuple(pairs))
+            if info["status"] != "optimal" and through and axis == "x" and tgt:
+                out, info, places = _through_chain(lay, case, table, tgt, pairs, out, info)
+                if info["status"] == "optimal":
+                    relaxed = [list(p[0].centroid.coords)[0] for p in places]
             if info["status"] != "optimal":
                 out, info = compact.compact(lay, axis, case, table,
                                             objective="pitch", pairs=tuple(pairs))
@@ -312,7 +355,8 @@ def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
         return lay, {"status": status, "binding": binding}
     if lay is pre and status != "optimal":
         return None, {"status": "infeasible", "binding": binding}
-    return lay, {"status": status, "binding": binding}
+    return lay, {"status": status, "binding": binding,
+                 "relaxedPlaces": [[round(x, 3), round(y, 3)] for x, y in relaxed]}
 
 
 def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
@@ -445,6 +489,9 @@ def _solve_point(point, ctx):
     residual = []
     pair_iters = 0
 
+    through = objective == "min-pitch" and bool(point.get("throughChain"))
+    kept = None
+
     if objective == "legalise" and ctx.get("base_clean"):
         # nothing to legalise: re-solving a clean base only moves shapes for no gain
         return {"ok": False, "name": name, "status": "already-clean", "binding": []}
@@ -456,7 +503,7 @@ def _solve_point(point, ctx):
                                             pairs, ctx["zones"])
         elif objective == "min-pitch":
             lay, info = _compact_pitch_like(pre, case, table, "min-pitch", target,
-                                            pairs, None)
+                                            pairs, None, through=through)
         elif objective == "min-ratio":
             lay, info = _compact_min_ratio(pre, case, table, target, pairs,
                                            ctx["trust"], ctx["model"], ctx["readiness"])
@@ -466,6 +513,11 @@ def _solve_point(point, ctx):
         if lay is None:
             return {"ok": False, "name": name, "status": info["status"],
                     "binding": info.get("binding") or []}
+        if through and kept is not None and lay.pitch(case)[0] > kept["w"] + 1e-6:
+            # the marker pairs put the chain back: keep the narrower layout and let the verified
+            # repairs reshape its chamfers instead (the pairs only re-impose what was relaxed)
+            final, residual, info = kept["final"], kept["residual"], kept["info"]
+            break
         final = lay
 
         # judge the layout on the grid, as it will be written: snapping a 45-degree edge can
@@ -478,6 +530,10 @@ def _solve_point(point, ctx):
         classified = markers.classify(folded, table, ctx["base_marks"],
                                       info.get("binding") or ())
         residual = classified
+        if through:
+            w = final.pitch(case)[0]
+            if kept is None or w <= kept["w"] + 1e-6:
+                kept = {"w": w, "final": final, "residual": residual, "info": info}
         exact = [m for m in classified if m["class"] == "exact-pair"]
         if not exact or propose is None or ctx["parsed"] is None:
             break
@@ -537,6 +593,8 @@ def _solve_point(point, ctx):
             "pitchUm": [round(float(w), 6), round(float(h), 6)],
             "binding": [str(t) for t in (info.get("binding") or [])][:30],
             "pairIterations": pair_iters,
+            "throughChain": bool(point.get("throughChain")),
+            "relaxedPlaces": info.get("relaxedPlaces") or [],
             "repairs": repairs,
             "residualMarkers": residual,
         },

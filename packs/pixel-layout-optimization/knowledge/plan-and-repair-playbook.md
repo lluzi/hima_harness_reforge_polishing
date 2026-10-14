@@ -144,6 +144,13 @@ commercial tools judged. Apply them unless the card or the history clearly says 
    line; never a gate, a channel or a capacitor plate) and re-run `min-ratio` at the same outline.
    Start with a width 0.5 µm under the band's present width; a trim that lifts transmittance over
    the window's maximum is as illegal as no trim. Narrow further only after a receipt shows room.
+6. **Past the bound: `throughChain`.** When the width stalls at the card's x bound and the binding
+   chain is Euclidean (`eu:` rows between 45-degree chamfers of one layer), ask a `min-pitch` point
+   with `"throughChain": true` at the Goal width, or a step above it, from the best legal candidate.
+   The solve relaxes only those chamfer distances, compacts as far as the target needs and hands
+   the few markers left at the chamfers to the verified repairs, the way a designer reshapes them.
+   Keep a plain `min-pitch` point at the bound beside it, so a legal width is never lost. A
+   `throughChain` candidate's markers are the next round's repair lever.
 
 ### Plans to copy
 
@@ -178,6 +185,17 @@ Round 3 (from the narrower legal candidate, transmittance at the window's minimu
  "hypothesis": "a slimmer supply band lifts transmittance into the window at no device cost",
  "frontPoints": [{"name": "ratio", "objective": "min-ratio", "outlineUm": [<reached w>, <reached h>]}],
  "pairConstraints": [], "edits": [], "expect": "transmittance inside the window; ratio no worse"}
+```
+
+Round 4 (width held at the card's x bound by an `eu:` chain):
+
+```json
+{"schema": "pixel.plan/1", "round": 4, "base": "best", "operators": [],
+ "hypothesis": "the x bound is a chain of chamfer distances; compacting through it and reshaping the chamfers it leaves narrows the cell",
+ "frontPoints": [{"name": "through", "objective": "min-pitch", "outlineUm": [<goal w>, <reached h>], "throughChain": true},
+                 {"name": "through-step", "objective": "min-pitch", "outlineUm": [<goal w + 0.2>, <reached h>], "throughChain": true},
+                 {"name": "bound", "objective": "min-pitch", "outlineUm": [<card x bound>, <reached h>]}],
+ "pairConstraints": [], "edits": [], "expect": "narrower than the bound with a few chamfer markers the repairs close; the bound point stays legal"}
 ```
 
 ### Reading what came back

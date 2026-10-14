@@ -26,7 +26,7 @@ def _union(polys, layer, P0):
 
 
 def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
-             legalise=False, reach_extra=0.0, zone_fn=None, margin=0.0):
+             legalise=False, reach_extra=0.0, zone_fn=None, margin=0.0, skip_fn=None):
     """Append vertex-to-edge distance rows via ``ge``; return the row count.
 
     A row that holds the full rule distance asks for ``margin`` more (the grid step): the written
@@ -35,6 +35,9 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
     Under ``legalise`` a pair is raised to the full rule distance only when the
     vertex->foot segment meets a zone (``zone_fn`` returns truthy); with
     ``zone_fn=None`` every legalise pair is raised (backward-compatible).
+
+    A row ``skip_fn(kind, La, Lb, vertex->foot)`` marks is not written at all: a chamfer distance
+    a through-chain pitch compacts past, left to the verified repairs (scanline rows still hold).
     """
     layers = sorted(set(n for n, _, _ in polys))
     U = {L: _union(polys, L, P0) for L in layers}
@@ -98,6 +101,9 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
                         if dist < 1e-6 or dist > reach:
                             continue
                         foot = seg.interpolate(seg.project(Point(vx, vy)))
+                        if skip_fn is not None and skip_fn(kind, La, Lb,
+                                                           [(vx, vy), (foot.x, foot.y)]):
+                            continue
                         mid = Point((vx + foot.x) / 2, (vy + foot.y) / 2)
                         inA = U[La].contains(mid)
                         inB = U[Lb].contains(mid)
@@ -196,7 +202,8 @@ def pair_constraints(polys, var, P0, iP, pairs, ge, tag):
         if need <= 1e-6:
             continue
         pr = seg.project(Point(vx, vy))
-        tag[0] = "pair:%s%d.%d-%s%d.%d need=%.2f" % (La, ia, va, Lb, ib, eb, need)
+        tag[0] = "pair:%s%d.%d-%s%d.%d v=(%.2f,%.2f) need=%.2f" % (La, ia, va, Lb, ib, eb, vx, vy,
+                                                                   need)
         rigid = abs(a[1] - b[1]) > 1e-9
         if rigid:
             # A marker pair is held against the edge's whole line, not just where the vertex

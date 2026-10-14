@@ -35,7 +35,8 @@
      "outlineUm": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
      "loadAllowancePct": {"type": "number"},
      "ratioCapPct": {"type": "number"},
-     "exploratory": {"type": "boolean"}
+     "exploratory": {"type": "boolean"},
+     "throughChain": {"type": "boolean"}
     }
    }
   },

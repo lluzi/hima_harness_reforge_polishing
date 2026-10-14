@@ -105,6 +105,8 @@ def check(plan, readiness, history_ids, round=None):
         name = fp.get("name", "?")
         if fp.get("objective") not in ("legalise", "min-pitch", "min-ratio"):
             errors.append("front point %r has an unknown objective %r" % (name, fp.get("objective")))
+        if fp.get("throughChain") and fp.get("objective") != "min-pitch":
+            errors.append("front point %r asks throughChain, which only a min-pitch point takes" % name)
         exploratory = bool(fp.get("exploratory"))
         exceeds = _exceeds_goal(fp, gvalues)
         if exceeds and not exploratory:

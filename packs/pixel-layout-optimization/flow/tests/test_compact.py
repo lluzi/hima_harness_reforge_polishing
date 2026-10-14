@@ -427,6 +427,29 @@ class HandBuiltCompactTest(unittest.TestCase):
         out = compact.apply(lay, model, compact.solve(model, objective="pitch")["x"], case)
         self.assertGreater(out.geom("G").intersection(out.geom("S")).area, 0.0)
 
+    def test_relaxed_place_lets_the_pitch_pass_a_diagonal_chain(self):
+        # Through-chain pitch: a row of 45-degree corners (a Euclidean vertex-to-edge distance)
+        # sets the floor; relaxing the place the binding chain names lets the pitch go below it,
+        # and nothing else is relaxed (the repairs then reshape that corner).
+        from pixelopt import compact
+        from shapely.geometry import Point
+        case = metal_outline_case()
+        table = {"width": {"Metal": 1.0}, "space": {"Metal": 1.2}, "xspace": [], "enc": []}
+        lay = self._layout({
+            "Bound": [rect(0, 0, 10, 10)],
+            "Metal": [rect(1, 1, 3, 4), rect(4, 5, 6, 8)],
+        })
+        plain = compact.solve(compact.build(lay, case, table), objective="pitch")
+        self.assertEqual(plain["status"], "optimal")
+        places = compact.relax_specs(plain["binding"])
+        self.assertTrue(any(min(p[0].distance(Point(3, 4)), p[0].distance(Point(4, 5))) < 0.05
+                            and p[1:] == ("same", "Metal", "Metal") for p in places),
+                        "binding chain did not name the corner: %r" % (plain["binding"],))
+        relaxed = compact.solve(compact.build(lay, case, table, relax_places=tuple(places)),
+                                objective="pitch")
+        self.assertEqual(relaxed["status"], "optimal")
+        self.assertLess(relaxed["pitch"], plain["pitch"] - 0.1)
+
     def test_legalise_infeasible_reports_binding_tags(self):
         # An un-satisfiable legalise (two wide strips that cannot both meet width
         # and space inside a tight outline) reports the conflicting rows.

@@ -112,7 +112,7 @@ _NO_NEW_DEVICE_UM = 0.1
 
 def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
           metric_rows=(), trust=None, use_euclid=True, legalise=False,
-          legalise_zones=None, legalise_exclude=()):
+          legalise_zones=None, legalise_exclude=(), relax_places=()):
     """Assemble the LP model for one x-pass over ``lay``.
 
     Returns a dict with the inequality system (``A`` x ``>=``-style rows, already
@@ -330,6 +330,15 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         return False
 
     _xunion = unary_union(list(legalise_exclude)) if legalise_exclude else None
+    # Through-chain pitch: a Euclidean row of the same kind and layers as a relaxed binding row,
+    # at its place, is not written (see relax_specs); every other row there still holds.
+    _relax = [(g, k, a, b) for (g, k, a, b) in relax_places] if relax_places else []
+
+    def skip_fn(kind, la, lb, coords):
+        seg = LineString(coords)
+        return any(k == kind and {a, b} == {la, lb} and g.intersects(seg)
+                   for (g, k, a, b) in _relax)
+    skip_fn = skip_fn if _relax else None
 
     def euclid_zone_fn():
         excluded = (lambda c: _xunion is not None and _xunion.intersects(LineString(c)))
@@ -573,7 +582,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         cons += _euclid.generate(polys, var, P0, iP, width, space, xspace, enc,
                                  ge, tag, legalise=legalise,
                                  zone_fn=euclid_zone_fn(),
-                                 margin=case.grid_um)
+                                 margin=case.grid_um, skip_fn=skip_fn)
         if pairs:
             cons += _euclid.pair_constraints(polys, var, P0, iP, pairs, ge, tag)
 
@@ -763,6 +772,22 @@ def _crossings(p, y):
 
 _PLACE_RE = re.compile(r"y=(-?[\d.]+) x=(-?[\d.]+)\.\.(-?[\d.]+)")
 _VERTEX_RE = re.compile(r"v=\((-?[\d.]+),(-?[\d.]+)\)")
+
+
+_EU_RE = re.compile(r"^eu:(same|xspace|enc):([^-\s]+)-(\S+) v=\((-?[\d.]+),(-?[\d.]+)\)")
+
+
+def relax_specs(tags, kinds=("same",), pad=0.02):
+    """``(place, kind, layer a, layer b)`` for each Euclidean binding row of ``kinds``: what a
+    through-chain pitch relaxes. Enclosures and cross-layer spacings are not relaxed by default
+    (a contact's enclosure in its pad is not a chamfer distance)."""
+    out = []
+    for t in tags or []:
+        m = _EU_RE.search(str(t))
+        if m and m.group(1) in kinds:
+            x, y = float(m.group(4)), float(m.group(5))
+            out.append((Point(x, y).buffer(pad), m.group(1), m.group(2), m.group(3)))
+    return out
 
 
 def binding_places(tags, pad=0.02):
