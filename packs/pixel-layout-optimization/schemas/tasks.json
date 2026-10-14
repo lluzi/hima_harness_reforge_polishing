@@ -96,8 +96,8 @@
       "additionalProperties": true,
       "properties": {
         "pitchBound": {"type": ["object", "null"]},
-        "sites": {"type": ["array", "null"]},
-        "levers": {"type": ["array", "null"]}
+        "sites": {"type": ["integer", "null"]},
+        "levers": {"type": ["integer", "null"]}
       }
     },
 

@@ -17,7 +17,7 @@ import unittest
 _FLOW = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
 sys.path.insert(0, _FLOW)
 
-from pixelopt import core, numeric, tasks  # noqa: E402
+from pixelopt import core, tasks  # noqa: E402
 import pixel_cli  # noqa: E402
 
 try:
@@ -42,32 +42,6 @@ _DEFAULT_STRATEGY = {"ratioDefinition": "broad", "transmittanceBasis": "tiled",
                      "convergeBandPct": 0.02}
 
 
-def _standin_launcher():
-    """Wrap :func:`pixelopt.numeric.run` so the stand-in EDA reports the
-    planted mutant faults.
-
-    The stand-in (``tests/standin_eda.py``) is a test double: it cannot run DRC
-    or LVS geometry, so it reads a per-candidate ``standin.json`` to learn that
-    a candidate carries the planted fault the real tools would catch. Right
-    after ``num-mutants`` writes the mutant GDS sets, this wrapper drops the
-    fault sidecars (contact removed -> LVS incorrect; space shrunk -> authority
-    DRC markers) so ``judge-original``'s calibration passes. It mutates no Pack
-    file; it only sets up the double, the way any stand-in test must.
-    """
-    original = numeric.run
-
-    def wrapped(sitecaps, workspace, subcommand, args, timeout):
-        result = original(sitecaps, workspace, subcommand, args, timeout)
-        if subcommand == "num-mutants":
-            core.write_json(os.path.join(workspace, "cands", "mutant-contact", "standin.json"),
-                            {"lvsCorrect": False})
-            core.write_json(os.path.join(workspace, "cands", "mutant-space", "standin.json"),
-                            {"drcViolations": {"authority": {"1x1": 2, "2x2": 2, "3x3": 2}}})
-        return result
-
-    return original, wrapped
-
-
 def _run_flow(root, goal, strategy):
     """Run the whole flow once; return the evaluation document."""
     case_dir = os.path.join(root, "case")
@@ -89,29 +63,26 @@ def _run_flow(root, goal, strategy):
 
     base_mode = (strategy or {}).get("_baseMode", "best-after-first")
 
-    original_run, wrapped_run = _standin_launcher()
-    numeric.run = wrapped_run
-    tasks.numeric.run = wrapped_run
-    try:
-        tasks.execute("prepare-case", ws, inputs)
-        tasks.execute("judge-original", ws, {})
-        tasks.execute("map-design-space", ws, {})
-        tasks.execute("learn-sensitivities", ws, {"PROBES": 3, "STEP": 0.1})
+    # The stand-in EDA honours the planted calibration mutants from each
+    # candidate's own meta.json (tests/standin_eda._mutant_mutation): a removed
+    # contact reads LVS incorrect, a shrunk space reads authority DRC markers,
+    # so judge-original's calibration passes with no test-side wrapping.
+    tasks.execute("prepare-case", ws, inputs)
+    tasks.execute("judge-original", ws, {})
+    tasks.execute("map-design-space", ws, {})
+    tasks.execute("learn-sensitivities", ws, {"PROBES": 3, "STEP": 0.1})
 
-        round_no = 1
-        while round_no <= 6:
-            _scripted_plan(ws, round_no, goal, base_mode)
-            tasks.execute("solve-and-judge", ws, {"ROUND": round_no})
-            decision = tasks.execute("decide-round", ws, {"ROUND": round_no})["value"]
-            if decision["route"] == "stop":
-                break
-            round_no = decision["nextRound"]["round"]
+    round_no = 1
+    while round_no <= 6:
+        _scripted_plan(ws, round_no, goal, base_mode)
+        tasks.execute("solve-and-judge", ws, {"ROUND": round_no})
+        decision = tasks.execute("decide-round", ws, {"ROUND": round_no})["value"]
+        if decision["route"] == "stop":
+            break
+        round_no = decision["nextRound"]["round"]
 
-        tasks.execute("evaluate", ws, {})
-        tasks.execute("deliver", ws, {})
-    finally:
-        numeric.run = original_run
-        tasks.numeric.run = original_run
+    tasks.execute("evaluate", ws, {})
+    tasks.execute("deliver", ws, {})
     return core.read_json(os.path.join(ws, "state", "evaluation.json"))
 
 

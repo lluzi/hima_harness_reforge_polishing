@@ -77,6 +77,38 @@ def _sidecar():
     return {}
 
 
+def _mutant_mutation():
+    """Walk up from the tool's working directory to the candidate directory and,
+    when its ``meta.json`` marks a planted calibration mutant, return the
+    mutation descriptor (``{"kind": ...}``); otherwise ``None``.
+
+    This lets the stand-in honour the two mutants ``num-mutants`` plants with no
+    test-side sidecar. The real DRC/LVS tools catch these deliberate defects from
+    geometry, which the stand-in cannot, so it reads the Pack's own record of the
+    mutation (``meta.json`` ``kind == "mutant"`` with its ``mutation``) instead:
+    a removed contact -> LVS incorrect; a shrunk space -> authority DRC markers.
+    A sidecar key, when present, still wins (the explicit test double).
+    """
+    here = os.getcwd()
+    for _ in range(7):
+        meta_path = os.path.join(here, "meta.json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path) as fh:
+                    meta = json.load(fh)
+            except (OSError, ValueError):
+                return None
+            if isinstance(meta, dict) and meta.get("kind") == "mutant":
+                mutation = meta.get("mutation")
+                return mutation if isinstance(mutation, dict) else {}
+            return None
+        parent = os.path.dirname(here)
+        if parent == here:
+            break
+        here = parent
+    return None
+
+
 def _read(path):
     try:
         with open(path, "r", errors="replace") as fh:
@@ -96,6 +128,10 @@ def _now():
 def _run_argus_lvs(args, sidecar):
     """Argus LVS stand-in: writes lvs.rep in Argus's report shape (PASS/FAIL + discrepancy count)."""
     correct = sidecar.get("lvsCorrect", True)
+    if "lvsCorrect" not in sidecar:
+        mut = _mutant_mutation()
+        if mut and mut.get("kind") == "remove-contact":
+            correct = False
     verdict = "PASS" if correct else "FAIL"
     text = [
         "LAYOUT NAME          :    pixel.gds  ('pix')",
@@ -137,6 +173,10 @@ def _run_argus(args, sidecar):
 
     deck, tile = _deck_tile(os.getcwd())
     viol = int(((sidecar.get("drcViolations", {}) or {}).get(deck, {}) or {}).get(tile, 0))
+    if "drcViolations" not in sidecar and deck == "authority":
+        mut = _mutant_mutation()
+        if mut and mut.get("kind") == "shrink-space":
+            viol = 2
 
     counts = {rid: 0 for rid in rule_ids}
     counts[rule_ids[0]] = viol
@@ -203,6 +243,10 @@ def _run_calibre(args, sidecar):
         if m:
             report = m.group(1)
     correct = sidecar.get("lvsCorrect", True)
+    if "lvsCorrect" not in sidecar:
+        mut = _mutant_mutation()
+        if mut and mut.get("kind") == "remove-contact":
+            correct = False
     verdict = "CORRECT" if correct else "INCORRECT"
     banner = [
         "",

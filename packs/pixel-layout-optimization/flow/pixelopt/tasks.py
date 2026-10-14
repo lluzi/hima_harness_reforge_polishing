@@ -359,11 +359,27 @@ def learn_sensitivities(workspace, inputs):
         history_mod.append(workspace, entry)
 
     fit = numeric.run(sitecaps, workspace, "num-fit", [], _timeout(sitecaps, "rce"))
+
+    # Seed an initial round-decision so the first plan-round can read `roundDecision`.
+    # The resident lists `roundDecision` among its reads (the last decision, if any), and the
+    # Host resolves every one of a resident task's declared reads before it starts; decide-round
+    # writes the real decisions from round 1 on. This mirrors the sibling mage-script-placement
+    # Pack's measure-incumbent round-0 seed.
+    seed_decision = {
+        "schema": "pixel.round-decision/1", "round": 0, "route": "continue",
+        "nextRound": {"round": 1}, "stopReason": "", "goalMet": False, "best": None,
+        "front": [], "trustRadiusUm": 0.5, "predictedVsMeasured": [], "openMarkers": [],
+        "rules": {},
+    }
+    core.check(seed_decision, "round-decision")
+    core.write_json(_state(workspace, "round-decision.json"), seed_decision)
+
     return _result({
         "probes": probe_ids,
         "dropped": probes.get("dropped", []),
         "pairs": fit.get("pairs", {}),
-    }, artifacts=[{"name": "surrogateModel", "path": "state/model.json"}])
+    }, artifacts=[{"name": "surrogateModel", "path": "state/model.json"},
+                  {"name": "roundDecision", "path": "state/round-decision.json"}])
 
 
 # --------------------------------------------------------------------------- #
