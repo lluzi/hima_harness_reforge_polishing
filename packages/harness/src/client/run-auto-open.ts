@@ -35,7 +35,9 @@ export function receiptTime(block: object): number | undefined {
 
 export interface AutoOpenInput {
   readonly toolName?: string;
-  /** The Run's status (`RunHeadView.status`, `remote.ts`); an ended Run never opens the pane. */
+  /** The Run's status (`RunHeadView.status`, `remote.ts`). An ended Run (`cancelled` or `ended-*`,
+   *  the `hasEnded` set in `ledger.ts`) never opens the pane; an absent status is a DBOS Run still
+   *  preparing (`durableStartResult` `preparing`), which is treated as just started. */
   readonly status?: string;
   /** The receipt's own time, else the Run's creation time. */
   readonly at?: number;
@@ -47,7 +49,10 @@ export interface AutoOpenInput {
 /** Whether this receipt opens the workspace pane. */
 export function shouldAutoOpen(input: AutoOpenInput): boolean {
   if (input.opened || input.toolName === undefined || !AUTO_OPEN_TOOLS.includes(input.toolName)) return false;
-  if (input.status !== 'running' && input.status !== 'waiting') return false;
+  // An ended Run never opens (same set as `ledger.ts` `hasEnded`); undefined is a Run still
+  // preparing on DBOS — `durableRunView` yields no status until the `preparation` fact is written —
+  // so it is treated as just started, and the effect re-fires when the status later resolves.
+  if (input.status === 'cancelled' || input.status?.startsWith('ended-') === true) return false;
   if (input.at === undefined) return false;
   const age = input.now - input.at;
   return age >= -30_000 && age <= AUTO_OPEN_WINDOW_MS;

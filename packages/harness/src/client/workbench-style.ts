@@ -55,6 +55,8 @@ export const HIMA_STYLE = `
 .hima-button,.hima-icon-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);min-height:32px;font-size:var(--hima-fs-body);cursor:pointer;white-space:nowrap}
 .hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft)}
 .hima-button:disabled,.hima-icon-button:disabled{opacity:.5;cursor:default}
+.hima-studio-secondary{background:transparent;color:var(--hima-ink-2)}
+.hima-studio-secondary:hover{background:var(--hima-soft);color:var(--hima-ink)}
 .hima-icon-button{padding:var(--hima-sp-1) var(--hima-sp-2);border-color:transparent}
 .hima-primary{background:var(--hima-ink);color:var(--hima-on-solid);border-color:var(--hima-ink);font-weight:600}
 .hima-primary:hover{background:var(--hima-ink-2);border-color:var(--hima-ink-2)}
@@ -190,6 +192,8 @@ export const HIMA_STYLE = `
 .hima-view-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hima-live);margin-left:4px;vertical-align:super}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
+.hima-campaign-graph-toggle{display:flex;justify-content:flex-end;padding:var(--hima-sp-2) var(--hima-sp-3) 0}
+.hima-campaign-graph-toggle .hima-button{min-height:26px;padding:2px var(--hima-sp-2);font-size:var(--hima-fs-label)}
 /* The Reports view: tool reports by round, station and node; one opens in place as plain text. */
 .hima-reports{display:flex;flex-direction:column;gap:var(--hima-sp-3);padding:var(--hima-sp-3) var(--hima-sp-4);min-width:0}
 .hima-reports p{margin:0}

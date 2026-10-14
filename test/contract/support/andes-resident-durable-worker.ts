@@ -88,21 +88,25 @@ try {
  const residentReaderNames=['reader-andes-requirements','reader-andes-plan','reader-andes-verify'];
  const engineeringJobs=launched.filter((record:any)=>engineeringNames.includes(record.job.name)).length;
  const readerJobs=launched.filter((record:any)=>residentReaderNames.includes(record.job.name)).length;
- // Both forks' branch tasks start before their join: the parallel block starts every branch workflow
- // before the join (flow-workflow.ts). Proven from records (CTU_MOCK_TIME_SCALE=0 serialises wall
- // clock, so the structural order is read by seq): each fork's two branch engineering jobs are
- // `launched` before the join judge commits its verdict, and each fork commits a Reader observation on
- // its own branchId (two distinct branches per fork).
+ // Both forks' two branches genuinely overlap — both were in flight at the same time. The real-overlap
+ // test is max(the two branches' launch seqs) < min(their two finish seqs): the later branch to start
+ // did so before the earlier branch to finish. A branch's observable finish is its delivery, not a
+ // job `finished` event — these dry-route resident jobs synthesise a `launched` record but no
+ // `finished` one (ACP stand-in deliveries complete through the Reader observation, not an
+ // executor-ready receipt), so the delivery's committed observation (keyed on the branch's own
+ // branchId, which is the branch node id) is the branch's finish. Both branches launched before
+ // either delivered proves they ran concurrently; a serialised fork (A launched+delivered, then B)
+ // fails it. Each fork also commits a Reader observation on its own branchId (two distinct branches).
  const allRecords=await readers.readRunRecords(runId);
  const launchSeq=(tool:string)=>jobRecords.filter((r:any)=>r.event==='launched'&&r.job?.name===`engineering-${tool}`).map((r:any)=>r.seq);
- const verdictSeq=(ruleId:string)=>allRecords.filter((r:any)=>r.type==='verdict'&&r.ruleId===ruleId).map((r:any)=>r.seq);
  const branchesOf=(reader:string)=>new Set(allRecords.filter((r:any)=>r.type==='observation'&&r.reader?.id===reader&&typeof r.branchId==='string').map((r:any)=>r.branchId));
- const startsBeforeJoin=(a:string,b:string,joinRule:string)=>{
-  const la=launchSeq(a),lb=launchSeq(b),jv=verdictSeq(joinRule);
-  return la.length>0&&lb.length>0&&jv.length>0&&Math.max(Math.min(...la),Math.min(...lb))<Math.min(...jv);
+ const deliverySeq=(reader:string,branchId:string)=>allRecords.filter((r:any)=>r.type==='observation'&&r.reader?.id===reader&&r.branchId===branchId).map((r:any)=>r.seq);
+ const forksOverlap=(reader:string,a:string,b:string)=>{
+  const la=launchSeq(a),lb=launchSeq(b),da=deliverySeq(reader,a),db=deliverySeq(reader,b);
+  return la.length>0&&lb.length>0&&da.length>0&&db.length>0&&Math.max(Math.min(...la),Math.min(...lb))<Math.min(Math.min(...da),Math.min(...db));
  };
- const proposeForkOverlap=startsBeforeJoin('himatime-agent','qualib-agent','requirements-valid')&&branchesOf('andes-requirements').size===2;
- const verifyForkOverlap=startsBeforeJoin('himatime-verify','qualib-screen','cells-gain-positive')&&branchesOf('andes-verify').size===2;
+ const proposeForkOverlap=forksOverlap('andes-requirements','himatime-agent','qualib-agent')&&branchesOf('andes-requirements').size===2;
+ const verifyForkOverlap=forksOverlap('andes-verify','himatime-verify','qualib-screen')&&branchesOf('andes-verify').size===2;
  // The resident deliveries all passed their Reader (the workspace-path asserts in
  // read-requirements.py / read-plan.py / read-verify.py hold under hima-task-effect/2), and the
  // round reader confirms the +1 % gain. Scan every committed task result's observations.

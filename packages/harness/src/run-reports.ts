@@ -22,7 +22,7 @@ import path from 'node:path';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { ReportPathError, RunReferenceError, SiteUnreadableError } from './errors.js';
 import type { createDurableViewReaders } from './durable-views.js';
-import type { RunRecord, WorkspaceRecord } from './ledger.js';
+import type { RunRecord } from './ledger.js';
 import type { RunReportFile, RunReportsView, RunReportText } from './remote.js';
 import { decideRead } from './shell.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -45,15 +45,20 @@ const sizeBatchBytes = 3_000;
 
 /** The durable readers this needs, and the Sites folder its Run's Site is loaded from. */
 export interface RunReportsDeps {
-  readonly readers: Pick<ReturnType<typeof createDurableViewReaders>, 'readRun' | 'readRunRecords' | 'executionContext'>;
+  readonly readers: Pick<ReturnType<typeof createDurableViewReaders>, 'readRun' | 'readRunWorkspace' | 'executionContext'>;
   readonly sitesDir: string;
 }
 
-/** What the Run's own method says about its reports: the folder, and its nodes in graph order. */
+/** What the Run's own method says about its reports: the folder, and its nodes in graph order.
+ *  Frozen when the Run opens, so it is cached per Run by `RunReports` (`#methods`). */
 interface ReportsMethod {
   readonly dir?: string;
   readonly order: ReadonlyMap<string, number>;
 }
+
+/** Cache of each Run's frozen reports method, keyed by Run id. A Run's method is immutable, so a hit
+ *  is reused forever; a failed read is not cached, so a transient fault can be retried. */
+type MethodCache = Map<string, Promise<ReportsMethod>>;
 
 /** The one shape a report path may have: `<dir>/<node>/r<k>/<name>`, relative to the workspace. */
 export function reportPathPattern(dir: string): RegExp {
@@ -79,19 +84,28 @@ async function runOf(deps: RunReportsDeps, runId: string): Promise<RunRecord> {
   return run;
 }
 
-/** The Campaign workspace this Run was prepared in, if it was. */
-async function workspaceOf(deps: RunReportsDeps, runId: string): Promise<WorkspaceRecord | undefined> {
-  const records = await deps.readers.readRunRecords(runId, 'workspace');
-  return records.findLast((r): r is WorkspaceRecord => r.type === 'workspace');
+/** The Campaign workspace path this Run was prepared in, if it was. The one `preparation` flow fact,
+ *  not the full task-projection walk, so a long Run's reports stay cheap and an integrity throw in an
+ *  unrelated task cannot turn a listing into a 500. */
+async function workspaceOf(deps: RunReportsDeps, runId: string): Promise<string | undefined> {
+  return deps.readers.readRunWorkspace(runId);
 }
 
-/** The reports folder and node order the Run's frozen method declares. */
-async function methodOf(deps: RunReportsDeps, runId: string): Promise<ReportsMethod> {
-  const context = await deps.readers.executionContext(runId);
-  if (context.method === undefined) throw new Error(`run ${runId} has no recorded Pack method`);
-  const order = new Map<string, number>();
-  for (const node of context.method.reference.nodes) if (!order.has(node.id)) order.set(node.id, order.size);
-  return { ...(context.method.contract.reports === undefined ? {} : { dir: context.method.contract.reports.dir }), order };
+/** The reports folder and node order the Run's frozen method declares, cached per Run when a cache is
+ *  passed (the method is immutable, so `executionContext` — which includes the task projection — is
+ *  read at most once per Run). A failed read is not cached. */
+async function methodOf(deps: RunReportsDeps, runId: string, cache?: MethodCache): Promise<ReportsMethod> {
+  const cached = cache?.get(runId);
+  if (cached !== undefined) return cached;
+  const promise = (async (): Promise<ReportsMethod> => {
+    const context = await deps.readers.executionContext(runId);
+    if (context.method === undefined) throw new Error(`run ${runId} has no recorded Pack method`);
+    const order = new Map<string, number>();
+    for (const node of context.method.reference.nodes) if (!order.has(node.id)) order.set(node.id, order.size);
+    return { ...(context.method.contract.reports === undefined ? {} : { dir: context.method.contract.reports.dir }), order };
+  })();
+  if (cache !== undefined) { cache.set(runId, promise); promise.catch(() => { if (cache.get(runId) === promise) cache.delete(runId); }); }
+  return promise;
 }
 
 /**
@@ -102,6 +116,8 @@ export class RunReports {
   readonly #deps: () => RunReportsDeps;
   readonly #ttlMs: number;
   readonly #lists = new Map<string, { readonly at: number; readonly view: Promise<RunReportsView> }>();
+  /** Each Run's frozen reports method, read at most once per Run (it never changes). */
+  readonly #methods: MethodCache = new Map<string, Promise<ReportsMethod>>();
 
   constructor(deps: () => RunReportsDeps, ttlMs = reportListTtlMs) {
     this.#deps = deps;
@@ -116,7 +132,7 @@ export class RunReports {
     const held = this.#lists.get(runId);
     if (held !== undefined && now - held.at < this.#ttlMs) return held.view;
     for (const [id, entry] of this.#lists) if (now - entry.at >= this.#ttlMs) this.#lists.delete(id);
-    const view = listRunReports(deps, runId);
+    const view = listRunReports(deps, runId, this.#methods);
     this.#lists.set(runId, { at: now, view });
     view.catch(() => this.#lists.delete(runId));
     return view;
@@ -124,13 +140,13 @@ export class RunReports {
 
   /** `GET /hima/api/runs/<id>/reports/file?path=`. */
   read(runId: string, relative: string): Promise<RunReportText> {
-    return readRunReport(this.#deps(), runId, relative);
+    return readRunReport(this.#deps(), runId, relative, this.#methods);
   }
 
   /** One chart file's exact bytes (`hima_chart`): the same bounded, permit-checked read as a report,
    *  held to `chartPathPattern`. */
   readChart(runId: string, relative: string): Promise<RunReportBytes> {
-    return readRunReportBytes(this.#deps(), runId, relative, chartShape);
+    return readRunReportBytes(this.#deps(), runId, relative, chartShape, this.#methods);
   }
 }
 
@@ -140,11 +156,11 @@ export class RunReports {
 async function locate(site: Site, channel: Channel, workspace: string, dir: string): Promise<{ readonly root: string; readonly workspace: string } | undefined> {
   const p = pathsOf(site);
   const ws = await decideRead(site, workspace, channel);
-  if (!ws.ok) throw new Unlistable(`The Site ${site.name} does not permit reading this Run's Campaign workspace.`);
+  if (!ws.ok) throw new Unlistable(`The Site ${site.name} does not permit reading this Run's project folder.`);
   const root = p.join(ws.absPath, dir);
   if (await channel.absent(root)) return undefined;
   const decided = await decideRead(site, root, channel);
-  if (!decided.ok || !inside(decided.absPath, ws.absPath, p)) throw new Unlistable(`The reports folder of this Run on Site ${site.name} is outside its Campaign workspace.`);
+  if (!decided.ok || !inside(decided.absPath, ws.absPath, p)) throw new Unlistable(`The reports folder of this Run on Site ${site.name} is outside its project folder.`);
   return { root: decided.absPath, workspace: ws.absPath };
 }
 
@@ -183,17 +199,15 @@ export function sizeBatches(files: readonly string[]): string[][] {
 }
 
 /** The listing itself. Never throws for a Site that cannot be asked: it answers `error` instead. */
-export async function listRunReports(deps: RunReportsDeps, runId: string): Promise<RunReportsView> {
+export async function listRunReports(deps: RunReportsDeps, runId: string, methodCache?: MethodCache): Promise<RunReportsView> {
   const at = new Date().toISOString();
   const run = await runOf(deps, runId);
   let reports: ReportsMethod;
-  try { reports = await methodOf(deps, runId); } catch {
+  try { reports = await methodOf(deps, runId, methodCache); } catch {
     return { files: [], at, error: 'The Pack method of this Run cannot be read here, so its reports cannot be listed.' };
   }
   if (reports.dir === undefined) return { files: [], at };
   const dir = reports.dir;
-  const prepared = await workspaceOf(deps, runId);
-  if (prepared === undefined) return { dir, files: [], at };
   let site: Site;
   try { site = loadSite(deps.sitesDir, run.siteId); } catch {
     return { dir, files: [], at, error: `The Site ${run.siteId} of this Run is not set up on this computer, so its reports cannot be listed.` };
@@ -201,7 +215,10 @@ export async function listRunReports(deps: RunReportsDeps, runId: string): Promi
   const channel = channelFor(site);
   const p = pathsOf(site);
   try {
-    const located = await locate(site, channel, prepared.workspace, dir);
+    // Inside the try so a durable-reader fault here answers with a friendly sentence, not a 500.
+    const workspace = await workspaceOf(deps, runId);
+    if (workspace === undefined) return { dir, files: [], at };
+    const located = await locate(site, channel, workspace, dir);
     if (located === undefined) return { dir, files: [], at };
     const listed = await mustRun(channel, ['find', located.root, '-mindepth', '3', '-maxdepth', '3', '-type', 'f', '-print0'], `list the reports on site ${site.name}`);
     const found: { readonly node: string; readonly round: number; readonly roundDir: string; readonly name: string; readonly abs: string }[] = [];
@@ -262,35 +279,36 @@ export interface RunReportBytes {
 /** One report's bounded bytes, under `pattern`. Throws `ReportPathError` for a path the caller cannot
  *  have meant, one that is missing or one that leads out of the Campaign workspace. */
 export async function readRunReportBytes(deps: RunReportsDeps, runId: string, relative: string,
-  shape: ReportShape = reportShape): Promise<RunReportBytes> {
+  shape: ReportShape = reportShape, methodCache?: MethodCache): Promise<RunReportBytes> {
   const run = await runOf(deps, runId);
   let reports: ReportsMethod;
-  try { reports = await methodOf(deps, runId); } catch { throw new ReportPathError('The Pack method of this Run cannot be read here, so its reports cannot be opened.', true); }
+  try { reports = await methodOf(deps, runId, methodCache); } catch { throw new ReportPathError('The Pack method of this Run cannot be read here, so its reports cannot be opened.', true); }
   if (reports.dir === undefined) throw new ReportPathError("This Run's Pack declares no reports folder.", true);
   if (!shape.pattern(reports.dir).test(relative) || relative.split('/').some((part) => part === '.' || part === '..')) {
     throw new ReportPathError(`"${relative}" is not ${shape.what}; ${shape.shape(reports.dir)}`);
   }
-  const prepared = await workspaceOf(deps, runId);
-  if (prepared === undefined) throw new ReportPathError('This Run has no Campaign workspace yet, so it has no reports.', true);
+  const workspace = await workspaceOf(deps, runId);
+  if (workspace === undefined) throw new ReportPathError('This Run has no project folder yet, so it has no reports.', true);
   const site = loadSite(deps.sitesDir, run.siteId);
   const channel = channelFor(site);
   const p = pathsOf(site);
-  const ws = await decideRead(site, prepared.workspace, channel);
-  if (!ws.ok) throw new ReportPathError(`The Site ${site.name} does not permit reading this Run's Campaign workspace.`);
+  const ws = await decideRead(site, workspace, channel);
+  if (!ws.ok) throw new ReportPathError(`The Site ${site.name} does not permit reading this Run's project folder.`);
   const target = p.join(ws.absPath, ...relative.split('/'));
   if (await channel.absent(target)) throw new ReportPathError(`There is no report at ${relative}.`, true);
   const decided = await decideRead(site, target, channel);
-  if (!decided.ok || !inside(decided.absPath, ws.absPath, p)) throw new ReportPathError(`${relative} resolves outside this Run's Campaign workspace.`);
+  if (!decided.ok || !inside(decided.absPath, ws.absPath, p)) throw new ReportPathError(`${relative} resolves outside this Run's project folder.`);
   if ((await channel.exec(['test', '-f', decided.absPath])).code !== 0) throw new ReportPathError(`${relative} is not a file.`);
   const head = await channel.exec(['head', '-c', String(reportReadLimit + 1), '--', decided.absPath]);
-  if (head.code !== 0) throw new Error(`cannot read ${relative} on site ${site.name}: head exited ${head.code}${head.stderr.trim() ? `: ${head.stderr.trim()}` : ''}`);
+  // No Site stderr (it carries an absolute host path) in this UI-bound message; the exit code is enough.
+  if (head.code !== 0) throw new ReportPathError(`${relative} could not be read from its project folder (read exited ${head.code}).`);
   const truncated = head.stdout.byteLength > reportReadLimit;
   return { path: relative, bytes: truncated ? head.stdout.subarray(0, reportReadLimit) : head.stdout, truncated };
 }
 
 /** One report's bounded text. Throws `ReportPathError` for a path the caller cannot have meant. */
-export async function readRunReport(deps: RunReportsDeps, runId: string, relative: string): Promise<RunReportText> {
-  const read = await readRunReportBytes(deps, runId, relative);
+export async function readRunReport(deps: RunReportsDeps, runId: string, relative: string, methodCache?: MethodCache): Promise<RunReportText> {
+  const read = await readRunReportBytes(deps, runId, relative, reportShape, methodCache);
   const text = textOf(read.bytes, read.truncated);
   if (text === undefined) throw new ReportPathError(`${relative} is a binary file, not a text report.`);
   return { path: relative, text, truncated: read.truncated };

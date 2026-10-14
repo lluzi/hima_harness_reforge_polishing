@@ -11,7 +11,6 @@ import { teamEdgePath, teamGridArea, teamRowOrder, teamViewState, type TeamBox, 
 import type { ResidentActivity } from '../resident-activity.js';
 
 export interface TeamCanvasProps {
-  readonly runId: string;
   readonly graph: PackGraph;
   readonly tools: PackContract['tools'] | undefined;
   readonly view: RunView | undefined;
@@ -80,7 +79,7 @@ function LiveLine({ activity, fallback }: { activity: ResidentActivity | undefin
   </>;
 }
 
-function Member({ runId, member, motionOff }: { runId: string; member: TeamMember; motionOff: boolean }): ReactElement {
+function Member({ member, motionOff }: { member: TeamMember; motionOff: boolean }): ReactElement {
   return (
     <div className={`hima-team-member hima-team-member-${member.state}`} data-hima-region={`team-member-${member.node}`} data-hima-state-state={member.state}>
       <Square ai={member.ai} state={member.state} motionOff={motionOff} />
@@ -101,7 +100,7 @@ function lineText(line: TeamLine): string {
   return line.folds === undefined ? line.label : `${String(line.folds)} done`;
 }
 
-function Station({ runId, station, motionOff, refFor, style }: { runId: string; station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void; style?: CSSProperties }): ReactElement {
+function Station({ station, motionOff, refFor, style }: { station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void; style?: CSSProperties }): ReactElement {
   const team = station.team;
   const lines = station.lines.filter((line) => line.state !== 'hidden' && line.folded !== true);
   return (
@@ -126,14 +125,14 @@ function Station({ runId, station, motionOff, refFor, style }: { runId: string; 
       {station.summary === undefined ? null : <p className="hima-team-summary hima-team-summary-station" title={station.summary}>{station.summary}</p>}
       {team === undefined ? null : (
         <div className="hima-team-grid">
-          {team.map((member) => <Member key={member.node} runId={runId} member={member} motionOff={motionOff} />)}
+          {team.map((member) => <Member key={member.node} member={member} motionOff={motionOff} />)}
         </div>
       )}
     </section>
   );
 }
 
-export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: TeamCanvasProps): ReactElement {
+export function TeamCanvas({ graph, tools, view, stale, reducedMotion }: TeamCanvasProps): ReactElement {
   const motionOff = reducedMotion || stale;
   const state = useMemo(() => teamViewState(graph, tools, view), [graph, tools, view]);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -199,7 +198,7 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
           </svg>
         )}
         {state.stations.map((station) => (
-          <Station key={station.id} runId={runId} station={station} motionOff={motionOff}
+          <Station key={station.id} station={station} motionOff={motionOff}
             style={gridded ? teamGridArea(station, rowOrder) : undefined}
             refFor={(el) => { if (el === null) boxes.current.delete(station.id); else boxes.current.set(station.id, el); }} />
         ))}

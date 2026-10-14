@@ -2,7 +2,7 @@
 import type { FabricDeps, ExecutionContext } from './fabric.js';
 import { ledgerRecord, jobIdentity, type LedgerRecord, type RunRecord } from './ledger.js';
 import { createHash } from 'node:crypto';
-import { residentActivity } from './resident-activity.js';
+import { residentActivity, clearResidentActivity } from './resident-activity.js';
 import { taskEffectStep } from './task-effects.js';
 import { isUtf8 } from 'node:buffer';
 import { loadSite, pathsOf } from './sites.js';
@@ -109,6 +109,17 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     }
     return [...records.values()].filter(record=>!type||record.type===type).sort((a,b)=>a.seq-b.seq);
   }
+  /** Just the Campaign workspace path of a Run, read from the one `preparation` flow fact (or the
+   *  Ledger `workspace` record for a legacy Run) — not the full `readRunRecords` task-projection walk.
+   *  Undefined for a Run still preparing, which has no workspace yet. */
+  async function readRunWorkspace(runId: string): Promise<string | undefined> {
+    if (!await knownDurableRun(deps,runId)) {
+      const last = [...deps.ledger.records({runId,type:'workspace'})].reverse().find(record => record.type === 'workspace');
+      return last && 'workspace' in last ? (last as {workspace:string}).workspace : undefined;
+    }
+    const prepared = await deps.durable!.store.flowFact(runId,'preparation') as unknown as import('./workspace.js').WorkspaceFilesResult|null;
+    return prepared && (prepared.kind === 'prepared' || prepared.kind === 'reused') ? prepared.file.workspace : undefined;
+  }
   async function revisionRecords(runId:string,records:readonly LedgerRecord[],revision:number) {
     const outside=new Set((await deps.durable!.store.orderedFlowFacts(runId,'delivery:')).filter(fact=>{const identity=deliveryIdentity(fact.name);return identity&&identity.revision!==revision;}).map(fact=>fact.source.factId));
     return records.filter(record=>!outside.has(record.id));
@@ -142,7 +153,10 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
       if(retainedSource){const source=await runtime.store.fact(retainedSource);if(!source||source.runId!==context.run.id||source.kind!=='effect-fact'||jsonDigest(object(source.payload).fact)!==jsonDigest(retained))throw new Error('Retained verified delivery source is unavailable');}
       return {taskId:task.identity.taskId,identity:task.identity,projection,current:task.valid,rootFlow:object(data.flow).irSha256===pack.flow?.irSha256,iterations:(data.iterations??[]) as {repeatId:string;iteration:number}[],...(retained?{retainedResult:retained}:{}),...(definition?.tool?{tool:definition.tool}:{}),sourceFactIds:task.result?[factIdentity('task-result',task.identity.effectId)]:retainedSource?[retainedSource]:[],...(definition?.contract?{contract:definition.contract}:{}),...(data.input===undefined?{}:{input:data.input as JsonValue}),...(task.result?{result:task.result}:{})};
     }));
+    const runningNodes=new Set(views.filter(view=>view.projection.state==='running').map(view=>view.taskId));
     for(const [index,view] of views.entries()) if(view.projection.state==='running'){const activity=residentActivity(context.run.id,view.taskId);if(activity)views[index]={...view,activity};}
+    // A node with no running iteration keeps no live activity, so a new round starts it clean.
+    for(const view of views) if(!runningNodes.has(view.taskId)) clearResidentActivity(context.run.id,view.taskId);
     for(const [taskId,definition] of Object.entries(pack.flow?.tasks??{})) if(!views.some(task=>task.taskId===taskId))views.push({taskId,projection:{state:'pending'},tool:definition.tool,contract:definition.contract,sourceFactIds:[]});
     return views;
   }
@@ -324,5 +338,5 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     const actual=await readDurableExecutionContext(deps,runId),pack=await readFrozenProductMethod(deps.durable!,actual.durable.run),tasks=await taskViews(actual,pack);
     const {durable:_internal,...context}=actual;return {...context,run:{...context.run,nextSeq:sourceRevision+1},tasks,sources:[factIdentity('run-opened',runId),...tasks.flatMap(task=>task.sourceFactIds)]};
   }
-  return {readRun,readRunView,listRunHeads,readRunRecord,readRunRecords,executionContext,assignedGuide,readMaterial,readReportMaterial,readExperience,readTaskArtifact,readRunAssets,readArchivedMaterial,finalizeDelivery};
+  return {readRun,readRunView,listRunHeads,readRunRecord,readRunRecords,readRunWorkspace,executionContext,assignedGuide,readMaterial,readReportMaterial,readExperience,readTaskArtifact,readRunAssets,readArchivedMaterial,finalizeDelivery};
 }

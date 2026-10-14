@@ -405,7 +405,9 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
       try {
         const pack = loadPack(packsDir, id);
         const overview = packOverview(pack);
-        const shipped = [...pack.folder.files.keys()].map((file) => file.replace(/^knowledge\//, '')).filter((file) => packChartPattern.test(file)).sort();
+        // Only `knowledge/` charts: `packChart` reads knowledge/<file>, so a Pack-root chart must not
+        // be offered (stripping the prefix from every path would list one that then fails to read).
+        const shipped = [...pack.folder.files.keys()].filter((file) => file.startsWith('knowledge/')).map((file) => file.slice('knowledge/'.length)).filter((file) => packChartPattern.test(file)).sort();
         if (shipped.length > 0) charts.push(`${id}: ${shipped.slice(0, packChartInventoryLimit).join(', ')}`);
         return `${id}${overview.status === undefined ? '' : ` (${overview.status.raw})`}`;
       } catch {
@@ -1759,7 +1761,7 @@ export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Fra
 // task 5), so it is exported beside it: both are testable at L1 without a window, and the client
 // renders from the very function the contract suite asserts on.
 export { sceneInputs } from './scene.js';
-export { teamViewState, outputAt as teamOutputAt, runningTaskLabels } from './team-view.js';
+export { teamViewState, runningTaskLabels } from './team-view.js';
 export { residentActivityOf } from './resident-activity.js';
 export type { ResidentActivity } from './resident-activity.js';
 export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric, RunningTask } from './team-view.js';

@@ -1059,9 +1059,10 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
     const at = receiptTime(toolBlock) ?? timeOf(startedRun.createdAt);
     if (!shouldAutoOpen({ toolName, status: startedRun.status, at, now: Date.now(), opened: autoOpened(runId) })) return;
     if (claimAutoOpen(runId)) openRun(runId);
-    // Decided once, when the Run's first read arrives for this receipt.
+    // Re-evaluated when the Run head status resolves (a DBOS Run that `hima_run` returned while still
+    // preparing has no status on its first read), but `claimAutoOpen` keeps it to once per Run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, startedRun?.id]);
+  }, [runId, startedRun?.id, startedRun?.status]);
 
   if (runId === undefined) {
     // A failed call has something to say, and it is the tool's own words: saying "this call reported

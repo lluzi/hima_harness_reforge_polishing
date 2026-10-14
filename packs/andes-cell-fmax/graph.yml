@@ -9,13 +9,13 @@
 # in reg2reg worst slack at route); the Site has build data for that one custom-cell set, so a second
 # round's rebuild would be refused: the round limit (2) is a safety margin and the chooser ends at the Goal.
 #
-# Both forks' branch nodes and the AndesCell agent are outsourced resident tasks, so neither fork is
-# an autopilot fork: the owner begins each of those nodes, starts its resident task, collects and
-# releases its verified delivery and completes it (a fork's branches in any order; the last
-# completion closes the fork). Everything else drives itself in four segments, each handing back to
-# the owner where a resident task starts. The owner decides next-round. The round record is read
-# twice: once for the usage and improvement checks and once, fresh, for the validity/Goal judge the
-# next-round chooser weighs (an explore node after a join needs a fresh reading and its own judge).
+# Both forks' branch nodes and the AndesCell agent are outsourced resident tasks. Under DBOS the
+# compiled flow drives the whole graph itself: it dispatches each node, runs each fork's two branches
+# in parallel and joins them when both have delivered their verified result, and advances round to
+# round by the graph's own chooser. The `autopilot:` segments below are display-only labels for the
+# Live strip and drive nothing. The round record is read twice: once for the usage and improvement
+# checks and once, fresh, for the validity/Goal judge the next-round chooser weighs (an explore node
+# after a join needs a fresh reading and its own judge).
 id: andes-cell-fmax
 version: "0.4.0"
 entry: bind-inputs

@@ -269,6 +269,9 @@ function GenerationResearch({ view }: { readonly view: RunView }): ReactElement 
 export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner, openFiles }: CampaignTabProps): ReactElement {
   const [section, setSection] = useState<Section>('live');
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
+  // For a view.yml Pack, Live shows the station view by default; this toggles to the full node graph
+  // (node selection, log tail, node actions), which the station view otherwise hides (M13).
+  const [fullGraph, setFullGraph] = useState(false);
   const reducedMotion = useReducedMotion();
   const control = view?.run.control;
   const isOwner = isOwnerOf(control, sessionId);
@@ -383,7 +386,19 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
                     : context?.reason ?? 'Reading the reference graph…'}</p>
               </div>
             : methodReference?.view !== undefined
-              ? <TeamCanvas runId={runId} graph={methodReference} tools={context?.method?.contract.tools} view={view} stale={stale} reducedMotion={reducedMotion} />
+              ? <>
+                  <div className="hima-campaign-graph-toggle">
+                    <button type="button" className="hima-button hima-studio-secondary" aria-pressed={fullGraph}
+                      data-hima-control="studio-full-graph" onClick={() => setFullGraph((value) => !value)}>
+                      {fullGraph ? 'Station view' : 'Full graph'}
+                    </button>
+                  </div>
+                  {fullGraph
+                    ? <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
+                        stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
+                        openOwner={openOwner} openFiles={openFiles} acting={acting} />
+                    : <TeamCanvas graph={methodReference} tools={context?.method?.contract.tools} view={view} stale={stale} reducedMotion={reducedMotion} />}
+                </>
               : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />

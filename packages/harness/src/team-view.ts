@@ -177,8 +177,9 @@ export function teamViewState(graph: Pick<PackGraph, 'nodes' | 'edges'> & { read
   const inRound = (id: string): DurableTaskView | undefined => {
     const own = tasks.filter((task) => task.taskId === id);
     const pool = repeated.has(id) ? own.filter((task) => lastIteration(task) === round - 1) : own;
-    // A started invocation outranks a declared-but-pending one; the latest started wins.
-    return pool.find((task) => task.projection.state !== 'pending' && task.projection.state !== 'succeeded')
+    // A started invocation outranks a declared-but-pending one; the latest started wins (the pool is
+    // oldest first, so `findLast` takes the most recent running/failed invocation, not the oldest).
+    return pool.findLast((task) => task.projection.state !== 'pending' && task.projection.state !== 'succeeded')
       ?? pool.filter((task) => task.projection.state === 'succeeded').at(-1) ?? pool.at(-1);
   };
   const delivered = (id: string): number => tasks.filter((task) => task.taskId === id && task.projection.state === 'succeeded').length;
@@ -278,7 +279,7 @@ export function teamViewState(graph: Pick<PackGraph, 'nodes' | 'edges'> & { read
     if (metric.kind === 'reader') {
       const number = readerValue(view?.observations ?? [], metric.reader, metric.type, metric.pick === 'best' ? 'best' : 'latest', metric.better);
       if (number === undefined) continue;
-      value = saidReader(number, metric.digits, metric.unit, true);
+      value = saidReader(number, metric.digits, metric.unit, metric.sign === true);
       const target = metric.goal === undefined ? undefined : view?.run.goal?.[metric.goal];
       goal = typeof target === 'number' ? saidReader(target, metric.digits, metric.unit, false) : undefined;
     } else {

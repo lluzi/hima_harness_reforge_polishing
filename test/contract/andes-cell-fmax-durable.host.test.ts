@@ -32,7 +32,9 @@ test('andes-cell-fmax dry route runs through the real Host to the +1 % Goal in o
   // One resident-delivery Reader job per resident task execution (five per round).
   assert.equal(proof.engineeringJobs,5,JSON.stringify(proof));
   assert.equal(proof.readerJobs,proof.engineeringJobs,JSON.stringify(proof));
-  // Both parallel forks genuinely overlapped: each fork's two branches started before either finished.
+  // Both parallel forks genuinely overlapped: each fork's two branches were launched before either
+  // delivered its result (max launch seq < min delivery seq), so both were in flight at once. A
+  // serialised fork (one branch launches and delivers, then the other) fails this.
   assert.equal(proof.proposeForkOverlap,true,JSON.stringify(proof));
   assert.equal(proof.verifyForkOverlap,true,JSON.stringify(proof));
   // The workspace-reconstructing Readers (read-requirements.py / read-plan.py / read-verify.py) all

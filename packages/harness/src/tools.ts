@@ -41,10 +41,16 @@ function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(J
  * so the owner can show one with `hima_chart {runId, path}` — the place the deleted autopilot hand-back
  * used to carry them. Best effort and display-only: a Site that cannot be listed just yields none.
  */
+/** How long `hima_context` waits for the reports listing before it omits the charts list. A slow or
+ *  stalled Site must not make the owner's primary fact tool hang: charts are display-only here. */
+const NEWEST_CHARTS_DEADLINE_MS = 2_000;
+
 async function newestRoundCharts(reports: RunReports, runId: string): Promise<string[]> {
   try {
-    const view = await reports.list(runId);
-    if (view.dir === undefined) return [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), NEWEST_CHARTS_DEADLINE_MS); timer.unref?.(); });
+    const view = await Promise.race([reports.list(runId), deadline]).finally(() => { if (timer) clearTimeout(timer); });
+    if (view === 'timeout' || view.dir === undefined) return [];
     const pattern = chartPathPattern(view.dir);
     const charts = view.files.filter((file) => pattern.test(file.path));
     if (charts.length === 0) return [];
