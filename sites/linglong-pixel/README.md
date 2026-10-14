@@ -14,7 +14,7 @@ This file names paths only; no layout, rule value or result of the case belongs 
 | Numeric venv (Python 3.8.16, numpy 1.24.4, SciPy 1.10.1, Shapely 2.0.7, gdstk 0.9.52) | `/data/eda/project/hima_harness/pixel-runs/env38` |
 | EDA container | `eda-runner-pixelpack` (image `localhost/edarunner:alma8`, `--init`, `--pids-limit=32768`) |
 | Campaign workspaces | `/data/eda/project/hima_harness/pixel-pack-runs/` |
-| Resident capability | `operator-admin/resident-engineering-v1/engineering-capabilities-pixel-v1.json` (copy of `engineering-capabilities-pixel-v1.json` here) |
+| Resident capability | `operator-admin/resident-engineering-hug/engineering-capabilities-pixel-v1.json` (copy of `engineering-capabilities-pixel-v1.json` here) |
 
 ## Case inputs
 

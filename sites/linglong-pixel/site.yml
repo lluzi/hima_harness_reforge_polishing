@@ -8,7 +8,7 @@ bindings:
   # pixel-inputs/case-v1 (customer data; never copied into this repository). See README.md.
   pixelCaseManifest: /data/eda/project/hima_harness/pixel-inputs/case-v1/manifest.json
   siteCapabilities: /data/eda/project/hima_harness/pixel-inputs/case-v1/site-capabilities.json
-  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-pixel-v1.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-hug/engineering-capabilities-pixel-v1.json
   workspaceRoot: /data/eda/project/hima_harness/pixel-pack-runs
 ssh:
   destination: luzi@192.168.50.41

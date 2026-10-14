@@ -29,7 +29,7 @@ the SAED14 PDK, `techlib/tsmc28`, the facts corpus and the resident admin direct
 Installed by the integrator, not by this slice:
 
 1. `engineering-capabilities-libinsight-v1.json` copied unchanged, mode 0444, to
-   `/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-libinsight-v1.json`
+   `/data/eda/project/hima_harness/operator-admin/resident-engineering-hug/engineering-capabilities-libinsight-v1.json`
    next to the existing wrapper. Its `wrapper.argv` names that exact path. It reuses the installed
    `resident-engineering-wrapper.py` (sha256 `85d64ee8…9e799`, identical to the repo template), the
    OpenCode 1.18.34 executable and image `7d651dc8…` (`localhost/edarunner:alma8`).

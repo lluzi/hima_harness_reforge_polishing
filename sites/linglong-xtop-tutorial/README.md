@@ -22,7 +22,7 @@ that dump. It is prediction-only: there is no PrimeTime refresh, extraction or p
 
 - `site.yml` / `permit.yml`: Site and Permit (write root `xtop-tutorial/runs` only).
 - `engineering-capabilities-xtop-tutorial-v1.json`: the resident sandbox capability, installed at
-  `operator-admin/resident-engineering-v1/` (mode 0444, SHA-256
+  `operator-admin/resident-engineering-hug/` (mode 0444, SHA-256
   `4491e885cd872a9b7d776168c3fcfb6615c1b0f5718f093e1431d7c9a117f805`). It is the 28 nm capability
   with read roots narrowed to the tutorial inputs; same wrapper, image and OpenCode.
 

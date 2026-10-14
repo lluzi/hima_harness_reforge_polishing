@@ -3,9 +3,9 @@
   "protocol": "hima-resident-engineering/1",
   "wrapper": {
     "argv": [
-      "/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/resident-engineering-wrapper.py",
+      "/data/eda/project/hima_harness/operator-admin/resident-engineering-hug/resident-engineering-wrapper.py",
       "--capability",
-      "/data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-libinsight-v1.json"
+      "/data/eda/project/hima_harness/operator-admin/resident-engineering-hug/engineering-capabilities-libinsight-v1.json"
     ]
   },
   "native": {

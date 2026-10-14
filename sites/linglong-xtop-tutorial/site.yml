@@ -8,7 +8,7 @@ bindings:
   designStateManifest: /data/eda/project/hima_harness/xtop-tutorial/inputs/designStateManifest-xtop-tutorial-v1.json
   siteCapabilities: /data/eda/project/hima_harness/xtop-tutorial/inputs/siteCapabilities-xtop-tutorial-v1.json
   nativeTimingContext: /data/eda/project/hima_harness/xtop-tutorial/inputs/nativeTimingContext-xtop-tutorial-v1.json
-  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-xtop-tutorial-v1.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-hug/engineering-capabilities-xtop-tutorial-v1.json
   workspaceRoot: /data/eda/project/hima_harness/xtop-tutorial/runs
 ssh:
   destination: luzi@192.168.50.41
