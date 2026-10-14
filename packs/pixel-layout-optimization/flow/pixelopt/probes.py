@@ -259,7 +259,9 @@ def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
                                     od = LineString([ob[eb], ob[(eb + 1) % len(ob)]]).distance(ov)
                                     if od < d - 1e-3:
                                         continue  # already violated in base: not an exact pair
-                                    k = kx if axis == "x" else ky
+                                    # the vertex was shifted into cell +k; euclid.pair_constraints
+                                    # shifts the EDGE, so the same pair is the edge in cell -k
+                                    k = -(kx if axis == "x" else ky)
                                     tup = (A, ia, va, B, ib, eb, float(d), int(k))
                                     if tup not in out:
                                         out.append(tup)

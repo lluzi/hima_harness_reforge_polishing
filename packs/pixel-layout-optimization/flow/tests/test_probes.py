@@ -105,3 +105,31 @@ class ProposePairsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAVE, "numeric packages not installed")
+class PeriodicPairTest(unittest.TestCase):
+    def test_a_pair_across_the_cell_boundary_names_the_copy_the_constraint_holds(self):
+        # Real-case regression: propose_pairs shifted the VERTEX into cell +k, but
+        # euclid.pair_constraints shifts the EDGE by k, so every pair across the boundary held
+        # the wrong copy and a PSI.2 marker in the tiles never closed.
+        from shapely.geometry import LineString, Point
+        from pixelopt import layout, probes
+
+        def rect(x0, y0, x1, y1):
+            return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], float)
+
+        parsed = {"derived": {}, "checks": [{"rule": "M.S", "kind": "space", "layers": ["M"],
+                                             "value": 1.0, "modelled": True}]}
+        base = layout.Layout({"M": [rect(0.5, 1, 3, 4), rect(8.0, 2, 9.0, 3)]})
+        lay = layout.Layout({"M": [rect(0.5, 1, 3, 4), rect(8.8, 2, 9.9, 3)]})
+        # the right shape's copy in the cell to the left ends 0.6 um short of the left shape
+        marks = [("M.S", [(-0.1, 2.0), (0.5, 2.0), (0.5, 3.0), (-0.1, 3.0)])]
+        pairs = probes.propose_pairs(lay, marks, parsed, base, "x", pitch=(10.0, 10.0),
+                                     base_pitch=(10.0, 10.0))
+        self.assertTrue(pairs)
+        for (A, ia, va, B, ib, eb, need, k) in pairs:
+            P, Q = lay.polys[A][ia], lay.polys[B][ib]
+            a, b = Q[eb], Q[(eb + 1) % len(Q)]
+            seg = LineString([(a[0] + k * 10.0, a[1]), (b[0] + k * 10.0, b[1])])
+            self.assertLess(seg.distance(Point(P[va][0], P[va][1])), 1.0 - 1e-6, (va, eb, k))
