@@ -136,7 +136,10 @@ Flow root: /data/eda/project/hima_harness/pixel-runs
    The values known today belong to the Site's case manifest and the Run's Goal, not to this Pack.
 8. **Golden Flow.** The proving campaign on Linglong (see Golden Flow), plus the customer case.
 9. **Counterexamples.** The four in Business.
-10. **Budget.** A 3-hour time box and at most 6 rounds. Extraction parallelism comes from the Site
+10. **Budget.** A 3-hour time box and at most 6 rounds by default; a Project sets `strategy.maxRounds`
+    (1-20, `contract.yml`, `SPEC.md`) to raise or lower the round limit, and
+    `strategy.convergePatienceRounds` (default 2) to say how many consecutive stalled rounds the
+    Converged ending requires. Extraction parallelism comes from the Site
     (3 today, until the container's process limit is raised). The FPD licence mode excludes other
     licence modes while a Run is active.
 11. **Who does what.**

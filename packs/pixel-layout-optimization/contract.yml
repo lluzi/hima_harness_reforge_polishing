@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.1.0
+version: 0.2.0
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
@@ -211,6 +211,8 @@ strategy:
   extraCsOverlap: {type: choice, options: [count, exclude], default: count}
   topologyMoves: {type: choice, options: [off, allowed], default: off}
   convergeBandPct: {type: number, unit: pct, min: 0.001, max: 1, default: 0.02}
+  maxRounds: {type: number, unit: rounds, min: 1, max: 20, default: 6}
+  convergePatienceRounds: {type: number, unit: rounds, min: 1, max: 10, default: 2}
 words:
   outline_w_um:
     label: Target cell width (x pitch)
@@ -244,6 +246,12 @@ words:
   convergeBandPct:
     label: The Converged ending's improvement band over two rounds
     unit: pct
+  maxRounds:
+    label: Round limit a Project may raise or lower (the Round limit ending fires at this round)
+    unit: rounds
+  convergePatienceRounds:
+    label: Consecutive rounds with less than convergeBandPct improvement before Converged fires
+    unit: rounds
 knowledge:
 - file: pixel-design-space.md
   purpose: What makes up Ct and Cs in a pixel of this kind, the coupling sites, the levers and what

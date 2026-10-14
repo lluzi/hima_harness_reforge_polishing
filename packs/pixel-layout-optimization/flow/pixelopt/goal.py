@@ -1,4 +1,4 @@
-"""Resolve the seven Goal numbers and the five Strategy knobs (stdlib only).
+"""Resolve the seven Goal numbers and the seven Strategy knobs (stdlib only).
 
 A Goal value of ``0`` means "take the manifest's target"; for the outline it
 falls back to the original cell when the manifest states none, the ratio target
@@ -16,6 +16,8 @@ _STRATEGY_DEFAULTS = {
     "extraCsOverlap": "count",
     "topologyMoves": "off",
     "convergeBandPct": 0.02,
+    "maxRounds": 6,
+    "convergePatienceRounds": 2,
 }
 
 
@@ -111,4 +113,6 @@ def resolve(goal, strategy, case, original):
         "extraCsOverlap": strat["extraCsOverlap"],
         "topologyMoves": strat["topologyMoves"],
         "convergeBandPct": float(strat["convergeBandPct"]),
+        "maxRounds": max(1, int(round(_num(strat, "maxRounds", 6)))),
+        "convergePatienceRounds": max(1, int(round(_num(strat, "convergePatienceRounds", 2)))),
     }

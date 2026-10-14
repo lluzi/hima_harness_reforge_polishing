@@ -23,7 +23,7 @@
   "goal": {
    "type": "object",
    "additionalProperties": true,
-   "required": ["values", "sources", "ratioDefinition", "ratioNets", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct"],
+   "required": ["values", "sources", "ratioDefinition", "ratioNets", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct", "maxRounds", "convergePatienceRounds"],
    "properties": {
     "values": {"type": "object"},
     "sources": {"type": "object"},
@@ -32,7 +32,9 @@
     "transmittanceBasis": {"enum": ["tiled", "own"]},
     "extraCsOverlap": {"enum": ["count", "exclude"]},
     "topologyMoves": {"enum": ["off", "allowed"]},
-    "convergeBandPct": {"type": "number"}
+    "convergeBandPct": {"type": "number"},
+    "maxRounds": {"type": "number"},
+    "convergePatienceRounds": {"type": "number"}
    }
   },
   "options": {
