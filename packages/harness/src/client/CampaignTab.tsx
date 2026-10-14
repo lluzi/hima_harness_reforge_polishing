@@ -1,4 +1,4 @@
-// The Campaign tab: the masthead, the view switch (Live, Generations, Evidence, Report) and the
+// The Campaign tab: the masthead, the view switch (Live, Rounds, Evidence, Report or Reports) and the
 // HimaFabric canvas that makes the Live view. Everything the four stacked Live sections
 // (`RunSummary`, `CampaignGraph`, `JobActivity`, `EvidenceTrail`) used to say separately is said here
 // instead — the canvas for where the Run stands, and the other three views for what it has recorded.
@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { layoutCanvas } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { cancelAsked, cancelObserved } from '../card-labels.js';
+import type { PackResults } from '../packs.js';
 import { runPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
@@ -14,6 +15,8 @@ import { sceneInputs } from '../scene.js';
 import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import { TeamCanvas } from './TeamCanvas.js';
+import { ReportsView, useRunReports } from './ReportsView.js';
+import { resultsTable } from './results-view.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
   TaskSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
@@ -21,6 +24,7 @@ import {
 import { Masthead } from './Masthead.js';
 import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
+import { markSeen, newsScope, unseenCount } from './view-news.js';
 import { useViewerSession } from './viewer-session.js';
 import { groupGenerationAnalyses } from './generation-analysis.js';
 
@@ -40,11 +44,25 @@ export interface CampaignTabProps {
   openFiles(): void;
 }
 
-type Section = 'live' | 'generations' | 'evidence' | 'report';
-const SECTIONS: readonly { readonly key: Section; readonly said: string }[] = [
-  { key: 'live', said: 'Live' }, { key: 'generations', said: 'Generations' },
-  { key: 'evidence', said: 'Evidence' }, { key: 'report', said: 'Report' },
-];
+type Section = 'live' | 'generations' | 'evidence' | 'report' | 'reports';
+const SECTION_SAID: Record<Section, string> = { live: 'Live', generations: 'Generations', evidence: 'Evidence', report: 'Report', reports: 'Reports' };
+const SECTIONS: readonly Section[] = ['live', 'generations', 'evidence', 'report'];
+
+/** The views a Pack's contract asks for: with a Results table (`contract.results`), the Generations
+ *  tab drops out — its before/after table is shown inside Evidence instead; with a tool-report
+ *  folder (`contract.reports`), Reports (whose last entry opens the Run report) replaces Report. */
+export function sectionsFor(contract: { readonly results?: unknown; readonly reports?: unknown } | undefined): readonly Section[] {
+  return SECTIONS
+    .filter((key) => !(key === 'generations' && contract?.results !== undefined))
+    .map((key) => (key === 'report' && contract?.reports !== undefined ? 'reports' : key));
+}
+
+/** A digest of the Run's task projection states: changes whenever any task moves, so the Reports
+ *  poll can key on it instead of `run.currentNode` — unset for a DBOS Run whose fork branches run
+ *  in parallel. */
+function tasksDigest(tasks: RunView['tasks']): string {
+  return (tasks ?? []).map((task) => `${task.taskId}:${task.projection.state}`).join(',');
+}
 
 
 /** `prefers-reduced-motion`, tracked live: a stale snapshot already stops every animation, and this
@@ -65,7 +83,62 @@ function useReducedMotion(): boolean {
  *  knowledge first, since those are what a Run leaves behind, then the observations, verdicts,
  *  decision and blockers that read them, and finally its Workshop, growths and revisions. Says so
  *  plainly when none of that exists yet, rather than an empty pane a person might read as broken. */
-function EvidenceView({ view }: { view: RunView }): ReactElement {
+/** The Results face's before/after table, for the Pack that declares one (`contract.results`): the
+ *  headline figure, a round selector, and one row per declared value with one column per Reader. */
+function ResultsSection({ results, view }: { results: PackResults; view: RunView }): ReactElement {
+  const [round, setRound] = useState<number>();
+  const table = resultsTable(results, view, round);
+  return (
+    <section className="hima-results" data-hima-region="results-table" data-hima-state-round={String(table.round)}>
+      {table.headline === undefined ? null : (
+        <div className="hima-results-headline" data-hima-region="results-headline">
+          <span className="hima-results-headline-value">{table.headline.display}</span>
+          <span className="hima-muted">{table.headline.label} · Round {table.round}</span>
+        </div>
+      )}
+      {table.rounds.length < 2 ? null : (
+        <div className="hima-results-rounds" role="group" aria-label="Rounds">
+          {table.rounds.map((n) => (
+            <button key={n} type="button" className="hima-button" aria-pressed={n === table.round} data-hima-control={`results-round-${String(n)}`} onClick={() => setRound(n)}>Round {n}</button>
+          ))}
+        </div>
+      )}
+      <table className="hima-results-table">
+        <thead><tr><th scope="col">Measure</th>{table.columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead>
+        <tbody>
+          {table.rows.map((row) => (
+            <tr key={row.type} data-hima-region={`results-row-${row.type}`}>
+              <th scope="row">{row.label}{row.unit === undefined ? '' : ` (${row.unit})`}</th>
+              {row.cells.map((cell, index) => (
+                <td key={index} className={cell.better === true ? 'hima-results-better' : undefined}>
+                  {cell.display}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** The raw observations: which file each Reader read and what it hashed to. */
+function ObservationsSection({ view }: { view: RunView }): ReactElement | null {
+  if (view.observations.length === 0) return null;
+  return (
+    <section>
+      <h3>Observations</h3>
+      {view.observations.map((observation) => (
+        <details key={observation.recordId}>
+          <summary>{observation.path.split('/').at(-1)} · observation</summary>
+          <ObservationRow observation={observation} />
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function EvidenceView({ view, results }: { view: RunView; results?: PackResults }): ReactElement {
   const hasMaterial = view.code.length > 0 || view.knowledge.length > 0;
   const hasGrowth = view.generations.some((generation) => (generation.growths ?? []).length > 0);
   const empty = !view.tasks?.length && !hasMaterial && view.archive === undefined && view.workshop === undefined && !hasGrowth
@@ -76,22 +149,23 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
   return (
     <div className="hima-detail hima-evidence">
       <TaskSection view={view} />
+      {/* A Pack that declares a results table leads with it; the raw readings it came from fold
+          under it, closed. Without one, the observations stay where they always were. */}
+      {results === undefined ? null : <>
+        <ResultsSection results={results} view={view} />
+        {view.observations.length === 0 ? null : (
+          <details className="hima-results-sources" data-hima-region="results-sources">
+            <summary>Where these numbers come from</summary>
+            <ObservationsSection view={view} />
+          </details>
+        )}
+      </>}
       <MaterialSection view={view} />
       <ArchiveSection view={view} />
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
       <GrowthSection view={view} />
       <RevisionSection view={view} />
-      {view.observations.length === 0 ? null : (
-        <section>
-          <h3>Observations</h3>
-          {view.observations.map((observation) => (
-            <details key={observation.recordId}>
-              <summary>{observation.path.split('/').at(-1)} · observation</summary>
-              <ObservationRow observation={observation} />
-            </details>
-          ))}
-        </section>
-      )}
+      {results === undefined ? <ObservationsSection view={view} /> : null}
       {view.verdicts.length === 0 ? null : (
         <section>
           <h3>Verdicts</h3>
@@ -259,13 +333,43 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
 
+  // The views this Pack's contract actually offers; a results/reports contract that arrives after
+  // the first render (the method context fills in behind the view) moves the current section to
+  // whichever replaced it, rather than stranding the person on a tab that just disappeared.
+  const sections = sectionsFor(context?.method?.contract);
+  useEffect(() => {
+    if (sections.includes(section)) return;
+    setSection(section === 'report' ? 'reports' : section === 'reports' ? 'report' : 'live');
+  }, [sections.join(), section]);
+
+  // What arrived since this viewer last opened Reports and Evidence: a count of new report files on
+  // the Reports tab, a dot on Evidence for a new round result. Per viewer and in memory only.
+  const hasReports = sections.includes('reports');
+  const reports = useRunReports(runId, tasksDigest(view?.tasks), hasReports);
+  const reportPaths = (reports.value?.files ?? []).map((file) => file.path);
+  const resultReaders = new Set((context?.method?.contract.results?.columns ?? []).map((column) => column.reader));
+  const resultIds = (view?.observations ?? []).filter((observation) => resultReaders.has(observation.reader.id)).map((observation) => observation.recordId);
+  const reportsScope = newsScope('reports', sessionId, runId), resultsScope = newsScope('results', sessionId, runId);
+  const [, setSeenTick] = useState(0);
+  useEffect(() => {
+    const changed = section === 'reports' ? markSeen(reportsScope, reportPaths) : section === 'evidence' ? markSeen(resultsScope, resultIds) : false;
+    if (changed) setSeenTick((n) => n + 1);
+  }, [section, reportsScope, resultsScope, reportPaths.join('\n'), resultIds.join('\n')]);
+  const newReports = section === 'reports' ? 0 : unseenCount(reportsScope, reportPaths);
+  const newResult = section !== 'evidence' && resultReaders.size > 0 && unseenCount(resultsScope, resultIds) > 0;
+
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
       <nav className="hima-campaign-views" aria-label="Campaign views">
-        {SECTIONS.map(({ key, said }) => (
-          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{said}</button>
+        {sections.map((key) => (
+          <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}
+            {...(key === 'reports' ? { 'data-hima-state-new': String(newReports) } : key === 'evidence' ? { 'data-hima-state-new': String(newResult) } : {})}>
+            {SECTION_SAID[key]}
+            {key === 'reports' && newReports > 0 ? <span className="hima-view-count" aria-label={`${String(newReports)} new reports`}> · {newReports}</span> : null}
+            {key === 'evidence' && newResult ? <span className="hima-view-dot" role="img" aria-label="New result" /> : null}
+          </button>
         ))}
       </nav>
       <div className="hima-campaign-content">
@@ -287,7 +391,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
           ? <div className="hima-empty"><p>Reading Run records…</p></div>
           : section === 'generations'
             ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}<GenerationResearch view={view}/></div>
-            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
+            : section === 'evidence' ? <EvidenceView view={view} results={context?.method?.contract.results} />
+              : section === 'reports' ? <ReportsView runId={runId} list={reports} graph={context?.method?.reference} runReport={() => <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />} />
+                : <ReportView view={view} runId={runId} openEvidence={() => setSection('evidence')} />}
       </div>
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>

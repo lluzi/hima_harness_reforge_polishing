@@ -5,6 +5,7 @@ import { createElement, useState, type ReactElement } from 'react';
 import { runStatusSaid } from '../card-labels.js';
 import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
+import { HimaChartCard } from './HimaChartCard.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
 import { InsightAnalysisCard } from './InsightAnalysisCard.js';
@@ -199,6 +200,8 @@ export function apply(ctx: ClientContext): void {
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));
     // A custom library analysis in the conversation (ADR-0021): its proposal, start and result.
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_insight_analysis' }, InsightAnalysisCard));
+    // A chart a tool or a Pack wrote (`hima_chart`): a plain bar chart or metrics table in the chat.
+    claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_chart' }, HimaChartCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };
   });
 }
