@@ -630,6 +630,34 @@ export interface LogTailView {
   readonly truncated: boolean;
 }
 
+/**
+ * The tool reports a Run's Pack leaves under its declared reports folder (`contract.reports.dir`),
+ * as `GET /hima/api/runs/<id>/reports` answers: one entry per file at
+ * `<dir>/<node>/r<round>/<name>`, newest round first. `files` is empty (and `dir` absent) when the
+ * Pack declares no reports folder; `error` is a plain sentence when the Site could not be asked.
+ */
+export interface RunReportFile {
+  readonly node: string;
+  readonly round: number;
+  readonly name: string;
+  /** The path relative to the Campaign workspace, as a report read (`reports/file?path=`) takes it. */
+  readonly path: string;
+  readonly bytes: number;
+  readonly modifiedAt?: string;
+}
+export interface RunReportsView {
+  readonly dir?: string;
+  readonly files: readonly RunReportFile[];
+  readonly at: string;
+  readonly error?: string;
+}
+/** One report's text, as `GET /hima/api/runs/<id>/reports/file?path=` answers; bounded, plain text. */
+export interface RunReportText {
+  readonly path: string;
+  readonly text: string;
+  readonly truncated: boolean;
+}
+
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
 export interface PackTransferBody {
   readonly pack: string;
