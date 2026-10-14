@@ -39,6 +39,7 @@ from . import (attribution, compact, core, edits, geometry, judge, layout,
 
 _MAX_PAIR_ITERS = 6
 _MAX_REPAIR_ROUNDS = 3
+_LEGALISE_RETRIES = 6
 _MAX_REPAIR_EDITS = 12
 _DEFAULT_TRUST_UM = 0.5
 _ZONE_BUFFER_UM = 0.3
@@ -278,8 +279,19 @@ def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
                 lay = out
             break
         if objective == "legalise":
-            out, info = compact.compact(lay, axis, case, table, objective="legalise",
-                                        legalise_zones=zones, pairs=tuple(pairs))
+            exclude = []
+            for _try in range(_LEGALISE_RETRIES):
+                out, info = compact.compact(lay, axis, case, table, objective="legalise",
+                                            legalise_zones=zones, pairs=tuple(pairs),
+                                            legalise_exclude=tuple(exclude))
+                if info["status"] == "optimal":
+                    break
+                # a raised pair compaction cannot hold (both edges fixed there): stop raising
+                # those places only, and leave them to the verified repairs after the solve
+                more = compact.binding_places(info.get("binding"))
+                if not more:
+                    break
+                exclude.extend(more)
         else:  # min-pitch
             out, info = compact.compact(lay, axis, case, table, target_pitch=tgt,
                                         pairs=tuple(pairs))
@@ -291,7 +303,13 @@ def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
             lay = out
         else:
             status = "partial"
+            if objective == "legalise":
+                # a place compaction cannot pull apart (both edges held) leaves this axis as it
+                # was; the verified bounded repairs after the solve take that place instead
+                continue
             break
+    if objective == "legalise":
+        return lay, {"status": status, "binding": binding}
     if lay is pre and status != "optimal":
         return None, {"status": "infeasible", "binding": binding}
     return lay, {"status": status, "binding": binding}

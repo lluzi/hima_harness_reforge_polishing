@@ -25,9 +25,11 @@ Numeric module (numpy, scipy with HiGHS, shapely).
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from scipy.optimize import linprog
-from shapely.geometry import Point, LineString, Polygon
+from shapely.geometry import Point, LineString, Polygon, box
 from shapely.ops import unary_union, transform as shp_transform
 
 from . import euclid as _euclid
@@ -110,7 +112,7 @@ _NO_NEW_DEVICE_UM = 0.1
 
 def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
           metric_rows=(), trust=None, use_euclid=True, legalise=False,
-          legalise_zones=None):
+          legalise_zones=None, legalise_exclude=()):
     """Assemble the LP model for one x-pass over ``lay``.
 
     Returns a dict with the inequality system (``A`` x ``>=``-style rows, already
@@ -327,9 +329,21 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                 return True
         return False
 
+    _xunion = unary_union(list(legalise_exclude)) if legalise_exclude else None
+
+    def euclid_zone_fn():
+        excluded = (lambda c: _xunion is not None and _xunion.intersects(LineString(c)))
+        if _zunion is not None:
+            return lambda c: in_zone(c) and not excluded(c)
+        if _xunion is not None:
+            return lambda c: not excluded(c)
+        return None
+
     def rule_dist(d, orig, coords):
         if not legalise:
             return min(d, orig)
+        if _xunion is not None and _xunion.intersects(LineString(coords)):
+            return min(d, orig)  # a place the repair stage takes instead (see binding_places)
         if _zunion is None:
             return d  # backward-compatible: hold every violated pair
         return d if in_zone(coords) else min(d, orig)
@@ -385,6 +399,13 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
             ge(terms, d - orig + (bb[4] - a[4]) * P0 * 0 - (bb[4] - a[4]) * (-P0))
             cons += 1
 
+        def zone_free(a_, b_):
+            # Under legalise, two layers' crossings inside a marker zone may change order: the
+            # repair there pulls an edge that overlaps on one scanline clear of the other layer
+            # on the next (an acute crossing), which a kept order would make infeasible.
+            return (legalise and a_[1] != b_[1]
+                    and (_zunion is None or in_zone([(a_[0], ym), (b_[0], ym)])))
+
         # Group crossings by original x; consecutive groups keep order.
         groups_ = []
         for it in allit:
@@ -420,7 +441,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
             for g1_, g2_ in zip(sel[:-1], sel[1:]):
                 for a_ in g1_:
                     for b_ in g2_:
-                        if frozenset((a_[1], b_[1])) in FREE_PAIRS:
+                        if frozenset((a_[1], b_[1])) in FREE_PAIRS or zone_free(a_, b_):
                             continue
                         if b_[0] - a_[0] > 1e-9:
                             add(a_, b_, 0.0)
@@ -437,7 +458,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                             if frozenset((a_[1], lb)) in FREE_PAIRS:
                                 continue
                             for b_ in g2_:
-                                if b_[1] == lb and b_[0] - a_[0] > 1e-9:
+                                if b_[1] == lb and b_[0] - a_[0] > 1e-9 and not zone_free(a_, b_):
                                     add(a_, b_, 0.0)
 
         # Protected boxes: no compression between crossings inside the box.
@@ -551,7 +572,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     if use_euclid:
         cons += _euclid.generate(polys, var, P0, iP, width, space, xspace, enc,
                                  ge, tag, legalise=legalise,
-                                 zone_fn=(in_zone if _zunion is not None else None),
+                                 zone_fn=euclid_zone_fn(),
                                  margin=case.grid_um)
         if pairs:
             cons += _euclid.pair_constraints(polys, var, P0, iP, pairs, ge, tag)
@@ -738,6 +759,29 @@ def _crossings(p, y):
             t_ = (y - a_[1]) / (b_[1] - a_[1])
             xs.append((a_[0] + t_ * (b_[0] - a_[0]), v))
     return xs
+
+
+_PLACE_RE = re.compile(r"y=(-?[\d.]+) x=(-?[\d.]+)\.\.(-?[\d.]+)")
+_VERTEX_RE = re.compile(r"v=\((-?[\d.]+),(-?[\d.]+)\)")
+
+
+def binding_places(tags, pad=0.02):
+    """Small regions (in the pass's own frame) named by binding-row tags: a scanline row's span
+    ``y=.. x=a..b`` or a Euclidean row's vertex ``v=(x,y)``. A legalise that cannot hold a raised
+    pair re-solves with those places excluded from raising."""
+    out = []
+    for t in tags or []:
+        t = str(t)
+        m = _PLACE_RE.search(t)
+        if m:
+            y, a, b = (float(g) for g in m.groups())
+            out.append(box(min(a, b) - pad, y - pad, max(a, b) + pad, y + pad))
+            continue
+        m = _VERTEX_RE.search(t)
+        if m:
+            x, y = (float(g) for g in m.groups())
+            out.append(Point(x, y).buffer(pad))
+    return out
 
 
 def apply(lay, model, x, case):
