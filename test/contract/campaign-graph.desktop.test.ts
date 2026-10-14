@@ -99,7 +99,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('start-owner-session')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
     assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+    assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
     const owner = (await d.read('studio')); assert.ok(owner.ok); const ownerSession = owner.state.session; assert.ok(ownerSession);
     viewerSession = ownerSession;
 

@@ -329,7 +329,7 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
   }
   return (
     <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
-      <p className="hima-node-card-owner">Owned by Campaign Agent{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
+      <p className="hima-node-card-owner">Owned by the project agent{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
       {continueRun}
       {active&&canContinue&&view.run.control?.paused.includes(node.id)?<>
         <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight!==undefined} onClick={()=>toggle('node-continue')}>Continue this node</button>

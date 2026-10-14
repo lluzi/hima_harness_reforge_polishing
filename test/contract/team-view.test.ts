@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadPack, residentActivityOf, teamViewState } from '@hima/harness';
+import { loadPack, residentActivityOf, runningTaskLabels, teamViewState } from '@hima/harness';
 import type { PackContract, PackGraph, RunView } from '@hima/harness';
 
 type DurableTaskView = NonNullable<RunView['tasks']>[number];
@@ -204,6 +204,35 @@ test('A: more than four shown lines fold their leading done run into one "N done
   // One done line does not fold.
   const one = stripState([t('t1', 'succeeded'), t('t3', 'running')]);
   assert.ok(one.stations.find((x) => x.id === 'rtl')!.lines.every((l) => l.folds === undefined));
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Slice D: `runningTaskLabels` names a DBOS head's running/waiting task(s) from the method's own node
+// `label` (A0), what `run.currentNode` used to say — Masthead.tsx and HimaRunCard.tsx both read it.
+const labelledNodes = [
+  { id: 'agent-a', label: 'Write requirements' }, { id: 'agent-b', label: 'Check library' }, { id: 'decide' },
+];
+
+test('D: a parallel fork names every open branch, from the method\'s own node label', () => {
+  const tasks = [t('t3', 'succeeded'), t('agent-a', 'running', 0), t('agent-b', 'waiting', 0)];
+  assert.deepEqual(runningTaskLabels(tasks, labelledNodes), [
+    { node: 'agent-a', label: 'Write requirements' }, { node: 'agent-b', label: 'Check library' },
+  ]);
+});
+
+test('D: an unlabelled node falls back to its own id', () => {
+  assert.deepEqual(runningTaskLabels([t('decide', 'running', 0)], labelledNodes), [{ node: 'decide', label: 'decide' }]);
+});
+
+test('D: a done, failed or pending task names nothing; neither does a historical or non-root-flow task', () => {
+  assert.deepEqual(runningTaskLabels([t('agent-a', 'succeeded', 0), t('agent-b', 'failed', 0), t('decide', 'pending', 0)], labelledNodes), []);
+  assert.deepEqual(runningTaskLabels([{ ...t('agent-a', 'running', 0), current: false }], labelledNodes), [], 'superseded by a later method revision');
+  assert.deepEqual(runningTaskLabels([{ ...t('agent-a', 'running', 0), rootFlow: false }], labelledNodes), [], 'not the root flow');
+});
+
+test('D: no tasks and no nodes both answer with nothing, never throw', () => {
+  assert.deepEqual(runningTaskLabels(undefined, undefined), []);
+  assert.deepEqual(runningTaskLabels([], []), []);
 });
 
 test('A: a Reader metric reads the Run observations — best over rounds and the latest round — with its goal', () => {

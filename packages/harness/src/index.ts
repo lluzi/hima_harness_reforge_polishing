@@ -627,8 +627,8 @@ export default class Hima extends Service {
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
         const roleInstruction=role==='execution-owner'
-          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. Show charts with hima_chart: a Run report chart hima_context names (hima_chart {runId, path}) or a Pack chart the inventory names (hima_chart {pack, file}), each with one sentence on what it shows; the chart is the evidence, so never type its numbers yourself.'
-          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner. When you explain a design or method, show the Pack charts that support it with hima_chart {pack, file} (the inventory names them) and a Run\'s own report charts with hima_chart {runId, path}, each with a one-line note, and never type a chart\'s numbers yourself.';
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. Show charts with hima_chart: a Run report chart hima_context names (hima_chart {runId, path}) or a Pack chart the inventory names (hima_chart {pack, file}), each with one sentence on what it shows; the chart is the evidence, so never type its numbers yourself. Call it a "Project" when you talk to the person — "Campaign" stays the internal word for tool names, ids and records.'
+          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner. When you explain a design or method, show the Pack charts that support it with hima_chart {pack, file} (the inventory names them) and a Run\'s own report charts with hima_chart {runId, path}, each with a one-line note, and never type a chart\'s numbers yourself. Call it a "Project" when you talk to the person — "Campaign" stays the internal word for tool names, ids and records.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
@@ -1759,10 +1759,10 @@ export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Fra
 // task 5), so it is exported beside it: both are testable at L1 without a window, and the client
 // renders from the very function the contract suite asserts on.
 export { sceneInputs } from './scene.js';
-export { teamViewState, outputAt as teamOutputAt } from './team-view.js';
+export { teamViewState, outputAt as teamOutputAt, runningTaskLabels } from './team-view.js';
 export { residentActivityOf } from './resident-activity.js';
 export type { ResidentActivity } from './resident-activity.js';
-export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric } from './team-view.js';
+export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric, RunningTask } from './team-view.js';
 // The Campaign file (#41 task 3): `hima-campaign/1`'s schema, parse/serialize, read/write under a
 // session workspace, and the overrides it hands Preparation. Exported here for the same reason every
 // other business format is: `test/contract/campaign-file.host.test.ts`, `tools.ts` and `remote.ts`

@@ -23,7 +23,7 @@
 // edge when the target sits on the same row or above the source. A station showing more than four
 // lines folds its leading run of done lines into one "N done" line. A metric may read a Reader's
 // semantic value over the Run's observations instead of a node's committed output.
-import type { PackContract, PackGraph, PackView } from './packs.js';
+import type { PackContract, PackGraph, PackNode, PackView } from './packs.js';
 import type { DurableTaskView, ObservationView, RunView } from './remote.js';
 import type { ResidentActivity } from './resident-activity.js';
 
@@ -313,6 +313,28 @@ export function teamGridArea(station: Pick<TeamStation, 'row' | 'col' | 'span'>,
 }
 
 /** The declared rows, top to bottom, for the grid's row placement. */
+/** One running or waiting task, named for display. */
+export interface RunningTask { readonly node: string; readonly label: string }
+
+/**
+ * The task(s) a DBOS head is standing at, named from the method's own node labels — what
+ * `run.currentNode` used to say on a pre-DBOS head, which a DBOS `RunHeadView` never carries
+ * (slice D, `docs/plans/hug/2026-10-14-andes-port-plan.md`). A parallel fork shows every open
+ * branch's task, not only the first; a node without a declared `label` falls back to its id. Current
+ * only (`task.current !== false`) and root-flow only (`task.rootFlow !== false`), one entry per
+ * `taskId` — the same filter `teamViewState` applies before reading a round.
+ */
+export function runningTaskLabels(tasks: readonly DurableTaskView[] | undefined, nodes: readonly Pick<PackNode, 'id' | 'label'>[] | undefined): readonly RunningTask[] {
+  const labelOf = new Map((nodes ?? []).map((node) => [node.id, node.label] as const));
+  const seen = new Map<string, DurableTaskView>();
+  for (const task of tasks ?? []) {
+    if (task.current === false || task.rootFlow === false) continue;
+    if (task.projection.state !== 'running' && task.projection.state !== 'waiting') continue;
+    seen.set(task.taskId, task);
+  }
+  return [...seen.keys()].map((taskId) => ({ node: taskId, label: labelOf.get(taskId) ?? taskId }));
+}
+
 export const teamRowOrder = (stations: readonly Pick<TeamStation, 'row'>[]): number[] =>
   [...new Set(stations.map((station) => station.row).filter((row): row is number => row !== undefined))].sort((a, b) => a - b);
 

@@ -117,8 +117,8 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
           {sessionId === undefined
             ? 'Open a session to see its current knowledge count.'
             : knowledgeCount === undefined
-              ? 'Reading the current Campaign file…'
-              : `${knowledgeCount} knowledge document${knowledgeCount === 1 ? '' : 's'} attached to the current Campaign.`}
+              ? 'Reading the current project file…'
+              : `${knowledgeCount} knowledge document${knowledgeCount === 1 ? '' : 's'} attached to the current project.`}
         </p>
       </section>
     </div>

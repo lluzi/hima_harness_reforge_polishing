@@ -145,7 +145,7 @@ function EvidenceView({ view, results }: { view: RunView; results?: PackResults 
     && (view.revisions ?? []).length === 0 && view.observations.length === 0 && view.verdicts.length === 0
     && (view.decision === null || view.decision === undefined) && view.blockers.length === 0
     && view.refusals.length === 0 && view.cancels.length === 0;
-  if (empty) return <div className="hima-detail hima-evidence"><p>No verified evidence has been recorded for this Campaign yet.</p></div>;
+  if (empty) return <div className="hima-detail hima-evidence"><p>No verified evidence has been recorded for this project yet.</p></div>;
   return (
     <div className="hima-detail hima-evidence">
       <TaskSection view={view} />
@@ -362,7 +362,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
       <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
-      <nav className="hima-campaign-views" aria-label="Campaign views">
+      <nav className="hima-campaign-views" aria-label="Project views">
         {sections.map((key) => (
           <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}
             {...(key === 'reports' ? { 'data-hima-state-new': String(newReports) } : key === 'evidence' ? { 'data-hima-state-new': String(newResult) } : {})}>
@@ -379,7 +379,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
                 <p>{packUnavailable && packId !== undefined
                   ? `The Pack ${packId} is not installed on this Host; the reference graph cannot be shown.`
                   : packVersionMismatch && packId !== undefined
-                    ? `The installed Pack ${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`} does not match the version${packVersion === undefined ? '' : ` ${packVersion}`} this Campaign ran; the reference graph cannot be shown.`
+                    ? `The installed Pack ${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`} does not match the version${packVersion === undefined ? '' : ` ${packVersion}`} this project ran; the reference graph cannot be shown.`
                     : context?.reason ?? 'Reading the reference graph…'}</p>
               </div>
             : methodReference?.view !== undefined

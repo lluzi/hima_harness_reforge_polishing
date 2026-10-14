@@ -23,7 +23,7 @@ export function CampaignChip({ sessionId, openRun }: CampaignChipProps): ReactEl
   const waiting = status === 'waiting';
   // A stale read keeps showing the last known state (never blanks or collapses it) — the same rule
   // the tab title follows — dimmed by CSS off `data-hima-state-stale`, with the tooltip saying so.
-  const title = `Campaign — ${said}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`
+  const title = `Project — ${said}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`
     + (stale ? ' — the last read did not answer; showing the last known state' : '');
   return (
     // C9: `hima-campaign-chip-wrap` keeps this mount from stretching to fill the shell's own header
