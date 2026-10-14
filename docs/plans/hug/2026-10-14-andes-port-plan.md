@@ -191,14 +191,14 @@ contract tests.
 - `Masthead.tsx`: "where" names the running tasks from `view.tasks`, with labels from `method.reference.nodes[].label`.
 - `HimaWorkbench.tsx`: `key={selected}` and the secondary button classes.
 
-### E. Chinese UI (locale). Pending the user's decision.
+### E. Chinese UI (locale). Dropped (user, 2026-10-14): HUG uses the English UI.
 
 The demo's zh/en dictionaries (`client/locale/*`, 960 lines), with keys re-cut against HUG surfaces
 and the `locale` injection made soft.
 
 ## Order and parallelism
 
-A0 → {A, B, P} in parallel (three workers) → C (once B's first commit lands) → D → E (if wanted).
+A0 → {A, B, P} in parallel (three workers) → C (once B's first commit lands) → D.
 
 Then:
 - an Opus 5.5 high review of the whole branch;
@@ -206,7 +206,7 @@ Then:
 
 **Live AndesCell Run on the CTU Site.** Before it, deploy the current wrapper template from
 `sites/linglong-atcs28/templates/resident-engineering-wrapper.py` to
-`operator-admin/resident-engineering-ctu01/` on Linglong. That is a server write and needs the user's go.
+`operator-admin/resident-engineering-ctu01/` on Linglong. The user approved this server write on 2026-10-14.
 
 ## Rollback
 
