@@ -105,6 +105,9 @@ def _free_pairs(case):
     return out
 
 
+_NO_NEW_DEVICE_UM = 0.1
+
+
 def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
           metric_rows=(), trust=None, use_euclid=True, legalise=False,
           legalise_zones=None):
@@ -133,6 +136,11 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     poly_layer = devices.get("polyLayer")
     gate_layer = devices.get("gateLayer")
     device_pair = {poly_layer, gate_layer}
+    if poly_layer and gate_layer and not any({r[0], r[1]} == device_pair for r in xspace):
+        # No deck rule spaces poly from gate (a designer never draws a stray TFT), so the
+        # compactor holds them apart itself, at min(this, original), with Euclidean rows too:
+        # a slanted poly edge's corner can cross a gate edge between two scanlines.
+        xspace.append([poly_layer, gate_layer, _NO_NEW_DEVICE_UM])
     cst = case.raw.get("cst", {})
     marker_layer = cst.get("markerLayer")
     plate_layers = list(cst.get("plateLayers", []))
@@ -361,11 +369,15 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
             nonlocal cons
             if a[4] != 0 and bb[4] != 0:
                 return
-            key = (a[2], a[4], bb[2], bb[4], round(d, 4))
+            terms, orig, pc = diff_terms(a, bb)
+            # The same two edge classes meet on many scanlines at different separations; the
+            # key holds the row's whole right-hand side, or the first (often loosest) row would
+            # stand for all of them (a gate line 0.43 um from the poly here, 0.855 um on an
+            # earlier scanline, slid 0.855 um and made a TFT).
+            key = (a[2], a[4], bb[2], bb[4], round(d - orig, 4))
             if key in seen:
                 return
             seen.add(key)
-            terms, orig, pc = diff_terms(a, bb)
             ge(terms, d - orig + (bb[4] - a[4]) * P0 * 0 - (bb[4] - a[4]) * (-P0))
             cons += 1
 
@@ -408,6 +420,21 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                             continue
                         if b_[0] - a_[0] > 1e-9:
                             add(a_, b_, 0.0)
+            # A free pair in between breaks the chain above (Gate1 <= Gate2, Gate2 free over
+            # poly: nothing then held Gate1 below poly, and a gate line slid over the poly into a
+            # new TFT). So each crossing is also ordered against the next crossing of every
+            # other layer it is not free with.
+            for gi, g1_ in enumerate(sel):
+                for a_ in g1_:
+                    done = {a_[1]}
+                    for g2_ in sel[gi + 1:]:
+                        for lb in sorted({b_[1] for b_ in g2_} - done):
+                            done.add(lb)
+                            if frozenset((a_[1], lb)) in FREE_PAIRS:
+                                continue
+                            for b_ in g2_:
+                                if b_[1] == lb and b_[0] - a_[0] > 1e-9:
+                                    add(a_, b_, 0.0)
 
         # Protected boxes: no compression between crossings inside the box.
         for pr in protect:

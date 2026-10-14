@@ -363,6 +363,51 @@ class HandBuiltCompactTest(unittest.TestCase):
         self.assertEqual(info["status"], "optimal")
         self.assertAlmostEqual(region(out).area, r0, places=3)
 
+    def test_a_free_layer_between_does_not_let_poly_slide_under_a_gate(self):
+        # Real-case regression (flow7, min-ratio at 45 um): crossings were ordered only between
+        # neighbours, and Gate2 (free over poly) sat between a Gate1 edge and a poly edge, so
+        # nothing held them apart; the gate line slid over the poly into two new TFTs.
+        from pixelopt import compact
+        case = FakeCase({
+            "P": {"gds": [3, 0], "roles": ["conductor", "poly"], "stack": "device"},
+            "G": {"gds": [2, 0], "roles": ["conductor", "gate"], "stack": "device"},
+            "H": {"gds": [19, 0], "roles": ["conductor"], "stack": "device"},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        }, devices={"polyLayer": "P", "gateLayer": "G"}, free=[["H", "P"]])
+        table = {"width": {"P": 1.0, "G": 1.0, "H": 1.0}, "space": {}, "xspace": [], "enc": []}
+        lay = self._layout({
+            "Bound": [rect(0, 0, 13, 10)],
+            "G": [rect(2, 2, 6, 8)],
+            "H": [rect(6.5, 2, 9, 8)],
+            "P": [rect(7, 2, 12, 8)],
+        })
+        # a pitch only reachable by sliding the poly under the gate
+        out, info = compact.compact(lay, "x", case, table, target_pitch=6.0)
+        if info["status"] == "optimal":
+            self.assertAlmostEqual(out.geom("P").intersection(out.geom("G")).area, 0.0, places=6)
+
+    def test_a_slanted_poly_edge_never_slides_under_a_gate(self):
+        # Real-case regression: scanline rows were deduplicated by edge classes and rule only,
+        # so the loosest separation of a slanted edge stood for every scanline, and nothing
+        # held a corner between scanlines; a gate line slid over the poly into a new TFT.
+        from pixelopt import compact
+        case = FakeCase({
+            "P": {"gds": [3, 0], "roles": ["conductor", "poly"], "stack": "device"},
+            "G": {"gds": [2, 0], "roles": ["conductor", "gate"], "stack": "device"},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        }, devices={"polyLayer": "P", "gateLayer": "G"})
+        table = {"width": {"P": 2.5, "G": 3.5}, "space": {}, "xspace": [], "enc": []}
+        for target in (10.0, 9.5):
+            lay = self._layout({
+                "Bound": [rect(0, 0, 14, 10)],
+                "G": [rect(2, 1, 6, 9), rect(0.5, 3, 1.5, 6)],
+                "P": [np.array([[9, 2], [12, 2], [12, 8], [7, 8]], float)],
+            })
+            out, info = compact.compact(lay, "x", case, table, target_pitch=target)
+            if info["status"] == "optimal":
+                self.assertAlmostEqual(out.geom("P").intersection(out.geom("G")).area, 0.0,
+                                       places=6, msg="pitch %s" % target)
+
     def test_legalise_infeasible_reports_binding_tags(self):
         # An un-satisfiable legalise (two wide strips that cannot both meet width
         # and space inside a tight outline) reports the conflicting rows.
