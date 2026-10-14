@@ -1,7 +1,8 @@
 # The strip for the Live tab: four stations in a phone-width pane across three rows. Every graph node
 # is drawn in one station or hidden; the wait node (`blocked`) is hidden (a blocked Run says so
-# itself). Edges are omitted so they derive from the graph's own edges crossing stations. The top
-# line reads the best worst-slack gain so far from the round reader, against the Goal target.
+# itself). Edges are declared station-to-station so the strip draws exactly the four hand-overs plus
+# the one return, not a derived back edge for every graph edge that re-enters RTL2GDS. The top line
+# reads the best worst-slack gain so far from the round reader, against the Goal target.
 title: Custom cells for a faster OpenC910
 stations:
   - id: rtl2gds
@@ -40,6 +41,12 @@ stations:
       - { label: Plan the arcs, nodes: [andescell-agent] }
       - { label: Generate the cells, nodes: [generate-cells] }
 hidden: [blocked]
+edges:
+  - { from: rtl2gds, to: himatime, label: timing }
+  - { from: rtl2gds, to: qualib, label: library }
+  - { from: himatime, to: andescell, label: requirements }
+  - { from: qualib, to: andescell }
+  - { from: andescell, to: rtl2gds, label: new cells, back: true }
 metrics:
   - label: Best worst-slack gain
     reader: andes-round

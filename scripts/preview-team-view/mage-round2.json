@@ -1,0 +1,195 @@
+{
+  "run": {
+    "id": "run-mage",
+    "status": "running",
+    "goal": {
+      "target_dropped_count": 18
+    }
+  },
+  "observations": [],
+  "tasks": [
+    {
+      "taskId": "prepare-case",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "measure-incumbent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "result": {
+        "value": {
+          "metrics": {
+            "drops": {
+              "count": 27,
+              "lengthUm": 135113
+            }
+          }
+        }
+      }
+    },
+    {
+      "taskId": "engineer-place",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "review-litho-pie",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "review-metrology",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "review-alignment",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "review-wat",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "decide-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ],
+      "result": {
+        "value": {
+          "best": {
+            "metrics": {
+              "drops": {
+                "count": 19,
+                "lengthUm": 71204
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "taskId": "engineer-place",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ],
+      "result": {
+        "value": {
+          "engineering": {
+            "summary": "Moved 30 marks; 2 VERT lanes widened within tolerance."
+          }
+        }
+      }
+    },
+    {
+      "taskId": "review-litho-pie",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "review-metrology",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "review-alignment",
+      "projection": {
+        "state": "running"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ],
+      "activity": {
+        "toolCalls": 7,
+        "planDone": 2,
+        "planTotal": 4,
+        "latest": {
+          "kind": "execute",
+          "title": "python3 check_alignment.py candidate.csv",
+          "at": "2026-10-14T08:00:00Z"
+        }
+      }
+    }
+  ]
+}

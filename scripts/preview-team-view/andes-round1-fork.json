@@ -1,0 +1,112 @@
+{
+  "run": {
+    "id": "run-andes-1",
+    "status": "running",
+    "goal": {
+      "target_timing_gain_pct": 1
+    }
+  },
+  "observations": [],
+  "tasks": [
+    {
+      "taskId": "bind-inputs",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "reference-build",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "read-reference",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "check-reference",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "load-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "read-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "himatime-agent",
+      "projection": {
+        "state": "running"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ],
+      "activity": {
+        "toolCalls": 12,
+        "planDone": 2,
+        "planTotal": 5,
+        "latest": {
+          "kind": "execute",
+          "title": "himatime report_arcs --top 200 --group reg2reg",
+          "at": "2026-10-14T08:00:00Z"
+        }
+      }
+    },
+    {
+      "taskId": "qualib-agent",
+      "projection": {
+        "state": "running"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ],
+      "activity": {
+        "toolCalls": 9,
+        "planDone": 3,
+        "planTotal": 5,
+        "latest": {
+          "kind": "read",
+          "title": "qualib cells --vt ulvt --drive x1..x4",
+          "at": "2026-10-14T08:00:00Z"
+        }
+      }
+    }
+  ]
+}

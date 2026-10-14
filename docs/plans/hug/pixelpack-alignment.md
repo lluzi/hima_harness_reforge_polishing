@@ -19,15 +19,53 @@ Plan: [2026-10-14-andes-port-plan.md](2026-10-14-andes-port-plan.md).
 All HUG videos are recorded from one frozen, tagged App build of this branch. PixelPack must be merged
 here before that build.
 
-## Merging
+## Merging (one-way; do NOT merge HUG-DBOS into your branch)
 
-- Your branch touches no `packages/**` file, so it merges cleanly. The only conflict is
-  `test/contract-groups.json`, where both sides add entries; keep both.
-- **When you're ready:** your stand-in dry route passes, and the Pack loads with `loadPack`. Then tell
-  the user, or record the commit SHA here. The integrator merges `feat/pixel-layout-optimization` into
-  `HUG-DBOS`, rebuilds, and runs your tests together with everyone else's.
-- **Before merging, rebase or merge `origin/HUG-DBOS` into your branch.** That lets you test against the
-  new Pack format below. Run `pnpm run build` before tests: contract tests import the built `lib/`.
+Decided by the integrator on 2026-10-14: the merge is **one-way only**. HUG-DBOS is merged *into*
+PixelPack's `HUG-DBOS` copy; PixelPack is not rebased onto, nor does it merge, HUG-DBOS.
+
+- **Do not merge or rebase `HUG-DBOS` into `feat/pixel-layout-optimization`.** Your branch stays on
+  `main`. You add only `view.yml` (and the display-only `contract.yml`/label fields below) to your own
+  Pack, on your own branch. You never need the `packages/**` renderer in your checkout to ship this.
+- **Validate and preview with the HUG-DBOS tool, pointed at your Pack folder.** The preview/validation
+  uses the renderer and loader from the HUG-DBOS worktree (`--pack-dir` takes any checkout). See
+  [Preview your view.yml](#preview-your-viewyml-before-you-push) just below.
+- **When you're ready:** your stand-in dry route passes and the preview tool loads your Pack with no
+  schema error. Then push and record the commit SHA in the Open-questions section at the end of this
+  file. The integrator merges `feat/pixel-layout-optimization` into `HUG-DBOS` one-way, rebuilds there,
+  and runs only PixelPack's dry route (plus the shared suite) on the HUG-DBOS side.
+- The only file both sides touch is `test/contract-groups.json` (each adds entries); the integrator
+  keeps both at merge time. You do not resolve HUG-DBOS conflicts in your branch.
+
+## Preview your view.yml (before you push)
+
+`scripts/preview-team-view.mjs` (in the HUG-DBOS worktree) builds your Pack's graph with the HUG-DBOS
+loader, folds in a sample Run, bundles `TeamCanvas.tsx`, and screenshots it with headless Chrome at a
+given CSS width. A schema error in `view.yml` is printed (that is your validation check); a clean load
+produces the PNG. Customer data never enters it — the built-in samples are generic.
+
+Run it from the HUG-DBOS worktree `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/worktrees/hug-dbos`
+(after `pnpm run build` there once, so `lib/` exists), pointing `--pack-dir` at your Pack folder in your
+own checkout:
+
+```sh
+cd /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/worktrees/hug-dbos
+pnpm run build                 # once, so packages/harness/lib exists
+node scripts/preview-team-view.mjs \
+  --pack-dir /Users/lluzi/code/hima_harness_reforge_polishing/.claude/worktrees/pixel-layout-optimization/packs/pixel-layout-optimization \
+  --width 480 \
+  --out /tmp/pixelpack-view.png
+```
+
+Options: `--pack-dir <abs path to a Pack folder>` (any checkout) or `--pack <id>` (a Pack under the
+HUG-DBOS worktree's `packs/`); `--width <px>` (default 480, the side-pane width — also try 800);
+`--out <png>`; `--sample <json>` for a RunView-shaped sample (default: a generic one that marks the
+stations before the first AI station done, that station working, the rest waiting). Sample files live in
+`scripts/preview-team-view/`. If headless Chrome is missing the tool prints a skip reason and exits
+non-zero rather than pretending success; set `HIMA_CHROME` or `CHROME_BIN` to its path.
+
+Open the PNG and check: nothing clipped at 480px, compact row spacing, one back-edge lane, the live
+line on the running station ellipsised or wrapped. Then push your branch and report the SHA below.
 
 ## Wiring the Pack to the HUG GUI (display only; nothing here changes how a Run executes)
 
@@ -38,14 +76,20 @@ here before that build.
    - Each station has **either** a `checklist` (`{label, nodes:[...], rounds?: first|all}`) **or** a
      `team` (`{node, label, role?}`).
    - `hidden: [nodeIds]` hides nodes. When `hidden` is present, every graph node must be placed or hidden.
-   - Omit `edges` to derive them from the graph, or declare `{from, to, label?, back?}` between station ids.
+   - **Declare `edges` explicitly** (recommended): `{from, to, label?, back?}` between station ids, one
+     entry per hand-over plus one `back: true` return. Omitting `edges` derives them from every graph
+     edge crossing a station, which draws a separate back edge for every return into an earlier station
+     and a stray edge between two agents on the same row — the clutter the AndesCell view fixed on
+     2026-10-14 by declaring its four hand-overs and one `new cells` return. Keep labels short (≤32).
    - `metrics` (at most 4). Each reads either:
      - a task output: `{label, node, path:[...], unit?, goal?, better?}`, or
      - a Reader value: `{label, reader, type, pick: best|latest, better, unit, digits, goal}`. The
        `reader` must be a contract reader that emits `type`, and `goal` names the Goal field holding the target.
-   - Suggested shape for PixelPack: a setup station; the layout engineer as an AI station; a check team
-     (DRC / LVS / RCE / transmittance) as a `team` station if those run as separate tasks, else a
-     checklist; and a decision station. The headline metric is Ct/Ca, `better: lower`, against its Goal.
+   - Suggested shape for PixelPack: a setup station; the layout engineer as an AI station; the check
+     agents (DRC / LVS / RCE / transmittance) as a **`team` station** (each check is its own task, and a
+     team station draws them side by side with their own live lines — preferred over a checklist here);
+     and a decision station. Give each row explicit `edges` as above. The headline metric is Ct/Ca,
+     `better: lower`, against its Goal.
 2. **Node labels.** Graph nodes and autopilot segments may carry display `label` (≤48) and `about` (≤240).
    The header and the run cards show these labels in place of task ids.
 3. **Results tab (optional).** Contract `results:` replaces the Generations section, giving a

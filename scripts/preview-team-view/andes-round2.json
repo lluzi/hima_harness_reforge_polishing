@@ -1,0 +1,363 @@
+{
+  "run": {
+    "id": "run-andes-2",
+    "status": "running",
+    "goal": {
+      "target_timing_gain_pct": 1
+    }
+  },
+  "observations": [
+    {
+      "reader": {
+        "id": "andes-round"
+      },
+      "generation": 1,
+      "values": [
+        {
+          "type": "best_gain_pct",
+          "value": 0.78,
+          "unit": "%"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "bind-inputs",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "reference-build",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "read-reference",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "check-reference",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": []
+    },
+    {
+      "taskId": "load-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "read-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "himatime-agent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "qualib-agent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "requirements-joined",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "andescell-agent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "generate-cells",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "himatime-verify",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "qualib-screen",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "cells-verified",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "new-library-build",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "compare-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "read-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "check-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "read-round-goal",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "judge-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "next-round",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 0
+        }
+      ]
+    },
+    {
+      "taskId": "load-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "read-timing",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "himatime-agent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "qualib-agent",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "requirements-joined",
+      "projection": {
+        "state": "succeeded"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ]
+    },
+    {
+      "taskId": "andescell-agent",
+      "projection": {
+        "state": "running"
+      },
+      "sourceFactIds": [],
+      "iterations": [
+        {
+          "repeatId": "rounds",
+          "iteration": 1
+        }
+      ],
+      "activity": {
+        "toolCalls": 5,
+        "planDone": 1,
+        "planTotal": 3,
+        "latest": {
+          "kind": "edit",
+          "title": "arc-plan.json: 2 families, 14 arcs",
+          "at": "2026-10-14T08:00:00Z"
+        }
+      }
+    }
+  ]
+}
