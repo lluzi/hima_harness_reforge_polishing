@@ -1761,7 +1761,7 @@ export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Fra
 // task 5), so it is exported beside it: both are testable at L1 without a window, and the client
 // renders from the very function the contract suite asserts on.
 export { sceneInputs } from './scene.js';
-export { teamViewState, runningTaskLabels } from './team-view.js';
+export { teamViewState, runningTaskLabels, changedEntries } from './team-view.js';
 export { residentActivityOf } from './resident-activity.js';
 export type { ResidentActivity } from './resident-activity.js';
 export type { TeamViewState, TeamStation, TeamMember, TeamEdge, TeamMetric, RunningTask } from './team-view.js';

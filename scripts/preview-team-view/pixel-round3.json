@@ -1,0 +1,22 @@
+{
+  "run": { "id": "run-pixel-3", "status": "running", "goal": { "ratio_target_pct": 8.8 } },
+  "observations": [],
+  "tasks": [
+    { "taskId": "prepare-case", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "judge-original", "projection": { "state": "succeeded" }, "sourceFactIds": [],
+      "result": { "value": { "originalValues": { "pixel_ratio_judged_pct": 10.2 } } } },
+    { "taskId": "map-design-space", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "learn-sensitivities", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "plan-round", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 0 }] },
+    { "taskId": "solve-and-judge", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 0 }] },
+    { "taskId": "decide-round", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 0 }],
+      "result": { "value": { "best": { "values": { "pixel_ratio_judged_pct": 10.7, "pixel_t_judged_pct": 9.3 } } } } },
+    { "taskId": "plan-round", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 1 }] },
+    { "taskId": "solve-and-judge", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 1 }] },
+    { "taskId": "decide-round", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 1 }],
+      "result": { "value": { "best": { "values": { "pixel_ratio_judged_pct": 10.1, "pixel_t_judged_pct": 7.2 } } } } },
+    { "taskId": "plan-round", "projection": { "state": "succeeded" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 2 }] },
+    { "taskId": "solve-and-judge", "projection": { "state": "running" }, "sourceFactIds": [], "iterations": [{ "repeatId": "optimise-rounds", "iteration": 2 }],
+      "activity": { "toolCalls": 7, "planDone": 2, "planTotal": 4, "latest": { "kind": "execute", "title": "run-drc --cell pixel_top", "at": "2026-10-14T08:05:00Z" } } }
+  ]
+}

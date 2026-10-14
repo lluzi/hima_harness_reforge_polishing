@@ -52,14 +52,18 @@ export const HIMA_STYLE = `
    accent the general rule above already uses. */
 .hima-node:focus-visible{outline:none}
 .hima-node:focus-visible>rect[data-hima-control]{outline:2px solid var(--hima-accent);outline-offset:2px}
-.hima-button,.hima-icon-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);min-height:32px;font-size:var(--hima-fs-body);cursor:pointer;white-space:nowrap}
-.hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft)}
+.hima-button,.hima-icon-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);min-height:32px;font-size:var(--hima-fs-body);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .08s ease}
+.hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft);border-color:var(--hima-line-strong);box-shadow:var(--hima-shadow);transform:translateY(-1px)}
+.hima-button:active,.hima-icon-button:active{transform:translateY(0);box-shadow:none;background:color-mix(in srgb,var(--hima-ink) 8%,var(--hima-soft))}
 .hima-button:disabled,.hima-icon-button:disabled{opacity:.5;cursor:default}
+.hima-button:disabled:hover,.hima-icon-button:disabled:hover{background:var(--hima-paper);border-color:var(--hima-line);box-shadow:none;transform:none}
 .hima-studio-secondary{background:transparent;color:var(--hima-ink-2)}
 .hima-studio-secondary:hover{background:var(--hima-soft);color:var(--hima-ink)}
 .hima-icon-button{padding:var(--hima-sp-1) var(--hima-sp-2);border-color:transparent}
+.hima-icon-button:hover{transform:none}
 .hima-primary{background:var(--hima-ink);color:var(--hima-on-solid);border-color:var(--hima-ink);font-weight:600}
 .hima-primary:hover{background:var(--hima-ink-2);border-color:var(--hima-ink-2)}
+@media (prefers-reduced-motion: reduce){.hima-button,.hima-icon-button{transition:background .15s ease,color .15s ease}.hima-button:hover,.hima-icon-button:hover,.hima-button:active,.hima-icon-button:active{transform:none}}
 .hima-brand{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-title);letter-spacing:-.04em;font-weight:650}
 .hima-entry button{display:flex;align-items:center;gap:var(--hima-sp-2);width:100%;min-height:36px;border:0;border-radius:var(--hima-r-m);padding:var(--hima-sp-2) var(--hima-sp-3);background:transparent;color:var(--hima-ink);font-size:var(--hima-fs-body);cursor:pointer}
 .hima-entry button:hover{background:var(--hima-soft)}
@@ -187,7 +191,8 @@ export const HIMA_STYLE = `
 .hima-masthead-seal-ended-goal-not-met,.hima-masthead-seal-ended-budget-exhausted{color:var(--hima-bad)}
 .hima-masthead-owner{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);color:var(--hima-ink-2);flex:none;white-space:nowrap}
 .hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
-.hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2);transition:color .15s ease,border-color .15s ease}
+.hima-campaign-views button:hover{color:var(--hima-ink);border-bottom-color:var(--hima-line-strong)}
 .hima-view-count{font-variant-numeric:tabular-nums;color:var(--hima-live);font-weight:650}
 .hima-view-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hima-live);margin-left:4px;vertical-align:super}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}

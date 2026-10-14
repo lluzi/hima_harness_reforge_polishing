@@ -3,11 +3,11 @@
 // hand-overs between them drawn as arrows. `team-view.ts` decides every state; this draws it with
 // HTML boxes and one SVG overlay for the arrows, measured from the boxes themselves, so it fits any
 // pane width without pan or zoom.
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { runWaitingReason } from '../card-labels.js';
 import type { PackContract, PackGraph } from '../packs.js';
 import type { RunView } from '../remote.js';
-import { teamEdgePath, teamGridArea, teamRowOrder, teamViewState, type TeamBox, type TeamLine, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
+import { changedEntries, teamEdgePath, teamGridArea, teamRowOrder, teamViewState, type TeamBox, type TeamLine, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
 import type { ResidentActivity } from '../resident-activity.js';
 
 export interface TeamCanvasProps {
@@ -100,11 +100,18 @@ function lineText(line: TeamLine): string {
   return line.folds === undefined ? line.label : `${String(line.folds)} done`;
 }
 
-function Station({ station, motionOff, refFor, style }: { station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void; style?: CSSProperties }): ReactElement {
+function Station({ station, motionOff, refFor, style, changed }: { station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void; style?: CSSProperties; changed: boolean }): ReactElement {
   const team = station.team;
   const lines = station.lines.filter((line) => line.state !== 'hidden' && line.folded !== true);
+  const active = station.activeNode !== undefined || station.state === 'active';
+  // A finished context station — or one whose round hides its whole checklist — folds to a slim row:
+  // a title and a trailing state mark, no empty card. The active station and the ones still to run
+  // keep their checklist, so the flow reads as "done · working now · still ahead" and fits in view.
+  const quiet = !active && team === undefined && station.summary === undefined
+    && (station.state === 'done' || lines.length === 0);
+  const showLines = !quiet && team === undefined && lines.length > 0;
   return (
-    <section ref={refFor} style={style} className={`hima-team-station hima-team-station-${station.state}${team === undefined ? '' : ' hima-team-station-team'}${station.ai ? ' hima-team-station-ai' : ''}`}
+    <section ref={refFor} style={style} className={`hima-team-station hima-team-station-${station.state}${quiet ? ' hima-team-station-quiet' : ''}${team === undefined ? '' : ' hima-team-station-team'}${station.ai ? ' hima-team-station-ai' : ''}${active && !motionOff ? ' hima-team-station-live' : ''}${changed && !motionOff ? ' hima-team-station-bump' : ''}`}
       data-hima-region={`team-station-${station.id}`} data-hima-state-state={station.state} data-hima-state-col={String(station.col)} data-hima-state-span={String(station.span)} title={station.about}>
       <header className="hima-team-head">
         {team === undefined ? <Square ai={station.ai} state={station.state} motionOff={motionOff} /> : null}
@@ -114,11 +121,12 @@ function Station({ station, motionOff, refFor, style }: { station: TeamStation; 
             ? <LiveLine activity={station.activity} fallback="Working" />
             : station.about === undefined || team === undefined ? null : <span className="hima-team-about">{station.about}</span>}
         </div>
+        {quiet && (station.state === 'done' || station.state === 'failed') ? <Mark state={station.state === 'done' ? 'done' : 'failed'} /> : null}
       </header>
-      {lines.length === 0 ? null : (
+      {!showLines ? null : (
         <ul className="hima-team-lines">
           {lines.map((line, index) => (
-            <li key={index} className={`hima-team-line hima-team-line-${line.state}${line.folds === undefined ? '' : ' hima-team-line-fold'}`}><Mark state={line.state as TeamNodeState} /><span>{lineText(line)}</span></li>
+            <li key={index} className={`hima-team-line hima-team-line-${line.state}${line.folds === undefined ? '' : ' hima-team-line-fold'}${line.state === 'active' && !motionOff ? ' hima-team-line-live' : ''}`}><Mark state={line.state as TeamNodeState} /><span>{lineText(line)}</span></li>
           ))}
         </ul>
       )}
@@ -135,6 +143,26 @@ function Station({ station, motionOff, refFor, style }: { station: TeamStation; 
 export function TeamCanvas({ graph, tools, view, stale, reducedMotion }: TeamCanvasProps): ReactElement {
   const motionOff = reducedMotion || stale;
   const state = useMemo(() => teamViewState(graph, tools, view), [graph, tools, view]);
+  // A new best metric or a station that just finished flashes once; a steady poll re-reading the same
+  // facts flashes nothing (`changedEntries`), and reduced motion/stale skips the flash entirely.
+  const metricDigest = (state?.metrics ?? []).map((m) => `${m.label}=${m.value}`).join('|');
+  const stationDigest = (state?.stations ?? []).map((s) => `${s.id}=${s.state}`).join('|');
+  const prevMetrics = useRef<Map<string, string>>();
+  const prevStations = useRef<Map<string, string>>();
+  const [flash, setFlash] = useState<{ readonly metrics: ReadonlySet<string>; readonly stations: ReadonlySet<string> }>({ metrics: new Set(), stations: new Set() });
+  useEffect(() => {
+    const metricsNow = new Map((state?.metrics ?? []).map((m) => [m.label, m.value] as const));
+    const stationsNow = new Map((state?.stations ?? []).map((s) => [s.id, s.state] as const));
+    if (motionOff) { prevMetrics.current = metricsNow; prevStations.current = stationsNow; return; }
+    const metrics = changedEntries(prevMetrics.current, metricsNow);
+    const stations = changedEntries(prevStations.current, stationsNow);
+    prevMetrics.current = metricsNow; prevStations.current = stationsNow;
+    if (metrics.size === 0 && stations.size === 0) return;
+    setFlash({ metrics, stations });
+    const timer = setTimeout(() => setFlash({ metrics: new Set(), stations: new Set() }), 1300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricDigest, stationDigest, motionOff]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const boxes = useRef(new Map<string, HTMLElement>());
   const [measured, setMeasured] = useState<{ readonly width: number; readonly height: number; readonly at: ReadonlyMap<string, TeamBox> }>();
@@ -171,7 +199,7 @@ export function TeamCanvas({ graph, tools, view, stale, reducedMotion }: TeamCan
         {state.title === undefined ? null : <strong>{state.title}</strong>}
         <span className="hima-team-chip hima-team-chip-round">Round {state.round}</span>
         {state.metrics.map((m) => (
-          <span key={m.label} className="hima-team-chip"><span>{m.label}</span> <b>{m.value}</b>{m.goal === undefined ? null : <i>{goalSaid(m)}</i>}</span>
+          <span key={m.label} className={`hima-team-chip${flash.metrics.has(m.label) ? ' hima-team-chip-bump' : ''}`}><span>{m.label}</span> <b>{m.value}</b>{m.goal === undefined ? null : <i>{goalSaid(m)}</i>}</span>
         ))}
       </p>
       <div className={`hima-team${gridded ? ' hima-team-rows' : ''}`} ref={wrapRef} data-hima-region="campaign-team" data-hima-state-round={String(state.round)}>
@@ -198,7 +226,7 @@ export function TeamCanvas({ graph, tools, view, stale, reducedMotion }: TeamCan
           </svg>
         )}
         {state.stations.map((station) => (
-          <Station key={station.id} station={station} motionOff={motionOff}
+          <Station key={station.id} station={station} motionOff={motionOff} changed={flash.stations.has(station.id)}
             style={gridded ? teamGridArea(station, rowOrder) : undefined}
             refFor={(el) => { if (el === null) boxes.current.delete(station.id); else boxes.current.set(station.id, el); }} />
         ))}
@@ -225,8 +253,12 @@ export const TEAM_STYLE = `
 .hima-team-edge-flow path{animation:hima-team-flow .9s linear infinite}
 @keyframes hima-team-flow{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
 .hima-team-arrow{fill:var(--hima-line-strong)} .hima-team-arrow-lit{fill:var(--hima-accent)}
-.hima-team-station{position:relative;z-index:1;min-width:0;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);padding:var(--hima-sp-3);box-shadow:var(--hima-shadow);transition:border-color .3s,box-shadow .3s}
+.hima-team-station{position:relative;z-index:1;min-width:0;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);padding:var(--hima-sp-3);box-shadow:var(--hima-shadow);transition:border-color .3s,box-shadow .3s,background .3s,transform .18s}
 .hima-team-station-active{border-color:var(--hima-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hima-accent) 16%,transparent),var(--hima-shadow)}
+.hima-team-station-live{animation:hima-team-breathe 2.6s ease-in-out infinite}
+@keyframes hima-team-breathe{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--hima-accent) 16%,transparent),var(--hima-shadow)}50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--hima-accent) 9%,transparent),var(--hima-shadow)}}
+.hima-team-station-bump{animation:hima-team-pop .7s ease}
+@keyframes hima-team-pop{0%{transform:scale(1)}32%{transform:scale(1.014)}100%{transform:scale(1)}}
 .hima-team-station-done{border-color:color-mix(in srgb,var(--hima-good) 45%,var(--hima-line))}
 .hima-team-station-failed{border-color:var(--hima-bad)}
 .hima-team-head{display:flex;gap:var(--hima-sp-3);align-items:center}
@@ -240,6 +272,8 @@ export const TEAM_STYLE = `
 .hima-team-lines{list-style:none;margin:var(--hima-sp-2) 0 0 44px;padding:0;display:flex;flex-direction:column;gap:3px;font-size:var(--hima-fs-label)}
 .hima-team-line{display:flex;gap:var(--hima-sp-2);align-items:center;color:var(--hima-ink-3)}
 .hima-team-line-done,.hima-team-line-active{color:var(--hima-ink)} .hima-team-line-active{font-weight:600}
+.hima-team-line-live span{animation:hima-team-line-pulse 1.7s ease-in-out infinite}
+@keyframes hima-team-line-pulse{0%,100%{color:var(--hima-ink)}50%{color:var(--hima-accent)}}
 .hima-team-mark circle{fill:none;stroke:var(--hima-line-strong);stroke-width:1.3}
 .hima-team-mark path{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .hima-team-mark-done circle{fill:var(--hima-good);stroke:var(--hima-good)} .hima-team-mark-done path{stroke:var(--hima-on-solid)}
@@ -267,20 +301,28 @@ export const TEAM_STYLE = `
 .hima-team-status{color:var(--hima-ink-3)} .hima-team-status-done{color:var(--hima-good)} .hima-team-status-failed{color:var(--hima-bad)}
 .hima-team-summary{font-size:12px;color:var(--hima-ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .hima-team-summary-station{margin:var(--hima-sp-2) 0 0 44px}
-/* Compact: the whole team fits a ~450 x 520 px pane (2026-10-13 take). */
-.hima-workbench-body>.hima-campaign:has([data-hima-region="campaign-team"]){height:100%;min-height:520px}
-.hima-team-top{padding:6px 12px;gap:6px;font-size:12px}
-.hima-team-top strong{flex-basis:auto;font-size:13px;margin-right:4px}
-.hima-team-chip{padding:1px 8px}
+/* A metric chip flashes once when its value moves (a new best): a brief pop and a colour pulse on
+   the number, nothing while the poll re-reads the same value. */
+.hima-team-chip-bump{animation:hima-team-chip-pop .8s ease}
+.hima-team-chip-bump b{animation:hima-team-chip-flash .8s ease}
+@keyframes hima-team-chip-pop{0%{transform:scale(1)}26%{transform:scale(1.07)}100%{transform:scale(1)}}
+@keyframes hima-team-chip-flash{0%{color:var(--hima-ink)}26%{color:var(--hima-live)}100%{color:var(--hima-ink)}}
+/* Compact: the whole flow — every station, with the round loop — fits the Live pane at side-pane
+   width without scrolling (2026-10-14 launch take, 1280x770 window). A finished or round-hidden
+   station folds to a slim row so the active station and the ones still ahead keep the room. */
+.hima-workbench-body>.hima-campaign:has([data-hima-region="campaign-team"]){height:100%;min-height:440px}
+.hima-team-top{padding:5px 12px;gap:5px 7px;font-size:12px;row-gap:4px}
+.hima-team-top strong{flex-basis:auto;font-size:13px;margin-right:4px;display:none}
+.hima-team-chip{padding:1px 8px;gap:4px}
 .hima-team-chip b{font-size:13px}
-.hima-team{padding:8px 30px 10px 12px;gap:14px}
-.hima-team-rows{row-gap:18px;column-gap:10px;padding:8px 12px 10px 30px}
-.hima-team-station{padding:8px 10px;border-radius:10px}
+.hima-team{padding:6px 26px 7px 12px;gap:9px}
+.hima-team-rows{row-gap:12px;column-gap:10px;padding:6px 12px 7px 28px}
+.hima-team-station{padding:6px 10px;border-radius:10px}
 .hima-team-head{gap:10px}
 .hima-team-head-text strong{font-size:14px}
-.hima-team-square{width:30px;height:30px;border-radius:8px}
-.hima-team-square-face{width:25px;height:25px;border-radius:6px}
-.hima-team-lines{margin:4px 0 0 40px;gap:1px;font-size:12px}
+.hima-team-square{width:29px;height:29px;border-radius:8px}
+.hima-team-square-face{width:24px;height:24px;border-radius:6px}
+.hima-team-lines{margin:2px 0 0 39px;gap:1px;font-size:12px}
 .hima-team-station-team .hima-team-about{display:none}
 .hima-team-grid{margin-top:6px;gap:6px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .hima-team-member{padding:6px;gap:7px}
@@ -288,7 +330,18 @@ export const TEAM_STYLE = `
 .hima-team-member .hima-team-square-face{width:22px;height:22px;border-radius:5px}
 .hima-team-role{display:none}
 .hima-team-summary{-webkit-line-clamp:1}
-.hima-team-summary-station{margin:4px 0 0 40px}
-.hima-team-top strong{display:none}
-@media (prefers-reduced-motion: reduce){.hima-team-square-live::before,.hima-team-square-live,.hima-team-edge-flow path,.hima-team-mark-dot,.hima-team-spark{animation:none}}
+.hima-team-summary-station{margin:4px 0 0 39px}
+/* A slim done/round-hidden station: one tight row, a trailing state mark, a quiet backdrop so it
+   recedes behind the station working now. */
+.hima-team-station-quiet{padding:3px 10px}
+.hima-team-station-quiet .hima-team-head{align-items:center}
+.hima-team-station-quiet .hima-team-square{width:22px;height:22px;border-radius:6px}
+.hima-team-station-quiet .hima-team-square-face{width:18px;height:18px;border-radius:4px}
+.hima-team-station-quiet .hima-team-head-text strong{font-size:13px}
+.hima-team-station-quiet>.hima-team-head>.hima-team-mark{margin-left:auto;flex:none}
+.hima-team-station-quiet.hima-team-station-done{background:color-mix(in srgb,var(--hima-good) 6%,var(--hima-paper));border-color:color-mix(in srgb,var(--hima-good) 30%,var(--hima-line))}
+@media (prefers-reduced-motion: reduce){
+  .hima-team-square-live::before,.hima-team-square-live,.hima-team-edge-flow path,.hima-team-mark-dot,.hima-team-spark,
+  .hima-team-station-live,.hima-team-station-bump,.hima-team-line-live span,.hima-team-chip-bump,.hima-team-chip-bump b{animation:none}
+}
 `;
