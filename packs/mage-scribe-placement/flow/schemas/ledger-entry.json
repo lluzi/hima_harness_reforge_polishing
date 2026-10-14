@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "request", "answer", "answeredInSnapshot", "evidence", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "string", "const": "mage.ledger-entry/1"},
+    "id": {"type": "string", "minLength": 1},
+    "request": {"type": "string", "minLength": 1, "pattern": "^R-(litho-pie|metrology|alignment|wat)-[0-9]+-[0-9]+$"},
+    "answer": {"type": "string", "enum": ["satisfied", "alternative", "declined"]},
+    "answeredInSnapshot": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array"},
+    "note": {"type": "string"}
+  }
+}

@@ -72,7 +72,7 @@ export const readersDirName = 'hima-readers';
 export const workspaceFileName = 'workspace.json';
 
 /** The files a pack is made of, in the order a person reads them. */
-export const packFiles = { spec: 'PACK.md', contract: 'contract.yml', graph: 'graph.yml' } as const;
+export const packFiles = { spec: 'PACK.md', contract: 'contract.yml', graph: 'graph.yml', view: 'view.yml' } as const;
 
 /** A pack id is a directory name, so it is constrained to a safe shape rather than trusted. */
 /** What a binding, an input, an output or a tool's variable may be called. */
@@ -1049,6 +1049,30 @@ export const segmentAutopilot = z.strictObject({
 export type ForkAutopilot = z.infer<typeof forkAutopilot>;
 export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
 
+/**
+ * The team view (2026-10-13, display only): an optional `view.yml` beside `graph.yml` that draws a
+ * Run's Live tab as a few stations instead of the full canvas. A station is a step box with a
+ * checklist of the graph's nodes, or a team of agents (one member per node). Edges and metrics say
+ * what a person should see; none of it reaches compilation, the method digest's meaning or a Run.
+ */
+const viewRounds = z.enum(['first', 'later', 'all']);
+export const packViewStation = z.strictObject({
+  id: packId,
+  label: z.string().min(1).max(48),
+  about: z.string().max(240).optional(),
+  checklist: z.array(z.strictObject({ label: z.string().min(1).max(64), nodes: z.array(packId).min(1).max(16), rounds: viewRounds.optional() })).max(12).default([]),
+  team: z.array(z.strictObject({ node: packId, label: z.string().min(1).max(32), role: z.string().max(64).optional() })).max(8).optional(),
+});
+export const packView = z.strictObject({
+  title: z.string().max(80).optional(),
+  stations: z.array(packViewStation).min(1).max(8),
+  edges: z.array(z.strictObject({ from: packId, to: packId, label: z.string().max(32).optional(), back: z.boolean().optional() })).max(16).default([]),
+  /** Numbers for the top line, read from a node's latest committed output (a path of keys). */
+  metrics: z.array(z.strictObject({ label: z.string().min(1).max(32), node: packId, path: z.array(z.string().min(1)).min(1).max(8),
+    unit: z.string().max(12).optional(), goal: z.string().optional(), better: z.enum(['lower', 'higher']).optional() })).max(4).default([]),
+});
+export type PackView = z.infer<typeof packView>;
+
 export const packGraph = z.strictObject({
   id: packId,
   version: z.string(),
@@ -1059,6 +1083,8 @@ export const packGraph = z.strictObject({
   loops: z.record(packId, packLoop).default({}),
   /** Where the Harness drives the graph itself (ADR-0016). Absent: every node is the owner's. */
   autopilot: z.array(z.union([forkAutopilot, segmentAutopilot])).max(16).default([]),
+  /** Display only: the Pack's `view.yml` (see `packView`). */
+  view: packView.optional(),
 });
 export type PackGraph = z.infer<typeof packGraph>;
 
@@ -1932,7 +1958,9 @@ export function loadPackFrom(folder: PackFolderSnapshot): Pack {
   const versioned = typeof graphDocument === 'object' && graphDocument !== null && 'schema' in graphDocument;
   const contract = (versioned ? flowPackContract : packContract).parse(parse(contractText));
   const declaration = versioned ? flowSource.parse(graphDocument) : undefined;
-  const graph = declaration ? projectFlowGraph(declaration) : packGraph.parse(graphDocument);
+  const projected = declaration ? projectFlowGraph(declaration) : packGraph.parse(graphDocument);
+  const viewText = folder.text(packFiles.view);
+  const graph = viewText === undefined ? projected : { ...projected, view: packView.parse(parse(viewText)) };
   const compiled = declaration ? compilePackFlow(declaration, folder, contract) : undefined;
   // Where the ids this pack names resolve from, computed once and carried on the pack (#57): its own
   // folder first, the bundle's second. Every caller that resolves a rule or a chooser at run time
@@ -2014,6 +2042,22 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   if (contract.id !== id) broken(packFiles.contract, `declares id "${contract.id}", but it is installed as "${id}"`);
   if (graph.id !== id) broken(packFiles.graph, `declares id "${graph.id}", not "${id}"`);
   if (graph.version !== contract.version) broken(packFiles.graph, `is version ${graph.version} while ${packFiles.contract} is version ${contract.version}`);
+  if (graph.view !== undefined) {
+    const nodeIds = new Set(graph.nodes.map((node) => node.id));
+    const stationIds = new Set<string>();
+    for (const station of graph.view.stations) {
+      if (stationIds.has(station.id)) broken(packFiles.view, `declares two stations called "${station.id}"`);
+      stationIds.add(station.id);
+      if (station.checklist.length === 0 && (station.team ?? []).length === 0) broken(packFiles.view, `station "${station.id}" needs a checklist or a team`);
+      for (const id of [...station.checklist.flatMap((line) => line.nodes), ...(station.team ?? []).map((member) => member.node)]) {
+        if (!nodeIds.has(id)) broken(packFiles.view, `station "${station.id}" names "${id}", which is not a node of ${packFiles.graph}`);
+      }
+    }
+    for (const edge of graph.view.edges) for (const end of [edge.from, edge.to]) {
+      if (!stationIds.has(end)) broken(packFiles.view, `edge ${edge.from} -> ${edge.to} names "${end}", which is not a station`);
+    }
+    for (const metric of graph.view.metrics) if (!nodeIds.has(metric.node)) broken(packFiles.view, `metric "${metric.label}" reads "${metric.node}", which is not a node of ${packFiles.graph}`);
+  }
 
   if (contract.goal !== undefined && pack.flowSource === undefined) {
     const used = goalParametersOf(pack);

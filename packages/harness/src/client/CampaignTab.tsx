@@ -13,6 +13,7 @@ import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
 import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
+import { TeamCanvas } from './TeamCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
   TaskSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
@@ -277,7 +278,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
                     ? `The installed Pack ${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`} does not match the version${packVersion === undefined ? '' : ` ${packVersion}`} this Campaign ran; the reference graph cannot be shown.`
                     : context?.reason ?? 'Reading the reference graph…'}</p>
               </div>
-            : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
+            : methodReference?.view !== undefined
+              ? <TeamCanvas runId={runId} graph={methodReference} tools={context?.method?.contract.tools} view={view} stale={stale} reducedMotion={reducedMotion} />
+              : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />
         ) : view === undefined

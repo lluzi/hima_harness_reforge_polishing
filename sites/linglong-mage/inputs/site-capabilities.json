@@ -1,0 +1,9 @@
+{
+  "schema": "mage.site-capabilities/1",
+  "mage": {
+    "executable": ["/data/eda/project/hima_harness/mage-inputs/bin/mage-xvfb.sh"],
+    "setupScript": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012/setup.linglong.bash",
+    "env": {"MAGE_HOME": "/data/eda/software/eda_tools/empyrean/mage-eautorefine-20261012",
+            "EMPYREAN_LICENSE_FILE": "59003@localhost"}
+  }
+}

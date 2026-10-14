@@ -1,0 +1,6 @@
+id: priority-all-placed
+version: "1"
+title: Every Group-placed (priority) mark in the best state is actually placed
+requires: [{ type: mage_priority_unplaced_count }]
+subject: { type: mage_priority_unplaced_count }
+predicate: { op: eq, threshold: 0, unit: count }

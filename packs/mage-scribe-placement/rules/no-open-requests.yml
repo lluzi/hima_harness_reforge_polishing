@@ -1,0 +1,17 @@
+id: no-open-requests
+version: "1"
+# I3/N3: `evaluate-placement` evaluates this rule against the DELIVERED
+# state as a COMPOSITE, not only the `mage_open_request_count` Measure named
+# in `subject`/`predicate` below. It FAILs when the final round-decision
+# still carries open Requests OR outstanding Decision Requests, OR the best
+# round's own reviews carried any consumer hard-fail Finding, OR the final
+# `decide-round` recorded any review in `skippedReviews` (a wrong-snapshot or
+# wrong-slot review means a consumer was never evaluated). The
+# `subject`/`predicate` below describe only the `mage_open_request_count == 0`
+# component; `evaluate_placement` (tasks.py) owns the full composite. A
+# quantified trade-off is a complete delivery with `goalMet` false, never a
+# silent PASS.
+title: No open Request, Decision Request, skipped review, or best-state hard fail remains against the delivered state
+requires: [{ type: mage_open_request_count }]
+subject: { type: mage_open_request_count }
+predicate: { op: eq, threshold: 0, unit: count }

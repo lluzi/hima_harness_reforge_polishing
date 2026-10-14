@@ -11,6 +11,7 @@ import { launchRetainedJob, prepareRetainedJob, reconnectRetainedJob, retainedJo
 import type { JobIdentity } from './ledger.js';
 import { createTaskResult, validateTaskInput, taskJsonValue, taskDiagnostic, type JsonValue, type TaskContract, type TaskIdentity, type TaskLocalSchemas, type TaskResult, type TaskToolOutput, type TaskDiagnostic } from './task-contract.js';
 import { jsonDigest, type EffectAdmission, type EffectResourceClaim, type RunStore } from './run-store.js';
+import { noteResidentActivity } from './resident-activity.js';
 import { canonicalEngineeringJson, planEngineeringTask, stageEngineeringTask, writeEngineeringRequest, waitEngineeringReceipt, readEngineeringState, readEngineeringOwned, readEngineeringDelivery, materializeEngineeringResult, type EngineeringTaskIdentity, type EngineeringTaskPlan, type EngineeringRequest, type EngineeringDelivery } from './engineering-executor.js';
 
 /** Frozen in every task-effect identity. Bump it whenever an adapter's invocation or collection
@@ -394,6 +395,7 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
       const identity=fresh(),held=decodeResident(prepared);
       const job=await reconnectRetainedJob(identity.site,(receipt??held.job) as unknown as JobIdentity);
       const state=await readEngineeringState(identity.site,held.plan.taskDir,held.plan.taskId);
+      if(state?.activity!==undefined)noteResidentActivity(identity.run.id,identity.execution.nodeId,state.activity);
       if(state?.phase==='waiting') {
         // Snapshot is an idempotent same-task filesystem operation, not another native prompt.
         const candidate=pathsOf(identity.site).join(String(held.plan.envelope.workspace),held.plan.capability.delivery.candidate);

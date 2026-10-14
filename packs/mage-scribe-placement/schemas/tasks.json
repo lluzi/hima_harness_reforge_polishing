@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1}
+      }
+    },
+    "readerValue": {
+      "type": "object",
+      "required": ["type", "unit", "value"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "unit": {"type": "string", "minLength": 1},
+        "value": {"type": ["number", "null"]},
+        "unknownReason": {"type": "string"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "required": ["contentSha256", "values"],
+      "properties": {
+        "contentSha256": {"type": "string", "minLength": 1},
+        "values": {"type": "array", "items": {"$ref": "#/$defs/readerValue"}}
+      }
+    },
+    "resident-output": {
+      "type": "object",
+      "required": ["observations", "engineering"],
+      "properties": {
+        "observations": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/observation"}},
+        "engineering": {
+          "type": "object",
+          "required": ["outcome", "summary", "stopReason"],
+          "properties": {
+            "outcome": {"type": "string", "enum": ["completed", "best-effort", "blocked"]},
+            "summary": {"type": "string"},
+            "stopReason": {"type": "string"}
+          }
+        }
+      }
+    },
+
+    "prepare-case-input": {
+      "type": "object",
+      "required": ["MAGE_CASE_MANIFEST", "CONSUMER_CONTEXT", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "properties": {
+        "MAGE_CASE_MANIFEST": {"type": "string", "minLength": 1},
+        "CONSUMER_CONTEXT": {"type": "string", "minLength": 1},
+        "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
+        "TARGET_DROPPED": {"type": "number"},
+        "MAX_TARGET_DISTANCE_UM": {"type": "number"},
+        "MAX_ORDER_DEVIATION": {"type": "number"}
+      }
+    },
+    "prepare-case-output": {
+      "type": "object",
+      "required": ["MAGE_CASE_MANIFEST", "CONSUMER_CONTEXT", "SITE_CAPABILITIES", "readinessId", "startSnapshotSha256"],
+      "properties": {
+        "MAGE_CASE_MANIFEST": {"type": "string"},
+        "CONSUMER_CONTEXT": {"type": "string"},
+        "SITE_CAPABILITIES": {"type": "string"},
+        "readinessId": {"type": "string", "minLength": 1},
+        "startSnapshotSha256": {"type": "string", "minLength": 1}
+      }
+    },
+
+    "measure-incumbent-input": {
+      "type": "object",
+      "required": ["CASE", "INCUMBENT_COMPARISON"],
+      "properties": {
+        "CASE": {"$ref": "#/$defs/prepare-case-output"},
+        "INCUMBENT_COMPARISON": {"type": "string", "enum": ["retained", "native"]}
+      }
+    },
+    "measure-incumbent-output": {
+      "type": "object",
+      "required": ["incumbentId", "snapshotSha256", "metrics", "evidence", "nativeRequested"],
+      "properties": {
+        "incumbentId": {"type": "string", "minLength": 1},
+        "snapshotSha256": {"type": "string", "minLength": 1},
+        "metrics": {"type": "object"},
+        "evidence": {"type": "string", "const": "modelled"},
+        "nativeRequested": {"type": "boolean"}
+      }
+    },
+
+    "engineer-place-input": {
+      "type": "object",
+      "required": ["ROUND", "SITE_CAPABILITIES", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "properties": {
+        "ROUND": {"type": "integer", "minimum": 1},
+        "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
+        "TARGET_DROPPED": {"type": "number"},
+        "MAX_TARGET_DISTANCE_UM": {"type": "number"},
+        "MAX_ORDER_DEVIATION": {"type": "number"}
+      }
+    },
+
+    "review-input": {
+      "type": "object",
+      "required": ["ROUND"],
+      "properties": {"ROUND": {"type": "integer", "minimum": 1}}
+    },
+
+    "decide-round-input": {
+      "type": "object",
+      "required": [
+        "ROUND", "CANDIDATE", "REVIEW_LITHO_PIE", "REVIEW_METROLOGY", "REVIEW_ALIGNMENT", "REVIEW_WAT",
+        "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"
+      ],
+      "properties": {
+        "ROUND": {"type": "integer", "minimum": 1},
+        "CANDIDATE": {"$ref": "#/$defs/resident-output"},
+        "REVIEW_LITHO_PIE": {"$ref": "#/$defs/resident-output"},
+        "REVIEW_METROLOGY": {"$ref": "#/$defs/resident-output"},
+        "REVIEW_ALIGNMENT": {"$ref": "#/$defs/resident-output"},
+        "REVIEW_WAT": {"$ref": "#/$defs/resident-output"},
+        "TARGET_DROPPED": {"type": "number"},
+        "MAX_TARGET_DISTANCE_UM": {"type": "number"},
+        "MAX_ORDER_DEVIATION": {"type": "number"}
+      }
+    },
+    "decide-round-output": {
+      "type": "object",
+      "required": ["route", "nextRound", "best", "openRequestCount", "decisionRequestCount", "stopReason"],
+      "properties": {
+        "route": {"type": "string", "enum": ["continue", "stop"]},
+        "nextRound": {
+          "type": "object",
+          "required": ["round"],
+          "properties": {"round": {"type": "integer", "minimum": 0}}
+        },
+        "best": {"type": ["object", "null"]},
+        "openRequestCount": {"type": "integer", "minimum": 0},
+        "decisionRequestCount": {"type": "integer", "minimum": 0},
+        "decisionRequests": {"type": "array"},
+        "stopReason": {"type": "string"}
+      }
+    },
+
+    "evaluate-placement-input": {
+      "type": "object",
+      "required": ["DECISION", "INCUMBENT", "TARGET_DROPPED", "MAX_TARGET_DISTANCE_UM", "MAX_ORDER_DEVIATION"],
+      "properties": {
+        "DECISION": {"$ref": "#/$defs/decide-round-output"},
+        "INCUMBENT": {"$ref": "#/$defs/measure-incumbent-output"},
+        "TARGET_DROPPED": {"type": "number"},
+        "MAX_TARGET_DISTANCE_UM": {"type": "number"},
+        "MAX_ORDER_DEVIATION": {"type": "number"}
+      }
+    },
+    "evaluate-placement-output": {
+      "type": "object",
+      "required": ["goalMet", "metrics", "incumbent", "comparison", "rules", "unknowns", "decisionRequests", "domainReport"],
+      "properties": {
+        "goalMet": {"type": "boolean"},
+        "metrics": {"type": "object"},
+        "incumbent": {"type": "object"},
+        "comparison": {"type": "object"},
+        "rules": {"type": "object"},
+        "unknowns": {"type": "array"},
+        "decisionRequests": {"type": "array"},
+        "domainReport": {"type": "object"}
+      }
+    },
+
+    "deliver-input": {
+      "type": "object",
+      "required": ["EVALUATION"],
+      "properties": {"EVALUATION": {"$ref": "#/$defs/evaluate-placement-output"}}
+    },
+    "deliver-output": {
+      "type": "object",
+      "required": ["goalMet", "reportPath", "packagePath"],
+      "properties": {
+        "goalMet": {"type": "boolean"},
+        "reportPath": {"type": "string", "minLength": 1},
+        "packagePath": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

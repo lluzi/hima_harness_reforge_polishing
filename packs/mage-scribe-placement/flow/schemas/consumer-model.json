@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "version", "scope", "requirements"],
+  "additionalProperties": false,
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "properties": {
+        "blockTypes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "priority": {"type": "boolean"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"type": "string", "enum": ["rule-file", "customer", "public-research", "assumption"]},
+        "ref": {"type": "string"}
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["id", "kind", "predicate", "parameters", "source", "confidence"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "enum": ["hard", "cost"]},
+        "predicate": {"type": "string", "minLength": 1},
+        "parameters": {"type": "object"},
+        "cost": {"type": "string"},
+        "source": {"$ref": "#/$defs/source"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.consumer-model/1"},
+    "id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "scope": {"$ref": "#/$defs/scope"},
+    "enabled": {"type": "boolean"},
+    "requirements": {"type": "array", "items": {"$ref": "#/$defs/requirement"}}
+  }
+}

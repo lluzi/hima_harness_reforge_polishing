@@ -17,6 +17,7 @@
     "test/contract/branch-autopilot.host.test.ts",
     "test/contract/campaign-file.host.test.ts",
     "test/contract/canvas-layout.test.ts",
+    "test/contract/team-view.test.ts",
     "test/contract/checkpoint-resume.host.test.ts",
     "test/contract/client-style.test.ts",
     "test/contract/command.test.ts",
@@ -70,6 +71,7 @@
     "test/contract/library-intelligence-pack.test.ts",
     "test/contract/live-check-continuation.test.ts",
     "test/contract/local-database.host.test.ts",
+    "test/contract/mage-scribe-placement.test.ts",
     "test/contract/moment.host.test.ts",
     "test/contract/native-session.host.test.ts",
     "test/contract/native-task-effects.host.test.ts",
@@ -145,7 +147,8 @@
   "atcs-dry": [
     "test/contract/atcs-known-collateral-durable.host.test.ts",
     "test/contract/atcs-resident-durable.host.test.ts",
-    "test/contract/libinsight-resident-durable.host.test.ts"
+    "test/contract/libinsight-resident-durable.host.test.ts",
+    "test/contract/mage-scribe-placement-durable.host.test.ts"
   ],
   "live-model": [
     "test/contract/child-compaction.live.test.ts"

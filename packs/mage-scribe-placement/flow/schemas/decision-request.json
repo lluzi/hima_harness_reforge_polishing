@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "required": ["schema", "id", "round", "question", "options", "blockingRequests"],
+  "additionalProperties": false,
+  "$defs": {
+    "option": {
+      "type": "object",
+      "required": ["id", "description", "perConsumer", "nativeChecked", "snapshotSha256"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "perConsumer": {"type": "object"},
+        "nativeChecked": {"type": "boolean"},
+        "snapshotSha256": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.decision-request/1"},
+    "id": {"type": "string", "minLength": 1},
+    "round": {"type": "integer", "minimum": 0},
+    "question": {"type": "string"},
+    "options": {"type": "array", "items": {"$ref": "#/$defs/option"}},
+    "blockingRequests": {"type": "array", "items": {"type": "string"}}
+  }
+}

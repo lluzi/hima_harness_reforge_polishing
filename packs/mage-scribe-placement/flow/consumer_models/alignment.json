@@ -1,0 +1,36 @@
+{
+  "schema": "mage.consumer-model/1",
+  "id": "alignment",
+  "version": "0.1.0",
+  "scope": {"blockTypes": ["ASML_AL", "CANON_AL"]},
+  "requirements": [
+    {
+      "id": "no-rotation",
+      "kind": "hard",
+      "predicate": "orientation_unchanged",
+      "parameters": {},
+      "source": {"type": "customer", "ref": "asml-canon-job-notes"},
+      "confidence": "high"
+    },
+    {
+      "id": "edit-on-move",
+      "kind": "cost",
+      "predicate": "edit_on_move",
+      "parameters": {
+        "window_um": {"from": "consumerContext", "key": "alignment.capture_range_um"}
+      },
+      "cost": "ASML/Canon job edit per alignment mark moved beyond the capture range",
+      "source": {"type": "customer", "ref": "asml-canon-job-notes"},
+      "confidence": "medium"
+    },
+    {
+      "id": "canon-side-rule",
+      "kind": "hard",
+      "predicate": "not_implemented",
+      "parameters": {},
+      "cost": "Canon side rules and TVPA separation (>= 4000 um good, < 1000 um unusable) are not implemented in 0.1.0",
+      "source": {"type": "assumption", "ref": "consumer-requirements-research#11"},
+      "confidence": "low"
+    }
+  ]
+}

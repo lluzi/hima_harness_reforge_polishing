@@ -1,0 +1,353 @@
+# MAGE scribe-line placement 0.2.0 test record
+
+## L1 — Pack-local unittest on synthetic fixtures
+
+`/usr/bin/python3 -m unittest discover -s flow/tests -t flow` (run from the Pack root)
+
+184 tests pass as of Task 14 (2026-10-12): Python 3.9.6 (Mac, `/usr/bin/python3`) --
+
+```
+Ran 184 tests in 9.650s
+
+OK
+```
+
+-- and, confirming the same suite on the Linglong resident container's own interpreter (rsync to
+`luzi@192.168.50.41:/home/luzi/tmp/mage-pack-flow-check/`, then `podman run ... edarunner:alma8`
+per Task 14's brief), Python 3.8.16 (Linglong resident container) --
+
+```
+Python 3.8.16
+Ran 184 tests in 15.274s
+
+OK
+```
+
+-- with no Python-version-specific skips or `--pattern` narrowing on either side: both runs
+discover and execute the identical `flow/tests/` tree. (174 tests were recorded here as of Task 13;
+184 covers Task 13's own additions plus Task 14's ordinary/grouped drop split, `referenceMethod`,
+and the native-DBU-export correction below.)
+
+### Fix round 1 (Task 14 review findings, 2026-10-12)
+
+187 tests pass after the fix-round additions: Python 3.9.6 (Mac, `/usr/bin/python3`) --
+
+```
+Ran 187 tests in 9.909s
+
+OK
+```
+
+The three new tests, confirmed to fail against the pre-fix code before the fix landed: two in
+`flow/tests/test_pla.py` (`test_native_dbu_pla_group_points_stay_um_not_dbu`,
+`test_write_pla_dbu_emits_group_points_in_um_not_dbu`) pin the "Group target points are always
+micrometres, even in a DBU PLA" rule that previously had no test asserting it either way; one in
+`flow/tests/test_cli_tasks.py`
+(`test_relative_out_dir_and_pla_resolve_against_workspace_not_cwd`) pins `mage-round`/`candidate`
+resolving a relative `--out-dir`/`--pla`/`--round-dir` against `WORKSPACE`, not the process cwd.
+
+Task 14 also fixed a real export-shape bug surfaced mid-task by a verified reading of a real MAGE
+export on the Oct-12 build (the Site's native baseline PLA): `-savePlaDBU` is a DBU-header line a
+saved PLA itself carries, not a second export command with its own output path; `-saveMark`'s own
+DBU shape braces the header (`smPInstMgr -savePlaDBU {10000}`), uses `-box` (not `-umBox`) in the
+three replay `foreach` forms, and keeps `pinstGroupProperty` Group target points in micrometres
+even though the box coordinates are integer DBU. `flow/mage_placement/pla.py` (`_detect_units`,
+`_read_groups`, `write_pla`'s `units="dbu"` path), `flow/templates/export.tcl` (dropped the fake
+`-savePlaDBU {path}` catch), `flow/mage_placement/native/session.py` (dropped `exportDbuPla` from
+`run_round`'s result), and `flow/tests/standin_mage.py` (the stand-in's own `-saveMark` now emits
+the real DBU shape by round-tripping the µm candidate through `pla.read_pla`/`write_pla`) were all
+updated and are covered by `test_pla.py`'s new native-DBU-shape tests and
+`test_native_session.py`'s updated export assertion. Export shape verified against a real native
+export on 2026-10-12.
+
+### Fix round 2 (final whole-branch review findings, 2026-10-12)
+
+209 tests pass after the final-review fixes (C1-C4, I1-I6), on both interpreters with no skips or
+`--pattern` narrowing — Python 3.9.6 (Mac, `/usr/bin/python3`):
+
+```
+Ran 209 tests in 11.086s
+
+OK
+```
+
+— and the identical `flow/tests/` tree on the Linglong resident container (rsync to
+`luzi@192.168.50.41:/home/luzi/tmp/mage-pack-flow-check/`, then `podman run ... edarunner:alma8`),
+Python 3.8.16:
+
+```
+Python 3.8.16
+Ran 209 tests in 17.223s
+
+OK
+```
+
+The 209 covers Fix round 1's 187 plus the final-review additions: per-consumer Finding/Request id
+patterns and cross-consumer Ledger coverage (`test_records.py`); round-limit-first routing, the
+first round counting as improved, ranking by Reader values, a blocked candidate never becoming
+best, and a mis-bound review being skipped (`test_rounds.py`); unbound-target and all-unbound-side
+unknowns (`test_metrics.py`); the fail-closed Reader, script re-hash, inventory conservation and
+blocked-candidate reading (`test_readers.py`); the experiment forbidden-marker and duplicate-verify
+refusals (`test_native_session.py`); the candidate inventory refusal, the no-export blocked candidate and delivered-state
+`no-open-requests` (`test_cli_tasks.py`).
+
+### Fix round 2 — second final-review round (N1–N6, 2026-10-12)
+
+218 tests pass on both interpreters (Python 3.9.6 Mac `/usr/bin/python3`: `Ran 218 tests in
+13.710s / OK`; the identical `flow/tests/` tree on the Linglong resident container, Python 3.8.16:
+`Ran 218 tests in 21.599s / OK`). The 218 adds, on top of the 209 the first final-review round
+produced:
+
+- **N1 (blocked candidate → empty review):** a non-completed candidate carries no `files.snapshot`;
+  the review Reader accepts an empty review (`candidateOutcome: blocked`, zero Findings/Requests)
+  bound to the candidate id without reading a snapshot, `decide` routes `continue` while a round
+  remains, and a later completed round is delivered — `test_cli_tasks.py::test_blocked_round1_then_completed_round2_delivers`,
+  `test_readers.py::test_blocked_candidate_reads_all_unknown_without_error`.
+- **N2 (inventory conservation by Group):** `snapshot.check_inventory_conservation` (shared by the
+  candidate assembler and the Reader) conserves the Fixed id set, the Group-label set, and the
+  per-Group in-group instance count — admitting a re-suffixed/re-mastered priority instance and
+  ordinary fill, refusing a deleted or extra priority instance —
+  `test_readers.py::test_inventory_*`. Verified on the real staged frame case (Linglong 3.8
+  container): the vendor start vs the customer post-refine incumbent is **admitted**, and the same
+  export with one priority Fit row deleted is **refused**.
+- **N3 (skipped review is not clean):** a wrong-snapshot or wrong-slot review blocks the clean stop
+  and FAILs `no-open-requests`/`goalMet`; the review Reader refuses a review whose `consumer` ≠ its
+  delivery slot — `test_rounds.py::test_review_bound_to_wrong_snapshot_is_skipped_and_recorded`
+  (now asserts `continue`), `test_cli_tasks.py::test_review_delivered_into_wrong_slot_is_refused_by_reader`.
+- **N4 (round-scoped ids + Ledger validation):** Request ids are `R-<consumer>-<round>-<n>`, and
+  `ledger-entry.request` is pattern-checked — `test_records.py` covers the schema and id patterns.
+  The candidate assembler's and the Reader's own re-validation of every Ledger entry (a mis-scoped
+  Request id refused on each side) is covered by
+  `test_cli_tasks.py::test_candidate_refuses_an_invalid_ledger_entry` and
+  `::test_reader_refuses_an_invalid_ledger_entry` (added in fix round 3; `test_records.py` tests only
+  the schema, not the two route-side validation loops).
+- **N5 (dropped target excluded, not unknown):** a target whose Fit is a known drop is reported in
+  `droppedTargets` and excluded, so one dropped priority mark keeps target/order facts known;
+  unknown only when a Fit appears nowhere — `test_metrics.py::DroppedTargetKnownTest`.
+
+Metrics remain self-reported by the candidate and Reader-recomputed only for the emitted facts
+(N6); the authoritative delivered numbers come from the external evaluation in the live-proof
+procedure (kit `tools/evaluate.py` + cold replay), not this suite. Residual R1: the session log now
+records `exportSha256`/`stdoutSha256` binding the export to the logged run; the Reader does not yet
+re-derive the verify headers from `out/stdout.log` (the Task 16 cold replay covers this).
+
+### Fix round 3 — third final-review round (N7 + I-1 + m1 tests, 2026-10-12)
+
+230 tests pass on both interpreters (Python 3.9.6 Mac `/usr/bin/python3` and the Linglong resident
+container Python 3.8.16). The 230 adds, on top of the 218:
+
+- **N7 (ordinary population conserved by count):** `measure-incumbent` records the incumbent export's
+  ordinary (non-group) population as `ordinaryPopulation` in `state/incumbent.json`;
+  `snapshot.check_inventory_conservation` gains a required `ordinary_population` argument, and both
+  the candidate assembler and the Reader read it from `state/incumbent.json` and refuse an export
+  whose ordinary Fits + ordinary drops do not equal it (`ordinary population <n> != incumbent <m>`),
+  never the start's rule-derived pending count. A no-fill export, an export missing one ordinary drop
+  and an export with one extra ordinary instance are refused; a filled export with the same
+  population is admitted — `test_readers.py::test_inventory_refuses_a_no_fill_export`,
+  `::test_inventory_refuses_an_export_missing_one_ordinary_drop`,
+  `::test_inventory_refuses_an_extra_ordinary_instance`,
+  `::test_inventory_admits_a_filled_export_with_the_same_population`, and end-to-end
+  `test_cli_tasks.py::test_no_fill_round_refused_for_missing_ordinary_population`.
+- **m1 test gaps closed:** the Reader's blocked-candidate review refusals (non-empty findings, wrong
+  candidateId, wrong round — `test_cli_tasks.py::test_blocked_review_refusals_by_reader`); the
+  `evaluate_placement` skipped-review FAIL (`EvaluatePlacementSkippedReviewTest`); the candidate and
+  Reader Ledger-validation loops (the two `*_invalid_ledger_entry` tests above); and the
+  `check_inventory_conservation` Fixed-set and Group-label clauses
+  (`test_readers.py::test_inventory_refuses_a_dropped_fixed_id`,
+  `::test_inventory_refuses_a_renamed_group_label`).
+
+The `candidate` assembler now evaluates the round's own `completed` flag before parsing the export or
+checking inventory, so a non-completed round yields a blocked candidate even if a partial export
+exists (m4). The I-1 regression (real-case counts re-entered `SPEC.md`/`snapshot.py`) is scrubbed to
+neutral wording.
+
+### `apply-plan` subcommand (2026-10-12)
+
+238 tests pass on the Mac (`/usr/bin/python3` 3.9.6: `Ran 238 tests in 19.548s / OK`). The 8 new
+tests are `flow/tests/test_apply_plan.py`: on the synthetic start state, `plan-slots` for a lane
+that needs a move then `apply-plan`, with `pla.read_pla` of the output confirming the moved Fit's
+along-start equals the plan's position, its size and cross coordinates unchanged, and every Group,
+Fixed instance, drop and unmoved Fit identical to the start; two plans moving the same id refused;
+an unknown id refused; a Fixed-instance move refused; an infeasible plan refused; a non-priority
+(empty-`inGroup`) move refused without `--movable-nonpriority` and accepted with it; an empty plan
+list refused (at least one `--plan` required); and the candidate replayed through the stand-in
+(`mage-round --fill` then `candidate`) whose `displacement.movedCount` equals the `apply-plan`
+summary's `movedCount`.
+
+**First live rounds (2026-10-12, real resident + real MAGE, no customer data).** Round 1's anchor
+replay reproduced the native incumbent correctly through the Pack. Round 2 then ran `plan-slots` on
+the FILLED export snapshot — where every ordinary structure is an immovable intruder — concluded "0
+feasible slots", replayed the incumbent again, and declined every Request. The planner does find
+windows, but only on the priority-only start state (the controller's own sweep on the real start
+snapshot found 15 windows for the dropped long keys at a 100 µm budget and 33 at 1000 µm; the
+baseline fill had dropped 26 such keys). Fix: `apply-plan` (so the Engineer never hand-edits PLA
+text) plus the knowledge rewrite making "always plan on `state/start-snapshot.json`, never a filled
+export" explicit, with the exact `plan-slots` → `apply-plan` → `mage-round --fill` → `candidate`
+command sequence.
+
+### Reserve-first method (2026-10-12)
+
+261 tests pass on the Mac (`/usr/bin/python3` 3.9.6). The new coverage pins the controller's proven
+reserve-first method (`ceiling4.py`) at the smallest layers. `flow/tests/test_reserve_first.py`
+unit-tests each rule directly on synthetic inputs: `lanes.interior_along_range` shrinks an interior
+lane by one scribe width, keeps full range on a shared-exterior lane and on an occupied edge band,
+and is not blocked by a mid-lane occupant; `apply_plan._follow_groups` shifts a moved mark's Group
+point by its delta and leaves an ungrouped move's groups alone; `_collect_reserve_keys` transposes a
+wide VERT key to a lane box, keeps a HORIZ key, drops a sub-length key and files a non-exclusive
+`scribeInc` as `ANY`; `_reserve` lands keys at slot starts with 1 um clearance and the exact cross
+band and reports opposite-axis/overflow keys unreserved; and `_straddle_guard` nudges a straddler
+clear, reverts one it cannot nudge and removes the key it blocks, and leaves a non-straddler alone.
+`test_cli_plan_slots.py` adds `--interior` shrinking an interior lane and keeping a shared-exterior
+lane's range. `test_apply_plan.py` adds the CLI `--follow-groups`/`--keep-group-points` default,
+`--reserve` placing the VERT key at a slot start, reporting a VERT key unreserved in an H stage,
+refusing a mixed-axis reserve, requiring `--reserve-length-um`, and one full V-then-H reserve-first
+sequence through the stand-in whose candidate validates with the reserved key in the export.
+
+### Task 17 — delivery rules measure the Run's own contribution (2026-10-13)
+
+282 tests pass on the Mac (`/usr/bin/python3` 3.9.6: `Ran 282 tests … / OK`). The Site runs Python
+3.8; that run is verified by the controller on the Site, not on this Mac. This is the current
+authoritative count, superseding the per-round counts above. The new coverage:
+
+- **Part A (target-distance regressions).** `metrics.target_regressions` over the four classes
+  (within / regression / pre-existing / improved-still-over) and its unknown propagation
+  (`test_metrics.py::TargetRegressionsTest`); the candidate Reader's
+  `mage_target_over_limit_new_count` reads 0 for an unmoved pre-existing over-limit mark and 1 for a
+  moved one (`test_cli_tasks.py::CliRouteTest::test_target_over_limit_new_count_counts_only_moved_marks`);
+  `target-limit-met` passing on pre-existing excess and failing on a regression
+  (`EvaluatePlacementTargetLimitTest`).
+- **Part B (native anchor).** `decide()` records the anchor on a round-1 reproduction and carries it,
+  and does not record it when round 1 moved a mark (`test_rounds.py`); `no-native-violation` PASSes
+  when the best rows equal the anchor, FAILs when a type grows, and falls back to the absolute total
+  with no anchor (`EvaluatePlacementNativeAnchorTest`).
+- **Part C (consumer severities).** Goal-first limit resolution, the three target-distance
+  classifications, the consumer-limit cost Finding, and no hard target_distance fail on the incumbent
+  (`test_consumers.py::TargetDistanceRegressionTest`); WAT's dropped key is a `cost` Finding
+  (`test_wat_dropped_key_is_cost`); the two end-to-end CLI routes updated to the new severities.
+- **Part E (fix-before-merge Minors).** The Reader's own N7 refusal of a no-fill export against the
+  incumbent anchor with the candidate-side check skipped (I-2,
+  `test_reader_refuses_a_no_fill_export_against_the_incumbent_anchor`, pinned by a `None`-anchor
+  mutation); a present `state/incumbent.json` with no integer `ordinaryPopulation`, and (Reader only)
+  an absent one, refused (m13); the Reader blocked-review `candidateOutcome` clause and the
+  Fixed-`extra` and each Group-label-direction inventory clauses (m12); and a non-completed, no-fill
+  round whose partial export would fail inventory yielding `blocked` rather than an inventory raise
+  (m14). The synthetic fixture's OVL_F `setNumMin` is 3 (one more than MAGE places), so start-pending
+  ordinary (4) is strictly greater than the incumbent population (3), and the stand-in fills to the
+  incumbent's own per-base population.
+
+The native route under test is the Site's proven one: exactly three native checks — `OVERLAP`
+(`frbCheckOverlap`), `SPACE` (`frbCheckSpace`), `BOUNDARY` (`frbCheckBoundary`) — each report
+sliced from MAGE's own `MAGE_VERIFY_*` stdout markers and counted by the `instances=<N>` header a
+SPACE row being one offending instance, not a pair. The old ten-way `smVerify -checkType` family is
+D-status only (unqualified) and this Pack no longer runs it.
+
+## L0/L2 — Host contract test
+
+`pnpm run build && pnpm run test:local -- --files test/contract/mage-scribe-placement.test.ts`
+
+`test/contract/mage-scribe-placement.test.ts` (registered in `test/contract-groups.json`'s `local`
+group) checks `loadPack`'s structure — the entry sequence, the one `repeat` block with its
+`carry`/`stop`/`maxIterations`, the five resident tools with their `outsourcing` blocks and
+licences, the Goal/strategy knobs, the absence of `agentTeams`/Workshops — and `checkPack` against a
+synthetic local Site declaring `licences: {mage: 1}`, confirming Reader argv and emitted facts line
+up with the rules' own `requires`.
+
+## L2 dry route — passes on the real Host
+
+`export HIMA_POSTGRES_RUNTIME=.../.hima-tmp/dbos-migration/u2/runtime-final CI=true
+PATH="$HOME/.local/node24/bin:$PATH"; pnpm run build && node scripts/run-contract-tests.mjs
+atcs-dry --files test/contract/mage-scribe-placement-durable.host.test.ts`
+
+Task 10 built `test/fixtures/mage-resident-dry/{prepare.py,acp.py}` (an ACP v1 stand-in Engineer
+and the four stand-in consumers, driving the real, deployed `mage_placement_cli.py` through the
+exact `snapshot`/`mage-round`/`candidate` and `evaluate`/`review` sequences
+`flow/tests/test_cli_tasks.py` already proves) and `test/contract/support/mage-resident-durable-
+worker.ts` / `test/contract/mage-scribe-placement-durable.host.test.ts` (registered under
+`test/contract-groups.json`'s `atcs-dry` group), booting the real Host in-process against a
+genuine private-resident-workspace-vs-Campaign-workspace layout (never the Pack-local test's
+single shared workspace): `sandbox.kind: none, testOnly: true`, `HIMA_RESIDENT_TESTING=1`, the real
+`sites/linglong-atcs28/templates/resident-engineering-wrapper.py`, the real
+`tools/read-mage.py`/`readers/*.yml` Readers, zero model calls, zero commercial EDA.
+
+Both scripted scenarios ran their full round sequence and committed through evaluation and
+delivery:
+
+(Run ids below vary per run; the structural facts — task/round/Job counts, route, goalState,
+failing rules — are stable and are what this section records. Latest fix-round-2 dry route:
+converge `run-b0e2e51f…`, conflict `run-eed2a6bb…`.)
+
+- **converge**: round 1 continues (`openRequestCount: 2`), round 2 stops —
+  `"no consumer hard failure and no open request"`. 16 task executions (`2 + 2×6 + 2`), 10
+  `engineering-*` Jobs and 10 `reader-mage-*` Jobs launched (one of each per resident task
+  execution), `productModelCalls: 0`, `goalState: "met"`, `deliver.value.goalMet === true`, all
+  seven delivery rules PASS, `openRequests: 0`, `decisionRequests: 0`.
+- **conflict**: KEY_V never gets placed; WAT keeps filing a `place` Request on
+  it, litho-pie's own hard fail clears in round 2 (a genuine improvement) then it files a `keep`
+  Request on the very same target from round 2 on — a real cross-consumer conflict every round
+  after. Round 2 continues (improved), round 3 continues (no change from round 2, not improved
+  alone), and round 4 stops on the **round limit** — with C2's round-limit-first route order the
+  stop reason is `"round limit reached"`, reached before the two-consecutive-stalls rule it would
+  otherwise have matched. 28 task executions (`2 + 4×6 + 2`), 20 `engineering-*` and 20
+  `reader-mage-*` Jobs, `productModelCalls: 0`, `goalState: "not-met"`, `goalMet: false`,
+  `openRequests: 2`, `decisionRequests: 1`. Two rules FAIL: `drops-within-goal` (KEY_V stays
+  dropped) and `no-open-requests` (the delivered state still carries open Requests and a Decision
+  Request — I3/N3's composite, no longer a silent PASS); every other rule PASSes. This matches the
+  Pack's own `decide()` math for this request/ledger shape
+  (`flow/tests/test_cli_tasks.py:test_standing_conflict_runs_to_the_round_limit_with_a_decision_request`).
+
+Getting here surfaced two real integration gaps the Pack-local single-workspace test could not
+have caught, both now fixed:
+
+1. **Session-log delivery path** (fixed in `89c17979`): `mage-round`/`candidate` now write/record
+   the MAGE session log at `placement/round-NN/session.jsonl` (inside the Engineer's own
+   `artifactPrefix`) instead of a cumulative `state/session.jsonl` the resident delivery mechanism
+   could never actually publish into the Campaign workspace — the `placement-candidate` Reader
+   failed every round with `mage_candidate_error_count: 1` until this landed. (This Pack change
+   also needed `chmod +x` on the stand-in ACP/`prepare.py` scripts — the wrapper execs
+   `native.executable` directly, and without the bit the ACP process never started, with no
+   diagnostic beyond the task sitting `"waiting"` forever.)
+2. **`decisionRequests` dropped from the committed decide-round output** (fixed in `b6f40829`):
+   `task-decide-round`'s own `TASK_OUTPUT` value carried `decisionRequestCount` (a number) but not
+   the actual `decisionRequests` list; `evaluate_placement` reads `decision.get("decisionRequests",
+   [])` from that same committed value (never the on-disk `state/round-decision.json`), so it
+   always silently defaulted to empty — the delivered report never carried a real Decision Request
+   even when one was genuinely open. `test_cli_tasks.py`'s own conflict test never asserted
+   `evaluation["decisionRequests"]`, only `goalMet`/`rules`; this dry route's own
+   `decisionRequests.length >= 1` assertion on the conflict scenario is what caught it. Full
+   diagnosis of both gaps is in `.superpowers/sdd/task-10-report.md`.
+
+First live-route finding (2026-10-12, real MAGE/OpenCode, no customer names): the Litho/PIE
+consumer's `resident-delivery.json` listed two support artifacts it did not own —
+`placement/round-01/out/snapshot.json` and `state/round/placement-candidate.json` (copies of
+inputs it had read, not files it wrote) — which the Host's `materializeEngineeringResult` refuses
+because they fall outside the consumer's own `reviews/litho-pie/` `artifactPrefix`, leaving the Run
+waiting with no message back to the resident. Knowledge-only fix: `review-protocol.md`,
+`placement-playbook.md`, and every `role-*.md` now state the rule explicitly with a correct
+example for both a consumer and the Engineer (no Pack code change).
+
+Also needed: Site `capacity.parallelJobs: 2`, not 1 (the dispatch's own first guess) — each
+resident task's retained engineering Job holds one job slot until its own `release()` runs right
+after its result is collected, but collecting that result launches a second, concurrent Job (its
+own Reader); with `parallelJobs: 1` every resident task after the first permanently refuses with
+reason `site-capacity` and the whole repeat stalls on round 1 forever (confirmed by inspecting
+`task.projection.reason` on a live, unmolested run before raising it to 2).
+
+## L1 machine-local — not run from this repository
+
+The real frame-case package evaluation (start/incumbent snapshot reproduction, full target binding,
+the beyond-limit and drop counts, the two-slot V-lane planner result) is Task 11's work, run by
+the planning session under
+`/Users/lluzi/code/mage_smart_conflict_resolver/research/mage-resident-agent-20261012/pack-eval/`,
+outside this repository. No customer data and no result from that evaluation appear here.
+
+## L4 (S2) — native qualification
+
+Not started. Needs a user-opened MAGE licence window and Site `linglong-mage` work agreed with the
+user (capability JSON, licence-mode guard, display, case copy) before any D-status command in
+`knowledge/mage-capabilities.md` can move from documented to qualified.
+
+## No model, no EDA
+
+Every test above runs with `/usr/bin/python3` 3.9.6 against synthetic fixtures and (for native-round
+behaviour) `flow/tests/standin_mage.py`. No DeepSeek/OpenCode session, no licensed MAGE binary, and
+no GUI ran anything recorded in this document.

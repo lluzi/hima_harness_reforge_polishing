@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": ["schema", "stage", "limitHardness", "id"],
+  "additionalProperties": false,
+  "$defs": {
+    "consumerValue": {
+      "type": "object",
+      "required": ["value", "source", "confirmedBy", "confirmedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": ["string", "null"]},
+        "source": {"type": "string", "minLength": 1},
+        "confirmedBy": {"type": "string", "minLength": 1},
+        "confirmedAt": {"type": "string", "minLength": 1}
+      }
+    },
+    "consumerValues": {
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema": {"type": "string", "const": "mage.consumer-context/1"},
+    "id": {"type": "string", "minLength": 1},
+    "stage": {"type": "string", "enum": ["npi", "frozen"]},
+    "limitHardness": {"type": "string", "enum": ["hard", "preference", "unknown"]},
+    "litho-pie": {"$ref": "#/$defs/consumerValues"},
+    "metrology": {"$ref": "#/$defs/consumerValues"},
+    "alignment": {"$ref": "#/$defs/consumerValues"},
+    "wat": {"$ref": "#/$defs/consumerValues"},
+    "bonding": {"$ref": "#/$defs/consumerValues"}
+  }
+}

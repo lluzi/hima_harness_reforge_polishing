@@ -517,4 +517,6 @@ export interface DurableTaskView {
   /** This invocation still belongs to the accepted method revision, independently of output success. */
   readonly current?: boolean;
   readonly sourceFactIds: readonly string[];
+  /** A running resident task's live display facts (`resident-activity.ts`), when its wrapper published any. */
+  readonly activity?: import('./resident-activity.js').ResidentActivity;
 }
