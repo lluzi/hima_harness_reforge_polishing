@@ -172,9 +172,26 @@ def _compact_pitch_like(pre, case, table, objective, target, pairs, zones):
     lay = pre
     binding = []
     status = "optimal"
-    order = [("y", target[1] if target else None),
-             ("x", target[0] if target else None)]
-    for axis, tgt in order:
+    if objective == "min-pitch":
+        # y to its minimum first: a shorter cell frees x (chamfers and crossings move), then x to
+        # its target (else its minimum), then y back out to its target, returning height the
+        # ratio and transmittance can use.
+        order = [("y", None), ("x", target[0] if target else None)]
+        if target and target[1]:
+            order.append(("y", target[1]))
+    else:
+        order = [("y", target[1] if target else None),
+                 ("x", target[0] if target else None)]
+    for i, (axis, tgt) in enumerate(order):
+        if objective == "min-pitch" and i == 2:
+            # re-expansion is optional: keep the minimum when it fails or y is already at target
+            w_h = lay.pitch(case)
+            if w_h[1] >= tgt - 1e-6:
+                break
+            out, info = compact.compact(lay, axis, case, table, target_pitch=tgt, pairs=tuple(pairs))
+            if info["status"] == "optimal" and out is not None:
+                lay = out
+            break
         if objective == "legalise":
             out, info = compact.compact(lay, axis, case, table, objective="legalise",
                                         legalise_zones=zones, pairs=tuple(pairs))

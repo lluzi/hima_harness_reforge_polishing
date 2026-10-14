@@ -159,6 +159,22 @@ def _history_ids(workspace, include_original):
     return ids
 
 
+def _candidate_features(cdir, gds, case):
+    """Features of every labelled net pair of one candidate, cached beside its GDS by sha256 (the
+    pooled model fits on all pairs, and a candidate's geometry never changes)."""
+    sha = core.sha256_file(gds)
+    cache = os.path.join(cdir, "features.json")
+    if os.path.exists(cache):
+        doc = core.read_json(cache)
+        if doc.get("gdsSha256") == sha:
+            return doc["features"]
+    lay = layout.load_gds(gds, case, top=_cand_top(case))
+    ne = nets.extract(lay, case)
+    feats = attribution.features(ne, case, attribution.named_pairs(ne))
+    core.write_json(cache, {"gdsSha256": sha, "features": feats})
+    return feats
+
+
 def _history_rows(workspace, case, pairs, include_original=True):
     rows = []
     for cid in _history_ids(workspace, include_original):
@@ -171,9 +187,7 @@ def _history_rows(workspace, case, pairs, include_original=True):
         caps = _caps_from_receipt(workspace, receipt)
         if not caps:
             continue
-        lay = layout.load_gds(gds, case, top=_cand_top(case))
-        feats = attribution.features(nets.extract(lay, case), case, pairs)
-        rows.append((feats, caps))
+        rows.append((_candidate_features(cdir, gds, case), caps))
     return rows
 
 
@@ -436,8 +450,9 @@ def cmd_map(workspace):
     core.write_json(_state_path(ws, "model.json"), model)
     pred = attribution.predict(model, feats) if model.get("pairs") else {}
 
-    _, ix = compact.compact(lay, "x", case, ctx.table, objective="pitch")
-    _, iy = compact.compact(lay, "y", case, ctx.table, objective="pitch")
+    # The bound in the order min-pitch uses: y to its minimum, then x from that layout.
+    ylay, iy = compact.compact(lay, "y", case, ctx.table, objective="pitch")
+    _, ix = compact.compact(ylay if ylay is not None else lay, "x", case, ctx.table, objective="pitch")
     pitch_x = {"pitchUm": ix.get("pitch"), "binding": ix.get("binding") or []}
     pitch_y = {"pitchUm": iy.get("pitch"), "binding": iy.get("binding") or []}
 

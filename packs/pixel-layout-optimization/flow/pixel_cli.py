@@ -118,6 +118,10 @@ def _cmd_plan_check(workspace, args):
     }, sort_keys=True, indent=1))
     if schema_errors:
         raise PixelError("bad-plan", "plan is not schema-valid: " + "; ".join(schema_errors))
+    if errors:
+        # The checked copy is written so the Reader can name the errors, but the resident must see
+        # a refusal: a plan with errors is judged by nothing.
+        raise PixelError("bad-plan", "plan has %d error(s): %s" % (len(errors), "; ".join(errors)))
 
 
 def _cmd_markers(workspace, args):

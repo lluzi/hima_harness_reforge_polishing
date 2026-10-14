@@ -79,28 +79,39 @@ class AttributionTest(unittest.TestCase):
         self.assertAlmostEqual(top["overlapUm2"], 8.0, places=4)
 
     # -- surrogate fit ------------------------------------------------------- #
-    def test_fit_recovers_planted_coefficients(self):
+    def test_pooled_fit_recovers_shared_coefficients_from_one_candidate(self):
+        """Coefficients per layer-pair feature are shared by every net pair, so one extraction
+        with many pairs determines them; each pair keeps its own offset."""
         from pixelopt import attribution
-        rng = random.Random(1234)
-        coef = {"ov:A-B": 2.5, "fr1.0:A-B": 0.4}
-        intercept = 1.2
-        rows = []
-        for _ in range(10):
-            f = {"ov:A-B": rng.uniform(1.0, 5.0),
-                 "fr1.0:A-B": rng.uniform(0.0, 3.0)}
-            cap = intercept + coef["ov:A-B"] * f["ov:A-B"] + coef["fr1.0:A-B"] * f["fr1.0:A-B"]
-            rows.append(({"P|Q": f}, {"P|Q": cap}))
-        model = attribution.fit(rows, [("P", "Q")])
-        info = model["pairs"]["P|Q"]
-        self.assertFalse(info["reduced"])
-        self.assertGreater(info["r2"], 0.95)
-        self.assertAlmostEqual(info["coef"]["ov:A-B"], 2.5, delta=0.05)
-        self.assertAlmostEqual(info["coef"]["fr1.0:A-B"], 0.4, delta=0.05)
-        self.assertAlmostEqual(info["intercept"], 1.2, delta=0.1)
-
-        # the model is JSON-serialisable (state/model.json)
+        rng = random.Random(3)
+        feats, caps = {}, {}
+        for i in range(30):
+            pair = "N%02d|M%02d" % (i, i)
+            f = {"ov:A-B": rng.uniform(0.0, 5.0), "fr1.0:A-B": rng.uniform(0.0, 8.0),
+                 "ov:C-D": rng.uniform(0.0, 3.0)}
+            feats[pair] = f
+            caps[pair] = 2.5 * f["ov:A-B"] + 0.4 * f["fr1.0:A-B"] + 1.0 * f["ov:C-D"]
+        model = attribution.fit([(feats, caps)], [("N00", "M00")])
+        coef = model["pooled"]["coef"]
+        self.assertAlmostEqual(coef["ov:A-B"], 2.5, delta=0.01)
+        self.assertAlmostEqual(coef["fr1.0:A-B"], 0.4, delta=0.01)
+        self.assertAlmostEqual(coef["ov:C-D"], 1.0, delta=0.01)
+        pred = attribution.predict(model, feats)
+        for pair in feats:
+            self.assertAlmostEqual(pred[pair], caps[pair], delta=1e-6)
         import json
         json.dumps(model)
+
+    def test_offset_absorbs_what_geometry_does_not_explain(self):
+        from pixelopt import attribution
+        rows = []
+        for k in range(4):
+            feats = {"P|Q": {"ov:A-B": 1.0 + k}, "R|S": {"ov:A-B": 2.0 + k}, "T|U": {"ov:A-B": 0.5 + k}}
+            caps = {"P|Q": 2.0 * (1.0 + k) + 0.3, "R|S": 2.0 * (2.0 + k), "T|U": 2.0 * (0.5 + k)}
+            rows.append((feats, caps))
+        model = attribution.fit(rows, [("P", "Q")])
+        self.assertAlmostEqual(model["pairs"]["P|Q"]["offset"], 0.3, delta=0.1)
+        self.assertIsNotNone(model["pairs"]["P|Q"]["rmse"])
 
     def test_predict_matches_the_fitted_rows(self):
         from pixelopt import attribution
@@ -114,22 +125,6 @@ class AttributionTest(unittest.TestCase):
         feats = {"P|Q": {"ov:A-B": 2.0}}
         pred = attribution.predict(model, feats)
         self.assertAlmostEqual(pred["P|Q"], 0.5 + coef * 2.0, delta=0.1)
-
-    def test_fit_falls_back_to_reduced_set_when_short_of_rows(self):
-        from pixelopt import attribution
-        # three features but only two rows -> reduced 3-term model
-        rows = [
-            ({"P|Q": {"ov:A-B": 1.0, "ov:C-D": 2.0, "fr1.0:A-B": 0.5}}, {"P|Q": 5.0}),
-            ({"P|Q": {"ov:A-B": 2.0, "ov:C-D": 1.0, "fr1.0:A-B": 1.0}}, {"P|Q": 6.0}),
-        ]
-        model = attribution.fit(rows, [("P", "Q")])
-        info = model["pairs"]["P|Q"]
-        self.assertTrue(info["reduced"])
-        self.assertEqual(sorted(info["features"]), ["__fr1__", "__fr25__", "__ov__"])
-        # predict still works on the reduced model
-        pred = attribution.predict(model, {"P|Q": {"ov:A-B": 1.0, "ov:C-D": 2.0, "fr1.0:A-B": 0.5}})
-        self.assertIn("P|Q", pred)
-
 
 @unittest.skipUnless(HAVE, "numeric packages not installed")
 class GradientTest(unittest.TestCase):

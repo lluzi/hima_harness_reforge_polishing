@@ -143,6 +143,13 @@ def sites(nets, case):
 # Features
 # --------------------------------------------------------------------------- #
 
+def named_pairs(nets_result):
+    """Every pair of labelled nets (unnamed internal nodes excluded), as "A|B" sorted."""
+    unnamed = set(nets_result.get("unnamed", []))
+    names = sorted(n for n in nets_result.get("nets", {}) if n not in unnamed)
+    return [(names[i], names[j]) for i in range(len(names)) for j in range(i + 1, len(names))]
+
+
 def _norm_pairs(pairs):
     norm = []
     for p in pairs:
@@ -266,24 +273,101 @@ def _fit_pair(rows, pair):
 
 
 def fit(rows, pairs):
-    """Fit the per-pair capacitance surrogate on judged candidates.
+    """Fit the capacitance model on judged candidates.
 
-    ``rows`` is ``[(features_by_pair, caps_fF_by_pair), ...]``. Returns a plain
-    JSON-serialisable dict (written to ``state/model.json``) with, per pair, the
-    NNLS coefficients by feature name, the free intercept, the leave-one-out
-    RMSE and R^2, the row count and whether the reduced feature set was used.
+    ``rows`` is ``[(features_by_pair, caps_fF_by_pair), ...]``; the feature dicts may cover more
+    net pairs than ``pairs`` (ideally every pair of named nets). The model is **pooled**: one
+    non-negative coefficient per feature (layer pair and band), shared by every net pair, because
+    overlap and fringe capacitance per um^2 between two layers does not depend on which nets own the
+    shapes. Every extracted pair of every candidate is a row, so even one extraction determines it.
+    Each net pair then gets an ``offset``: its mean residual over the candidates (what geometry does
+    not explain, e.g. coupling inside a transistor), so the model reproduces the judged points.
+    Gradients come from the pooled coefficients only.
+
+    Returns a JSON-serialisable dict: ``{"pooled": {"coef": {feature: w}}, "pairs": {pair:
+    {"offset", "n", "rmse", "r2", "fitRmse"}}}``. ``rmse``/``r2`` are leave-one-candidate-out when at
+    least three candidates have the pair, else ``None``; ``fitRmse`` is the pooled fit's residual
+    spread for the pair before its offset.
     """
-    model = {"pairs": {}}
-    for a, b in _norm_pairs(pairs):
-        pair = a + "|" + b
-        model["pairs"][pair] = _fit_pair(rows, pair)
+    from scipy.optimize import nnls
+
+    keys = sorted({k for feats, _ in rows for pf in feats.values() for k in pf})
+    pooled_pairs = sorted({p for feats, caps in rows for p in feats if _has_cap(caps, p)})
+
+    def design(sel):
+        X, y, who = [], [], []
+        for ci in sel:
+            feats, caps = rows[ci]
+            for p in pooled_pairs:
+                if p not in feats or not _has_cap(caps, p):
+                    continue
+                X.append([feats[p].get(k, 0.0) for k in keys])
+                y.append(_cap_of(caps, p))
+                who.append((ci, p))
+        return np.array(X, dtype=float).reshape(-1, len(keys)), np.array(y, dtype=float), who
+
+    def solve(sel):
+        X, y, who = design(sel)
+        if len(y) == 0 or not keys:
+            return np.zeros(len(keys)), {}
+        w, _ = nnls(X, y)
+        res = {}
+        for (ci, p), r in zip(who, y - X.dot(w)):
+            res.setdefault(p, []).append(float(r))
+        return w, res
+
+    allc = list(range(len(rows)))
+    w, res = solve(allc)
+    model = {"pooled": {"coef": {k: float(c) for k, c in zip(keys, w) if c > 0}}, "pairs": {}}
+    want = set(a + "|" + b for a, b in _norm_pairs(pairs)) | set(pooled_pairs)
+    for pair in sorted(want):
+        r = res.get(pair, [])
+        info = {"offset": float(np.mean(r)) if r else 0.0, "n": len(r),
+                "fitRmse": float(np.sqrt(np.mean(np.square(r)))) if r else None,
+                "rmse": None, "r2": None}
+        model["pairs"][pair] = info
+    # leave-one-candidate-out: refit without candidate c, offset from the others, predict c
+    errs = {}
+    if len(rows) >= 3:
+        for c in allc:
+            wc, rc = solve([i for i in allc if i != c])
+            feats, caps = rows[c]
+            for p in pooled_pairs:
+                if p not in feats or not _has_cap(caps, p) or not rc.get(p):
+                    continue
+                pred = sum(wc[i] * feats[p].get(k, 0.0) for i, k in enumerate(keys)) + float(np.mean(rc[p]))
+                errs.setdefault(p, []).append((pred - _cap_of(caps, p), _cap_of(caps, p)))
+        for p, e in errs.items():
+            if p in model["pairs"] and len(e) >= 3:
+                d = np.array([x for x, _ in e]); yv = np.array([v for _, v in e])
+                model["pairs"][p]["rmse"] = float(np.sqrt(np.mean(d ** 2)))
+                var = float(np.var(yv))
+                model["pairs"][p]["r2"] = (1.0 - float(np.mean(d ** 2)) / var) if var > 1e-12 else None
     return model
+
+
+def _has_cap(caps, pair):
+    if pair in caps:
+        return True
+    a, b = pair.split("|", 1)
+    return "|".join(sorted((a, b))) in caps
 
 
 def predict(model, feats):
     """Predicted coupling (fF) per net pair for one candidate's ``features``."""
     out = {}
-    for pair, info in model.get("pairs", {}).items():
+    if "pooled" in model:
+        coef = model["pooled"].get("coef", {})
+        for pair, info in model.get("pairs", {}).items():
+            f = feats.get(pair)
+            if f is None:
+                continue
+            val = info.get("offset", 0.0)
+            for name, c in coef.items():
+                val += c * f.get(name, 0.0)
+            out[pair] = float(val)
+        return out
+    for pair, info in model.get("pairs", {}).items():  # per-pair model (older state files)
         if info.get("reduced"):
             f = _reduced_features(feats.get(pair, {}))
         else:

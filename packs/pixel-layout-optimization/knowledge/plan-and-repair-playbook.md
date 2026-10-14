@@ -58,8 +58,10 @@ Run nothing else that touches the layout or the tools.
    - base not clean on the authority deck → one `legalise` point first;
    - `min-pitch` at the Goal's outline, to learn whether the outline is reachable;
    - `min-ratio` at the best reachable outline, under the Goal's limits;
-   - at most one or two `exploratory: true` points (a larger load allowance, a relaxed outline, a
-     capacitor stretch) only to put evidence in the trade-off table.
+   - a relaxed outline after a measured shortfall is an ordinary point (the outline is a target;
+     the delivered layout states its shortfall);
+   - at most one or two `exploratory: true` points (a load allowance above the Goal's) only to put
+     evidence in the trade-off table.
 5. **Choose operators** only where the card's sites say a discrete change is needed. Each has a
    cost (see `pixel-design-space.md`); expect the matching limit rule to judge it.
 6. **Repair** residual markers of a named candidate (see section 6). Preview edits with `try-edit`.

@@ -41,8 +41,8 @@ flow:
     tool: learn-sensitivities
     inputs:
       CARD: {source: committedOutput, taskId: map-design-space, path: []}
-      PROBES: {source: literal, value: 4}
-      STEP: {source: literal, value: 0.1}
+      PROBES: {source: literal, value: 6}
+      STEP: {source: literal, value: 0.25}
     contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-output'}}}
   - kind: repeat
     id: optimise-rounds

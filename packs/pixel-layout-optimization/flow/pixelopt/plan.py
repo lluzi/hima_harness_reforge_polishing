@@ -50,27 +50,15 @@ def _net_universe(manifest):
 def _exceeds_goal(fp, gvalues):
     """True when a front point's own limits are looser than the Goal's.
 
-    A relaxed outline (either pitch larger than the Goal's), a larger load
-    allowance, or a ratio cap above the Goal's ratio target each make the
-    point exploratory — it can never be the delivered layout and exists only
-    for the trade-off table.
+    A larger load allowance than the Goal's makes the point exploratory: it can
+    never be the delivered layout and exists only for the trade-off table.
     """
-    ol = fp.get("outlineUm")
-    gw = _num(gvalues.get("outline_w_um"))
-    gh = _num(gvalues.get("outline_h_um"))
-    if isinstance(ol, (list, tuple)) and len(ol) >= 2:
-        w, h = _num(ol[0]), _num(ol[1])
-        if w is not None and gw is not None and w > gw + 1e-9:
-            return True
-        if h is not None and gh is not None and h > gh + 1e-9:
-            return True
+    # The outline and the ratio are Goal targets, not hard limits: a point asking for a larger
+    # outline (a relaxed pitch after a measured shortfall) or a ratio cap is an ordinary point and
+    # can be delivered with its shortfall stated. Only a looser hard limit makes a point exploratory.
     la = _num(fp.get("loadAllowancePct"))
     gla = _num(gvalues.get("load_allowance_pct"))
     if la is not None and gla is not None and la > gla + 1e-9:
-        return True
-    cap = _num(fp.get("ratioCapPct"))
-    gcap = _num(gvalues.get("ratio_target_pct"))
-    if cap is not None and gcap is not None and cap > gcap + 1e-9:
         return True
     return False
 

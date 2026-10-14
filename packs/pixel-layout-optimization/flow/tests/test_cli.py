@@ -85,7 +85,7 @@ class CliTest(unittest.TestCase):
         plan_path = os.path.join(self.tmp, "plan.json")
         core.write_json(plan_path, _plan(base="nope"))
         rc, out, _ = self._run(["plan-check", self.tmp, "--plan", plan_path])
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 3)  # a plan with errors is refused, with the errors printed
         self.assertGreater(json.loads(out)["errorCount"], 0)
 
     def test_plan_round_fallback(self):

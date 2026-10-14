@@ -161,8 +161,14 @@ def _best_effort(history, goal_resolved):
             continue
         vmap = _as_map(row.get("values", {}))
         failures = len(_hard_failures(vmap, goal_resolved))
+        # Among equally failing candidates, the one with fewer authority markers is closer to legal
+        # (this sum ranks candidates only; no judged value is a sum across tiles).
+        markers = 0.0
+        for tile in ("1x1", "2x2", "3x3"):
+            n = _num(vmap.get("pixel_drc_authority_" + tile))
+            markers += n if n is not None else _INF
         ratio = _num(vmap.get("pixel_ratio_judged_pct"))
-        key = (failures, ratio if ratio is not None else _INF, _area(vmap))
+        key = (failures, markers, ratio if ratio is not None else _INF, _area(vmap))
         if best_key is None or key < best_key:
             best, best_key = row, key
     return best
