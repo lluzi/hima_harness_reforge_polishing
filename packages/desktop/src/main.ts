@@ -15,7 +15,7 @@
 // host is ready, no IPC for the remote page. The launch, readiness and stop patterns are in
 // `host-launch.ts`, which the contract suite boots hosts with too.
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, shell, type Session } from 'electron';
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, libInsightCodeDirectory, packagedTrialDshHome, postgresRuntimeDirectory, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, type SpawnedHost, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
+import { bundledPackIds } from './bundled-packs.js';
 import { startDriver, type DriverSession } from './driver.js';
 
 /** The product's name: the window title, the menu's application name, and what the dock says. */
@@ -640,8 +641,12 @@ async function start(): Promise<void> {
     // the user and are never replaced just because the App version changed.
     if (app.isPackaged) {
       const {installPackMethod}:Pick<typeof import('@hima/harness'),'installPackMethod'> = await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/release.js')).href);
-      for (const id of ['custom-cell-fmax-dtco', 'xtop-timing-closure', 'libinsight-analysis']) {
-        const source = path.join(checkoutRoot(), 'packs', id);
+      const packsRoot = path.join(checkoutRoot(), 'packs');
+      const available = readdirSync(packsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+      // HIMA_BUNDLED_PACKS overrides the seed list; an unknown id throws here and the catch below
+      // shows it at startup rather than opening a Home quietly missing a method.
+      for (const id of bundledPackIds(env, available)) {
+        const source = path.join(packsRoot, id);
         const destination = path.join(prepared.home, 'hima/packs', id);
         if (!existsSync(destination)) {
           installPackMethod({ from: source, to: destination });

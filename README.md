@@ -68,6 +68,8 @@ pnpm run desktop
 
 打包的 App 只携带 `packages/desktop/libinsight.pin.json` 固定 commit 的 `app/` 与 `libinsight/`：打包时加 `--libinsight-source /Users/lluzi/code/lib_insight`。LibInsight 升级后，把 pin 的 `commit` 改为新的完整 SHA、提交并重新打包即可。
 
+打包的 App 向每个新版本 home 播种方法 Pack，默认 `custom-cell-fmax-dtco,xtop-timing-closure,libinsight-analysis`（只装缺失的，绝不替换已有 Pack）。`HIMA_BUNDLED_PACKS` 覆盖该列表：逗号分隔的 Pack id（空串表示不播种）；用于让 demo kit 只带所需 Pack，避免 Guide 跑偏。未知 id 在启动时报错并列出 `packs/` 现有 id，不静默跳过。
+
 Ledger 版本为 26；旧版本 home 仍会被明确拒绝，不会自动改写。完整离线版本 19～25 的 `storages/hima_ledger.json` 快照可显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
 
 ```sh
