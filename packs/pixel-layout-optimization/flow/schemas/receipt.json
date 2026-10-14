@@ -1,0 +1,55 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.receipt/1",
+ "title": "pixel.receipt/1",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["schema", "candidate", "mode", "reports", "options", "freshLibrary", "declaredChanges", "seconds"],
+ "properties": {
+  "schema": {"const": "pixel.receipt/1"},
+  "candidate": {"type": "string", "minLength": 1},
+  "mode": {"enum": ["full", "drc"]},
+  "reports": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["kind", "deck", "tile", "path", "sha256", "rc"],
+    "properties": {
+     "kind": {"enum": ["drc", "lvs", "rce", "gdsin", "geometry"]},
+     "deck": {"type": ["string", "null"]},
+     "tile": {"type": ["string", "null"]},
+     "path": {"type": "string", "minLength": 1},
+     "sha256": {"type": ["string", "null"]},
+     "rc": {"type": ["integer", "null"]}
+    }
+   }
+  },
+  "options": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["decks", "lvsDeck", "schematic", "extraction"],
+   "properties": {
+    "decks": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["authority", "reference"],
+     "properties": {
+      "authority": {"type": ["string", "null"]},
+      "reference": {"type": ["string", "null"]}
+     }
+    },
+    "dbPrecision": {"type": "boolean"},
+    "ruleRecords": {"type": "object", "additionalProperties": true},
+    "lvsDeck": {"type": ["string", "null"]},
+    "schematic": {"type": ["string", "null"]},
+    "cstSchematicTemplate": {"type": ["string", "null"]},
+    "extraction": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+    "versions": {"type": "object", "additionalProperties": true}
+   }
+  },
+  "freshLibrary": {"type": "boolean"},
+  "declaredChanges": {"type": "object", "additionalProperties": true},
+  "seconds": {"type": "number", "minimum": 0}
+ }
+}
