@@ -143,6 +143,16 @@ def sites(nets, case):
 # Features
 # --------------------------------------------------------------------------- #
 
+def canon(key):
+    """The canonical form of a net-pair key: "A|B" with the names sorted."""
+    a, b = key.split("|", 1)
+    return "|".join(sorted((a, b)))
+
+
+def _canon_map(d):
+    return {canon(k): v for k, v in (d or {}).items()}
+
+
 def named_pairs(nets_result):
     """Every pair of labelled nets (unnamed internal nodes excluded), as "A|B" sorted."""
     unnamed = set(nets_result.get("unnamed", []))
@@ -151,13 +161,17 @@ def named_pairs(nets_result):
 
 
 def _norm_pairs(pairs):
+    """(a, b) per pair, sorted, deduplicated: net-pair keys are canonical ("A|B" with A < B), as
+    RCEResult reports them, so a pair named either way is one pair everywhere."""
     norm = []
     for p in pairs:
         if isinstance(p, str):
             a, b = p.split("|", 1)
         else:
             a, b = p[0], p[1]
-        norm.append((a, b))
+        a, b = sorted((a, b))
+        if (a, b) not in norm:
+            norm.append((a, b))
     return norm
 
 
@@ -173,7 +187,8 @@ def _pair_features(G, a, b, order):
                 ov = ga.intersection(gb).difference(scr).area
                 f["ov:" + key] = f.get("ov:" + key, 0.0) + float(ov)
             for d0, d1 in ((0.0, 1.0), (1.0, 2.5)):
-                fr = _fringe(ga, gb, scr, d0, d1)
+                # symmetric in the two nets: the band around each net's shapes meeting the other's
+                fr = 0.5 * (_fringe(ga, gb, scr, d0, d1) + _fringe(gb, ga, scr, d0, d1))
                 name = "fr%s:" % d1 + key
                 f[name] = f.get(name, 0.0) + float(fr)
     return f
@@ -291,6 +306,7 @@ def fit(rows, pairs):
     """
     from scipy.optimize import nnls
 
+    rows = [(_canon_map(feats), _canon_map(caps)) for feats, caps in rows]
     keys = sorted({k for feats, _ in rows for pf in feats.values() for k in pf})
     pooled_pairs = sorted({p for feats, caps in rows for p in feats if _has_cap(caps, p)})
 
@@ -356,9 +372,11 @@ def _has_cap(caps, pair):
 def predict(model, feats):
     """Predicted coupling (fF) per net pair for one candidate's ``features``."""
     out = {}
+    feats = _canon_map(feats)
     if "pooled" in model:
         coef = model["pooled"].get("coef", {})
         for pair, info in model.get("pairs", {}).items():
+            pair = canon(pair)
             f = feats.get(pair)
             if f is None:
                 continue
@@ -368,6 +386,7 @@ def predict(model, feats):
             out[pair] = float(val)
         return out
     for pair, info in model.get("pairs", {}).items():  # per-pair model (older state files)
+        pair = canon(pair)
         if info.get("reduced"):
             f = _reduced_features(feats.get(pair, {}))
         else:

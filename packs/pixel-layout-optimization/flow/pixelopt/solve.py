@@ -47,7 +47,8 @@ _ZONE_BUFFER_UM = 0.3
 # --------------------------------------------------------------------------- #
 
 def _pk(a, b):
-    return "%s|%s" % (a, b)
+    # Net-pair keys are canonical everywhere: the two names sorted, as RCEResult pairs are.
+    return "|".join(sorted((a, b)))
 
 
 def _storage_pairs(case):
@@ -386,7 +387,9 @@ def _solve_point(point, ctx):
     geom["declaredChanges"] = dict(ctx["declared"])
     core.write_json(os.path.join(cand_dir, "geometry.json"), geom)
 
-    predicted = _predict(ctx["model"], final, case)
+    # Predict from the layout exactly as written (the judged artifact), not the in-memory copy.
+    written = layout.load_gds(os.path.join(cand_dir, "pixel.gds"), case, top=case.raw["candidateTopCell"])
+    predicted = _predict(ctx["model"], written, case)
     w, h = final.pitch(case)
     meta = {
         "id": cid,

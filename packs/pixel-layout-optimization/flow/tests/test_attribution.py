@@ -52,11 +52,11 @@ class AttributionTest(unittest.TestCase):
         from shapely.geometry import box
         pairs = [("S", "AN")]
         f1 = attribution.features(self._nets(), self.case, pairs)
-        ov1 = f1["S|AN"]["ov:PolySD-GateB"]
+        ov1 = f1["AN|S"]["ov:PolySD-GateB"]
         # widen the aggressor so the visible overlap grows
         wider = {"AN": [("GateB", box(1.0, 0.0, 6.0, 4.0))]}
         f2 = attribution.features(self._nets(wider), self.case, pairs)
-        ov2 = f2["S|AN"]["ov:PolySD-GateB"]
+        ov2 = f2["AN|S"]["ov:PolySD-GateB"]
         self.assertAlmostEqual(ov1, 8.0, places=4)
         self.assertAlmostEqual(ov2, 12.0, places=4)
         self.assertGreater(ov2, ov1)
@@ -67,7 +67,7 @@ class AttributionTest(unittest.TestCase):
         # a third net's conductor on GateA (strictly between PolySD and GateB)
         screen = {"X": [("GateA", box(0.0, 0.0, 6.0, 4.0))]}
         f = attribution.features(self._nets(screen), self.case, [("S", "AN")])
-        self.assertAlmostEqual(f["S|AN"].get("ov:PolySD-GateB", 0.0), 0.0, places=6)
+        self.assertAlmostEqual(f["AN|S"].get("ov:PolySD-GateB", 0.0), 0.0, places=6)
 
     def test_sites_reports_storage_node_coupling(self):
         from pixelopt import attribution
@@ -98,7 +98,7 @@ class AttributionTest(unittest.TestCase):
         self.assertAlmostEqual(coef["ov:C-D"], 1.0, delta=0.01)
         pred = attribution.predict(model, feats)
         for pair in feats:
-            self.assertAlmostEqual(pred[pair], caps[pair], delta=1e-6)
+            self.assertAlmostEqual(pred[attribution.canon(pair)], caps[pair], delta=1e-6)
         import json
         json.dumps(model)
 
@@ -167,19 +167,19 @@ class GradientTest(unittest.TestCase):
         # a 1 um gap on the same layer. A surrogate whose coupling rises with the
         # Metal-Metal fringe must have a POSITIVE gradient for the R1 right edge:
         # moving it toward DL (+x) lengthens the facing and raises the coupling.
-        model = {"pairs": {"R1|DL": {
+        model = {"pairs": {"DL|R1": {
             "coef": {"fr1.0:Metal-Metal": 1.0}, "intercept": 0.0,
             "features": ["fr1.0:Metal-Metal"], "reduced": False,
             "n": 1, "rmse": None, "r2": None}}}
         comp_model = compact.build(self.lay, self.case, self.table)
         out = attribution.gradients(model, self.lay, self.case, comp_model,
                                     [("R1", "DL")], axis="x")
-        self.assertIn("R1|DL", out["base"])
+        self.assertIn("DL|R1", out["base"])
         self.assertGreaterEqual(out["differenced"], 1)
         self.assertLessEqual(out["differenced"], out["considered"])
         jr = self._right_edge_var(comp_model, (1.0, 33.0, 12.0, 34.0), 12.0)
-        self.assertIn(jr, out["gradients"]["R1|DL"])
-        self.assertGreater(out["gradients"]["R1|DL"][jr], 0.0)
+        self.assertIn(jr, out["gradients"]["DL|R1"])
+        self.assertGreater(out["gradients"]["DL|R1"][jr], 0.0)
 
 
 if __name__ == "__main__":

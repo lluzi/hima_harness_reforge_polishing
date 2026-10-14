@@ -96,7 +96,8 @@ def _cand_dir(root, cand):
 
 
 def _pk(a, b):
-    return "%s|%s" % (a, b)
+    # canonical net-pair key, as RCEResult and the model use
+    return "|".join(sorted((a, b)))
 
 
 def _model_pairs(case):
@@ -159,6 +160,9 @@ def _history_ids(workspace, include_original):
     return ids
 
 
+FEATURES_VERSION = 2  # bump whenever attribution.features changes what it measures
+
+
 def _candidate_features(cdir, gds, case):
     """Features of every labelled net pair of one candidate, cached beside its GDS by sha256 (the
     pooled model fits on all pairs, and a candidate's geometry never changes)."""
@@ -166,12 +170,12 @@ def _candidate_features(cdir, gds, case):
     cache = os.path.join(cdir, "features.json")
     if os.path.exists(cache):
         doc = core.read_json(cache)
-        if doc.get("gdsSha256") == sha:
+        if doc.get("gdsSha256") == sha and doc.get("featuresVersion") == FEATURES_VERSION:
             return doc["features"]
     lay = layout.load_gds(gds, case, top=_cand_top(case))
     ne = nets.extract(lay, case)
     feats = attribution.features(ne, case, attribution.named_pairs(ne))
-    core.write_json(cache, {"gdsSha256": sha, "features": feats})
+    core.write_json(cache, {"gdsSha256": sha, "featuresVersion": FEATURES_VERSION, "features": feats})
     return feats
 
 
