@@ -179,6 +179,17 @@ contract tests.
   - `productModelCalls == 0`;
   - the workspace-path asserts in `read-requirements.py`, `read-plan.py` and `read-verify.py` pass.
 
+**Site on Linglong.**
+- Point the Site at the HUG wrapper folder, deployed 2026-10-14 at
+  `/data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01-hug/`. It holds the HUG-DBOS
+  template (sha256 prefix `02a46760`, the same as MAGE's) and `engineering-capabilities-ctu01.json`.
+- In `site.yml`, set `engineeringCapabilities` to that folder. In `permit.yml`, update `allowedReadRoots`
+  and `allowedWrappers` to it.
+- The old `resident-engineering-ctu01/` stays for the pre-DBOS App.
+- **Known gap.** The demo wrapper also passed the Host artifact prefix to the agent and captured its
+  reply (`da9c859f`); the HUG template has neither. MAGE meets its Goal without them. Check AndesCell
+  agents in the live rehearsal before porting either.
+
 **Never commit real data.**
 - `knowledge/design-notes.md` and `mock-eda/share/designs/openc910/**` stay git-ignored.
 - Run `git diff --cached | grep -E -i '<foundry prefixes>'` before every commit; the integrator gives the pattern.
