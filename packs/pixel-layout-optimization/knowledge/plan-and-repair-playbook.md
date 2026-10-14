@@ -105,7 +105,7 @@ declared schematic change and needs `cst_ceiling_ff` above 0.
 |---|---|---|
 | `model-gap` | A whole rule family the compactor does not model | Nothing in the plan fixes it; report it in `expect`. It is a Pack defect. |
 | `exact-pair` | One place, legal in the start layout, broken by the move | Add the proposed pair constraint to `pairConstraints` and re-solve from the same base. |
-| `bounded-edit` | Three or fewer left | Add edits (each ≤ 1 µm, never a channel or capacitor vertex, ≤ 12 per plan). Preview with `try-edit` until the preview is clean. |
+| `bounded-edit` | Three or fewer left | `markers` proposes edits (each ≤ 1.5 µm, never a channel or capacitor vertex, ≤ 12 per plan) and checks each against the authority deck: copy `bestEdits` (or `combined.edits` when it is lower), or write your own and preview with `try-edit` until clean. |
 | `binding-chain` | At the binding chain; the solve was infeasible there | Step the outline back with a new front point, or propose a topology operator if allowed. |
 
 ## 7. Prohibitions

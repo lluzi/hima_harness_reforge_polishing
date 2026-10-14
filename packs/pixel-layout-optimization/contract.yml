@@ -127,7 +127,7 @@ tools:
     sites say a discrete change is needed - a cst-stretch is a declared schematic change and needs
     cst_ceiling_ff above 0, a contact-move needs topologyMoves allowed. Repair a named candidate's
     residual markers by their class: add the proposed pair constraint for an exact-pair, add bounded
-    edits (each at most 1 um, never a channel or capacitor vertex, at most 12) for a bounded-edit and
+    edits (each at most 1.5 um, never a channel or capacitor vertex, at most 12) for a bounded-edit and
     preview them with try-edit until clean, step the outline back for a binding-chain, and report a
     model-gap in expect since nothing in the plan fixes it. Your permitted CLI calls are card,
     history, show, markers, try-edit (previews, never credited and never judged) and plan-check; you

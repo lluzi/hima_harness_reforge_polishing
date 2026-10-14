@@ -128,6 +128,24 @@ class NumCmdTest(unittest.TestCase):
         # Cs pair (storage node to storage net) was fitted from the stand-in caps.
         self.assertIn("S|VP", model["pairs"])
 
+    def test_fit_points_open_markers_at_the_best_candidate(self):
+        """The card is made once from the original; after a round the open markers the resident
+        repairs must be the best candidate's (flow4 kept showing the original's)."""
+        from pixelopt import judge, manifest, numcmd
+        numcmd.cmd_prepare(self.ws)
+        numcmd.cmd_mutants(self.ws)
+        self._judge_original_and_record()
+        sitecaps = manifest.load_sitecaps(self.built["sitecaps"])
+        judge.judge_one(os.path.join(self.ws, "cands", "mutant-space"), self.ws,
+                        self.case, sitecaps, "full")
+        dpath = os.path.join(self.ws, "state", "round-decision.json")
+        with open(dpath, "w") as fh:
+            json.dump({"round": 1, "best": {"id": "mutant-space"}, "openMarkers": []}, fh)
+        numcmd.cmd_fit(self.ws)
+        marks = _load(dpath)["openMarkers"]
+        self.assertTrue(marks)
+        self.assertEqual({m["candidate"] for m in marks}, {"mutant-space"})
+
     # -- num-try-edit ------------------------------------------------------- #
     def test_try_edit_runs_authority_drc(self):
         from pixelopt import numcmd

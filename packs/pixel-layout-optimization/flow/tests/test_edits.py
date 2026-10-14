@@ -49,13 +49,13 @@ class EditsTest(unittest.TestCase):
         # grid snap (0.005 um)
         self.assertAlmostEqual((moved[0] / self.case.grid_um) % 1.0, 0.0, places=6)
 
-    def test_refuses_more_than_one_micron(self):
+    def test_refuses_more_than_the_edit_bound(self):
         from pixelopt import edits
         from pixelopt.core import PixelError
         idx = self._find("Metal", (1.0, 33.0, 12.0, 34.0))
         with self.assertRaises(PixelError) as cm:
             edits.apply_edits(self.lay, [{"layer": "Metal", "polygon": idx,
-                                          "vertices": [0], "dx": 1.5, "dy": 0.0}],
+                                          "vertices": [0], "dx": 2.0, "dy": 0.0}],
                               self.case)
         self.assertEqual(cm.exception.code, "bad-plan")
 

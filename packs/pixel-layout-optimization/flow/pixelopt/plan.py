@@ -142,8 +142,8 @@ def check(plan, readiness, history_ids, round=None):
             errors.append("edit %d names unknown layer %r" % (i, edit.get("layer")))
         for axis in ("dx", "dy"):
             v = _num(edit.get(axis))
-            if v is not None and abs(v) > 1.0 + 1e-9:
-                errors.append("edit %d %s %s exceeds the 1 um bound" % (i, axis, v))
+            if v is not None and abs(v) > core.EDIT_BOUND_UM + 1e-9:
+                errors.append("edit %d %s %s exceeds the %g um bound" % (i, axis, v, core.EDIT_BOUND_UM))
 
     return errors
 

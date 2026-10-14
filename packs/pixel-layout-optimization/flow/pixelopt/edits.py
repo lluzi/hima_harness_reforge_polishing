@@ -4,7 +4,7 @@ A plan may carry a few hand edits that move vertices or an edge of a named
 polygon by a small amount, to repair residual markers the compactor cannot
 reach. The rules of the Run contract (SPEC "What a Run may change"):
 
-* each edit moves by at most 1 um;
+* each edit moves by at most ``core.EDIT_BOUND_UM`` (1.5 um);
 * no edit touches a vertex that lies on a channel (poly AND gate) or inside the
   storage-capacitor marker region;
 * at most 12 edits per call;
@@ -26,7 +26,7 @@ from . import core
 from .core import PixelError
 
 _MAX_EDITS = 12
-_MAX_STEP_UM = 1.0
+_MAX_STEP_UM = core.EDIT_BOUND_UM
 _STEP_EPS = 1e-6
 _TOUCH = 1e-4
 

@@ -48,7 +48,7 @@ declares a change.
 of a channel or of the storage capacitor, on the manifest's `gridUm`; the two pitches; and the
 declared operators of a plan (`shield`, `cst-stretch`, `opening-shift`, `band-trim`, and
 `contact-move` only when `topologyMoves` is `allowed`). A bounded edit moves a vertex or an edge by
-at most 1 µm, never a vertex of a channel or of the storage capacitor, and is logged; a plan holds at
+at most 1.5 µm (the designer-style repairs that cleaned the first real case moved up to 1.45 µm), never a vertex of a channel or of the storage capacitor, and is logged; a plan holds at
 most 12 of them. An original that is not clean on the authority deck is legalised first: the
 `legalise` front point solves the LP with every violated pair held at its full rule distance and
 minimum movement, and bounded edits repair what the LP cannot reach.

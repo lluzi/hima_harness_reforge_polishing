@@ -406,7 +406,8 @@ def _floor(sites_list, pred, case, nets_result):
     return {"ctFf": round(ct, 6), "note": "estimated: channel-adjacent device-stack coupling"}
 
 
-def _open_markers(workspace, cand, cand_dir, lay, case, table, start_marks=()):
+def _folded_markers(cand_dir, lay, case):
+    """A judged candidate's authority-deck markers (single cell and 3x3) folded onto one cell."""
     marks = []
     out = os.path.join(cand_dir, "out")
     for tile in ("1x1", "3x3"):
@@ -414,9 +415,13 @@ def _open_markers(workspace, cand, cand_dir, lay, case, table, start_marks=()):
         if os.path.exists(db):
             with open(db, "r", encoding="utf-8", errors="replace") as fh:
                 marks.extend(markers_parse(fh.read()))
-    if not marks:
+    return markers_fold(marks, lay.outline(case)) if marks else []
+
+
+def _open_markers(workspace, cand, cand_dir, lay, case, table, start_marks=()):
+    folded = _folded_markers(cand_dir, lay, case)
+    if not folded:
         return []
-    folded = markers_fold(marks, lay.outline(case))
     classified = markers_classify(folded, table, start_marks, ())
     return [{"candidate": cand, "rule": m["rule"], "class": m["class"],
              "bbox": m["bbox"]} for m in classified[:8]]
@@ -483,6 +488,31 @@ def cmd_map(workspace):
 # num-fit
 # --------------------------------------------------------------------------- #
 
+def _refresh_open_markers(ws, case, table):
+    """Point the round decision's and the card's open markers at the current best candidate (the
+    card is made once, from the original; the resident repairs the best candidate)."""
+    dpath = _state_path(ws, "round-decision.json")
+    decision = _read_json_opt(dpath)
+    best = ((decision or {}).get("best") or {}).get("id")
+    cdir = os.path.join(ws, "cands", best or "")
+    gds = os.path.join(cdir, "pixel.gds")
+    if not best or not os.path.exists(gds):
+        return
+    lay = layout.load_gds(gds, case, top=_cand_top(case))
+    start = []
+    if best != "original":
+        start = _folded_markers(os.path.join(ws, "cands", "original"),
+                                _load_original(ws, case), case)
+    marks = _open_markers(ws, best, cdir, lay, case, table, start)
+    decision["openMarkers"] = marks
+    core.write_json(dpath, decision)
+    cpath = _state_path(ws, "card.json")
+    card_doc = _read_json_opt(cpath)
+    if card_doc is not None:
+        card_doc["openMarkers"] = [card._marker_entry(m) for m in marks[:8]]
+        core.write_json(cpath, card_doc)
+
+
 def cmd_fit(workspace):
     ctx = _load_ctx(workspace)
     case = ctx.case
@@ -491,6 +521,7 @@ def cmd_fit(workspace):
     rows = _history_rows(ws, case, pairs, include_original=True)
     model = attribution.fit(rows, pairs) if rows else {"pairs": {}}
     core.write_json(_state_path(ws, "model.json"), model)
+    _refresh_open_markers(ws, case, ctx.table)
     summary = {}
     for pair, info in model.get("pairs", {}).items():
         summary[pair] = {"n": info.get("n"), "rmse": info.get("rmse"),
@@ -614,53 +645,55 @@ def cmd_markers(workspace, cand, out, campaign=None):
         except Exception:
             proposed_pairs = []
 
+    out = os.path.abspath(out)
+    proposed_edits, best, combined = [], [], None
+    if lay is not None and ctx.parsed is not None and folded:
+        from . import edits as _edits, repair
+        props = repair.propose(lay, folded, ctx.parsed.get("checks", []), case.grid_um,
+                               apply_edits=lambda e: _edits.apply_edits(lay, e, case),
+                               table=ctx.table)
+        if props:
+            pdir = os.path.join(os.path.dirname(out), "repair-previews")
+            seq = [0]
+
+            def run(eds):
+                seq[0] += 1
+                c = _preview(ctx, lay, eds, os.path.join(pdir, "%02d" % seq[0]))
+                return {"total": _total(c), "byRule": c["byRule"]}
+
+            base = _authority_counts(cdir)
+            proposed_edits, best = repair.verify(props, {"total": _total(base),
+                                                         "byRule": base["byRule"]}, run,
+                                                 per_marker=6)
+            if len(best) > 1:
+                joint = [e for p in best for e in p["edits"]]
+                combined = {"edits": joint, "authorityAfter": run(joint)}
+
     doc = {"candidate": os.path.basename(cdir.rstrip(os.sep)),
            "markers": classified, "proposedPairs": proposed_pairs,
-           "proposedEdits": []}
-    out = os.path.abspath(out)
+           "proposedEdits": proposed_edits,
+           "bestEdits": [e for p in best for e in p["edits"]],
+           "combined": combined}
     core.write_json(out, doc)
     by_class = {}
     for m in classified:
         by_class[m["class"]] = by_class.get(m["class"], 0) + 1
-    return {"markers": len(classified), "byClass": by_class, "out": out}
+    return {"markers": len(classified), "byClass": by_class, "out": out,
+            "verifiedEdits": len(best)}
 
 
 # --------------------------------------------------------------------------- #
 # num-try-edit
 # --------------------------------------------------------------------------- #
 
-def cmd_try_edit(workspace, cand, ops_path, out_dir, campaign=None):
-    from . import edits as _edits
-    ctx = _load_ctx(workspace)
-    case = ctx.case
-    ws = ctx.workspace
-    root = campaign or ws
-    cdir = _cand_dir(root, cand)
-    lay = layout.load_gds(os.path.join(cdir, "pixel.gds"), case, top=_cand_top(case))
-
-    ops_doc = core.read_json(ops_path)
-    if isinstance(ops_doc, dict):
-        ops = ops_doc.get("edits") or ops_doc.get("ops") or []
-    else:
-        ops = ops_doc
-    edited, _log = _edits.apply_edits(lay, ops, case)
-    edited = layout.clean(edited)
-    edited = layout.sync_outline_copies(edited, case)
-    edited = layout.snap(edited, case.grid_um)
-
-    out_dir = os.path.abspath(out_dir)
-    _rmtree(out_dir)
-    layout.write_set(edited, out_dir, case)
-    geom = geometry.measure(edited, case, lay, ctx.parsed)
-    geom["declaredChanges"] = {}
-    core.write_json(os.path.join(out_dir, "geometry.json"), geom)
-
-    judge.judge_one(out_dir, ws, case, ctx.sitecaps, "drc")
-
+def _authority_counts(cand_dir):
+    """A judged candidate's (or preview's) authority-deck counts: per tile, and per rule summed
+    over the single cell and the 3x3 tile."""
     counts = {}
     by_rule = {}
     for tile in ("1x1", "3x3"):
-        sp = os.path.join(out_dir, "out", "drc_authority_%s" % tile, "argus_drc.sum")
+        sp = os.path.join(cand_dir, "out", "drc_authority_%s" % tile, "argus_drc.sum")
+        counts[tile] = None
         if os.path.exists(sp):
             try:
                 summ = reports.argus_summary(sp)
@@ -668,10 +701,48 @@ def cmd_try_edit(workspace, cand, ops_path, out_dir, campaign=None):
                 for rid, n in summ.get("byRule", {}).items():
                     by_rule[rid] = by_rule.get(rid, 0) + n
             except PixelError:
-                counts[tile] = None
-        else:
-            counts[tile] = None
+                pass
     return {"authority": counts, "byRule": by_rule}
+
+
+def _preview(ctx, lay, ops, out_dir):
+    """Apply bounded edits to a copy of ``lay``, write it to ``out_dir`` and run the authority
+    deck on it; return :func:`_authority_counts` of the preview."""
+    from . import edits as _edits
+    case = ctx.case
+    edited, _log = _edits.apply_edits(lay, ops, case)
+    edited = layout.clean(edited)
+    edited = layout.sync_outline_copies(edited, case)
+    edited = layout.snap(edited, case.grid_um)
+    out_dir = os.path.abspath(out_dir)
+    _rmtree(out_dir)
+    layout.write_set(edited, out_dir, case)
+    geom = geometry.measure(edited, case, lay, ctx.parsed)
+    geom["declaredChanges"] = {}
+    core.write_json(os.path.join(out_dir, "geometry.json"), geom)
+    judge.judge_one(out_dir, ctx.workspace, case, ctx.sitecaps, "drc")
+    return _authority_counts(out_dir)
+
+
+def _total(counts):
+    a = counts.get("authority") or {}
+    if a.get("1x1") is None or a.get("3x3") is None:
+        return None
+    return a["1x1"] + a["3x3"]
+
+
+def cmd_try_edit(workspace, cand, ops_path, out_dir, campaign=None):
+    ctx = _load_ctx(workspace)
+    case = ctx.case
+    root = campaign or ctx.workspace
+    cdir = _cand_dir(root, cand)
+    lay = layout.load_gds(os.path.join(cdir, "pixel.gds"), case, top=_cand_top(case))
+    ops_doc = core.read_json(ops_path)
+    if isinstance(ops_doc, dict):
+        ops = ops_doc.get("edits") or ops_doc.get("ops") or []
+    else:
+        ops = ops_doc
+    return _preview(ctx, lay, ops, out_dir)
 
 
 # --------------------------------------------------------------------------- #

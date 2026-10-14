@@ -19,7 +19,12 @@ __all__ = [
     "load_schema",
     "check",
     "snap",
+    "EDIT_BOUND_UM",
 ]
+
+# The most one bounded edit may move a vertex or an edge (um). The designer-style repairs that made
+# the first real case clean moved vertices by up to 1.45 um (squaring a 45-degree jog).
+EDIT_BOUND_UM = 1.5
 
 
 class PixelError(Exception):

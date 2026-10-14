@@ -35,9 +35,11 @@ from concurrent.futures import ThreadPoolExecutor
 from shapely.geometry import Polygon
 
 from . import (attribution, compact, core, edits, geometry, judge, layout,
-               markers, nets, operators, reports)
+               markers, nets, operators, repair, reports)
 
 _MAX_PAIR_ITERS = 6
+_MAX_REPAIR_ROUNDS = 3
+_MAX_REPAIR_EDITS = 12
 _DEFAULT_TRUST_UM = 0.5
 _ZONE_BUFFER_UM = 0.3
 
@@ -140,6 +142,13 @@ def _sum_count(path):
 def _drc_markers(lay, case, sitecaps, workspace):
     """Write ``lay`` to a scratch dir, run authority DRC on 1x1 and 3x3,
     return ``(count_1x1, count_3x3, folded_markers)``."""
+    r = _drc_full(lay, case, sitecaps, workspace)
+    return r["c1"], r["c3"], r["folded"]
+
+
+def _drc_full(lay, case, sitecaps, workspace):
+    """Authority DRC of ``lay`` (1x1 and 3x3): ``{"c1", "c3", "total", "byRule", "folded"}``,
+    ``byRule`` summed over both tiles."""
     scratch = tempfile.mkdtemp(prefix=".solve-", dir=workspace)
     try:
         layout.write_set(lay, scratch, case)
@@ -147,6 +156,15 @@ def _drc_markers(lay, case, sitecaps, workspace):
         out = os.path.join(scratch, "out")
         c1 = _sum_count(os.path.join(out, "drc_authority_1x1", "argus_drc.sum"))
         c3 = _sum_count(os.path.join(out, "drc_authority_3x3", "argus_drc.sum"))
+        by_rule = {}
+        for tile in ("1x1", "3x3"):
+            sp = os.path.join(out, "drc_authority_%s" % tile, "argus_drc.sum")
+            if os.path.exists(sp):
+                try:
+                    for rid, n in reports.argus_summary(sp).get("byRule", {}).items():
+                        by_rule[rid] = by_rule.get(rid, 0) + n
+                except core.PixelError:
+                    pass
         marks = []
         for tile in ("1x1", "3x3"):
             db = os.path.join(out, "drc_authority_%s" % tile, "argus_drc.db")
@@ -154,9 +172,75 @@ def _drc_markers(lay, case, sitecaps, workspace):
                 with open(db, "r", encoding="utf-8", errors="replace") as fh:
                     marks.extend(markers.parse_db(fh.read()))
         folded = markers.fold(marks, lay.outline(case)) if marks else []
-        return c1, c3, folded
+        return {"c1": c1, "c3": c3, "total": c1 + c3, "byRule": by_rule, "folded": folded}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _finish(lay, case):
+    """Clean, re-sync the outline copies, snap to grid: the layout as it is written."""
+    lay = layout.clean(lay)
+    lay = layout.sync_outline_copies(lay, case)
+    return layout.snap(lay, case.grid_um)
+
+
+def _repair(lay, ctx, drc):
+    """Repair residual authority markers with verified bounded edits (:mod:`repair`).
+
+    Each round proposes chamfer, jog and edge moves for the folded markers, confirms each with the
+    authority deck, applies the confirmed ones together (or the single best when together they do
+    worse) and re-runs the deck. Stops when clean, when nothing confirmed is left, after
+    ``_MAX_REPAIR_ROUNDS`` or at ``_MAX_REPAIR_EDITS`` edits. Returns ``(layout, applied, drc)``;
+    ``applied`` lists each round's edits as applied to that round's layout.
+    """
+    case = ctx["case"]
+    applied = []
+    n_edits = 0
+    if ctx.get("parsed") is None:
+        return lay, applied, drc
+
+    def run_on(base):
+        def run(eds):
+            ed, _log = edits.apply_edits(base, eds, case)
+            r = _drc_full(_finish(ed, case), case, ctx["sitecaps"], ctx["workspace"])
+            return {"total": r["total"], "byRule": r["byRule"]}
+        return run
+
+    for _ in range(_MAX_REPAIR_ROUNDS):
+        if drc["total"] == 0 or not drc["folded"]:
+            break
+        props = repair.propose(lay, drc["folded"], ctx["parsed"].get("checks", []),
+                               case.grid_um,
+                               apply_edits=lambda e, b=lay: edits.apply_edits(b, e, case),
+                               table=ctx["table"])
+        if not props:
+            break
+        base = {"total": drc["total"], "byRule": drc["byRule"]}
+        _, best = repair.verify(props, base, run_on(lay), per_marker=4)
+        best = [p for p in best if n_edits + len(p["edits"]) <= _MAX_REPAIR_EDITS]
+        if not best:
+            break
+        joint = []
+        for p in sorted(best, key=lambda p: p["authorityAfter"]["total"]):
+            if n_edits + len(joint) + len(p["edits"]) <= _MAX_REPAIR_EDITS:
+                joint.extend(p["edits"])
+        ed, _log = edits.apply_edits(lay, joint, case)
+        cand = _finish(ed, case)
+        r = _drc_full(cand, case, ctx["sitecaps"], ctx["workspace"])
+        grew = [k for k, n in r["byRule"].items() if n > drc["byRule"].get(k, 0)]
+        if r["total"] >= drc["total"] or grew:
+            one = min(best, key=lambda p: p["authorityAfter"]["total"])
+            joint = one["edits"]
+            ed, _log = edits.apply_edits(lay, joint, case)
+            cand = _finish(ed, case)
+            r = _drc_full(cand, case, ctx["sitecaps"], ctx["workspace"])
+        if r["total"] >= drc["total"]:
+            break
+        applied.append({"edits": joint, "authorityBefore": drc["total"],
+                        "authorityAfter": r["total"]})
+        n_edits += len(joint)
+        lay, drc = cand, r
+    return lay, applied, drc
 
 
 # --------------------------------------------------------------------------- #
@@ -373,10 +457,15 @@ def _solve_point(point, ctx):
             break
         pairs.extend(newp)
 
-    # Finish the layout: clean, re-sync the outline copies, snap to grid.
-    final = layout.clean(final)
-    final = layout.sync_outline_copies(final, case)
-    final = layout.snap(final, case.grid_um)
+    # Finish the layout: clean, re-sync the outline copies, snap to grid; then repair what the
+    # compactor left with verified bounded edits.
+    final = _finish(final, case)
+    repairs = []
+    if residual:
+        drc = _drc_full(final, case, ctx["sitecaps"], ctx["workspace"])
+        final, repairs, drc = _repair(final, ctx, drc)
+        residual = markers.classify(drc["folded"], table, ctx["base_marks"],
+                                    info.get("binding") or ()) if drc["total"] else []
 
     cand_dir = os.path.join(ctx["workspace"], "cands", cid)
     if os.path.isdir(cand_dir):
@@ -407,6 +496,7 @@ def _solve_point(point, ctx):
             "pitchUm": [round(float(w), 6), round(float(h), 6)],
             "binding": [str(t) for t in (info.get("binding") or [])][:30],
             "pairIterations": pair_iters,
+            "repairs": repairs,
             "residualMarkers": residual,
         },
     }
