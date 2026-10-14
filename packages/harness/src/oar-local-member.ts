@@ -1042,11 +1042,20 @@ export class OarLocalMemberRuntime {
                             process.kill(-l.processGroup, signal);
                         }
                         catch (e) {
-                            if ((e as NodeJS.ErrnoException).code === 'EPERM' && !group().length) {
-                                // The group vanished between observation and signal.
-                                // The absence loop below must still prove every PID.
+                            if ((e as NodeJS.ErrnoException).code === 'EPERM') {
+                                // A raced exit can leave a stale PGID before the signal.
+                                // Never retry that signal after permission refusal; only
+                                // an actual absence observation can settle this lease.
+                                while (Date.now() < began + 2500) {
+                                    if (!group().length && !alive().length) {
+                                        const proof = { group: l.processGroup, observedAt: new Date().toISOString(), absent: true as const, pids: (h.owned ?? []).map(r => r.pid) };
+                                        return await finish(proof);
+                                    }
+                                    await sleep(50);
+                                }
+                                return { closed: false, reason: 'Owned process group signal refused; closure unproved' };
                             }
-                            else if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e;
+                            if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e;
                         }
                 }
                 const until = began + (signal === 'SIGKILL' ? 2500 : signal === 'SIGTERM' ? 1000 : 500);

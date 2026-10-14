@@ -66,7 +66,16 @@ process.on('message',m=>{
 `);
   const assets={oarModule:'controlled-no-sdk',nodeExecutable:process.execPath,opencodeCommand:'controlled-no-cli',opencodeVersion:'fixture'};
   const runtime=new localModule.OarLocalMemberRuntime({home,nodeExecutable:process.execPath,runnerModule:runner,assets});
-  t.after(async()=>{await runtime.stopAll();await rm(home,{recursive:true,force:true});});
+  let primaryCloseUnknown=false;
+  t.after(async()=>{
+    const closed=await runtime.stopAll();
+    if(closed.some(receipt=>!receipt.closed)){
+      t.diagnostic('Retained unproved native barrier Home: '+home);
+      throw Error('Test-owned native family closure remains unproved: '+JSON.stringify(closed));
+    }
+    if(primaryCloseUnknown){t.diagnostic('Retained failed primary native barrier Home: '+home);return;}
+    await rm(home,{recursive:true,force:true});
+  });
   const lease=await runtime.stage({prepared,model:{provider:'fixture',model:'controlled-node',baseUrl:'https://fixture.invalid',apiKey:'test-private'},outputSchemaVersion:'oracle/1',assets},[]);
   await runtime.start(lease);
   const rows=async()=>(await runtime.read(lease)).journal.trim().split('\n').filter(Boolean).map((line:string)=>JSON.parse(line));
@@ -141,7 +150,9 @@ process.on('message',m=>{
   assert.deepEqual(JSON.parse(delivered.result).output.artifacts[0],{
     runId:'run',taskId:'task',effectId:'effect',name:'product',path:'product.txt',sha256:digest('703'),
   });
-  const closure=await runtime.close(lease);assert.equal(closure.closed,true);assert.ok(closure.proof?.absent);
+  const closure=await runtime.close(lease);
+  if(!closure.closed){primaryCloseUnknown=true;await writeFile(path.join(home,'primary-close.json'),JSON.stringify(closure),{mode:0o600});}
+  assert.equal(closure.closed,true,JSON.stringify(closure));assert.ok(closure.proof?.absent);
   for(const pid of closure.proof?.pids??[])assert.throws(()=>process.kill(pid,0),(e:any)=>e.code==='ESRCH');
   t.diagnostic(JSON.stringify({level:'L2-public-Local-actual-Node',productModelCalls:0,nativeSdkCalls:0,protocolRuntime:runtimeKind,qualification:'controlled protocol oracle only; no actual Pi/OpenCode receive qualification'}));
 });

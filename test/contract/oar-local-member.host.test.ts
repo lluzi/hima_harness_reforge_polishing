@@ -293,6 +293,44 @@ test('empty original group is never signaled while its known detached grandchild
     assert.equal(closure.closed,true,JSON.stringify(closure));assert.equal(closure.proof?.absent,true);
     assert.throws(()=>process.kill(grandchild,0));
 });
+test('EPERM after original group exit waits for actual absence without signaling that group again', { timeout:10000 }, async t=>{
+    const f=await fixture(t,'group-exit-eperm');await f.runtime.start(f.lease);
+    await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
+    const descendant=Number(fs.readFileSync(path.join(f.lease.workDirectory,'descendant.pid'),'utf8'));
+    const originalKill=process.kill;let refused=0;
+    const restore=()=>{process.kill=originalKill;};t.after(restore);
+    process.kill=((pid:number,signal?:NodeJS.Signals|number)=>{
+        if(pid===-f.lease.processGroup&&signal==='SIGTERM'&&refused===0){
+            refused++;
+            for(const owned of [f.lease.pid,descendant])try{originalKill(owned,'SIGTERM');}
+            catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error;}
+            throw Object.assign(Error('Original group exited before signal'),{code:'EPERM'});
+        }
+        return originalKill(pid,signal);
+    }) as typeof process.kill;
+    let closure:Awaited<ReturnType<typeof f.runtime.close>>;
+    try{closure=await f.runtime.close(f.lease);}finally{restore();}
+    assert.equal(refused,1,'only one actual group signal raced with exit');
+    assert.equal(closure.closed,true,JSON.stringify(closure));assert.equal(closure.proof?.absent,true);
+    assert.throws(()=>process.kill(f.lease.pid,0));assert.throws(()=>process.kill(descendant,0));
+});
+test('persistent original-group EPERM remains unknown and signals no unrelated group on the same attempt', { timeout:10000 }, async t=>{
+    const f=await fixture(t,'group-eperm-unresolved');await f.runtime.start(f.lease);
+    await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
+    const originalKill=process.kill;let refused=0;
+    const restore=()=>{process.kill=originalKill;};t.after(restore);
+    process.kill=((pid:number,signal?:NodeJS.Signals|number)=>{
+        if(pid===-f.lease.processGroup){refused++;throw Object.assign(Error('Owned group signal denied'),{code:'EPERM'});}
+        return originalKill(pid,signal);
+    }) as typeof process.kill;
+    let first:Awaited<ReturnType<typeof f.runtime.close>>;
+    try{first=await f.runtime.close(f.lease);}finally{restore();}
+    assert.equal(refused,1,'permission refusal never authorizes another group signal in this close attempt');
+    assert.equal(first.closed,false);assert.match(first.reason??'',/signal refused; closure unproved/);
+    assert.doesNotThrow(()=>process.kill(f.lease.pid,0),'original leader is still live without signal permission');
+    const retried=await f.runtime.close(f.lease);assert.equal(retried.closed,true,JSON.stringify(retried));
+    assert.equal(retried.proof?.absent,true);assert.throws(()=>process.kill(f.lease.pid,0));
+});
 test('actual delayed ps cannot overlap ticks or regress a newer created snapshot; close freezes late callbacks', { timeout:12000 }, async t => {
     const f=await monitorFamily(t,'monitor-created-race',false);
     const gate=await gatedProcessTable(t);
