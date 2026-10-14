@@ -485,3 +485,22 @@ on the MAGE branch); FABRIC.md.
 
 **Task 10: L4** (coordinator, user switches the licence to `fpd`): `judge-original` on the real
 case, then one live Run in the App; TEST.md.
+
+
+## Amendments from the real-case seams (2026-10-13)
+
+- **Judge seam passed:** the Pack judge reproduces the day-1 verdict on the real original
+  (authority 6/26/60, LVS pass, narrow ratio 1.915 %, T 9.68/10.05 %), 40 s, 0 receipt errors.
+- **Legalise is marker-driven:** `build(..., legalise=True, legalise_zones=[...])` raises a pair to
+  the full rule only inside zones made from the base layout's folded Argus markers (buffered). A
+  model-only reading of "violated" over-constrains (scanline chords at 45° tips, contacts below a
+  boundary-width rule).
+- **Capacitor rigidity:** a plate polygon is wholly rigid only when > 50 % of its own area lies in
+  the marker.
+- **Exact-pair loop inside `solve-and-judge` (program):** per front point, compact → authority deck
+  on 1×1 and 3×3 (`mode="drc"`) → `markers.fold/classify` → `markers.propose_pairs(lay, marks, table,
+  base)` (port of `.scratch/pixel-agent/tools/lazy.py:find_pairs`, keeping only pairs legal in the
+  base) → re-solve with `pairs`, at most 6 iterations; the residual markers go to the history for the
+  resident's next plan (bounded edits / binding chain).
+- **Jogs:** `layout.add_jogs` on the top conductor at the levels where the binding chain's slabs
+  meet, offered by the card as a lever; not automatic.
