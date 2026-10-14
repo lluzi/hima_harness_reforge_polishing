@@ -1,0 +1,6 @@
+id: drc-authority-3x3-clean
+version: "1"
+title: The authority deck is clean on the 3x3 array
+requires: [{ type: pixel_drc_authority_3x3 }]
+subject: { type: pixel_drc_authority_3x3 }
+predicate: { op: eq, threshold: { const: 0 }, unit: count }

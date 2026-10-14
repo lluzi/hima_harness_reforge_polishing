@@ -1,0 +1,93 @@
+schema: hima-flow/1
+id: pixel-layout-optimization
+version: 0.1.0
+flow:
+  kind: sequence
+  id: pixel
+  steps:
+  - kind: task
+    id: prepare-case
+    tool: prepare-case
+    inputs:
+      PIXEL_CASE_MANIFEST: {source: runInput, path: [pixelCaseManifest]}
+      SITE_CAPABILITIES: {source: runInput, path: [siteCapabilities]}
+      outline_w_um: {source: goal, path: [outline_w_um]}
+      outline_h_um: {source: goal, path: [outline_h_um]}
+      ratio_target_pct: {source: goal, path: [ratio_target_pct]}
+      load_allowance_pct: {source: goal, path: [load_allowance_pct]}
+      t_min_pct: {source: goal, path: [t_min_pct]}
+      t_max_pct: {source: goal, path: [t_max_pct]}
+      cst_ceiling_ff: {source: goal, path: [cst_ceiling_ff]}
+      ratioDefinition: {source: strategy, path: [ratioDefinition]}
+      transmittanceBasis: {source: strategy, path: [transmittanceBasis]}
+      extraCsOverlap: {source: strategy, path: [extraCsOverlap]}
+      topologyMoves: {source: strategy, path: [topologyMoves]}
+      convergeBandPct: {source: strategy, path: [convergeBandPct]}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-output'}}}
+  - kind: task
+    id: judge-original
+    tool: judge-original
+    inputs:
+      CASE: {source: committedOutput, taskId: prepare-case, path: []}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/judge-original-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/judge-original-output'}}}
+  - kind: task
+    id: map-design-space
+    tool: map-design-space
+    inputs:
+      JUDGED: {source: committedOutput, taskId: judge-original, path: []}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/map-design-space-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/map-design-space-output'}}}
+  - kind: task
+    id: learn-sensitivities
+    tool: learn-sensitivities
+    inputs:
+      CARD: {source: committedOutput, taskId: map-design-space, path: []}
+      PROBES: {source: literal, value: 4}
+      STEP: {source: literal, value: 0.1}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-output'}}}
+  - kind: repeat
+    id: optimise-rounds
+    maxIterations: 6
+    budget: original-run
+    carry:
+      roundState:
+        initial: {source: literal, value: {round: 1}}
+        next: {taskId: decide-round, path: [nextRound]}
+    stop: {output: {taskId: decide-round, path: [route]}, equals: stop}
+    body:
+      kind: sequence
+      id: round
+      steps:
+      - kind: task
+        id: plan-round
+        tool: plan-round
+        inputs:
+          ROUND: {source: carry, path: [roundState, round]}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/plan-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      - kind: task
+        id: solve-and-judge
+        tool: solve-and-judge
+        inputs:
+          ROUND: {source: carry, path: [roundState, round]}
+          PLAN: {source: committedOutput, taskId: plan-round, path: []}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/solve-and-judge-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/solve-and-judge-output'}}}
+      - kind: task
+        id: decide-round
+        tool: decide-round
+        inputs:
+          ROUND: {source: carry, path: [roundState, round]}
+          SOLVED: {source: committedOutput, taskId: solve-and-judge, path: []}
+        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/decide-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/decide-round-output'}}}
+  - kind: task
+    id: evaluate
+    budget: closing
+    tool: evaluate
+    inputs:
+      DECISION: {source: committedOutput, taskId: decide-round, path: []}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/evaluate-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/evaluate-output'}}}
+  - kind: task
+    id: deliver
+    budget: closing
+    tool: deliver
+    inputs:
+      EVALUATION: {source: committedOutput, taskId: evaluate, path: []}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/deliver-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/deliver-output'}}}

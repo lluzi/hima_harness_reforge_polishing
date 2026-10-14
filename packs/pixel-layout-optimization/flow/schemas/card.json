@@ -1,0 +1,104 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.card/1",
+ "title": "pixel.card/1",
+ "type": "object",
+ "additionalProperties": true,
+ "required": ["schema", "sites", "levers", "pitchBound", "floor", "front", "openMarkers"],
+ "properties": {
+  "schema": {"const": "pixel.card/1"},
+  "sites": {
+   "type": "array",
+   "maxItems": 8,
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["victim", "aggressor", "layers", "sharePct", "estFf"],
+    "properties": {
+     "victim": {"type": "string"},
+     "aggressor": {"type": "string"},
+     "layers": {"type": "array", "items": {"type": "string"}},
+     "sharePct": {"type": "number"},
+     "estFf": {"type": "number"}
+    }
+   }
+  },
+  "levers": {
+   "type": "array",
+   "maxItems": 12,
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["id", "kind", "axis", "layer", "net", "gradientFfPerUm", "boundUm"],
+    "properties": {
+     "id": {"type": "string"},
+     "kind": {"type": "string"},
+     "axis": {"type": "string"},
+     "layer": {"type": "string"},
+     "net": {"type": ["string", "null"]},
+     "gradientFfPerUm": {"type": "object"},
+     "boundUm": {"type": ["number", "null"]}
+    }
+   }
+  },
+  "pitchBound": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["x", "y"],
+   "properties": {
+    "x": {"$ref": "#/$defs/axisBound"},
+    "y": {"$ref": "#/$defs/axisBound"}
+   }
+  },
+  "floor": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["ctFf", "note"],
+   "properties": {
+    "ctFf": {"type": ["number", "null"]},
+    "note": {"type": "string"}
+   }
+  },
+  "front": {
+   "type": "array",
+   "maxItems": 6,
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["id", "outlineUm", "ratioPct", "legal"],
+    "properties": {
+     "id": {"type": "string"},
+     "outlineUm": {"type": "array", "items": {"type": ["number", "null"]}},
+     "ratioPct": {"type": ["number", "null"]},
+     "legal": {"type": "boolean"}
+    }
+   }
+  },
+  "openMarkers": {
+   "type": "array",
+   "maxItems": 8,
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["candidate", "rule", "class", "bbox"],
+    "properties": {
+     "candidate": {"type": "string"},
+     "rule": {"type": "string"},
+     "class": {"type": "string"},
+     "bbox": {"type": "array", "items": {"type": "number"}}
+    }
+   }
+  }
+ },
+ "$defs": {
+  "axisBound": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["pitchUm", "binding"],
+   "properties": {
+    "pitchUm": {"type": ["number", "null"]},
+    "binding": {"type": "array", "maxItems": 5, "items": {"type": ["string", "object"]}}
+   }
+  }
+ }
+}

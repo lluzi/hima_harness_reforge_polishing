@@ -1,0 +1,6 @@
+id: loads-within-allowance
+version: "1"
+title: Every load-limited line stays within its allowance
+requires: [{ type: pixel_load_over_limit_count }]
+subject: { type: pixel_load_over_limit_count }
+predicate: { op: eq, threshold: { const: 0 }, unit: count }

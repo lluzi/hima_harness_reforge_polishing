@@ -1,0 +1,6 @@
+id: couplings-within-limit
+version: "1"
+title: Every manifest coupling limit holds
+requires: [{ type: pixel_coupling_over_limit_count }]
+subject: { type: pixel_coupling_over_limit_count }
+predicate: { op: eq, threshold: { const: 0 }, unit: count }

@@ -1,0 +1,7 @@
+id: outline-width-met
+version: "1"
+title: The achieved cell width meets the Goal target
+parameter: { name: outline_w_um, unit: um }
+requires: [{ type: pixel_outline_w_um }]
+subject: { type: pixel_outline_w_um }
+predicate: { op: lte, threshold: { parameter: outline_w_um }, unit: um }

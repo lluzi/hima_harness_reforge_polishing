@@ -1,0 +1,35 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.evaluation/1",
+ "title": "pixel.evaluation/1",
+ "type": "object",
+ "additionalProperties": true,
+ "required": ["schema", "ending", "goalMet", "best", "rules", "unknowns", "decisionRequest", "limitingBound"],
+ "properties": {
+  "schema": {"const": "pixel.evaluation/1"},
+  "ending": {"enum": ["goal-met", "blocked", "converged", "budget-reached"]},
+  "goalMet": {"type": "boolean"},
+  "best": {
+   "type": ["object", "null"],
+   "additionalProperties": true,
+   "required": ["id", "values", "legal"],
+   "properties": {
+    "id": {"type": "string"},
+    "values": {"type": "object"},
+    "legal": {"type": "boolean"}
+   }
+  },
+  "rules": {"type": "object"},
+  "unknowns": {"type": "array", "items": {"type": "string"}},
+  "decisionRequest": {
+   "type": ["object", "null"],
+   "additionalProperties": true,
+   "required": ["tradeOff"],
+   "properties": {
+    "tradeOff": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+   }
+  },
+  "limitingBound": {"type": ["object", "null"], "additionalProperties": true},
+  "disagreement": {"type": ["string", "null"]}
+ }
+}

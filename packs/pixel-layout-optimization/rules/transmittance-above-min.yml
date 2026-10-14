@@ -1,0 +1,10 @@
+id: transmittance-above-min
+version: "1"
+title: The judged transmittance is at or above the window's lower edge
+parameter: { name: t_min_pct, unit: pct }
+requires: [{ type: pixel_t_judged_pct }]
+subject: { type: pixel_t_judged_pct }
+predicate: { op: gte, threshold: { parameter: t_min_pct }, unit: pct }
+# A transmittance rule with no resolved window edge is NOT_DECLARED
+# (reported, not counted); handled in flow/pixelopt/rounds.py.
+optional: true

@@ -1,0 +1,6 @@
+id: no-undeclared-change
+version: "1"
+title: No capacitor or channel change beyond what the plan declared
+requires: [{ type: pixel_undeclared_change_count }]
+subject: { type: pixel_undeclared_change_count }
+predicate: { op: eq, threshold: { const: 0 }, unit: count }

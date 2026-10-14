@@ -1,0 +1,263 @@
+id: pixel-layout-optimization
+version: 0.1.0
+title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
+status: development
+minimumHarnessVersion: 0.3.0
+ontology:
+  aliases:
+    bestReceipt:
+    - best candidate receipt
+    - delivered layout receipt
+    roundPlan:
+    - resident round plan
+budget:
+  timeBoxMs: 10800000
+  closingReserveMs: 1200000
+inputs:
+- name: pixelCaseManifest
+  description: Site path of one pixel.case-manifest/1 JSON file naming the original GDS, the layer
+    stack and roles, the connectivity, the nets, the ratio definitions, coupling and load limits,
+    the capacitor marker, the authority and reference Argus decks, the interact rules, the LVS deck
+    template and schematic and the extraction set, each file carrying a sha256 the Pack re-verifies.
+    No customer data is copied into this Pack; every file stays on the Site.
+- name: siteCapabilities
+  description: Site path of one pixel.site-capabilities/1 JSON file naming the edarun launcher and
+    container, the pinned venv python, the FPD environment, the gdsIn prefix and library path, the
+    Calibre environment, parallelJobs and the per-tool timeouts. Only the resident engineering tool
+    and the fpd-licensed tasks run the commercial tools.
+- name: workspaceRoot
+  description: The Campaign-private output root the Site Permit allows.
+outputs:
+- name: caseReadiness
+  path: state/case-readiness.json
+  description: Verified digests, the resolved Goal (each value with its source), the parsed decks,
+    the original's measures, the unmodelled-rule list and the venv versions; the record every later
+    resident subcommand and Reader reads.
+- name: designSpaceCard
+  path: state/card.json
+  description: The design-space card (pixel.card/1) - coupling sites ranked by share of Ct, lever
+    instances with gradient and bound, the binding pitch chain per axis, the floor and the front.
+- name: surrogateModel
+  path: state/model.json
+  description: The fitted capacitance model and its leave-one-out error per net pair.
+- name: roundDecision
+  path: state/round-decision.json
+  description: The latest round's route, best legal candidate, rule results, trust radius,
+    predicted-vs-measured gains and open markers (pixel.round-decision/1).
+- name: history
+  path: state/history.jsonl
+  description: One line per judged candidate - round, plan, operators, measured values, legality and
+    the goal rules.
+- name: roundPlan
+  path: state/round/plan.json
+  reader: pixel-plan
+  description: The resident engineering agent's checked plan for the current round (pixel.plan/1),
+    overwritten every round; its pixel_plan_error_count of 0 is the completion evidence.
+- name: bestReceipt
+  path: delivery/best/receipt.json
+  reader: pixel-receipt
+  description: The delivered layout's receipt (pixel.receipt/1), re-read from the fresh re-judgement.
+- name: evaluation
+  path: state/evaluation.json
+  description: The terminal decision - the ending, goalMet against every rule, the unknowns kept
+    apart from the Goal, and the Decision Request with the trade-off table when blocked.
+- name: finalReport
+  path: delivery/report.json
+  description: Final goalMet, ending, rules, the Goal and the delivery package paths.
+environment:
+  wrappers:
+  - python3
+  - /usr/bin/python3
+workspace:
+  source: pack
+  copy:
+  - pixel_cli.py
+  - pixelopt
+  - schemas
+tools:
+- id: prepare-case
+  file: flow/pixel_cli.py
+  description: Verify every manifest file digest, parse both Argus decks into rule tables, run the
+    numeric preparation that rewrites and measures the original, resolve each Goal value (refusing an
+    unresolved ratio target), check the venv versions, and write state/case-readiness.json,
+    state/rules.json and state/original.json.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-prepare-case, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: judge-original
+  file: flow/pixel_cli.py
+  description: Judge the original and the two Pack mutants (one contact removed, one space shrunk
+    below its rule) with the same judge as every candidate; write the original's load totals into
+    case readiness, write history entry 0, and fail the task (nothing after may be trusted) if the
+    original fails LVS or a mutant is not caught.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-judge-original, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: map-design-space
+  file: flow/pixel_cli.py
+  description: Attribute each coupling of the original to its sites, fit the surrogate on the
+    receipts so far, solve the minimum-pitch LP per axis and name the binding chain; write
+    state/card.json and state/card.svg.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-map-design-space, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: learn-sensitivities
+  file: flow/pixel_cli.py
+  description: Judge the +/-1-step probes on the top levers in parallel, refit the surrogate per net
+    pair and record the leave-one-out error; write state/model.json and the probes to history.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-learn-sensitivities, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: plan-round
+  file: flow/pixel_cli.py
+  description: >
+    You own one round of the pixel optimisation plan. Read, from your own private workspace:
+    state/case-readiness.json (the resolved Goal with each value's source, the Strategy, the net
+    roles, the deck digests and the unmodelled rules), state/card.json (the coupling sites ranked by
+    share of Ct, the lever instances with gradient and bound, the binding pitch chain and the floor),
+    state/model.json (the capacitance model and its leave-one-out error per net pair),
+    state/round-decision.json (the best legal candidate, the front, the trust radius, the last
+    round's predicted-vs-measured gains, the open markers and any stop reason) and
+    state/history.jsonl (every judged candidate). Read the history before you plan and never repeat a
+    hypothesis an earlier round closed. Write your hypothesis at the top of plan/round-NN/plan.json
+    before you run anything; it is not a summary written after the fact. Choose the base (original,
+    best, or a candidate id from history for a repair), 1 to 6 front points (one legalise point first
+    when the base is not clean; a min-pitch point at the Goal's outline; a min-ratio point at the
+    best reachable outline; at most one or two exploratory points for the trade-off table only), and
+    operators (shield, cst-stretch, opening-shift, band-trim, contact-move) only where the card's
+    sites say a discrete change is needed - a cst-stretch is a declared schematic change and needs
+    cst_ceiling_ff above 0, a contact-move needs topologyMoves allowed. Repair a named candidate's
+    residual markers by their class: add the proposed pair constraint for an exact-pair, add bounded
+    edits (each at most 1 um, never a channel or capacitor vertex, at most 12) for a bounded-edit and
+    preview them with try-edit until clean, step the outline back for a binding-chain, and report a
+    model-gap in expect since nothing in the plan fixes it. Your permitted CLI calls are card,
+    history, show, markers, try-edit (previews, never credited and never judged) and plan-check; you
+    write no layout, judge nothing and edit no state file except your own plan and previews. Deliver
+    resident-delivery.json naming state/round/plan.json as the single result and every file under
+    plan/round-NN/ as support. Your completion evidence is the pixel-plan Reader's
+    pixel_plan_error_count equal to 0. Every round is a fresh session with no memory but the files you
+    read.
+  inputs: [WORKSPACE, ROUND]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", plan-round, "${WORKSPACE}", "${ROUND}"]
+  outsourcing:
+    role: resident-engineering-agent
+    reads: [caseReadiness, designSpaceCard, surrogateModel, roundDecision, history]
+    knowledge: [plan-and-repair-playbook.md, pixel-design-space.md, optimisation-method.md, judge-protocol.md]
+    artifactPrefix: plan
+    produces: roundPlan
+- id: solve-and-judge
+  file: flow/pixel_cli.py
+  description: If the plan has Reader errors, judge nothing and record why; otherwise apply the
+    plan's operators and edits, solve one LP per front point with the trust region from the last
+    decision (a legalise point holds the full rule only where the base's own Argus markers lie), run
+    the exact-pair loop per point, then judge every candidate in full in parallel and append every
+    receipt to history.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-solve-and-judge, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: decide-round
+  file: flow/pixel_cli.py
+  description: Compare predicted with measured gain and update the trust radius, refit the surrogate
+    with the new extractions, update the best legal candidate, the front and the trend chart, detect
+    the endings and route continue or stop; write state/round-decision.json, state/trend.json and
+    state/trend.svg.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-decide-round, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: evaluate
+  file: flow/pixel_cli.py
+  description: Re-judge the best candidate and the trade-off front points from their GDS in fresh
+    directories, read them with pixel-receipt, apply the rules, name the ending and, for Blocked,
+    write the Decision Request with the trade-off table; write state/evaluation.json.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-evaluate, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+- id: deliver
+  file: flow/pixel_cli.py
+  description: Recheck every referenced sha256 and package delivery/ - REPORT.md, trend.svg, the best
+    layout's GDS set, its receipts and tool reports, any declared schematic, the Decision Request,
+    history.jsonl and report.json.
+  inputs: [WORKSPACE, TASK_INPUT, TASK_OUTPUT]
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", task-deliver, "${WORKSPACE}", "${TASK_INPUT}", "${TASK_OUTPUT}"]
+rules:
+- receipt-verified
+- drc-authority-1x1-clean
+- drc-authority-2x2-clean
+- drc-authority-3x3-clean
+- interact-rules-clean
+- lvs-correct
+- channels-unchanged
+- no-undeclared-change
+- couplings-within-limit
+- loads-within-allowance
+- transmittance-above-min
+- transmittance-below-max
+- outline-width-met
+- outline-height-met
+- ratio-met
+goal:
+  outline_w_um: {type: number, unit: um, min: 0, max: 100000, default: 0}
+  outline_h_um: {type: number, unit: um, min: 0, max: 100000, default: 0}
+  ratio_target_pct: {type: number, unit: pct, min: 0, max: 1000, default: 0}
+  load_allowance_pct: {type: number, unit: pct, min: 0, max: 1000, default: 5}
+  t_min_pct: {type: number, unit: pct, min: 0, max: 100, default: 0}
+  t_max_pct: {type: number, unit: pct, min: 0, max: 100, default: 0}
+  cst_ceiling_ff: {type: number, unit: fF, min: 0, max: 100000, default: 0}
+strategy:
+  ratioDefinition: {type: choice, options: [broad, narrow], default: broad}
+  transmittanceBasis: {type: choice, options: [tiled, own], default: tiled}
+  extraCsOverlap: {type: choice, options: [count, exclude], default: count}
+  topologyMoves: {type: choice, options: [off, allowed], default: off}
+  convergeBandPct: {type: number, unit: pct, min: 0.001, max: 1, default: 0.02}
+words:
+  outline_w_um:
+    label: Target cell width (x pitch)
+    unit: um
+  outline_h_um:
+    label: Target cell height (y pitch)
+    unit: um
+  ratio_target_pct:
+    label: Target judged coupling ratio Ct/Cs
+    unit: pct
+  load_allowance_pct:
+    label: Allowed rise of each load-limited line's capacitance
+    unit: pct
+  t_min_pct:
+    label: Transmittance window lower edge
+    unit: pct
+  t_max_pct:
+    label: Transmittance window upper edge
+    unit: pct
+  cst_ceiling_ff:
+    label: Storage-capacitor ceiling for a declared stretch
+    unit: fF
+  ratioDefinition:
+    label: Which aggressor net list makes the judged Ct
+  transmittanceBasis:
+    label: Which transmittance the window judges
+  extraCsOverlap:
+    label: Whether out-of-marker storage coupling counts toward Cs
+  topologyMoves:
+    label: Whether a plan may move a contact or reorder lines
+  convergeBandPct:
+    label: The Converged ending's improvement band over two rounds
+    unit: pct
+knowledge:
+- file: pixel-design-space.md
+  purpose: What makes up Ct and Cs in a pixel of this kind, the coupling sites, the levers and what
+    each costs, and the bounds. For plan-round choosing operators and front points.
+- file: optimisation-method.md
+  purpose: The LP compaction with metric rows, the Dinkelbach form of the ratio, the trust region,
+    the surrogate and its error, front points, and how a measured shortfall is read. For plan-round
+    reading the card and setting front points.
+- file: plan-and-repair-playbook.md
+  purpose: The resident's whole brief - inputs, the CLI subcommands, the plan schema with an example,
+    the marker classes and what each calls for, bounded edits, prohibitions and the journal
+    discipline. For plan-round.
+- file: judge-protocol.md
+  purpose: How each candidate is judged, which deck is the authority, tiles, the LVS engine, the
+    fresh library per extraction, measured vs geometry vs estimated vs unknown, and the four
+    counterexamples. For plan-round reading receipts and markers honestly.

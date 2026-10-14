@@ -1,0 +1,6 @@
+id: interact-rules-clean
+version: "1"
+title: Every shape satisfies the manifest connectivity (interact) rules
+requires: [{ type: pixel_interact_violations }]
+subject: { type: pixel_interact_violations }
+predicate: { op: eq, threshold: { const: 0 }, unit: count }

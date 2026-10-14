@@ -1,0 +1,11 @@
+id: pixel-plan
+version: "1"
+file: tools/read-pixel.py
+argv: [python3, '${READER}', plan, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: pixel.plan/1
+emits:
+  - pixel_plan_error_count
+  - pixel_plan_front_points
+  - pixel_plan_operator_count
+  - pixel_plan_edit_count
+  - pixel_plan_exploratory_points
