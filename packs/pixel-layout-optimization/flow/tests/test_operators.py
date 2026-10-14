@@ -81,6 +81,14 @@ class OperatorsTest(unittest.TestCase):
         a1 = out.geom("Anode").bounds
         self.assertAlmostEqual(a1[0] - a0[0], 0.5, places=4)
 
+    def test_an_operator_named_as_the_plan_schema_names_it_applies(self):
+        # The plan schema calls the field "op"; apply_operator read only "operator"/"kind", so
+        # no operator in a checked plan could run (num-solve: unknown operator None).
+        op = {"op": "opening-shift", "dxUm": 0.5, "dyUm": 0.0}
+        out, desc = self._apply(op)
+        self.assertAlmostEqual(out.geom("Bank").bounds[0] - self.lay.geom("Bank").bounds[0], 0.5,
+                               places=4)
+
     def test_band_trim_narrows_but_keeps_contact_enclosure(self):
         from shapely.geometry import box
         op = {"operator": "band-trim", "net": "DL", "layer": "Metal", "widthUm": 0.5}

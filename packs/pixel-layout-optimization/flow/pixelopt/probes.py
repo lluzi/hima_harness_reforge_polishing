@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 
 import numpy as np
+from shapely import affinity
 from shapely.geometry import Point, LineString, Polygon
 from shapely.ops import unary_union
 
@@ -213,6 +214,10 @@ def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
             zone = Point(cx, cy).buffer(0.5)
         if zone.is_empty:
             continue
+        # A folded marker stands for every periodic copy of the place; the offending vertex may
+        # sit in this cell and the edge in a neighbour, near the marker's copy across the cell.
+        zone = unary_union([affinity.translate(zone, xoff=sx * P, yoff=sy * H)
+                            for sx in (-1, 0, 1) for sy in (-1, 0, 1)])
         centroid = zone.centroid
         for (A, B) in ((La, Lb), (Lb, La)):
             la_polys = lay.polys.get(A, [])

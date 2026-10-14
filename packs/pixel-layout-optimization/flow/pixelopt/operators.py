@@ -354,7 +354,7 @@ def apply_operator(lay, op, case, nets, table=None, topology_moves=None):
     passes for ``contact-move`` (``'allowed'`` or ``'off'``). An unknown operator
     raises ``PixelError('bad-plan')``.
     """
-    kind = op.get("operator") or op.get("kind")
+    kind = op.get("op") or op.get("operator") or op.get("kind")  # plans name it "op"
     if kind == "shield":
         return _shield(lay, op, case, nets)
     if kind == "cst-stretch":
