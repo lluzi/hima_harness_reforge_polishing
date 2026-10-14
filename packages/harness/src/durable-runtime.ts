@@ -4,15 +4,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { WorkflowHandle } from '@dbos-inc/dbos-sdk';
-import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
 import { Pool } from 'pg';
+import { ApplicationDataSource } from './durable-datasource.js';
 import type { LocalDatabase } from './local-database.js';
 import { jsonDigest, RunStore } from './run-store.js';
 import { taskResultProtocol } from './task-contract.js';
 import type { JsonValue, TaskResult } from './task-contract.js';
 
 export const durableEngine = 'dbos/5.2.11' as const;
-export const durableDependencyVersions = Object.freeze({sdk:'5.2.11',datasource:'5.2.11',pg:'8.16.3'});
+export const durableDependencyVersions = Object.freeze({sdk:'5.2.11',datasource:'hima-application/1',pg:'8.16.3',superjson:'1.13.3'});
 export interface ExecutableManifest {
   readonly files: Readonly<Record<string,string>>;
   readonly adapters: Readonly<Record<string,string>>;
@@ -57,6 +57,8 @@ export function executableApplicationVersion(manifest:ExecutableManifest):string
 export async function startDurableRuntime(options: {
   readonly database:LocalDatabase; readonly manifest:ExecutableManifest;
   readonly workflows?:readonly DurableWorkflowDefinition[];
+  /** Tests shorten the outage windows; the product uses the defaults. */
+  readonly connectionRetry?:Partial<import('./durable-datasource.js').ConnectionRetryPolicy>;
 }):Promise<DurableRuntime> {
   if(inheritedCloudMode || process.env.DBOS__CLOUD === 'true') throw new Error('HimaHarness uses private local DBOS only; remove DBOS__CLOUD=true and restart the Host');
   if(active || DBOS.isInitialized()) throw new Error('This Host already owns a durable runtime; use an independent Host for another Home');
@@ -64,7 +66,7 @@ export async function startDurableRuntime(options: {
   active=true;
   let store:RunStore;
   try {
-    const source=new NodePostgresDataSource('hima-application',{...options.database.application,connectionTimeoutMillis:2000});
+    const source=new ApplicationDataSource('hima-application',{...options.database.application,connectionTimeoutMillis:2000},options.connectionRetry);
     store=new RunStore(options.database.application,source,applicationVersion);
   } catch(error) {
     try { await DBOS.shutdown({deregister:true,workflowCompletionTimeoutMS:1000}); }

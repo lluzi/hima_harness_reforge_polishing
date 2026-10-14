@@ -809,7 +809,7 @@ let exitPending = false;
 let requestedExitMode: 'drain'|'keep-jobs'|'stop-jobs' = 'drain';
 let cancelExitRequested=false;
 
-type NativeExitStatus={requestId?:string;mode?:typeof requestedExitMode;finalized?:boolean;ready:boolean;runs:{runId:string;state:string;jobs:string[]}[];agents:string[]};
+type NativeExitStatus={requestId?:string;mode?:typeof requestedExitMode;finalized?:boolean;ready:boolean;runs:{runId:string;state:string;reason?:string;jobs:string[]}[];agents:string[]};
 async function exitRequest(win:BrowserWindow, body?:{requestId:string;mode:string;expectedRequestId?:string}):Promise<NativeExitStatus> {
   if(!host)return {ready:true,runs:[],agents:[]};
   let cookies=await win.webContents.session.cookies.get({url:host.origin});
@@ -857,6 +857,16 @@ async function finishAppExit():Promise<void> {
       await new Promise(resolve=>setTimeout(resolve,300));
       state=await exitRequest(win);
       if(cancelExitRequested){await exitRequest(win,{requestId,mode:'cancel-exit'});cancelExitRequested=false;exitPending=false;requestedExitMode='drain';win.setTitle(APP_NAME);return;}
+      // The Host released this request because its job stop could not prove closure; waiting
+      // can no longer reach a boundary, so the person decides with the retained reasons.
+      if(state.requestId!==requestId&&requestedExitMode===appliedMode){
+        win.setTitle(APP_NAME);exitPending=false;requestedExitMode='drain';
+        const open=state.runs.filter(run=>run.state!=='ready').map(run=>`${run.runId}: ${run.reason??run.state}`).join('\n');
+        if(driver)throw new Error(`App exit request ${requestId} was released before its boundary${open?`: ${open}`:''}`);
+        const answer=await dialog.showMessageBox(win,{type:'warning',message:'Jobs could not be confirmed stopped.',detail:`${open||'The exit request was released.'}\nThe original Home and database state are preserved. Quit and keep the jobs, or stay in the App and inspect the Run.`,buttons:['Quit and keep jobs','Stay in App'],defaultId:1,cancelId:1});
+        if(answer.response===0){requestedExitMode='keep-jobs';exitPending=true;void finishAppExit();}
+        return;
+      }
       if(requestedExitMode!==appliedMode){appliedMode=requestedExitMode;const expectedRequestId=requestId;requestId=`desktop-${randomUUID()}`;state=await exitRequest(win,{requestId,mode:appliedMode,expectedRequestId});}
     }
     await exitRequest(win,{requestId,mode:'finish-exit'});

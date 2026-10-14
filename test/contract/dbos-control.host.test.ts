@@ -20,3 +20,7 @@ test('concurrent valid main/control closure retains first proof, one release and
 test('concurrent main/control cleanup retains one original stop proof with zero failed workflows',{timeout:60000},async()=>{
   const home=await dbosHome(),host=flowProcess(home,'cleanup-race');try{assert.equal((await host.next()).ok,true);}finally{await host.close();await cleanDbosHome(home);}
 });
+
+test('continue resumes a Run whose task workflow failed on a lost connection in place, without resending Jobs',{timeout:90000},async()=>{
+  const home=await dbosHome(),host=flowProcess(home,'failed-resume');try{const done=await host.next();assert.equal(done.ok,true,JSON.stringify(done));console.info('Resumed failed workflow tree',done.rewound);}finally{await host.close();await cleanDbosHome(home);}
+});

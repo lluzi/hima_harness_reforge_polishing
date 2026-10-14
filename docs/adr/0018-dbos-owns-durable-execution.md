@@ -40,7 +40,7 @@ schema 不联网解析引用，不隐式转换、删除字段或补默认事实�
 App、编排和数据在 macOS/Linux 本地运行，保留已有获准模型 API；不依赖 DBOS Cloud、
 Conductor 或厂商激活。产品承担私有 PostgreSQL 安装、启动、退出、故障、备份和升级，
 数据库故障明确阻塞，不回退旧 Fabric。代价是原生数据库分发、版本绑定与平台独立验证。
-首轮固定 DBOS SDK / node-pg-datasource 5.2.11、PostgreSQL 16.15、Node24 与 Ajv 8.20.0，执行版本随冻结候选记录。
+首轮固定 DBOS SDK / node-pg-datasource 5.2.11、PostgreSQL 16.15、Node24 与 Ajv 8.20.0，执行版本随冻结候选记录。2026-10-14 起应用 datasource 由 `durable-datasource.ts` 自持：沿用 node-pg-datasource 5.2.11 的 `dbos.transaction_completion` 检查点与 SuperJSON 回放合同，瞬时连接中断在同一 step 重试且不记录为业务结果；失败的当前 revision 由整 Run continue 经 DBOS rewind 原地恢复。
 
 所有新 Run 使用 DBOS，受支持旧 Pack 声明经兼容编译使用同一内核；旧 Run、方法快照、
 产物 hash 和原结论保持可读。活动/可恢复旧 Run 先由旧 App 正常收束，不热转换 checkpoint，

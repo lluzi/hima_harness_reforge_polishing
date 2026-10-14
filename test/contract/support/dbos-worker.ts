@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
 import { appendFile, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -69,6 +70,21 @@ const runtime=await startDurableRuntime({database,manifest,workflows:[{name:'him
   }
   const result=await runtime.store.commitResult(resultFor(runtime.applicationVersion));
   return result.value;
+}},{name:'hima-test-outage',async execute(runtime:any){
+  // The private server stops under this step's open transaction and returns 1.5 s later.
+  const attempts=path.join(home,'outage-attempts');
+  return runtime.store.transaction(async(client:any)=>{
+    const attempt=(await readFile(attempts,'utf8').catch(()=>'')).split('\n').filter(Boolean).length+1;
+    await appendFile(attempts,`attempt ${attempt}\n`);
+    if(attempt===1) {
+      const pgCtl=path.join(process.env.HIMA_POSTGRES_RUNTIME!,'bin/pg_ctl'),data=path.join(home,'hima/database/data');
+      const stopped=spawnSync(pgCtl,['-D',data,'-m','fast','-w','stop'],{encoding:'utf8'});
+      assert.equal(stopped.status,0,stopped.stderr);
+      setTimeout(()=>{spawn(pgCtl,['-D',data,'-l',path.join(home,'hima/database/server.log'),'-w','start'],{stdio:'ignore'});},1500);
+    }
+    await client.query("INSERT INTO public.outage_probe VALUES('business-step')");
+    return {attempt,rows:Number((await client.query('SELECT count(*) AS n FROM public.outage_probe')).rows[0].n)};
+  },'hima.test.outage');
 }}]});
 const store=runtime.store;
 const runId='run-u3';const effectId='effect-u3';
@@ -118,6 +134,13 @@ if(mode==='idempotency' || mode==='startup') {
   const invalidArtifact={runId:'wrong',taskId:'task',effectId,name:'evidence',path:'evidence/result.json',sha256:'e'.repeat(64)};
   await assert.rejects(store.commitResult({...resultFor(runtime.applicationVersion),artifacts:[invalidArtifact]}),/artifact identity/);
   process.send!({ok:true,identity:database.identity,port:database.application.port,credentialDigest:jsonDigest(database.application)});
+} else if(mode==='connection-outage') {
+  const pool=new Pool(database.application);await pool.query('CREATE TABLE public.outage_probe(id text PRIMARY KEY)');await pool.end();
+  const handle=await runtime.startWorkflow('hima-test-outage','workflow-outage',{});
+  const value=await handle.getResult();
+  const steps=await DBOS.listWorkflowSteps('workflow-outage');
+  process.send!({ok:true,value,status:(await handle.getStatus()).status,steps:steps.map((step:any)=>({name:step.name,error:step.error?String(step.error):null})),
+    attempts:(await readFile(path.join(home,'outage-attempts'),'utf8')).trim().split('\n')});
 } else if(mode==='admission') {
   await store.createRun(opening(runtime.applicationVersion));await store.prepareEffect(identity(runtime.applicationVersion),{tool:'fixture'});
   const admission={runId,effectId,owner:'owner',epoch:0,revision:0};

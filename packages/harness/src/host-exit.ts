@@ -1,6 +1,7 @@
 // @hima-seam agent wrapped
 // App exit fences business admission without ending a Run. Legacy journal readers remain for historical Runs.
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent';
+import { failedFlow } from './flow-workflow.js';
 export type HostExitMode = 'drain' | 'keep-jobs' | 'stop-jobs';
 export interface HostExitRequest {
     readonly requestId: string;
@@ -56,15 +57,20 @@ export async function readDurableHostExitStatus(store:import('./run-store.js').R
                 if(!complete)preparationUnknown=true;
             }
         }
+        // A failed execution with no member still running advances nothing until its owner continues
+        // it: waiting cannot close its retained jobs, so it is already at a recoverable boundary.
+        // Stop-jobs still closes those jobs first through the Host's original cleanup.
+        const stalled=request?.mode!=='stop-jobs'&&await failedFlow(run.runId,run.revision).then(flow=>flow!==undefined&&!flow.active);
         const delivery=await store.orderedFlowFacts(run.runId,'delivery-io:');
-        const pendingDelivery=delivery.some(fact=>fact.name.startsWith('delivery-io:intent:')&&!delivery.some(closed=>closed.name===fact.name.replace('delivery-io:intent:','delivery-io:closed:')&&(closed.value as {closed?:boolean}).closed===true));
+        const pendingDelivery=!stalled&&delivery.some(fact=>fact.name.startsWith('delivery-io:intent:')&&!delivery.some(closed=>closed.name===fact.name.replace('delivery-io:intent:','delivery-io:closed:')&&(closed.value as {closed?:boolean}).closed===true));
         deliveryWriting ||= pendingDelivery;
         const jobs:string[]=[];
         for(const resource of resources.filter(resource=>resource.claim.jobs>0)){const snapshot=await store.effectSnapshot(resource.identity);const prepared=snapshot.facts.prepared as {session?:string}|undefined;jobs.push(prepared?.session??resource.effectId);}
         const unknown=preparationUnknown||unclosed.some(effect=>effect.phase==='intent'||!resources.some(resource=>resource.effectId===effect.identity.effectId));
         const failed=await store.flowFact(run.runId,`app-exit-failed:${lastRequest??''}`);
-        const state=(failed&&(resources.length||unclosed.length))||unknown?'uncertain':resources.length||unclosed.length||collecting||pendingDelivery?'working':'ready';
-        runs.push({runId:run.runId,state,jobs,...(failed?{reason:'Original stop failed; its physical facts and human holds are retained.'}:unknown?{reason:preparationUnknown?'Admitted preparation has no confirmed write closure.':'Original dispatch closure is unproved.'}:pendingDelivery?{reason:'Original report/archive file publication awaits write closure.'}:collecting?{reason:'Original submitted output awaits its necessary collection.'}:resources.length?{reason:'Original physical resources await closure.'}:{})});
+        const stopFailed=Boolean(failed&&(resources.length||unclosed.length));
+        const state=stopFailed?'uncertain':stalled?'ready':unknown?'uncertain':resources.length||unclosed.length||collecting||pendingDelivery?'working':'ready';
+        runs.push({runId:run.runId,state,jobs,...(failed?{reason:'Original stop failed; its physical facts and human holds are retained.'}:stalled?{reason:'Durable execution failed at a retained checkpoint; its jobs are kept and its owner can continue the Run after reopening.'}:unknown?{reason:preparationUnknown?'Admitted preparation has no confirmed write closure.':'Original dispatch closure is unproved.'}:pendingDelivery?{reason:'Original report/archive file publication awaits write closure.'}:collecting?{reason:'Original submitted output awaits its necessary collection.'}:resources.length?{reason:'Original physical resources await closure.'}:{})});
     }
     return {...request,agents:activeAgents,runs,ready:request?.mode==='keep-jobs'?!deliveryWriting:(activeAgents.length===0&&runs.every(run=>run.state==='ready'))};
     });

@@ -535,14 +535,16 @@ export function flowWorkflowDefinitions(options: FlowWorkflowOptions): readonly 
         }
         results.push(...await Promise.all(handles.map(handle => handle.getResult())));
       }
-      let workflowId: string | null = null;
+      let workflowId: string | null = null, resume: JsonValue | null = null;
+      // A whole-Run continuation of a failed current revision resumes that execution in place.
+      if (command.action === 'continue' && !command.scope) resume = await resumeFailedFlow(runtime, command.runId);
       if (command.action === 'revise') {
         const definition = await runtime.store.flowFact(command.runId, 'definition');
         workflowId = rootId(command.runId, receipt.revision);
         await scheduleFlowDeadline(runtime,command.runId);
         await runtime.startWorkflow(names.root, workflowId, definition!);
       }
-      return { run: asJson(receipt), cleanup: results, notificationOwner: receipt.owner, workflowId };
+      return { run: asJson(receipt), cleanup: results, notificationOwner: receipt.owner, workflowId, ...(resume ? { resume } : {}) };
     } },
   ];
 }
@@ -577,4 +579,49 @@ export async function controlFlow(runtime: DurableRuntime, command: DurableComma
 export async function readFlow(runtime: DurableRuntime, runId: string) {
   const projection = await runtime.store.flowProjection(runId);
   return { ...projection, ...await runtime.store.flowPhysicalFacts(runId), workflow: await DBOS.getWorkflowStatus(rootId(runId, projection.run.revision)) };
+}
+const activeStatuses = ['PENDING','ENQUEUED','DELAYED'];
+export interface FailedFlow {
+  /** Failed members of the current revision's workflow tree, deepest first. */
+  readonly failed: readonly { readonly workflowId: string; readonly depth: number }[];
+  /** A sibling branch is still executing; its own resources may still close. */
+  readonly active: boolean;
+}
+/** The current revision's root workflow failed; DBOS retains every member's checkpoints. */
+export async function failedFlow(runId: string, revision: number): Promise<FailedFlow | undefined> {
+  const root = await DBOS.getWorkflowStatus(rootId(runId, revision));
+  if (root?.status !== 'ERROR') return undefined;
+  const members = [{ workflowId: root.workflowID, status: root.status, depth: 0 }];
+  // Only an unfinished member can hold a failed descendant; successful subtrees are complete.
+  for (let depth = 1, frontier = [root.workflowID]; frontier.length; depth++) {
+    const children = await DBOS.listWorkflows({ parentWorkflowID: frontier, loadInput: false, loadOutput: false });
+    members.push(...children.map(child => ({ workflowId: child.workflowID, status: child.status, depth })));
+    frontier = children.filter(child => child.status !== 'SUCCESS').map(child => child.workflowID);
+  }
+  return { failed: members.filter(member => member.status === 'ERROR').sort((a, b) => b.depth - a.depth).map(({ workflowId, depth }) => ({ workflowId, depth })),
+    active: members.some(member => activeStatuses.includes(member.status)) };
+}
+/** Continue a failed current revision in place. Each failed member replays from its first failed
+ * step under its original ID, children before parents, so every parent re-awaits the same child and
+ * every completed step and external effect keeps its recorded outcome. */
+export async function resumeFailedFlow(runtime: DurableRuntime, runId: string): Promise<JsonValue | null> {
+  const authority = await runtime.store.flowAuthority(runId);
+  const failed = await failedFlow(runId, authority.run.revision);
+  if (!failed) return null;
+  if (authority.run.cancelled) return { resumed: false, reason: 'A cancelled Run is not resumed; its failed execution is retained' };
+  if (authority.at >= Date.parse(authority.run.deadlineAt)) return { resumed: false, reason: 'The original Run deadline has passed; its failed execution is retained for inspection' };
+  const rewound: { workflowId: string; startStep: number }[] = [];
+  for (const member of failed.failed) {
+    const steps = await DBOS.listWorkflowSteps(member.workflowId) ?? [];
+    const failedSteps = steps.filter(step => step.error !== null && step.error !== undefined).map(step => step.functionID);
+    const startStep = failedSteps.length ? Math.min(...failedSteps) : steps.length ? Math.max(...steps.map(step => step.functionID)) + 1 : 0;
+    await DBOS.rewindWorkflow(member.workflowId, { startStep });
+    rewound.push({ workflowId: member.workflowId, startStep });
+  }
+  // The watchdog ends early once the root has ended without held resources; it watches again.
+  const deadlineId = `hima-deadline:${jsonDigest([runId, authority.run.revision])}`;
+  const deadline = await DBOS.getWorkflowStatus(deadlineId);
+  const watchdog = deadline?.status === 'SUCCESS' && (deadline.output as { closed?: boolean } | undefined)?.closed === true;
+  if (watchdog) await DBOS.rewindWorkflow(deadlineId, { startStep: 0 });
+  return { resumed: true, workflowId: rootId(runId, authority.run.revision), rewound, watchdog };
 }

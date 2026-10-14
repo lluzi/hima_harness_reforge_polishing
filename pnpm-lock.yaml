@@ -68,9 +68,6 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: 5.2.11
         version: 5.2.11
-      '@dbos-inc/node-pg-datasource':
-        specifier: 5.2.11
-        version: 5.2.11(@dbos-inc/dbos-sdk@5.2.11)
       '@deepseek-ai/cordis':
         specifier: ^4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
@@ -92,6 +89,9 @@ importers:
       pg:
         specifier: 8.16.3
         version: 8.16.3
+      superjson:
+        specifier: 1.13.3
+        version: 1.13.3
       unpdf:
         specifier: 1.8.1
         version: 1.8.1
@@ -271,11 +271,6 @@ packages:
     resolution: {integrity: sha512-qrqWGA+7bt48viESoxRIEt518pcYbJXGy1KZJ3GRaK4WI0sR3f2xmvTqc8+Rhs/tbfROso5zFb9bgnUnMKNqbg==}
     engines: {node: '>=20'}
     hasBin: true
-
-  '@dbos-inc/node-pg-datasource@5.2.11':
-    resolution: {integrity: sha512-ZdbEX4z+oZ/Gr6tsobsE9k4c1cZp4Bt5K3cW5h4bh9IcmP20EXRnmvvW+6rFhmgq3Xy4WOoFIsOWZrDtIqhcyA==}
-    peerDependencies:
-      '@dbos-inc/dbos-sdk': '*'
 
   '@deepseek-ai/cordis-plugin-group@1.0.2':
     resolution: {integrity: sha512-OeGiPD793Mhma9+rGIox95neuufwOFTqQ5jooFgrMK/Mn7Fp7Hkv/d7VKMXZz40iks2fZCbiFE6p9WjTVTQRdg==}
@@ -4201,14 +4196,6 @@ snapshots:
       - bufferutil
       - pg-native
       - utf-8-validate
-
-  '@dbos-inc/node-pg-datasource@5.2.11(@dbos-inc/dbos-sdk@5.2.11)':
-    dependencies:
-      '@dbos-inc/dbos-sdk': 5.2.11
-      pg: 8.16.3
-      superjson: 1.13.3
-    transitivePeerDependencies:
-      - pg-native
 
   '@deepseek-ai/cordis-plugin-group@1.0.2(@deepseek-ai/cordis-plugin-loader@1.0.3)(@deepseek-ai/cordis@4.0.2)':
     dependencies:

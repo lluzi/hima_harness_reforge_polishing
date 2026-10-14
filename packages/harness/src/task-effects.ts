@@ -456,7 +456,11 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
         if(ack?.status!=='completed'||state?.phase!=='released'||owned?.quiescent!==true)return {closed:false,reason:ack?.error??'Original engineering native resources are not confirmed quiescent; verified delivery is retained'};
         }
       }
-      if(!await retainedJobResourcesClosed(identity.site,originalJob))return {closed:false,reason:'Native closure is signed but the original wrapper process group remains open'};
+      // The wrapper exits on its own after a signed release or cancel; allow it the declared stop grace.
+      const closeBy=Date.now()+Math.ceil((held.plan.capability.stopGraceSeconds+5)*1000);
+      let wrapperClosed=await retainedJobResourcesClosed(identity.site,originalJob);
+      while(!wrapperClosed&&Date.now()<closeBy){await new Promise(resolve=>setTimeout(resolve,250));wrapperClosed=await retainedJobResourcesClosed(identity.site,originalJob);}
+      if(!wrapperClosed)return {closed:false,reason:'Native closure is signed but the original wrapper process group remains open'};
       if(!state||!owned||owned.quiescent!==true)return {closed:false,reason:'Original signed native closure facts are missing'};
       return {closed:true,proof:{session:originalJob.session,nativeSession:completion.delivery?.sessionId??completion.nativeSession??state.sessionId??null,ownedSha256:owned.sha256,stateSha256:state.sha256,closed:true}};
     },

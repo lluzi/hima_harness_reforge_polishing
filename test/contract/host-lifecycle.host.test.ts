@@ -79,15 +79,19 @@ test('a PostgreSQL outage cannot confirm Host shutdown or release a forged proce
     assert.equal(stopped.status, 0, stopped.stderr);
     await writeFile(pidFile, `${process.pid}\n${data}\n0\n${port}\n\n127.0.0.1\n\nready\n`);
     await assert.rejects(host.stop(), /resource shutdown unconfirmed/);
-    // The pinned datasource can terminate the Host on an idle connection error before its
-    // disposer runs. Neither that failure nor the missing receipt confirms resource closure.
+    // An idle connection error no longer ends the Host. Its exit cannot be accepted without
+    // PostgreSQL, so no signal is sent and nothing confirms resource closure.
     assert.notEqual(host.child.exitCode, 0);
-    assert.match(host.stderr(), /terminating connection|connection terminated|connection.*closed/i);
     assert.equal(host.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${host.child.pid}`), false);
     process.kill(process.pid, 0);
     assert.ok(await stat(path.join(home.home, 'hima/database/host-owner')), 'unconfirmed resource closure retained ownership');
   } finally {
     await host.stop().catch(() => undefined);
+    // The test broke this Host's database on purpose; only the test may end the refusing Host.
+    if (host.child.exitCode === null && host.child.signalCode === null) {
+      const closed = new Promise(resolve => host.child.once('close', resolve));
+      host.child.kill('SIGKILL'); await closed;
+    }
     await rm(pidFile, { force: true });
     await home.dispose();
   }

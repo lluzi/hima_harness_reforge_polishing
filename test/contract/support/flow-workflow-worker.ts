@@ -80,6 +80,7 @@ async function main() {
     'multi-fields':flow({kind:'repeat',id:'fields-loop',body:seq('fields-body',{kind:'parallel',id:'fields-parallel',branches:{a:{flow:task('patch-a',{scale:{source:'carry',path:['scale']},delay:literal(800)}),required:true},b:{flow:task('patch-b',{scale:{source:'carry',path:['scale']},delay:literal(800)}),required:true},c:{flow:task('unchanged',{delay:literal(1000)}),required:true}},results:{}},task('patch-choice',{a:from('patch-a','scale'),b:from('patch-b','scale')},decisionSchema)),carry:{scale:{initial:literal(1),next:{taskId:'patch-choice',path:['scale']}}},stop:{output:{taskId:'patch-choice',path:['route']},equals:'stop'},maxIterations:3,budget:'original-run'}),
     'repeat-terminal':flow({kind:'repeat',id:'terminal-repeat',body:seq('terminal-body',task('terminal-decision',{},decisionSchema),task('terminal-deliver')),carry:{},stop:{output:{taskId:'terminal-decision',path:['route']},equals:'stop'},maxIterations:1,budget:'original-run'}),
     'closure-race':flow(task('closure')),
+    'failed-resume':flow(seq('s',{kind:'parallel',id:'p',branches:{a:{flow:task('a',{n:literal(1),delay:literal(1500)}),required:true},b:{flow:task('b',{n:literal(2),delay:literal(200)}),required:true}},results:{}},task('consumer',{a:from('a','n'),b:from('b','n')}))),
     'cleanup-race':flow(task('cleanup-race',{delay:literal(30000)})),
     'reader-pending':flow(task('reader-parent')),
     'revision-hold':flow(task('held-revision',{n:literal(1),delay:literal(30000)})),
@@ -184,7 +185,8 @@ async function main() {
     return metadata;
   }};
   await trace('runtime-start');
-  const runtime=await startDurableRuntime({database,manifest,workflows:[...flowWorkflowDefinitions({resolveAdapter}),retainedWorkflow]});
+  // failed-resume: a lost connection is not retried, so it fails its workflow tree as on an overloaded Mac.
+  const runtime=await startDurableRuntime({database,manifest,workflows:[...flowWorkflowDefinitions({resolveAdapter}),retainedWorkflow],...(mode==='failed-resume'?{connectionRetry:{workflowWindowMs:0}}:{})});
   await trace('runtime-ready');
   const store=runtime.store;
   if(mode?.startsWith('crash-')){
@@ -394,6 +396,37 @@ async function main() {
   }else if(mode==='watch-lifecycle'){
     const {handle}=await open('watch-lifecycle','choice',{},60000);assert.equal((await handle.getResult()).state,'succeeded');const watch=await (await load('flow-workflow')).scheduleFlowDeadline(runtime,'watch-lifecycle');const settled:any=await watch.getResult();assert.equal(settled.closed,true);assert.equal(settled.completedBeforeDeadline,true);
     const old=(await store.flowInvocations('watch-lifecycle')).find((r:any)=>r.identity.taskId==='selected');const changed:any=await command('watch-lifecycle','revise',{change:{taskId:'selected',effectId:old.identity.effectId,input:{},evidence:{reason:'New occurrence retains original deadline'}}});assert.equal((await DBOS.retrieveWorkflow(changed.workflowId).getResult()).state,'succeeded');assert.equal((await (await (await load('flow-workflow')).scheduleFlowDeadline(runtime,'watch-lifecycle')).getResult()).closed,true);send({ok:true,settled});
+  }else if(mode==='failed-resume'){
+    const {handle}=await open(mode,mode,{},30000);
+    await until(async()=>(await rows()).some((r:any)=>r.task==='a'&&r.phase==='start'));
+    const a=(await store.flowInvocations(mode)).find((r:any)=>r.identity.taskId==='a');
+    const failing=`hima-task:${jsonDigest(a.identity)}`;let injected=0;
+    // One transient connection loss inside the running task's authority transaction, as in the field.
+    const transaction=store.transaction.bind(store);
+    store.transaction=(body:any,name:string)=>transaction(async(client:any)=>{
+      if(name==='hima.flowAuthority'&&DBOS.workflowID===failing&&injected++===0)throw Object.assign(new Error('Connection terminated due to connection timeout'),{cause:new Error('Connection terminated unexpectedly')});
+      return body(client);
+    },name);
+    await assert.rejects(handle.getResult(),/Connection terminated due to connection timeout/);
+    const {failedFlow}=await load('flow-workflow');let failed:any;
+    await until(async()=>{failed=await failedFlow(mode,0);return failed!==undefined&&!failed.active;});
+    assert.equal(failed.failed[0].workflowId,failing,'The failed task is rewound before its parents');
+    assert.equal(failed.failed.at(-1).depth,0);assert.ok(failed.failed.length>=3,JSON.stringify(failed));
+    // Waiting cannot advance a failed execution, so App quit treats it as a recoverable boundary.
+    const {readDurableHostExitStatus}=await load('host-exit');const exit=await readDurableHostExitStatus(store,undefined);
+    const exiting=exit.runs.find((r:any)=>r.runId===mode);assert.equal(exiting.state,'ready',JSON.stringify(exit));assert.match(exiting.reason,/retained checkpoint/);assert.equal(exit.ready,true);
+    const view=await readFlow(runtime,mode);assert.equal(view.workflow.status,'ERROR');
+    const continued:any=await command(mode,'continue');
+    assert.equal(continued.resume.resumed,true,JSON.stringify(continued));
+    assert.deepEqual(continued.resume.rewound.map((r:any)=>r.workflowId),failed.failed.map((f:any)=>f.workflowId));
+    assert.ok(continued.resume.rewound[0].startStep>0,'The failed task replays its completed steps');
+    const result:any=await DBOS.retrieveWorkflow(continued.resume.workflowId).getResult();
+    assert.equal(result.state,'succeeded',JSON.stringify(result));assert.equal(result.committed.consumer.value.n,1);
+    const starts=(await rows()).filter((r:any)=>r.phase==='start');
+    for(const id of ['a','b','consumer'])assert.equal(starts.filter((r:any)=>r.task===id).length,1,`${id} keeps one original Job across resume`);
+    assert.equal((await DBOS.listWorkflows({status:'ERROR'})).length,0);assert.equal(await failedFlow(mode,0),undefined);
+    assert.equal((await store.effectResources()).filter((r:any)=>!r.released).length,0);
+    send({ok:true,rewound:continued.resume.rewound});
   }else if(mode==='failed-revise'){
     const {handle,opening}=await open('failed-revise','failed-revise',{attemptLimit:2});assert.equal((await handle.getResult()).state,'failed');await command('failed-revise','pause',{origin:'human'});
     const old=(await store.flowInvocations('failed-revise'))[0];const revised:any=await command('failed-revise','revise',{change:{taskId:'fails-once',effectId:old.identity.effectId,input:{fail:false},evidence:{reason:'Explicit correction after real failed original'}}});await assert.rejects(command('failed-revise','continue',{origin:'agent'}),/human/);assert.equal((await rows()).filter((r:any)=>r.phase==='start').length,1);await command('failed-revise','continue',{origin:'human'});

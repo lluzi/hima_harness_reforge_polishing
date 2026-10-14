@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
-import type { ClientBase } from 'pg';
-import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
+import type { ClientBase, QueryResult, QueryResultRow } from 'pg';
+import { withConnectionRetry, type ApplicationDataSource } from './durable-datasource.js';
 import type { LocalDatabaseConnection } from './local-database.js';
 import { taskIdentity, taskJsonValue, taskResult, taskToolOutput, validateTaskInput, createTaskResult } from './task-contract.js';
 import type { JsonValue, TaskIdentity, TaskResult } from './task-contract.js';
@@ -76,14 +76,19 @@ function invocationPath(record:FlowInvocationRecord):FlowInvocationPath { const 
 
 export class RunStore {
   readonly #pool: Pool;
-  readonly #source: NodePostgresDataSource;
-  constructor(connection: LocalDatabaseConnection, source: NodePostgresDataSource, readonly applicationVersion: string) {
+  readonly #source: ApplicationDataSource;
+  #closed = false;
+  constructor(connection: LocalDatabaseConnection, source: ApplicationDataSource, readonly applicationVersion: string) {
     this.#pool = new Pool({ ...connection, connectionTimeoutMillis: 2000, statement_timeout: 5000 });
     this.#pool.on('error', () => { /* Idle socket failures are surfaced by the next authoritative query. */ });
     this.#source = source;
   }
   async initialize(): Promise<void> { await migrateRunStore(this.#pool); }
-  async close(): Promise<void> { await this.#pool.end(); }
+  async close(): Promise<void> { this.#closed = true; await this.#pool.end(); }
+  /** Direct reads (and the idempotent outbox acknowledgement) repeat through a lost connection. */
+  #query<R extends QueryResultRow = any>(text: string, values?: unknown[]): Promise<QueryResult<R>> {
+    return withConnectionRetry(() => this.#pool.query<R>(text, values), this.#source.retry, () => this.#closed);
+  }
   async transaction<T>(body: (client: ClientBase) => Promise<T>, name: string): Promise<T> {
     return this.#source.runTransaction(() => body(this.#source.client), { name, isolationLevel: 'SERIALIZABLE' });
   }
@@ -125,11 +130,11 @@ export class RunStore {
     return row?.active_request===requestId&&row.mode==='stop-jobs'&&!row.finalizing;
   }
   async hostExit():Promise<import('./host-exit.js').HostExitRequest|undefined> {
-    const row=(await this.#pool.query<{requestId:string;mode:import('./host-exit.js').HostExitMode}>(`SELECT r.request_id AS "requestId",r.mode FROM hima.host_exit h JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true`)).rows[0];
+    const row=(await this.#query<{requestId:string;mode:import('./host-exit.js').HostExitMode}>(`SELECT r.request_id AS "requestId",r.mode FROM hima.host_exit h JOIN hima.host_exit_requests r ON r.request_id=h.active_request WHERE h.singleton=true`)).rows[0];
     return row;
   }
   async lastHostExitRequestId():Promise<string|undefined> {
-    return (await this.#pool.query<{request_id:string}>('SELECT request_id FROM hima.host_exit_requests ORDER BY accepted_at DESC LIMIT 1')).rows[0]?.request_id;
+    return (await this.#query<{request_id:string}>('SELECT request_id FROM hima.host_exit_requests ORDER BY accepted_at DESC LIMIT 1')).rows[0]?.request_id;
   }
   async acceptHostExit(request:import('./host-exit.js').HostExitRequest):Promise<void> {
     await this.#externalTransaction(async client=>{
@@ -173,10 +178,10 @@ export class RunStore {
   async withRunReadBoundary<T>(runId:string, read:()=>Promise<T>):Promise<T> {
     return this.transaction(async client=>{await this.#run(client,runId,true);return read();},'hima.readRunBoundary');
   }
-  async runs(): Promise<DurableRun[]> { return (await this.#pool.query<DurableRun>(`SELECT ${runColumns} FROM hima.runs ORDER BY created_at,run_id`)).rows.map(readRun); }
+  async runs(): Promise<DurableRun[]> { return (await this.#query<DurableRun>(`SELECT ${runColumns} FROM hima.runs ORDER BY created_at,run_id`)).rows.map(readRun); }
   /** Actual and former owner authority for Host routing; Guide-only relations grant no role. */
   async runsForOwner(sessionId:string):Promise<DurableRun[]> {
-    return (await this.#pool.query<DurableRun>(`SELECT ${runColumns} FROM hima.runs r WHERE owner=$1 OR opening->>'owner'=$1
+    return (await this.#query<DurableRun>(`SELECT ${runColumns} FROM hima.runs r WHERE owner=$1 OR opening->>'owner'=$1
       OR EXISTS(SELECT 1 FROM hima.commands c WHERE c.run_id=r.run_id AND (c.command->>'owner'=$1 OR c.command->>'nextOwner'=$1))
       ORDER BY created_at,run_id`,[sessionId])).rows.map(readRun);
   }
@@ -226,8 +231,8 @@ export class RunStore {
   /** Original human control admissions and stopwatch receipts share the existing reader book.
    * A done control receipt proves command admission, never physical effect/resource closure. */
   async humanRequests(runId:string):Promise<NonNullable<RunRecord['control']>['requests']> {
-    const rows=(await this.#pool.query<{name:string;value:NonNullable<RunRecord['control']>['requests'][string]}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND left(name,18)='human-measurement:' ORDER BY name",[runId])).rows;
-    const commands=(await this.#pool.query<{commandId:string;digest:string;command:DurableCommand;receipt:DurableRun;factId:string;at:Date}>(`SELECT c.command_id AS "commandId",c.digest,c.command,c.receipt,o.fact_id AS "factId",o.at
+    const rows=(await this.#query<{name:string;value:NonNullable<RunRecord['control']>['requests'][string]}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND left(name,18)='human-measurement:' ORDER BY name",[runId])).rows;
+    const commands=(await this.#query<{commandId:string;digest:string;command:DurableCommand;receipt:DurableRun;factId:string;at:Date}>(`SELECT c.command_id AS "commandId",c.digest,c.command,c.receipt,o.fact_id AS "factId",o.at
       FROM hima.commands c JOIN hima.outbox o ON o.run_id=c.run_id AND o.kind='control' AND o.payload->>'commandId'=c.command_id
       WHERE c.run_id=$1 AND c.command->>'origin'='human' ORDER BY c.command_id`,[runId])).rows;
     const requests:NonNullable<RunRecord['control']>['requests']={};
@@ -411,7 +416,7 @@ export class RunStore {
   }
   /** Delivery readers need completed and failed immutable facts even after history acknowledgement. */
   async orderedFlowFacts(runId:string,prefix:string):Promise<readonly {name:string;value:JsonValue;source:DurableFact}[]> {
-    const rows=(await this.#pool.query<{name:string;value:JsonValue;factId:string;runId:string;seq:number;kind:string;payload:JsonValue;at:string}>(`
+    const rows=(await this.#query<{name:string;value:JsonValue;factId:string;runId:string;seq:number;kind:string;payload:JsonValue;at:string}>(`
       SELECT f.name,f.value,o.fact_id AS "factId",o.run_id AS "runId",o.seq,o.kind,o.payload,o.at
       FROM hima.flow_facts f JOIN hima.outbox o ON o.run_id=f.run_id AND o.kind='flow-fact' AND o.payload->>'name'=f.name
       WHERE f.run_id=$1 AND left(f.name,length($2))=$2 ORDER BY o.seq`,[runId,prefix])).rows;
@@ -459,8 +464,8 @@ export class RunStore {
   }
   async derivedEffects(parent:TaskIdentity):Promise<Array<{identity:TaskIdentity;parentIdentity:TaskIdentity;intent:JsonValue|null;phase:string|null;purpose:'business'|'collect'}>> {
     taskIdentity.parse(parent);
-    const effect=await this.effect(parent.effectId),registered=!effect?(await this.#pool.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1 AND run_id=$2',[parent.effectId,parent.runId])).rows[0]?.invocation:undefined;if(jsonDigest(effect?.identity??registered?.identity??null)!==jsonDigest(parent))mismatch('Derived cleanup parent');
-    const rows=(await this.#pool.query<{child_identity:TaskIdentity;parent_identity:TaskIdentity;intent:JsonValue|null;phase:string|null;purpose:'business'|'collect'}>(`WITH RECURSIVE owned AS (
+    const effect=await this.effect(parent.effectId),registered=!effect?(await this.#query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1 AND run_id=$2',[parent.effectId,parent.runId])).rows[0]?.invocation:undefined;if(jsonDigest(effect?.identity??registered?.identity??null)!==jsonDigest(parent))mismatch('Derived cleanup parent');
+    const rows=(await this.#query<{child_identity:TaskIdentity;parent_identity:TaskIdentity;intent:JsonValue|null;phase:string|null;purpose:'business'|'collect'}>(`WITH RECURSIVE owned AS (
       SELECT d.*,1 AS depth FROM hima.flow_derived_effects d WHERE d.parent_effect_id=$1 AND d.run_id=$2
       UNION ALL SELECT d.*,o.depth+1 FROM hima.flow_derived_effects d JOIN owned o ON d.parent_effect_id=o.child_effect_id WHERE d.run_id=$2)
       SELECT o.child_identity,o.parent_identity,o.purpose,e.intent,e.phase FROM owned o LEFT JOIN hima.effects e ON e.effect_id=o.child_effect_id ORDER BY o.depth DESC,o.child_effect_id`,[parent.effectId,parent.runId])).rows;
@@ -552,10 +557,10 @@ export class RunStore {
   /** Read-only UI/Agent projection. It cannot choose or schedule work. */
   async flowProjection(runId:string):Promise<{run:DurableRun;tasks:JsonValue[];controls:JsonValue[]}> {
     const run=await this.run(runId);
-    const tasks=(await this.#pool.query<{invocation:FlowInvocationRecord;result:TaskResult|null;state:JsonValue|null}>(`SELECT i.invocation,r.result,
+    const tasks=(await this.#query<{invocation:FlowInvocationRecord;result:TaskResult|null;state:JsonValue|null}>(`SELECT i.invocation,r.result,
       (SELECT o.payload->'state' FROM hima.outbox o WHERE o.run_id=i.run_id AND o.kind='flow-state' AND o.payload->>'effectId'=i.effect_id ORDER BY o.seq DESC LIMIT 1) AS state
       FROM hima.flow_invocations i LEFT JOIN hima.results r USING(effect_id) WHERE i.run_id=$1 ORDER BY i.effect_id`,[runId])).rows;
-    const controls=(await this.#pool.query<{command:JsonValue}>('SELECT command FROM hima.commands WHERE run_id=$1 ORDER BY command_id',[runId])).rows;
+    const controls=(await this.#query<{command:JsonValue}>('SELECT command FROM hima.commands WHERE run_id=$1 ORDER BY command_id',[runId])).rows;
     const rules=await this.#revisionRules(this.#pool,runId);
     return {run,tasks:tasks.map(row=>({identity:row.invocation.identity,version:row.invocation.version,branches:[...row.invocation.branches],iterations:[...invocationPath(row.invocation).iterations],
       valid:flowInvocationRevision(rules,invocationPath(row.invocation),row.invocation.consumedVersions).version===row.invocation.version,
@@ -564,14 +569,14 @@ export class RunStore {
   /** Original resource/proof facts, including preparation and derived effects outside the
    * interpreter task table. A cancellation request is never substituted for these facts. */
   async flowPhysicalFacts(runId:string):Promise<{resources:FlowPhysicalResource[];effects:FlowPhysicalEffect[];stopped:Record<string,JsonValue>}> {
-    const resources=(await this.#pool.query<FlowPhysicalResource>(`SELECT l.effect_id AS "effectId",e.identity,l.site_id AS "siteId",l.claim,
+    const resources=(await this.#query<FlowPhysicalResource>(`SELECT l.effect_id AS "effectId",e.identity,l.site_id AS "siteId",l.claim,
       (l.released_at IS NOT NULL) AS released,l.proof FROM hima.effect_leases l JOIN hima.effects e USING(effect_id)
       WHERE e.run_id=$1 ORDER BY l.effect_id`,[runId])).rows;
-    const effects=(await this.#pool.query<FlowPhysicalEffect>(`SELECT identity,phase,admitted_at AS "admittedAt",
+    const effects=(await this.#query<FlowPhysicalEffect>(`SELECT identity,phase,admitted_at AS "admittedAt",
       COALESCE((SELECT jsonb_agg(jsonb_build_object('dispatchId',d.dispatch_id,'inputSha256',d.input_sha256,'at',d.started_at) ORDER BY d.dispatch_id)
         FROM hima.effect_dispatches d WHERE d.effect_id=e.effect_id),'[]'::jsonb) AS dispatches
       FROM hima.effects e WHERE run_id=$1 ORDER BY effect_id`,[runId])).rows;
-    const stopped=(await this.#pool.query<{name:string;value:JsonValue}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND name LIKE 'stopped:%' ORDER BY name",[runId])).rows;
+    const stopped=(await this.#query<{name:string;value:JsonValue}>("SELECT name,value FROM hima.flow_facts WHERE run_id=$1 AND name LIKE 'stopped:%' ORDER BY name",[runId])).rows;
     return {resources,effects:effects.map(effect=>({...effect,admittedAt:effect.admittedAt?new Date(effect.admittedAt).toISOString():null})),stopped:Object.fromEntries(stopped.map(row=>[row.name.slice('stopped:'.length),row.value]))};
   }
   async prepareEffect(identity: TaskIdentity, intent: JsonValue): Promise<void> {
@@ -586,7 +591,8 @@ export class RunStore {
       if (jsonDigest(effect.identity) !== jsonDigest(identity) || jsonDigest(effect.intent) !== jsonDigest(intent)) mismatch('Effect');
   }
   async #externalTransaction<T>(body:(client:ClientBase)=>Promise<T>):Promise<T> {
-    const client=await this.#pool.connect();
+    // Only acquiring the connection repeats: the body may hold a native callback reservation.
+    const client=await withConnectionRetry(()=>this.#pool.connect(),this.#source.retry,()=>this.#closed);
     try {await client.query('BEGIN');const result=await body(client);await client.query('COMMIT');return result;}
     catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}finally{client.release();}
   }
@@ -754,7 +760,7 @@ export class RunStore {
     const effect=await this.effect(identity.effectId);
     if(!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('Native receipt effect');
     const namespace=`native:${prefix}`;
-    const rows=(await this.#pool.query<{phase:string;fact:JsonValue}>('SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1 AND left(phase,length($2))=$2 ORDER BY phase',[identity.effectId,namespace])).rows;
+    const rows=(await this.#query<{phase:string;fact:JsonValue}>('SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1 AND left(phase,length($2))=$2 ORDER BY phase',[identity.effectId,namespace])).rows;
     return Object.fromEntries(rows.map(row=>[row.phase.slice('native:'.length),row.fact]));
   }
   /** Native Code/Knowledge reconstruction uses the application outbox's actual fact order.
@@ -778,20 +784,20 @@ export class RunStore {
    * callback registry. Ambiguous grants fail closed instead of selecting an arbitrary owner. */
   async nativeSessionEffect(sessionId:string):Promise<{identity:TaskIdentity;fact:JsonValue}|undefined> {
     assertName(sessionId);
-    const rows=(await this.#pool.query<{identity:TaskIdentity;fact:JsonValue}>(`SELECT e.identity,f.fact FROM hima.effect_facts f JOIN hima.effects e USING(effect_id)
+    const rows=(await this.#query<{identity:TaskIdentity;fact:JsonValue}>(`SELECT e.identity,f.fact FROM hima.effect_facts f JOIN hima.effects e USING(effect_id)
       WHERE left(f.phase,length('native:child:'))='native:child:' AND right(f.phase,length(':intent'))=':intent' AND f.fact->'effective'->>'childSessionId'=$1 LIMIT 2`,[sessionId])).rows;
     if(rows.length>1)throw new Error('Native child session has ambiguous retained effect ownership; reconcile its original session before new tool writes');
     return rows[0];
   }
   async fact(factId:string):Promise<DurableFact|undefined> {
-    const row=(await this.#pool.query<DurableFact>('SELECT fact_id AS "factId",run_id AS "runId",seq,kind,payload,at FROM hima.outbox WHERE fact_id=$1',[factId])).rows[0];
+    const row=(await this.#query<DurableFact>('SELECT fact_id AS "factId",run_id AS "runId",seq,kind,payload,at FROM hima.outbox WHERE fact_id=$1',[factId])).rows[0];
     return row?{...row,at:new Date(row.at).toISOString()}:undefined;
   }
   async effect(effectId: string): Promise<{identity:TaskIdentity;intent:JsonValue;phase:string;fact:JsonValue|null}|undefined> {
-    return (await this.#pool.query('SELECT identity,intent,phase,fact FROM hima.effects WHERE effect_id=$1',[effectId])).rows[0];
+    return (await this.#query('SELECT identity,intent,phase,fact FROM hima.effects WHERE effect_id=$1',[effectId])).rows[0];
   }
   async effectFact(effectId: string, phase: string): Promise<JsonValue | undefined> {
-    return (await this.#pool.query<{fact:JsonValue}>('SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',[effectId,phase])).rows[0]?.fact;
+    return (await this.#query<{fact:JsonValue}>('SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',[effectId,phase])).rows[0]?.fact;
   }
   /** A workflow branches only from this datasource-receipted snapshot. Uncached reads are for
    * effect admission/UI, never for skipping operations in a replayed workflow invocation. */
@@ -837,7 +843,7 @@ export class RunStore {
       return true;
   }
   async effectResources(effectId?:string):Promise<Array<{effectId:string;siteId:string;claim:EffectResourceClaim;released:boolean;proof:JsonValue|null}>> {
-    return (await this.#pool.query('SELECT effect_id AS "effectId",site_id AS "siteId",claim,released_at IS NOT NULL AS released,proof FROM hima.effect_leases WHERE ($1::text IS NULL OR effect_id=$1)',[effectId??null])).rows;
+    return (await this.#query('SELECT effect_id AS "effectId",site_id AS "siteId",claim,released_at IS NOT NULL AS released,proof FROM hima.effect_leases WHERE ($1::text IS NULL OR effect_id=$1)',[effectId??null])).rows;
   }
   /** Callback recovery distinguishes a retained intent from a send that crossed admission.
    * This uncached fact never replaces the actual current-admission check or permits a resend. */
@@ -845,7 +851,7 @@ export class RunStore {
     taskIdentity.parse(identity);assertName(dispatchId);
     const effect=await this.effect(identity.effectId);
     if(!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('Dispatch receipt effect');
-    return (await this.#pool.query('SELECT 1 FROM hima.effect_dispatches WHERE effect_id=$1 AND dispatch_id=$2',[identity.effectId,dispatchId])).rowCount!==0;
+    return (await this.#query('SELECT 1 FROM hima.effect_dispatches WHERE effect_id=$1 AND dispatch_id=$2',[identity.effectId,dispatchId])).rowCount!==0;
   }
   async releaseEffectResources(identity:TaskIdentity,proof:JsonValue):Promise<void> {
     taskJsonValue.parse(proof);
@@ -929,23 +935,23 @@ export class RunStore {
       return result;
     },'hima.commitResult');
   }
-  async result(effectId:string): Promise<TaskResult|undefined> { return (await this.#pool.query<{result:TaskResult}>('SELECT result FROM hima.results WHERE effect_id=$1',[effectId])).rows[0]?.result; }
+  async result(effectId:string): Promise<TaskResult|undefined> { return (await this.#query<{result:TaskResult}>('SELECT result FROM hima.results WHERE effect_id=$1',[effectId])).rows[0]?.result; }
   /** Read freshness includes retained facts whose history projection was already acknowledged. */
   async sourceRevision(runId:string):Promise<number> {
-    const {rows}=await this.#pool.query<{revision:string}>('SELECT COALESCE(MAX(seq),0) AS revision FROM hima.outbox WHERE run_id=$1',[runId]);
+    const {rows}=await this.#query<{revision:string}>('SELECT COALESCE(MAX(seq),0) AS revision FROM hima.outbox WHERE run_id=$1',[runId]);
     return Number(rows[0]!.revision);
   }
   async latestControlFact(runId:string):Promise<{command:DurableCommand;factId:string}|undefined> {
-    return (await this.#pool.query<{command:DurableCommand;factId:string}>(`SELECT payload AS command,fact_id AS "factId" FROM hima.outbox WHERE run_id=$1 AND kind='control' ORDER BY seq DESC LIMIT 1`,[runId])).rows[0];
+    return (await this.#query<{command:DurableCommand;factId:string}>(`SELECT payload AS command,fact_id AS "factId" FROM hima.outbox WHERE run_id=$1 AND kind='control' ORDER BY seq DESC LIMIT 1`,[runId])).rows[0];
   }
   async branchControls(runId:string):Promise<Array<{branches:FlowBranch[];hold:string|null;cancelled:boolean;holdSource:'human'|'agent'|'unknown'|null}>> {
-    return (await this.#pool.query<{branches:FlowBranch[];hold:string|null;cancelled:boolean;holdSource:'human'|'agent'|'unknown'|null}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1 ORDER BY scope_digest',[runId])).rows;
+    return (await this.#query<{branches:FlowBranch[];hold:string|null;cancelled:boolean;holdSource:'human'|'agent'|'unknown'|null}>('SELECT branches,hold,cancelled,hold_source AS "holdSource" FROM hima.flow_branch_controls WHERE run_id=$1 ORDER BY scope_digest',[runId])).rows;
   }
-  async pendingFactCount(runId:string):Promise<number> {return Number((await this.#pool.query<{count:string}>('SELECT count(*) AS count FROM hima.outbox WHERE run_id=$1 AND acknowledged_at IS NULL',[runId])).rows[0]!.count);}
+  async pendingFactCount(runId:string):Promise<number> {return Number((await this.#query<{count:string}>('SELECT count(*) AS count FROM hima.outbox WHERE run_id=$1 AND acknowledged_at IS NULL',[runId])).rows[0]!.count);}
   async pendingFacts(runId?:string): Promise<DurableFact[]> {
-    return (await this.#pool.query<DurableFact>(`SELECT fact_id AS "factId",run_id AS "runId",seq,kind,payload,at FROM hima.outbox WHERE acknowledged_at IS NULL ${runId ? 'AND run_id=$1' : ''} ORDER BY run_id,seq`,runId ? [runId] : [])).rows.map(row=>({...row,at:new Date(row.at).toISOString()}));
+    return (await this.#query<DurableFact>(`SELECT fact_id AS "factId",run_id AS "runId",seq,kind,payload,at FROM hima.outbox WHERE acknowledged_at IS NULL ${runId ? 'AND run_id=$1' : ''} ORDER BY run_id,seq`,runId ? [runId] : [])).rows.map(row=>({...row,at:new Date(row.at).toISOString()}));
   }
-  async acknowledgeFact(factId:string): Promise<void> { await this.#pool.query('UPDATE hima.outbox SET acknowledged_at=clock_timestamp() WHERE fact_id=$1 AND acknowledged_at IS NULL',[factId]); }
+  async acknowledgeFact(factId:string): Promise<void> { await this.#query('UPDATE hima.outbox SET acknowledged_at=clock_timestamp() WHERE fact_id=$1 AND acknowledged_at IS NULL',[factId]); }
   async projectFacts(project: (fact:DurableFact) => Promise<void>, runId?:string): Promise<number> {
     let count=0;
     for(const fact of await this.pendingFacts(runId)) { await project(fact); await this.acknowledgeFact(fact.factId); count++; }

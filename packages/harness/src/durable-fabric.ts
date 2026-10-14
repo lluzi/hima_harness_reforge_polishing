@@ -255,7 +255,7 @@ export async function readDurableExecutionContext(deps: FabricDeps, runId: strin
   return {engine:durableEngine,run,nodes:pack.graph.nodes,budget:budgetStanding(run,0),available:[],executions,growths:[],revisions:[],
     holds,
     method:{id:pack.id,version:pack.contract.version,digest:data.product.method.packDigest,dir:pack.dir,contract:pack.contract,reference:pack.graph},
-    reason:flow.run.applicationVersion!==runtime.applicationVersion?'This Run requires its original frozen executable version for control/continuation; retained facts remain readable':flow.run.cancelled&&!run.stopState?.closed?'Cancellation accepted; original resource closure is not yet proved':flow.run.hold??(revisionPreparation?.status==='ERROR'?'Admitted revision material preparation failed; inspect its original error':revisionPreparation&&revisionPreparation.status!=='SUCCESS'?'Approved revision material preparation is pending':preparationWorkflow?.status==='ERROR'?'Durable preparation failed; inspect its workflow error':flow.workflow?.status==='ERROR'?'Durable execution failed; inspect its workflow error':!prepared?'Durable workspace preparation is pending':prepared.kind!=='prepared'&&prepared.kind!=='reused'?'Workspace preparation requires attention':undefined),
+    reason:flow.run.applicationVersion!==runtime.applicationVersion?'This Run requires its original frozen executable version for control/continuation; retained facts remain readable':flow.run.cancelled&&!run.stopState?.closed?'Cancellation accepted; original resource closure is not yet proved':flow.run.hold??(revisionPreparation?.status==='ERROR'?'Admitted revision material preparation failed; inspect its original error':revisionPreparation&&revisionPreparation.status!=='SUCCESS'?'Approved revision material preparation is pending':preparationWorkflow?.status==='ERROR'?'Durable preparation failed; inspect its workflow error':flow.workflow?.status==='ERROR'?'Durable execution failed at a retained checkpoint; the owner can continue the whole Run to resume it in place':!prepared?'Durable workspace preparation is pending':prepared.kind!=='prepared'&&prepared.kind!=='reused'?'Workspace preparation requires attention':undefined),
     durable:{...flow,preparation:prepared,preparationWorkflow,revisionPreparation,outcome}};
 }
 /** Actor and expected control identity are always supplied by the caller, never silently refreshed. */
@@ -263,7 +263,11 @@ export async function controlDurableRun(deps: FabricDeps, command: DurableComman
   const runtime = durableRuntimeOf(deps);
   if(command.action==='handoff' && !deps.host?.get('agents')?.list().some(agent=>String(agent.id)===command.nextOwner)) throw new Error('Handoff target must be a live conversation on this Host');
   const handle=await controlFlow(runtime,command);
-  return acknowledgedCommand(runtime,command,handle.workflowID);
+  const receipt=await acknowledgedCommand(runtime,command,handle.workflowID);
+  if(command.action!=='continue'||command.scope)return receipt;
+  // A whole-Run continuation also answers whether it resumed a failed execution in place.
+  const output=await handle.getResult() as {resume?:JsonValue}|null;
+  return output?.resume?{...receipt,resume:output.resume}:receipt;
 }
 /** A receipt proves acceptance; resource closure remains a separate PG/DBOS fact. */
 async function acknowledgedCommand(runtime:DurableRuntime,command:DurableCommand,workflowId:string) {

@@ -15,7 +15,7 @@ test('datasource rollback leaves no partial result and independent Homes isolate
     assert.notEqual(one.identity,two.identity);assert.notEqual(one.port,two.port);assert.notEqual(one.credentialDigest,two.credentialDigest);
   }finally{await Promise.all([a.close(),b.close()]);await Promise.all([cleanDbosHome(first),cleanDbosHome(second)]);}
 });
-test('interrupted PostgreSQL stops admission fail closed and original version resumes after reopening',{timeout:90000},async()=>{
+test('interrupted PostgreSQL holds admission without ending the Host and original version resumes after reopening',{timeout:90000},async()=>{
   const home=await dbosHome();let host=dbosProcess(home,'admission');
   try{
     const initial=await host.next();assert.equal(initial.stage,'before-interrupt');
@@ -25,11 +25,12 @@ test('interrupted PostgreSQL stops admission fail closed and original version re
     assert.equal(initial.workflow.applicationVersion,initial.version);
     const stopped=spawnSync(path.join(postgresRuntime!,'bin/pg_ctl'),['-D',path.join(home,'hima/database/data'),'-m','immediate','-w','stop'],{encoding:'utf8'});
     assert.equal(stopped.status,0,stopped.stderr);
-    // The pinned datasource's private idle Pool has no public error-handler injection. Its
-    // unexpected disconnect terminates this Host; that is a closed admission boundary.
-    await Promise.race([host.ended,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('Host did not fail closed after PG interruption')),5000);timer.unref();})]);
-    assert.notEqual(host.child.exitCode,0);
-    assert.match(host.stderr(),/terminating connection|Connection terminated|error event/i);
+    // Idle socket failures no longer terminate the Host: the in-flight workflow stays durably
+    // parked and nothing is admitted while the database is away. Killing the Host then leaves
+    // the original checkpoint for the reopened version.
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    assert.equal(host.child.exitCode,null,`Host must survive an idle PostgreSQL disconnect: ${host.stderr()}`);
+    await host.kill();
     const credentials=JSON.parse(await readFile(path.join(home,'hima/database/credentials.json'),'utf8'));
     assert.equal(host.stderr().includes(credentials.password),false,'Pinned PG error must not log credentials');
     assert.equal(await readFile(path.join(home,'admission-calls'),'utf8'),'admitted\n','No new Permit/effect callback runs during the outage');
@@ -43,6 +44,19 @@ test('interrupted PostgreSQL stops admission fail closed and original version re
     assert.equal(recovered.facts.filter((fact:any)=>fact.kind==='task-result').length,1);
     assert.deepEqual(recovered.facts.find((fact:any)=>fact.kind==='task-result').payload.value,{answer:42});
     assert.equal(await readFile(path.join(home,'admission-calls'),'utf8'),'admitted\n');
+  }finally{await host.close();await cleanDbosHome(home);}
+});
+
+test('PostgreSQL lost under an open DBOS transaction resumes the same step and commits the business write once',{timeout:60000},async()=>{
+  const home=await dbosHome();const host=dbosProcess(home,'connection-outage');
+  try{
+    const done=await host.next();
+    assert.equal(done.ok,true);assert.equal(done.status,'SUCCESS');
+    // The first attempt lost its connection mid-transaction; the retry first finds no recorded
+    // outcome while the server is still refusing connections, then applies the step once.
+    assert.deepEqual(done.attempts,['attempt 1','attempt 2']);
+    assert.deepEqual(done.value,{attempt:2,rows:1});
+    assert.deepEqual(done.steps,[{name:'hima.test.outage',error:null}],'A lost connection is never the step\'s recorded outcome');
   }finally{await host.close();await cleanDbosHome(home);}
 });
 
