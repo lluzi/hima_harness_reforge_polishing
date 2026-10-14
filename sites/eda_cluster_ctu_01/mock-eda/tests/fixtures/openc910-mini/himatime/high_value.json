@@ -1,0 +1,44 @@
+{
+ "design_cells": 5000,
+ "top_per_rank": 250,
+ "high_value_instances": 900,
+ "lib_cells": 40,
+ "rank_types": [
+  "logic_depth",
+  "logic_dimension",
+  "count",
+  "count_delay",
+  "count_slack"
+ ],
+ "listed_cells": 5,
+ "library": "lib7x",
+ "cells": [
+  "AOI21D1X",
+  "BUFFD8X",
+  "INVD4X",
+  "ND2D2X",
+  "XOR2D1X"
+ ],
+ "families": [
+  [
+   "ND2",
+   2
+  ],
+  [
+   "INV",
+   1
+  ],
+  [
+   "AOI21",
+   1
+  ],
+  [
+   "BUFF",
+   1
+  ],
+  [
+   "XOR2",
+   1
+  ]
+ ]
+}

@@ -1,0 +1,20 @@
+# The Site has build data for one custom-cell round, and one round is expected to meet the Goal.
+# The round limit (2) bounds a second; a second rebuild with another cell set would be refused by the
+# Site, so the chooser ends at the Goal. Changes only the round counter. It cannot change the Goal, a
+# build or a measured fact. The owner cites the current round and goal verdicts when it asks for
+# another round.
+id: andes-next
+version: "0.4.0"
+title: End at the Goal (one round is expected), else run one more design round
+parameter: { name: roundStep, unit: count }
+reads:
+  bestWns: { type: best_wns_ps, unit: ps }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS, goal: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: FAIL }
+    next: { roundRevision: roundStep }
+  - when: { constraint: UNDETERMINED }
+    next: { roundRevision: roundStep }

@@ -1,0 +1,531 @@
+"""himatime: HimaTime static timing analysis (mock). Loads a sapr design db and reports timing."""
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+from . import libraries, model, openc910
+from .common import Log, ToolError, banner, now_iso, read_json, run_main, version_line, write_json, write_text
+
+HELP = """\
+usage: himatime <command> [options]
+
+HimaTime static timing analysis of a routed design (a sapr output directory).
+
+commands:
+  load          load the routed design, update timing, write the timing reports (10-20 s)
+  report        print timing of a loaded or routed design to stdout (fast)
+  estimate      what-if: the timing if some cell families were AndesCell-class faster (fast)
+  verify        re-time the worst paths with AndesCell cells: local gain per path, each cell's FO4
+                against its stock cell, design estimate (about 5-10 s with --out; --json alone is fast)
+  highvalue     high-value cell analysis of the design (design openc910)
+  whatif        cell what-if: arc derates ranked by TNS, WNS, NVP, TSC, ASC; merged arc list
+                (design openc910)
+  -version      print the version and exit
+
+load:         himatime load --db SAPR_DIR --out DIR [--paths N]
+                writes timing_summary.json, report_timing.rpt, stage_breakdown.rpt, report_qor.rpt
+report:       himatime report --db SAPR_DIR [--paths N] [--stages] [--json]
+estimate:     himatime estimate --db SAPR_DIR --families XNOR3,BUF[,...] [--speedup PCT] [--json]
+verify:       himatime verify --cells ANDESCELL_DIR --db SAPR_DIR [--paths N] [--dont-use CELL ...]
+                [--out DIR] [--json]   writes verify.json, verify.rpt (--out); prints JSON (--json)
+
+design openc910 (a sapr build of openc910 as --db):
+load:         himatime load --db SAPR_DIR --out DIR   timing_summary.json (path group reg2reg, the
+                8 worst paths, the worst path's breakdown), report_timing.rpt, stage_breakdown.rpt
+report:       himatime report --db SAPR_DIR [--json]
+highvalue:    himatime highvalue --db SAPR_DIR [--top-families N] [--out DIR] [--json]
+                writes high_value_cells.rpt and high_value.json (--out)
+whatif:       himatime whatif --db SAPR_DIR --scale 0.9 [--sort KEY]... [--top 50] [--out DIR] [--json]
+                writes cell_what_if_sort_by_<KEY>.rpt and whatif.json (rankings, merged arc list)
+verify:       himatime verify --cells ANDESCELL_DIR --db SAPR_DIR [--out DIR] [--json]
+                cell-level check of the generated cells; --out also writes kept/ (the kept cells,
+                the delivery a rebuild takes as --extra-lib)
+
+The stage breakdown groups the cell delay of every stage on the worst paths by cell family (cell
+type), with its share of the path delay and HimaTime's estimated slack recovery (ns, weighted by
+path criticality) if that family were made AndesCell-class faster.
+"""
+
+
+def _db(path):
+    d = Path(path)
+    db = read_json(d / ("%s.hdb.json" % model.DESIGN), "design db (run sapr first)")
+    if db.get("schema") != "ctu-design-db/1":
+        raise ToolError("%s is not a sapr design db" % d)
+    return d, db
+
+
+def _new_cells(db):
+    return {f: sorted(c)[-1] for f, c in (db.get("usable") or {}).items()}
+
+
+def timing_summary(db, n_paths=20):
+    speed = db.get("speed") or {}
+    t = model.timing(speed)
+    rows, extra = model.breakdown(speed)
+    paths = []
+    for p in sorted(model.PATHS, key=lambda q: model.slack_ps(q, speed))[:n_paths]:
+        st = model.stages(p, speed, _new_cells(db))
+        arrival = model.CLOCK_LATENCY_NS * 1000 + sum(s["cellDelayPs"] + s["netDelayPs"] for s in st)
+        required = model.CLOCK_PERIOD_NS * 1000 + model.CLOCK_LATENCY_NS * 1000 - model.UNCERTAINTY_PS - model.SETUP_PS
+        paths.append(dict(id=p["id"], group=p["group"], startpoint=p["start"] + "/CK", endpoint=p["end"] + "/D",
+                          endpoints=p["n"], slackNs=round((required - arrival) / 1000.0, 4),
+                          arrivalNs=round(arrival / 1000.0, 4), requiredNs=round(required / 1000.0, 4),
+                          stages=st, cellDelayByFamilyPs={f: round(sum(s["cellDelayPs"] for s in st if s["family"] == f), 1) for f in p["mix"]}))
+    return dict(schema="ctu-himatime-timing/1", tool=version_line("himatime"), design=model.DESIGN,
+                clockPeriodNs=model.CLOCK_PERIOD_NS, corner=model.CORNER, wnsNs=t["wnsNs"], tnsNs=t["tnsNs"],
+                fmaxMhz=t["fmaxMhz"], violatingEndpoints=t["violatingEndpoints"], worstPath=extra["worstPath"],
+                generatedFamilies=sorted(speed), newCells=_new_cells(db), stageBreakdown=rows,
+                netDelayPs=extra["netDelayPs"], netSharePct=extra["netSharePct"], paths=paths,
+                note="MOCK EDA (demo Site eda_cluster_ctu_01): model timing, not signoff.")
+
+
+def path_text(p):
+    out = ["Startpoint: %s (rising edge-triggered flip-flop clocked by %s)" % (p["startpoint"].rsplit("/", 1)[0], model.CLOCK_NAME),
+           "Endpoint: %s (rising edge-triggered flip-flop clocked by %s)" % (p["endpoint"].rsplit("/", 1)[0], model.CLOCK_NAME),
+           "Path Group: %s" % model.CLOCK_NAME, "Path Type: max", "Path ID: %s (%s)" % (p["id"], p["group"]), "",
+           "  %-46s %7s %7s %8s %8s" % ("Point", "Fanout", "Trans", "Incr", "Path"),
+           "  " + "-" * 82,
+           "  %-46s %7s %7s %8.4f %8.4f" % ("clock %s (rise edge)" % model.CLOCK_NAME, "", "", 0.0, 0.0),
+           "  %-46s %7s %7s %8.4f %8.4f" % ("clock network delay (propagated)", "", "", model.CLOCK_LATENCY_NS, model.CLOCK_LATENCY_NS)]
+    t = model.CLOCK_LATENCY_NS
+    for i, s in enumerate(p["stages"]):
+        if i == 0:
+            out.append("  %-46s %7s %7.4f %8.4f %8.4f %s" % ("%s/CK (%s)" % (s["instance"], s["cell"]), "", 0.018, 0.0, t, "r"))
+        incr = s["cellDelayPs"] / 1000.0
+        t += incr
+        out.append("  %-46s %7s %7.4f %8.4f %8.4f %s" % ("%s/%s (%s)" % (s["instance"], s["pin"], s["cell"]), "", s["transPs"] / 1000.0, incr, t, s["edge"]))
+        net = s["netDelayPs"] / 1000.0
+        t += net
+        name = "n%s_%d" % (p["id"].lower(), i)
+        out.append("  %-46s %7d %7s %8.4f %8.4f" % ("%s (net)" % name, s["fanout"], "", net, t))
+    out += ["  %-46s %7s %7s %8s %8.4f" % ("data arrival time", "", "", "", p["arrivalNs"]), "",
+            "  %-46s %7s %7s %8.4f %8.4f" % ("clock %s (rise edge)" % model.CLOCK_NAME, "", "", model.CLOCK_PERIOD_NS, model.CLOCK_PERIOD_NS),
+            "  %-46s %7s %7s %8.4f %8.4f" % ("clock network delay (propagated)", "", "", model.CLOCK_LATENCY_NS, model.CLOCK_PERIOD_NS + model.CLOCK_LATENCY_NS),
+            "  %-46s %7s %7s %8.4f %8.4f" % ("clock uncertainty", "", "", -model.UNCERTAINTY_PS / 1000.0, model.CLOCK_PERIOD_NS + model.CLOCK_LATENCY_NS - model.UNCERTAINTY_PS / 1000.0),
+            "  %-46s %7s %7s %8.4f %8.4f" % ("%s/CK (DFFQ_X1)" % p["endpoint"].rsplit("/", 1)[0], "", "", 0.0, model.CLOCK_PERIOD_NS + model.CLOCK_LATENCY_NS - model.UNCERTAINTY_PS / 1000.0),
+            "  %-46s %7s %7s %8.4f %8.4f" % ("library setup time", "", "", -model.SETUP_PS / 1000.0, p["requiredNs"]),
+            "  %-46s %7s %7s %8s %8.4f" % ("data required time", "", "", "", p["requiredNs"]),
+            "  " + "-" * 82,
+            "  %-46s %7s %7s %8s %8.4f" % ("data required time", "", "", "", p["requiredNs"]),
+            "  %-46s %7s %7s %8s %8.4f" % ("data arrival time", "", "", "", -p["arrivalNs"]),
+            "  " + "-" * 82,
+            "  %-46s %7s %7s %8s %8.4f" % ("slack (%s)" % ("VIOLATED" if p["slackNs"] < 0 else "MET"), "", "", "", p["slackNs"]), ""]
+    return "\n".join(out)
+
+
+def breakdown_text(s):
+    lines = ["Stage breakdown by cell family over the %d worst paths (cell delay only; net delay %.1f ps = %.1f %% of path delay)"
+             % (len(model.PATHS), s["netDelayPs"], s["netSharePct"]),
+             "cell (ps): the family's cell delay summed over all its stages on the %d paths; ps/stage: one stage on average."
+             % len(model.PATHS),
+             "Est. recovery: endpoint slack HimaTime expects back (ns, criticality-weighted) if the family's cells were AndesCell-class faster;",
+             "worst-path rec.: the worst path's own slack back (ps) on the same assumption.",
+             "",
+             "  %-7s %7s %10s %9s %8s %9s %11s %11s %10s %9s %s" % ("family", "stages", "cell (ps)", "ps/stage", "share%", "on paths", "worst-path%",
+                                                                  "achievable", "est. rec.", "wp rec.", "status"),
+             "  " + "-" * 116]
+    for r in s["stageBreakdown"]:
+        lines.append("  %-7s %7d %10.1f %9.1f %8.2f %9d %11.2f %10s%% %10.3f %9.2f %s" % (
+            r["family"], r["stages"], r["cellDelayPs"], r["meanStagePs"], r["sharePct"], r["onPaths"], r["worstPathSharePct"],
+            "-%d" % r["achievableSpeedupPct"], r["estRecoveryNs"], r["worstPathRecoveryPs"], "generated (AndesCell)" if r["generated"] else "stock"))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def summary_text(s):
+    return ("Design %s  clock %s %.3f ns  corner %s\n  WNS %.4f ns   TNS %.3f ns   violating endpoints %d   Fmax %.2f MHz\n"
+            "  worst path %s; generated families in use: %s\n" % (
+                model.DESIGN, model.CLOCK_NAME, model.CLOCK_PERIOD_NS, model.CORNER, s["wnsNs"], s["tnsNs"],
+                s["violatingEndpoints"], s["fmaxMhz"], s["worstPath"], ", ".join(s["generatedFamilies"]) or "none"))
+
+
+def cmd_load(rest):
+    p = argparse.ArgumentParser(prog="himatime load")
+    p.add_argument("--db", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--paths", type=int, default=20)
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    if openc910.is_db(a.db):
+        return oc_load(a)
+    if not 1 <= a.paths <= 20:
+        raise ToolError("--paths must be 1-20 (the design db keeps the 20 worst path groups)")
+    d, db = _db(a.db)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    if not a.quiet:
+        banner("himatime")
+    log = Log("HT", out / "himatime.log", quiet=a.quiet)
+    log("LOAD", "design db %s" % (d / ("%s.hdb.json" % model.DESIGN)))
+    log.phase("LIB", "Reading libraries (%s%s)" % (model.STOCK_LIBRARY, "".join(" + " + l["name"] for l in db.get("extraLibraries") or [])), 2 + len(db.get("extraLibraries") or []), 2)
+    log.phase("LOAD", "Reading routed netlist and SPEF parasitics", 3, 3, lambda k, n: "%d nets" % (6900 * k))
+    log.phase("TG", "Building timing graph", 3, 2)
+    log.phase("UPD", "Updating timing (propagated clocks, %s)" % model.CORNER, 4, 4)
+    s = timing_summary(db, a.paths)
+    s["db"] = str(d)
+    s["loadedAt"] = now_iso()
+    write_json(out / "timing_summary.json", s)
+    write_text(out / "report_timing.rpt", "\n".join(["Report : timing -max_paths %d -delay max" % a.paths, "Design : %s" % model.DESIGN,
+                                                       "Version: %s" % version_line("himatime"), "Note   : demo Site eda_cluster_ctu_01; not signoff", ""]
+                                                      + [path_text(x) for x in s["paths"]]))
+    write_text(out / "stage_breakdown.rpt", summary_text(s) + "\n" + breakdown_text(s))
+    write_text(out / "report_qor.rpt", summary_text(s))
+    log("RPT", "WNS %.4f ns  TNS %.3f ns  Fmax %.2f MHz  (%d violating endpoints)" % (s["wnsNs"], s["tnsNs"], s["fmaxMhz"], s["violatingEndpoints"]))
+    top = s["stageBreakdown"][:3]
+    log("RPT", "largest est. recovery: %s" % ", ".join("%s %.3f ns" % (r["family"], r["estRecoveryNs"]) for r in top))
+    log("RPT", "wrote timing_summary.json, report_timing.rpt, stage_breakdown.rpt in %s (%.1f s)" % (out, log.elapsed()))
+    log.close()
+
+
+def cmd_report(rest):
+    p = argparse.ArgumentParser(prog="himatime report")
+    p.add_argument("--db", required=True)
+    p.add_argument("--paths", type=int)
+    p.add_argument("--stages", action="store_true", help="print the stage breakdown by cell family")
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(rest)
+    if openc910.is_db(a.db):
+        return oc_report(a)
+    _, db = _db(a.db)
+    s = timing_summary(db, max(1, min(20, a.paths or 3)))
+    if a.json:
+        import json
+        print(json.dumps(s, indent=2, sort_keys=True))
+        return
+    print(summary_text(s))
+    if a.stages:
+        print(breakdown_text(s))
+    for x in s["paths"]:
+        print(path_text(x))
+
+
+def cmd_estimate(rest):
+    p = argparse.ArgumentParser(prog="himatime estimate")
+    p.add_argument("--db", required=True)
+    p.add_argument("--families", required=True, help="comma-separated cell families, e.g. XNOR3,BUF")
+    p.add_argument("--speedup", type=float, help="cell-delay reduction in percent (default: AndesCell-class per family)")
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(rest)
+    _, db = _db(a.db)
+    speed = dict(db.get("speed") or {})
+    base = model.timing(speed)
+    asked = []
+    for word in a.families.split(","):
+        fam = model.canonical_family(word)
+        if fam is None:
+            raise ToolError("unknown cell family %r (families: %s)" % (word, ", ".join(model.FAMILIES)))
+        asked.append(fam)
+        if fam not in speed:
+            speed[fam] = (a.speedup / 100.0) if a.speedup is not None else model.FAMILIES[fam]["speedup"]
+    t = model.timing(speed)
+    gain = round(100.0 * (t["fmaxMhz"] / base["fmaxMhz"] - 1), 2)
+    result = dict(schema="ctu-himatime-estimate/1", families=asked, baseline=dict(wnsNs=base["wnsNs"], tnsNs=base["tnsNs"], fmaxMhz=base["fmaxMhz"]),
+                  estimate=dict(wnsNs=t["wnsNs"], tnsNs=t["tnsNs"], fmaxMhz=t["fmaxMhz"]), fmaxGainPct=gain,
+                  note="estimate on the loaded design; the new-library build decides")
+    if a.json:
+        import json
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return
+    print("HimaTime what-if on %s: families %s %s faster" % (model.DESIGN, ", ".join(asked), "%.0f %%" % a.speedup if a.speedup is not None else "AndesCell-class"))
+    print("  now      : WNS %.4f ns  TNS %.3f ns  Fmax %.2f MHz" % (base["wnsNs"], base["tnsNs"], base["fmaxMhz"]))
+    print("  estimate : WNS %.4f ns  TNS %.3f ns  Fmax %.2f MHz  (%+.2f %%)" % (t["wnsNs"], t["tnsNs"], t["fmaxMhz"], gain))
+
+
+def verify_result(lib, db, n_paths=8, dont_use=()):
+    """What `himatime verify` reports, computed without pacing: every new cell's FO4 against its
+    stock cell, the n worst paths of the build re-timed with the new cells (the local gain), and
+    the design estimate. Deterministic: the same cells and build always give the same numbers."""
+    rows = []
+    for cell in lib["cells"]:
+        stock = libraries.stock_cell(cell["family"], cell["drive"])
+        improvement = round(100.0 * (1 - cell["fo4DelayPs"] / stock["fo4DelayPs"]), 1)
+        checks = dict(monotonicTables=True, slewWithinLimits=True, capWithinLimits=True,
+                      fo4FasterThanStock=cell["fo4DelayPs"] < stock["fo4DelayPs"],
+                      fo4MatchesGeneration=abs(improvement - cell["speedupPct"]) <= 3.0)
+        rows.append(dict(name=cell["name"], family=cell["family"], drive=cell["drive"], stockCell=stock["name"],
+                         fo4DelayPs=cell["fo4DelayPs"], stockFo4DelayPs=stock["fo4DelayPs"],
+                         fo4GainPs=round(stock["fo4DelayPs"] - cell["fo4DelayPs"], 1), improvementPct=improvement,
+                         checks=checks, status="PASS" if all(checks.values()) else "FAIL"))
+    before = dict(db.get("speed") or {})
+    new_speed, _ = libraries.speed_of([dict(name=lib["name"], cells=lib["cells"])], set(dont_use))
+    after = dict(before)
+    for fam, sp in new_speed.items():
+        after[fam] = max(after.get(fam, 0.0), sp)
+    local = model.local_gain(before, after, n_paths)
+    usable_extra = [dict(name=l["name"], cells=l["cells"]) for l in db.get("extraLibraries") or []] + [dict(name=lib["name"], cells=lib["cells"])]
+    speed, _ = libraries.speed_of(usable_extra, set(dont_use) | set(db.get("dontUse") or []))
+    base = model.timing(before)
+    t = model.timing(speed)
+    gain = round(100.0 * (t["fmaxMhz"] / base["fmaxMhz"] - 1), 2)
+    return dict(schema="ctu-himatime-verify/1", tool=version_line("himatime"), library=lib["name"], round=lib.get("round"),
+                cells=rows, passed=sum(1 for r in rows if r["status"] == "PASS"), failed=sum(1 for r in rows if r["status"] != "PASS"),
+                local=dict(local, pathCount=n_paths, excluded=sorted(set(dont_use))),
+                designEstimate=dict(wnsNs=t["wnsNs"], tnsNs=t["tnsNs"], fmaxMhz=t["fmaxMhz"], gainVsDbPct=gain,
+                                    dbFmaxMhz=base["fmaxMhz"], excluded=sorted(set(dont_use))),
+                verifiedAt=now_iso(), note="MOCK EDA (demo Site eda_cluster_ctu_01)")
+
+
+def verify_text(result):
+    local = result["local"]
+    out = ["HimaTime cell verification: %s (round %s)" % (result["library"], result["round"]), "",
+           "New cells against their stock cells (FO4 delay):", "",
+           "  %-22s %-6s %-10s %9s %9s %8s %s" % ("cell", "family", "vs stock", "FO4 (ps)", "stock", "delta", "result"),
+           "  " + "-" * 78]
+    for r in result["cells"]:
+        out.append("  %-22s %-6s %-10s %9.1f %9.1f %7.1f%% %s" % (r["name"], r["family"], r["stockCell"], r["fo4DelayPs"],
+                                                                r["stockFo4DelayPs"], -r["improvementPct"], r["status"]))
+    out += ["", "The %d worst paths of the build, re-timed with the new cells%s:" % (
+        local["pathCount"], " (excluding %s)" % ", ".join(local["excluded"]) if local["excluded"] else ""), "",
+        "  %-4s %-22s %-18s %-18s %10s %10s %9s  %s" % ("path", "group", "startpoint", "endpoint", "before ps", "after ps", "gain ps", "new cells on it"),
+        "  " + "-" * 118]
+    for p in local["paths"]:
+        out.append("  %-4s %-22s %-18s %-18s %10.2f %10.2f %9.2f  %s" % (p["id"], p["group"], p["startpoint"][:18], p["endpoint"][:18],
+                                                                       p["beforePs"], p["afterPs"], p["gainPs"], ", ".join(p["newFamilies"]) or "-"))
+    est = result["designEstimate"]
+    out += ["", "Local gain on the worst path (%s): %.2f ps faster; mean over the %d paths %.2f ps; %d of %d paths faster."
+            % (local["worstPath"], local["localGainPs"], local["pathCount"], local["meanGainPs"], local["pathsImproved"], local["pathCount"]),
+            "Design estimate with these cells: WNS %.4f ns, Fmax %.2f MHz (%+.2f %% vs the loaded build); the rebuild decides."
+            % (est["wnsNs"], est["fmaxMhz"], est["gainVsDbPct"]), ""]
+    return "\n".join(out)
+
+
+def cmd_verify(rest, prog="himatime verify"):
+    p = argparse.ArgumentParser(prog=prog)
+    p.add_argument("--cells", required=True, help="an AndesCell output directory")
+    p.add_argument("--db", required=True, help="the sapr directory of the build the cells are for")
+    p.add_argument("--paths", type=int, default=8, help="worst paths to re-time (1-20, default 8)")
+    p.add_argument("--out", help="write verify.json, verify.rpt and verify.log here")
+    p.add_argument("--json", action="store_true", help="print the result as JSON (fast without --out)")
+    p.add_argument("--dont-use", action="append", default=[], help="cells to leave out")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    if not 1 <= a.paths <= 20:
+        raise ToolError("--paths must be 1-20 (the design db keeps the 20 worst path groups)")
+    if not a.out and not a.json:
+        raise ToolError("give --out DIR (reports) or --json (result to stdout)")
+    if openc910.is_db(a.db):
+        return oc_verify(a)
+    lib = libraries.load_extra(a.cells)
+    _, db = _db(a.db)
+    result = verify_result(lib, db, a.paths, a.dont_use)
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "verify.log", quiet=quiet)
+        log("VFY", "verifying %d AndesCell cell(s) of %s against %s" % (len(lib["cells"]), lib["name"], model.STOCK_LIBRARY))
+        log.phase("LIB", "Reading %s and %s" % (model.STOCK_LIBRARY, lib["name"]), 2, 2)
+        for r in result["cells"]:
+            log.phase("ARC", "Timing arcs of %s" % r["name"], 0.6, 1)
+            log("ARC", "  %-22s FO4 %6.1f ps vs %-9s %6.1f ps  (%+.1f %%)  %s" % (r["name"], r["fo4DelayPs"], r["stockCell"], r["stockFo4DelayPs"], -r["improvementPct"], r["status"]))
+        log.phase("PTH", "Re-timing the %d worst paths with the new cells" % a.paths, 3, 3)
+        log.phase("UPD", "Design estimate with the new cells (%s)" % model.DESIGN, 2, 2)
+        write_json(out / "verify.json", result)
+        write_text(out / "verify.rpt", verify_text(result))
+        local = result["local"]
+        log("VFY", "%d of %d cell(s) PASS; local gain on the worst path %s: %.2f ps" % (result["passed"], len(result["cells"]), local["worstPath"], local["localGainPs"]))
+        log.close()
+    if a.json:
+        import json
+        print(json.dumps(result, indent=2, sort_keys=True))
+
+
+# ---- design openc910 -------------------------------------------------------------------------
+
+def _oc_header(title, s):
+    return "\n".join(["Report : %s" % title, "Design : %s (%s build, %s)" % (openc910.DESIGN, s.get("build"), openc910.RESULT_STAGE),
+                      "Version: %s" % version_line("himatime"), "Site   : demo Site eda_cluster_ctu_01; not signoff", "", ""])
+
+
+def oc_load(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    if not a.quiet:
+        banner("himatime")
+    log = Log("HT", out / "himatime.log", quiet=a.quiet)
+    log("LOAD", "design %s, %s build: %s" % (oc.DESIGN, s["build"], d / "sapr_summary.json"))
+    log.phase("LIB", "Reading libraries (%s timing libraries)" % (s.get("libraries") or "stock"), 3, 2)
+    log.phase("LOAD", "Reading the routed netlist and parasitics", 4, 3)
+    log.phase("TG", "Building timing graph", 3, 2)
+    log.phase("UPD", "Updating timing (clock %s %.3f ns)" % (s["clock"], s["clockPeriodNs"]), 4, 4)
+    ts = oc.timing_summary(bundle, s["build"])
+    ts.update(tool=version_line("himatime"), db=str(d), loadedAt=now_iso())
+    write_json(out / "timing_summary.json", ts)
+    write_text(out / "report_timing.rpt", _oc_header("timing, path group %s, %d worst paths" % (oc.GROUP, len(ts["paths"])), s)
+               + oc.timing_report_text(bundle, s["build"], len(ts["paths"])))
+    write_text(out / "stage_breakdown.rpt", _oc_header("worst-path breakdown", s) + oc.summary_text(ts) + "\n" + oc.paths_text(ts) + "\n" + oc.breakdown_text(ts))
+    log("RPT", "%s WNS %.0f ps  TNS %.3f ns  violating paths %d" % (oc.GROUP, 1000 * ts["wnsNs"], ts["tnsNs"], ts["nvp"]))
+    if ts["breakdown"]:
+        log("RPT", "worst path: %s" % ", ".join("%s %.0f ps" % (b["part"], 1000 * b["ns"]) for b in ts["breakdown"][:4]))
+    log("RPT", "wrote timing_summary.json, report_timing.rpt, stage_breakdown.rpt in %s (%.1f s)" % (out, log.elapsed()))
+    log.close()
+
+
+def oc_report(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    ts = oc.timing_summary(bundle, s["build"])
+    if a.paths:
+        ts["paths"] = ts["paths"][:max(1, a.paths)]
+    ts.update(tool=version_line("himatime"), db=str(d))
+    if a.json:
+        print(json.dumps(ts, indent=2, sort_keys=True))
+        return
+    print(oc.summary_text(ts))
+    print(oc.paths_text(ts))
+    print(oc.breakdown_text(ts))
+
+
+def cmd_highvalue(rest):
+    oc = openc910
+    p = argparse.ArgumentParser(prog="himatime highvalue")
+    p.add_argument("--db", required=True)
+    p.add_argument("--top-families", type=int, default=10, help="cell families to list (default 10)")
+    p.add_argument("--out", help="write high_value_cells.rpt and high_value.json here")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    d, s, bundle = oc.load_db(a.db)
+    r = oc.high_value_result(bundle, max(1, a.top_families))
+    r.update(tool=version_line("himatime"), db=str(d))
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "highvalue.log", quiet=quiet)
+        log("HV", "high-value cell analysis of %s (rank types: %s)" % (oc.DESIGN, ", ".join(r["rank_types"])))
+        log.phase("HV", "Marking the timing graph", 2, 2)
+        log.phase("HV", "Scanning %d cells, top %d per rank type" % (r["design_cells"], r["top_per_rank"]), 8, 4)
+        write_text(out / "high_value_cells.rpt", bundle.text("himatime/high_value_cells.rpt"))
+        write_json(out / "high_value.json", r)
+        log("HV", "%d high-value instances in %d library cells; %d cells listed" % (r["high_value_instances"], r["lib_cells"], r["listed_cells"]))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+    elif not a.out or a.quiet:
+        print("HimaTime high-value cells of %s: %d design cells, top %d per rank type (%s)" % (oc.DESIGN, r["design_cells"], r["top_per_rank"], ", ".join(r["rank_types"])))
+        print("  %d high-value instances in %d library cells; %d cells listed in %d families" % (r["high_value_instances"], r["lib_cells"], r["listed_cells"], r["family_count"]))
+        print("  top families: %s" % ", ".join("%s %d" % (f["family"], f["count"]) for f in r["families"]))
+
+
+def cmd_whatif(rest):
+    oc = openc910
+    p = argparse.ArgumentParser(prog="himatime whatif")
+    p.add_argument("--db", required=True)
+    p.add_argument("--scale", type=float, required=True, help="arc delay scale of the what-if (e.g. 0.9)")
+    p.add_argument("--sort", action="append", default=[], help="ranking key (repeatable; default: all)")
+    p.add_argument("--top", type=int, help="rows per ranking (default: the analysis' top N)")
+    p.add_argument("--out", help="write cell_what_if_sort_by_<KEY>.rpt and whatif.json here")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    a = p.parse_args(rest)
+    d, s, bundle = oc.load_db(a.db)
+    keys = [k.strip().upper() for word in a.sort for k in word.split(",") if k.strip()]
+    top = a.top if a.top is not None else bundle.whatif["top_n"]
+    r = oc.whatif_result(bundle, a.scale, top, keys or None)
+    r.update(tool=version_line("himatime"), db=str(d))
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "whatif.log", quiet=quiet)
+        log("WI", "cell what-if on %s: arc delay x%g, top %d per ranking" % (oc.DESIGN, r["scale"], r["top_n"]))
+        for k in r["rankings"]:
+            log.phase("WI", "Ranking by %s" % k, 2, 1)
+            write_text(out / ("cell_what_if_sort_by_%s.rpt" % k), bundle.text("himatime/whatif/cell_what_if_sort_by_%s.rpt" % k))
+        write_json(out / "whatif.json", r)
+        log("WI", "%d ranking(s), %d arcs after merge and dedup; wrote whatif.json in %s" % (len(r["rankings"]), r["merged_count"], out))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+    elif not a.out or a.quiet:
+        print("HimaTime cell what-if on %s: arc delay x%g, top %d per ranking" % (oc.DESIGN, r["scale"], r["top_n"]))
+        for k, rows in r["rankings"].items():
+            best = rows[0] if rows else None
+            print("  %-6s %3d rows; first: %s %s->%s (TNS %+.3f ns, WNS %+.4f ns)" % (
+                k, len(rows), best["cell"], best["from"], best["to"], best["tns_delta_ns"], best["wns_delta_ns"]) if best else "  %-6s 0 rows" % k)
+        print("  merged: %d arcs (union of the rankings, dedup)" % r["merged_count"])
+
+
+def oc_verify(a):
+    oc = openc910
+    d, s, bundle = oc.load_db(a.db)
+    cells_dir = Path(a.cells)
+    stubs = oc.delivery_arcs(cells_dir)
+    gen_file = cells_dir / "generation.json"
+    gen = read_json(gen_file, "AndesCell generation") if gen_file.is_file() else {}
+    generated = gen.get("generated") if gen.get("schema") == "ctu-andescell-generation/2" else len(stubs)
+    r = oc.cell_check(bundle, generated, stubs)
+    r.update(tool=version_line("himatime"), db=str(d), cellsDir=str(cells_dir), round=gen.get("round"), verifiedAt=now_iso())
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        quiet = a.quiet or a.json
+        if not quiet:
+            banner("himatime")
+        log = Log("HT", out / "verify.log", quiet=quiet)
+        log("VFY", "cell-level check of %d generated cell(s) from %s" % (len(r["cells"]), cells_dir))
+        log.phase("LIB", "Reading the stock libraries and the AndesCell delivery", 2, 2)
+        log.phase("ARC", "Timing each custom cell's arc against its stock cell", 4, 4)
+        for c in r["cells"]:
+            log("ARC", "  %-48s v%-3s %8.3f ps  delta %.5f  %s" % (c["arc"], c["bestVersion"], c["delayPs"], c["delta"], "kept" if c["kept"] else "dropped"))
+        log.phase("UPD", "Cell-level gain on the design's high-value instances", 2, 2)
+        kept_dir = out / "kept"
+        if kept_dir.exists():
+            shutil.rmtree(kept_dir)
+        for c in r["cells"]:
+            if c["kept"]:
+                (kept_dir / "cells").mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cells_dir / "cells" / ("%s.lib" % c["arc"]), kept_dir / "cells" / ("%s.lib" % c["arc"]))
+        write_json(kept_dir / "delivery.json", dict(schema="ctu-andescell-delivery/1", design=oc.DESIGN, round=gen.get("round"),
+                                                    source=str(cells_dir), cells=[c["arc"] for c in r["cells"] if c["kept"]]))
+        r["keptDir"] = str(kept_dir)
+        write_json(out / "verify.json", r)
+        write_text(out / "verify.rpt", oc_verify_text(r))
+        log("VFY", "%d of %d generated cell(s) kept (positive cell-level gain), %d dropped; kept cells in %s" % (r["kept"], r["generated"], r["dropped"], kept_dir))
+        log.close()
+    if a.json:
+        print(json.dumps(r, indent=2, sort_keys=True))
+
+
+def oc_verify_text(r):
+    out = ["HimaTime cell-level check: design %s%s" % (openc910.DESIGN, ", round %s" % r["round"] if r.get("round") is not None else ""), "",
+           "Generated %d, kept %d (positive cell-level gain), dropped %d." % (r["generated"], r["kept"], r["dropped"]), "",
+           "  %-48s %-14s %-5s %8s %10s %10s  %s" % ("arc", "family", "edge", "version", "delay ps", "\u0394", "result"), "  " + "-" * 110]
+    for c in r["cells"]:
+        out.append("  %-48s %-14s %-5s %8s %10.3f %10.5f  %s" % (c["arc"][:48], c["family"][:14], c["edge"], c["bestVersion"], c["delayPs"], c["delta"],
+                                                              "kept" if c["kept"] else "dropped"))
+    out += ["", "Kept cells by family:"] + ["  %-16s %4d" % (f["family"], f["count"]) for f in r["keptByFamily"]] + [""]
+    return "\n".join(out)
+
+
+def handler(argv):
+    if not argv or argv[0] in ("-h", "-help", "--help", "help"):
+        print(HELP)
+        return 0
+    commands = {"load": cmd_load, "report": cmd_report, "estimate": cmd_estimate, "verify": cmd_verify,
+                "highvalue": cmd_highvalue, "whatif": cmd_whatif,
+                "verify-cells": lambda rest: cmd_verify(rest, "himatime verify-cells")}
+    if argv[0] not in commands:
+        raise ToolError("unknown command %r (try: himatime -help)" % argv[0])
+    commands[argv[0]](argv[1:])
+    return 0
+
+
+def main(argv):
+    return run_main("himatime", handler, argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

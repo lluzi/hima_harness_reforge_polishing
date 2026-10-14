@@ -1,0 +1,6 @@
+id: andes-round
+version: "0.4.0"
+file: tools/read-round.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: hima-andes-round/2
+emits: [round_valid, timing_gain_pct, best_gain_pct, round_improved, best_wns_ps, design_wns_ps, design_tns_ns, design_nvp, design_density_pct, new_cell_instances, new_cell_pct]
