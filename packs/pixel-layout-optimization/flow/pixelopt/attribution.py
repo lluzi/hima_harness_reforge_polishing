@@ -215,6 +215,13 @@ def features(nets, case, pairs):
 
 _REDUCED = ["__ov__", "__fr1__", "__fr25__"]
 
+# Upper bound on any pooled coefficient (fF per um^2 of overlap or fringe-band area). The densest
+# parallel plate in a TFT stack, a ~50 nm gate insulator, is about 0.7 fF/um^2; fringe bands are
+# far below it.
+MAX_COEF_FF_PER_UM2 = 1.0
+# A feature is fitted only where some extracted pair has at least this much of it (um^2).
+MIN_FEATURE_UM2 = 0.1
+
 
 def _reduced_features(full):
     tot_ov = sum(v for k, v in full.items() if k.startswith("ov:"))
@@ -304,7 +311,7 @@ def fit(rows, pairs):
     least three candidates have the pair, else ``None``; ``fitRmse`` is the pooled fit's residual
     spread for the pair before its offset.
     """
-    from scipy.optimize import nnls
+    from scipy.optimize import lsq_linear
 
     rows = [(_canon_map(feats), _canon_map(caps)) for feats, caps in rows]
     keys = sorted({k for feats, _ in rows for pf in feats.values() for k in pf})
@@ -326,7 +333,19 @@ def fit(rows, pairs):
         X, y, who = design(sel)
         if len(y) == 0 or not keys:
             return np.zeros(len(keys)), {}
-        w, _ = nnls(X, y)
+        # Only features the candidates actually exercise are fitted, and within physical bounds:
+        # a feature that is nearly zero in every row could otherwise take any weight and blow up
+        # once a candidate grows it. An unexercised feature borrows the median fitted
+        # coefficient of its own band (ov, fr1.0, fr2.5).
+        seen = X.max(axis=0) >= MIN_FEATURE_UM2
+        w = np.zeros(len(keys))
+        if seen.any():
+            w[seen] = lsq_linear(X[:, seen], y, bounds=(0.0, MAX_COEF_FF_PER_UM2),
+                                 method="bvls").x
+        for j in np.flatnonzero(~seen):
+            band = keys[j].split(":", 1)[0]
+            peers = [w[i] for i in np.flatnonzero(seen) if keys[i].split(":", 1)[0] == band]
+            w[j] = float(np.median(peers)) if peers else 0.0
         res = {}
         for (ci, p), r in zip(who, y - X.dot(w)):
             res.setdefault(p, []).append(float(r))

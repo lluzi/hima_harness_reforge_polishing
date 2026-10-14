@@ -90,12 +90,12 @@ class AttributionTest(unittest.TestCase):
             f = {"ov:A-B": rng.uniform(0.0, 5.0), "fr1.0:A-B": rng.uniform(0.0, 8.0),
                  "ov:C-D": rng.uniform(0.0, 3.0)}
             feats[pair] = f
-            caps[pair] = 2.5 * f["ov:A-B"] + 0.4 * f["fr1.0:A-B"] + 1.0 * f["ov:C-D"]
+            caps[pair] = 0.5 * f["ov:A-B"] + 0.04 * f["fr1.0:A-B"] + 0.1 * f["ov:C-D"]
         model = attribution.fit([(feats, caps)], [("N00", "M00")])
         coef = model["pooled"]["coef"]
-        self.assertAlmostEqual(coef["ov:A-B"], 2.5, delta=0.01)
-        self.assertAlmostEqual(coef["fr1.0:A-B"], 0.4, delta=0.01)
-        self.assertAlmostEqual(coef["ov:C-D"], 1.0, delta=0.01)
+        self.assertAlmostEqual(coef["ov:A-B"], 0.5, delta=0.001)
+        self.assertAlmostEqual(coef["fr1.0:A-B"], 0.04, delta=0.001)
+        self.assertAlmostEqual(coef["ov:C-D"], 0.1, delta=0.001)
         pred = attribution.predict(model, feats)
         for pair in feats:
             self.assertAlmostEqual(pred[attribution.canon(pair)], caps[pair], delta=1e-6)
@@ -107,7 +107,7 @@ class AttributionTest(unittest.TestCase):
         rows = []
         for k in range(4):
             feats = {"P|Q": {"ov:A-B": 1.0 + k}, "R|S": {"ov:A-B": 2.0 + k}, "T|U": {"ov:A-B": 0.5 + k}}
-            caps = {"P|Q": 2.0 * (1.0 + k) + 0.3, "R|S": 2.0 * (2.0 + k), "T|U": 2.0 * (0.5 + k)}
+            caps = {"P|Q": 0.4 * (1.0 + k) + 0.3, "R|S": 0.4 * (2.0 + k), "T|U": 0.4 * (0.5 + k)}
             rows.append((feats, caps))
         model = attribution.fit(rows, [("P", "Q")])
         self.assertAlmostEqual(model["pairs"]["P|Q"]["offset"], 0.3, delta=0.1)
@@ -116,7 +116,7 @@ class AttributionTest(unittest.TestCase):
     def test_predict_matches_the_fitted_rows(self):
         from pixelopt import attribution
         rng = random.Random(7)
-        coef = 3.0
+        coef = 0.6
         rows = []
         for _ in range(8):
             f = {"ov:A-B": rng.uniform(1.0, 4.0)}
@@ -125,6 +125,22 @@ class AttributionTest(unittest.TestCase):
         feats = {"P|Q": {"ov:A-B": 2.0}}
         pred = attribution.predict(model, feats)
         self.assertAlmostEqual(pred["P|Q"], 0.5 + coef * 2.0, delta=0.1)
+
+    def test_a_feature_absent_from_training_cannot_take_an_unphysical_weight(self):
+        """A feature that is nearly zero wherever it appears must not soak up a large capacitance
+        (the real case gave a fringe band 41 fF/um^2 and predicted a 369 % ratio)."""
+        from pixelopt import attribution
+        rows = []
+        for k in range(6):
+            feats = {"S|C": {"ov:A-B": 140.0 + k, "fr2.5:P-P": 1e-4},
+                     "S|D": {"fr1.0:A-B": 2.0 + 0.1 * k}}
+            caps = {"S|C": 0.5 * (140.0 + k) + 3.0, "S|D": 0.05 * (2.0 + 0.1 * k)}
+            rows.append((feats, caps))
+        model = attribution.fit(rows, [("S", "C")])
+        for name, c in model["pooled"]["coef"].items():
+            self.assertLessEqual(c, attribution.MAX_COEF_FF_PER_UM2 + 1e-9, name)
+        pred = attribution.predict(model, {"S|C": {"ov:A-B": 140.0, "fr2.5:P-P": 6.0}})
+        self.assertLess(pred["C|S"], 0.5 * 140.0 + 3.0 + 6.0 * attribution.MAX_COEF_FF_PER_UM2 + 0.5)
 
 @unittest.skipUnless(HAVE, "numeric packages not installed")
 class GradientTest(unittest.TestCase):
