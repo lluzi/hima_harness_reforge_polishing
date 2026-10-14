@@ -189,16 +189,14 @@ def classify(marks, table, start_marks, binding_tags=()):
       (listed in ``table['unmodelled']``); no plan entry fixes it.
     * ``binding-chain`` -- the marker lies at a binding-chain location
       (``binding_tags``); the solve was infeasible there.
-    * ``bounded-edit`` -- few markers remain overall (<= 3), or the place was
-      already violated in the start layout (a pre-existing defect, never an
-      ``exact-pair``).
+    * ``bounded-edit`` -- the place was already violated in the start layout (a
+      pre-existing defect, never an ``exact-pair``); a bounded edit repairs it.
     * ``exact-pair`` -- a single place that was legal in the start layout and was
       broken by the move; add an exact pair constraint and re-solve.
     """
     unmodelled = _unmodelled_rules(table)
     tag_locs = _tag_locations(binding_tags)
     start = _start_keys(start_marks)
-    total = len(marks)
     out = []
     for rule, pts in marks:
         bx = _bbox(pts)
@@ -207,8 +205,6 @@ def classify(marks, table, start_marks, binding_tags=()):
             cls = "model-gap"
         elif _near_binding(bx, tag_locs):
             cls = "binding-chain"
-        elif total <= 3:
-            cls = "bounded-edit"
         elif key in start:
             # already violated in the start layout: the move did not cause it,
             # so it is not an exact-pair; a bounded edit repairs it.

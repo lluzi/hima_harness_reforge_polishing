@@ -414,6 +414,10 @@ def _solve_point(point, ctx):
     residual = []
     pair_iters = 0
 
+    if objective == "legalise" and ctx.get("base_clean"):
+        # nothing to legalise: re-solving a clean base only moves shapes for no gain
+        return {"ok": False, "name": name, "status": "already-clean", "binding": []}
+
     for it in range(_MAX_PAIR_ITERS):
         pair_iters = it + 1
         if objective == "legalise":
@@ -554,6 +558,11 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
 
     base_marks = _folded_authority_markers(base_dir, case, base_lay)
     zones = _zones(base_marks)
+    sums = [os.path.join(base_dir, "out", "drc_authority_%s" % t, "argus_drc.sum")
+            for t in ("1x1", "3x3")]
+    base_clean = (not plan.get("operators") and not plan.get("edits")
+                  and all(os.path.exists(p) for p in sums)
+                  and sum(_sum_count(p) for p in sums) == 0)
 
     ctx = {
         "workspace": workspace, "round": round_num, "case": case,
@@ -562,6 +571,7 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
         "pre": pre, "declared": declared, "base_lay": base_lay,
         "base_id": base_id, "base_marks": base_marks, "zones": zones,
         "original_lay": original_lay, "default_outline": default_outline,
+        "base_clean": base_clean,
         "trust": trust,
     }
 

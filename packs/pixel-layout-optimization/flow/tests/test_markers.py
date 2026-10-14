@@ -109,10 +109,12 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(out[0]["class"], "bounded-edit")
         self.assertNotEqual(out[0]["class"], "exact-pair")
 
-    def test_three_or_fewer_is_bounded_edit(self):
+    def test_few_markers_the_move_caused_are_still_exact_pairs(self):
+        """flow6: three markers a min-pitch move created on a clean base were called
+        bounded-edit only because they were few, so the exact-pair loop never re-solved them."""
         marks = [self._mark("M.SP", 2 + 3 * i, 2) for i in range(3)]
         out = markers.classify(marks, self.table, start_marks=[])
-        self.assertTrue(all(m["class"] == "bounded-edit" for m in out))
+        self.assertTrue(all(m["class"] == "exact-pair" for m in out))
 
 
 if __name__ == "__main__":
