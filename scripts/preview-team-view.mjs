@@ -177,9 +177,15 @@ async function main() {
   if (!chrome) { console.error('SKIP: no headless Chrome found (set HIMA_CHROME or CHROME_BIN)'); process.exit(3); }
 
   if (args.dumpDom) {
-    const run = spawnSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', `--window-size=${args.width},${args.height}`,
-      '--run-all-compositor-stages-before-draw', '--virtual-time-budget=4000', '--dump-dom', `file://${htmlPath}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    const match = /<script[^>]*id="hima-measure"[^>]*>([\s\S]*?)<\/script>/.exec(run.stdout);
+    // A loaded machine can end Chrome's virtual time before the page records its measurements; that is
+    // a render timing miss, not a layout result, so try again (with a longer budget) before failing.
+    let run, match;
+    for (const budget of [4000, 10000, 20000]) {
+      run = spawnSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', `--window-size=${args.width},${args.height}`,
+        '--run-all-compositor-stages-before-draw', `--virtual-time-budget=${budget}`, '--dump-dom', `file://${htmlPath}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      match = /<script[^>]*id="hima-measure"[^>]*>([\s\S]*?)<\/script>/.exec(run.stdout);
+      if (match) break;
+    }
     if (!match) { console.error('could not read measurements from the rendered page'); console.error(run.stderr?.slice(0, 2000)); process.exit(1); }
     process.stdout.write(match[1] + '\n');
     return;
