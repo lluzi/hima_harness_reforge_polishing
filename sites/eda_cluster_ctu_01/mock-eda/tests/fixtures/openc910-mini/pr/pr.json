@@ -1,0 +1,2248 @@
+{
+ "reference": {
+  "prePlace": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.012,
+    "reg2reg": -0.012,
+    "reg2cgate": -0.004,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -1.3,
+    "reg2reg": -1.25,
+    "reg2cgate": -0.05,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 49.0,
+    "reg2reg": 40.0,
+    "reg2cgate": 9.0,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 61.0,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "timeDesign -prePlace"
+  },
+  "place": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.08,
+    "reg2reg": -0.05,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -14.55,
+    "reg2reg": -12.5,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 339.0,
+    "reg2reg": 300.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 64.2,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "place_opt_design",
+   "power": {
+    "internal_mw": 10.2924,
+    "switching_mw": 4.264,
+    "leakage_mw": 0.147,
+    "total_mw": 14.7035,
+    "custom_cells": 0,
+    "custom_cells_pct": 0.0,
+    "custom_library_loaded": false,
+    "libraries": 3
+   },
+   "worst_paths": [
+    {
+     "slack_ns": -0.05,
+     "arrival_ns": 0.35,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[7]",
+     "end": "core/u_l2/dout_reg_7_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[7]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.2,
+       "arrival_ns": 0.2,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.21,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.02,
+       "arrival_ns": 0.23,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.24,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.27,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.28,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.025,
+       "arrival_ns": 0.305,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.315,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.015,
+       "arrival_ns": 0.33,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.02,
+       "arrival_ns": 0.35,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.045,
+     "arrival_ns": 0.345,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[9]",
+     "end": "core/u_l2/dout_reg_9_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[9]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.20500000000000002,
+       "arrival_ns": 0.205,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "BUFFD8X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.215,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "BUFFD8X",
+       "edge": "^",
+       "delay_ns": 0.022,
+       "arrival_ns": 0.237,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.247,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.028,
+       "arrival_ns": 0.275,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.285,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.018,
+       "arrival_ns": 0.303,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.042,
+       "arrival_ns": 0.345,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.04,
+     "arrival_ns": 0.34,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[3]",
+     "end": "core/u_l2/dout_reg_3_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[3]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.198,
+       "arrival_ns": 0.198,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.208,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.019,
+       "arrival_ns": 0.227,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.237,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.027,
+       "arrival_ns": 0.264,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.274,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.304,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.036,
+       "arrival_ns": 0.34,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    }
+   ]
+  },
+  "cts": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.08,
+    "reg2reg": -0.036,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -10.25,
+    "reg2reg": -8.2,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 239.0,
+    "reg2reg": 200.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 65.1,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "optDesign -postCTS",
+   "power": {
+    "internal_mw": 10.64,
+    "switching_mw": 4.408,
+    "leakage_mw": 0.152,
+    "total_mw": 15.2,
+    "custom_cells": 0,
+    "custom_cells_pct": 0.0,
+    "custom_library_loaded": false,
+    "libraries": 3
+   },
+   "worst_paths": [
+    {
+     "slack_ns": -0.036,
+     "arrival_ns": 0.444,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[7]",
+     "end": "core/u_l2/dout_reg_7_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[7]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.19,
+       "arrival_ns": 0.31,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.32,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.02,
+       "arrival_ns": 0.34,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.35,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.38,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.39,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.025,
+       "arrival_ns": 0.415,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.425,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.015,
+       "arrival_ns": 0.44,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.004,
+       "arrival_ns": 0.444,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.033,
+     "arrival_ns": 0.441,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[9]",
+     "end": "core/u_l2/dout_reg_9_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[9]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.195,
+       "arrival_ns": 0.315,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "BUFFD8X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.325,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "BUFFD8X",
+       "edge": "^",
+       "delay_ns": 0.022,
+       "arrival_ns": 0.347,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.357,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.028,
+       "arrival_ns": 0.385,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.395,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.018,
+       "arrival_ns": 0.413,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.028,
+       "arrival_ns": 0.441,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.031,
+     "arrival_ns": 0.439,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[3]",
+     "end": "core/u_l2/dout_reg_3_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[3]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.188,
+       "arrival_ns": 0.308,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.318,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.019,
+       "arrival_ns": 0.337,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.347,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.027,
+       "arrival_ns": 0.374,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.384,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.414,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.025,
+       "arrival_ns": 0.439,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    }
+   ],
+   "clock_tree": {
+    "buffers": 40.0,
+    "inverters": 2.0,
+    "icgs": 12.0,
+    "sinks": 600.0,
+    "clock_wire_um": 1500.5
+   }
+  },
+  "route": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.08,
+    "reg2reg": -0.03,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -8.05,
+    "reg2reg": -6.0,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 189.0,
+    "reg2reg": 150.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 63.9,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "optDesign -postRoute",
+   "power": {
+    "internal_mw": 10.57,
+    "switching_mw": 4.379,
+    "leakage_mw": 0.151,
+    "total_mw": 15.1,
+    "custom_cells": 0,
+    "custom_cells_pct": 0.0,
+    "custom_library_loaded": false,
+    "libraries": 3
+   },
+   "worst_paths": [
+    {
+     "slack_ns": -0.03,
+     "arrival_ns": 0.438,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[7]",
+     "end": "core/u_l2/dout_reg_7_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[7]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.19,
+       "arrival_ns": 0.31,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.32,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.02,
+       "arrival_ns": 0.34,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.35,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.38,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.39,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.025,
+       "arrival_ns": 0.415,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.425,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.015,
+       "arrival_ns": 0.44,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": -0.002,
+       "arrival_ns": 0.438,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.028,
+     "arrival_ns": 0.436,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[9]",
+     "end": "core/u_l2/dout_reg_9_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[9]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.195,
+       "arrival_ns": 0.315,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "BUFFD8X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.325,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "BUFFD8X",
+       "edge": "^",
+       "delay_ns": 0.022,
+       "arrival_ns": 0.347,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.357,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.028,
+       "arrival_ns": 0.385,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.395,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.018,
+       "arrival_ns": 0.413,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.023,
+       "arrival_ns": 0.436,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.027,
+     "arrival_ns": 0.435,
+     "required_ns": 0.408,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[3]",
+     "end": "core/u_l2/dout_reg_3_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "I",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.06,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "CKBD8X",
+       "edge": "^",
+       "delay_ns": 0.06,
+       "arrival_ns": 0.12,
+       "kind": "cell"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.12,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[3]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.188,
+       "arrival_ns": 0.308,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.318,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.019,
+       "arrival_ns": 0.337,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.347,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.027,
+       "arrival_ns": 0.374,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.384,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.414,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.021,
+       "arrival_ns": 0.435,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "custom": {
+  "prePlace": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.012,
+    "reg2reg": -0.012,
+    "reg2cgate": -0.004,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -1.3,
+    "reg2reg": -1.25,
+    "reg2cgate": -0.05,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 49.0,
+    "reg2reg": 40.0,
+    "reg2cgate": 9.0,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 61.0,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "timeDesign -prePlace"
+  },
+  "place": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.08,
+    "reg2reg": -0.046,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -11.05,
+    "reg2reg": -9.0,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 249.0,
+    "reg2reg": 210.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 64.15,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "place_opt_design",
+   "power": {
+    "internal_mw": 10.2711,
+    "switching_mw": 4.2552,
+    "leakage_mw": 0.1467,
+    "total_mw": 14.673,
+    "custom_cells": 420,
+    "custom_cells_pct": 8.4,
+    "custom_library_loaded": true,
+    "libraries": 4
+   },
+   "worst_paths": [
+    {
+     "slack_ns": -0.046,
+     "arrival_ns": 0.346,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[7]",
+     "end": "core/u_l2/dout_reg_7_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[7]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.2,
+       "arrival_ns": 0.2,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.21,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.019,
+       "arrival_ns": 0.229,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.239,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.269,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.279,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.025,
+       "arrival_ns": 0.304,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.314,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.015,
+       "arrival_ns": 0.329,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.017,
+       "arrival_ns": 0.346,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.043,
+     "arrival_ns": 0.343,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[9]",
+     "end": "core/u_l2/dout_reg_9_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[9]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.20500000000000002,
+       "arrival_ns": 0.205,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "BUFFD8X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.215,
+       "kind": "net"
+      },
+      {
+       "pin": "Z",
+       "cell": "BUFFD8X",
+       "edge": "^",
+       "delay_ns": 0.022,
+       "arrival_ns": 0.237,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.247,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.027,
+       "arrival_ns": 0.274,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.284,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.018,
+       "arrival_ns": 0.302,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.041,
+       "arrival_ns": 0.343,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    },
+    {
+     "slack_ns": -0.039,
+     "arrival_ns": 0.339,
+     "required_ns": 0.3,
+     "setup_ns": 0.01,
+     "uncertainty_ns": 0.09,
+     "group": "reg2reg",
+     "begin": "core/u_l2/u_sram_1/Q[3]",
+     "end": "core/u_l2/dout_reg_3_/D",
+     "stages": [
+      {
+       "pin": "core_clk",
+       "cell": "",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "CLK",
+       "cell": "ct_sram_mini",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      },
+      {
+       "pin": "Q[3]",
+       "cell": "ct_sram_mini",
+       "edge": "v",
+       "delay_ns": 0.198,
+       "arrival_ns": 0.198,
+       "kind": "cell"
+      },
+      {
+       "pin": "I",
+       "cell": "INVD4X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.208,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "INVD4X",
+       "edge": "^",
+       "delay_ns": 0.019,
+       "arrival_ns": 0.227,
+       "kind": "cell"
+      },
+      {
+       "pin": "B",
+       "cell": "AOI21D1X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.237,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "AOI21D1X",
+       "edge": "^",
+       "delay_ns": 0.027,
+       "arrival_ns": 0.264,
+       "kind": "cell"
+      },
+      {
+       "pin": "A1",
+       "cell": "ND2D2X",
+       "edge": "v",
+       "delay_ns": 0.01,
+       "arrival_ns": 0.274,
+       "kind": "net"
+      },
+      {
+       "pin": "ZN",
+       "cell": "ND2D2X",
+       "edge": "^",
+       "delay_ns": 0.03,
+       "arrival_ns": 0.304,
+       "kind": "cell"
+      },
+      {
+       "pin": "D",
+       "cell": "DFQD1X",
+       "edge": "v",
+       "delay_ns": 0.035,
+       "arrival_ns": 0.339,
+       "kind": "net"
+      },
+      {
+       "pin": "CP",
+       "cell": "DFQD1X",
+       "edge": "^",
+       "delay_ns": 0.0,
+       "arrival_ns": 0.0,
+       "kind": "net"
+      }
+     ]
+    }
+   ]
+  },
+  "cts": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.09,
+    "reg2reg": -0.09,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -52.05,
+    "reg2reg": -50.0,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 939.0,
+    "reg2reg": 900.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 66.0,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "optDesign -postCTS",
+   "power": {
+    "internal_mw": 11.2,
+    "switching_mw": 4.64,
+    "leakage_mw": 0.16,
+    "total_mw": 16.0,
+    "custom_cells": 400,
+    "custom_cells_pct": 8.0,
+    "custom_library_loaded": true,
+    "libraries": 4
+   },
+   "worst_paths": [],
+   "clock_tree": {
+    "buffers": 38.0,
+    "inverters": 2.0,
+    "icgs": 12.0,
+    "sinks": 600.0,
+    "clock_wire_um": 1490.25
+   }
+  },
+  "route": {
+   "groups": [
+    "all",
+    "reg2reg",
+    "reg2cgate",
+    "in2reg",
+    "reg2out",
+    "in2out",
+    "default"
+   ],
+   "wns_ns": {
+    "all": -0.08,
+    "reg2reg": -0.08,
+    "reg2cgate": -0.004,
+    "in2reg": 0.02,
+    "reg2out": -0.08,
+    "in2out": null,
+    "default": 0.02
+   },
+   "tns_ns": {
+    "all": -42.05,
+    "reg2reg": -40.0,
+    "reg2cgate": -0.05,
+    "in2reg": 0.0,
+    "reg2out": -2.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "nvp": {
+    "all": 839.0,
+    "reg2reg": 800.0,
+    "reg2cgate": 9.0,
+    "in2reg": 0.0,
+    "reg2out": 30.0,
+    "in2out": null,
+    "default": 0.0
+   },
+   "all_paths": {
+    "all": 5200.0,
+    "reg2reg": 4800.0,
+    "reg2cgate": 300.0,
+    "in2reg": 20.0,
+    "reg2out": 100.0,
+    "in2out": null,
+    "default": 20.0
+   },
+   "drv": {
+    "max_cap": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_tran": {
+     "nets": 2,
+     "terms": 3,
+     "worst": -0.004
+    },
+    "max_fanout": {
+     "nets": 0,
+     "terms": 0,
+     "worst": 0.0
+    },
+    "max_length": {
+     "nets": 5,
+     "terms": 5,
+     "worst": -12.0
+    }
+   },
+   "density_pct": 66.0,
+   "overflow_pct": [
+    0.11,
+    0.13
+   ],
+   "command": "optDesign -postRoute",
+   "power": {
+    "internal_mw": 11.2,
+    "switching_mw": 4.64,
+    "leakage_mw": 0.16,
+    "total_mw": 16.0,
+    "custom_cells": 400,
+    "custom_cells_pct": 8.0,
+    "custom_library_loaded": true,
+    "libraries": 4
+   },
+   "worst_paths": []
+  }
+ },
+ "custom_model": {
+  "basis": "synthetic fixture: custom CTS and route timing carried forward from placement",
+  "placement_wns_gain_ns": 0.004,
+  "placement_tns_ratio": 0.72,
+  "placement_nvp_ratio": 0.7,
+  "stages": {
+   "cts": {
+    "groups": [
+     "all",
+     "reg2reg",
+     "reg2cgate",
+     "in2reg",
+     "reg2out",
+     "in2out",
+     "default"
+    ],
+    "wns_ns": {
+     "all": -0.08,
+     "reg2reg": -0.032,
+     "reg2cgate": -0.004,
+     "in2reg": 0.02,
+     "reg2out": -0.08,
+     "in2out": null,
+     "default": 0.02
+    },
+    "tns_ns": {
+     "all": -7.954,
+     "reg2reg": -5.904,
+     "reg2cgate": -0.05,
+     "in2reg": 0.0,
+     "reg2out": -2.0,
+     "in2out": null,
+     "default": 0.0
+    },
+    "nvp": {
+     "all": 179.0,
+     "reg2reg": 140.0,
+     "reg2cgate": 9.0,
+     "in2reg": 0.0,
+     "reg2out": 30.0,
+     "in2out": null,
+     "default": 0.0
+    },
+    "all_paths": {
+     "all": 5200.0,
+     "reg2reg": 4800.0,
+     "reg2cgate": 300.0,
+     "in2reg": 20.0,
+     "reg2out": 100.0,
+     "in2out": null,
+     "default": 20.0
+    },
+    "drv": {
+     "max_cap": {
+      "nets": 0,
+      "terms": 0,
+      "worst": 0.0
+     },
+     "max_tran": {
+      "nets": 2,
+      "terms": 3,
+      "worst": -0.004
+     },
+     "max_fanout": {
+      "nets": 0,
+      "terms": 0,
+      "worst": 0.0
+     },
+     "max_length": {
+      "nets": 5,
+      "terms": 5,
+      "worst": -12.0
+     }
+    },
+    "density_pct": 65.3,
+    "overflow_pct": [
+     0.11,
+     0.13
+    ],
+    "command": "optDesign -postCTS",
+    "power": {
+     "internal_mw": 10.605,
+     "switching_mw": 4.3935,
+     "leakage_mw": 0.1515,
+     "total_mw": 15.15,
+     "custom_cells": 430,
+     "custom_cells_pct": 8.6,
+     "custom_library_loaded": true,
+     "libraries": 4
+    },
+    "worst_paths": [
+     {
+      "slack_ns": -0.032,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[7]",
+      "end": "core/u_l2/dout_reg_7_/D",
+      "reference_slack_ns": -0.036
+     },
+     {
+      "slack_ns": -0.029,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[9]",
+      "end": "core/u_l2/dout_reg_9_/D",
+      "reference_slack_ns": -0.033
+     },
+     {
+      "slack_ns": -0.027,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[3]",
+      "end": "core/u_l2/dout_reg_3_/D",
+      "reference_slack_ns": -0.031
+     }
+    ],
+    "clock_tree": {
+     "buffers": 38.0,
+     "inverters": 2.0,
+     "icgs": 12.0,
+     "sinks": 600.0,
+     "clock_wire_um": 1490.25
+    }
+   },
+   "route": {
+    "groups": [
+     "all",
+     "reg2reg",
+     "reg2cgate",
+     "in2reg",
+     "reg2out",
+     "in2out",
+     "default"
+    ],
+    "wns_ns": {
+     "all": -0.08,
+     "reg2reg": -0.025,
+     "reg2cgate": -0.004,
+     "in2reg": 0.02,
+     "reg2out": -0.08,
+     "in2out": null,
+     "default": 0.02
+    },
+    "tns_ns": {
+     "all": -6.37,
+     "reg2reg": -4.32,
+     "reg2cgate": -0.05,
+     "in2reg": 0.0,
+     "reg2out": -2.0,
+     "in2out": null,
+     "default": 0.0
+    },
+    "nvp": {
+     "all": 144.0,
+     "reg2reg": 105.0,
+     "reg2cgate": 9.0,
+     "in2reg": 0.0,
+     "reg2out": 30.0,
+     "in2out": null,
+     "default": 0.0
+    },
+    "all_paths": {
+     "all": 5200.0,
+     "reg2reg": 4800.0,
+     "reg2cgate": 300.0,
+     "in2reg": 20.0,
+     "reg2out": 100.0,
+     "in2out": null,
+     "default": 20.0
+    },
+    "drv": {
+     "max_cap": {
+      "nets": 0,
+      "terms": 0,
+      "worst": 0.0
+     },
+     "max_tran": {
+      "nets": 2,
+      "terms": 3,
+      "worst": -0.004
+     },
+     "max_fanout": {
+      "nets": 0,
+      "terms": 0,
+      "worst": 0.0
+     },
+     "max_length": {
+      "nets": 5,
+      "terms": 5,
+      "worst": -12.0
+     }
+    },
+    "density_pct": 64.0,
+    "overflow_pct": null,
+    "command": "optDesign -postRoute",
+    "power": {
+     "internal_mw": 10.535,
+     "switching_mw": 4.3645,
+     "leakage_mw": 0.1505,
+     "total_mw": 15.05,
+     "custom_cells": 440,
+     "custom_cells_pct": 8.8,
+     "custom_library_loaded": true,
+     "libraries": 4
+    },
+    "worst_paths": [
+     {
+      "slack_ns": -0.025,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[7]",
+      "end": "core/u_l2/dout_reg_7_/D",
+      "reference_slack_ns": -0.03
+     },
+     {
+      "slack_ns": -0.023,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[9]",
+      "end": "core/u_l2/dout_reg_9_/D",
+      "reference_slack_ns": -0.028
+     },
+     {
+      "slack_ns": -0.022,
+      "group": "reg2reg",
+      "begin": "core/u_l2/u_sram_1/Q[3]",
+      "end": "core/u_l2/dout_reg_3_/D",
+      "reference_slack_ns": -0.027
+     }
+    ]
+   }
+  }
+ }
+}

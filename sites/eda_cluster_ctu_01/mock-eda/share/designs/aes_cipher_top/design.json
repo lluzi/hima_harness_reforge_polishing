@@ -1,0 +1,12 @@
+{
+  "schema": "ctu-design/1",
+  "design": "aes_cipher_top",
+  "description": "AES-128 encryption core (one round per clock), 28 nm, stock library std9t_svt",
+  "technology": "28 nm",
+  "library": "std9t_svt",
+  "corner": "tt0p90v25c",
+  "clockPeriodNs": 0.5,
+  "rtl": ["rtl/aes_cipher_top.v", "rtl/aes_key_expand_128.v", "rtl/aes_sbox.v"],
+  "sdc": "aes_cipher_top.sdc",
+  "note": "Demo design of the Site eda_cluster_ctu_01: the flow uses a calibrated path model of its 20 worst paths, not these files."
+}

@@ -1,0 +1,6 @@
+id: andes-requirements
+version: "0.4.0"
+file: tools/read-requirements.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: hima-andes-requirements/2
+emits: [requirements_valid, requirements_count]

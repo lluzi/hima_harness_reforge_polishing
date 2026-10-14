@@ -4,7 +4,6 @@
 // Loaded through `loadPack`, so every case is what a person actually gets when the pack is read.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,7 +13,6 @@ import { repoRoot } from './support/dsh-home.ts';
 
 const mageId = 'mage-scribe-placement';
 const andesId = 'andes-cell-fmax';
-const andesRef = 'demo/andes-openc910';
 
 // A MAGE copy with `view.yml` replaced by `view`; returns the temp packs dir and a cleanup.
 function mageWithView(view: unknown): { packsDir: string; cleanup: () => void } {
@@ -24,21 +22,24 @@ function mageWithView(view: unknown): { packsDir: string; cleanup: () => void } 
   return { packsDir: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-// The AndesCell Pack from the pre-DBOS demo, materialised into a temp dir (never committed here).
-// With `view` null the Pack's own inline `graph.yml` view is left in place; with a `view` object the
-// inline view is moved into `view.yml`, exactly as the port does.
+// The in-repo AndesCell Pack, copied into a temp dir so each case can rewrite its view. With a `view`
+// object the Pack's own `view.yml` is replaced (graph.yml holds no inline view, as the port ships it);
+// with `view` null the view is folded back inline into graph.yml and view.yml removed, to reproduce
+// the inline-`view:` refusal (view.yml is the one declaration).
 function andesPack(view: unknown | null): { packsDir: string; cleanup: () => void } {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'pack-view-andes-'));
-  execFileSync('bash', ['-c', `git -C ${repoRoot} archive ${andesRef} packs/${andesId} | tar -x -C ${dir}`]);
-  const packsDir = path.join(dir, 'packs');
-  if (view !== null) {
-    const graphPath = path.join(packsDir, andesId, 'graph.yml');
+  cpSync(path.join(repoRoot, 'packs', andesId), path.join(dir, andesId), { recursive: true });
+  const graphPath = path.join(dir, andesId, 'graph.yml');
+  const viewPath = path.join(dir, andesId, 'view.yml');
+  if (view === null) {
     const graph = parse(readFileSync(graphPath, 'utf8')) as Record<string, unknown>;
-    delete graph.view;
+    graph.view = parse(readFileSync(viewPath, 'utf8'));
     writeFileSync(graphPath, stringify(graph));
-    writeFileSync(path.join(packsDir, andesId, 'view.yml'), stringify(view));
+    rmSync(viewPath);
+  } else {
+    writeFileSync(viewPath, stringify(view));
   }
-  return { packsDir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return { packsDir: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 // A MAGE view that places all ten nodes across four stations, checklist XOR team. Loosely typed so
@@ -156,11 +157,11 @@ test('refuse: a metric naming a value type the reader does not emit, naming view
   finally { cleanup(); }
 });
 
-// The demo's own inline view object (stations + hidden), read from the archived graph.yml once.
+// The Pack's own view (stations + hidden + metrics), read from the in-repo view.yml once.
 let demoView: { stations: unknown[] } | undefined;
 function demoAndesView(): { stations: unknown[] } {
   if (demoView) return demoView;
-  const text = execFileSync('git', ['-C', repoRoot, 'show', `${andesRef}:packs/${andesId}/graph.yml`], { encoding: 'utf8' });
-  demoView = (parse(text) as { view: { stations: unknown[] } }).view;
+  const text = readFileSync(path.join(repoRoot, 'packs', andesId, 'view.yml'), 'utf8');
+  demoView = parse(text) as { stations: unknown[] };
   return demoView;
 }

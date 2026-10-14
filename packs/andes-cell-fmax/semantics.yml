@@ -1,0 +1,67 @@
+values:
+  reference_valid:
+    unit: count
+    description: "One when the reference build (stock libraries) finished the flow through route and wrote its timing summary."
+  design_wns_ps:
+    unit: ps
+    description: "Worst setup slack of a build at the end of route, path group reg2reg (negative when violated), from the sapr summary."
+  design_tns_ns:
+    unit: ns
+    description: "Total negative setup slack of a build at the end of route, path group reg2reg."
+  design_nvp:
+    unit: count
+    description: "Violating reg2reg paths of a build at the end of route."
+  design_density_pct:
+    unit: percent
+    description: "Placement density of a build at the end of route."
+  new_cell_instances:
+    unit: count
+    description: "Instances of AndesCell custom cells in a build (zero in the reference build)."
+  new_cell_pct:
+    unit: percent
+    description: "AndesCell custom-cell instances as a share of all instances of a build."
+  timing_loaded:
+    unit: count
+    description: "One when HimaTime loaded the build this round starts from."
+  timing_wns_ps:
+    unit: ps
+    description: "reg2reg worst slack at route of the build this round starts from, as HimaTime reports it."
+  timing_high_value_cells:
+    unit: count
+    description: "Library cells HimaTime's high-value analysis lists for the build this round starts from."
+  requirements_valid:
+    unit: count
+    description: "One when an agent's requirements passed the Pack's check against the tools (HimaTime what-if arcs with their rankings and gains, or Qualib's cells and custom-cell constraints)."
+  requirements_count:
+    unit: count
+    description: "Arcs in the HimaTime agent's requirements, or cells in the Qualib agent's."
+  plan_valid:
+    unit: count
+    description: "One when the AndesCell agent's generation plan passed the Pack's check (arcs that both lists allow, AndesCell's settings, a reason, report)."
+  plan_arcs:
+    unit: count
+    description: "Arcs the generation plan asks AndesCell to generate this round."
+  verify_delivery_valid:
+    unit: count
+    description: "One when a verify delivery (HimaTime cell-level check or Qualib cell screen) agreed with the tools' own answer for this round's cells."
+  cells_kept:
+    unit: count
+    description: "This round's generated cells HimaTime keeps (positive cell-level gain), from himatime verify; the same on both verify branches."
+  cells_passed_screen:
+    unit: count
+    description: "Kept cells that pass the Qualib screen (same footprint, input cap limit, LVS), from qualib screen; the same on both verify branches."
+  round_valid:
+    unit: count
+    description: "One when the custom-cell build finished at the reference clock and stage and used only kept and screened cells."
+  timing_gain_pct:
+    unit: percent
+    description: "100 x (custom-cell build reg2reg worst slack - reference reg2reg worst slack) / clock period, at route, for this round."
+  best_gain_pct:
+    unit: percent
+    description: "Largest timing gain over the reference build of any valid round so far (percent of the clock period)."
+  round_improved:
+    unit: count
+    description: "One when this round's build is valid and its reg2reg worst slack at route is better than every earlier build's."
+  best_wns_ps:
+    unit: ps
+    description: "Best reg2reg worst slack at route of a valid build so far (the reference build's before the first)."

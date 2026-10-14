@@ -1,0 +1,6 @@
+id: cells-gain-positive
+version: "0.4.0"
+title: HimaTime's cell-level check keeps at least one new cell (positive cell-level gain)
+requires: [{ type: cells_kept }]
+subject: { type: cells_kept }
+predicate: { op: gte, threshold: 1, unit: count }

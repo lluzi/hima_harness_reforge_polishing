@@ -1,0 +1,19 @@
+name: eda_cluster_ctu_01
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/ctu-runs
+permit: ./permit.yml
+bindings:
+  edaRoot: /data/eda/project/hima_harness/ctu01-eda
+  designRoot: /data/eda/project/hima_harness/ctu01-eda/share/designs/openc910
+  stockLibrary: n7-ulvt
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-ctu01-hug/engineering-capabilities-ctu01.json
+  workspaceRoot: /data/eda/project/hima_harness/ctu-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 24
+  memoryGiB: 64
+  parallelJobs: 3
+  licences: {}

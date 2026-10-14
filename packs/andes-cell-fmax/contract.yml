@@ -1,0 +1,355 @@
+id: andes-cell-fmax
+version: "0.4.0"
+title: Custom standard cells for a faster OpenC910 at route (AndesCell)
+status: development
+minimumHarnessVersion: 0.2.2
+
+ontology:
+  aliases:
+    himatimeRequirements: [HimaTime agent requirements, arcs to customize, timing-side requirements]
+    qualibRequirements: [Qualib agent requirements, cells the library cannot make faster, library-side requirements]
+    roundRecord: [round result, comparison at route, custom-cell build result]
+    generationPlan: [AndesCell agent plan, generation plan, arcs to generate this round]
+    himatimeVerify: [HimaTime cell-level check, kept cells]
+    qualibScreen: [Qualib cell screen, screen decision]
+
+budget:
+  timeBoxMs: 10800000
+  closingReserveMs: 600000
+  minimumGenerations: 1
+
+inputs:
+  - name: edaRoot
+    description: Read-only root of the Site's EDA toolchain (bin/sapr, himatime, qualib, andescell, xtop).
+  - name: designRoot
+    description: Read-only design data of openc910 on the Site (the flow's data the tools replay).
+  - name: stockLibrary
+    description: Label of the stock standard-cell libraries the design is built with (ULVT, with LVT and SVT alongside).
+  - name: workspaceRoot
+    description: Campaign-private output root allowed by the Site Permit.
+
+outputs:
+  - name: inputsState
+    path: state/inputs.json
+    description: Tool paths and versions, the design data files with SHA-256, AndesCell's settings.
+  - name: referenceBuild
+    path: state/reference.json
+    reader: andes-reference
+    description: >-
+      The reference build (the full flow through placement, CTS and route on the stock libraries),
+      from the sapr summary at route: reg2reg worst slack, TNS, violating paths, path groups, density,
+      power, the clock tree and the stage-by-stage timing.
+  - name: timingState
+    path: state/timing.json
+    reader: andes-timing
+    description: >-
+      HimaTime load of the build this round starts from (the reference build in round 1): reg2reg worst
+      slack at route, the 8 worst paths, where the worst path's time goes (SRAM access, cell families,
+      nets) and HimaTime's high-value summary. Its round number is this round's.
+  - name: lessons
+    path: state/lessons.json
+    description: Every round so far, with how many arcs were asked for and planned, generated, kept, screened and built, and the result at route.
+  - name: library
+    path: state/library.json
+    description: The cumulative custom-cell library (every round's accepted cells and their directory).
+  - name: himatimeRequirements
+    path: state/himatime-requirements.json
+    reader: andes-requirements
+    description: The HimaTime agent's arcs to customize for this round (hima-andes-requirements/2).
+  - name: qualibRequirements
+    path: state/qualib-requirements.json
+    reader: andes-requirements
+    description: The Qualib agent's cells the stock libraries cannot make faster, with the custom-cell constraints (hima-andes-requirements/2).
+  - name: generationPlan
+    path: state/generation-plan.json
+    reader: andes-plan
+    description: >-
+      The AndesCell agent's generation plan for this round (hima-andes-plan/2): the arcs both lists
+      allow, AndesCell's settings (iterations per arc, delay target) and the reason.
+  - name: generation
+    path: state/generation.json
+    description: What AndesCell generated for exactly the plan's arcs (requested, generated, failed) and the cells' directory.
+  - name: himatimeVerify
+    path: state/himatime-verify.json
+    reader: andes-verify
+    description: >-
+      The HimaTime agent's cell-level check (hima-andes-cell-check/1): generated, kept and dropped
+      cells, and the kept arcs.
+  - name: qualibScreen
+    path: state/qualib-screen.json
+    reader: andes-verify
+    description: >-
+      The Qualib agent's screen of the kept cells (hima-andes-cell-screen/2): PASS or FAIL per cell with reasons.
+  - name: roundBuild
+    path: state/round-build.json
+    description: The custom-cell build (the full flow with the stock libraries and every accepted custom cell).
+  - name: roundRecord
+    path: state/round.json
+    reader: andes-round
+    description: The round record (hima-andes-round/2) comparing the custom-cell build with the reference build at route.
+  - name: summary
+    path: derived/summary.md
+    description: Every round's worst slack, gain, cells and custom-cell instances at route, with the claim boundary.
+
+environment:
+  wrappers: [/usr/bin/python3]
+
+workspace:
+  source: pack
+  copy: [andes_cli.py]
+
+tools:
+  - id: bind-inputs
+    file: flow/andes_cli.py
+    description: >-
+      Check the Site's EDA tools (sapr, himatime, qualib, andescell and xtop answer -version) and the
+      openc910 design data; write state/inputs.json with the tool versions, the data files' SHA-256
+      and AndesCell's settings; create the empty lessons and library files.
+    inputs: [WORKSPACE, EDA_ROOT, DESIGN_ROOT, LIBRARY]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', bind, '${WORKSPACE}', '${EDA_ROOT}', '${DESIGN_ROOT}', '${LIBRARY}']
+
+  - id: reference-build
+    file: flow/andes_cli.py
+    description: >-
+      The full flow (sapr: netlist, place_opt, CTS, route) of openc910 on the stock libraries at the
+      0.500 ns clock into runs/reference/; write state/reference.json from the summary at route and
+      its reports (the stage summaries, timing, power, congestion, clock tree and flow_summary.rpt) to
+      reports/reference-build/r1/, with the summary table (summary.chart.json), the path groups
+      (path-groups.chart.json), the worst slack through the flow (flow-stages.chart.json) and
+      HimaTime's 8 worst reg2reg paths (timing.chart.json).
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', reference, '${WORKSPACE}', '${TIMEOUT_MIN}']
+
+  - id: load-timing
+    file: flow/andes_cli.py
+    description: >-
+      Load the build this round starts from into HimaTime (the reference build in round 1) and run
+      its high-value analysis; write state/timing.json: reg2reg worst slack at route, the worst paths,
+      where the worst path's time goes, the high-value summary, and the chart of the worst path
+      (reports/load-timing/r<k>/stage-breakdown.chart.json). Starts round k = rounds in lessons + 1.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', timing, '${WORKSPACE}']
+
+  - id: himatime-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the HimaTime timing engineer for this round of custom standard cells on openc910 (the
+      OpenC910 dual-core RISC-V CPU, stock libraries ULVT with LVT and SVT, clock 0.500 ns, timing at
+      the end of route, path group reg2reg). Read timingState (the routed build this round starts
+      from: worst slack, the 8 worst paths, where the worst path's time goes, the high-value summary),
+      referenceBuild, lessons and library. In your private workspace, with db =
+      <campaign>/<buildDir of timingState>, run `himatime highvalue --db <db> --out ./hv` (design
+      cells, high-value instances, library cells, the listed cells by family) and `himatime whatif
+      --db <db> --scale 0.9 --out ./hw` (seven rankings of what each cell arc gives back if it were
+      10 % faster, merged and deduplicated in ./hw/whatif.json). Write your requirements from
+      HimaTime's own output: `python3 <campaign>/flow/andes_cli.py draft <campaign> himatime
+      ./hw/whatif.json > requirements.json` lists every merged arc {cell, from, to, edge, rankedBy,
+      tnsGainNs, wnsGainNs}. You may drop arcs you do not want customized and say why in the
+      analysis; never add arcs or edit numbers. Fill summary: what the high-value analysis and the
+      what-if show, naming the top three arcs by TNS gain with their cell names. Keep your reports in
+      reports/himatime-agent/r<k>/ of your private workspace (k = the round of timingState):
+      analysis.md, high_value_cells.rpt and the cell_what_if_sort_by_<KEY>.rpt files. Run `python3
+      <campaign>/flow/andes_cli.py precheck <campaign> himatime requirements.json` and fix every
+      problem it prints, then deliver the file as the result and your reports as support. Do not run
+      Synthesis and APR, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', himatime]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, referenceBuild, timingState, lessons, library]
+      knowledge: [andes-flow.md, himatime-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/himatime-agent
+      produces: himatimeRequirements
+
+  - id: qualib-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the Qualib library engineer for this round of custom standard cells on openc910 (the
+      OpenC910 dual-core RISC-V CPU, stock libraries ULVT with LVT and SVT, clock 0.500 ns). Read
+      timingState, referenceBuild, lessons and library. In your private workspace, with db =
+      <campaign>/<buildDir of timingState>, run `himatime whatif --db <db> --scale 0.9 --out ./hw`
+      (the arcs HimaTime ranks) and `qualib analyze --db <db> --arcs ./hw/whatif.json --out ./ql`:
+      per arc the stock delay of the ULVT, LVT and SVT cell at the centre of its delay table, which
+      Vt is fastest, the cells by family, and the constraints a custom cell must meet (same
+      footprint, input capacitance limit, LVS). The question is whether the stock libraries can make
+      these cells faster (a faster Vt or another cell); where they cannot, a custom cell is the way.
+      Write your requirements from Qualib's own output: `python3 <campaign>/flow/andes_cli.py draft
+      <campaign> qualib ./ql/library_analysis.json > requirements.json` lists the cells and Qualib's
+      constraints {footprint, inputCapMaxRatio, lvs}. You may drop cells and say why; never add
+      cells or change the constraints. Fill summary: how many arcs and cells, on how many ULVT is
+      already the fastest Vt, how much slower LVT and SVT are. Keep your reports in
+      reports/qualib-agent/r<k>/ of your private workspace: analysis.md and library_analysis.rpt.
+      Run `python3 <campaign>/flow/andes_cli.py precheck <campaign> qualib requirements.json` and fix
+      every problem it prints, then deliver the file as the result and your reports as support. Do
+      not run Synthesis and APR, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', requirements, '${WORKSPACE}', qualib]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, referenceBuild, timingState, lessons, library]
+      knowledge: [andes-flow.md, qualib-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/qualib-agent
+      produces: qualibRequirements
+
+  - id: andescell-agent
+    file: flow/andes_cli.py
+    description: >-
+      You are the AndesCell cell engineer for this round of custom standard cells on openc910. Read
+      himatimeRequirements (the arcs HimaTime ranks), qualibRequirements (the cells the stock
+      libraries cannot make faster, with the custom-cell constraints), timingState, lessons and
+      library. `python3 <campaign>/flow/andes_cli.py draft <campaign> andescell > plan.json` lists
+      the arcs both lists allow (HimaTime's arcs whose cell Qualib lists) with AndesCell's settings
+      {iterations: 50, scale: 0.9}: 50 design-space iterations per arc toward an arc delay 10 %
+      below the stock cell's. Check the plan with `andescell generate --arcs plan.json --round <k>
+      --iterations 50 --scale 0.9 --dry-run` and keep its output as dry_run.rpt. You may leave arcs
+      out and say why; never add arcs outside both lists. Fill summary and reason (why these arcs and
+      these settings). Keep your reports in reports/andescell-agent/r<k>/ of your private workspace:
+      analysis.md and dry_run.rpt. Run `python3 <campaign>/flow/andes_cli.py precheck <campaign>
+      andescell plan.json` and fix every problem it prints, then deliver the file as the result and
+      your reports as support. The next step generates exactly your arcs. Do not generate cells
+      yourself, change the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', andescell]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, himatimeRequirements, qualibRequirements]
+      knowledge: [andes-flow.md, andescell-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/andescell-agent
+      produces: generationPlan
+
+  - id: generate-cells
+    file: flow/andes_cli.py
+    description: >-
+      Run AndesCell on exactly the generation plan's arcs with its settings; write state/generation.json
+      (requested, generated, failed, the cells' directory) and generation.rpt with the generation
+      table (generation.chart.json) to reports/generate-cells/r<k>/.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', generate, '${WORKSPACE}']
+
+  - id: himatime-verify
+    file: flow/andes_cli.py
+    description: >-
+      You are the HimaTime timing engineer, back for the second half of this round on openc910:
+      AndesCell has generated the planned arcs' cells. Read generation (the cells and the directory
+      they are in), timingState and lessons. Check every generated cell against its stock cell:
+      `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<buildDir of timingState>
+      --out ./hv` writes verify.rpt, verify.json and kept/: per cell its best version, arc delay in ps
+      and the Δ HimaTime reports, kept when its cell-level gain is positive. Write the check from
+      HimaTime's own output: `python3 <campaign>/flow/andes_cli.py draft <campaign> himatime-verify
+      ./hv/verify.json > check.json` {generated, kept, dropped, keptArcs}. Fill summary: how many of
+      the generated cells are kept, the families with the most kept cells, what the dropped ones
+      mean. Keep your reports in reports/himatime-verify/r<k>/ of your private workspace: verify.rpt
+      and analysis.md. Run `python3 <campaign>/flow/andes_cli.py precheck <campaign> himatime-verify
+      check.json` and fix every problem it prints, then deliver the file as the result and your
+      reports as support. Only kept cells may enter the rebuild. Do not run Synthesis and APR, change
+      the Goal, or invent numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', himatime-verify]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, generationPlan, generation]
+      knowledge: [andes-flow.md, himatime-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/himatime-verify
+      produces: himatimeVerify
+
+  - id: qualib-screen
+    file: flow/andes_cli.py
+    description: >-
+      You are the Qualib library engineer, back for the second half of this round on openc910:
+      AndesCell has generated new cells and HimaTime keeps those with a positive cell-level gain.
+      Read generation (the cells and their directory), timingState, lessons and library. Get the kept
+      cells with `himatime verify --cells <campaign>/<generation.dir> --db <campaign>/<buildDir of
+      timingState> --out ./hv` (its kept/ folder) and screen them: `qualib screen --cells ./hv/kept
+      --out ./qs` writes cell_screen.rpt and screen.json (area against the stock cell, same
+      footprint; input capacitance against its limit; LVS). Write the screen from Qualib's own
+      output: `python3 <campaign>/flow/andes_cli.py draft <campaign> qualib-screen ./qs/screen.json >
+      screen.json` gives PASS or FAIL per kept cell with reasons. A cell the screen fails cannot
+      pass; you may fail a cell the screen passes if you say why. Fill summary. Keep your reports in
+      reports/qualib-screen/r<k>/ of your private workspace: cell_screen.rpt and analysis.md. Run
+      `python3 <campaign>/flow/andes_cli.py precheck <campaign> qualib-screen screen.json` and fix
+      every problem it prints, then deliver the file as the result and your reports as support. Only
+      the cells you pass enter the rebuild. Do not run Synthesis and APR, change the Goal, or invent
+      numbers.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', delivery, '${WORKSPACE}', qualib-screen]
+    outsourcing:
+      role: resident-engineering-agent
+      reads: [inputsState, timingState, lessons, library, generationPlan, generation]
+      knowledge: [andes-flow.md, qualib-playbook.md, requirements-format.md, evidence-and-claims.md]
+      artifactPrefix: reports/qualib-screen
+      produces: qualibScreen
+
+  - id: new-library-build
+    file: flow/andes_cli.py
+    description: >-
+      The full flow of openc910 with the stock libraries plus every kept and screened custom cell of
+      this and earlier rounds (one library folder per round, runs/r<k>/library/), into runs/r<k>/build/;
+      write state/round-build.json and the build's reports, with HimaTime's report_timing.rpt, to
+      reports/new-library-build/r<k>/.
+    inputs: [WORKSPACE, TIMEOUT_MIN]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', build, '${WORKSPACE}', '${TIMEOUT_MIN}']
+
+  - id: compare-round
+    file: flow/andes_cli.py
+    description: >-
+      Deterministic round record from the reference build and this round's custom-cell build at
+      route: timing gain (percent of the clock period), best gain, improvement, validity, custom-cell
+      usage; append lessons, update the cumulative library, write derived/round-<k>.md (also to
+      reports/compare-round/r<k>/, with the comparison table comparison.chart.json, the stage chart
+      flow-stages.chart.json, the path groups path-groups.chart.json and the worst paths
+      worst-paths.chart.json) and derived/summary.md. Uses no model text as a fact.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/andes_cli.py', compare, '${WORKSPACE}']
+
+reports: { dir: reports }
+
+rules:
+  - reference-valid
+  - requirements-valid
+  - cells-gain-positive
+  - cells-screened
+  - cells-used
+  - round-improved
+  - round-valid
+  - timing-goal
+
+knowledge:
+  - file: design-notes.md
+    purpose: Read it before answering any question about this design's timing (hima_knowledge search, source pack, query "design notes"). The design and its timing at route, the worst paths, HimaTime's high-value cells, the stock libraries' Vt, what custom cells can move, the Goal and the charts to show, for the Guide's first conversation (generated from the Site's tools).
+  - file: andes-flow.md
+    purpose: The flow, every tool and command, the round loop, the owner's turns and what each round's results mean.
+  - file: himatime-playbook.md
+    purpose: How the HimaTime agent turns the high-value analysis and the cell what-if into arcs to customize, and checks the new cells (cell-level gain).
+  - file: qualib-playbook.md
+    purpose: How the Qualib agent shows the stock libraries cannot make these cells faster, sets the custom-cell constraints, and screens the kept cells.
+  - file: andescell-playbook.md
+    purpose: How the AndesCell agent plans the arcs both lists allow and AndesCell's settings.
+  - file: requirements-format.md
+    purpose: The delivery files (requirements, generation plan, cell check, cell screen), the draft and precheck commands, and the delivery.
+  - file: evidence-and-claims.md
+    purpose: What is a tool result, what is a claim, and the claim boundary of this demo.
+
+goal:
+  target_timing_gain_pct: { type: number, unit: percent, min: 0.1, max: 30, default: 1, precision: 2 }
+
+strategy:
+  buildTimeoutMin: { type: number, unit: min, min: 5, max: 60, default: 20, precision: 0 }
+  roundRevision: { type: number, unit: count, min: 0, max: 1, default: 0, precision: 0 }
+
+words:
+  target_timing_gain_pct: { label: "Worst-slack gain, % of clock, at least", unit: percent }
+  buildTimeoutMin: { label: time limit per Synthesis and APR run, unit: min }
+  roundRevision: { label: another design round requested (0 before the first), unit: count }
+
+results:
+  headline: { type: timing_gain_pct, label: "Worst-slack gain, % of the clock", unit: "%", better: higher, digits: 2 }
+  columns:
+    - { label: Reference build, reader: andes-reference }
+    - { label: Custom-cell build, reader: andes-round }
+  rows:
+    - { type: design_wns_ps, label: "Worst slack, reg2reg at route", unit: ps, better: higher, digits: 0 }
+    - { type: design_tns_ns, label: "Total negative slack, reg2reg", unit: ns, better: higher, digits: 3 }
+    - { type: design_nvp, label: Violating reg2reg paths, better: lower, digits: 0 }
+    - { type: design_density_pct, label: Density, unit: "%", digits: 3 }
+    - { type: new_cell_instances, label: Custom-cell instances, digits: 0 }
+    - { type: new_cell_pct, label: Custom-cell share of instances, unit: "%", digits: 2 }

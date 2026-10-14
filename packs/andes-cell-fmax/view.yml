@@ -1,0 +1,51 @@
+# The strip for the Live tab: four stations in a phone-width pane across three rows. Every graph node
+# is drawn in one station or hidden; the wait node (`blocked`) is hidden (a blocked Run says so
+# itself). Edges are omitted so they derive from the graph's own edges crossing stations. The top
+# line reads the best worst-slack gain so far from the round reader, against the Goal target.
+title: Custom cells for a faster OpenC910
+stations:
+  - id: rtl2gds
+    label: RTL2GDS flow
+    about: The flow through route, timing in HimaTime, and the rebuild with the custom cells.
+    row: 0
+    checklist:
+      - { label: Check tools and design, nodes: [bind-inputs], rounds: first }
+      - { label: Reference build, nodes: [reference-build], rounds: first }
+      - { label: Reference build finished, nodes: [read-reference, check-reference], rounds: first }
+      - { label: Load into HimaTime, nodes: [load-timing, read-timing] }
+      - { label: Cell-level gain confirmed, nodes: [cells-verified] }
+      - { label: Rebuild with custom cells, nodes: [new-library-build] }
+      - { label: Compare with the reference, nodes: [compare-round, read-round, check-round, read-round-goal, judge-round] }
+      - { label: Next round, nodes: [next-round] }
+  - id: himatime
+    label: HimaTime agent
+    about: AI agent for the timing view.
+    row: 1
+    checklist:
+      - { label: "Rank the arcs, write requirements", nodes: [himatime-agent] }
+      - { label: Check new cells (cell-level gain), nodes: [himatime-verify] }
+  - id: qualib
+    label: Qualib agent
+    about: AI agent for the library view.
+    row: 1
+    checklist:
+      - { label: "Check the library, write requirements", nodes: [qualib-agent] }
+      - { label: Screen kept cells, nodes: [qualib-screen] }
+  - id: andescell
+    label: AndesCell agent
+    about: AI agent that plans the arcs; AndesCell generates the cells.
+    row: 2
+    checklist:
+      - { label: Both requirement lists ready, nodes: [requirements-joined] }
+      - { label: Plan the arcs, nodes: [andescell-agent] }
+      - { label: Generate the cells, nodes: [generate-cells] }
+hidden: [blocked]
+metrics:
+  - label: Best worst-slack gain
+    reader: andes-round
+    type: best_gain_pct
+    pick: best
+    better: higher
+    unit: "%"
+    digits: 2
+    goal: target_timing_gain_pct

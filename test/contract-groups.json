@@ -149,6 +149,7 @@
     "test/contract/ssh.live.test.ts"
   ],
   "atcs-dry": [
+    "test/contract/andes-cell-fmax-durable.host.test.ts",
     "test/contract/atcs-known-collateral-durable.host.test.ts",
     "test/contract/atcs-resident-durable.host.test.ts",
     "test/contract/libinsight-resident-durable.host.test.ts",
