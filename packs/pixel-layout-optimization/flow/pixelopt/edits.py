@@ -6,7 +6,8 @@ reach. The rules of the Run contract (SPEC "What a Run may change"):
 
 * each edit moves by at most ``core.EDIT_BOUND_UM`` (1.5 um);
 * no edit touches a vertex that lies on a channel (poly AND gate) or inside the
-  storage-capacitor marker region;
+  storage-capacitor marker region, and no edit changes a channel's shape (an edge sliding
+  across the poly would, with no vertex on it);
 * at most 12 edits per call;
 * every moved vertex is snapped to the manifest grid.
 
@@ -29,6 +30,7 @@ _MAX_EDITS = 12
 _MAX_STEP_UM = core.EDIT_BOUND_UM
 _STEP_EPS = 1e-6
 _TOUCH = 1e-4
+_CHANNEL_EPS_UM2 = 1e-4
 
 
 def _forbidden_geoms(lay, case):
@@ -40,6 +42,34 @@ def _forbidden_geoms(lay, case):
     return channel, marker
 
 
+def _box_edit(i, edit, arr, channel, marker, grid):
+    """The polygon with a box joined (``op: add``) or cut away (``op: cut``)."""
+    from shapely.geometry import box as _box
+    op = edit.get("op")
+    bx = edit.get("box") or []
+    if op not in ("add", "cut") or len(bx) != 4:
+        raise PixelError("bad-plan", "%s needs op add|cut and a box [x0, y0, x1, y1]"
+                         % _label(i, edit))
+    x0, y0, x1, y1 = (core.snap(float(v), grid) for v in bx)
+    if x1 <= x0 or y1 <= y0:
+        raise PixelError("bad-plan", "%s has an empty box" % _label(i, edit))
+    before = Polygon(arr).buffer(0)
+    region = _box(x0, y0, x1, y1)
+    after = before.union(region) if op == "add" else before.difference(region)
+    if after.geom_type != "Polygon" or after.is_empty or list(after.interiors):
+        raise PixelError("bad-plan", "%s splits the polygon or makes a hole" % _label(i, edit))
+    after = after.simplify(0)
+    moved = before.boundary.hausdorff_distance(after.boundary)
+    if moved > _MAX_STEP_UM + _STEP_EPS:
+        raise PixelError("bad-plan", "%s moves the outline %.4f um > %g um limit"
+                         % (_label(i, edit), moved, _MAX_STEP_UM))
+    changed = before.symmetric_difference(after)
+    if (not marker.is_empty) and changed.intersection(marker).area > _CHANNEL_EPS_UM2:
+        raise PixelError("bad-plan", "%s changes the capacitor region" % _label(i, edit))
+    pts = list(after.exterior.coords)[:-1]
+    return np.round(np.array([[core.snap(x, grid), core.snap(y, grid)] for x, y in pts], float), 4)
+
+
 def _label(i, edit):
     return "edit[%d] (%s poly %s)" % (i, edit.get("layer"), edit.get("polygon"))
 
@@ -48,7 +78,9 @@ def apply_edits(lay, edits, case):
     """Apply bounded edits; returns ``(new_layout, log)``.
 
     Each edit is ``{"layer", "polygon": index, "vertices": [i...] | "edge": i,
-    "dx", "dy"}``.
+    "dx", "dy"}`` (move vertices), or ``{"layer", "polygon": index, "op": "add" | "cut",
+    "box": [x0, y0, x1, y1]}`` (a designer's local reshape: join the box to the polygon or cut it
+    away; the outline may move by at most the bound anywhere, and the polygon stays one piece).
     """
     if len(edits) > _MAX_EDITS:
         raise PixelError("bad-plan",
@@ -56,6 +88,8 @@ def apply_edits(lay, edits, case):
                          % (_MAX_EDITS, len(edits)))
 
     channel, marker = _forbidden_geoms(lay, case)
+    poly = case.raw["devices"]["polyLayer"]
+    gate = case.raw["devices"]["gateLayer"]
     grid = case.grid_um
     out = lay.copy()
     log = []
@@ -75,6 +109,17 @@ def apply_edits(lay, edits, case):
             raise PixelError("bad-plan", "%s names no polygon" % _label(i, edit))
         arr = polys[pidx]
         n = len(arr)
+
+        if "box" in edit:
+            out.polys[layer][pidx] = _box_edit(i, edit, arr, channel, marker, grid)
+            if layer in (poly, gate):
+                after = out.geom(poly).intersection(out.geom(gate))
+                if after.symmetric_difference(channel).area > _CHANNEL_EPS_UM2:
+                    raise PixelError("bad-plan",
+                                     "%s changes a channel (poly AND gate)" % _label(i, edit))
+            log.append({"edit": i, "layer": layer, "polygon": pidx, "op": edit.get("op"),
+                        "box": list(edit["box"])})
+            continue
 
         if "edge" in edit:
             e = int(edit["edge"])
@@ -107,6 +152,11 @@ def apply_edits(lay, edits, case):
             new[v][0] = nx
             new[v][1] = ny
         out.polys[layer][pidx] = np.round(new, 4)
+        if layer in (poly, gate):
+            # an edge that slides across the poly can reshape a channel with no vertex on it
+            after = out.geom(poly).intersection(out.geom(gate))
+            if after.symmetric_difference(channel).area > _CHANNEL_EPS_UM2:
+                raise PixelError("bad-plan", "%s changes a channel (poly AND gate)" % _label(i, edit))
         log.append({"edit": i, "layer": layer, "polygon": pidx,
                     "vertices": vids, "dx": dx, "dy": dy})
     return out, log

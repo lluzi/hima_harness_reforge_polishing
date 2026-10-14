@@ -140,6 +140,14 @@ def check(plan, readiness, history_ids, round=None):
     for i, edit in enumerate(edits):
         if edit.get("layer") not in layers:
             errors.append("edit %d names unknown layer %r" % (i, edit.get("layer")))
+        if "box" in edit:
+            bx = edit.get("box")
+            if edit.get("op") not in ("add", "cut") or not isinstance(bx, list) or len(bx) != 4 \
+                    or any(_num(v) is None for v in bx):
+                errors.append("edit %d needs op add|cut and a box [x0, y0, x1, y1]" % i)
+            elif min(_num(bx[2]) - _num(bx[0]), _num(bx[3]) - _num(bx[1])) > core.EDIT_BOUND_UM + 1e-9:
+                errors.append("edit %d box is deeper than the %g um bound" % (i, core.EDIT_BOUND_UM))
+            continue
         for axis in ("dx", "dy"):
             v = _num(edit.get(axis))
             if v is not None and abs(v) > core.EDIT_BOUND_UM + 1e-9:

@@ -8,7 +8,11 @@ Three bounded moves take the crossing away, each keeping every edge's angle:
 * ``chamfer-resize``: a corner cut (neighbour edges perpendicular) is made larger or smaller, its
   two vertices moving the same distance along their neighbour edges;
 * ``jog-shift``: a jog (neighbour edges parallel) slides along its neighbours;
-* ``edge-shift``: the other layer's crossed axis-parallel edge moves perpendicular to itself.
+* ``edge-shift``: the other layer's crossed axis-parallel edge moves perpendicular to itself;
+* ``box-cut`` / ``box-add``: a designer's local reshape: a rectangle is cut from, or joined to,
+  one of the two shapes so the crossing leaves the other shape (for example the source/drain
+  pulled back from a gate tab by the rule distance). These change the vertex count, and are the
+  only repair when the crossed shape is a gate whose channel must not move.
 
 :func:`propose` screens each move in geometry only (the diagonal no longer crosses the other
 layer's outline and clears it by the rule distance, or lies inside it); the caller confirms the
@@ -134,6 +138,73 @@ def _edge_moves(arr, e, steps):
     return out
 
 
+def _crossings(lay, la, lb, window):
+    """Diagonal edges of either layer within ``window`` that touch the other layer's outline."""
+    count = 0
+    for layer, other_layer in ((la, lb), (lb, la)):
+        other = _union(lay, other_layer, window.buffer(2.0))
+        if other.is_empty:
+            continue
+        for arr in lay.polys.get(layer, []):
+            n = len(arr)
+            for v in range(n):
+                if _axis(arr[v], arr[(v + 1) % n]) is not None:
+                    continue
+                seg = _seg(arr, v)
+                if seg.intersects(window) and seg.intersects(other.boundary):
+                    count += 1
+    return count
+
+
+def _box_moves(lay, q_layer, qi, seg, o_layer, oi, f, d, grid, lengths=(0.5, 1.0, 2.0, 3.0, 4.0, 5.0)):
+    """Box edits that take the diagonal ``seg`` (of polygon ``qi`` on ``q_layer``) off the
+    axis-parallel edge ``f`` (of polygon ``oi`` on ``o_layer``): ``(kind, size, edit)``."""
+    (fx0, fy0), (fx1, fy1) = f
+    vertical = abs(fx0 - fx1) < _EPS
+    sw = (lambda x, y: (x, y)) if vertical else (lambda x, y: (y, x))   # frame: f is vertical
+    xf = sw(fx0, fy0)[0]
+    (ax, ay), (bx, by) = (sw(*seg.coords[0]), sw(*seg.coords[-1]))
+    lo_d, hi_d = min(ax, bx), max(ax, bx)
+    ylo, yhi = min(ay, by), max(ay, by)
+    o_poly = Polygon(lay.polys[o_layer][oi]).buffer(0)
+    q_poly = Polygon(lay.polys[q_layer][qi]).buffer(0)
+    cx, cy = sw(*seg.intersection(LineString([(fx0, fy0), (fx1, fy1)])).coords[0]) \
+        if seg.intersects(LineString([(fx0, fy0), (fx1, fy1)])) else ((lo_d + hi_d) / 2, (ylo + yhi) / 2)
+    probe = 4 * _EPS + 1e-3
+    s_in = 1.0 if o_poly.contains(_pt(sw(xf + probe, cy))) else -1.0   # the side the other shape is on
+    ext_in = hi_d if s_in > 0 else lo_d                                 # how far the diagonal reaches in
+    ext_out = lo_d if s_in > 0 else hi_d
+
+    def box(x0, x1, y0, y1):
+        (p0, p1), (p2, p3) = sw(min(x0, x1), min(y0, y1)), sw(max(x0, x1), max(y0, y1))
+        return [_snap(p0, grid), _snap(p1, grid), _snap(p2, grid), _snap(p3, grid)]
+
+    out = []
+    for m in lengths:
+        # the other shape gives way: its edge recedes past the diagonal's reach, by d
+        x_new = ext_in + s_in * d
+        out.append(("box-cut", abs(x_new - xf), {"layer": o_layer, "polygon": oi, "op": "cut",
+                    "box": box(xf - s_in * 1e-3, x_new, ylo - d - m, yhi + d + m)}))
+        # or grows over the diagonal, by d
+        x_new = ext_out - s_in * d
+        out.append(("box-add", abs(x_new - xf), {"layer": o_layer, "polygon": oi, "op": "add",
+                    "box": box(x_new, xf + s_in * 1e-3, ylo - d - m, yhi + d + m)}))
+        # the diagonal's shape is pulled back out of the other shape, to d beyond its edge
+        qb = q_poly.bounds
+        q_far = (qb[2] if vertical else qb[3]) if s_in > 0 else (qb[0] if vertical else qb[1])
+        for lo_m, hi_m in ((m, 0.0), (0.0, m), (m, m)):
+            out.append(("box-cut", abs(xf - s_in * d - ext_in),
+                        {"layer": q_layer, "polygon": qi, "op": "cut",
+                         "box": box(xf - s_in * d, q_far + s_in * 1e-3,
+                                    ylo - d - lo_m, yhi + d + hi_m)}))
+    return out
+
+
+def _pt(xy):
+    from shapely.geometry import Point
+    return Point(xy[0], xy[1])
+
+
 def _clears(seg, other, d):
     """The moved edge leaves no acute crossing with the other layer and keeps the rule distance
     from it. A diagonal must not touch the other layer's outline; an axis-parallel edge (a squared
@@ -178,12 +249,18 @@ def _same_layer_ok(lay, layer, pi, new_arr, table, near):
                 return False
     w = (table.get("width") or {}).get(layer)
     if w:
-        r = w / 2.0 - 1e-3
-        narrow0 = p0.difference(p0.buffer(-r).buffer(r)).area
-        narrow1 = p1.difference(p1.buffer(-r).buffer(r)).area
-        if narrow1 > narrow0 + 0.01:
+        if _narrow(p1, w) > _narrow(p0, w) + 0.01:
             return False
     return True
+
+
+def _narrow(p, w):
+    """Area of the parts of ``p`` thinner than ``w``. An opening by ``w/2`` also shaves every
+    convex corner; those residues are thin slivers, so the opening's leftovers are eroded once
+    more before they count."""
+    r = w / 2.0 - 1e-3
+    left = p.difference(p.buffer(-r, join_style=2).buffer(r, join_style=2))
+    return left.buffer(-min(0.3, w / 4.0)).area
 
 
 def _snap(v, grid):
@@ -220,6 +297,7 @@ def propose(lay, marks, checks, grid, apply_edits=None, steps=_STEPS_UM, limit=6
         window = box(*bb).buffer(d + 0.5)
         near = window.buffer(2.0)
         found = []
+        boxes = []
         for layer, other_layer in ((la, lb), (lb, la)):
             other = _union(lay, other_layer, near)
             for pi, arr in enumerate(lay.polys.get(layer, [])):
@@ -268,8 +346,46 @@ def propose(lay, marks, checks, grid, apply_edits=None, steps=_STEPS_UM, limit=6
                             for ke, se, ee, o2 in edge:
                                 if _clears(nseg, o2, d):
                                     found.append((sd + se, kd + "+" + ke, ed + ee))
+                    # local reshapes by a box, cut from or joined to either shape
+                    for opi, oarr in enumerate(lay.polys.get(other_layer, [])):
+                        m = len(oarr)
+                        for e in range(m):
+                            fa, fb = oarr[e], oarr[(e + 1) % m]
+                            if _axis(fa, fb) is None or not _seg(oarr, e).intersects(seg):
+                                continue
+                            for kind, sz, ed in _box_moves(lay, layer, pi, seg, other_layer, opi,
+                                                           (tuple(fa), tuple(fb)), d, grid):
+                                if sz > max(steps) + _EPS:
+                                    continue
+                                boxes.append((sz, kind, [ed]))
+        if boxes and apply_edits is not None:
+            before = _crossings(lay, la, lb, window)
+            for sz, kind, eds in boxes:
+                try:
+                    trial, _log = apply_edits(eds)
+                except PixelError:
+                    continue
+                e = eds[0]
+                if _crossings(trial, la, lb, window) >= before:
+                    continue
+                if not _same_layer_ok(lay, e["layer"], e["polygon"],
+                                      trial.polys[e["layer"]][e["polygon"]], table, near):
+                    continue
+                found.append((sz, kind, eds))
+        # smallest of each kind first, then the next of each kind: a shortlist that is cut at
+        # ``limit`` still holds every kind of move
+        rank = {}
+        order = []
+        for t in sorted(found, key=lambda t: t[0]):
+            rank[t[1]] = rank.get(t[1], 0) + 1
+            order.append((rank[t[1]], t[0], t))
         kept = []
-        for s, kind, eds in sorted(found, key=lambda t: t[0]):
+        seen = set()
+        for _r, _s, (s, kind, eds) in sorted(order, key=lambda o: (o[0], o[1])):
+            key = repr(eds)
+            if key in seen:
+                continue
+            seen.add(key)
             if apply_edits is not None:
                 try:
                     apply_edits(eds)
