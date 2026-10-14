@@ -1,0 +1,189 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.case-manifest/1",
+ "title": "pixel.case-manifest/1",
+ "type": "object",
+ "required": [
+  "schema", "caseId", "candidateTopCell", "original", "gridUm", "layers",
+  "devices", "connectivity", "nets", "ratioDefinitions", "couplingLimits",
+  "loadLimitedLines", "targets", "cst", "decks", "interactRules", "lvs",
+  "extraction"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema": {"const": "pixel.case-manifest/1"},
+  "caseId": {"type": "string", "minLength": 1},
+  "candidateTopCell": {"type": "string", "minLength": 1},
+  "gridUm": {"type": "number", "minimum": 0},
+  "original": {
+   "type": "object",
+   "required": ["gds", "topCell"],
+   "additionalProperties": false,
+   "properties": {
+    "gds": {"$ref": "#/$defs/fileRef"},
+    "topCell": {"type": "string", "minLength": 1}
+   }
+  },
+  "layers": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": ["gds", "roles"],
+    "additionalProperties": true,
+    "properties": {
+     "gds": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+     "roles": {"type": "array", "items": {"type": "string"}},
+     "stack": {"type": "string"}
+    }
+   }
+  },
+  "freePairs": {
+   "type": "array",
+   "items": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}
+  },
+  "devices": {
+   "type": "object",
+   "required": ["polyLayer", "gateLayer"],
+   "additionalProperties": false,
+   "properties": {
+    "polyLayer": {"type": "string"},
+    "gateLayer": {"type": "string"}
+   }
+  },
+  "connectivity": {
+   "type": "object",
+   "required": ["contactLayer", "topConductor", "landingOrder", "labelLayers"],
+   "additionalProperties": true,
+   "properties": {
+    "contactLayer": {"type": "string"},
+    "topConductor": {"type": "string"},
+    "landingOrder": {"type": "array", "items": {"type": "string"}},
+    "labelLayers": {"type": "object"},
+    "anodeVia": {
+     "type": "object",
+     "required": ["layer", "joins"],
+     "additionalProperties": false,
+     "properties": {
+      "layer": {"type": "string"},
+      "joins": {"type": "array", "items": {"type": "string"}}
+     }
+    }
+   }
+  },
+  "nets": {
+   "type": "object",
+   "required": ["storageNode", "storageNet"],
+   "additionalProperties": true,
+   "properties": {
+    "storageNode": {"type": "string"},
+    "storageNet": {"type": "string"},
+    "anode": {"type": "string"},
+    "anodeLayers": {"type": "array", "items": {"type": "string"}}
+   }
+  },
+  "ratioDefinitions": {
+   "type": "object",
+   "additionalProperties": {"type": "array", "items": {"type": "string"}}
+  },
+  "couplingLimits": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": ["pair", "maxFf"],
+    "additionalProperties": false,
+    "properties": {
+     "pair": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2},
+     "maxFf": {"type": "number", "minimum": 0}
+    }
+   }
+  },
+  "loadLimitedLines": {"type": "array", "items": {"type": "string"}},
+  "targets": {
+   "type": "object",
+   "additionalProperties": true,
+   "properties": {
+    "outlineUm": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+    "ratioPct": {"type": "object", "additionalProperties": {"type": "number"}},
+    "transmittancePct": {"type": "array", "minItems": 2, "maxItems": 2}
+   }
+  },
+  "cst": {
+   "type": "object",
+   "required": ["markerLayer", "plateLayers", "coefficientFfPerUm2", "tolerancePct"],
+   "additionalProperties": false,
+   "properties": {
+    "markerLayer": {"type": "string"},
+    "plateLayers": {"type": "array", "items": {"type": "string"}},
+    "coefficientFfPerUm2": {"type": "number", "minimum": 0},
+    "tolerancePct": {"type": "number", "minimum": 0},
+    "schematicTemplate": {"$ref": "#/$defs/fileRef"}
+   }
+  },
+  "decks": {
+   "type": "object",
+   "required": ["authority", "reference"],
+   "additionalProperties": false,
+   "properties": {
+    "authority": {"$ref": "#/$defs/fileRef"},
+    "reference": {"$ref": "#/$defs/fileRef"}
+   }
+  },
+  "interactRules": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": ["id", "layer", "mustTouch"],
+    "additionalProperties": false,
+    "properties": {
+     "id": {"type": "string"},
+     "layer": {"type": "string"},
+     "mustTouch": {
+      "type": "array",
+      "items": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+     }
+    }
+   }
+  },
+  "lvs": {
+   "type": "object",
+   "required": ["engine", "deckTemplate", "schematic"],
+   "additionalProperties": false,
+   "properties": {
+    "engine": {"type": "string"},
+    "deckTemplate": {"$ref": "#/$defs/fileRef"},
+    "schematic": {"$ref": "#/$defs/fileRef"}
+   }
+  },
+  "extraction": {
+   "type": "object",
+   "required": [
+    "techLibOalib", "techLibTechDb", "layerMap", "etf", "layerMapBool",
+    "tclTemplate", "libName", "cellName"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "techLibOalib": {"$ref": "#/$defs/fileRef"},
+    "techLibTechDb": {"$ref": "#/$defs/fileRef"},
+    "layerMap": {"$ref": "#/$defs/fileRef"},
+    "etf": {"$ref": "#/$defs/fileRef"},
+    "layerMapBool": {"$ref": "#/$defs/fileRef"},
+    "tclTemplate": {"$ref": "#/$defs/fileRef"},
+    "libName": {"type": "string"},
+    "cellName": {"type": "string"}
+   }
+  },
+  "alps": {"type": "object"},
+  "opticalStack": {"type": "object"}
+ },
+ "$defs": {
+  "fileRef": {
+   "type": "object",
+   "required": ["path", "sha256"],
+   "additionalProperties": false,
+   "properties": {
+    "path": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "minLength": 64}
+   }
+  }
+ }
+}
