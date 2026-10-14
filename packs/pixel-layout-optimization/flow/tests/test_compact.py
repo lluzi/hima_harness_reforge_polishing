@@ -408,6 +408,25 @@ class HandBuiltCompactTest(unittest.TestCase):
                 self.assertAlmostEqual(out.geom("P").intersection(out.geom("G")).area, 0.0,
                                        places=6, msg="pitch %s" % target)
 
+    def test_overlapping_shapes_of_a_spaced_pair_keep_an_overlap(self):
+        # Real-case regression: an SD edge overlapping a Gate1 line was free to slide until the
+        # two abutted, which the deck's Gate1-SD spacing counts as a 0 um space.
+        from pixelopt import compact
+        case = FakeCase({
+            "G": {"gds": [2, 0], "roles": ["conductor"], "stack": "device"},
+            "S": {"gds": [5, 0], "roles": ["conductor"], "stack": "device"},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        })
+        table = {"width": {"G": 1.0, "S": 1.0}, "space": {}, "xspace": [["G", "S", 0.5]], "enc": []}
+        lay = self._layout({"Bound": [rect(0, 0, 12, 10)],
+                            "G": [rect(2, 2, 6, 8)], "S": [rect(5.6, 2, 10, 8)]})
+        model = compact.build(lay, case, table)
+        rows = [r for r, t in enumerate(model["tags"]) if str(t).startswith("O:G-S")]
+        self.assertTrue(rows)
+        # the row keeps G's right edge at least a grid step past S's left edge
+        out = compact.apply(lay, model, compact.solve(model, objective="pitch")["x"], case)
+        self.assertGreater(out.geom("G").intersection(out.geom("S")).area, 0.0)
+
     def test_legalise_infeasible_reports_binding_tags(self):
         # An un-satisfiable legalise (two wide strips that cannot both meet width
         # and space inside a tight outline) reports the conflicting rows.

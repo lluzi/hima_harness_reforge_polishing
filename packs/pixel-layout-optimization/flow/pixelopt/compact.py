@@ -136,6 +136,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     poly_layer = devices.get("polyLayer")
     gate_layer = devices.get("gateLayer")
     device_pair = {poly_layer, gate_layer}
+    grid = case.grid_um
     if poly_layer and gate_layer and not any({r[0], r[1]} == device_pair for r in xspace):
         # No deck rule spaces poly from gate (a designer never draws a stray TFT), so the
         # compactor holds them apart itself, at min(this, original), with Euclidean rows too:
@@ -499,6 +500,16 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                             orig = bb[0] - a[0]
                             if orig > 1e-6:
                                 add(a, bb, rule_dist(d, orig, [(a[0], ym), (bb[0], ym)]))
+                elif e1[3] and not e2[3]:
+                    # the two shapes overlap here: they keep overlapping (by a grid step, or
+                    # what they had); shrunk to nothing, they would abut, a spacing of 0 to the
+                    # deck (an SD edge slid onto a Gate1 edge: Gate1.4)
+                    tag[0] = "O:%s-%s y=%.2f x=%.2f..%.2f" % (La, Lb, ym, e1[0], e2[0])
+                    for a in e1[2]:
+                        for bb in e2[2]:
+                            orig = bb[0] - a[0]
+                            if orig > 1e-6:
+                                add(a, bb, min(orig, grid))
 
         for Lo, Li, d in enc:
             tag[0] = "E:%s>%s y=%.2f" % (Lo, Li, ym)
