@@ -21,9 +21,11 @@ import type { BlockerView, CancelView, Citation, CodeView, DecisionView, Experie
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { taskCanRespond, runStatusSaid, runCanControl, runSnapshotOlder, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
+import { scoped, actOnRun, controlRun, engineeringAssetDownloadUrl, fetchArchive, fetchExecutionContext, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { runningTaskLabels } from '../team-view.js';
+import { autoOpened, claimAutoOpen, receiptTime, shouldAutoOpen, timeOf } from './run-auto-open.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -540,7 +542,7 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
     const active = runCanControl(view.run);
     return <div className="hima-run-card-control-row" data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
       {showDiagnostics ? <span className="hima-muted">Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
-      <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : view.run.engine === 'dbos/5.2.11' ? 'Verified output advances automatically. The Campaign Agent handles business decisions.' : 'New work requires this conversation’s explicit Agent action.'}</span>
+      <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : view.run.engine === 'dbos/5.2.11' ? 'Verified output advances automatically. The project agent handles business decisions.' : 'New work requires this conversation’s explicit Agent action.'}</span>
       <div className="hima-run-card-control-buttons">
         {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
         {active && owner && view.run.currentNode ? <button type='button' className="hima-button" data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
@@ -1031,6 +1033,36 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
     return () => { controller.abort(); };
   }, [runId, sessionId]);
 
+  // DBOS heads carry no `currentNode`; the receipt names the running/waiting task(s) instead, from
+  // `view.tasks` with labels from the method's own node `label` (slice D). The method is fetched only
+  // once a view with no `currentNode` has arrived, so a settled pre-DBOS Run never pays for it.
+  const [nodeLabels, setNodeLabels] = useState<{ identity: string; fetched: boolean; nodes?: readonly { readonly id: string; readonly label?: string }[] }>({ identity, fetched: false });
+  const wantsLabels = runId !== undefined && state.view !== undefined && state.view.run.currentNode === undefined;
+  useEffect(() => {
+    if (!wantsLabels || runId === undefined) return;
+    if (nodeLabels.identity === identity && nodeLabels.fetched) return;
+    const controller = new AbortController();
+    void fetchExecutionContext(runId, controller.signal, sessionId).then((result) => {
+      if (controller.signal.aborted) return;
+      setNodeLabels({ identity, fetched: true, nodes: result.ok ? result.value.method?.reference.nodes : undefined });
+    });
+    return () => { controller.abort(); };
+  }, [wantsLabels, runId, sessionId, identity, nodeLabels.identity, nodeLabels.fetched]);
+  const running = identity === nodeLabels.identity ? runningTaskLabels(state.view?.tasks, nodeLabels.nodes) : [];
+
+  // A receipt showing a Run this conversation started a moment ago opens the workspace on its
+  // Campaign view, once per Run in this window; a re-rendered or replayed transcript does not
+  // (`run-auto-open.ts`).
+  const startedRun = state.view?.run;
+  useEffect(() => {
+    if (openRun === undefined || runId === undefined || startedRun === undefined || startedRun.id !== runId) return;
+    const at = receiptTime(toolBlock) ?? timeOf(startedRun.createdAt);
+    if (!shouldAutoOpen({ toolName, status: startedRun.status, at, now: Date.now(), opened: autoOpened(runId) })) return;
+    if (claimAutoOpen(runId)) openRun(runId);
+    // Decided once, when the Run's first read arrives for this receipt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, startedRun?.id]);
+
   if (runId === undefined) {
     // A failed call has something to say, and it is the tool's own words: saying "this call reported
     // no run" over the top of an error would hide the only explanation there is.
@@ -1069,12 +1101,15 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
               <span className="hima-mono">{toolName ?? 'hima'}</span>
               <span className="hima-muted">·</span>
               <span className="hima-state-word" data-state={state.view.run.goalState ?? status ?? ''}>{statusWord}</span>
-              {state.view.run.currentNode === undefined ? null : <><span className="hima-muted">·</span><span className="hima-mono">{state.view.run.currentNode}</span></>}
+              {state.view.run.currentNode !== undefined
+                ? <><span className="hima-muted">·</span><span className="hima-mono">{state.view.run.currentNode}</span></>
+                : running.length === 0 ? null
+                : <><span className="hima-muted">·</span><span className="hima-mono">{running.map((task) => task.label).join(' + ')}</span></>}
             </div>
             <div className="hima-run-card-receipt-notice">{notice}</div>
             {openRun === undefined ? null : (
               <button type="button" className="hima-button" data-hima-control="open-run" onClick={() => { openRun(runId); }}>
-                Open Campaign <Glyph name="arrow-right" size={12} />
+                Open project <Glyph name="arrow-right" size={12} />
               </button>
             )}
           </div>

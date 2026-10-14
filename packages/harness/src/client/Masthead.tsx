@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import type { ExecutionContext } from '../fabric.js';
 import type { RunView } from '../remote.js';
 import { duration, runStatusSaid, runPurposeMark } from '../card-labels.js';
+import { runningTaskLabels } from '../team-view.js';
 
 /** The Budget standing, in the one word the mockup's own sub-line uses beside the elapsed figure —
  *  read from `ExecutionContext.budget.phase` (`budgetStanding`'s own live computation), because
@@ -61,8 +62,15 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
   // set `name`) never falls back to the raw campaign id (a bare uuid-shaped identifier means nothing
   // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
   // the same two facts the sub-line beside it already reads off `run.currentNode`/`run.generation`,
-  // named here where a title is expected instead of an opaque id.
-  const fallbackTitle = run?.packId === undefined ? 'Campaign' : `${run.packId}${run.generation === undefined ? '' : ` · gen ${run.generation}`}`;
+  // named here where a title is expected instead of an opaque id. The pack's own `title` (when its
+  // method is loaded) reads better than the bare `packId`.
+  const packTitle = context?.method?.contract.title ?? run?.packId;
+  const fallbackTitle = packTitle === undefined ? 'Project' : `${packTitle}${run?.generation === undefined ? '' : ` · gen ${run.generation}`}`;
+  // DBOS heads carry no `currentNode`: "where" names the task(s) actually running or waiting instead,
+  // from `view.tasks` with labels from the method's own node `label` (slice D). A parallel fork shows
+  // every open branch.
+  const running = runningTaskLabels(view?.tasks, context?.method?.reference.nodes);
+  const wherePhrase = run?.currentNode ?? (running.length === 0 ? undefined : running.map((task) => task.label).join(' + '));
 
   return (
     <header className="hima-masthead" data-hima-region="campaign-masthead"
@@ -76,7 +84,7 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
             : <span className={`hima-masthead-seal hima-masthead-seal-${run?.goalState ?? status ?? 'unknown'}`}>{said.said}</span>}
           {run?.control?.stop?.status === 'requested' ? <span> · stop request received</span> : null}
           {run?.stopState === undefined ? null : <span data-hima-region="run-stop-state"> · stop {run.stopState.state} · {run.stopState.unclosedResources} unclosed resources · {run.stopState.effectsWithoutStopProof} effects without stop proof</span>}
-          {run?.currentNode === undefined ? null : <span> · {run.currentNode}</span>}
+          {wherePhrase === undefined ? null : <span> · {wherePhrase}</span>}
           {run?.generation === undefined ? null : <span> · gen {run.generation}</span>}
           {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}
           {budgetWord === undefined ? null : <span> · {budgetWord}</span>}
@@ -84,8 +92,8 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
       </div>
       {isOwner || ownerId === undefined ? null : (
         <div className="hima-masthead-owner">
-          <span>Owned by Campaign Agent {ownerId.slice(-6)}</span>
-          <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(ownerId)}>Open Campaign Agent</button>
+          <span>Owned by the project agent {ownerId.slice(-6)}</span>
+          <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(ownerId)}>Open the project agent</button>
         </div>
       )}
     </header>

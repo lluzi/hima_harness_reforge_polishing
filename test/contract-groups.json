@@ -101,6 +101,7 @@
     "test/contract/resident-engineering.host.test.ts",
     "test/contract/revision.host.test.ts",
     "test/contract/revision.test.ts",
+    "test/contract/run-auto-open.test.ts",
     "test/contract/run-budget.host.test.ts",
     "test/contract/run-controls.test.ts",
     "test/contract/site-discovery.test.ts",
