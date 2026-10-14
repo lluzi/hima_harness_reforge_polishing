@@ -511,6 +511,9 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                     for a in e1[2]:
                         for bb in e2[2]:
                             orig = bb[0] - a[0]
+                            coords = [(a[0], ym), (bb[0], ym)]
+                            if legalise and (_zunion is None or in_zone(coords)):
+                                continue  # a repair may pull the two apart to the full rule here
                             if orig > 1e-6:
                                 add(a, bb, min(orig, grid))
 
