@@ -47,8 +47,11 @@ declares a change.
 **What a Run may change** (`INTENT.md` Answers 4): the positions of polygon edges that are not part
 of a channel or of the storage capacitor, on the manifest's `gridUm`; the two pitches; and the
 declared operators of a plan (`shield`, `cst-stretch`, `opening-shift`, `band-trim`, and
-`contact-move` only when `topologyMoves` is `allowed`). Every bounded edit moves a vertex or an edge
-by at most 4 grid steps and is logged.
+`contact-move` only when `topologyMoves` is `allowed`). A bounded edit moves a vertex or an edge by
+at most 1 µm, never a vertex of a channel or of the storage capacitor, and is logged; a plan holds at
+most 12 of them. An original that is not clean on the authority deck is legalised first: the
+`legalise` front point solves the LP with every violated pair held at its full rule distance and
+minimum movement, and bounded edits repair what the LP cannot reach.
 
 **Measurement options, recorded and asserted on every judgement** (`assert-the-checker-options.md`):
 the authority and reference deck sha256 and which one is the authority; the tile (1×1, 2×2, 3×3);
@@ -145,7 +148,7 @@ and write `{"schemaVersion","value","artifacts","diagnostics"}`.
 
 A `pixel.plan/1` holds `round`, `hypothesis` (written before anything is run), `base` (`original`,
 `best` or a candidate id from history), `operators` (each a declared operator and its parameters),
-`frontPoints` (1–6: `name`, `objective` `min-ratio` or `min-pitch`, optional `outlineUm`,
+`frontPoints` (1–6: `name`, `objective` `legalise`, `min-ratio` or `min-pitch`, optional `outlineUm`,
 `loadAllowancePct`, `ratioCapPct`, and `exploratory: true` when its limits exceed the Goal's, for
 the trade-off table only), `pairConstraints` (extra exact spacing constraints at a named place),
 `edits` (bounded edits on a named candidate) and `expect` (which measures should move and how).

@@ -284,7 +284,7 @@ and the case roles instead of the module constants (`W`, `S`, `XSPACE`, `ENC`, `
 
 ```python
 def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(), metric_rows=(), trust=None, use_euclid=True) -> dict
-def solve(model, *, target_pitch=None, objective="pitch"|"movement"|"metric", metric_weights=None) -> dict
+def solve(model, *, target_pitch=None, objective="pitch"|"movement"|"metric"|"legalise", metric_weights=None) -> dict
 # {"status": "optimal"|"infeasible"|"error", "x": list|None, "pitch": float|None, "binding": [constraint tags with nonzero dual, by |dual| desc]}
 def apply(lay, model, x, case) -> Layout
 def compact(lay, axis, case, table, *, target_pitch=None, **kw) -> (Layout|None, dict)
@@ -292,7 +292,10 @@ def edge_classes(model) -> list        # [{"var": j, "layer": L, "polys": [...],
 ```
 `metric_rows`: `[{"name", "coef": {var_index: g}, "const": c0, "op": "le", "rhs": r}]` (linear
 rows in the displacement variables; Task 4 produces `coef` per edge class from the surrogate).
-`trust`: `{"radius": d, "vars": [j...]}` adds `|dx_j| ≤ d`. Constraint tags name the rule, the
+`trust`: `{"radius": d, "vars": [j...]}` adds `|dx_j| ≤ d`. `objective="legalise"`: every
+same-layer, two-layer and enclosure pair that violates its rule in the input is constrained at the
+full rule distance instead of `min(rule, original)`, pitch fixed at the input pitch, minimum total
+movement; infeasible → `status: "infeasible"` with the binding tags. Constraint tags name the rule, the
 layers and the place (as today), so the duals give the binding chain.
 
 ### attribution (N)
@@ -312,7 +315,7 @@ Layer order for screening is the manifest's conductor order (`layers` order with
 ```python
 OPERATORS = ("shield", "cst-stretch", "opening-shift", "band-trim", "contact-move")
 def apply_operator(lay, op: dict, case, nets) -> (Layout, dict)   # dict = what changed, declared changes (e.g. {"cstFf": new})
-def apply_edits(lay, edits: list, case) -> (Layout, list)        # each edit moves vertices or an edge by ≤ 4 grid steps; refuses larger
+def apply_edits(lay, edits: list, case) -> (Layout, list)        # each edit moves vertices or an edge by ≤ 1 µm, never a channel or Cst vertex, ≤ 12 per call; refuses otherwise
 ```
 Operator parameters are by net/layer/role, never by coordinate: `shield {net, layer, over: {victim, aggressor}, marginUm}`,
 `cst-stretch {dyUm, cutAt: "marker-top"|"marker-bottom"}` (smart cut through the marker, everything beyond moves),
@@ -428,7 +431,7 @@ and congruent; periodic copies (a line crossing the cell boundary) keep continui
 overlap; a screened overlap counts zero; NNLS fit recovers planted coefficients on synthetic rows
 with R² > 0.95; gradients have the sign of the facing length; each operator changes only what it
 declares (shield adds a polygon on the named net; cst-stretch raises the device value and declares
-it); edits refuse more than 4 grid steps; markers fold tile copies into one.
+it); edits refuse more than 1 µm, a channel or Cst vertex, or more than 12 edits; markers fold tile copies into one.
 
 ### Wave D (after Waves B and C)
 
