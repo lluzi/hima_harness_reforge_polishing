@@ -106,12 +106,21 @@ def _free_pairs(case):
 
 
 def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
-          metric_rows=(), trust=None, use_euclid=True, legalise=False):
+          metric_rows=(), trust=None, use_euclid=True, legalise=False,
+          legalise_zones=None):
     """Assemble the LP model for one x-pass over ``lay``.
 
     Returns a dict with the inequality system (``A`` x ``>=``-style rows, already
     negated for ``A_ub``), the per-row ``tags``, the displacement-class mapping
     and the pitch index ``iP``.
+
+    ``legalise`` raises every modelled width/space/enclosure pair that violates
+    its rule in the input to the full rule distance. ``legalise_zones`` (shapely
+    geometries in the unit cell, e.g. the base layout's folded, buffered Argus
+    markers) restricts that: a pair is raised to the full rule only when its
+    place lies inside a zone, otherwise it keeps ``min(rule, original)`` like an
+    ordinary pass. ``legalise=True`` with ``legalise_zones=None`` holds every
+    violated pair (backward-compatible).
     """
     width = dict(table.get("width", {}))
     space = dict(table.get("space", {}))
@@ -154,7 +163,6 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         groups.append(c.buffer(1e-4))
 
     marker_geom = lay.geom(marker_layer) if marker_layer else Polygon()
-    marker_area = marker_geom.area
     if marker_layer and plate_layers and not marker_geom.is_empty:
         capreg = marker_geom
         for pl in plate_layers:
@@ -183,14 +191,18 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         for m in members[1:]:
             uf.union(members[0], m, 0)
 
-    # Whole polygons kept rigid: marker polygons; plate polygons covering > 50 %
-    # of the marker area.
+    # Whole polygons kept rigid: marker polygons; and plate polygons that lie
+    # mostly inside the marker -- the overlap exceeds 50 % of the POLYGON's own
+    # area. A wide outer plate that merely crosses the marker is NOT frozen whole
+    # (that would freeze the pitch); it is held only by the marker-region group's
+    # edges at the capacitor boundary.
     for pi, (n, i, p) in enumerate(polys):
         rigid_whole = False
         if marker_layer and n == marker_layer:
             rigid_whole = True
-        elif plate_layers and n in plate_layers and marker_area > 1e-9:
-            if Polygon(p).buffer(0).intersection(marker_geom).area > 0.5 * marker_area:
+        elif plate_layers and n in plate_layers and not marker_geom.is_empty:
+            poly_geom = Polygon(p).buffer(0)
+            if poly_geom.area > 1e-9 and poly_geom.intersection(marker_geom).area > 0.5 * poly_geom.area:
                 rigid_whole = True
         if rigid_whole:
             for v in range(1, len(p)):
@@ -276,6 +288,29 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                 A.append(-row)
                 b.append(P0)
                 tags.extend(["outlineR", "outlineR"])
+
+    # Zone gating for legalise: only pairs whose place meets a zone are raised to
+    # the full rule distance; everywhere else legalise keeps min(rule, original).
+    _zunion = None
+    if legalise and legalise_zones:
+        zpolys = [g for g in legalise_zones if g is not None and not g.is_empty]
+        _zunion = unary_union(zpolys) if zpolys else None
+
+    def in_zone(coords):
+        if _zunion is None:
+            return False
+        for s in (-P0, 0.0, P0):
+            seg = LineString([(x + s, y) for (x, y) in coords])
+            if _zunion.intersects(seg):
+                return True
+        return False
+
+    def rule_dist(d, orig, coords):
+        if not legalise:
+            return min(d, orig)
+        if _zunion is None:
+            return d  # backward-compatible: hold every violated pair
+        return d if in_zone(coords) else min(d, orig)
 
     # Scanline slabs.
     inside_cache = {}
@@ -401,7 +436,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                 for a in ca:
                     for bb in cb:
                         orig = bb[0] - a[0]
-                        add(a, bb, d if legalise else min(d, orig))
+                        add(a, bb, rule_dist(d, orig, [(a[0], ym), (bb[0], ym)]))
 
         for L in set(width) | set(space):
             if L in LAYERS:
@@ -422,7 +457,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                         for bb in e2[2]:
                             orig = bb[0] - a[0]
                             if orig > 1e-6:
-                                add(a, bb, d if legalise else min(d, orig))
+                                add(a, bb, rule_dist(d, orig, [(a[0], ym), (bb[0], ym)]))
 
         for Lo, Li, d in enc:
             tag[0] = "E:%s>%s y=%.2f" % (Lo, Li, ym)
@@ -441,7 +476,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                         for bb in ci:
                             orig = bb[0] - a[0]
                             if orig >= -1e-9:
-                                add(a, bb, d if legalise else min(d, orig))
+                                add(a, bb, rule_dist(d, orig, [(a[0], ym), (bb[0], ym)]))
                 else:
                     cand = [(co, i2) for co, i2 in bo if co[0][0] >= xi - 1e-9 and not i2]
                     if not cand:
@@ -453,11 +488,12 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                         for bb in co:
                             orig = bb[0] - a[0]
                             if orig >= -1e-9:
-                                add(a, bb, d if legalise else min(d, orig))
+                                add(a, bb, rule_dist(d, orig, [(a[0], ym), (bb[0], ym)]))
 
     if use_euclid:
         cons += _euclid.generate(polys, var, P0, iP, width, space, xspace, enc,
-                                 ge, tag, legalise=legalise)
+                                 ge, tag, legalise=legalise,
+                                 zone_fn=(in_zone if _zunion is not None else None))
         if pairs:
             cons += _euclid.pair_constraints(polys, var, P0, iP, pairs, ge, tag)
 
@@ -727,19 +763,21 @@ def edge_classes(model):
 # --------------------------------------------------------------------------- #
 
 def compact(lay, axis, case, table, *, target_pitch=None, objective="pitch",
-            metric_weights=None, **buildkw):
+            metric_weights=None, legalise_zones=None, **buildkw):
     """Compact ``lay`` along ``axis`` ("x" or "y"); returns ``(Layout|None, info)``."""
+    buildkw = dict(buildkw)
     if objective == "legalise" and not buildkw.get("legalise"):
-        buildkw = dict(buildkw)
         buildkw["legalise"] = True
+    if legalise_zones is not None:
+        buildkw["legalise_zones"] = legalise_zones
     L = lay if axis == "x" else transpose(lay)
     if axis == "y":
         if buildkw.get("protect"):
-            buildkw = dict(buildkw)
             buildkw["protect"] = [_transpose_box(bx) for bx in buildkw["protect"]]
         if buildkw.get("rigid_extra"):
-            buildkw = dict(buildkw)
             buildkw["rigid_extra"] = [_transpose_geom(g) for g in buildkw["rigid_extra"]]
+        if buildkw.get("legalise_zones"):
+            buildkw["legalise_zones"] = [_transpose_geom(g) for g in buildkw["legalise_zones"]]
     model = build(L, case, table, **buildkw)
     r = solve(model, target_pitch=target_pitch, objective=objective,
               metric_weights=metric_weights)

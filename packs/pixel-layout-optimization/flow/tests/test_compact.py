@@ -12,7 +12,7 @@ try:
     import scipy  # noqa: F401
     import shapely  # noqa: F401
     import gdstk  # noqa: F401
-    from shapely.geometry import Polygon, Point
+    from shapely.geometry import Polygon, Point, box
     from shapely.ops import unary_union
     HAVE = True
 except ImportError:  # stdlib-only runs skip this file
@@ -266,6 +266,74 @@ class HandBuiltCompactTest(unittest.TestCase):
         w1, h1 = ox.pitch(case)
         self.assertAlmostEqual(w1, 12.0, places=4)   # pitch unchanged
         self.assertEqual(same_layer_violations(ox, table), [])
+
+    def test_legalise_zones_fix_only_marked_places(self):
+        # A rigid diamond's 45-degree tips give scanline chords below the width
+        # rule but are not real violations; a planted space violation sits far
+        # away. With a zone around only the planted gap, legalise opens that gap
+        # and leaves the tips alone (feasible, diamond unchanged). With no zones,
+        # the tips are over-constrained and the solve is infeasible.
+        from pixelopt import compact
+        case = FakeCase({
+            "PDL": {"gds": [14, 0], "roles": ["conductor"]},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        })
+        table = {"width": {"PDL": 3.0}, "space": {"PDL": 2.0}, "xspace": [], "enc": []}
+        diamond = np.array([[2, 5], [5, 9], [8, 5], [5, 1]], dtype=float)
+        lay = self._layout({
+            "Bound": [rect(0, 0, 22, 10)],
+            "PDL": [diamond, rect(11, 3, 14, 7), rect(14.5, 3, 18.5, 7)],
+        })
+        zone = box(13.8, 2.0, 15.0, 8.0)
+        d_area0 = round(Polygon(diamond).area, 4)
+
+        ox, info = compact.compact(lay, "x", case, table,
+                                   objective="legalise", legalise_zones=[zone])
+        self.assertEqual(info["status"], "optimal")
+        pdl = [Polygon(p).buffer(0) for p in ox.polys["PDL"]]
+        # the planted gap is opened to the full space rule
+        gapped = [p for p in pdl if p.area < 20]  # the two rectangles
+        self.assertEqual(len(gapped), 2)
+        self.assertGreaterEqual(gapped[0].distance(gapped[1]), 2.0 - 1e-3)
+        # the diamond kept its shape (rigid translate)
+        dia = max(pdl, key=lambda g: g.area)
+        self.assertAlmostEqual(round(dia.area, 4), d_area0, places=3)
+
+        _, info_none = compact.compact(lay, "x", case, table, objective="legalise")
+        self.assertEqual(info_none["status"], "infeasible")
+
+    def test_outer_plate_spanning_the_cell_does_not_freeze_the_pitch(self):
+        # The inner plate (mostly inside the marker) is wholly rigid; the outer
+        # plate spans the whole cell and must NOT be frozen whole, so min-pitch x
+        # still shrinks while the capacitor region stays congruent.
+        from pixelopt import compact
+        case = FakeCase({
+            "GateA": {"gds": [2, 0], "roles": ["conductor"]},
+            "GateB": {"gds": [19, 0], "roles": ["conductor"]},
+            "CapMark": {"gds": [7, 0], "roles": ["marker"]},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        }, cst={"markerLayer": "CapMark", "plateLayers": ["GateA", "GateB"]})
+        table = {"width": {"GateA": 1.0, "GateB": 1.0},
+                 "space": {"GateA": 1.0, "GateB": 1.0}, "xspace": [], "enc": []}
+        lay = self._layout({
+            "Bound": [rect(0, 0, 20, 10)],
+            "CapMark": [rect(4, 3, 10, 7)],
+            "GateB": [rect(4.5, 3.5, 9.5, 6.5)],      # inner plate, inside marker
+            "GateA": [rect(0.5, 4, 19.5, 6)],         # outer plate spanning the cell
+        })
+
+        def region(l):
+            return l.geom("GateA").intersection(l.geom("GateB")).intersection(l.geom("CapMark"))
+
+        r0 = region(lay)
+        ox, info = compact.compact(lay, "x", case, table)
+        self.assertEqual(info["status"], "optimal")
+        w1, _ = ox.pitch(case)
+        self.assertLess(w1, 20.0 - 1e-6)   # the pitch is not frozen
+        r1 = region(ox)
+        self.assertAlmostEqual(round(r1.area, 4), round(r0.area, 4), places=3)
+        self.assertAlmostEqual(r1.bounds[2] - r1.bounds[0],
+                               r0.bounds[2] - r0.bounds[0], places=3)
 
     def test_legalise_infeasible_reports_binding_tags(self):
         # An un-satisfiable legalise (two wide strips that cannot both meet width

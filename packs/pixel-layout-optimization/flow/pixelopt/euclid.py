@@ -26,8 +26,13 @@ def _union(polys, layer, P0):
 
 
 def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
-             legalise=False, reach_extra=0.0):
-    """Append vertex-to-edge distance rows via ``ge``; return the row count."""
+             legalise=False, reach_extra=0.0, zone_fn=None):
+    """Append vertex-to-edge distance rows via ``ge``; return the row count.
+
+    Under ``legalise`` a pair is raised to the full rule distance only when the
+    vertex->foot segment meets a zone (``zone_fn`` returns truthy); with
+    ``zone_fn=None`` every legalise pair is raised (backward-compatible).
+    """
     layers = sorted(set(n for n, _, _ in polys))
     U = {L: _union(polys, L, P0) for L in layers}
 
@@ -115,7 +120,13 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
                         interior_foot = 1e-6 < prj < seg.length - 1e-6
                         if (kind == "enc" or (kind == "same" and inA)) and not interior_foot:
                             continue  # width/enclosure: facing edges only
-                        need = dmin if legalise else min(dmin, dist)
+                        if legalise:
+                            if zone_fn is None or zone_fn([(vx, vy), (foot.x, foot.y)]):
+                                need = dmin
+                            else:
+                                need = min(dmin, dist)
+                        else:
+                            need = min(dmin, dist)
                         dx = vx - foot.x
                         dy = vy - foot.y
                         if abs(dy) >= need - 1e-9:
