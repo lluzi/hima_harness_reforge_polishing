@@ -5,6 +5,7 @@ import { teamDefinition, type TeamDefinition } from './team-contract.js';
 import { taskSource, type TaskSource } from './task-contract.js';
 import path from 'node:path';
 import { flowSource, flowElement, flowSourceVersion, flowIRVersion, type Flow, type FlowBlock, type FlowSource, type CompiledFlow,
+  teamDelegationRequest, type TeamDelegationRequest, type FrozenTeamDelegation,
   type CompiledTask, type FlowExtensionSlot, type FrozenFlowFragment, type FrozenLegacyFlowFragment } from './flow-definition.js';
 import { compileTaskSchema, taskSchemaDraft, taskContract, taskOutputBinding, type JsonValue, type TaskInputBinding,
   type TaskLocalSchemas, type TaskOutputBinding, type TaskSchema } from './task-contract.js';
@@ -115,7 +116,7 @@ interface Availability { readonly all: Set<string>; readonly required: Set<strin
 const copied = (value: Availability): Availability => ({ all: new Set(value.all), required: new Set(value.required) });
 export interface CompileFlowOptions { readonly packSha256: string; readonly localSchemas?: TaskLocalSchemas; readonly tools?: readonly string[] }
 interface TeamCompileOptions {
-  readonly team: { readonly source: Extract<TaskSource, { kind: 'team' }>; readonly method: import('./task-contract.js').MethodRef; readonly memberId:string };
+  readonly team: { readonly source: Extract<TaskSource, { kind: 'team' }>; readonly method: import('./task-contract.js').MethodRef; readonly memberId?:string; readonly taskId?:string };
   readonly localSchemas?: TaskLocalSchemas; readonly tools?: readonly string[];
 }
 
@@ -141,6 +142,36 @@ export function compileTeamFlow(source: Extract<TaskSource, { kind: 'team' }>, d
   return compileSource(declaration, { tools: ['resident/team-member'], team: { source,
     method: { kind: 'team', id: source.team.teamId, version: String(source.team.version), sha256: source.team.sha256 }, memberId:declared.leaderMemberId } });
 }
+/** Freeze a delegation target against the original saved Team, without admitting or launching it.
+ * The Host owns grant checks, deadline bounds, dependency DAG and durable replay/conflict checks. */
+export function freezeTeamDelegation(base: CompiledFlow, definition: TeamDefinition, parentEffectId: string, raw: TeamDelegationRequest): FrozenTeamDelegation {
+  const request = teamDelegationRequest.parse(raw);
+  if (!parentEffectId.trim()) fail('/delegation/parentEffectId', 'name the actual parent effect');
+  if (base.source !== 'team' || base.taskSource?.kind !== 'team' || !base.method) fail('/delegation/source', 'use the frozen original Team flow');
+  const source = taskSource.parse(base.taskSource);
+  if (source.kind !== 'team') fail('/delegation/source', 'use a Team task source');
+  const declared = teamDefinition.parse(definition);
+  const original = compileTeamFlow(source, declared);
+  // Comparing the re-derived original proves version, source, assignment and IR, not just a supplied hash.
+  if (canonical(base) !== canonical(original)) fail('/delegation/definition', 'use the exact frozen original Team source, version, digest and member assignment');
+  if ('memberId' in request && !declared.members.some(member => member.id === request.memberId))
+    fail('/delegation/memberId', `member ${request.memberId} is not in the frozen Team definition`);
+  const delegationId = `delegation-${digest([source, base.method, parentEffectId, request.requestId])}`;
+  if (request.dependsOn.includes(delegationId)) fail('/delegation/dependsOn', 'a delegation cannot depend on itself');
+  const leader = original.tasks.leader!;
+  // The leader's assignment belongs only to resident work; a human is never a fake member.
+  const { memberId: _leaderMemberId, ...humanTask } = leader;
+  const member = 'memberId' in request;
+  const tool = member ? 'resident/team-member' : 'builtin/human-wait';
+  const declaration: FlowSource = { schema: flowSourceVersion, id: source.team.teamId, version: String(source.team.version),
+    flow: { ...(member ? leader : humanTask), id: delegationId, tool,
+      contract: { input: leader.contract.input, output: request.output } } };
+  const flow = compileSource(declaration, { tools: [tool], team: { source,
+    method: original.method!, ...('memberId' in request ? { memberId: request.memberId } : {}), taskId: delegationId } });
+  const data = { delegationId, parentEffectId, request, flow };
+  return freeze({ ...structuredClone(data), sha256: digest(data) });
+}
+
 function compileSource(source: FlowSource, options: CompileFlowOptions | TeamCompileOptions, external: Readonly<Record<string, CompiledTask>> = {}, initial: Availability = { all: new Set(), required: new Set() }, initialCarry: ReadonlySet<string> = new Set()): CompiledFlow {
   const locals = options.localSchemas ?? {};
   const blocks: Record<string, FlowBlock> = {};
@@ -238,7 +269,9 @@ function compileSource(source: FlowSource, options: CompileFlowOptions | TeamCom
     if (!tasks[slot.returnTo]) fail(`${at}/returnTo`, 'name a declared return task');
     if (!precedes(blocks, source.flow.id, slot.afterTask, slot.returnTo)) fail(`${at}/returnTo`, 'return must be a later task in this flow; place the slot before its consumer');
   }
-  if('team' in options)tasks.leader={...tasks.leader!,memberId:options.team.memberId};
+  if ('team' in options && options.team.memberId !== undefined) {
+    const id = options.team.taskId ?? 'leader'; tasks[id] = { ...tasks[id]!, memberId: options.team.memberId };
+  }
   const body = { schema: flowIRVersion, version: source.version,
     entry: source.flow.id, blocks, tasks, localSchemas: locals, toolIds: options.tools ?? [...new Set(Object.values(tasks).map(task => task.tool))].sort(), dependencies, extensions,
   };
@@ -334,6 +367,7 @@ const legacyContract = (node: PackNode): CompiledTask['contract'] => ({ input: l
       : node.kind === 'explore' ? { route: { type: 'string', enum: ['repeat', 'stop'] }, strategy: { type: 'object' } } : {}) });
 /** Called only after the existing loader has validated the supported legacy declaration. */
 export function compileLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: string): CompiledFlow {
+  if (contract.teamDelegations?.length) fail('/teamDelegations', 'use a versioned Flow task with tool resident/team-delegate');
   return lowerLegacyFlow(graph, contract, packSha256);
 }
 function lowerLegacyFlow(graph: PackGraph, contract: PackContract, packSha256: string, boundary?: { readonly id: string; readonly task: CompiledTask }, inheritedCarry = false): CompiledFlow {
@@ -567,5 +601,22 @@ export function projectFlowGraph(source: FlowSource): PackGraph {
 /** One normal loader entry derives compilation and digest from exactly the same method bytes. */
 export function compilePackFlow(source: FlowSource, folder: PackFolderSnapshot, contract: PackContract): CompiledFlow {
   if (source.id !== contract.id || source.version !== contract.version) fail('/id', 'make graph id/version agree with contract.yml');
-  return compileFlow(source, { packSha256: folder.digest(packDigestExcludes), localSchemas: flowLocalSchemas(source, folder), tools: contract.tools.map(tool => tool.id) });
+  const declarations = contract.teamDelegations ?? [];
+  const tools = contract.tools.map(tool => tool.id);
+  const compiled = compileFlow(source, { packSha256: folder.digest(packDigestExcludes), localSchemas: flowLocalSchemas(source, folder),
+    tools: declarations.length ? [...tools, 'resident/team-delegate'] : tools });
+  if (!declarations.length) return compiled;
+  const tasks = { ...compiled.tasks }, ids = new Set<string>(), nodes = new Set<string>();
+  for (const declaration of declarations) {
+    if (ids.has(declaration.id) || nodes.has(declaration.nodeId)) fail('/teamDelegations', 'use unique delegation IDs and one declaration per task');
+    ids.add(declaration.id); nodes.add(declaration.nodeId);
+    const task = tasks[declaration.nodeId];
+    if (!task) fail('/teamDelegations/nodeId', `unknown task ${declaration.nodeId}; reference a declared task`);
+    if (task.tool !== 'resident/team-delegate') fail('/teamDelegations/nodeId', `task ${declaration.nodeId} must select tool resident/team-delegate`);
+    tasks[task.id] = { ...task, teamDelegation: structuredClone(declaration) };
+  }
+  for (const task of Object.values(tasks)) if (task.tool === 'resident/team-delegate' && !task.teamDelegation)
+    fail('/teamDelegations', `task ${task.id} needs a saved Team reference declaration`);
+  const { irSha256: _prior, ...data } = compiled;
+  return finish({ ...data, tasks });
 }

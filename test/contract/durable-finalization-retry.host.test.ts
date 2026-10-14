@@ -17,6 +17,65 @@ const { startDurableRuntime } = await import(pathToFileURL(path.join(packageDir,
 const { startLocalDatabase } = await import(pathToFileURL(path.join(packageDir, 'lib/local-database.js')).href);
 const { default: Hima } = await import(pathToFileURL(path.join(packageDir, 'lib/index.js')).href);
 
+test('real DBOS system pool retires released clients while a borrowed client and workflows remain usable', { timeout: 60000 }, async () => {
+  const home = await createHimaHome();
+  let database: any;
+  let durable: any;
+  let systemPool: any;
+  let borrowed: any;
+  const originalQuery = Pool.prototype.query;
+  let releaseWork: (() => void) | undefined;
+  const workGate = new Promise<void>(resolve => { releaseWork = resolve; });
+  const entered: string[] = [];
+  try {
+    database = await startLocalDatabase({ home: home.home, runtimeDirectory: process.env.HIMA_POSTGRES_RUNTIME });
+    Pool.prototype.query = function (this: any, ...args: any[]) {
+      if (this.options.database === 'hima_dbos_system') systemPool = this;
+      return originalQuery.apply(this, args);
+    };
+    try {
+      durable = await startDurableRuntime({ database,
+        manifest: { files: { fixture: 'a'.repeat(64) }, adapters: { fixture: '1' } },
+        workflows: [{ name: 'pool-retirement-check', async execute(_runtime: any, input: any) {
+          entered.push(input.label); await workGate; return { label: input.label };
+        } }],
+      });
+    } finally { Pool.prototype.query = originalQuery; }
+    assert.ok(systemPool, 'the actual DBOS system pool was used at launch');
+    borrowed = await systemPool.connect();
+    const borrowedPid = (await borrowed.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const released = new Set<number>();
+    const retired = new Set<number>();
+    systemPool.on('release', (_error: unknown, client: any) => { if (client.processID !== borrowedPid) released.add(client.processID); });
+    systemPool.on('remove', (client: any) => { retired.add(client.processID); });
+    await Promise.all(Array.from({ length: 3 }, () => systemPool.query('SELECT pg_sleep(0.1)')));
+    assert.ok(systemPool.idleCount >= 2, 'actual released system clients must exist before testing expiry');
+    const eligible = new Set(released);
+    assert.ok(eligible.size >= 2, 'the burst returned at least two actual system backends');
+    const started = Date.now();
+    while ([...eligible].filter(pid => retired.has(pid)).length < 2 && Date.now() - started < 4500)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    assert.ok([...eligible].filter(pid => retired.has(pid)).length >= 2,
+      'at least two released system backends must retire within the bounded idle interval');
+    assert.equal((await borrowed.query('SELECT pg_backend_pid() AS pid')).rows[0].pid, borrowedPid,
+      'an actively borrowed backend survives idle retirement');
+    const first = await durable.startWorkflow('pool-retirement-check', 'pool-retirement-first', { label: 'first' });
+    const second = await durable.startWorkflow('pool-retirement-check', 'pool-retirement-second', { label: 'second' });
+    const entryStart = Date.now();
+    while (entered.length < 2 && Date.now() - entryStart < 10000) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.deepEqual(entered.sort(), ['first', 'second'], 'both genuine workflows overlap before either completes');
+    releaseWork?.();
+    assert.deepEqual(await Promise.all([first.getResult(), second.getResult()]), [{ label: 'first' }, { label: 'second' }]);
+  } finally {
+    releaseWork?.();
+    Pool.prototype.query = originalQuery;
+    borrowed?.release();
+    await durable?.stop().catch(() => undefined);
+    await database?.stop();
+    await home.dispose();
+  }
+});
+
 test('relocated Harness package with literal # and % prepares the Home offline', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'hima-relocated-'));
   const relocated = path.join(root, 'Trials#1%literal', 'harness');

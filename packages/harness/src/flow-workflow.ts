@@ -3,11 +3,22 @@
 import { DBOS, type WorkflowHandle } from '@dbos-inc/dbos-sdk';
 import type { DurableRuntime, DurableWorkflowDefinition } from './durable-runtime.js';
 import { flowTaskCountsExperiment, flowInvocationRevision, flowExtensionKey, flowMethodDigest, type FlowRevisionRule, type FlowInvocationPath, type FlowExtensionScope, type CompiledFlow, type CompiledTask, type FlowBranch, type FrozenFlowFragment, type FrozenLegacyFlowFragment } from './flow-definition.js';
-import { freezeFlowFragment, freezeLegacyFlowFragment } from './flow-compiler.js';
-import { branchContains, jsonDigest, type DurableCommand, type FlowInvocationRecord } from './run-store.js';
-import { createTaskResult, validateTaskInput, type JsonValue, type TaskInputBinding, type TaskResult, type TaskDiagnostic, } from './task-contract.js';
+import { compileTeamFlow, freezeFlowFragment, freezeLegacyFlowFragment, freezeTeamDelegation } from './flow-compiler.js';
+import { teamDelegationInput } from './flow-definition.js';
+import type { FrozenTeamDelegation, TeamDelegationRequest } from './flow-definition.js';
+import { TeamError, type TeamDefinition, type TeamActor, type TeamDefinitionHandoffRequest } from './team-contract.js';
+import { OriginalFlowClosureUnproved, branchContains, jsonDigest, type DurableCommand, type FlowInvocationRecord, type EffectAdmission } from './run-store.js';
+import type { LocalNativeCheckpoint } from './oar-local-member.js';
+import { createTaskResult, validateTaskInput, taskSchema, taskToolOutput, type TaskIdentity, type TaskSchema, type TaskToolOutput, type TaskLocalSchemas, type JsonValue, type TaskInputBinding, type TaskResult, type TaskDiagnostic, } from './task-contract.js';
 import { executeTaskEffect, sendTaskEffectMessage, taskEffectAdapterVersion, taskEffectStep, type TaskEffectAdapter, type TaskEffectRequest, type TaskCollectionPending } from './task-effects.js';
 
+// The pinned DBOS codec restores Error fields but cannot retain custom prototypes.
+export function isRetryableTeamContinuationError(error:unknown):error is Pick<TeamError,'name'|'code'|'message'> {
+  if(!error||typeof error!=='object'||Array.isArray(error))return false;
+  const held=error as {name?:unknown;code?:unknown;message?:unknown};
+  return held.name==='TeamError'&&typeof held.message==='string'&&typeof held.code==='string'
+    &&['hima/team-conflict','hima/team-not-ready','hima/not-authorized'].includes(held.code);
+}
 export interface FlowStart {
   readonly runId: string; readonly flow: CompiledFlow;
   readonly runInput: JsonValue; readonly goal: JsonValue; readonly strategy: JsonValue;
@@ -25,12 +36,106 @@ export interface FlowAdapterContext {
   readonly bindings: { readonly runInput: JsonValue; readonly goal: JsonValue; readonly strategy: JsonValue; readonly carry: Readonly<Record<string, JsonValue>> };
 }
 export interface FlowWorkflowOptions {
+  /** Same RunStore facts/admissions; DBOS remains the only scheduler. */
+  readonly team?: TeamFlowStore;
   /** Materialize the existing domain/native adapter. This is composition, never a Step and
    * never permission to schedule another method node. Raw adapter I/O uses taskEffectStep.
    * Receipt materialization availability/diagnostics before throwing the typed recoverable
    * error so restoring files during replay cannot change an earlier operation branch. */
   readonly resolveAdapter: (context: FlowAdapterContext) => Promise<TaskEffectAdapter|TaskCollectionPending>;
   readonly finalize?: (runtime:DurableRuntime,runId:string,revision:number,attempt:number) => Promise<{complete:boolean;diagnostic?:string}>;
+}
+export interface TeamDelegationAdmission {
+  readonly runId: string; readonly owner: string; readonly epoch: number; readonly revision: number;
+  readonly actor: TeamActor;
+  readonly parentEffectId: string; readonly delegation: FrozenTeamDelegation;
+}
+export interface TeamDelegationGate {
+  readonly at: number; readonly state: 'ready' | 'waiting' | 'cancelled'; readonly reason?: string;
+}
+/** Each method is a RunStore transaction. Admission authorizes the actual caller/grant,
+ * checks frozen definition and original parent, rejects dependency cycles and overlong
+ * deadlines. Gate admits only committed dependencies and physically yielded capacity.
+ * Read methods return retained acceptance; they never reconstruct it from editable files. */
+export interface TeamFlowStore {
+  acceptDelegation(input: TeamDelegationAdmission): Promise<TeamDelegationAdmission>;
+  readDelegations(runId: string): Promise<readonly TeamDelegationAdmission[]>;
+  delegationGate(runId: string, delegationId: string): Promise<TeamDelegationGate>;
+  /** Registers exact child identity against accepted parent before first dispatch. Current
+   * effect checks/cleanup traverse this lineage even though child's IR differs from parent.
+   * This is a delegation link, not ordinary business derivedEffect (yielded parent is closed). */
+  bindDelegationEffect(input: TeamDelegationAdmission, identity: TaskIdentity): Promise<void>;
+}
+export interface TeamWaitAcceptance {
+  readonly waitId:string;readonly requestId:string;readonly rootIdentity:TaskIdentity;readonly parentIdentity:TaskIdentity;
+  readonly admission:EffectAdmission;readonly actor:TeamActor;readonly delegationIds:readonly string[];readonly acceptedAt:string;
+}
+export type TeamSavedContext = {readonly kind:'native-checkpoint';readonly checkpoint:LocalNativeCheckpoint}
+  | {readonly kind:'reconstruction';readonly context:JsonValue;readonly sha256:string;readonly reason:string};
+export interface TeamResultInput {
+  readonly delegationId:string;readonly childEffectId:string;readonly resultSha256:string;readonly result:TaskResult;
+}
+export interface TeamEffectContinuation {
+  readonly continuationId:string;readonly waitId:string;readonly rootIdentity:TaskIdentity;readonly predecessorIdentity:TaskIdentity;
+  readonly invocation:FlowInvocationRecord;readonly context:TeamSavedContext;readonly deadlineAt:string;
+  readonly inputs:readonly TeamResultInput[];readonly hostInputId:string;readonly hostInputSha256:string;readonly hostPrompt:string;
+}
+export type TeamEffectHead = {readonly state:'active';readonly invocation:FlowInvocationRecord;readonly continuation?:TeamEffectContinuation}
+  | {readonly state:'waiting';readonly wait:TeamWaitAcceptance;readonly reason:string}
+  | {readonly state:'blocked';readonly reason:string;readonly invocation?:FlowInvocationRecord};
+export interface TeamFlowContinuationRequest {
+  readonly taskId: string; readonly runId: string; readonly requestId: string;
+  readonly actor: TeamActor; readonly expectedEpoch: number; readonly expectedRevision: number;
+  readonly definitionVersion?: number;
+}
+export interface TeamFlowContinuationStore {
+  /** Atomic currentRun CAS, explicit human resume gate, original closure and optional
+   * saved-version adoption. Returns retained successor on identical request replay.
+   * Preserve original absolute deadline; stopped/revoked/unknown effects stay historical. */
+  acceptTeamContinuation(input: TeamFlowContinuationRequest): Promise<{ readonly previousRunId: string; readonly currentRunId: string; readonly replayed?:boolean }>;
+}
+export interface TeamHumanRequestBinding {
+  readonly requestId: string; readonly taskId: string; readonly runId: string;
+  readonly effectId: string; readonly generation: number; readonly revision: number;
+  readonly principalId: string; readonly contentDigest: string; readonly schemaDigest: string;
+  readonly expiresAt: string;
+}
+export interface TeamHumanRequest {
+  readonly binding: TeamHumanRequestBinding; readonly text: string; readonly output: TaskSchema;
+}
+export interface TeamHumanResponse {
+  readonly requestId: string; readonly binding: TeamHumanRequestBinding; readonly output: TaskToolOutput;
+}
+/** Host uses the original human-wait contract and authenticated operator, then retains
+ * this tuple inside its admission transaction. Native/model claims cannot mint it. */
+export function bindTeamHumanRequest(input: Omit<TeamHumanRequestBinding, 'contentDigest' | 'schemaDigest'> & {
+  readonly text: string; readonly output: TaskSchema;
+}): TeamHumanRequest {
+  if (![input.requestId, input.taskId, input.runId, input.effectId, input.principalId, input.text].every(value => value.trim()) ||
+    !Number.isSafeInteger(input.generation) || input.generation < 0 || !Number.isSafeInteger(input.revision) || input.revision < 0 ||
+    !Number.isFinite(Date.parse(input.expiresAt))) throw new Error('Human request requires its original identity, content, operator, revision and expiry');
+  const output = taskSchema.parse(input.output), text = input.text;
+  const schemaDigest = jsonDigest(output);
+  const identity = { requestId: input.requestId, taskId: input.taskId, runId: input.runId, effectId: input.effectId,
+    generation: input.generation, revision: input.revision, principalId: input.principalId, expiresAt: input.expiresAt };
+  return { binding: { ...identity, schemaDigest, contentDigest: jsonDigest({ ...identity, text, schemaDigest }) },
+    text, output: structuredClone(output) };
+}
+/** RunStore must call this under the same lock as current epoch/revision checks and
+ * request settlement. A general Team message reply cannot approve this request. */
+export function validateTeamHumanResponse(request: TeamHumanRequest, response: TeamHumanResponse,
+  principalId: string, at: number, locals: TaskLocalSchemas = {}): TaskToolOutput {
+  const binding = request.binding;
+  if (response.requestId !== binding.requestId || jsonDigest(response.binding) !== jsonDigest(binding))
+    throw new Error('Human response does not match the original request/content/schema/control binding');
+  if (principalId !== binding.principalId) throw new Error('Human response requires its original authenticated operator');
+  if (!Number.isFinite(at) || at >= Date.parse(binding.expiresAt)) throw new Error('Human response request has expired');
+  const original = bindTeamHumanRequest({ ...binding, text: request.text, output: request.output });
+  if (jsonDigest(original.binding) !== jsonDigest(binding)) throw new Error('Retained human request content or schema differs from its binding');
+  const output = taskToolOutput.parse(response.output);
+  if (output.schemaVersion !== request.output.version) throw new Error('Human response schema version differs from its original contract');
+  validateTaskInput(request.output, output.value, locals);
+  return output;
 }
 /** Only retained method/Site availability failures use this recoverable resolver boundary.
  * Actual adapter effects keep their own identity/reconciliation error protocol. */
@@ -52,6 +157,8 @@ export interface FlowOutcome {
   readonly producedTasks:string[];readonly producedExtensions:string[];readonly producedNames:string[];
 }
 interface Execution extends FlowStart {
+  /** A delegation can shorten, never extend, its original Run deadline. */
+  readonly taskDeadlineAt?: string;
   readonly blockId: string; readonly revision: number;
   readonly revisionRules: FlowRevisionRule[];
   readonly iterations: { repeatId: string; iteration: number }[];
@@ -64,7 +171,7 @@ interface Execution extends FlowStart {
   readonly terminal: { taskId: string; effectId: string } | null;
 }
 interface TaskExecution extends Execution { readonly taskId: string; readonly input: JsonValue }
-const names = { root: 'hima.flow', block: 'hima.flow.block', task: 'hima.flow.task', control: 'hima.flow.control', cleanup: 'hima.flow.cleanup', message: 'hima.flow.message', deadline: 'hima.flow.deadline' } as const;
+const names = { root: 'hima.flow', block: 'hima.flow.block', task: 'hima.flow.task', control: 'hima.flow.control', cleanup: 'hima.flow.cleanup', message: 'hima.flow.message', deadline: 'hima.flow.deadline', delegation: 'hima.flow.delegation' } as const;
 const asJson = (value: unknown): JsonValue => value as JsonValue;
 const rootId = (runId: string, revision = 0): string => `hima-flow:${jsonDigest([runId, revision])}`;
 const text = (error: unknown): string => error instanceof Error ? error.message : String(error);
@@ -166,6 +273,7 @@ function identity(runtime: DurableRuntime, context: TaskExecution): TaskEffectRe
 }
 function heldReason(authority: Awaited<ReturnType<DurableRuntime['store']['flowAuthority']>>, context: Execution): string | undefined {
   if (authority.run.hold) return authority.run.hold;
+  if (authority.inheritedHold) return authority.inheritedHold;
   return authority.branches.find(control => control.hold && branchContains(control.branches, context.branches))?.hold ?? undefined;
 }
 function budgetCutoff(authority: Awaited<ReturnType<DurableRuntime['store']['flowAuthority']>>): number {
@@ -178,18 +286,38 @@ async function waitForOriginalDeadline(attempt: number, at: number, deadlineAt: 
   await DBOS.sleep(Math.min(maximumMs, 100 * 2 ** Math.min(attempt, 9), Math.max(0, deadlineAt - at)));
 }
 async function executeTask(runtime: DurableRuntime, input: TaskExecution, options: FlowWorkflowOptions): Promise<FlowOutcome> {
-  const fixedIdentity = identity(runtime, input);
-  const retained = await runtime.store.recordFlowInvocation({ identity: fixedIdentity,
+  const rootIdentity = identity(runtime, input);
+  const rootInvocation = await runtime.store.recordFlowInvocation({ identity: rootIdentity,
     version: revisionAt(input,input.taskId).version, branches: input.branches, context: asJson(input),
     consumedEffects:consumedEffects(input,input.taskId),consumedVersions:consumedEffects(input,input.taskId).map(effect=>input.effectVersions[effect]??0) });
   // A valid sibling may be reused after revision. Its first frozen context remains authoritative.
-  const original = retained.context as unknown as TaskExecution;
-  const committedBefore={...original.committed};delete committedBefore[original.taskId];
-  const context:TaskExecution={...original,committed:committedBefore,producedTasks:[original.taskId],taskEffects:{...original.taskEffects,[original.taskId]:fixedIdentity.effectId},effectVersions:{...original.effectVersions,[fixedIdentity.effectId]:retained.version}};
-  const task = context.flow.tasks[context.taskId]!;
+  const original = rootInvocation.context as unknown as TaskExecution;
+  let retained = rootInvocation;
   let lastReason = 'Waiting for the original task';
   for (let attempt = 0; ; attempt++) {
-    const authority = await runtime.store.flowAuthority(context.runId);
+    // Resolve application facts outside raw adapter IO Steps. The logical invocation is
+    // recorded once; a retained successor never reuses its predecessor's dispatch claim.
+    const head = original.flow.source === 'team' ? await runtime.store.readTeamEffectHead(rootIdentity) : undefined;
+    if (head?.state === 'active') retained = head.invocation;
+    else if (head?.state === 'blocked' && head.invocation) retained = head.invocation;
+    else if (head?.state === 'waiting') {
+      const parent = (await runtime.store.flowInvocations(original.runId)).find(row => jsonDigest(row.identity) === jsonDigest(head.wait.parentIdentity));
+      if (!parent || jsonDigest(head.wait.rootIdentity) !== jsonDigest(rootIdentity)) throw new Error('Retained Team wait differs from its logical root or parent');
+      retained = parent;
+    }
+    const fixedIdentity = retained.identity;
+    const active = retained.context as unknown as TaskExecution;
+    const committedBefore = { ...active.committed }; delete committedBefore[active.taskId];
+    const context: TaskExecution = { ...active, committed: committedBefore, producedTasks: [active.taskId],
+      taskEffects: { ...active.taskEffects, [active.taskId]: fixedIdentity.effectId },
+      effectVersions: { ...active.effectVersions, [fixedIdentity.effectId]: retained.version } };
+    const task = context.flow.tasks[context.taskId]!;
+    const originalAuthority = await runtime.store.flowAuthority(context.runId);
+    const binding = head ? await runtime.store.readTeamExecutionBinding(fixedIdentity) : undefined;
+    const deadlineAt = Math.min(Date.parse(originalAuthority.run.deadlineAt),
+      ...(context.taskDeadlineAt === undefined ? [] : [Date.parse(context.taskDeadlineAt)]),
+      ...(binding === undefined ? [] : [Date.parse(binding.deadlineAt)]));
+    const authority = { ...originalAuthority, run: { ...originalAuthority.run, deadlineAt: new Date(deadlineAt).toISOString() } };
     const admission = { runId: context.runId, effectId: fixedIdentity.effectId,
       owner: authority.run.owner, epoch: authority.run.epoch, revision: authority.run.revision };
     const request: TaskEffectRequest = { identity: fixedIdentity, admission, input: context.input,
@@ -208,6 +336,80 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
       if (stopped || authority.at >= Date.parse(authority.run.deadlineAt)) return outcome(context, state, stopped ? 'Original resources closed' : 'Cancellation requested; closure unknown');
       await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt)); continue;
     }
+    const submitted = authority.submittedEffects.includes(fixedIdentity.effectId);
+    const operatorRevoked = original.flow.source === 'team' &&
+      await runtime.store.teamEffectOperatorRevoked(fixedIdentity);
+    const heldForCollection = heldReason(authority, context);
+    const reconcileBlocked = head?.state === 'blocked' && submitted && authority.at < deadlineAt &&
+      !operatorRevoked && Boolean(heldForCollection) && !heldForCollection!.startsWith('Team stopped on App exit') && !authority.hostExit;
+    if (head?.state === 'blocked' && !reconcileBlocked) {
+      lastReason = head.reason;
+      await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3, { state: 'waiting', reason: lastReason });
+      // Blocked head identity is cleanup information only. Human hold retains ordinary
+      // ownership; revoke/expiry may close the actual head, but can never dispatch it.
+      const held = heldReason(authority, context);
+      if ((!held || authority.hostExit || operatorRevoked) || authority.at >= deadlineAt) {
+        const reason = authority.hostExit ? 'team-exit' : authority.at >= deadlineAt ? 'deadline' : 'cancel';
+        const closing = await runtime.startWorkflow(names.cleanup,
+          `hima-team-blocked-close:${jsonDigest([fixedIdentity.effectId, reason, authority.hostExit?.requestId ?? null])}`,
+          asJson({ runId: context.runId, invocation: retained, reason,
+            ...(authority.hostExit ? { exitRequestId: authority.hostExit.requestId } : {}) }));
+        const closure = await closing.getResult() as unknown as { closed: boolean; reason?: string };
+        if (!closure.closed) lastReason = `${lastReason}; physical closure unknown: ${closure.reason ?? 'original resources remain held'}`;
+      }
+      // Explicit operator revocation is permanent for this accepted lineage.
+      if (operatorRevoked || authority.at >= deadlineAt || authority.hostExit) return outcome(context, 'waiting', lastReason);
+      await waitForOriginalDeadline(attempt, authority.at, deadlineAt); continue;
+    }
+    if (head?.state === 'waiting') {
+      lastReason = head.reason;
+      const wait = head.wait;
+      const parent = retained;
+      const parentContext = parent.context as unknown as TaskExecution;
+      const parentTask = parentContext.flow.tasks[parentContext.taskId]!;
+      const parentRequest: TaskEffectRequest = { identity: parent.identity, input: parentContext.input,
+        contract: parentTask.contract, localSchemas: parentContext.flow.localSchemas,
+        admission: { ...admission, effectId: parent.identity.effectId } };
+      try {
+        const snapshot = await runtime.store.effectSnapshot(parent.identity);
+        const prepared = snapshot.facts.prepared;
+        if (prepared === undefined) lastReason = 'Accepted wait has no retained original native preparation';
+        else {
+          const adapter = await options.resolveAdapter(adapterContext(runtime, parentContext, parentRequest));
+          if ('pending' in adapter) lastReason = adapter.reason.message;
+          else if (!adapter.handoff) lastReason = 'Original adapter cannot prove physical Team handoff';
+          else {
+            const handed = await taskEffectStep('hima.team.handoff-original', async () => {
+              if (!await adapter.permit(prepared, 'release')) return undefined;
+              return adapter.handoff!(prepared, { waitId: wait.waitId }, (id, value) =>
+                runtime.store.claimEffectCleanup(parent.identity, () => adapter.permit(prepared, 'release'),
+                  `handoff:${id}`, jsonDigest(value)));
+            });
+            if (!handed) lastReason = 'Current Site Permit blocks original Team handoff';
+            else if (!handed.closure.closed) lastReason = handed.closure.reason ?? 'Original physical closure remains unknown';
+            else {
+              const saved: TeamSavedContext = handed.capture.state === 'captured'
+                ? { kind: 'native-checkpoint', checkpoint: handed.capture.checkpoint }
+                : await runtime.store.readTeamReconstructionContext(wait.waitId);
+              await runtime.store.recordTeamHandoff({ waitId: wait.waitId, parentIdentity: parent.identity,
+                context: saved, closureProof: handed.closure.proof });
+              // Saving context alone cannot free capacity. Use precisely the retained native
+              // closure proof, then let PG validate checked child commits/closure and CAS head.
+              await runtime.store.releaseEffectResources(parent.identity, handed.closure.proof);
+              retained = (await runtime.store.acceptTeamEffectContinuation(wait.waitId)).invocation;
+              continue;
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof TaskAdapterMaterializationError) lastReason = error.diagnostic.message;
+        else if (isRetryableTeamContinuationError(error)) lastReason = error.message;
+        else throw error;
+      }
+      await runtime.store.flowState(context.runId, parent.identity.effectId, attempt * 3, { state: 'waiting', reason: lastReason });
+      if (authority.at >= deadlineAt) return outcome(context, 'waiting', lastReason);
+      await waitForOriginalDeadline(attempt, authority.at, deadlineAt); continue;
+    }
     const exit=authority.hostExit,dispatched=authority.submittedEffects.includes(fixedIdentity.effectId);
     const held = heldReason(authority, context);
     if ((exit && (!dispatched || exit.mode !== 'drain')) || (held && !dispatched)) {
@@ -216,12 +418,13 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
       await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt)); continue;
     }
     const attemptLimit = (authority.run.opening.data as { budget?: { attemptLimit?: number } }).budget?.attemptLimit;
-    if (flowTaskCountsExperiment(context.flow, task.id) && attemptLimit !== undefined && authority.dispatchedEffects.length >= attemptLimit && !authority.dispatchedEffects.includes(fixedIdentity.effectId)) {
+    if (flowTaskCountsExperiment(context.flow, task.id) && attemptLimit !== undefined && authority.dispatchedEffects.length >= attemptLimit && !binding?.continuation && !authority.dispatchedEffects.includes(fixedIdentity.effectId)) {
       await runtime.store.flowState(context.runId, fixedIdentity.effectId, attempt * 3, { state: 'waiting', reason: 'Original Run attempt budget reached' });
       return outcome(context, 'waiting', 'Original Run attempt budget reached; no fresh child budget');
     }
     if (task.tool === 'builtin/human-wait') {
-      await runtime.store.prepareEffect(fixedIdentity, { kind: 'human-wait', version: taskEffectAdapterVersion, input: context.input });
+      if ('source' in fixedIdentity && fixedIdentity.source.kind === 'team') await runtime.store.prepareTeamHumanRequest(fixedIdentity);
+      else await runtime.store.prepareEffect(fixedIdentity, { kind: 'human-wait', version: taskEffectAdapterVersion, input: context.input });
       const existing = await runtime.store.effectSnapshot(fixedIdentity);
       if (existing.result) return outcome({ ...context, committed: { ...context.committed, [task.id]: existing.result },terminal:{taskId:task.id,effectId:existing.result.identity.effectId} });
       const response = await runtime.store.flowFact(context.runId, `response:${fixedIdentity.effectId}`);
@@ -292,6 +495,7 @@ async function executeBlock(runtime: DurableRuntime, initial: Execution): Promis
     const result = await (await runtime.startWorkflow(names.task, `hima-task:${jsonDigest(id)}`, asJson(taskContext))).getResult() as unknown as FlowOutcome;
     if (result.state !== 'succeeded') return result;
     context = merge(context, result);
+    const producerEffectId = context.committed[block.taskId]!.identity.effectId;
     for (const slot of context.flow.extensions.filter(slot => slot.afterTask === block.taskId)) {
       const proposed = valueAt(context.committed[block.taskId]!.value, slot.fragmentPath);
       if (proposed === undefined || proposed === null) continue;
@@ -301,16 +505,16 @@ async function executeBlock(runtime: DurableRuntime, initial: Execution): Promis
         if (candidate.flow?.schema === 'hima-flow-ir/1') {
           fragment = freezeLegacyFlowFragment(context.flow, slot.id, candidate);
         } else fragment = freezeFlowFragment(context.flow, slot.id, proposed as unknown as { flow: unknown; return: unknown });
-        const frozen = await runtime.store.putFlowFact(context.runId, `fragment:${id.effectId}:${slot.id}`, asJson(fragment)) as unknown as FrozenFlowFragment;
-        const result = await child(runtime, { ...context, flow: frozen.flow,extensions:[...context.extensions,{producerEffectId:id.effectId,slotId:slot.id}],controls:[...new Set([...context.controls,id.effectId])] }, frozen.flow.entry);
+        const frozen = await runtime.store.putFlowFact(context.runId, `fragment:${producerEffectId}:${slot.id}`, asJson(fragment)) as unknown as FrozenFlowFragment;
+        const result = await child(runtime, { ...context, flow: frozen.flow,extensions:[...context.extensions,{producerEffectId,slotId:slot.id}],controls:[...new Set([...context.controls,producerEffectId])] }, frozen.flow.entry);
         if (result.state !== 'succeeded') {
           const optional=(frozen as FrozenLegacyFlowFragment).optional===true;
           if(!optional||!['failed','cancelled'].includes(result.state))return result;
-          const disposition=await runtime.store.flowFact(context.runId,`extension-disposition:${flowExtensionKey({producerEffectId:id.effectId,slotId:slot.id})}`) as {disposition?:string;rationale?:string}|null;
+          const disposition=await runtime.store.flowFact(context.runId,`extension-disposition:${flowExtensionKey({producerEffectId,slotId:slot.id})}`) as {disposition?:string;rationale?:string}|null;
           const status=result.state==='failed'?'failed':disposition?.disposition==='abandoned'?'abandoned':'cancelled';
           const negative={proposalId:(frozen as FrozenLegacyFlowFragment).proposalId,status,reason:disposition?.rationale??result.reason??status,results:Object.fromEntries(Object.entries(result.committed).map(([task,result])=>[task,result.value]))};
-          await runtime.store.putFlowFact(context.runId,`fragment-outcome:${id.effectId}:${slot.id}`,asJson({...negative,flowState:result.state}));
-          context={...merge(context,result),flow:initial.flow,extensionResults:{...context.extensionResults,[slot.id]:asJson(negative)},extensionEffects:{...context.extensionEffects,[slot.id]:result.taskEffects[result.producedTasks.at(-1)??'']??id.effectId},producedExtensions:[...new Set([...context.producedExtensions,slot.id])]};
+          await runtime.store.putFlowFact(context.runId,`fragment-outcome:${producerEffectId}:${slot.id}`,asJson({...negative,flowState:result.state}));
+          context={...merge(context,result),flow:initial.flow,extensionResults:{...context.extensionResults,[slot.id]:asJson(negative)},extensionEffects:{...context.extensionEffects,[slot.id]:result.taskEffects[result.producedTasks.at(-1)??'']??producerEffectId},producedExtensions:[...new Set([...context.producedExtensions,slot.id])]};
           continue;
         }
         const returned = required(valueAt(result.committed[frozen.return.taskId]?.value, frozen.return.path), `extension return ${slot.id}`);
@@ -381,36 +585,95 @@ async function executeBlock(runtime: DurableRuntime, initial: Execution): Promis
   }
 }
 
-async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; invocation: FlowInvocationRecord; reason: string; exitRequestId?:string }, options: FlowWorkflowOptions): Promise<JsonValue> {
+async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; invocation: FlowInvocationRecord; reason: string; exitRequestId?:string; handoff?:{cause:'definition-change';taskId:string;requestId:string} }, options: FlowWorkflowOptions): Promise<JsonValue> {
   if(input.reason==='app-exit'||input.reason==='team-exit') {
     const active=await runtime.store.hostExit();
     if(!input.exitRequestId||active?.requestId!==input.exitRequestId||(input.reason==='app-exit'&&active.mode!=='stop-jobs')||(input.reason==='team-exit'&&(input.invocation.context as unknown as TaskExecution).flow.source!=='team'))return {closed:false,reason:'App exit stop request is stale or no longer active'};
+  }
+  if(input.reason==='definition-change') {
+    if(!input.handoff)return {closed:false,reason:'Original task-local handoff gate is missing'};
+    const retained=await runtime.store.readTeamDefinitionHandoff(input.handoff.taskId,input.handoff.requestId);
+    if(retained.gate.request.runId!==input.runId||retained.gate.cause!==input.handoff.cause)return {closed:false,reason:'Original task-local handoff gate differs'};
+    // Later cancel/revoke can still close original resources, never authorize adoption.
   }
   const context = input.invocation.context as unknown as TaskExecution;
   const authority = await runtime.store.flowAuthority(input.runId);
   const request: TaskEffectRequest = { identity: input.invocation.identity, input: context.input,
     contract: context.flow.tasks[context.taskId]!.contract, localSchemas: context.flow.localSchemas,
     admission: { runId: input.runId, effectId: input.invocation.identity.effectId, owner: authority.run.owner, epoch: authority.run.epoch, revision: authority.run.revision } };
+  // Cross-Run Team cleanup is composed before released/unstarted parent shortcuts.
+  // The child fence is an internal causal fact, not a forged owner/human command.
+  if(context.flow.tasks[context.taskId]?.tool==='resident/team-delegate') {
+    const children=await runtime.store.fencePackTeamChild({parentIdentity:request.identity,
+      requestId:jsonDigest([request.identity.effectId,input.reason,input.exitRequestId??null]),cause:input.reason,
+      ...(input.exitRequestId?{exitRequestId:input.exitRequestId}:{})});
+    const handles=[];
+    for(const invocation of children)handles.push(await runtime.startWorkflow(names.cleanup,
+      `hima-pack-team-close:${jsonDigest([request.identity.effectId,invocation.identity.effectId,input.reason,input.exitRequestId??null])}`,
+      asJson({runId:invocation.identity.runId,invocation,reason:input.reason==='app-exit'?'team-exit':input.reason,...(input.exitRequestId?{exitRequestId:input.exitRequestId}:{})})));
+    for(const handle of handles)await handle.getResult();
+    const closure=await taskEffectStep('hima.control.pack-team-closure',()=>runtime.store.readExternalPackTeamClosure(request.identity));
+    if(!closure.closed)return {closed:false,reason:closure.reason};
+  }
+  // Registered descendants own their original adapter/context. Compose their existing
+  // cleanup workflow deepest first, outside Steps/transactions, before root shortcuts.
+  // Unregistered adapter-internal effects remain the adapter's physical responsibility.
+  const derived = await runtime.store.derivedEffects(request.identity);
+  const invocations = new Map((await runtime.store.flowInvocations(input.runId)).map(invocation => [invocation.identity.effectId, invocation]));
+  const childFailures: Array<{ effectId: string; reason: string }> = [];
+  for (const child of derived) {
+    const invocation = invocations.get(child.identity.effectId);
+    if (!invocation) continue;
+    if (jsonDigest(invocation.identity) !== jsonDigest(child.identity) || invocation.identity.runId !== input.runId)
+      throw new Error('Derived cleanup invocation differs from its original identity');
+    const handle = await runtime.startWorkflow(names.cleanup,
+      `hima-derived-close:${jsonDigest([child.identity.effectId, input.reason, input.exitRequestId ?? null, input.handoff ?? null])}`,
+      asJson({ runId: input.runId, invocation, reason: input.reason,
+        ...(input.exitRequestId ? { exitRequestId: input.exitRequestId } : {}),
+        ...(input.handoff ? { handoff: input.handoff } : {}) }));
+    let result: { closed?: boolean; reason?: string };
+    try { result = await handle.getResult() as unknown as typeof result; }
+    catch (error) {
+      // DBOS's pinned codec preserves Error name/message, not custom prototypes.
+      // Only the exact authoritative physical-proof refusal is a bounded unknown;
+      // database, identity and programming failures still abort visibly.
+      const retained = error as { name?: unknown; message?: unknown } | null;
+      if (!retained || retained.name !== 'OriginalFlowClosureUnproved'
+        || retained.message !== OriginalFlowClosureUnproved.closureMessage) throw error;
+      result = { closed: false, reason: OriginalFlowClosureUnproved.closureMessage };
+    }
+    if (typeof result?.closed !== 'boolean') throw new Error('Derived cleanup returned no original closure result');
+    if (!result.closed) childFailures.push({ effectId: child.identity.effectId, reason: result.reason ?? 'Original physical closure is unproved' });
+  }
+  const unclosedChildren = () => asJson({ closed: false,
+    reason: `Original registered descendant closure is unproved: ${childFailures.map(child => `${child.effectId}: ${child.reason}`).join('; ')}` });
+  const confirmStopped = async (result: JsonValue = { closed: true }): Promise<JsonValue> => {
+    if (childFailures.length) return unclosedChildren();
+    // This predicate still checks every retained descendant, including unregistered
+    // held work. An ancestor's release proof cannot authorize subtree completion.
+    await runtime.store.confirmFlowStopped(request.identity);
+    return result;
+  };
   const key = `stopped:${request.identity.effectId}`;
-  if (await runtime.store.flowFact(input.runId, key)) return { closed: true };
+  if (await runtime.store.flowFact(input.runId, key)) return childFailures.length ? unclosedChildren() : { closed: true };
   const effect = await taskEffectStep('hima.control.original-effect', () => runtime.store.effect(request.identity.effectId));
   if (!effect) {
     const held=await taskEffectStep('hima.control.unstarted-derived-resources',async()=>{for(const child of await runtime.store.derivedEffects(request.identity))if((await runtime.store.effectResources(child.identity.effectId)).some(lease=>!lease.released))return true;return false;});
     if(held)return {closed:false,reason:'Registered preparation has original derived work still awaiting actual closure'};
-    await runtime.store.confirmFlowStopped(request.identity);return {closed:true};
+    return confirmStopped();
   }
   const snapshot = await runtime.store.effectSnapshot(request.identity);
   if (snapshot.resourcesReleased) {
     const owned=await taskEffectStep('hima.control.derived-tree',()=>runtime.store.derivedEffects(request.identity));
     const held=await taskEffectStep('hima.control.derived-leases',async()=>{for(const child of owned)if((await runtime.store.effectResources(child.identity.effectId)).some(lease=>!lease.released))return true;return false;});
-    if(!held){await runtime.store.confirmFlowStopped(request.identity);return {closed:true};}
+    if(!held)return confirmStopped();
   }
   const prepared = snapshot.facts.prepared;
   const dispatched = await taskEffectStep('hima.control.original-dispatch', () => runtime.store.effectDispatchExists(request.identity, 'submit'));
   if (!dispatched) {
     const leases = await taskEffectStep('hima.control.original-leases', () => runtime.store.effectResources(request.identity.effectId));
     if (leases.length && !leases[0]!.released) await runtime.store.releaseEffectResources(request.identity, { closed: true, unstarted: true });
-    await runtime.store.confirmFlowStopped(request.identity); return { closed: true };
+    return confirmStopped();
   }
   if (prepared === undefined) return { closed: false, reason: 'Original dispatch has no retained preparation; reconcile its original identity' };
   let adapter: TaskEffectAdapter | TaskCollectionPending | undefined;
@@ -424,11 +687,11 @@ async function cleanupAttempt(runtime: DurableRuntime, input: { runId: string; i
   const result = await taskEffectStep('hima.control.stop-original', async () => {
     if (!await adapter.permit(prepared, 'release')) return { closed: false as const, reason: 'Current Site Permit blocks original cleanup' };
     return adapter.stop!(prepared, snapshot.facts.submitted, (id, value) => runtime.store.claimEffectCleanup(request.identity,
-      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value),input.reason==='app-exit'||input.reason==='team-exit'?input.exitRequestId:undefined));
+      () => adapter.permit(prepared, 'release'), `stop:${id}`, jsonDigest(value),input.reason==='app-exit'||input.reason==='team-exit'?input.exitRequestId:undefined,input.handoff));
   }).catch(error => ({ closed: false as const, reason: text(error) }));
   if (result.closed) {
     await runtime.store.releaseEffectResources(request.identity, result.proof);
-    await runtime.store.confirmFlowStopped(request.identity);
+    return confirmStopped(asJson(result));
   }
   return asJson(result);
 }
@@ -437,7 +700,7 @@ async function cleanup(runtime:DurableRuntime,input:Parameters<typeof cleanupAtt
     const result=await cleanupAttempt(runtime,input,options) as unknown as {closed:boolean;reason?:string};
     if(input.reason==='app-exit'||input.reason==='team-exit')return asJson(result);
     const authority=await runtime.store.flowAuthority(input.runId);
-    if(result.closed||result.reason?.includes('no physical stop')||authority.at>=Date.parse(authority.run.deadlineAt))return asJson(result);
+    if(result.closed||(input.reason!=='definition-change'&&result.reason?.includes('no physical stop'))||authority.at>=Date.parse(authority.run.deadlineAt))return asJson(result);
     // Query the original identity while a launch/stop acknowledgement is uncertain. Stable raw
     // cleanup claims prevent resending; this loop owns no business admission or new budget.
     await waitForOriginalDeadline(attempt, authority.at, Date.parse(authority.run.deadlineAt));
@@ -449,6 +712,55 @@ export interface FlowTaskMessage {
 }
 export function flowWorkflowDefinitions(options: FlowWorkflowOptions): readonly DurableWorkflowDefinition[] {
   return [
+    { name: names.delegation, async execute(runtime, value) {
+      if (!options.team) throw new Error('Team delegation requires the Host RunStore port');
+      const input = value as unknown as TeamDelegationAdmission;
+      const frozen = input.delegation;
+      // Re-read retained acceptance on recovery, never today's Team config or caller input.
+      const accepted = (await options.team.readDelegations(input.runId)).find(row => row.delegation.delegationId === frozen.delegationId);
+      if (!accepted || jsonDigest(accepted) !== jsonDigest(input)) throw new Error('Delegation differs from its retained Host acceptance');
+      const parent = (await runtime.store.flowInvocations(input.runId)).find(row => row.identity.effectId === input.parentEffectId);
+      if (!parent) throw new Error('Delegation has no original parent invocation');
+      const original = parent.context as unknown as TaskExecution;
+      for (let attempt = 0; ; attempt++) {
+        const gate = await options.team.delegationGate(input.runId, frozen.delegationId);
+        const authority = await runtime.store.flowAuthority(input.runId);
+        const deadline = Math.min(Date.parse(authority.run.deadlineAt), Date.parse(frozen.request.deadlineAt));
+        if (gate.state === 'cancelled' || gate.at >= deadline) {
+          const result = { state: 'cancelled', reason: gate.reason ?? 'Delegation original deadline reached before admission' };
+          await runtime.store.putFlowFact(input.runId, delegationOutcomeKey(frozen.delegationId), result);
+          return result;
+        }
+        if (gate.state !== 'ready') { await waitForOriginalDeadline(attempt, gate.at, deadline); continue; }
+        // A ready PG gate proves dependencies, current parent and physical capacity; the
+        // task effect still checks current Run/branch/grant authority at external dispatch.
+        const dependencies: Record<string, TaskResult> = {};
+        for (const dependencyId of frozen.request.dependsOn) {
+          const retained = await waitFlowDelegation(runtime, input.runId, dependencyId, options.team);
+          if (retained.state !== 'succeeded' || !retained.result) throw new Error('Ready delegation gate lacks a committed dependency');
+          dependencies[dependencyId] = retained.result;
+        }
+        const localInput = teamDelegationInput(frozen.request);
+        if (frozen.request.dependsOn.length) localInput.input = asJson({ delegationInput: localInput.input, dependencyResults: dependencies });
+        const invocations = await runtime.store.flowInvocations(input.runId);
+        const dependencyVersions = Object.fromEntries(Object.values(dependencies).map(result => [result.identity.effectId,
+          invocations.find(row => row.identity.effectId === result.identity.effectId)?.version ?? 0]));
+        const context: Execution = { ...original, flow: frozen.flow, runInput: localInput,
+          blockId: frozen.flow.entry, taskDeadlineAt: frozen.request.deadlineAt,
+          revision: input.revision, revisionRules: authority.revisionRules, carry: {}, committed: {},
+          extensionResults: {}, namedResults: {}, extensionEffects: {}, carryEffects: {},
+          controls: [input.parentEffectId, ...Object.values(dependencies).map(result => result.identity.effectId)],
+          effectVersions: { [input.parentEffectId]: parent.version, ...dependencyVersions },
+          taskEffects: {}, terminal: null, producedTasks: [], producedExtensions: [], producedNames: [] };
+        const task = Object.values(frozen.flow.tasks)[0]!;
+        await options.team.bindDelegationEffect(input, identity(runtime, { ...context, taskId: task.id, input: taskInput(context, task) }));
+        const result = await child(runtime, context, frozen.flow.entry);
+        // TaskEffects committed the result after validation and closure. Publishing this
+        // handoff is replayable if Host dies between that commit and parent delivery.
+        await runtime.store.putFlowFact(input.runId, delegationOutcomeKey(frozen.delegationId), asJson(result));
+        return asJson(result);
+      }
+    } },
     { name:names.message,async execute(runtime,value) {
       const input=value as unknown as FlowTaskMessage;
       const invocation=(await runtime.store.flowInvocations(input.runId)).find(item=>item.identity.effectId===input.effectId);
@@ -522,6 +834,29 @@ export function flowWorkflowDefinitions(options: FlowWorkflowOptions): readonly 
     }},
     { name: names.cleanup, execute: (runtime, input) => cleanup(runtime, input as unknown as Parameters<typeof cleanupAttempt>[1], options) },
     { name: names.control, async execute(runtime, input) {
+      if(input!==null&&typeof input==='object'&&!Array.isArray(input)&&input.kind==='team-definition-handoff') {
+        const request=input as unknown as {kind:'team-definition-handoff';taskId:string;requestId:string};
+        const retained=await runtime.store.readTeamDefinitionHandoff(request.taskId,request.requestId);
+        if(retained.projection.state==='adopted')return asJson(await startAcceptedTeamSuccessor(runtime,{previousRunId:retained.gate.request.runId,currentRunId:retained.projection.successorRunId!}));
+        // Even a later terminal/revoke/cancel/exit blocker must not abandon original owned
+        // cleanup. Only successor admission depends on current business authority.
+        const invocations=await runtime.store.flowInvocations(retained.gate.request.runId);
+        const handles:WorkflowHandle<JsonValue>[]=[];
+        for(const invocation of invocations)handles.push(await runtime.startWorkflow(names.cleanup,
+          `hima-definition-close:${jsonDigest([request.taskId,request.requestId,invocation.identity.effectId])}`,
+          asJson({runId:retained.gate.request.runId,invocation,reason:'definition-change',handoff:{cause:'definition-change',taskId:request.taskId,requestId:request.requestId}})));
+        const closures=await Promise.all(handles.map(handle=>handle.getResult()));
+        if(closures.some(value=>value===null||typeof value!=='object'||Array.isArray(value)||value.closed!==true))return asJson((await runtime.store.readTeamDefinitionHandoff(request.taskId,request.requestId)).projection);
+        for(let attempt=0;;attempt++) {
+          try {return asJson(await startAcceptedTeamSuccessor(runtime,await runtime.store.acceptTeamDefinitionHandoff(request.taskId,request.requestId)));}
+          catch(error) {
+            if(!isRetryableTeamContinuationError(error))throw error;
+            const state=await runtime.store.readTeamDefinitionHandoff(request.taskId,request.requestId);
+            if(state.projection.state==='blocked'||Date.now()>=Date.parse(state.gate.expiresAt))return asJson(state.projection);
+            await waitForOriginalDeadline(attempt,Date.now(),Date.parse(state.gate.expiresAt));
+          }
+        }
+      }
       const command = input as unknown as DurableCommand;
       const receipt = await runtime.store.command(command);
       const results: JsonValue[] = [];
@@ -582,4 +917,117 @@ export async function controlFlow(runtime: DurableRuntime, command: DurableComma
 export async function readFlow(runtime: DurableRuntime, runId: string) {
   const projection = await runtime.store.flowProjection(runId);
   return { ...projection, ...await runtime.store.flowPhysicalFacts(runId), workflow: await DBOS.getWorkflowStatus(rootId(runId, projection.run.revision)) };
+}
+
+const delegationOutcomeKey = (delegationId: string): string => `team-delegation-outcome:${delegationId}`;
+const delegationWorkflowId = (input: TeamDelegationAdmission): string => `hima-delegation:${jsonDigest([input.runId, input.delegation.delegationId])}`;
+/** Host derives the parent and original definition; caller cannot supply an executable flow.
+ * The RunStore port resolves caller/grant authorization before returning acceptance. */
+export async function delegateFlowTask(runtime: DurableRuntime, input: {
+  readonly runId: string; readonly parentEffectId: string; readonly owner: string;
+  readonly actor: TeamActor;
+  readonly epoch: number; readonly revision: number; readonly request: TeamDelegationRequest;
+}, team: TeamFlowStore): Promise<{ delegationId: string; workflowId: string }> {
+  const run = await runtime.store.run(input.runId);
+  if (run.applicationVersion !== runtime.applicationVersion) throw new Error('Delegation requires its original executable version');
+  const parent = (await runtime.store.flowInvocations(input.runId)).find(row => row.identity.effectId === input.parentEffectId);
+  if (!parent) throw new Error('Delegate only from an original controlled member invocation');
+  const context = parent.context as unknown as TaskExecution;
+  const definition = (run.opening.data as unknown as { definition?: TeamDefinition }).definition;
+  if (!definition) throw new Error('Independent Team delegation requires its retained Team definition');
+  const frozen = freezeTeamDelegation(context.flow, definition, input.parentEffectId, input.request);
+  if (Date.parse(frozen.request.deadlineAt) > Date.parse(run.deadlineAt)) throw new Error('Delegation cannot extend its original Run deadline');
+  const accepted = await team.acceptDelegation({ runId: input.runId, parentEffectId: input.parentEffectId,
+    actor: input.actor, owner: input.owner, epoch: input.epoch, revision: input.revision, delegation: frozen });
+  // PG authorizes the current native actor before returning an immutable same-intent
+  // acceptance. Re-freeze under its historical parent only after checking that parent
+  // belongs to this exact logical root; never trust arbitrary ancestor/source claims.
+  const acceptedParent = (await runtime.store.flowInvocations(input.runId)).find(row => row.identity.effectId === accepted.parentEffectId);
+  if (!acceptedParent) throw new Error('Host returned an unknown original delegation parent');
+  const parentBinding = await runtime.store.readTeamExecutionBinding(parent.identity);
+  const acceptedBinding = await runtime.store.readTeamExecutionBinding(acceptedParent.identity);
+  const logicalRoot = parentBinding.continuation?.rootIdentity ?? parent.identity;
+  const acceptedRoot = acceptedBinding.continuation?.rootIdentity ?? acceptedParent.identity;
+  const expected = freezeTeamDelegation(context.flow, definition, accepted.parentEffectId, input.request);
+  if (accepted.runId !== input.runId || jsonDigest(logicalRoot) !== jsonDigest(acceptedRoot) ||
+    jsonDigest(accepted.delegation) !== jsonDigest(expected)) throw new Error('Host returned a different delegation acceptance');
+  const workflowId = delegationWorkflowId(accepted);
+  await runtime.startWorkflow(names.delegation, workflowId, asJson(accepted));
+  return { delegationId: accepted.delegation.delegationId, workflowId };
+}
+/** Recover only accepted work; explicit exit holds fence replay from creating fresh work. */
+export async function recoverTeamDelegations(runtime: DurableRuntime, runId: string, team: TeamFlowStore): Promise<void> {
+  const run = await runtime.store.run(runId);
+  if (run.applicationVersion !== runtime.applicationVersion || run.cancelled || run.hold || await runtime.store.hostExit()) return;
+  for (const accepted of await team.readDelegations(runId)) {
+    if (!await runtime.store.flowFact(runId, delegationOutcomeKey(accepted.delegation.delegationId)))
+      await runtime.startWorkflow(names.delegation, delegationWorkflowId(accepted), asJson(accepted));
+  }
+}
+/** Read the effective saved version from the successor's retained opening. Current disk
+ * config never replaces the definition of an active task. */
+export async function definitionForRevision(runtime: DurableRuntime, runId: string): Promise<FlowStart> {
+  const run = await runtime.store.run(runId);
+  const opening = run.opening.data as unknown as { definition?: TeamDefinition; start?: FlowStart };
+  const start = opening.start;
+  if (!start || start.runId !== runId || start.flow.taskSource?.kind !== 'team' || !opening.definition)
+    throw new Error('Team continuation requires its actual frozen successor opening');
+  const compiled = compileTeamFlow(start.flow.taskSource, opening.definition);
+  if (jsonDigest(compiled) !== jsonDigest(start.flow)) throw new Error('Successor flow differs from its retained Team definition');
+  return start;
+}
+/** The PG transaction owns human authority and lineage; this function only dispatches the
+ * existing DBOS interpreter after acceptance. Death between acceptance/start is recoverable
+ * through the ordinary durable preparation recovery path. */
+export async function resumeTeamFlow(runtime: DurableRuntime, input: TeamFlowContinuationRequest,
+  team: TeamFlowContinuationStore): Promise<{ previousRunId: string; currentRunId: string; workflowId: string }> {
+  const accepted = await team.acceptTeamContinuation(input);
+  if (accepted.previousRunId !== input.runId) throw new Error('Team continuation returned another predecessor');
+  return startAcceptedTeamSuccessor(runtime,accepted);
+}
+export async function startAcceptedTeamSuccessor(runtime:DurableRuntime,accepted:{previousRunId:string;currentRunId:string}):Promise<{previousRunId:string;currentRunId:string;workflowId:string}> {
+  const original = await runtime.store.run(accepted.previousRunId), successor = await runtime.store.run(accepted.currentRunId);
+  if (successor.applicationVersion !== runtime.applicationVersion) throw new Error('Team successor requires its accepted executable version');
+  if (Date.parse(successor.deadlineAt) > Date.parse(original.deadlineAt)) throw new Error('Team continuation cannot silently extend its original deadline');
+  const opening=successor.opening.data as unknown as {source:{projectId:string;team:{teamId:string};taskId:string}};
+  const current=await runtime.store.readTeamTask(opening.source.projectId,opening.source.team.teamId,opening.source.taskId);
+  if(!await runtime.store.acceptedTeamSuccessorStartAllowed(accepted.previousRunId,accepted.currentRunId)||current?.currentRunId!==successor.runId||successor.cancelled||successor.hold||successor.revision!==0||Date.now()>=Date.parse(successor.deadlineAt)||await runtime.store.hostExit())return {...accepted,workflowId:rootId(accepted.currentRunId,0)};
+  // Lost acknowledgement may leave an accepted opening unstarted. Reuse only its original deterministic root.
+  const start = await definitionForRevision(runtime, accepted.currentRunId);
+  await runtime.store.putFlowFact(start.runId,'definition',asJson(start));
+  await runtime.startWorkflow(names.deadline,`hima-deadline:${jsonDigest([start.runId,0])}`,{runId:start.runId,revision:0});
+  const handle = await runtime.startWorkflow(names.root,rootId(start.runId,0),asJson(start));
+  return { ...accepted, workflowId: handle.workflowID };
+}
+/** A nonblocking read returns only the actual immutable committed value. Host uses its
+ * message transport for delivery; retrying this read never resubmits engineering work. */
+export async function waitFlowDelegation(runtime: DurableRuntime, runId: string, delegationId: string, team: TeamFlowStore): Promise<{
+  readonly state: 'waiting' | 'succeeded' | 'failed' | 'cancelled' | 'superseded'; readonly reason?: string; readonly result?: TaskResult;
+}> {
+  const accepted = (await team.readDelegations(runId)).find(row => row.delegation.delegationId === delegationId);
+  if (!accepted) throw new Error('Read only an accepted delegation in this Run');
+  const retained = await runtime.store.flowFact(runId, delegationOutcomeKey(delegationId)) as unknown as FlowOutcome | null;
+  if (!retained) return { state: 'waiting', reason: 'Accepted delegation has no committed handoff yet' };
+  if (retained.state !== 'succeeded') return { state: retained.state, ...(retained.reason ? { reason: retained.reason } : {}) };
+  const task = Object.values(accepted.delegation.flow.tasks)[0];
+  const candidate = task && retained.committed[task.id];
+  if (!candidate || candidate.identity.runId !== runId || candidate.identity.irSha256 !== accepted.delegation.flow.irSha256)
+    throw new Error('Delegation handoff has no matching committed TaskResult');
+  const actual = await runtime.store.effectSnapshot(candidate.identity);
+  if (!actual.result || !actual.resourcesReleased || jsonDigest(actual.result) !== jsonDigest(candidate))
+    return { state: 'waiting', reason: 'Original committed result or resource closure is unproved' };
+  return { state: 'succeeded', result: actual.result };
+}
+
+/** Persist explicit selection before scheduling cleanup. Lost acknowledgement reuses the receipt. */
+export async function applyTeamDefinition(runtime:DurableRuntime,input:TeamDefinitionHandoffRequest):Promise<{taskId:string;requestId:string;workflowId:string;replayed:boolean}> {
+  const retained=await runtime.store.beginTeamDefinitionHandoff(input);
+  const workflowId=`hima-definition-handoff:${jsonDigest([input.taskId,input.requestId])}`;
+  await runtime.startWorkflow(names.control,workflowId,asJson({kind:'team-definition-handoff',taskId:input.taskId,requestId:input.requestId}));
+  return {taskId:input.taskId,requestId:input.requestId,workflowId,replayed:retained.replayed};
+}
+/** Startup after native adapters are available; never dispatch a fenced predecessor root. */
+export async function recoverTeamDefinitionHandoffs(runtime:DurableRuntime):Promise<void> {
+  for(const request of await runtime.store.listPendingTeamDefinitionHandoffs())await runtime.startWorkflow(names.control,
+    `hima-definition-handoff:${jsonDigest([request.taskId,request.requestId])}`,asJson({kind:'team-definition-handoff',...request}));
 }

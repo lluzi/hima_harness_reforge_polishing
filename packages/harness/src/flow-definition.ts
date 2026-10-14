@@ -1,8 +1,41 @@
 // Versioned Pack data. Runtime identities and durable scheduling are deliberately absent here.
 import { z } from 'zod';
 import { packId } from './pack-folder.js';
-import { taskContract, taskInputBinding, taskOutputBinding, type TaskContract, type TaskInputBinding,
+import { taskContract, taskInputBinding, taskOutputBinding, taskJsonValue, taskSchema, type TaskContract, type TaskInputBinding,
   type TaskLocalSchemas, type TaskOutputBinding, type JsonValue, type TaskSource, type MethodRef } from './task-contract.js';
+
+import type { TeamDefinitionRef } from './team-contract.js';
+
+const teamDelegationFields = {
+  requestId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/),
+  goal: z.string().trim().min(1).max(16000), input: taskJsonValue, output: taskSchema,
+  dependsOn: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length, 'Dependency identities must be unique'),
+  deadlineAt: z.iso.datetime(),
+};
+// Preserve the original member JSON; human intervention is a strict alternate target.
+export const teamDelegationRequest = z.union([
+  z.strictObject({ requestId: teamDelegationFields.requestId,
+    memberId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/),
+    goal: teamDelegationFields.goal, input: teamDelegationFields.input, output: teamDelegationFields.output,
+    dependsOn: teamDelegationFields.dependsOn, deadlineAt: teamDelegationFields.deadlineAt }),
+  z.strictObject({ ...teamDelegationFields, target: z.literal('human') }),
+]);
+export type TeamDelegationRequest = z.infer<typeof teamDelegationRequest>;
+export interface FrozenTeamDelegation {
+  readonly delegationId: string; readonly parentEffectId: string; readonly request: TeamDelegationRequest;
+  readonly flow: CompiledFlow; readonly sha256: string;
+}
+// JSONB and workflow receipts may reorder object keys; order cannot alter business input identity.
+function orderedDelegationJson(value:JsonValue):JsonValue {
+  if(Array.isArray(value))return value.map(orderedDelegationJson);
+  if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,child])=>[key,orderedDelegationJson(child)]));
+  return value;
+}
+/** Both delegation targets receive the same frozen business input contract. */
+export function teamDelegationInput(request: TeamDelegationRequest): { goal: string; input: JsonValue; closure: string } {
+  return { goal: request.goal, input: structuredClone(request.input),
+    closure: `${request.goal}\nDeliver output satisfying contract ${request.output.version}: ${JSON.stringify(orderedDelegationJson(request.output.schema))}` };
+}
 
 export const flowSourceVersion = 'hima-flow/1' as const;
 export const flowIRVersion = 'hima-flow-ir/1' as const;
@@ -75,6 +108,8 @@ export type FlowBlock =
 export interface CompiledTask extends FlowTask {
   /** Host-frozen assignment for independent Team effects, distinct from native session IDs. */
   readonly memberId?: string;
+  /** Saved reusable Team reference; execution ownership remains with the parent Campaign. */
+  readonly teamDelegation?: { readonly id: string; readonly nodeId: string; readonly team: TeamDefinitionRef };
   /** Whole legacy business declaration, including Reader/rules/chooser/Team/revision references. */
   readonly legacy?: JsonValue;
 }

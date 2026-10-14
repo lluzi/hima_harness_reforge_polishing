@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { compileTaskSchema } from './task-contract.js';
-import { TeamError, teamDefinition, type TeamDefinitionActor, type TeamDefinition, type TeamView } from './team-contract.js';
+import { TeamError, teamDefinition, type TeamDefinitionActor, type TeamDefinition, type TeamDefinitionRef, type TeamView } from './team-contract.js';
 
 /** RunStore owns atomic create/CAS and immutable versions. No task or runtime mutation is exposed. */
+export interface TeamDefinitionVersionsPage {
+  readonly projectId: string; readonly teamId: string;
+  readonly versions: readonly (TeamDefinitionRef & { readonly title: string })[];
+  readonly nextCursor?: number;
+}
+export interface TeamDefinitionVersionsReadPage { readonly limit: number; readonly cursor?: number }
 export interface TeamDefinitionStore {
+  versions(projectId: string, teamId: string, page: TeamDefinitionVersionsReadPage): Promise<TeamDefinitionVersionsPage>;
   list(projectId: string): Promise<readonly TeamView[]>;
   read(projectId: string, teamId: string, version?: number): Promise<TeamView | undefined>;
   save(request: { readonly projectId: string; readonly teamId: string; readonly definition: TeamDefinition; readonly expectedVersion: number | null }): Promise<TeamView>;
@@ -42,6 +49,16 @@ export async function listTeams(store: TeamDefinitionStore, actor: TeamDefinitio
   authorize(actor, projectId);
   return store.list(projectId);
 }
+export async function listTeamDefinitionVersions(store: TeamDefinitionStore, actor: TeamDefinitionActor,
+  request: { readonly projectId: string; readonly teamId: string; readonly page: TeamDefinitionVersionsReadPage }): Promise<TeamDefinitionVersionsPage> {
+  authorize(actor, request.projectId); checkIdentity(request.teamId);
+  const page = request.page;
+  if (!page || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 50
+    || (page.cursor !== undefined && (!Number.isSafeInteger(page.cursor) || page.cursor < 1))) {
+    throw new TeamError('hima/team-invalid', 'A version page requires a limit of 1–50 and a positive version cursor.');
+  }
+  return store.versions(request.projectId, request.teamId, page);
+}
 export async function readTeam(store: TeamDefinitionStore, actor: TeamDefinitionActor, request: ReadTeamRequest): Promise<TeamView> {
   authorize(actor, request.projectId); checkIdentity(request.teamId, request.version);
   const view = await store.read(request.projectId, request.teamId, request.version);
@@ -50,7 +67,7 @@ export async function readTeam(store: TeamDefinitionStore, actor: TeamDefinition
 }
 export async function saveTeamDefinition(store: TeamDefinitionStore, actor: TeamDefinitionActor, request: SaveTeamDefinitionRequest): Promise<TeamView> {
   authorize(actor, request.projectId);
-  if (request.applyToRunning === true) throw new TeamError('hima/team-conflict', 'Applying definition changes to running tasks is unavailable. Save a new version for future tasks.');
+  if (request.applyToRunning === true) throw new TeamError('hima/team-conflict', 'Save the definition first, then explicitly apply its saved version from the task controls.');
   const definition = parseDefinition(request.definition);
   const teamId = request.teamId ?? `team-${randomUUID()}`;
   checkIdentity(teamId);

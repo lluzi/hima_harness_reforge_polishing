@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile, readFile, access, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
-import {TaskAdapterMaterializationError,type FlowAdapterContext} from './flow-workflow.js';
+import {TaskAdapterMaterializationError,startFlow,type FlowStart,type FlowAdapterContext} from './flow-workflow.js';
+import {compileTeamFlow} from './flow-compiler.js';
 import { loadPackFrom, batchToolRefusal, outputPath, resolvePackReader, resolveRule, resolveChooser, semanticsOf, substitute, toolArgv, workshopArgv, forkJoinedAt, forkOutcome, autopilotForkOfNode, type Pack, type PackNode, type PackAgentTeam, type PackAgentTeamMember, type ContractOutput } from './packs.js';
 import { snapshotPackFolder, packDigestExcludes, packFilePath, type PackFolderSnapshot, pipelineFiles } from './pack-folder.js';
 import { channelFor, mustRun } from './channel.js';
@@ -25,8 +26,8 @@ import { reviewedScopeProblem, delegationChildSessionId, type DelegationContract
 import { taskInteractiveDelegationGrant, closeTaskInteractiveSessions, type TaskInteractiveDeps } from './task-interactive.js';
 import type { InteractiveBindingBridge } from './interactive-binding.js';
 import { executeTaskEffect, sendTaskEffectMessage, declaredCommandTaskAdapter, commandTaskAdapter, residentEngineeringTaskAdapter, taskEffectStep, taskEffectAdapterVersion, type TaskEffectRequest, type TaskEffectAdapter, type TaskCollectionPending, type TaskEffectOutcome, type EffectClosure } from './task-effects.js';
-import { factIdentity, jsonDigest, type RunStore } from './run-store.js';
-import { taskSchemaDraft, createTaskResult, type JsonValue, type TaskToolOutput, type TaskResult } from './task-contract.js';
+import { factIdentity, jsonDigest, type RunStore,type PackTeamPlan } from './run-store.js';
+import { taskSchemaDraft, createTaskResult, validateTaskInput, type JsonValue, type TaskToolOutput, type TaskResult } from './task-contract.js';
 import type { RunRecord, NodeExecution, ObservationRecord, VerdictRecord, JobIdentity } from './ledger.js';
 /** Host fills this once from the accepted prepared workspace and method snapshot. Goal, strategy,
  * runInput and carry belong to the interpreter bindings, never a second product copy. */
@@ -39,6 +40,8 @@ export interface DurableProductOpening {
 }
 export interface DurableTaskAdapterDeps {
   readonly ctx: Context; readonly sitesDir: string; readonly retainedMaterialsDir: string;
+  /** Trusted Host Campaign project resolver, never a caller-selected Team/project grant. */
+  readonly projectOfRun?:(runId:string)=>Promise<string|undefined>;
   readonly teamExecutor?: { resolve(context:FlowAdapterContext):Promise<TaskEffectAdapter> };
   readonly interactive?: Omit<TaskInteractiveDeps, 'store' | 'sitesDir' | 'resolveOperation'> & { readonly bridge: InteractiveBindingBridge };
 }
@@ -116,7 +119,23 @@ export async function resolveDurableTaskAdapter(context: FlowAdapterContext, dep
   if(context.flow.source==='team') {
     const provider=deps.teamExecutor;
     if(!provider)throw new TaskAdapterMaterializationError({code:'team-executor-unavailable',message:'This Team runtime has not been installed and qualified; configure its required components.',source:'team-runtime'});
-    return provider.resolve(context);
+    const adapter=await provider.resolve(context);
+    const child=await context.runtime.store.run(context.request.identity.runId);
+    const plan=(child.opening.data as unknown as {packParent?:PackTeamPlan}).packParent;
+    if(!plan)return adapter;
+    // Bound native/member callbacks inherit the original Pack method/Site fence as
+    // well as the Store's currentness lock. The trusted opening supplies the path;
+    // neither the member nor a tool request can choose a Site or source directory.
+    const parent=await context.runtime.store.run(plan.parentIdentity.runId);
+    const product=(parent.opening.data as unknown as {product:DurableProductOpening}).product;
+    if(!product?.method?.retainedPackDir||!product.siteDigest)throw new Error('Bound Team has no original Pack method and Site authority');
+    return {...adapter,async permit(prepared,operation) {
+      if(operation!=='release') {
+        if(product.method.packDigest!==taskMethodDigest(plan.parentIdentity)||snapshotPackFolder(product.method.retainedPackDir).digest(packDigestExcludes)!==taskMethodDigest(plan.parentIdentity))throw new Error('Original retained Pack method changed before bound Team business callback');
+        if(jsonDigest(json(loadSite(deps.sitesDir,product.siteId)))!==product.siteDigest)throw new Error('Original Pack Site identity changed before bound Team business callback');
+      }
+      return adapter.permit(prepared,operation);
+    }};
   }
   const original=await materialization(context,deps),plan=await approvedRevisionAssets(original);
   if('pending' in plan)return plan;
@@ -125,6 +144,7 @@ export async function resolveDurableTaskAdapter(context: FlowAdapterContext, dep
 }
 async function taskAdapter(m:Materialization):Promise<TaskEffectAdapter> {
   const {context,deps}=m;
+  if (context.task.tool === 'resident/team-delegate') return packTeamAdapter(m);
   if (context.task.tool === 'builtin/observe') return readerAdapter(m, requiredOutput(m, (m.node as Extract<PackNode,{kind:'act'}>).parameters.observes!));
   if (context.task.tool === 'builtin/judge') return domainAdapter(m, async request => judgeOutput(m,request));
   if (context.task.tool === 'builtin/legacy-growth-resume') return domainAdapter(m,async request=>growthResumeOutput(m,request));
@@ -169,6 +189,81 @@ async function taskAdapter(m:Materialization):Promise<TaskEffectAdapter> {
   if (tool.inputs.includes('TASK_OUTPUT')) return declaredCommandTaskAdapter({ request: context.request, tool, sitesDir:deps.sitesDir,siteId:m.site.name,workspace:m.product.workspace,platform:m.platform });
   return commandTaskAdapter({sitesDir:deps.sitesDir,siteId:m.site.name,workspace:m.product.workspace,name:tool.id,argv:toolArgv(tool,m.platform),licences:tool.licences,
     collect:async(_site,job,request)=>output(request,{tool:tool.id,completed:true,job})});
+}
+/** One original Pack node delegates through TaskEffects.collect composition. */
+function packTeamAdapter(m:Materialization):TaskEffectAdapter {
+  const base=domainAdapter(m,async()=>{throw new Error('Pack Team requires its retained plan');});
+  const pending=(message:string):TaskCollectionPending=>({pending:true,state:'waiting',reason:{code:'pack-team-waiting',message,source:'team-runtime'}});
+  const planOf=(value:JsonValue):PackTeamPlan=>{
+    const plan=value as unknown as PackTeamPlan;
+    if(plan.schema!=='hima-pack-team-delegation/1'||jsonDigest(plan.parentIdentity)!==jsonDigest(m.context.request.identity))throw new Error('Original Pack Team preparation identity changed');
+    return plan;
+  };
+  const project=async()=>{
+    const resolved=await m.deps.projectOfRun?.(m.context.request.identity.runId);
+    if(!resolved)throw new Error('Original Campaign has no Host-resolved project authority for Team delegation');
+    return resolved;
+  };
+  return {...base,kind:'team',
+    async prepare(request) {
+      validateTaskInput(request.contract.input,request.input,request.localSchemas);
+      const input=object(request.input);
+      if(Object.keys(input).sort().join(',')!=='closure,goal,input'||typeof input.goal!=='string'||!input.goal.trim()||typeof input.closure!=='string'||!input.closure.trim())throw new Error(`Pack task ${request.identity.taskId} must supply exactly {goal,input,closure}, with nonempty goal and closure`);
+      const delegation=m.context.task.teamDelegation;
+      if(!delegation||delegation.nodeId!==request.identity.taskId)throw new Error('Original Pack node has no frozen saved Team declaration');
+      const projectId=await project();
+      const saved=await m.store.readTeamDefinition(projectId,delegation.team.teamId,delegation.team.version);
+      if(!saved||saved.sha256!==delegation.team.sha256||jsonDigest(saved.definition)!==delegation.team.sha256)throw new Error('Exact saved Team version is unavailable in the original Campaign project');
+      const ids=jsonDigest([request.identity,delegation]),childTaskId=`pack-team-${ids}`,childRunId=`run-pack-team-${ids}`;
+      const source={kind:'team' as const,projectId,team:delegation.team,taskId:childTaskId},flow=compileTeamFlow(source,saved.definition);
+      validateTaskInput(flow.tasks.leader!.contract.input,request.input,flow.localSchemas);
+      const parent=await m.store.run(request.identity.runId),invocation=await m.store.readExternalFlowInvocation(request.identity);
+      if(!invocation||jsonDigest(invocation.identity)!==jsonDigest(request.identity))throw new Error('Pack delegation has no exact retained original invocation');
+      const start:FlowStart={runId:childRunId,flow,runInput:request.input,goal:{},strategy:{}};
+      const plan:PackTeamPlan={schema:'hima-pack-team-delegation/1',parentIdentity:request.identity,parentInvocationSha256:jsonDigest(invocation),parentOwner:parent.owner,projectId,delegation,requestSha256:jsonDigest([request.identity,delegation,request.input,parent.deadlineAt,projectId]),childTaskId,childRunId,source,definition:saved.definition,start,deadlineAt:parent.deadlineAt};
+      return json(plan);
+    },
+    async submit(prepared,before){planOf(prepared);await before();return prepared;},
+    async reconcile(prepared,receipt){planOf(prepared);if(receipt!==undefined&&jsonDigest(receipt)!==jsonDigest(prepared))throw new Error('Pack Team intent receipt changed');return {state:'ready',receipt:prepared};},
+    async collect(prepared,receipt,request) {
+      const plan=planOf(prepared);
+      if(jsonDigest(receipt)!==jsonDigest(plan))throw new Error('Pack Team collect has a different original delegation receipt');
+      const authority=await m.store.flowAuthority(request.identity.runId);
+      let accepted;
+      try {
+        accepted=await m.store.acceptPackTeamDelegation({parentIdentity:request.identity,plan,projectId:await project(),admission:{runId:authority.run.runId,effectId:request.identity.effectId,owner:authority.run.owner,epoch:authority.run.epoch,revision:authority.run.revision}});
+      }catch(error) {
+        // Control races wait on this one retained intent. Changed plan/ref never becomes
+        // another child task; Store's immutable conflict remains a truthful diagnostic.
+        return pending(error instanceof Error?error.message:String(error));
+      }
+      if(accepted.state!=='schedulable')return pending(accepted.reason??'Original parent or Team control blocks collection');
+      // Existing stable workflow IDs close the acceptance/scheduling crash window. A
+      // sanctioned post-exit successor is started from its own retained opening only.
+      const child=await m.store.run(accepted.task.currentRunId);
+      const start=(child.opening.data as unknown as {start:FlowStart}).start;
+      if(!accepted.result)await startFlow(m.context.runtime,start);
+      const snapshot=await m.store.readPackTeamDelegation(request.identity);
+      if(!snapshot||snapshot.state!=='schedulable'||!snapshot.result||!snapshot.closed||!snapshot.childResultSha256)return pending(snapshot?.reason??'Actual current child TaskResult and whole Team closure are pending');
+      try {
+        // Validate the actual retained child bytes before admitting the parent result,
+        // not merely the source metadata. No copied/relabelled workspace file is used.
+        await taskEffectStep('hima.pack-team.verify-retained-artifacts',async()=>{
+          const {readDurableSourceBytes}=await import('./durable-views.js');
+          for(const artifact of snapshot.result!.artifacts) {
+            const retained=await m.store.externalEffectFact(snapshot.result!.identity,'oar:artifact:'+artifact.name) as unknown as {runId:string;effectId:string;taskId:string;path:string;sha256:string;bytes:number;retainedPath:string}|undefined;
+            if(!retained||retained.runId!==artifact.runId||retained.effectId!==artifact.effectId||retained.taskId!==artifact.taskId||retained.path!==artifact.path||retained.sha256!==artifact.sha256)throw new Error('Current child artifact has no exact retained native bytes source');
+            await readDurableSourceBytes(m.deps.retainedMaterialsDir,artifact.runId,{...retained,type:'code'});
+          }
+          return {verified:true,childResultSha256:snapshot.childResultSha256};
+        });
+        const result=await m.store.acceptPackTeamResult({parentIdentity:request.identity,bindingSha256:snapshot.bindingSha256,childIdentity:snapshot.result.identity,childResultSha256:snapshot.childResultSha256});
+        return {schemaVersion:result.outputSchemaVersion,value:result.value,artifacts:result.artifacts,diagnostics:result.diagnostics};
+      }catch(error){return pending(error instanceof Error?error.message:String(error));}
+    },
+    release:async prepared=>m.store.readExternalPackTeamClosure(planOf(prepared).parentIdentity),
+    stop:async prepared=>m.store.readExternalPackTeamClosure(planOf(prepared).parentIdentity),
+  };
 }
 const output = (request: TaskEffectRequest,value: unknown): TaskToolOutput => ({schemaVersion:request.contract.output.version,value:json(value),artifacts:[],diagnostics:[]});
 function requiredOutput(m: Materialization,name: string): ContractOutput {const result=m.pack.contract.outputs.find(output=>output.name===name);if(!result)throw new Error(`Frozen Pack has no declared output ${name}`);return result;}

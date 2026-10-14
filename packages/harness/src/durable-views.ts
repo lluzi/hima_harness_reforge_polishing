@@ -210,7 +210,8 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
         ...(options.retainedMaterialsDir?{sourceMaterialBytes:(record:import('./ledger.js').CodeRecord|import('./ledger.js').KnowledgeRecord|import('./ledger.js').ObservationRecord)=>readDurableSourceBytes(options.retainedMaterialsDir!,runId,record)}:{}),
         taskAssets:async()=>{const assets=[];const site=loadSite(deps.sitesDir,snapshot.product.siteId),p=pathsOf(site);
           for(const task of snapshot.view.tasks??[])if(task.current!==false)for(const artifact of task.result?.artifacts??[]) {
-            const bytes=await readRetainedAssetBytes(site,p.join(snapshot.product.workspace,artifact.path),snapshot.product.workspace,artifact.sha256);
+            const alias=await readPackTeamAliasBytes(task.result!,artifact.name);
+            const bytes=alias??await readRetainedAssetBytes(site,p.join(snapshot.product.workspace,artifact.path),snapshot.product.workspace,artifact.sha256);
             assets.push({path:`materials/task-${jsonDigest([artifact.effectId,artifact.name])}.dat`,source:`task-artifact:${artifact.effectId}:${artifact.name}`,recordId:factIdentity('task-result',artifact.effectId),bytes});
           }return assets;}};
       try {
@@ -262,6 +263,23 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     if(!record)return {kind:'unavailable',why:'Original report source is unavailable'};
     const held=await retainedReport(runId,record);return held.kind==='changed'?{kind:'unavailable',why:'Original report hash changed'}:held;
   }
+  /** A Pack alias points only to the exact actual retained native child bytes. */
+  async function readPackTeamAliasBytes(result:TaskResult,name:string):Promise<Buffer|undefined> {
+    const adopted=await deps.durable!.store.effectFact(result.identity.effectId,'pack-team-result') as unknown as {bindingSha256:string;childResult:TaskResult;childResultSha256:string;sourceFactId:string;artifactAliases:import('./run-store.js').PackTeamArtifactAlias[];result:TaskResult;resultSha256:string}|undefined;
+    if(!adopted)return undefined;
+    if(jsonDigest(result)!==adopted.resultSha256||jsonDigest(adopted.result)!==adopted.resultSha256||jsonDigest(adopted.childResult)!==adopted.childResultSha256)throw new Error('Pack Team artifact adoption digest changed');
+    const alias=adopted.artifactAliases.find(item=>item.name===name),artifact=result.artifacts.find(item=>item.name===name);
+    const child=alias&&adopted.childResult.artifacts.find(item=>item.name===alias.childName);
+    if(!alias||!artifact||!child||jsonDigest(alias.childIdentity)!==jsonDigest(adopted.childResult.identity)||alias.path!==artifact.path||alias.sha256!==artifact.sha256||alias.childPath!==child.path||alias.sha256!==child.sha256||!('source' in alias.childIdentity)||alias.childIdentity.source.kind!=='team')throw new Error('Pack artifact alias has no exact original Team artifact provenance');
+    const binding=await deps.durable!.store.effectFact(result.identity.effectId,'pack-team-binding') as unknown as {plan:unknown;bindingSha256:string}|undefined;
+    if(!binding||binding.bindingSha256!==adopted.bindingSha256||jsonDigest(binding.plan)!==adopted.bindingSha256)throw new Error('Pack alias has no immutable original child binding');
+    const original=await deps.durable!.store.result(alias.childIdentity.effectId),source=await deps.durable!.store.fact(adopted.sourceFactId);
+    if(!original||jsonDigest(original)!==adopted.childResultSha256||!source||source.kind!=='task-result'||jsonDigest(source.payload)!==adopted.childResultSha256)throw new Error('Pack alias child result source is unavailable or changed');
+    if(alias.retainedFactId!==factIdentity('effect-fact',alias.childIdentity.effectId,'native:oar:artifact:'+alias.childName))throw new Error('Pack alias retained source identity changed');
+    const retained=await deps.durable!.store.externalEffectFact(alias.childIdentity,'oar:artifact:'+alias.childName) as unknown as {runId:string;effectId:string;taskId:string;path:string;sha256:string;bytes:number;retainedPath:string}|undefined;
+    if(!retained||!options.retainedMaterialsDir||jsonDigest(retained)!==jsonDigest(alias.retained)||retained.runId!==alias.childIdentity.runId||retained.effectId!==alias.childIdentity.effectId||retained.taskId!==alias.childIdentity.taskId||retained.path!==alias.childPath||retained.sha256!==alias.sha256)throw new Error('Pack alias original retained child bytes are unavailable');
+    return readDurableSourceBytes(options.retainedMaterialsDir,alias.childIdentity.runId,{...retained,type:'code'});
+  }
   /** Resolve a named artifact from a verified retained/committed result of this Run; paths are not caller input. */
   async function readTaskArtifact(runId:string,effectId:string,name:string):Promise<EngineeringAssetRead> {
     const original=await knownDurableRun(deps,runId);if(!original)throw new Error('Task artifact requires its original durable Run');
@@ -270,6 +288,11 @@ export function createDurableViewReaders(deps: FabricDeps, options: {readonly re
     if(!result||result.identity.runId!==runId||result.identity.effectId!==effectId)throw new Error('No verified task result belongs to this Run/effect');
     const artifact=result.artifacts.find(item=>item.name===name);
     if(!artifact||artifact.runId!==runId||artifact.effectId!==effectId||artifact.taskId!==result.identity.taskId)throw new Error('No original named task artifact belongs to this result');
+    const alias=await readPackTeamAliasBytes(result,name);
+    if(alias) {
+      const text=isUtf8(alias)&&!alias.includes(0)?alias.toString('utf8',0,1024*1024):undefined;
+      return {kind:'file',ref:{id:artifact.name,path:artifact.path,kind:'file',sha256:artifact.sha256,bytes:alias.length},bytes:alias,...(text===undefined?{}:{text}),truncated:text!==undefined&&alias.length>1024*1024,references:[]};
+    }
     if('source' in result.identity&&result.identity.source.kind==='team') {
       const retained=await deps.durable!.store.externalEffectFact(result.identity,'oar:artifact:'+artifact.name) as unknown as {runId:string;effectId:string;taskId:string;path:string;sha256:string;bytes:number;retainedPath:string}|undefined;
       if(!retained||!options.retainedMaterialsDir||retained.effectId!==effectId||retained.taskId!==result.identity.taskId||retained.path!==artifact.path||retained.sha256!==artifact.sha256)throw new Error('Original member artifact has no verified retained bytes.');

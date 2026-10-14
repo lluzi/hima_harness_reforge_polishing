@@ -30,6 +30,7 @@ export const actorGrant = z.strictObject({
   runId: id, effectId: z.string().min(1), generation: z.number().int().nonnegative(),
   capabilities: z.array(z.enum(['read-task', 'send-message', 'read-material', 'query-memory', 'delegate'])),
   expiresAt: timestamp, revokedAt: timestamp.nullable(),
+  revocationCause: z.enum(['yield', 'closed', 'operator']).optional(),
 });
 export type ActorGrant = z.infer<typeof actorGrant>;
 export interface HumanActor { readonly kind: 'human'; readonly actorId: string; readonly projectId: string }
@@ -46,6 +47,10 @@ export type MemoryRef = z.infer<typeof memoryRef>;
 export interface TeamView extends TeamDefinitionRef { readonly projectId: string; readonly definition: TeamDefinition }
 export interface TeamReadiness { readonly ready: boolean; readonly missing: readonly string[] }
 export interface TeamTaskView {
+  readonly applyDefinitionGate?: {readonly allowed:boolean;readonly reason?:string};
+  readonly definitionHandoff?: TeamDefinitionHandoffView;
+  readonly resumeGate?: {readonly allowed:boolean;readonly reason?:string};
+  readonly humanRequests?: readonly import('./flow-workflow.js').TeamHumanRequest[];
   readonly taskId: string; readonly team: TeamDefinitionRef; readonly projectId: string;
   readonly goal: string; readonly input: JsonValue; readonly deadlineAt: string; readonly closure: string;
   readonly runIds: readonly string[]; readonly currentRunId: string; readonly readiness: TeamReadiness;
@@ -63,4 +68,20 @@ export class TeamError extends Error {
   constructor(readonly code: 'hima/team-invalid' | 'hima/team-conflict' | 'hima/not-authorized' | 'hima/not-found' | 'hima/team-not-ready', message: string) {
     super(message); this.name = 'TeamError';
   }
+}
+
+/** Immutable task-local human fence. This receipt cannot schedule business work. */
+export interface TeamDefinitionHandoffRequest {
+  readonly action:'applyDefinition'; readonly origin:'human'; readonly actor:HumanActor;
+  readonly taskId:string; readonly runId:string; readonly requestId:string;
+  readonly expectedEpoch:number; readonly expectedRevision:number; readonly definitionVersion:number;
+}
+export interface TeamDefinitionHandoffGate {
+  readonly cause:'definition-change'; readonly request:TeamDefinitionHandoffRequest;
+  readonly digest:string; readonly selected:TeamDefinitionRef; readonly definitionSha256:string;
+  readonly originalScopeSha256:string; readonly postFenceEpoch:number; readonly acceptedAt:string; readonly expiresAt:string;
+}
+export interface TeamDefinitionHandoffView {
+  readonly requestId:string; readonly predecessorRunId:string; readonly selected:TeamDefinitionRef;
+  readonly state:'closing'|'blocked'|'adopted'; readonly reason?:string; readonly successorRunId?:string;
 }

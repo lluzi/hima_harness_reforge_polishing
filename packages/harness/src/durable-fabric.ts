@@ -9,7 +9,7 @@ import { durableEngine } from './durable-runtime.js';
 import { branchContains, factIdentity, jsonDigest, type DurableRun, type DurableCommand } from './run-store.js';
 import { taskEffectAdapterVersion, taskEffectStep } from './task-effects.js';
 import type { JsonValue, TaskIdentity, TaskProjectionState, TaskResult } from './task-contract.js';
-import { startFlow, scheduleFlowDeadline, controlFlow, readFlow, type FlowStart } from './flow-workflow.js';
+import { startFlow, startAcceptedTeamSuccessor, scheduleFlowDeadline, controlFlow, readFlow, type FlowStart } from './flow-workflow.js';
 import type { DurableProductOpening } from './durable-task-adapters.js';
 import { prepareWorkspaceFiles, type WorkspaceFilesResult } from './workspace.js';
 import { snapshotPackFolder, packDigestExcludes, viewsOf as packFolderViews } from './pack-folder.js';
@@ -121,7 +121,9 @@ export async function recoverDurablePreparations(runtime:DurableRuntime):Promise
     const data=run.opening.data as unknown as Partial<ProductRunData>;
     if(data.product?.method&&data.start?.flow) {await scheduleFlowDeadline(runtime,run.runId);await startDurablePreparation(runtime,run.runId);}
     if((run.opening.data as {source?:{kind?:string}}).source?.kind==='team'&&data.start?.flow&&!run.cancelled&&!run.hold&&!await runtime.store.hostExit()) {
-      await scheduleFlowDeadline(runtime,run.runId);await startFlow(runtime,data.start);
+      const predecessor=(run.opening.data as unknown as {initialHostContext?:{predecessorRunId?:string}}).initialHostContext?.predecessorRunId;
+      if(predecessor)await startAcceptedTeamSuccessor(runtime,{previousRunId:predecessor,currentRunId:run.runId});
+      else {await scheduleFlowDeadline(runtime,run.runId);await startFlow(runtime,data.start);}
     }
   }
 }
@@ -711,5 +713,10 @@ export async function readTeamTask(runtime:DurableRuntime,actor:TeamDefinitionAc
   const actualReason=exitFailure?.reason??(closureWaiting?cleanupReason:undefined)??outcome?.reason??tasks.find(row=>row.reason)?.reason;
   const reason=closureWaiting?`Stop requested; original member/resource closure is unproved.${actualReason?' '+actualReason:''}`:actualReason??execution.run.hold;
   const allowedActions:('pause'|'continue'|'cancel')[]=execution.run.hold?.startsWith('Team stopped on App exit')?[]:execution.run.cancelled?(closureWaiting?['cancel']:[]):Date.now()>=Date.parse(execution.run.deadlineAt)?['cancel']:execution.run.hold?['continue','cancel']:['pause','cancel'];
-  return {...task,readiness,allowedActions,execution:{epoch:execution.run.epoch,revision:execution.run.revision,state,resourceState,cancellationRequested,...(reason?{reason}:{}),tasks}};
+  const resumeGate=execution.run.hold?.startsWith('Team stopped on App exit')?await runtime.store.teamResumeGate({projectId:actor.projectId,teamId,taskId}):undefined;
+  const definitionHandoff=await runtime.store.teamDefinitionHandoffForTask({projectId:actor.projectId,teamId,taskId});
+  const applyDefinitionGate=await runtime.store.teamApplyDefinitionGate({projectId:actor.projectId,teamId,taskId});
+  if(definitionHandoff&&definitionHandoff.state!=='adopted'){const at=allowedActions.indexOf('continue');if(at>=0)allowedActions.splice(at,1);}
+  const humanRequests=await runtime.store.readTeamHumanRequests(actor,{projectId:actor.projectId,teamId,taskId});
+  return {...task,readiness,allowedActions,humanRequests,applyDefinitionGate,...(definitionHandoff?{definitionHandoff}:{}),...(resumeGate?{resumeGate}:{}),execution:{epoch:execution.run.epoch,revision:execution.run.revision,state,resourceState,cancellationRequested,...(reason?{reason}:{}),tasks}};
 }

@@ -30,6 +30,13 @@ export interface HimaTeamOperations extends Partial<TeamModelOperations> {
   control?(request: { readonly teamId: string; readonly taskId: string; readonly request: { readonly requestId: string; readonly action: 'pause' | 'continue' | 'cancel'; readonly expectedEpoch: number; readonly expectedRevision: number } }, signal?: AbortSignal): Promise<TeamTaskView>;
   readTask?(request: { readonly teamId: string; readonly taskId: string }, signal?: AbortSignal): Promise<TeamTaskView>;
 }
+function latestTaskView(current:TeamTaskView|undefined,next:TeamTaskView):TeamTaskView {
+  if(!current)return next;
+  if(current.currentRunId!==next.currentRunId)return next.runIds.length>current.runIds.length
+    &&current.runIds.every((id,index)=>next.runIds[index]===id)&&next.runIds.at(-1)===next.currentRunId?next:current;
+  return current.execution&&next.execution&&(current.execution.epoch>next.execution.epoch
+    ||current.execution.epoch===next.execution.epoch&&current.execution.revision>next.execution.revision)?current:next;
+}
 export interface HimaTeamPanelProps {
   readonly address: TeamAddress;
   readonly operations?: HimaTeamOperations;
@@ -119,6 +126,17 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
     return () => own.abort();
   }, [operations, address.teamId, address.taskId]);
 
+  useEffect(()=>{
+    if(!task||!address.taskId||!operations||view?.version===task.team.version&&view.sha256===task.team.sha256)return;
+    const own=new AbortController(),ref=task.team;
+    void operations.read({teamId:ref.teamId,version:ref.version},own.signal).then(frozen=>{
+      if(own.signal.aborted)return;
+      if(frozen.projectId!==task.projectId||frozen.teamId!==ref.teamId||frozen.version!==ref.version||frozen.sha256!==ref.sha256)throw new Error('The Host returned a different adopted team definition.');
+      choose(frozen);
+    }).catch(caught=>{if(!own.signal.aborted)setError(errorText(caught));});
+    return()=>own.abort();
+  },[operations,address.taskId,task?.team.version,task?.team.sha256]);
+
   // List refresh and task polling never replace the editable definition or opening draft.
   useEffect(() => {
     if (operations === undefined) return;
@@ -145,7 +163,7 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
         const latest = await operations.readTask!({ teamId: address.teamId!, taskId: address.taskId! }, own.signal);
         if (own.signal.aborted) return;
         validateTask(latest, address.taskId);
-        setTask(current => current?.execution !== undefined && latest.execution !== undefined && (current.execution.epoch > latest.execution.epoch || (current.execution.epoch === latest.execution.epoch && current.execution.revision > latest.execution.revision)) ? current : latest);
+        setTask(current=>latestTaskView(current,latest));
       } catch (caught) { if (!own.signal.aborted) setError(errorText(caught)); }
       if (!own.signal.aborted) timer = setTimeout(() => void poll(), 1500);
     };
@@ -192,14 +210,6 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
     if (opened.projectId !== operations!.projectId || opened.team.teamId !== view.teamId || opened.team.version !== view.version) throw new Error('The Host returned a different task source.');
     setTask(opened); onAddress({ kind: 'team', teamId: opened.team.teamId, taskId: opened.taskId });
   });
-  const control = (action: 'pause' | 'continue' | 'cancel') => act(async signal => {
-    if (task?.execution === undefined || operations?.control === undefined || !task.allowedActions?.includes(action)) return;
-    const updated = await operations.control({ teamId: task.team.teamId, taskId: task.taskId, request: { requestId: `ui-${crypto.randomUUID()}`, action, expectedEpoch: task.execution.epoch, expectedRevision: task.execution.revision } }, signal);
-    if (signal.aborted) return;
-    validateTask(updated, task.taskId); setTask(updated);
-    setNotice(`Host accepted ${action} request. Resource closure: ${updated.execution?.resourceState ?? 'unknown'}.`);
-    setRefresh(value => value + 1);
-  });
   const member = draft.members.find(item => item.id === address.memberId);
   const disabled = busy || operations === undefined || address.taskId !== undefined || (address.teamId !== undefined && view === undefined);
   const beginNew = () => {
@@ -237,14 +247,14 @@ export function HimaTeamPanel({ address, operations, onAddress }: HimaTeamPanelP
       </fieldset>
     </> : <>
       <button type='button' className='hima-button' onClick={() => onAddress({ kind: 'team', teamId: address.teamId })}>Back to team definition</button>
-      <h3>Task {address.taskId}</h3>{task === undefined ? null : <><p>{task.goal}</p><p className='hima-small'>Frozen v{task.team.version} · deadline {task.deadlineAt} · Run {task.currentRunId}</p><p role='status'>{task.readiness.ready ? 'Host reports task execution ready.' : `Task is not ready: ${task.readiness.missing.join(', ')}`}</p><details><summary>Task input and closure</summary><pre className='hima-team-value'>{JSON.stringify(task.input, null, 2)}</pre><p>{task.closure}</p></details>{task.execution ? <section aria-label='Task execution'><p role='status'>Execution: {task.execution.state}</p><p data-hima-region='team-resource-state'>Resources: {task.execution.resourceState}. {task.execution.cancellationRequested ? 'Stop requested; resource closure is reported separately.' : ''}</p>{task.execution.reason ? <p>{task.execution.reason}</p> : null}<div className='hima-team-actions'>{(task.allowedActions ?? []).map(action => <button type='button' className='hima-button' data-hima-control={`team-${action}`} key={action} disabled={busy || operations?.control === undefined} onClick={() => void control(action)}>{action === 'pause' ? 'Pause task' : action === 'continue' ? 'Continue task' : 'Stop task'}</button>)}</div>{task.execution.tasks.map(item => <article key={item.effectId}><h4>{item.taskId}: {item.state}</h4>{item.reason ? <p>{item.reason}</p> : null}{item.result ? <><p>Retained result · {item.effectId}</p><pre className='hima-team-value'>{JSON.stringify(item.result.value,null,2)}</pre>{item.result.artifacts.map(artifact => <p key={artifact.name}>{artifact.name} · {artifact.sha256} <button type='button' className='hima-button' disabled={!operations?.readArtifact||busy} onClick={()=>void act(async signal=>{const result=await operations!.readArtifact!({teamId:task.team.teamId,taskId:task.taskId,effectId:item.effectId,name:artifact.name},signal);if(signal.aborted)return;const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(result.contentBase64),value=>value.charCodeAt(0))]));const link=document.createElement('a');link.href=url;link.download=artifact.path.split('/').at(-1)??artifact.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);})}>Download artifact</button></p>)}</> : null}</article>)}</section> : null}</>}
+      <h3>Task {address.taskId}</h3>{task === undefined ? null : <><p>{task.goal}</p><p className='hima-small'>Frozen v{task.team.version} · deadline {task.deadlineAt} · Run {task.currentRunId}</p><p role='status'>{task.readiness.ready ? 'Host reports task execution ready.' : `Task is not ready: ${task.readiness.missing.join(', ')}`}</p><details><summary>Task input and closure</summary><pre className='hima-team-value'>{JSON.stringify(task.input, null, 2)}</pre><p>{task.closure}</p></details>{task.execution ? <section aria-label='Task execution'><p role='status'>Execution: {task.execution.state}</p><p data-hima-region='team-resource-state'>Resources: {task.execution.resourceState}. {task.execution.cancellationRequested ? 'Stop requested; resource closure is reported separately.' : ''}</p>{task.execution.reason ? <p>{task.execution.reason}</p> : null}{task.execution.tasks.map(item => <article key={item.effectId}><h4>{item.taskId}: {item.state}</h4>{item.reason ? <p>{item.reason}</p> : null}{item.result ? <><p>Retained result · {item.effectId}</p><pre className='hima-team-value'>{JSON.stringify(item.result.value,null,2)}</pre>{item.result.artifacts.map(artifact => <p key={artifact.name}>{artifact.name} · {artifact.sha256} <button type='button' className='hima-button' disabled={!operations?.readArtifact||busy} onClick={()=>void act(async signal=>{const result=await operations!.readArtifact!({teamId:task.team.teamId,taskId:task.taskId,effectId:item.effectId,name:artifact.name},signal);if(signal.aborted)return;const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(result.contentBase64),value=>value.charCodeAt(0))]));const link=document.createElement('a');link.href=url;link.download=artifact.path.split('/').at(-1)??artifact.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);})}>Download artifact</button></p>)}</> : null}</article>)}</section> : null}</>}
       <nav aria-label='Team task members'>{draft.members.map(item => <button type='button' className='hima-button' key={item.id} onClick={() => onAddress({ ...address, memberId: item.id })}>{item.role}</button>)}</nav>
       {address.memberId === undefined || task===undefined ? null : member === undefined ? <p role='alert'>This member is absent from the displayed definition.</p> : <TeamMemberPanel taskRef={{projectId:task.projectId,teamId:task.team.teamId,taskId:task.taskId}} memberId={member.id} role={member.role} operations={operations?.memberWork}/>}
     </>}
     {task ? <>
       <TeamMaterialPanel task={{projectId:task.projectId,teamId:task.team.teamId,taskId:task.taskId}} operations={operations?.materials} materials={materials} draftStageIds={draftStageIds} onDraftChange={ids=>{setDraftStageIds(ids);setMaterials(previous=>previous.filter(item=>!draftStageIds.includes(item.stageId)||ids.includes(item.stageId)));}} onStaged={value=>setMaterials(previous=>[...previous.filter(item=>item.stageId!==value.stageId),value])}/>
       <WorkMemoryPanel sessionId={operations?.sessionId??''} draft={{subject:'',decisions:'',openQuestions:'',todo:''}} onDraft={()=>{}} teamTarget={{teamId:task.team.teamId,taskId:task.taskId,members:draft.members}} teamOperations={memoryOperations}/>
-      <TeamTaskPanel task={task} members={draft.members} operations={operations?.messages} drafts={messageDrafts.current} stagedAttachmentIds={draftStageIds} onSent={sent=>{const sentIds=new Set(sent.message.materialRefs.map(value=>value.materialId));setDraftStageIds(previous=>previous.filter(id=>!sentIds.has(id)));}} onMember={memberId=>onAddress({...address,memberId})}/>
+      <TeamTaskPanel task={task} members={draft.members} operations={operations?.messages} onTaskChanged={next=>{validateTask(next,task.taskId);setTask(current=>latestTaskView(current,next));}} drafts={messageDrafts.current} stagedAttachmentIds={draftStageIds} onSent={sent=>{const sentIds=new Set(sent.message.materialRefs.map(value=>value.materialId));setDraftStageIds(previous=>previous.filter(id=>!sentIds.has(id)));}} onMember={memberId=>onAddress({...address,memberId})}/>
     </> : null}
     <fieldset disabled><legend>Capabilities awaiting Host integration</legend><button type='button'>Apply definition to running tasks</button></fieldset>
     <p className='hima-small'>Task readiness reports the configured OAR runtime and model. Native reception, verified delivery and resource closure are separate retained facts.</p>

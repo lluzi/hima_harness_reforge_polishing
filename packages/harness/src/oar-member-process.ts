@@ -17,7 +17,7 @@ import { jsonDigest, type RunStore } from './run-store.js';
 import { taskToolOutput, type JsonValue } from './task-contract.js';
 import { TaskAdapterMaterializationError, type FlowAdapterContext } from './flow-workflow.js';
 import type { TeamServiceRuntime } from './team-service-runtime.js';
-import { OarLocalMemberRuntime, type LocalMemberLease, type LocalMemberAssets } from './oar-local-member.js';
+import { OarLocalMemberRuntime, type LocalMemberLease, type LocalMemberAssets, type LocalMemberContinuity, type LocalContextCapture, type LocalMemberClosure } from './oar-local-member.js';
 import { sendTaskEffectMessage, type EffectClosure } from './task-effects.js';
 import { retainNativeMaterial } from './native-task-adapters.js';
 import { teamMessageNativeInput, type TeamTransport } from './team-messages.js';
@@ -51,7 +51,7 @@ export async function listTeamModels(home:string,projectId:string):Promise<reado
 interface ObservedRow {schema:string;sessionKey:string;generation:number;memberId:string;nativeSession?:string;streamGeneration:string;kind:string;seq:number;time:string;payload:unknown}
 export interface OarMemberProcessOptions {home:string;retainedMaterialsDir:string;services:TeamServiceRuntime;store:RunStore;
   memberContext:(grant:ActorGrant,request:unknown)=>Promise<object>;privatePorts?:()=>readonly number[];
-  localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'stopAll'|'recover'>;
+  localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'captureClosedContext'|'stopAll'|'recover'> & Partial<Pick<OarLocalMemberRuntime,'admitAcceptedWait'>>;
   runtimeAssets?:(runtime:'pi'|'opencode')=>Promise<LocalMemberAssets>;
   sharedDeepSeekModel:(readCredential:boolean)=>Promise<SharedDeepSeekFallback>;modelEnvironment?:()=>SharedDeepSeekEnvironment}
 async function memberSkillFiles(member:TeamDefinition['members'][number]):Promise<readonly {path:string;bytes:Uint8Array}[]> {
@@ -102,8 +102,9 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
   // Capture the Host callback context when the service is registered. Member tool
   // requests are Host operations, not nested DBOS transactions inside an I/O Step.
   const memberCallbacks=new AsyncResource('hima-oar-member-callbacks',{requireManualDestroy:true});
-  const fact=(p:OarPrepared,key:string)=>store.externalEffectFact(p.identity,'oar:'+key);
-  const record=(p:OarPrepared,key:string,value:unknown)=>store.recordExternalEffectFact(p.identity,'oar:'+key,json(value));
+  const host=<T>(body:()=>Promise<T>):Promise<T>=>memberCallbacks.runInAsyncScope(body);
+  const fact=(p:OarPrepared,key:string)=>host(()=>store.externalEffectFact(p.identity,'oar:'+key));
+  const record=(p:OarPrepared,key:string,value:unknown)=>host(()=>store.recordExternalEffectFact(p.identity,'oar:'+key,json(value)));
   let ownedRuntime:OarMemberProcessOptions['localRuntime'];
   let ownedRuntimeCreation:Promise<NonNullable<OarMemberProcessOptions['localRuntime']>>|undefined;
   const assetsFor=options.runtimeAssets??resolveLocalOarAssets;
@@ -154,9 +155,68 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
   async function original(p:OarPrepared):Promise<LocalMemberLease> {
     const held=await lease(p);if(!held)throw new Error('Original local OAR member identity is unavailable; do not create another native session.');return held;
   }
-  async function observe(p:OarPrepared):Promise<OarObservation> {
+  // The retained successor plan is authoritative, including its exact prompt bytes.
+  async function executionBinding(p:OarPrepared) {
+    const binding=await store.readTeamExecutionBinding(p.identity),continuation=binding.continuation;
+    if(Date.parse(p.deadlineAt)>Date.parse(binding.deadlineAt))throw new Error('Prepared member exceeds its retained execution deadline.');
+    if(!continuation) {if(p.continuation)throw new Error('Unretained native continuation.');return binding;}
+    const context=continuation.context,kind=context.kind==='native-checkpoint'?'native-resume':'reconstruction';
+    const sha=context.kind==='native-checkpoint'?context.checkpoint.sha256:context.sha256;
+    const expected={continuationId:continuation.continuationId,predecessorEffectId:continuation.predecessorIdentity.effectId,contextSha256:sha,kind};
+    if(jsonDigest(p.identity)!==jsonDigest(continuation.invocation.identity)||jsonDigest(p.continuation??null)!==jsonDigest(expected)
+      ||p.inputId!==continuation.hostInputId||p.prompt!==continuation.hostPrompt
+      ||createHash('sha256').update(p.prompt).digest('hex')!==continuation.hostInputSha256)
+      throw new Error('Native successor differs from its immutable Host continuation plan.');
+    return binding;
+  }
+  async function privateLocalMemberContinuity(p:OarPrepared):Promise<LocalMemberContinuity|undefined> {
+    const {continuation}=await executionBinding(p);if(!continuation)return undefined;
+    const old=await store.effectFact(continuation.predecessorIdentity.effectId,'prepared') as unknown as OarPrepared|undefined;
+    if(!old||jsonDigest(old.identity)!==jsonDigest(continuation.predecessorIdentity)||old.memberId!==p.memberId||old.runtime!==p.runtime
+      ||old.sessionKey===p.sessionKey||old.identity.effectId===p.identity.effectId||old.identity.runId!==p.identity.runId
+      ||old.identity.taskId!==p.identity.taskId||Date.parse(p.deadlineAt)>Date.parse(old.deadlineAt))throw new Error('Native continuation predecessor plan is unavailable or mismatched.');
+    const stable=(identity:OarPrepared['identity'])=>{const {effectId,...rest}=identity;return rest;};
+    if(jsonDigest(stable(old.identity))!==jsonDigest(stable(p.identity)))throw new Error('Native continuation changed its frozen role/source/method contract.');
+    const held=await lease(old),native=await fact(old,'native-session') as {nativeSession?:string;runtime?:string;sessionKey?:string;generation?:number;workDirectory?:string;controlDirectory?:string}|undefined;
+    if(!held||!await fact(old,'closed')||!native?.nativeSession||native.runtime!==old.runtime||native.sessionKey!==old.sessionKey
+      ||native.generation!==old.generation||native.workDirectory!==held.workDirectory||native.controlDirectory!==held.controlDirectory)
+      throw new Error('Native predecessor origin or actual closure is unavailable; cannot invent reconstruction identity.');
+    const origin={identity:old.identity,sessionKey:old.sessionKey,generation:old.generation,memberId:old.memberId,runtime:old.runtime,nativeSession:native.nativeSession,cwd:held.workDirectory};
+    if(continuation.context.kind==='native-checkpoint') {
+      if(jsonDigest(continuation.context.checkpoint.origin)!==jsonDigest(origin))throw new Error('Native checkpoint origin differs from the physically closed predecessor.');
+      return {kind:'native-resume',checkpoint:continuation.context.checkpoint};
+    }
+    if(jsonDigest(continuation.context.context)!==continuation.context.sha256)throw new Error('Host reconstruction context digest differs.');
+    return {kind:'reconstruction',origin,contextSha256:continuation.context.sha256};
+  }
+  async function waiting(p:OarPrepared) {
+    const binding=await executionBinding(p);
+    const head=await store.readTeamEffectHead(binding.continuation?.rootIdentity??p.identity);
+    return head.state==='waiting'&&jsonDigest(head.wait.parentIdentity)===jsonDigest(p.identity)?head.wait:undefined;
+  }
+  async function publishReply(p:OarPrepared,held:LocalMemberLease,request:{id:string;body:string},reply:string,inputId:string|undefined) {
+    const body=JSON.parse(request.body) as {action?:string;request?:{requestId?:string}};
+    const answer=JSON.parse(reply) as {ok?:boolean;value?:{state?:string;waitId?:string}};
+    if(answer.ok===true&&answer.value?.state==='yield-accepted') {
+      const accepted=await waiting(p),originalLease=await lease(p);
+      const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string;runtime?:string;sessionKey?:string;generation?:number;controlDirectory?:string;workDirectory?:string}|undefined;
+      if(body.action!=='wait'||!accepted||accepted.requestId!==body.request?.requestId||accepted.waitId!==answer.value.waitId
+        ||jsonDigest(accepted.parentIdentity)!==jsonDigest(p.identity)||!originalLease||jsonDigest(originalLease)!==jsonDigest(held)
+        ||!native?.nativeSession||!native.streamGeneration||native.runtime!==p.runtime||native.sessionKey!==p.sessionKey||native.generation!==p.generation
+        ||native.controlDirectory!==held.controlDirectory||native.workDirectory!==held.workDirectory||!inputId)
+        throw new Error('Native wait reply requires the exact persisted parent wait and original lease.');
+      const runtime=await local(p);
+      if(!runtime.admitAcceptedWait)throw new Error('Native local runtime has no accepted-wait admission seam.');
+      await runtime.admitAcceptedWait(held,{requestId:accepted.requestId,inputId:inputId!,streamGeneration:native.streamGeneration,
+        origin:{identity:p.identity,sessionKey:p.sessionKey,generation:p.generation,memberId:p.memberId,runtime:p.runtime,nativeSession:native.nativeSession,cwd:held.workDirectory}});
+    }
+    await (await local(p)).reply(held,request.id,reply);
+  }
+  async function observeHost(p:OarPrepared):Promise<OarObservation> {
     const held=await lease(p);if(!held)return {state:'unknown',reason:'Original local member creation acknowledgement is unavailable; do not restart.'};
     try {
+      const pendingWait=await waiting(p);
+      const binding=await executionBinding(p);
       const captured=await (await local(p)).read(held);
       const state=captured.state?JSON.parse(captured.state) as {phase?:string;reason?:string;failureReason?:string;fatal?:boolean}:undefined;
       const rows=captured.journal.trim()?captured.journal.trim().split('\n').map(line=>JSON.parse(line) as ObservedRow):[];
@@ -165,13 +225,26 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
           ||!Number.isSafeInteger(row.seq)||row.seq<0||!row.streamGeneration)throw new Error('Native observation belongs to another member/session/generation.');
         await record(p,'observation:'+row.streamGeneration+':'+row.seq,row);
       }
+      if(state?.fatal||state?.phase==='failed')return {state:'failed',reason:state.failureReason??state.reason??'Original native runtime failed.',receipt:json(held)};
       const created=rows.find(row=>row.kind==='created');
       if(created) {
         const native=created.payload as {runtime?:string;nativeSession?:string};
         if(native.runtime!==p.runtime||!native.nativeSession||created.nativeSession!==native.nativeSession)throw new Error('Native creation receipt differs from the frozen runtime.');
+        if(binding.continuation) {
+          const grant=await store.readTeamGrant(grantId(p));
+          if(!grant||grant.runId!==p.identity.runId||grant.effectId!==p.identity.effectId||grant.memberId!==p.memberId||grant.actorId!==p.memberId||grant.generation!==p.generation)
+            throw new Error('Native successor creation differs from its current effect grant.');
+          const saved=binding.continuation.context;
+          if(saved.kind==='native-checkpoint'&&native.nativeSession!==saved.checkpoint.origin.nativeSession)
+            throw new Error('Native resume returned a different conversation identity.');
+          if(saved.kind==='reconstruction') {
+            const old=await store.externalEffectFact(binding.continuation.predecessorIdentity,'oar:native-session') as {nativeSession?:string}|undefined;
+            if(!old?.nativeSession||native.nativeSession===old.nativeSession)throw new Error('Native reconstruction must use a distinct known conversation identity.');
+          }
+        }
         const identity={runtime:p.runtime,nativeSession:native.nativeSession,streamGeneration:created.streamGeneration,controlDirectory:held.controlDirectory,workDirectory:held.workDirectory,sessionKey:p.sessionKey,generation:p.generation};
         await record(p,'native-session',identity);
-        if(!await fact(p,'prompt-granted')&&await permit(p,'submit')) {
+        if(!pendingWait&&!await fact(p,'prompt-granted')&&await permit(p,'submit')) {
           const run=await store.run(p.identity.runId),authorization={...identity,inputId:p.inputId};
           if(await store.claimEffectDispatch({runId:run.runId,effectId:p.identity.effectId,owner:run.owner,epoch:p.generation,revision:run.revision},()=>permit(p,'submit'),'oar-prompt',jsonDigest(authorization)))await record(p,'prompt-granted',authorization);
           else {
@@ -181,20 +254,32 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
           }
         }
         const authorization=await fact(p,'prompt-granted');
-        if(authorization&&!state?.fatal&&!['failed','closed'].includes(state?.phase??'')&&await permit(p,'submit'))await (await local(p)).authorize(held,authorization as unknown as {sessionKey:string;generation:number;nativeSession:string;inputId:string});
+        if(!pendingWait&&authorization&&!state?.fatal&&!['failed','closed'].includes(state?.phase??'')&&await permit(p,'submit'))await (await local(p)).authorize(held,authorization as unknown as {sessionKey:string;generation:number;nativeSession:string;inputId:string});
       }
+      const currentInput=rows.findLast(row=>row.kind==='control'&&(row.payload as {action?:string})?.action==='send_intent');
+      const currentInputId=(currentInput?.payload as {inputId?:string}|undefined)?.inputId;
       for(const request of captured.requests) {
         const prior=await fact(p,'tool-reply:'+request.id);
-        if(prior) {await (await local(p)).reply(held,request.id,boundedReply(prior));continue;}
+        if(prior) {await publishReply(p,held,request,boundedReply(prior),currentInputId);continue;}
         let answer:unknown;
         try {
           const grant=await store.readTeamGrant(grantId(p));if(!grant)throw new Error('Original member grant is unavailable.');
           answer={ok:true,value:await memberCallbacks.runInAsyncScope(()=>options.memberContext(grant,(({id,...body})=>body)(JSON.parse(request.body))))};
         }catch(error){answer={ok:false,error:error instanceof Error?error.message:String(error)};}
         const reply=boundedReply(answer);
-        await record(p,'tool-reply:'+request.id,JSON.parse(reply));await (await local(p)).reply(held,request.id,reply);
+        await record(p,'tool-reply:'+request.id,JSON.parse(reply));await publishReply(p,held,request,reply,currentInputId);
       }
       const received=rows.find(row=>row.kind==='received'&&(row.payload as {inputId?:string})?.inputId===p.inputId);
+      const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string}|undefined;
+      if(received&&binding.continuation) {
+        const grant=await store.readTeamGrant(grantId(p));
+        if(!grant||grant.effectId!==p.identity.effectId||grant.runId!==p.identity.runId||grant.memberId!==p.memberId||grant.generation!==p.generation
+          ||!native?.nativeSession||received.nativeSession!==native.nativeSession||received.streamGeneration!==native.streamGeneration)
+          throw new Error('Successor receive observation differs from its current grant/native identity.');
+        await store.recordTeamResultInputReceipt({continuationId:binding.continuation.continuationId,successorIdentity:p.identity,
+          hostInputId:p.inputId,hostInputSha256:binding.continuation.hostInputSha256,nativeReceipt:json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:p.inputId})});
+      }
+      if(pendingWait||await fact(p,'yield-intent')||await waiting(p))return {state:'running',reason:'Accepted native wait retains the old parent transcript; its result is pending successor continuation.'};
       if(captured.result) {
         const result=JSON.parse(captured.result) as {sessionKey:string;generation:number;memberId:string;nativeSession:string;streamGeneration:string;inputId:string;deliveryInputId?:string;output:unknown};
         const native=await fact(p,'native-session') as {nativeSession?:string}|undefined;
@@ -223,30 +308,42 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         }
         return {state:'ready',receipt:json({nativeSession:result.nativeSession,streamGeneration:result.streamGeneration,inputId:p.inputId,receivedAt:received.time}),output};
       }
-      if(state?.fatal||state?.phase==='failed')return {state:'failed',reason:state.failureReason??state.reason??'Original native runtime failed.',receipt:json(held)};
       return received?{state:'running',reason:'Original runtime received its input; retained native work is in progress.'}:{state:'unknown',reason:'No original runtime receive evidence yet; local OAR ACK is insufficient.'};
     }catch(error){return {state:'unknown',reason:error instanceof Error?error.message:String(error)};}
   }
+  const observe=(p:OarPrepared):Promise<OarObservation>=>host(()=>observeHost(p));
+  const physicalProof=(closed:LocalMemberClosure,held:LocalMemberLease):JsonValue|undefined=>closed.proof?json(closed.proof)
+    :closed.closed&&closed.reason==='Never started'&&!held.pid?json({neverStarted:true,sessionKey:held.sessionKey,generation:held.generation,
+      memberId:held.memberId,controlDirectory:held.controlDirectory,workDirectory:held.workDirectory}):undefined;
   const port:OarMemberPort={permit,
     async stage(p,beforeStage) {
       await beforeStage();
-      const source='source' in p.identity?p.identity.source:undefined;if(source?.kind!=='team')throw new Error('OAR member requires its exact independent Team source.');
-      if(!await store.readTeamGrant(grantId(p)))await memberCallbacks.runInAsyncScope(()=>store.issueTeamGrant({grantId:grantId(p),actorId:p.memberId,projectId:p.projectId,teamId:source.team.teamId,
-        taskId:source.taskId,memberId:p.memberId,runId:p.identity.runId,effectId:p.identity.effectId,generation:p.generation,
-        capabilities:['read-task','send-message','read-material','query-memory'],expiresAt:p.deadlineAt,revokedAt:null}));
-      const config=await model(p),bound=await fact(p,'model-binding'),digest=jsonDigest(config);
-      if(bound&&bound!==digest)throw new Error('Member model configuration changed after original preparation; restore it before recovery.');
-      await record(p,'model-binding',digest);
-      const assets=await assetsFor(p.runtime),runner=await readFile(new URL('./oar-member-runner.js',import.meta.url));
-      const controllerBinding={runnerSha256:createHash('sha256').update(runner).digest('hex'),assets};
-      const prior=await fact(p,'controller-binding');if(prior&&jsonDigest(prior)!==jsonDigest(controllerBinding))throw new Error('Original member runtime/controller changed; restore it before recovery.');
-      await record(p,'controller-binding',controllerBinding);
-      const snapshot=await store.run(p.identity.runId),definition=(snapshot.opening.data as unknown as {definition:TeamDefinition}).definition;
-      const member=definition.members.find(row=>row.id===p.memberId)!;
-      const skillFiles=await memberSkillFiles(member);await record(p,'skill-binding',skillFiles.map(file=>({path:file.path,sha256:createHash('sha256').update(file.bytes).digest('hex')})));
-      await record(p,'local-intent',{sessionKey:p.sessionKey,generation:p.generation,memberId:p.memberId});
-      const held=await (await local(p)).stage({prepared:p,model:config,outputSchemaVersion:definition.delivery.output.version,assets},skillFiles);
-      await record(p,'local-lease',held);
+      await host(async()=>{
+        const continuity=await privateLocalMemberContinuity(p);
+        const snapshot=await store.run(p.identity.runId),definition=(snapshot.opening.data as unknown as {definition:TeamDefinition}).definition;
+        const source='source' in p.identity?p.identity.source:undefined;if(source?.kind!=='team')throw new Error('OAR member requires its exact independent Team source.');
+        if(!await store.readTeamGrant(grantId(p)))await memberCallbacks.runInAsyncScope(()=>store.issueTeamGrant({grantId:grantId(p),actorId:p.memberId,projectId:p.projectId,teamId:source.team.teamId,
+          taskId:source.taskId,memberId:p.memberId,runId:p.identity.runId,effectId:p.identity.effectId,generation:p.generation,
+          capabilities:['read-task','send-message','read-material','query-memory',...(definition.leaderMemberId===p.memberId?['delegate' as const]:[])],expiresAt:p.deadlineAt,revokedAt:null}));
+        const config=await model(p),bound=await fact(p,'model-binding'),digest=jsonDigest(config);
+        if(bound&&bound!==digest)throw new Error('Member model configuration changed after original preparation; restore it before recovery.');
+        await record(p,'model-binding',digest);
+        const assets=await assetsFor(p.runtime),runner=await readFile(new URL('./oar-member-runner.js',import.meta.url));
+        const controllerBinding={runnerSha256:createHash('sha256').update(runner).digest('hex'),assets};
+        const prior=await fact(p,'controller-binding');if(prior&&jsonDigest(prior)!==jsonDigest(controllerBinding))throw new Error('Original member runtime/controller changed; restore it before recovery.');
+        await record(p,'controller-binding',controllerBinding);
+        const member=definition.members.find(row=>row.id===p.memberId)!;
+        const skillFiles=await memberSkillFiles(member);await record(p,'skill-binding',skillFiles.map(file=>({path:file.path,sha256:createHash('sha256').update(file.bytes).digest('hex')})));
+        await record(p,'local-intent',{sessionKey:p.sessionKey,generation:p.generation,memberId:p.memberId});
+        const invocation=(await store.flowInvocations(p.identity.runId)).find(row=>row.identity.effectId===p.identity.effectId);
+        if(!invocation||jsonDigest(invocation.identity)!==jsonDigest(p.identity))throw new Error('Exact persisted native invocation is unavailable.');
+        const context=invocation.context as unknown as {flow:FlowAdapterContext['flow'];taskId:string};
+        const task=context.flow.tasks[context.taskId];if(!task||task.memberId!==p.memberId)throw new Error('Persisted native role contract differs.');
+        const workDirectory=continuity?(continuity.kind==='native-resume'?continuity.checkpoint.origin.cwd:continuity.origin.cwd):undefined;
+        const held=await (await local(p)).stage({prepared:p,model:config,outputSchemaVersion:task.contract.output.version,assets,
+          ...(continuity?{continuity,workDirectory}: {})},skillFiles);
+        await record(p,'local-lease',held);
+      });
     },
     async submit(p,beforeSubmit) {
       const held=await original(p);await beforeSubmit();await (await local(p)).start(held);
@@ -261,10 +358,14 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         if(await fact(p,'local-intent')||await fact(p,'namespace-intent')||await store.effectDispatchExists(p.identity,'submit'))return {closed:false,reason:'Original member creation intent is unresolved; reconcile its retained resource identity.'};
         return {closed:true,proof:{neverSubmitted:true,sessionKey:p.sessionKey}};
       }
-      // Retain available native transcript before closing its original process; failure is explicit.
-      await observe(p);held=await lease(p)??held;
+      // An already authorized stop cannot wait for transcript durability before
+      // latching the original local cleanup fence. Parent hold is not an own stop.
       const run=await store.run(p.identity.runId);
-      if(!run.cancelled&&!run.hold&&!await store.hostExit()&&Date.now()<Date.parse(p.deadlineAt)) {
+      const forcedCleanup=run.cancelled||run.hold||await store.hostExit()||await store.teamEffectOperatorRevoked(p.identity)
+        ||Date.now()>=Date.parse(p.deadlineAt);
+      if(!forcedCleanup) {
+        // Ordinary completion must still retain evidence and refuse active input.
+        await observe(p);held=await lease(p)??held;
         const intents=Object.values(await store.listExternalEffectFacts(p.identity,'oar:input-intent:')) as unknown as {id:string}[];
         let captured:Awaited<ReturnType<OarLocalMemberRuntime['read']>>|undefined;
         try {captured=await (await local(p)).read(held);}catch {if(intents.length)return {closed:false,reason:'Directed native work is unobservable; explicit stop or original closure reconciliation is required.'};}
@@ -277,11 +378,44 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       if(beforeCleanup&&!await beforeCleanup('oar-member-close',json(held))) {
         const proof=await fact(p,'closed');if(proof)return {closed:true,proof};
         const observed=await (await local(p)).close(held);if(!observed.closed)return {closed:false,reason:observed.reason??'Original local process cleanup acknowledgement is unavailable.'};
-        const recovered=json(observed.proof);await record(p,'closed',recovered);await store.revokeTeamGrant(grantId(p));return {closed:true,proof:recovered};
+        const recovered=physicalProof(observed,held);if(!recovered)return {closed:false,reason:'Original local cleanup returned no physical closure proof.'};await record(p,'closed',recovered);await host(()=>store.revokeTeamGrant(grantId(p),'closed'));return {closed:true,proof:recovered};
       }
       const closed=await (await local(p)).close(held);if(!closed.closed)return {closed:false,reason:closed.reason??'Original member closure is unproved.'};
-      await store.revokeTeamGrant(grantId(p));const proof=json(closed.proof??{sessionKey:p.sessionKey,controlDirectory:held.controlDirectory,workDirectory:held.workDirectory,closed:true});
+      const proof=physicalProof(closed,held);if(!proof)return {closed:false,reason:'Original local cleanup returned no physical closure proof.'};
+      await host(()=>store.revokeTeamGrant(grantId(p),'closed'));
       await record(p,'closed',proof);return {closed:true,proof};
+    },
+    async handoff(p,request,beforeCleanup):Promise<{closure:EffectClosure;capture:LocalContextCapture}> {
+      const accepted=await host(async()=>{const wait=await waiting(p);
+        if(!wait||wait.waitId!==request.waitId)throw new Error('Native handoff requires the exact persisted accepted parent wait.');
+        return wait;
+      });
+      const held=await host(()=>original(p));
+      await record(p,'yield-intent',{waitId:accepted.waitId,requestId:accepted.requestId,parentIdentity:p.identity,lease:held,
+        native:await fact(p,'native-session')??null});
+      // This callback is the existing atomic cleanup admission; no datasource lock is nested inside it.
+      await beforeCleanup('oar-member-yield:'+accepted.waitId,json({waitId:accepted.waitId,requestId:accepted.requestId,lease:held}));
+      return host<{closure:EffectClosure;capture:LocalContextCapture}>(async()=>{
+        const current=await waiting(p);if(!current||current.waitId!==accepted.waitId||current.requestId!==accepted.requestId)
+          throw new Error('Accepted native wait changed before original process cleanup.');
+        // A replayed cleanup claim still reconciles the same original lease; it never starts another process.
+        let proof=await fact(p,'closed');
+        if(!proof) {
+          const closed=await (await local(p)).close(held,{yieldRequestId:accepted.requestId});
+          if(!closed.closed||!closed.proof)return {closure:{closed:false,reason:closed.reason??'Native yield physical closure is unproved.'},capture:{state:'unavailable',reason:'Original physical closure is unconfirmed.'}};
+          proof=json(closed.proof);await record(p,'closed',proof);
+        }
+        const retained=await (await local(p)).read(held);
+        const localState=retained.state?JSON.parse(retained.state) as {fatal?:boolean;phase?:string;failureReason?:string}:undefined;
+        if(localState?.fatal||localState?.phase==='failed')
+          throw new Error('Failed native parent cannot continue after yield: '+(localState.failureReason??'retained native failure'));
+        await store.revokeTeamGrant(grantId(p),'yield');
+        let capture:LocalContextCapture;
+        try {capture=await (await local(p)).captureClosedContext(held,accepted.requestId,{maxFiles:256,maxBytes:32*1024*1024,maxFileBytes:16*1024*1024});}
+        catch(error) {capture={state:'unavailable',reason:error instanceof Error?error.message:String(error)};}
+        await record(p,'yield-capture',capture);
+        return {closure:{closed:true,proof},capture};
+      });
     },
     async send(p,id,input,beforeSubmit) {
       await beforeSubmit();await record(p,'input-intent:'+id,{id,inputSha256:jsonDigest(input)});await (await local(p)).sendInput(await original(p),id,typeof input==='string'?input:JSON.stringify(input));
@@ -289,11 +423,19 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
     },
     async observeMessage(p,id,_input) {
       await observe(p);
-      const rows=await store.listExternalEffectFacts(p.identity,'oar:observation:');
-      const received=Object.values(rows).map(row=>row as unknown as ObservedRow).find(row=>row.kind==='received'&&(row.payload as {inputId?:string})?.inputId===id);
+      const rows=await host(()=>store.listExternalEffectFacts(p.identity,'oar:observation:'));
+      const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string}|undefined;
+      const received=Object.values(rows).map(row=>row as unknown as ObservedRow).find(row=>row.kind==='received'&&row.nativeSession===native?.nativeSession&&row.streamGeneration===native?.streamGeneration&&(row.payload as {inputId?:string})?.inputId===id);
       return received?json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:id}):undefined;
     },
   };
+  function continuationOptions(continuation:Awaited<ReturnType<RunStore['readTeamExecutionBinding']>>['continuation']) {
+    if(!continuation)return {};
+    return {continuation:{continuationId:continuation.continuationId,predecessorEffectId:continuation.predecessorIdentity.effectId,
+      contextSha256:continuation.context.kind==='native-checkpoint'?continuation.context.checkpoint.sha256:continuation.context.sha256,
+      kind:continuation.context.kind==='native-checkpoint'?'native-resume' as const:'reconstruction' as const,
+      hostInputId:continuation.hostInputId,hostPrompt:continuation.hostPrompt}};
+  }
   async function deliveryBinding(effectId:string,runId:string) {
     const run=await store.run(runId),invocation=(await store.flowInvocations(runId)).find(row=>row.identity.effectId===effectId);
     if(!invocation)throw new Error('Original member invocation is unavailable.');
@@ -301,7 +443,8 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
     const definition=(run.opening.data as unknown as {definition:TeamDefinition}).definition,task=context.flow.tasks[context.taskId]!;
     const member=definition.members.find(row=>row.id===task.memberId);if(!member)throw new Error('Original member definition is unavailable.');
     const request={identity:invocation.identity,admission:{runId,effectId,owner:run.owner,epoch:run.epoch,revision:run.revision},input:context.input,contract:task.contract};
-    const adapter=oarTaskAdapter({member,deadlineAt:run.deadlineAt,port,resources:{siteId:'oar:'+context.flow.method!.sha256,jobs:1,licences:{}},capacity:{jobs:1,licences:{}}});
+    const binding=await host(()=>store.readTeamExecutionBinding(invocation.identity));
+    const adapter=oarTaskAdapter({member,deadlineAt:binding.deadlineAt,...continuationOptions(binding.continuation),...(binding.initialHostPrompt?{initialHostPrompt:binding.initialHostPrompt}:{}),port,resources:{siteId:'oar:'+context.flow.method!.sha256,jobs:1,licences:{}},capacity:{jobs:1,licences:{}}});
     return {run,request,adapter};
   }
   const transport:TeamTransport={
@@ -358,7 +501,8 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       catch(error) {throw new TaskAdapterMaterializationError({code:'team-executor-unavailable',message:error instanceof Error?error.message:'Member model configuration is unavailable.',source:'oar-member'});}
       try {await memberSkillFiles(member);}catch {throw new TaskAdapterMaterializationError({code:'team-member-reference-unavailable',message:'Select installed, bounded native Skills before execution.',source:'oar-member'});}
       if(member.toolRefs.some(ref=>ref!=='hima-member-context')||member.knowledgeRefs.length)throw new TaskAdapterMaterializationError({code:'team-member-reference-unavailable',message:'Resolve this member\'s declared tools/knowledge before execution.',source:'oar-member'});
-      return oarTaskAdapter({member,deadlineAt:run.deadlineAt,port,resources:{siteId:'oar:'+context.flow.method!.sha256,jobs:1,licences:{}},capacity:{jobs:1,licences:{}}});
+      const binding=await host(()=>store.readTeamExecutionBinding(context.request.identity));
+      return oarTaskAdapter({member,deadlineAt:binding.deadlineAt,...continuationOptions(binding.continuation),...(binding.initialHostPrompt?{initialHostPrompt:binding.initialHostPrompt}:{}),port,resources:{siteId:'oar:'+context.flow.method!.sha256,jobs:1,licences:{}},capacity:{jobs:1,licences:{}}});
     },
   };
 }

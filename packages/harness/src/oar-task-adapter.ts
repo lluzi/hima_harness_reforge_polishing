@@ -11,6 +11,8 @@ export const oarPrepared = z.strictObject({
   projectId: z.string().min(1), memberId: z.string().min(1), runtime: z.enum(['pi', 'opencode']),
   modelRef: z.string().min(1), generation: z.number().int().nonnegative(),
   sessionKey: z.string().min(1), inputId: z.string().min(1), deadlineAt: z.iso.datetime(), prompt: z.string().min(1),
+  continuation: z.strictObject({continuationId:z.string().min(1),predecessorEffectId:z.string().min(1),
+    contextSha256:z.string().regex(/^[a-f0-9]{64}$/),kind:z.enum(['native-resume','reconstruction'])}).optional(),
 });
 export type OarPrepared = Readonly<z.infer<typeof oarPrepared>>;
 export type OarObservation = { readonly state: 'unknown' | 'running'; readonly reason: string }
@@ -29,11 +31,17 @@ export interface OarMemberPort {
   /** Return only confirmed native reception; throw on queue-only or unknown ACK. */
   send(prepared: OarPrepared, id: string, input: JsonValue, beforeSubmit: () => Promise<void>): Promise<JsonValue>;
   observeMessage(prepared: OarPrepared, id: string, input: JsonValue): Promise<JsonValue | undefined>;
+  handoff?(prepared:OarPrepared,request:{readonly waitId:string},beforeCleanup:(id:string,input:JsonValue)=>Promise<boolean>):
+    Promise<{readonly closure:EffectClosure;readonly capture:import('./oar-local-member.js').LocalContextCapture}>;
 }
 export interface OarTaskAdapterOptions {
   readonly member: TeamDefinition['members'][number]; readonly deadlineAt: string; readonly port: OarMemberPort;
   readonly projectId?: string;
+  /** Private frozen post-exit reconstruction, appended to the ordinary new task prompt. */
+  readonly initialHostPrompt?:string;
   readonly resources: TaskEffectAdapter['resources']; readonly capacity: TaskEffectAdapter['capacity'];
+  /** Host-retained successor plan only; never supplied by a native/model payload. */
+  readonly continuation?:NonNullable<OarPrepared['continuation']> & {readonly hostInputId:string;readonly hostPrompt:string};
 }
 const completion = z.strictObject({ schema: z.literal('hima-oar-completion/1'),
   identity: taskIdentity, generation: z.number().int().nonnegative(), sessionKey: z.string(), inputId: z.string(),
@@ -63,8 +71,9 @@ export function oarTaskAdapter(options: OarTaskAdapterOptions): TaskEffectAdapte
     const artifactIdentity={runId:request.identity.runId,taskId:request.identity.taskId,effectId:request.identity.effectId};
     return freeze(oarPrepared.parse({ schema: 'hima-oar-task/1', identity: request.identity, projectId,
       memberId: member.id, runtime: member.runtime, modelRef: member.modelRef, generation: request.admission.epoch,
-      sessionKey: `hima-oar-${digest}`, inputId: `hima-input-${digest}`, deadlineAt: options.deadlineAt,
-      prompt: `${member.instructions}\nNative Skills selected: ${member.skills.join(", ")}\n\nTask identity (JSON):\n${JSON.stringify(request.identity)}\n\nTask input (JSON):\n${JSON.stringify(request.input)}\n\nDelivery contract (JSON):\n${JSON.stringify(request.contract.output)}\n\nTaskToolOutput envelope schema (JSON):\n${deliveryEnvelopeSchema}\n\nArtifact identity: copy these three fields exactly into every artifact (JSON):\n${JSON.stringify(artifactIdentity)}\nReturn only the TaskToolOutput JSON envelope. Set schemaVersion to ${JSON.stringify(request.contract.output.version)}; value must satisfy the delivery contract schema. The artifact taskId is the execution node identity above; readTask.actor.taskId and readTask.task.taskId identify the containing team task. Artifacts also require a relative work-directory path and the SHA256 of the actual bytes. Empty artifacts and diagnostics are []. Use these supplied schemas for delivery. Preserve your native context, Skills, tools, compression and subagents within the authorized task scope.`,
+      sessionKey: `hima-oar-${digest}`, inputId: options.continuation?.hostInputId??`hima-input-${digest}`, deadlineAt: options.deadlineAt,
+      ...(options.continuation?{continuation:{continuationId:options.continuation.continuationId,predecessorEffectId:options.continuation.predecessorEffectId,contextSha256:options.continuation.contextSha256,kind:options.continuation.kind}}:{}),
+      prompt: options.continuation?.hostPrompt??`${member.instructions}\nNative Skills selected: ${member.skills.join(", ")}\n\nTask identity (JSON):\n${JSON.stringify(request.identity)}\n\nTask input (JSON):\n${JSON.stringify(request.input)}\n\nDelivery contract (JSON):\n${JSON.stringify(request.contract.output)}\n\nTaskToolOutput envelope schema (JSON):\n${deliveryEnvelopeSchema}\n\nArtifact identity: copy these three fields exactly into every artifact (JSON):\n${JSON.stringify(artifactIdentity)}\nReturn only the TaskToolOutput JSON envelope. Set schemaVersion to ${JSON.stringify(request.contract.output.version)}; value must satisfy the delivery contract schema. The artifact taskId is the execution node identity above; readTask.actor.taskId and readTask.task.taskId identify the containing team task. Artifacts also require a relative work-directory path and the SHA256 of the actual bytes. Empty artifacts and diagnostics are []. Use these supplied schemas for delivery. Preserve your native context, Skills, tools, compression and subagents within the authorized task scope.${options.initialHostPrompt?`\n\n${options.initialHostPrompt}`:''}`,
     }));
   };
   const held = (prepared: JsonValue): OarPrepared => {
@@ -74,6 +83,7 @@ export function oarTaskAdapter(options: OarTaskAdapterOptions): TaskEffectAdapte
       || ('source' in parsed.identity && parsed.projectId !== parsed.identity.source.projectId)) throw new Error('Retained OAR session/input differs from its frozen effect identity');
     if (parsed.memberId !== member.id || parsed.runtime !== member.runtime || parsed.modelRef !== member.modelRef
       || parsed.deadlineAt !== options.deadlineAt || (options.projectId !== undefined && parsed.projectId !== options.projectId)) throw new Error('Retained OAR plan differs from the frozen member binding');
+    if(options.initialHostPrompt&&!parsed.prompt.endsWith(`\n\n${options.initialHostPrompt}`))throw new Error('Retained OAR prompt differs from the frozen post-exit reconstruction');
     return freeze(parsed);
   };
   const nativeReceipt = (prepared: OarPrepared, receipt: JsonValue | undefined): JsonValue | undefined => {
@@ -90,6 +100,7 @@ export function oarTaskAdapter(options: OarTaskAdapterOptions): TaskEffectAdapte
     async prepare(request) { return json(plan(request)); },
     async permit(prepared, operation) { return options.port.permit(held(prepared), operation); },
     async stage(prepared, beforeStage) { await options.port.stage(held(prepared), beforeStage); },
+    ...(options.port.handoff?{handoff:(prepared:JsonValue,request:{readonly waitId:string},beforeCleanup:(id:string,input:JsonValue)=>Promise<boolean>)=>options.port.handoff!(held(prepared),request,beforeCleanup)}:{}),
     async submit(prepared, beforeSubmit) { return options.port.submit(held(prepared), beforeSubmit); },
     async reconcile(prepared, receipt) {
       const fixed = held(prepared), observed = await options.port.observe(fixed, nativeReceipt(fixed, receipt));

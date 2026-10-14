@@ -1,11 +1,29 @@
 // Trusted local IO ownership only. DBOS/Host own admission and business progression.
 import * as fs from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
+import { TextDecoder, isDeepStrictEqual } from 'node:util';
 import * as path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, execFileSync, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { OarPrepared } from './oar-task-adapter.js';
-import { taskToolOutput } from './task-contract.js';
+import { type TaskIdentity, taskToolOutput } from './task-contract.js';
+export interface LocalContextLimits { readonly maxFiles: number; readonly maxBytes: number; readonly maxFileBytes: number; }
+export interface LocalContextOrigin {
+    readonly identity: TaskIdentity; readonly sessionKey: string; readonly generation: number;
+    readonly memberId: string; readonly runtime: 'pi' | 'opencode'; readonly nativeSession: string; readonly cwd: string;
+}
+export interface LocalContextFile { readonly path: string; readonly bytes: number; readonly sha256: string; }
+export interface LocalNativeCheckpoint {
+    readonly schema: 'hima-oar-native-checkpoint/1'; readonly checkpointId: string; readonly requestId: string;
+    readonly origin: LocalContextOrigin; readonly capturedAt: string; readonly boundary: 'after-physical-close';
+    readonly format: 'pi-session-jsonl' | 'opencode-opaque-data'; readonly files: readonly LocalContextFile[];
+    readonly excluded: readonly string[]; readonly sha256: string;
+}
+export type LocalContextCapture = { readonly state: 'captured'; readonly checkpoint: LocalNativeCheckpoint }
+    | { readonly state: 'unavailable'; readonly reason: string };
+export type LocalMemberContinuity = { readonly kind: 'native-resume'; readonly checkpoint: LocalNativeCheckpoint }
+    | { readonly kind: 'reconstruction'; readonly origin: LocalContextOrigin; readonly contextSha256: string };
 export interface LocalMemberLease {
     sessionKey: string;
     generation: number;
@@ -24,6 +42,7 @@ export interface LocalMemberAssets {
 }
 export interface LocalMemberConfiguration {
     prepared: OarPrepared;
+    readonly continuity?: LocalMemberContinuity;
     model: {
         provider: string;
         model: string;
@@ -53,11 +72,21 @@ type Row = {
     birth: string;
     rss: number;
 };
+type JournalEntry = { bytes: Buffer; row: any; resolve: () => void; reject: (error: Error) => void };
+type JournalState = {
+    queue: JournalEntry[]; pendingBytes: number; pendingRows: number; ackedSeq: number;
+    ackedBytes: number; chunks: string[]; cached: string; cachedSeq: number; evidence: any[];
+    lastAccepted?: Promise<void>; fd?: FileHandle; draining?: Promise<void>; error?: Error; closed?: boolean;
+};
+const journalQueueBytes = 8 * 1024 * 1024, journalQueueRows = 4096, journalBatchBytes = 256 * 1024;
+const cooperate = () => new Promise<void>(resolve => setImmediate(resolve));
 type Held = {
     lease: LocalMemberLease;
     config: LocalMemberConfiguration;
     child?: ChildProcess;
+    processClosed?: Promise<void>;
     seq: number;
+    journalState?: JournalState;
     streamGeneration: string;
     nativeSession?: string;
     authorized?: boolean;
@@ -67,10 +96,18 @@ type Held = {
         initial: boolean;
         received: boolean;
         terminal?: any;
+        finishing?: boolean;
     };
     stopping?: Promise<LocalMemberClosure>;
+    stopRequested?: boolean;
+    yieldRequestId?: string;
+    yieldInputId?: string;
+    yieldAdmission?: Promise<void>;
     owned?: Row[];
     monitor?: ReturnType<typeof setInterval>;
+    monitorEpoch?: number;
+    monitorInFlight?: object;
+    snapshotRevision?: number;
 };
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const object = (v: any): v is Record<string, any> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -108,11 +145,229 @@ catch (e) {
     throw e;
 } }
 function load(p: string): any { return JSON.parse(fs.readFileSync(p, 'utf8')); }
-function table(): Row[] { return execFileSync('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }).split('\n').flatMap(line => { const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/); return m ? [{ pid: Number(m[1]), group: Number(m[2]), parent: Number(m[3]), rss: Number(m[4]), birth: m[5]! }] : []; }); }
+function parseTable(text: string): Row[] { return text.split('\n').flatMap(line => { const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/); return m ? [{ pid: Number(m[1]), group: Number(m[2]), parent: Number(m[3]), rss: Number(m[4]), birth: m[5]! }] : []; }); }
+function table(): Row[] { return parseTable(execFileSync('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })); }
+function monitorTable(): Promise<string> { return new Promise((resolve, reject) => {
+    execFile('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+        (error, stdout) => { if (error) reject(error); else resolve(stdout); });
+}); }
 function redact(v: any, key: string): any { if (typeof v === 'string')
     return (key ? v.split(key).join('[redacted]') : v).replace(/\bBearer\s+[^\s"']+/gi, 'Bearer [redacted]'); if (Array.isArray(v))
     return v.map(x => redact(x, key)); if (object(v))
     return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, /^(api[-_]?key|x-api-key|key|authorization|password|secret|client[-_]?secret|token|credential[s]?|access[-_]?token|refresh[-_]?token|private[-_]?key)$/i.test(k) ? '[redacted]' : redact(x, key)])); return v; }
+// Bounded private file IO, independent of Host admission. Only captureClosedContext
+// supplies an origin after actual physical closure; these helpers grant no lease authority.
+const contextHash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+function canonicalContext(value: any): string {
+    if (Array.isArray(value)) return '[' + value.map(canonicalContext).join(',') + ']';
+    if (object(value)) return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalContext(value[k])).join(',') + '}';
+    return JSON.stringify(value);
+}
+function immutableContext<T>(value: T): T {
+    if (value && typeof value === 'object') { Object.values(value).forEach(immutableContext); Object.freeze(value); }
+    return value;
+}
+function relativeContextPath(value: string): string {
+    if (!value || path.isAbsolute(value) || value.includes('\\') || value.includes(':')
+        || value.split('/').some(p => !p || p === '.' || p === '..')) throw Error('Invalid native context path');
+    return value;
+}
+function regularContextPath(root: string, relative = ''): string {
+    const absolute = path.resolve(root), pieces = absolute.split(path.sep).filter(Boolean);
+    let current = path.parse(absolute).root;
+    for (const piece of pieces.concat(relative ? relativeContextPath(relative).split('/') : [])) {
+        current = path.join(current, piece);
+        const stat = fs.lstatSync(current);
+        if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()) || (stat.isFile() && stat.nlink !== 1))
+            throw Error('Native context links/special files rejected');
+    }
+    return current;
+}
+function contextLimits(limits: LocalContextLimits): void {
+    if (![limits.maxFiles, limits.maxBytes, limits.maxFileBytes].every(n => Number.isSafeInteger(n) && n > 0)
+        || limits.maxFiles > 4096 || limits.maxBytes > 64 * 1024 * 1024 || limits.maxFileBytes > limits.maxBytes)
+        throw Error('Invalid native context limits');
+}
+const maximumContextLimits: LocalContextLimits = { maxFiles: 4096, maxBytes: 64 * 1024 * 1024, maxFileBytes: 64 * 1024 * 1024 };
+const credentialSidefile = /^(?:auth|credentials?|secrets?|tokens?|config|settings|models|api[-_]?keys?|keyring)(?:\.(?:jsonc?|ya?ml|toml|ini))?$|^opencode\.(?:jsonc?|ya?ml|toml|ini)$|^\.(?:config|aws|npmrc|netrc)$|^\.env(?:\..*)?$|^(?:profiles?|credential-profiles?)\.(?:jsonc?|ya?ml|toml|ini)$/i;
+function stableContextBytes(root: string, relative: string, limits: LocalContextLimits): Buffer {
+    const filename = regularContextPath(root, relative), before = fs.lstatSync(filename);
+    if (!before.isFile() || before.size > limits.maxFileBytes) throw Error('Native context file bound exceeded');
+    const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try {
+        const opened = fs.fstatSync(fd);
+        if (opened.ino !== before.ino || opened.dev !== before.dev || opened.nlink !== 1) throw Error('Native context file changed');
+        const bytes = Buffer.alloc(before.size);
+        let offset = 0;
+        while (offset < bytes.length) { const count = fs.readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count; }
+        const after = fs.fstatSync(fd), named = fs.lstatSync(filename);
+        if (offset !== bytes.length) throw Error('Native context file short read');
+        if (bytes.length !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs
+            || after.ctimeMs !== before.ctimeMs || named.ino !== before.ino || named.dev !== before.dev
+            || named.isSymbolicLink()) throw Error('Native context file changed during read');
+        return bytes;
+    } finally { fs.closeSync(fd); }
+}
+function piContextDirectory(cwd: string): string {
+    return 'pi/sessions/--' + path.resolve(cwd).replace(/^[/\\]/u, '').replace(/[/\\:]/gu, '-') + '--';
+}
+function piContextMatches(bytes: Buffer, origin: LocalContextOrigin): boolean {
+    const text = bytes.toString('utf8');
+    if (!text.endsWith('\n') || Buffer.from(text, 'utf8').compare(bytes) !== 0) throw Error('Truncated native Pi session');
+    const rows = text.trimEnd().split('\n').map(line => JSON.parse(line));
+    const header = rows[0];
+    if (!object(header) || header.type !== 'session') throw Error('Invalid native Pi session header');
+    if (header.id !== origin.nativeSession || header.cwd !== origin.cwd) return false;
+    if (!rows.slice(1).some(row => object(row) && row.type === 'message' && object(row.message)))
+        throw Error('Native Pi session has no conversation');
+    return true;
+}
+function checkpointId(origin: LocalContextOrigin, requestId: string): string {
+    if (!requestId || Buffer.byteLength(requestId) > 200) throw Error('Invalid context request identity');
+    return contextHash(canonicalContext({ origin, requestId }));
+}
+function checkpointBody(checkpoint: LocalNativeCheckpoint): Omit<LocalNativeCheckpoint, 'sha256'> {
+    const { sha256, ...body } = checkpoint; return body;
+}
+export function verifyLocalNativeCheckpoint(controlDirectory: string, checkpoint: LocalNativeCheckpoint,
+    limits: LocalContextLimits = maximumContextLimits): LocalNativeCheckpoint {
+    contextLimits(limits);
+    if (checkpoint.schema !== 'hima-oar-native-checkpoint/1' || checkpoint.boundary !== 'after-physical-close'
+        || checkpoint.checkpointId !== checkpointId(checkpoint.origin, checkpoint.requestId)
+        || checkpoint.sha256 !== contextHash(canonicalContext(checkpointBody(checkpoint)))
+        || !Number.isFinite(Date.parse(checkpoint.capturedAt))
+        || checkpoint.format !== (checkpoint.origin.runtime === 'pi' ? 'pi-session-jsonl' : 'opencode-opaque-data'))
+        throw Error('Native checkpoint manifest identity/digest mismatch');
+    const directory = regularContextPath(controlDirectory, 'checkpoints/' + checkpoint.checkpointId);
+    const manifest = stableContextBytes(directory, 'manifest.json', { ...maximumContextLimits, maxFileBytes: 1024 * 1024 });
+    if (canonicalContext(JSON.parse(manifest.toString('utf8'))) !== canonicalContext(checkpoint))
+        throw Error('Native checkpoint differs from retained manifest');
+    if (!checkpoint.files.length || checkpoint.files.length > limits.maxFiles) throw Error('Native checkpoint file bound exceeded');
+    let total = 0;
+    const names = new Set<string>();
+    for (const file of checkpoint.files) {
+        relativeContextPath(file.path);
+        const key = file.path.toLowerCase();
+        if (names.has(key) || file.path === 'manifest.json' || !Number.isSafeInteger(file.bytes) || file.bytes < 0)
+            throw Error('Native checkpoint path collision');
+        names.add(key);
+        const bytes = stableContextBytes(directory, file.path, limits);
+        total += bytes.length;
+        if (total > limits.maxBytes || bytes.length !== file.bytes || contextHash(bytes) !== file.sha256)
+            throw Error('Native checkpoint file size/digest mismatch');
+        if (checkpoint.origin.runtime === 'pi' && (!file.path.startsWith(piContextDirectory(checkpoint.origin.cwd) + '/')
+            || !piContextMatches(bytes, checkpoint.origin))) throw Error('Native Pi checkpoint identity mismatch');
+        if (checkpoint.origin.runtime === 'opencode' && (!file.path.startsWith('data/')
+            || credentialSidefile.test(path.posix.basename(file.path)))) throw Error('Native credential/config sidefile rejected');
+    }
+    if (checkpoint.origin.runtime === 'pi' && checkpoint.files.length !== 1) throw Error('Ambiguous native Pi checkpoint');
+    for (const excluded of checkpoint.excluded) relativeContextPath(excluded);
+    // Reject unmanifested files and links, including files introduced after capture.
+    let verifiedEntries = 0;
+    const visit = (relative: string) => {
+        if (relative.split('/').length > 32 || ++verifiedEntries > limits.maxFiles * 8 + 64) throw Error('Native checkpoint inventory bound exceeded');
+        const entries = fs.readdirSync(regularContextPath(directory, relative));
+        if (entries.length + verifiedEntries > limits.maxFiles * 8 + 64) throw Error('Native checkpoint inventory bound exceeded');
+        for (const name of entries) {
+            if (++verifiedEntries > limits.maxFiles * 8 + 64) throw Error('Native checkpoint inventory bound exceeded');
+            const rel = relative ? relative + '/' + name : name;
+            const stat = fs.lstatSync(regularContextPath(directory, rel));
+            if (stat.isDirectory()) visit(rel);
+            else if (rel !== 'manifest.json' && !names.has(rel.toLowerCase())) throw Error('Unmanifested native checkpoint file');
+        }
+    };
+    visit('');
+    return immutableContext(JSON.parse(JSON.stringify(checkpoint)));
+}
+export function captureLocalNativeFiles(controlDirectory: string, origin: LocalContextOrigin,
+    requestId: string, limits: LocalContextLimits): LocalContextCapture {
+    contextLimits(limits);
+    const id = checkpointId(origin, requestId), directory = path.join(controlDirectory, 'checkpoints', id);
+    if (fs.existsSync(directory)) {
+        const checkpoint = JSON.parse(stableContextBytes(directory, 'manifest.json', { ...maximumContextLimits, maxFileBytes: 1024 * 1024 }).toString('utf8')) as LocalNativeCheckpoint;
+        if (canonicalContext(checkpoint.origin) !== canonicalContext(origin) || checkpoint.requestId !== requestId)
+            throw Error('Native checkpoint replay identity mismatch');
+        return { state: 'captured', checkpoint: verifyLocalNativeCheckpoint(controlDirectory, checkpoint, limits) };
+    }
+    const native = regularContextPath(controlDirectory, 'native');
+    const source = origin.runtime === 'pi' ? piContextDirectory(origin.cwd) : 'data';
+    if (!fs.existsSync(path.join(native, source))) return { state: 'unavailable', reason: 'Native conversation data unavailable' };
+    const files: { path: string; bytes: Buffer }[] = [], excluded: string[] = [];
+    let entries = 0, total = 0;
+    const visit = (relative: string) => {
+        if (relative.split('/').length > 32) throw Error('Native context directory depth exceeded');
+        const absolute = regularContextPath(native, relative), stat = fs.lstatSync(absolute);
+        if (++entries > limits.maxFiles * 8 + 64) throw Error('Native context inventory bound exceeded');
+        if (stat.isDirectory()) {
+            const names = fs.readdirSync(absolute).sort();
+            if (names.length + entries > limits.maxFiles * 8 + 64) throw Error('Native context inventory bound exceeded');
+            if (new Set(names.map(name => name.toLowerCase())).size !== names.length) throw Error('Native context path collision');
+            for (const name of names) visit(relative + '/' + name);
+            const after = fs.lstatSync(absolute);
+            if (after.ino !== stat.ino || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs) throw Error('Native context directory changed');
+        } else {
+            if (origin.runtime === 'opencode' && credentialSidefile.test(path.posix.basename(relative))) { excluded.push(relative); return; }
+            if (origin.runtime === 'pi' && !relative.endsWith('.jsonl')) return;
+            const bytes = stableContextBytes(native, relative, limits);
+            total += bytes.length;
+            if (total > limits.maxBytes || files.length >= limits.maxFiles) throw Error('Native context bounds exceeded');
+            if (origin.runtime === 'pi' && !piContextMatches(bytes, origin)) return;
+            files.push({ path: relative, bytes });
+        }
+    };
+    visit(source);
+    if (!files.length) return { state: 'unavailable', reason: 'Matching native conversation unavailable' };
+    if (origin.runtime === 'pi' && files.length !== 1) throw Error('Ambiguous native Pi session identity');
+    const parent = path.join(controlDirectory, 'checkpoints'); mkdir(parent); regularContextPath(parent);
+    const temporary = path.join(parent, '.' + id + '.' + randomUUID()); mkdir(temporary);
+    try {
+        for (const file of files) {
+            const target = path.join(temporary, file.path); mkdir(path.dirname(target));
+            const fd = fs.openSync(target, 'wx', 0o600);
+            try { fs.writeFileSync(fd, file.bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+        }
+        for (const file of files) {
+            if (!stableContextBytes(native, file.path, limits).equals(file.bytes)) throw Error('Native context changed before publication');
+        }
+        const body: Omit<LocalNativeCheckpoint, 'sha256'> = { schema: 'hima-oar-native-checkpoint/1', checkpointId: id,
+            requestId, origin: JSON.parse(JSON.stringify(origin)), capturedAt: new Date().toISOString(), boundary: 'after-physical-close',
+            format: origin.runtime === 'pi' ? 'pi-session-jsonl' : 'opencode-opaque-data',
+            files: files.map(file => ({ path: file.path, bytes: file.bytes.length, sha256: contextHash(file.bytes) })), excluded: excluded.sort() };
+        const checkpoint: LocalNativeCheckpoint = { ...body, sha256: contextHash(canonicalContext(body)) };
+        atomic(path.join(temporary, 'manifest.json'), checkpoint);
+        const syncTree = (directory: string) => {
+            for (const name of fs.readdirSync(directory)) { const child = path.join(directory, name); if (fs.lstatSync(child).isDirectory()) syncTree(child); }
+            syncDirectory(directory);
+        };
+        syncTree(temporary);
+        // rename cannot replace a populated published checkpoint directory.
+        fs.renameSync(temporary, directory); syncDirectory(parent);
+        return { state: 'captured', checkpoint: verifyLocalNativeCheckpoint(controlDirectory, checkpoint, limits) };
+    } finally { if (fs.existsSync(temporary)) fs.rmSync(temporary, { recursive: true }); }
+}
+export function validateLocalMemberContinuity(config: LocalMemberConfiguration, controlDirectory: string, workDirectory: string): void {
+    const continuity = config.continuity;
+    if (!continuity) return;
+    const origin = continuity.kind === 'native-resume' ? continuity.checkpoint.origin : continuity.origin;
+    const p = config.prepared, old = origin.identity, next = p.identity;
+    if (!origin.nativeSession || origin.memberId !== p.memberId || origin.runtime !== p.runtime
+        || origin.sessionKey === p.sessionKey || old.effectId === next.effectId || old.runId !== next.runId
+        || old.taskId !== next.taskId || origin.cwd !== workDirectory || !path.isAbsolute(origin.cwd)
+        || !Number.isSafeInteger(origin.generation) || origin.generation < 0
+        || !['inputSha256', 'irSha256', 'applicationVersion', 'adapterVersion'].every(k => (old as any)[k] === (next as any)[k])
+        || canonicalContext('source' in old ? old.source : null) !== canonicalContext('source' in next ? next.source : null)
+        || canonicalContext('method' in old ? old.method : old.packSha256) !== canonicalContext('method' in next ? next.method : next.packSha256)
+        || (continuity.kind === 'reconstruction' && !/^[0-9a-f]{64}$/.test(continuity.contextSha256))
+        || !path.isAbsolute(controlDirectory)) throw Error('Invalid native member continuity binding');
+}
+/** Check native identity before any created observation or engineering prompt. */
+export function assertLocalNativeSessionIdentity(continuity: LocalMemberContinuity | undefined, nativeSession: unknown): asserts nativeSession is string {
+    if (typeof nativeSession !== 'string' || !nativeSession) throw Error('OAR opened no native session identity');
+    if (continuity?.kind === 'native-resume' && nativeSession !== continuity.checkpoint.origin.nativeSession)
+        throw Error('Restored native session identity mismatch');
+    if (continuity?.kind === 'reconstruction' && nativeSession === continuity.origin.nativeSession)
+        throw Error('Reconstruction reused original native session identity');
+}
 export class OarLocalMemberRuntime {
     private held = new Map<string, Held>();
     private shuttingDown = false;
@@ -125,7 +380,12 @@ export class OarLocalMemberRuntime {
     private root(key: string) { return path.join(this.options.home, 'hima', 'oar-members', safe(key)); }
     private get(lease: LocalMemberLease) { const h = this.held.get(lease.sessionKey); if (!h || h.lease.generation !== lease.generation || h.lease.memberId !== lease.memberId || h.lease.controlDirectory !== lease.controlDirectory || h.lease.workDirectory !== lease.workDirectory)
         throw Error('Unknown local member lease'); return h; }
-    private snapshot(h: Held) { const all = table(), known = h.owned ?? [], leader = all.find(r => r.pid === h.lease.pid); if (leader && (leader.birth !== h.lease.startIdentity || leader.group !== h.lease.processGroup))
+    private snapshot(h: Held) { return this.snapshotFromRows(h, table()); }
+    private snapshotFromRows(h: Held, all: Row[]) {
+        // Any authoritative snapshot supersedes an outstanding periodic sample,
+        // including one whose atomic publication subsequently fails.
+        h.snapshotRevision = (h.snapshotRevision ?? 0) + 1;
+        const known = h.owned ?? [], leader = all.find(r => r.pid === h.lease.pid); if (leader && (leader.birth !== h.lease.startIdentity || leader.group !== h.lease.processGroup))
         throw Error('Member PID identity mismatch'); const owned = new Map(known.map(r => [r.pid, r])); for (const r of all)
         if (r.group === h.lease.processGroup)
             owned.set(r.pid, owned.get(r.pid) ?? r); let changed = true; while (changed) {
@@ -138,26 +398,110 @@ export class OarLocalMemberRuntime {
             }
         }
     } h.owned = [...owned.values()]; atomic(path.join(h.lease.controlDirectory, 'owned-pids.json'), h.owned); return all.filter(r => owned.has(r.pid)); }
-    private state(h: Held, phase: string, extra: any = {}) { atomic(path.join(h.lease.controlDirectory, 'state.json'), { ...h.lease, nativeSession: h.nativeSession, streamGeneration: h.streamGeneration, phase, ...(h.failureReason ? { failureReason: h.failureReason, fatal: true } : {}), ...redact(extra, h.config.model.apiKey) }); }
-    private journal(h: Held, kind: string, payload: unknown) { const fd = fs.openSync(path.join(h.lease.controlDirectory, 'journal.jsonl'), 'a', 0o600); try {
-        fs.writeFileSync(fd, JSON.stringify({ schema: 'hima-oar-observation/1', sessionKey: h.lease.sessionKey, generation: h.lease.generation, memberId: h.lease.memberId, nativeSession: h.nativeSession, streamGeneration: h.streamGeneration, seq: h.seq++, time: new Date().toISOString(), kind, payload: redact(payload, h.config.model.apiKey) }) + '\n');
-        fs.fsyncSync(fd);
+    private state(h: Held, phase: string, extra: any = {}) { atomic(path.join(h.lease.controlDirectory, 'state.json'), { ...h.lease, nativeSession: h.nativeSession, streamGeneration: h.streamGeneration, phase, ...(h.journalState?.error ? { journalFailureReason: h.journalState.error.message } : {}), ...(h.failureReason ? { failureReason: h.failureReason, fatal: true } : {}), ...redact(extra, h.config.model.apiKey) }); }
+    private writer(h: Held): JournalState {
+        return h.journalState ??= { queue: [], pendingBytes: 0, pendingRows: 0, ackedSeq: -1,
+            ackedBytes: 0, chunks: [], cached: '', cachedSeq: -1, evidence: [] };
     }
-    finally {
-        fs.closeSync(fd);
-    } }
+    private retentionFailure(h: Held, reason: string): Error {
+        const writer = this.writer(h);
+        if (!writer.error) {
+            writer.error = Error(reason);
+            h.failureReason = reason;
+            try { this.state(h, 'unknown', { reason }); } catch { }
+            // Cleanup does not depend on successfully journaling this failure.
+            void this.close(h.lease).catch(() => { });
+        }
+        return writer.error;
+    }
+    private journal(h: Held, kind: string, payload: unknown): Promise<void> {
+        const writer = this.writer(h);
+        if (writer.error) return Promise.reject(writer.error);
+        if (writer.closed) return Promise.reject(this.retentionFailure(h, 'Member observation writer closed'));
+        const row = { schema: 'hima-oar-observation/1', sessionKey: h.lease.sessionKey,
+            generation: h.lease.generation, memberId: h.lease.memberId, nativeSession: h.nativeSession,
+            streamGeneration: h.streamGeneration, seq: h.seq, time: new Date().toISOString(),
+            kind, payload: redact(payload, h.config.model.apiKey) };
+        const bytes = Buffer.from(JSON.stringify(row) + '\n');
+        if (writer.pendingBytes + bytes.length > journalQueueBytes || writer.pendingRows >= journalQueueRows)
+            return Promise.reject(this.retentionFailure(h, 'Member observation queue bound exceeded'));
+        h.seq++;
+        const fence = new Promise<void>((resolve, reject) => writer.queue.push({ bytes, row: { seq: row.seq, kind }, resolve, reject }));
+        writer.lastAccepted = fence;
+        writer.pendingBytes += bytes.length; writer.pendingRows++;
+        if (!writer.draining) {
+            writer.draining = this.drain(h).finally(() => { writer.draining = undefined; });
+            void writer.draining.catch(() => { });
+        }
+        return fence;
+    }
+    private async drain(h: Held): Promise<void> {
+        const writer = this.writer(h);
+        let batch: JournalEntry[] = [];
+        try {
+            writer.fd ??= await fs.promises.open(path.join(h.lease.controlDirectory, 'journal.jsonl'), 'a', 0o600);
+            while (writer.queue.length) {
+                batch = []; let length = 0;
+                while (writer.queue.length && (!batch.length || length + writer.queue[0]!.bytes.length <= journalBatchBytes)) {
+                    const entry = writer.queue.shift()!; batch.push(entry); length += entry.bytes.length;
+                }
+                const bytes = Buffer.concat(batch.map(entry => entry.bytes), length);
+                let offset = 0;
+                while (offset < bytes.length) {
+                    const written = await writer.fd.write(bytes, offset, bytes.length - offset, null);
+                    if (!written.bytesWritten) throw Error('Journal short write');
+                    offset += written.bytesWritten;
+                }
+                await writer.fd.sync();
+                writer.chunks.push(bytes.toString('utf8'));
+                writer.ackedBytes += length; writer.ackedSeq = batch[batch.length - 1]!.row.seq;
+                for (const entry of batch) {
+                    if (['created', 'received', 'terminal', 'finished', 'control'].includes(entry.row.kind)) writer.evidence.push(JSON.parse(entry.bytes.toString('utf8')));
+                    writer.pendingBytes -= entry.bytes.length; writer.pendingRows--; entry.resolve();
+                }
+                batch = [];
+                await cooperate();
+            }
+        } catch {
+            const error = this.retentionFailure(h, 'Member observation retention unavailable');
+            for (const entry of [...batch, ...writer.queue.splice(0)]) entry.reject(error);
+            writer.pendingBytes = 0; writer.pendingRows = 0;
+            if (writer.fd) { try { await writer.fd.close(); } catch { } writer.fd = undefined; }
+        }
+    }
+    private async journalFence(h: Held): Promise<void> {
+        const writer = this.writer(h), fence = writer.lastAccepted;
+        if (writer.error) throw writer.error;
+        if (fence) await fence;
+        if (writer.error) throw writer.error;
+    }
+    private retain(h: Held, kind: string, payload: unknown): void {
+        void this.journal(h, kind, payload).catch(() => { });
+    }
+    private async closeWriter(h: Held): Promise<void> {
+        const writer = this.writer(h);
+        // Wait for already accepted rows even after an overflow latched failure.
+        while (writer.draining) await writer.draining;
+        writer.closed = true;
+        if (writer.fd) { const fd = writer.fd; writer.fd = undefined;
+            try { await fd.close(); } catch { throw this.retentionFailure(h, 'Member observation retention unavailable'); } }
+        if (writer.error) throw writer.error;
+    }
     private wire(h: Held, v: any) { if (!h.child?.connected)
-        throw Error('Member IPC unavailable; recovery cannot resend'); h.child.send(v, e => { if (e && !h.stopping)
+        throw Error('Member IPC unavailable; recovery cannot resend'); h.child.send(v, e => { if (e && !h.stopRequested && !h.stopping)
         this.fail(h, 'Member IPC delivery failed'); }); }
-    private fail(h: Held, reason: string) { if (h.failureReason || h.stopping)
-        return; h.failureReason = reason; try {
-        this.journal(h, 'terminal', { outcome: 'failed', reason, inputId: h.current?.id });
-        this.journal(h, 'error', { reason });
-        this.state(h, 'failed', { reason });
+    private fail(h: Held, reason: string) {
+        if (h.yieldRequestId && (h.stopRequested || h.stopping)) {
+            this.retain(h, 'control', { action: 'yield_observation_error', requestId: h.yieldRequestId, reason, closure: 'unconfirmed' });
+            return;
+        }
+        if (h.failureReason || h.stopRequested || h.stopping) return;
+        h.failureReason = reason;
+        this.retain(h, 'terminal', { outcome: 'failed', reason, inputId: h.current?.id });
+        this.retain(h, 'error', { reason });
+        try { this.state(h, 'failed', { reason }); } catch { }
+        void this.close(h.lease).catch(() => { });
     }
-    catch {
-        h.failureReason = 'Member observation retention unavailable';
-    } void this.close(h.lease); }
     async stage(config: LocalMemberConfiguration, skills: readonly {
         path: string;
         bytes: Uint8Array;
@@ -169,18 +513,48 @@ export class OarLocalMemberRuntime {
         const skillBinding = skills.map(file => ({ path: file.path, sha256: createHash('sha256').update(file.bytes).digest('hex') })).sort((a, b) => a.path.localeCompare(b.path));
         const previous = this.held.get(p.sessionKey) ?? (await this.recover(p.sessionKey) ? this.held.get(p.sessionKey) : undefined);
         if (previous) {
-            if (JSON.stringify(previous.config.prepared) !== JSON.stringify(p) || JSON.stringify(previous.config.model) !== JSON.stringify(config.model) || previous.config.outputSchemaVersion !== config.outputSchemaVersion || JSON.stringify(previous.config.assets) !== JSON.stringify(config.assets ?? this.options.assets) || JSON.stringify(load(path.join(previous.lease.controlDirectory, 'skill-binding.json'))) !== JSON.stringify(skillBinding) || (config.controlDirectory !== undefined && path.resolve(config.controlDirectory) !== previous.lease.controlDirectory) || (config.workDirectory !== undefined && path.resolve(config.workDirectory) !== previous.lease.workDirectory))
+            if (JSON.stringify(previous.config.prepared) !== JSON.stringify(p) || JSON.stringify(previous.config.continuity) !== JSON.stringify(config.continuity) || JSON.stringify(previous.config.model) !== JSON.stringify(config.model) || previous.config.outputSchemaVersion !== config.outputSchemaVersion || JSON.stringify(previous.config.assets) !== JSON.stringify(config.assets ?? this.options.assets) || JSON.stringify(load(path.join(previous.lease.controlDirectory, 'skill-binding.json'))) !== JSON.stringify(skillBinding) || (config.controlDirectory !== undefined && path.resolve(config.controlDirectory) !== previous.lease.controlDirectory) || (config.workDirectory !== undefined && path.resolve(config.workDirectory) !== previous.lease.workDirectory))
                 throw Error('Member session identity/configuration differs');
             return previous.lease;
         }
         const controlDirectory = path.resolve(config.controlDirectory ?? path.join(root, 'control')), workDirectory = path.resolve(config.workDirectory ?? path.join(root, 'work'));
-        for (const dir of [controlDirectory, workDirectory])
-            if (!dir.startsWith(root + path.sep))
-                throw Error('Member directory must be below original member root');
+        if (!controlDirectory.startsWith(root + path.sep) || (!config.continuity && !workDirectory.startsWith(root + path.sep)))
+            throw Error('Member directory must be below original member root');
+        validateLocalMemberContinuity(config, controlDirectory, workDirectory);
+        let checkpointSource: string | undefined;
+        if (config.continuity) {
+            const origin = config.continuity.kind === 'native-resume' ? config.continuity.checkpoint.origin : config.continuity.origin;
+            const originalLease = await this.recover(origin.sessionKey);
+            if (!originalLease) throw Error('Native continuity predecessor lease unavailable');
+            const original = this.get(originalLease);
+            if (canonicalContext(original.config.prepared.identity) !== canonicalContext(origin.identity)
+                || original.lease.generation !== origin.generation || original.lease.memberId !== origin.memberId
+                || original.config.prepared.runtime !== origin.runtime || original.nativeSession !== origin.nativeSession
+                || original.lease.workDirectory !== origin.cwd || original.lease.controlDirectory === controlDirectory
+                || Date.parse(p.deadlineAt) > Date.parse(original.config.prepared.deadlineAt))
+                throw Error('Native continuity predecessor binding/deadline mismatch');
+            this.assertClosedContext(original);
+            regularContextPath(workDirectory);
+            if (config.continuity.kind === 'native-resume') {
+                verifyLocalNativeCheckpoint(original.lease.controlDirectory, config.continuity.checkpoint);
+                checkpointSource = path.join(original.lease.controlDirectory, 'checkpoints', config.continuity.checkpoint.checkpointId);
+            }
+        }
         const lease = { sessionKey: p.sessionKey, generation: p.generation, memberId: p.memberId, controlDirectory, workDirectory };
         for (const dir of ['', 'native', 'native/pi', 'native/pi/skills', 'native/.config/opencode/skills', 'native/requests', 'native/data', 'native/cache', 'native/state', 'native/tmp', 'replies', 'inbox', 'claims'])
             mkdir(path.join(controlDirectory, dir));
-        mkdir(workDirectory);
+        if (!config.continuity) mkdir(workDirectory);
+        if (config.continuity?.kind === 'native-resume' && checkpointSource) {
+            for (const file of config.continuity.checkpoint.files) {
+                const bytes = stableContextBytes(checkpointSource, file.path, maximumContextLimits);
+                if (bytes.length !== file.bytes || contextHash(bytes) !== file.sha256) throw Error('Native checkpoint changed before staging');
+                const target = path.join(controlDirectory, 'native', file.path);
+                mkdir(path.dirname(target)); regularContextPath(path.dirname(target));
+                const fd = fs.openSync(target, 'wx', 0o600);
+                try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+                syncDirectory(path.dirname(target));
+            }
+        }
         if (skills.length > 64)
             throw Error('Too many member Skills');
         for (const file of skills) {
@@ -204,6 +578,8 @@ export class OarLocalMemberRuntime {
         if (this.shuttingDown)
             throw Error('Host shutdown rejects member start');
         const h = this.get(lease), dir = lease.controlDirectory;
+        if (h.yieldRequestId) throw Error('Member yielded rejects start');
+        if (h.stopRequested || h.stopping || h.failureReason) throw Error('Member stopping rejects start');
         if (h.child || fs.existsSync(path.join(dir, 'start.claim')))
             return;
         if (!claim(path.join(dir, 'start.claim'), { ...lease, streamGeneration: h.streamGeneration, time: new Date().toISOString() }))
@@ -215,6 +591,7 @@ export class OarLocalMemberRuntime {
                 env[k] = process.env[k];
         const child = spawn(this.options.nodeExecutable, [this.options.runnerModule, 'sdk'], { cwd: lease.workDirectory, env, detached: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
         h.child = child;
+        h.processClosed = new Promise<void>(resolve => child.once('close', () => resolve()));
         let born = false, ready = false, configured = false;
         const configure = () => { if (born && ready && !configured) {
             configured = true;
@@ -232,16 +609,16 @@ export class OarLocalMemberRuntime {
             this.fail(h, e instanceof Error ? e.message : 'Invalid member observation');
         } });
         child.on('error', () => this.fail(h, 'Member process spawn failed'));
-        child.on('disconnect', () => { if (!h.stopping)
+        child.on('disconnect', () => { if (!h.stopRequested && !h.stopping)
             this.fail(h, 'Member IPC disconnected'); });
-        child.on('exit', () => { if (!h.stopping)
+        child.on('exit', () => { if (!h.stopRequested && !h.stopping)
             this.fail(h, 'Member process exited before closure'); });
         if (child.stderr)
             createInterface({ input: child.stderr }).on('line', text => { try {
-                this.journal(h, 'raw', { channel: 'untrusted_stderr', text });
+                this.retain(h, 'raw', { channel: 'untrusted_stderr', text });
             }
             catch {
-                void this.close(h.lease);
+                void this.close(h.lease).catch(() => { });
             } });
         if (!child.pid)
             throw Error('Member has no PID');
@@ -255,21 +632,85 @@ export class OarLocalMemberRuntime {
         this.snapshot(h);
         born = true;
         configure();
-        h.monitor = setInterval(() => { try {
-            const rows = this.snapshot(h);
+        const epoch = h.monitorEpoch = (h.monitorEpoch ?? 0) + 1;
+        h.monitor = setInterval(() => { void this.monitorSnapshot(h, epoch); }, 500);
+        h.monitor.unref();
+    }
+    private async monitorSnapshot(h: Held, epoch: number): Promise<void> {
+        const active = () => this.held.get(h.lease.sessionKey) === h && h.monitorEpoch === epoch
+            && !this.shuttingDown && !h.stopRequested && !h.stopping && !h.failureReason;
+        if (!active()) return;
+        // Deadline enforcement continues even while an earlier ps is outstanding.
+        if (Date.now() >= Date.parse(h.config.prepared.deadlineAt)) {
+            this.fail(h, 'Member resource/deadline bound exceeded'); return;
+        }
+        if (h.monitorInFlight) return;
+        const cycle = h.monitorInFlight = {}, revision = h.snapshotRevision ?? 0;
+        const current = () => active() && h.snapshotRevision === revision;
+        let adopting = false;
+        try {
+            const text = await monitorTable();
+            if (!current()) return;
+            adopting = true;
+            // No await between reading CURRENT ownership, merging and publishing.
+            const rows = this.snapshotFromRows(h, parseTable(text));
             const rssKiB=rows.reduce((s, x) => s + x.rss, 0);
             const rssLimitMiB=h.config.prepared.runtime==='opencode'?2048:768;
             if (rows.length > 96 || rssKiB > rssLimitMiB * 1024 || Date.now() >= Date.parse(h.config.prepared.deadlineAt))
                 this.fail(h, `Member resource/deadline bound exceeded (RSS ${(rssKiB/1024).toFixed(1)} MiB, ${rows.length} PIDs)`);
+        } catch {
+            // A stale failure has no authority to change a newer snapshot/close.
+            // Merge/publication can advance revision before failing, so eligibility
+            // for that synchronous failure is the active lifecycle, not old revision.
+            if (active() && (adopting || h.snapshotRevision === revision))
+                this.fail(h, 'Member process observations unavailable');
+        } finally {
+            if (h.monitorInFlight === cycle) h.monitorInFlight = undefined;
         }
-        catch {
-            this.fail(h, 'Member process observations unavailable');
-        } }, 500);
-        h.monitor.unref();
     }
     private observe(h: Held, item: any) {
-        if (h.stopping)
-            return;
+        if (h.yieldRequestId) {
+            if (!object(item) || typeof item.type !== 'string' || !h.nativeSession)
+                throw Error('Invalid yielded member IPC');
+            const current = h.current, payload = item.payload;
+            if (item.type === 'received') {
+                if (!current || payload?.inputId !== current.id || current.received)
+                    throw Error('Uncorrelated input reception');
+                current.received = true;
+                this.retain(h, 'received', payload);
+                return;
+            }
+            if (item.type === 'terminal') {
+                if (!current || payload?.inputId !== current.id || current.terminal || !object(payload?.outcome))
+                    throw Error('Uncorrelated yielded turn terminal');
+                current.terminal = payload.outcome;
+                this.retain(h, 'terminal', { ...payload, received: current.received, yieldRequestId: h.yieldRequestId });
+                // Native failure remains a failure until physical cleanup begins.
+                if (payload.outcome.kind !== 'completed' && !h.stopRequested && !h.stopping)
+                    this.fail(h, typeof payload.outcome.reason === 'string' ? payload.outcome.reason : 'Native yielding turn failed');
+                return;
+            }
+            if (item.type === 'finished') {
+                if (!current || current.finishing || item.inputId !== current.id || current.terminal?.kind !== 'completed' || typeof item.text !== 'string')
+                    throw Error('Uncorrelated yielded turn finish');
+                current.finishing = true;
+                this.retain(h, 'finished', { inputId: current.id, text: item.text, yieldRequestId: h.yieldRequestId });
+                return;
+            }
+            if (item.type === 'failure') {
+                this.retain(h, 'error', { reason: item.reason, yieldRequestId: h.yieldRequestId });
+                this.fail(h, typeof item.reason === 'string' ? item.reason : 'Member failed');
+                return;
+            }
+            if (['raw', 'event', 'control', 'error'].includes(item.type)) {
+                if (item.type === 'control' && payload?.action?.startsWith('yield') && payload.requestId !== h.yieldRequestId)
+                    throw Error('Uncorrelated yield control');
+                this.retain(h, item.type, { ...payload, yieldRequestId: h.yieldRequestId });
+                return;
+            }
+            throw Error('Unknown yielded member observation');
+        }
+        if (h.stopRequested || h.stopping) return;
         if (!object(item) || typeof item.type !== 'string')
             throw Error('Invalid member IPC');
         const payload = item.payload, p = h.config.prepared;
@@ -280,14 +721,14 @@ export class OarLocalMemberRuntime {
                 throw Error('Invalid native identity');
             h.nativeSession = payload.nativeSession;
             this.snapshot(h);
-            this.journal(h, 'created', payload);
+            this.retain(h, 'created', payload);
             this.state(h, 'running');
             return;
         }
         if (!h.nativeSession)
             throw Error('Member observation before native identity');
         if (['raw', 'event', 'control', 'error'].includes(item.type)) {
-            this.journal(h, item.type, payload);
+            this.retain(h, item.type, payload);
             return;
         }
         const current = h.current;
@@ -295,18 +736,18 @@ export class OarLocalMemberRuntime {
             if (!current || payload?.inputId !== current.id || current.received)
                 throw Error('Uncorrelated input reception');
             current.received = true;
-            this.journal(h, 'received', payload);
+            this.retain(h, 'received', payload);
             return;
         }
         if (item.type === 'terminal') {
             if (!current || payload?.inputId !== current.id || current.terminal || !object(payload.outcome))
                 throw Error('Uncorrelated turn terminal');
             current.terminal = payload.outcome;
-            this.journal(h, 'terminal', { ...payload, received: current.received });
+            this.retain(h, 'terminal', { ...payload, received: current.received });
             return;
         }
         if (item.type === 'finished') {
-            if (!current || item.inputId !== current.id || !current.received || current.terminal?.kind !== 'completed' || typeof item.text !== 'string')
+            if (!current || current.finishing || item.inputId !== current.id || !current.received || current.terminal?.kind !== 'completed' || typeof item.text !== 'string')
                 throw Error('Finish lacks correlated received/completed IPC');
             let output: unknown;
             try {
@@ -319,12 +760,16 @@ export class OarLocalMemberRuntime {
             const parsed = taskToolOutput.safeParse(output);
             if (current.initial && (!parsed.success || parsed.data.schemaVersion !== h.config.outputSchemaVersion))
                 throw Error('Invalid TaskToolOutput delivery');
-            this.journal(h, 'finished', { inputId: current.id, text: item.text });
+            current.finishing = true;
+            const finished = this.journal(h, 'finished', { inputId: current.id, text: item.text });
+            void finished.then(async () => {
+            if (h.current !== current || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason) return;
             if (parsed.success && parsed.data.schemaVersion === h.config.outputSchemaVersion)
                 atomic(path.join(h.lease.controlDirectory, 'result.json'), { sessionKey: p.sessionKey, generation: p.generation, memberId: p.memberId, nativeSession: h.nativeSession, streamGeneration: h.streamGeneration, inputId: p.inputId, ...(current.initial ? {} : { deliveryInputId: current.id }), output: redact(parsed.data, h.config.model.apiKey) });
             this.state(h, 'completed', { inputId: current.id });
             h.current = undefined;
-            this.flush(h);
+            await this.flush(h);
+            }).catch(() => { if (!h.stopping && !h.yieldRequestId && !this.writer(h).error) this.fail(h, 'Member completion persistence unavailable'); });
             return;
         }
         throw Error('Unknown member observation');
@@ -334,57 +779,155 @@ export class OarLocalMemberRuntime {
         generation: number;
         nativeSession: string;
         inputId: string;
-    }) { const h = this.get(lease), p = h.config.prepared; if (this.shuttingDown || h.stopping)
-        throw Error('Member stopping rejects authorization'); if (body.sessionKey !== p.sessionKey || body.generation !== p.generation || body.nativeSession !== h.nativeSession || body.inputId !== p.inputId)
-        throw Error('Wrong creation authorization identity'); if (h.authorized)
-        return; if (!h.child?.connected)
-        throw Error('Original member IPC unavailable'); atomic(path.join(lease.controlDirectory, 'authorization.json'), body); if (!claim(path.join(lease.controlDirectory, 'claims', safe(p.inputId) + '.json'), body))
-        return; h.authorized = true; this.journal(h, 'control', { action: 'host_identity_persisted', inputId: p.inputId }); this.wire(h, { type: 'created_ack' }); this.input(h, p.inputId, p.prompt, true); }
-    private input(h: Held, id: string, input: string, initial: boolean) { h.current = { id, initial, received: false }; this.journal(h, 'control', { action: 'send_intent', inputId: id, input }); this.state(h, 'running', { inputId: id }); this.wire(h, { type: 'input', id, input, initial }); }
-    private flush(h: Held) { if (!h.authorized || h.current || h.stopping)
-        return; for (const name of fs.readdirSync(path.join(h.lease.controlDirectory, 'inbox')).filter(n => /^[a-zA-Z0-9_-]+\.json$/.test(n)).sort()) {
-        const message = load(path.join(h.lease.controlDirectory, 'inbox', name));
-        if (claim(path.join(h.lease.controlDirectory, 'claims', name), { inputId: message.id, nativeSession: h.nativeSession })) {
-            this.input(h, message.id, message.input, false);
-            break;
+    }) {
+        const h = this.get(lease), p = h.config.prepared;
+        const active = () => { if (this.shuttingDown || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason)
+            throw Error('Member stopping rejects authorization'); };
+        active();
+        if (body.sessionKey !== p.sessionKey || body.generation !== p.generation || body.nativeSession !== h.nativeSession || body.inputId !== p.inputId)
+            throw Error('Wrong creation authorization identity');
+        if (h.authorized) return;
+        await this.journalFence(h); active();
+        if (!h.child?.connected) throw Error('Original member IPC unavailable');
+        atomic(path.join(lease.controlDirectory, 'authorization.json'), body);
+        if (!claim(path.join(lease.controlDirectory, 'claims', safe(p.inputId) + '.json'), body)) return;
+        await this.journal(h, 'control', { action: 'host_identity_persisted', inputId: p.inputId }); active();
+        h.authorized = true; this.wire(h, { type: 'created_ack' });
+        await this.input(h, p.inputId, p.prompt, true);
+    }
+    private async input(h: Held, id: string, input: string, initial: boolean): Promise<void> {
+        if (h.current || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason) throw Error('Member stopping or busy rejects input');
+        const current = { id, initial, received: false }; h.current = current;
+        await this.journal(h, 'control', { action: 'send_intent', inputId: id, input });
+        if (h.current !== current || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason) throw Error('Member stopping rejects input');
+        this.state(h, 'running', { inputId: id }); this.wire(h, { type: 'input', id, input, initial });
+    }
+    private async flush(h: Held): Promise<void> {
+        if (!h.authorized || h.current || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason) return;
+        for (const name of fs.readdirSync(path.join(h.lease.controlDirectory, 'inbox')).filter(n => /^[a-zA-Z0-9_-]+\.json$/.test(n)).sort()) {
+            const message = load(path.join(h.lease.controlDirectory, 'inbox', name));
+            if (claim(path.join(h.lease.controlDirectory, 'claims', name), { inputId: message.id, nativeSession: h.nativeSession })) {
+                await this.input(h, message.id, message.input, false); break;
+            }
         }
-    } }
-    async sendInput(lease: LocalMemberLease, id: string, input: string) { safe(id); if (!input || Buffer.byteLength(input) > 65536)
-        throw Error('Invalid bounded member input'); const h = this.get(lease); if (this.shuttingDown || h.stopping)
-        throw Error('Member stopping rejects input'); const file = path.join(lease.controlDirectory, 'inbox', id + '.json'); if (fs.existsSync(file)) {
-        if (load(file).input !== input)
-            throw Error('Member input identity reused');
-        return;
-    } atomic(file, { id, input }); this.flush(h); }
+    }
+    async sendInput(lease: LocalMemberLease, id: string, input: string) {
+        safe(id); if (!input || Buffer.byteLength(input) > 65536) throw Error('Invalid bounded member input');
+        const h = this.get(lease);
+        if (this.shuttingDown || h.stopRequested || h.stopping || h.yieldRequestId || h.failureReason) throw Error('Member stopping rejects input');
+        const file = path.join(lease.controlDirectory, 'inbox', id + '.json');
+        if (fs.existsSync(file)) { if (load(file).input !== input) throw Error('Member input identity reused'); return; }
+        atomic(file, { id, input }); await this.flush(h);
+    }
+    private validatedDelivery(h: Held, result: string | null, rows: readonly any[]): string | null {
+        if (!result) return null;
+        const delivered = JSON.parse(result), id = delivered.deliveryInputId ?? delivered.inputId;
+        const finish = rows.findLast((r: any) => r.kind === 'finished' && r.payload.inputId === id);
+        const terminal = rows.find((r: any) => r.kind === 'terminal' && r.payload.inputId === id && r.payload.outcome?.kind === 'completed' && r.payload.received === true);
+        const received = rows.find((r: any) => r.kind === 'received' && r.payload.inputId === id);
+        const output = taskToolOutput.safeParse(delivered.output);
+        if (delivered.sessionKey !== h.lease.sessionKey || delivered.generation !== h.lease.generation || delivered.memberId !== h.lease.memberId
+            || delivered.inputId !== h.config.prepared.inputId || delivered.nativeSession !== h.nativeSession || delivered.streamGeneration !== h.streamGeneration
+            || !finish || !terminal || !received || !output.success || output.data.schemaVersion !== h.config.outputSchemaVersion
+            || !isDeepStrictEqual(redact(JSON.parse(finish.payload.text), h.config.model.apiKey), delivered.output)) return null;
+        return result;
+    }
+    private refusePublishedDeliveryYield(h: Held): void {
+        let result: string;
+        try { result = fs.readFileSync(path.join(h.lease.controlDirectory, 'result.json'), 'utf8'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+        // A later ordinary input does not reopen an already published engineering
+        // delivery. Use its original deliveryInputId/receive/terminal/finish proof.
+        if (this.validatedDelivery(h, result, this.writer(h).evidence))
+            throw Error('Published engineering delivery cannot become an admitted yield');
+    }
+    async admitAcceptedWait(lease: LocalMemberLease, admission: {
+        readonly origin: LocalContextOrigin; readonly streamGeneration: string;
+        readonly inputId: string; readonly requestId: string;
+    }): Promise<void> {
+        const h = this.get(lease), p = h.config.prepared;
+        const origin: LocalContextOrigin = { identity: p.identity, sessionKey: lease.sessionKey, generation: lease.generation,
+            memberId: lease.memberId, runtime: p.runtime, nativeSession: h.nativeSession ?? '', cwd: lease.workDirectory };
+        checkpointId(origin, admission.requestId);
+        if (canonicalContext(origin) !== canonicalContext(admission.origin) || !h.nativeSession
+            || admission.streamGeneration !== h.streamGeneration || !admission.inputId
+            || lease.pid !== h.lease.pid || lease.processGroup !== h.lease.processGroup || lease.startIdentity !== h.lease.startIdentity)
+            throw Error('Accepted wait differs from original local/native identity');
+        if (h.failureReason || this.writer(h).error) throw Error('Failed member cannot admit wait');
+        this.refusePublishedDeliveryYield(h);
+        if (h.yieldRequestId) {
+            if (h.yieldRequestId !== admission.requestId || h.yieldInputId !== admission.inputId)
+                throw Error('Member yield request identity reused');
+            if (h.yieldAdmission) await h.yieldAdmission;
+            await this.journalFence(h);
+            if (h.failureReason) throw Error('Accepted wait observation failed');
+            return;
+        }
+        if (this.shuttingDown || h.stopRequested || h.stopping) throw Error('Ordinary close cannot become an admitted yield');
+        if (!h.current || h.current.id !== admission.inputId || h.current.terminal || h.current.finishing)
+            throw Error('Accepted wait requires the original active native input');
+        // Synchronous latch precedes every await: native completion can arrive
+        // while the existing journal fsync is outstanding, but cannot deliver.
+        h.yieldRequestId = admission.requestId; h.yieldInputId = admission.inputId;
+        h.yieldAdmission = this.journal(h, 'control', { action: 'yield_intent', requestId: admission.requestId,
+            inputId: admission.inputId, nativeSession: h.nativeSession, closure: 'unconfirmed' });
+        await h.yieldAdmission;
+        await this.journalFence(h);
+        if (h.failureReason || h.stopRequested || h.stopping) throw Error('Accepted wait closed before reply publication');
+    }
     async reply(lease: LocalMemberLease, id: string, body: string) { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || Buffer.byteLength(body) > 16384)
-        throw Error('Invalid bounded member reply'); this.get(lease); atomic(path.join(lease.controlDirectory, 'replies', id + '.json'), JSON.parse(body)); }
+        throw Error('Invalid bounded member reply');
+        const h = this.get(lease);
+        if (h.yieldAdmission) await h.yieldAdmission;
+        // This final check and atomic publication have no intervening await.
+        // A native/resource/journal fault that won the durability race denies reply.
+        if (this.shuttingDown || h.failureReason || this.writer(h).error || h.stopRequested || h.stopping)
+            throw Error('Failed or stopping member rejects reply publication');
+        atomic(path.join(lease.controlDirectory, 'replies', id + '.json'), JSON.parse(body)); }
     async read(lease: LocalMemberLease) {
-        this.get(lease);
-        const read = (name: string) => { try {
-            return fs.readFileSync(path.join(lease.controlDirectory, name), 'utf8');
+        const h = this.get(lease);
+        await this.journalFence(h);
+        const writer = this.writer(h);
+        const read = async (name: string) => { try {
+            return await fs.promises.readFile(path.join(lease.controlDirectory, name), 'utf8');
         }
         catch (e) {
             if ((e as NodeJS.ErrnoException).code === 'ENOENT')
                 return null;
             throw e;
         } };
-        const journal = read('journal.jsonl') ?? '', rows = journal.trim() ? journal.trim().split('\n').map(s => JSON.parse(s)) : [];
-        let result = read('result.json');
-        if (result) {
-            const delivered = JSON.parse(result), id = delivered.deliveryInputId ?? delivered.inputId;
-            const finish = rows.findLast((r: any) => r.kind === 'finished' && r.payload.inputId === id);
-            const terminal = rows.find((r: any) => r.kind === 'terminal' && r.payload.inputId === id && r.payload.outcome?.kind === 'completed' && r.payload.received === true);
-            const received = rows.find((r: any) => r.kind === 'received' && r.payload.inputId === id);
-            if (delivered.sessionKey !== lease.sessionKey || delivered.generation !== lease.generation || delivered.memberId !== lease.memberId || delivered.nativeSession !== this.get(lease).nativeSession || delivered.streamGeneration !== this.get(lease).streamGeneration || !finish || !terminal || !received || JSON.stringify(redact(JSON.parse(finish.payload.text), this.get(lease).config.model.apiKey)) !== JSON.stringify(delivered.output))
-                result = null;
-        }
-        const names = fs.readdirSync(path.join(lease.controlDirectory, 'native/requests')).filter(n => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/i.test(n));
+        if (writer.cachedSeq !== writer.ackedSeq) { writer.cached += writer.chunks.join(''); writer.chunks = []; writer.cachedSeq = writer.ackedSeq; }
+        const journal = writer.cached, rows = writer.evidence.slice();
+        const result = this.validatedDelivery(h, await read('result.json'), rows);
+        const names = (await fs.promises.readdir(path.join(lease.controlDirectory, 'native/requests'))).filter(n => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/i.test(n));
         if (names.length > 64)
             throw Error('Member request count exceeded');
-        const requests = names.map(name => { const f = path.join(lease.controlDirectory, 'native/requests', name), info = fs.lstatSync(f); if (!info.isFile() || info.isSymbolicLink() || info.size > 16384)
-            throw Error('Invalid bounded member request'); const body = fs.readFileSync(f, 'utf8'); if (JSON.parse(body).id !== name.slice(0, -5))
-            throw Error('Member request identity differs'); return { id: name.slice(0, -5), body }; });
-        return { journal, result, state: read('state.json'), requests };
+        const requests = await Promise.all(names.map(async name => {
+            const filename = path.join(lease.controlDirectory, 'native/requests', name), info = await fs.promises.lstat(filename);
+            if (!info.isFile() || info.isSymbolicLink() || info.size > 16384) throw Error('Invalid bounded member request');
+            const fd = await fs.promises.open(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+            try {
+                const before = await fd.stat();
+                if (!before.isFile() || before.ino !== info.ino || before.dev !== info.dev || before.size !== info.size || before.size > 16384)
+                    throw Error('Invalid bounded member request');
+                const bytes = Buffer.alloc(before.size);
+                let offset = 0;
+                while (offset < bytes.length) {
+                    const read = await fd.read(bytes, offset, bytes.length - offset, offset);
+                    if (!read.bytesRead) throw Error('Member request short read');
+                    offset += read.bytesRead;
+                }
+                const after = await fd.stat();
+                if (before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs)
+                    throw Error('Member request changed during read');
+                const body = bytes.toString('utf8');
+                if (JSON.parse(body).id !== name.slice(0, -5)) throw Error('Member request identity differs');
+                return { id: name.slice(0, -5), body };
+            } finally { await fd.close(); }
+        }));
+        const state = await read('state.json');
+        if (writer.error) throw writer.error;
+        return { journal, result, state, requests };
     }
     async readArtifact(lease: LocalMemberLease, relativePath: string, offset = 0, limit = 65536) { this.get(lease); if (path.isAbsolute(relativePath) || relativePath.split(/[\\/]/).some(p => p === '..') || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 65536)
         throw Error('Invalid artifact range/path'); const root = fs.realpathSync(lease.workDirectory), target = fs.realpathSync(path.join(root, relativePath)); if (!target.startsWith(root + path.sep))
@@ -404,18 +947,55 @@ export class OarLocalMemberRuntime {
     finally {
         fs.closeSync(fd);
     } }
-    async close(lease: LocalMemberLease): Promise<LocalMemberClosure> { const h = this.get(lease); if (h.stopping)
-        return h.stopping; h.stopping = this.closeOwned(h); const result = await h.stopping; if (!result.closed)
-        h.stopping = undefined; return result; }
+    async close(lease: LocalMemberLease, options?: { readonly yieldRequestId: string }): Promise<LocalMemberClosure> {
+        const h = this.get(lease);
+        if (options) {
+            this.refusePublishedDeliveryYield(h);
+            checkpointId({ identity: h.config.prepared.identity, sessionKey: lease.sessionKey, generation: lease.generation,
+                memberId: lease.memberId, runtime: h.config.prepared.runtime, nativeSession: h.nativeSession ?? '', cwd: lease.workDirectory }, options.yieldRequestId);
+            if (h.yieldRequestId && h.yieldRequestId !== options.yieldRequestId) throw Error('Member yield request identity reused');
+            if ((h.stopping || h.stopRequested || h.failureReason || (h.current?.terminal && h.current.terminal.kind !== 'completed')) && !h.yieldRequestId) throw Error('Ordinary close cannot become an admitted yield');
+            h.yieldRequestId = options.yieldRequestId;
+        }
+        if (h.stopping) return h.stopping;
+        h.stopRequested = true;
+        h.monitorEpoch = (h.monitorEpoch ?? 0) + 1;
+        if (h.monitor) { clearInterval(h.monitor); h.monitor = undefined; }
+        h.stopping = Promise.resolve().then(() => this.closeOwned(h));
+        const result = await h.stopping;
+        if (!result.closed) h.stopping = undefined;
+        return result; }
     private async closeOwned(h: Held): Promise<LocalMemberClosure> {
         if (h.monitor)
             clearInterval(h.monitor);
-        const l = h.lease;
+        const l = h.lease, began = Date.now();
+        const barrier = async (promise: Promise<void>, until: number): Promise<boolean> => {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                await Promise.race([promise, new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(Error('Journal closure durability deadline')), Math.max(0, until - Date.now()));
+                })]);
+                return true;
+            } catch {
+                this.retentionFailure(h, 'Member observation closure durability unconfirmed'); return false;
+            } finally { if (timer) clearTimeout(timer); }
+        };
+        if (h.yieldRequestId) {
+            await barrier(h.yieldAdmission ?? this.journal(h, 'control', { action: 'yield_intent', requestId: h.yieldRequestId, nativeSession: h.nativeSession, closure: 'unconfirmed' }), began + 500);
+        }
+        const finish = async (proof?: LocalMemberClosure['proof']): Promise<LocalMemberClosure> => {
+            if (h.processClosed) await barrier(h.processClosed, began + 2500);
+            if (!(await barrier(this.closeWriter(h), began + 2500))) {
+                try { this.state(h, 'unknown', { reason: h.failureReason }); } catch { }
+                return { closed: false, reason: h.failureReason ?? 'Member observation retention unavailable' };
+            }
+            this.state(h, 'closed', proof ? { proof } : {});
+            return proof ? { closed: true, proof } : { closed: true, reason: 'Never started' };
+        };
         if (!l.pid || !l.processGroup || !l.startIdentity) {
             if (fs.existsSync(path.join(l.controlDirectory, 'start.claim')))
                 return { closed: false, reason: 'Spawn claimed but birth identity unavailable' };
-            this.state(h, 'closed');
-            return { closed: true, reason: 'Never started' };
+            return finish();
         }
         const group = () => table().filter(r => r.group === l.processGroup);
         const matching = () => { const leader = table().find(r => r.pid === l.pid); return !leader || (leader.birth === l.startIdentity && leader.group === l.processGroup); };
@@ -424,9 +1004,10 @@ export class OarLocalMemberRuntime {
                 return { closed: false, reason: 'PID identity mismatch; no signal sent' };
             this.snapshot(h);
             const alive = () => { const all = table(); return (h.owned ?? []).filter(r => all.some(x => x.pid === r.pid)); };
-            this.journal(h, 'control', { action: 'stop', closure: 'unconfirmed' });
-            if (h.child?.connected)
-                h.child.send({ type: 'stop', reason: 'Host close' }, () => { });
+            const intentDurable = await barrier(this.journal(h, 'control', { action: h.yieldRequestId ? 'yield' : 'stop', requestId: h.yieldRequestId, closure: 'unconfirmed' }), began + 500);
+            if (intentDurable && h.child?.connected)
+                h.child.send(h.yieldRequestId ? { type: 'yield', requestId: h.yieldRequestId, reason: 'Host admitted yield' }
+                    : { type: 'stop', reason: 'Host close' }, () => { });
             for (const signal of [undefined, 'SIGTERM', 'SIGKILL'] as const) {
                 if (signal && (group().length || alive().length)) {
                     if (!matching())
@@ -452,12 +1033,11 @@ export class OarLocalMemberRuntime {
                             throw e;
                     }
                 }
-                const until = Date.now() + (signal === 'SIGKILL' ? 1500 : 500);
+                const until = began + (signal === 'SIGKILL' ? 2500 : signal === 'SIGTERM' ? 1000 : 500);
                 while (Date.now() < until) {
                     if (!group().length && !alive().length) {
                         const proof = { group: l.processGroup, observedAt: new Date().toISOString(), absent: true as const, pids: (h.owned ?? []).map(r => r.pid) };
-                        this.state(h, 'closed', { proof });
-                        return { closed: true, proof };
+                        return await finish(proof);
                     }
                     await sleep(50);
                 }
@@ -473,14 +1053,145 @@ export class OarLocalMemberRuntime {
             return { closed: false, reason: 'Process closure observation unavailable' };
         }
     }
+    private assertClosedContext(h: Held): void {
+        if (this.writer(h).error) throw Error('Native capture journal retention unavailable');
+        const l = h.lease, state = load(path.join(l.controlDirectory, 'state.json'));
+        const retained = load(path.join(this.root(l.sessionKey), 'lease.json')) as LocalMemberLease;
+        const retainedConfig = load(path.join(l.controlDirectory, 'config.json')) as LocalMemberConfiguration;
+        if (canonicalContext(retainedConfig.prepared) !== canonicalContext(h.config.prepared)) throw Error('Native capture original configuration identity mismatch');
+        if (canonicalContext(retained) !== canonicalContext(l)) throw Error('Native capture original lease identity mismatch');
+        if (state.phase !== 'closed' || !l.pid || !l.processGroup || !l.startIdentity
+            || state.sessionKey !== l.sessionKey || state.generation !== l.generation || state.memberId !== l.memberId
+            || state.pid !== l.pid || state.startIdentity !== l.startIdentity || state.nativeSession !== h.nativeSession
+            || state.proof?.group !== l.processGroup || state.proof?.absent !== true)
+            throw Error('Native capture requires actual closed owned-process proof');
+        const rows = table();
+        if (rows.some(r => r.group === l.processGroup) || (h.owned ?? []).some(r => rows.some(x => x.pid === r.pid)))
+            throw Error('Native capture owned processes remain');
+    }
+    async captureClosedContext(lease: LocalMemberLease, requestId: string, limits: LocalContextLimits): Promise<LocalContextCapture> {
+        const h = this.get(lease);
+        await this.journalFence(h);
+        if (h.stopping && !(await h.stopping).closed) throw Error('Native capture closure unconfirmed');
+        this.assertClosedContext(h);
+        if (!h.nativeSession) return { state: 'unavailable', reason: 'No retained native creation identity' };
+        const origin: LocalContextOrigin = { identity: h.config.prepared.identity, sessionKey: lease.sessionKey,
+            generation: lease.generation, memberId: lease.memberId, runtime: h.config.prepared.runtime,
+            nativeSession: h.nativeSession, cwd: lease.workDirectory };
+        const capture = captureLocalNativeFiles(lease.controlDirectory, origin, requestId, limits);
+        this.assertClosedContext(h);
+        return capture;
+    }
     async stopAll() { this.shuttingDown = true; return Promise.all([...this.held.values()].map(h => this.close(h.lease))); }
-    async recover(sessionKey: string): Promise<LocalMemberLease | undefined> { const current = this.held.get(sessionKey); if (current)
-        return current.lease; const root = this.root(sessionKey); if (!fs.existsSync(path.join(root, 'lease.json')))
-        return undefined; const lease = load(path.join(root, 'lease.json')) as LocalMemberLease; if (lease.sessionKey !== sessionKey || ![lease.controlDirectory, lease.workDirectory].every(p => path.resolve(p).startsWith(root + path.sep)))
-        throw Error('Invalid retained local lease'); const config = load(path.join(lease.controlDirectory, 'config.json')); const rows = fs.existsSync(path.join(lease.controlDirectory, 'journal.jsonl')) ? fs.readFileSync(path.join(lease.controlDirectory, 'journal.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(s => JSON.parse(s)) : []; const h: Held = { lease, config, failureReason: fs.existsSync(path.join(lease.controlDirectory, 'state.json')) ? load(path.join(lease.controlDirectory, 'state.json')).failureReason : undefined, owned: fs.existsSync(path.join(lease.controlDirectory, 'owned-pids.json')) ? load(path.join(lease.controlDirectory, 'owned-pids.json')) : undefined, seq: rows.length, streamGeneration: rows[0]?.streamGeneration ?? randomUUID(), nativeSession: rows.find((r: any) => r.kind === 'created')?.payload.nativeSession }; this.held.set(sessionKey, h); if (lease.processGroup && lease.pid && lease.startIdentity) {
+    async recover(sessionKey: string): Promise<LocalMemberLease | undefined> {
+        // Existing ownership lookup must remain usable by cleanup while IO is stalled
+        // or failed. read/capture and cold recovery retain their durability checks.
+        const current = this.held.get(sessionKey); if (current) return current.lease;
+        const root = this.root(sessionKey);
+        const read = async (file: string): Promise<string | undefined> => { try { return await fs.promises.readFile(file, 'utf8'); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; } };
+        const original = await read(path.join(root, 'lease.json')); if (!original) return undefined;
+        const lease = JSON.parse(original) as LocalMemberLease;
+        if (lease.sessionKey !== sessionKey || !path.resolve(lease.controlDirectory).startsWith(root + path.sep)) throw Error('Invalid retained local lease');
+        const config = JSON.parse((await read(path.join(lease.controlDirectory, 'config.json')))!) as LocalMemberConfiguration;
+        validateLocalMemberContinuity(config, lease.controlDirectory, lease.workDirectory);
+        if (!config.continuity && !path.resolve(lease.workDirectory).startsWith(root + path.sep)) throw Error('Invalid retained local work directory');
+        const retainedState = await read(path.join(lease.controlDirectory, 'state.json'));
+        const state = retainedState ? JSON.parse(retainedState) : undefined;
+        const retainedOwned = await read(path.join(lease.controlDirectory, 'owned-pids.json'));
+        const h: Held = { lease, config, stopRequested: retainedState ? ['closed', 'unknown'].includes(state.phase) : false,
+            failureReason: retainedState ? state.failureReason : undefined,
+            owned: retainedOwned ? JSON.parse(retainedOwned) : undefined, seq: 0, streamGeneration: '' };
+        const writer = this.writer(h);
+        let tail = '', bytesSinceYield = 0;
+        const filename = path.join(lease.controlDirectory, 'journal.jsonl');
+        try {
+            const stream = fs.createReadStream(filename, { highWaterMark: 65536 });
+            const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+            for await (const chunk of stream) {
+                if (!Buffer.isBuffer(chunk)) throw Error('Invalid retained member journal bytes');
+                let text: string;
+                try { text = decoder.decode(chunk, { stream: true }); }
+                catch { throw Error('Invalid retained member journal UTF-8'); }
+                writer.chunks.push(text); writer.ackedBytes += chunk.length;
+                tail += text; let end: number;
+                while ((end = tail.indexOf('\n')) >= 0) {
+                    const line = tail.slice(0, end); tail = tail.slice(end + 1);
+                    if (Buffer.byteLength(line) + 1 > journalQueueBytes) throw Error('Retained member journal row bound exceeded');
+                    const row = JSON.parse(line);
+                    if (!h.seq) h.streamGeneration = row.streamGeneration;
+                    if (row.schema !== 'hima-oar-observation/1' || row.seq !== h.seq || row.sessionKey !== lease.sessionKey
+                        || row.generation !== lease.generation || row.memberId !== lease.memberId || typeof row.streamGeneration !== 'string'
+                        || !row.streamGeneration || row.streamGeneration !== h.streamGeneration)
+                        throw Error('Invalid retained member yield intent or journal identity/sequence');
+                    if (row.kind === 'created') {
+                        if (h.nativeSession || typeof row.payload?.nativeSession !== 'string' || !row.payload.nativeSession) throw Error('Invalid retained native creation');
+                        h.nativeSession = row.payload.nativeSession;
+                    }
+                    if (h.nativeSession && row.nativeSession !== h.nativeSession) throw Error('Invalid retained native journal identity');
+                    if (['created', 'received', 'terminal', 'finished', 'control'].includes(row.kind)) writer.evidence.push(row);
+                    h.seq++; writer.ackedSeq = row.seq; bytesSinceYield += Buffer.byteLength(line);
+                    if (bytesSinceYield >= journalBatchBytes) { bytesSinceYield = 0; await cooperate(); }
+                }
+                if (Buffer.byteLength(tail) > journalQueueBytes) throw Error('Retained member journal row bound exceeded');
+            }
+            let final: string;
+            try { final = decoder.decode(); }
+            catch { throw Error('Invalid retained member journal UTF-8'); }
+            writer.chunks.push(final); tail += final;
+            if (tail) throw Error('Truncated retained member journal');
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        if (!h.streamGeneration) h.streamGeneration = randomUUID();
+        writer.cached = writer.chunks.join(''); writer.chunks = []; writer.cachedSeq = writer.ackedSeq;
+        const journalFailure = retainedState ? state.journalFailureReason : undefined;
+        if (journalFailure) writer.error = Error(journalFailure);
+        let ordinaryStop = false, priorFailure = false, physicalYield = false;
+        for (const row of writer.evidence) {
+            if (row.kind === 'control' && row.payload?.action === 'stop' && !h.yieldRequestId) ordinaryStop = true;
+            if (row.kind === 'control' && row.payload?.action === 'yield') {
+                if (!h.yieldRequestId || row.payload.requestId !== h.yieldRequestId)
+                    throw Error('Invalid retained physical yield identity');
+                physicalYield = true;
+            }
+            if (row.kind === 'terminal') {
+                const localFailure = row.payload?.outcome === 'failed';
+                const nativeFailure = row.payload?.outcome?.kind && row.payload.outcome.kind !== 'completed';
+                if (!h.yieldRequestId && (localFailure || nativeFailure)) priorFailure = true;
+                // A genuine physical shutdown abort is closure evidence. Earlier
+                // native faults and explicit Local fatal rows remain truthful.
+                if (localFailure || (h.yieldRequestId && nativeFailure && !physicalYield))
+                    h.failureReason ??= row.payload.reason ?? row.payload.outcome?.reason ?? 'Retained native failure before physical yield';
+            }
+            if (row.kind !== 'control' || row.payload?.action !== 'yield_intent') continue;
+            const requestId = row.payload.requestId, firstAdmission = h.yieldRequestId === undefined;
+            if (firstAdmission && (ordinaryStop || priorFailure)) throw Error('Ordinary stop or failure cannot become a recovered yield');
+            if (row.schema !== 'hima-oar-observation/1' || row.sessionKey !== lease.sessionKey
+                || row.generation !== lease.generation || row.memberId !== lease.memberId
+                || row.streamGeneration !== h.streamGeneration || row.nativeSession !== h.nativeSession
+                || row.payload.nativeSession !== h.nativeSession || typeof requestId !== 'string'
+                || !requestId || Buffer.byteLength(requestId) > 200
+                || (h.yieldRequestId !== undefined && h.yieldRequestId !== requestId))
+                throw Error('Invalid retained member yield intent');
+            if (row.payload.inputId !== undefined) {
+                const inputId = row.payload.inputId;
+                if (typeof inputId !== 'string' || !inputId || (h.yieldInputId && h.yieldInputId !== inputId)
+                    || !writer.evidence.some((r: any) => r.seq < row.seq && r.kind === 'control' && r.payload?.action === 'send_intent' && r.payload.inputId === inputId)
+                    || (firstAdmission && writer.evidence.some((r: any) => r.seq < row.seq && ['terminal', 'finished'].includes(r.kind) && r.payload?.inputId === inputId)))
+                    throw Error('Invalid retained accepted wait input');
+                h.yieldInputId = inputId;
+            }
+            h.yieldRequestId = requestId;
+            // Recovery read the already fsynced original row. Cleanup replay must
+            // reuse it, rather than append another intent after shutdown abort.
+            h.yieldAdmission = Promise.resolve();
+        }
+        if (ordinaryStop || priorFailure) h.stopRequested = true;
+        this.held.set(sessionKey, h); if (lease.processGroup && lease.pid && lease.startIdentity) {
         try {
             const present = table().filter(r => r.group === lease.processGroup);
-            if (!present.length && !(h.owned ?? []).some(r => table().some(x => x.pid === r.pid)))
+            if (!writer.error && !present.length && !(h.owned ?? []).some(r => table().some(x => x.pid === r.pid)))
                 this.state(h, 'closed', { proof: { group: lease.processGroup, observedAt: new Date().toISOString(), absent: true } });
             else
                 this.state(h, 'unknown', { reason: 'Recovered original lease without IPC; no restart or input replay' });

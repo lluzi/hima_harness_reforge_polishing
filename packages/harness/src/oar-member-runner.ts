@@ -6,8 +6,11 @@ import { createInterface } from 'node:readline';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { assertLocalNativeSessionIdentity, validateLocalMemberContinuity, type LocalMemberConfiguration, type LocalMemberContinuity } from './oar-local-member.js';
+
 type ObjectValue = Record<string, any>;
 type Configuration = {
+  continuity?: LocalMemberContinuity;
   prepared: { sessionKey: string; generation: number; memberId: string; runtime: 'pi' | 'opencode';
     inputId: string; prompt: string; deadlineAt: string };
   model: { provider: string; model: string; baseUrl: string; apiKey: string; nativeBaseUrl?: string };
@@ -39,6 +42,9 @@ function configuration(value: unknown): Configuration {
     || (m.nativeBaseUrl !== undefined && (typeof m.nativeBaseUrl !== 'string' || !m.nativeBaseUrl))) {
     throw new Error('Invalid local member configuration');
   }
+  if (v.continuity !== undefined && (!object(v.continuity) || !['native-resume', 'reconstruction'].includes(v.continuity.kind)))
+    throw new Error('Invalid local member continuity');
+  validateLocalMemberContinuity(v as unknown as LocalMemberConfiguration, v.controlDirectory, v.workDirectory);
   return v as Configuration;
 }
 function loadConfiguration(): Configuration {
@@ -66,8 +72,8 @@ async function mcp(): Promise<void> {
           serverInfo: { name: 'hima-member-context', version: '1' } });
       } else if (rpc.method === 'ping') respond(rpc.id, {});
       else if (rpc.method === 'tools/list') respond(rpc.id, { tools: [{ name: 'member_context',
-        description: 'Request authorized task, message or material context from the Host for this member.',
-        inputSchema: { type: 'object', properties: { action: { type: 'string' }, request: { type: 'object' } },
+        description: 'Request authorized task, message or material context from Host. Actions include readTask, send-message, ask {requestId,recipientMemberIds,text,replyToMessageId?}, delegate {requestId,memberId,goal,input,output:{version,schema},dependsOn,deadlineAt}, ask-human {requestId,goal,input,output:{version,schema},dependsOn,deadlineAt}, and wait {requestId,delegationIds}. Delegate/ask-human/wait require the current frozen leader grant. Delegation acceptance is nonblocking, not child success. Wait returns checked committed/closed results or yield-accepted; after yield do not send another engineering task or claim completion. Question replies never approve human requests. Actor, Run, effect, owner, epoch and revision are resolved by Host, never supplied in request.',
+        inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections'] }, request: { type: 'object' } },
           required: ['action', 'request'], additionalProperties: false } }] });
       else if (rpc.method === 'tools/call') {
         const args = object(rpc.params?.arguments);
@@ -112,10 +118,16 @@ async function sdkRun(): Promise<void> {
   });
   const config = initial, prepared = config.prepared, home = config.controlDirectory;
   let nativeSession: string | undefined, session: any, stopping = false, failed = false;
+  let yieldRequestId: string | undefined;
   let current: { id: string; nativeId: string; input: string; initial: boolean; received: boolean; text: string;
     clearText: boolean; ended?: ObjectValue } | undefined;
   const journal = (kind: string, payload: unknown) => sendWire({ type: kind, payload });
   const fail = (error: unknown) => {
+    if (yieldRequestId) {
+      if (process.connected) journal('control', { action: 'yield_observation_error', requestId: yieldRequestId,
+        reason: error instanceof Error ? error.message : String(error), closure: 'unconfirmed' });
+      return;
+    }
     if (failed) return;
     failed = true;
     if (process.connected) sendWire({ type: 'failure', reason: error instanceof Error ? error.message : String(error) });
@@ -128,14 +140,14 @@ async function sdkRun(): Promise<void> {
   const stop = async (reason: string) => {
     if (stopping) return;
     stopping = true;
-    if (process.connected) journal('control', { action: 'stop', reason, closure: 'unconfirmed' });
+    if (process.connected) journal('control', { action: yieldRequestId ? 'yield' : 'stop', ...(yieldRequestId ? { requestId: yieldRequestId } : {}), reason, closure: 'unconfirmed' });
     const timeout = setTimeout(() => process.exit(1), 10_000);
     try { if (session) { try { await session.abort(); } finally { await session.dispose(); } } }
     catch (error) { fail(error); }
     finally {
       // Flush preceding failure/control IPC before exiting, still bounded by timeout.
       if (process.connected && process.send) {
-        process.send({ type: 'control', payload: { action: 'stop_cleanup', reason, closure: 'unconfirmed' } }, error => {
+        process.send({ type: 'control', payload: { action: yieldRequestId ? 'yield_cleanup' : 'stop_cleanup', ...(yieldRequestId ? { requestId: yieldRequestId } : {}), reason, closure: 'unconfirmed' } }, error => {
           clearTimeout(timeout); process.exit(error || failed ? 1 : 0);
         });
       } else { clearTimeout(timeout); process.exit(failed ? 1 : 0); }
@@ -166,6 +178,14 @@ async function sdkRun(): Promise<void> {
   const inputIds = new Set<string>();
   process.on('message', (message: unknown) => {
     const item = object(message);
+    if (item?.type === 'yield') {
+      if (typeof item.requestId !== 'string' || !item.requestId || Buffer.byteLength(item.requestId) > 200
+        || (yieldRequestId !== undefined && yieldRequestId !== item.requestId) || (stopping && !yieldRequestId)) {
+        fail(new Error('Invalid Host yield identity')); void stop('invalid yield'); return;
+      }
+      yieldRequestId = item.requestId;
+      void stop('Host admitted yield'); return;
+    }
     if (item?.type === 'stop') { void stop(String(item.reason)); return; }
     if (item?.type === 'created_ack' && nativeSession && !authorized) { authorized = true; return; }
     if (item?.type !== 'input' || !authorized || stopping || failed || current || sending
@@ -210,7 +230,8 @@ async function sdkRun(): Promise<void> {
     }
     const sdk = await import(pathToFileURL(config.assets.oarModule).href);
     if (stopping) return;
-    const options = { cwd: config.workDirectory, model: `hima/${config.model.model}`, env,
+    const options = { cwd: config.workDirectory,
+      ...(config.continuity?.kind === 'native-resume' ? { resume: config.continuity.checkpoint.origin.nativeSession } : {}), model: `hima/${config.model.model}`, env,
       mcpServers: [{ name: 'hima', command: config.assets.nodeExecutable,
         args: [fileURLToPath(import.meta.url), 'mcp'], env: { HIMA_MEMBER_HOME: home } }] };
     session = prepared.runtime === 'pi' ? await sdk.piSession({ kind: 'available', via: 'bundled' }, options)
@@ -218,7 +239,7 @@ async function sdkRun(): Promise<void> {
         command: config.assets.opencodeCommand, version: config.assets.opencodeVersion }, options);
     if (stopping) { await session.abort(); await session.dispose(); return; }
     nativeSession = session.id;
-    if (!nativeSession) throw new Error('OAR opened no native session identity');
+    assertLocalNativeSessionIdentity(config.continuity, nativeSession);
     // Host persists creation before acknowledging or issuing any prompt.
     journal('created', { runtime: prepared.runtime, nativeSession });
     session.rawEvents((raw: ObjectValue) => {
@@ -248,7 +269,11 @@ async function sdkRun(): Promise<void> {
           if (current.clearText) { current.text = ''; current.clearText = false; }
           current.text += event.text;
         }
-        if (event.kind === 'turn_ended') current.ended = event.outcome;
+        if (event.kind === 'turn_ended') {
+          current.ended = event.outcome;
+          if (yieldRequestId) journal('terminal', { inputId: current.id, outcome: event.outcome,
+            received: current.received, yieldRequestId });
+        }
       } catch (error) { fail(error); void stop('observation failure'); }
     }, { cursor: { sessionId: nativeSession, afterSeq: -1 } });
     while (!stopping && !failed) {

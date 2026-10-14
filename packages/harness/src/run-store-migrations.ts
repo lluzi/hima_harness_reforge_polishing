@@ -70,7 +70,7 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
       ALTER TABLE hima.flow_derived_effects ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'business';
     `);
     const { rows } = await client.query<{version: number}>('SELECT version FROM hima.schema_version');
-    if (rows.length !== 1 || ![1, 2, 3, 4, 5].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
+    if (rows.length !== 1 || ![1, 2, 3, 4, 5, 6, 7].includes(rows[0]!.version)) throw new Error('Unsupported Hima application database schema; reopen with its original App version');
     if (rows[0]!.version === 1) {
       await client.query(`
         CREATE TABLE hima.host_operator(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), actor_id text NOT NULL UNIQUE);
@@ -133,6 +133,43 @@ export async function migrateRunStore(pool: Pool): Promise<void> {
         CREATE INDEX team_memory_pending ON hima.team_memory_index_operations((operation->>'state')) WHERE operation->>'state' IN ('pending','unknown','submitted');
         UPDATE hima.schema_version SET version=5;
       `);
+    }
+    if (rows[0]!.version < 6) {
+      await client.query(`
+        CREATE TABLE hima.team_delegations(run_id text NOT NULL REFERENCES hima.runs, delegation_id text NOT NULL,
+          root_effect_id text NOT NULL REFERENCES hima.flow_invocations, parent_effect_id text NOT NULL REFERENCES hima.flow_invocations, request_id text NOT NULL, digest text NOT NULL,
+          acceptance jsonb NOT NULL, child_identity jsonb, PRIMARY KEY(run_id,delegation_id),
+          UNIQUE(run_id,root_effect_id,request_id));
+        CREATE INDEX team_delegation_parent ON hima.team_delegations(run_id,parent_effect_id);
+        CREATE TABLE hima.team_waits(wait_id text PRIMARY KEY, run_id text NOT NULL REFERENCES hima.runs,
+          root_effect_id text NOT NULL REFERENCES hima.flow_invocations, parent_effect_id text NOT NULL REFERENCES hima.flow_invocations,
+          request_id text NOT NULL, digest text NOT NULL, acceptance jsonb NOT NULL,
+          saved_context jsonb, closure_proof jsonb, UNIQUE(parent_effect_id,request_id), UNIQUE(parent_effect_id));
+        CREATE TABLE hima.team_effect_continuations(continuation_id text PRIMARY KEY,
+          wait_id text NOT NULL UNIQUE REFERENCES hima.team_waits, run_id text NOT NULL REFERENCES hima.runs,
+          root_effect_id text NOT NULL REFERENCES hima.flow_invocations,
+          predecessor_effect_id text NOT NULL UNIQUE REFERENCES hima.flow_invocations,
+          successor_effect_id text NOT NULL UNIQUE REFERENCES hima.flow_invocations, continuation jsonb NOT NULL);
+        CREATE INDEX team_effect_head ON hima.team_effect_continuations(run_id,root_effect_id);
+        CREATE TABLE hima.team_human_requests(task_id text NOT NULL REFERENCES hima.team_tasks, request_id text NOT NULL,
+          run_id text NOT NULL REFERENCES hima.runs, effect_id text NOT NULL REFERENCES hima.flow_invocations,
+          digest text NOT NULL, request jsonb NOT NULL, response jsonb, response_digest text,
+          PRIMARY KEY(task_id,request_id), UNIQUE(effect_id));
+        CREATE TABLE hima.team_continuation_requests(task_id text NOT NULL REFERENCES hima.team_tasks,
+          request_id text NOT NULL, digest text NOT NULL, previous_run_id text NOT NULL REFERENCES hima.runs,
+          current_run_id text NOT NULL UNIQUE REFERENCES hima.runs, acceptance jsonb NOT NULL, PRIMARY KEY(task_id,request_id));
+        CREATE TABLE hima.team_pack_delegations(parent_effect_id text PRIMARY KEY REFERENCES hima.flow_invocations,
+          parent_run_id text NOT NULL REFERENCES hima.runs, child_task_id text NOT NULL REFERENCES hima.team_tasks,
+          child_run_id text NOT NULL UNIQUE REFERENCES hima.runs, binding jsonb NOT NULL);
+        UPDATE hima.schema_version SET version=6;
+      `);
+    }
+    if (rows[0]!.version < 7) {
+      await client.query(`CREATE TABLE hima.team_definition_handoffs(
+        task_id text NOT NULL REFERENCES hima.team_tasks, request_id text NOT NULL,
+        digest text NOT NULL, previous_run_id text NOT NULL UNIQUE REFERENCES hima.runs,
+        gate jsonb NOT NULL, PRIMARY KEY(task_id,request_id));
+        UPDATE hima.schema_version SET version=7;`);
     }
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }

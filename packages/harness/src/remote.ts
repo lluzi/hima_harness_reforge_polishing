@@ -645,6 +645,7 @@ export interface PackTransferBody {
 export interface RemoteOperations {
   teamRuntimeOperation?(request:unknown):Promise<object>;
   teamMaterialBytes?(sessionId:string,ref:{teamId:string;taskId:string;stageId:string},signal?:AbortSignal):Promise<{stream:AsyncIterable<Uint8Array>;sha256:string;mediaType:string}>;
+  /** Authenticated human Host route, including delegate/ask/wait. Guide tools use their own origin. */
   teamOperation?(sessionId:string,request:unknown):Promise<object>;
   memberTeamContext?(token:string,request:unknown):Promise<object>;
   readRunView?(runId: string): Promise<RunView | undefined>;

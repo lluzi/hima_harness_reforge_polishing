@@ -44,6 +44,7 @@ import { packDigestExcludes, packId, pipelineFiles, snapshotPackFolder, snapshot
 import { loadRunPack, releaseIssue } from './release.js';
 import { flowSource, type FlowSource, type CompiledFlow } from './flow-definition.js';
 import { compilePackFlow, compileLegacyFlow, projectFlowGraph } from './flow-compiler.js';
+import { teamDefinitionRef } from './team-contract.js';
 import type { TaskInputBinding } from './task-contract.js';
 
 // Re-exported so a caller of `loadPack` finds the error it can throw right beside it.
@@ -718,6 +719,16 @@ export const strategyKnob = z
     }
   });
 
+export const packTeamDelegation = z.strictObject({ id: packId, nodeId: packId, team: teamDefinitionRef });
+const packTeamDelegations = z.array(packTeamDelegation).superRefine((values, ctx) => {
+  const ids = new Set<string>(), nodes = new Set<string>();
+  values.forEach((value, index) => {
+    if (ids.has(value.id)) ctx.addIssue({ code: 'custom', path: [index, 'id'], message: 'Team delegation IDs must be unique' });
+    if (nodes.has(value.nodeId)) ctx.addIssue({ code: 'custom', path: [index, 'nodeId'], message: 'A node may declare only one Team delegation' });
+    ids.add(value.id); nodes.add(value.nodeId);
+  });
+});
+
 export const packContract = z.strictObject({
   id: packId,
   version: z.string(),
@@ -756,6 +767,8 @@ export const packContract = z.strictObject({
   workshops: z.array(packWorkshop).default([]),
   /** Optional method-declared Agent Team; omission keeps every historical Pack compatible. */
   agentTeams: z.array(packAgentTeam).default([]),
+  /** Reusable HimaTeam calls, independent of historical Agent Team recipes. */
+  teamDelegations: packTeamDelegations.optional(),
   /** Campaign-wide research bounds. Every Workshop and every grown node shares this one pool. */
   budget: packBudget.default(defaultPackBudget),
   rules: z.array(z.string().min(1)).default([]),
@@ -2124,6 +2137,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
     }
   }
   validateAgentTeams(pack, declaredIn, broken);
+  if (contract.teamDelegations?.length) broken(packFiles.contract, 'teamDelegations require a versioned Flow task with tool resident/team-delegate');
   const growthPoints = graph.nodes.filter((node) => node.kind === 'explore' && node.parameters.growth === true);
   if (growthPoints.length > 1) broken(packFiles.graph, `declares ${String(growthPoints.length)} growth points; the first growth slice supports one top-level Explore position`);
   for (const [name, part] of Object.entries(graph.loops)) {

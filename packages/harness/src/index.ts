@@ -8,11 +8,13 @@ import { stageAttachment, readAttachment, materializeAttachment, readAttachmentE
 import { parseTaskMaterial } from './workshop.js';
 import { TeamServiceRuntime, type TeamServiceReceipt } from './team-service-runtime.js';
 import { z as teamZ } from 'zod';
-import { controlFlow } from './flow-workflow.js';
+import { controlFlow, delegateFlowTask, waitFlowDelegation, resumeTeamFlow, applyTeamDefinition, recoverTeamDefinitionHandoffs } from './flow-workflow.js';
+import { teamDelegationRequest } from './flow-definition.js';
 import { openDurableTeamRun, readTeamTask } from './durable-fabric.js';
-import { listTeams, readTeam, saveTeamDefinition, cloneTeam, exportTeamDefinition } from './team.js';
+import { listTeams, readTeam, listTeamDefinitionVersions, saveTeamDefinition, cloneTeam, exportTeamDefinition } from './team.js';
 import { TeamError, teamTaskRequest, type TeamDefinition, type TeamReadiness, type TeamDefinitionActor } from './team-contract.js';
 import type { FlowAdapterContext } from './flow-workflow.js';
+import { taskToolOutput } from './task-contract.js';
 import type { TaskEffectAdapter } from './task-effects.js';
 // @hima-seam agent wrapped
 // @hima-seam plugin-module direct
@@ -42,7 +44,7 @@ import { installedExecutableManifest, startDurableRuntime, type DurableRuntime }
 import { flowWorkflowDefinitions } from './flow-workflow.js';
 import { resolveDurableTaskAdapter } from './durable-task-adapters.js';
 import { knownDurableRun, durableProposalRun, durableStartRequestDigest, durableStartResult } from './durable-fabric.js';
-import type { DurableCommand } from './run-store.js';
+import { jsonDigest, type DurableCommand } from './run-store.js';
 import { reconcilePublishedLegacyArchive } from './experience.js';
 import { nativeDelegationPolicy } from './native-task-adapters.js';
 import { operateTaskInteractive, type TaskInteractiveDeps } from './task-interactive.js';
@@ -94,7 +96,7 @@ export { readGuideContext, readNativeSessionContext, resolveReportAddress, targe
 export type { TargetAddress, GuideContextView } from './guide-context.js';
 import { authenticCampaignProposalId, sameCampaignProposalFacts } from './fabric.js';
 export { prepareCampaignSession, readChildSessionView, listSessionChildren } from './guide-sessions.js';
-export type { PreparedCampaignSession } from './guide-sessions.js';
+export type { PreparedCampaignSession, PreparedTeamTaskRef } from './guide-sessions.js';
 import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './workshop.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
@@ -620,7 +622,14 @@ export default class Hima extends Service {
       interactiveBindingsFile: this.config.interactiveBindingsFile });
     const workflows = [
       ...preparationWorkflowDefinitions({ sitesDir: this.config.sitesDir }),
-      ...flowWorkflowDefinitions({ finalize: async (runtime,runId,revision,attempt) => {
+      ...flowWorkflowDefinitions({ team: {
+        // Recovery callbacks can run before this.durable assignment. Resolve the captured
+        // startup promise; never read an uninitialized service field or create another store.
+        acceptDelegation:async input=>(await durableStarting!).store.teamFlow().acceptDelegation(input),
+        readDelegations:async runId=>(await durableStarting!).store.teamFlow().readDelegations(runId),
+        delegationGate:async (runId,id)=>(await durableStarting!).store.teamFlow().delegationGate(runId,id),
+        bindDelegationEffect:async (input,identity)=>(await durableStarting!).store.teamFlow().bindDelegationEffect(input,identity),
+      }, finalize: async (runtime,runId,revision,attempt) => {
         await this.durableAdaptersReady;
         const source=(await runtime.store.run(runId)).opening.data as {source?:{kind?:string}};
         if(source.source?.kind==='team')return {complete:true};
@@ -628,6 +637,7 @@ export default class Hima extends Service {
       }, resolveAdapter: async context => {
         await this.durableAdaptersReady;
         return resolveDurableTaskAdapter(context, { ctx: this.ctx, teamExecutor:this.teamExecutor, sitesDir: this.config.sitesDir,
+          projectOfRun:runId=>this.deps().projectOfRun!(runId),
           retainedMaterialsDir: this.retainedMaterialsDir,
           interactive: { bridge: interactiveBridge,
             ...(testFixtureCanRunHere() && process.env.HIMA_TEST_INTERACTIVE_BINDING_ID
@@ -928,6 +938,7 @@ export default class Hima extends Service {
       for(const run of this.ledger.runs())if(!pgRuns.has(run.id)&&hasEnded(run.status))await reconcilePublishedLegacyArchive(this.deps(),run.id);
       const previous=await this.durable.store.hostExit();
       if(previous)await this.durable.store.releaseHostExit(previous.requestId,true);
+      await recoverTeamDefinitionHandoffs(this.durable);
     });
     void this.reconciled.catch(error => this.ctx.logger.warn(`Durable preparation recovery remains unavailable: ${String(error)}`));
     this.ctx.inject(['sessionController'], nativeCtx => {
@@ -1119,6 +1130,7 @@ export default class Hima extends Service {
     return readTeamMemory(ports,actor,ref,request.page);
   }
   private async teamWorkspaceOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown,sessionId?:string):Promise<object> {
+    if(['delegate','ask','ask-human','wait'].includes(action))return this.teamCollaborationOperation(actor,ref,action,raw);
     const memoryAction=({'query-memory':'query','propose-memory':'propose','memory-status':'status','memory-corrections':'corrections'} as Record<string,string>)[action];
     if(memoryAction)return this.teamMemoryOperation(actor,ref,memoryAction,raw);
     const store=this.durable.store.teamMessages();
@@ -1167,14 +1179,83 @@ export default class Hima extends Service {
     throw new TeamError('hima/team-invalid','Choose a supported task material operation.');
   }
 
+  /** Host origin and retained grants are authority; model requests contain only business input. */
+  private async teamCollaborationOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown):Promise<object> {
+    if(action==='ask') {
+      const request=teamZ.strictObject({requestId:teamZ.string().min(1),recipientMemberIds:teamZ.array(teamZ.string().min(1)).min(1).max(64),text:teamZ.string().trim().min(1).max(16000),replyToMessageId:teamZ.string().optional()}).parse(raw);
+      await this.waitForBusinessAdmission();
+      return sendTeamMessage(this.durable.store.teamMessages(),actor,{...ref,...request,kind:'question',stagedAttachmentIds:[]},this.teamTransport);
+    }
+    const assignment=(input:unknown)=>teamDelegationRequest.parse(action==='ask-human'?{...teamZ.record(teamZ.string(),teamZ.unknown()).parse(input),target:'human'}:input);
+    const waitSchema=teamZ.strictObject({requestId:teamZ.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/),delegationIds:teamZ.array(teamZ.string().min(1)).min(1).max(64).refine(ids=>new Set(ids).size===ids.length,'Delegation identities must be unique')});
+    if(actor.kind==='guide') {
+      const request=action==='wait'?waitSchema.parse(raw):assignment(raw);
+      const task=await this.durable.store.readTeamTask(ref.projectId,ref.teamId,ref.taskId);
+      if(!task)throw new TeamError('hima/not-found','Choose an existing frozen Team task.');
+      const definition=await readTeam(this.durable.store.teamDefinitions(),actor,{projectId:ref.projectId,teamId:ref.teamId,version:task.team.version});
+      const text=JSON.stringify({action,request});
+      if(Buffer.byteLength(text,'utf8')>16000)throw new TeamError('hima/team-invalid','Narrow the requirement before forwarding it to the frozen leader.');
+      await this.waitForBusinessAdmission();
+      const receipt=await sendTeamMessage(this.durable.store.teamMessages(),actor,{...ref,requestId:request.requestId,recipientMemberIds:[definition.definition.leaderMemberId],text,kind:action==='wait'?'question':'requirement',stagedAttachmentIds:[]},this.teamTransport);
+      return {state:'forwarded-to-leader',action,receipt};
+    }
+    const humanSchema=teamZ.strictObject({parentEffectId:teamZ.string().min(1),request:teamZ.unknown()});
+    const humanRequest=actor.kind==='human'?humanSchema.parse(raw):undefined;
+    const request=action==='wait'?waitSchema.parse(humanRequest?.request??raw):assignment(humanRequest?.request??raw);
+    const store=this.durable.store;
+    const task=await store.readTeamTask(ref.projectId,ref.teamId,ref.taskId);
+    if(!task)throw new TeamError('hima/not-found','Original task is unavailable.');
+    let parentEffectId:string;
+    if(actor.kind==='member') {
+      // Read the persisted grant again: no caller-selected Run/effect/stamps can become authority.
+      const current=await store.readTeamGrant(actor.grant.grantId);
+      if(!current||jsonDigest(current)!==jsonDigest(actor.grant))throw new TeamError('hima/not-authorized','Current native member grant differs from the resolved Host lease.');
+      await store.authorizeTeamGrant(current,'delegate');
+      actor={kind:'member',grant:current};parentEffectId=current.effectId;
+      if(current.runId!==task.currentRunId)throw new TeamError('hima/not-authorized','Member grant belongs to an earlier task Run.');
+    } else parentEffectId=humanRequest!.parentEffectId;
+    await this.waitForBusinessAdmission();
+    const run=await store.run(task.currentRunId);
+    const authority={runId:run.runId,parentEffectId,actor,owner:run.owner,epoch:run.epoch,revision:run.revision};
+    if(action==='delegate'||action==='ask-human') {
+      const receipt=await delegateFlowTask(this.durable,{...authority,request:teamDelegationRequest.parse(request)},store.teamFlow());
+      return {state:'accepted',...receipt};
+    }
+    const waiting=waitSchema.parse(request);
+    // Store checks current frozen leader/head and the exact same-Run parent chain before any read.
+    await store.authorizeTeamWait({...authority,delegationIds:waiting.delegationIds});
+    const results=await Promise.all(waiting.delegationIds.map(async delegationId=>{
+      const checked=await waitFlowDelegation(this.durable,run.runId,delegationId,store.teamFlow());
+      if(checked.state==='succeeded'&&checked.result) {
+        const delivery=await store.readTeamCommittedDelivery(checked.result.identity);
+        if(!delivery||jsonDigest(delivery)!==jsonDigest(checked.result))return {delegationId,state:'waiting' as const,reason:'Committed child delivery or original resource closure is unproved.',result:undefined};
+      }
+      return {delegationId,...checked};
+    }));
+    await store.authorizeTeamWait({...authority,delegationIds:waiting.delegationIds});
+    const terminal=results.find(result=>['failed','cancelled','superseded'].includes(result.state));
+    if(terminal) {
+      const response={state:terminal.state,...(terminal.reason?{reason:terminal.reason}:{}),results};
+      if(actor.kind==='member'&&Buffer.byteLength(JSON.stringify({ok:true,value:response}),'utf8')>16*1024)throw new TeamError('hima/team-invalid','Checked terminal results exceed the native 16 KiB reply limit. Read a narrower delegation set.');
+      return response;
+    }
+    if(results.every(result=>result.state==='succeeded'&&result.result)) {
+      const response={state:'succeeded',runId:run.runId,parentEffectId,results};
+      if(actor.kind==='member'&&Buffer.byteLength(JSON.stringify({ok:true,value:response}),'utf8')>16*1024)throw new TeamError('hima/team-invalid','Checked results exceed the native 16 KiB reply limit. Read one delegation at a time or use bounded read-member-work/read-task-artifact queries.');
+      return response;
+    }
+    const accepted=await store.acceptTeamWait({parentEffectId,requestId:waiting.requestId,actor,owner:run.owner,epoch:run.epoch,revision:run.revision,delegationIds:waiting.delegationIds});
+    return {state:'yield-accepted',waitId:accepted.waitId};
+  }
+
   async memberTeamContext(token:string,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
     const grant=await this.durable.store.resolveTeamGrant(token);
     return this.memberActorContext(grant,request);
   }
   private async memberActorContext(grant:import('./team-contract.js').ActorGrant,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
-    await this.durable.store.authorizeTeamGrant(grant,['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='send-message'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
+    await this.durable.store.authorizeTeamGrant(grant,['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='delegate'||request.action==='ask-human'||request.action==='wait'?'delegate':request.action==='send-message'||request.action==='ask'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
     if(request.action!=='readTask')return this.teamWorkspaceOperation({kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},request.action,request.request);
     if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
     const task=await this.durable.store.readTeamTask(grant.projectId,grant.teamId,grant.taskId);
@@ -1212,9 +1293,9 @@ export default class Hima extends Service {
     if(!this.ctx.get('agents')?.list().some(agent=>String(agent.id)===sessionId))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
     const projectId=await sessionProject(this.ctx,sessionId,true);
     const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
-    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','read','save','clone','export','startTask','listTasks','readTask','control','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','listVersions','read','save','clone','export','startTask','listTasks','readTask','control','respond','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
     if(['configure-model','save','clone','startTask'].includes(value.action))await this.waitForBusinessAdmission();
-    if(!['context','list-models','configure-model','list','read','save','clone','export','startTask','listTasks','readTask','control'].includes(value.action)) {
+    if(!['context','list-models','configure-model','list','listVersions','read','save','clone','export','startTask','listTasks','readTask','control','respond'].includes(value.action)) {
       if(!value.teamId||!value.taskId)throw new TeamError('hima/team-invalid','Choose a team and task identity.');
       return this.teamWorkspaceOperation(actor,{projectId,teamId:value.teamId,taskId:value.taskId},value.action,value.request??{page:value.page,...(value.memberId?{memberId:value.memberId}:{})},sessionId);
     }
@@ -1227,6 +1308,7 @@ export default class Hima extends Service {
     if(!value.teamId)throw new TeamError('hima/team-invalid','Choose a team identity.');
     const ref={projectId,teamId:value.teamId,version:value.version};
     if(value.action==='read')return readTeam(store,actor,ref);
+    if(value.action==='listVersions')return listTeamDefinitionVersions(store,actor,{projectId,teamId:value.teamId,page:value.page as import('./team.js').TeamDefinitionVersionsReadPage});
     if(value.action==='clone')return cloneTeam(store,actor,{...ref,title:value.title});
     if(value.action==='export')return exportTeamDefinition(store,actor,ref);
     if(value.action==='listTasks') {
@@ -1247,9 +1329,48 @@ export default class Hima extends Service {
     if(opening)return openDurableTeamRun(this.durable,actor,opening,readiness);
     if(!value.taskId)throw new TeamError('hima/team-invalid','Choose a task identity.');
     if(value.action==='readTask')return readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness);
-    const request=teamZ.strictObject({requestId:teamZ.string().min(1),action:teamZ.enum(['pause','continue','cancel']),expectedEpoch:teamZ.number().int().nonnegative(),expectedRevision:teamZ.number().int().nonnegative()}).parse(value.request);
+    if(value.action==='respond') {
+      if(actor.kind!=='human')throw new TeamError('hima/not-authorized','Formal Team responses require the authenticated human.');
+      const name=teamZ.string().min(1),digest=teamZ.string().regex(/^[a-f0-9]{64}$/);
+      const response=teamZ.strictObject({requestId:name,binding:teamZ.strictObject({requestId:name,taskId:name,runId:name,effectId:name,
+        generation:teamZ.number().int().nonnegative(),revision:teamZ.number().int().nonnegative(),principalId:name,
+        contentDigest:digest,schemaDigest:digest,expiresAt:teamZ.iso.datetime()}),output:taskToolOutput}).parse(value.request);
+      const task=await this.durable.store.readTeamTask(projectId,value.teamId,value.taskId);
+      if(!task||response.binding.taskId!==task.taskId||response.binding.runId!==task.currentRunId)
+        throw new TeamError('hima/not-authorized','Respond only to the selected task and its current original request.');
+      const run=await this.durable.store.run(task.currentRunId);
+      const command={runId:run.runId,commandId:'team-human-response-'+jsonDigest([task.taskId,response.requestId]),
+        action:'respond' as const,owner:run.owner,epoch:response.binding.generation,revision:response.binding.revision,actor:actor.actorId,origin:'human' as const,
+        response:{effectId:response.binding.effectId,output:response.output,teamRequest:{requestId:response.requestId,binding:response.binding}}};
+      // A cached DBOS workflow result cannot replace current POST authorization.
+      await this.durable.store.command(command);
+      const handle=await controlFlow(this.durable,command);
+      await handle.getResult();
+      return readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness);
+    }
+    const request=teamZ.strictObject({requestId:teamZ.string().min(1),action:teamZ.enum(['pause','continue','cancel','resume','applyDefinition']),expectedRunId:teamZ.string().min(1).optional(),expectedEpoch:teamZ.number().int().nonnegative(),expectedRevision:teamZ.number().int().nonnegative(),definitionVersion:teamZ.number().int().positive().optional()}).parse(value.request);
     const task=await readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness),run=await this.durable.store.run(task.currentRunId);
-    if(request.action==='continue'&&run.hold?.startsWith('Team stopped on App exit'))throw new TeamError('hima/team-not-ready','Controlled post-exit Team continuation is not qualified yet; retain this task and its evidence.');
+    if(request.action==='applyDefinition') {
+      if(origin!=='human'||actor.kind!=='human'||!request.expectedRunId||request.definitionVersion===undefined)
+        throw new TeamError('hima/not-authorized','Saved-definition handoff requires the authenticated human, observed Run and selected version.');
+      const selected=await readTeam(store,actor,{...ref,version:request.definitionVersion});
+      const selectedReadiness=await this.teamExecutor?.readiness(selected.definition,projectId);
+      if(!selectedReadiness?.ready)throw new TeamError('hima/team-not-ready',selectedReadiness?.missing.join('; ')??'Selected runtime is unavailable.');
+      await applyTeamDefinition(this.durable,{action:'applyDefinition',origin:'human',actor,taskId:task.taskId,
+        runId:request.expectedRunId,requestId:request.requestId,expectedEpoch:request.expectedEpoch,
+        expectedRevision:request.expectedRevision,definitionVersion:request.definitionVersion});
+      return this.teamOperation(sessionId,{action:'readTask',teamId:value.teamId,taskId:value.taskId},origin);
+    }
+    if(request.action==='resume') {
+      if(actor.kind!=='human'||!request.expectedRunId)throw new TeamError('hima/not-authorized','Resume requires the authenticated human and observed predecessor Run.');
+      await resumeTeamFlow(this.durable,{taskId:task.taskId,runId:request.expectedRunId,requestId:request.requestId,actor,
+        expectedEpoch:request.expectedEpoch,expectedRevision:request.expectedRevision,...(request.definitionVersion===undefined?{}:{definitionVersion:request.definitionVersion})},this.durable.store);
+      return this.teamOperation(sessionId,{action:'readTask',teamId:value.teamId,taskId:value.taskId},origin);
+    }
+    if(request.definitionVersion!==undefined)throw new TeamError('hima/team-invalid','Saved-version adoption requires explicit task handoff or post-exit resume.');
+    if(request.expectedRunId!==undefined?request.expectedRunId!==run.runId:task.runIds.length>1)
+      throw new TeamError('hima/team-conflict','Task current Run changed; refresh it before control.');
+    if(request.action==='continue'&&run.hold?.startsWith('Team stopped on App exit'))throw new TeamError('hima/team-not-ready','Use explicit post-exit resume after original physical closure.');
     const handle=await controlFlow(this.durable,{runId:run.runId,commandId:request.requestId,action:request.action,owner:run.owner,epoch:request.expectedEpoch,revision:request.expectedRevision,actor:actor.actorId,origin:origin==='human'?'human':'agent'});
     const result=await handle.getResult();
     await this.durable.store.putFlowFact(run.runId,`team-control-result:${request.requestId}`,result as import('./task-contract.js').JsonValue);
@@ -2066,15 +2187,15 @@ export type { JsonValue, TaskIdentity, TaskInputBinding, TaskOutputBinding, Task
   TaskLocalSchemas, TaskArtifact, TaskDiagnostic, TaskProjectionState, TaskProjection,
   TaskToolOutput, TaskResult, TaskContractErrorCode, TaskContractIssue } from './task-contract.js';
 
-export { flowSourceVersion, flowIRVersion, flowElement, flowExtensionSlot, flowSource } from './flow-definition.js';
+export { flowSourceVersion, flowIRVersion, flowElement, flowExtensionSlot, flowSource, teamDelegationRequest, teamDelegationInput } from './flow-definition.js';
 export type { FlowTask, FlowSequence, FlowChoice, FlowParallel, FlowRepeat, Flow, FlowSource,
-  FlowExtensionSlot, FlowBlock, FlowBranch, CompiledTask, CompiledFlow, FrozenFlowFragment, FrozenLegacyFlowFragment } from './flow-definition.js';
+  FlowExtensionSlot, FlowBlock, FlowBranch, CompiledTask, CompiledFlow, FrozenFlowFragment, FrozenLegacyFlowFragment, TeamDelegationRequest, FrozenTeamDelegation } from './flow-definition.js';
 export { FlowCompileError, compileFlow, compilePackFlow, compileLegacyFlow, compileLegacyGrowth,
-  freezeFlowFragment, compileTeamFlow } from './flow-compiler.js';
+  freezeFlowFragment, compileTeamFlow, freezeTeamDelegation } from './flow-compiler.js';
 export type { CompileFlowOptions } from './flow-compiler.js';
 
-export { startFlow, controlFlow, readFlow, scheduleFlowDeadline, flowWorkflowDefinitions } from './flow-workflow.js';
-export type { FlowStart, FlowAdapterContext, FlowInvocation, FlowOutcome, FlowWorkflowOptions } from './flow-workflow.js';
+export { startFlow, controlFlow, readFlow, scheduleFlowDeadline, flowWorkflowDefinitions, delegateFlowTask, waitFlowDelegation, recoverTeamDelegations, definitionForRevision, resumeTeamFlow, applyTeamDefinition, recoverTeamDefinitionHandoffs, startAcceptedTeamSuccessor, bindTeamHumanRequest, validateTeamHumanResponse } from './flow-workflow.js';
+export type { FlowStart, FlowAdapterContext, FlowInvocation, FlowOutcome, FlowWorkflowOptions, TeamFlowStore, TeamDelegationAdmission, TeamDelegationGate, TeamHumanRequest, TeamHumanRequestBinding, TeamHumanResponse, TeamFlowContinuationRequest, TeamFlowContinuationStore } from './flow-workflow.js';
 
 export * from './team-contract.js';
 export * from './team.js';

@@ -42,19 +42,20 @@ test('member output needs the same received native turn to finish before it can 
   let rows:unknown[]=[received];
   let delivered=JSON.stringify(result);
   const options={home:'unused',retainedMaterialsDir:'unused',privatePorts:()=>[],sharedDeepSeekModel:async()=>({model:'unused'}),memberContext:async()=>({}),
-    store:{orderedExternalEffectFacts:async()=>[{fact:{namespaceGeneration:'namespace',validUntil:prepared.deadlineAt}}],teamServiceReceipts:async()=>[],recordExternalEffectFact:async()=>{},externalEffectFact:async(_identity:unknown,key:string)=>key==='oar:native-session'?{nativeSession:'native'}:undefined},
+    store:{readTeamExecutionBinding:async(identity:unknown)=>{assert.deepEqual(identity,prepared.identity);return {deadlineAt:prepared.deadlineAt};},readTeamEffectHead:async(identity:unknown)=>{assert.deepEqual(identity,prepared.identity);return {state:'active',invocation:{identity:prepared.identity,version:1,branches:[],context:null,consumedEffects:[],consumedVersions:[]}};},orderedExternalEffectFacts:async()=>[{fact:{namespaceGeneration:'namespace',validUntil:prepared.deadlineAt}}],teamServiceReceipts:async()=>[],recordExternalEffectFact:async()=>{},externalEffectFact:async(_identity:unknown,key:string)=>key==='oar:native-session'?{nativeSession:'native'}:undefined},
     services:{},runtimeAssets:async()=>({}),localRuntime:{recover:async()=>({sessionKey:prepared.sessionKey,generation:prepared.generation,memberId:prepared.memberId,controlDirectory:'fixture-control',workDirectory:'fixture-work'}),read:async()=>({journal:rows.map(row=>JSON.stringify(row)).join('\n'),result:delivered,state:JSON.stringify({phase:'completed'}),requests:[]}),stopAll:async()=>[]}};
   const executor=createOarMemberExecutor(options);
+  const assertUnknown=async()=>{const observation=await executor.port.observe(prepared,undefined);assert.equal(observation.state,'unknown');assert.match(observation.reason,/Native result has no matching completed turn evidence/);};
   try{
-    assert.equal((await executor.port.observe(prepared,undefined)).state,'unknown','result and completed state without native terminal cannot commit');
+    await assertUnknown();
     rows.push({...identity,kind:'terminal',seq:1,payload:{inputId:'input',received:true,outcome:{kind:'failed'}}});
-    assert.equal((await executor.port.observe(prepared,undefined)).state,'unknown','failed turn cannot deliver success');
+    await assertUnknown();
     rows=[received,{...identity,kind:'terminal',seq:1,payload:{inputId:'input',received:true,outcome:{kind:'completed'}}}];
     assert.equal((await executor.port.observe(prepared,undefined)).state,'ready');
     delivered=JSON.stringify({...result,deliveryInputId:'delivery-correction'});
-    assert.equal((await executor.port.observe(prepared,undefined)).state,'unknown','an earlier terminal cannot validate a correction');
+    await assertUnknown();
     rows.push({...identity,kind:'terminal',seq:2,payload:{inputId:'delivery-correction',received:true,outcome:{kind:'completed'}}});
-    assert.equal((await executor.port.observe(prepared,undefined)).state,'unknown','corrected terminal also needs its own receive proof');
+    await assertUnknown();
     rows.push({...identity,kind:'received',seq:3,payload:{inputId:'delivery-correction'}});
     assert.equal((await executor.port.observe(prepared,undefined)).state,'ready');
   }finally{await executor.dispose();}
@@ -69,7 +70,7 @@ test('oversized member context replies remain bounded and recover without anothe
   const lease={sessionKey:'session',generation:1,memberId:'member',controlDirectory:'control',workDirectory:'work'};
   const executor=createOarMemberExecutor({home:'unused',retainedMaterialsDir:'unused',services:{},runtimeAssets:async()=>({}),sharedDeepSeekModel:async()=>({}),
     memberContext:async()=>{calls++;return {text:'x'.repeat(20000)};},
-    store:{recordExternalEffectFact:async(_identity:unknown,key:string,value:unknown)=>{facts.set(key,value);},externalEffectFact:async(_identity:unknown,key:string)=>facts.get(key),readTeamGrant:async()=>({})},
+    store:{readTeamExecutionBinding:async(identity:unknown)=>{assert.deepEqual(identity,prepared.identity);return {deadlineAt:prepared.deadlineAt};},readTeamEffectHead:async(identity:unknown)=>{assert.deepEqual(identity,prepared.identity);return {state:'active',invocation:{identity:prepared.identity,version:1,branches:[],context:null,consumedEffects:[],consumedVersions:[]}};},recordExternalEffectFact:async(_identity:unknown,key:string,value:unknown)=>{facts.set(key,value);},externalEffectFact:async(_identity:unknown,key:string)=>facts.get(key),readTeamGrant:async()=>({})},
     localRuntime:{recover:async()=>lease,read:async()=>({journal:JSON.stringify(received),result:null,state:JSON.stringify({phase:'running'}),requests:[{id,body:JSON.stringify({id,action:'read-messages',request:{page:{limit:100}}})}]}),reply:async(_lease:unknown,_id:string,body:string)=>{assert.ok(Buffer.byteLength(body)<=16384);replies.push(body);},stopAll:async()=>[]}});
   try {
     assert.equal((await executor.port.observe(prepared)).state,'running');

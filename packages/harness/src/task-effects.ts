@@ -51,6 +51,10 @@ export interface TaskEffectAdapter {
   stop?(prepared:JsonValue,receipt:JsonValue|undefined,beforeCleanup:(id:string,input:JsonValue)=>Promise<boolean>):Promise<EffectClosure>;
   message?(prepared:JsonValue,id:string,input:JsonValue,beforeSubmit:()=>Promise<void>):Promise<JsonValue>;
   reconcileMessage?(prepared:JsonValue,id:string,input:JsonValue):Promise<JsonValue|undefined>;
+  /** Only an admitted Team wait may yield its original native process. This callback
+   * supplies IO facts; the workflow retains context before releasing the original lease. */
+  handoff?(prepared:JsonValue,request:{readonly waitId:string},beforeCleanup:(id:string,input:JsonValue)=>Promise<boolean>):
+    Promise<{readonly closure:EffectClosure;readonly capture:import('./oar-local-member.js').LocalContextCapture}>;
 }
 export type TaskEffectOutcome={readonly state:'succeeded';readonly result:TaskResult}
   | {readonly state:'running'|'waiting'|'failed';readonly reason:TaskDiagnostic;readonly retainedResult?:TaskResult;readonly collecting?:boolean};

@@ -72,7 +72,7 @@ export async function startDurableRuntime(options: {
     throw error;
   }
   const workflows:Record<string,(input:JsonValue)=>Promise<JsonValue>>={};
-  const systemPool=new Pool({...options.database.system,connectionTimeoutMillis:2000});
+  const systemPool=new Pool({...options.database.system,connectionTimeoutMillis:2000,idleTimeoutMillis:2000});
   systemPool.on('error',()=>undefined);
   let stopping:Promise<void>|undefined;
   let dbosClosed=false, applicationClosed=false, systemClosed=false;
@@ -109,6 +109,8 @@ export async function startDurableRuntime(options: {
       if (incompatible.rowCount) throw new Error('Reopen the original frozen App to normally close its pending workflow before upgrading; no checkpoint was converted or recovered.');
     }
     await store.initialize();
+    const activeExit=await store.hostExit();
+    if(activeExit)await store.fenceTeamRunsForExit(activeExit.requestId);
     for(const definition of options.workflows ?? []) {
       if(!definition.name.trim() || Object.hasOwn(workflows,definition.name)) throw new Error('Durable workflow registration names must be unique and nonempty');
       workflows[definition.name]=DBOS.registerWorkflow((input:JsonValue)=>definition.execute(runtime,input),{name:definition.name});

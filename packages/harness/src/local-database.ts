@@ -1,6 +1,7 @@
 // The existing Host owns one private PostgreSQL cluster per Hima Home. No database daemon,
 // external credentials or cloud service is required of the person opening the App.
 import { spawn } from 'node:child_process';
+import { constants } from 'node:fs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { chmod, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir, hostname } from 'node:os';
@@ -87,6 +88,93 @@ async function command(executable: string, argv: string[], options: { input?: st
     child.stdin.on('error', () => undefined);
     child.stdin.end(options.input);
   });
+}
+
+type AuthorityFile = Awaited<ReturnType<typeof open>>;
+interface AuthorityCapture {
+  format: 'hima-cold-capture/1'; identity: string; file: string; offset: number;
+  dev: number; ino: number; host: { pid: number; processIdentity: string | undefined };
+  postmaster: { pid: number };
+}
+
+/** Await every short write; no output queue or row-sized Node object is retained. */
+async function authorityWrite(file: AuthorityFile, bytes: Buffer | string, position: number | null = null): Promise<void> {
+  const buffer = typeof bytes === 'string' ? Buffer.from(bytes) : bytes;
+  for (let offset = 0; offset < buffer.length;) {
+    const { bytesWritten } = await file.write(buffer, offset, buffer.length - offset, position === null ? null : position + offset);
+    if (!bytesWritten) throw problem('cold authority write made no progress; preserve the original Home.');
+    offset += bytesWritten;
+  }
+}
+
+async function syncDirectory(directory: string): Promise<void> {
+  const file = await open(directory, 'r');
+  try { await file.sync(); } finally { await file.close(); }
+}
+
+/** COPY emits one non-null JSON object per CSV field. JSON escapes ASCII controls, so a tab
+ * delimiter and 0x01 quote/escape leave JSON bytes untouched. LF is exclusively the row boundary.
+ * UTF-8 is opaque: splitting a code point between Buffer chunks cannot change it. */
+async function copyAuthorityRows(executable: string, input: string, env: NodeJS.ProcessEnv,
+  timeoutMs: number, file: AuthorityFile): Promise<void> {
+  const environment: NodeJS.ProcessEnv = { ...process.env, ...env, LC_ALL: 'C' };
+  for (const name of ['PGSERVICE', 'PGSERVICEFILE', 'PGOPTIONS', 'PGPASSFILE', 'PGHOSTADDR']) delete environment[name];
+  const child = spawn(executable, ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1'],
+    { env: environment, stdio: ['pipe', 'pipe', 'pipe'] });
+  let spawnFailed = false; let timedOut = false;
+  const closed = new Promise<number | null>(resolve => {
+    child.once('error', () => { spawnFailed = true; });
+    child.once('close', resolve);
+  });
+  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
+  child.stderr.resume(); // Never accumulate or expose row/SQL/password-bearing diagnostics.
+  child.stdin.on('error', () => undefined);
+  child.stdin.end(input);
+  let rowStart = true; let seenRow = false; let lastByte = 0;
+  try {
+    for await (const chunk of child.stdout) {
+      const bytes = chunk as Buffer;
+      let start = 0;
+      for (let index = 0; index < bytes.length; index++) {
+        const byte = bytes[index]!;
+        if (byte === 9 || byte === 13 || byte === 1) throw problem('cold authority COPY framing was invalid; no receipt was published.');
+        if (rowStart) {
+          if (byte !== 123) throw problem('cold authority COPY did not start a JSON object; no receipt was published.');
+          if (seenRow) await authorityWrite(file, ',');
+          rowStart = false;
+        }
+        if (byte === 10) {
+          if (lastByte !== 125) throw problem('cold authority COPY ended an incomplete JSON object; no receipt was published.');
+          await authorityWrite(file, bytes.subarray(start, index + 1));
+          start = index + 1; rowStart = true; seenRow = true;
+        }
+        lastByte = byte;
+      }
+      if (start < bytes.length) await authorityWrite(file, bytes.subarray(start));
+    }
+    const code = await closed;
+    if (spawnFailed || timedOut || code !== 0 || !rowStart) throw problem('cold authority COPY failed or was incomplete; preserve the original Home.');
+  } catch (error) {
+    child.kill('SIGKILL');
+    await closed;
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+/** Check both path and open inode: a changed stage is never truncated or adopted. */
+async function openAuthorityCapture(root: string, capture: AuthorityCapture): Promise<AuthorityFile> {
+  const name = path.join(root, capture.file);
+  const info = await lstat(name);
+  if (!info.isFile() || info.isSymbolicLink() || (process.getuid && info.uid !== process.getuid())
+    || (info.mode & 0o077) !== 0 || info.dev !== capture.dev || info.ino !== capture.ino || info.size < capture.offset) {
+    throw problem('the completed cold authority stage changed; preserve the original Home.');
+  }
+  const file = await open(name, constants.O_RDWR | constants.O_NOFOLLOW);
+  try {
+    const opened = await file.stat();
+    if (opened.dev !== info.dev || opened.ino !== info.ino || opened.size < capture.offset) throw problem('the cold authority stage identity changed.');
+  } catch (error) { await file.close(); throw error; }
+  return file;
 }
 
 async function processIdentity(pid: number): Promise<string | undefined> {
@@ -342,7 +430,9 @@ export async function startLocalDatabase(options: { readonly home: string; reado
     }
     retainedOnError = false;
     let stopping: Promise<void> | undefined;
-    let capturedAuthority: Record<string, unknown> | undefined;
+    let capturedAuthority: AuthorityCapture | undefined;
+    let publishedAuthority: { size: number } | undefined;
+    let homeReleased = false; let lineageReleased = false;
     return {
       identity: credentials.identity, application: connection('hima_application'), system: connection('hima_dbos_system'),
       prepareHindsight:async()=>{
@@ -364,37 +454,80 @@ export async function startLocalDatabase(options: { readonly home: string; reado
         return {...connection('hima_hindsight'),user:'hima_hindsight',password:service.password};
       },
       stop: () => stopping ??= (async () => {
-        // This read-only closure capture runs only after consumers close DBOS and their pools.
-        // The offline backup never starts an imported cluster to reconstruct missing authority.
-        const capture = async (database: string, schema: string): Promise<Record<string, unknown>> => {
-          const tables = JSON.parse(await query(database, `SELECT COALESCE(json_agg(tablename ORDER BY tablename),'[]'::json) FROM pg_tables WHERE schemaname='${schema}';`)) as string[];
-          const answer: Record<string, unknown> = {};
-          for (const table of tables) {
-            if (!/^[a-z_]+$/.test(table)) throw problem('backup closure found an unrecognized authority table; preserve the original Home.');
-            answer[table] = JSON.parse(await query(database, `SELECT COALESCE(json_agg(to_jsonb(t)),'[]'::json) FROM "${schema}"."${table}" t;`));
-          }
-          return answer;
-        };
-        if (await postmaster(data,bin('postgres'),credentials.port)) {
+        const publicFile = path.join(root, 'backup-authority.json');
+        const markerFile = path.join(root, 'backup-authority-capture.json');
+        // Consumers have already closed DBOS and all pools. A completed capture survives failures
+        // after PG stops; a fresh Host never adopts this unpublished marker as closure authority.
+        if (!capturedAuthority) {
+          const pid = await postmaster(data, bin('postgres'), credentials.port);
+          if (!pid) throw problem('no original authority capture is available after this interrupted stop; preserve the Home for inspection.');
           if (await query('postgres', "SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND backend_type='client backend';") !== '0') throw problem('database clients still own material writers; close DBOS and all pools before taking the cold authority cut.');
-          capturedAuthority = {format:'hima-cold-authority/1',identity:credentials.identity,
-          host:{pid:process.pid,processIdentity:await processIdentity(process.pid)},
-          postmaster:{pid:await postmaster(data,bin('postgres'),credentials.port)},
-          application:await capture('hima_application','hima'), system:await capture('hima_dbos_system','dbos')};
+          const host = { pid: process.pid, processIdentity: await processIdentity(process.pid) };
+          const fileName = `backup-authority-${randomUUID()}.partial`;
+          const file = await open(path.join(root, fileName), 'wx', 0o600);
+          let capture: AuthorityCapture;
+          try {
+            await authorityWrite(file, JSON.stringify({ format: 'hima-cold-authority/1', identity: credentials.identity,
+              host, postmaster: { pid } }).slice(0, -1));
+            for (const [key, database, schema] of [['application', 'hima_application', 'hima'], ['system', 'hima_dbos_system', 'dbos']] as const) {
+              // Only the small table-name inventory enters Node; never a row array or table stdout.
+              const tables = JSON.parse(await query(database, `SELECT COALESCE(json_agg(tablename ORDER BY tablename),'[]'::json) FROM pg_tables WHERE schemaname='${schema}';`)) as string[];
+              await authorityWrite(file, `,${JSON.stringify(key)}:{`);
+              for (let index = 0; index < tables.length; index++) {
+                const table = tables[index]!;
+                if (!/^[a-z_]+$/.test(table)) throw problem('backup closure found an unrecognized authority table; preserve the original Home.');
+                await authorityWrite(file, `${index ? ',' : ''}${JSON.stringify(table)}:[`);
+                await copyAuthorityRows(bin('psql'), `COPY (SELECT to_jsonb(t)::text FROM "${schema}"."${table}" t) TO STDOUT WITH (FORMAT csv, DELIMITER E'\\t', QUOTE E'\\x01', ESCAPE E'\\x01', ENCODING 'UTF8');\n`,
+                  { PGHOST: '127.0.0.1', PGPORT: String(credentials.port), PGUSER: credentials.user,
+                    PGPASSWORD: credentials.password, PGDATABASE: database, PGCONNECT_TIMEOUT: '3' }, timeoutMs, file);
+                await authorityWrite(file, ']');
+              }
+              await authorityWrite(file, '}');
+            }
+            await file.sync();
+            const info = await file.stat();
+            capture = { format: 'hima-cold-capture/1', identity: credentials.identity, file: fileName,
+              offset: info.size, dev: info.dev, ino: info.ino, host, postmaster: { pid } };
+          } finally { await file.close(); }
+          // Publish only a small durable *unpublished* stage descriptor after its prefix is synced.
+          const markerStage = path.join(root, `backup-capture-${randomUUID()}.partial`);
+          const marker = await open(markerStage, 'wx', 0o600);
+          try { await authorityWrite(marker, JSON.stringify(capture)); await marker.sync(); } finally { await marker.close(); }
+          await rename(markerStage, markerFile);
+          await syncDirectory(root);
+          capturedAuthority = capture;
         }
+        const capture = capturedAuthority;
         const pid = await postmaster(data, bin('postgres'), credentials.port);
         if (pid) {
-          if (await query('postgres', 'SELECT identity FROM public.hima_cluster_identity;\n') !== credentials.identity) throw problem('stop refused: the responding database identity changed. No process was stopped.');
+          if (pid !== capture.postmaster.pid || await query('postgres', 'SELECT identity FROM public.hima_cluster_identity;\n') !== credentials.identity) throw problem('stop refused: the responding database identity changed. No process was stopped.');
+          if (await query('postgres', "SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND backend_type='client backend';") !== '0') throw problem('database clients still own material writers; the completed cut was not published.');
           const stopped = await command(bin('pg_ctl'), ['-D', data, '-m', 'fast', '-w', '-t', String(Math.max(1, Math.ceil(timeoutMs / 1000))), 'stop'], { timeoutMs: timeoutMs + 1000 });
           if (stopped.code !== 0 || await postmaster(data, bin('postgres'), credentials.port)) throw problem('stop did not confirm the owned database ended. Its PID and owner lock were preserved; inspect the original process before reopening.');
         }
-        if (!capturedAuthority) throw problem('no original authority capture is available after this interrupted stop; preserve the Home for inspection.');
-        const controlSha256 = createHash('sha256').update(await readFile(path.join(data,'global/pg_control'))).digest('hex');
-        const receiptStage = path.join(root, `backup-authority-${randomUUID()}.partial`);
-        await writeFile(receiptStage,JSON.stringify({...capturedAuthority,controlSha256,closedAt:new Date().toISOString()}),{mode:0o600,flag:'wx'});
-        await rename(receiptStage,path.join(root,'backup-authority.json'));
-        await release();
-        await releaseLineage?.();
+        if (!publishedAuthority) {
+          // PG is physically absent. Retry discards only this owned stage's unfinished tail.
+          const controlSha256 = createHash('sha256').update(await readFile(path.join(data, 'global/pg_control'))).digest('hex');
+          const tail = `,${JSON.stringify({ controlSha256, closedAt: new Date().toISOString() }).slice(1)}`;
+          const file = await openAuthorityCapture(root, capture);
+          try {
+            await file.truncate(capture.offset);
+            await authorityWrite(file, tail, capture.offset);
+            await file.sync();
+          } finally { await file.close(); }
+          await rename(path.join(root, capture.file), publicFile);
+          // Set phase before directory sync or release, so their failure never reopens a missing stage.
+          publishedAuthority = { size: capture.offset + Buffer.byteLength(tail) };
+        }
+        const published = await lstat(publicFile);
+        if (!published.isFile() || published.isSymbolicLink() || published.dev !== capture.dev
+          || published.ino !== capture.ino || published.size !== publishedAuthority.size
+          || (published.mode & 0o077) !== 0 || process.getuid && published.uid !== process.getuid()) throw problem('the published cold authority identity changed; the Home was retained.');
+        await syncDirectory(root);
+        await rm(markerFile, { force: true });
+        await syncDirectory(root);
+        if (!homeReleased) { await release(); homeReleased = true; }
+        if (!lineageReleased) { await releaseLineage?.(); lineageReleased = true; }
       })().catch(error => { stopping = undefined; throw error; }),
     };
   } catch (error) {

@@ -12,8 +12,8 @@ import { launchHimaHost, stopChild } from '../../packages/desktop/src/host-launc
 
 const runtimeDirectory = process.env.HIMA_POSTGRES_RUNTIME;
 if (!runtimeDirectory) throw new Error('Set HIMA_POSTGRES_RUNTIME to the pinned native PostgreSQL runtime for this process test');
-async function sql(database: Awaited<ReturnType<typeof startLocalDatabase>>, query: string): Promise<string> {
-  const connection = database.application;
+async function sql(database: Awaited<ReturnType<typeof startLocalDatabase>>, query: string, target: 'application' | 'system' = 'application'): Promise<string> {
+  const connection = database[target];
   return new Promise((resolve, reject) => {
     const child = spawn(path.join(runtimeDirectory!, 'bin/psql'), ['-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1'], {
       env: { ...process.env, PGHOST: connection.host, PGPORT: String(connection.port), PGUSER: connection.user,
@@ -502,4 +502,159 @@ test('a forged postmaster PID never authorizes killing an unrelated process', as
     await assert.rejects(startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! }), /identity|PID|process/i);
     assert.equal(await readFile(pidFile, 'utf8').then(text => text.split('\n')[0]), String(process.pid));
   } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('cold authority preserves every adversarial application and DBOS row through COPY', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'hima-pg-cold-bytes-'));
+  let database: Awaited<ReturnType<typeof startLocalDatabase>> | undefined;
+  const value = `中文😀"\\\t\n\r\x01'${'long😀中'.repeat(12_000)}`;
+  const nested = { values: ['中文', '😀', null, '"\\\t\n\r\x01'] };
+  const literal = (text: string) => `'${text.replaceAll("'", "''")}'`;
+  try {
+    database = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! });
+    for (const [connection, schema] of [['application', 'hima'], ['system', 'dbos']] as const) {
+      await sql(database, `CREATE SCHEMA ${schema}; CREATE TABLE ${schema}.empty(value text);
+        CREATE TABLE ${schema}.rows(value text,nested jsonb,number bigint);
+        INSERT INTO ${schema}.rows VALUES (${literal(value)},${literal(JSON.stringify(nested))}::jsonb,9007199254740993),
+          (${literal(value)},${literal(JSON.stringify(nested))}::jsonb,9007199254740993),(NULL,NULL,NULL);
+        CREATE TABLE ${schema}.parent(value text); CREATE TABLE ${schema}.child() INHERITS (${schema}.parent);
+        INSERT INTO ${schema}.parent VALUES ('parent'); INSERT INTO ${schema}.child VALUES ('child');`, connection);
+    }
+    const stopped = database.stop();
+    assert.equal(database.stop(), stopped, 'concurrent closes coalesce on the original promise');
+    await stopped;
+    const root = path.join(home, 'hima/database');
+    const raw = await readFile(path.join(root, 'backup-authority.json'), 'utf8');
+    const receipt = JSON.parse(raw);
+    assert.deepEqual(Object.keys(receipt), ['format', 'identity', 'host', 'postmaster', 'application', 'system', 'controlSha256', 'closedAt']);
+    assert.equal(receipt.format, 'hima-cold-authority/1'); assert.equal(receipt.identity, database.identity);
+    const row = { value, nested, number: Number(9007199254740993n) };
+    for (const key of ['application', 'system']) {
+      assert.deepEqual(Object.keys(receipt[key]), ['child', 'empty', 'parent', 'rows']);
+      assert.deepEqual(receipt[key].empty, []);
+      assert.deepEqual(receipt[key].rows, [row, row, { value: null, nested: null, number: null }]);
+      assert.deepEqual(receipt[key].child, [{ value: 'child' }]);
+      assert.deepEqual(receipt[key].parent.map((row: { value: string }) => row.value).sort(), ['child', 'parent']);
+    }
+    assert.equal(raw.match(/"number": 9007199254740993/g)?.length, 4, 'server numeric bytes are never rounded by a Node parse/reserialize');
+    assert.equal(receipt.controlSha256, createHash('sha256').update(await readFile(path.join(root, 'data/global/pg_control'))).digest('hex'));
+    assert.ok(Number.isFinite(Date.parse(receipt.closedAt)));
+    assert.equal((await stat(path.join(root, 'backup-authority.json'))).mode & 0o777, 0o600);
+    await assert.rejects(stat(path.join(root, 'data/postmaster.pid')), { code: 'ENOENT' });
+    await assert.rejects(stat(path.join(root, 'host-owner')), { code: 'ENOENT' });
+    await assert.rejects(stat(path.join(root, 'backup-authority-capture.json')), { code: 'ENOENT' });
+  } finally { await database?.stop(); await rm(home, { recursive: true, force: true }); }
+});
+
+test('cold authority rejects exact quoted table names without splitting or trimming their identity', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'hima-pg-cold-table-identity-'));
+  const root = path.join(home, 'hima/database');
+  let database: Awaited<ReturnType<typeof startLocalDatabase>> | undefined;
+  try {
+    const seeded = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! }); await seeded.stop();
+    const prior = await readFile(path.join(root, 'backup-authority.json'));
+    database = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! });
+    await sql(database, "CREATE SCHEMA hima; CREATE TABLE hima.rows(value text); CREATE TABLE hima.empty(value text); INSERT INTO hima.rows VALUES ('ordinary');");
+    const pid = await readFile(path.join(root, 'data/postmaster.pid'), 'utf8');
+    for (const name of ['rows\nempty', 'rows ']) {
+      await sql(database, `CREATE TABLE hima."${name}"(value text); INSERT INTO hima."${name}" VALUES ('must-not-omit');`);
+      await assert.rejects(database.stop(), /unrecognized authority table/);
+      assert.deepEqual(await readFile(path.join(root, 'backup-authority.json')), prior);
+      assert.equal(await readFile(path.join(root, 'data/postmaster.pid'), 'utf8'), pid);
+      assert.equal(await sql(database, `SELECT value FROM hima."${name}";`), 'must-not-omit');
+      assert.ok(await stat(path.join(root, 'host-owner')));
+      await assert.rejects(stat(path.join(root, 'backup-authority-capture.json')), { code: 'ENOENT' });
+      await sql(database, `DROP TABLE hima."${name}";`);
+    }
+    await database.stop();
+    assert.deepEqual(JSON.parse(await readFile(path.join(root, 'backup-authority.json'), 'utf8')).application.rows, [{ value: 'ordinary' }]);
+  } finally {
+    if (database && await stat(path.join(root, 'data/postmaster.pid')).catch(() => undefined)) {
+      await sql(database, 'DROP TABLE IF EXISTS hima."rows\nempty",hima."rows ";');
+    }
+    await database?.stop(); await rm(home, { recursive: true, force: true });
+  }
+});
+
+async function failedCopyRuntime(container: string): Promise<{ runtime: string; flag: string }> {
+  const runtime = path.join(container, 'copy-fault-runtime');
+  const flag = path.join(container, 'fail-copy');
+  await cp(runtimeDirectory!, runtime, { recursive: true, dereference: false, verbatimSymlinks: true });
+  await rename(path.join(runtime, 'bin/psql'), path.join(runtime, 'bin/psql-real'));
+  // SQL stdin here is only the bounded command, never row payload. Fault only the COPY child.
+  const wrapper = `#!${process.execPath}\nimport {spawnSync} from 'node:child_process';\nimport {readFileSync,existsSync} from 'node:fs';\nimport path from 'node:path';\nconst input=readFileSync(0);\nif(input.toString().startsWith('COPY ')&&existsSync(${JSON.stringify(flag)})){process.stdout.write('{"partial":true}\\n{"cut":');process.exit(1);}\nconst result=spawnSync(path.join(import.meta.dirname,'psql-real'),process.argv.slice(2),{input,stdio:['pipe','inherit','inherit']});\nprocess.exit(result.status??1);\n`;
+  await writeFile(path.join(runtime, 'bin/psql'), wrapper, { mode: 0o755 });
+  const manifestFile = path.join(runtime, 'postgres-runtime.json');
+  const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as { files: Record<string, string> };
+  manifest.files['bin/psql-real'] = manifest.files['bin/psql']!;
+  manifest.files['bin/psql'] = createHash('sha256').update(wrapper).digest('hex');
+  await writeFile(manifestFile, JSON.stringify(manifest));
+  await writeFile(flag, 'fail', { mode: 0o600 });
+  return { runtime, flag };
+}
+
+test('failed partial COPY retains the original PG and prior authority until a complete retry', async () => {
+  const container = await mkdtemp(path.join(tmpdir(), 'hima-pg-cold-copy-failure-'));
+  const home = path.join(container, 'home');
+  const root = path.join(home, 'hima/database');
+  let database: Awaited<ReturnType<typeof startLocalDatabase>> | undefined;
+  let flag: string | undefined;
+  try {
+    const seeded = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! }); await seeded.stop();
+    const prior = await readFile(path.join(root, 'backup-authority.json'));
+    const fault = await failedCopyRuntime(container); flag = fault.flag;
+    database = await startLocalDatabase({ home, runtimeDirectory: fault.runtime });
+    await sql(database, "CREATE SCHEMA hima; CREATE TABLE hima.rows(value text); INSERT INTO hima.rows VALUES ('retained'),('retained');");
+    const pid = await readFile(path.join(root, 'data/postmaster.pid'), 'utf8');
+    await assert.rejects(database.stop(), /COPY failed|incomplete/);
+    assert.deepEqual(await readFile(path.join(root, 'backup-authority.json')), prior);
+    assert.equal(await readFile(path.join(root, 'data/postmaster.pid'), 'utf8'), pid);
+    assert.equal(await sql(database, 'SELECT count(*) FROM hima.rows;'), '2');
+    assert.ok(await stat(path.join(root, 'host-owner')));
+    await assert.rejects(stat(path.join(root, 'backup-authority-capture.json')), { code: 'ENOENT' });
+    await rm(flag); flag = undefined;
+    await database.stop();
+    assert.deepEqual(JSON.parse(await readFile(path.join(root, 'backup-authority.json'), 'utf8')).application.rows, [{ value: 'retained' }, { value: 'retained' }]);
+    await assert.rejects(stat(path.join(root, 'data/postmaster.pid')), { code: 'ENOENT' });
+  } finally {
+    if (flag) await rm(flag, { force: true });
+    await database?.stop();
+    if (database) await rm(container, { recursive: true, force: true });
+  }
+});
+
+test('publication failure retains completed capture and retry finalizes with PG physically absent', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'hima-pg-cold-finalize-failure-'));
+  const root = path.join(home, 'hima/database');
+  const publicFile = path.join(root, 'backup-authority.json');
+  let database: Awaited<ReturnType<typeof startLocalDatabase>> | undefined;
+  try {
+    database = await startLocalDatabase({ home, runtimeDirectory: runtimeDirectory! });
+    await sql(database, "CREATE SCHEMA hima; CREATE TABLE hima.rows(value text); INSERT INTO hima.rows VALUES ('original');");
+    // A rename failure after actual PG stop exercises the public stop interface and real filesystem.
+    await mkdir(publicFile);
+    await assert.rejects(database.stop(), /EISDIR|ENOTEMPTY|EEXIST/);
+    await assert.rejects(stat(path.join(root, 'data/postmaster.pid')), { code: 'ENOENT' });
+    assert.ok((await stat(publicFile)).isDirectory(), 'no partial JSON was published');
+    assert.ok(await stat(path.join(root, 'host-owner')));
+    const marker = JSON.parse(await readFile(path.join(root, 'backup-authority-capture.json'), 'utf8'));
+    assert.equal(marker.format, 'hima-cold-capture/1'); assert.equal(marker.identity, database.identity);
+    assert.ok(marker.offset > 0);
+    const partial = path.join(root, marker.file);
+    assert.equal((await stat(partial)).mode & 0o777, 0o600);
+    // Simulate an unfinished final tail; retry must truncate exactly to the durable prefix offset.
+    await writeFile(partial, '\nunfinished-tail', { flag: 'a' });
+    await rm(publicFile, { recursive: true });
+    await database.stop();
+    const receipt = JSON.parse(await readFile(publicFile, 'utf8'));
+    assert.deepEqual(receipt.application.rows, [{ value: 'original' }]);
+    assert.equal(receipt.identity, database.identity);
+    await assert.rejects(stat(path.join(root, 'data/postmaster.pid')), { code: 'ENOENT' });
+    await assert.rejects(stat(path.join(root, 'host-owner')), { code: 'ENOENT' });
+    await assert.rejects(stat(path.join(root, 'backup-authority-capture.json')), { code: 'ENOENT' });
+    await assert.rejects(stat(partial), { code: 'ENOENT' });
+  } finally {
+    if ((await lstat(publicFile).catch(() => undefined))?.isDirectory()) await rm(publicFile, { recursive: true });
+    await database?.stop(); await rm(home, { recursive: true, force: true });
+  }
 });

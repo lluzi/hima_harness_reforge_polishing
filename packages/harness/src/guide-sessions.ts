@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-tools';
 import type { Agent, AgentHandle, AgentRegistry } from '@deepseek-ai/dsh-agent';
+import type { TeamDefinitionRef } from './team-contract.js';
 
 const handles = new WeakMap<Context, Map<string, AgentHandle>>();
 const creating = new WeakMap<Context, Map<string, Promise<PreparedCampaignSession>>>();
@@ -22,6 +23,14 @@ export interface PreparedCampaignSession {
   readonly effectiveModel: { readonly provider: string; readonly model: string };
   readonly effectiveTools: readonly string[];
   readonly parentSessionId?: string;
+}
+
+/** Guide keeps a stable task reference. Native member sessions and execution ownership
+ * remain Host/Team facts; a successor Run does not change this conversation reference. */
+export interface PreparedTeamTaskRef {
+  readonly guideSessionId: string; readonly projectId: string; readonly team: TeamDefinitionRef;
+  readonly taskId: string; readonly currentRunId: string;
+  readonly campaign?: { readonly runId: string; readonly nodeId: string };
 }
 
 const idFor = (guideSessionId: string, proposalId: string): string =>

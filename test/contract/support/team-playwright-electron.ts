@@ -5,7 +5,6 @@ import { execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { electronBinary } from './driver.ts';
 import { recordTestBoot, repoRoot, type HimaHome } from './dsh-home.ts';
 import { freePort } from './boot-host.ts';
 
@@ -18,12 +17,22 @@ interface Locator {
   press(key: string): Promise<void>;
   hover(): Promise<void>;
   selectOption(value: string): Promise<unknown>;
+  inputValue(): Promise<string>;
+  innerText(): Promise<string>;
+  count(): Promise<number>;
+  filter(options: { has: Locator }): Locator;
+  getByRole(role: string, options?: { name?: string; exact?: boolean }): Locator;
+  check(): Promise<void>;
+  isChecked(): Promise<boolean>;
 }
 export interface TeamPage {
   on(event: 'request', listener: (request: { url(): string; postData(): string | null }) => void): void;
+  on(event: 'response', listener: (response: { url(): string; ok(): boolean; json(): Promise<unknown> }) => void): void;
   locator(selector: string): Locator;
+  getByText(text: string, options?: { exact?: boolean }): Locator;
   getByRole(role: string, options: { name: string; exact?: boolean }): Locator;
   evaluate<R>(expression: string): Promise<R>;
+  addInitScript(script:string):Promise<void>;
   waitForFunction(expression: string, arg?: undefined, options?: { timeout: number }): Promise<unknown>;
   reload(): Promise<unknown>;
   screenshot(options: { path: string; fullPage?: boolean; timeout?: number }): Promise<unknown>;
@@ -55,13 +64,22 @@ function redact(text: string): string {
     .replace(/((?:api[_-]?key|password|cookieValue|cookie|authorization)["']?\s*[:=]\s*)[^\s,}\n]+/giu, '$1[redacted]');
 }
 
-export async function bootTeamPlaywright(home: HimaHome, evidence: string, options: { hindsightFixture?: boolean; hindsightLive?: boolean } = {}): Promise<{
+export async function bootTeamPlaywright(home: HimaHome, evidence: string, options: { hindsightFixture?: boolean; hindsightLive?: boolean; nativeLive?: boolean; nodeWrapper?: string; v8HeapMiB?: number } = {}): Promise<{
   page: TeamPage;
   wait(expression: string, timeoutMs?: number): Promise<void>;
   dispose(): Promise<void>;
   screenshot(options: { path: string; fullPage?: boolean; timeout?: number }): Promise<void>;
 }> {
-  const binary = electronBinary();
+  // Resolve only installed Electron metadata. Importing the full contract driver also
+  // imports Pack fixtures and the Host backend, which this external UI controller never uses.
+  const binary: { at: string } | { missing: string } = (() => {
+    try {
+      const at = createRequire(path.join(repoRoot, 'packages/desktop/package.json'))('electron') as unknown;
+      return typeof at === 'string' && at !== '' ? { at } : { missing: 'the electron package reported no binary path' };
+    } catch (error) {
+      return { missing: `the electron binary is not installed: ${(error as Error).message}` };
+    }
+  })();
   if ('missing' in binary) throw new Error(binary.missing);
   const require = createRequire(import.meta.url);
   const playwright = require(process.env.HIMA_PLAYWRIGHT_MODULE ?? 'playwright-core') as PlaywrightModule;
@@ -69,16 +87,17 @@ export async function bootTeamPlaywright(home: HimaHome, evidence: string, optio
   await mkdir(userData, { recursive: true });
   await mkdir(evidence, { recursive: true });
   await writeFile(path.join(userData, 'window-state.json'), JSON.stringify({ width: 1280, height: 860 }));
-  const env = Object.fromEntries(Object.entries({ ...home.env, HIMA_NODE: process.execPath,
+  const env = Object.fromEntries(Object.entries({ ...home.env, HIMA_NODE: options.nodeWrapper ?? process.execPath,
     HIMA_WORKSPACE: home.workspace, HIMA_USER_DATA: userData, HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights',
     HIMA_TEST_SILENT_AGENT: '1', BROWSER: 'none', ELECTRON_RUN_AS_NODE: '' })
     .filter((entry): entry is [string, string] => entry[1] !== undefined));
-  // Ordinary UI fixtures are keyless. A specifically admitted Hindsight L4 preserves only its existing shared credential.
-  for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN/u.test(key) && !(options.hindsightLive && key === 'DEEPSEEK_API_KEY')) delete env[key];
+  delete env.NODE_OPTIONS; // Host adapter preloads only through the explicit test-owned Node wrapper.
+  // Ordinary UI fixtures are keyless. Specifically admitted Hindsight/native L4 preserves only its existing shared DeepSeek credential.
+  for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN/u.test(key) && !((options.hindsightLive || options.nativeLive) && key === 'DEEPSEEK_API_KEY')) delete env[key];
   if (options.hindsightFixture) env.HIMA_HINDSIGHT_LLM_API_KEY = 'qualification-only';
   recordTestBoot('electron');
   const app = await playwright._electron.launch({ executablePath: binary.at,
-    args: [`--remote-debugging-port=${await freePort()}`, path.join(repoRoot, 'packages/desktop/lib/main.js'), '--theme', 'light'],
+    args: [...(options.v8HeapMiB ? [`--js-flags=--max-old-space-size=${options.v8HeapMiB} --max-semi-space-size=1 --expose-gc`] : []), `--remote-debugging-port=${await freePort()}`, path.join(repoRoot, 'packages/desktop/lib/main.js'), '--theme', 'light'],
     cwd: home.workspace, env, timeout: 150_000, chromiumSandbox: true });
   const child = app.process();
   let stderr = ''; let stdout = '';
