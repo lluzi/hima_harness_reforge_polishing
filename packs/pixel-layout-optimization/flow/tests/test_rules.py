@@ -139,5 +139,20 @@ class TestMakeRuleFile(unittest.TestCase):
         self.assertEqual(cm.exception.code, "schema")
 
 
+class TestRuleLocalDerivedLayers(unittest.TestCase):
+    """A name assigned inside a rule body (decks reuse X in many rules) is local to that rule."""
+
+    def test_same_local_name_in_two_rules_resolves_per_rule(self):
+        deck = (
+            "layout_input( path \"a.gds\" )\n"
+            "layer( Via 5 )\nlayer( Plan 9 )\n"
+            "rule V.1 {\n; via width\nX = geom_get_boundaries( Via )\nwidth( X < 2.5 adjacent < 90 region )\n}\n"
+            "rule P.1 {\n; plan width\nX = geom_get_boundaries( Plan )\nwidth( X < 4 adjacent < 90 region )\n}\n"
+        )
+        parsed = rules.parse_deck(deck)
+        table = rules.compaction_table(parsed, None)
+        self.assertEqual(table["width"], {"Via": 2.5, "Plan": 4.0})
+
+
 if __name__ == "__main__":
     unittest.main()

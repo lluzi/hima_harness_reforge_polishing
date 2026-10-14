@@ -184,18 +184,37 @@ def parse_deck(text):
     for m in _LAYER_RE.finditer(clean):
         layers[m.group(1)] = int(m.group(2))
 
-    derived = {}
-    for m in _ASSIGN_RE.finditer(clean):
-        rhs = m.group(2).strip()
-        if rhs.startswith("geom_") or re.match(r'^[A-Za-z_]\w*\s*\(', rhs):
-            derived[m.group(1)] = rhs
+    def assignments(text):
+        out = {}
+        for m in _ASSIGN_RE.finditer(text):
+            rhs = m.group(2).strip()
+            if rhs.startswith("geom_") or re.match(r'^[A-Za-z_]\w*\s*\(', rhs):
+                out[m.group(1)] = rhs
+        return out
+
+    # Global derived layers are those assigned outside every rule block; an assignment inside a
+    # rule body is local to that rule (decks reuse names such as X in many rules).
+    derived = assignments(_RULE_RE.sub("", clean))
 
     checks = []
     unmodelled = []
     for m in _RULE_RE.finditer(clean):
         rule_id = m.group(1)
         body = m.group(2)
-        checks.append(_parse_check(rule_id, body, vars_, derived, unmodelled))
+        scope = dict(derived)
+        scope.update(assignments(body))
+        chk = _parse_check(rule_id, body, vars_, scope, unmodelled)
+        if chk.get("derivedFrom"):
+            # keep the whole chain this check needs, so resolution never consults another rule's names
+            chain = {}
+            todo = list(chk["derivedFrom"])
+            while todo:
+                name = todo.pop()
+                if name in scope and name not in chain:
+                    chain[name] = scope[name]
+                    todo.extend(re.findall(r'[A-Za-z_]\w*', scope[name]))
+            chk["derivedFrom"] = chain
+        checks.append(chk)
 
     options = {
         "db_precision": bool(_DBPREC_RE.search(clean)),
@@ -224,8 +243,11 @@ def compaction_table(parsed, case):
             canon[name.lower()] = name
     derived = parsed.get("derived", {})
 
-    def resolve_layer(token):
-        base = _first_base(token, derived)
+    def resolve_layer(token, chk=None):
+        scope = dict(derived)
+        if chk and chk.get("derivedFrom"):
+            scope.update(chk["derivedFrom"])
+        base = _first_base(token, scope)
         return canon.get(base.lower(), base)
 
     width = {}
@@ -239,16 +261,16 @@ def compaction_table(parsed, case):
         layers = chk["layers"]
         value = chk["value"]
         if kind == "width" and layers:
-            layer = resolve_layer(layers[0])
+            layer = resolve_layer(layers[0], chk)
             width[layer] = max(value, width.get(layer, value))
         elif kind == "space" and layers:
-            layer = resolve_layer(layers[0])
+            layer = resolve_layer(layers[0], chk)
             space[layer] = max(value, space.get(layer, value))
         elif kind == "space2" and len(layers) >= 2:
-            xspace.append([resolve_layer(layers[0]), resolve_layer(layers[1]), value])
+            xspace.append([resolve_layer(layers[0], chk), resolve_layer(layers[1], chk), value])
         elif kind == "enc" and len(layers) >= 2:
-            inner = resolve_layer(layers[0])
-            outer = resolve_layer(layers[1])
+            inner = resolve_layer(layers[0], chk)
+            outer = resolve_layer(layers[1], chk)
             enc.append([outer, inner, value])
 
     return {"width": width, "space": space, "xspace": xspace, "enc": enc,
