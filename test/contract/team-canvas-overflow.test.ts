@@ -38,10 +38,14 @@ function measure(pack: string, sample: string, width: number): Measure {
 const chrome = chromeBinary();
 const skip = chrome === undefined ? 'no headless Chrome found (set HIMA_CHROME or CHROME_BIN)' : false;
 
-// MAGE keeps the single column; AndesCell is the gridded (rows) view that the layout fix targets.
+// MAGE keeps the single column; AndesCell is the gridded (rows) view that the layout fix targets;
+// PixelPack is the single-column flow that the compact slim-station layout has to fit (the launch
+// take) — its round-1 sample shows every checklist, the tallest the flow ever gets.
 const cases: { readonly name: string; readonly pack: string; readonly sample: string }[] = [
   { name: 'MAGE (single column)', pack: 'mage-scribe-placement', sample: 'mage-round2.json' },
   { name: 'AndesCell (gridded rows)', pack: 'andes-cell-fmax', sample: 'andes-round1-fork.json' },
+  { name: 'PixelPack (single column, round 1)', pack: 'pixel-layout-optimization', sample: 'pixel-round1.json' },
+  { name: 'PixelPack (single column, round 3)', pack: 'pixel-layout-optimization', sample: 'pixel-round3.json' },
 ];
 
 for (const scene of cases) {

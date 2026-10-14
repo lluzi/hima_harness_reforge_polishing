@@ -340,6 +340,20 @@ export const teamRowOrder = (stations: readonly Pick<TeamStation, 'row'>[]): num
   [...new Set(stations.map((station) => station.row).filter((row): row is number => row !== undefined))].sort((a, b) => a - b);
 
 /**
+ * The keys whose displayed value differs between two snapshots — a new best metric, a station that
+ * just moved from active to done. `TeamCanvas` keeps the previous snapshot in a ref and flashes only
+ * these keys, so a steady poll that re-reads the same facts animates nothing. The first paint (no
+ * `prev`) flashes nothing: an opened pane is not a change. A key dropped from `next` is not reported —
+ * only a value a person can still see and read as different is worth a highlight.
+ */
+export function changedEntries(prev: ReadonlyMap<string, string> | undefined, next: ReadonlyMap<string, string>): ReadonlySet<string> {
+  const out = new Set<string>();
+  if (prev === undefined) return out;
+  for (const [key, value] of next) if (prev.has(key) && prev.get(key) !== value) out.add(key);
+  return out;
+}
+
+/**
  * The SVG path of one edge between two measured boxes, with the point for its label. A forward edge
  * whose boxes overlap horizontally drops straight down the overlap; one whose boxes sit in different
  * columns turns once in the gap between the rows (the fork and join elbow). A back edge runs out of

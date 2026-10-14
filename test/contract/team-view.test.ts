@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadPack, residentActivityOf, runningTaskLabels, teamViewState } from '@hima/harness';
+import { changedEntries, loadPack, residentActivityOf, runningTaskLabels, teamViewState } from '@hima/harness';
 import type { PackContract, PackGraph, RunView } from '@hima/harness';
 
 type DurableTaskView = NonNullable<RunView['tasks']>[number];
@@ -251,4 +251,19 @@ test('M5: only a metric with sign:true gets a leading + ; an unsigned (absolute)
     metrics: [{ kind: 'reader', label: 'fmax', reader: 'andes-round', type: 'timing_gain_pct', unit: 'MHz', digits: 2, pick: 'latest', node: '', path: [] }] } } as unknown as PackGraph;
   const s = teamViewState(absolute, stripTools, stripView([t('t3', 'running', 2)], { observations: [obs(2, 1951.6)] }))!;
   assert.deepEqual(s.metrics, [{ label: 'fmax', value: '1951.60 MHz' }], 'no misleading + on an absolute metric');
+});
+
+test('changedEntries: the first paint flashes nothing; a value that moves flashes, a steady re-read does not', () => {
+  const snap = (round: string) => new Map([['Round', round], ['Best Ct/Cs so far', '10.7 %']]);
+  // No previous snapshot (the pane just opened): nothing flashes.
+  assert.deepEqual([...changedEntries(undefined, snap('2'))], []);
+  // The same facts re-read on the next poll: nothing flashes.
+  assert.deepEqual([...changedEntries(snap('2'), snap('2'))], []);
+  // A new best value: only that key flashes.
+  const next = new Map([['Round', '2'], ['Best Ct/Cs so far', '10.1 %']]);
+  assert.deepEqual([...changedEntries(snap('2'), next)], ['Best Ct/Cs so far']);
+  // A key that only appears now (a metric that became available) does not flash — it animates in on
+  // its own, and we never flash the whole row the first time a metric shows.
+  const grown = new Map([['Round', '2'], ['Best Ct/Cs so far', '10.1 %'], ['Best transmittance', '9.3 %']]);
+  assert.deepEqual([...changedEntries(next, grown)], []);
 });

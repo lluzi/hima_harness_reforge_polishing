@@ -1,0 +1,14 @@
+{
+  "run": { "id": "run-pixel-1", "status": "running", "goal": { "ratio_target_pct": 8.8 } },
+  "observations": [],
+  "tasks": [
+    { "taskId": "prepare-case", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "judge-original", "projection": { "state": "succeeded" }, "sourceFactIds": [],
+      "result": { "value": { "originalValues": { "pixel_ratio_judged_pct": 10.2 } } } },
+    { "taskId": "map-design-space", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "learn-sensitivities", "projection": { "state": "succeeded" }, "sourceFactIds": [] },
+    { "taskId": "plan-round", "projection": { "state": "running" }, "sourceFactIds": [],
+      "iterations": [{ "repeatId": "optimise-rounds", "iteration": 0 }],
+      "activity": { "toolCalls": 4, "planDone": 1, "planTotal": 3, "latest": { "kind": "read", "title": "state/case-readiness.json", "at": "2026-10-14T08:00:00Z" } } }
+  ]
+}
