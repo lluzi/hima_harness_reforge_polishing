@@ -172,8 +172,28 @@ test('actual invocation member material grants require a sent link and reject mi
   assert.equal((await member(issued.token, { ...read, projectId: 'foreign' })).status, 400, 'wire project identity cannot override the token');
   await host.ctx.hima.durable.store.revokeTeamGrant(grant.grantId);
   assert.equal((await member(issued.token, read)).status, 403, 'revocation is checked again on material reads');
-  const next = await host.ctx.hima.durable.store.issueTeamGrant({ ...grant, grantId: 'next-material-grant' });
-  const run = await host.ctx.hima.durable.store.run(task.currentRunId); assert.ok(run);
-  await operation({ action: 'control', ...ref, request: { requestId: 'retire-material-generation', action: 'pause', expectedEpoch: run.epoch, expectedRevision: run.revision } });
-  assert.equal((await member(next.token, read)).status, 403, 'retired invocation generation cannot read linked originals');
+  // Explicit operator revocation permanently fences this Run lineage. A fresh
+  // Task proves generation retirement without trying to regrant the revoked Run.
+  const nextTask = await operation({ action: 'startTask', teamId: team.teamId, request: { requestId: 'member-material-next-task',
+    teamId: team.teamId, expectedVersion: 1, goal: 'Read a separately linked original', input: {}, deadlineAt,
+    closure: 'Preserve the second authorized original' } });
+  await waitUntil('second frozen member invocation', async () =>
+    (await host.ctx.hima.durable.store.flowProjection(nextTask.currentRunId)).tasks.length === 1, 10000, 25);
+  const nextInvocation = (await host.ctx.hima.durable.store.flowProjection(nextTask.currentRunId)).tasks[0] as any;
+  const nextReceipt = await host.ctx.get('fileUploads')!.uploadStream({ sessionId: owner.id,
+    data: (async function* () { yield original; })(), name: 'member-material-next.md' });
+  const nextRef = { teamId: team.teamId, taskId: nextTask.taskId };
+  const nextStage = await operation({ action: 'stage-attachment', ...nextRef,
+    request: { requestId: 'member-material-next-original', receiptId: nextReceipt.receiptId } });
+  await operation({ action: 'send-message', ...nextRef, request: { requestId: 'member-material-next-send',
+    recipientMemberIds: ['lead'], text: 'Read this separately linked source.', stagedAttachmentIds: [nextStage.stageId] } });
+  const next = await host.ctx.hima.durable.store.issueTeamGrant({ ...grant, grantId: 'next-material-grant',
+    projectId: nextTask.projectId, taskId: nextTask.taskId, runId: nextTask.currentRunId,
+    effectId: nextInvocation.identity.effectId });
+  const nextRead = { action: 'read-material', request: { stageId: nextStage.stageId } };
+  assert.equal((await member(next.token, nextRead)).status, 200, 'fresh linked Run grants the material before retirement');
+  const run = await host.ctx.hima.durable.store.run(nextTask.currentRunId); assert.ok(run);
+  await operation({ action: 'control', ...nextRef, request: { requestId: 'retire-material-generation', action: 'pause',
+    expectedEpoch: run.epoch, expectedRevision: run.revision } });
+  assert.equal((await member(next.token, nextRead)).status, 403, 'retired invocation generation cannot read linked originals');
 });

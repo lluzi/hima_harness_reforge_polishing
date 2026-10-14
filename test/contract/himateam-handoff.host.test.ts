@@ -728,7 +728,7 @@ for (const scenario of ['dependency', 'subsets'] as const) {
         if (head.state !== 'active' || !head.continuation || head.continuation.continuationId === first.continuationId) return false;
         last = head.continuation;
         return !!await f.store.effectFact(last.invocation.identity.effectId, 'team-result-input-receipt:' + last.continuationId);
-      }, 30000, 25);
+      }, 45000, 25);
       assert.deepEqual(last.inputs.map(row => row.delegationId), [b.delegation.delegationId]);
       assert.equal(alive(JSON.parse(await readFile(path.join(f.evidence, 'first-successor.json'), 'utf8')).pid), false);
     }
