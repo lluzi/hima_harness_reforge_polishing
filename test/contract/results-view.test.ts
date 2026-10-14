@@ -14,10 +14,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const subject = await import(`../../packages/harness/src/client/results-view.${'ts'}`);
-const { bestHeadline, resultsRounds, resultsTable } = subject as {
+const { resultsRounds, resultsTable } = subject as {
   resultsRounds(view: unknown): readonly number[];
   resultsTable(results: unknown, view: unknown, round?: number): { readonly round: number; readonly rounds: readonly number[]; readonly columns: readonly string[]; readonly headline?: { readonly display: string }; readonly rows: readonly { readonly type: string; readonly cells: readonly { readonly display: string; readonly better?: true }[] }[] };
-  bestHeadline(results: unknown, view: unknown): { readonly value: number; readonly display: string } | undefined;
 };
 
 const reader = (id: string) => ({ id, version: '1', reportKind: 'result', emits: [] });
@@ -74,16 +73,15 @@ test('before any round has been read by the last column, the table shows the ref
   assert.deepEqual(table.rows[0]!.cells.map((cell) => cell.display), ['1951.6', '—']);
 });
 
-test('the best headline over every round read so far, under the headline row\'s own better', () => {
+test('the selected round\'s headline reads the last column\'s gain for that round', () => {
   const view = {
     generations: [],
     observations: [
       observation(1, 'round-reader', 'gain_pct', 1.1, 'obs:1'),
       observation(2, 'round-reader', 'gain_pct', 2.5, 'obs:2'),
-      observation(3, 'round-reader', 'gain_pct', 1.8, 'obs:3'),
     ],
   };
-  const headline = bestHeadline(results, view);
-  assert.deepEqual(headline, { value: 2.5, display: '+2.50 %' });
-  assert.equal(bestHeadline(results, { generations: [], observations: [] }), undefined, 'absent until a round has been read');
+  const table = resultsTable(results, view);
+  assert.equal(table.round, 2);
+  assert.deepEqual(table.headline, { label: 'Gain', display: '+2.50 %' });
 });

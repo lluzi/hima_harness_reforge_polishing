@@ -88,21 +88,22 @@ try {
  const residentReaderNames=['reader-andes-requirements','reader-andes-plan','reader-andes-verify'];
  const engineeringJobs=launched.filter((record:any)=>engineeringNames.includes(record.job.name)).length;
  const readerJobs=launched.filter((record:any)=>residentReaderNames.includes(record.job.name)).length;
- // Both forks' branch tasks start before their join: the parallel block starts every branch workflow
- // before the join (flow-workflow.ts). Proven from records (CTU_MOCK_TIME_SCALE=0 serialises wall
- // clock, so the structural order is read by seq): each fork's two branch engineering jobs are
- // `launched` before the join judge commits its verdict, and each fork commits a Reader observation on
- // its own branchId (two distinct branches per fork).
+ // Both forks' two branches genuinely overlap: both branch engineering jobs were live at the same
+ // time. Proven from the synthesized `job` records — the later of the two branches' `launched` seqs
+ // precedes the earlier of their `finished` seqs: max(launch A, launch B) < min(finish A, finish B).
+ // A fully serialised fork (A launched+finished, then B launched+finished) fails this, which is the
+ // regression the old join-verdict check (both merely launched before the join) could not catch.
+ // Each fork also commits a Reader observation on its own branchId (two distinct branches per fork).
  const allRecords=await readers.readRunRecords(runId);
  const launchSeq=(tool:string)=>jobRecords.filter((r:any)=>r.event==='launched'&&r.job?.name===`engineering-${tool}`).map((r:any)=>r.seq);
- const verdictSeq=(ruleId:string)=>allRecords.filter((r:any)=>r.type==='verdict'&&r.ruleId===ruleId).map((r:any)=>r.seq);
+ const finishSeq=(tool:string)=>jobRecords.filter((r:any)=>r.event==='finished'&&r.job?.name===`engineering-${tool}`).map((r:any)=>r.seq);
  const branchesOf=(reader:string)=>new Set(allRecords.filter((r:any)=>r.type==='observation'&&r.reader?.id===reader&&typeof r.branchId==='string').map((r:any)=>r.branchId));
- const startsBeforeJoin=(a:string,b:string,joinRule:string)=>{
-  const la=launchSeq(a),lb=launchSeq(b),jv=verdictSeq(joinRule);
-  return la.length>0&&lb.length>0&&jv.length>0&&Math.max(Math.min(...la),Math.min(...lb))<Math.min(...jv);
+ const forksOverlap=(a:string,b:string)=>{
+  const la=launchSeq(a),lb=launchSeq(b),fa=finishSeq(a),fb=finishSeq(b);
+  return la.length>0&&lb.length>0&&fa.length>0&&fb.length>0&&Math.max(Math.min(...la),Math.min(...lb))<Math.min(Math.min(...fa),Math.min(...fb));
  };
- const proposeForkOverlap=startsBeforeJoin('himatime-agent','qualib-agent','requirements-valid')&&branchesOf('andes-requirements').size===2;
- const verifyForkOverlap=startsBeforeJoin('himatime-verify','qualib-screen','cells-gain-positive')&&branchesOf('andes-verify').size===2;
+ const proposeForkOverlap=forksOverlap('himatime-agent','qualib-agent')&&branchesOf('andes-requirements').size===2;
+ const verifyForkOverlap=forksOverlap('himatime-verify','qualib-screen')&&branchesOf('andes-verify').size===2;
  // The resident deliveries all passed their Reader (the workspace-path asserts in
  // read-requirements.py / read-plan.py / read-verify.py hold under hima-task-effect/2), and the
  // round reader confirms the +1 % gain. Scan every committed task result's observations.

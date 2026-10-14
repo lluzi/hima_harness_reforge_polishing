@@ -1131,6 +1131,10 @@ const viewMetricShared = {
   label: z.string().min(1).max(32), unit: z.string().max(12).optional(), goal: z.string().optional(),
   better: z.enum(['lower', 'higher']).optional(), digits: z.number().int().min(0).max(6).optional(),
   pick: z.enum(['latest', 'best']).optional(),
+  /** Print a positive value with a leading `+`, as a delta/gain reads (andes `best_gain_pct`). Off by
+   *  default, so an absolute metric (Fmax in MHz) never shows a misleading "+". The goal value, which
+   *  is a target rather than a delta, is never signed. */
+  sign: z.boolean().optional(),
 };
 const viewMetricNode = z.strictObject({ ...viewMetricShared, node: packId, path: z.array(z.string().min(1)).min(1).max(8) });
 const viewMetricReader = z.strictObject({ ...viewMetricShared, reader: z.string().min(1), type: semanticSlug });

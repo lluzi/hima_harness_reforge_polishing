@@ -48,4 +48,6 @@ metrics:
     better: higher
     unit: "%"
     digits: 2
+    # A gain over the reference, so a positive value reads "+1.23 %"; the Goal target is not signed.
+    sign: true
     goal: target_timing_gain_pct

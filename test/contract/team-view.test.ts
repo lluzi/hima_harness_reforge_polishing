@@ -133,8 +133,8 @@ const stripGraph = {
       { id: 'decide', label: 'Decide', row: 2, checklist: [{ label: 'Decide the round', nodes: ['decide'], rounds: 'all' }] },
     ],
     metrics: [
-      { kind: 'reader', label: 'best', reader: 'andes-round', type: 'timing_gain_pct', unit: '%', digits: 2, pick: 'best', better: 'higher', goal: 'target_gain', node: '', path: [] },
-      { kind: 'reader', label: 'now', reader: 'andes-round', type: 'timing_gain_pct', unit: '%', digits: 2, pick: 'latest', node: '', path: [] },
+      { kind: 'reader', label: 'best', reader: 'andes-round', type: 'timing_gain_pct', unit: '%', digits: 2, pick: 'best', better: 'higher', sign: true, goal: 'target_gain', node: '', path: [] },
+      { kind: 'reader', label: 'now', reader: 'andes-round', type: 'timing_gain_pct', unit: '%', digits: 2, pick: 'latest', sign: true, node: '', path: [] },
     ],
   },
 } as unknown as PackGraph;
@@ -243,4 +243,12 @@ test('A: a Reader metric reads the Run observations — best over rounds and the
   ]);
   // No reading yet: the metric is absent, not a blank.
   assert.deepEqual(stripState([t('t1', 'running')]).metrics, []);
+});
+
+test('M5: only a metric with sign:true gets a leading + ; an unsigned (absolute) metric does not', () => {
+  // Same graph, but the metric reads an absolute value (e.g. Fmax) and declares no sign.
+  const absolute = { ...stripGraph, view: { ...(stripGraph as { view: { metrics: unknown[] } }).view,
+    metrics: [{ kind: 'reader', label: 'fmax', reader: 'andes-round', type: 'timing_gain_pct', unit: 'MHz', digits: 2, pick: 'latest', node: '', path: [] }] } } as unknown as PackGraph;
+  const s = teamViewState(absolute, stripTools, stripView([t('t3', 'running', 2)], { observations: [obs(2, 1951.6)] }))!;
+  assert.deepEqual(s.metrics, [{ label: 'fmax', value: '1951.60 MHz' }], 'no misleading + on an absolute metric');
 });

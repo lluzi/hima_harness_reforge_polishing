@@ -211,8 +211,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             carries a select and an icon-only refresh control, and the missing border made them easy
             to miss beside those. Same markers, same visible text.
             Slice D: `hima-studio-secondary` marks these as the row's non-essential actions (ported
-            from `demo/andes-openc910`), for a narrow pane to hide without this file choosing layout;
-            the CSS that reads the marker is a separate, narrower slice's job. */}
+            from `demo/andes-openc910`); the marker now reads in `workbench-style.ts` as a muted,
+            fill-less button, so the row's primary actions stand out from these. */}
         <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
         <button className='hima-button hima-studio-secondary' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
       </div>
