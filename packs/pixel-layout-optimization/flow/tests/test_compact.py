@@ -335,6 +335,34 @@ class HandBuiltCompactTest(unittest.TestCase):
         self.assertAlmostEqual(r1.bounds[2] - r1.bounds[0],
                                r0.bounds[2] - r0.bounds[0], places=3)
 
+    def test_plates_cannot_slide_inside_a_marker_that_stays_put(self):
+        # Real-case regression: the region marker ∧ plates was bounded only by the inner plate's
+        # edges, so the marker was not tied to the plates; a pass slid both plates inside the
+        # (rigid) marker and the device area fell 22 %. The marker now moves with the region.
+        from pixelopt import compact
+        case = FakeCase({
+            "GateA": {"gds": [2, 0], "roles": ["conductor"], "stack": "device"},
+            "GateB": {"gds": [19, 0], "roles": ["conductor"], "stack": "device"},
+            "CapMark": {"gds": [7, 0], "roles": ["marker"], "stack": "device"},
+            "Bound": {"gds": [12, 0], "roles": ["outline"]},
+        }, cst={"markerLayer": "CapMark", "plateLayers": ["GateA", "GateB"]})
+        table = {"width": {"GateA": 1.0, "GateB": 1.0},
+                 "space": {"GateA": 1.0, "GateB": 1.0}, "xspace": [], "enc": []}
+        lay = self._layout({
+            "Bound": [rect(0, 0, 30, 10)],
+            "CapMark": [rect(9.9, 2, 18.1, 8)],         # marker edges 0.1 um outside the inner plate
+            "GateA": [rect(10, 3, 18, 7), rect(1, 4, 9, 6)],   # inner plate + a wide plate-layer line
+            "GateB": [rect(8, 2.5, 20, 7.5), rect(27, 1, 29, 9)],  # outer plate + an unrelated shape
+        })
+
+        def region(l):
+            return l.geom("GateA").intersection(l.geom("GateB")).intersection(l.geom("CapMark"))
+
+        r0 = region(lay).area
+        out, info = compact.compact(lay, "x", case, table)
+        self.assertEqual(info["status"], "optimal")
+        self.assertAlmostEqual(region(out).area, r0, places=3)
+
     def test_legalise_infeasible_reports_binding_tags(self):
         # An un-satisfiable legalise (two wide strips that cannot both meet width
         # and space inside a tight outline) reports the conflicting rows.

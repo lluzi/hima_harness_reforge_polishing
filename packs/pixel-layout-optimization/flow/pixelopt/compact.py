@@ -162,6 +162,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     for c in ch_parts:
         groups.append(c.buffer(1e-4))
 
+    cap_groups = []  # indices into groups of the capacitor regions (marker ∧ plates)
     marker_geom = lay.geom(marker_layer) if marker_layer else Polygon()
     if marker_layer and plate_layers and not marker_geom.is_empty:
         capreg = marker_geom
@@ -170,10 +171,11 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         for c in (capreg.geoms if hasattr(capreg, "geoms") else [capreg]):
             if c.area > 1e-3:
                 groups.append(c.buffer(1e-4))
+                cap_groups.append(len(groups) - 1)
     for g in rigid_extra:
         groups.append(g)
 
-    for g in groups:
+    for gi, g in enumerate(groups):
         bd = g.boundary
         members = []
         for pi, (n, i, p) in enumerate(polys):
@@ -188,6 +190,13 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                 if (seg.intersection(g.buffer(2e-4)).length > 1e-4
                         and seg.intersection(bd.buffer(2e-4)).length > 1e-4):
                     members += [(pi, v), (pi, (v + 1) % N)]
+        if gi in cap_groups:
+            # The device value is the area of marker ∧ plates: the marker itself must move with the
+            # region's boundary edges, or the plates can slide inside a marker that stays put (a
+            # region bounded only by the inner plate's edges would not tie the marker otherwise).
+            for pi, (n, i, p) in enumerate(polys):
+                if n == marker_layer and Polygon(p).buffer(0).intersects(g):
+                    members.append((pi, 0))
         for m in members[1:]:
             uf.union(members[0], m, 0)
 
