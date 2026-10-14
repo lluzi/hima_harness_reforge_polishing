@@ -117,7 +117,8 @@ Every file reference is `{"path": str, "sha256": str}`. Concretely:
 {
  "schema": "pixel.case-manifest/1",
  "caseId": "synthetic-1",
- "original": {"gds": {"path": "...", "sha256": "..."}, "topCell": "pix"},
+ "original": {"gds": {"path": "...", "sha256": "..."}, "topCell": "pix_orig"},
+ "candidateTopCell": "pix",
  "gridUm": 0.005,
  "layers": {
    "Poly":   {"gds": [3, 0],  "roles": ["conductor", "poly", "opaque"], "stack": "device"},
@@ -143,9 +144,10 @@ Every file reference is `{"path": str, "sha256": str}`. Concretely:
  "couplingLimits": [{"pair": ["S", "DL"], "maxFf": 0.5}],
  "loadLimitedLines": ["SC", "AN"],
  "targets": {"outlineUm": [20.0, 40.0], "ratioPct": {"broad": 9.0, "narrow": 2.0}, "transmittancePct": [5.0, 30.0]},
- "cst": {"markerLayer": "CapMark", "plateLayers": ["GateA", "GateB"], "coefficientFfPerUm2": 0.6, "tolerancePct": 2.0},
+ "cst": {"markerLayer": "CapMark", "plateLayers": ["GateA", "GateB"], "coefficientFfPerUm2": 0.6, "tolerancePct": 2.0,
+         "schematicTemplate": {"path": "...", "sha256": "..."}},
  "decks": {"authority": {"path": "...", "sha256": "..."}, "reference": {"path": "...", "sha256": "..."}},
- "interactRules": [{"id": "VIA.LAND", "layer": "Via", "mustTouch": ["GateB", "GateA", "Poly"]}],
+ "interactRules": [{"id": "VIA.LAND", "layer": "Via", "mustTouch": [["GateB", "Metal"], ["GateA", "Metal"], ["Poly", "Metal"]]}],
  "lvs": {"engine": "calibre", "deckTemplate": {"path": "...", "sha256": "..."}, "schematic": {"path": "...", "sha256": "..."}},
  "extraction": {"techLibOalib": {...}, "techLibTechDb": {...}, "layerMap": {...}, "etf": {...}, "layerMapBool": {...}, "tclTemplate": {...}, "libName": "pix", "cellName": "pix"},
  "alps": {"consistent": false}
@@ -181,11 +183,15 @@ def load_sitecaps(path) -> dict               # pixel.site-capabilities/1, schem
  "gdsInLibraryPath": "$AETHER_OA_HOME/lib/linux_rhel60_64/opt",
  "env": {"IGNORE_FLEX_RC_FILE": "1", "QT_QPA_PLATFORM": "offscreen"},
  "parallelJobs": 3,
+ "drcStripFunctions": ["geom_interact"],
  "timeoutsS": {"drc": 300, "lvs": 300, "gdsIn": 300, "rce": 900},
  "expectVersions": {"python": "3.8", "numpy": "1.24", "scipy": "1.10", "shapely": "2.0", "gdstk": "0.9"}}
 ```
 
-An empty `launcher.argv` runs commands directly (tests). `tools.*` are argv prefixes, so tests
+An empty `launcher.argv` runs commands directly (tests). The environment variable
+`PIXELOPT_DIRECT=1` (set in the resident sandbox, which already is the EDA image) also runs
+commands directly, ignoring the launcher. On linglong the launcher env names the dedicated
+container `eda-runner-pixelpack` (PID 1 `podman-init`, so no reaper is needed there). `tools.*` are argv prefixes, so tests
 substitute `[sys.executable, "standin_eda.py", "argus"]`.
 
 ### goal (S)
@@ -209,9 +215,12 @@ def parse_deck(text: str) -> dict
 #  "unmodelled": ["rule id: reason", ...], "options": {"db_precision": bool, "tolerance": float|None}}
 def compaction_table(parsed: dict, case: Case) -> dict
 # {"width": {L: v}, "space": {L: v}, "xspace": [[La, Lb, v]], "enc": [[outer, inner, v]], "unmodelled": [...]}
-def make_rule_file(deck_text: str, gds_path: str, top_cell: str) -> str
-# replaces layout_input( path ...) / ( top_cell ...), asserts layout_use_db_precision( yes ) is present
-# (PixelError("schema") otherwise), forces drc_result/drc_summary names to argus_drc.db / argus_drc.sum
+def make_rule_file(deck_text, gds_path, top_cell, strip_functions=()) -> (str, dict)
+# replaces layout_input( path ...) / ( top_cell ...); forces drc_result/drc_summary to argus_drc.db / argus_drc.sum;
+# ensures exactly one layout_use_db_precision( yes ) (replacing a precision( N ) line, or inserting it);
+# removes whole rule blocks using any strip_functions (e.g. geom_interact, the licence cannot run it).
+# record = {"precision": "replaced precision( 100 )"|"inserted"|"present", "stripped": [rule ids]}.
+# The judge refuses when a stripped id has no manifest interactRules entry of the same id.
 ```
 Dialect (read the customer deck format on Linglong `pixel-runs/tools/drc_case.base`, never copy it):
 `var( name value )`, `layer( Name n )` and `layer ( Name n )`, `rule ID { ; comment\n check }`,
@@ -235,8 +244,8 @@ class Layout:
     def geom(self, name)                                # shapely union (buffer(0)) of a layer
 def load_gds(path, case, top=None) -> Layout            # layers by case.gds_map(); unknown layers dropped, recorded
 def save_gds(lay, path, case, top) -> None
-def write_set(lay, directory, case) -> dict             # pixel.gds (top), pixel2x2.gds, pixel3x3.gds at the outline pitch;
-                                                         # returns {"1x1": path, "2x2": path, "3x3": path} and top names
+def write_set(lay, directory, case) -> dict             # pixel.gds, pixel2x2.gds, pixel3x3.gds at the outline pitch, tops
+                                                         # case candidateTopCell, <top>2x2, <top>3x3; returns {"1x1": [path, top], ...}
 def transpose(lay) -> Layout
 def merge_layers(lay, layers) -> Layout
 def clean(lay) -> Layout                                # drop repeated and collinear vertices, snap to 4 decimals

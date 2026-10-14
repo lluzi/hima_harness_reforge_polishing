@@ -1,0 +1,22 @@
+name: linglong-pixel
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/pixel-pack-runs
+permit: ./permit.yml
+bindings:
+  # The OLED pixel case: the designer's original layout, the authority and reference DRC decks, the
+  # validated LVS translation and schematic, and the extraction set, staged read-only under
+  # pixel-inputs/case-v1 (customer data; never copied into this repository). See README.md.
+  pixelCaseManifest: /data/eda/project/hima_harness/pixel-inputs/case-v1/manifest.json
+  siteCapabilities: /data/eda/project/hima_harness/pixel-inputs/case-v1/site-capabilities.json
+  engineeringCapabilities: /data/eda/project/hima_harness/operator-admin/resident-engineering-v1/engineering-capabilities-pixel-v1.json
+  workspaceRoot: /data/eda/project/hima_harness/pixel-pack-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 32
+  memoryGiB: 117
+  parallelJobs: 2
+  licences:
+    fpd: 1
