@@ -270,6 +270,29 @@ test('recurring monitor discovers an actual post-created detached grandchild and
     assert.throws(()=>process.kill(grandchild,0));assert.throws(()=>process.kill(f.lease.pid,0));
     assert.ok(f.owned().some((r:any)=>r.pid===grandchild),'first-known identity remains retained');
 });
+test('empty original group is never signaled while its known detached grandchild is still closing', { timeout:10000 }, async t=>{
+    const f=await monitorFamily(t,'stale-group-detached');
+    await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
+    f.flag('create.flag');await until(async()=>fs.existsSync(path.join(f.lease.workDirectory,'grandchild.pid')));
+    const grandchild=f.pid('grandchild.pid'),middle=f.pid('middle.pid');
+    await until(async()=>f.owned().some((row:any)=>row.pid===grandchild));
+    f.flag('reparent.flag');await until(async()=>{try{process.kill(middle,0);return false;}catch{return true;}});
+    // This fixture owns the captured leader birth. Only the detached known
+    // child remains, so the original PGID has no live family member to signal.
+    process.kill(f.lease.pid,'SIGTERM');await until(async()=>{try{process.kill(f.lease.pid,0);return false;}catch{return true;}});
+    assert.doesNotThrow(()=>process.kill(grandchild,0));
+    const originalKill=process.kill;let staleGroupSignals=0;
+    const restore=()=>{process.kill=originalKill;};t.after(restore);
+    process.kill=((pid:number,signal?:NodeJS.Signals|number)=>{
+        if(pid===-f.lease.processGroup){staleGroupSignals++;throw Object.assign(Error('Stale original group signal denied'),{code:'EPERM'});}
+        return originalKill(pid,signal);
+    }) as typeof process.kill;
+    let closure:Awaited<ReturnType<typeof f.runtime.close>>;
+    try{closure=await f.runtime.close(f.lease);}finally{restore();}
+    assert.equal(staleGroupSignals,0,'a detached owned child never authorizes a stale group signal');
+    assert.equal(closure.closed,true,JSON.stringify(closure));assert.equal(closure.proof?.absent,true);
+    assert.throws(()=>process.kill(grandchild,0));
+});
 test('actual delayed ps cannot overlap ticks or regress a newer created snapshot; close freezes late callbacks', { timeout:12000 }, async t => {
     const f=await monitorFamily(t,'monitor-created-race',false);
     const gate=await gatedProcessTable(t);
@@ -323,6 +346,47 @@ test('actual async ps acquisition error is visible and physically closes the ori
     await until(async()=>JSON.parse((await f.runtime.read(f.lease)).state).fatal===true);
     const closure=await f.runtime.close(f.lease);assert.equal(closure.closed,true);assert.throws(()=>process.kill(f.lease.pid,0));
     assert.equal(JSON.parse((await f.runtime.read(f.lease)).state).failureReason,'Member process observations unavailable');restore();
+});
+test('one failed synchronous ps acquisition is retried before original-family close proof', { timeout:10000 }, async t=>{
+    const f=await fixture(t,'close-ps-transient');await f.runtime.start(f.lease);
+    await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
+    const descendant=Number(fs.readFileSync(path.join(f.lease.workDirectory,'descendant.pid'),'utf8'));
+    const {default:childProcess}=await import('node:child_process');const {syncBuiltinESMExports}=await import('node:module');
+    const original=childProcess.execFileSync;let failed=0;
+    const restore=()=>{childProcess.execFileSync=original;syncBuiltinESMExports();};t.after(restore);
+    childProcess.execFileSync=((file:any,args:any,options:any)=>{
+        if(file==='ps'&&Array.isArray(args)&&args[0]==='-axo'&&failed===0){
+            failed++;throw Object.assign(Error('Controlled first synchronous ps acquisition failure'),{code:'EAGAIN'});
+        }
+        return original(file,args,options);
+    }) as typeof original;
+    syncBuiltinESMExports();
+    let closure:Awaited<ReturnType<typeof f.runtime.close>>;
+    try { closure=await f.runtime.close(f.lease); } finally { restore(); }
+    assert.equal(failed,1,'the first genuine close observation was refused once');
+    assert.equal(closure.closed,true,JSON.stringify(closure));assert.equal(closure.proof?.absent,true);
+    assert.throws(()=>process.kill(f.lease.pid,0));assert.throws(()=>process.kill(descendant,0));
+});
+test('two failed synchronous ps observations retain unknown until the same lease is genuinely closed', { timeout:10000 }, async t=>{
+    const f=await fixture(t,'close-ps-unknown');await f.runtime.start(f.lease);
+    await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
+    const descendant=Number(fs.readFileSync(path.join(f.lease.workDirectory,'descendant.pid'),'utf8'));
+    const {default:childProcess}=await import('node:child_process');const {syncBuiltinESMExports}=await import('node:module');
+    const original=childProcess.execFileSync;let failures=0;
+    const restore=()=>{childProcess.execFileSync=original;syncBuiltinESMExports();};t.after(restore);
+    childProcess.execFileSync=((file:any,args:any,options:any)=>{
+        if(file==='ps'&&Array.isArray(args)&&args[0]==='-axo'&&failures<2){
+            failures++;throw Object.assign(Error('Controlled unavailable synchronous ps observation'),{code:'EAGAIN'});
+        }
+        return original(file,args,options);
+    }) as typeof original;
+    syncBuiltinESMExports();
+    let first:Awaited<ReturnType<typeof f.runtime.close>>;
+    try{first=await f.runtime.close(f.lease);}finally{restore();}
+    assert.equal(failures,2);assert.equal(first.closed,false);assert.match(first.reason??'',/observation unavailable/);
+    assert.doesNotThrow(()=>process.kill(f.lease.pid,0));assert.doesNotThrow(()=>process.kill(descendant,0));
+    const retried=await f.runtime.close(f.lease);assert.equal(retried.closed,true,JSON.stringify(retried));
+    assert.equal(retried.proof?.absent,true);assert.throws(()=>process.kill(f.lease.pid,0));assert.throws(()=>process.kill(descendant,0));
 });
 test('known detached descendant wrong birth refuses signaling its actual live PID', { timeout:10000 }, async t=>{
     const f=await fixture(t,'monitor-descendant-birth');await f.runtime.start(f.lease);

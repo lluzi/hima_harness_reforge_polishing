@@ -146,7 +146,16 @@ catch (e) {
 } }
 function load(p: string): any { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 function parseTable(text: string): Row[] { return text.split('\n').flatMap(line => { const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/); return m ? [{ pid: Number(m[1]), group: Number(m[2]), parent: Number(m[3]), rss: Number(m[4]), birth: m[5]! }] : []; }); }
-function table(): Row[] { return parseTable(execFileSync('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })); }
+function table(): Row[] {
+    let firstError: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try { return parseTable(execFileSync('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })); }
+        catch (error) { firstError ??= error; }
+    }
+    // No missing PID is inferred from failed observations. The caller retains
+    // unknown closure unless a fresh process-table command succeeds.
+    throw firstError;
+}
 function monitorTable(): Promise<string> { return new Promise((resolve, reject) => {
     execFile('ps', ['-axo', 'pid=,pgid=,ppid=,rss=,lstart='], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
         (error, stdout) => { if (error) reject(error); else resolve(stdout); });
@@ -1025,13 +1034,20 @@ export class OarLocalMemberRuntime {
                                     throw e;
                             }
                     }
-                    try {
-                        process.kill(-l.processGroup, signal);
-                    }
-                    catch (e) {
-                        if ((e as NodeJS.ErrnoException).code !== 'ESRCH')
-                            throw e;
-                    }
+                    // A detached known child can outlive an already-empty original
+                    // group. Do not signal a stale PGID merely because that child
+                    // still needs its own exact-PID close above.
+                    if (group().length)
+                        try {
+                            process.kill(-l.processGroup, signal);
+                        }
+                        catch (e) {
+                            if ((e as NodeJS.ErrnoException).code === 'EPERM' && !group().length) {
+                                // The group vanished between observation and signal.
+                                // The absence loop below must still prove every PID.
+                            }
+                            else if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e;
+                        }
                 }
                 const until = began + (signal === 'SIGKILL' ? 2500 : signal === 'SIGTERM' ? 1000 : 500);
                 while (Date.now() < until) {
