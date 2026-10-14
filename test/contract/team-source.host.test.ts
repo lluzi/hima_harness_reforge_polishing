@@ -36,8 +36,11 @@ test('independent Team activation uses real Host/PG/DBOS effect and replay retai
   await assert.rejects(host.ctx.hima.teamOperation(sessionId,{action:'startTask',teamId:created.teamId,request:{...request,goal:'Different'}}),/different frozen content/);
   assert.equal(await readFile(path.join(workspace,'submissions.txt'),'utf8'),'submitted\n');
   const status=await host.ctx.hima.prepareExit({requestId:'team-exit',mode:'keep-jobs'});assert.ok(status);
-  const fenced=await host.ctx.hima.durable.store.run(run.runId);assert.match(fenced.hold??'',/Team stopped on App exit/);
-  await assert.rejects(host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:created.teamId,taskId:started.taskId,request:{requestId:'forbidden-resume',action:'continue',expectedEpoch:fenced.epoch,expectedRevision:fenced.revision}}),/not qualified yet/);
+  const exited=await host.ctx.hima.durable.store.run(run.runId);
+  assert.equal(exited.hold,null,'already completed Team work needs no new active exit hold');
+  const retained=await host.ctx.hima.teamOperation(sessionId,{action:'readTask',teamId:created.teamId,taskId:started.taskId}) as any;
+  assert.deepEqual(retained.execution.tasks[0].result.value,{answer:'fixture-only fact 42'});
+  assert.equal(await readFile(path.join(workspace,'submissions.txt'),'utf8'),'submitted\n','exit cannot replay completed Team work');
   } finally {await host.dispose();await home.h.dispose();}
 });
 
@@ -80,8 +83,16 @@ test('Host-issued member access rejects forged scope, retired generation and rev
     await assert.rejects(host.ctx.hima.durable.store.issueTeamGrant({...grant,grantId:'forged-project',projectId:'other'}),/does not match/);
     await host.ctx.hima.durable.store.revokeTeamGrant(grant.grantId);
     await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'readTask'}),/revoked/);
-    const second=await host.ctx.hima.durable.store.issueTeamGrant({...grant,grantId:'grant-b'});
-    const handle=await host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:created.teamId,taskId:task.taskId,request:{requestId:'generation-change',action:'pause',expectedEpoch:0,expectedRevision:0}},'human');assert.ok(handle);
+    // Operator revocation permanently fences that Run. A separate original Task
+    // proves generation retirement without reissuing authority into it.
+    const nextRequest={...request,requestId:'waiting-generation-opening',goal:'Wait for a separate generation',deadlineAt:new Date(Date.now()+30000).toISOString()};
+    const nextTask=await host.ctx.hima.teamOperation(sessionId,{action:'startTask',teamId:created.teamId,request:nextRequest}) as any;
+    await waitUntil('second frozen member invocation',async()=>(await host.ctx.hima.durable.store.flowProjection(nextTask.currentRunId)).tasks.length===1,10000,25);
+    const nextInvocation=(await host.ctx.hima.durable.store.flowProjection(nextTask.currentRunId)).tasks[0] as any;
+    const second=await host.ctx.hima.durable.store.issueTeamGrant({...grant,grantId:'grant-b',projectId:nextTask.projectId,taskId:nextTask.taskId,runId:nextTask.currentRunId,effectId:nextInvocation.identity.effectId,expiresAt:nextRequest.deadlineAt});
+    assert.equal((await host.ctx.hima.memberTeamContext(second.token,{action:'readTask'}) as any).task.taskId,nextTask.taskId);
+    const nextRun=await host.ctx.hima.durable.store.run(nextTask.currentRunId);
+    const handle=await host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:created.teamId,taskId:nextTask.taskId,request:{requestId:'generation-change',action:'pause',expectedEpoch:nextRun.epoch,expectedRevision:nextRun.revision}},'human');assert.ok(handle);
     await assert.rejects(host.ctx.hima.memberTeamContext(second.token,{action:'readTask'}),/generation|held/);
     await host.ctx.hima.prepareExit({requestId:'waiting-exit',mode:'keep-jobs'});
   } finally {await host.dispose();await home.h.dispose();}

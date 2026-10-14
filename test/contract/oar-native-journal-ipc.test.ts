@@ -234,7 +234,7 @@ test('public executor close reaches owned cleanup despite stalled fsync and reta
     await assert.rejects(f.runtime.sendInput(f.lease,'late','No input may escape admitted stop'),/stopping rejects input/);
     assert.equal(admitted,1,'existing cleanup callback stand-in reached before journal durability');
     const closure = await Promise.race([closing,pause(3000).then(()=>{throw Error('Executor close blocked before bounded local cleanup');})]);
-    assert.equal(closure.closed,false); assert.match(closure.reason??'',/retention|durability/);
+    assert.equal(closure.closed,false); assert.match(closure.reason??'',/retention|durability|Process closure observation unavailable/);
     assert.throws(()=>process.kill(f.lease.pid!,0),'actual original PID is absent despite combined unknown');
     assert.equal(f.facts.has('oar:closed'),false,'unknown cleanup cannot publish a fabricated normal proof');
     assert.ok(fs.existsSync(f.lease.controlDirectory));

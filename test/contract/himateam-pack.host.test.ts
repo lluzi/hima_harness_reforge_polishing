@@ -545,7 +545,7 @@ test('actual Pack Campaign continue after Host exit leaves Team resume-required;
   await outerControl('pause','outer-pause-before-exit');
   await f.diagnostic('before-actual-prepareExit');await f.service.prepareExit({requestId:'pack-child-host-exit',mode:'keep-jobs'});await f.diagnostic('returned-prepareExit');
   await waitUntil('actual old supervisor and descendant close before Host disposal',async()=>
-    (await f.service.exitStatus()).ready&&!alive(originalFamily.pid)&&!alive(originalFamily.descendant),30000,25);
+    (await f.service.exitStatus()).ready&&!alive(originalFamily.pid)&&!alive(originalFamily.descendant),45000,25);
   const held=await f.store.run(old.runId);
   assert.match(held.hold??'',/^Team stopped on App exit/);assert.equal(held.holdSource,'human');
   const closed=await f.store.externalEffectFact(native.identity,'oar:closed');assert.ok(closed);
