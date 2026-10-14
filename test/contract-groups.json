@@ -18,6 +18,7 @@
     "test/contract/campaign-file.host.test.ts",
     "test/contract/canvas-layout.test.ts",
     "test/contract/team-view.test.ts",
+    "test/contract/team-canvas.test.ts",
     "test/contract/checkpoint-resume.host.test.ts",
     "test/contract/client-style.test.ts",
     "test/contract/command.test.ts",

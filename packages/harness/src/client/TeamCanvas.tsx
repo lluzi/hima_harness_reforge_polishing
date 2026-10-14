@@ -3,11 +3,11 @@
 // hand-overs between them drawn as arrows. `team-view.ts` decides every state; this draws it with
 // HTML boxes and one SVG overlay for the arrows, measured from the boxes themselves, so it fits any
 // pane width without pan or zoom.
-import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { runWaitingReason } from '../card-labels.js';
 import type { PackContract, PackGraph } from '../packs.js';
 import type { RunView } from '../remote.js';
-import { teamViewState, type TeamEdge, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
+import { teamEdgePath, teamGridArea, teamRowOrder, teamViewState, type TeamBox, type TeamLine, type TeamMember, type TeamNodeState, type TeamStation } from '../team-view.js';
 import type { ResidentActivity } from '../resident-activity.js';
 
 export interface TeamCanvasProps {
@@ -50,6 +50,10 @@ const MEMBER_SAID: Record<TeamNodeState, string> = { pending: 'Waiting', active:
 
 const KIND_SAID: Record<string, string> = { read: 'Reading', edit: 'Editing', execute: 'Running', search: 'Searching', plan: 'Planning', message: 'Thinking', other: 'Working' };
 
+/** A title that only repeats the tool's own name ("read", "bash") says nothing a person can use: the
+ *  tool call announced itself before its arguments arrived (demo `BARE_TOOL_WORDS`). */
+const BARE_TOOL_WORDS = new Set(['read', 'edit', 'write', 'bash', 'grep', 'glob', 'list', 'ls', 'todowrite', 'todoread', 'webfetch', 'fetch', 'task', 'patch', 'search', 'execute', 'plan', 'message', 'other']);
+
 /** A path-like token keeps its last two segments: "…/flow/rounds.py", not the Site's long root. */
 export function shortPaths(text: string): string {
   return text
@@ -62,7 +66,12 @@ export function shortPaths(text: string): string {
 function LiveLine({ activity, fallback }: { activity: ResidentActivity | undefined; fallback: string }): ReactElement {
   const latest = activity?.latest;
   const title = latest === undefined ? '' : shortPaths(latest.title);
-  const text = latest === undefined ? fallback : latest.kind === 'message' ? `${KIND_SAID.message}: ${title}` : `${KIND_SAID[latest.kind] ?? KIND_SAID.other} ${title}`;
+  // A bare tool word says nothing beyond the verb, so drop it: "Running…", not "Running bash".
+  const bare = title.trim() === '' || BARE_TOOL_WORDS.has(title.trim().toLowerCase());
+  const verb = latest === undefined ? '' : KIND_SAID[latest.kind] ?? KIND_SAID.other;
+  const text = latest === undefined ? fallback
+    : bare ? `${verb}…`
+      : latest.kind === 'message' ? `${KIND_SAID.message}: ${title}` : `${verb} ${title}`;
   const counter = activity === undefined ? undefined
     : `${String(activity.toolCalls)} tool call${activity.toolCalls === 1 ? '' : 's'}${activity.planTotal > 0 ? ` · plan ${String(activity.planDone)}/${String(activity.planTotal)}` : ''}`;
   return <>
@@ -87,12 +96,17 @@ function Member({ runId, member, motionOff }: { runId: string; member: TeamMembe
   );
 }
 
-function Station({ runId, station, motionOff, refFor }: { runId: string; station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void }): ReactElement {
+/** A checklist line's text: a folded leading run reads "N done", every other line its own label. */
+function lineText(line: TeamLine): string {
+  return line.folds === undefined ? line.label : `${String(line.folds)} done`;
+}
+
+function Station({ runId, station, motionOff, refFor, style }: { runId: string; station: TeamStation; motionOff: boolean; refFor: (el: HTMLElement | null) => void; style?: CSSProperties }): ReactElement {
   const team = station.team;
-  const lines = station.lines.filter((line) => line.state !== 'hidden');
+  const lines = station.lines.filter((line) => line.state !== 'hidden' && line.folded !== true);
   return (
-    <section ref={refFor} className={`hima-team-station hima-team-station-${station.state}${team === undefined ? '' : ' hima-team-station-team'}${station.ai ? ' hima-team-station-ai' : ''}`}
-      data-hima-region={`team-station-${station.id}`} data-hima-state-state={station.state} title={station.about}>
+    <section ref={refFor} style={style} className={`hima-team-station hima-team-station-${station.state}${team === undefined ? '' : ' hima-team-station-team'}${station.ai ? ' hima-team-station-ai' : ''}`}
+      data-hima-region={`team-station-${station.id}`} data-hima-state-state={station.state} data-hima-state-col={String(station.col)} data-hima-state-span={String(station.span)} title={station.about}>
       <header className="hima-team-head">
         {team === undefined ? <Square ai={station.ai} state={station.state} motionOff={motionOff} /> : null}
         <div className="hima-team-head-text">
@@ -105,7 +119,7 @@ function Station({ runId, station, motionOff, refFor }: { runId: string; station
       {lines.length === 0 ? null : (
         <ul className="hima-team-lines">
           {lines.map((line, index) => (
-            <li key={index} className={`hima-team-line hima-team-line-${line.state}`}><Mark state={line.state as TeamNodeState} /><span>{line.label}</span></li>
+            <li key={index} className={`hima-team-line hima-team-line-${line.state}${line.folds === undefined ? '' : ' hima-team-line-fold'}`}><Mark state={line.state as TeamNodeState} /><span>{lineText(line)}</span></li>
           ))}
         </ul>
       )}
@@ -119,30 +133,17 @@ function Station({ runId, station, motionOff, refFor }: { runId: string; station
   );
 }
 
-interface Box { readonly top: number; readonly bottom: number; readonly left: number; readonly right: number }
-
-function edgePath(edge: TeamEdge, from: Box, to: Box, width: number): { d: string; lx: number; ly: number } {
-  if (!edge.back && to.top >= from.bottom) {
-    const x = Math.round((Math.max(from.left, to.left) + Math.min(from.right, to.right)) / 2);
-    return { d: `M${x} ${from.bottom + 1}V${to.top - 2}`, lx: x + 8, ly: (from.bottom + to.top) / 2 + 4 };
-  }
-  // A back edge runs out of the source's right side, up the strip's right margin, into the target's right side.
-  const gutter = width - 20;
-  const y1 = (from.top + from.bottom) / 2, y2 = Math.min(to.bottom - 14, to.top + 22);
-  return { d: `M${from.right} ${y1}H${gutter}V${y2}H${to.right + 2}`, lx: width - 7, ly: (y1 + y2) / 2 };
-}
-
 export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: TeamCanvasProps): ReactElement {
   const motionOff = reducedMotion || stale;
   const state = useMemo(() => teamViewState(graph, tools, view), [graph, tools, view]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const boxes = useRef(new Map<string, HTMLElement>());
-  const [measured, setMeasured] = useState<{ readonly width: number; readonly height: number; readonly at: ReadonlyMap<string, Box> }>();
+  const [measured, setMeasured] = useState<{ readonly width: number; readonly height: number; readonly at: ReadonlyMap<string, TeamBox> }>();
   useLayoutEffect(() => {
     const wrap = wrapRef.current; if (wrap === null) return;
     const measure = (): void => {
       const origin = wrap.getBoundingClientRect();
-      const at = new Map<string, Box>();
+      const at = new Map<string, TeamBox>();
       for (const [id, el] of boxes.current) {
         const r = el.getBoundingClientRect();
         at.set(id, { top: r.top - origin.top + wrap.scrollTop, bottom: r.bottom - origin.top + wrap.scrollTop, left: r.left - origin.left, right: r.right - origin.left });
@@ -159,6 +160,10 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
   if (state === undefined) return <div className="hima-empty"><p>This Pack declares no team view.</p></div>;
   const waiting = runWaitingReason(view);
   const goalSaid = (m: (typeof state.metrics)[number]): string => m.goal === undefined ? '' : `goal ${m.better === 'lower' ? '≤ ' : m.better === 'higher' ? '≥ ' : ''}${m.goal}`;
+  // A view that declares rows is drawn as a two-column grid with back edges down the left gutter; a
+  // view without rows (MAGE) keeps the single column and its right-margin back edges, unchanged.
+  const gridded = state.stations.some((station) => station.row !== undefined);
+  const rowOrder = teamRowOrder(state.stations);
   return (
     <div className="hima-canvas-wrap">
       <style>{TEAM_STYLE}</style>
@@ -170,7 +175,7 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
           <span key={m.label} className="hima-team-chip"><span>{m.label}</span> <b>{m.value}</b>{m.goal === undefined ? null : <i>{goalSaid(m)}</i>}</span>
         ))}
       </p>
-      <div className="hima-team" ref={wrapRef} data-hima-region="campaign-team" data-hima-state-round={String(state.round)}>
+      <div className={`hima-team${gridded ? ' hima-team-rows' : ''}`} ref={wrapRef} data-hima-region="campaign-team" data-hima-state-round={String(state.round)}>
         {measured === undefined ? null : (
           <svg className="hima-team-edges" width={measured.width} height={measured.height} aria-hidden="true">
             <defs>
@@ -180,7 +185,7 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
             {state.edges.map((edge) => {
               const from = measured.at.get(edge.from), to = measured.at.get(edge.to);
               if (from === undefined || to === undefined) return null;
-              const { d, lx, ly } = edgePath(edge, from, to, measured.width);
+              const { d, lx, ly } = teamEdgePath(edge, from, to, measured.width, gridded ? 'left' : 'right');
               return (
                 <g key={`${edge.from}>${edge.to}`} className={`hima-team-edge${edge.lit ? ' hima-team-edge-lit' : ''}${edge.lit && !motionOff ? ' hima-team-edge-flow' : ''}${edge.back ? ' hima-team-edge-back' : ''}`}
                   data-hima-region={`team-edge-${edge.from}-${edge.to}`} data-hima-state-lit={String(edge.lit)}>
@@ -195,6 +200,7 @@ export function TeamCanvas({ runId, graph, tools, view, stale, reducedMotion }: 
         )}
         {state.stations.map((station) => (
           <Station key={station.id} runId={runId} station={station} motionOff={motionOff}
+            style={gridded ? teamGridArea(station, rowOrder) : undefined}
             refFor={(el) => { if (el === null) boxes.current.delete(station.id); else boxes.current.set(station.id, el); }} />
         ))}
       </div>
@@ -209,6 +215,8 @@ export const TEAM_STYLE = `
 .hima-team-chip b{color:var(--hima-ink);font-size:var(--hima-fs-body)} .hima-team-chip i{font-style:normal;color:var(--hima-ink-3)}
 .hima-team-chip-round{background:var(--hima-accent);border-color:var(--hima-accent);color:var(--hima-on-solid);font-weight:600}
 .hima-team{position:relative;flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-4) 34px var(--hima-sp-6) var(--hima-sp-4);display:flex;flex-direction:column;gap:30px}
+.hima-team-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:30px;padding:var(--hima-sp-4) 12px var(--hima-sp-6) 34px;align-items:start}
+.hima-team-line-fold{color:var(--hima-ink-3);font-style:italic}
 .hima-team-edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .hima-team-edge path{fill:none;stroke:var(--hima-line-strong);stroke-width:1.5}
 .hima-team-edge-back path{stroke-dasharray:4 4}
@@ -267,6 +275,7 @@ export const TEAM_STYLE = `
 .hima-team-chip{padding:1px 8px}
 .hima-team-chip b{font-size:13px}
 .hima-team{padding:8px 30px 10px 12px;gap:14px}
+.hima-team-rows{row-gap:18px;column-gap:10px;padding:8px 12px 10px 30px}
 .hima-team-station{padding:8px 10px;border-radius:10px}
 .hima-team-head{gap:10px}
 .hima-team-head-text strong{font-size:14px}
