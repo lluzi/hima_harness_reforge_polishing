@@ -11,7 +11,7 @@ export interface TeamPanelProps {
   onInspect(entry: DelegationEntry): void;
 }
 
-export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: TeamPanelProps): ReactElement | null {
+export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: TeamPanelProps): ReactElement {
   const [delegations, setDelegations] = useState<readonly DelegationEntry[]>([]);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -33,13 +33,13 @@ export function TeamPanel({ sessionId, runId, view, onChanged, onInspect }: Team
   }, [sessionId, runId, refreshToken, view?.run.control?.revision]);
 
   const changed = () => { refresh(); onChanged(); };
-  // A Campaign that delegated nothing has no team to show here: the panel stays out of the way
-  // (it keeps polling, so the first delegation still appears), rather than saying "none" under a
-  // Live view that may already draw the Pack's own agents.
-  if (!error && delegations.length === 0) return null;
+  // A project that delegated nothing shows only this panel's header, not a "none" line under a Live
+  // view that may already draw the Pack's own agents (MAGE demo). The header keeps its Refresh
+  // control so the first delegation can be pulled in on demand. The panel does not poll on its own;
+  // it refetches on mount, on Refresh, and when the Run's control revision changes.
   return <section className='hima-team-panel' data-hima-region='agent-team'>
     <header><span className='hima-studio-eyebrow'>AGENT TEAM</span><button type='button' className='hima-button' onClick={refresh}>Refresh team</button></header>
-    {error ? <p role='alert'>Team unavailable: {error}</p> : delegations.length === 0 ? <p>{loading ? 'Reading retained delegation receipts…' : 'No child task has been delegated from this project.'}</p>
+    {error ? <p role='alert'>Team unavailable: {error}</p> : delegations.length === 0 ? (loading ? <p className='hima-small' role='status'>Reading retained delegation receipts…</p> : null)
       : <>{loading ? <p className='hima-small' role='status'>Refreshing retained delegation receipts…</p> : null}{delegations.map(entry => <DelegationCard key={entry.delegationId} sessionId={sessionId} runId={runId} view={view} entry={entry} onChanged={changed} onInspect={() => onInspect(entry)}/>)}</>}
   </section>;
 }
