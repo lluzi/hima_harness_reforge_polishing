@@ -27,7 +27,8 @@
       "/data/eda/project/techlib/tsmc28",
       "/data/eda/project/hima_harness/library-intelligence-prototypes/claude-libint-20260923-01/canonical",
       "/data/eda/project/hima_harness/libinsight-runs/library",
-      "/data/eda/project/hima_harness/libinsight-runs/requests"
+      "/data/eda/project/hima_harness/libinsight-runs/requests",
+      "/data/eda/project/hima_harness/libinsight-runs/inputs"
     ],
     "privateWorkspace": "workspace",
     "privateHome": "home",

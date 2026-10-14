@@ -443,6 +443,13 @@ function fenceNavigation(win: BrowserWindow, allowedOrigin: () => string | undef
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
+    // A link to a library analysis page in the conversation opens that page's own window too; it never
+    // replaces the window it was clicked in.
+    if (permitted(url) && analysisPage(url, allowedOrigin()) && !analysisPage(win.webContents.getURL(), allowedOrigin())) {
+      event.preventDefault();
+      openPageWindow(win, url, allowedOrigin);
+      return;
+    }
     if (permitted(url)) return;
     event.preventDefault();
     openOutside(url);

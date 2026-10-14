@@ -32,7 +32,7 @@ Candidate (`resident-delivery.json`):
 
 ## The result, field by field
 
-The object has **exactly** these keys:
+The object has **exactly** these keys (`insight` is the one optional key):
 
 | Key | Rule |
 | --- | --- |
@@ -48,6 +48,7 @@ The object has **exactly** these keys:
 | `run` | `{command, exitCode, elapsedSeconds, usedQualib}` |
 | `assumptions` | list of ≤ 50 non-empty strings |
 | `limits` | list of ≤ 50 non-empty strings |
+| `insight` | optional: one insight rule (`insight-rule-shape.md`); `insight-delivery` writes it for you |
 
 Columns: `{name, type: "number"|"string", unit?, nullMeans?}`; names unique. Each row is a list
 in column order. A number cell is a finite JSON number. A cell may be `null` **only** if its column

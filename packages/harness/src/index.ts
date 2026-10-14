@@ -57,7 +57,7 @@ import { createLibInsightViewer, libInsightViewerOptions } from './libinsight-vi
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { createDurableViewReaders, readDurableSourceBytes } from './durable-views.js';
 import { analysisSettled, createLibInsightAnalyses, LibInsightAnalysisError, type LibInsightAnalyses } from './libinsight-analyses.js';
-import { analysisPage, analysisPageMessage } from './analysis-page.js';
+import { analysisPage, analysisPageMessage, insightPage } from './analysis-page.js';
 import { previewPackTransfer, applyPackTransfer, loadRunPack, releasePackFromRuntime } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview, outputPath } from './packs.js';
@@ -376,7 +376,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'For a declared resident engineering task, the workflow starts the Site executor, collects its contract-checked delivery and closes its resources automatically. The Campaign owner may use hima_execute engineering message on the recorded execution to give business steering, and hima_context to inspect current facts. A status reply is one snapshot: when no actionable fact changed, explain that work remains active and yield instead of busy-polling. The external engineering session executes this task and does not acquire Run ownership.',
   'Tool receipts and refreshed engineering evidence are authoritative. Preserve setup/hold units and conditions, distinguish unknown from failure, and never repeat an effect whose outcome is uncertain.',
   'Keep default replies focused on the engineering result, missing evidence and next useful action; internal protocol detail belongs in retained evidence.',
-  'Data Insight shows the default library analyses. For a library question those pages do not answer, the Guide uses hima_insight_analysis: propose, show the proposal, confirm only after the person agrees in this conversation, then report the admitted result with its analysis page link.',
+  'Data Insight shows the default library analyses. For a library question those pages do not answer, the Guide uses hima_insight_analysis: propose, show the proposal, confirm only after the person agrees in this conversation, then report the admitted result with its analysis page link. Library-quality questions (Vmin bottlenecks, missing drive sizes, faster cells on critical paths, table spikes) become insight rules shown on a Library Insight page.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
@@ -659,6 +659,12 @@ export default class Hima extends Service {
           analysisPage: async (sessionId, runId) => {
             try {
               const entry = await analyses.summary(sessionId, runId);
+              // An admitted insight rule is drawn by its Pack's template, beside the project's other rules.
+              const insight = await analyses.insightPage(sessionId, runId);
+              // A template the Host cannot fill (no marker, more than one script) falls back to the ordinary page.
+              let filled: ReturnType<typeof insightPage> | undefined;
+              try { filled = insight ? insightPage(insight) : undefined; } catch (error) { this.ctx.logger('hima').warn(error); }
+              if (filled) return { status: 200, ...filled };
               const detail = await analyses.detail(sessionId, runId);
               // A Run waiting on a person may wait long; its page looks again less often.
               const refreshSeconds = analysisSettled(entry) ? undefined : entry.status === 'waiting' ? 60 : 10;
@@ -938,6 +944,11 @@ export default class Hima extends Service {
       readRunView: runId => this.viewReaders().readRunView(runId),
       readRetained: (runId, record, maxBytes) => readDurableSourceBytes(this.retainedMaterialsDir, runId, record, maxBytes),
       authorize: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
+      // The desktop window reaches a loopback Host at http://127.0.0.1:<port>; a Host on any other bind gives no link.
+      pageOrigin: () => {
+        const web = this.ctx.get('webServer');
+        return web && web.host === '127.0.0.1' && web.port > 0 ? `http://127.0.0.1:${String(web.port)}` : undefined;
+      },
       // Only what a person typed counts: plugin notices, tool results and the model's own words do not.
       humanMessages: sessionId => {
         const agent = this.ctx.get('agents')?.get(sessionId as never);

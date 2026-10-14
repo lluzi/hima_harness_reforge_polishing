@@ -4,7 +4,8 @@
 // limits and provenance. No script, no external asset; every model-authored string is escaped. Every
 // mark carries a <title> tooltip, two or more series carry a legend, and every chart has its data one
 // click away, so no value depends on colour or on hovering.
-import type { LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisResult } from './libinsight-analyses.js';
+import { createHash } from 'node:crypto';
+import type { InsightPageData, LibInsightAnalysisDetail, LibInsightAnalysisEntry, LibInsightAnalysisResult } from './libinsight-analyses.js';
 import { headlineOf } from './question-headline.js';
 import { formatTick, formatValue, plotLimits, projectPlot, projectTable, scaleLinear, type AnalysisPlotSpec, type BandAxis, type LinearAxis, type PlotGeometry, type SeriesKey, type TableProjection } from './analysis-plot.js';
 
@@ -112,6 +113,26 @@ function shell(title: string, body: string, refreshSeconds?: number): string {
 
 export function analysisPageMessage(title: string, message: string): string {
   return shell(title, `<h1>${esc(title)}</h1><div class="card"><p style="margin:0;color:var(--ink-2)">${esc(message)}</p></div>`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Insight rules
+// ---------------------------------------------------------------------------------------------
+
+const INSIGHT_MARKER = '/*INSIGHT-DATA*/';
+
+/**
+ * An insight page: the installed Pack's fixed template with the rules placed in its inert JSON data
+ * element. The template's one executable script is the same for every page, so the route allows it by
+ * its hash and nothing else runs; the data is escaped so no string can close the element. The Pack's
+ * `insight_page.build_page` fills the same template the same way on the Site.
+ */
+export function insightPage({ template, rules, selected }: InsightPageData): { readonly html: string; readonly scriptSha256: string } {
+  if (template.split(INSIGHT_MARKER).length !== 2) throw new Error('the insight page template must hold exactly one data marker');
+  const scripts = [...template.matchAll(/<script>([\s\S]*?)<\/script>/gu)];
+  if (scripts.length !== 1) throw new Error('the insight page template must hold exactly one executable script');
+  const data = JSON.stringify({ rules, selected }).replace(/[<>&\u2028\u2029]/gu, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return { html: template.replace(INSIGHT_MARKER, () => data), scriptSha256: createHash('sha256').update(scripts[0]![1]!, 'utf8').digest('base64') };
 }
 
 // ---------------------------------------------------------------------------------------------

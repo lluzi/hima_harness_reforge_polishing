@@ -17,7 +17,8 @@ library-intelligence `libapi_worker.py`), LibInsight's extractor `libapi_extract
   admitted-analysis catalog) and `flow/libinsight_cli.py` (the delivery self-check).
 - Read-only roots: `/data/eda/env`, `/data/eda/software/eda_tools/empyrean`,
   `/data/eda/venvs/qualib-libapi-2026-py37`, `/data/eda/pdk/saed14`, `/data/eda/project/techlib/tsmc28`,
-  the facts corpus, `libinsight-runs/library` and `libinsight-runs/requests`. Nothing else on the
+  the facts corpus, `libinsight-runs/library`, `libinsight-runs/requests` and `libinsight-runs/inputs`
+  (Site copies of design reports, design netlists and cell netlists). Nothing else on the
   Site is visible. `/tmp` is a small tmpfs.
 - The container entry sourced `EDA_INIT` (`/data/eda/env/eda_tools_2025_env.sh`), which reads the
   Site's Empyrean licence mode from `/data/eda/env/empyrean-license-mode` and sets

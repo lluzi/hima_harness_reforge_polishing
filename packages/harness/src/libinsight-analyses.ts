@@ -42,6 +42,18 @@ export interface LibInsightAnalysisResult {
   readonly run: { readonly command: string; readonly exitCode: number; readonly elapsedSeconds: number; readonly usedQualib: boolean };
   readonly assumptions: readonly string[];
   readonly limits: readonly string[];
+  /** An insight rule (Pack `knowledge/insight-rule-shape.md`), shape-checked by the Pack Reader; the Pack's
+   *  page template draws it, so the Host only needs its name. */
+  readonly insight?: InsightRule;
+}
+
+export interface InsightRule { readonly id: string; readonly kind: string; readonly [field: string]: unknown }
+
+/** What the Pack's insight page draws for one Run: its rule, beside the project's other admitted rules. */
+export interface InsightPageData {
+  readonly template: string;
+  readonly rules: readonly InsightRule[];
+  readonly selected: number;
 }
 
 export interface LibInsightAnalysisProposal {
@@ -99,6 +111,9 @@ export interface LibInsightAnalysesDeps {
   /** How many messages a person typed have reached this conversation (ADR-0021): a confirmation needs one
    *  after the proposal, so a Guide cannot confirm its own proposal in the turn that made it. */
   humanMessages?(sessionId: string): number;
+  /** The loopback origin a person's window reaches this Host at, when known: a conversation renders only
+   *  absolute links, so the Guide can end its reply with a link that opens the page. */
+  pageOrigin?(): string | undefined;
   /** Writes a new file on the Site; tests may replace it. */
   writeSiteFile?(site: Site, at: string, bytes: Uint8Array): Promise<string>;
   now?(): Date;
@@ -289,10 +304,47 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     }
   }
 
+  /** An admitted insight rule of one Run, or nothing: a Run whose result is not admitted shows no rule. */
+  function insightOf(read: LibInsightAnalysisDetail): InsightRule | undefined {
+    const rule = read.admission.admitted ? read.result?.insight : undefined;
+    return rule !== null && typeof rule === 'object' && typeof rule.id === 'string' && typeof rule.kind === 'string' ? rule : undefined;
+  }
+
+  /**
+   * The insight page of one Run: its admitted rule, selected, beside the newest admitted rule of every
+   * other id in the same project, oldest first, drawn by the installed Pack's fixed template. Nothing
+   * when the Run has no admitted rule or the Pack has no template; the ordinary page shows it then.
+   */
+  async function insightPage(sessionId: string, runId: string): Promise<InsightPageData | undefined> {
+    const own = insightOf(await detail(sessionId, runId));
+    if (!own) return undefined;
+    let template: string;
+    try { template = await readFile(path.join(loadPack(deps.packsDir, packId).dir, 'page', 'insight-page.html'), 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+    const shown = new Map<string, { readonly runId: string; readonly createdAt: string; readonly rule: InsightRule }>();
+    const analyses = (await list(sessionId)).analyses;
+    shown.set(own.id, { runId, createdAt: analyses.find(entry => entry.runId === runId)?.createdAt ?? '', rule: own });
+    // Newest first: the first admitted rule of an id is the one shown.
+    for (const entry of analyses) {
+      if (entry.runId === runId || entry.analysis?.admitted !== true) continue;
+      const rule = insightOf(await detail(sessionId, entry.runId).catch(() => ({ runId: entry.runId, admission: { admitted: false } })));
+      if (rule && !shown.has(rule.id)) shown.set(rule.id, { runId: entry.runId, createdAt: entry.createdAt, rule });
+    }
+    const rows = [...shown.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return { template, rules: rows.map(row => row.rule), selected: rows.findIndex(row => row.runId === runId) };
+  }
+
   /** What the Guide's `hima_insight_analysis` answers (ADR-0021): every action reads or starts through
    *  the same functions above, and a result is the Reader-accepted bytes, bounded for a conversation. */
   async function tool(sessionId: string, args: LibInsightAnalysisToolArgs): Promise<object> {
     const page = (runId: string) => analysisPagePath(runId, sessionId);
+    const origin = deps.pageOrigin?.();
+    // An absolute link, when this Host knows the loopback origin its window uses: the conversation renders it
+    // as a link, and the desktop opens it in the analysis page's own window.
+    const link = (runId: string) => origin === undefined ? {} : { pageUrl: `${origin}${page(runId)}` };
+    const pointTo = (runId: string, what: string) => origin === undefined
+      ? `point the person to the Open analysis page button on this ${what}, and do not paste the page path, which is not a link in the conversation`
+      : `end your reply with this Markdown link to the page: [Open the Library Insight page](${origin}${page(runId)})`;
     if (args.action === 'propose') {
       if (args.question === undefined) throw new LibInsightAnalysisError('bad-request', 'propose needs the person\'s question');
       const proposal = await propose(sessionId, { question: args.question, sources: [...args.sources ?? []], buildsOn: [...args.buildsOn ?? []] });
@@ -303,28 +355,30 @@ export function createLibInsightAnalyses(deps: LibInsightAnalysesDeps) {
     if (args.action === 'confirm') {
       if (args.proposalId === undefined) throw new LibInsightAnalysisError('bad-request', 'confirm needs the proposalId that propose returned');
       const started = await confirm(sessionId, args.proposalId);
-      return { action: 'confirm', ...started, page: page(started.runId),
-        next: 'Tell the person the analysis has started and that its page, opened with the Open analysis page button on this card, fills in as it runs. Do not paste the page path: it is not a link in the conversation. The Host notifies you when it ends; then call result.' };
+      return { action: 'confirm', ...started, page: page(started.runId), ...link(started.runId),
+        next: `Tell the person the analysis has started and that its page fills in as it runs; ${pointTo(started.runId, 'card')}. The Host notifies you when it ends; then call result.` };
     }
     if (args.action === 'list') {
       const answer = await list(sessionId);
-      return { action: 'list', status: answer.status, analyses: answer.analyses.slice(0, 20).map(entry => ({ ...entry, page: page(entry.runId) })) };
+      return { action: 'list', status: answer.status, analyses: answer.analyses.slice(0, 20).map(entry => ({ ...entry, page: page(entry.runId), ...link(entry.runId) })) };
     }
     if (args.runId === undefined) throw new LibInsightAnalysisError('bad-request', 'result needs the runId of an analysis');
     const entry = await summary(sessionId, args.runId);
     const read = await detail(sessionId, args.runId);
     const result = read.result;
-    return { action: 'result', runId: args.runId, page: page(args.runId), ...(entry.status ? { status: entry.status } : {}), ...(entry.task ? { task: entry.task } : {}),
+    return { action: 'result', runId: args.runId, page: page(args.runId), ...link(args.runId), ...(entry.status ? { status: entry.status } : {}), ...(entry.task ? { task: entry.task } : {}),
       admission: read.admission, ...(entry.analysis?.id && entry.analysis.version ? { analysis: `${entry.analysis.id}@${String(entry.analysis.version)}` } : {}),
       ...(read.resultUnavailable ? { resultUnavailable: read.resultUnavailable } : {}),
       ...(result ? { question: result.question, summary: result.summary, assumptions: result.assumptions, limits: result.limits,
         plots: result.plots.map(plot => ({ title: plot.title, kind: plot.kind, dataset: plot.dataset })),
         datasets: boundedDatasets(result.datasets), sources: result.sources, run: result.run } : {}),
-      next: read.admission.admitted ? 'Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: point the person to the Open analysis page button on this result, and do not paste the page path, which is not a link in the conversation.'
+      // An insight rule's headline, for the reply; its items, charts and files are on the page.
+      ...(result?.insight ? { insightRule: Object.fromEntries(['id', 'title', 'rule', 'summary', 'result', 'facts'].filter(key => key in result.insight!).map(key => [key, result.insight![key]])) } : {}),
+      next: read.admission.admitted ? `Explain the verified outcome from these datasets (the summary is the resident\'s reading of them) and name its limits. The charts are on the analysis page: ${pointTo(args.runId, 'result')}.`
         : 'Explain where the analysis stands or why it was not admitted, from these facts; do not present an unadmitted result as established.' };
   }
 
-  return { status, propose, confirm, list, summary, detail, tool };
+  return { status, propose, confirm, list, summary, detail, insightPage, tool };
 }
 
 /** What one result answer may put into a conversation: rows, cell text and total serialized size. */

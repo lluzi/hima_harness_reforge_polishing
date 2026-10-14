@@ -10,7 +10,7 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 
 const subject: typeof import('./analysis-page.js') = await import(`./analysis-page.${'ts'}`);
-const { analysisPage, analysisPageMessage } = subject;
+const { analysisPage, analysisPageMessage, insightPage } = subject;
 type Input = Parameters<typeof analysisPage>[0];
 type Result = NonNullable<Input['detail']['result']>;
 
@@ -126,4 +126,19 @@ test('a long specification-style question is headed by its first sentence, with 
   assert.ok(html.includes('<h1>At the typical corner tt0p8v25c, compare the SAED14 inverter cells in the three Vt flavours HVT, RVT and LVT.</h1>'));
   assert.ok(html.includes('<summary>Full question</summary>') && html.includes('output load.</p></details>'));
   assert.ok(headlineOf('x'.repeat(400)).length <= 141, 'no sentence: cut to a heading length');
+});
+
+test('an insight page places the rules inertly in the template and names its one script by hash', async () => {
+  const { createHash } = await import('node:crypto');
+  const code = 'const d = JSON.parse(document.getElementById("insight-data").textContent);';
+  const template = `<!doctype html><title>Library Insight</title><script type="application/json" id="insight-data">/*INSIGHT-DATA*/</script><script>${code}</script>`;
+  const hostile = '</script><script>alert(1)</script>\u2028&';
+  const { html, scriptSha256 } = insightPage({ template, rules: [{ id: 'vmin_bottleneck', kind: 'vmin', summary: hostile }], selected: 0 });
+  assert.equal(scriptSha256, createHash('sha256').update(code, 'utf8').digest('base64'));
+  assert.equal((html.match(/<script>/g) ?? []).length, 1, 'no data string opens a script');
+  assert.equal((html.match(/<\/script>/g) ?? []).length, 2, 'no data string closes the data element');
+  const data = html.slice(html.indexOf('id="insight-data">') + 'id="insight-data">'.length, html.indexOf('</script>'));
+  assert.deepEqual(JSON.parse(data), { rules: [{ id: 'vmin_bottleneck', kind: 'vmin', summary: hostile }], selected: 0 });
+  assert.throws(() => insightPage({ template: template.replace('/*INSIGHT-DATA*/', ''), rules: [], selected: 0 }), /one data marker/);
+  assert.throws(() => insightPage({ template: `${template}<script>more()</script>`, rules: [], selected: 0 }), /one executable script/);
 });

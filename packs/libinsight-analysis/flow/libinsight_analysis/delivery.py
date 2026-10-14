@@ -8,13 +8,14 @@ same resident task as its repair message.
 import os
 import re
 
-from . import common
+from . import common, insight_page
 
 TOP_KEYS = ("schema", "id", "version", "question", "summary", "sources", "datasets", "plots", "code", "run",
             "assumptions", "limits")
 SOURCE_KEYS = {"path", "kind", "sha256Before", "sha256After"}
 COLUMN_KEYS = {"name", "type"}
 COLUMN_OPTIONAL = {"unit", "nullMeans"}
+OPTIONAL_INSIGHT = "insight"
 PLOT_KINDS = ("table", "bar", "line", "scatter", "heatmap")
 MAX_BYTES = 4 * 1024 * 1024
 MAX_ROWS = 20000
@@ -348,10 +349,10 @@ def problems(doc, root, prepared, byte_size, current_sha=common.sha256_file):
         out.append("result is %d bytes; a delivery is at most %d bytes (4 MiB), aggregate or drop rows" % (byte_size, MAX_BYTES))
     if not isinstance(doc, dict):
         return out + ["result must be one JSON object"]
-    keys = set(doc)
+    keys = set(doc) - {OPTIONAL_INSIGHT}
     if keys != set(TOP_KEYS):
-        out.append("result fields: missing %s; unexpected %s; expected exactly %s" % (
-            sorted(set(TOP_KEYS) - keys), sorted(keys - set(TOP_KEYS)), list(TOP_KEYS)))
+        out.append("result fields: missing %s; unexpected %s; expected exactly %s (plus an optional %s)" % (
+            sorted(set(TOP_KEYS) - keys), sorted(keys - set(TOP_KEYS)), list(TOP_KEYS), OPTIONAL_INSIGHT))
         return out
     if doc["schema"] != common.ANALYSIS_SCHEMA:
         out.append("schema must be %s, not %r" % (common.ANALYSIS_SCHEMA, doc["schema"]))
@@ -370,6 +371,9 @@ def problems(doc, root, prepared, byte_size, current_sha=common.sha256_file):
     _run(doc, out)
     _string_list("assumptions", doc["assumptions"], out)
     _string_list("limits", doc["limits"], out)
+    if OPTIONAL_INSIGHT in doc:
+        # The insight rule the Pack's fixed page template draws (knowledge/insight-rule-shape.md).
+        out.extend("insight: %s" % line for line in insight_page.check_rule(doc[OPTIONAL_INSIGHT]))
     return out
 
 
