@@ -137,12 +137,29 @@ def _hard_failures(vmap, goal_resolved):
 
 
 _TRANSMITTANCE_RULES = ("transmittance-above-min", "transmittance-below-max")
+_DRC_RULES = ("drc-authority-1x1-clean", "drc-authority-2x2-clean", "drc-authority-3x3-clean")
+# A single cell with this many authority markers or fewer is a repair, not a new start (a live
+# Run ended "blocked" a round early beside its best-ratio candidate, held back by one marker).
+_MAX_REPAIRABLE_MARKERS = 3
+
+
+def _repairable(vmap, fails):
+    """True when every failure is the transmittance window or a few authority-DRC markers."""
+    for f in fails:
+        if f in _TRANSMITTANCE_RULES:
+            continue
+        if f not in _DRC_RULES:
+            return False
+    single = _num(vmap.get("pixel_drc_authority_1x1")) or 0
+    tiled = _num(vmap.get("pixel_drc_authority_3x3")) or 0
+    return single <= _MAX_REPAIRABLE_MARKERS and tiled <= 9 * max(single, 1)
 
 
 def _next_lever(history, goal_resolved, round_no, best_legal):
-    """A candidate of this round that fails only the transmittance window, and is better than the
-    best legal one (lower ratio, or at least as low on a smaller cell): one operator away from a
-    better legal result. ``None`` when there is none."""
+    """A candidate of this round that fails only the transmittance window and/or a few
+    authority-DRC markers, and is better than the best legal one (lower ratio, or at least as low
+    on a smaller cell): one repair or operator away from a better legal result. ``None`` when
+    there is none."""
     best_vals = _as_map(best_legal.get("values", {})) if best_legal else {}
     best_ratio = _num(best_vals.get("pixel_ratio_judged_pct"))
     best_area = _area(best_vals) if best_legal else _INF
@@ -153,7 +170,7 @@ def _next_lever(history, goal_resolved, round_no, best_legal):
             continue
         vmap = _as_map(h.get("values", {}))
         fails = _hard_failures(vmap, goal_resolved)
-        if not fails or any(f not in _TRANSMITTANCE_RULES for f in fails):
+        if not fails or not _repairable(vmap, fails):
             continue
         ratio = _num(vmap.get("pixel_ratio_judged_pct"))
         if ratio is None:
@@ -167,15 +184,22 @@ def _next_lever(history, goal_resolved, round_no, best_legal):
     if pick is None:
         return None
     ratio, cid, fails = pick
-    low = "transmittance-above-min" in fails
+    actions = []
+    if any(f in _DRC_RULES for f in fails):
+        actions.append("base it at its own outline and objective and repair its markers: run "
+                       "`markers` on it and copy `bestEdits` (or `combined.edits` when lower); "
+                       "markers only in the 2x2/3x3 tiles: step that axis back 0.05-0.1 um")
+    if "transmittance-above-min" in fails:
+        actions.append("base it and add a band-trim of a wide opaque supply band (no device), "
+                       "then min-ratio at its outline")
+    elif "transmittance-below-max" in fails:
+        actions.append("base it and shrink the cell slightly (min-pitch), or widen an opaque "
+                       "band that carries no device")
     return {
         "candidate": cid,
         "fails": fails,
         "ratioPct": ratio,
-        "action": ("base it and add a band-trim of a wide opaque supply band (no device), "
-                   "then min-ratio at its outline" if low else
-                   "base it and shrink the cell slightly (min-pitch), or widen an opaque band "
-                   "that carries no device"),
+        "action": "; then ".join(actions),
     }
 
 

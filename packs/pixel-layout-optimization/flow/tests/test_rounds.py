@@ -154,6 +154,32 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(d["nextLever"]["fails"], ["transmittance-above-min"])
         self.assertIn("band-trim", d["nextLever"]["action"])
 
+    def _stalled_with(self, **near):
+        hist = [self._orig()]
+        for rnd in (4, 5):
+            hist.append({"id": "r%d" % rnd, "round": rnd, "exploratory": False, "legal": True,
+                         "values": _legal_values(pixel_ratio_judged_pct=11.0,
+                                                 pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        hist.append({"id": "r5-near", "round": 5, "exploratory": False, "legal": False,
+                     "values": _legal_values(pixel_ratio_judged_pct=10.0,
+                                             pixel_outline_w_um=24.0, pixel_outline_h_um=44.0, **near)})
+        return rounds.decide(5, _goal(), hist, None, None)
+
+    def test_a_candidate_one_marker_away_keeps_the_run_going(self):
+        # A live Run ended "blocked" a round early beside its best-ratio candidate whose only
+        # failure was one authority marker (1 / 4 / 9 in the 1x1 / 2x2 / 3x3 tiles): a repair.
+        d = self._stalled_with(pixel_drc_authority_1x1=1, pixel_drc_authority_2x2=4,
+                               pixel_drc_authority_3x3=9)
+        self.assertEqual(d["route"], "continue")
+        self.assertEqual(d["nextLever"]["candidate"], "r5-near")
+        self.assertIn("markers", d["nextLever"]["action"])
+
+    def test_many_markers_are_no_lever(self):
+        d = self._stalled_with(pixel_drc_authority_1x1=6, pixel_drc_authority_2x2=24,
+                               pixel_drc_authority_3x3=54)
+        self.assertIsNone(d["nextLever"])
+        self.assertEqual(d["route"], "stop")
+
     def test_blocked_from_exploratory(self):
         hist = [self._orig(),
                 {"id": "r6", "round": 6, "exploratory": False, "legal": True,
