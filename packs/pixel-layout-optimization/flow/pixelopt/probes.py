@@ -174,7 +174,7 @@ def _pitch(lay):
     return float(hi[0] - lo[0]), float(hi[1] - lo[1])
 
 
-def propose_pairs(lay, marks, table, base, axis):
+def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
     """Propose exact pair constraints for one axis from folded Argus markers.
 
     ``table`` is a parsed deck (``rules.parse_deck`` output) carrying the checks.
@@ -185,8 +185,9 @@ def propose_pairs(lay, marks, table, base, axis):
     not a pre-existing defect, caused the violation).
     """
     rmap = _rule_map(table)
-    P, H = _pitch(lay)
-    bP, bH = _pitch(base)
+    # The cell pitch is the outline's; pass it (lay.pitch(case)) whenever shapes may overhang the outline.
+    P, H = pitch if pitch is not None else _pitch(lay)
+    bP, bH = base_pitch if base_pitch is not None else _pitch(base)
     out = []
     for rule, pts in marks:
         if rule not in rmap:
