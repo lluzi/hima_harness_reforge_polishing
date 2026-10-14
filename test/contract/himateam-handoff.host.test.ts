@@ -191,10 +191,10 @@ process.on('message',m=>{
   t.after(async () => {
     // Retain bounded native wire/errors before the owned Home is deleted. This
     // observation is evidence only; it supplies no Host success or closure proof.
-    if (scenario) {
-      const outputRoot = process.env.HIMA_ISSUE105_WAIT_EVIDENCE ?? path.resolve('.scratch/himateam-issue97/issue105-wait-fixture-evidence');
+    if (scenario || process.env.HIMA_ISSUE105_HANDOFF_DIAGNOSTIC_DIR) {
+      const outputRoot = process.env.HIMA_ISSUE105_HANDOFF_DIAGNOSTIC_DIR ?? process.env.HIMA_ISSUE105_WAIT_EVIDENCE ?? path.resolve('.scratch/himateam-issue97/issue105-wait-fixture-evidence');
       await mkdir(outputRoot, { recursive: true });
-      const retained = await mkdtemp(path.join(outputRoot, scenario + '-'));
+      const retained = await mkdtemp(path.join(outputRoot, (scenario ?? 'ordinary') + '-'));
       try {
         const text = await readFile(path.join(evidence, 'events.jsonl'), 'utf8');
         await writeFile(path.join(retained, 'events.jsonl'), text.slice(-128 * 1024));
@@ -206,10 +206,33 @@ process.on('message',m=>{
         const invocations = await service.durable.store.flowInvocations(runId);
         const facts = [];
         for (const invocation of invocations) {
-          const value = await service.durable.store.effectSnapshot(invocation.identity);
-          facts.push({ identity: invocation.identity, result: value.result, resourcesReleased: value.resourcesReleased });
+          const effect = await service.durable.store.effect(invocation.identity.effectId);
+          if (!effect || jsonDigest(effect.identity) !== jsonDigest(invocation.identity)) {
+            facts.push({identity:invocation.identity, snapshotUnavailable:'No matching native effect receipt'});
+            continue;
+          }
+          const capture = await service.durable.store.externalEffectFact(invocation.identity, 'oar:yield-capture') as {state?:string;reason?:string}|undefined;
+          try {
+            const value = await service.durable.store.effectSnapshot(invocation.identity);
+            facts.push({ identity: invocation.identity, result: value.result, resourcesReleased: value.resourcesReleased,
+              factKeys: Object.keys(value.facts), capture: capture ? {state:capture.state,reason:capture.reason} : null });
+          } catch (error) {
+            facts.push({ identity: invocation.identity, snapshotError: error instanceof Error ? error.message : String(error),
+              capture: capture ? {state:capture.state,reason:capture.reason} : null });
+          }
         }
-        await writeFile(path.join(retained, 'retained-store.json'), JSON.stringify({ delegations: (await service.durable.store.readTeamDelegations(runId)).map(row => ({ delegationId: row.delegation.delegationId, parentEffectId: row.parentEffectId, sha256: jsonDigest(row) })), effects: facts }, null, 2));
+        const head = await service.durable.store.readTeamEffectHead(parent.identity);
+        const projection = await service.durable.store.flowProjection(runId);
+        const physical = await service.durable.store.flowPhysicalFacts(runId);
+        await writeFile(path.join(retained, 'retained-store.json'), JSON.stringify({
+          delegations: (await service.durable.store.readTeamDelegations(runId)).map(row => ({ delegationId: row.delegation.delegationId, parentEffectId: row.parentEffectId, sha256: jsonDigest(row) })),
+          head: { state: head.state, reason: 'reason' in head ? head.reason : undefined,
+            waitId: head.state === 'waiting' ? head.wait.waitId : undefined,
+            continuationId: head.state === 'active' ? head.continuation?.continuationId : undefined },
+          tasks: (projection.tasks as unknown as {identity:{effectId:string};state:unknown;result?:unknown}[])
+            .map(row => ({effectId: row.identity.effectId, state: row.state, hasResult: Boolean(row.result)})),
+          resources: physical.resources.map(row => ({effectId: row.effectId, released: row.released})), effects: facts,
+        }, null, 2));
       } catch (error) { await writeFile(path.join(retained, 'capture-error.txt'), String(error)); }
       t.diagnostic('Bounded native fixture evidence: ' + retained);
     }
@@ -218,13 +241,49 @@ process.on('message',m=>{
     // Stop only this fixture's Local processes before asking the real Host closer
     // to reconcile its retained PG leases; never abandon unknown resources.
     if (!heldPeer) {
-      let hostClosed = false;
-      try { await runtime.stopAll(); await host.dispose(); hostClosed = true; }
-      finally {
-        await executor.dispose();
-        if (hostClosed) await home.h.dispose();
-        else t.diagnostic('Retained unproved Host Home: ' + home.h.home);
+      const failures: unknown[] = [];
+      try {
+        await runtime.stopAll();
+        // The test-owned native runtime can finish physical stop before the
+        // original DBOS cleanup commits its resource receipt. Enter the public
+        // exit fence and require the durable Team boundary to become ready.
+        const exit = await service.prepareExit({ requestId: 'handoff-fixture-close-' + runId, mode: 'keep-jobs' });
+        if (!exit.ready) await waitUntil('handoff fixture Team resources reach the original Host exit boundary',
+          async () => (await service.exitStatus()).ready, 30000, 25);
+      } catch (error) { failures.push(error); }
+      // Always invoke the original Host disposer, including after a failed
+      // preflight. Cordis may settle its fiber while this closer rejects.
+      try { await host.dispose(); } catch (error) { failures.push(error); }
+      const lifecycle = service as unknown as { resourcesClosing?: Promise<void>; closeHostResources(): Promise<void> };
+      let confirmed = false;
+      try {
+        assert.ok(lifecycle.resourcesClosing, 'Host disposal must invoke its ordered resource closer');
+        await lifecycle.resourcesClosing;
+        confirmed = true;
+      } catch (error) { failures.push(error); }
+      if (!confirmed) {
+        // Reconcile only the same original closer. A successful retry releases
+        // resources for the next test but never erases the first failure.
+        try { await lifecycle.closeHostResources(); confirmed = true; }
+        catch (error) {
+          failures.push(error);
+          // Test-owned fallback prevents a failed Home from poisoning later
+          // in-process DBOS tests; it is not a Host closure receipt.
+          try { await service.durable.stop(); } catch (stopError) { failures.push(stopError); }
+        }
       }
+      try { await executor.dispose(); } catch (error) { failures.push(error); }
+      if (failures.length) {
+        let status: unknown;
+        try { status = await service.exitStatus(); }
+        catch (error) { status = { unavailable: error instanceof Error ? error.message : String(error) }; }
+        await writeFile(path.join(evidence, 'host-close-unconfirmed.json'), JSON.stringify({
+          reasons: failures.map(error => error instanceof Error ? error.message : String(error)), confirmedOnRetry: confirmed, status,
+        }, null, 2));
+        t.diagnostic('Retained failed Host Home: ' + home.h.home);
+        throw new AggregateError(failures, 'Handoff fixture Host cleanup failed');
+      }
+      await home.h.dispose();
       return;
     }
     let firstFailure: unknown, retryFailure: unknown;

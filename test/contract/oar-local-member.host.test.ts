@@ -329,11 +329,14 @@ test('known detached descendant wrong birth refuses signaling its actual live PI
     await until(async()=> (await f.runtime.read(f.lease)).journal.includes('"kind":"created"'));
     const target=Number(fs.readFileSync(path.join(f.lease.workDirectory,'descendant.pid'),'utf8'));
     const ownedFile=path.join(f.lease.controlDirectory,'owned-pids.json');
-    const owned=JSON.parse(fs.readFileSync(ownedFile,'utf8'));owned.find((row:any)=>row.pid===target).birth='wrong descendant birth';
+    const originalOwned=fs.readFileSync(ownedFile,'utf8');
+    const owned=JSON.parse(originalOwned);owned.find((row:any)=>row.pid===target).birth='wrong descendant birth';
     fs.writeFileSync(ownedFile,JSON.stringify(owned));
-    const replacement=new f.OarLocalMemberRuntime(f.options),recovered=await replacement.recover(f.lease.sessionKey);
-    const refused=await replacement.close(recovered);assert.equal(refused.closed,false);assert.match(refused.reason,/Descendant PID identity mismatch/);
-    assert.doesNotThrow(()=>process.kill(target,0));assert.doesNotThrow(()=>process.kill(f.lease.pid,0));
+    try {
+        const replacement=new f.OarLocalMemberRuntime(f.options),recovered=await replacement.recover(f.lease.sessionKey);
+        const refused=await replacement.close(recovered);assert.equal(refused.closed,false);assert.match(refused.reason,/Descendant PID identity mismatch/);
+        assert.doesNotThrow(()=>process.kill(target,0));assert.doesNotThrow(()=>process.kill(f.lease.pid,0));
+    } finally { fs.writeFileSync(ownedFile,originalOwned); }
     assert.equal((await f.runtime.close(f.lease)).closed,true);assert.throws(()=>process.kill(target,0));
 });
 
@@ -489,7 +492,7 @@ test('cold recovery before Local durable admission cannot guess active input or 
  const recovered=new f.OarLocalMemberRuntime(f.options);await recovered.recover(f.lease.sessionKey);
  await assert.rejects(recovered.admitAcceptedWait(f.lease,f.admission),/original active native input/);
  assert.equal((await recovered.read(f.lease)).journal.includes('yield_intent'),false);
- const closed=await f.runtime.close(f.lease);assert.equal(closed.closed,true);
+ const closed=await f.runtime.close(f.lease);assert.equal(closed.closed,true,JSON.stringify(closed));
 });
 
 

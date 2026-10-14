@@ -349,10 +349,12 @@ async function assertOldPackTreeClosed(f:PackFixture,h:Awaited<ReturnType<typeof
   assert.equal(resources[0]!.released,true);assert.deepEqual(resources[0]!.proof,proof);
 }
 async function assertActivePackDelivery(f:PackFixture,h:Awaited<ReturnType<typeof activePackHandoff>>,workflowId:string) {
-  await waitUntil('same gated selection adopts exactly one actual v2 native receiver',async()=>{
-    const task=await f.store.readTeamTask(h.ref.projectId,h.ref.teamId,h.ref.taskId);
-    return !!task&&task.currentRunId!==h.old.runId&&(await f.readEvents()).some(row=>row.kind==='input'&&row.identity.runId===task.currentRunId);
-  },30000,25);
+  try {
+    await waitUntil('same gated selection adopts exactly one actual v2 native receiver',async()=>{
+      const task=await f.store.readTeamTask(h.ref.projectId,h.ref.teamId,h.ref.taskId);
+      return !!task&&task.currentRunId!==h.old.runId&&(await f.readEvents()).some(row=>row.kind==='input'&&row.identity.runId===task.currentRunId);
+    },30000,25);
+  } catch (error) { await f.diagnostic('v2-native-receiver-unavailable'); throw error; }
   const task=(await f.store.readTeamTask(h.ref.projectId,h.ref.teamId,h.ref.taskId))!;
   assert.deepEqual(task.runIds,[h.old.runId,task.currentRunId]);assert.equal(task.team.version,2);assert.equal(task.team.sha256,h.selected.sha256);
   const next=await f.store.run(task.currentRunId);assert.equal(next.deadlineAt,h.old.deadlineAt);
@@ -403,7 +405,7 @@ for(const branch of [false,true])test(`active compatible Pack v2 handoff closes 
 });
 
 test('Pack parent pause after accepted successor CAS and start check fences actual root native submit until Continue',{timeout:120000},async t=>{
-  const f=await fixture(t,{observeNativeFamily:true,compatibleHandoff:true});
+  const f=await fixture(t,{observeNativeFamily:true,compatibleHandoff:true,diagnostic:'root-pause-v2'});
   const h=await activePackHandoff(f,'active-parent-pause-at-root-start'),runtime=f.service.durable;
   const originalStart=runtime.startWorkflow;
   let release!:()=>void,reached!:()=>void,successorRunId:string|undefined,intercepted=0;
@@ -458,7 +460,7 @@ test('active Pack handoff rejects schema-compatible JSON with differing original
 // successor-start permission read. A completed deterministic control must still
 // arrange bounded progress so Continue can release the accepted successor.
 test('Pack parent pause before accepted successor start read preserves one v2 delivery after Continue and identical replay',{timeout:120000},async t=>{
-  const f=await fixture(t,{observeNativeFamily:true,compatibleHandoff:true});
+  const f=await fixture(t,{observeNativeFamily:true,compatibleHandoff:true,diagnostic:'read-pause-v2'});
   const h=await activePackHandoff(f,'active-parent-pause-before-start-read'),runtime=f.service.durable;
   const originalAllowed=f.store.acceptedTeamSuccessorStartAllowed,originalStart=runtime.startWorkflow;
   let release!:()=>void,reached!:()=>void,successorRunId:string|undefined,intercepted=0,rootDispatches=0;

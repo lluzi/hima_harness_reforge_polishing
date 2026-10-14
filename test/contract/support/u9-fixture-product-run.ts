@@ -8,6 +8,7 @@ const at = (name: string) => import(pathToFileURL(path.join(process.env.HIMA_DBO
 /** Admit the fixture through the product facade and await its actual copier receipt. */
 export async function preparedFixtureRun(host: any, request: any) {
   const runtime = host.ctx.hima.durable;
+  const began = Date.now();
   const started = await host.ctx.hima.startRun(request);
   assert.ok(['preparing', 'ran'].includes(started.kind), JSON.stringify(started));
   for (let n = 0; n < 400; n++) {
@@ -22,7 +23,15 @@ export async function preparedFixtureRun(host: any, request: any) {
     }
     await new Promise(resolve => setTimeout(resolve, 10));
   }
-  throw new Error('Original product preparation did not produce a receipt');
+  const run = await runtime.store.run(started.run.id);
+  const physical = await runtime.store.flowPhysicalFacts(started.run.id);
+  throw new Error('Original product preparation did not produce a receipt: ' + JSON.stringify({
+    elapsedMs: Date.now() - began, deadlineRemainingMs: Date.parse(run.deadlineAt) - Date.now(),
+    effects: physical.effects.map((effect: { identity: { taskId: string }; phase: string; dispatches: unknown[] }) =>
+      ({ taskId: effect.identity.taskId, phase: effect.phase, dispatches: effect.dispatches.length })),
+    resources: physical.resources.map((resource: { effectId: string; released: boolean }) =>
+      ({ effectId: resource.effectId, released: resource.released })),
+  }));
 }
 
 /** Completion is one publication of the original report and archive, with real readable bytes. */

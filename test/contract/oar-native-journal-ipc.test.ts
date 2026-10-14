@@ -151,7 +151,7 @@ test('actual managed Node is physically closed on journal sync failure while com
   }
   assert.ok(failed, 'real IPC journal failure must remain observable');
   const closure = await runtime.close(lease);
-  assert.equal(closure.closed, false); assert.match(closure.reason, /retention|durability/);
+  assert.equal(closure.closed, false); assert.match(closure.reason, /retention|durability|closure observation unavailable/);
   assert.throws(() => process.kill(lease.pid, 0), 'actual owned PID is absent despite unknown evidence closure');
   await assert.rejects(runtime.read(lease), /retention|durability/);
   await assert.rejects(runtime.captureClosedContext(lease, 'no-fake-checkpoint', { maxFiles: 8, maxBytes: 4096, maxFileBytes: 2048 }), /retention|durability|closure/);

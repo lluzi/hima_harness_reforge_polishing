@@ -3,7 +3,7 @@
 // do not add a fixture handler and describe it as a product signal qualification.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,7 @@ for(const scenario of ['leader','peer'] as const)for(const signal of ['SIGTERM',
  const h=await createHimaHome({desktopShaped:true});
  let original:ReturnType<typeof forkHost>|undefined,reopened:ReturnType<typeof forkHost>|undefined;
  let ownedPids:number[]=[],proved=false;let failure:unknown;
+ let signalAt:number|undefined,signalCloseMs:number|undefined,reopenCloseAt:number|undefined,reopenCloseMs:number|undefined;
  try{
   original=forkHost(h,'seed',scenario);const ready=await original.next();
   assert.equal(ready.stage,'ready-for-signal');assert.equal(ready.pid,original.child.pid);
@@ -46,8 +47,10 @@ for(const scenario of ['leader','peer'] as const)for(const signal of ['SIGTERM',
   ownedPids=ready.boundary.ownedPids;assert.ok(ready.boundary.livePids.every(alive),'real current native member and detached descendant are alive before signal');
   if(scenario==='peer'){assert.ok(ready.boundary.discussion.delivery.received);assert.equal(ready.boundary.discussion.delivery.state,'accepted');assert.equal(ready.boundary.initialBirths,2);assert.equal(ready.boundary.initialInputs,3);}
   const clusterBefore=JSON.parse(await readFile(path.join(h.home,'hima/database/credentials.json'),'utf8'));
+  signalAt=Date.now();
   assert.equal(original.child.kill(signal),true,'send the actual OS signal to the process holding the actual Host');
   await original.ended();
+  signalCloseMs=Date.now()-signalAt;
   assert.equal(original.child.exitCode,signal==='SIGINT'?130:0,original.stderr());assert.equal(original.child.signalCode,null);
   assert.ok(original.stderr().split('\n').includes(`hima: resource shutdown confirmed; pid=${original.child.pid}`),'forced zero exit alone cannot prove closure');
   const fence=JSON.parse(await readFile(path.join(h.home,'signal-evidence/fence-before-close.json'),'utf8'));
@@ -64,10 +67,25 @@ for(const scenario of ['leader','peer'] as const)for(const signal of ['SIGTERM',
   reopened.child.send({action:'resume'});const resumed=await reopened.next();assert.equal(resumed.stage,'human-resumed');
   assert.equal(resumed.taskId,ready.boundary.taskId);assert.notEqual(resumed.currentRunId,ready.boundary.runId);
   assert.equal(resumed.events.filter((row:any)=>row.kind==='birth').length,ready.boundary.initialBirths+1);assert.equal(resumed.events.filter((row:any)=>row.kind==='input').length,ready.boundary.initialInputs+1);
-  ownedPids=resumed.ownedPids;await reopened.close();
+  ownedPids=resumed.ownedPids;reopenCloseAt=Date.now();await reopened.close();reopenCloseMs=Date.now()-reopenCloseAt;
   assert.ok(ownedPids.every(pid=>!alive(pid)));assert.equal(existsSync(path.join(h.home,'hima/database/data/postmaster.pid')),false);
   proved=true;t.diagnostic(JSON.stringify({level:'L2-controlled-ordinary-Node',signal,scenario,hostBoots:2,productModelCalls:0,nativeSdkCalls:0,qualification:'no Pi/OpenCode L4; SIGHUP unsupported; no Campaign-continuation composition claim'}));
- }catch(error){failure=error;await writeFile(path.join(h.home,'signal-failure.txt'),String(error)+'\n'+[original?.stderr(),reopened?.stderr()].filter(Boolean).join('\n'),{mode:0o600});throw error;
+ }catch(error){
+  failure=error;
+  const report=JSON.stringify({signalCloseMs:signalCloseMs??(signalAt===undefined?null:Date.now()-signalAt),
+   reopenCloseMs:reopenCloseMs??(reopenCloseAt===undefined?null:Date.now()-reopenCloseAt),
+   originalExitCode:original?.child.exitCode,originalSignalCode:original?.child.signalCode,
+   reopenedExitCode:reopened?.child.exitCode,reopenedSignalCode:reopened?.child.signalCode})+'\n'+
+   String(error)+'\n'+[original?.stderr(),reopened?.stderr()].filter(Boolean).join('\n');
+  await writeFile(path.join(h.home,'signal-failure.txt'),report,{mode:0o600});
+  if(process.env.HIMA_SIGNAL_DIAGNOSTIC_DIR){
+   const retained=path.join(process.env.HIMA_SIGNAL_DIAGNOSTIC_DIR,`${scenario}-${signal}-${Date.now()}`);
+   await mkdir(retained,{recursive:true,mode:0o700});
+   await writeFile(path.join(retained,'failure.txt'),report.slice(-32*1024),{mode:0o600});
+   if(existsSync(path.join(h.home,'signal-evidence')))await cp(path.join(h.home,'signal-evidence'),path.join(retained,'signal-evidence'),{recursive:true});
+   t.diagnostic('Retained failed signal fixture: '+retained);
+  }
+  throw error;
  }finally{
   // The original worker has no IPC closer: cleanup must use a genuine supported
   // production signal. Never broad-kill or delete a Home with unproved resources.

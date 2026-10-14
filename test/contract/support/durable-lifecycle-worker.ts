@@ -125,7 +125,20 @@ try {
   await host.dispose();host=await bootInProcess(h);await host.ctx.hima.reconciled;
   const reopened=host.ctx.hima.durable.store;assert.equal((await reopened.run(runId)).deadlineAt,deadline);assert.equal(await reopened.hostExit(),undefined);
   try {await until(async()=> (await reopened.flowProjection(runId)).tasks.some((task:any)=>task.identity.taskId==='produce'&&task.result));}
-  catch(error){throw new Error('Original preparation did not resume: '+JSON.stringify(await reopened.flowFact(runId,'preparation')),{cause:error});}
+  catch(error){
+   const physical=await reopened.flowPhysicalFacts(runId);
+   const flow=await (await load('flow-workflow')).readFlow(host.ctx.hima.durable,runId);
+   throw new Error('Original preparation did not resume: '+JSON.stringify({
+    preparation:await reopened.flowFact(runId,'preparation'),
+    writeCompleted:Boolean(physical.effects.find((effect:any)=>effect.identity.taskId==='hima.prepare') &&
+     await reopened.externalEffectFact(physical.effects.find((effect:any)=>effect.identity.taskId==='hima.prepare')!.identity,'preparation-copy-completed')),
+    root:flow.workflow?{status:flow.workflow.status,workflowID:flow.workflow.workflowID}:null,
+    tasks:flow.tasks.map((task:any)=>({taskId:task.identity.taskId,state:task.state,hasResult:Boolean(task.result)})),
+    effects:physical.effects.map((effect:any)=>({taskId:effect.identity.taskId,phase:effect.phase,dispatches:effect.dispatches.map((row:any)=>row.dispatchId)})),
+    resources:physical.resources.map((row:any)=>({effectId:row.effectId,released:row.released})),
+    deadlineRemainingMs:Date.parse((await reopened.run(runId)).deadlineAt)-Date.now(),
+   }),{cause:error});
+  }
   assert.deepEqual(await readFile(customer),bytes);assert.equal((await reopened.flowPhysicalFacts(runId)).effects.filter((effect:any)=>effect.identity.taskId==='hima.prepare').length,1);
   process.send?.({ok:true,mode,runId,deadline,preparation:await reopened.flowFact(runId,'preparation')});
  } else {
