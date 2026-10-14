@@ -50,6 +50,11 @@ Run nothing else that touches the layout or the tools.
 
 1. **Read** the five inputs. Note the best legal candidate, the gaps to each target, the binding
    chain, the floor, the open markers and the last round's predicted-vs-measured gains.
+   **If `state/round-decision.json` has a `nextLever`, act on it first:** it names a candidate of
+   the last round that fails only the transmittance window and is better than the best legal one.
+   Make it the `base` and apply its `action` (for the minimum: one `band-trim` of a wide supply
+   band plus `min-ratio` at that candidate's outline). The Run does not converge while it is
+   untried.
 2. **Write the hypothesis** at the top of `plan/round-NN/plan.json` before anything else: what you
    expect to move and why (for example: "narrowing the storage-node link under the anode lowers
    storage-node-to-anode coupling with no scan-line load").
@@ -174,6 +179,11 @@ Round 3 (from the narrower legal candidate, transmittance at the window's minimu
 ```
 
 ### Reading what came back
+
+0. **One transmittance fix away beats starting over.** A clean candidate (DRC, LVS, channels,
+   capacitor) that misses only the transmittance window is worth more than a new point from the
+   old legal base: trim it (minimum) or shrink it slightly (maximum) next round. The round decision
+   names it as `nextLever`.
 
 6. **Markers only in the 2x2 and 3x3 tiles** (the single cell is clean) sit across the cell
    boundary: a shape and its neighbour's copy. Step that axis back by 0.05 to 0.1 µm with a new

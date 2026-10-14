@@ -135,6 +135,25 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(d["route"], "stop")
         self.assertEqual(d["stopReason"], "converged")
 
+    def test_a_candidate_one_transmittance_fix_away_keeps_the_run_going(self):
+        # Live Run B stopped "blocked" at round 3: the best legal ratio had stalled, beside a clean
+        # 9.92 % candidate that missed only the transmittance minimum. That candidate is a live
+        # lever: no convergence while it is untried, and the decision names it for the resident.
+        ratio = 11.0
+        hist = [self._orig()]
+        for rnd in (1, 2):
+            hist.append({"id": "r%d" % rnd, "round": rnd, "exploratory": False, "legal": True,
+                         "values": _legal_values(pixel_ratio_judged_pct=ratio,
+                                                 pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        hist.append({"id": "r2-ratio", "round": 2, "exploratory": False, "legal": False,
+                     "values": _legal_values(pixel_ratio_judged_pct=10.0, pixel_t_judged_pct=4.8,
+                                             pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        d = rounds.decide(2, _goal(), hist, None, None)
+        self.assertEqual(d["route"], "continue")
+        self.assertEqual(d["nextLever"]["candidate"], "r2-ratio")
+        self.assertEqual(d["nextLever"]["fails"], ["transmittance-above-min"])
+        self.assertIn("band-trim", d["nextLever"]["action"])
+
     def test_blocked_from_exploratory(self):
         hist = [self._orig(),
                 {"id": "r6", "round": 6, "exploratory": False, "legal": True,

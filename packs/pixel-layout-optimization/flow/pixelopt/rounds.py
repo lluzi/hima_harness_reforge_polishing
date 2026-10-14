@@ -136,6 +136,49 @@ def _hard_failures(vmap, goal_resolved):
     return [rid for rid in HARD_RULES if results[rid] not in ("PASS", "NOT_DECLARED")]
 
 
+_TRANSMITTANCE_RULES = ("transmittance-above-min", "transmittance-below-max")
+
+
+def _next_lever(history, goal_resolved, round_no, best_legal):
+    """A candidate of this round that fails only the transmittance window, and is better than the
+    best legal one (lower ratio, or at least as low on a smaller cell): one operator away from a
+    better legal result. ``None`` when there is none."""
+    best_vals = _as_map(best_legal.get("values", {})) if best_legal else {}
+    best_ratio = _num(best_vals.get("pixel_ratio_judged_pct"))
+    best_area = _area(best_vals) if best_legal else _INF
+    pick = None
+    for h in history:
+        if (h.get("round") != round_no or h.get("exploratory")
+                or h.get("kind") in ("probe", "original", "mutant")):
+            continue
+        vmap = _as_map(h.get("values", {}))
+        fails = _hard_failures(vmap, goal_resolved)
+        if not fails or any(f not in _TRANSMITTANCE_RULES for f in fails):
+            continue
+        ratio = _num(vmap.get("pixel_ratio_judged_pct"))
+        if ratio is None:
+            continue
+        better = (best_ratio is None or ratio < best_ratio - 1e-9
+                  or (ratio <= best_ratio + 1e-9 and _area(vmap) < best_area - 1e-9))
+        if not better:
+            continue
+        if pick is None or ratio < pick[0]:
+            pick = (ratio, h.get("id"), fails)
+    if pick is None:
+        return None
+    ratio, cid, fails = pick
+    low = "transmittance-above-min" in fails
+    return {
+        "candidate": cid,
+        "fails": fails,
+        "ratioPct": ratio,
+        "action": ("base it and add a band-trim of a wide opaque supply band (no device), "
+                   "then min-ratio at its outline" if low else
+                   "base it and shrink the cell slightly (min-pitch), or widen an opaque band "
+                   "that carries no device"),
+    }
+
+
 def _best_legal(history, goal_resolved):
     """The best legal, non-exploratory candidate across all judged history."""
     best = None
@@ -354,6 +397,13 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
 
     trust, pv_list = _trust_radius(round_no, history, previous_decision, goal_resolved)
 
+    # A candidate one transmittance fix away from beating the best legal one is a live lever:
+    # the Run has not converged while it is untried (Run B stopped "blocked" at round 3 beside a
+    # clean 9.92 % candidate that missed only the transmittance minimum).
+    next_lever = _next_lever(history, goal_resolved, round_no, best if best_is_legal else None)
+    if next_lever is not None:
+        converged = False
+
     at_limit = round_no >= 6
     blocked = False
     if not goal_met and (converged or at_limit):
@@ -394,5 +444,6 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
         "trustRadiusUm": trust,
         "predictedVsMeasured": pv_list,
         "openMarkers": open_markers,
+        "nextLever": next_lever,
         "rules": rule_results(best.get("values", {}) if best else {}, goal_resolved),
     }

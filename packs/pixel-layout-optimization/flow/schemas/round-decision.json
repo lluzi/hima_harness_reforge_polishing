@@ -30,6 +30,7 @@
   "front": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
   "trustRadiusUm": {"type": "number", "minimum": 0.05, "maximum": 2.0},
   "predictedVsMeasured": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+  "nextLever": {"type": ["object", "null"]},
   "openMarkers": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
   "rules": {"type": "object"},
   "history": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
