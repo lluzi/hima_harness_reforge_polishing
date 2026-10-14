@@ -739,7 +739,7 @@ export function himaTools(deps: FabricDeps, author?: (request: import('./authori
         // no verdict behind, the same as a malformed `--param` on the command line.
         const parsedParams = numericParams(args.params as Record<string, unknown> | undefined);
         if ('error' in parsedParams) throw new Error(parsedParams.error);
-        if (args.run && deps.ledger.run(args.run)?.control) throw new Error('Agent-owned Run observations require hima_execute with an admitted execution; direct observation is refused');
+        if (args.run && (await knownDurableRun(deps,args.run) || deps.ledger.run(args.run)?.control)) throw new Error('Agent-owned Run observations require hima_execute with an admitted execution; direct observation is refused');
         const result = await observe(deps, { ...args, projectSessionId: execution.agent ? String(execution.agent.id) : undefined } as ObserveRequest);
         const value = toolResult(result);
         if (result.kind === 'observed' && args.judge?.length) {

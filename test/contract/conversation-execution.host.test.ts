@@ -167,7 +167,15 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     assert.deepEqual((await host.ctx.hima.durable.store.flowProjection(run)).controls, controls);
     assert.equal((await call('hima_cancel', { run })).isError, true, 'legacy direct cancellation is refused');
     const observedBefore = context.facts.observations;
-    assert.equal((await call('hima_observe', { run, site: 'local', path: 'anything' })).isError, true, 'legacy direct observation is refused');
+    // DBOS commits control before its Ledger projection catches up. Keep the
+    // genuine PG pause while showing the tool a lagging legacy control view.
+    const ledger=host.ctx.hima.ledger,originalRun=ledger.run;
+    await waitUntil('historical projection row exists before controlled lag',async()=>!!originalRun.call(ledger,run),10000,25);
+    ledger.run=((id:string)=>{const row=originalRun.call(ledger,id);return id===run&&row?{...row,control:undefined}:row;}) as typeof originalRun;
+    let observed:Awaited<ReturnType<typeof call>>;
+    try{observed=await call('hima_observe', { run, site: 'local', path: 'anything' });}
+    finally{ledger.run=originalRun;}
+    assert.equal(observed.isError,true,'legacy direct observation is refused even before Ledger projects PG control');
     const forgedMeasurement = await call('hima_execute', { ...request, action: 'measure-value', actor: String(owner.id), origin: 'human',
       measurement: { category: 'business-decision', startedAt: new Date().toISOString(), endedAt: new Date().toISOString(), evidenceRef: 'forged' } });
     assert.equal(forgedMeasurement.isError, true, 'model schema cannot claim human measurement or origin');
