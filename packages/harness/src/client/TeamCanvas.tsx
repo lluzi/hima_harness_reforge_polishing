@@ -214,7 +214,7 @@ export const TEAM_STYLE = `
 .hima-team-chip b{color:var(--hima-ink);font-size:var(--hima-fs-body)} .hima-team-chip i{font-style:normal;color:var(--hima-ink-3)}
 .hima-team-chip-round{background:var(--hima-accent);border-color:var(--hima-accent);color:var(--hima-on-solid);font-weight:600}
 .hima-team{position:relative;flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-4) 34px var(--hima-sp-6) var(--hima-sp-4);display:flex;flex-direction:column;gap:30px}
-.hima-team-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:30px;padding:var(--hima-sp-4) 12px var(--hima-sp-6) 34px;align-items:start}
+.hima-team-rows{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:18px;padding:var(--hima-sp-4) 12px var(--hima-sp-6) 34px;align-items:start;align-content:start}
 .hima-team-line-fold{color:var(--hima-ink-3);font-style:italic}
 .hima-team-edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .hima-team-edge path{fill:none;stroke:var(--hima-line-strong);stroke-width:1.5}
@@ -225,7 +225,7 @@ export const TEAM_STYLE = `
 .hima-team-edge-flow path{animation:hima-team-flow .9s linear infinite}
 @keyframes hima-team-flow{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
 .hima-team-arrow{fill:var(--hima-line-strong)} .hima-team-arrow-lit{fill:var(--hima-accent)}
-.hima-team-station{position:relative;z-index:1;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);padding:var(--hima-sp-3);box-shadow:var(--hima-shadow);transition:border-color .3s,box-shadow .3s}
+.hima-team-station{position:relative;z-index:1;min-width:0;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);padding:var(--hima-sp-3);box-shadow:var(--hima-shadow);transition:border-color .3s,box-shadow .3s}
 .hima-team-station-active{border-color:var(--hima-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hima-accent) 16%,transparent),var(--hima-shadow)}
 .hima-team-station-done{border-color:color-mix(in srgb,var(--hima-good) 45%,var(--hima-line))}
 .hima-team-station-failed{border-color:var(--hima-bad)}
