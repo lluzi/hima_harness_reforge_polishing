@@ -131,5 +131,61 @@ class AttributionTest(unittest.TestCase):
         self.assertIn("P|Q", pred)
 
 
+@unittest.skipUnless(HAVE, "numeric packages not installed")
+class GradientTest(unittest.TestCase):
+    def setUp(self):
+        from tests import fixtures
+        from pixelopt import manifest, layout, rules, nets
+        self.tmp = tempfile.TemporaryDirectory()
+        built = fixtures.build_case(self.tmp.name)
+        self.case = manifest.load_case(built["manifest"])
+        self.lay = layout.load_gds(built["gds"], self.case,
+                                   top=self.case.raw["original"]["topCell"])
+        with open(self.case.file(self.case.raw["decks"]["authority"])) as fh:
+            text = fh.read()
+        self.table = rules.compaction_table(rules.parse_deck(text), self.case)
+        self.nets = nets
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _right_edge_var(self, comp_model, bbox, xedge):
+        """Variable of the class holding the vertices at x == ``xedge`` of the
+        polygon on 'Metal' whose bbox matches ``bbox``."""
+        polys = comp_model["polys"]
+        var = comp_model["var"]
+        for pi, (n, i, p) in enumerate(polys):
+            if n != "Metal":
+                continue
+            lo = p.min(0)
+            hi = p.max(0)
+            if (abs(lo[0] - bbox[0]) < 1e-3 and abs(hi[0] - bbox[2]) < 1e-3
+                    and abs(lo[1] - bbox[1]) < 1e-3 and abs(hi[1] - bbox[3]) < 1e-3):
+                for v in range(len(p)):
+                    if abs(p[v][0] - xedge) < 1e-6:
+                        return var(pi, v)
+        self.fail("no Metal polygon with bbox %s" % (bbox,))
+
+    def test_gradient_has_sign_of_the_facing_length(self):
+        from pixelopt import attribution, compact
+        # R1 (Metal, 1..12 x 33..34) faces the data line DL (Metal, 13..14) across
+        # a 1 um gap on the same layer. A surrogate whose coupling rises with the
+        # Metal-Metal fringe must have a POSITIVE gradient for the R1 right edge:
+        # moving it toward DL (+x) lengthens the facing and raises the coupling.
+        model = {"pairs": {"R1|DL": {
+            "coef": {"fr1.0:Metal-Metal": 1.0}, "intercept": 0.0,
+            "features": ["fr1.0:Metal-Metal"], "reduced": False,
+            "n": 1, "rmse": None, "r2": None}}}
+        comp_model = compact.build(self.lay, self.case, self.table)
+        out = attribution.gradients(model, self.lay, self.case, comp_model,
+                                    [("R1", "DL")], axis="x")
+        self.assertIn("R1|DL", out["base"])
+        self.assertGreaterEqual(out["differenced"], 1)
+        self.assertLessEqual(out["differenced"], out["considered"])
+        jr = self._right_edge_var(comp_model, (1.0, 33.0, 12.0, 34.0), 12.0)
+        self.assertIn(jr, out["gradients"]["R1|DL"])
+        self.assertGreater(out["gradients"]["R1|DL"][jr], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,7 @@ from scipy.optimize import nnls
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
-__all__ = ["sites", "features", "fit", "predict"]
+__all__ = ["sites", "features", "fit", "predict", "gradients"]
 
 _AREA_EPS = 1e-6
 _EMPTY = Polygon()
@@ -293,3 +293,120 @@ def predict(model, feats):
             val += c * f.get(name, 0.0)
         out[pair] = float(val)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Gradients of the surrogate in the compactor's displacement variables
+# --------------------------------------------------------------------------- #
+
+def _whole_net(G, net):
+    d = G.get(net, {})
+    return unary_union(list(d.values())) if d else _EMPTY
+
+
+def class_geom(comp_model, cls, axis):
+    """The geometry of one compactor edge class in the *layout's* coordinates.
+
+    For an ``axis="y"`` model the compactor built the transposed layout, so its
+    polygon coordinates are swapped back here.
+    """
+    polys = comp_model["polys"]
+    gs = []
+    for pi in cls["polys"]:
+        p = polys[pi][2]
+        if axis == "y":
+            p = p[:, ::-1]
+        if len(p) >= 3:
+            gs.append(Polygon(p).buffer(0))
+    return unary_union(gs) if gs else _EMPTY
+
+
+def gradients(model, lay, case, comp_model, pairs, axis="x", delta=0.05,
+              reach_um=3.0):
+    """Finite-difference gradients of each pair's predicted coupling in the
+    compactor's displacement variables.
+
+    ``comp_model`` is a :func:`compact.build` model of ``lay`` for ``axis`` (for
+    ``"y"`` it is a model of the transposed layout). For every edge class that
+    touches a shape of either net of a pair and lies within ``reach_um`` of that
+    pair's coupling region, the class is displaced by ``+-delta`` (``compact.apply``
+    on a zero vector with just that variable set), the features are recomputed
+    (``nets.extract`` + :func:`features`) and the prediction central-differenced.
+    Classes with no feature change are skipped.
+
+    Returns ``{"gradients": {pair: {var: dfF/um}}, "base": {pair: fF},
+    "considered": int, "differenced": int, "axis": axis}``.
+    """
+    from . import nets as _nets
+    from . import compact as _compact
+
+    norm = _norm_pairs(pairs)
+    keys = [a + "|" + b for a, b in norm]
+
+    base_extract = _nets.extract(lay, case)
+    base_feats = features(base_extract, case, norm)
+    base_pred = predict(model, base_feats)
+
+    G = _netgeo(base_extract)
+    pair_geoms = {}
+    pair_region = {}
+    for (a, b), key in zip(norm, keys):
+        gA, gB = _whole_net(G, a), _whole_net(G, b)
+        pair_geoms[key] = (gA, gB)
+        parts = []
+        if not gA.is_empty and not gB.is_empty:
+            parts.append(gA.intersection(gB.buffer(reach_um)))
+            parts.append(gB.intersection(gA.buffer(reach_um)))
+        pair_region[key] = unary_union([p for p in parts if not p.is_empty]) if parts else _EMPTY
+
+    L = lay if axis == "x" else _compact.transpose(lay)
+    nv = comp_model["nv"]
+    grads = {key: {} for key in keys}
+    considered = 0
+    differenced = 0
+
+    for cls in _compact.edge_classes(comp_model):
+        j = cls["var"]
+        cg = class_geom(comp_model, cls, axis)
+        if cg.is_empty:
+            continue
+        relevant = []
+        cgb = cg.buffer(1e-4)
+        for key in keys:
+            gA, gB = pair_geoms[key]
+            region = pair_region[key]
+            touches = (not gA.is_empty and cgb.intersects(gA)) or \
+                      (not gB.is_empty and cgb.intersects(gB))
+            near = (not region.is_empty) and cg.distance(region) <= reach_um
+            if touches and near:
+                relevant.append(key)
+        if not relevant:
+            continue
+        considered += 1
+
+        xp = [0.0] * nv
+        xm = [0.0] * nv
+        xp[j] = delta
+        xm[j] = -delta
+        lp = _compact.apply(L, comp_model, xp, case)
+        lm = _compact.apply(L, comp_model, xm, case)
+        if axis == "y":
+            lp = _compact.transpose(lp)
+            lm = _compact.transpose(lm)
+        fp = features(_nets.extract(lp, case), case, norm)
+        fm = features(_nets.extract(lm, case), case, norm)
+        pp = predict(model, fp)
+        pm = predict(model, fm)
+
+        moved = False
+        for key in relevant:
+            if fp.get(key) == fm.get(key):
+                continue  # this class does not change the pair's features
+            grads[key][j] = float((pp[key] - pm[key]) / (2.0 * delta))
+            moved = True
+        if moved:
+            differenced += 1
+
+    return {"gradients": grads,
+            "base": {k: float(base_pred.get(k, 0.0)) for k in keys},
+            "considered": considered, "differenced": differenced, "axis": axis}
