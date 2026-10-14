@@ -93,7 +93,32 @@ def _now():
 # Argus
 # --------------------------------------------------------------------------- #
 
+def _run_argus_lvs(args, sidecar):
+    """Argus LVS stand-in: writes lvs.rep in Argus's report shape (PASS/FAIL + discrepancy count)."""
+    correct = sidecar.get("lvsCorrect", True)
+    verdict = "PASS" if correct else "FAIL"
+    text = [
+        "LAYOUT NAME          :    pixel.gds  ('pix')",
+        "--------------------------- CELL COMPARISON RESULTS ( TOP LEVEL ) ---------------------------",
+        "",
+        "                        ####     ###     ###     ###                    ",
+        "                        #   #   #   #   #       #              %s  " % verdict,
+        "",
+        "LAYOUT CELL NAME=pix",
+        "SOURCE CELL NAME=pix",
+        "",
+        "########################################### SUMMARY #########################################",
+        "",
+        "Total Real Discrepancy Count: %d" % (0 if correct else 1),
+    ]
+    with open("lvs.rep", "w") as fh:
+        fh.write("\n".join(text) + "\n")
+    return 0
+
+
 def _run_argus(args, sidecar):
+    if "-lvs" in args:
+        return _run_argus_lvs(args, sidecar)
     rule_file = "rule"
     for a in args:
         if os.path.exists(a) and os.path.basename(a) == "rule":

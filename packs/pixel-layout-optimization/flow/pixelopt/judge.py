@@ -224,6 +224,24 @@ def _judge_drc(candidate_dir, out_dir, case, sitecaps, env, workspace):
 # LVS
 # --------------------------------------------------------------------------- #
 
+def argus_lvs_rule(deck_text, gds_path, top_cell, source_path):
+    """Point an Argus LVS deck at one candidate: layout path and top cell, schematic path, and the
+    report name ``lvs.rep``. Refuses a deck without the layout or schematic input statements."""
+    out = deck_text
+    for pat, rep, what in (
+            (r'layout_input\s*\(\s*path\s+"[^"]*"\s*\)', 'layout_input( path "%s" )' % gds_path, "layout_input( path"),
+            (r'layout_input\s*\(\s*top_cell\s+"[^"]*"\s*\)', 'layout_input( top_cell "%s" )' % top_cell, "layout_input( top_cell"),
+            (r'schematic_input\s*\(\s*path\s+"[^"]*"\s*\)', 'schematic_input( path "%s" )' % source_path, "schematic_input( path")):
+        out, n = re.subn(pat, lambda _m, r=rep: r, out)
+        if n == 0:
+            raise PixelError("schema", "Argus LVS deck has no %s ... ) statement" % what)
+    if re.search(r'lvs_report\s*\(', out):
+        out = re.sub(r'lvs_report\s*\([^)]*\)', 'lvs_report( db "lvs.rep" )', out)
+    else:
+        out += '\nlvs_report( db "lvs.rep" )\n'
+    return out
+
+
 def _judge_lvs(candidate_dir, out_dir, case, sitecaps, env, workspace, declared):
     """Run LVS; return (report, schematic_sha, cst_template_sha)."""
     lvs = case.raw["lvs"]
@@ -251,16 +269,27 @@ def _judge_lvs(candidate_dir, out_dir, case, sitecaps, env, workspace, declared)
         source_path = case.file(base_schematic_ref)
 
     gds_path = os.path.join(candidate_dir, "pixel.gds")
-    runset = template.replace("@LAYOUT@", gds_path).replace("@SOURCE@", source_path)
-    with open(os.path.join(d, "rules.svrf"), "w", encoding="utf-8") as fh:
-        fh.write(runset)
-
-    rc = _run(list(sitecaps["tools"]["calibre"]) + ["rules.svrf"], d, env,
-              _timeout(sitecaps, "lvs"), os.path.join(d, "cal.log"))
+    engine = lvs.get("engine", "calibre")
+    if engine == "argus":
+        # The customer's own Argus LVS deck, used as written: only its inputs and report name
+        # are pointed at this candidate.
+        runset = argus_lvs_rule(template, gds_path, case.raw["candidateTopCell"], source_path)
+        with open(os.path.join(d, "lvs.rule"), "w", encoding="utf-8") as fh:
+            fh.write(runset)
+        tool = list(sitecaps["tools"].get("argusLvs") or ["argus", "-fpd", "-lvs"])
+        rc = _run(tool + ["lvs.rule"], d, env, _timeout(sitecaps, "lvs"), os.path.join(d, "argus_lvs.log"))
+    elif engine == "calibre":
+        runset = template.replace("@LAYOUT@", gds_path).replace("@SOURCE@", source_path)
+        with open(os.path.join(d, "rules.svrf"), "w", encoding="utf-8") as fh:
+            fh.write(runset)
+        rc = _run(list(sitecaps["tools"]["calibre"]) + ["rules.svrf"], d, env,
+                  _timeout(sitecaps, "lvs"), os.path.join(d, "cal.log"))
+    else:
+        raise PixelError("schema", "unknown LVS engine %r (calibre or argus)" % engine)
     with open(os.path.join(d, "rc"), "w") as fh:
         fh.write(str(rc))
     rep_path = os.path.join(d, "lvs.rep")
-    report = {"kind": "lvs", "deck": None, "tile": None,
+    report = {"kind": "lvs", "deck": None, "tile": None, "engine": engine,
               "path": _rel(rep_path, workspace),
               "sha256": _sha_or_none(rep_path), "rc": rc}
     return report, schematic_sha, cst_tmpl_sha

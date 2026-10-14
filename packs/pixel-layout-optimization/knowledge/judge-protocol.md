@@ -11,11 +11,13 @@ then runs, each in its own directory with its own report:
 1. **Authority DRC**: Argus with the manifest's authority deck on each of the three layouts. Tiles
    matter: a shape that is legal alone can violate against its neighbour's copy.
 2. **Reference DRC**: the same with the reference deck. Reported under its own name, never judged.
-3. **Connectivity rules in geometry**: the deck's `geom_interact` rules, which the Site licence
-   cannot run, checked from the manifest's `interactRules` (every shape of a layer must touch one of
-   the listed layer intersections).
+3. **Connectivity rules in geometry**: the manifest's `interactRules` (every shape of a layer must
+   touch one of the listed layer intersections), checked by the Pack as well. Where the Site licence
+   runs the deck's own `geom_interact` rules, Argus reports them too; where it cannot, they are
+   stripped from the deck and this geometry check is the only one.
 4. **LVS** against the declared schematic, with the deck's W/L/C tolerances. The Site declares the
-   engine; on the reference Site it is the validated Calibre translation of the customer's deck.
+   engine: Argus with the customer's own LVS deck where the licence allows it (as on the reference
+   Site), or a validated translation for another engine.
 5. **Extraction**: the candidate's GDS imported into a fresh library (holding only the technology
    files), then RCExplorer pixel extraction with the boundary condition of the manifest's Tcl
    template. The net-pair capacitances come from its `RCEResult.sp`.

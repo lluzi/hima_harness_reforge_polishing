@@ -91,13 +91,13 @@ Ambiguities: numeric dependencies). Nothing of the customer case is copied into 
   per definition, `transmittancePct`); `cst` (`markerLayer`, `coefficientFfPerUm2`, `tolerancePct`,
   optional `schematicTemplate` with `@CST_FF@`); `decks` (`authority`, `reference`: Argus DRC rule
   files); `interactRules` (geometry-checked connectivity rules: id, layer, the layers each of its
-  shapes must touch); `lvs` (`engine`, `deckTemplate` with `@LAYOUT@` and `@SOURCE@`, `schematic`);
+  shapes must touch); `lvs` (`engine` `argus` or `calibre`; `deckTemplate`: the Argus deck as written, or a Calibre translation with `@LAYOUT@` and `@SOURCE@`; `schematic`);
   `extraction` (`techLibOalib`, `techLibTechDb`, `layerMap`, `etf`, `layerMapBool`, `tclTemplate`
   with `@D@`); optional `alps` (`consistent`, testbench files); optional `opticalStack`
   (the layers whose union is opaque, the emission layers).
 - `siteCapabilities`: Site path of one `pixel.site-capabilities/1` JSON file: the `edarun` argv and
   container name, the venv `python`, the FPD environment script, the `gdsIn` prefix and library
-  path, the Calibre environment, `parallelJobs`, and per-tool timeouts.
+  path, the LVS engine command (Argus, or Calibre where a translated deck is used), `parallelJobs`, and per-tool timeouts.
 - `engineeringCapabilities`: the Site's resident executor binding (Site-owned, not read by Pack code).
 - `workspaceRoot`: the Campaign-private output root the Site Permit allows.
 

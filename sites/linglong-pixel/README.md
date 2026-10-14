@@ -23,22 +23,25 @@ This file names paths only; no layout, rule value or result of the case belongs 
 - `original/`: the designer's original layout.
 - `decks/authority.rule`: the customer's newest Argus DRC deck (the authority);
   `decks/reference.rule`: the vendor prototype's deck, reported under its own name. Both are used
-  unchanged; the Pack's rule-file generator substitutes the layout input, sets
-  `layout_use_db_precision( yes )` in place of the deck's `precision(...)` line, and strips the
-  `geom_interact` rules this licence cannot run (those are checked in geometry from the manifest's
-  `interactRules`).
-- `lvs/`: the Calibre translation of the customer's Argus LVS deck (`@LAYOUT@`, `@SOURCE@`), the
-  schematic, and a schematic template with `@CST_FF@` for a declared capacitor change. The
-  translation passes the designer's original and fails both the open-anode and the
-  enlarged-capacitor counterexamples.
+  unchanged; the Pack's rule-file generator substitutes the layout input and sets
+  `layout_use_db_precision( yes )` in place of the deck's `precision(...)` line. The deck's
+  `geom_interact` rules run in Argus (`drcStripFunctions: []`); the Pack also checks them in
+  geometry from the manifest's `interactRules`.
+- `lvs/argus_lvs.rule` and `lvs/schematic_argus.netlist`: the customer's own Argus LVS deck and
+  netlist (engine `argus`), plus `schematic_argus_cst.netlist.tmpl` with `@CST_FF@` for a declared
+  capacitor change. Validated 2026-10-13: passes the designer's original and the day-1 V1 shrink,
+  fails the open-anode pixel (1 discrepancy) and the enlarged-capacitor layout (`c_cap` +6.4 %
+  against the 2 % tolerance). The earlier Calibre translation (`lvs_calibre.svrf.tmpl`,
+  `schematic.sp`, `schematic_cst.sp.tmpl`) stays in `lvs/` for a Site without Argus LVS.
 - `extraction/`: the OA technology library files copied into a fresh library per candidate, the
   GDS layer map, the ETF, the boolean layer map and the RCExplorer Tcl template (`@D@`).
 
 ## Why these Site choices
 
-- **Licence.** The FPD licence (`empyrean-license fpd`, port 59004) lacks `AR_CD_FPD` (Argus
-  `geom_interact`) and `AR_ERC_FPD` (every Argus LVS), hence the geometry check and Calibre LVS.
-  FPD mode excludes the MAGE and XTop modes; the owner switches it (`sudo`).
+- **Licence.** The FPD licence (`empyrean-license fpd`, port 59004). Since 2026-10-13 it issues
+  `AR_ERC_FPD` and `AR_HERC_FPD` (needed by every Argus LVS and netlist run) and `AR_CD_FPD`
+  (Argus `geom_interact`); before that, LVS ran through a Calibre translation and the interact
+  rules only in geometry. FPD mode excludes the MAGE and XTop modes; the owner switches it (`sudo`).
 - **gdsIn** mis-detects the 7.x kernel, so it runs under `setarch x86_64 --uname-2.6` with the OA
   library path the capabilities name. A candidate is always imported into a fresh library holding
   only the two technology files; an existing library would be extracted silently instead.

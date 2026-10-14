@@ -77,6 +77,34 @@ def calibre_lvs(path):
     return {"correct": correct, "lines": lines}
 
 
+def argus_lvs(path):
+    """Parse an Argus LVS report into ``{"correct": bool, "discrepancies": int|None, "lines": [...]}``.
+
+    ``correct`` is true only when the TOP LEVEL cell comparison states ``PASS`` and the
+    summary's ``Total Real Discrepancy Count`` is 0. A report missing either statement
+    is not correct (and ``discrepancies`` is ``None`` when the count is absent).
+    """
+    text = _read(path)
+    m = re.search(r"Total Real Discrepancy Count:\s*(\d+)", text)
+    count = int(m.group(1)) if m else None
+    verdict = None
+    top = re.search(r"CELL COMPARISON RESULTS \( TOP LEVEL \)(.*?)(?:LAYOUT CELL NAME|=====)", text, re.S)
+    if top:
+        w = re.findall(r"\b(PASS|FAIL)\b", top.group(1))
+        verdict = w[-1] if w else None
+    lines = [ln.strip() for ln in text.splitlines()
+             if re.search(r"Error:|Discrepancy Count|PASS|FAIL", ln) and "#" not in ln[:20]]
+    correct = verdict == "PASS" and count == 0
+    return {"correct": correct, "discrepancies": count, "verdict": verdict, "lines": lines}
+
+
+def lvs_report(path, engine):
+    """The LVS verdict of ``path`` read by the parser of the engine that wrote it."""
+    if engine == "argus":
+        return argus_lvs(path)
+    return calibre_lvs(path)
+
+
 def rce_caps(path):
     """Parse ``RCEResult.sp`` into ``{"<a>|<b>": fF}`` (sorted net pair keys).
 

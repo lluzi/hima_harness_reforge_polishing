@@ -96,7 +96,7 @@ def reader_values(receipt_path, workspace, readiness):
         if not exists:
             # A listed report whose file is gone is a receipt error.
             errors.append("missing report: %s" % r.get("path"))
-        state[key] = {"abspath": abspath, "exists": exists, "sha_ok": sha_ok}
+        state[key] = {"abspath": abspath, "exists": exists, "sha_ok": sha_ok, "engine": r.get("engine")}
 
     def report(kind, deck=None, tile=None):
         return state.get((kind, deck, tile))
@@ -182,7 +182,7 @@ def reader_values(receipt_path, workspace, readiness):
             add("pixel_lvs_correct", "flag", None, "no lvs report")
         else:
             try:
-                rep = reports.calibre_lvs(st["abspath"])
+                rep = reports.lvs_report(st["abspath"], st.get("engine") or "calibre")
                 add("pixel_lvs_correct", "flag", 1 if rep["correct"] else 0)
             except PixelError:
                 errors.append("lvs report unreadable")
