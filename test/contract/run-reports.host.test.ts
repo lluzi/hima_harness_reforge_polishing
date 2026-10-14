@@ -7,18 +7,18 @@
 // AndesCell Run end to end in the `atcs-dry` group.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { listRunReports, readRunReport, ReportPathError } from '@hima/harness';
+import { listRunReports, readRunReport, ReportPathError, LocalChannel } from '@hima/harness';
 import { writeLocalSite } from '../../packages/desktop/src/local-site.ts';
 
 /** A stand-in for the durable readers `RunReports` needs: the three lookups the DBOS rewire points at. */
 function readersOf(workspace: string, reportsDir: string | undefined, nodeOrder: readonly string[]) {
   return {
     readRun: async () => ({ id: 'run-x', siteId: 'local' }),
-    readRunRecords: async (_runId: string, type?: string) =>
-      type === 'workspace' || type === undefined ? [{ type: 'workspace', workspace }] : [],
+    readRunWorkspace: async () => workspace,
     executionContext: async () => ({
       method: { id: 'p', version: '1', digest: 'd', dir: 'p', contract: reportsDir === undefined ? {} : { reports: { dir: reportsDir } },
         reference: { nodes: nodeOrder.map((id) => ({ id, kind: 'act' })) } },
@@ -110,5 +110,84 @@ test('a Run whose Pack declares no reports folder lists empty, not an error', as
     assert.deepEqual(view.files, []);
     assert.equal(view.error, undefined);
     assert.equal(view.dir, undefined);
+  } finally { await rm(fx.root, { recursive: true, force: true }); }
+});
+
+// I3: the confinement surface — the realpath `inside` check and the channel's exact `find`/`head`
+// admissions — exercised directly, so a later refactor that drops `inside(...)` or the `-type f`/`-P`
+// flags fails here instead of passing silently. The `..` shape above is refused by the regex alone,
+// so these use real symlinks and non-regular files on the local Site fixture.
+
+test('I3: a report that is a symlink to a file OUTSIDE the project folder is refused by the inside check', async () => {
+  const fx = await fixture();
+  try {
+    // The link target is inside the Site's allowed read root (root/ws) but outside the campaign
+    // workspace (root/ws/campaign-x), so the Permit admits the path and only `inside(real, ws)` can
+    // refuse it — the exact check a refactor might drop.
+    await writeFile(path.join(fx.root, 'ws', 'secret.txt'), 'not in the project folder\n');
+    await symlink(path.join(fx.root, 'ws', 'secret.txt'), path.join(fx.workspace, 'reports/synth/r1/leak.rpt'));
+    const deps = { readers: readersOf(fx.workspace, 'reports', ['synth', 'place']), sitesDir: fx.sitesDir };
+    await assert.rejects(() => readRunReport(deps as never, 'run-x', 'reports/synth/r1/leak.rpt'),
+      (error: unknown) => error instanceof ReportPathError && /outside this Run's project folder/.test(error.message));
+  } finally { await rm(fx.root, { recursive: true, force: true }); }
+});
+
+test('I3: a report whose PARENT directory is a symlink out of the project folder is refused', async () => {
+  const fx = await fixture();
+  try {
+    // The whole r-directory is a symlink to a sibling under the read root but outside the workspace.
+    await mkdir(path.join(fx.root, 'ws', 'elsewhere'), { recursive: true });
+    await writeFile(path.join(fx.root, 'ws', 'elsewhere', 'timing.rpt'), 'elsewhere\n');
+    await mkdir(path.join(fx.workspace, 'reports/place'), { recursive: true });
+    await symlink(path.join(fx.root, 'ws', 'elsewhere'), path.join(fx.workspace, 'reports/place/r9'));
+    const deps = { readers: readersOf(fx.workspace, 'reports', ['synth', 'place']), sitesDir: fx.sitesDir };
+    await assert.rejects(() => readRunReport(deps as never, 'run-x', 'reports/place/r9/timing.rpt'),
+      (error: unknown) => error instanceof ReportPathError && /outside this Run's project folder/.test(error.message));
+  } finally { await rm(fx.root, { recursive: true, force: true }); }
+});
+
+test('I3: a FIFO (non-regular file) is refused as not a file, and never hangs the bounded read', async () => {
+  const fx = await fixture();
+  try {
+    execFileSync('mkfifo', [path.join(fx.workspace, 'reports/synth/r1/pipe.rpt')]);
+    const deps = { readers: readersOf(fx.workspace, 'reports', ['synth', 'place']), sitesDir: fx.sitesDir };
+    // `test -f` rejects the FIFO before any `head`, so the read returns at once rather than blocking.
+    await assert.rejects(() => readRunReport(deps as never, 'run-x', 'reports/synth/r1/pipe.rpt'),
+      (error: unknown) => error instanceof ReportPathError && /is not a file/.test(error.message));
+    // A FIFO is not a regular file, so `find -type f` never lists it either.
+    const view = await listRunReports(deps as never, 'run-x');
+    assert.ok(!view.files.some((f) => f.name === 'pipe.rpt'), 'a FIFO is not listed');
+  } finally { await rm(fx.root, { recursive: true, force: true }); }
+});
+
+test('I3: a binary (NUL-bearing) report is refused as not text', async () => {
+  const fx = await fixture();
+  try {
+    await writeFile(path.join(fx.workspace, 'reports/synth/r1/timing.rpt'), Buffer.from([0x41, 0x00, 0x42]));
+    const deps = { readers: readersOf(fx.workspace, 'reports', ['synth', 'place']), sitesDir: fx.sitesDir };
+    await assert.rejects(() => readRunReport(deps as never, 'run-x', 'reports/synth/r1/timing.rpt'),
+      (error: unknown) => error instanceof ReportPathError && /binary file/.test(error.message));
+  } finally { await rm(fx.root, { recursive: true, force: true }); }
+});
+
+test('I3: the channel admits exactly the report listing and read shapes, and refuses near-misses', async () => {
+  const fx = await fixture();
+  try {
+    const channel = new LocalChannel('local');
+    const root = path.join(fx.workspace, 'reports');
+    const file = path.join(fx.workspace, 'reports/synth/r1/timing.rpt');
+    // Accepted: the exact listing and the bounded read.
+    assert.equal((await channel.exec(['find', root, '-mindepth', '3', '-maxdepth', '3', '-type', 'f', '-print0'])).code, 0);
+    assert.equal((await channel.exec(['head', '-c', '1024', '--', file])).code, 0);
+    // Refused near-misses: link-following find, a caller predicate, a zero/relative/`--`-less head.
+    for (const argv of [
+      ['find', '-L', root, '-mindepth', '3', '-maxdepth', '3', '-type', 'f', '-print0'],
+      ['find', root, '-mindepth', '3', '-maxdepth', '3', '-exec', 'cat', '{}', ';'],
+      ['head', '-c', '0', '--', file],
+      ['head', '-c', '1', '--', 'relative/path'],
+      ['head', '-c', '10', file],
+    ]) {
+      await assert.rejects(() => channel.exec(argv), (error: unknown) => error instanceof Error && /only|admitted/.test(error.message), argv.join(' '));
+    }
   } finally { await rm(fx.root, { recursive: true, force: true }); }
 });

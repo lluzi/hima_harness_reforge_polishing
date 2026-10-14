@@ -20,7 +20,9 @@ export function residentActivityOf(value: unknown): ResidentActivity | undefined
   if (toolCalls === undefined || planDone === undefined || planTotal === undefined) return undefined;
   const latest = o.latest as Record<string, unknown> | undefined;
   const ok = latest !== null && typeof latest === 'object' && typeof latest.kind === 'string' && typeof latest.title === 'string' && typeof latest.at === 'string';
-  return { toolCalls, planDone, planTotal, ...(ok ? { latest: { kind: latest.kind as string, title: (latest.title as string).slice(0, 160), at: latest.at as string } } : {}) };
+  // Every string a wrapper publishes is bounded, not only `title`: `kind` and `at` are display text
+  // too, and a wrapper (or a damaged state.json) could make either unbounded.
+  return { toolCalls, planDone, planTotal, ...(ok ? { latest: { kind: (latest.kind as string).slice(0, 48), title: (latest.title as string).slice(0, 160), at: (latest.at as string).slice(0, 40) } } : {}) };
 }
 
 export function noteResidentActivity(runId: string, nodeId: string, value: unknown): void {
@@ -31,4 +33,10 @@ export function noteResidentActivity(runId: string, nodeId: string, value: unkno
 
 export function residentActivity(runId: string, nodeId: string): ResidentActivity | undefined {
   return live.get(key(runId, nodeId));
+}
+
+/** Drop a node's cached activity once it is no longer running, so the next round's first read does not
+ *  briefly show the previous round's counters under the same (run, node) key. */
+export function clearResidentActivity(runId: string, nodeId: string): void {
+  live.delete(key(runId, nodeId));
 }

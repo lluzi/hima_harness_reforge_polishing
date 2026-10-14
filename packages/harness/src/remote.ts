@@ -643,7 +643,6 @@ export interface RunReportFile {
   /** The path relative to the Campaign workspace, as a report read (`reports/file?path=`) takes it. */
   readonly path: string;
   readonly bytes: number;
-  readonly modifiedAt?: string;
 }
 export interface RunReportsView {
   readonly dir?: string;

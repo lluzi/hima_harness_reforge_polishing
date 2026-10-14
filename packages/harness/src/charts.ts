@@ -56,6 +56,13 @@ export const himaChart = z.strictObject({
   for (const name of chart.highlight) {
     if (!chart.categories.includes(name)) ctx.addIssue({ code: 'custom', path: ['highlight'], message: `names "${name}", which is not a category` });
   }
+  // Categories and series names are the client's React row/column keys (`HimaChartCard`), so a
+  // duplicate would collide and could mix up rows; a chart with two identical labels is ambiguous.
+  const dup = (names: readonly string[]): string | undefined => names.find((name, i) => names.indexOf(name) !== i);
+  const dupCategory = dup(chart.categories);
+  if (dupCategory !== undefined) ctx.addIssue({ code: 'custom', path: ['categories'], message: `names "${dupCategory}" more than once; categories must be unique` });
+  const dupSeries = dup(chart.series.map((series) => series.name));
+  if (dupSeries !== undefined) ctx.addIssue({ code: 'custom', path: ['series'], message: `names "${dupSeries}" more than once; series names must be unique` });
 });
 export type HimaChart = z.infer<typeof himaChart>;
 
