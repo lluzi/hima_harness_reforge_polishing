@@ -54,6 +54,7 @@ export interface OarMemberProcessOptions {home:string;retainedMaterialsDir:strin
   localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'captureClosedContext'|'stopAll'|'recover'> & Partial<Pick<OarLocalMemberRuntime,'admitAcceptedWait'>>;
   runtimeAssets?:(runtime:'pi'|'opencode')=>Promise<LocalMemberAssets>;
   sharedDeepSeekModel:(readCredential:boolean)=>Promise<SharedDeepSeekFallback>;modelEnvironment?:()=>SharedDeepSeekEnvironment}
+const supportedMemberTools=new Set(['hima-member-context','hima-github-push','hima-github-pr']);
 async function memberSkillFiles(member:TeamDefinition['members'][number]):Promise<readonly {path:string;bytes:Uint8Array}[]> {
   const root=new URL('../skills/',import.meta.url),files:{path:string;bytes:Uint8Array}[]=[];
   async function walk(relative:string) {
@@ -321,10 +322,14 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       await host(async()=>{
         const continuity=await privateLocalMemberContinuity(p);
         const snapshot=await store.run(p.identity.runId),definition=(snapshot.opening.data as unknown as {definition:TeamDefinition}).definition;
+        const member=definition.members.find(row=>row.id===p.memberId);
+        if(!member)throw new Error('Frozen Team member is unavailable.');
         const source='source' in p.identity?p.identity.source:undefined;if(source?.kind!=='team')throw new Error('OAR member requires its exact independent Team source.');
         if(!await store.readTeamGrant(grantId(p)))await memberCallbacks.runInAsyncScope(()=>store.issueTeamGrant({grantId:grantId(p),actorId:p.memberId,projectId:p.projectId,teamId:source.team.teamId,
           taskId:source.taskId,memberId:p.memberId,runId:p.identity.runId,effectId:p.identity.effectId,generation:p.generation,
-          capabilities:['read-task','send-message','read-material','query-memory',...(definition.leaderMemberId===p.memberId?['delegate' as const]:[])],expiresAt:p.deadlineAt,revokedAt:null}));
+          capabilities:['read-task','send-message','read-material','query-memory',...(definition.leaderMemberId===p.memberId?['delegate' as const]:[]),
+            ...(member.toolRefs.includes('hima-github-push')?['github-push' as const]:[]),
+            ...(member.toolRefs.includes('hima-github-pr')?['github-pr' as const]:[])],expiresAt:p.deadlineAt,revokedAt:null}));
         const config=await model(p),bound=await fact(p,'model-binding'),digest=jsonDigest(config);
         if(bound&&bound!==digest)throw new Error('Member model configuration changed after original preparation; restore it before recovery.');
         await record(p,'model-binding',digest);
@@ -332,7 +337,6 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         const controllerBinding={runnerSha256:createHash('sha256').update(runner).digest('hex'),assets};
         const prior=await fact(p,'controller-binding');if(prior&&jsonDigest(prior)!==jsonDigest(controllerBinding))throw new Error('Original member runtime/controller changed; restore it before recovery.');
         await record(p,'controller-binding',controllerBinding);
-        const member=definition.members.find(row=>row.id===p.memberId)!;
         const skillFiles=await memberSkillFiles(member);await record(p,'skill-binding',skillFiles.map(file=>({path:file.path,sha256:createHash('sha256').update(file.bytes).digest('hex')})));
         await record(p,'local-intent',{sessionKey:p.sessionKey,generation:p.generation,memberId:p.memberId});
         const invocation=(await store.flowInvocations(p.identity.runId)).find(row=>row.identity.effectId===p.identity.effectId);
@@ -487,7 +491,7 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
           catch(error) {missing.push(`${member.id}: ${error instanceof Error?error.message:'Member model configuration is unavailable.'}`);}
         }
         try {await memberSkillFiles(member);}catch {missing.push(`${member.id}: select installed, bounded native Skills.`);}
-        if(member.toolRefs.some(ref=>ref!=='hima-member-context')||member.knowledgeRefs.length)missing.push(`${member.id}: referenced tools/knowledge must be resolved before execution.`);
+        if(member.toolRefs.some(ref=>!supportedMemberTools.has(ref))||member.knowledgeRefs.length)missing.push(`${member.id}: referenced tools/knowledge must be resolved before execution.`);
       }
       for(const runtime of new Set(definition.members.map(member=>member.runtime)))try{await assetsFor(runtime);}catch(error){missing.push(error instanceof Error?error.message:'Local native runtime dependencies are unavailable.');}
       return {ready:missing.length===0,missing};
@@ -500,7 +504,7 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       try {await model({projectId,modelRef:member.modelRef,runtime:member.runtime});await assetsFor(member.runtime);}
       catch(error) {throw new TaskAdapterMaterializationError({code:'team-executor-unavailable',message:error instanceof Error?error.message:'Member model configuration is unavailable.',source:'oar-member'});}
       try {await memberSkillFiles(member);}catch {throw new TaskAdapterMaterializationError({code:'team-member-reference-unavailable',message:'Select installed, bounded native Skills before execution.',source:'oar-member'});}
-      if(member.toolRefs.some(ref=>ref!=='hima-member-context')||member.knowledgeRefs.length)throw new TaskAdapterMaterializationError({code:'team-member-reference-unavailable',message:'Resolve this member\'s declared tools/knowledge before execution.',source:'oar-member'});
+      if(member.toolRefs.some(ref=>!supportedMemberTools.has(ref))||member.knowledgeRefs.length)throw new TaskAdapterMaterializationError({code:'team-member-reference-unavailable',message:'Resolve this member\'s declared tools/knowledge before execution.',source:'oar-member'});
       const binding=await host(()=>store.readTeamExecutionBinding(context.request.identity));
       return oarTaskAdapter({member,deadlineAt:binding.deadlineAt,...continuationOptions(binding.continuation),...(binding.initialHostPrompt?{initialHostPrompt:binding.initialHostPrompt}:{}),port,resources:{siteId:'oar:'+context.flow.method!.sha256,jobs:1,licences:{}},capacity:{jobs:1,licences:{}}});
     },

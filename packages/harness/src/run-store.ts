@@ -3,6 +3,7 @@ import { teamMessageDigest, type TaskRef, type TeamMessageActor, type TeamMessag
 import type { TeamAttachmentStore, PersistedAttachmentOriginal, StagedAttachment } from './team-attachments.js';
 import type { TeamServiceReceipt } from './team-service-runtime.js';
 import { TeamError, teamDefinition, actorGrant, type TeamDefinition, type TeamView, type ActorGrant, type TeamTaskView, type TeamActor, type TeamDefinitionActor, type TeamDefinitionHandoffRequest, type TeamDefinitionHandoffGate, type TeamDefinitionHandoffView } from './team-contract.js';
+import { parseTeamGitHubTask } from './team-worktree.js';
 import { compileTeamFlow, freezeTeamDelegation } from './flow-compiler.js';
 import { bindTeamHumanRequest, validateTeamHumanResponse, type TeamHumanRequest, type TeamHumanResponse, type TeamDelegationAdmission, type TeamDelegationGate, type TeamFlowStore, type TeamWaitAcceptance, type TeamSavedContext, type TeamEffectContinuation, type TeamEffectHead, type TeamResultInput, type TeamFlowContinuationRequest, type FlowStart } from './flow-workflow.js';
 import type { TeamDefinitionStore } from './team.js';
@@ -164,7 +165,7 @@ export class RunStore {
     this.#source = source;
   }
   /** Messaging/materials share the existing application transaction and control authority. */
-  private async workspaceAccess(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate',writing=false) {
+  private async workspaceAccess(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate'|'github-push'|'github-pr',writing=false) {
     if(writing)await this.#assertHostAdmission(client);
     else await client.query('SELECT singleton FROM hima.host_exit WHERE singleton=true FOR SHARE');
     const task=(await client.query<{task:Omit<TeamTaskView,'readiness'>}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3',[ref.projectId,ref.teamId,ref.taskId])).rows[0]?.task;
@@ -1652,9 +1653,17 @@ export class RunStore {
     return this.transaction(async client=>{
       const token=randomBytes(32).toString('base64url');
       await this.#assertHostAdmission(client);
-      const run=await this.#run(client,grant.runId,true),data=run.opening.data as unknown as {source?:import('./task-contract.js').TaskSource;definition?:TeamDefinition};
+      const run=await this.#run(client,grant.runId,true),data=run.opening.data as unknown as {source?:import('./task-contract.js').TaskSource;definition?:TeamDefinition;actor?:TeamDefinitionActor;start?:{runInput?:{input?:unknown}}};
       const invocation=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1 AND run_id=$2',[grant.effectId,grant.runId])).rows[0]?.invocation;
       if(!invocation||(invocation.context as unknown as {flow:CompiledFlow}).flow.tasks[invocation.identity.taskId]?.memberId!==grant.memberId||grant.actorId!==grant.memberId||('source' in invocation.identity && jsonDigest(invocation.identity.source)!==jsonDigest(data.source))||(grant.capabilities.includes('delegate')&&data.definition?.leaderMemberId!==grant.memberId))throw new TeamError('hima/not-authorized','Grant must bind the exact Host member and invocation source.');
+      const member=data.definition?.members.find(row=>row.id===grant.memberId);
+      if((grant.capabilities.includes('github-push')&&!member?.toolRefs.includes('hima-github-push'))
+        ||(grant.capabilities.includes('github-pr')&&(!member?.toolRefs.includes('hima-github-pr')||data.definition?.leaderMemberId!==grant.memberId)))
+        throw new TeamError('hima/not-authorized','GitHub capability must be declared by the frozen member role.');
+      if(grant.capabilities.includes('github-push')||grant.capabilities.includes('github-pr')) {
+        if(data.actor?.kind!=='human')throw new TeamError('hima/not-authorized','GitHub writes require the authenticated human to open the exact Team task.');
+        try {parseTeamGitHubTask(data.start?.runInput?.input);}catch {throw new TeamError('hima/not-authorized','GitHub writes require an exact repository, Issue, base commit and task branch in the original opening.');}
+      }
       await this.#assertFlowEffectCurrent(client,run,grant.effectId);
       if(run.cancelled||run.hold||run.epoch!==grant.generation||Date.now()>=Date.parse(run.deadlineAt)||Date.parse(grant.expiresAt)>Date.parse(run.deadlineAt)||Date.now()>=Date.parse(grant.expiresAt)
         ||data.source?.kind!=='team'||data.source.projectId!==grant.projectId||data.source.taskId!==grant.taskId||data.source.team.teamId!==grant.teamId||!data.definition?.members.some(member=>member.id===grant.memberId))throw new TeamError('hima/not-authorized','Grant does not match current task, member, generation or deadline.');
@@ -1684,7 +1693,7 @@ export class RunStore {
     const row=(await this.#pool.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE grant_id=$1',[grantId])).rows[0];
     return row?actorGrant.parse(row.grant_data):undefined;
   }
-  async authorizeTeamGrant(grant:ActorGrant,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate'):Promise<void> {
+  async authorizeTeamGrant(grant:ActorGrant,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate'|'github-push'|'github-pr'):Promise<void> {
     await this.transaction(async client=>{await this.workspaceAccess(client,{kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},capability);},'hima.authorizeTeamGrant');
   }
   async resolveTeamGrant(token:string):Promise<ActorGrant> {

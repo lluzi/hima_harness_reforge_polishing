@@ -1,0 +1,59 @@
+{
+  "schema": "hima-team-definition/1",
+  "title": "Software issue delivery",
+  "members": [
+    {
+      "id": "lead",
+      "role": "Task lead and integration owner",
+      "runtime": "pi",
+      "modelRef": "default",
+      "skills": ["hima-team-software"],
+      "instructions": "Bind the authorized repository, Issue and base commit; assign implementation and independent review; accept only a commit-bound tested result.",
+      "toolRefs": ["hima-member-context", "hima-github-pr"],
+      "knowledgeRefs": []
+    },
+    {
+      "id": "developer",
+      "role": "Issue implementer",
+      "runtime": "opencode",
+      "modelRef": "default",
+      "skills": ["hima-team-software"],
+      "instructions": "Own one task worktree. Reproduce the Issue, implement the smallest correction and return the exact commit and test evidence.",
+      "toolRefs": ["hima-member-context", "hima-github-push"],
+      "knowledgeRefs": []
+    },
+    {
+      "id": "reviewer",
+      "role": "Independent test and code reviewer",
+      "runtime": "pi",
+      "modelRef": "default",
+      "skills": ["hima-team-software"],
+      "instructions": "Read the frozen candidate commit in a separate worktree; test the Issue behavior and review the diff without writing the developer checkout.",
+      "toolRefs": ["hima-member-context"],
+      "knowledgeRefs": []
+    }
+  ],
+  "leaderMemberId": "lead",
+  "collaboration": "Each member has a distinct task context. The lead records scope, assignments and handoffs; the reviewer examines the exact commit after development and returns actionable findings before PR delivery.",
+  "delivery": {
+    "description": "A reviewed PR linked to the authorized Issue, exact head commit, test receipts and remaining problems.",
+    "output": {
+      "version": "hima-software-delivery/1",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "repository": { "type": "string" },
+          "issueUrl": { "type": "string" },
+          "pullRequestUrl": { "type": "string" },
+          "headCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+          "tests": { "type": "string" },
+          "review": { "type": "string" },
+          "remaining": { "type": "string" }
+        },
+        "required": ["repository", "issueUrl", "pullRequestUrl", "headCommit", "tests", "review", "remaining"],
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -13,6 +13,8 @@ import { teamDelegationRequest } from './flow-definition.js';
 import { openDurableTeamRun, readTeamTask } from './durable-fabric.js';
 import { listTeams, readTeam, listTeamDefinitionVersions, saveTeamDefinition, cloneTeam, exportTeamDefinition } from './team.js';
 import { TeamError, teamTaskRequest, type TeamDefinition, type TeamReadiness, type TeamDefinitionActor } from './team-contract.js';
+import { parseTeamGitHubTask } from './team-worktree.js';
+import { operateTeamGitHub, type TeamGitHubAction } from './team-github.js';
 import type { FlowAdapterContext } from './flow-workflow.js';
 import { taskToolOutput } from './task-contract.js';
 import type { TaskEffectAdapter } from './task-effects.js';
@@ -27,7 +29,7 @@ import type { TaskEffectAdapter } from './task-effects.js';
 //
 // It opens the ledger, makes HimaJudge the one holder of the verdict-writer capability, mounts the
 // Hima namespace where a browser surface is composed, puts the `/hima` command, the `hima_*` tools
-// and the pack authoring pipeline's five skills on the host as effects that unwind when the plugin
+// and bundled user-invoked skills on the host as effects that unwind when the plugin
 // unloads, and picks up the Runs the last process left in flight. What those faces say is `commands.ts` and `tools.ts`; what the operations do is
 // their own modules. Nothing here decides anything: every method below is one of those operations
 // with this host's dependencies handed to it.
@@ -167,10 +169,10 @@ export type { PackFolderSnapshot } from './pack-folder.js';
 export { exportPackMethod, installPackMethod, recoverPackMethod, previewPackTransfer, applyPackTransfer, loadRunPack, packMigrationReceipt, readPackMigrationReceipt, verifiedPackRelocation, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
 export type { PackMigrationReceipt, PackTransferRequest, PackTransferReview } from './release.js';
 export type { PackVersionFile, ReleaseResult } from './release.js';
-// The pack authoring pipeline's five skills (#63): what the bundle puts on a host, and where their
+// Bundled skills (#63, #106): what the bundle puts on a host, and where their
 // bodies and the authoring knowledge they cite live. On the surface because the contract suite holds
 // the registered row against them and the live check invokes two of the stages by name.
-export { himaSkillProvider, himaSkillsDir, registerHimaSkills, HIMA_SKILLS, HIMA_SKILL_PROVIDER, HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE } from './skills.js';
+export { himaSkillProvider, himaSkillsDir, registerHimaSkills, HIMA_PACK_SKILLS, HIMA_SKILLS, HIMA_SKILL_PROVIDER, HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE } from './skills.js';
 export type { HimaSkillName } from './skills.js';
 // The tools the authoring guard holds an authoring session to (#63), and which a Model moment
 // refuses by name (D48). Only the classification is on the surface, and only because the contract
@@ -878,10 +880,9 @@ export default class Hima extends Service {
       interactive:(sessionId,request)=>this.interactive(sessionId,request),
       insightAnalysis:(sessionId,request)=>this.libInsightAnalyses().tool(sessionId,request),
     })) this.ctx.effect(() => this.ctx.tools.register(tool));
-    // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
-    // A person invokes one by typing its name; the model never chooses one for itself, because a
-    // stage is a person's decision about their own pack folder.
-    this.ctx.effect(() => registerHimaSkills(this.ctx), 'hima: the pack authoring pipeline\'s skills');
+    // Pack stages and the software Team method come from the bundle's skills directory (#63, #106).
+    // A person invokes them by name; the model cannot choose one silently.
+    this.ctx.effect(() => registerHimaSkills(this.ctx), 'hima: bundled user-invoked skills');
     // And the rule those stages are actually held to, rather than told (#63). A session standing in
     // a folder under `packsDir` is an authoring session of that folder: it writes nowhere else and
     // has no shell. Registered on this context, so it applies to every agent, and as an effect, so
@@ -1249,12 +1250,30 @@ export default class Hima extends Service {
   }
 
   async memberTeamContext(token:string,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
     const grant=await this.durable.store.resolveTeamGrant(token);
     return this.memberActorContext(grant,request);
   }
   private async memberActorContext(grant:import('./team-contract.js').ActorGrant,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
+    if(request.action==='github') {
+      const value=teamZ.discriminatedUnion('action',[
+        teamZ.strictObject({action:teamZ.literal('checkout')}),teamZ.strictObject({action:teamZ.literal('status')}),
+        teamZ.strictObject({action:teamZ.literal('push-task-branch')}),
+        teamZ.strictObject({action:teamZ.literal('open-pr'),testsCommit:teamZ.string().regex(/^[a-f0-9]{40}$/),reviewCommit:teamZ.string().regex(/^[a-f0-9]{40}$/),
+          tests:teamZ.string().min(1).max(12000),review:teamZ.string().min(1).max(12000),remaining:teamZ.string().min(1).max(12000)}),
+      ]).parse(request.request) as TeamGitHubAction;
+      const capability=value.action==='open-pr'?'github-pr':value.action==='push-task-branch'?'github-push':'read-task';
+      await this.durable.store.authorizeTeamGrant(grant,capability);
+      const run=await this.durable.store.run(grant.runId);
+      const opening=run.opening.data as unknown as {actor?:TeamDefinitionActor;start?:{runInput?:{input?:unknown}}};
+      if(opening.actor?.kind!=='human')throw new TeamError('hima/not-authorized','GitHub writes require an authenticated human-opened task.');
+      const binding=parseTeamGitHubTask(opening.start?.runInput?.input);
+      const lease=await this.durable.store.effectFact(grant.effectId,'native:oar:local-lease') as {memberId?:string;generation?:number;workDirectory?:string}|undefined;
+      if(!lease?.workDirectory||lease.memberId!==grant.memberId||lease.generation!==grant.generation)
+        throw new TeamError('hima/not-authorized','The current member work directory has no matching retained local lease.');
+      return operateTeamGitHub(lease.workDirectory,binding,value,undefined,()=>this.durable.store.authorizeTeamGrant(grant,capability));
+    }
     await this.durable.store.authorizeTeamGrant(grant,['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='delegate'||request.action==='ask-human'||request.action==='wait'?'delegate':request.action==='send-message'||request.action==='ask'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
     if(request.action!=='readTask')return this.teamWorkspaceOperation({kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},request.action,request.request);
     if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
@@ -1326,6 +1345,10 @@ export default class Hima extends Service {
     const retained=value.taskId?await this.durable.store.readTeamTask(projectId,value.teamId,value.taskId):undefined;
     const version=opening?.expectedVersion??retained?.team.version??value.version;
     const view=await readTeam(store,actor,{...ref,version}),readiness=await this.teamExecutor?.readiness(view.definition,projectId)??{ready:false,missing:['Pi/OpenCode runtime and model configuration have not been qualified.']};
+    if(opening&&view.definition.members.some(member=>member.toolRefs.includes('hima-github-push')||member.toolRefs.includes('hima-github-pr'))) {
+      if(origin!=='human')throw new TeamError('hima/not-authorized','Software repository writes require the authenticated human to open the exact Team task.');
+      try {parseTeamGitHubTask(opening.input);}catch {throw new TeamError('hima/team-invalid','Software task opening needs an exact GitHub repository, Issue, base commit and task branch.');}
+    }
     if(opening)return openDurableTeamRun(this.durable,actor,opening,readiness);
     if(!value.taskId)throw new TeamError('hima/team-invalid','Choose a task identity.');
     if(value.action==='readTask')return readTeamTask(this.durable,actor,value.teamId,value.taskId,readiness);
@@ -2198,6 +2221,8 @@ export { startFlow, controlFlow, readFlow, scheduleFlowDeadline, flowWorkflowDef
 export type { FlowStart, FlowAdapterContext, FlowInvocation, FlowOutcome, FlowWorkflowOptions, TeamFlowStore, TeamDelegationAdmission, TeamDelegationGate, TeamHumanRequest, TeamHumanRequestBinding, TeamHumanResponse, TeamFlowContinuationRequest, TeamFlowContinuationStore } from './flow-workflow.js';
 
 export * from './team-contract.js';
+export * from './team-worktree.js';
+export * from './team-github.js';
 export * from './team.js';
 
 export { commandTaskAdapter } from './task-effects.js';

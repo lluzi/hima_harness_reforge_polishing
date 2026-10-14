@@ -1,5 +1,5 @@
 // @hima-seam skills direct
-// The pack authoring pipeline's five skills, carried on the host by one provider (#63).
+// Bundled user-invoked methods, carried on the host by one provider (#63, #106).
 //
 // A HimaPack is authored by a person being carried through five stages — grill, spec, fabric, test,
 // release — and each stage is a skill: instruction text a person invokes by typing its name, which
@@ -18,7 +18,7 @@
 // **Why the model may not choose one.** Every candidate is `userInvocable` and not `modelInvocable`.
 // A stage is a person's decision — a pack author says "now spec it", and the cost of the model
 // deciding that for itself is a pack folder rewritten by a stage nobody asked for. The consequence
-// is deliberate: these five never appear in the model-facing skill catalog at all, and the only way
+// is deliberate: these methods never appear in the model-facing skill catalog at all, and the only way
 // into one is a person typing its name.
 //
 // **The bodies are read from disk on every load**, as the badge does: `ctx.skills.get` is called
@@ -29,11 +29,12 @@ import { fileURLToPath } from 'node:url';
 import { BUNDLED_SKILL_RANK, type SkillCandidate, type SkillDefinition, type SkillProvider } from '@deepseek-ai/dsh-skill';
 import type { Context } from '@deepseek-ai/cordis';
 
-/** The provider these five are registered under, which is also what `/hima pack check` names. */
+/** The provider bundled Hima methods are registered under. */
 export const HIMA_SKILL_PROVIDER = 'hima';
 
-/** The pipeline's five stages, in the order a pack author is carried through them (CONTEXT.md). */
-export const HIMA_SKILLS = ['hima-grill', 'hima-spec', 'hima-fabric', 'hima-test', 'hima-release'] as const;
+/** The pack pipeline stays ordered; the software team method is independent of that pipeline. */
+export const HIMA_PACK_SKILLS = ['hima-grill', 'hima-spec', 'hima-fabric', 'hima-test', 'hima-release'] as const;
+export const HIMA_SKILLS = [...HIMA_PACK_SKILLS, 'hima-team-software'] as const;
 
 /** One stage's name. */
 export type HimaSkillName = (typeof HIMA_SKILLS)[number];
@@ -76,10 +77,11 @@ const DESCRIPTIONS: Readonly<Record<HimaSkillName, string>> = {
   'hima-fabric': 'Compile the pack spec into a HimaPack a Campaign can run: its contract, its graph, its semantics file, and the rules, choosers, reader scripts and knowledge they name — refusing a spec that contradicts itself, naming the line.',
   'hima-test': 'Run the compiled pack on a real Site as a campaign marked a test run, and write the test record from what that run recorded, without which a pack is not releasable.',
   'hima-release': 'Make a tested pack a version somebody can install: seal the files it is made of with the hashes this harness computed, and the test record it rests on.',
+  'hima-team-software': 'Develop an authorized GitHub Issue with a mixed Pi/OpenCode team, independent commit-bound review and a tested pull request.',
 };
 
 /**
- * The directory the five bodies and their knowledge sit in, inside the installed bundle.
+ * The directory the bundled bodies and their knowledge sit in, inside the installed bundle.
  *
  * Resolved from this module's own location rather than from a configured path, because it is part of
  * the package: `packages/harness/skills/` in a checkout, `skills/` beside `lib/` in an install.
@@ -98,7 +100,7 @@ export function himaSkillsDir(): string {
 /** Where one stage's instruction body is. */
 const bodyFile = (name: HimaSkillName): string => path.join(himaSkillsDir(), name, 'SKILL.md');
 
-/** The candidate list, computed once: five bundled skills a person may invoke and the model may not. */
+/** The candidate list, computed once: bundled skills a person may invoke and the model may not. */
 const candidates: readonly SkillCandidate[] = HIMA_SKILLS.map((name) => ({
   name,
   description: DESCRIPTIONS[name],
@@ -154,7 +156,7 @@ export function himaSkillProvider(): SkillProvider {
 }
 
 /**
- * Put the five stages on a host, for as long as the bundle is mounted.
+ * Put bundled Hima methods on a host, for as long as the bundle is mounted.
  *
  * @param ctx - the context the bundle was applied with; its `skills` registry takes the provider.
  * @returns the registry's own disposer, so the caller can hold it as one effect.

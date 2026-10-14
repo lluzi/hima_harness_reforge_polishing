@@ -306,7 +306,7 @@ const APPLIED: readonly string[] = [
 /** The knowledge the stage read and did not apply: read, and for that reason not cited. */
 const READ_AND_NOT_APPLIED = HIMA_KNOWLEDGE_FILES.filter((file) => !APPLIED.includes(file));
 
-test('on a booted host: the bundle registers the pipeline\'s five skills from one provider — a person\'s to invoke, never the model\'s to choose', async () => {
+test('on a booted host: bundled methods use one provider and require a person to invoke them', async () => {
   const h = await createHimaHome();
   let host: InProcessHost | undefined;
   try {
@@ -314,7 +314,7 @@ test('on a booted host: the bundle registers the pipeline\'s five skills from on
     const listed = await host.ctx.skills.list({ cwd: h.workspace });
     const mine = listed.filter((s) => s.provider === HIMA_SKILL_PROVIDER);
     assert.deepEqual(mine.map((s) => s.name).sort(), [...HIMA_SKILLS].sort(),
-      `the five stages of the pipeline are on the host: ${listed.map((s) => `${s.name}@${s.provider}`).join(', ')}`);
+      `the bundled methods are on the host: ${listed.map((s) => `${s.name}@${s.provider}`).join(', ')}`);
 
     for (const summary of mine) {
       assert.equal(summary.source, 'bundled', `${summary.name} comes from the bundle`);

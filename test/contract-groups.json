@@ -56,6 +56,7 @@
     "test/contract/himateam-delegation-compiler.test.ts",
     "test/contract/himateam-exit.host.test.ts",
     "test/contract/himateam-flow.host.test.ts",
+    "test/contract/himateam-github-policy.host.test.ts",
     "test/contract/himateam-handoff.host.test.ts",
     "test/contract/himateam-handoff.unit.test.ts",
     "test/contract/himateam-memory-panel.test.ts",
@@ -152,6 +153,7 @@
     "test/contract/himateam-definition-handoff.host.test.ts",
     "test/contract/oar-native-journal-ipc.test.ts",
     "test/contract/himateam-signals.host.test.ts",
+    "test/contract/himateam-software.host.test.ts",
     "test/contract/himateam-native-busy-barrier.local.test.ts"
   ],
   "desktop": [
