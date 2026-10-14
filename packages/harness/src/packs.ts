@@ -718,6 +718,37 @@ export const strategyKnob = z
     }
   });
 
+/**
+ * What a person reads for a node, an autopilot segment or a Results row: an optional display name
+ * and a one-line meaning. Words only — identity, routing, execution and the method digest keep
+ * using the id, so adding or editing either never changes what a Run of the method is.
+ */
+const displayLabel = z.string().min(1).max(48);
+const displayAbout = z.string().min(1).max(240);
+const nodeWords = { label: displayLabel.optional(), about: displayAbout.optional() };
+
+/**
+ * The before/after table a person reads on the Results face: which Reader's observations fill each
+ * column and which semantic values are the rows. Display only; every value still comes from a Reader
+ * observation in HimaLedger, so the table describes the record and never stands in for it.
+ */
+export const packResultsColumn = z.strictObject({ label: displayLabel, reader: z.string().min(1) });
+export const packResultsRow = z.strictObject({
+  type: declaredName, label: displayLabel, unit: z.string().max(16).optional(),
+  better: z.enum(['higher', 'lower']).optional(), digits: z.number().int().min(0).max(6).optional(),
+});
+export const packResults = z.strictObject({
+  headline: packResultsRow.optional(),
+  columns: z.array(packResultsColumn).min(1).max(4),
+  rows: z.array(packResultsRow).min(1).max(12),
+});
+export type PackResults = z.infer<typeof packResults>;
+
+/** Where a Pack's tools and agents leave the human-readable tool reports a person opens on the
+ *  Reports face: `<dir>/<node id>/r<round>/<file>`, relative to the Campaign workspace. Display only. */
+export const packReports = z.strictObject({ dir: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/) });
+export type PackReports = z.infer<typeof packReports>;
+
 export const packContract = z.strictObject({
   id: packId,
   version: z.string(),
@@ -799,10 +830,15 @@ export const packContract = z.strictObject({
    * `/hima pack check` refuses it.
    */
   words: z.record(declaredName, packWord).default({}),
+  /** The Results face's before/after table. Optional; absent keeps the plain observation list. */
+  results: packResults.optional(),
+  /** The Reports face's tool-report folder. Optional; absent shows no tool reports. */
+  reports: packReports.optional(),
 });
 export type PackContract = z.infer<typeof packContract>;
 // A strict versioned task flow may have no Strategy to choose. The public legacy parser keeps
 // its original Loop contract; the normal loader selects this data shape from graph.yml's schema.
+// `results` and `reports` are inherited unchanged, so a flow Pack declares them exactly as a legacy one does.
 const flowPackContract = packContract.extend({ strategy: z.record(declaredName, strategyKnob).default({}) });
 export type PackTool = z.infer<typeof packTool>;
 export type ContractOutput = z.infer<typeof contractOutput>;
@@ -880,6 +916,7 @@ export type NodeArgument = z.infer<typeof nodeArgument>;
 const actNode = z.strictObject({
   id: packId,
   kind: z.literal('act'),
+  ...nodeWords,
   parameters: z
     .strictObject({
       /** A tool of the contract to run on the Site. */
@@ -901,6 +938,7 @@ const actNode = z.strictObject({
 const judgeNode = z.strictObject({
   id: packId,
   kind: z.literal('judge'),
+  ...nodeWords,
   parameters: z.strictObject({
     /** The rules to apply, in order. The outgoing edge is chosen by the outcome of the first. */
     rules: z.array(z.string().min(1)).min(1),
@@ -937,6 +975,7 @@ export type PackConverge = z.infer<typeof packConverge>;
 const exploreNode = z.strictObject({
   id: packId,
   kind: z.literal('explore'),
+  ...nodeWords,
   parameters: z.strictObject({
     /**
      * The chooser to apply, by identity — a file under `choosers/`, exactly as a rule is (D38).
@@ -972,6 +1011,7 @@ const exploreNode = z.strictObject({
 const waitNode = z.strictObject({
   id: packId,
   kind: z.literal('wait'),
+  ...nodeWords,
   parameters: z.strictObject({ blocker: z.string().min(1) }),
 });
 
@@ -1045,6 +1085,7 @@ export const segmentAutopilot = z.strictObject({
   from: z.array(packId).min(1).max(16),
   /** Where it stops: the owner's decision points and the Run's honest ending. */
   until: z.array(packId).min(1).max(16),
+  ...nodeWords,
 });
 export type ForkAutopilot = z.infer<typeof forkAutopilot>;
 export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
@@ -1054,23 +1095,61 @@ export type SegmentAutopilot = z.infer<typeof segmentAutopilot>;
  * Run's Live tab as a few stations instead of the full canvas. A station is a step box with a
  * checklist of the graph's nodes, or a team of agents (one member per node). Edges and metrics say
  * what a person should see; none of it reaches compilation, the method digest's meaning or a Run.
+ *
+ * 2026-10-14 (A0): the strip's layout declarations are folded into this one view. A station takes an
+ * optional `row` (stations sharing a row sit side by side, at most two); the view takes an optional
+ * `hidden` node list and a `metrics` entry may read a Reader's semantic value instead of a node's
+ * committed output. `edges` becomes optional: *absent* means "derive the edges from the graph's own
+ * edges that cross stations", while `[]` means "no edges". See the parse normalisation below.
  */
 const viewRounds = z.enum(['first', 'later', 'all']);
 export const packViewStation = z.strictObject({
   id: packId,
   label: z.string().min(1).max(48),
   about: z.string().max(240).optional(),
+  /** The station's row, 0 at the top; at most two stations share a row (side by side, in declared
+   *  order). Absent keeps the single-column team layout. */
+  row: z.number().int().min(0).max(7).optional(),
   checklist: z.array(z.strictObject({ label: z.string().min(1).max(64), nodes: z.array(packId).min(1).max(16), rounds: viewRounds.optional() })).max(12).default([]),
   team: z.array(z.strictObject({ node: packId, label: z.string().min(1).max(32), role: z.string().max(64).optional() })).max(8).optional(),
 });
+const viewEdge = z.strictObject({ from: packId, to: packId, label: z.string().max(32).optional(), back: z.boolean().optional() });
+/**
+ * One top-line number. It is read either from a node's latest committed output (`node` + `path`, the
+ * original team metric) or from a Reader's semantic value over the Run's observations (`reader` +
+ * `type`, new in A0 for the strip's best/target line). Exactly one of the two pairs is present — the
+ * schema's union enforces it, since each member is strict and rejects the other's keys. `digits`
+ * rounds a number for display and `pick` says which observation a Reader metric reads (the latest, or
+ * the best so far). Display only, like the whole view.
+ *
+ * The parsed value always carries `node` and `path` (empty for a Reader metric) and a `kind`
+ * discriminant, so the existing node-reading consumer (`team-view.ts`) compiles and keeps its
+ * behaviour unchanged: for a Reader metric `node` is the empty string, which names no task, so that
+ * consumer yields nothing for it. Slice A reads `kind`/`reader`/`type` and computes the value.
+ */
+const viewMetricShared = {
+  label: z.string().min(1).max(32), unit: z.string().max(12).optional(), goal: z.string().optional(),
+  better: z.enum(['lower', 'higher']).optional(), digits: z.number().int().min(0).max(6).optional(),
+  pick: z.enum(['latest', 'best']).optional(),
+};
+const viewMetricNode = z.strictObject({ ...viewMetricShared, node: packId, path: z.array(z.string().min(1)).min(1).max(8) });
+const viewMetricReader = z.strictObject({ ...viewMetricShared, reader: z.string().min(1), type: semanticSlug });
+const viewMetric = z.union([viewMetricNode, viewMetricReader]).transform((metric) =>
+  'reader' in metric
+    ? { ...metric, kind: 'reader' as const, node: '', path: [] as string[] }
+    : { ...metric, kind: 'node' as const });
 export const packView = z.strictObject({
   title: z.string().max(80).optional(),
   stations: z.array(packViewStation).min(1).max(8),
-  edges: z.array(z.strictObject({ from: packId, to: packId, label: z.string().max(32).optional(), back: z.boolean().optional() })).max(16).default([]),
-  /** Numbers for the top line, read from a node's latest committed output (a path of keys). */
-  metrics: z.array(z.strictObject({ label: z.string().min(1).max(32), node: packId, path: z.array(z.string().min(1)).min(1).max(8),
-    unit: z.string().max(12).optional(), goal: z.string().optional(), better: z.enum(['lower', 'higher']).optional() })).max(4).default([]),
-});
+  /** Nodes no station lists and that are drawn nowhere. When declared (non-empty), every graph node
+   *  must be placed in a station or named here — the strip's coverage rule. */
+  hidden: z.array(packId).default([]),
+  /** Station-to-station edges. Absent ⇒ derived from the graph (`deriveEdges` is then true); `[]` ⇒
+   *  no edges (`deriveEdges` false). */
+  edges: z.array(viewEdge).max(16).optional(),
+  /** Numbers for the top line (see `viewMetric`). */
+  metrics: z.array(viewMetric).max(4).default([]),
+}).transform((view) => ({ ...view, deriveEdges: view.edges === undefined, edges: view.edges ?? [] }));
 export type PackView = z.infer<typeof packView>;
 
 export const packGraph = z.strictObject({
@@ -1083,10 +1162,16 @@ export const packGraph = z.strictObject({
   loops: z.record(packId, packLoop).default({}),
   /** Where the Harness drives the graph itself (ADR-0016). Absent: every node is the owner's. */
   autopilot: z.array(z.union([forkAutopilot, segmentAutopilot])).max(16).default([]),
-  /** Display only: the Pack's `view.yml` (see `packView`). */
+  /** Display only: the Pack's `view.yml` (see `packView`). Carried on the in-memory graph only —
+   *  `loadPackFrom` injects it from `view.yml`. It is never parsed out of `graph.yml`: a `view:`
+   *  key in `graph.yml` is refused (see `packGraphFile`), because `view.yml` is the one declaration. */
   view: packView.optional(),
 });
 export type PackGraph = z.infer<typeof packGraph>;
+
+/** The schema `graph.yml` itself is parsed with: the graph without its injected `view`. Strict, so a
+ *  `view:` key left in `graph.yml` is refused and `view.yml` stays the single view declaration. */
+const packGraphFile = packGraph.omit({ view: true });
 
 /** A byte-identified Ledger fact the proposal actually used as input. Fabric recomputes the
  * identity from the cited record; this value is never trusted as a declaration about content. */
@@ -1958,7 +2043,7 @@ export function loadPackFrom(folder: PackFolderSnapshot): Pack {
   const versioned = typeof graphDocument === 'object' && graphDocument !== null && 'schema' in graphDocument;
   const contract = (versioned ? flowPackContract : packContract).parse(parse(contractText));
   const declaration = versioned ? flowSource.parse(graphDocument) : undefined;
-  const projected = declaration ? projectFlowGraph(declaration) : packGraph.parse(graphDocument);
+  const projected = declaration ? projectFlowGraph(declaration) : packGraphFile.parse(graphDocument);
   const viewText = folder.text(packFiles.view);
   const graph = viewText === undefined ? projected : { ...projected, view: packView.parse(parse(viewText)) };
   const compiled = declaration ? compilePackFlow(declaration, folder, contract) : undefined;
@@ -2033,6 +2118,19 @@ export function installedPacks(packsDir: string): string[] {
   return names.filter((name) => packId.safeParse(name).success && holdsAContract(name)).sort();
 }
 
+/** A contract reader's emitted value types, for holding a view's Reader metric to what that reader
+ *  actually produces: the pack's own `readers/<id>.yml` if it declares one, else the bundled reader
+ *  of that id. Undefined when neither answers (a broken or missing declaration), which `checkPack`
+ *  reports in full — a view metric does not re-litigate it, it just cannot check the type and says so
+ *  by checking nothing. */
+function readerEmits(pack: Pack, id: string): readonly string[] | undefined {
+  let found: PackReaderLookup;
+  try { found = resolvePackReader(pack, id, 'the reading'); } catch { return undefined; }
+  if (found.kind === 'declared') return found.declaration.emits;
+  if (found.kind === 'absent') return readerNamed(id)?.emits;
+  return undefined;
+}
+
 /** Every way a pack can contradict itself. Each one throws naming the file a person must edit.
  *  Asked of the one reading the pack was parsed out of, so that what the contract declares and what
  *  the folder holds are two facts about the same instant. */
@@ -2043,20 +2141,57 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   if (graph.id !== id) broken(packFiles.graph, `declares id "${graph.id}", not "${id}"`);
   if (graph.version !== contract.version) broken(packFiles.graph, `is version ${graph.version} while ${packFiles.contract} is version ${contract.version}`);
   if (graph.view !== undefined) {
+    const view = graph.view;
     const nodeIds = new Set(graph.nodes.map((node) => node.id));
     const stationIds = new Set<string>();
-    for (const station of graph.view.stations) {
+    // Every node a view draws is drawn in one place: the strip's rule, now the team's too. `place`
+    // holds that and that the node is the graph's at all, so a node named twice or named nowhere real
+    // is one sentence about `view.yml`, not a silent double-draw.
+    const placed = new Map<string, string>();
+    const place = (nodeId: string, where: string): void => {
+      if (!nodeIds.has(nodeId)) broken(packFiles.view, `${where} names "${nodeId}", which is not a node of ${packFiles.graph}`);
+      const other = placed.get(nodeId);
+      if (other !== undefined) broken(packFiles.view, `node "${nodeId}" is in ${other} and in ${where}; every node is drawn in one place`);
+      placed.set(nodeId, where);
+    };
+    const rows = new Map<number, number>();
+    for (const station of view.stations) {
       if (stationIds.has(station.id)) broken(packFiles.view, `declares two stations called "${station.id}"`);
       stationIds.add(station.id);
-      if (station.checklist.length === 0 && (station.team ?? []).length === 0) broken(packFiles.view, `station "${station.id}" needs a checklist or a team`);
-      for (const id of [...station.checklist.flatMap((line) => line.nodes), ...(station.team ?? []).map((member) => member.node)]) {
-        if (!nodeIds.has(id)) broken(packFiles.view, `station "${station.id}" names "${id}", which is not a node of ${packFiles.graph}`);
+      const hasChecklist = station.checklist.length > 0;
+      const hasTeam = (station.team ?? []).length > 0;
+      if (hasChecklist === hasTeam) broken(packFiles.view, `station "${station.id}" is drawn as a checklist or as a team, so it needs exactly one of the two`);
+      if (station.row !== undefined) {
+        const count = (rows.get(station.row) ?? 0) + 1;
+        rows.set(station.row, count);
+        if (count > 2) broken(packFiles.view, `row ${String(station.row)} holds more than two stations`);
+      }
+      for (const nodeId of [...station.checklist.flatMap((line) => line.nodes), ...(station.team ?? []).map((member) => member.node)]) {
+        place(nodeId, `station "${station.id}"`);
       }
     }
-    for (const edge of graph.view.edges) for (const end of [edge.from, edge.to]) {
+    for (const nodeId of view.hidden) place(nodeId, 'hidden');
+    // Coverage only when the view declares `hidden`: a view that hides nothing (MAGE) may leave nodes
+    // off the strip, but one that hides some is saying where every node goes, so a node it forgot is
+    // an omission a person must see.
+    if (view.hidden.length > 0) for (const nodeId of nodeIds) {
+      if (!placed.has(nodeId)) broken(packFiles.view, `node "${nodeId}" is in no station and not hidden`);
+    }
+    for (const edge of view.edges) for (const end of [edge.from, edge.to]) {
       if (!stationIds.has(end)) broken(packFiles.view, `edge ${edge.from} -> ${edge.to} names "${end}", which is not a station`);
     }
-    for (const metric of graph.view.metrics) if (!nodeIds.has(metric.node)) broken(packFiles.view, `metric "${metric.label}" reads "${metric.node}", which is not a node of ${packFiles.graph}`);
+    const contractReaders = new Set(contract.outputs.map((output) => output.reader).filter((reader): reader is string => reader !== undefined));
+    for (const metric of view.metrics) {
+      if (metric.kind === 'node') {
+        if (!nodeIds.has(metric.node)) broken(packFiles.view, `metric "${metric.label}" reads "${metric.node}", which is not a node of ${packFiles.graph}`);
+        continue;
+      }
+      if (!contractReaders.has(metric.reader)) broken(packFiles.view, `metric "${metric.label}" reads reader "${metric.reader}", which no ${packFiles.contract} output declares`);
+      const emits = readerEmits(pack, metric.reader);
+      if (emits !== undefined && !emits.includes(metric.type)) {
+        broken(packFiles.view, `metric "${metric.label}" reads "${metric.type}" from reader "${metric.reader}", which that reader does not emit`);
+      }
+    }
   }
 
   if (contract.goal !== undefined && pack.flowSource === undefined) {

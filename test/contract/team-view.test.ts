@@ -76,6 +76,16 @@ test('a view that names a node the graph does not have is refused, naming view.y
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('schema: the MAGE view parses as declared edges and node metrics, so the team layout is unchanged', () => {
+  const view = pack.graph.view!;
+  // `edges` is declared, so edges stand as written and the layout does not derive them.
+  assert.equal(view.deriveEdges, false);
+  // `hidden` defaults to an empty list; MAGE leaves nodes off the view without a coverage rule.
+  assert.deepEqual(view.hidden, []);
+  // Every MAGE metric reads a node's committed output, so each is a node metric.
+  assert.deepEqual(view.metrics.map((m) => m.kind), ['node', 'node', 'node']);
+});
+
 test('a working agent carries its live activity; a malformed activity is dropped, never an error', () => {
   const activity = { toolCalls: 4, planDone: 1, planTotal: 3, latest: { kind: 'execute', title: 'python3 mage_placement_cli.py mage-round', at: '2026-10-13T08:00:00Z' } };
   assert.deepEqual(residentActivityOf(activity), activity);
