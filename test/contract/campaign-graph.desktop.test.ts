@@ -76,7 +76,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     allowedWrappers: ['/usr/bin/python3'], licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 } });
   const port = await freePort();
   const d = await bootDriver(t, { existing: h, remoteDebuggingPort: port, theme: 'light', window: { width: 1440, height: 960 }, model: { replay: { file: replay.file, override: replay.override, children: replay.children } },
-    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1', HIMA_DRIVER_DISPLAY: 'Catsights' } });
+    env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1', HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights' } });
   if (!d) { await h.dispose(); return; }
   const browser = await inspectWindow(port);
   let runId: string | undefined;
