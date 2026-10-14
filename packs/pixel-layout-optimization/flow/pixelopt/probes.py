@@ -166,6 +166,17 @@ def _rule_map(parsed):
     return out
 
 
+def _layer_in(lay, name):
+    """The layout's own spelling of a deck layer name (decks and manifests differ in case)."""
+    if name in lay.polys:
+        return name
+    low = str(name).lower()
+    for k in lay.polys:
+        if k.lower() == low:
+            return k
+    return name
+
+
 def _pitch(lay):
     pts = [p for ps in lay.polys.values() for p in ps if len(p)]
     allv = np.vstack(pts)
@@ -193,6 +204,7 @@ def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
         if rule not in rmap:
             continue
         La, Lb, d = rmap[rule]
+        La, Lb = _layer_in(lay, La), _layer_in(lay, Lb)
         if len(pts) >= 3:
             zone = Polygon(pts).buffer(0.15)
         else:
@@ -217,7 +229,9 @@ def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
                             if axis == "y" and kx != 0:
                                 continue
                             vv = Point(v[0] + kx * P, v[1] + ky * H)
-                            if not zone.buffer(0.05).contains(vv):
+                            # a vertex just outside the marker can still be the offender (two
+                            # edges too close meet the marker along their length)
+                            if zone.distance(vv) > d + 0.05:
                                 continue
                             for ib, pb in enumerate(lb_polys):
                                 m = len(pb)
@@ -227,7 +241,7 @@ def propose_pairs(lay, marks, table, base, axis, pitch=None, base_pitch=None):
                                     dd = seg.distance(vv)
                                     if not (1e-6 < dd < d - 1e-6):
                                         continue
-                                    if seg.distance(centroid) >= 3.0:
+                                    if seg.distance(zone) > d + 0.05:
                                         continue
                                     if A == B and ia == ib and (eb == va or (eb + 1) % m == va):
                                         continue  # own adjacent edge

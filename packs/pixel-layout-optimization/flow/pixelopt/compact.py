@@ -132,6 +132,7 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     devices = case.raw.get("devices", {})
     poly_layer = devices.get("polyLayer")
     gate_layer = devices.get("gateLayer")
+    device_pair = {poly_layer, gate_layer}
     cst = case.raw.get("cst", {})
     marker_layer = cst.get("markerLayer")
     plate_layers = list(cst.get("plateLayers", []))
@@ -389,6 +390,10 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                             for o_ in onl:
                                 add(a_, o_, 0.0)
                                 add(o_, a_, 0.0)
+                    elif {a_[1], b_[1]} == device_pair:
+                        # a poly edge on a gate edge stays on it: sliding either way would make
+                        # a transistor that is not in the schematic (or change one that is)
+                        add(a_, b_, 0.0)
         # Cross-layer order: the low stack among itself; each top layer only with itself.
         for stack in ["low"] + sorted(top_layers):
             if stack == "low":
@@ -502,7 +507,8 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     if use_euclid:
         cons += _euclid.generate(polys, var, P0, iP, width, space, xspace, enc,
                                  ge, tag, legalise=legalise,
-                                 zone_fn=(in_zone if _zunion is not None else None))
+                                 zone_fn=(in_zone if _zunion is not None else None),
+                                 margin=case.grid_um)
         if pairs:
             cons += _euclid.pair_constraints(polys, var, P0, iP, pairs, ge, tag)
 
@@ -691,7 +697,7 @@ def _crossings(p, y):
 
 
 def apply(lay, model, x, case):
-    """Return a new Layout with every x-displacement applied, snapped to grid.
+    """Return a new Layout with every x-displacement applied, on the grid.
 
     Outline-copy layers are re-synced to the moved outline; labels keep their
     proportional position between the crossings of their own shape.
@@ -699,12 +705,17 @@ def apply(lay, model, x, case):
     polys = model["polys"]
     var = model["var"]
     grid = case.grid_um
+    # Each displacement is rounded DOWN to the grid, not each vertex to the nearest grid point:
+    # every rule distance is a whole number of grid steps, so x_j - x_k >= c survives
+    # floor(x_j) - floor(x_k) >= c exactly, and shapes that share a variable move together
+    # (rounding vertices separately shaved 5 nm off a TFT width and failed LVS).
+    step = np.floor(np.asarray(x, dtype=float) / grid + 1e-6) * grid
     out = lay.copy()
     newp = {}
     for pi, (n, i, p) in enumerate(polys):
         q = p.copy().astype(float)
         for v in range(len(p)):
-            q[v, 0] = p[v, 0] + x[var(pi, v)]
+            q[v, 0] = p[v, 0] + step[var(pi, v)]
         q = np.round(np.round(q / grid) * grid, ROUND)
         newp.setdefault(n, []).append(q)
     for n in newp:
@@ -725,7 +736,7 @@ def apply(lay, model, x, case):
                     continue
                 yy = ly if any(abs(ly - q[1]) > 1e-6 for q in p) else ly + 1e-4
                 q = p.copy().astype(float)
-                q[:, 0] = [p[v, 0] + x[var(pi, v)] for v in range(len(p))]
+                q[:, 0] = [p[v, 0] + step[var(pi, v)] for v in range(len(p))]
                 co = _crossings(p, yy)
                 cn = dict((v, xx) for xx, v in _crossings(q, yy))
                 left = max([c for c in co if c[0] <= lx], default=None, key=lambda c: c[0])

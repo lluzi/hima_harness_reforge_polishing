@@ -317,10 +317,23 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
         ct_pairs = [_pk(sn, a) for a in ratio_nets]
         cs_pair = _pk(sn, st)
         allpairs = sorted(set(ct_pairs + [cs_pair]))
-        tgt = [target[0] if target else None, target[1] if target else None]
+        binding = []
+        status = "optimal"
+        if target and any(t is not None and abs(t - b) > 1e-6
+                          for t, b in zip(target, pre.pitch(case))):
+            # reach the outline first: the ratio step moves each shape only within the trust
+            # radius, which a pitch change of more than that never fits in
+            sized, sinfo = _compact_pitch_like(pre, case, table, "min-pitch", target,
+                                               pairs_acc, None)
+            if sized is None:
+                return None, sinfo
+            binding.extend(sinfo.get("binding") or [])
+            pre = sized
+            if sinfo.get("status") != "optimal":
+                status = "partial"
+        tgt = list(pre.pitch(case))
 
         lay = pre
-        binding = []
         for ai, axis in enumerate(("x", "y")):
             L = lay if axis == "x" else compact.transpose(lay)
             comp_model = compact.build(L, case, table, pairs=tuple(pairs_acc))
@@ -357,13 +370,13 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
                 else:
                     r_lo = r
             if best is None:
-                return (None if ai == 0 else lay), {"status": "infeasible",
-                                                    "binding": binding}
+                status = "partial"  # this axis keeps the sized layout
+                continue
             m2, res = best
             applied = compact.apply(L, m2, res["x"], case)
             lay = applied if axis == "x" else compact.transpose(applied)
             binding.extend(res.get("binding") or [])
-        return lay, {"status": "optimal", "binding": binding}
+        return lay, {"status": status, "binding": binding}
     except Exception as exc:  # pragma: no cover - defensive until gradients land
         return None, {"status": "unsupported", "binding": ["min-ratio error: %s" % exc]}
 
@@ -437,6 +450,9 @@ def _solve_point(point, ctx):
                     "binding": info.get("binding") or []}
         final = lay
 
+        # judge the layout on the grid, as it will be written: snapping a 45-degree edge can
+        # lose a few nm of a distance the LP held exactly (snap keeps polygon indices)
+        lay = layout.snap(lay, case.grid_um)
         c1, c3, folded = _drc_markers(lay, case, ctx["sitecaps"], ctx["workspace"])
         if c1 == 0 and c3 == 0:
             residual = []
@@ -456,7 +472,10 @@ def _solve_point(point, ctx):
                                     pitch=lp, base_pitch=bp) or [])
         except Exception:
             newp = []
-        newp = [tuple(p) for p in newp if tuple(p) not in pairs]
+        # one grid step more than the rule, so the pair survives the snap; the same pair once
+        held = {p[:6] + p[7:] for p in pairs}
+        newp = [tuple(p[:6]) + (float(p[6]) + case.grid_um,) + tuple(p[7:]) for p in newp
+                if tuple(p[:6]) + tuple(p[7:]) not in held]
         if not newp:
             break
         pairs.extend(newp)

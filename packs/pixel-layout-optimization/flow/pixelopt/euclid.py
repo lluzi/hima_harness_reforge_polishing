@@ -26,8 +26,11 @@ def _union(polys, layer, P0):
 
 
 def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
-             legalise=False, reach_extra=0.0, zone_fn=None):
+             legalise=False, reach_extra=0.0, zone_fn=None, margin=0.0):
     """Append vertex-to-edge distance rows via ``ge``; return the row count.
+
+    A row that holds the full rule distance asks for ``margin`` more (the grid step): the written
+    layout snaps every vertex to the grid, and a 45-degree edge's distance can lose that much.
 
     Under ``legalise`` a pair is raised to the full rule distance only when the
     vertex->foot segment meets a zone (``zone_fn`` returns truthy); with
@@ -127,6 +130,8 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
                                 need = min(dmin, dist)
                         else:
                             need = min(dmin, dist)
+                        if need >= dmin - 1e-9:
+                            need = max(need, min(dmin + margin, dist))
                         dx = vx - foot.x
                         dy = vy - foot.y
                         if abs(dy) >= need - 1e-9:
@@ -193,15 +198,21 @@ def pair_constraints(polys, var, P0, iP, pairs, ge, tag):
         pr = seg.project(Point(vx, vy))
         tag[0] = "pair:%s%d.%d-%s%d.%d need=%.2f" % (La, ia, va, Lb, ib, eb, need)
         rigid = abs(a[1] - b[1]) > 1e-9
-        if rigid and 1e-6 < pr < seg.length - 1e-6 and abs(X1 - X0) > 1e-9:
+        if rigid:
+            # A marker pair is held against the edge's whole line, not just where the vertex
+            # faces it now: the move that broke it may have slid the vertex from facing the
+            # edge's end to facing its middle (a slanted edge the vertex passes along).
             je = var(pb, eb)
             ex, ey = X1 - X0, b[1] - a[1]
             nrm = math.hypot(ex, ey)
             nx_, ny_ = ey / nrm, -ex / nrm
             s = (vx - X0) * nx_ + (vy - a[1]) * ny_
+            need_l = min(need0, abs(s))
+            if need_l <= 1e-6:
+                continue
             sign = 1 if s > 0 else -1
             ge([(jv, sign * nx_), (je, -sign * nx_), (iP, -sign * nx_ * k)],
-               need - sign * s - sign * nx_ * k * P0)
+               need_l - sign * s - sign * nx_ * k * P0)
             cnt += 1
             continue
         foot = seg.interpolate(pr)
