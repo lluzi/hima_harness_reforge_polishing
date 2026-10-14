@@ -1,0 +1,35 @@
+# Display only: how the Live tab draws this Pack's Run as a few stations (packs.ts `packView`). It
+# never reaches the flow, a task or a judge; graph.yml/contract.yml are untouched. The route is a
+# straight line — take the request, let the resident analyst answer it, admit the accepted analysis,
+# write the page — so the edges are the three hand-overs with no return. The analyst station is
+# detected as AI automatically because its tool (custom-analysis) declares outsourcing.
+#
+# No metrics: this Pack's only numeric outputs are descriptive counts of the delivered page (datasets,
+# plots, rows) with no target or better-direction, so a top-line number would mislead. Whether the
+# analysis was admitted is the outcome, and the stations' own states show it.
+title: A resident analyst answers a library question
+stations:
+  - id: request
+    label: Request
+    about: Validates the question and hashes every Liberty or facts source the analyst may read.
+    checklist:
+      - { label: Check the request and its sources, nodes: [prepare-request], rounds: first }
+  - id: analyst
+    label: Library analyst
+    about: An AI agent writes and runs the analysis on the Site and delivers typed datasets and plots.
+    checklist:
+      - { label: Analyse the library, nodes: [custom-analysis] }
+  - id: admission
+    label: Independent admission
+    about: Re-checks the accepted delivery and admits it into the Site's analysis library.
+    checklist:
+      - { label: Admit into the library, nodes: [admit-analysis] }
+  - id: page
+    label: Insight page
+    about: Writes the final insight page and report for the person.
+    checklist:
+      - { label: Write the insight page, nodes: [deliver] }
+edges:
+  - { from: request, to: analyst, label: request }
+  - { from: analyst, to: admission, label: delivery }
+  - { from: admission, to: page, label: admitted }

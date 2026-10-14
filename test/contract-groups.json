@@ -13,6 +13,7 @@
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/agentic-timing-closure-system.test.ts",
     "test/contract/boot.test.ts",
+    "test/contract/bundled-packs.test.ts",
     "test/contract/boundary.test.ts",
     "test/contract/branch-autopilot.host.test.ts",
     "test/contract/campaign-file.host.test.ts",

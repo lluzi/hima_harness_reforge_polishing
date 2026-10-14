@@ -1,0 +1,40 @@
+# Display only: how the Live tab draws this Pack's Run as a few stations (packs.ts `packView`). It
+# never reaches the flow, a task or a judge; graph.yml/contract.yml are untouched. The route is a
+# straight line — prepare the design, hand it to the resident timing engineer, check its result,
+# deliver — so the edges are the three hand-overs with no return. The resident engineer station is
+# detected as AI automatically because its tool (fix-timing) declares outsourcing.
+title: Closing timing on the resident engineer's design
+stations:
+  - id: design
+    label: Design and scenarios
+    about: The starting design state, Site tools and native timing context, then the shared baseline fix every round starts from.
+    checklist:
+      - { label: Check the design and Site inputs, nodes: [prepare-inputs], rounds: first }
+      - { label: Baseline timing and common fix, nodes: [prepare-baseline], rounds: first }
+  - id: engineer
+    label: Timing engineer
+    about: An AI agent works in XTop to close setup and hold, measuring every change against the native reports.
+    checklist:
+      - { label: Close setup and hold in XTop, nodes: [fix-timing] }
+  - id: check
+    label: Independent check
+    about: Checks the committed native measurements against the Goal, keeping collateral uncertainty separate.
+    checklist:
+      - { label: Evaluate the timing result, nodes: [evaluate-timing] }
+  - id: delivery
+    label: Delivery
+    about: Packages the verified engineering result and writes the final timing report.
+    checklist:
+      - { label: Package and report, nodes: [deliver] }
+edges:
+  - { from: design, to: engineer, label: baseline }
+  - { from: engineer, to: check, label: result }
+  - { from: check, to: delivery, label: report }
+# Setup and hold violation counts, baseline (fixed at the common R1 start) against the best so far.
+# The "now" lines carry the Goal of zero remaining violations: the Goal's WNS targets are both 0, and
+# zero WNS is zero timing violations, so they supply the "0" target the chip designer expects.
+metrics:
+  - { label: Setup violations (start), reader: atcs-engineering-result, type: tc_engineering_before_setup_violation_count, pick: latest }
+  - { label: Setup violations (best), reader: atcs-engineering-result, type: tc_engineering_setup_violation_count, pick: best, better: lower, goal: target_setup_wns_ns }
+  - { label: Hold violations (start), reader: atcs-engineering-result, type: tc_engineering_before_hold_violation_count, pick: latest }
+  - { label: Hold violations (best), reader: atcs-engineering-result, type: tc_engineering_hold_violation_count, pick: best, better: lower, goal: target_hold_wns_ns }
