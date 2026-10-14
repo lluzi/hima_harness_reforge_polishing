@@ -175,3 +175,14 @@ export class WorkshopNodeError extends Error {}
 
 /** A before-launch callback vetoed before tmux dispatch; unlike a lost response, no Job was sent. */
 export class LaunchNotDispatchedError extends Error {}
+
+/**
+ * Thrown by the one-report read (`run-reports.ts`) for a report the caller cannot have named right:
+ * a path not shaped `<dir>/<node>/r<k>/<name>`, one that resolves outside the Campaign workspace or is
+ * not a text file (`missing: false`, a bad request), or one that is simply not there, or a Run whose
+ * Pack declares no reports folder at all (`missing: true`, not found).
+ */
+export class ReportPathError extends Error {
+  readonly missing: boolean;
+  constructor(message: string, missing = false) { super(message); this.missing = missing; }
+}

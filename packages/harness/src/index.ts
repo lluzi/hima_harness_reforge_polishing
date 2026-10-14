@@ -65,6 +65,8 @@ import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsT
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
+import { RunReports } from './run-reports.js';
+import { packChartPattern } from './chart-files.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -174,6 +176,10 @@ export { cancelRun } from './recovery.js';
 export { openMoment, momentOnCurrentNode, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
+export { ReportPathError } from './errors.js';
+export * from './charts.js';
+export { RunReports, chartPathPattern, listRunReports, readRunReport, readRunReportBytes, reportListLimit, reportListTtlMs, reportPathPattern, reportReadLimit, sizeBatches, type RunReportBytes } from './run-reports.js';
+export { ChartFileError, chartNoteLimit, chartOf, chartRequestOf, packChartPattern, readChartAnswer, type ChartRequest } from './chart-files.js';
 export { writeExperience, readExperience, readMaterial, retainRunMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
@@ -232,6 +238,9 @@ export type {
   SiteHeadView,
   SiteDiscoverBody,
   LogTailView,
+  RunReportFile,
+  RunReportsView,
+  RunReportText,
 } from './remote.js';
 
 // The Campaign's technical report (#30): what it says, and how a face reads one back. On the surface
@@ -380,17 +389,24 @@ export const HIMA_PRODUCT_CONTEXT = [
   'Data Insight shows the default library analyses. For a library question those pages do not answer, the Guide uses hima_insight_analysis: propose, show the proposal, confirm only after the person agrees in this conversation, then report the admitted result with its analysis page link. Library-quality questions (Vmin bottlenecks, missing drive sizes, faster cells on critical paths, table spikes) become insight rules shown on a Library Insight page.',
 ].join('\n');
 
+/** The most Pack chart files the inventory names per Pack. */
+const packChartInventoryLimit = 12;
+
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
  * Run id or customer material is exposed. Read afresh for every prompt assembly. */
 export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string, visibleRuns?: readonly RunRecord[]): string {
   const packs = installedPacks(packsDir);
   const sites = installedSites(sitesDir);
+  const charts: string[] = [];
   const active = (visibleRuns ?? ledger.runs()).filter((run) => !hasEnded(run.status)).slice(-5);
   const packLine = packs.length === 0
     ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
     : `Installed HimaPacks: ${packs.map((id) => {
       try {
-        const overview = packOverview(loadPack(packsDir, id));
+        const pack = loadPack(packsDir, id);
+        const overview = packOverview(pack);
+        const shipped = [...pack.folder.files.keys()].map((file) => file.replace(/^knowledge\//, '')).filter((file) => packChartPattern.test(file)).sort();
+        if (shipped.length > 0) charts.push(`${id}: ${shipped.slice(0, packChartInventoryLimit).join(', ')}`);
         return `${id}${overview.status === undefined ? '' : ` (${overview.status.raw})`}`;
       } catch {
         return `${id} (unreadable; do not claim ready)`;
@@ -402,7 +418,8 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   const campaignLine = active.length === 0
     ? 'Active Campaigns: none.'
     : `Active Campaigns: ${active.map((run) => `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${run.status ?? 'preparing'}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`).join('; ')}.`;
-  return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
+  const chartLine = charts.length === 0 ? [] : [`Pack charts (show one with hima_chart {pack, file}): ${charts.join('; ')}.`];
+  return [`HimaHarness: ${versionLine()}.`, packLine, ...chartLine, siteLine, campaignLine].join('\n');
 }
 
 /**
@@ -501,6 +518,8 @@ export default class Hima extends Service {
    *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
    *  prevents a fast Run from producing more durable turns than its Agent can consume. */
   private readonly pendingProgressNotifications = new Map<string, MessageId>();
+  /** The Run tool-report reader (`run-reports.ts`), with its short per-Run listing cache. */
+  private readonly reports = new RunReports(() => ({ readers: this.viewReaders(), sitesDir: this.config.sitesDir }));
   private readonly guideNoticeIdentities = new Map<string,string>();
   private readonly factStop = new AbortController();
   private factProjection:Promise<void>=Promise.resolve();
@@ -608,8 +627,8 @@ export default class Hima extends Service {
         const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
         const role=linked.some(run => run.control?.owner === id)?'execution-owner':'guide';
         const roleInstruction=role==='execution-owner'
-          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion.'
-          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner.';
+          ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. Show charts with hima_chart: a Run report chart hima_context names (hima_chart {runId, path}) or a Pack chart the inventory names (hima_chart {pack, file}), each with one sentence on what it shows; the chart is the evidence, so never type its numbers yourself.'
+          : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner. When you explain a design or method, show the Pack charts that support it with hima_chart {pack, file} (the inventory names them) and a Run\'s own report charts with hima_chart {runId, path}, each with a one-line note, and never type a chart\'s numbers yourself.';
         return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
           roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
@@ -701,6 +720,8 @@ export default class Hima extends Service {
           sites: () => this.sites(),
           discoverSite: ({ sessionId, ...request }) => this.discoverSite(request, sessionId),
           jobLogTail: (runId, nodeId, lines) => this.jobLogTail(runId, nodeId, lines),
+          runReports: (runId) => this.reports.list(runId),
+          runReport: (runId, relative) => this.reports.read(runId, relative),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
             if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);
@@ -777,7 +798,7 @@ export default class Hima extends Service {
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
       }, { root: this.config.knowledgeDir, retainedMaterialsDir: this.retainedMaterialsDir },
       { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
-      (request) => this.startGuidedRun(request),
+      (request) => this.startGuidedRun(request), this.reports,
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
     for (const tool of guideTools({
       inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),
