@@ -198,6 +198,8 @@ process.on('message',m=>{
       try {
         const text = await readFile(path.join(evidence, 'events.jsonl'), 'utf8');
         await writeFile(path.join(retained, 'events.jsonl'), text.slice(-128 * 1024));
+        try { await writeFile(path.join(retained, 'second-successor-timeout.json'),
+          await readFile(path.join(evidence, 'second-successor-timeout.json'), 'utf8')); } catch {}
         const created = text.trim().split('\n').map(line => JSON.parse(line) as Record<string, any>).filter(row => row.kind === 'created');
         for (const row of created) {
           try { await writeFile(path.join(retained, row.effectId + '-journal.jsonl'), (await readFile(path.join(row.control, 'journal.jsonl'), 'utf8')).slice(-128 * 1024)); }
@@ -782,12 +784,48 @@ for (const scenario of ['dependency', 'subsets'] as const) {
       await assert.rejects(f.store.authorizeTeamWait({ ...await f.waitInput(b.delegation.delegationId), runId: f.runId }), /current|revok|open|permission|author/i);
       await assert.rejects(f.store.acceptTeamWait({ ...await f.waitInput(a.delegation.delegationId), requestId: 'different-old-wait' }), /different|conflict/i, 'original persisted wait keeps its immutable request/digest');
       await writeFile(path.join(f.evidence, 'allow-second-wait'), 'actual successor native request permitted');
-      await waitUntil('second actual successor has received B', async () => {
-        const head = await f.store.readTeamEffectHead(f.parent.identity);
-        if (head.state !== 'active' || !head.continuation || head.continuation.continuationId === first.continuationId) return false;
-        last = head.continuation;
-        return !!await f.store.effectFact(last.invocation.identity.effectId, 'team-result-input-receipt:' + last.continuationId);
-      }, 45000, 25);
+      try {
+        // Wait on the native oracle's own receive event first. Polling the
+        // authoritative Run head every 25 ms competes for its PG row lock
+        // while DBOS is trying to publish the second continuation.
+        await waitUntil('second actual successor native receive', async () =>
+          (await f.events()).filter(row => row.kind === 'input' && row.memberId === 'lead').length >= 3, 45000, 100);
+        await waitUntil('second actual successor PG receipt', async () => {
+          const head = await f.store.readTeamEffectHead(f.parent.identity);
+          if (head.state !== 'active' || !head.continuation || head.continuation.continuationId === first.continuationId) return false;
+          last = head.continuation;
+          return !!await f.store.effectFact(last.invocation.identity.effectId, 'team-result-input-receipt:' + last.continuationId);
+        }, 15000, 100);
+        const leadInputs = (await f.events()).filter(row => row.kind === 'input' && row.memberId === 'lead');
+        assert.equal(leadInputs[2]?.effectId,last.invocation.identity.effectId,'native receive and committed continuation name the same successor');
+      } catch (error) {
+        const at = new Date().toISOString();
+        const probe = async () => {
+          const run = await f.store.run(f.runId);
+          const head = await f.store.readTeamEffectHead(f.parent.identity);
+          const effectId = head.state === 'active' ? head.continuation?.invocation.identity.effectId : undefined;
+          return { at, deadlineAt: run.deadlineAt, epoch: run.epoch, revision: run.revision,
+            hold: run.hold, cancelled: run.cancelled, hostExit: await f.store.hostExit(),
+            head: head.state, continuationId: head.state === 'active' ? head.continuation?.continuationId : undefined,
+            effectId, promptGranted: effectId ? !!await f.store.effectFact(effectId, 'native:oar:prompt-granted') : false,
+            nativeSession: effectId ? !!await f.store.effectFact(effectId, 'native:oar:native-session') : false };
+        };
+        const diagnostic = await Promise.race([probe().catch(failure => ({ at, diagnosticError: String(failure) })),
+          new Promise<{at:string;diagnosticError:string}>(resolve => setTimeout(() => resolve({at,diagnosticError:'Diagnostic PG read timed out after 3 s'}),3000))]);
+        // Keep the original test failure, but observe whether the existing
+        // reconciliation tick eventually publishes the same PG receipt.
+        let lateReceiptObserved = false;
+        try {
+          await waitUntil('diagnostic late second successor receipt', async () => {
+            const head = await f.store.readTeamEffectHead(f.parent.identity);
+            return head.state === 'active' && !!head.continuation && head.continuation.continuationId !== first.continuationId
+              && !!await f.store.effectFact(head.continuation.invocation.identity.effectId, 'team-result-input-receipt:' + head.continuation.continuationId);
+          }, 15000, 200);
+          lateReceiptObserved = true;
+        } catch {}
+        await writeFile(path.join(f.evidence, 'second-successor-timeout.json'), JSON.stringify({ ...diagnostic, lateReceiptObserved }));
+        throw error;
+      }
       assert.deepEqual(last.inputs.map(row => row.delegationId), [b.delegation.delegationId]);
       assert.equal(alive(JSON.parse(await readFile(path.join(f.evidence, 'first-successor.json'), 'utf8')).pid), false);
     }

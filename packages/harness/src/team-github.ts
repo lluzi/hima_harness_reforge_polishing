@@ -9,6 +9,14 @@ import { inspectTeamRepositoryForWrite, memberGitEnvironment, parseTeamGitHubTas
 
 const execute = promisify(execFile);
 const helper='credential.helper=!gh auth git-credential';
+const hostGitHubEnvironment=():NodeJS.ProcessEnv=>{
+  const env:NodeJS.ProcessEnv={PATH:process.env.PATH??'/usr/bin:/bin',HOME:process.env.HOME??os.homedir(),
+    GIT_TERMINAL_PROMPT:'0',GH_PROMPT_DISABLED:'1'};
+  for(const name of ['XDG_CONFIG_HOME','GH_CONFIG_DIR','GH_HOST','GH_TOKEN','GITHUB_TOKEN','GH_ENTERPRISE_TOKEN',
+    'GITHUB_ENTERPRISE_TOKEN','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','http_proxy','https_proxy','all_proxy','no_proxy',
+    'SSL_CERT_FILE','LANG','TZ','TMPDIR'])if(process.env[name])env[name]=process.env[name];
+  return env;
+};
 const localGit=async(...args:string[]):Promise<string>=>{
   const result=await execute('/usr/bin/git',['-c','credential.helper=','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],
     {encoding:'utf8',timeout:30_000,maxBuffer:1024*1024,env:memberGitEnvironment});
@@ -18,9 +26,9 @@ export interface GitHubCommandPort { run(executable:'git'|'gh',args:readonly str
 const commandPort:GitHubCommandPort={
   async run(executable,args,cwd) {
     try {
-      const result=await execute(executable,[...args],{cwd:cwd??(executable==='git'?os.tmpdir():undefined),encoding:'utf8',timeout:45_000,maxBuffer:1024*1024,
-        env:{...process.env,GIT_TERMINAL_PROMPT:'0',GH_PROMPT_DISABLED:'1',
-          ...(executable==='git'?{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_COUNT:'0'}:{})}});
+      const result=await execute(executable==='git'?'/usr/bin/git':'gh',[...args],
+        {cwd:cwd??os.tmpdir(),encoding:'utf8',timeout:45_000,maxBuffer:1024*1024,
+          env:{...hostGitHubEnvironment(),...(executable==='git'?{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_COUNT:'0'}:{})}});
       return result.stdout.trim();
     } catch(error) {
       const code=(error as {code?:string|number}).code;

@@ -7,11 +7,11 @@ import { promisify } from 'node:util';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { inspectTeamRepositoryForWrite, operateTeamGitHub, preflightTeamRepository, verifyTaskGitHubPolicy, type GitHubCommandPort } from '@hima/harness';
+import { inspectTeamRepositoryForWrite, memberGitEnvironment, operateTeamGitHub, preflightTeamRepository, verifyTaskGitHubPolicy, type GitHubCommandPort } from '@hima/harness';
 
 const command = promisify(execFile);
 async function git(at: string, ...args: string[]): Promise<string> {
-  return (await command('git', ['-C', at, ...args], { encoding: 'utf8', timeout: 10_000 })).stdout.trim();
+  return (await command('/usr/bin/git', ['-C', at, ...args], { encoding: 'utf8', timeout: 10_000, env: memberGitEnvironment })).stdout.trim();
 }
 
 test('task preflight accepts one clean linked worktree and refuses wrong repository, branch, base or Issue', async () => {
@@ -131,7 +131,7 @@ test('a lead can read the developer branch in an independent checkout and fast-f
       if(executable==='git'&&args.includes('ls-remote'))return `${remote}\trefs/heads/${binding.taskBranch}`;
       if(executable==='git'&&args.includes('clone')) {
         const mapped=[...args];mapped[mapped.indexOf('https://github.com/lluzi/himateam_test.git')]=bare;
-        const output=(await command('git',mapped,{encoding:'utf8',timeout:10000})).stdout.trim();
+        const output=(await command('/usr/bin/git',mapped,{encoding:'utf8',timeout:10000,env:memberGitEnvironment})).stdout.trim();
         if(!args.includes('--bare'))await git(String(args[args.length-1]),'remote','set-url','origin','https://github.com/lluzi/himateam_test.git');
         return output;
       }

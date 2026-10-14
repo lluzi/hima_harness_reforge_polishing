@@ -33,3 +33,20 @@ worktree 用例检验错误仓库/分支/base/脏目录、Host 固定 SHA push �
 独立 commit-bound 审查、实际 push/PR 和越权 shell/API 拒绝；人类补充及中断/继续后
 PR 去重；真实 PR 内容与测试/审查事实的一致性。缺少目标 Issue 与远端写授权条件时，
 这些结果保持 NOT RUN，不据本地候选关闭 #106。
+
+首次本地提交后的原 pre-push 尚未通过，远端 #106 分支仍未创建。第一轮 AES 私有
+`initdb` 达到 30 秒期限（第 17 项），同文件独立 3/3 PASS；第二轮 DBOS flow
+worker 第 185/186 项各达 75 秒期限，同文件独立 27/27 PASS。第三轮发现更明确的
+测试环境错误：Git 的 pre-push 子进程继承 `GIT_DIR`，新增临时 Git fixture 未清除，
+第 438–440 项误操作了共享 `.git/config`，使 `core.bare=true`。已立即恢复为 `false`，
+将测试 Git 命令与 Host GitHub adapter 改为明确环境；模拟同一 `GIT_DIR` 的注册
+6/6 PASS，配置仍为 `core.bare=false`。第三轮第 459 项另有 PG 连接获取超时，
+独立受控 Host server 日志表明 PG 曾就绪，不据此归因于 GitHub 新行为。
+
+进一步定点 handoff 文件曾于 subsets 用例复现第二 successor 等待：原生第三次
+lead 输入已实际到达，原 Run 未暂停/取消、距截止尚余约 61 秒，6 秒内没有 PG
+receipt，但不重发输入的额外 15 秒观察到同一 receipt 自行落账。原断言现先观察
+真实原生输入，再以证据支持的 15 秒对账窗要求同一 effect 的 PG receipt，失败时
+仍保存原结果与有界诊断。注册 handoff 18/18 PASS、峰值 500.391 MiB；这不把前述
+原全量失败改写成通过。上述增量独立复核无可执行发现；下一次本地提交仍必须立即
+通过原钩子推送并核对远端 SHA。
