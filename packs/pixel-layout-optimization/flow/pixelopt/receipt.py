@@ -217,9 +217,9 @@ def reader_values(receipt_path, workspace, readiness):
     # Cs and its out-of-marker share.
     cs_outside = _num(g("csOutsideMarkerFf"))
     if cs_outside is not None:
-        add("pixel_cs_outside_marker_ff", "fF", cs_outside)
+        add("pixel_cs_outside_marker_ff", "ff", cs_outside)
     else:
-        add("pixel_cs_outside_marker_ff", "fF", None,
+        add("pixel_cs_outside_marker_ff", "ff", None,
             geom_reason or "no out-of-marker estimate in geometry")
 
     cs_full = None
@@ -240,7 +240,7 @@ def reader_values(receipt_path, workspace, readiness):
             cs_ff = cs_full - cs_outside
     else:
         cs_ff = cs_full
-    add("pixel_cs_ff", "fF", cs_ff, cs_reason)
+    add("pixel_cs_ff", "ff", cs_ff, cs_reason)
 
     def ct_of(net_list):
         total = 0.0
@@ -267,10 +267,10 @@ def reader_values(receipt_path, workspace, readiness):
     # pixel_ratio_judged_pct
     if caps is None or storage_node is None:
         add("pixel_ratio_judged_pct", "pct", None, caps_reason or "no extraction result")
-        add("pixel_ct_judged_ff", "fF", None, caps_reason or "no extraction result")
+        add("pixel_ct_judged_ff", "ff", None, caps_reason or "no extraction result")
     else:
         judged_ct = ct_of(goal.get("ratioNets") or ratio_defs.get(judged_def, []))
-        add("pixel_ct_judged_ff", "fF", judged_ct)
+        add("pixel_ct_judged_ff", "ff", judged_ct)
         if cs_ff is None or cs_ff <= 0:
             add("pixel_ratio_judged_pct", "pct", None, cs_reason or "no storage capacitance")
         else:
@@ -339,7 +339,7 @@ def reader_values(receipt_path, workspace, readiness):
     else:
         add("pixel_interact_violations", "count", None, geom_reason or "no geometry")
 
-    add("pixel_cst_device_ff", "fF", _num(g("cstDeviceFf")), geom_reason or "no geometry")
+    add("pixel_cst_device_ff", "ff", _num(g("cstDeviceFf")), geom_reason or "no geometry")
 
     t_tiled = _num(g("tTiledPct"))
     t_own = _num(g("tOwnPct"))

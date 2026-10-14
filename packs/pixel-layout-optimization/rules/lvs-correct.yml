@@ -3,4 +3,4 @@ version: "1"
 title: LVS matches the declared schematic within its tolerances
 requires: [{ type: pixel_lvs_correct }]
 subject: { type: pixel_lvs_correct }
-predicate: { op: eq, threshold: { const: 1 }, unit: flag }
+predicate: { op: eq, threshold: 1, unit: flag }

@@ -7,4 +7,3 @@ subject: { type: pixel_t_judged_pct }
 predicate: { op: gte, threshold: { parameter: t_min_pct }, unit: pct }
 # A transmittance rule with no resolved window edge is NOT_DECLARED
 # (reported, not counted); handled in flow/pixelopt/rounds.py.
-optional: true

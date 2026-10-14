@@ -1,173 +1,103 @@
-version: "1"
 # Every typed value the two Readers emit, with its unit, provenance and
 # meaning (SPEC.md Semantics). Only `measured` and `geometry` values are
 # judged; `estimated` values rank moves and are reported as such.
-readers:
-  - pixel-receipt
-  - pixel-plan
 values:
   pixel_receipt_error_count:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: Missing, empty, stale or mismatched reports and option mismatches against case readiness; 0 only when every report was found, parsed and matched.
+    description: Missing, empty, stale or mismatched reports and option mismatches against case readiness; 0 only when every report was found, parsed and matched. (source measured)
   pixel_drc_authority_1x1:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The authority deck's result count on the single cell.
+    description: The authority deck's result count on the single cell. (source measured)
   pixel_drc_authority_2x2:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The authority deck's result count on the 2x2 array.
+    description: The authority deck's result count on the 2x2 array. (source measured)
   pixel_drc_authority_3x3:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The authority deck's result count on the 3x3 array.
+    description: The authority deck's result count on the 3x3 array. (source measured)
   pixel_drc_reference_1x1:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The reference deck's result count on the single cell; reported, never judged.
+    description: The reference deck's result count on the single cell; reported, never judged. (source measured)
   pixel_drc_reference_2x2:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The reference deck's result count on the 2x2 array; reported, never judged.
+    description: The reference deck's result count on the 2x2 array; reported, never judged. (source measured)
   pixel_drc_reference_3x3:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: The reference deck's result count on the 3x3 array; reported, never judged.
+    description: The reference deck's result count on the 3x3 array; reported, never judged. (source measured)
   pixel_lvs_correct:
-    reader: pixel-receipt
     unit: flag
-    source: measured
-    description: 1 when LVS says the layout matches the declared schematic within tolerance, 0 when it does not, null when there is no report.
+    description: 1 when LVS says the layout matches the declared schematic within tolerance, 0 when it does not, null when there is no report. (source measured)
   pixel_cs_outside_marker_ff:
-    reader: pixel-receipt
-    unit: fF
-    source: estimated
-    description: The part of the extracted Cs outside the capacitor marker, estimated from the surrogate's overlap share.
+    unit: ff
+    description: The part of the extracted Cs outside the capacitor marker, estimated from the surrogate's overlap share. (source estimated)
   pixel_cs_ff:
-    reader: pixel-receipt
-    unit: fF
-    source: measured
-    description: Cs, the extracted storage-node-to-storage-net coupling, with extraCsOverlap applied.
+    unit: ff
+    description: Cs, the extracted storage-node-to-storage-net coupling, with extraCsOverlap applied. (source measured)
   pixel_ratio_narrow_pct:
-    reader: pixel-receipt
     unit: pct
-    source: measured
-    description: Ct/Cs for the manifest's narrow aggressor list.
+    description: Ct/Cs for the manifest's narrow aggressor list. (source measured)
   pixel_ratio_broad_pct:
-    reader: pixel-receipt
     unit: pct
-    source: measured
-    description: Ct/Cs for the manifest's broad aggressor list.
+    description: Ct/Cs for the manifest's broad aggressor list. (source measured)
   pixel_ct_judged_ff:
-    reader: pixel-receipt
-    unit: fF
-    source: measured
-    description: Ct for the judged ratio definition.
+    unit: ff
+    description: Ct for the judged ratio definition. (source measured)
   pixel_ratio_judged_pct:
-    reader: pixel-receipt
     unit: pct
-    source: measured
-    description: Ct/Cs for the ratioDefinition the Strategy names; the judged ratio.
+    description: Ct/Cs for the ratioDefinition the Strategy names; the judged ratio. (source measured)
   pixel_coupling_over_limit_count:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: Manifest couplingLimits pairs above their limit.
+    description: Manifest couplingLimits pairs above their limit. (source measured)
   pixel_load_increase_max_pct:
-    reader: pixel-receipt
     unit: pct
-    source: measured
-    description: The largest rise of a loadLimitedLines total over the original's.
+    description: The largest rise of a loadLimitedLines total over the original's. (source measured)
   pixel_load_over_limit_count:
-    reader: pixel-receipt
     unit: count
-    source: measured
-    description: Lines whose rise exceeds load_allowance_pct.
+    description: Lines whose rise exceeds load_allowance_pct. (source measured)
   pixel_outline_w_um:
-    reader: pixel-receipt
     unit: um
-    source: geometry
-    description: The achieved cell outline width (x pitch).
+    description: The achieved cell outline width (x pitch). (source geometry)
   pixel_outline_h_um:
-    reader: pixel-receipt
     unit: um
-    source: geometry
-    description: The achieved cell outline height (y pitch).
+    description: The achieved cell outline height (y pitch). (source geometry)
   pixel_channels_changed:
-    reader: pixel-receipt
     unit: count
-    source: geometry
-    description: Channels not congruent by translation to the original's.
+    description: Channels not congruent by translation to the original's. (source geometry)
   pixel_interact_violations:
-    reader: pixel-receipt
     unit: count
-    source: geometry
-    description: Shapes failing a manifest interactRules entry, checked in geometry.
+    description: Shapes failing a manifest interactRules entry, checked in geometry. (source geometry)
   pixel_cst_device_ff:
-    reader: pixel-receipt
-    unit: fF
-    source: geometry
-    description: Capacitor-marker area times the manifest coefficient.
+    unit: ff
+    description: Capacitor-marker area times the manifest coefficient. (source geometry)
   pixel_t_tiled_pct:
-    reader: pixel-receipt
     unit: pct
-    source: geometry
-    description: Transmittance on the 3x3 array's centre cell.
+    description: Transmittance on the 3x3 array's centre cell. (source geometry)
   pixel_t_own_pct:
-    reader: pixel-receipt
     unit: pct
-    source: geometry
-    description: Transmittance on the own cell.
+    description: Transmittance on the own cell. (source geometry)
   pixel_t_judged_pct:
-    reader: pixel-receipt
     unit: pct
-    source: geometry
-    description: The transmittance the transmittanceBasis knob names.
+    description: The transmittance the transmittanceBasis knob names. (source geometry)
   pixel_oled_area_um2:
-    reader: pixel-receipt
     unit: um2
-    source: geometry
-    description: Emission area.
+    description: Emission area. (source geometry)
   pixel_pdl_symmetry_min:
-    reader: pixel-receipt
     unit: ratio
-    source: geometry
-    description: The vendor prototype's PDL-symmetry figure, kept for comparison with the customer's reports.
+    description: The vendor prototype's PDL-symmetry figure, kept for comparison with the customer's reports. (source geometry)
   pixel_undeclared_change_count:
-    reader: pixel-receipt
     unit: count
-    source: geometry
-    description: A capacitor outside tolerance with no declared change, a declared change beyond cst_ceiling_ff, or a channel change.
+    description: A capacitor outside tolerance with no declared change, a declared change beyond cst_ceiling_ff, or a channel change. (source geometry)
   pixel_plan_error_count:
-    reader: pixel-plan
     unit: count
-    source: geometry
-    description: The resident plan's admissibility errors against the schema, the resolved Goal, the Strategy, the manifest and the history; 0 is the completion evidence.
+    description: The resident plan's admissibility errors against the schema, the resolved Goal, the Strategy, the manifest and the history; 0 is the completion evidence. (source geometry)
   pixel_plan_front_points:
-    reader: pixel-plan
     unit: count
-    source: geometry
-    description: The number of front points the plan declares (1 to 6).
+    description: The number of front points the plan declares (1 to 6). (source geometry)
   pixel_plan_operator_count:
-    reader: pixel-plan
     unit: count
-    source: geometry
-    description: The number of declared operators in the plan.
+    description: The number of declared operators in the plan. (source geometry)
   pixel_plan_edit_count:
-    reader: pixel-plan
     unit: count
-    source: geometry
-    description: The number of bounded edits in the plan (at most 12).
+    description: The number of bounded edits in the plan (at most 12). (source geometry)
   pixel_plan_exploratory_points:
-    reader: pixel-plan
     unit: count
-    source: geometry
-    description: The number of exploratory front points (for the trade-off table only).
+    description: The number of exploratory front points (for the trade-off table only). (source geometry)
