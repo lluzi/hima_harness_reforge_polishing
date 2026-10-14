@@ -450,9 +450,17 @@ it); edits refuse more than 1 µm, a channel or Cst vertex, or more than 12 edit
 measure normalised to its target, 1.0 line, per-candidate points and best-so-far step line, like the
 vendor report's trend chart), `rounds.py` (`rule_results(values, goal)`, `rank`, `decide(...)` with
 the SPEC Choosers logic and stop reasons), `card.py`, `numeric.py`, `tasks.py` (the seven program
-task entry points of SPEC Run contract), `pixel_cli.py` (`task-<id> <workspace> <in> <out>` and the
-resident subcommands `card`, `history`, `show`, `markers`, `try-edit`, `plan --check`, plus internal
-`num-*` subcommands run in the container), `contract.yml`, `graph.yml`, `schemas/tasks.json`,
+task entry points of SPEC Run contract), `pixel_cli.py` (`task-<id> <workspace> <in> <out>`; the
+resident subcommands exactly as `knowledge/plan-and-repair-playbook.md` section 3 names them:
+`card WORKSPACE`, `history WORKSPACE [--last N]`, `show WORKSPACE --campaign CW CANDIDATE`,
+`markers WORKSPACE --campaign CW CANDIDATE --out FILE`, `try-edit WORKSPACE --campaign CW CANDIDATE --ops FILE --out-dir DIR`,
+`plan-check WORKSPACE --plan FILE --out state/round/plan.json`; plus internal `num-*` subcommands run
+in the container). The resident output follows the MAGE pattern: `resident-delivery.json` with
+`state/round/plan.json` as the single result and `plan/round-NN/*` as support; the contract outputs
+the resident reads are `caseReadiness` (`state/case-readiness.json`), `designSpaceCard`
+(`state/card.json`), `surrogateModel` (`state/model.json`), `roundDecision`
+(`state/round-decision.json`) and `history` (`state/history.jsonl`); candidates live under
+`cands/<id>/` in the Campaign workspace, `contract.yml`, `graph.yml`, `schemas/tasks.json`,
 `flow/schemas/{plan,card,round-decision,evaluation}.json`, `semantics.yml`, `readers/*.yml`,
 `tools/read-pixel.py`, `rules/*.yml`. Shape reference: `git show origin/feat/mage-script-placement:packs/mage-script-placement/<file>`
 (contract, graph, schemas/tasks.json, readers, rules, flow/mage_placement_cli.py, flow/mage_placement/tasks.py)
@@ -462,8 +470,10 @@ four endings under four goal settings.
 
 ### Wave E
 
-**Task 7: knowledge** (Sonnet 5 medium): the four files of SPEC Knowledge, symbolic (no case
-numbers), every CLI subcommand and path named must exist (a `test_knowledge.py` checks it).
+**Task 7: knowledge**: the four files are written by the coordinator (`knowledge/*.md`). Task 6
+adds `flow/tests/test_knowledge.py`: every CLI subcommand and option the files name exists in
+`pixel_cli.py`, every `state/...` path is a declared contract output or a documented path, no case
+numbers.
 
 **Task 8: Site** (coordinator): `sites/linglong-pixel/` (site.yml, permit.yml, README), the Linglong
 manifest and site-capabilities under `/data/eda/project/hima_harness/pixel-inputs/case-v1/`
