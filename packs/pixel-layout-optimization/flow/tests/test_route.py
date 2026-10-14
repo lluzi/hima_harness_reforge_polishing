@@ -35,11 +35,11 @@ from tests import fixtures  # noqa: E402
 _GOAL_KEYS = ("outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct",
               "t_min_pct", "t_max_pct", "cst_ceiling_ff")
 _STRAT_KEYS = ("ratioDefinition", "transmittanceBasis", "extraCsOverlap",
-               "topologyMoves", "convergeBandPct")
+               "topologyMoves", "convergeBandPct", "maxRounds", "convergePatienceRounds")
 
 _DEFAULT_STRATEGY = {"ratioDefinition": "broad", "transmittanceBasis": "tiled",
                      "extraCsOverlap": "count", "topologyMoves": "off",
-                     "convergeBandPct": 0.02}
+                     "convergeBandPct": 0.02, "maxRounds": 6, "convergePatienceRounds": 2}
 
 
 def _run_flow(root, goal, strategy):
@@ -73,7 +73,7 @@ def _run_flow(root, goal, strategy):
     tasks.execute("learn-sensitivities", ws, {"PROBES": 3, "STEP": 0.1})
 
     round_no = 1
-    while round_no <= 6:
+    while round_no <= strat.get("maxRounds", 6):
         _scripted_plan(ws, round_no, goal, base_mode)
         tasks.execute("solve-and-judge", ws, {"ROUND": round_no})
         decision = tasks.execute("decide-round", ws, {"ROUND": round_no})["value"]
@@ -144,6 +144,15 @@ class RouteTest(unittest.TestCase):
                          "ratio_target_pct": 0.5, "t_max_pct": 100.0},
                         {"convergeBandPct": 1.0, "_baseMode": "always-original"})
         self.assertIn(ev["ending"], ("converged", "budget-reached"))
+
+    def test_budget_reached_respects_project_max_rounds(self):
+        # Same impossible transmittance target as test_budget_reached, but the Project asked for
+        # 8 rounds (strategy.maxRounds): the Run still exhausts its rounds, now 8 of them, with
+        # the best candidate not legal, end to end through prepare-case's resolved Goal.
+        ev = self._flow({"outline_w_um": 1000.0, "outline_h_um": 1000.0,
+                         "ratio_target_pct": 1000.0}, {"maxRounds": 8})
+        self.assertEqual(ev["ending"], "budget-reached")
+        self.assertFalse(ev["goalMet"])
 
     def test_blocked(self):
         # An impossible outline with topology frozen gives blocked evidence

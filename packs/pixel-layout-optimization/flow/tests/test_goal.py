@@ -42,6 +42,14 @@ class TestResolve(unittest.TestCase):
         self.assertEqual(out["ratioNets"], ["EN", "R1", "SC", "AN"])
         self.assertEqual(out["transmittanceBasis"], "tiled")
         self.assertEqual(out["convergeBandPct"], 0.02)
+        self.assertEqual(out["maxRounds"], 6)
+        self.assertEqual(out["convergePatienceRounds"], 2)
+
+    def test_project_raises_max_rounds(self):
+        out = goalmod.resolve(self._zero_goal(), {"maxRounds": 8, "convergePatienceRounds": 3},
+                              self.base, ORIGINAL)
+        self.assertEqual(out["maxRounds"], 8)
+        self.assertEqual(out["convergePatienceRounds"], 3)
 
     def test_goal_values_win(self):
         g = self._zero_goal()

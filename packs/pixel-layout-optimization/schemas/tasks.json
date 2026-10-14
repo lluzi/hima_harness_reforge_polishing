@@ -39,7 +39,7 @@
     "prepare-case-input": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["PIXEL_CASE_MANIFEST", "SITE_CAPABILITIES", "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct", "t_min_pct", "t_max_pct", "cst_ceiling_ff", "ratioDefinition", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct"],
+      "required": ["PIXEL_CASE_MANIFEST", "SITE_CAPABILITIES", "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct", "t_min_pct", "t_max_pct", "cst_ceiling_ff", "ratioDefinition", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct", "maxRounds", "convergePatienceRounds"],
       "properties": {
         "PIXEL_CASE_MANIFEST": {"type": "string", "minLength": 1},
         "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
@@ -54,7 +54,9 @@
         "transmittanceBasis": {"type": "string", "enum": ["tiled", "own"]},
         "extraCsOverlap": {"type": "string", "enum": ["count", "exclude"]},
         "topologyMoves": {"type": "string", "enum": ["off", "allowed"]},
-        "convergeBandPct": {"type": "number"}
+        "convergeBandPct": {"type": "number"},
+        "maxRounds": {"type": "number"},
+        "convergePatienceRounds": {"type": "number"}
       }
     },
     "prepare-case-output": {

@@ -396,6 +396,14 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
     the predicted-vs-measured gains and the open markers.
     """
     band = _num((goal_resolved or {}).get("convergeBandPct")) or 0.02
+    # Project-requested round budget (contract.yml strategy.maxRounds, default 6) and how many
+    # consecutive rounds of less-than-band improvement it takes to call Converged (strategy.
+    # convergePatienceRounds, default 2). A Project asking for more rounds gets more patience too:
+    # both knobs resolve the same way, through goal.resolve into readiness["goal"].
+    max_rounds = _num((goal_resolved or {}).get("maxRounds"))
+    max_rounds = int(max_rounds) if max_rounds and max_rounds > 0 else 6
+    patience = _num((goal_resolved or {}).get("convergePatienceRounds"))
+    patience = int(patience) if patience and patience > 0 else 2
 
     best = _best_legal(history, goal_resolved)
     if best is None:
@@ -406,16 +414,19 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
 
     goal_met = best_is_legal and _goal_met(best, goal_resolved)
 
-    # Converged: the best legal judged ratio barely improved over the last two
-    # rounds. The best-so-far carries forward, so a round that produced no new
-    # legal candidate is no improvement, not a gap: we read the best legal ratio
-    # as of round_no and as of round_no-1 (each the running best over every
-    # earlier round, carried across rounds that added nothing).
+    # Converged: the best legal judged ratio barely improved over the last `patience`
+    # consecutive rounds (default 2 - a single stalled round is not enough evidence a Project
+    # that asked for more rounds should stop early; Run B stopped "blocked" at round 3 off a
+    # one-round read). The best-so-far carries forward, so a round that produced no new legal
+    # candidate is no improvement, not a gap: we read the best legal ratio as of round_no and as
+    # of round_no-patience (each the running best over every earlier round, carried across
+    # rounds that added nothing). A window that reaches before any legal candidate existed
+    # (``earlier is None``) is not evidence of a plateau.
     by_round = _running_best_ratio_by_round(history, goal_resolved)
     converged = False
-    if round_no >= 2:
+    if round_no >= 1 + patience:
         now = _best_as_of(by_round, round_no)
-        earlier = _best_as_of(by_round, round_no - 1)
+        earlier = _best_as_of(by_round, round_no - patience)
         if earlier is not None and now is not None and (earlier - now) < band:
             converged = True
 
@@ -428,7 +439,7 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
     if next_lever is not None:
         converged = False
 
-    at_limit = round_no >= 6
+    at_limit = round_no >= max_rounds
     blocked = False
     if not goal_met and (converged or at_limit):
         blocked = _blocked_evidence(history, goal_resolved, best if best_is_legal else None, card)

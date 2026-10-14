@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: pixel-layout-optimization
-version: 0.1.0
+version: 0.2.0
 flow:
   kind: sequence
   id: pixel
@@ -23,6 +23,8 @@ flow:
       extraCsOverlap: {source: strategy, path: [extraCsOverlap]}
       topologyMoves: {source: strategy, path: [topologyMoves]}
       convergeBandPct: {source: strategy, path: [convergeBandPct]}
+      maxRounds: {source: strategy, path: [maxRounds]}
+      convergePatienceRounds: {source: strategy, path: [convergePatienceRounds]}
     contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-output'}}}
   - kind: task
     id: judge-original
@@ -46,7 +48,11 @@ flow:
     contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/learn-sensitivities-output'}}}
   - kind: repeat
     id: optimise-rounds
-    maxIterations: 6
+    # A Project's strategy.maxRounds (default 6, max 20 - contract.yml) is the actual per-Run
+    # round limit decide-round enforces (pixelopt/rounds.py decide()); this is only the Harness
+    # repeat block's own hard ceiling, high enough that no Project-requested round count below
+    # it is ever cut short by the flow itself.
+    maxIterations: 20
     budget: original-run
     carry:
       roundState:

@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.1.0 run contract
+# Pixel layout optimization 0.2.0 run contract
 
 ## Goal template
 
@@ -20,7 +20,7 @@ Pack change (`INTENT.md` Answers 7):
 The Goal is met only when **both** the outline and the ratio targets are met on Reader values, with
 every hard limit holding (`INTENT.md` Answers 5). Every other rule below is a hard limit.
 
-Five Strategy knobs say how the Goal's quantities are read and how far the method may go:
+Seven Strategy knobs say how the Goal's quantities are read and how far the method may go:
 
 | Knob | Kind | Default | Meaning |
 |---|---|---|---|
@@ -28,7 +28,9 @@ Five Strategy knobs say how the Goal's quantities are read and how far the metho
 | `transmittanceBasis` | choice `tiled`, `own` | `tiled` | Which transmittance the window judges. Both are always reported. |
 | `extraCsOverlap` | choice `count`, `exclude` | `count` | Whether extracted storage-node-to-storage-net coupling outside the capacitor marker counts toward Cs. Both values are reported either way. |
 | `topologyMoves` | choice `off`, `allowed` | `off` | Whether a plan may move a contact or reorder lines. |
-| `convergeBandPct` | number, %-points, 0.001–1 | 0.02 | The Converged ending's band: how little the best judged ratio may improve over two rounds. |
+| `convergeBandPct` | number, %-points, 0.001–1 | 0.02 | The Converged ending's band: how little the best judged ratio may improve over `convergePatienceRounds` consecutive rounds. |
+| `maxRounds` | number, rounds, 1–20 | 6 | The Round limit ending's round number. A Project that wants a longer or shorter optimisation sets this; `graph.yml`'s `repeat` block is bounded well above it so it is never the thing that cuts a Run short. |
+| `convergePatienceRounds` | number, rounds, 1–10 | 2 | How many consecutive rounds of less-than-`convergeBandPct` improvement the Converged ending requires. A single stalled round is not enough evidence to stop a Run that was asked to explore for more rounds; this is also why Converged needs a candidate round at least `convergePatienceRounds` back to compare against. |
 
 Shaped by `end-honestly-in-more-than-one-way.md` (the targets and the band are what the endings
 measure) and `over-constrain-and-read-the-violation.md` (the target outline is requested as given,
@@ -116,7 +118,7 @@ FPD tools hold `licences: {fpd: 1}`.
 
 | Task | Kind | Business input | Work and committed output |
 |---|---|---|---|
-| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the five Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
+| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the seven Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
 | `judge-original` | program, `fpd: 1` | Committed `prepare-case` output | Judges the original (the same judge as every candidate) and two mutants the Pack generates: one contact removed (LVS must fail) and one space shrunk below its rule (authority DRC must fail). A wrong verdict on a mutant, or an original that fails LVS, fails the task with repair information: the judge or the schematic is wrong, and nothing after it may be trusted. Writes history entry 0. Output: the original's receipt values and the calibration verdicts. |
 | `map-design-space` | program | Committed `judge-original` output | Attributes each coupling of the original to its coupling sites (victim shape, aggressor shape, layers, visible overlap, fringe bands); fits the surrogate on the receipts so far; solves the minimum-pitch LP per axis and names the binding chain from its duals; lists the lever instances with gradient and bound. Writes `state/card.json` (≤ 4 KB) and `state/card.svg`. |
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
@@ -242,13 +244,15 @@ uses.
 - **Goal met** when the best legal candidate passes `outline-width-met`, `outline-height-met` and
   `ratio-met`.
 - **Converged** when the best legal candidate's judged ratio, at the best outline reached, improved
-  by less than `convergeBandPct` over the last two rounds; the limiting bound (the binding pitch
-  chain from `map-design-space`, or the coupling floor of the frozen-transistor terms from the
-  model) is recorded with it.
+  by less than `convergeBandPct` over the last `convergePatienceRounds` consecutive rounds (default
+  2; never checked before round `1 + convergePatienceRounds`, and never while a next lever - a
+  judged candidate one repair or transmittance fix from beating it - is still untried); the
+  limiting bound (the binding pitch chain from `map-design-space`, or the coupling floor of the
+  frozen-transistor terms from the model) is recorded with it.
 - **Blocked** when, at a stop for convergence or the round limit, there is evidence that the unmet
   target needs a hard limit broken: a judged exploratory front point that meets it while failing a
   hard limit, or a minimum-pitch bound above the target outline with `topologyMoves` `off`.
-- **Round limit** when the round number reaches 6 with the Goal unmet.
+- **Round limit** when the round number reaches `maxRounds` (default 6) with the Goal unmet.
 
 Shaped by `over-constrain-and-read-the-violation.md` (the target pitch is tried first; infeasibility
 and residual markers are read as a measured shortfall, and a relaxed pitch is a proposed next trial,

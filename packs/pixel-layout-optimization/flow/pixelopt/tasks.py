@@ -192,7 +192,8 @@ def prepare_case(workspace, inputs):
         "t_min_pct", "t_max_pct", "cst_ceiling_ff") if k in inputs}
     strategy_input = {k: inputs[k] for k in (
         "ratioDefinition", "transmittanceBasis", "extraCsOverlap",
-        "topologyMoves", "convergeBandPct") if k in inputs}
+        "topologyMoves", "convergeBandPct", "maxRounds",
+        "convergePatienceRounds") if k in inputs}
     resolved = goal_mod.resolve(goal_input, strategy_input, case,
                                 {"outlineUm": outline})
 

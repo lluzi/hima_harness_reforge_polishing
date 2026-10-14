@@ -14,7 +14,7 @@ def _goal(**over):
               "cst_ceiling_ff": 0.0}
     values.update(over.pop("values", {}))
     g = {"values": values, "topologyMoves": "off", "convergeBandPct": 0.02,
-         "ratioDefinition": "broad"}
+         "ratioDefinition": "broad", "maxRounds": 6, "convergePatienceRounds": 2}
     g.update(over)
     return g
 
@@ -124,7 +124,10 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(d["route"], "stop")
         self.assertEqual(d["stopReason"], "round-limit")
 
-    def test_converged(self):
+    def test_converged_waits_for_patience_rounds(self):
+        # Default convergePatienceRounds is 2: one stalled round is not enough evidence (that
+        # eagerness is what stopped a live Run "blocked" at round 3, Project PLS-pixel8). Round 2
+        # has only one round of no-improvement behind it, so the Run keeps going.
         ratio = 11.0
         hist = [self._orig()]
         for rnd in (1, 2):
@@ -132,8 +135,52 @@ class DecideTest(unittest.TestCase):
                          "values": _legal_values(pixel_ratio_judged_pct=ratio,
                                                  pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
         d = rounds.decide(2, _goal(), hist, None, None)
+        self.assertEqual(d["route"], "continue")
+
+    def test_converged_after_patience_rounds(self):
+        # A third round at the same stalled ratio gives convergePatienceRounds=2 its two
+        # consecutive stalled rounds (round 1 -> round 3 improvement is below the band).
+        ratio = 11.0
+        hist = [self._orig()]
+        for rnd in (1, 2, 3):
+            hist.append({"id": "r%d" % rnd, "round": rnd, "exploratory": False, "legal": True,
+                         "values": _legal_values(pixel_ratio_judged_pct=ratio,
+                                                 pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        d = rounds.decide(3, _goal(), hist, None, None)
         self.assertEqual(d["route"], "stop")
         self.assertEqual(d["stopReason"], "converged")
+
+    def test_lower_patience_reverts_to_single_round_stall(self):
+        # A Project that explicitly asks for patience 1 gets the old single-round read back.
+        ratio = 11.0
+        hist = [self._orig()]
+        for rnd in (1, 2):
+            hist.append({"id": "r%d" % rnd, "round": rnd, "exploratory": False, "legal": True,
+                         "values": _legal_values(pixel_ratio_judged_pct=ratio,
+                                                 pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        d = rounds.decide(2, _goal(convergePatienceRounds=1), hist, None, None)
+        self.assertEqual(d["route"], "stop")
+        self.assertEqual(d["stopReason"], "converged")
+
+    def test_project_requesting_eight_rounds_keeps_going_past_six(self):
+        # A Project's campaign.yml asks for 8 rounds (strategy.maxRounds); round 6, which used to
+        # be the hard stop, is now mid-Run with the Goal unmet and no plateau evidence yet.
+        hist = [self._orig(),
+                {"id": "r6", "round": 6, "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=11.0,
+                                         pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)}]
+        d = rounds.decide(6, _goal(maxRounds=8), hist, None, None)
+        self.assertEqual(d["route"], "continue")
+        self.assertEqual(d["nextRound"]["round"], 7)
+
+    def test_project_requesting_eight_rounds_stops_at_eight(self):
+        hist = [self._orig(),
+                {"id": "r8", "round": 8, "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=11.0,
+                                         pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)}]
+        d = rounds.decide(8, _goal(maxRounds=8), hist, None, None)
+        self.assertEqual(d["route"], "stop")
+        self.assertEqual(d["stopReason"], "round-limit")
 
     def test_a_candidate_one_transmittance_fix_away_keeps_the_run_going(self):
         # Live Run B stopped "blocked" at round 3: the best legal ratio had stalled, beside a clean
@@ -155,8 +202,10 @@ class DecideTest(unittest.TestCase):
         self.assertIn("band-trim", d["nextLever"]["action"])
 
     def _stalled_with(self, **near):
+        # Three stalled rounds (3, 4, 5) so the default convergePatienceRounds=2 window
+        # (round 5 compared back to round 3) has a running best legal ratio to compare against.
         hist = [self._orig()]
-        for rnd in (4, 5):
+        for rnd in (3, 4, 5):
             hist.append({"id": "r%d" % rnd, "round": rnd, "exploratory": False, "legal": True,
                          "values": _legal_values(pixel_ratio_judged_pct=11.0,
                                                  pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
