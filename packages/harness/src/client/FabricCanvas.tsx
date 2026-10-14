@@ -420,7 +420,7 @@ export function FabricCanvas({
               there. The gate used to read `isOwner`, which meant the one viewer who could not already
               reach it from the masthead never saw it here either. */}
           {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
-            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
+            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>Open the project agent</button>
           ) : null}
           {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
               (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's

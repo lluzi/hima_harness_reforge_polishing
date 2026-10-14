@@ -71,7 +71,7 @@ function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id:
       createElement('button', { type: 'button', 'data-hima-control': 'open-authoring', onClick: () => {
         try { openAuthor(value!.sessionId); setError(undefined); } catch (failure) { setError((failure as Error).message); }
       } }, 'Open authoring session'),
-      createElement('p', null, 'Begin with /hima-grill. Campaign and Files remain beside the conversation.'))
+      createElement('p', null, 'Begin with /hima-grill. The project and Files remain beside the conversation.'))
       : createElement('pre', null, (block.content ?? []).map((item) => item.text ?? '').join('\n') || 'Preparing Pack workspace…'),
     error ? createElement('p', { role: 'alert' }, error) : null);
 }
@@ -93,7 +93,7 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const status = run?.status;
   const body = run === undefined
     ? 'Hima Workspace'
-    : createElement('span', null, 'Campaign ·',
+    : createElement('span', null, 'Project ·',
         createElement(Glyph, { name: run.goalState === 'unknown' ? 'circle' : run.goalState === 'not-met' ? 'square' : run.goalState === 'met' ? 'check' : status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
         ` ${run.goalState === undefined && status === 'running' ? (run.currentNode ?? 'running') : runStatusSaid(run)?.said ?? statusSaid(status)}`,
         status === 'waiting' ? createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }) : null);
@@ -143,10 +143,10 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
     createElement('style', null, HIMA_STYLE),
     createElement('button', {
       type: 'button', disabled: current === undefined,
-      title: current === undefined ? 'Choose a workspace and session to open Campaign' : 'Campaign — beside the conversation',
-      'aria-label': 'Open Campaign beside the conversation', 'data-hima-control': 'open-workbench',
+      title: current === undefined ? 'Choose a workspace and session to open the project' : 'Project — beside the conversation',
+      'aria-label': 'Open the project beside the conversation', 'data-hima-control': 'open-workbench',
       onClick: () => { try { open(wide); setError(undefined); } catch (failure) { setError((failure as Error).message); } },
-    }, createElement(HimaMark, { size: 18 }), wide ? 'Campaign' : null),
+    }, createElement(HimaMark, { size: 18 }), wide ? 'Project' : null),
     error ? createElement('p', { role: 'alert' }, error) : null,
     wide && current === undefined ? createElement('p', null, 'Choose a workspace to begin') : null);
 }
@@ -154,7 +154,7 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Hima Workspace',
-    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Campaign and Data Insight beside the conversation, with source-linked evidence.' }],
+    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Project and Data Insight beside the conversation, with source-linked evidence.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   // C19: `uiWorkspace` (the native folder picker) is resolved lazily, inside the callback itself,

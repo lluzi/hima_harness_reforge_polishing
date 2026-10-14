@@ -64,7 +64,7 @@ export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose 
         <span className="hima-studio-eyebrow">Diagnostics</span>
         <button type="button" className="hima-icon-button" data-hima-control="diagnostics-close" aria-label="Close diagnostics" onClick={onClose}><Glyph name="close" /></button>
       </header>
-      {run === undefined ? <p className="hima-small">Choose a Campaign to see its diagnostics.</p> : (
+      {run === undefined ? <p className="hima-small">Choose a project to see its diagnostics.</p> : (
         <>
           <dl className="hima-diagnostics-facts">
             <dt>Run id</dt><dd className="hima-mono">{run.id}</dd>
@@ -85,9 +85,9 @@ export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose 
             // confirms, through the same `acting` the caller built with `useRunActions`.
             <details className="hima-node-card-emergency" data-hima-region="diagnostics-emergency">
               <summary>Emergency</summary>
-              <p className="hima-node-card-owner">Owned by Campaign Agent{control?.owner === undefined ? '' : ` ${control.owner.slice(-6)}`}</p>
+              <p className="hima-node-card-owner">Owned by the project agent{control?.owner === undefined ? '' : ` ${control.owner.slice(-6)}`}</p>
               {control?.owner === undefined ? null : (
-                <button type="button" className="hima-button" data-hima-control="diagnostics-open-owner" onClick={() => openOwner(control.owner)}>Open Campaign Agent</button>
+                <button type="button" className="hima-button" data-hima-control="diagnostics-open-owner" onClick={() => openOwner(control.owner)}>Open the project agent</button>
               )}
               {!active ? null : (
                 <div className="hima-node-card-footer-row">

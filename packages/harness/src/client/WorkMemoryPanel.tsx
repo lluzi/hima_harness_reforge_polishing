@@ -109,7 +109,7 @@ export function WorkMemoryPanel({ sessionId, runId, draft, onDraft }: WorkMemory
   return <section className='hima-memory-panel' data-hima-region='work-memory' data-hima-state-memory={answer?.kind ?? 'loading'}>
     <header><span className='hima-studio-eyebrow'>WORK MEMORY</span><button type='button' className='hima-button' onClick={() => void refresh()}>Refresh memory</button></header>
     {error ? <p role='alert'>Memory unavailable: {error}</p>
-      : answer?.kind === 'none' ? <p>No verified summary is saved for this exact {runId === undefined ? 'Guide' : 'Campaign'} scope.</p>
+      : answer?.kind === 'none' ? <p>No verified summary is saved for this exact {runId === undefined ? 'Guide' : 'project'} scope.</p>
         : answer?.kind === 'unavailable' ? <p>Memory unavailable: {answer.reason}</p>
           : summary ? <><h3>{summary.subject}</h3>{answer?.kind !== 'current' ? <p className='hima-memory-warning'>Summary is {answer?.kind}: {answer?.reason ?? 're-read current authority before acting.'}</p> : null}
             {authority.map(current => <p className='hima-small' key={current.runId}>Current authority: {current.runId} · {current.status ?? 'status unavailable'} · node {current.currentNode ?? 'unavailable'} · generation {current.generation} · holds {current.holds.join(', ') || 'none'} · Jobs {current.jobs.map(job => `${job.session}:${job.event}`).join(', ') || 'none'} · retained reports {current.reportRefs.length}</p>)}
@@ -126,7 +126,7 @@ export function WorkMemoryPanel({ sessionId, runId, draft, onDraft }: WorkMemory
     </div>
     {runId === undefined ? null : <div className='hima-memory-candidates'><h3>Experience corrections</h3>
       {correctionNotice ? <p role='status'>{correctionNotice}</p> : null}
-      {candidateError ? <p role='alert'>Experience candidates unavailable: {candidateError}</p> : candidates.length === 0 ? <p>No verified experience candidate is available for this Campaign.</p>
+      {candidateError ? <p role='alert'>Experience candidates unavailable: {candidateError}</p> : candidates.length === 0 ? <p>No verified experience candidate is available for this project.</p>
         : candidates.map(candidate => <ExperienceCorrectionEditor key={`${candidate.candidate.sourceRun}:${candidate.candidate.sourceMaterialSha256}:${candidate.adoption?.id ?? ''}`} sessionId={sessionId} runId={runId} candidate={candidate} onSaved={async message => { setCorrectionNotice(message); await refreshCandidates(); }}/>)}
     </div>}
   </section>;

@@ -221,7 +221,7 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
         {taskState === undefined ? null : <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">{taskState}</text>}
         {awaitingAgent !== true ? null : (
           <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">
-            awaiting Agent<title>awaiting the Campaign Agent</title>
+            awaiting Agent<title>awaiting the project agent</title>
           </text>
         )}
         {logLine === undefined ? null : <text className="hima-node-log" y={labelY + 30} textAnchor="middle">{truncate(logLine, 40)}<title>{logLine}</title></text>}

@@ -98,7 +98,7 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   assert.ok((await d.click('native-new-session')).ok);
   await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
   return { host, cookie };
 }
 
@@ -238,7 +238,7 @@ async function establishOwnedCampaign(d: BootedDriver, browser: Inspector): Prom
   assert.ok((await d.click('start-owner-session')).ok);
   await browser.wait(`!!document.querySelector('[aria-label="Send message"]')`, 15_000);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
   const owner = await d.read('studio'); assert.ok(owner.ok, JSON.stringify(owner));
   const ownerSessionId = owner.state.session; assert.ok(ownerSessionId, JSON.stringify(owner));
   await waitForConfigurationPaneSettled(browser);
@@ -594,7 +594,7 @@ async function openConfiguredGraph(d: BootedDriver, h: { readonly workspace: str
   assert.ok((await d.click('start-owner-session')).ok);
   await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Project configuration', 12_000)).ok);
 
   assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
   assert.ok((await d.click('studio-pack-owner')).ok);

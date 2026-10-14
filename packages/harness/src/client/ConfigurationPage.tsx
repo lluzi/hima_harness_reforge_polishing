@@ -413,7 +413,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   if (draft === undefined) {
     return <div className="hima-config hima-root" data-hima-region="configuration" data-hima-state-ready="false" data-hima-state-pack="" data-hima-state-site="" data-hima-state-changed="0">
-      {error === undefined ? <p className="hima-small">Reading the Campaign file…</p> : <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{error}</span><button type="button" className="hima-button" data-hima-control="config-retry" onClick={() => { void tick.current(); }}>Retry</button></div>}
+      {error === undefined ? <p className="hima-small">Reading the project file…</p> : <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{error}</span><button type="button" className="hima-button" data-hima-control="config-retry" onClick={() => { void tick.current(); }}>Retry</button></div>}
     </div>;
   }
 
@@ -510,18 +510,18 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
    *  makes, at once rather than waiting out the rest of the 3 s interval. */
   const retry = () => { setError(undefined); void tick.current(); };
 
-  const unknowns = proposal?.unknowns ?? (draft.pack === undefined ? ['Choose a HimaPack to begin Campaign preparation.'] : []);
+  const unknowns = proposal?.unknowns ?? (draft.pack === undefined ? ['Choose a HimaPack to begin project preparation.'] : []);
 
   return <div className="hima-config hima-root" data-hima-region="configuration" data-hima-state-ready={String(ready)} data-hima-state-pack={draft.pack?.id ?? ''} data-hima-state-site={siteName} data-hima-state-changed={String(changed.size)}>
     <header className="hima-config-header">
-      <h2>Campaign configuration</h2>
+      <h2>Project configuration</h2>
       <p className="hima-config-header-sub">hima/campaign.yml{changed.size > 0 ? ` · HimaGuide filled ${changed.size} field${changed.size === 1 ? '' : 's'} since you last looked` : ''}</p>
     </header>
 
     <section data-hima-region="config-name">
       <span className="hima-config-eyebrow">Name</span>
       <div {...rowProps('name', changed)}>
-        <EditableField control="config-name" value={draft.name ?? ''} placeholder="Untitled Campaign" ariaLabel="Campaign name" onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
+        <EditableField control="config-name" value={draft.name ?? ''} placeholder="Untitled project" ariaLabel="Project name" onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
           onCommit={(text) => commitField('name', (file) => ({ ...file, name: text === '' ? undefined : text }))} />
         <ChangedMark path="name" changed={changed} />
       </div>
@@ -683,7 +683,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       <div className="hima-config-knowledge-add-row">
         <input data-hima-control="config-knowledge-path" aria-label="Path to a knowledge document" value={knowledgePath} placeholder="Path to a document" onChange={(event) => setKnowledgePath(event.target.value)} />
         <button className="hima-button" data-hima-control="config-knowledge-add" onClick={addKnowledge}>Add a document</button>
-        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this Campaign: …')}>Ask HimaGuide</button>
+        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this project: …')}>Ask HimaGuide</button>
       </div>
     </section>
 
@@ -699,9 +699,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
           <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
         </div> : null}
       </div> : null}
-      {ready ? <div className="hima-config-readiness-row"><StateRoundel state="good" glyph="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
+      {ready ? <div className="hima-config-readiness-row"><StateRoundel state="good" glyph="check" /><span>Every check passes; confirming creates the project.</span></div> : null}
       <div className="hima-config-confirm-row">
-        <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting Campaign…' : 'Confirm and start Campaign'}</button>
+        <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting project…' : 'Confirm and start project'}</button>
         <span className="hima-small">enabled when every check passes</span>
       </div>
     </section>

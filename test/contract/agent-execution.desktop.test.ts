@@ -32,7 +32,7 @@ test('independent Guide completes a DBOS human wait and real command, preserves 
     await browser.markText('button','New Session','native-new-session'); assert.ok((await d.click('native-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
     await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`); await browser.send('Input.insertText',{text:initialDraft});
-    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio','Campaign configuration',12000)).ok);
+    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio','Project configuration',12000)).ok);
     const studio = await d.read('studio'); assert.ok(studio.ok); const guide = studio.state.session; assert.ok(guide);
     const url = await browser.evaluate<string>('location.href');
     assert.ok((await d.fill('config-site','local')).ok);
