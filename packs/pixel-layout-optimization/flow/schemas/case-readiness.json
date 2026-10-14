@@ -1,0 +1,71 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.case-readiness/1",
+ "title": "pixel.case-readiness/1",
+ "type": "object",
+ "additionalProperties": true,
+ "required": ["schema", "paths", "manifestSha256", "sitecapsSha256", "manifest", "sitecaps", "goal", "options", "original", "unmodelled", "versions"],
+ "properties": {
+  "schema": {"const": "pixel.case-readiness/1"},
+  "paths": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["manifest", "sitecaps"],
+   "properties": {
+    "manifest": {"type": "string", "minLength": 1},
+    "sitecaps": {"type": "string", "minLength": 1}
+   }
+  },
+  "manifestSha256": {"type": "string", "minLength": 1},
+  "sitecapsSha256": {"type": "string", "minLength": 1},
+  "manifest": {"type": "object"},
+  "sitecaps": {"type": "object"},
+  "goal": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["values", "sources", "ratioDefinition", "ratioNets", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct"],
+   "properties": {
+    "values": {"type": "object"},
+    "sources": {"type": "object"},
+    "ratioDefinition": {"enum": ["narrow", "broad"]},
+    "ratioNets": {"type": "array", "items": {"type": "string"}},
+    "transmittanceBasis": {"enum": ["tiled", "own"]},
+    "extraCsOverlap": {"enum": ["count", "exclude"]},
+    "topologyMoves": {"enum": ["off", "allowed"]},
+    "convergeBandPct": {"type": "number"}
+   }
+  },
+  "options": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["decks", "lvsDeck", "schematic", "extraction"],
+   "properties": {
+    "decks": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["authority", "reference"],
+     "properties": {
+      "authority": {"type": ["string", "null"]},
+      "reference": {"type": ["string", "null"]}
+     }
+    },
+    "lvsDeck": {"type": ["string", "null"]},
+    "schematic": {"type": ["string", "null"]},
+    "extraction": {"type": "object"}
+   }
+  },
+  "original": {
+   "type": "object",
+   "additionalProperties": true,
+   "required": ["outlineUm", "cstDeviceFf", "loads", "tTiledPct"],
+   "properties": {
+    "outlineUm": {"type": "array", "items": {"type": ["number", "null"]}},
+    "cstDeviceFf": {"type": ["number", "null"]},
+    "loads": {"type": "object"},
+    "tTiledPct": {"type": ["number", "null"]}
+   }
+  },
+  "unmodelled": {"type": "array", "items": {"type": "string"}},
+  "versions": {"type": "object"}
+ }
+}

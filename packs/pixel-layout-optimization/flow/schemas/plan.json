@@ -1,0 +1,76 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.plan/1",
+ "title": "pixel.plan/1",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["schema", "round", "hypothesis", "base", "operators", "frontPoints", "pairConstraints", "edits", "expect"],
+ "properties": {
+  "schema": {"const": "pixel.plan/1"},
+  "round": {"type": "integer", "minimum": 1},
+  "hypothesis": {"type": "string", "minLength": 1},
+  "base": {"type": "string", "minLength": 1},
+  "operators": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["op"],
+    "properties": {
+     "op": {"enum": ["shield", "cst-stretch", "opening-shift", "band-trim", "contact-move"]}
+    }
+   }
+  },
+  "frontPoints": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 6,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "objective"],
+    "properties": {
+     "name": {"type": "string", "minLength": 1},
+     "objective": {"enum": ["legalise", "min-pitch", "min-ratio"]},
+     "outlineUm": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+     "loadAllowancePct": {"type": "number"},
+     "ratioCapPct": {"type": "number"},
+     "exploratory": {"type": "boolean"},
+     "throughChain": {"type": "boolean"}
+    }
+   }
+  },
+  "pairConstraints": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["place"],
+    "properties": {
+     "place": {"type": "string", "minLength": 1}
+    }
+   }
+  },
+  "edits": {
+   "type": "array",
+   "maxItems": 12,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["layer"],
+    "anyOf": [{"required": ["dx", "dy"]}, {"required": ["op", "box"]}],
+    "properties": {
+     "layer": {"type": "string", "minLength": 1},
+     "polygon": {"type": "integer", "minimum": 0},
+     "vertices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+     "edge": {"type": "integer", "minimum": 0},
+     "dx": {"type": "number", "minimum": -1.5, "maximum": 1.5},
+     "dy": {"type": "number", "minimum": -1.5, "maximum": 1.5},
+     "op": {"enum": ["add", "cut"]},
+     "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}
+    }
+   }
+  },
+  "expect": {"type": "string"}
+ }
+}

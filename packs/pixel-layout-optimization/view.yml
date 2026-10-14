@@ -1,0 +1,50 @@
+# Display only: how the Live tab draws this Pack's Run (packs.ts packView). It never reaches the
+# flow, a task or a judge. The round's checks (DRC, LVS, extraction, transmittance) run as one task
+# today, so they are a checklist, not a team; split them into a team only if they ever become
+# separate graph tasks.
+title: "OLED pixel layout: lower coupling"
+stations:
+  - id: case
+    label: Case and baseline
+    about: The case manifest and Site capabilities, and today's judged coupling ratio before any edit.
+    checklist:
+      - { label: Check the case files, nodes: [prepare-case], rounds: first }
+      - { label: Judge the original pixel, nodes: [judge-original], rounds: first }
+  - id: design
+    label: Design space
+    about: Maps the moves available in this case and learns how each one shifts the ratio.
+    checklist:
+      - { label: Map the design space, nodes: [map-design-space], rounds: first }
+      - { label: Learn move sensitivities, nodes: [learn-sensitivities], rounds: first }
+  - id: engineer
+    label: Layout engineer
+    about: AI agent that plans this round's edits to the pixel layout.
+    checklist:
+      - { label: Plan the round's edits, nodes: [plan-round] }
+  - id: checks
+    label: Checks
+    about: Runs the candidate through DRC, LVS, extraction and transmittance, then judges it.
+    checklist:
+      - { label: "DRC, LVS, extraction / RCE, transmittance", nodes: [solve-and-judge] }
+  - id: decision
+    label: Round decision
+    about: Weighs the judged candidate against the Goal and routes to the next round or to a stop.
+    checklist:
+      - { label: Decide the round, nodes: [decide-round] }
+  - id: delivery
+    label: Delivery
+    about: Evaluates the best candidate against the Goal and delivers the result.
+    checklist:
+      - { label: Evaluate the best candidate, nodes: [evaluate] }
+      - { label: Deliver the result, nodes: [deliver] }
+edges:
+  - { from: case, to: design }
+  - { from: design, to: engineer }
+  - { from: engineer, to: checks, label: candidate }
+  - { from: checks, to: decision, label: judged }
+  - { from: decision, to: engineer, label: next round, back: true }
+  - { from: decision, to: delivery }
+metrics:
+  - { label: Ct/Cs today, node: judge-original, path: [originalValues, pixel_ratio_judged_pct], unit: "%" }
+  - { label: Best Ct/Cs so far, node: decide-round, path: [best, values, pixel_ratio_judged_pct], unit: "%", better: lower, goal: ratio_target_pct }
+  - { label: Best transmittance, node: decide-round, path: [best, values, pixel_t_judged_pct], unit: "%" }

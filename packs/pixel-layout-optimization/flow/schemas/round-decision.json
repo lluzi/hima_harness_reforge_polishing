@@ -1,0 +1,38 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.round-decision/1",
+ "title": "pixel.round-decision/1",
+ "type": "object",
+ "additionalProperties": true,
+ "required": ["schema", "round", "route", "nextRound", "stopReason", "goalMet", "best", "front", "trustRadiusUm", "predictedVsMeasured", "openMarkers", "rules"],
+ "properties": {
+  "schema": {"const": "pixel.round-decision/1"},
+  "round": {"type": "integer", "minimum": 0},
+  "route": {"enum": ["continue", "stop"]},
+  "nextRound": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["round"],
+   "properties": {"round": {"type": "integer", "minimum": 0}}
+  },
+  "stopReason": {"enum": ["", "goal-met", "converged", "blocked", "round-limit"]},
+  "goalMet": {"type": "boolean"},
+  "best": {
+   "type": ["object", "null"],
+   "additionalProperties": true,
+   "required": ["id", "values", "legal"],
+   "properties": {
+    "id": {"type": "string"},
+    "values": {"type": "object"},
+    "legal": {"type": "boolean"}
+   }
+  },
+  "front": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+  "trustRadiusUm": {"type": "number", "minimum": 0.05, "maximum": 2.0},
+  "predictedVsMeasured": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+  "nextLever": {"type": ["object", "null"]},
+  "openMarkers": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+  "rules": {"type": "object"},
+  "history": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+ }
+}

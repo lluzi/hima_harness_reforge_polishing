@@ -1,0 +1,34 @@
+id: pixel-receipt
+version: "1"
+file: tools/read-pixel.py
+argv: [python3, '${READER}', receipt, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: pixel.receipt/1
+emits:
+  - pixel_receipt_error_count
+  - pixel_drc_authority_1x1
+  - pixel_drc_authority_2x2
+  - pixel_drc_authority_3x3
+  - pixel_drc_reference_1x1
+  - pixel_drc_reference_2x2
+  - pixel_drc_reference_3x3
+  - pixel_lvs_correct
+  - pixel_cs_outside_marker_ff
+  - pixel_cs_ff
+  - pixel_ratio_narrow_pct
+  - pixel_ratio_broad_pct
+  - pixel_ct_judged_ff
+  - pixel_ratio_judged_pct
+  - pixel_coupling_over_limit_count
+  - pixel_load_increase_max_pct
+  - pixel_load_over_limit_count
+  - pixel_outline_w_um
+  - pixel_outline_h_um
+  - pixel_channels_changed
+  - pixel_interact_violations
+  - pixel_cst_device_ff
+  - pixel_t_tiled_pct
+  - pixel_t_own_pct
+  - pixel_t_judged_pct
+  - pixel_oled_area_um2
+  - pixel_pdl_symmetry_min
+  - pixel_undeclared_change_count

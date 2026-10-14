@@ -158,7 +158,8 @@
     "test/contract/atcs-known-collateral-durable.host.test.ts",
     "test/contract/atcs-resident-durable.host.test.ts",
     "test/contract/libinsight-resident-durable.host.test.ts",
-    "test/contract/mage-scribe-placement-durable.host.test.ts"
+    "test/contract/mage-scribe-placement-durable.host.test.ts",
+    "test/contract/pixel-layout-optimization-durable.host.test.ts"
   ],
   "live-model": [
     "test/contract/child-compaction.live.test.ts"

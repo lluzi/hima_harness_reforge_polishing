@@ -1,0 +1,6 @@
+id: drc-authority-2x2-clean
+version: "1"
+title: The authority deck is clean on the 2x2 array
+requires: [{ type: pixel_drc_authority_2x2 }]
+subject: { type: pixel_drc_authority_2x2 }
+predicate: { op: eq, threshold: 0, unit: count }

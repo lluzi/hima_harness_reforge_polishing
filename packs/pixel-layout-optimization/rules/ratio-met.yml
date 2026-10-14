@@ -1,0 +1,7 @@
+id: ratio-met
+version: "1"
+title: The judged coupling ratio meets the Goal target
+parameter: { name: ratio_target_pct, unit: pct }
+requires: [{ type: pixel_ratio_judged_pct }]
+subject: { type: pixel_ratio_judged_pct }
+predicate: { op: lte, threshold: { parameter: ratio_target_pct }, unit: pct }

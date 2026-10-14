@@ -1,0 +1,6 @@
+id: receipt-verified
+version: "1"
+title: The candidate's receipt has no missing, stale or mismatched reports
+requires: [{ type: pixel_receipt_error_count }]
+subject: { type: pixel_receipt_error_count }
+predicate: { op: eq, threshold: 0, unit: count }

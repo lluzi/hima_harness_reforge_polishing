@@ -1,0 +1,6 @@
+id: channels-unchanged
+version: "1"
+title: Every transistor channel is congruent to the original's
+requires: [{ type: pixel_channels_changed }]
+subject: { type: pixel_channels_changed }
+predicate: { op: eq, threshold: 0, unit: count }

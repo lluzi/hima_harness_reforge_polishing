@@ -1,0 +1,117 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "pixel.site-capabilities/1",
+ "title": "pixel.site-capabilities/1",
+ "type": "object",
+ "required": [
+  "schema",
+  "launcher",
+  "python",
+  "tools"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema": {
+   "const": "pixel.site-capabilities/1"
+  },
+  "launcher": {
+   "type": "object",
+   "required": [
+    "argv"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "argv": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "env": {
+     "type": "object"
+    }
+   }
+  },
+  "python": {
+   "type": "string",
+   "minLength": 1
+  },
+  "reaperPython": {
+   "type": "string"
+  },
+  "envScripts": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "tools": {
+   "type": "object",
+   "required": [
+    "argus",
+    "gdsIn",
+    "rcexplorer"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "argus": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    },
+    "calibre": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    },
+    "gdsIn": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    },
+    "rcexplorer": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    },
+    "argusLvs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    }
+   }
+  },
+  "gdsInLibraryPath": {
+   "type": "string"
+  },
+  "env": {
+   "type": "object"
+  },
+  "parallelJobs": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "timeoutsS": {
+   "type": "object"
+  },
+  "expectVersions": {
+   "type": "object"
+  },
+  "drcStripFunctions": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ }
+}

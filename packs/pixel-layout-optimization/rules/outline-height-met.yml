@@ -1,0 +1,7 @@
+id: outline-height-met
+version: "1"
+title: The achieved cell height meets the Goal target
+parameter: { name: outline_h_um, unit: um }
+requires: [{ type: pixel_outline_h_um }]
+subject: { type: pixel_outline_h_um }
+predicate: { op: lte, threshold: { parameter: outline_h_um }, unit: um }

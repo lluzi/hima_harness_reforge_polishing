@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "readerValue": {
+      "type": "object",
+      "required": ["type", "unit", "value"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "unit": {"type": "string", "minLength": 1},
+        "value": {"type": ["number", "null"]},
+        "unknownReason": {"type": "string"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "required": ["contentSha256", "values"],
+      "properties": {
+        "contentSha256": {"type": "string", "minLength": 1},
+        "values": {"type": "array", "items": {"$ref": "#/$defs/readerValue"}}
+      }
+    },
+    "resident-output": {
+      "type": "object",
+      "required": ["observations", "engineering"],
+      "properties": {
+        "observations": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/observation"}},
+        "engineering": {
+          "type": "object",
+          "required": ["outcome", "summary", "stopReason"],
+          "properties": {
+            "outcome": {"type": "string", "enum": ["completed", "best-effort", "blocked"]},
+            "summary": {"type": "string"},
+            "stopReason": {"type": "string"}
+          }
+        }
+      }
+    },
+
+    "prepare-case-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["PIXEL_CASE_MANIFEST", "SITE_CAPABILITIES", "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct", "t_min_pct", "t_max_pct", "cst_ceiling_ff", "ratioDefinition", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct"],
+      "properties": {
+        "PIXEL_CASE_MANIFEST": {"type": "string", "minLength": 1},
+        "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
+        "outline_w_um": {"type": "number"},
+        "outline_h_um": {"type": "number"},
+        "ratio_target_pct": {"type": "number"},
+        "load_allowance_pct": {"type": "number"},
+        "t_min_pct": {"type": "number"},
+        "t_max_pct": {"type": "number"},
+        "cst_ceiling_ff": {"type": "number"},
+        "ratioDefinition": {"type": "string", "enum": ["broad", "narrow"]},
+        "transmittanceBasis": {"type": "string", "enum": ["tiled", "own"]},
+        "extraCsOverlap": {"type": "string", "enum": ["count", "exclude"]},
+        "topologyMoves": {"type": "string", "enum": ["off", "allowed"]},
+        "convergeBandPct": {"type": "number"}
+      }
+    },
+    "prepare-case-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["readinessId", "outlineUm"],
+      "properties": {
+        "readinessId": {"type": "string", "minLength": 1},
+        "outlineUm": {"type": ["array", "null"], "items": {"type": ["number", "null"]}},
+        "unmodelled": {"type": "array", "items": {"type": "string"}},
+        "versions": {"type": "object"},
+        "goalSources": {"type": "object"}
+      }
+    },
+
+    "judge-original-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {"CASE": {"$ref": "#/$defs/prepare-case-output"}}
+    },
+    "judge-original-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["originalLegal", "calibration"],
+      "properties": {
+        "originalValues": {"type": "object"},
+        "originalLegal": {"type": "boolean"},
+        "calibration": {"type": "object"}
+      }
+    },
+
+    "map-design-space-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {"JUDGED": {"$ref": "#/$defs/judge-original-output"}}
+    },
+    "map-design-space-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "pitchBound": {"type": ["object", "null"]},
+        "sites": {"type": ["integer", "null"]},
+        "levers": {"type": ["integer", "null"]}
+      }
+    },
+
+    "learn-sensitivities-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "CARD": {"$ref": "#/$defs/map-design-space-output"},
+        "PROBES": {"type": "number"},
+        "STEP": {"type": "number"}
+      }
+    },
+    "learn-sensitivities-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["probes"],
+      "properties": {
+        "probes": {"type": "array", "items": {"type": "string"}},
+        "dropped": {"type": "array"},
+        "pairs": {"type": "object"}
+      }
+    },
+
+    "plan-round-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ROUND"],
+      "properties": {"ROUND": {"type": "integer", "minimum": 1}}
+    },
+
+    "solve-and-judge-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ROUND"],
+      "properties": {
+        "ROUND": {"type": "integer", "minimum": 1},
+        "PLAN": {"$ref": "#/$defs/resident-output"}
+      }
+    },
+    "solve-and-judge-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["round", "judged", "skipped"],
+      "properties": {
+        "round": {"type": "integer", "minimum": 1},
+        "judged": {"type": "array"},
+        "failed": {"type": "array"},
+        "skipped": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    },
+
+    "decide-round-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ROUND"],
+      "properties": {
+        "ROUND": {"type": "integer", "minimum": 1},
+        "SOLVED": {"$ref": "#/$defs/solve-and-judge-output"}
+      }
+    },
+    "decide-round-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["route", "nextRound", "goalMet"],
+      "properties": {
+        "route": {"type": "string", "enum": ["continue", "stop"]},
+        "nextRound": {
+          "type": "object",
+          "required": ["round"],
+          "properties": {"round": {"type": "integer", "minimum": 0}}
+        },
+        "stopReason": {"type": "string"},
+        "goalMet": {"type": "boolean"},
+        "best": {"type": ["object", "null"]}
+      }
+    },
+
+    "evaluate-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {"DECISION": {"$ref": "#/$defs/decide-round-output"}}
+    },
+    "evaluate-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ending", "goalMet"],
+      "properties": {
+        "ending": {"type": "string", "enum": ["goal-met", "blocked", "converged", "budget-reached"]},
+        "goalMet": {"type": "boolean"},
+        "bestId": {"type": ["string", "null"]},
+        "bestEvalId": {"type": ["string", "null"]}
+      }
+    },
+
+    "deliver-input": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {"EVALUATION": {"$ref": "#/$defs/evaluate-output"}}
+    },
+    "deliver-output": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["goalMet", "ending", "reportPath", "packagePath"],
+      "properties": {
+        "goalMet": {"type": "boolean"},
+        "ending": {"type": "string", "enum": ["goal-met", "blocked", "converged", "budget-reached"]},
+        "reportPath": {"type": "string", "minLength": 1},
+        "packagePath": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,103 @@
+# Every typed value the two Readers emit, with its unit, provenance and
+# meaning (SPEC.md Semantics). Only `measured` and `geometry` values are
+# judged; `estimated` values rank moves and are reported as such.
+values:
+  pixel_receipt_error_count:
+    unit: count
+    description: Missing, empty, stale or mismatched reports and option mismatches against case readiness; 0 only when every report was found, parsed and matched. (source measured)
+  pixel_drc_authority_1x1:
+    unit: count
+    description: The authority deck's result count on the single cell. (source measured)
+  pixel_drc_authority_2x2:
+    unit: count
+    description: The authority deck's result count on the 2x2 array. (source measured)
+  pixel_drc_authority_3x3:
+    unit: count
+    description: The authority deck's result count on the 3x3 array. (source measured)
+  pixel_drc_reference_1x1:
+    unit: count
+    description: The reference deck's result count on the single cell; reported, never judged. (source measured)
+  pixel_drc_reference_2x2:
+    unit: count
+    description: The reference deck's result count on the 2x2 array; reported, never judged. (source measured)
+  pixel_drc_reference_3x3:
+    unit: count
+    description: The reference deck's result count on the 3x3 array; reported, never judged. (source measured)
+  pixel_lvs_correct:
+    unit: flag
+    description: 1 when LVS says the layout matches the declared schematic within tolerance, 0 when it does not, null when there is no report. (source measured)
+  pixel_cs_outside_marker_ff:
+    unit: ff
+    description: The part of the extracted Cs outside the capacitor marker, estimated from the surrogate's overlap share. (source estimated)
+  pixel_cs_ff:
+    unit: ff
+    description: Cs, the extracted storage-node-to-storage-net coupling, with extraCsOverlap applied. (source measured)
+  pixel_ratio_narrow_pct:
+    unit: pct
+    description: Ct/Cs for the manifest's narrow aggressor list. (source measured)
+  pixel_ratio_broad_pct:
+    unit: pct
+    description: Ct/Cs for the manifest's broad aggressor list. (source measured)
+  pixel_ct_judged_ff:
+    unit: ff
+    description: Ct for the judged ratio definition. (source measured)
+  pixel_ratio_judged_pct:
+    unit: pct
+    description: Ct/Cs for the ratioDefinition the Strategy names; the judged ratio. (source measured)
+  pixel_coupling_over_limit_count:
+    unit: count
+    description: Manifest couplingLimits pairs above their limit. (source measured)
+  pixel_load_increase_max_pct:
+    unit: pct
+    description: The largest rise of a loadLimitedLines total over the original's. (source measured)
+  pixel_load_over_limit_count:
+    unit: count
+    description: Lines whose rise exceeds load_allowance_pct. (source measured)
+  pixel_outline_w_um:
+    unit: um
+    description: The achieved cell outline width (x pitch). (source geometry)
+  pixel_outline_h_um:
+    unit: um
+    description: The achieved cell outline height (y pitch). (source geometry)
+  pixel_channels_changed:
+    unit: count
+    description: Channels not congruent by translation to the original's. (source geometry)
+  pixel_interact_violations:
+    unit: count
+    description: Shapes failing a manifest interactRules entry, checked in geometry. (source geometry)
+  pixel_cst_device_ff:
+    unit: ff
+    description: Capacitor-marker area times the manifest coefficient. (source geometry)
+  pixel_t_tiled_pct:
+    unit: pct
+    description: Transmittance on the 3x3 array's centre cell. (source geometry)
+  pixel_t_own_pct:
+    unit: pct
+    description: Transmittance on the own cell. (source geometry)
+  pixel_t_judged_pct:
+    unit: pct
+    description: The transmittance the transmittanceBasis knob names. (source geometry)
+  pixel_oled_area_um2:
+    unit: um2
+    description: Emission area. (source geometry)
+  pixel_pdl_symmetry_min:
+    unit: ratio
+    description: The vendor prototype's PDL-symmetry figure, kept for comparison with the customer's reports. (source geometry)
+  pixel_undeclared_change_count:
+    unit: count
+    description: A capacitor outside tolerance with no declared change, a declared change beyond cst_ceiling_ff, or a channel change. (source geometry)
+  pixel_plan_error_count:
+    unit: count
+    description: The resident plan's admissibility errors against the schema, the resolved Goal, the Strategy, the manifest and the history; 0 is the completion evidence. (source geometry)
+  pixel_plan_front_points:
+    unit: count
+    description: The number of front points the plan declares (1 to 6). (source geometry)
+  pixel_plan_operator_count:
+    unit: count
+    description: The number of declared operators in the plan. (source geometry)
+  pixel_plan_edit_count:
+    unit: count
+    description: The number of bounded edits in the plan (at most 12). (source geometry)
+  pixel_plan_exploratory_points:
+    unit: count
+    description: The number of exploratory front points (for the trade-off table only). (source geometry)
