@@ -72,7 +72,44 @@ setInterval(()=>{if(c&&input&&!finished&&fs.existsSync(path.join(evidence,'finis
     store: service.durable.store, services: {} as import('../../packages/harness/lib/types/team-service-runtime.js').TeamServiceRuntime,
     localRuntime: local, runtimeAssets: async () => assets,
     sharedDeepSeekModel: async () => { throw Error('No model fallback'); }, memberContext: async () => { throw Error('No native MCP tool in this fixture'); } });
-  t.after(async () => { unknownClose = false; await runtime.stopAll(); try { await host.dispose(); } finally { await executor.dispose(); await home.h.dispose(); } });
+  t.after(async () => {
+    unknownClose = false;
+    const failures: unknown[] = [];
+    try {
+      await runtime.stopAll();
+      // A physically stopped fixture process is not yet a durable Team release.
+      // The original Host exit fence must prove that boundary before teardown.
+      const exit = await service.prepareExit({ requestId: 'definition-fixture-close', mode: 'keep-jobs' });
+      if (!exit.ready) await waitUntil('definition fixture Team resources reach Host exit boundary',
+        async () => (await service.exitStatus()).ready, 30000, 25);
+    } catch (error) { failures.push(error); }
+    try { await host.dispose(); } catch (error) { failures.push(error); }
+    const lifecycle = service as { resourcesClosing?: Promise<void>; closeHostResources(): Promise<void> };
+    let confirmed = false;
+    try {
+      assert.ok(lifecycle.resourcesClosing, 'Host disposal must invoke its ordered resource closer');
+      await lifecycle.resourcesClosing;
+      confirmed = true;
+    } catch (error) { failures.push(error); }
+    if (!confirmed) {
+      // Retry only this Host's original closer. Keep the initial failure even
+      // when the retry safely releases resources for the next in-process test.
+      try { await lifecycle.closeHostResources(); confirmed = true; }
+      catch (error) {
+        failures.push(error);
+        try { await service.durable.stop(); } catch (stopError) { failures.push(stopError); }
+      }
+    }
+    try { await executor.dispose(); } catch (error) { failures.push(error); }
+    if (failures.length) {
+      await writeFile(path.join(evidence, 'host-close-unconfirmed.json'), JSON.stringify({
+        reasons: failures.map(error => error instanceof Error ? error.message : String(error)), confirmedOnRetry: confirmed,
+      }, null, 2));
+      t.diagnostic('Retained failed definition Host Home: ' + home.h.home);
+      throw new AggregateError(failures, 'Definition fixture Host cleanup failed');
+    }
+    await home.h.dispose();
+  });
   const guide = String((await createRootAgent(host.ctx, home.h.workspace)).id);
   await service.teamOperation(guide, { action: 'configure-model', request: { modelRef: 'fixture-model', runtime: 'opencode',
     provider: 'openai-completions', model: 'controlled-node', baseUrl: 'https://fixture.invalid/v1', apiKey: 'private-fixture-only' } }, 'human');
