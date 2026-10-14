@@ -215,17 +215,20 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     # area. A wide outer plate that merely crosses the marker is NOT frozen whole
     # (that would freeze the pitch); it is held only by the marker-region group's
     # edges at the capacitor boundary.
+    # Of such a plate only the part at the capacitor is rigid: its vertices inside the marker.
+    # The same polygon often runs on as a supply line across the cell, and a line held whole
+    # holds the cell to its full width (a VDD Gate2 plate-and-line locked the pitch at 23.62 um).
+    marker_zone = marker_geom.buffer(1e-3) if not marker_geom.is_empty else None
     for pi, (n, i, p) in enumerate(polys):
-        rigid_whole = False
         if marker_layer and n == marker_layer:
-            rigid_whole = True
-        elif plate_layers and n in plate_layers and not marker_geom.is_empty:
-            poly_geom = Polygon(p).buffer(0)
-            if poly_geom.area > 1e-9 and poly_geom.intersection(marker_geom).area > 0.5 * poly_geom.area:
-                rigid_whole = True
-        if rigid_whole:
             for v in range(1, len(p)):
                 uf.union((pi, 0), (pi, v), 0)
+        elif plate_layers and n in plate_layers and marker_zone is not None:
+            poly_geom = Polygon(p).buffer(0)
+            if poly_geom.area > 1e-9 and poly_geom.intersection(marker_geom).area > 0.5 * poly_geom.area:
+                inside = [v for v in range(len(p)) if marker_zone.contains(Point(p[v][0], p[v][1]))]
+                for v in inside[1:]:
+                    uf.union((pi, inside[0]), (pi, v), 0)
 
     # Number the displacement classes; the last variable is the pitch P.
     roots = {}
