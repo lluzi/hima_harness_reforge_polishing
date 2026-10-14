@@ -5,13 +5,13 @@ import {realpath,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {dbosHome,cleanDbosHome} from './support/dbos-process.ts';
-for(const mode of ['clear','residual'])test(`normal ATCS durable route delivers honest ${mode} timing and broader UNKNOWN`,{timeout:120000},async(t)=>{
+for(const mode of ['clear','residual'])test(mode==='clear'?'normal ATCS durable route delivers honest clear timing and broader UNKNOWN':'normal ATCS durable route sends an early Goal-unmet delivery back to keep engineering (time box)',{timeout:120000},async(t)=>{
  const home=await dbosHome();
  const child=spawn(process.execPath,[fileURLToPath(new URL('./support/atcs-resident-durable-worker.ts',import.meta.url)),home,mode],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
  const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));
  let output='';const safeOutput=()=>output.replace(/([?&]token=)[^\s&]+/g,'$1[redacted]');child.stdout!.on('data',bytes=>output+=String(bytes));child.stderr!.on('data',bytes=>output+=String(bytes));
  const result=new Promise<any>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`ATCS worker exceeded 90s: ${safeOutput()}`)),90000);child.once('message',proof=>{clearTimeout(timer);resolve(proof);});child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('exit',()=>{clearTimeout(timer);reject(new Error(`ATCS child exited without result: ${safeOutput()}`));});});
- try{const proof=await result;t.diagnostic(JSON.stringify(proof));assert.equal(proof.ok,true,JSON.stringify(proof)+'\n'+safeOutput());assert.equal(proof.tasks,5);assert.equal(proof.readerJobs,1);assert.equal(proof.engineeringJobs,1);assert.equal(proof.productModelCalls,0);assert.equal(proof.goalState,mode==='clear'?'met':'not-met');assert.equal(proof.broaderUnknown,4);}
+ try{const proof=await result;t.diagnostic(JSON.stringify(proof));assert.equal(proof.ok,true,JSON.stringify(proof)+'\n'+safeOutput());assert.equal(proof.readerJobs,1);assert.equal(proof.engineeringJobs,1);assert.equal(proof.productModelCalls,0);if(mode==='clear'){assert.equal(proof.tasks,5);assert.equal(proof.goalState,'met');assert.equal(proof.broaderUnknown,4);}else assert.equal(proof.timeBoxSentBack,true);}
  finally{if(child.exitCode===null){const term=setTimeout(()=>child.kill('SIGTERM'),10000),kill=setTimeout(()=>child.kill('SIGKILL'),15000);try{await exited;}finally{clearTimeout(term);clearTimeout(kill);}}await closeOwnedNative(home,mode);await cleanDbosHome(home);}
 });
 

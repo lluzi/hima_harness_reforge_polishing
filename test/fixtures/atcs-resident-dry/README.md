@@ -32,6 +32,11 @@ the downloaded package is extracted and checkpoint/script/ECO/raw-report bytes a
 with the actual canonical outputs. The cheap proof uses the production wrapper collection/signing
 seam and production Reader after materializing its verified retained files; it starts no Host.
 
+Since Pack 0.4.10 the Reader's time box sends a Goal-unmet delivery made before the 75-minute check back
+to the same native task. The residual case therefore proves that send-back through the real Host (task waiting in
+`delivery-repair`, one engineering launch, one Reader job, the Reader naming the time box). Reading an unmet
+delivery after the check is proven by the Pack Reader unit test.
+
 Unchanged Reader forgery/scenario/checkpoint negatives remain in the Pack's cheaper Python
 suite. Generic interrupted archive publication/restart is covered by durable-views Host tests;
 this ATCS test does not claim process-crash recovery or live engineering qualification.

@@ -77,6 +77,23 @@ try {
  console.log('U8 await: duplicate public recorded request');
  const recorded=await call(request);assert.equal(recorded.data.state,'recorded');assert.equal(recorded.data.workflowId,accepted.data.workflowId);
  console.log('U8 phase: duplicate public request returned original recorded result');
+ clearRoute:{
+ if(mode==='residual'){
+  // ATCS 0.4.10+ time box: a Goal-unmet delivery before the 75-minute check is sent back to the same
+  // native task to keep engineering. Acceptance after the check is proven by the Pack Reader unit test.
+  let fix:any;
+  await until('time box sends the early unmet delivery back',async()=>{const flow=await readFlow(runtime,runId);fix=flow.tasks.find((task:any)=>task.identity.taskId==='fix-timing');return fix?.state?.state==='waiting'&&fix.state.diagnostic?.code==='delivery-repair';});
+  assert.equal(fix.result,null,'a sent-back delivery is not a task result');
+  const {readdir}=await import('node:fs/promises');
+  const logs=await Promise.all((await readdir(campaign)).filter(name=>/^hima-effect-.*\.log$/.test(name)).map(name=>readFile(path.join(campaign,name),'utf8')));
+  assert.ok(logs.some(text=>text.includes('time box: the timing Goal is unmet')),'the Reader names the time box');
+  view=await readers.readRunView(runId);assert.equal(String(view.run.status).startsWith('ended'),false,'the Run keeps engineering');
+  const records=await readers.readRunRecords(runId,'job'),launched=records.filter((record:any)=>record.event==='launched');
+  assert.equal(launched.filter((record:any)=>record.job.name==='engineering-fix-timing').length,1,'no new engineering launch');
+  assert.equal(launched.filter((record:any)=>record.job.name==='reader-atcs-engineering-result').length,1,JSON.stringify(launched));
+  process.send?.({ok:true,mode,runId,hostStarts:1,privatePostgres:1,productModelCalls:0,sshCalls:0,edaCalls:0,timeBoxSentBack:true,readerJobs:1,engineeringJobs:1,messageIdentity:true,elapsedMs:Date.now()-startedAt});
+  break clearRoute;
+ }
  await until('five ATCS tasks complete',async()=>{view=await readers.readRunView(runId);return view.tasks.filter((task:any)=>task.result).length===5&&String(view.run.status).startsWith('ended');});
  const tasks=view.tasks.filter((task:any)=>task.current&&task.result);
  assert.deepEqual(tasks.map((task:any)=>task.taskId).sort(),['prepare-inputs','prepare-baseline','fix-timing','evaluate-timing','deliver'].sort());
@@ -116,6 +133,7 @@ try {
  await until('automatic report/archive delivery',async()=>{if((await readers.readRunAssets(runId)).kind==='read')return true;const diagnostics=await runtime.store.orderedFlowFacts(runId,'delivery-diagnostic:');if(diagnostics.length)throw new Error('Automatic delivery refused: '+JSON.stringify(diagnostics.at(-1).value));return false;});
  assert.equal((await bounded<ReadExperienceResult>('automatic experience read',service.readExperience(runId))).kind,'read');
  process.send?.({ok:true,mode,runId,hostStarts:1,privatePostgres:1,productModelCalls:0,sshCalls:0,edaCalls:0,tasks:5,goalState:view.run.goalState,broaderUnknown:4,readerJobs:1,engineeringJobs:1,messageIdentity:true,elapsedMs:Date.now()-startedAt});
+ }
 } catch(error){
  const proof:any={mode,runId,lastAwait:currentAwait,error:String(error),elapsedMs:Date.now()-startedAt};
  if(runId&&host) {
