@@ -57,5 +57,14 @@ remaining/regressed/blocked/unknown item is an object and that a Reader repair r
 document, because published support files are immutable. 0.4.7 makes common R1 the vendor's own
 automatic-fix flow from the XTop tutorial (transition and capacitance first, then setup and hold, twice),
 so the before state is the strongest stock-XTop reference rather than setup and hold fixers alone.
+0.4.8 (demo branch `demo/atcs-derive`) withdraws the executable ladder and the playbook's step-by-step
+ladder and keeps only general principles and XTop command mechanics, so the resident must work out the
+closure method itself on the design. 0.4.9 adds the general clock-skew technique for structural setup
+walls and a time-box check before delivery, after a 0.4.8 resident closed hold but stopped at setup 55
+with a clock attempt that used data buffers without obligatory legalization. 0.4.10 adds an order of
+work in prose and makes the time-box check binding: the Reader sends a Goal-unmet delivery made before
+75 minutes back to the resident to keep engineering, after two residents delivered at 16 and 19 minutes.
+0.4.11 says the check is not a timer, after a resident delivered at 14 minutes and then slept until the
+75-minute mark instead of engineering.
 xtop-capabilities.md supplies native tool mechanics without prescribing a design answer.
 state-and-evidence.md keeps actual, predicted, unknown and final signoff meanings separate.

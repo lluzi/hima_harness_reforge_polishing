@@ -163,6 +163,31 @@ class EngineeringResultReaderTest(unittest.TestCase):
                          "timing-fix fail reasons are bounded blocker evidence, not global checks")
         self.assertEqual(self._external_comparison(report)["effect"]["value"], 1)
 
+    def _task_started(self, created_at):
+        task = self.w / ".hima-engineering/task-1/task.json"
+        task.parent.mkdir(parents=True, exist_ok=True)
+        task.write_text(json.dumps({"taskId": "task-1", "createdAt": created_at}), encoding="utf-8")
+
+    def test_goal_unmet_delivery_before_the_time_box_check_is_sent_back_to_keep_working(self):
+        self._task_started("2026-10-01T23:40:00.000Z")  # delivered 20 minutes later
+        after = self._metrics("early", 0.0, 0.0, 0, -0.01, -0.01, 1)
+        report = self._deliver(self._result(after=after))
+        with self.assertRaisesRegex(ValueError, "time box.*keep engineering"):
+            reader.read("engineering-result", report, self.w)
+
+    def test_goal_unmet_delivery_after_the_time_box_check_is_read(self):
+        self._task_started("2026-10-01T22:40:00.000Z")  # delivered 80 minutes later
+        after = self._metrics("late", 0.0, 0.0, 0, -0.01, -0.01, 1)
+        report = self._deliver(self._result(after=after))
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_hold_violation_count"]["value"], 1)
+
+    def test_goal_met_delivery_is_read_at_any_time(self):
+        self._task_started("2026-10-01T23:55:00.000Z")  # delivered 5 minutes later
+        report = self._deliver(self._result())
+        values = {row["type"]: row for row in reader.read("engineering-result", report, self.w)}
+        self.assertEqual(values["tc_engineering_timing_remaining_violation_count"]["value"], 0)
+
     def test_product_delivery_needs_no_external_benchmark(self):
         (self.w / "state/autofix-reference.json").unlink()
         report = self._deliver(self._result())

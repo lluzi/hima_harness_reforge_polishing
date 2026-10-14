@@ -126,23 +126,23 @@ different contribution would corrupt this one's recorded scope.
 
 The existing Operator exposes only two added bounded surfaces: atcs_path_pin_rank and atcs_legalization_range. See xtop-expert-operator.md for the generic manual ladder and vendor-backed argument examples. Rank marking changes analysis/fix priority and must be refreshed after ECO; it is not a pure read. Legalization range enables strict placement, caps ECO displacement at1000tracks, fixes automatic original-cell displacement at0 and keeps hard readiness. Both require the current reviewed plan and are counted; neither is itself a physical ECO gain. Their settings/reports remain in the existing reads evidence and exact handoff script.
 
-## Closure-ladder commands (run on real XTop 2025.09.tmp15, 2026-10-07)
+## More XTop commands
 
-These forms ran in batch on the vendor tutorial design and their effect was measured (resident
-playbook, "Full-closure ladder"). The flags below are the ones used, not the full synopsis; read
-`man -l <install>/share/doc/man/man1/<command>.1` for the rest.
+These forms are verified on XTop 2025.09.tmp15 in batch. The flags below are examples, not the full
+synopsis; read `man -l <install>/share/doc/man/man1/<command>.1` for the rest. Which ones help, in what
+order and with what values is for you to find out by measurement.
 
-| Need | Command | Notes |
-|---|---|---|
-| Fixers see GBA, not retained PBA paths | `purge_timing_paths` | `summarize_gba_violations -exclude_path` numbers stay identical; prove it before and after |
-| Electrical repair | `fix_transition_violations <pins>` / `-check_timing_margin <pins>` | targets from `get_transition_violated_pins -pin_type data`; the margin form may not dent timing |
-| Wider ECO legalization | `set_placement_constraint -max_displacement {<x>t <y>t}` | default was `{100t 0}`; `{300t 20t}` cleared `legal_fail_no_space_on_row` |
-| Long hold chains | `set_parameter eco_max_buffer_chain_length <n>` | 16 allowed about 3 ns of fast-corner delay at a macro input |
-| Hold with explicit cells | `fix_hold_gba_violations -buffer_list <cells> -max_cluster_loader_count 4 -effort extreme_high` | |
-| Why a fix failed | `report_fail_reasons -stats -verbose -pins <pins>` | `-stats` needs `-pins` or `-paths` |
-| Tool clock ECO | `fix_violations_by_clock_eco -setup -buffer <clkbuf> -count <n> -trace_level <n> -hold_wns_threshold <ns> -auto_scan` | commits insert-delay solutions; repair the hold dent afterwards |
-| Manual clock delay | `insert_buffer [get_pins <CP pins>] <clkbuf>`, then `undo` | one cell per call, so `undo` removes exactly the last one |
-| Per-pin slack | `get_attribute [get_pins <p>] max_rise_gba_slack -scenario <s>` (also `max_fall`, `min_rise`, `min_fall`) | the per-scenario GBA view of one pin |
+| Command | What it does |
+|---|---|
+| `purge_timing_paths` | drops the retained path-based timing paths from the session; the fixers then use GBA |
+| `fix_transition_violations <pins>` / `-check_timing_margin <pins>` | electrical repair; targets from `get_transition_violated_pins -pin_type data` |
+| `set_placement_constraint -max_displacement {<x>t <y>t}` | ECO placement and legalization range, in tracks |
+| `set_parameter eco_max_buffer_chain_length <n>` | longest buffer/delay chain one fix may insert at a pin |
+| `fix_hold_gba_violations -buffer_list <cells> -max_cluster_loader_count <n> -effort <level>` | hold fixing with an explicit cell list |
+| `report_fail_reasons -stats -verbose -pins <pins>` | why fixes failed; `-stats` needs `-pins` or `-paths` |
+| `fix_violations_by_clock_eco -setup -buffer <clkbuf> -count <n> -trace_level <n> -hold_wns_threshold <ns> -auto_scan` | the tool's clock-ECO fixer |
+| `insert_buffer [get_pins <pins>] <cell>` / `-locations` | manual insertion, one cell per call, so `undo` removes exactly the last one |
+| `get_attribute [get_pins <p>] max_rise_gba_slack -scenario <s>` (also `max_fall`, `min_rise`, `min_fall`) | the per-scenario GBA slack of one pin |
 
 Batch hygiene: run `xtop -f <script> < /dev/null`. After a Tcl error XTop waits at its prompt, and
 without input it hangs. Wrap risky commands in `catch`.
