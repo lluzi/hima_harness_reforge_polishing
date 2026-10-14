@@ -46,8 +46,9 @@ export async function bootHimaHost(h: HimaHome, timeoutMs = 90_000): Promise<Boo
     port: host.port,
     stdout: host.stdout,
     stderr: host.stderr,
-    // Fifteen seconds rather than the shell's four: a contract test asserts this host exited zero,
-    // and a clean shutdown that took longer than the grace period would read as a crash.
-    stop: () => host.stop(15_000),
+    // Use the launcher's production 30-second close budget. A real resource
+    // closer reached the previous 15-second test deadline in the full suite; an
+    // unconfirmed exit still fails rather than authorizing a native signal.
+    stop: () => host.stop(),
   };
 }

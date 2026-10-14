@@ -72,7 +72,17 @@ async function bootedFixture(t: TestContext): Promise<Fixture> {
 }
 
 async function teardown(f: Pick<Fixture, 'h' | 'host'>): Promise<void> {
-  assert.equal(await f.host.stop(), 0, f.host.stderr());
+  let code: number | null;
+  try { code = await f.host.stop(); }
+  catch (error) {
+    const receipts = f.host.stderr().split('\n').filter(line => /^hima: resource shutdown (?:confirmed|unconfirmed); pid=\d+$/.test(line));
+    console.error('Campaign Host shutdown diagnostic', JSON.stringify({
+      pid: f.host.child.pid, exited: f.host.child.exitCode !== null || f.host.child.signalCode !== null,
+      receipts, error: String(error),
+    }));
+    throw error;
+  }
+  assert.equal(code, 0, f.host.stderr());
   await f.h.dispose();
 }
 
