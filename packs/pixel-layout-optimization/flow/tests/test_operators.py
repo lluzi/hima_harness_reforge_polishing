@@ -94,11 +94,32 @@ class OperatorsTest(unittest.TestCase):
         lay, nets = self._synthetic()
         op = {"op": "shield", "net": "P", "layer": "Metal",
               "over": {"victim": "V", "aggressor": "G"}, "marginUm": 0.0}
-        out, desc = operators.apply_operator(lay, op, self.case, nets, table=self.table)
+        # a gap wider than the layer's spacing gets a strip at least the layer's width
+        table = {"space": {"Metal": 0.3}, "width": {"Metal": 0.8}}
+        out, desc = operators.apply_operator(lay, op, self.case, nets, table=table)
         self.assertGreater(desc["shield"]["bridgeUm2"], 0.0)
         plate = Polygon(out.polys["Metal"][-1]).buffer(0)
         self.assertLess(plate.distance(sbox(5.0, -2, 6.0, 6)), 1e-6)   # tied to P
-        self.assertGreater(plate.distance(sbox(20, 0, 21, 4)), 1.0)    # clear of Q
+        self.assertGreater(plate.distance(sbox(20, 0, 21, 4)), 0.3)    # clear of Q
+        # a gap inside the layer's spacing is filled as a notch: the plate merges into P
+        out, desc = operators.apply_operator(lay, op, self.case, nets, table=self.table)
+        plate = Polygon(out.polys["Metal"][-1]).buffer(0)
+        self.assertLess(plate.distance(sbox(5.0, -2, 6.0, 6)), 1e-6)
+
+    def test_shield_grows_past_a_covered_shape_it_must_enclose(self):
+        from pixelopt import operators
+        from shapely.geometry import Polygon, box as sbox
+        lay, nets = self._synthetic()
+        lay.polys["GateA"] = [np.array([[-6.0, 1.5], [10.0, 1.5], [10.0, 2.5], [-6.0, 2.5]])]
+        op = {"op": "shield", "net": "P", "layer": "Metal",
+              "over": {"victim": "V", "aggressor": "G"}, "marginUm": 0.0}
+        table = {"space": {"Metal": 0.3}, "width": {"Metal": 0.5}, "enc": [["Metal", "GateA", 0.6]]}
+        out, _ = operators.apply_operator(lay, op, self.case, nets, table=table)
+        plate = Polygon(out.polys["Metal"][-1]).buffer(0)
+        covered = sbox(-6.0, 1.5, 10.0, 2.5).intersection(plate)
+        self.assertGreater(covered.area, 0.0)
+        # every covered part of the line sits at least 0.6 inside the plate across the line
+        self.assertTrue(plate.buffer(1e-6).contains(sbox(covered.bounds[0], 0.9, covered.bounds[2], 3.1)))
 
     def test_shield_that_would_surround_another_net_is_refused(self):
         from pixelopt import operators

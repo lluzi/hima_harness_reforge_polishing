@@ -32,6 +32,7 @@ import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 from shapely.geometry import Polygon
 
 from .core import PixelError
@@ -179,6 +180,66 @@ def _drc_full(lay, case, sitecaps, workspace):
         return {"c1": c1, "c3": c3, "total": c1 + c3, "byRule": by_rule, "folded": folded}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+_PLATE_TRIM_ROUNDS = 3
+
+
+def _trim_plates(lay, plates, base_lay, case, table, sitecaps, workspace):
+    """Trim each new shield plate where the authority deck marks it, then re-open it to the
+    layer's width; up to ``_PLATE_TRIM_ROUNDS`` deck runs. Only the plate's own area (never a
+    shape the base already had) is cut, so the plate shrinks and the base is untouched. A plate
+    is the operator's guess at the rules; the deck decides (an enclosure or an angled width the
+    rule table cannot foresee)."""
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    widths = (table or {}).get("width", {}) or {}
+    for _ in range(_PLATE_TRIM_ROUNDS):
+        drc = _drc_full(_finish(lay, case), case, sitecaps, workspace)
+        folded = drc.get("folded") or []
+        if not folded:
+            break
+        changed = False
+        for layer, plate in plates:
+            own_before = base_lay.geom(layer)
+            fresh = plate.difference(own_before)
+            if fresh.is_empty:
+                continue
+            hits = []
+            for _rule, pts in folded:
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                b = box(min(xs), min(ys), max(xs), max(ys))
+                if b.intersects(fresh.buffer(0.05)):
+                    hits.append(b.buffer(0.5, join_style=2))
+            if not hits:
+                continue
+            cut = unary_union(hits).intersection(fresh)
+            w = float(widths.get(layer) or 0.0)
+            new_polys = []
+            for p in lay.polys.get(layer, []):
+                g = Polygon(p).buffer(0)
+                if g.is_empty or g.intersection(cut).area <= 1e-9:
+                    new_polys.append(p)
+                    continue
+                g2 = g.difference(cut)
+                if w > 0:
+                    keep = g2.intersection(own_before)
+                    opened = g2.buffer(-w / 2.0, join_style=2).buffer(w / 2.0, join_style=2)
+                    g2 = unary_union([opened, keep])
+                parts = [q for q in getattr(g2, "geoms", [g2]) if q.area > 1e-6]
+                for q in parts:
+                    # a fragment the cut separated from every base shape would float: drop it
+                    if not q.buffer(1e-6).intersects(own_before):
+                        continue
+                    if q.geom_type == "Polygon" and not list(q.interiors):
+                        new_polys.append(np.round(np.array(q.exterior.coords[:-1]), 4))
+                changed = True
+            lay = lay.copy()
+            lay.polys[layer] = new_polys
+        if not changed:
+            break
+    return lay
 
 
 def _finish(lay, case):
@@ -665,14 +726,20 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
         lay = base_lay
         nets_result = nets.extract(base_lay, case)
         decl = {}
+        plates = []
         for op in ops:
             lay, desc = operators.apply_operator(lay, op, case, nets_result,
                                                  table=table, topology_moves=topo)
             decl.update(desc.get("declaredChanges", {}) or {})
+            if desc.get("shield", {}).get("plate"):
+                plates.append((desc["shield"]["layer"], Polygon(desc["shield"]["plate"]).buffer(0)))
             nets_result = nets.extract(lay, case)
         if plan.get("edits"):
             lay, _log = edits.apply_edits(lay, plan["edits"], case)
-        return layout.merge_layers(lay, [top_conductor]), decl
+        lay = layout.merge_layers(lay, [top_conductor])
+        if plates and parsed is not None:
+            lay = _trim_plates(lay, plates, base_lay, case, table, sitecaps, workspace)
+        return lay, decl
 
     plan_ops = list(plan.get("operators", []) or [])
     pre, declared = prepare(plan_ops)

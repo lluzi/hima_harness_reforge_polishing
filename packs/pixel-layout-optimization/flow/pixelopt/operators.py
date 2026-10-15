@@ -94,15 +94,71 @@ def _bridge(plate, own, width):
     return box(x0 - ov, p.y - half, x1 + ov, p.y + half)
 
 
+def _largest(geom):
+    if geom.is_empty:
+        return Polygon()
+    if hasattr(geom, "geoms"):
+        parts = [g for g in geom.geoms if g.area > _AREA_EPS]
+        return max(parts, key=lambda g: g.area) if parts else Polygon()
+    return geom
+
+
+def _rule_shape(plate, lay, layer, table, blocked, own=None):
+    """Shape a plate on ``layer`` to the rule table: keep the cross-layer spacing from shapes it
+    does not cover (``xspace``), keep clear of ``blocked``, fill notches narrower than the layer's
+    spacing and drop parts narrower than its width. Mitred offsets keep the edges orthogonal.
+    Markers the shaping cannot foresee (enclosures, angled widths) are trimmed against the
+    authority deck afterwards (:func:`solve._trim_plates`). ``own`` (the plate's net on this layer) joins the notch fill: a plate closer
+    to its own net than the layer's spacing is merged into it, which also ties it."""
+    t = table or {}
+    width = float((t.get("width", {}) or {}).get(layer) or 0.0)
+    space = float((t.get("space", {}) or {}).get(layer) or 0.0)
+    encs = []
+    xsp = []
+    for row in t.get("xspace", []) or []:
+        if len(row) >= 3 and layer in row[:2]:
+            xsp.append((row[1] if row[0] == layer else row[0], float(row[2])))
+    for _ in range(2):
+        for inner, v in encs:
+            for p in lay.polys.get(inner, []):
+                g = Polygon(p).buffer(0)
+                if not g.is_empty and g.intersection(plate).area > _AREA_EPS:
+                    plate = plate.union(g.intersection(plate).buffer(v, join_style=2))
+        for other, v in xsp:
+            for p in lay.polys.get(other, []):
+                g = Polygon(p).buffer(0)
+                if not g.is_empty and g.intersection(plate).area <= _AREA_EPS:
+                    plate = plate.difference(g.buffer(v, join_style=2))
+        if not blocked.is_empty:
+            plate = plate.difference(blocked)
+        if space > 0:
+            base = plate
+            if own is not None and not own.is_empty:
+                near = own.intersection(plate.buffer(space, join_style=2))
+                if not near.is_empty:
+                    base = plate.union(near)
+            plate = base.buffer(space / 2.0, join_style=2).buffer(-space / 2.0, join_style=2)
+            if not blocked.is_empty:
+                plate = plate.difference(blocked)
+        if width > 0:
+            plate = plate.buffer(-width / 2.0, join_style=2).buffer(width / 2.0, join_style=2)
+        plate = _largest(plate)
+        if plate.is_empty:
+            break
+    return plate
+
+
 def _shield(lay, op, case, nets, table=None):
     """One plate on a fixed-potential net between a victim and an aggressor, tied to that net.
 
     ``marginUm`` grows (positive) or shrinks (negative) the victim/aggressor overlap, so a plan can
     sweep the plate's size. The plate is clipped to the layer's spacing from every third net on the
     layer (``table`` space, else 0.05 um); when it does not
-    already touch the named net's own shapes there, a strip ``bridgeWidthUm`` wide (default 1.0)
-    joins it to the nearest one at most 1.5 um away. A plate that cannot be tied is refused: a
-    floating plate hides its coupling from every judged value.
+    already touch the named net's own shapes there, a strip ``bridgeWidthUm`` wide (default 1.0,
+    never under the layer's minimum width)
+    joins it to the nearest one at most 1.5 um away. With a rule table the plate is shaped to it
+    (:func:`_rule_shape`: enclosure, cross-layer spacing, width and notch rules). A plate that
+    cannot be tied is refused: a floating plate hides its coupling from every judged value.
     """
     net = op["net"]
     layer = op["layer"]
@@ -110,7 +166,8 @@ def _shield(lay, op, case, nets, table=None):
     victim = over["victim"]
     aggressor = over["aggressor"]
     margin = float(op.get("marginUm", 0.0))
-    bridge_w = float(op.get("bridgeWidthUm", 1.0))
+    min_w = float(((table or {}).get("width", {}) or {}).get(layer) or 0.0)
+    bridge_w = max(float(op.get("bridgeWidthUm", 1.0)), min_w)
 
     vg = _net_geom(nets, victim)
     ag = _net_geom(nets, aggressor)
@@ -145,17 +202,18 @@ def _shield(lay, op, case, nets, table=None):
         others.append(c.buffer(space, join_style=2))
     blocked = unary_union(others) if others else Polygon()
     clipped = region.difference(blocked) if others else region
-    if hasattr(clipped, "geoms"):
-        clipped = max(clipped.geoms, key=lambda g: g.area) if len(clipped.geoms) else Polygon()
+    clipped = _largest(clipped)
+    own = _net_layer_geom(nets, net, layer)
+    if table:
+        clipped = _rule_shape(clipped, lay, layer, table, blocked, own)
     if clipped.is_empty or clipped.area <= _AREA_EPS:
-        raise PixelError("bad-plan", "shield: clipped plate is empty on %s" % layer)
+        raise PixelError("bad-plan", "shield: no plate on %s survives the layer's rules" % layer)
 
     if list(clipped.interiors):
         # a hole is another net's shape (or contact) the plate would surround; one GDS polygon
         # keeps only the exterior, so writing it would cover that shape and short the two nets
         raise PixelError("bad-plan", "shield: the plate would surround another net's shape on %s; "
                          "use a smaller (or negative) marginUm" % layer)
-    own = _net_layer_geom(nets, net, layer)
     if own.is_empty:
         raise PixelError("bad-plan", "shield: net %s has no shape on %s to tie the plate to" % (net, layer))
     bridge_area = 0.0
@@ -167,6 +225,8 @@ def _shield(lay, op, case, nets, table=None):
         strip = _bridge(clipped, own, bridge_w)
         strip = strip.difference(blocked) if others else strip
         tied = unary_union([clipped, strip])
+        if table:
+            tied = _rule_shape(tied, lay, layer, table, blocked, own)
         if hasattr(tied, "geoms") or tied.distance(own) > 1e-6:
             raise PixelError("bad-plan", "shield: no clear %g um path ties the plate to %s on %s"
                              % (bridge_w, net, layer))
@@ -182,7 +242,7 @@ def _shield(lay, op, case, nets, table=None):
         "changed": ["%s += 1 shield polygon on net %s (over %s/%s)"
                     % (layer, net, victim, aggressor)],
         "declaredChanges": {},
-        "shield": {"net": net, "layer": layer,
+        "shield": {"net": net, "layer": layer, "plate": np.round(pts, 4).tolist(),
                    "areaUm2": round(float(clipped.area), 6),
                    "bridgeUm2": round(bridge_area, 6),
                    "clippedUm2": round(float(max(0.0, region.area - (clipped.area - bridge_area))), 6)},
