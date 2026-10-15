@@ -135,6 +135,23 @@ best. A shield between the storage node and the scan line cuts the scan-line cou
 the storage node's shapes toward the anode; watch the anode coupling in the next round and aim a
 point at it (move the storage node's link away from under the anode, or shift the opening).
 
+**Fixed-outline recipe (proven on a real case, each step judged legal).** Start from the first
+clean candidate and keep every later point on the best *legal* one:
+1. Slim the storage node's source/drain strip with `band-trim` (net = storage node, layer = its SD
+   layer), in steps of about 1 um toward the layer's minimum width; the trim keeps every contact's
+   enclosure, so it stays legal. It lowers the anode and the scan-line couplings together.
+2. Add a supply plate on the middle gate layer between the storage node and the scan line
+   (`shield`, victim storage node, aggressor scan line); sweep `marginUm` (0.3, 1.0, 1.5) in one round
+   with per-point operators. The plate is trimmed to the deck, so it judges clean; the scan-line
+   load rises with its size.
+3. If transmittance sits just above the window, add a small bounded `add` edit on the anode layer
+   that extends the anode into a transparent area at the cell edge, far from the storage node (the
+   edit names the anode polygon index and a box at most 1.5 um deep).
+4. Then a `min-ratio` point from the best legal candidate: the solve holds the coupling limits. When
+   it leaves markers only in the 2x2/3x3 tiles, step back or repair them next round.
+A plate on the source/drain layer against the anode helps only where the storage node's strip has
+been slimmed enough to leave room at the layer's spacing.
+
 **Fixed outline (`outlineMode: fixed`).** The cell keeps its size: every point is `legalise` or
 `min-ratio` at the Goal outline (plan-check refuses `min-pitch` and other outlines). With the
 outline fixed, the round's diversity comes from bases and per-point operators, so spend the six
