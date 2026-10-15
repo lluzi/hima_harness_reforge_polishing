@@ -361,13 +361,31 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
     inside_cache = {}
 
     def _inside(pi, x, y):
+        # ``pi`` is a polygon index, or ``(index, dy)`` for its copy in the cell above or below
+        # (the copy moves with the same variables: only its y is offset)
+        dy = 0.0
+        if isinstance(pi, tuple):
+            pi, dy = pi
         geom = inside_cache.get(pi)
         if geom is None:
             geom = Polygon(polys[pi][2]).buffer(0)
             inside_cache[pi] = geom
-        return geom.contains(Point(x, y))
+        return geom.contains(Point(x, y - dy))
 
-    ys = sorted({round(float(q[1]), 6) for (_, _, p) in polys for q in p})
+    # The other axis' pitch: a shape that overhangs the cell's top or bottom edge has a copy in
+    # the cell beyond that meets this cell's shapes on the scanlines there (a ratio solve once
+    # slid an edge to 0.03 um of such a copy, a 2x2-tile spacing marker no row had held).
+    Q0 = oy1 - oy0
+    overhang = []
+    for pi, (n, i, p) in enumerate(polys):
+        ys_ = [float(q[1]) for q in p]
+        if min(ys_) < oy0 - 1e-9:
+            overhang.append((pi, Q0))      # its copy above reaches into this cell's top
+        if max(ys_) > oy1 + 1e-9:
+            overhang.append((pi, -Q0))     # its copy below reaches into this cell's bottom
+
+    ys = sorted({round(float(q[1]), 6) for (_, _, p) in polys for q in p}
+                | {round(float(q[1]) + dy, 6) for (pi, dy) in overhang for q in polys[pi][2]})
     cons = 0
     seen = set()
     for y0, y1 in zip(ys[:-1], ys[1:]):
@@ -383,8 +401,19 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
                     t = (ym - a[1]) / (bq[1] - a[1])
                     x = a[0] + t * (bq[0] - a[0])
                     items.append((x, n, var(pi, v), pi))
+        for pi, dy in overhang:
+            n, i, p = polys[pi]
+            N = len(p)
+            yq = ym - dy
+            for v in range(N):
+                a, bq = p[v], p[(v + 1) % N]
+                if (a[1] - yq) * (bq[1] - yq) < 0:
+                    t = (yq - a[1]) / (bq[1] - a[1])
+                    x = a[0] + t * (bq[0] - a[0])
+                    items.append((x, n, var(pi, v), (pi, dy)))
         allit = [(x + k * P0, n, j, pi, k) for (x, n, j, pi) in items for k in (-1, 0, 1)]
-        allit.sort(key=lambda it: (it[0], it[1], it[2], it[3], it[4]))
+        allit.sort(key=lambda it: (it[0], it[1], it[2],
+                                   it[3] if isinstance(it[3], tuple) else (it[3], 0.0), it[4]))
 
         def diff_terms(a, bb):
             xa, _, ja, _, ka = a
