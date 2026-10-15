@@ -379,7 +379,15 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
         ratio_nets = goal.get("ratioNets") or []
         ct_pairs = [_pk(sn, a) for a in ratio_nets]
         cs_pair = _pk(sn, st)
-        allpairs = sorted(set(ct_pairs + [cs_pair]))
+        # The manifest's coupling limits ride along as rows: a live Run's every min-ratio point
+        # pushed the data line's coupling to the supply over its limit while lowering the ratio.
+        limits = []
+        for lim in case.raw.get("couplingLimits", []) or []:
+            pr = lim.get("pair", []) or []
+            if len(pr) == 2 and lim.get("maxFf") is not None \
+                    and _pk(pr[0], pr[1]) in ((model or {}).get("pairs") or {}):
+                limits.append((_pk(pr[0], pr[1]), float(lim["maxFf"])))
+        allpairs = sorted(set(ct_pairs + [cs_pair] + [k for k, _ in limits]))
         binding = []
         status = "optimal"
         if target and any(t is not None and abs(t - b) > 1e-6
@@ -413,6 +421,17 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
             def gsum(pairset, j):
                 return sum(grads.get(p, {}).get(j, 0.0) for p in pairset)
 
+            # Each limited pair may rise by at most half its predicted headroom (none when the
+            # model already predicts it at or over the limit): the model's error is a few tenths.
+            limit_rows = []
+            for key, max_ff in limits:
+                g = grads.get(key, {}) or {}
+                if not g:
+                    continue
+                headroom = max(0.0, max_ff - float(base_pred.get(key, max_ff)))
+                limit_rows.append({"name": "limit:%s" % key, "coef": dict(g), "const": 0.0,
+                                   "op": "le", "rhs": 0.5 * headroom})
+
             r_lo, r_hi = 0.0, (ct0 / cs0 if cs0 > 1e-9 else 100.0)
             best = None
             for _ in range(6):
@@ -422,6 +441,7 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
                     coef[j] = gsum(ct_pairs, j) - r * gsum([cs_pair], j)
                 rows = [{"name": "ratio", "coef": coef,
                          "const": ct0 - r * cs0, "op": "le", "rhs": 0.0}]
+                rows += limit_rows
                 m2 = compact.build(L, case, table, pairs=tuple(pairs_acc),
                                    metric_rows=rows,
                                    trust={"radius": trust_radius, "vars": jvars})

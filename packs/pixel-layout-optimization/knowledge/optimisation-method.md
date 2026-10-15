@@ -64,3 +64,10 @@ point, never a result.
   current Cs, only a declared capacitor change or a broken limit reaches it. Show that with one
   exploratory point, so the trade-off table has evidence, then stop pursuing it.
 - **Residual DRC markers:** see the marker classes in `plan-and-repair-playbook.md`.
+
+## Coupling limits inside the ratio solve
+
+The min-ratio LP carries one row per manifest coupling limit whose pair the model fits: the pair's
+predicted coupling may rise by at most half its predicted headroom to the limit (none when the
+model already predicts it at or over). Without these rows every min-ratio point of a live Run
+pushed the data line's coupling to the supply over its limit while lowering the ratio.
