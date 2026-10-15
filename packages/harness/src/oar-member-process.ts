@@ -257,6 +257,20 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         const authorization=await fact(p,'prompt-granted');
         if(!pendingWait&&authorization&&!state?.fatal&&!['failed','closed'].includes(state?.phase??'')&&await permit(p,'submit'))await (await local(p)).authorize(held,authorization as unknown as {sessionKey:string;generation:number;nativeSession:string;inputId:string});
       }
+      const received=rows.find(row=>row.kind==='received'&&(row.payload as {inputId?:string})?.inputId===p.inputId);
+      const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string}|undefined;
+      if(received&&binding.continuation) {
+        const grant=await store.readTeamGrant(grantId(p));
+        if(!grant||grant.effectId!==p.identity.effectId||grant.runId!==p.identity.runId||grant.memberId!==p.memberId||grant.generation!==p.generation
+          ||!native?.nativeSession||received.nativeSession!==native.nativeSession||received.streamGeneration!==native.streamGeneration)
+          throw new Error('Successor receive observation differs from its current grant/native identity.');
+        await store.recordTeamResultInputReceipt({continuationId:binding.continuation.continuationId,successorIdentity:p.identity,
+          hostInputId:p.inputId,hostInputSha256:binding.continuation.hostInputSha256,nativeReceipt:json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:p.inputId})});
+      }
+      // A successor cannot delegate, wait, or publish any other tool reply until
+      // its actual Host result input is durably acknowledged. The prior ordering
+      // let a fast delegate/wait supersede the effect before this receipt existed.
+      if(binding.continuation&&!received)return {state:'running',reason:'Awaiting actual successor result input receipt.'};
       const currentInput=rows.findLast(row=>row.kind==='control'&&(row.payload as {action?:string})?.action==='send_intent');
       const currentInputId=(currentInput?.payload as {inputId?:string}|undefined)?.inputId;
       for(const request of captured.requests) {
@@ -269,16 +283,6 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         }catch(error){answer={ok:false,error:error instanceof Error?error.message:String(error)};}
         const reply=boundedReply(answer);
         await record(p,'tool-reply:'+request.id,JSON.parse(reply));await publishReply(p,held,request,reply,currentInputId);
-      }
-      const received=rows.find(row=>row.kind==='received'&&(row.payload as {inputId?:string})?.inputId===p.inputId);
-      const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string}|undefined;
-      if(received&&binding.continuation) {
-        const grant=await store.readTeamGrant(grantId(p));
-        if(!grant||grant.effectId!==p.identity.effectId||grant.runId!==p.identity.runId||grant.memberId!==p.memberId||grant.generation!==p.generation
-          ||!native?.nativeSession||received.nativeSession!==native.nativeSession||received.streamGeneration!==native.streamGeneration)
-          throw new Error('Successor receive observation differs from its current grant/native identity.');
-        await store.recordTeamResultInputReceipt({continuationId:binding.continuation.continuationId,successorIdentity:p.identity,
-          hostInputId:p.inputId,hostInputSha256:binding.continuation.hostInputSha256,nativeReceipt:json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:p.inputId})});
       }
       if(pendingWait||await fact(p,'yield-intent')||await waiting(p))return {state:'running',reason:'Accepted native wait retains the old parent transcript; its result is pending successor continuation.'};
       if(captured.result) {
@@ -345,6 +349,9 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         const task=context.flow.tasks[context.taskId];if(!task||task.memberId!==p.memberId)throw new Error('Persisted native role contract differs.');
         const workDirectory=continuity?(continuity.kind==='native-resume'?continuity.checkpoint.origin.cwd:continuity.origin.cwd):undefined;
         const held=await (await local(p)).stage({prepared:p,model:config,outputSchemaVersion:task.contract.output.version,assets,
+          ...(definition.members.some(row=>row.skills.includes('hima-team-software')||
+            row.toolRefs.includes('hima-github-push')||row.toolRefs.includes('hima-github-pr'))
+            ?{softwareGithubIsolation:true as const}:{}),
           ...(continuity?{continuity,workDirectory}: {})},skillFiles);
         await record(p,'local-lease',held);
       });

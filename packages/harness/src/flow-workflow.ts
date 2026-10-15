@@ -89,6 +89,8 @@ export interface TeamFlowContinuationRequest {
   readonly definitionVersion?: number;
 }
 export interface TeamFlowContinuationStore {
+  /** Human-authorized, current paused scope; cleanup may proceed, but no successor is admitted yet. */
+  admittedTeamPauseCleanup(input:TeamFlowContinuationRequest):Promise<readonly FlowInvocationRecord[]>;
   /** Atomic currentRun CAS, explicit human resume gate, original closure and optional
    * saved-version adoption. Returns retained successor on identical request replay.
    * Preserve original absolute deadline; stopped/revoked/unknown effects stay historical. */
@@ -981,6 +983,14 @@ export async function definitionForRevision(runtime: DurableRuntime, runId: stri
  * through the ordinary durable preparation recovery path. */
 export async function resumeTeamFlow(runtime: DurableRuntime, input: TeamFlowContinuationRequest,
   team: TeamFlowContinuationStore): Promise<{ previousRunId: string; currentRunId: string; workflowId: string }> {
+  const previous=await runtime.store.run(input.runId);
+  if(previous.hold==='pause'&&['human','agent'].includes(previous.holdSource??'')) {
+    const invocations=await team.admittedTeamPauseCleanup(input);
+    const closures=await Promise.all(invocations.map(async invocation=>(await runtime.startWorkflow(names.cleanup,
+      `hima-pause-resume-close:${jsonDigest([input.runId,input.requestId,invocation.identity.effectId])}`,
+      asJson({runId:input.runId,invocation,reason:'post-pause-resume'}))).getResult() as Promise<{closed?:boolean;reason?:string}>));
+    if(closures.some(closure=>closure?.closed!==true))throw new Error('Original paused Team resources remain unproved; do not admit a successor.');
+  }
   const accepted = await team.acceptTeamContinuation(input);
   if (accepted.previousRunId !== input.runId) throw new Error('Team continuation returned another predecessor');
   return startAcceptedTeamSuccessor(runtime,accepted);

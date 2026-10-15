@@ -94,7 +94,7 @@ test('paused historical work cannot become a fresh delivery and bounded member i
   const initial=await host.ctx.hima.durable.store.run(task.currentRunId);
   await op({action:'control',...ref,request:{requestId:'review-pause',action:'pause',expectedEpoch:initial.epoch,expectedRevision:initial.revision}});
   const paused=await host.ctx.hima.durable.store.run(task.currentRunId);
-  await op({action:'control',...ref,request:{requestId:'review-continue',action:'continue',expectedEpoch:paused.epoch,expectedRevision:paused.revision}});
+  await assert.rejects(op({action:'control',...ref,request:{requestId:'review-continue',action:'continue',expectedEpoch:paused.epoch,expectedRevision:paused.revision}}),/explicit resume/);
   const sent=await op({action:'send-message',...ref,request:{requestId:'review-stale-send',recipientMemberIds:['lead'],text:'A new requirement',stagedAttachmentIds:[]}});
   const actor={kind:'human' as const,actorId:await host.ctx.hima.durable.store.operatorIdentity(),projectId:task.projectId};
   const claim=await host.ctx.hima.durable.store.teamMessages().claimDelivery(actor,{projectId:task.projectId,...ref},sent.deliveries[0].deliveryId,sent.deliveries[0].revision);

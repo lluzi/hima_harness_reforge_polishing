@@ -27,8 +27,8 @@
       "role": "Independent test and code reviewer",
       "runtime": "pi",
       "modelRef": "default",
-      "skills": ["hima-team-software"],
-      "instructions": "Read the frozen candidate commit in a separate worktree; test the Issue behavior and review the diff without writing the developer checkout.",
+      "skills": [],
+      "instructions": "Read the frozen candidate commit in a separate worktree; test the Issue behavior and review the diff without writing the developer checkout. Stay inside the assigned worktree and Host member_context. Do not inspect Host credentials or unrelated paths.",
       "toolRefs": ["hima-member-context"],
       "knowledgeRefs": []
     }

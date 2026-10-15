@@ -199,6 +199,9 @@
     "test/contract/child-compaction.live.test.ts",
     "test/contract/oar-member.live.test.ts",
     "test/contract/himateam-memory.live.test.ts",
-    "test/contract/himateam-collaboration.live.test.ts"
+    "test/contract/himateam-collaboration.live.test.ts",
+    "test/contract/himateam-software-github.live.test.ts",
+    "test/contract/himateam-software-control.live.test.ts",
+    "test/contract/himateam-software.live.test.ts"
   ]
 }

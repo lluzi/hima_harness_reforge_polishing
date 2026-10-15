@@ -1,52 +1,65 @@
-# #106 软件团队：本地候选与真实验收边界
+# #106 软件团队：真实 GitHub 验收
 
-状态：本地实现候选，真实 GitHub 开发验收尚未开始。本文件记录当前源码和测试身份，
-不把可调用工具、替身写操作或提示词当作真实 PR 资格。
+验收仓库是用户授权的 `lluzi/himateam_test`。预置的 [Issue #1](https://github.com/lluzi/himateam_test/issues/1)
+在基线 `d6fccb90243bc93240e8057f345665b9d5e0ec68` 上稳定复现 CRLF 清单解析失败：
+`npm test` 为 1 PASS、1 FAIL。OpenCode 成员在任务分支提交并经 Host 推送
+`3ce544bc10186a69a7c8e2d6077988fc46a4c899`，修复后 2 PASS、0 FAIL。
+独立 Pi 审查者检查该精确提交的 diff 与测试，Pi lead 通过 Host 创建或复用
+[PR #2](https://github.com/lluzi/himateam_test/pull/2)。PR 保持 OPEN，base 为 `main`，
+head 精确为上述提交；目标仓库只存在这一条 PR，未执行合并或发布。
 
-目标仓库由用户指定为 `lluzi/himateam_test`。2026-10-14 的只读核对显示：私有仓库仅有
-`README.md`，默认 `main` 为 `5841ab9781a1b117bb1312b31be8ca54783eb692`，没有 Issue，
-无 branch protection/ruleset；宿主登录有 ADMIN 权限。因此原生成员不能继承宿主凭据。
-已向用户请求具体目标 Issue，或授权在该仓库建立可复现验收 Issue；收到回答前不对目标仓库写入。
+最终真实运行使用当前 Pi/OpenCode 混编模板、DeepSeek Flash 和原生 MCP/Host GitHub
+接口。官方 `live-model` 测试 `himateam-software.live.test.ts` **1/1 PASS**，
+有界运行 208.6 秒、总进程峰值 1,575.8 MiB（预算 2,048 MiB／600 秒）、
+swap 增长 0、SSH 尝试 0，Team `resourceState=closed`。验收器先确认基线红灯，
+再交叉核对开发者和审查者的已提交结果、各自独立工作树、远端 SHA、PR 内容与
+提交身份，并在审查者的实际文件沙箱中再次运行 `npm test`，得到 2 PASS、0 FAIL。
+保留证据：
+`/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue106-live/mixed-issue-1-2026-10-15T00-49-21-848Z/`
+及同级预算记录 `integration-issue101-trusted-native-issue106-mixed8-result.json`。
+产品请求数和 token 未测量，不从账号额度推算。
 
-现有 Host skill provider 增加 `hima-team-software`，附有可编辑的混编 `team.json`。
-任务开头冻结仓库、Issue、base commit、分支与人工来源；原生成员使用私有 HOME，
-`member_context` 仅提供当前 grant 允许的 checkout/status、任务分支 push 与 PR 创建。
-Host 每次远端写入前复查原 Run/effect/成员、暂停/撤权/退出/期限；Git worktree 验证真实
-origin、linked checkout、base 祖先、任务分支和清洁状态。凭据只在 Host 的固定目标
-GitHub 命令中使用；push 从临时 Host 私有 bare 仓库发送已检查 SHA 到固定 refs/heads，
-不读取成员 pushurl、followTags 或 hooks。PR 先核对远端 head；测试与独立审查各须
-提交相同 head SHA，已存在的同 head PR 复用。该约束只能证明绑定字段相同，不能单靠
-自报字符串证明测试或审查实际发生。
+权限实测包括真实 Pi 的只读 GitHub 检出和沙箱内 `main` 直推 dry-run 拒绝：
+`himateam-software-github.live.test.ts` 1/1 PASS，实际成员可读分配的工作树，
+无法读取 Host GitHub 配置目录，直接 `git push --dry-run origin HEAD:refs/heads/main`
+不能认证。Host/PG 合同另拒绝非人工打开、错误 Issue、错误角色、撤权后的请求和
+未绑定租约的写入；策略合同拒绝 `merge`、受保护分支 push、远端删除、tag、Release，
+仅允许冻结任务分支 push 与提交绑定的 PR。没有对目标仓库执行破坏性负操作。
 
-最低本地证据：构建与整仓类型检查 PASS（受控总进程峰值 1023.234 MiB）；注册新文件
-`himateam-github-policy.host.test.ts` 与 `himateam-software.host.test.ts` 共 6/6 PASS，
-11.765 秒、峰值 372.813 MiB、零产品模型/SSH/Electron。真实 Host/PG grant 用例拒绝
-Guide 冒充人类打开、错误 Issue、错误角色能力、merge、无当前租约和撤权；真实本地 Git
-worktree 用例检验错误仓库/分支/base/脏目录、Host 固定 SHA push 参数、被撤权时零外部
-调用、PR 幂等以及负责人读取并快进开发者分支。GitHub 写入仍由受控命令端口替身完成，
-不是目标远端的 push/PR 证明。原 skill 回归 9/9 PASS；相邻 Team Host 五文件 18/18 PASS
-（在后续 GitHub adapter 局部修订之前，未把它改记为新版本复跑）。
+真实运行还揭示并修正两处边界。原生会话最初仅换私有 `HOME`，成员仍能用绝对路径
+探查宿主；GitHub 软件 Team 现由 Host 在 macOS 文件沙箱中启动，用户主目录的
+读取仅为成员工作树、私有控制目录和固定运行依赖开例外。系统路径仍受原有 OS 权限
+约束。日志洪泛曾使 Host 在 512 MiB 堆限制下 OOM；
+现在仅对 GitHub 软件成员的原生日志设置 12 MiB 上限，达到上限即停止物理工作并
+诚实保留未知证据关闭状态。对应真实 Node 反例通过；既有非软件成员的 3,482 条、
+27,938,818 字节完整日志合同仍通过。另一次实际 PR 运行发现首个 successor 的
+实收回执晚于其 `delegate/wait` 工具回复，导致父任务不能提交结果；现在先记录原生
+实收、再放行工具回复。OpenCode 的实收仅取原生 Frame 中的工具调用或完成后的
+prompt 回执，不把 OAR 合成的 `turn_started` 当作实收。官方交接合同 18/18 PASS，
+原生日志与边界合同 37/37 PASS；独立复核未留下可执行 P1。
 
-独立复核提出的四个 P1（可改 push 配置、授权检查与写入间隔、负责人无候选 checkout、
-可变 HEAD）及后续两个 P1（写入前仍有异步步骤、成员仓库 Git 继承宿主环境）已定向修正；
-最终专项复核无剩余可执行发现。当前未验证：真实 Pi/OpenCode 从 Issue 复现缺陷、修复、
-独立 commit-bound 审查、实际 push/PR 和越权 shell/API 拒绝；人类补充及中断/继续后
-PR 去重；真实 PR 内容与测试/审查事实的一致性。缺少目标 Issue 与远端写授权条件时，
-这些结果保持 NOT RUN，不据本地候选关闭 #106。
-
-首次本地提交后的原 pre-push 尚未通过，远端 #106 分支仍未创建。第一轮 AES 私有
-`initdb` 达到 30 秒期限（第 17 项），同文件独立 3/3 PASS；第二轮 DBOS flow
-worker 第 185/186 项各达 75 秒期限，同文件独立 27/27 PASS。第三轮发现更明确的
-测试环境错误：Git 的 pre-push 子进程继承 `GIT_DIR`，新增临时 Git fixture 未清除，
-第 438–440 项误操作了共享 `.git/config`，使 `core.bare=true`。已立即恢复为 `false`，
-将测试 Git 命令与 Host GitHub adapter 改为明确环境；模拟同一 `GIT_DIR` 的注册
-6/6 PASS，配置仍为 `core.bare=false`。第三轮第 459 项另有 PG 连接获取超时，
-独立受控 Host server 日志表明 PG 曾就绪，不据此归因于 GitHub 新行为。
-
-进一步定点 handoff 文件曾于 subsets 用例复现第二 successor 等待：原生第三次
-lead 输入已实际到达，原 Run 未暂停/取消、距截止尚余约 61 秒，6 秒内没有 PG
-receipt，但不重发输入的额外 15 秒观察到同一 receipt 自行落账。原断言现先观察
-真实原生输入，再以证据支持的 15 秒对账窗要求同一 effect 的 PG receipt，失败时
-仍保存原结果与有界诊断。注册 handoff 18/18 PASS、峰值 500.391 MiB；这不把前述
-原全量失败改写成通过。上述增量独立复核无可执行发现；下一次本地提交仍必须立即
-通过原钩子推送并核对远端 SHA。
+人工补充、暂停、继续及旧授权失效已在同一软件任务的真实 Host/PG 合同中通过
+（`himateam-software.host.test.ts` 2/2 PASS）。先前的真实模型补充验收
+`himateam-software-control.live.test.ts` 亦为 1/1 PASS：原生 Pi 成员实际出生后，
+人类暂停将原 Run 从 epoch 0 推至 1，原生进程被持有并禁止新业务；普通同 Run
+`continue` 明确拒绝。人类消息落账后，显式 `resume` 先确认旧成员的物理关闭，
+再在相同 Task 和原截止时间下创建一个新 Run 与新会话。新成员从 Host 的 MCP 回执
+读到消息原文，Host 返回 `state: existing` 和 PR #2 的精确 SHA；用时 53.7 秒、
+总进程峰值 618.6 MiB、swap 增长 0、资源关闭。证据：
+`/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue106-live/human-control-2026-10-15T01-39-47-341Z/`。
+当前源码在消除代际竞态后，软件及冷重开后继 Run 合同重跑 12/12 PASS；
+完整四文件合同先有 39/40 PASS，唯一失败由测试在冷启动恢复完成前读取 App
+exit fence 导致，测试现等待已有 `reconciled` 边界。实际绘制的目标 App
+控制视图再次 1/1 PASS、40.8 秒、总进程峰值 1,568.1 MiB、swap 增长 0。
+所有暂停的 Team
+任务投影为 Resume；即使成员尚未出生，普通 Continue 也不能清除旧 Run 的
+代际边界。显式 Resume 先核对原任务的物理关闭，再创建新 Run。RunStore 在同一
+事务中拒绝暂停、取消或已被替代 Run 的新 effect 准备；既有同身份 effect
+仍可幂等读取，用于关闭与恢复。
+当前源码的两次真实控制链（`control8`、`control9`）均走到新 Run 的成员
+读取人类消息、检出目标分支、Host 回执 `state: existing`／PR #2／精确 head；
+最终成员回合因 DeepSeek 上游 HTTP 503 `service_unavailable_error` 失败。
+两次保留失败证据，未把它们记为 PASS、未切换产品模型。之前 `control6` 的
+完整 1/1 PASS 仍是终态交付证据；竞态修复后的终态模型回合尚未取得绿色结果。
+真实 GitHub 任务的取消后重跑与多次完整验收也只复用 PR #2，没有重复 PR。
+`#109` 仍负责最终安装候选组合核对。

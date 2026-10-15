@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { TextDecoder, isDeepStrictEqual } from 'node:util';
 import * as path from 'node:path';
+import os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, execFile, execFileSync, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -42,6 +43,8 @@ export interface LocalMemberAssets {
 }
 export interface LocalMemberConfiguration {
     prepared: OarPrepared;
+    /** GitHub software members execute under a filesystem boundary, not just a private HOME. */
+    softwareGithubIsolation?: true;
     readonly continuity?: LocalMemberContinuity;
     model: {
         provider: string;
@@ -73,12 +76,44 @@ type Row = {
     rss: number;
 };
 type JournalEntry = { bytes: Buffer; row: any; resolve: () => void; reject: (error: Error) => void };
+const softwareSandboxProfile = (lease: LocalMemberLease, config: LocalMemberConfiguration, runnerModule: string): string => {
+    if (process.platform !== 'darwin') throw Error('GitHub software member requires a qualified native filesystem boundary.');
+    const assets = config.assets;
+    if (!assets) throw Error('GitHub software member has no frozen native assets.');
+    const userHome = fs.realpathSync(os.homedir());
+    const harnessPackage=path.dirname(path.dirname(runnerModule));
+    const workspace=path.dirname(path.dirname(harnessPackage));
+    const pnpmMarker=`${path.sep}node_modules${path.sep}.pnpm${path.sep}`;
+    const oarModulesIndex=assets.oarModule.indexOf(pnpmMarker);
+    const oarModules=oarModulesIndex>=0?assets.oarModule.slice(0,oarModulesIndex)+path.sep+'node_modules'
+        :path.dirname(path.dirname(path.dirname(path.dirname(assets.oarModule))));
+    const readable = [lease.controlDirectory, lease.workDirectory, harnessPackage,path.join(workspace,'node_modules'),
+        oarModules,
+        path.dirname(path.dirname(assets.nodeExecutable)),
+        ...(config.prepared.runtime==='opencode'?[path.dirname(path.dirname(assets.opencodeCommand))]:[])];
+    const writable = [lease.controlDirectory, lease.workDirectory];
+    const permit = (operation: string, value: string) => `(allow ${operation} (subpath ${JSON.stringify(fs.realpathSync(value))}))`;
+    const ancestors=new Set<string>();
+    for(const item of [...readable,...writable]) {
+        let current=fs.realpathSync(item);
+        while(current!==path.parse(current).root) {current=path.dirname(current);ancestors.add(current);}
+    }
+    return ['(version 1)', '(allow default)',
+        `(deny file-read* (subpath ${JSON.stringify(userHome)}))`,
+        `(deny file-write* (subpath ${JSON.stringify(userHome)}))`,
+        '(deny file-read* (subpath "/private/tmp"))', '(deny file-write* (subpath "/private/tmp"))',
+        '(deny process-exec (literal "/usr/bin/security"))',
+        ...[...ancestors].map(value=>`(allow file-read-metadata (literal ${JSON.stringify(value)}))`),
+        ...[...new Set(readable)].map(value => permit('file-read*', value)),
+        ...[...new Set(writable)].map(value => permit('file-write*', value)), ''].join('\n');
+};
 type JournalState = {
     queue: JournalEntry[]; pendingBytes: number; pendingRows: number; ackedSeq: number;
     ackedBytes: number; chunks: string[]; cached: string; cachedSeq: number; evidence: any[];
     lastAccepted?: Promise<void>; fd?: FileHandle; draining?: Promise<void>; error?: Error; closed?: boolean;
 };
 const journalQueueBytes = 8 * 1024 * 1024, journalQueueRows = 4096, journalBatchBytes = 256 * 1024;
+const journalTotalBytes = 12 * 1024 * 1024;
 const cooperate = () => new Promise<void>(resolve => setImmediate(resolve));
 type Held = {
     lease: LocalMemberLease;
@@ -432,6 +467,8 @@ export class OarLocalMemberRuntime {
             streamGeneration: h.streamGeneration, seq: h.seq, time: new Date().toISOString(),
             kind, payload: redact(payload, h.config.model.apiKey) };
         const bytes = Buffer.from(JSON.stringify(row) + '\n');
+        if (h.config.softwareGithubIsolation && writer.ackedBytes + writer.pendingBytes + bytes.length > journalTotalBytes)
+            return Promise.reject(this.retentionFailure(h, 'Member observation journal bound exceeded'));
         if (writer.pendingBytes + bytes.length > journalQueueBytes || writer.pendingRows >= journalQueueRows)
             return Promise.reject(this.retentionFailure(h, 'Member observation queue bound exceeded'));
         h.seq++;
@@ -598,7 +635,15 @@ export class OarLocalMemberRuntime {
         for (const k of ['PATH', 'LANG', 'TZ', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'])
             if (process.env[k])
                 env[k] = process.env[k];
-        const child = spawn(this.options.nodeExecutable, [this.options.runnerModule, 'sdk'], { cwd: lease.workDirectory, env, detached: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+        let executable=this.options.nodeExecutable,args=[this.options.runnerModule,'sdk'];
+        if(h.config.softwareGithubIsolation) {
+            const profile=softwareSandboxProfile(lease,h.config,this.options.runnerModule);
+            const file=path.join(dir,'software-github.sb');
+            if(fs.existsSync(file)) {if(fs.readFileSync(file,'utf8')!==profile)throw Error('Original software member sandbox profile changed.');}
+            else fs.writeFileSync(file,profile,{flag:'wx',mode:0o600});
+            executable='/usr/bin/sandbox-exec';args=['-f',file,this.options.nodeExecutable,this.options.runnerModule,'sdk'];
+        }
+        const child = spawn(executable, args, { cwd: lease.workDirectory, env, detached: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
         h.child = child;
         h.processClosed = new Promise<void>(resolve => child.once('close', () => resolve()));
         let born = false, ready = false, configured = false;
@@ -1139,6 +1184,7 @@ export class OarLocalMemberRuntime {
                 try { text = decoder.decode(chunk, { stream: true }); }
                 catch { throw Error('Invalid retained member journal UTF-8'); }
                 writer.chunks.push(text); writer.ackedBytes += chunk.length;
+                if(config.softwareGithubIsolation&&writer.ackedBytes>journalTotalBytes)throw Error('Retained member observation journal bound exceeded');
                 tail += text; let end: number;
                 while ((end = tail.indexOf('\n')) >= 0) {
                     const line = tail.slice(0, end); tail = tail.slice(end + 1);

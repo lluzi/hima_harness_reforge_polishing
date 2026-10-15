@@ -712,8 +712,9 @@ export async function readTeamTask(runtime:DurableRuntime,actor:TeamDefinitionAc
     .find(value=>value.run?.epoch===execution.run.epoch)?.cleanup?.find(value=>!value.closed)?.reason;
   const actualReason=exitFailure?.reason??(closureWaiting?cleanupReason:undefined)??outcome?.reason??tasks.find(row=>row.reason)?.reason;
   const reason=closureWaiting?`Stop requested; original member/resource closure is unproved.${actualReason?' '+actualReason:''}`:actualReason??execution.run.hold;
-  const allowedActions:('pause'|'continue'|'cancel')[]=execution.run.hold?.startsWith('Team stopped on App exit')?[]:execution.run.cancelled?(closureWaiting?['cancel']:[]):Date.now()>=Date.parse(execution.run.deadlineAt)?['cancel']:execution.run.hold?['continue','cancel']:['pause','cancel'];
-  const resumeGate=execution.run.hold?.startsWith('Team stopped on App exit')?await runtime.store.teamResumeGate({projectId:actor.projectId,teamId,taskId}):undefined;
+  const pausedTeam=execution.run.hold==='pause';
+  const allowedActions:('pause'|'continue'|'cancel')[]=execution.run.hold?.startsWith('Team stopped on App exit')?[]:execution.run.cancelled?(closureWaiting?['cancel']:[]):Date.now()>=Date.parse(execution.run.deadlineAt)?['cancel']:pausedTeam?['cancel']:execution.run.hold?['continue','cancel']:['pause','cancel'];
+  const resumeGate=execution.run.hold?.startsWith('Team stopped on App exit')||pausedTeam?await runtime.store.teamResumeGate({projectId:actor.projectId,teamId,taskId}):undefined;
   const definitionHandoff=await runtime.store.teamDefinitionHandoffForTask({projectId:actor.projectId,teamId,taskId});
   const applyDefinitionGate=await runtime.store.teamApplyDefinitionGate({projectId:actor.projectId,teamId,taskId});
   if(definitionHandoff&&definitionHandoff.state!=='adopted'){const at=allowedActions.indexOf('continue');if(at>=0)allowedActions.splice(at,1);}

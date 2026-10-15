@@ -90,7 +90,7 @@ test('resume cannot schedule a successor that silently extends the original dead
     deadlineAt: id === 'old' ? '2026-10-14T00:00:00Z' : '2026-10-15T00:00:00Z' }) },
     startWorkflow: async () => { calls.push('scheduled'); } } as unknown as DurableRuntime;
   await assert.rejects(resumeTeamFlow(runtime, { taskId: 'task', runId: 'old', requestId: 'resume-one', actor: { kind: 'human', actorId: 'human', projectId: 'project' }, expectedEpoch: 1, expectedRevision: 0 },
-    { acceptTeamContinuation: async () => ({ previousRunId: 'old', currentRunId: 'new' }) }), /cannot silently extend/);
+    { admittedTeamPauseCleanup: async()=>[], acceptTeamContinuation: async () => ({ previousRunId: 'old', currentRunId: 'new' }) }), /cannot silently extend/);
   assert.deepEqual(calls, []);
 });
 
@@ -107,7 +107,7 @@ test('explicit continuation uses the retained successor definition and stable wo
     putFlowFact: async () => start,
   }, startWorkflow: async (_name: string, workflowID: string) => { ids.push(workflowID); return { workflowID }; } } as unknown as DurableRuntime;
   const input = { taskId: 'task-one', runId: 'old', requestId: 'resume', actor: accepted.actor, expectedEpoch: 0, expectedRevision: 0 };
-  const port = { acceptTeamContinuation: async () => ({ previousRunId: 'old', currentRunId: 'new' }) };
+  const port = { admittedTeamPauseCleanup: async()=>[], acceptTeamContinuation: async () => ({ previousRunId: 'old', currentRunId: 'new' }) };
   const first = await resumeTeamFlow(runtime, input, port), second = await resumeTeamFlow(runtime, input, port);
   assert.deepEqual(first, second); assert.equal(first.currentRunId, 'new');
   assert.equal(ids.length,4,'two retries observe the same deadline and root workflows');

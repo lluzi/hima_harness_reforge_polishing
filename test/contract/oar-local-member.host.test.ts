@@ -11,8 +11,10 @@ async function until(f: () => Promise<boolean>) { for (let i = 0; i < 100; i++) 
         return;
     await pause(30);
 } throw Error('fixture observation timeout'); }
-async function fixture(t: any, key: string, deadlineMs = 20000, mode: 'complete'|'held'|'late'|'invalid'|'delivered-active'|'yield-abort' = 'complete') {
-    const root = fs.mkdtempSync(path.join(tmpdir(), 'hima-local-member-')), runner = path.join(root, 'runner.mjs');
+async function fixture(t: any, key: string, deadlineMs = 20000, mode: 'complete'|'held'|'late'|'invalid'|'delivered-active'|'yield-abort'|'spam' = 'complete') {
+    const root = fs.mkdtempSync(path.join(tmpdir(), 'hima-local-member-'));
+    const runner = mode==='spam'?path.join(root,'packages/harness/lib/runner.mjs'):path.join(root, 'runner.mjs');
+    fs.mkdirSync(path.dirname(runner),{recursive:true});
     fs.writeFileSync(runner, `import {spawn} from 'node:child_process'; import fs from 'node:fs';
 let config,descendant,activeInput;const mode=${JSON.stringify(mode)}; process.send({type:'ready'});
 process.on('message',m=>{ if(m.type==='config'){config=m.config;descendant=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});fs.writeFileSync(config.workDirectory+'/descendant.pid',String(descendant.pid));process.send({type:'created',payload:{runtime:config.prepared.runtime,nativeSession:'native-fixture'}});}
@@ -21,6 +23,7 @@ if(m.type==='yield'&&mode==='yield-abort'){
  process.send({type:'terminal',payload:{inputId:activeInput,outcome:{kind:'interrupted',reason:'Actual physical yield shutdown abort'}}});return;
 }
 if(m.type==='input'&&mode==='delivered-active'&&!m.initial){process.send({type:'received',payload:{inputId:m.id,evidence:'actual-post-delivery-directed-input'}});return;}
+if(m.type==='input'&&mode==='spam'){process.send({type:'received',payload:{inputId:m.id}});let sent=0;const text='x'.repeat(262144);const timer=setInterval(()=>{process.send({type:'raw',payload:{text}});if(++sent>=70)clearInterval(timer);},20);return;}
 if(m.type==='input'&&m.id==='disconnect'){process.disconnect();return;}
 if(m.type==='input'&&(mode==='held'||mode==='late'||mode==='yield-abort')){
  const receipt=()=>process.send({type:'received',payload:{inputId:m.id,evidence:'actual-late-node-ipc'}});
@@ -37,10 +40,14 @@ if(m.type==='input'){process.send({type:'received',payload:{inputId:m.id,evidenc
 // Ignore stop to prove Host escalation closes both actual processes.
 });setInterval(()=>{},1000);`);
     const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
-    const assets = { oarModule: 'fixture-only', nodeExecutable: process.execPath, opencodeCommand: 'fixture-only', opencodeVersion: 'fixture-only' };
+    const fakeOar=path.join(root,'npm/node_modules/.pnpm/fake/node_modules/oar/dist/index.js');
+    if(mode==='spam'){fs.mkdirSync(path.dirname(fakeOar),{recursive:true});fs.mkdirSync(path.join(root,'node_modules'));
+        fs.writeFileSync(fakeOar,'export const fixture=true;');}
+    const assets = { oarModule: mode==='spam'?fakeOar:'fixture-only', nodeExecutable: process.execPath, opencodeCommand: 'fixture-only', opencodeVersion: 'fixture-only' };
     const options = { home: root, nodeExecutable: process.execPath, runnerModule: runner, assets }, runtime = new OarLocalMemberRuntime(options);
     const prepared = { schema: 'hima-oar-task/1', identity: { runId: 'run', taskId: 'task', effectId: 'effect', inputSha256: 'a'.repeat(64), packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' }, projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'default', generation: 1, sessionKey: key, inputId: 'initial', deadlineAt: new Date(Date.now() + deadlineMs).toISOString(), prompt: 'fixture' };
-    const config = { prepared, model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture', apiKey: 'private-fixture-key' }, outputSchemaVersion: 'output/1' };
+    const config = { prepared, model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture', apiKey: 'private-fixture-key' }, outputSchemaVersion: 'output/1',
+        ...(mode==='spam'?{softwareGithubIsolation:true as const}:{}) };
     const skills = [{ path: '/hima-home/skills/example/SKILL.md', bytes: Buffer.from('fixture Skill') }], lease = await runtime.stage(config, skills);
     t.after(async () => { await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
     return { root, options, runtime, lease, config, skills, OarLocalMemberRuntime };
@@ -75,6 +82,57 @@ test('trusted Node member retains correlated IPC, protects config, and actually 
     assert.throws(() => process.kill(pid, 0));
     assert.throws(() => process.kill(descendant, 0));
     assert.equal(fs.readdirSync(f.lease.controlDirectory).some(n => n.endsWith('.tmp')), false);
+});
+test('actual native observation flood stops physical work before Host heap exhaustion and retains unknown closure',{timeout:15000},async t=>{
+    const f=await fixture(t,'journal-total-bound',12000,'spam');
+    await f.runtime.start(f.lease);
+    await until(async()=>(await f.runtime.read(f.lease)).journal.includes('"created"'));
+    await f.runtime.authorize(f.lease,{sessionKey:f.lease.sessionKey,generation:1,nativeSession:'native-fixture',inputId:'initial'});
+    const stateFile=path.join(f.lease.controlDirectory,'state.json');
+    await until(async()=>JSON.parse(fs.readFileSync(stateFile,'utf8')).fatal===true);
+    const state=JSON.parse(fs.readFileSync(stateFile,'utf8'));
+    assert.match(state.failureReason,/observation journal bound/);
+    assert.ok(fs.statSync(path.join(f.lease.controlDirectory,'journal.jsonl')).size<=12*1024*1024);
+    const closure=await f.runtime.close(f.lease);
+    assert.equal(closure.closed,false,'failed retention cannot claim a durable close receipt');
+    assert.match(closure.reason??'',/observation journal bound/);
+    assert.throws(()=>process.kill(f.lease.pid,0));
+});
+test('OpenCode native tool Frame proves reception while synthetic turn start and prompt remain pending',{timeout:12000},async t=>{
+    const root=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'hima-opencode-received-'));
+    const sdk=path.join(root,'fake-oar.mjs');
+    fs.writeFileSync(sdk,`export async function opencodeSession(){let listener,raw;return {
+      id:'native-opencode-receive-fixture',rawEvents(fn){raw=fn;return()=>{}},events(fn){listener=fn;return()=>{}},
+      async prompt(){setTimeout(()=>listener({kind:'turn_started',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:1,receivedAt:Date.now()}),10);
+        setTimeout(()=>raw({kind:'frame',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:2,receivedAt:Date.now(),
+          body:{type:'tool_call',events:[{kind:'tool_call_started',tool:'hima_member_context',callId:'fixture-call'}]}}),120);
+        return new Promise(()=>{});},
+      async abort(){},async dispose(){} };}`);
+    const {OarLocalMemberRuntime}=await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+    const assets={oarModule:sdk,nodeExecutable:process.execPath,opencodeCommand:'/usr/bin/false',opencodeVersion:'fixture'};
+    const runtime=new OarLocalMemberRuntime({home:root,nodeExecutable:process.execPath,
+      runnerModule:path.resolve('packages/harness/lib/oar-member-runner.js'),assets});
+    t.after(async()=>{await runtime.stopAll();fs.rmSync(root,{recursive:true,force:true});});
+    const prepared={schema:'hima-oar-task/1' as const,identity:{runId:'run',taskId:'task',effectId:'effect',
+      inputSha256:'a'.repeat(64),packSha256:'b'.repeat(64),irSha256:'c'.repeat(64),applicationVersion:'fixture',adapterVersion:'fixture'},
+      projectId:'project',memberId:'reviewer',runtime:'opencode' as const,modelRef:'fixture',generation:1,
+      sessionKey:'opencode-receive-before-ack',inputId:'initial',deadlineAt:new Date(Date.now()+10000).toISOString(),prompt:'actual successor input'};
+    const lease=await runtime.stage({prepared,model:{provider:'fixture',model:'fixture',baseUrl:'http://fixture.invalid',apiKey:'fixture-key'},
+      outputSchemaVersion:'output/1',assets},[]);
+    await runtime.start(lease);
+    await until(async()=>(await runtime.read(lease)).journal.includes('"created"'));
+    assert.doesNotMatch((await runtime.read(lease)).journal,/"kind":"received"/);
+    await runtime.authorize(lease,{sessionKey:lease.sessionKey,generation:1,nativeSession:'native-opencode-receive-fixture',inputId:'initial'});
+    await until(async()=>(await runtime.read(lease)).journal.includes('"turn_started"'));
+    assert.doesNotMatch((await runtime.read(lease)).journal,/"kind":"received"/,
+      'synthetic prompt submission cannot become reception');
+    await until(async()=>(await runtime.read(lease)).journal.includes('native_tool_call_started'));
+    const observation=(await runtime.read(lease)).journal.trim().split('\n').map((line:string)=>JSON.parse(line))
+      .find((row:any)=>row.kind==='received');
+    assert.equal(observation.payload.inputId,'initial');
+    assert.equal(observation.payload.evidence,'native_tool_call_started');
+    assert.equal((await runtime.read(lease)).result,null,'prompt remains pending while reception is retained');
+    assert.equal((await runtime.close(lease)).closed,true);
 });
 test('lost creation ACK recovers original lease and does not spawn or resend input', async (t) => {
     const f = await fixture(t, 'fixture-lost-ack');

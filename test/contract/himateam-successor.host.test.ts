@@ -14,6 +14,9 @@ process.env.HIMA_TEST_LEGACY_AUTO_DRIVE='0';
 for(const adopt of [false,true])test(`explicit post-exit successor retains original scope and ${adopt?'adopts selected':'retains exact'} version`,{timeout:90000},async t=>{
   const home=await localHome(t,{sleepSeconds:0});assert.ok(home);
   let host:InProcessHost|undefined;
+  const closeHost=async()=>{if(!host)return;const retiring=host.ctx.hima as unknown as {resourcesClosing?:Promise<void>};
+    await host.dispose();if(!retiring.resourcesClosing)throw Error('Original Host resource closer was not published');
+    await retiring.resourcesClosing;host=undefined;};
   try {
     host=await bootInProcess(home.h);let service=host.ctx.hima as any;
     let guide=String((await createRootAgent(host.ctx,home.h.workspace)).id);
@@ -37,8 +40,10 @@ for(const adopt of [false,true])test(`explicit post-exit successor retains origi
     await service.teamOperation(guide,{action:'save',teamId:saved.teamId,definition:{...teamFixture,title:'Explicit saved version two'},expectedVersion:1});
     await service.prepareExit({requestId:'exit-one',mode:'keep-jobs'});
     await waitUntil('original resource closure',async()=>(await service.exitStatus()).ready,25000,25);
-    await host.dispose();host=undefined;
-    host=await bootInProcess(home.h);service=host.ctx.hima as any;bind();guide=String((await createRootAgent(host.ctx,home.h.workspace)).id);
+    await closeHost();
+    host=await bootInProcess(home.h);service=host.ctx.hima as any;bind();
+    await service.reconciled;
+    guide=String((await createRootAgent(host.ctx,home.h.workspace)).id);
     const store=service.durable.store,old=await store.run(task.currentRunId);
     assert.equal(await count(),1,'reopen alone dispatches no new work');
     const gate=await store.teamResumeGate({projectId:task.projectId,teamId:saved.teamId,taskId:task.taskId});assert.equal(gate.allowed,true,gate.reason);
@@ -65,10 +70,11 @@ for(const adopt of [false,true])test(`explicit post-exit successor retains origi
     assert.deepEqual(inputs.at(-1),inputs[0],'original compiled task input is unchanged');assert.ok(prompts.length>=1);assert.ok(prompts.every(prompt=>prompt===prompts[0]),'replay reuses exact retained prompt bytes');
     const replay=await service.teamOperation(guide,{action:'startTask',teamId:saved.teamId,request});assert.equal(replay.currentRunId,successor.runId);
     await service.prepareExit({requestId:'exit-two',mode:'keep-jobs'});await waitUntil('successor closes',async()=>(await service.exitStatus()).ready,25000,25);
-    await host.dispose();host=undefined;host=await bootInProcess(home.h);service=host.ctx.hima as any;bind();
+    await closeHost();host=await bootInProcess(home.h);service=host.ctx.hima as any;bind();
+    await service.reconciled;
     await resumeTeamFlow(service.durable,resume,service.durable.store);
     assert.equal(await count(),2,'historical held request replay submits no work');
-  } finally {await host?.dispose();await home.h.dispose();}
+  } finally {await closeHost();await home.h.dispose();}
 });
 
 const { jsonDigest } = await import(new URL('../../packages/harness/lib/run-store.js', import.meta.url).href) as typeof import('../../packages/harness/lib/types/run-store.js');

@@ -690,7 +690,8 @@ export class RunStore {
             const gate=(await client.query<{gate:TeamDefinitionHandoffGate}>('SELECT gate FROM hima.team_definition_handoffs WHERE task_id=$1 AND request_id=$2 AND previous_run_id=$3',[plan.childTaskId,edge.acceptance.gateRequestId,previous.runId])).rows[0]?.gate;
             if(!gate||edge.acceptance.gateSha256!==jsonDigest(gate)||gate.request.runId!==previous.runId||jsonDigest(gate.selected)!==jsonDigest(next.source.team)||jsonDigest(edge.acceptance.selected)!==jsonDigest(gate.selected)||next.initialHostContext?.source!=='definition-change'||next.initialHostContext.gateRequestId!==gate.request.requestId||next.initialHostContext.gateSha256!==jsonDigest(gate))throw new FlowEffectNotCurrent('Pack Team changed-definition edge has no exact human gate.');
             await this.assertTeamHandoffOutput(client,task,previous,{sha256:next.source.team.sha256,definition:next.definition},next.source.team.version);
-          } else if(jsonDigest(next.source.team)!==jsonDigest(old.source.team)||!(await client.query("SELECT 1 FROM hima.outbox WHERE run_id=$1 AND kind='team-exit'",[previous.runId])).rowCount)throw new FlowEffectNotCurrent('Pack Team post-exit edge differs from original saved definition or exit.');
+          } else if(edge.acceptance.cause==='post-pause')throw new FlowEffectNotCurrent('Pack-bound Team pause successor requires separate outer admission.');
+          else if(jsonDigest(next.source.team)!==jsonDigest(old.source.team)||!(await client.query("SELECT 1 FROM hima.outbox WHERE run_id=$1 AND kind='team-exit'",[previous.runId])).rowCount)throw new FlowEffectNotCurrent('Pack Team post-exit edge differs from original saved definition or exit.');
           cursor=previous.runId;
         }
       }
@@ -944,7 +945,10 @@ export class RunStore {
       const task=(await client.query<{task:TeamTaskView}>('SELECT task FROM hima.team_tasks WHERE task_id=$1 AND project_id=$2 FOR SHARE',[source.taskId,source.projectId])).rows[0]?.task;
       if(!task||task.currentRunId!==currentRunId||successor.cancelled||successor.hold||Date.now()>=Date.parse(task.deadlineAt)||(await client.query('SELECT 1 FROM hima.host_exit WHERE singleton=true AND active_request IS NOT NULL')).rowCount)return false;
       const acceptance=(await client.query<{acceptance:{cause?:string;gateRequestId?:string;gateSha256?:string}}>('SELECT acceptance FROM hima.team_continuation_requests WHERE task_id=$1 AND previous_run_id=$2 AND current_run_id=$3',[task.taskId,previousRunId,currentRunId])).rows[0]?.acceptance;
-      if(!acceptance)return false;if((acceptance.cause??'post-exit')!=='definition-change')return true;
+      if(!acceptance)return false;
+      if(acceptance.cause==='post-pause')return !previous.cancelled&&previous.hold==='pause'&&['human','agent'].includes(previous.holdSource??'')
+        &&!await this.teamOriginalClosureDenied(client,previous);
+      if((acceptance.cause??'post-exit')!=='definition-change')return true;
       const gate=(await client.query<{gate:TeamDefinitionHandoffGate}>('SELECT gate FROM hima.team_definition_handoffs WHERE task_id=$1 AND request_id=$2',[task.taskId,acceptance.gateRequestId])).rows[0]?.gate;
       const original=(previous.opening.data as unknown as {source:{team:TeamTaskView['team']}}).source;
       return !!gate&&acceptance.gateSha256===jsonDigest(gate)&&!await this.teamDefinitionHandoffDenied(client,{...task,team:original.team},previous,gate,false);
@@ -988,11 +992,29 @@ export class RunStore {
       const task=(await client.query<{task:TeamTaskView}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3 FOR SHARE',[ref.projectId,ref.teamId,ref.taskId])).rows[0]?.task;
       if(!task)throw new TeamError('hima/not-authorized','Team task is unavailable in this project.');
       const run=await this.#run(client,task.currentRunId);
-      const reason=await this.teamResumeDenied(client,task,run);
+      const reason=await this.teamResumeDenied(client,task,run,run.hold!=='pause');
       return {allowed:!reason,...(reason?{reason}:{}),runId:run.runId,epoch:run.epoch,revision:run.revision};
     },'hima.teamResumeGate');
   }
-  private async teamResumeDenied(client:ClientBase,task:TeamTaskView,run:DurableRun):Promise<string|undefined> {
+  /** Authorize cleanup before an explicit post-pause successor. No new business is admitted here. */
+  async admittedTeamPauseCleanup(input:TeamFlowContinuationRequest):Promise<readonly FlowInvocationRecord[]> {
+    return this.transaction(async client=>{
+      await this.#assertHostAdmission(client);
+      const operator=(await client.query<{actor_id:string}>('SELECT actor_id FROM hima.host_operator WHERE singleton=true FOR SHARE')).rows[0]?.actor_id;
+      if(input.actor.kind!=='human'||input.actor.actorId!==operator)throw new TeamError('hima/not-authorized','Only the authenticated Host operator may close paused Team work for resume.');
+      const prior=(await client.query<{digest:string}>('SELECT digest FROM hima.team_continuation_requests WHERE task_id=$1 AND request_id=$2',[input.taskId,input.requestId])).rows[0];
+      if(prior){if(prior.digest!==jsonDigest(input))throw new TeamError('hima/team-conflict','Human resume request identity changed.');return [];}
+      const run=await this.#run(client,input.runId,true);
+      const task=(await client.query<{task:TeamTaskView}>('SELECT task FROM hima.team_tasks WHERE task_id=$1 AND project_id=$2 FOR SHARE',[input.taskId,input.actor.projectId])).rows[0]?.task;
+      if(!task||task.currentRunId!==input.runId)throw new TeamError('hima/not-authorized','Original paused Team task is unavailable.');
+      if(run.epoch!==input.expectedEpoch||run.revision!==input.expectedRevision||run.hold!=='pause'||!['human','agent'].includes(run.holdSource??''))
+        throw new TeamError('hima/team-conflict','Resume must name the current paused Run and control stamps.');
+      const reason=await this.teamResumeDenied(client,task,run,false);
+      if(reason)throw new TeamError('hima/not-authorized',reason);
+      return (await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE run_id=$1 ORDER BY effect_id',[run.runId])).rows.map(row=>row.invocation);
+    },'hima.admittedTeamPauseCleanup');
+  }
+  private async teamResumeDenied(client:ClientBase,task:TeamTaskView,run:DurableRun,requireClosed=true):Promise<string|undefined> {
     if((await client.query('SELECT 1 FROM hima.host_exit WHERE singleton=true AND active_request IS NOT NULL')).rowCount)return 'App exit boundary is still active.';
     const binding=await this.packBinding(client,run.runId);
     if(binding) {try {await this.assertPackParent(client,binding,run);}catch(error){return error instanceof Error?error.message:String(error);}}
@@ -1002,10 +1024,13 @@ export class RunStore {
     if(run.applicationVersion!==this.applicationVersion)return 'The original executable version is unavailable.';
     const original=run.opening.data as unknown as {source?:{kind:string;taskId:string;projectId:string;team:TeamTaskView['team']}};
     if(original.source?.kind!=='team'||original.source.taskId!==task.taskId||original.source.projectId!==task.projectId||jsonDigest(original.source.team)!==jsonDigest(task.team))return 'Original frozen task source is unavailable.';
-    if(!(await client.query("SELECT 1 FROM hima.outbox WHERE run_id=$1 AND kind='team-exit' LIMIT 1",[run.runId])).rowCount)return 'Use ordinary continuation for a same-Run pause; this task has no retained App exit.';
+    const exited=!!(await client.query("SELECT 1 FROM hima.outbox WHERE run_id=$1 AND kind='team-exit' LIMIT 1",[run.runId])).rowCount;
+    const paused=run.hold==='pause'&&['human','agent'].includes(run.holdSource??'');
+    if(!exited&&!paused)return 'Resume requires a retained App exit or an active Team pause.';
+    if(binding&&paused)return 'Pack-bound Team pause recovery needs its outer Pack admission; do not resume this child independently.';
     if((await client.query("SELECT 1 FROM hima.flow_facts WHERE run_id=$1 AND name LIKE 'outcome:%' AND value->>'state' IN ('succeeded','failed','cancelled') LIMIT 1",[run.runId])).rowCount)return 'A terminal Team task cannot resume.';
     if((await client.query("SELECT 1 FROM hima.task_actor_grants WHERE grant_data->>'runId'=$1 AND grant_data->>'revocationCause'='operator' LIMIT 1",[run.runId])).rowCount)return 'Operator-revoked Team authority cannot resume.';
-    return this.teamOriginalClosureDenied(client,run);
+    return requireClosed?this.teamOriginalClosureDenied(client,run):undefined;
   }
   private async teamOriginalClosureDenied(client:ClientBase,run:DurableRun):Promise<string|undefined> {
     if((await client.query(`SELECT 1 FROM hima.effects e LEFT JOIN hima.effect_leases l USING(effect_id) WHERE e.run_id=$1 AND ((l.effect_id IS NOT NULL AND (l.released_at IS NULL OR l.proof IS NULL)) OR (EXISTS(SELECT 1 FROM hima.effect_dispatches d WHERE d.effect_id=e.effect_id AND d.dispatch_id='submit') AND (l.effect_id IS NULL OR l.released_at IS NULL OR l.proof IS NULL))) LIMIT 1`,[run.runId])).rowCount)return 'Original full effect tree physical closure remains unproved.';
@@ -1048,10 +1073,11 @@ export class RunStore {
       if(version!==task.team.version&&(await client.query('SELECT 1 FROM hima.team_pack_delegations WHERE child_task_id=$1 LIMIT 1',[task.taskId])).rowCount)throw new TeamError('hima/not-authorized','Pack-bound Team version adoption requires its frozen outer delivery compatibility admission.');
       const selected=(await client.query<{sha256:string;definition:TeamDefinition}>('SELECT v.sha256,v.definition FROM hima.team_versions v JOIN hima.teams t USING(team_id) WHERE t.project_id=$1 AND t.team_id=$2 AND v.version=$3 FOR SHARE OF t',[task.projectId,task.team.teamId,version])).rows[0];
       if(!selected||input.definitionVersion===undefined&&selected.sha256!==task.team.sha256)throw new TeamError('hima/team-conflict','The exact saved Team definition is unavailable.');
-      return this.insertTeamSuccessorWithin(client,{task,previous,selected,version,requestId:input.requestId,digest,cause:'post-exit'});
+      const cause=previous.hold==='pause'&&['human','agent'].includes(previous.holdSource??'')?'post-pause':'post-exit';
+      return this.insertTeamSuccessorWithin(client,{task,previous,selected,version,requestId:input.requestId,digest,cause});
     },'hima.acceptTeamContinuation');
   }
-  private async insertTeamSuccessorWithin(client:ClientBase,input:{task:TeamTaskView;previous:DurableRun;selected:{sha256:string;definition:TeamDefinition};version:number;requestId:string;digest:string;cause:'post-exit'|'definition-change';gate?:TeamDefinitionHandoffGate}):Promise<{previousRunId:string;currentRunId:string;replayed:boolean}> {
+  private async insertTeamSuccessorWithin(client:ClientBase,input:{task:TeamTaskView;previous:DurableRun;selected:{sha256:string;definition:TeamDefinition};version:number;requestId:string;digest:string;cause:'post-exit'|'post-pause'|'definition-change';gate?:TeamDefinitionHandoffGate}):Promise<{previousRunId:string;currentRunId:string;replayed:boolean}> {
     const {task,previous,selected,version,requestId,digest,cause,gate}=input;
       const old=previous.opening.data as unknown as {source:Extract<NonNullable<CompiledFlow['taskSource']>,{kind:'team'}>;definition:TeamDefinition;start:FlowStart;requestDigest:string};
       if(!old.requestDigest||jsonDigest(old.start.runInput)!==jsonDigest({goal:task.goal,input:task.input,closure:task.closure})||Date.parse(previous.deadlineAt)!==Date.parse(task.deadlineAt))throw new TeamError('hima/team-conflict','Original input, scope or deadline differs from the frozen opening.');
@@ -1610,7 +1636,8 @@ export class RunStore {
     const initial=opening.initialHostContext;
     let initialHostPrompt:string|undefined;
     if(initial&&!continuation&&identity.taskId===Object.values(opening.start.flow.tasks).find(task=>task.memberId===opening.definition.leaderMemberId)?.id) {
-      if(!['post-exit','definition-change'].includes(initial.source)||initial.runId!==run.runId||jsonDigest(initial.context)!==initial.sha256||memoryTextSha256(initial.hostPrompt)!==initial.hostPromptSha256||!(await client.query('SELECT 1 FROM hima.team_continuation_requests WHERE previous_run_id=$1 AND current_run_id=$2',[initial.predecessorRunId,run.runId])).rowCount)throw new Error('Post-exit reconstruction source or digest differs from its retained acceptance');
+      const edge=(await client.query<{acceptance:{cause?:string}}>('SELECT acceptance FROM hima.team_continuation_requests WHERE previous_run_id=$1 AND current_run_id=$2',[initial.predecessorRunId,run.runId])).rows[0]?.acceptance;
+      if(!['post-exit','post-pause','definition-change'].includes(initial.source)||initial.runId!==run.runId||jsonDigest(initial.context)!==initial.sha256||memoryTextSha256(initial.hostPrompt)!==initial.hostPromptSha256||(edge?.cause??'post-exit')!==initial.source)throw new Error('Team reconstruction source or digest differs from its retained acceptance');
       if(initial.source==='definition-change') {
         const accepted=(await client.query<{acceptance:{cause?:string;gateRequestId?:string;gateSha256?:string;selected?:TeamTaskView['team']}}>('SELECT acceptance FROM hima.team_continuation_requests WHERE previous_run_id=$1 AND current_run_id=$2',[initial.predecessorRunId,run.runId])).rows[0]?.acceptance;
         const data=run.opening.data as unknown as {source:{taskId:string;team:TeamTaskView['team']}};
@@ -1636,6 +1663,10 @@ export class RunStore {
       if(!continuation||jsonDigest(continuation.invocation.identity)!==jsonDigest(input.successorIdentity)||input.hostInputId!==continuation.hostInputId||input.hostInputSha256!==continuation.hostInputSha256)mismatch('Team result input');
       const inputs=await this.teamWaitInputs(client,(await this.teamWaitRow(client,continuation.waitId)).acceptance);
       if(jsonDigest(inputs)!==jsonDigest(continuation.inputs))mismatch('Team result-continuation inputs');
+      const receiptPhase='team-result-input-receipt:'+input.continuationId;
+      const prior=(await client.query<{fact:JsonValue}>('SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',
+        [input.successorIdentity.effectId,receiptPhase])).rows[0]?.fact;
+      if(prior){if(jsonDigest(prior)!==jsonDigest(input))mismatch('Team result input receipt');return;}
       await this.#assertFlowEffectCurrent(client,run,input.successorIdentity.effectId);
       const prepared=(await client.query<{fact:{identity:TaskIdentity;inputId:string;prompt:string;sessionKey:string;generation:number}}>("SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase='prepared'",[input.successorIdentity.effectId])).rows[0]?.fact;
       if(!prepared||jsonDigest(prepared.identity)!==jsonDigest(input.successorIdentity)||prepared.inputId!==input.hostInputId||memoryTextSha256(prepared.prompt)!==input.hostInputSha256)throw new TeamError('hima/team-conflict','Actual retained successor plan differs from the Host result-continuation input.');
@@ -1645,7 +1676,7 @@ export class RunStore {
       const received=observations.find(row=>row.kind==='received'&&row.payload?.inputId===input.hostInputId&&row.nativeSession===born?.nativeSession&&row.streamGeneration===born?.streamGeneration);
       const expected=received?{nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:prepared.sessionKey,generation:prepared.generation,inputId:input.hostInputId}:null;
       if(!expected||!native||native.sessionKey!==prepared.sessionKey||native.generation!==prepared.generation||jsonDigest(expected)!==jsonDigest(input.nativeReceipt))throw new TeamError('hima/team-invalid','No exact retained current native receive observation; queue ACK cannot receive child results.');
-      await this.#recordEffectFact(client,input.successorIdentity,'team-result-input-receipt:'+input.continuationId,taskJsonValue.parse(input));
+      await this.#recordEffectFact(client,input.successorIdentity,receiptPhase,taskJsonValue.parse(input));
     });
   }
   async issueTeamGrant(value:ActorGrant):Promise<{grant:ActorGrant;token:string}> {
@@ -1917,6 +1948,9 @@ export class RunStore {
       }
       if(command.action!=='cancel'&&(await client.query('SELECT 1 FROM hima.team_definition_handoffs WHERE previous_run_id=$1',[run.runId])).rowCount)throw new TeamError('hima/not-authorized','Saved-definition handoff owns this predecessor fence; only Stop remains available.');
       if (command.owner !== run.owner || command.epoch !== run.epoch || command.revision !== run.revision) throw new Error('Control owner/epoch/revision is stale; refresh this Run');
+      if(command.action==='continue'&&run.hold==='pause'
+        &&(run.opening.data as {source?:{kind?:string}}).source?.kind==='team')
+        throw new TeamError('hima/team-not-ready','Paused Team work cannot reuse its prior generation; use explicit resume after original closure.');
       // Team stop retries reconcile the same cancelled effects; they never admit new work.
       if (run.cancelled && !(command.action==='cancel'&&!command.scope&&(run.opening.data as {source?:{kind?:string}}).source?.kind==='team')) throw new Error('Cancelled Run cannot be resumed');
       if (command.action === 'handoff' && !command.nextOwner?.trim()) throw new Error('Handoff needs the next owner');
@@ -2313,6 +2347,22 @@ export class RunStore {
   async #prepareEffect(client:ClientBase,identity:TaskIdentity,intent:JsonValue):Promise<void> {
       const run = await this.#run(client,identity.runId,true);
       if (run.applicationVersion !== this.applicationVersion || identity.applicationVersion !== run.applicationVersion) throw new Error('Effect executable version differs from frozen Run');
+      const existing=(await client.query<{identity:TaskIdentity;intent:JsonValue}>('SELECT identity,intent FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0];
+      if(existing){
+        if(jsonDigest(existing.identity)!==jsonDigest(identity)||jsonDigest(existing.intent)!==jsonDigest(intent))mismatch('Effect');
+        return;
+      }
+      const source=(run.opening.data as {source?:{kind?:string;projectId?:string;team?:{teamId?:string};taskId?:string}}).source;
+      if(source?.kind==='team'){
+        if(run.hold||run.cancelled)throw new FlowEffectNotCurrent('Held or cancelled Team Run cannot prepare new effects');
+        const task=(await client.query<{task:TeamTaskView}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3 FOR SHARE',[source.projectId,source.team?.teamId,source.taskId])).rows[0]?.task;
+        if(!task||task.currentRunId!==run.runId)throw new FlowEffectNotCurrent('Team effect no longer belongs to the current task Run');
+        const admitted=(await client.query<{admitted_generation:number}>(`WITH RECURSIVE ancestry(effect_id) AS (
+          SELECT $1::text UNION SELECT d.parent_effect_id FROM hima.flow_derived_effects d JOIN ancestry a ON d.child_effect_id=a.effect_id WHERE d.run_id=$2)
+          SELECT i.admitted_generation FROM hima.flow_invocations i JOIN ancestry a USING(effect_id) WHERE i.run_id=$2
+          ORDER BY CASE WHEN i.effect_id=$1 THEN 0 ELSE 1 END LIMIT 1`,[identity.effectId,run.runId])).rows[0];
+        if(!admitted||admitted.admitted_generation!==run.epoch)throw new FlowEffectNotCurrent('Team effect lost its admitted Run generation');
+      }
       await client.query('INSERT INTO hima.effects(effect_id,run_id,input_sha256,identity,intent) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [identity.effectId,identity.runId,identity.inputSha256,JSON.stringify(identity),JSON.stringify(intent)]);
       const effect = (await client.query<{identity:TaskIdentity;intent:JsonValue}>('SELECT identity,intent FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0]!;
       if (jsonDigest(effect.identity) !== jsonDigest(identity) || jsonDigest(effect.intent) !== jsonDigest(intent)) mismatch('Effect');

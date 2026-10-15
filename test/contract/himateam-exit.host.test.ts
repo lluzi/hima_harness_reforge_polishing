@@ -177,7 +177,7 @@ async function exercise(t: Parameters<typeof localHome>[0], mode: 'drain' | 'kee
     assert.deepEqual(reopenedState.allowedActions, []);
     assert.equal(reopenedState.execution.resourceState, 'closed');
     await assert.rejects(service.teamOperation(guide, { action: 'control', teamId: team.teamId, taskId: task.taskId,
-      request: { requestId: 'reject-reactivation', action: 'continue', expectedEpoch: reopened.epoch, expectedRevision: reopened.revision } }), cancel ? /explicit human successor admission/ : /explicit post-exit resume/);
+      request: { requestId: 'reject-reactivation', action: 'continue', expectedEpoch: reopened.epoch, expectedRevision: reopened.revision } }), cancel ? /explicit human successor admission|Cancelled Run cannot be resumed/ : /explicit post-exit resume/);
     assert.deepEqual(await originalJobs(host, runId), submissionsBefore, 'replay retains exactly the original submitted identity');
     assert.equal(await readFile(path.join(workspace, 'submissions.txt'), 'utf8'), 'submitted\n', 'cold reopening and replay never execute the member again');
     await assertClosed(host, runId, receipts);

@@ -246,6 +246,13 @@ async function sdkRun(): Promise<void> {
       try {
         journal('raw', raw);
         if (raw.sessionId !== nativeSession || raw.agentPath?.length || !current) return;
+        // OAR synthesizes turn_started from prompt submission. A native Frame
+        // carrying an actual tool call proves OpenCode entered this active turn
+        // before prompt() returns and before member_context needs a reply.
+        if (prepared.runtime === 'opencode' && raw.kind === 'frame'
+          && Array.isArray(raw.body?.events)
+          && raw.body.events.some((event: {kind?:string}) => event?.kind === 'tool_call_started'))
+          received('native_tool_call_started', raw);
         if (raw.kind === 'frame' && raw.body?.type === 'message_start' && raw.body.native?.message?.role === 'assistant') {
           current.text = ''; current.clearText = false;
         }

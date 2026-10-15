@@ -51,9 +51,10 @@ const candidateDir=(memberRoot:string):string=>path.join(memberRoot,'software','
 const repositoryDir=(memberRoot:string):string=>path.join(memberRoot,'software','repository');
 const remoteUrl=(task:TeamGitHubTask):string=>`https://github.com/${task.repository}.git`;
 
-async function issue(port:GitHubCommandPort,task:TeamGitHubTask):Promise<{url:string;title:string;state:string}> {
-  const found=json<{url:string;title:string;state:string}>(await gh(port,'issue','view',String(task.issueNumber),'--repo',task.repository,'--json','url,title,state'));
+async function issue(port:GitHubCommandPort,task:TeamGitHubTask):Promise<{url:string;title:string;state:string;body:string}> {
+  const found=json<{url:string;title:string;state:string;body:string}>(await gh(port,'issue','view',String(task.issueNumber),'--repo',task.repository,'--json','url,title,state,body'));
   if(found.url!==task.issueUrl||found.state!=='OPEN')throw new Error('The original GitHub Issue is missing, closed or belongs to another repository.');
+  if(typeof found.title!=='string'||typeof found.body!=='string')throw new Error('GitHub Issue text is unavailable.');
   return found;
 }
 
@@ -96,9 +97,9 @@ async function pushFrozenCommit(port:GitHubCommandPort,task:TeamGitHubTask,workt
 export async function operateTeamGitHub(memberRoot:string,rawTask:unknown,request:TeamGitHubAction,port:GitHubCommandPort=commandPort,
   beforeWrite:()=>Promise<void>=async()=>{}):Promise<object> {
   const task=parseTeamGitHubTask(rawTask),root=await realpath(memberRoot);
-  await issue(port,task);
+  const selectedIssue=await issue(port,task);
   const base=await repoBase(port,task),worktree=candidateDir(root),repository=repositoryDir(root);
-  if(request.action==='status')return {issueUrl:task.issueUrl,baseBranch:base,
+  if(request.action==='status')return {issue:{url:selectedIssue.url,title:selectedIssue.title.slice(0,160),body:selectedIssue.body.slice(0,16000)},baseBranch:base,
     remoteHead:await remoteHead(port,task),pullRequest:await existingPr(port,task)};
   if(request.action==='checkout') {
     const software=path.dirname(repository);

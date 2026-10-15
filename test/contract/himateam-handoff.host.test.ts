@@ -484,6 +484,85 @@ test('capacity one actually closes/captures/releases parent, commits custom chil
   t.diagnostic(JSON.stringify({ level: 'L2-controlled-ordinary-Node', hostBoots: 1, submissions: counts.length, nativeSdkCalls: 0, productModelCalls: 0, runId: f.runId }));
 });
 
+test('human resume closes actually paused native work and creates one new-Run successor',{timeout:90000},async t=>{
+  const f=await fixture(t,60000);
+  const guide=String((await createRootAgent(f.host.ctx,f.home.h.workspace)).id);
+  const ref={teamId:f.team.teamId,taskId:f.task.taskId};
+  const before=await f.store.run(f.runId);
+  await f.service.teamOperation(guide,{action:'control',...ref,request:{requestId:'actual-human-pause',
+    action:'pause',expectedEpoch:before.epoch,expectedRevision:before.revision}},'human');
+  const paused=await f.store.run(f.runId);
+  assert.equal(paused.epoch,before.epoch+1);assert.equal(paused.hold,'pause');assert.equal(paused.holdSource,'human');
+  assert.doesNotThrow(()=>process.kill(f.parentLease.pid!,0),'pause retains the old native process until explicit resume');
+  await assert.rejects(f.service.teamOperation(guide,{action:'control',...ref,request:{requestId:'unsafe-same-run-continue',
+    action:'continue',expectedEpoch:paused.epoch,expectedRevision:paused.revision}},'human'),/explicit resume/);
+  const observed=await f.readTask() as {projectId:string;deadlineAt:string;input:unknown;allowedActions:string[];resumeGate?:{allowed:boolean}};
+  assert.equal(observed.allowedActions.includes('continue'),false,'Desktop cannot offer a stale same-Run Continue');
+  assert.equal(observed.resumeGate?.allowed,true,'Desktop can offer explicit post-pause Resume');
+  const gate=await f.store.teamResumeGate({projectId:observed.projectId,...ref});
+  assert.equal(gate.allowed,true,gate.reason);
+  await assert.rejects(f.service.teamOperation(guide,{action:'control',...ref,request:{
+    requestId:'stale-human-resume',action:'resume',expectedRunId:f.runId,
+    expectedEpoch:before.epoch,expectedRevision:paused.revision}},'human'),/stamps|current Run|changed/);
+  const request={requestId:'actual-human-resume',action:'resume',expectedRunId:f.runId,
+    expectedEpoch:paused.epoch,expectedRevision:paused.revision};
+  const resumed=await f.service.teamOperation(guide,{action:'control',...ref,request},'human') as {taskId:string;currentRunId:string;runIds:string[];deadlineAt:string;input:unknown};
+  await waitUntil('explicit resume closes the original native process and leases',async()=>{
+    const stopped=await f.store.flowFact(f.runId,`stopped:${f.parent.identity.effectId}`);
+    const resources=await f.store.effectResources(f.parent.identity.effectId);
+    return !!stopped&&resources.length===1&&resources[0]!.released&&!alive(f.parentLease.pid!);
+  },30000,25);
+  assert.equal(resumed.taskId,f.task.taskId);assert.notEqual(resumed.currentRunId,f.runId);
+  assert.deepEqual(resumed.runIds,[f.runId,resumed.currentRunId]);
+  assert.equal(resumed.deadlineAt,observed.deadlineAt);assert.deepEqual(resumed.input,observed.input);
+  const replay=await f.service.teamOperation(guide,{action:'control',...ref,request},'human') as {currentRunId:string};
+  assert.equal(replay.currentRunId,resumed.currentRunId,'same human resume receipt creates one successor');
+  await assert.rejects(f.store.authorizeTeamGrant(f.grant,'read-task'),/current capability|revoked|expired|generation/);
+  await waitUntil('new Run admits one fresh native leader',async()=>{
+    const rows=await f.store.flowInvocations(resumed.currentRunId);
+    if(rows.length!==1)return false;
+    if(!await f.store.effect(rows[0]!.identity.effectId))return false;
+    const births=await f.store.listExternalEffectFacts(rows[0]!.identity,'oar:local-birth:');
+    return Object.keys(births).length===1;
+  },30000,25);
+});
+
+test('manual operator revocation after a closed human pause still denies a new Team Run',{timeout:90000},async t=>{
+  const f=await fixture(t,60000);
+  const guide=String((await createRootAgent(f.host.ctx,f.home.h.workspace)).id);
+  const ref={teamId:f.team.teamId,taskId:f.task.taskId};
+  const original=await f.store.run(f.runId);
+  await f.service.teamOperation(guide,{action:'control',...ref,request:{requestId:'revoke-case-human-pause',
+    action:'pause',expectedEpoch:original.epoch,expectedRevision:original.revision}},'human');
+  const paused=await f.store.run(f.runId);
+  await f.store.revokeTeamGrant(f.grantId,'operator');
+  const task=await f.readTask() as {projectId:string};
+  const gate=await f.store.teamResumeGate({projectId:task.projectId,...ref});
+  assert.equal(gate.allowed,false);assert.match(gate.reason??'',/Operator-revoked/);
+  await assert.rejects(f.service.teamOperation(guide,{action:'control',...ref,request:{
+    requestId:'revoke-case-resume',action:'resume',expectedRunId:f.runId,
+    expectedEpoch:paused.epoch,expectedRevision:paused.revision}},'human'),/Operator-revoked/);
+  assert.equal((await f.readTask() as {currentRunId:string}).currentRunId,f.runId);
+});
+
+test('authenticated human can resume actual native work paused by a Guide',{timeout:90000},async t=>{
+  const f=await fixture(t,60000);
+  const before=await f.store.run(f.runId);
+  await (await workflow.controlFlow(f.service.durable,{runId:f.runId,commandId:'guide-native-pause',
+    action:'pause',owner:before.owner,epoch:before.epoch,revision:before.revision,origin:'agent'})).getResult();
+  const paused=await f.store.run(f.runId);
+  assert.equal(paused.hold,'pause');assert.equal(paused.holdSource,'agent');
+  const view=await f.readTask() as {projectId:string;allowedActions:string[];resumeGate?:{allowed:boolean}};
+  assert.equal(view.allowedActions.includes('continue'),false);
+  assert.equal(view.resumeGate?.allowed,true);
+  const guide=String((await createRootAgent(f.host.ctx,f.home.h.workspace)).id);
+  const resumed=await f.service.teamOperation(guide,{action:'control',teamId:f.team.teamId,taskId:f.task.taskId,request:{
+    requestId:'human-resume-guide-pause',action:'resume',expectedRunId:f.runId,
+    expectedEpoch:paused.epoch,expectedRevision:paused.revision}},'human') as {taskId:string;currentRunId:string};
+  assert.equal(resumed.taskId,f.task.taskId);assert.notEqual(resumed.currentRunId,f.runId);
+  assert.ok(await f.store.flowFact(f.runId,`stopped:${f.parent.identity.effectId}`));
+});
+
 test('unknown actual Local birth identity blocks handoff, child, successor and result until original close is reconciled', { timeout: 90000 }, async t => {
   const f = await fixture(t); f.unknown(true);
   const child = await f.delegate(); const wait = await f.store.acceptTeamWait(await f.waitInput(child.delegationId));

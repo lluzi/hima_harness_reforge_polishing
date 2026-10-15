@@ -62,6 +62,51 @@ test('real Host grants GitHub writes only to the human-opened exact Team task an
   await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'github',request:{action:'merge'}}),/Invalid option|invalid_union|merge/);
   await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'github',request:{action:'push-task-branch'}}),/current capability/);
   await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'github',request:{action:'open-pr',testsCommit:binding.baseCommit,reviewCommit:binding.baseCommit,tests:'pass',review:'reviewed',remaining:'none'}}),/matching retained local lease/);
+  const ref={teamId:saved.teamId,taskId:task.taskId};
+  const supplement=await host.ctx.hima.teamOperation(sessionId,{action:'send-message',...ref,request:{
+    requestId:'software-human-supplement',recipientMemberIds:['lead'],
+    text:'Keep the original Issue and PR; clarify the CRLF regression test.',stagedAttachmentIds:[]}},'human') as {message:{sender:{kind:string}}};
+  assert.equal(supplement.message.sender.kind,'human');
+  const current=await store.run(task.currentRunId);
+  await host.ctx.hima.teamOperation(sessionId,{action:'control',...ref,request:{
+    requestId:'software-human-pause',action:'pause',expectedEpoch:current.epoch,expectedRevision:current.revision}},'human');
+  const paused=await store.run(task.currentRunId);
+  await assert.rejects(host.ctx.hima.teamOperation(sessionId,{action:'control',...ref,request:{
+    requestId:'software-stale-continue',action:'continue',expectedEpoch:paused.epoch,
+    expectedRevision:paused.revision}},'human'),/explicit resume/);
+  const resumed=await host.ctx.hima.teamOperation(sessionId,{action:'control',...ref,request:{
+    requestId:'software-human-resume',action:'resume',expectedRunId:task.currentRunId,
+    expectedEpoch:paused.epoch,expectedRevision:paused.revision}},'human') as {taskId:string;input:unknown;runIds:string[];currentRunId:string};
+  assert.equal(resumed.taskId,task.taskId);
+  assert.deepEqual(resumed.input,binding,'human controls retain the original GitHub binding');
+  assert.equal(resumed.runIds[0],task.currentRunId,'resume preserves the original task lineage');
+  assert.notEqual(resumed.currentRunId,task.currentRunId,'a prepared Team effect needs a fresh Run');
   await store.revokeTeamGrant(grant.grantId);
-  await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'github',request:{action:'status'}}),/revoked|expired/);
+  await assert.rejects(host.ctx.hima.memberTeamContext(issued.token,{action:'github',request:{action:'status'}}),/revoked|expired|generation/);
+  const dormant=await host.ctx.hima.teamOperation(sessionId,{action:'startTask',teamId:saved.teamId,
+    request:{...opening,requestId:'software-dormant'}},'human') as {taskId:string;currentRunId:string;readiness:{ready:boolean}};
+  assert.equal(dormant.readiness.ready,false);
+  await waitUntil('unprepared software leader invocation',async()=>(await store.flowInvocations(dormant.currentRunId)).length===1,10000,25);
+  const dormantInvocation=(await store.flowInvocations(dormant.currentRunId))[0]!;
+  assert.equal(await store.effect(dormantInvocation.identity.effectId),undefined);
+  const dormantRun=await store.run(dormant.currentRunId);
+  await host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:saved.teamId,taskId:dormant.taskId,request:{
+    requestId:'dormant-pause',action:'pause',expectedEpoch:dormantRun.epoch,expectedRevision:dormantRun.revision}},'human');
+  const dormantPaused=await store.run(dormant.currentRunId);
+  await assert.rejects(store.prepareEffect(dormantInvocation.identity,{kind:'late-team-effect'}),/Held or cancelled Team Run/);
+  assert.equal(await store.effect(dormantInvocation.identity.effectId),undefined,'pause cannot materialize a late effect');
+  const dormantView=await host.ctx.hima.teamOperation(sessionId,{action:'readTask',teamId:saved.teamId,
+    taskId:dormant.taskId},'human') as {allowedActions:string[];resumeGate:{allowed:boolean}};
+  assert.ok(!dormantView.allowedActions.includes('continue'),'a paused Team never reuses its original generation');
+  assert.equal(dormantView.resumeGate.allowed,true);
+  await assert.rejects(host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:saved.teamId,taskId:dormant.taskId,request:{
+    requestId:'dormant-continue',action:'continue',expectedEpoch:dormantPaused.epoch,
+    expectedRevision:dormantPaused.revision}},'human'),/explicit resume/);
+  const dormantResumed=await host.ctx.hima.teamOperation(sessionId,{action:'control',teamId:saved.teamId,taskId:dormant.taskId,request:{
+    requestId:'dormant-resume',action:'resume',expectedRunId:dormant.currentRunId,
+    expectedEpoch:dormantPaused.epoch,expectedRevision:dormantPaused.revision}},'human') as {currentRunId:string;runIds:string[]};
+  assert.notEqual(dormantResumed.currentRunId,dormant.currentRunId);
+  assert.deepEqual(dormantResumed.runIds,[dormant.currentRunId,dormantResumed.currentRunId]);
+  await assert.rejects(store.prepareEffect(dormantInvocation.identity,{kind:'late-team-effect'}),/Held or cancelled Team Run|current task Run/);
+  assert.equal(await store.effect(dormantInvocation.identity.effectId),undefined,'predecessor cannot materialize after a new Run');
 });

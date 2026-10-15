@@ -66,7 +66,7 @@ test('Host GitHub adapter binds a committed task worktree, confirms push and reu
     let remote:string|undefined,created=0,body='',pr:{url:string;number:number;headRefOid:string;baseRefName:string;state:string}|undefined;
     const port:GitHubCommandPort={async run(executable,args) {
       if(executable==='gh') {
-        if(args[0]==='issue'&&args[1]==='view')return JSON.stringify({url:binding.issueUrl,title:'Known bug',state:'OPEN'});
+        if(args[0]==='issue'&&args[1]==='view')return JSON.stringify({url:binding.issueUrl,title:'Known bug',state:'OPEN',body:'Original failing test and acceptance.'});
         if(args[0]==='repo'&&args[1]==='view')return JSON.stringify({defaultBranchRef:{name:'main'}});
         if(args[0]==='pr'&&args[1]==='list')return JSON.stringify(pr?[pr]:[]);
         if(args[0]==='pr'&&args[1]==='create') {
@@ -90,8 +90,9 @@ test('Host GitHub adapter binds a committed task worktree, confirms push and reu
       }
       throw Error(`Unexpected external command ${executable} ${args.join(' ')}`);
     }};
-    const status=await operateTeamGitHub(root,binding,{action:'status'},port) as {remoteHead?:string};
+    const status=await operateTeamGitHub(root,binding,{action:'status'},port) as {remoteHead?:string;issue:{body:string}};
     assert.equal(status.remoteHead,undefined);
+    assert.equal(status.issue.body,'Original failing test and acceptance.');
     await assert.rejects(operateTeamGitHub(root,binding,{action:'push-task-branch'},port,async()=>{throw Error('revoked before push');}),/revoked before push/);
     assert.equal(remote,undefined);
     const pushed=await operateTeamGitHub(root,binding,{action:'push-task-branch'},port) as {headCommit:string;state:string};
@@ -125,7 +126,7 @@ test('a lead can read the developer branch in an independent checkout and fast-f
     await mkdir(member);
     const port:GitHubCommandPort={async run(executable,args) {
       if(executable==='gh') {
-        if(args[0]==='issue')return JSON.stringify({url:binding.issueUrl,title:'Known bug',state:'OPEN'});
+        if(args[0]==='issue')return JSON.stringify({url:binding.issueUrl,title:'Known bug',state:'OPEN',body:'Original failing test and acceptance.'});
         if(args[0]==='repo')return JSON.stringify({defaultBranchRef:{name:'main'}});
       }
       if(executable==='git'&&args.includes('ls-remote'))return `${remote}\trefs/heads/${binding.taskBranch}`;
