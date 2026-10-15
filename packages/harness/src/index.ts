@@ -557,14 +557,14 @@ export default class Hima extends Service {
     let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
     let durableStarting: Promise<DurableRuntime> | undefined;
     let closing = false;
-    let durableClosed = false, domainClosed = false, maintenancePrepared = false;
+    let durableClosed = false, domainClosed = false, maintenancePrepared = false, teamServicesClosed = false;
     let closingAttempt: Promise<void> | undefined;
     let closeHostResources = async () => {
       const database = await databaseStarting;
       const durable = await durableStarting?.catch(() => undefined);
       this.memoryAbort.abort();
       await Promise.allSettled([...this.memoryRequests]);
-      if(this.teamServices) {
+      if(this.teamServices && !teamServicesClosed) {
         if(!maintenancePrepared) {
           try {
             if(this.interruptedTeamServices.length)throw new Error('An interrupted service generation needs reconciliation before a complete maintenance cut.');
@@ -578,6 +578,10 @@ export default class Hima extends Service {
         }
         const stopped=await this.teamServices.stopAll();
         if(this.interruptedTeamServices.length || stopped.some(receipt=>!receipt.owned.quiescent))throw new Error('Team service closure is unproved; retain the original Host database and service generation.');
+        // A later PostgreSQL close may fail while an external client still holds the
+        // original cluster. Retrying that closer must not write another service receipt
+        // through the RunStore pool that durable.stop has already ended.
+        teamServicesClosed=true;
       }
       if (durable && !durableClosed) { await durable.stop(); durableClosed = true; }
       try {

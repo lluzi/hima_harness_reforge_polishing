@@ -232,13 +232,14 @@ test('Exit before preparation admission reopens the original workflow and preser
 
 test('Admitted preparation intent without copy completion stays unknown during drain',{timeout:90000},()=>durableLifecycleScenario('prepare-intent'));
 
-async function nativeLifecycleHome():Promise<import('./support/dsh-home.ts').HimaHome>{
+async function nativeLifecycleHome(retainOnFailure=false):Promise<import('./support/dsh-home.ts').HimaHome>{
   const {createEmptyHome,repoRoot}=await import('./support/dsh-home.ts');
   const {prepareHimaHome,himaHomeSources}=await import('../../packages/desktop/src/hima-home.ts');
-  const h=await createEmptyHome();const packageDir=process.env.HIMA_U7_LIFECYCLE_PACKAGE;
+  const h=await createEmptyHome(retainOnFailure?{desktopShaped:true}:{});const packageDir=process.env.HIMA_U7_LIFECYCLE_PACKAGE;
   const home=await realpath(h.home),workspace=await realpath(h.workspace);
   const prepared=await prepareHimaHome({home,root:repoRoot,...(packageDir?{sources:{...himaHomeSources(repoRoot),harnessPackage:packageDir,presets:path.join(packageDir,'presets')}}:{})});
-  return {...h,home,workspace,profileDir:prepared.profileDir,env:{...h.env,DSH_HOME:home,DSH_AGENTS_HOME:path.join(home,'agents')}};
+  return {...h,home,workspace,profileDir:prepared.profileDir,env:{...h.env,DSH_HOME:home,DSH_AGENTS_HOME:path.join(home,'agents'),
+    ...(retainOnFailure?{HIMA_TEST_LINEAGE_DIR:path.join(path.dirname(path.dirname(home)),'lineages')}:{})}};
 }
 
 test('native finalization closes owned resources before a delayed whole-tree disposal',{timeout:90000},async()=>{
@@ -296,7 +297,7 @@ test('native capability is lifecycle-only and exit mode replacement/finalization
 
 
 test('native stop sends no signal while owned resources are unproved and repeats the same finalizer',{timeout:90000},async()=>{
-  const home=await nativeLifecycleHome(),runtime=process.env.HIMA_POSTGRES_RUNTIME;assert.ok(runtime);
+  const home=await nativeLifecycleHome(true),runtime=process.env.HIMA_POSTGRES_RUNTIME;assert.ok(runtime);
   const {randomBytes}=await import('node:crypto');const token=randomBytes(32).toString('hex');home.env.HIMA_DESKTOP_CONTROL_TOKEN=token;
   const marker=path.join(home.home,'native-signal-marker'),plugin=path.join(home.home,'native-signal-marker.mjs');
   await writeFile(plugin,`import {writeFileSync} from 'node:fs';export const name='native-signal-marker';export function apply(ctx){ctx.effect(()=>()=>writeFileSync(${JSON.stringify(marker)},'native disposal began'));}`);
@@ -307,7 +308,7 @@ test('native stop sends no signal while owned resources are unproved and repeats
   const originalPid=(await readFile(pidFile,'utf8')).split('\n')[0]!,originalOwner=await readFile(path.join(ownerFile,'owner.json'),'utf8');
   const credentials=JSON.parse(await readFile(path.join(home.home,'hima/database/credentials.json'),'utf8'));
   const holder=spawn(path.join(runtime,'bin/psql'),['-X','-A','-t','-q','-v','ON_ERROR_STOP=1'],{env:{...process.env,PGHOST:'127.0.0.1',PGPORT:String(credentials.port),PGUSER:credentials.user,PGPASSWORD:credentials.password,PGDATABASE:'postgres'},stdio:['pipe','pipe','pipe']});
-  const closed=new Promise(resolve=>holder.once('close',resolve));let released=false;
+  const closed=new Promise(resolve=>holder.once('close',resolve));let released=false,primaryFailure:unknown;
   const request=async(body?:object)=>fetch(new URL('/hima/api/lifecycle/exit',host.origin),{method:body?'POST':'GET',headers:{'x-hima-desktop-control':token,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
   try {
     const locked=new Promise<void>((resolve,reject)=>{let output='';holder.stdout.on('data',chunk=>{output+=String(chunk);if(output.includes('finalize-lock-held'))resolve();});holder.once('error',reject);holder.once('exit',code=>reject(new Error(`lock holder exited ${code}`)));});
@@ -329,11 +330,26 @@ test('native stop sends no signal while owned resources are unproved and repeats
     assert.equal(host.stderr().split('\n').filter(line=>line===`hima: resource shutdown confirmed; pid=${host.child.pid}`).length,1);
     assert.equal(existsSync(marker),true);
     assert.equal(existsSync(pidFile),false);assert.equal(existsSync(ownerFile),false);
+  } catch(error) {
+    primaryFailure=error;
+    throw error;
   } finally {
     if(!released){holder.stdin.end('ROLLBACK;\n');await closed;}
-    await host.stop().catch(()=>undefined);
-    if(host.child.exitCode===null&&host.child.signalCode===null)await stopChild(host.child);
-    await home.dispose();
+    const retry=await host.stop().then(code=>({code}),error=>({error:String(error)}));
+    if(primaryFailure) {
+      const root=path.dirname(path.dirname(home.home));
+      const redact=(value:string)=>value.replaceAll(token,'[redacted]').replaceAll(credentials.password,'[redacted]')
+        .replace(/token=[^\s&]+/gi,'token=[redacted]');
+      const evidence={error:primaryFailure instanceof Error?primaryFailure.message:String(primaryFailure),retry,
+        home:home.home,hostPid:host.child.pid,hostExitCode:host.child.exitCode,hostSignal:host.child.signalCode,
+        markerExists:existsSync(marker),postmasterPidExists:existsSync(pidFile),ownerExists:existsSync(ownerFile),
+        stderrTail:redact(host.stderr()).slice(-12000),stdoutTail:redact(host.stdout()).slice(-12000)};
+      await writeFile(path.join(root,'native-finalizer-failure.json'),JSON.stringify(evidence,null,2)+'\n',{mode:0o600});
+      process.stderr.write(`Retained exact failed native finalizer Home for owned inspection: ${root}\n`);
+    } else {
+      if(host.child.exitCode===null&&host.child.signalCode===null)await stopChild(host.child);
+      await home.dispose();
+    }
   }
 });
 
