@@ -21,5 +21,10 @@
   "testing_gap": {
     "native_manual_theme": "closed via actual native Appearance Light/Dark controls against opposite OS media"
   },
-  "remaining_gate": "Full local regression has concrete ATCS and DBOS failures; not merged"
+  "remaining_gate": "Full local regression has concrete ATCS and DBOS failures; not merged",
+  "final_visual_QA": {
+    "native_settings_alias": "Mapped --dsw-alias-bg-module-platform to shared panel; selected Appearance controls now render blue surfaces in both native themes",
+    "verification": "Real desktop manual theme/narrow configuration workflow passed 1/1, fresh screenshots retained",
+    "review": "Small alias and rendered-color assertions inspected inline; no runtime semantic delta"
+  }
 }

@@ -13,6 +13,7 @@ body.aix-shell{
   --aix-success:#24754d;--aix-warning:#916109;--aix-error:#b13c45;--aix-code:#091a31;--aix-code-ink:#d9e6f5;
   --dsw-font-family:var(--aix-font-ui);
   --dsw-alias-bg-base:var(--aix-paper);--dsw-alias-bg-layer-1:var(--aix-paper);--dsw-alias-bg-layer-2:var(--aix-soft);--dsw-alias-bg-layer-3:var(--aix-paper);
+  --dsw-alias-bg-module-platform:var(--aix-panel);
   --dsw-alias-border-l1:var(--aix-soft);--dsw-alias-border-l2:var(--aix-border);--dsw-alias-border-l3:var(--aix-border);--dsw-alias-border-l4:var(--aix-border-strong);
   --dsw-alias-label-primary:var(--aix-ink);--dsw-alias-label-primary-bluish:var(--aix-ink);--dsw-alias-label-secondary:var(--aix-muted);--dsw-alias-label-tertiary:var(--aix-caption);--dsw-alias-label-caption:var(--aix-caption);
   --dsw-alias-label-primary-inverted:var(--aix-on-brand);--dsw-alias-brand-primary:var(--aix-brand);--dsw-alias-brand-text:var(--aix-brand);--dsw-alias-brand-primary-new-colorprimary-new-color:var(--aix-brand);

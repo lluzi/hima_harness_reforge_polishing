@@ -16,9 +16,10 @@ Screenshots are actual Electron windows on Catsights, not design mockups:
 
 ## Verification
 
-- Fresh workspace build, TypeScript, seam and boundary checks passed.
+- Fresh workspace build, TypeScript, seam and boundary checks passed; the commit hook also passed all 47 unit tests.
 - 56 focused local contracts passed: client-style, workbench-address, reports-and-sections-view and canvas-layout.
 - Three real desktop workflows passed with no skips: native branding/theme/narrow configuration, Guide/Campaign/Data Insight navigation, and conversation draft/native files/verified reports with a real local Run.
+- Final visual inspection found the native settings platform background alias still neutral. It now uses the shared panel color; the real theme workflow verifies the selected Appearance control in both themes and passed again.
 - The theme workflow was strengthened and passed again after review: actual native Light under dark OS media, actual native Dark under light OS media, shell aliases and Project surfaces agree, and composer draft survives.
 - The two served-bundle registration cases reproduced `ReferenceError: document is not defined` before the guard. Both passed after the fix. The related actual Electron served-bundle case also passed 1/1. A separate whole-file registration run passed 13/13, but it overlapped the rebuild and is supplementary rather than the primary before/after evidence.
 - Native icon: macOS `iconutil` decoded the generated ICNS; PNG resources span 16–1024 px. The actual packager stamping block applied to the upstream Electron plist copied exact icon bytes, selected `aix.icns`, and retained executable/bundle identities. This was a packaging fixture check, not a full signed/notarized release or live Finder acceptance.
@@ -39,6 +40,8 @@ The full local regression did **not** pass. The run was interrupted after concre
 
 - ATCS source is `0.4.11` while several unchanged tests demand `0.4.0`. The unchanged method installation test additionally expects a released `VERSION.yml`, which the current development Pack does not contain. These mismatches exist in the selected HUG-DBOS source and are not repaired by issuing a fabricated release seal.
 - `dbos-flow.host.test.ts` failed during input revision with `Derived task parent is terminal or released; no new business work`. Relevant backend/test files are unchanged by this UI upgrade. Its root cause has not been established, so it is not classified as a proven baseline defect.
+
+A focused rerun on the final source independently reproduced all three stale-version assertions (3 failed, 0 passed); the release-seal assertion is downstream of its failing version assertion and was inspected, not reached in that rerun. The first push check was interrupted to apply the final settings-color correction; no remote branch was created.
 
 The pre-push hook requires `pnpm run check:local`. Until that gate succeeds or the user explicitly chooses a different delivery rule, this candidate must not be represented as merged or fully qualified. Merge target remains HUG-DBOS. No data migration is required; rollback is the independent visual commit.
 

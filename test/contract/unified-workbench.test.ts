@@ -165,12 +165,14 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
     await browser.markText('[role="dialog"] button', 'Light', 'native-theme-light');
     assert.ok((await d.click('native-theme-light')).ok);
     await browser.wait(`!document.body.hasAttribute('data-ds-dark-theme')`);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-control="native-theme-light"]')).backgroundColor`), 'rgb(237, 242, 248)');
     assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#ffffff');
     assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(255, 255, 255)');
     await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
     await browser.markText('[role="dialog"] button', 'Dark', 'native-theme-dark');
     assert.ok((await d.click('native-theme-dark')).ok);
     await browser.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-control="native-theme-dark"]')).backgroundColor`), 'rgb(25, 43, 67)');
     assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#101d30');
     assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(16, 29, 48)');
     await capture(d, browser, 'aix-native-appearance');
