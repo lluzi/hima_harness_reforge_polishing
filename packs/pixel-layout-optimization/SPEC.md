@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.4.6 run contract
+# Pixel layout optimization 0.4.7 run contract
 
 ## Goal template
 

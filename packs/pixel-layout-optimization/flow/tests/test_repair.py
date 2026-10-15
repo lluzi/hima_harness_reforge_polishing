@@ -20,7 +20,7 @@ def _lay(polys):
 @unittest.skipUnless(HAVE, "numeric packages not installed")
 class RepairTest(unittest.TestCase):
 
-    def test_an_enclosure_sliver_is_cut_back_past_the_spacing(self):
+    def test_an_enclosure_shortfall_is_cut_back_or_extended(self):
         """A plate (P) edge a few nm onto a line (L) edge: L just inside P, far under the 1.0
         enclosure. The cut pulls P's edge back off L past the 0.5 spacing; a fat marker is not a
         sliver and gets no cut."""
@@ -30,7 +30,7 @@ class RepairTest(unittest.TestCase):
         lay = _lay({"P": [[(0, 5.0), (10, 5.0), (10, 12), (0, 12)]],
                     "L": [[(2, 0), (8, 0), (8, 5.004), (2, 5.004)]]})
         marks = [("P.3", [(2.0, 5.0), (8.0, 5.0), (8.0, 5.004), (2.0, 5.004)])]
-        props = [p for p in repair.propose(lay, marks, checks, 0.005) if p["kind"] == "enc-sliver-cut"]
+        props = [p for p in repair.propose(lay, marks, checks, 0.005) if p["kind"] == "enc-cut"]
         self.assertEqual(len(props), 1)
         e = props[0]["edits"][0]
         self.assertEqual((e["layer"], e["polygon"], e["op"]), ("P", 0, "cut"))
@@ -39,9 +39,14 @@ class RepairTest(unittest.TestCase):
         self.assertGreaterEqual(x1, 8.0)
         self.assertGreaterEqual(y1 - 5.004, 0.5)      # the new edge clears L by the spacing
         self.assertLessEqual(y1 - y0, 1.5)             # a bounded edit
-        fat = [("P.3", [(2.0, 5.0), (8.0, 5.0), (8.0, 5.6), (2.0, 5.6)])]
-        self.assertEqual([p for p in repair.propose(lay, fat, checks, 0.005)
-                          if p["kind"] == "enc-sliver-cut"], [])
+        ext = [p for p in repair.propose(lay, marks, checks, 0.005) if p["kind"] == "enc-extend"]
+        self.assertEqual(len(ext), 1)
+        ex0, ey0, ex1, ey1 = ext[0]["edits"][0]["box"]
+        self.assertEqual(ext[0]["edits"][0]["op"], "add")
+        self.assertLessEqual(ey0, 5.004 - 1.0)        # the extended edge encloses L by the rule
+        deep = [("P.3", [(2.0, 5.0), (8.0, 5.0), (8.0, 6.2), (2.0, 6.2)])]   # deeper than the rule
+        self.assertEqual([p for p in repair.propose(lay, deep, checks, 0.005)
+                          if p["kind"] in ("enc-cut", "enc-extend")], [])
     def test_a_corner_cut_crossing_an_edge_is_cleared_by_moving_that_edge(self):
         """A 45-degree corner cut of S crosses G's right edge (the acute crossing compaction
         cannot remove); moving G's edge 1 um left clears it by the rule distance."""

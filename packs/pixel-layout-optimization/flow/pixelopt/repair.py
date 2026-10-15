@@ -293,34 +293,49 @@ def _enc_sliver_cuts(lay, marks, checks, grid):
         inner, outer = chk["layers"]
         x0, y0, x1, y1 = _bbox(pts)
         w, h = x1 - x0, y1 - y0
-        if min(w, h) > 4 * grid or max(w, h) < 4 * grid:
-            continue  # not a sliver along one edge
-        s = spacing.get(frozenset((inner, outer)), 0.0) + 0.15
-        if s > 1.5:
-            continue
+        d = float(chk.get("value") or 0.0)
+        depth = min(w, h)
+        if depth > d or max(w, h) < 4 * grid:
+            continue  # not an enclosure shortfall along one edge
+        # cut: the outer edge back off the inner edge past their spacing; extend: the outer edge
+        # out until the enclosure holds. The deck decides which (or neither) verifies.
+        s = depth + spacing.get(frozenset((inner, outer)), 0.0) + 0.15
+        grow = d - depth + 0.1
         cx, cy = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
         for pi, arr in enumerate(lay.polys.get(outer, [])):
             g = Polygon(arr).buffer(0)
             if g.is_empty or not g.buffer(grid).intersects(box(x0, y0, x1, y1)):
                 continue
-            if h <= w:   # horizontal sliver: the outer shape lies above or below it
-                if g.contains(Point(cx, y1 + 0.05)) and not g.contains(Point(cx, y0 - 0.05)):
-                    cut = [x0 - 0.1, y0 - grid, x1 + 0.1, y1 + s]
-                elif g.contains(Point(cx, y0 - 0.05)) and not g.contains(Point(cx, y1 + 0.05)):
-                    cut = [x0 - 0.1, y0 - s, x1 + 0.1, y1 + grid]
+            # where is the outer shape's edge? the marker's side the outer shape does not cover
+            if h <= w:
+                up = g.contains(Point(cx, y1 + 0.05)) and not g.contains(Point(cx, y0 - 0.05))
+                dn = g.contains(Point(cx, y0 - 0.05)) and not g.contains(Point(cx, y1 + 0.05))
+                if up:     # outer edge at y0, outer above
+                    cut = [x0 - 0.1, y0 - grid, x1 + 0.1, y0 + s]
+                    ext = [x0 - 0.1, y0 - grow, x1 + 0.1, y0 + grid]
+                elif dn:   # outer edge at y1, outer below
+                    cut = [x0 - 0.1, y1 - s, x1 + 0.1, y1 + grid]
+                    ext = [x0 - 0.1, y1 - grid, x1 + 0.1, y1 + grow]
                 else:
                     continue
             else:
-                if g.contains(Point(x1 + 0.05, cy)) and not g.contains(Point(x0 - 0.05, cy)):
-                    cut = [x0 - grid, y0 - 0.1, x1 + s, y1 + 0.1]
-                elif g.contains(Point(x0 - 0.05, cy)) and not g.contains(Point(x1 + 0.05, cy)):
-                    cut = [x0 - s, y0 - 0.1, x1 + grid, y1 + 0.1]
+                rt = g.contains(Point(x1 + 0.05, cy)) and not g.contains(Point(x0 - 0.05, cy))
+                lf = g.contains(Point(x0 - 0.05, cy)) and not g.contains(Point(x1 + 0.05, cy))
+                if rt:     # outer edge at x0, outer to the right
+                    cut = [x0 - grid, y0 - 0.1, x0 + s, y1 + 0.1]
+                    ext = [x0 - grow, y0 - 0.1, x0 + grid, y1 + 0.1]
+                elif lf:
+                    cut = [x1 - s, y0 - 0.1, x1 + grid, y1 + 0.1]
+                    ext = [x1 - grid, y0 - 0.1, x1 + grow, y1 + 0.1]
                 else:
                     continue
-            cut = [round(round(v / grid) * grid, 6) for v in cut]
-            out.append({"rule": rule, "bbox": [round(v, 4) for v in (x0, y0, x1, y1)],
-                        "kind": "enc-sliver-cut", "moveUm": round(s, 4),
-                        "edits": [{"layer": outer, "polygon": pi, "op": "cut", "box": cut}]})
+            for kind, op, bx, mv in (("enc-cut", "cut", cut, s), ("enc-extend", "add", ext, grow)):
+                if mv > 1.5:
+                    continue  # beyond a bounded edit
+                bx = [round(round(v / grid) * grid, 6) for v in bx]
+                out.append({"rule": rule, "bbox": [round(v, 4) for v in (x0, y0, x1, y1)],
+                            "kind": kind, "moveUm": round(mv, 4),
+                            "edits": [{"layer": outer, "polygon": pi, "op": op, "box": bx}]})
     return out
 
 
