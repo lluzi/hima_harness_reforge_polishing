@@ -80,6 +80,14 @@ def prior_runs(workspace, readiness, limit=_MAX_RUNS):
     return [d for _, d in found[:limit]]
 
 
+def _same_outline(values, outline):
+    w, h = values.get("pixel_outline_w_um"), values.get("pixel_outline_h_um")
+    try:
+        return abs(float(w) - float(outline[0])) < 1e-3 and abs(float(h) - float(outline[1])) < 1e-3
+    except (TypeError, ValueError):
+        return False
+
+
 def pick(runs, goal_resolved, legal_k=2, near_k=2):
     """The candidates to import: ``[(run_dir, candidate_id, why)]``.
 
@@ -89,9 +97,16 @@ def pick(runs, goal_resolved, legal_k=2, near_k=2):
     skipped. Recorded values only choose; the re-judge decides.
     """
     legal, near = [], []
+    fixed = None
+    if (goal_resolved or {}).get("outlineMode") == "fixed":
+        gv = goal_resolved.get("values", {}) or {}
+        fixed = (gv.get("outline_w_um"), gv.get("outline_h_um"))
     for run in runs:
         rows = [r for r in _history(run)
                 if r.get("kind") in ("candidate", "incumbent", "repair") and not r.get("exploratory")]
+        if fixed:
+            # a fixed outline: a candidate of another size (an earlier shrink Run's) is no start
+            rows = [r for r in rows if _same_outline(r.get("values", {}), fixed)]
         rows = [r for r in rows if os.path.exists(os.path.join(run, "cands", str(r.get("id")), "pixel.gds"))]
         for r in rows:
             if rounds.legal(r.get("values", {}), goal_resolved):

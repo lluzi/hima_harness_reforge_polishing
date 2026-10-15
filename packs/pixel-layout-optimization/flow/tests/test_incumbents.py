@@ -57,6 +57,13 @@ class IncumbentsTest(unittest.TestCase):
         self.assertEqual(near, [("run-a", "near-75")])
         self.assertTrue(a and b)
 
+    def test_a_fixed_outline_imports_only_candidates_of_that_size(self):
+        a = _run(self.root, "run-a", rows=[
+            _row("same-size", pixel_ratio_judged_pct=8.5),
+            _row("shrunk", pixel_ratio_judged_pct=7.0, pixel_outline_w_um=18.0)])
+        goal = _goal(outlineMode="fixed", values={"outline_w_um": 19.0, "outline_h_um": 39.0})
+        self.assertEqual([c for _, c, _ in incumbents.pick([a], goal)], ["same-size"])
+
     def test_a_candidate_without_its_gds_is_skipped(self):
         a = _run(self.root, "run-a", rows=[_row("gone", pixel_ratio_judged_pct=8.0)])
         os.remove(os.path.join(a, "cands", "gone", "pixel.gds"))
