@@ -51,6 +51,14 @@ class TestResolve(unittest.TestCase):
         self.assertEqual(out["maxRounds"], 8)
         self.assertEqual(out["convergePatienceRounds"], 3)
 
+    def test_fixed_outline_keeps_the_original_cell_not_the_manifest_target(self):
+        out = goalmod.resolve(self._zero_goal(), {"outlineMode": "fixed"}, self.base, ORIGINAL)
+        self.assertEqual(out["outlineMode"], "fixed")
+        self.assertEqual([out["values"]["outline_w_um"], out["values"]["outline_h_um"]], [22.0, 44.0])
+        self.assertEqual(out["sources"]["outline_w_um"], "original")
+        self.assertEqual(goalmod.resolve(self._zero_goal(), {}, self.base, ORIGINAL)["outlineMode"],
+                         "target")
+
     def test_goal_values_win(self):
         g = self._zero_goal()
         g.update({"outline_w_um": 18.0, "ratio_target_pct": 7.5, "t_min_pct": 6.0})

@@ -82,6 +82,43 @@ class TestCleanFull(unittest.TestCase):
         self.assertEqual(set(self.v) & expected, expected)
 
 
+def _with_floating_plate():
+    from tests import standin_eda
+    caps = {"%s|%s" % tuple(sorted((a, b))): v for a, b, v in standin_eda.DEFAULT_CAPS}
+    caps["RCE_UNCONN_9|S"] = 2.0    # a plate on no net, over the storage node
+    caps["RCE_UNCONN_9|SC"] = 6.0   # and over the scan line
+    return judged(sidecar={"caps": caps})
+
+
+class TestFloatingPlates(unittest.TestCase):
+    def test_a_clean_candidate_has_none(self):
+        case, ws, cand, readiness, rpath = judged()
+        v = values(receipt.reader_values(rpath, ws, readiness))
+        self.assertEqual(v["pixel_floating_new_count"]["value"], 0)
+
+    def test_a_floating_plate_the_original_lacks_is_counted(self):
+        case, ws, cand, readiness, rpath = _with_floating_plate()
+        v = values(receipt.reader_values(rpath, ws, readiness))
+        self.assertEqual(v["pixel_floating_new_count"]["value"], 1)
+
+    def test_the_originals_own_floating_node_is_not_new(self):
+        case, ws, cand, readiness, rpath = _with_floating_plate()
+        readiness["original"]["floatingNets"] = 1
+        v = values(receipt.reader_values(rpath, ws, readiness))
+        self.assertEqual(v["pixel_floating_new_count"]["value"], 0)
+
+    def test_no_original_count_is_unknown_never_zero(self):
+        case, ws, cand, readiness, rpath = judged()
+        del readiness["original"]["floatingNets"]
+        v = values(receipt.reader_values(rpath, ws, readiness))
+        self.assertIsNone(v["pixel_floating_new_count"]["value"])
+
+    def test_floating_nets_names_only_watched_couplings_above_the_floor(self):
+        caps = {"RCE_UNCONN_3|SC": 6.0, "RCE_UNCONN_3|S": 2.0, "R1|RCE_UNCONN_2": 4.0,
+                "RCE_UNCONN_1|SC": 0.2}
+        self.assertEqual(receipt.floating_nets(caps, ["S", "SC"]), ["RCE_UNCONN_3"])
+
+
 class TestExtraCsExclude(unittest.TestCase):
     def test_exclude_subtracts_outside_estimate(self):
         case, ws, cand, readiness, rpath = judged()

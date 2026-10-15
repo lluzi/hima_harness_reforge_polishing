@@ -36,7 +36,18 @@
      "loadAllowancePct": {"type": "number"},
      "ratioCapPct": {"type": "number"},
      "exploratory": {"type": "boolean"},
-     "throughChain": {"type": "boolean"}
+     "throughChain": {"type": "boolean"},
+     "operators": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "additionalProperties": true,
+       "required": ["op"],
+       "properties": {
+        "op": {"enum": ["shield", "cst-stretch", "opening-shift", "band-trim", "contact-move"]}
+       }
+      }
+     }
     }
    }
   },

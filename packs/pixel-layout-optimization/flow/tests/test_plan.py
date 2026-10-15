@@ -91,6 +91,33 @@ class CheckTest(unittest.TestCase):
                                                         "exploratory": True}]),
                                     _readiness(), [], round=2), [])
 
+    def test_point_operators_are_checked_like_plan_operators(self):
+        good = _plan(frontPoints=[
+            {"name": "s1", "objective": "min-ratio",
+             "operators": [{"op": "shield", "net": "VP", "layer": "GateA",
+                            "over": {"victim": "S", "aggressor": "SC"}, "marginUm": -0.2}]},
+            {"name": "plain", "objective": "min-ratio"}])
+        self.assertEqual(plan.check(good, _readiness(), [], round=2), [])
+        bad = _plan(frontPoints=[{"name": "s1", "objective": "min-ratio",
+                                  "operators": [{"op": "shield", "net": "ZZ", "layer": "Nope"}]}])
+        errs = plan.check(bad, _readiness(), [], round=2)
+        self.assertTrue(any("front point 's1'" in e and "layer" in e for e in errs))
+        self.assertTrue(any("front point 's1'" in e and "net" in e for e in errs))
+
+    def test_fixed_outline_refuses_min_pitch_and_other_outlines(self):
+        r = _readiness(goal={"outlineMode": "fixed"})
+        self.assertEqual(plan.check(_plan(frontPoints=[
+            {"name": "a", "objective": "legalise"},
+            {"name": "b", "objective": "min-ratio", "outlineUm": [20.0, 40.0]}]), r, [], round=2), [])
+        errs = plan.check(_plan(frontPoints=[{"name": "p", "objective": "min-pitch"}]), r, [], round=2)
+        self.assertTrue(any("min-pitch" in e and "fixed" in e for e in errs))
+        errs = plan.check(_plan(frontPoints=[{"name": "q", "objective": "min-ratio",
+                                              "outlineUm": [19.5, 40.0]}]), r, [], round=2)
+        self.assertTrue(any("fixes it" in e for e in errs))
+        # a shrink target is still allowed when the outline is a target
+        self.assertEqual(plan.check(_plan(frontPoints=[{"name": "p", "objective": "min-pitch"}]),
+                                    _readiness(), [], round=2), [])
+
     def test_too_many_front_points(self):
         fps = [{"name": "p%d" % i, "objective": "min-ratio"} for i in range(7)]
         errs = plan.check(_plan(frontPoints=fps), _readiness(), [], round=2)

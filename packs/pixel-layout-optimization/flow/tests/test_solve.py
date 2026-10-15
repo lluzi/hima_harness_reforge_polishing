@@ -85,5 +85,27 @@ class SolveTest(unittest.TestCase):
                          {"r02-target-pitch", "r02-legalise"})
 
 
+    def test_a_point_carries_its_own_operators_and_fails_alone(self):
+        # One round, several discrete changes: each point applies its own operators after the
+        # plan's on its own copy of the base; an operator that cannot apply fails only its point.
+        from pixelopt import numcmd
+        shield = {"op": "shield", "net": "VP", "layer": "Metal",
+                  "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.0}
+        floating = {"op": "shield", "net": "R1", "layer": "Metal",
+                    "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.0}
+        self._write_plan([
+            {"name": "plain", "objective": "min-pitch"},
+            {"name": "shielded", "objective": "min-pitch", "operators": [shield]},
+            {"name": "floats", "objective": "min-pitch", "operators": [floating]}])
+        res = numcmd.cmd_solve(self.ws, 3)
+        self.assertEqual(set(res["candidates"]), {"r03-plain", "r03-shielded"})
+        self.assertEqual([f["name"] for f in res["failed"]], ["floats"])
+        self.assertEqual(res["failed"][0]["status"], "operator-refused")
+        plain = _load(os.path.join(self.ws, "cands", "r03-plain", "meta.json"))
+        shielded = _load(os.path.join(self.ws, "cands", "r03-shielded", "meta.json"))
+        self.assertEqual(plain["operators"], [])
+        self.assertEqual(shielded["operators"], [shield])
+
+
 if __name__ == "__main__":
     unittest.main()

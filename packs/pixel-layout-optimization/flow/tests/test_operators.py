@@ -42,8 +42,8 @@ class OperatorsTest(unittest.TestCase):
 
     def test_shield_adds_exactly_one_polygon_on_the_named_layer(self):
         before = len(self.lay.polys.get("Metal", []))
-        op = {"operator": "shield", "net": "R1", "layer": "Metal",
-              "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.1}
+        op = {"operator": "shield", "net": "VP", "layer": "Metal",
+              "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.0}
         out, desc = self._apply(op)
         self.assertEqual(len(out.polys["Metal"]), before + 1)
         # no other layer gained or lost a polygon
@@ -51,8 +51,65 @@ class OperatorsTest(unittest.TestCase):
             if name == "Metal":
                 continue
             self.assertEqual(len(out.polys.get(name, [])), len(self.lay.polys[name]))
-        self.assertEqual(desc["shield"]["net"], "R1")
+        self.assertEqual(desc["shield"]["net"], "VP")
         self.assertIn("declaredChanges", desc)
+
+    def test_shield_far_from_its_net_is_refused_not_left_floating(self):
+        from pixelopt import operators
+        from pixelopt.core import PixelError
+        from shapely.geometry import box as sbox
+        lay, nets = self._synthetic()
+        nets["nets"]["P"] = [("Metal", sbox(9.0, -2, 10.0, 6))]   # 5 um from the plate
+        op = {"op": "shield", "net": "P", "layer": "Metal",
+              "over": {"victim": "V", "aggressor": "G"}, "marginUm": 0.0}
+        with self.assertRaises(PixelError) as cm:
+            operators.apply_operator(lay, op, self.case, nets, table=self.table)
+        self.assertEqual(cm.exception.code, "bad-plan")
+        self.assertIn("float", str(cm.exception))
+
+    def test_shield_negative_margin_shrinks_the_plate(self):
+        base = {"operator": "shield", "net": "VP", "layer": "Metal",
+                "over": {"victim": "S", "aggressor": "VP"}}
+        _, full = self._apply(dict(base, marginUm=0.0))
+        _, small = self._apply(dict(base, marginUm=-0.3))
+        self.assertLess(small["shield"]["areaUm2"], full["shield"]["areaUm2"])
+        self.assertGreater(small["shield"]["areaUm2"], 0.0)
+
+    def _synthetic(self, extra_m=()):
+        # victim V (GateA) under aggressor G (GateB) at (0,0)-(4,4); the plate's net P has a Metal
+        # strip 1 um to the right of the overlap; a third net Q sits on Metal far away.
+        from shapely.geometry import box as sbox
+        from pixelopt import layout
+        lay = self.lay.copy()
+        lay.polys = {"Metal": [], "Via": []}
+        nets = {"nets": {"V": [("GateA", sbox(0, 0, 4, 4))], "G": [("GateB", sbox(0, 0, 4, 4))],
+                         "P": [("Metal", sbox(5.0, -2, 6.0, 6))],
+                         "Q": [("Metal", sbox(20, 0, 21, 4))] + [("Metal", g) for g in extra_m]}}
+        self.assertIsInstance(lay, layout.Layout)
+        return lay, nets
+
+    def test_shield_a_short_gap_away_is_bridged_to_its_net(self):
+        from pixelopt import operators
+        from shapely.geometry import Polygon, box as sbox
+        lay, nets = self._synthetic()
+        op = {"op": "shield", "net": "P", "layer": "Metal",
+              "over": {"victim": "V", "aggressor": "G"}, "marginUm": 0.0}
+        out, desc = operators.apply_operator(lay, op, self.case, nets, table=self.table)
+        self.assertGreater(desc["shield"]["bridgeUm2"], 0.0)
+        plate = Polygon(out.polys["Metal"][-1]).buffer(0)
+        self.assertLess(plate.distance(sbox(5.0, -2, 6.0, 6)), 1e-6)   # tied to P
+        self.assertGreater(plate.distance(sbox(20, 0, 21, 4)), 1.0)    # clear of Q
+
+    def test_shield_that_would_surround_another_net_is_refused(self):
+        from pixelopt import operators
+        from pixelopt.core import PixelError
+        from shapely.geometry import box as sbox
+        lay, nets = self._synthetic(extra_m=[sbox(1.8, 1.8, 2.2, 2.2)])   # a Q pad inside
+        op = {"op": "shield", "net": "P", "layer": "Metal",
+              "over": {"victim": "V", "aggressor": "G"}, "marginUm": 0.0}
+        with self.assertRaises(PixelError) as cm:
+            operators.apply_operator(lay, op, self.case, nets, table={"space": {"Metal": 0.3}})
+        self.assertIn("surround", str(cm.exception))
 
     def test_cst_stretch_raises_and_declares_the_device_value(self):
         from pixelopt import operators

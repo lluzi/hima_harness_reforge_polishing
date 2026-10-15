@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from shapely.geometry import Polygon
 
+from .core import PixelError
 from . import (attribution, compact, core, edits, geometry, judge, layout,
                markers, nets, operators, repair, reports)
 
@@ -584,7 +585,7 @@ def _solve_point(point, ctx):
         "base": ctx["base_id"],
         "frontPoint": point,
         "exploratory": bool(point.get("exploratory")),
-        "operators": ctx["plan"].get("operators", []),
+        "operators": ctx.get("operators", ctx["plan"].get("operators", [])),
         "edits": ctx["plan"].get("edits", []),
         "declaredChanges": dict(ctx["declared"]),
         "predicted": predicted,
@@ -639,17 +640,22 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
 
     # Operators, then bounded edits, then merge the top conductor.
     top_conductor = case.raw["connectivity"]["topConductor"]
-    nets_result = nets.extract(base_lay, case)
-    pre = base_lay
-    declared = {}
-    for op in plan.get("operators", []) or []:
-        pre, desc = operators.apply_operator(pre, op, case, nets_result,
-                                              table=table, topology_moves=topo)
-        declared.update(desc.get("declaredChanges", {}) or {})
-        nets_result = nets.extract(pre, case)
-    if plan.get("edits"):
-        pre, _log = edits.apply_edits(pre, plan["edits"], case)
-    pre = layout.merge_layers(pre, [top_conductor])
+
+    def prepare(ops):
+        lay = base_lay
+        nets_result = nets.extract(base_lay, case)
+        decl = {}
+        for op in ops:
+            lay, desc = operators.apply_operator(lay, op, case, nets_result,
+                                                 table=table, topology_moves=topo)
+            decl.update(desc.get("declaredChanges", {}) or {})
+            nets_result = nets.extract(lay, case)
+        if plan.get("edits"):
+            lay, _log = edits.apply_edits(lay, plan["edits"], case)
+        return layout.merge_layers(lay, [top_conductor]), decl
+
+    plan_ops = list(plan.get("operators", []) or [])
+    pre, declared = prepare(plan_ops)
 
     base_marks = _folded_authority_markers(base_dir, case, base_lay)
     zones = _zones(base_marks)
@@ -671,11 +677,32 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
     }
 
     points = plan.get("frontPoints", []) or []
-    jobs = max(1, int(sitecaps.get("parallelJobs", 1) or 1))
+    # A point's own operators come after the plan's, on its own copy of the base: one round can
+    # try several discrete changes (a shield sweep at a fixed outline) instead of one per round.
+    # A point whose own operator cannot apply fails alone; the plan's operators still fail the plan.
+    contexts = []
     results = [None] * len(points)
-    if points:
-        with ThreadPoolExecutor(max_workers=min(jobs, len(points))) as pool:
-            futs = {pool.submit(_solve_point, p, ctx): i for i, p in enumerate(points)}
+    for i, p in enumerate(points):
+        own = list(p.get("operators", []) or [])
+        if not own:
+            contexts.append(ctx)
+            continue
+        try:
+            pre_p, decl_p = prepare(plan_ops + own)
+        except PixelError as exc:
+            contexts.append(None)
+            results[i] = {"ok": False, "name": p.get("name"), "status": "operator-refused",
+                          "binding": [str(exc)]}
+            continue
+        merged = dict(declared)
+        merged.update(decl_p)
+        contexts.append(dict(ctx, pre=pre_p, declared=merged, base_clean=False,
+                             operators=plan_ops + own))
+    jobs = max(1, int(sitecaps.get("parallelJobs", 1) or 1))
+    todo = [i for i in range(len(points)) if contexts[i] is not None]
+    if todo:
+        with ThreadPoolExecutor(max_workers=min(jobs, len(todo))) as pool:
+            futs = {pool.submit(_solve_point, points[i], contexts[i]): i for i in todo}
             for fut in futs:
                 results[futs[fut]] = fut.result()
 

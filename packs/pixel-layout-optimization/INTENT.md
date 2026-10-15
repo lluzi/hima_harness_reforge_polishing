@@ -142,6 +142,9 @@ Flow root: /data/eda/project/hima_harness/pixel-runs
     Converged ending requires. Extraction parallelism comes from the Site
     (3 today, until the container's process limit is raised). The FPD licence mode excludes other
     licence modes while a Run is active.
+    A Project may also fix the cell's size (`strategy.outlineMode: fixed`): the outline is then the
+    original's and is no longer a target, and the Run optimises the coupling ratio alone under the
+    hard limits (a customer asked for exactly this once the shrink was off the table).
 11. **Who does what.**
     - The resident engineering agent (OpenCode) reads a design-space card and writes a plan for each
       round: which edits, which front points, which extra pair constraints. It repairs the last few

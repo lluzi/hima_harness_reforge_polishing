@@ -86,6 +86,10 @@ def check(plan, readiness, history_ids, round=None):
     nets = _net_universe(manifest)
     topo = goal.get("topologyMoves", "off")
     ceiling = _num(gvalues.get("cst_ceiling_ff")) or 0.0
+    fixed = goal.get("outlineMode") == "fixed"
+    fixed_outline = [_num(gvalues.get("outline_w_um")), _num(gvalues.get("outline_h_um"))]
+    if None in fixed_outline:
+        fixed_outline = None
 
     # -- round ------------------------------------------------------------- #
     if round is not None and plan.get("round") != round:
@@ -113,27 +117,42 @@ def check(plan, readiness, history_ids, round=None):
             errors.append("front point %r has limits looser than the Goal but is not marked exploratory" % name)
         if exploratory and not exceeds:
             errors.append("front point %r is marked exploratory but its limits do not exceed the Goal" % name)
+        if fixed:
+            if fp.get("objective") == "min-pitch":
+                errors.append("front point %r is min-pitch, but the Goal fixes the outline "
+                              "(outlineMode fixed): use legalise or min-ratio" % name)
+            ol = fp.get("outlineUm")
+            if isinstance(ol, list) and len(ol) == 2 and fixed_outline and any(
+                    _num(a) is None or abs(_num(a) - b) > 1e-6 for a, b in zip(ol, fixed_outline)):
+                errors.append("front point %r asks outline %s, but the Goal fixes it at %s "
+                              "(outlineMode fixed)" % (name, ol, fixed_outline))
 
-    # -- operators --------------------------------------------------------- #
-    for op in plan.get("operators", []):
-        kind = op.get("op")
-        if kind not in _OPERATORS:
-            errors.append("operator %r is not one of %s" % (kind, ", ".join(_OPERATORS)))
-            continue
-        if kind == "cst-stretch" and ceiling <= 0:
-            errors.append("operator 'cst-stretch' needs cst_ceiling_ff above 0")
-        if kind == "contact-move" and topo != "allowed":
-            errors.append("operator 'contact-move' needs topologyMoves 'allowed'")
-        # layer / net references must exist in the manifest
-        if "layer" in op and op["layer"] not in layers:
-            errors.append("operator %r names unknown layer %r" % (kind, op["layer"]))
-        for key in ("net",):
-            if key in op and op[key] not in nets:
-                errors.append("operator %r names unknown net %r" % (kind, op[key]))
-        over = op.get("over") if isinstance(op.get("over"), dict) else {}
-        for key in ("victim", "aggressor"):
-            if key in over and over[key] not in nets:
-                errors.append("operator %r 'over.%s' names unknown net %r" % (kind, key, over[key]))
+    # -- operators (the plan's, then each front point's own) ----------------- #
+    def check_ops(ops, where):
+        for op in ops or []:
+            kind = op.get("op")
+            if kind not in _OPERATORS:
+                errors.append("%soperator %r is not one of %s" % (where, kind, ", ".join(_OPERATORS)))
+                continue
+            if kind == "cst-stretch" and ceiling <= 0:
+                errors.append("%soperator 'cst-stretch' needs cst_ceiling_ff above 0" % where)
+            if kind == "contact-move" and topo != "allowed":
+                errors.append("%soperator 'contact-move' needs topologyMoves 'allowed'" % where)
+            # layer / net references must exist in the manifest
+            if "layer" in op and op["layer"] not in layers:
+                errors.append("%soperator %r names unknown layer %r" % (where, kind, op["layer"]))
+            for key in ("net",):
+                if key in op and op[key] not in nets:
+                    errors.append("%soperator %r names unknown net %r" % (where, kind, op[key]))
+            over = op.get("over") if isinstance(op.get("over"), dict) else {}
+            for key in ("victim", "aggressor"):
+                if key in over and over[key] not in nets:
+                    errors.append("%soperator %r 'over.%s' names unknown net %r"
+                                  % (where, kind, key, over[key]))
+
+    check_ops(plan.get("operators", []), "")
+    for fp in fronts:
+        check_ops(fp.get("operators", []), "front point %r: " % fp.get("name", "?"))
 
     # -- edits ------------------------------------------------------------- #
     edits = plan.get("edits", [])

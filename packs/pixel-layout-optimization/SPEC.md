@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.2.0 run contract
+# Pixel layout optimization 0.3.0 run contract
 
 ## Goal template
 
@@ -20,7 +20,7 @@ Pack change (`INTENT.md` Answers 7):
 The Goal is met only when **both** the outline and the ratio targets are met on Reader values, with
 every hard limit holding (`INTENT.md` Answers 5). Every other rule below is a hard limit.
 
-Seven Strategy knobs say how the Goal's quantities are read and how far the method may go:
+Eight Strategy knobs say how the Goal's quantities are read and how far the method may go:
 
 | Knob | Kind | Default | Meaning |
 |---|---|---|---|
@@ -30,6 +30,7 @@ Seven Strategy knobs say how the Goal's quantities are read and how far the meth
 | `topologyMoves` | choice `off`, `allowed` | `off` | Whether a plan may move a contact or reorder lines. |
 | `convergeBandPct` | number, %-points, 0.001–1 | 0.02 | The Converged ending's band: how little the best judged ratio may improve over `convergePatienceRounds` consecutive rounds. |
 | `maxRounds` | number, rounds, 1–20 | 6 | The Round limit ending's round number. A Project that wants a longer or shorter optimisation sets this; `graph.yml`'s `repeat` block is bounded well above it so it is never the thing that cuts a Run short. |
+| `outlineMode` | choice `target`, `fixed` | `target` | `target`: the outline is a shrink target (an unstated outline takes the manifest's). `fixed`: the cell keeps its size; an unstated outline is the original's, and `plan-check` refuses a `min-pitch` point or any other outline, so the Run optimises the ratio inside the window at the original size. |
 | `convergePatienceRounds` | number, rounds, 1–10 | 2 | How many consecutive rounds of less-than-`convergeBandPct` improvement the Converged ending requires. A single stalled round is not enough evidence to stop a Run that was asked to explore for more rounds; this is also why Converged needs a candidate round at least `convergePatienceRounds` back to compare against. |
 
 Shaped by `end-honestly-in-more-than-one-way.md` (the targets and the band are what the endings
@@ -49,7 +50,11 @@ declares a change.
 **What a Run may change** (`INTENT.md` Answers 4): the positions of polygon edges that are not part
 of a channel or of the storage capacitor, on the manifest's `gridUm`; the two pitches; and the
 declared operators of a plan (`shield`, `cst-stretch`, `opening-shift`, `band-trim`, and
-`contact-move` only when `topologyMoves` is `allowed`). A bounded edit moves a vertex or an edge by
+`contact-move` only when `topologyMoves` is `allowed`), either for the whole plan or for one front
+point (a point's own operators follow the plan's on its own copy of the base; one that cannot apply
+fails only that point). A `shield` plate keeps the layer's spacing from every other net and contact
+and is tied to its own net; one that cannot be tied, or would surround another net's shape, is
+refused. A bounded edit moves a vertex or an edge by
 at most 1.5 µm (the designer-style repairs that cleaned the first real case moved up to 1.45 µm), never a vertex of a channel or of the storage capacitor, and is logged; a plan holds at
 most 12 of them. An original that is not clean on the authority deck is legalised first: the
 `legalise` front point solves the LP with every violated pair held at its full rule distance and
@@ -118,7 +123,7 @@ FPD tools hold `licences: {fpd: 1}`.
 
 | Task | Kind | Business input | Work and committed output |
 |---|---|---|---|
-| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the seven Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
+| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the eight Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
 | `judge-original` | program, `fpd: 1` | Committed `prepare-case` output | Judges the original (the same judge as every candidate) and two mutants the Pack generates: one contact removed (LVS must fail) and one space shrunk below its rule (authority DRC must fail). A wrong verdict on a mutant, or an original that fails LVS, fails the task with repair information: the judge or the schematic is wrong, and nothing after it may be trusted. Writes history entry 0. Output: the original's receipt values and the calibration verdicts. |
 | `map-design-space` | program | Committed `judge-original` output | Attributes each coupling of the original to its coupling sites (victim shape, aggressor shape, layers, visible overlap, fringe bands); fits the surrogate on the receipts so far; solves the minimum-pitch LP per axis and names the binding chain from its duals; lists the lever instances with gradient and bound. Writes `state/card.json` (≤ 4 KB) and `state/card.svg`. |
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
@@ -181,6 +186,7 @@ re-verified by sha256. It never reads agent text. It emits:
 | `pixel_cs_outside_marker_ff` | fF | The part of the extracted Cs outside the capacitor marker (estimated by the surrogate's overlap share, so marked `estimated` in the receipt). |
 | `pixel_cst_device_ff` | fF | Capacitor-marker area × the manifest coefficient (geometry). |
 | `pixel_coupling_over_limit_count` | count | Manifest `couplingLimits` pairs above their limit. |
+| `pixel_floating_new_count` | count | Unconnected extraction nodes (`RCE_UNCONN_*`) coupling at least 0.5 fF to the storage node or a load-limited line, beyond the original's own count: a plate on no net hides its coupling from every net-pair value. |
 | `pixel_load_increase_max_pct` | % | The largest rise of a `loadLimitedLines` total over the original's. |
 | `pixel_load_over_limit_count` | count | Lines whose rise exceeds `load_allowance_pct`. |
 | `pixel_t_tiled_pct`, `pixel_t_own_pct` | % | Transmittance on the 3×3 array's centre cell and on the own cell. |
@@ -218,6 +224,7 @@ this Pack; the outline and ratio rules are the Goal, every other one is a hard l
 | `channels-unchanged` | `pixel_channels_changed` | = 0 |
 | `no-undeclared-change` | `pixel_undeclared_change_count` | = 0 |
 | `couplings-within-limit` | `pixel_coupling_over_limit_count` | = 0 |
+| `no-new-floating-net` | `pixel_floating_new_count` | = 0 |
 | `loads-within-allowance` | `pixel_load_over_limit_count` | = 0 |
 | `transmittance-above-min` | `pixel_t_judged_pct` | ≥ `t_min_pct` (only when a lower edge is resolved) |
 | `transmittance-below-max` | `pixel_t_judged_pct` | ≤ `t_max_pct` (only when an upper edge is resolved) |

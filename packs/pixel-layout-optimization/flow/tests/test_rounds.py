@@ -25,7 +25,7 @@ def _legal_values(**over):
          "pixel_interact_violations": 0, "pixel_lvs_correct": 1,
          "pixel_channels_changed": 0, "pixel_undeclared_change_count": 0,
          "pixel_coupling_over_limit_count": 0, "pixel_load_over_limit_count": 0,
-         "pixel_t_judged_pct": 10.0, "pixel_outline_w_um": 19.0,
+         "pixel_floating_new_count": 0, "pixel_t_judged_pct": 10.0, "pixel_outline_w_um": 19.0,
          "pixel_outline_h_um": 39.0, "pixel_ratio_judged_pct": 8.0}
     v.update(over)
     return v
@@ -35,6 +35,10 @@ class RuleResultsTest(unittest.TestCase):
     def test_all_pass(self):
         res = rounds.rule_results(_legal_values(), _goal())
         self.assertTrue(all(v == "PASS" for v in res.values()))
+
+    def test_a_new_floating_plate_is_a_hard_failure(self):
+        self.assertFalse(rounds.legal(_legal_values(pixel_floating_new_count=1), _goal()))
+        self.assertIn("no-new-floating-net", rounds.HARD_RULES)
 
     def test_null_subject_is_unknown(self):
         res = rounds.rule_results(_legal_values(pixel_lvs_correct=None), _goal())
@@ -200,6 +204,22 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(d["nextLever"]["candidate"], "r2-ratio")
         self.assertEqual(d["nextLever"]["fails"], ["transmittance-above-min"])
         self.assertIn("band-trim", d["nextLever"]["action"])
+
+    def test_a_fixed_outline_never_hints_a_shrink_for_transmittance(self):
+        # outlineMode fixed: a candidate over the transmittance maximum is fixed by more opaque
+        # coverage at its own outline, never by min-pitch (the Goal keeps the cell's size).
+        hist = [self._orig()]
+        hist.append({"id": "r1", "round": 1, "exploratory": False, "legal": True,
+                     "values": _legal_values(pixel_ratio_judged_pct=11.0, pixel_t_judged_pct=8.0)})
+        hist.append({"id": "r1-bright", "round": 1, "exploratory": False, "legal": False,
+                     "values": _legal_values(pixel_ratio_judged_pct=10.0, pixel_t_judged_pct=9.5)})
+        goal = _goal(outlineMode="fixed", values={"t_min_pct": 7.0, "t_max_pct": 9.0})
+        lever = rounds.decide(1, goal, hist, None, None)["nextLever"]
+        self.assertEqual(lever["fails"], ["transmittance-below-max"])
+        self.assertIn("shield", lever["action"])
+        self.assertNotIn("min-pitch", lever["action"])
+        target = rounds.decide(1, _goal(values={"t_min_pct": 7.0, "t_max_pct": 9.0}), hist, None, None)
+        self.assertIn("min-pitch", target["nextLever"]["action"])
 
     def _stalled_with(self, **near):
         # Three stalled rounds (3, 4, 5) so the default convergePatienceRounds=2 window

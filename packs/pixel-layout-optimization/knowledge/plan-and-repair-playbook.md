@@ -102,10 +102,38 @@ Synthetic example (names are illustrative; use the manifest's):
 Each operator is an object whose `op` field names it; its parameters name nets, layers and roles,
 never coordinates (example: `{"op": "band-trim", "net": "<supply net>", "layer": "<layer>",
 "widthUm": 3.5}`):
-`shield {net, layer, over: {victim, aggressor}, marginUm}`, `cst-stretch {dyUm, cutAt}`,
+`shield {net, layer, over: {victim, aggressor}, marginUm, bridgeWidthUm}`, `cst-stretch {dyUm, cutAt}`,
 `opening-shift {dxUm, dyUm}`, `band-trim {net, layer, widthUm}`,
 `contact-move {net, toward, stepUm}` (only with `topologyMoves: allowed`). A `cst-stretch` is a
 declared schematic change and needs `cst_ceiling_ff` above 0.
+
+A `shield` plate covers the victim/aggressor overlap grown by `marginUm` (negative shrinks it, so a
+smaller plate costs less load). It keeps the layer's spacing from every other net and contact, and is
+tied to its own net's nearest shape on that layer by a short strip; a plate that cannot be tied
+(more than 1.5 µm away) or that would surround another net's shape is refused. A floating plate is
+never a result: the `no-new-floating-net` rule fails it.
+
+**Operators per front point.** A front point may carry its own `operators`, applied after the plan's
+on its own copy of the base. Use this to try several discrete changes in one round, for example a
+shield-size sweep:
+
+```json
+"frontPoints": [
+  {"name": "ratio", "objective": "min-ratio"},
+  {"name": "shield-s", "objective": "min-ratio", "operators": [{"op": "shield", "net": "<supply>", "layer": "<middle layer>", "over": {"victim": "<storage node>", "aggressor": "<scan line>"}, "marginUm": -0.5}]},
+  {"name": "shield-m", "objective": "min-ratio", "operators": [{"op": "shield", "net": "<supply>", "layer": "<middle layer>", "over": {"victim": "<storage node>", "aggressor": "<scan line>"}, "marginUm": 0.3}]},
+  {"name": "shield-l", "objective": "min-ratio", "operators": [{"op": "shield", "net": "<supply>", "layer": "<middle layer>", "over": {"victim": "<storage node>", "aggressor": "<scan line>"}, "marginUm": 1.3}]}
+]
+```
+
+A point whose own operator is refused fails alone (`operator-refused`); the others are still judged.
+
+**Fixed outline (`outlineMode: fixed`).** The cell keeps its size: every point is `legalise` or
+`min-ratio` at the Goal outline (plan-check refuses `min-pitch` and other outlines). With the
+outline fixed, the round's diversity comes from bases and per-point operators, so spend the six
+points on different discrete changes, not on outlines. Transmittance above the window's maximum is
+fixed by more opaque coverage (a shield plate tied to a supply net, which lowers the ratio too),
+never by shrinking.
 
 ## 6. Markers and what each class calls for
 
@@ -220,7 +248,9 @@ Round 4 (width held at the card's x bound by an `eu:` chain):
    same one harder.
 10. **Watch the loads.** A shield or a wider supply shape next to a scan line raises that line's load:
    a VDD shield over a scan line has nearly doubled that line's load before. Keep every load inside the Goal's allowance, and
-   put any point that needs more in as `exploratory`.
+   put any point that needs more in as `exploratory`. When the Goal's allowance is wide (the person
+   accepted scan-line load for coupling), size the shield: the smallest plate that meets the ratio
+   target is the better delivery, and a sweep of three sizes in one round shows the trade-off.
 11. **Know when to stop.** The storage capacitor is held, so the ratio has a physical floor (the
    coupling built into the drive transistor). When two rounds move the best legal ratio by less than
    the convergence band, stop asking for more ratio: deliver the best legal candidate with its

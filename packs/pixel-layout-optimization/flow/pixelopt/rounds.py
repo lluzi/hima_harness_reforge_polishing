@@ -31,6 +31,7 @@ RULES = [
     ("channels-unchanged", "pixel_channels_changed", "eq", 0, True, False),
     ("no-undeclared-change", "pixel_undeclared_change_count", "eq", 0, True, False),
     ("couplings-within-limit", "pixel_coupling_over_limit_count", "eq", 0, True, False),
+    ("no-new-floating-net", "pixel_floating_new_count", "eq", 0, True, False),
     ("loads-within-allowance", "pixel_load_over_limit_count", "eq", 0, True, False),
     ("transmittance-above-min", "pixel_t_judged_pct", "ge", "t_min_pct", True, True),
     ("transmittance-below-max", "pixel_t_judged_pct", "le", "t_max_pct", True, True),
@@ -193,8 +194,14 @@ def _next_lever(history, goal_resolved, round_no, best_legal):
         actions.append("base it and add a band-trim of a wide opaque supply band (no device), "
                        "then min-ratio at its outline")
     elif "transmittance-below-max" in fails:
-        actions.append("base it and shrink the cell slightly (min-pitch), or widen an opaque "
-                       "band that carries no device")
+        if (goal_resolved or {}).get("outlineMode") == "fixed":
+            actions.append("base it and add opaque coverage at its own outline (the Goal fixes "
+                           "the outline): a shield plate tied to a supply net over a storage-node "
+                           "coupling, which lowers the ratio too, or an add-box edit on an opaque "
+                           "layer of a net with no load limit")
+        else:
+            actions.append("base it and shrink the cell slightly (min-pitch), or widen an opaque "
+                           "band that carries no device")
     return {
         "candidate": cid,
         "fails": fails,

@@ -43,9 +43,29 @@ import os
 from . import core, reports
 from .core import PixelError
 
-__all__ = ["reader_values"]
+__all__ = ["reader_values", "floating_nets"]
 
 _UNCONN = "RCE_UNCONN"
+# An unconnected extraction node coupling at least this much to the storage node or a
+# load-limited line is a floating plate: its coupling reaches the judged nets in series, and
+# no net-pair value counts it (a floating shield once showed a ratio gain the cell did not have).
+FLOATING_MIN_FF = 0.5
+
+
+def floating_nets(caps, watched):
+    """Names of ``RCE_UNCONN`` nodes coupling at least :data:`FLOATING_MIN_FF` to a watched net."""
+    found = set()
+    watched = set(watched or [])
+    for k, v in (caps or {}).items():
+        parts = k.split("|")
+        if len(parts) != 2 or v is None or v < FLOATING_MIN_FF:
+            continue
+        a, b = parts
+        if a.startswith(_UNCONN) and b in watched:
+            found.add(a)
+        elif b.startswith(_UNCONN) and a in watched:
+            found.add(b)
+    return sorted(found)
 
 
 def _pair_key(a, b):
@@ -289,6 +309,20 @@ def reader_values(receipt_path, workspace, readiness):
                 if v is not None and v > lim.get("maxFf", float("inf")):
                     over += 1
         add("pixel_coupling_over_limit_count", "count", over)
+
+    # ---- floating plates ------------------------------------------------- #
+    # More floating nodes on the storage node or a load-limited line than the original has is a
+    # hard failure: a plate drawn on no net (or cut off from it) hides its coupling from every
+    # net-pair value. The original's own count is the baseline (a drawn dummy is not new).
+    watched = [n for n in [nets.get("storageNode")] + list(manifest.get("loadLimitedLines", []) or []) if n]
+    orig_floating = _num(original.get("floatingNets"))
+    if caps is None:
+        add("pixel_floating_new_count", "count", None, caps_reason or "no extraction result")
+    elif orig_floating is None:
+        add("pixel_floating_new_count", "count", None, "no original floating-net count")
+    else:
+        n_float = len(floating_nets(caps, watched))
+        add("pixel_floating_new_count", "count", max(0, n_float - int(orig_floating)))
 
     # ---- load totals ----------------------------------------------------- #
     lines = manifest.get("loadLimitedLines", []) or []

@@ -47,6 +47,9 @@ values:
   pixel_coupling_over_limit_count:
     unit: count
     description: Manifest couplingLimits pairs above their limit. (source measured)
+  pixel_floating_new_count:
+    unit: count
+    description: Unconnected extraction nodes coupling at least 0.5 fF to the storage node or a load-limited line, beyond the original's own count. (source measured)
   pixel_load_increase_max_pct:
     unit: pct
     description: The largest rise of a loadLimitedLines total over the original's. (source measured)

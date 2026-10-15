@@ -35,7 +35,7 @@ class HelpersTest(unittest.TestCase):
             "pixel_drc_authority_2x2", "pixel_drc_authority_3x3",
             "pixel_interact_violations", "pixel_channels_changed",
             "pixel_undeclared_change_count", "pixel_coupling_over_limit_count",
-            "pixel_load_over_limit_count")]
+            "pixel_load_over_limit_count", "pixel_floating_new_count")]
         rows += [{"type": "pixel_lvs_correct", "unit": "flag", "value": 1},
                  {"type": "pixel_t_judged_pct", "unit": "pct", "value": 10.0},
                  {"type": "pixel_outline_w_um", "unit": "um", "value": 19.0},

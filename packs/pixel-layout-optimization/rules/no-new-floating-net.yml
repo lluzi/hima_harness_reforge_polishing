@@ -1,0 +1,6 @@
+id: no-new-floating-net
+version: "1"
+title: No new floating plate couples to the storage node or a load-limited line
+requires: [{ type: pixel_floating_new_count }]
+subject: { type: pixel_floating_new_count }
+predicate: { op: eq, threshold: 0, unit: count }

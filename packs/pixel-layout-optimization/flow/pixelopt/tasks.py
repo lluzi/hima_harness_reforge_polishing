@@ -193,7 +193,7 @@ def prepare_case(workspace, inputs):
     strategy_input = {k: inputs[k] for k in (
         "ratioDefinition", "transmittanceBasis", "extraCsOverlap",
         "topologyMoves", "convergeBandPct", "maxRounds",
-        "convergePatienceRounds") if k in inputs}
+        "convergePatienceRounds", "outlineMode") if k in inputs}
     resolved = goal_mod.resolve(goal_input, strategy_input, case,
                                 {"outlineUm": outline})
 
@@ -269,6 +269,8 @@ def judge_original(workspace, inputs):
     lines = case.raw.get("loadLimitedLines", []) or []
     caps = _rce_caps_of(workspace, "original")
     readiness["original"]["loads"] = _load_totals(caps, lines)
+    watched = [n for n in [(case.raw.get("nets", {}) or {}).get("storageNode")] + list(lines) if n]
+    readiness["original"]["floatingNets"] = len(receipt_mod.floating_nets(caps, watched))
     core.write_json(_state(workspace, "case-readiness.json"), readiness)
 
     orig_receipt = os.path.join(_cand_dir(workspace, "original"), "receipt.json")

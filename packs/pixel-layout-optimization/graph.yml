@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: pixel-layout-optimization
-version: 0.2.0
+version: 0.3.0
 flow:
   kind: sequence
   id: pixel
@@ -25,6 +25,7 @@ flow:
       convergeBandPct: {source: strategy, path: [convergeBandPct]}
       maxRounds: {source: strategy, path: [maxRounds]}
       convergePatienceRounds: {source: strategy, path: [convergePatienceRounds]}
+      outlineMode: {source: strategy, path: [outlineMode]}
     contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-output'}}}
   - kind: task
     id: judge-original
