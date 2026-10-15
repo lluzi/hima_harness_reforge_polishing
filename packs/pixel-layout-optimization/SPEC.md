@@ -182,6 +182,7 @@ re-verified by sha256. It never reads agent text. It emits:
 | `pixel_ratio_narrow_pct`, `pixel_ratio_broad_pct` | % | Ct/Cs for each manifest definition, from the extracted net pairs. |
 | `pixel_ratio_judged_pct` | % | The one `ratioDefinition` names. |
 | `pixel_ct_judged_ff` | fF | Its Ct. |
+| `pixel_ct_anode_ff`, `pixel_ct_lines_ff` | fF | The storage node's coupling to the anode, and to the load-limited lines other than the anode (the scan line). Both are inside the broad Ct; they are secondary objectives: legal candidates whose judged ratios lie within `convergeBandPct` of each other rank by their sum. |
 | `pixel_cs_ff` | fF | Cs: extracted storage node to storage net, with `extraCsOverlap` applied. |
 | `pixel_cs_outside_marker_ff` | fF | The part of the extracted Cs outside the capacitor marker (estimated by the surrogate's overlap share, so marked `estimated` in the receipt). |
 | `pixel_cst_device_ff` | fF | Capacitor-marker area × the manifest coefficient (geometry). |

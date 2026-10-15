@@ -41,6 +41,12 @@ values:
   pixel_ct_judged_ff:
     unit: ff
     description: Ct for the judged ratio definition. (source measured)
+  pixel_ct_anode_ff:
+    unit: ff
+    description: The storage node's extracted coupling to the anode net. (source measured)
+  pixel_ct_lines_ff:
+    unit: ff
+    description: The storage node's extracted coupling to the load-limited lines other than the anode (the scan line). (source measured)
   pixel_ratio_judged_pct:
     unit: pct
     description: Ct/Cs for the ratioDefinition the Strategy names; the judged ratio. (source measured)

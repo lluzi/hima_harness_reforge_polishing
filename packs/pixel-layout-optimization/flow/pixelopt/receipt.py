@@ -296,6 +296,25 @@ def reader_values(receipt_path, workspace, readiness):
         else:
             add("pixel_ratio_judged_pct", "pct", judged_ct / cs_ff * 100.0)
 
+    # ---- secondary couplings ---------------------------------------------- #
+    # The storage node's coupling to the anode, and to the load-limited lines that are not the
+    # anode (the scan line): both are inside the broad Ct, and a person may want them low on
+    # their own (they rank legal candidates whose ratios are within the converge band).
+    anode = nets.get("anode")
+    scan_lines = [n for n in (manifest.get("loadLimitedLines", []) or []) if n and n != anode]
+    if caps is None or storage_node is None:
+        add("pixel_ct_anode_ff", "ff", None, caps_reason or "no extraction result")
+        add("pixel_ct_lines_ff", "ff", None, caps_reason or "no extraction result")
+    else:
+        if anode:
+            add("pixel_ct_anode_ff", "ff", ct_of([anode]))
+        else:
+            add("pixel_ct_anode_ff", "ff", None, "manifest names no anode net")
+        if scan_lines:
+            add("pixel_ct_lines_ff", "ff", ct_of(scan_lines))
+        else:
+            add("pixel_ct_lines_ff", "ff", None, "manifest names no load-limited line besides the anode")
+
     # ---- coupling limits ------------------------------------------------- #
     if caps is None:
         add("pixel_coupling_over_limit_count", "count", None,

@@ -31,6 +31,35 @@ def _legal_values(**over):
     return v
 
 
+class BetterTest(unittest.TestCase):
+    def test_a_clearly_lower_ratio_wins_whatever_the_secondary_couplings(self):
+        a = _legal_values(pixel_ratio_judged_pct=8.0, pixel_ct_anode_ff=5.0, pixel_ct_lines_ff=2.0)
+        b = _legal_values(pixel_ratio_judged_pct=8.5, pixel_ct_anode_ff=1.0, pixel_ct_lines_ff=0.5)
+        self.assertTrue(rounds.better(a, b, _goal()))
+        self.assertFalse(rounds.better(b, a, _goal()))
+
+    def test_within_the_band_the_lower_secondary_couplings_win(self):
+        a = _legal_values(pixel_ratio_judged_pct=8.010, pixel_ct_anode_ff=3.0, pixel_ct_lines_ff=0.5)
+        b = _legal_values(pixel_ratio_judged_pct=8.000, pixel_ct_anode_ff=3.4, pixel_ct_lines_ff=0.6)
+        self.assertTrue(rounds.better(a, b, _goal()))   # band 0.02: 8.010 ~ 8.000
+        self.assertFalse(rounds.better(a, b, _goal(convergeBandPct=0.005)))
+
+    def test_legal_always_beats_illegal(self):
+        a = _legal_values(pixel_ratio_judged_pct=9.0)
+        b = _legal_values(pixel_ratio_judged_pct=7.0, pixel_lvs_correct=0)
+        self.assertTrue(rounds.better(a, b, _goal()))
+
+    def test_best_legal_uses_the_band(self):
+        hist = [{"id": "x", "round": 1, "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=8.000, pixel_ct_anode_ff=3.4,
+                                         pixel_ct_lines_ff=0.6)},
+                {"id": "y", "round": 1, "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=8.010, pixel_ct_anode_ff=3.0,
+                                         pixel_ct_lines_ff=0.5)}]
+        d = rounds.decide(1, _goal(), hist, None, None)
+        self.assertEqual(d["best"]["id"], "y")
+
+
 class RuleResultsTest(unittest.TestCase):
     def test_all_pass(self):
         res = rounds.rule_results(_legal_values(), _goal())

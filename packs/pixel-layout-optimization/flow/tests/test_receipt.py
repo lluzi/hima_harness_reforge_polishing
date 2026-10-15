@@ -44,6 +44,11 @@ class TestCleanFull(unittest.TestCase):
         self.assertAlmostEqual(self.v["pixel_ratio_judged_pct"]["value"], 8.75, places=4)
         self.assertAlmostEqual(self.v["pixel_ct_judged_ff"]["value"], 1.05, places=5)
 
+    def test_secondary_couplings(self):
+        # the stand-in's storage node S couples 0.3 fF to the anode AN and 0.4 fF to the scan SC
+        self.assertAlmostEqual(self.v["pixel_ct_anode_ff"]["value"], 0.3, places=5)
+        self.assertAlmostEqual(self.v["pixel_ct_lines_ff"]["value"], 0.4, places=5)
+
     def test_cs_outside_estimated(self):
         self.assertAlmostEqual(self.v["pixel_cs_outside_marker_ff"]["value"], 0.5,
                                places=5)

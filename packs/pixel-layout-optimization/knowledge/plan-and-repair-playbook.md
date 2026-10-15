@@ -128,6 +128,13 @@ shield-size sweep:
 
 A point whose own operator is refused fails alone (`operator-refused`); the others are still judged.
 
+**Secondary couplings.** The judged ratio is the main goal. The storage node's coupling to the
+anode (`pixel_ct_anode_ff`) and to the scan line (`pixel_ct_lines_ff`) are secondary objectives:
+when two legal candidates' ratios are within `convergeBandPct`, the one with the lower sum is the
+best. A shield between the storage node and the scan line cuts the scan-line coupling but can push
+the storage node's shapes toward the anode; watch the anode coupling in the next round and aim a
+point at it (move the storage node's link away from under the anode, or shift the opening).
+
 **Fixed outline (`outlineMode: fixed`).** The cell keeps its size: every point is `legalise` or
 `min-ratio` at the Goal outline (plan-check refuses `min-pitch` and other outlines). With the
 outline fixed, the round's diversity comes from bases and per-point operators, so spend the six

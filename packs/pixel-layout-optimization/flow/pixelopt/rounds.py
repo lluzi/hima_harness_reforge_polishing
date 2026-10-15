@@ -13,7 +13,7 @@ This module imports nothing outside the standard library.
 from __future__ import annotations
 
 __all__ = ["RULES", "HARD_RULES", "GOAL_RULES", "rule_results", "legal",
-           "rank_key", "decide"]
+           "rank_key", "better", "decide"]
 
 _INF = float("inf")
 
@@ -121,15 +121,49 @@ def _area(vmap):
     return w * h
 
 
+def _secondary(vmap):
+    """The storage node's coupling to the anode plus to the scan line(s), fF (inf when unread)."""
+    a = _num(vmap.get("pixel_ct_anode_ff"))
+    s = _num(vmap.get("pixel_ct_lines_ff"))
+    if a is None and s is None:
+        return _INF
+    return (a or 0.0) + (s or 0.0)
+
+
 def rank_key(values, goal_resolved):
     """Sort key (smaller is better): legal first, then outline targets met
-    (more first), then the judged ratio, then the cell area."""
+    (more first), then the judged ratio, then the secondary couplings, then the cell area.
+    :func:`better` is the ordering the best legal candidate is chosen by: it treats ratios inside
+    the converge band as equal and lets the secondary couplings decide."""
     vmap = _as_map(values)
     gvalues = (goal_resolved or {}).get("values", {}) or {}
     is_legal = legal(vmap, goal_resolved)
     met = _outline_met(vmap, gvalues)
     ratio = _num(vmap.get("pixel_ratio_judged_pct"))
-    return (0 if is_legal else 1, -met, ratio if ratio is not None else _INF, _area(vmap))
+    return (0 if is_legal else 1, -met, ratio if ratio is not None else _INF,
+            _secondary(vmap), _area(vmap))
+
+
+def better(a, b, goal_resolved):
+    """True when candidate values ``a`` rank above ``b``.
+
+    The judged ratio is the main goal: a ratio lower by more than ``convergeBandPct`` wins. Within
+    the band the two are equally good on the ratio, and the lower storage-node coupling to the
+    anode plus the scan line wins, then the lower ratio, then the smaller area.
+    """
+    ka, kb = rank_key(a, goal_resolved), rank_key(b, goal_resolved)
+    if ka[:2] != kb[:2]:
+        return ka[:2] < kb[:2]
+    band = _num((goal_resolved or {}).get("convergeBandPct")) or 0.02
+    ra, rb = ka[2], kb[2]
+    if ra != _INF and rb != _INF and abs(ra - rb) > band + 1e-12:
+        return ra < rb
+    if ra == _INF or rb == _INF:
+        if ra != rb:
+            return ra < rb
+    if abs(ka[3] - kb[3]) > 1e-9:
+        return ka[3] < kb[3]
+    return (ka[2], ka[4]) < (kb[2], kb[4])
 
 
 def _hard_failures(vmap, goal_resolved):
@@ -220,9 +254,8 @@ def _best_legal(history, goal_resolved):
         vmap = _as_map(row.get("values", {}))
         if not legal(vmap, goal_resolved):
             continue
-        key = rank_key(vmap, goal_resolved)
-        if best_key is None or key < best_key:
-            best, best_key = row, key
+        if best is None or better(vmap, best_key, goal_resolved):
+            best, best_key = row, vmap
     return best
 
 

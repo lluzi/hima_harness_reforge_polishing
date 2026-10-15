@@ -144,7 +144,9 @@ Flow root: /data/eda/project/hima_harness/pixel-runs
     licence modes while a Run is active.
     A Project may also fix the cell's size (`strategy.outlineMode: fixed`): the outline is then the
     original's and is no longer a target, and the Run optimises the coupling ratio alone under the
-    hard limits (a customer asked for exactly this once the shrink was off the table).
+    hard limits (a customer asked for exactly this once the shrink was off the table). The storage
+    node's couplings to the anode and to the scan line are secondary objectives: among legal
+    candidates whose ratios are within the converge band, the lower sum is the better one.
 11. **Who does what.**
     - The resident engineering agent (OpenCode) reads a design-space card and writes a plan for each
       round: which edits, which front points, which extra pair constraints. It repairs the last few
