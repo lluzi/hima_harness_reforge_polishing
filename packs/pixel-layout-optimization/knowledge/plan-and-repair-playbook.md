@@ -170,21 +170,26 @@ nothing. Take both in round 1:
 
 1. **Round 1, from the original, six points:** `legalise`; a plain `min-ratio` (the ledger's
    control); `min-ratio` with the plate at `marginUm` 1.0; and three `min-ratio` points stacking the
-   plate (`marginUm` 1.0 and 1.5) with a `band-trim` of the storage node on its SD layer at its
-   present width minus 0.5 µm and minus 1.0 µm (never under the layer's minimum width plus
-   0.25 µm). The plate also adds the opaque coverage that brings transmittance under the window's
-   maximum. Expect near-misses: the repair engineer takes them in round 2.
-2. **Round 2:** if a legal candidate exists, stack from it: the next `band-trim` step (0.25 µm
-   narrower) with the plate, and a plain `min-ratio`. If none is legal yet, base the points on the
-   best ordered near-miss (they inherit its markers, which the repair engineer's edits on the same
-   shapes clear) and add one `legalise` point on it as a hedge.
+   plate (`marginUm` 1.0 and 1.5) with a `band-trim` of the storage node on its SD layer at about
+   **60 % and 50 % of its present width** (never under the layer's minimum width plus 0.25 µm).
+   Trim boldly: `band-trim` keeps every contact's enclosure by itself, so the strip between the
+   contacts is free down to the width rule, and on a real case the gains came at about half the
+   original width; a trim of 0.5 µm at a time needs eight rounds to get there. Spend no point on a
+   middle-gate plate between the storage node and the anode: it was refused on a real case. The
+   plate also adds the opaque coverage that brings transmittance under the window's maximum.
+   Expect near-misses: the repair engineer takes them in round 2.
+2. **Round 2:** if a legal candidate exists, stack from it: a sweep of three strip widths around the
+   best one measured (0.1 to 0.2 µm apart, the narrowest at the floor) with the plate, and a plain
+   `min-ratio`. If none is legal yet, base the points on the best ordered near-miss (they inherit
+   its markers, which the repair engineer's edits on the same shapes clear) and add one `legalise`
+   point on it as a hedge.
 3. **Round 3 on, from the best legal candidate:** a `min-ratio` point always (the coupling limits
-   hold the secondary targets); the strip slimmed in 0.25 µm steps down to its floor; when the
-   anode coupling misses its target, a supply plate on the SD layer between the storage node and
-   the anode only where the slimmed strip left room at the layer's spacing, and a bounded edit
-   that shrinks the storage node's via in place to the deck's minimum enclosure (DRC and LVS judge
-   it). When transmittance sits just above the window, a small bounded `add` on the anode layer
-   at the cell edge, far from the storage node.
+   hold the secondary targets); the strip swept in 0.05 to 0.1 µm steps around its best width
+   down to its floor; when the anode coupling misses its target, a supply plate on the SD layer
+   between the storage node and the anode only where the slimmed strip left room at the layer's
+   spacing, and a bounded edit that shrinks the storage node's via in place to the deck's minimum
+   enclosure (DRC and LVS judge it). When transmittance sits just above the window, a small
+   bounded `add` on the anode layer at the cell edge, far from the storage node.
 4. **Sweep in one round, never across rounds:** three plate sizes or three strip widths are three
    per-point operator sets in one plan; the ledger then shows the trade-off at once.
 
@@ -255,9 +260,9 @@ Fixed outline, round 1 (from the original; the fast path above):
   {"name": "legal", "objective": "legalise"},
   {"name": "ratio", "objective": "min-ratio"},
   {"name": "shield-10", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>]},
-  {"name": "shield-10-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, present - 0.5>]},
-  {"name": "shield-15-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.5>, <band-trim storage node SD, present - 0.5>]},
-  {"name": "shield-10-trim-b", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, present - 1.0>]}],
+  {"name": "shield-10-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, 0.6 x present>]},
+  {"name": "shield-15-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.5>, <band-trim storage node SD, 0.6 x present>]},
+  {"name": "shield-10-trim-b", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, 0.5 x present>]}],
  "pairConstraints": [], "edits": [], "expect": "ratio well under the original; near-misses for the repair engineer"}
 ```
 
