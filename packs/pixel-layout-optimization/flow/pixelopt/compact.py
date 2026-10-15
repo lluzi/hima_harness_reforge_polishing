@@ -611,7 +611,8 @@ def build(lay, case, table, *, rigid_extra=(), protect=(), pairs=(),
         cons += _euclid.generate(polys, var, P0, iP, width, space, xspace, enc,
                                  ge, tag, legalise=legalise,
                                  zone_fn=euclid_zone_fn(),
-                                 margin=case.grid_um, skip_fn=skip_fn)
+                                 margin=case.grid_um, skip_fn=skip_fn,
+                                 overhang=tuple(overhang))
         if pairs:
             cons += _euclid.pair_constraints(polys, var, P0, iP, pairs, ge, tag)
 
