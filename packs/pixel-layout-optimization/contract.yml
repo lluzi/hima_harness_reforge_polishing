@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.6.2
+version: 0.6.3
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
@@ -163,7 +163,7 @@ tools:
   outsourcing:
     role: resident-engineering-agent
     reads: [caseReadiness, designSpaceCard, surrogateModel, roundDecision, history]
-    knowledge: [plan-and-repair-playbook.md, pixel-design-space.md, optimisation-method.md, judge-protocol.md]
+    knowledge: [case-recipe.md, plan-and-repair-playbook.md, pixel-design-space.md, optimisation-method.md, judge-protocol.md]
     artifactPrefix: plan
     produces: roundPlan
 - id: repair-round
@@ -195,7 +195,7 @@ tools:
   outsourcing:
     role: resident-engineering-agent
     reads: [caseReadiness, roundDecision, repairOrders, history]
-    knowledge: [repair-playbook.md, judge-protocol.md]
+    knowledge: [case-recipe.md, repair-playbook.md, judge-protocol.md]
     artifactPrefix: repair
     produces: repairPlan
 - id: solve-and-judge
@@ -323,6 +323,10 @@ words:
   warmStart:
     label: Whether the Run starts from the best candidates of earlier Runs on the same case and decks (re-judged first)
 knowledge:
+- file: case-recipe.md
+  purpose: The proven move sequence for one case, installed by the Site from that case's earlier
+    Runs (a stub when none is installed). When it names the Run's case, both residents follow it
+    before the generic playbook guidance.
 - file: repair-playbook.md
   purpose: The repair engineer's whole brief - marker classes, the recipes that cleared real
     near-misses (enclosure cut or extend, squaring a stepped plate edge, flush band edges across the

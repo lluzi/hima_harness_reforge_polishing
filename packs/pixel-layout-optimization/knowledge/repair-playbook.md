@@ -19,6 +19,10 @@ python3 <flow>/pixel_cli.py <subcommand> <WORKSPACE> [options]
 
 Commands that read a judged candidate's files take `--campaign <identity.campaignWorkspace>`.
 
+**A case recipe comes first.** When `case-recipe.md` names this Run's case (`manifest.caseId` in
+`state/case-readiness.json`), its repair section names the edits that cleared this cell's markers
+before: try those first, adapted to the polygon indices `markers` reports.
+
 ## 2. What you read
 
 - `state/repair-orders.json` (`pixel.repair-orders/1`): the candidates you may repair, the most

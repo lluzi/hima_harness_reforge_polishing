@@ -20,6 +20,10 @@ python3 <flow>/pixel_cli.py <subcommand> <WORKSPACE> [options]
 `WORKSPACE` is always your private workspace. Commands that read a judged candidate's files take
 `--campaign <identity.campaignWorkspace>` and only read there.
 
+**A case recipe comes first.** When `case-recipe.md` names this Run's case (its `caseId` equals
+`manifest.caseId` in `state/case-readiness.json`), it is the proven move sequence for this cell:
+follow its round for this round, and use the rest of this playbook only where it says nothing.
+
 **You work beside a repair engineer.** Each round a second resident takes the near-misses listed in
 `state/repair-orders.json` (candidates that fail only the authority deck with a few markers and would
 beat the best legal candidate once clean) and repairs them with bounded edits, in parallel with your
@@ -171,7 +175,7 @@ nothing. Take both in round 1:
 1. **Round 1, from the original, six points:** `legalise`; a plain `min-ratio` (the ledger's
    control); `min-ratio` with the plate at `marginUm` 1.0; and three `min-ratio` points stacking the
    plate (`marginUm` 1.0 and 1.5) with a `band-trim` of the storage node on its SD layer at about
-   **60 % and 50 % of its present width** (never under the layer's minimum width plus 0.25 µm).
+   **60 % and 50 % of its present width** (never under the layer's minimum width).
    Trim boldly: `band-trim` keeps every contact's enclosure by itself, so the strip between the
    contacts is free down to the width rule, and on a real case the gains came at about half the
    original width; a trim of 0.5 µm at a time needs eight rounds to get there. Spend no point on a
@@ -179,8 +183,9 @@ nothing. Take both in round 1:
    plate also adds the opaque coverage that brings transmittance under the window's maximum.
    Expect near-misses: the repair engineer takes them in round 2.
 2. **Round 2:** if a legal candidate exists, stack from it: a sweep of three strip widths around the
-   best one measured (0.1 to 0.2 µm apart, the narrowest at the floor) with the plate, and a plain
-   `min-ratio`. If none is legal yet, base the points on the best ordered near-miss (they inherit
+   best one measured (0.1 to 0.2 µm apart, the narrowest at the layer's minimum width plus
+   0.05 µm) and a plain `min-ratio`. A base that already carries the plate gains nothing from a
+   second one: on a real case five plate sizes on a plated base judged identical. If none is legal yet, base the points on the best ordered near-miss (they inherit
    its markers, which the repair engineer's edits on the same shapes clear) and add one `legalise`
    point on it as a hedge.
 3. **Round 3 on, from the best legal candidate:** a `min-ratio` point always (the coupling limits
