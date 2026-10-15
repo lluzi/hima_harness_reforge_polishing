@@ -1,0 +1,9 @@
+id: scan-coupling-met
+version: "1"
+title: The storage node's coupling to the scan line meets its Goal target
+parameter: { name: scan_coupling_max_ff, unit: ff }
+requires: [{ type: pixel_ct_lines_ff }]
+subject: { type: pixel_ct_lines_ff }
+predicate: { op: lte, threshold: { parameter: scan_coupling_max_ff }, unit: ff }
+# A secondary coupling target of 0 (none stated) is NOT_DECLARED (reported, not counted);
+# handled in flow/pixelopt/rounds.py.

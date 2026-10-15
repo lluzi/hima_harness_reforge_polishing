@@ -60,9 +60,31 @@ class BetterTest(unittest.TestCase):
         self.assertEqual(d["best"]["id"], "y")
 
 
+class SecondaryTargetTest(unittest.TestCase):
+    def test_unstated_coupling_targets_do_not_bar_the_goal(self):
+        res = rounds.rule_results(_legal_values(), _goal())
+        self.assertEqual(res["anode-coupling-met"], "NOT_DECLARED")
+        self.assertEqual(res["scan-coupling-met"], "NOT_DECLARED")
+        hist = [{"id": "a", "round": 1, "exploratory": False, "legal": True, "values": _legal_values()}]
+        self.assertTrue(rounds.decide(1, _goal(), hist, None, None)["goalMet"])
+
+    def test_stated_coupling_targets_must_be_met_too(self):
+        goal = _goal(values={"anode_coupling_max_ff": 3.0, "scan_coupling_max_ff": 1.0})
+        ok = _legal_values(pixel_ct_anode_ff=2.9, pixel_ct_lines_ff=0.9)
+        high = _legal_values(pixel_ct_anode_ff=3.2, pixel_ct_lines_ff=0.9)
+        for vals, met in ((ok, True), (high, False)):
+            hist = [{"id": "a", "round": 1, "exploratory": False, "legal": True, "values": vals}]
+            d = rounds.decide(1, goal, hist, None, None)
+            self.assertEqual(d["goalMet"], met)
+        # a coupling target is a Goal rule, never a hard limit: the high one is still legal
+        self.assertTrue(rounds.legal(high, goal))
+
+
 class RuleResultsTest(unittest.TestCase):
     def test_all_pass(self):
-        res = rounds.rule_results(_legal_values(), _goal())
+        res = rounds.rule_results(_legal_values(pixel_ct_anode_ff=1.0, pixel_ct_lines_ff=1.0),
+                                  _goal(values={"anode_coupling_max_ff": 2.0,
+                                                "scan_coupling_max_ff": 2.0}))
         self.assertTrue(all(v == "PASS" for v in res.values()))
 
     def test_a_new_floating_plate_is_a_hard_failure(self):

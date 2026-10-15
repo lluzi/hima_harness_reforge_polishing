@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.3.0
+version: 0.4.0
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
@@ -198,6 +198,8 @@ rules:
 - outline-width-met
 - outline-height-met
 - ratio-met
+- anode-coupling-met
+- scan-coupling-met
 goal:
   outline_w_um: {type: number, unit: um, min: 0, max: 100000, default: 0}
   outline_h_um: {type: number, unit: um, min: 0, max: 100000, default: 0}
@@ -206,6 +208,8 @@ goal:
   t_min_pct: {type: number, unit: pct, min: 0, max: 100, default: 0}
   t_max_pct: {type: number, unit: pct, min: 0, max: 100, default: 0}
   cst_ceiling_ff: {type: number, unit: fF, min: 0, max: 100000, default: 0}
+  anode_coupling_max_ff: {type: number, unit: fF, min: 0, max: 1000, default: 0}
+  scan_coupling_max_ff: {type: number, unit: fF, min: 0, max: 1000, default: 0}
 strategy:
   ratioDefinition: {type: choice, options: [broad, narrow], default: broad}
   transmittanceBasis: {type: choice, options: [tiled, own], default: tiled}
@@ -236,6 +240,12 @@ words:
     unit: pct
   cst_ceiling_ff:
     label: Storage-capacitor ceiling for a declared stretch
+    unit: fF
+  anode_coupling_max_ff:
+    label: Target storage-node coupling to the anode, 0 = no target (secondary to the ratio)
+    unit: fF
+  scan_coupling_max_ff:
+    label: Target storage-node coupling to the scan line, 0 = no target (secondary to the ratio)
     unit: fF
   ratioDefinition:
     label: Which aggressor net list makes the judged Ct

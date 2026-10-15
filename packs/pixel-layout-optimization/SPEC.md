@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.3.0 run contract
+# Pixel layout optimization 0.4.0 run contract
 
 ## Goal template
 
@@ -16,6 +16,8 @@ Pack change (`INTENT.md` Answers 7):
 | `t_min_pct` | % | 0 | Lower edge of the transmittance window. 0: the manifest's `targets.transmittancePct[0]`; if neither gives one, no lower edge. |
 | `t_max_pct` | % | 0 | Upper edge, the same way. |
 | `cst_ceiling_ff` | fF | 0 | 0: the storage capacitor stays inside its LVS tolerance (no declared change). Above 0: a `cst-stretch` may enlarge it up to this value, and only with the declared schematic `prepare-case` writes for it. |
+| `anode_coupling_max_ff` | fF | 0 | Secondary target for the storage node's coupling to the anode (`pixel_ct_anode_ff`). 0: no target. When stated, the Goal is met only when it is met too; the ratio still ranks first. |
+| `scan_coupling_max_ff` | fF | 0 | Secondary target for the storage node's coupling to the scan line (`pixel_ct_lines_ff`), the same way. |
 
 The Goal is met only when **both** the outline and the ratio targets are met on Reader values, with
 every hard limit holding (`INTENT.md` Answers 5). Every other rule below is a hard limit.
@@ -123,7 +125,7 @@ FPD tools hold `licences: {fpd: 1}`.
 
 | Task | Kind | Business input | Work and committed output |
 |---|---|---|---|
-| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the eight Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
+| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the nine Goal values; the eight Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
 | `judge-original` | program, `fpd: 1` | Committed `prepare-case` output | Judges the original (the same judge as every candidate) and two mutants the Pack generates: one contact removed (LVS must fail) and one space shrunk below its rule (authority DRC must fail). A wrong verdict on a mutant, or an original that fails LVS, fails the task with repair information: the judge or the schematic is wrong, and nothing after it may be trusted. Writes history entry 0. Output: the original's receipt values and the calibration verdicts. |
 | `map-design-space` | program | Committed `judge-original` output | Attributes each coupling of the original to its coupling sites (victim shape, aggressor shape, layers, visible overlap, fringe bands); fits the surrogate on the receipts so far; solves the minimum-pitch LP per axis and names the binding chain from its duals; lists the lever instances with gradient and bound. Writes `state/card.json` (≤ 4 KB) and `state/card.svg`. |
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
@@ -232,6 +234,8 @@ this Pack; the outline and ratio rules are the Goal, every other one is a hard l
 | `outline-width-met` | `pixel_outline_w_um` | ≤ `outline_w_um` (Goal) |
 | `outline-height-met` | `pixel_outline_h_um` | ≤ `outline_h_um` (Goal) |
 | `ratio-met` | `pixel_ratio_judged_pct` | ≤ `ratio_target_pct` (Goal) |
+| `anode-coupling-met` | `pixel_ct_anode_ff` | ≤ `anode_coupling_max_ff` (Goal; only when stated above 0) |
+| `scan-coupling-met` | `pixel_ct_lines_ff` | ≤ `scan_coupling_max_ff` (Goal; only when stated above 0) |
 
 A `null` subject gives `UNKNOWN`, which is never a PASS. A transmittance rule with no resolved edge
 is `NOT_DECLARED` and is reported, not counted. The reference deck's counts are reported and never

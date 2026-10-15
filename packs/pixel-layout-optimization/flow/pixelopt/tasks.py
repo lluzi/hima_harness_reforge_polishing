@@ -189,7 +189,8 @@ def prepare_case(workspace, inputs):
     # Resolve the Goal (refuses an unresolved ratio target).
     goal_input = {k: inputs[k] for k in (
         "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct",
-        "t_min_pct", "t_max_pct", "cst_ceiling_ff") if k in inputs}
+        "t_min_pct", "t_max_pct", "cst_ceiling_ff", "anode_coupling_max_ff",
+        "scan_coupling_max_ff") if k in inputs}
     strategy_input = {k: inputs[k] for k in (
         "ratioDefinition", "transmittanceBasis", "extraCsOverlap",
         "topologyMoves", "convergeBandPct", "maxRounds",
@@ -552,7 +553,7 @@ def evaluate(workspace, inputs):
     route = decision.get("route")
     stop_reason = decision.get("stopReason", "")
     goal_met_fresh = best_legal and all(
-        best_rules.get(rid) == "PASS" for rid in rounds.GOAL_RULES)
+        best_rules.get(rid) in ("PASS", "NOT_DECLARED") for rid in rounds.GOAL_RULES)
 
     disagreement = None
     if route == "continue":

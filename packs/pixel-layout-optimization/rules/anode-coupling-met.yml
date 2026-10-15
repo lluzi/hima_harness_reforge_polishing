@@ -1,0 +1,9 @@
+id: anode-coupling-met
+version: "1"
+title: The storage node's coupling to the anode meets its Goal target
+parameter: { name: anode_coupling_max_ff, unit: ff }
+requires: [{ type: pixel_ct_anode_ff }]
+subject: { type: pixel_ct_anode_ff }
+predicate: { op: lte, threshold: { parameter: anode_coupling_max_ff }, unit: ff }
+# A secondary coupling target of 0 (none stated) is NOT_DECLARED (reported, not counted);
+# handled in flow/pixelopt/rounds.py.

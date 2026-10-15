@@ -59,6 +59,16 @@ class TestResolve(unittest.TestCase):
         self.assertEqual(goalmod.resolve(self._zero_goal(), {}, self.base, ORIGINAL)["outlineMode"],
                          "target")
 
+    def test_secondary_coupling_targets_are_none_unless_stated(self):
+        out = goalmod.resolve(self._zero_goal(), {}, self.base, ORIGINAL)
+        self.assertIsNone(out["values"]["anode_coupling_max_ff"])
+        self.assertEqual(out["sources"]["scan_coupling_max_ff"], "none")
+        g = self._zero_goal()
+        g.update({"anode_coupling_max_ff": 3.1, "scan_coupling_max_ff": 1.5})
+        out = goalmod.resolve(g, {}, self.base, ORIGINAL)
+        self.assertEqual(out["values"]["anode_coupling_max_ff"], 3.1)
+        self.assertEqual(out["values"]["scan_coupling_max_ff"], 1.5)
+
     def test_goal_values_win(self):
         g = self._zero_goal()
         g.update({"outline_w_um": 18.0, "ratio_target_pct": 7.5, "t_min_pct": 6.0})

@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: pixel-layout-optimization
-version: 0.3.0
+version: 0.4.0
 flow:
   kind: sequence
   id: pixel
@@ -18,6 +18,8 @@ flow:
       t_min_pct: {source: goal, path: [t_min_pct]}
       t_max_pct: {source: goal, path: [t_max_pct]}
       cst_ceiling_ff: {source: goal, path: [cst_ceiling_ff]}
+      anode_coupling_max_ff: {source: goal, path: [anode_coupling_max_ff]}
+      scan_coupling_max_ff: {source: goal, path: [scan_coupling_max_ff]}
       ratioDefinition: {source: strategy, path: [ratioDefinition]}
       transmittanceBasis: {source: strategy, path: [transmittanceBasis]}
       extraCsOverlap: {source: strategy, path: [extraCsOverlap]}

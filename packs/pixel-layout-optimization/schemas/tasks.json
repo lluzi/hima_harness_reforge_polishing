@@ -50,6 +50,8 @@
         "t_min_pct": {"type": "number"},
         "t_max_pct": {"type": "number"},
         "cst_ceiling_ff": {"type": "number"},
+        "anode_coupling_max_ff": {"type": "number"},
+        "scan_coupling_max_ff": {"type": "number"},
         "ratioDefinition": {"type": "string", "enum": ["broad", "narrow"]},
         "transmittanceBasis": {"type": "string", "enum": ["tiled", "own"]},
         "extraCsOverlap": {"type": "string", "enum": ["count", "exclude"]},

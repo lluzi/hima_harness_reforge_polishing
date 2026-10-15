@@ -20,7 +20,7 @@ _INF = float("inf")
 # (rule id, subject value type, op, threshold, hard?, edge?)
 #   op "eq": threshold is a literal number.
 #   op "le"/"ge": threshold is a resolved-Goal value key.
-#   edge True: a transmittance rule, NOT_DECLARED when its Goal edge is None.
+#   edge True: a transmittance or secondary-coupling rule, NOT_DECLARED when its Goal value is None.
 RULES = [
     ("receipt-verified", "pixel_receipt_error_count", "eq", 0, True, False),
     ("drc-authority-1x1-clean", "pixel_drc_authority_1x1", "eq", 0, True, False),
@@ -38,6 +38,9 @@ RULES = [
     ("outline-width-met", "pixel_outline_w_um", "le", "outline_w_um", False, False),
     ("outline-height-met", "pixel_outline_h_um", "le", "outline_h_um", False, False),
     ("ratio-met", "pixel_ratio_judged_pct", "le", "ratio_target_pct", False, False),
+    # Secondary Goal targets: NOT_DECLARED (no bar to the Goal) when the Goal states none.
+    ("anode-coupling-met", "pixel_ct_anode_ff", "le", "anode_coupling_max_ff", False, True),
+    ("scan-coupling-met", "pixel_ct_lines_ff", "le", "scan_coupling_max_ff", False, True),
 ]
 HARD_RULES = tuple(r[0] for r in RULES if r[4])
 GOAL_RULES = tuple(r[0] for r in RULES if not r[4])
@@ -316,7 +319,7 @@ def _goal_met(best, goal_resolved):
     if best is None:
         return False
     results = rule_results(best.get("values", {}), goal_resolved)
-    return all(results[rid] == "PASS" for rid in GOAL_RULES)
+    return all(results[rid] in ("PASS", "NOT_DECLARED") for rid in GOAL_RULES)
 
 
 def _blocked_evidence(history, goal_resolved, best, card):
