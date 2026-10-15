@@ -15,7 +15,7 @@ async function fixture(t: any, key: string, deadlineMs = 20000, mode: 'complete'
     const root = fs.mkdtempSync(path.join(tmpdir(), 'hima-local-member-'));
     const runner = mode==='spam'?path.join(root,'packages/harness/lib/runner.mjs'):path.join(root, 'runner.mjs');
     fs.mkdirSync(path.dirname(runner),{recursive:true});
-    fs.writeFileSync(runner, `import {spawn} from 'node:child_process'; import fs from 'node:fs';
+    fs.writeFileSync(runner, `import {spawn} from 'node:child_process'; import fs from 'node:fs'; import {randomBytes} from 'node:crypto';
 let config,descendant,activeInput;const mode=${JSON.stringify(mode)}; process.send({type:'ready'});
 process.on('message',m=>{ if(m.type==='config'){config=m.config;descendant=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});fs.writeFileSync(config.workDirectory+'/descendant.pid',String(descendant.pid));process.send({type:'created',payload:{runtime:config.prepared.runtime,nativeSession:'native-fixture'}});}
 if(m.type==='input')activeInput=m.id;
@@ -23,7 +23,7 @@ if(m.type==='yield'&&mode==='yield-abort'){
  process.send({type:'terminal',payload:{inputId:activeInput,outcome:{kind:'interrupted',reason:'Actual physical yield shutdown abort'}}});return;
 }
 if(m.type==='input'&&mode==='delivered-active'&&!m.initial){process.send({type:'received',payload:{inputId:m.id,evidence:'actual-post-delivery-directed-input'}});return;}
-if(m.type==='input'&&mode==='spam'){process.send({type:'received',payload:{inputId:m.id}});let sent=0;const text='x'.repeat(262144);const timer=setInterval(()=>{process.send({type:'raw',payload:{text}});if(++sent>=70)clearInterval(timer);},20);return;}
+if(m.type==='input'&&mode==='spam'){process.send({type:'received',payload:{inputId:m.id}});let sent=0;const timer=setInterval(()=>{process.send({type:'raw',payload:{text:randomBytes(196608).toString('base64')}});if(++sent>=70)clearInterval(timer);},20);return;}
 if(m.type==='input'&&m.id==='disconnect'){process.disconnect();return;}
 if(m.type==='input'&&(mode==='held'||mode==='late'||mode==='yield-abort')){
  const receipt=()=>process.send({type:'received',payload:{inputId:m.id,evidence:'actual-late-node-ipc'}});
@@ -101,11 +101,12 @@ test('actual native observation flood stops physical work before Host heap exhau
 test('OpenCode native tool Frame proves reception while synthetic turn start and prompt remain pending',{timeout:12000},async t=>{
     const root=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'hima-opencode-received-'));
     const sdk=path.join(root,'fake-oar.mjs');
-    fs.writeFileSync(sdk,`export async function opencodeSession(){let listener,raw;return {
-      id:'native-opencode-receive-fixture',rawEvents(fn){raw=fn;return()=>{}},events(fn){listener=fn;return()=>{}},
-      async prompt(){setTimeout(()=>listener({kind:'turn_started',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:1,receivedAt:Date.now()}),10);
-        setTimeout(()=>raw({kind:'frame',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:2,receivedAt:Date.now(),
-          body:{type:'tool_call',events:[{kind:'tool_call_started',tool:'hima_member_context',callId:'fixture-call'}]}}),120);
+    fs.writeFileSync(sdk,`export async function opencodeSession(){let listener,raw;const records=[];return {
+      id:'native-opencode-receive-fixture',records(){return records},rawEvents(fn){raw=fn;return()=>{}},events(fn){listener=fn;return()=>{}},
+      async prompt(){setTimeout(()=>{const row={kind:'frame',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:records.length,receivedAt:Date.now(),body:{type:'turn_started'}};
+          records.push(row);raw(row);listener({kind:'turn_started',sessionId:row.sessionId,agentPath:[],seq:row.seq,receivedAt:row.receivedAt});},10);
+        setTimeout(()=>{const row={kind:'frame',sessionId:'native-opencode-receive-fixture',agentPath:[],seq:records.length,receivedAt:Date.now(),
+          body:{type:'tool_call',events:[{kind:'tool_call_started',tool:'hima_member_context',callId:'fixture-call'}]}};records.push(row);raw(row);},120);
         return new Promise(()=>{});},
       async abort(){},async dispose(){} };}`);
     const {OarLocalMemberRuntime}=await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);

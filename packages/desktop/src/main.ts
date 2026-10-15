@@ -1,3 +1,4 @@
+import { runColdMaintenance, type ColdMaintenanceResult } from './data-maintenance.js';
 // @hima-seam cli direct
 // The HimaHarness desktop window: one native window around the hima profile, and nothing else.
 //
@@ -188,6 +189,35 @@ let host: LaunchedHost | undefined;
 /** The owned child and resource stop are available before the host is ready to be loaded. */
 let spawnedHost: SpawnedHost | undefined;
 let stopping: Promise<number | null> | undefined;
+let selectedColdHome: string | undefined;
+let workspaceOpening = false;
+let choosingStartup = false;
+let maintenanceOpen = false;
+
+async function nativeDataMaintenance(): Promise<ColdMaintenanceResult | undefined> {
+  if(maintenanceOpen||choosingStartup)return;
+  if(workspaceOpening||exitPending) {
+    await dialog.showMessageBox({type:'info',title:'Data maintenance',message:'Finish the current App shutdown before cold maintenance.',detail:'Quit normally, reopen this App, then choose Data maintenance before opening the workspace. A hidden window is still running.',buttons:['OK']});
+    return;
+  }
+  maintenanceOpen=true;
+  try {
+    const result=await runColdMaintenance({home:selectedColdHome??resolveDshHome(hostEnvironment()),dialog,
+      assertHostStopped:async()=>{
+        const lifecycle=host??spawnedHost;
+        if(lifecycle&&(lifecycle.child.exitCode===null&&lifecycle.child.signalCode===null))throw new Error('The original Host is still alive. Finish its normal shutdown first.');
+        if(lifecycle)await stopHost();
+      },
+      backupOptions:async()=>{
+        if(!app.isPackaged)throw new Error('A complete frozen distribution and its manifest are required. Use the original installed App for backup and qualification.');
+        const distributionRoot=process.platform==='darwin'?path.resolve(path.dirname(app.getPath('exe')),'../..'):path.dirname(app.getPath('exe'));
+        return {runtimeDirectory:postgresRuntimeDirectory(hostEnvironment()),distribution:{root:distributionRoot,
+          manifestFile:path.join(path.dirname(distributionRoot),'trial-manifest.json'),harnessRoot:path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json'))}};
+      }});
+    if(result&&'home' in result&&result.home)selectedColdHome=result.home;
+    return result;
+  }finally{maintenanceOpen=false;}
+}
 
 /**
  * The dsh CLI entry this window starts. Resolved from this package's own dependencies, so the window
@@ -406,6 +436,7 @@ function installMenu(win: BrowserWindow): void {
         ...(process.platform === 'darwin' ? [] : [{ type: 'separator' as const }, { role: 'quit' as const }]),
       ],
     },
+    { label: 'Data', submenu: [{ label: 'Offline backup and restore…', enabled: !driver, click: () => { void nativeDataMaintenance(); } }] },
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -616,6 +647,24 @@ async function start(): Promise<void> {
     env.DSH_HOME = packagedTrialDshHome(app.getPath('userData'), applicationVersion());
     env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
   }
+  selectedColdHome=resolveDshHome(env);
+  // This native choice runs before prepareHimaHome, profile imports, PG or Host creation.
+  // Driver mode keeps its existing controlled launch path; it cannot qualify this native dialog.
+  if(!driver)while(true) {
+    choosingStartup=true;
+    let response:number;
+    try {({response}=await dialog.showMessageBox(win,{type:'question',title:'Open HimaHarness',message:'Choose how to open this App.',
+      detail:`Selected Home: ${selectedColdHome}`,buttons:['Open selected Home','Data maintenance','Choose Home','Quit'],defaultId:0,cancelId:3,noLink:true}));}
+    finally{choosingStartup=false;}
+    if(response===3){quitting=true;app.quit();return;}
+    if(response===0)break;
+    if(response===2) {
+      const selected=await dialog.showOpenDialog(win,{title:'Select an existing Hima Home',properties:['openDirectory']});
+      if(!selected.canceled&&selected.filePaths[0])selectedColdHome=selected.filePaths[0];
+    }else await nativeDataMaintenance();
+  }
+  env.DSH_HOME=selectedColdHome;env.DSH_AGENTS_HOME=path.join(selectedColdHome,'agents');
+  workspaceOpening=true;
   try {
     // Schema preflight must not import the Host entry point or run its Home gate.
     const bundledLedger:Pick<typeof import('@hima/harness'),'ledgerSpec'>|undefined = app.isPackaged ? await import(pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve('@hima/harness/package.json')), 'lib/ledger.js')).href) : undefined;
@@ -670,6 +719,7 @@ async function start(): Promise<void> {
     if (replay === undefined) { const cleared = await clearReplayOverlay(prepared.home); if (cleared !== undefined) say(cleared); }
     else say(await writeReplayOverlay(prepared.home, replay));
   } catch (err) {
+    workspaceOpening=false;
     await showFailure(win, 'The hima profile could not be prepared', 'The window has nothing to boot. This is what went wrong:', String(err));
     return;
   }
@@ -692,6 +742,7 @@ async function start(): Promise<void> {
     // A host that failed to boot says why *in the window*. Its stderr in a console nobody opened is
     // the failure mode this shell exists to avoid: the window is the only surface there is.
     const said = err instanceof HostLaunchError ? `${err.reason}\n\n--- stdout ---\n${err.stdout}\n--- stderr ---\n${err.stderr}` : String(err);
+    workspaceOpening=false;
     await showFailure(win, 'The hima profile did not start', 'Startup was not confirmed. The original Home and database state are preserved. This is what dsh said:', said);
     return;
   }

@@ -5,6 +5,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { startLocalDatabase } from '../../packages/harness/src/local-database.ts';
 import { launchHimaHost } from '../../packages/desktop/src/host-launch.ts';
+import { archive108 } from './support/issue108-backup-fixture.ts';
+import { pathToFileURL as backupModuleUrl } from 'node:url';
+
+test('legacy /1 archives remain readable and restore whole bytes held without a Team service export', async () => {
+  const root=await mkdtemp(path.join(tmpdir(),'hima-108-legacy-'));
+  try {
+    const fixture=await archive108(root,1);
+    const lib=process.env.HIMA_DBOS_TEST_LIB??path.resolve('packages/harness/lib');
+    const backup=await import(backupModuleUrl(path.join(lib,'run-backup.js')).href);
+    const archive=await backup.inspectColdBackup(fixture.backup);assert.equal(archive.manifest.format,'hima-cold-backup/1');
+    const restored=await backup.restoreColdBackup({backup:fixture.backup,newHome:path.join(root,'held')});assert.equal(restored.state,'held');
+    const {readFile}=await import('node:fs/promises');
+    assert.equal(await readFile(path.join(restored.home,'hima/materials/revision.txt'),'utf8'),'actual revision bytes');
+    assert.equal((await backup.inspectColdBackup(fixture.backup)).manifestSha256,archive.manifestSha256);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('held import refuses direct database and Desktop startup before runtime or dsh access', async () => {
   const home = await mkdtemp(path.join(tmpdir(), 'hima-u9-held-'));

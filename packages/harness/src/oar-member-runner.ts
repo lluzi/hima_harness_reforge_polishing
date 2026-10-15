@@ -122,6 +122,52 @@ async function sdkRun(): Promise<void> {
   let current: { id: string; nativeId: string; input: string; initial: boolean; received: boolean; text: string;
     clearText: boolean; ended?: ObjectValue } | undefined;
   const journal = (kind: string, payload: unknown) => sendWire({ type: kind, payload });
+  // OAR retains its raw record log. Pull from that log only as Host fsyncs
+  // earlier raw observations; an unbounded process.send queue is not a
+  // durable acknowledgement and can outrun the Host under Pi text bursts.
+  const rawWindowBytes = 4 * 1024 * 1024, rawWindowRows = 2048;
+  const rawOutstanding = new Map<number, { bytes: number; rows: number }>();
+  const pendingEvents = new Map<number, ObjectValue[]>();
+  let rawCursor = 0, rawAckedSeq = -1, rawInFlightBytes = 0, rawInFlightRows = 0;
+  let pendingEventRows = 0, pendingEventBytes = 0, rawScheduled = false, rawTransferFailed = false;
+  const rawFailure = (error: unknown) => {
+    if (rawTransferFailed) return;
+    rawTransferFailed = true;
+    pendingEvents.clear(); pendingEventRows = 0; pendingEventBytes = 0;
+    const reason = error instanceof Error ? error.message : String(error);
+    try { if (process.connected) sendWire({ type: 'raw_failure', reason }); } catch { /* Original IPC is unavailable. */ }
+    fail(error); failed = true; void stop('raw observation failure');
+  };
+  const drainRaw = () => {
+    if (!session || failed || !process.connected) return;
+    const records = session.records() as ObjectValue[];
+    while (rawCursor < records.length) {
+      const raw = records[rawCursor]!;
+      if (raw.seq !== rawCursor) throw new Error('OAR raw cursor identity changed');
+      const events = pendingEvents.get(rawCursor) ?? [];
+      const bytes = Buffer.byteLength(JSON.stringify(raw)) + events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
+      const rows = 1 + events.length;
+      if (bytes > 8 * 1024 * 1024) throw new Error('OAR raw frame exceeds the retained journal bound');
+      if (rows > rawWindowRows) throw new Error('One OAR record has too many normalized observations');
+      if (rawInFlightRows && (rawInFlightBytes + bytes > rawWindowBytes || rawInFlightRows + rows > rawWindowRows)) break;
+      rawOutstanding.set(raw.seq as number, { bytes, rows }); rawInFlightBytes += bytes; rawInFlightRows += rows; rawCursor++;
+      pendingEvents.delete(raw.seq as number); pendingEventRows -= events.length;
+      pendingEventBytes -= events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
+      sendWire({ type: 'raw', payload: raw, ...(events.length ? {} : { ackSeq: raw.seq }) });
+      events.forEach((event, index) => sendWire({ type: 'event', payload: event,
+        ...(index === events.length - 1 ? { ackSeq: raw.seq } : {}) }));
+    }
+  };
+  const scheduleRaw = () => {
+    if (rawScheduled) return;
+    rawScheduled = true;
+    setImmediate(() => { rawScheduled = false; try { drainRaw(); } catch (error) { rawFailure(error); } });
+  };
+  const rawDrained = () => !session || (rawCursor >= (session.records() as ObjectValue[]).length && rawOutstanding.size === 0 && pendingEvents.size === 0);
+  const waitRaw = async (until: number) => {
+    while (!rawDrained() && Date.now() < until && !failed) { scheduleRaw(); await sleep(10); }
+    return rawDrained();
+  };
   const fail = (error: unknown) => {
     if (yieldRequestId) {
       if (process.connected) journal('control', { action: 'yield_observation_error', requestId: yieldRequestId,
@@ -142,7 +188,11 @@ async function sdkRun(): Promise<void> {
     stopping = true;
     if (process.connected) journal('control', { action: yieldRequestId ? 'yield' : 'stop', ...(yieldRequestId ? { requestId: yieldRequestId } : {}), reason, closure: 'unconfirmed' });
     const timeout = setTimeout(() => process.exit(1), 10_000);
-    try { if (session) { try { await session.abort(); } finally { await session.dispose(); } } }
+    try { if (session) { try { await session.abort(); } finally { await session.dispose(); } }
+      const complete = await waitRaw(Date.now() + 2000);
+      sendWire({ type: 'raw_final', state: complete ? 'complete' : 'unconfirmed',
+        lastSeq: session ? (session.records() as ObjectValue[]).length - 1 : -1, ackedSeq: rawAckedSeq });
+      if (!complete) failed = true; }
     catch (error) { fail(error); }
     finally {
       // Flush preceding failure/control IPC before exiting, still bounded by timeout.
@@ -178,6 +228,12 @@ async function sdkRun(): Promise<void> {
   const inputIds = new Set<string>();
   process.on('message', (message: unknown) => {
     const item = object(message);
+    if (item?.type === 'raw_ack') {
+      const credit = typeof item.seq === 'number' ? rawOutstanding.get(item.seq) : undefined;
+      if (credit === undefined || item.seq !== rawAckedSeq + 1) { rawFailure(new Error('Invalid Host raw durability ACK')); return; }
+      rawOutstanding.delete(item.seq); rawInFlightBytes -= credit.bytes; rawInFlightRows -= credit.rows; rawAckedSeq = item.seq;
+      scheduleRaw(); return;
+    }
     if (item?.type === 'yield') {
       if (typeof item.requestId !== 'string' || !item.requestId || Buffer.byteLength(item.requestId) > 200
         || (yieldRequestId !== undefined && yieldRequestId !== item.requestId) || (stopping && !yieldRequestId)) {
@@ -241,10 +297,12 @@ async function sdkRun(): Promise<void> {
     nativeSession = session.id;
     assertLocalNativeSessionIdentity(config.continuity, nativeSession);
     // Host persists creation before acknowledging or issuing any prompt.
-    journal('created', { runtime: prepared.runtime, nativeSession });
+    journal('created', { runtime: prepared.runtime, nativeSession, rawCreditProtocol: 'hima-oar-raw-credit/1' });
+    if (typeof session.records !== 'function') throw new Error('Qualified OAR session has no raw record cursor');
     session.rawEvents((raw: ObjectValue) => {
       try {
-        journal('raw', raw);
+        if (rawTransferFailed) return;
+        scheduleRaw();
         if (raw.sessionId !== nativeSession || raw.agentPath?.length || !current) return;
         // OAR synthesizes turn_started from prompt submission. A native Frame
         // carrying an actual tool call proves OpenCode entered this active turn
@@ -263,7 +321,13 @@ async function sdkRun(): Promise<void> {
     }, { sessionId: nativeSession, afterSeq: -1 });
     session.events((event: ObjectValue) => {
       try {
-        journal('event', event);
+        if (rawTransferFailed) return;
+        if (!Number.isSafeInteger(event.seq) || (event.seq as number) < rawCursor) throw new Error('OAR normalized event missed its raw cursor');
+        const events = pendingEvents.get(event.seq as number) ?? [];
+        events.push(event); pendingEvents.set(event.seq as number, events);
+        pendingEventRows++; pendingEventBytes += Buffer.byteLength(JSON.stringify(event));
+        if (pendingEventRows > 8192 || pendingEventBytes > 8 * 1024 * 1024) throw new Error('Untransferred normalized events exceed the bounded raw cursor');
+        scheduleRaw();
         if (event.sessionId !== nativeSession || event.agentPath?.length) return;
         if (event.kind === 'exited' && !stopping) {
           fail(new Error('Native runtime exited')); void stop('native exited'); return;
@@ -281,7 +345,7 @@ async function sdkRun(): Promise<void> {
           if (yieldRequestId) journal('terminal', { inputId: current.id, outcome: event.outcome,
             received: current.received, yieldRequestId });
         }
-      } catch (error) { fail(error); void stop('observation failure'); }
+      } catch (error) { rawFailure(error); }
     }, { cursor: { sessionId: nativeSession, afterSeq: -1 } });
     while (!stopping && !failed) {
       if (Date.now() >= Date.parse(prepared.deadlineAt)) {
@@ -289,6 +353,7 @@ async function sdkRun(): Promise<void> {
         await stop('deadline'); break;
       }
       if (current?.ended && !sending) {
+        if (!rawDrained()) { scheduleRaw(); await sleep(10); continue; }
         const finished = current;
         journal('terminal', { inputId: finished.id, outcome: finished.ended, received: finished.received });
         if (finished.ended!.kind !== 'completed') throw new Error(`Native turn ended ${finished.ended!.kind}`);

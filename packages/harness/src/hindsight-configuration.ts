@@ -1,3 +1,4 @@
+import type { LocalDatabaseConnection } from './local-database.js';
 import { resolveSharedDeepSeek, sharedDeepSeekNativeBaseUrl, type SharedDeepSeekEnvironment, type SharedDeepSeekFallback } from './oar-model-configuration.js';
 
 type SharedModel = ReturnType<typeof resolveSharedDeepSeek>['configuration'];
@@ -125,4 +126,15 @@ export function resolveHindsightEnvironment(
     }
   }
   return result;
+}
+
+/** The admin reader needs only the existing private DB, never worker/model/provider setup. */
+export async function resolveHindsightMaintenanceConfiguration(readDatabase:()=>Promise<LocalDatabaseConnection>):Promise<{databaseUrl:string}> {
+  const connection=await readDatabase();
+  if(connection.host!=='127.0.0.1'||connection.database!=='hima_hindsight'||connection.user!=='hima_hindsight'
+    ||!Number.isSafeInteger(connection.port)||connection.port<1024||connection.port>65535||!connection.password)
+    throw new Error('Maintenance requires the original private Hindsight database connection.');
+  const database=new URL(`postgresql://127.0.0.1:${connection.port}/hima_hindsight`);
+  database.username=connection.user;database.password=connection.password;
+  return {databaseUrl:database.href};
 }

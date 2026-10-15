@@ -65,7 +65,17 @@ test('Host-issued member access rejects forged scope, retired generation and rev
     assert.notEqual(context.artifactIdentity.taskId,context.task.taskId,'artifact identity uses the execution node, not the containing team task');
     // Explicit retained-event fixture tests projection text, not native runtime provenance.
     await host.ctx.hima.durable.store.prepareEffect(invocation.identity,{fixture:'retained projection only'});
-    await host.ctx.hima.durable.store.recordExternalEffectFact(invocation.identity,'oar:observation:fixture:0',{schema:'hima-oar-observation/1',sessionKey:'fixture',generation:0,memberId:'lead',nativeSession:'fixture-native',streamGeneration:'fixture',seq:0,time:new Date().toISOString(),kind:'received',payload:{inputId:'fixture'}});
+    const receiveFact={schema:'hima-oar-observation/1',sessionKey:'fixture',generation:0,memberId:'lead',nativeSession:'fixture-native',streamGeneration:'fixture',seq:0,time:new Date().toISOString(),kind:'received',payload:{inputId:'fixture'}};
+    await host.ctx.hima.durable.store.recordExternalEffectFact(invocation.identity,'oar:observation:fixture:0',receiveFact);
+    await host.ctx.hima.durable.store.recordExternalEffectFact(invocation.identity,'oar:observation:fixture:1',{...receiveFact,kind:'raw',seq:1,payload:{frame:'x'.repeat(8192)}});
+    assert.deepEqual(await host.ctx.hima.durable.store.externalEffectReceivedObservation(invocation.identity,'fixture'),receiveFact);
+    assert.equal(await host.ctx.hima.durable.store.externalEffectReceivedObservation(invocation.identity,'other'),undefined);
+    assert.equal((await host.ctx.hima.durable.store.effectSnapshot(invocation.identity)).facts['native:oar:observation:fixture:0'],undefined,
+      'Workflow control snapshot must not transfer the original native transcript');
+    assert.equal(await host.ctx.hima.durable.store.externalEffectTransaction(invocation.identity,{permit:async()=>true},
+      async(_run,facts)=>Object.keys(facts).some(key=>key.startsWith('oar:observation:'))),false);
+    assert.deepEqual((await host.ctx.hima.durable.store.listExternalEffectFacts(invocation.identity,'oar:observation:'))['oar:observation:fixture:0'],receiveFact,
+      'Explicit audit read still retains the original observation');
     const retained=await host.ctx.hima.teamOperation(sessionId,{action:'read-member-work',teamId:created.teamId,taskId:task.taskId,request:{memberId:'lead',page:{limit:10}}}) as any;
     assert.equal(retained.trace.state,'retained');assert.ok(retained.records.some((row:any)=>row.kind==='transcript'));
     assert.ok(retained.records.every((row:any)=>!row.text.includes('Native transcript has not been observed')));

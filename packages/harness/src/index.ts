@@ -1,7 +1,8 @@
+import { prepareColdMaintenanceCut, readColdHindsightConnection } from './run-backup.js';
 import { saveFeedback, proposeExperience, changeExperienceAdoption, correctExperience as correctTeamExperience, readTeamMemoryContext, readTeamMemory, readTeamMemoryCorrections, flushPendingTeamMemory, type TeamMemoryPorts, type MemorySourceReader } from './team-memory.js';
 import type { WorkMemoryRequest } from './remote.js';
 import { readHostDeepSeekConfiguration, readSharedDeepSeekEnvironment } from './oar-model-configuration.js';
-import { resolveHindsightServiceEnvironment } from './hindsight-configuration.js';
+import { resolveHindsightServiceEnvironment, resolveHindsightMaintenanceConfiguration } from './hindsight-configuration.js';
 import { createOarMemberExecutor, listTeamModels, saveTeamModel } from './oar-member-process.js';
 import { sendTeamMessage, readTeamMessages, readTaskActivity, readPendingTeamRequests, readMemberWork, reconcileTeamMessageDelivery, type TeamTransport, type TeamMessageActor, type TaskRef } from './team-messages.js';
 import { stageAttachment, readAttachment, materializeAttachment, readAttachmentExcerpt, type TeamAttachmentPorts } from './team-attachments.js';
@@ -556,7 +557,7 @@ export default class Hima extends Service {
     let domainStarting: Promise<{ close(): void | Promise<void> }> | undefined;
     let durableStarting: Promise<DurableRuntime> | undefined;
     let closing = false;
-    let durableClosed = false, domainClosed = false;
+    let durableClosed = false, domainClosed = false, maintenancePrepared = false;
     let closingAttempt: Promise<void> | undefined;
     let closeHostResources = async () => {
       const database = await databaseStarting;
@@ -564,6 +565,17 @@ export default class Hima extends Service {
       this.memoryAbort.abort();
       await Promise.allSettled([...this.memoryRequests]);
       if(this.teamServices) {
+        if(!maintenancePrepared) {
+          try {
+            if(this.interruptedTeamServices.length)throw new Error('An interrupted service generation needs reconciliation before a complete maintenance cut.');
+            await prepareColdMaintenanceCut({home:localDatabaseHome(),status:()=>readDurableHostExitStatus(this.durable.store,this.ctx.get('agents')),
+              services:this.teamServices,serviceDatabase:()=>readColdHindsightConnection({home:localDatabaseHome(),application:database.application})});
+            maintenancePrepared=true;
+          } catch(error) {
+            // Resource shutdown still proceeds. Missing/failed cut is never complete backup proof.
+            this.ctx.logger.warn(`Cold maintenance cut unavailable; preserve this Home and reconcile before backup: ${String(error)}`);
+          }
+        }
         const stopped=await this.teamServices.stopAll();
         if(this.interruptedTeamServices.length || stopped.some(receipt=>!receipt.owned.quiescent))throw new Error('Team service closure is unproved; retain the original Host database and service generation.');
       }
@@ -651,7 +663,7 @@ export default class Hima extends Service {
     if (closing) return;
     this.interruptedTeamServices=await this.durable.store.unclosedTeamServiceGenerations();
     this.teamServices=new TeamServiceRuntime({home:localDatabaseHome(),runtimeDirectory:process.env.HIMA_TEAM_RUNTIME,
-      recordReceipt:receipt=>this.durable.store.recordTeamServiceReceipt(receipt),configuration:async()=>{
+      recordReceipt:receipt=>this.durable.store.recordTeamServiceReceipt(receipt),maintenanceConfiguration:()=>resolveHindsightMaintenanceConfiguration(()=>readColdHindsightConnection({home:localDatabaseHome(),application:database.application})),configuration:async()=>{
         // Provider credentials stay in the existing Host environment; public status never carries them.
         const environment=await resolveHindsightServiceEnvironment(process.env,readSharedDeepSeekEnvironment(this.ctx),
           readCredential=>readHostDeepSeekConfiguration(this.ctx,readCredential));
@@ -1118,7 +1130,16 @@ export default class Hima extends Service {
       const connection=this.teamServices?.connection('hindsight');return connection?{origin:connection.origin,apiKey:connection.apiKey,generation:connection.generation}:undefined;
     },signal:this.memoryAbort.signal},track:promise=>{this.memoryRequests.add(promise);void promise.finally(()=>this.memoryRequests.delete(promise)).catch(()=>{});}};
   }
-  private async teamMemoryOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown):Promise<object> {
+  private trackMemoryRequest<T>(promise:Promise<T>):Promise<T> {
+    this.memoryRequests.add(promise);
+    void promise.finally(()=>this.memoryRequests.delete(promise)).catch(()=>{});
+    return promise;
+  }
+  private teamMemoryOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown):Promise<object> {
+    if(this.exitRequest||this.resourcesClosing)return Promise.reject(new BadRequest('App exit fences memory writes and reconciliation.'));
+    return this.trackMemoryRequest(this.teamMemoryOperationBody(actor,ref,action,raw));
+  }
+  private async teamMemoryOperationBody(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown):Promise<object> {
     const ports=this.teamMemoryPorts();
     if(action==='feedback')return saveFeedback(ports,actor,ref,raw);
     if(action==='propose')return proposeExperience(ports,actor,ref,raw);
@@ -1293,7 +1314,7 @@ export default class Hima extends Service {
     if(!this.teamServices)throw new BadRequest('Team services have not initialized.');
     if(request.action==='start')try {await this.waitForBusinessAdmission();}
     catch {throw new BadRequest('Host admission recovery is unavailable or the App is closing; new service starts are fenced.');}
-    if(this.resourcesClosing && request.action!=='status')throw new BadRequest('Host resources are finalizing; service changes are fenced.');
+    if(this.resourcesClosing)throw new BadRequest('Host resources are finalizing; service operations are fenced.');
     const interrupted=this.interruptedTeamServices.find(receipt=>receipt.serviceId===request.serviceId);
     let receipt:TeamServiceReceipt;
     if(interrupted) {
@@ -1399,7 +1420,11 @@ export default class Hima extends Service {
     await this.durable.store.putFlowFact(run.runId,`team-control-result:${request.requestId}`,result as import('./task-contract.js').JsonValue);
     return result as object;
   }
-  async workMemory(sessionId: string, request: WorkMemoryRequest, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
+  workMemory(sessionId: string, request: WorkMemoryRequest, authoredBy: 'model' | 'person' = 'person'): Promise<object> {
+    if(this.exitRequest||this.resourcesClosing)return Promise.reject(new BadRequest('App exit fences working memory.'));
+    return this.trackMemoryRequest(this.workMemoryBody(sessionId,request,authoredBy));
+  }
+  private async workMemoryBody(sessionId: string, request: WorkMemoryRequest, authoredBy: 'model' | 'person'): Promise<object> {
     const workspaceRef = await sessionProject(this.ctx, sessionId, true);
     if(!['read','sources','save'].includes(request.action)) {
       if(!request.teamId||!request.taskId)throw new TeamError('hima/team-invalid','Select a Team task for experience memory.');
@@ -1433,7 +1458,11 @@ export default class Hima extends Service {
     return {...result,scope};
   }
 
-  async correctExperience(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>) {
+  correctExperience(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>) {
+    if(this.exitRequest||this.resourcesClosing)return Promise.reject(new BadRequest('App exit fences experience correction.'));
+    return this.trackMemoryRequest(this.correctExperienceBody(sessionId,request));
+  }
+  private async correctExperienceBody(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>) {
     const workspaceRef = await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
     await authorizeProjectRun(this.guideDeps(), sessionId, request.candidate.sourceRun);
     return recordExperienceAdoption(this.deps(), { ...request, workspaceRef, changedBy: sessionId });

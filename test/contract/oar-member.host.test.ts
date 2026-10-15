@@ -81,3 +81,37 @@ test('oversized member context replies remain bounded and recover without anothe
     assert.equal(calls,1);assert.equal(JSON.parse(replies.at(-1)!).ok,false);
   }finally{await executor.dispose();}
 });
+
+test('retained native backlog is drained in bounded batches before one waiting MCP reply', async()=>{
+  const {createOarMemberExecutor}=await import(pathToFileURL(path.resolve('packages/harness/lib/oar-member-process.js')).href);
+  const prepared={schema:'hima-oar-task/1',identity:{runId:'run',taskId:'task',effectId:'backlog-effect'},projectId:'project',
+    memberId:'member',runtime:'pi',modelRef:'default',generation:1,sessionKey:'session',inputId:'input',
+    deadlineAt:new Date(Date.now()+20000).toISOString(),prompt:'bounded backlog'};
+  const identity={schema:'hima-oar-observation/1',sessionKey:'session',generation:1,memberId:'member',
+    nativeSession:'native',streamGeneration:'stream',time:new Date().toISOString()};
+  const received={...identity,kind:'received',seq:0,payload:{inputId:'input'}};
+  const journal=[received,...Array.from({length:1024},(_,index)=>({...identity,kind:'raw',seq:index+1,payload:{index}}))];
+  const id='00000000-0000-4000-8000-000000000002',facts=new Map<string,unknown>(),replies:string[]=[];
+  facts.set('oar:native-session',{nativeSession:'native',streamGeneration:'stream'});
+  let reads=0,calls=0;
+  const lease={sessionKey:'session',generation:1,memberId:'member',controlDirectory:'control',workDirectory:'work'};
+  const executor=createOarMemberExecutor({home:'unused',retainedMaterialsDir:'unused',services:{},runtimeAssets:async()=>({}),
+    sharedDeepSeekModel:async()=>({}),memberContext:async()=>{calls++;return {messages:[]};},
+    store:{readTeamExecutionBinding:async()=>({deadlineAt:prepared.deadlineAt}),readTeamEffectHead:async()=>({state:'active',
+      invocation:{identity:prepared.identity,version:1,branches:[],context:null,consumedEffects:[],consumedVersions:[]}}),
+      recordExternalEffectFact:async(_identity:unknown,key:string,value:unknown)=>{facts.set(key,value);},
+      externalEffectFact:async(_identity:unknown,key:string)=>facts.get(key),readTeamGrant:async()=>({})},
+    localRuntime:{recover:async()=>lease,read:async(_lease:unknown,options?:{afterSeq?:number})=>{
+      reads++;const start=(options?.afterSeq??-1)+1,selected=journal.slice(start,start+256);
+      return {journal:selected.map(row=>JSON.stringify(row)).join('\n'),more:start+selected.length<journal.length,
+        streamGeneration:'stream',evidence:[received],result:null,state:JSON.stringify({phase:'running'}),
+        requests:[{id,body:JSON.stringify({id,action:'read-messages',request:{page:{limit:2}}})}]};
+    },reply:async(_lease:unknown,_id:string,body:string)=>{replies.push(body);},stopAll:async()=>[]}});
+  try {
+    const start=performance.now();
+    assert.equal((await executor.port.observe(prepared)).state,'running');
+    assert.ok(performance.now()-start<4000,'journal catch-up cannot spend the MCP deadline in business-wait backoff');
+    assert.equal(reads,5);assert.equal(calls,1);assert.equal(JSON.parse(replies[0]!).ok,true);
+    assert.ok(facts.has('oar:observation:stream:0')&&facts.has('oar:observation:stream:1024'));
+  }finally{await executor.dispose();}
+});

@@ -51,7 +51,7 @@ export async function listTeamModels(home:string,projectId:string):Promise<reado
 interface ObservedRow {schema:string;sessionKey:string;generation:number;memberId:string;nativeSession?:string;streamGeneration:string;kind:string;seq:number;time:string;payload:unknown}
 export interface OarMemberProcessOptions {home:string;retainedMaterialsDir:string;services:TeamServiceRuntime;store:RunStore;
   memberContext:(grant:ActorGrant,request:unknown)=>Promise<object>;privatePorts?:()=>readonly number[];
-  localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'captureClosedContext'|'stopAll'|'recover'> & Partial<Pick<OarLocalMemberRuntime,'admitAcceptedWait'>>;
+  localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'captureClosedContext'|'stopAll'|'recover'> & Partial<Pick<OarLocalMemberRuntime,'admitAcceptedWait'|'fatalState'>>;
   runtimeAssets?:(runtime:'pi'|'opencode')=>Promise<LocalMemberAssets>;
   sharedDeepSeekModel:(readCredential:boolean)=>Promise<SharedDeepSeekFallback>;modelEnvironment?:()=>SharedDeepSeekEnvironment}
 const supportedMemberTools=new Set(['hima-member-context','hima-github-push','hima-github-pr']);
@@ -106,6 +106,9 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
   const host=<T>(body:()=>Promise<T>):Promise<T>=>memberCallbacks.runInAsyncScope(body);
   const fact=(p:OarPrepared,key:string)=>host(()=>store.externalEffectFact(p.identity,'oar:'+key));
   const record=(p:OarPrepared,key:string,value:unknown)=>host(()=>store.recordExternalEffectFact(p.identity,'oar:'+key,json(value)));
+  // This cursor advances only after every row in a batch has a durable Host fact.
+  // A new Host starts at the original journal and replays those facts idempotently.
+  const observedSequences=new Map<string,{streamGeneration:string;seq:number}>();
   let ownedRuntime:OarMemberProcessOptions['localRuntime'];
   let ownedRuntimeCreation:Promise<NonNullable<OarMemberProcessOptions['localRuntime']>>|undefined;
   const assetsFor=options.runtimeAssets??resolveLocalOarAssets;
@@ -218,14 +221,31 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
     try {
       const pendingWait=await waiting(p);
       const binding=await executionBinding(p);
-      const captured=await (await local(p)).read(held);
+      let captured:Awaited<ReturnType<OarLocalMemberRuntime['read']>>;
+      let freshRows:ObservedRow[]=[];
+      let batches=0;
+      do {
+        const cursor=observedSequences.get(p.identity.effectId);
+        captured=await (await local(p)).read(held,{afterSeq:cursor?.seq??-1,streamGeneration:cursor?.streamGeneration,maxRows:256});
+        freshRows=captured.journal.trim()?captured.journal.trim().split('\n').map(line=>JSON.parse(line) as ObservedRow):[];
+        for(const row of freshRows) {
+          if(row.schema!=='hima-oar-observation/1'||row.sessionKey!==p.sessionKey||row.generation!==p.generation||row.memberId!==p.memberId
+            ||!Number.isSafeInteger(row.seq)||row.seq<0||!row.streamGeneration)throw new Error('Native observation belongs to another member/session/generation.');
+          await record(p,'observation:'+row.streamGeneration+':'+row.seq,row);
+        }
+        if(freshRows.length) {
+          const last=freshRows.at(-1)!;
+          observedSequences.set(p.identity.effectId,{streamGeneration:last.streamGeneration,seq:last.seq});
+        }
+        if(captured.more) {
+          // Journal catch-up is not a business wait. Yield the event loop, then keep
+          // draining before the native MCP request's own response deadline expires.
+          if(++batches>=64)return {state:'running',reason:'Retaining a large original native observation backlog.'};
+          await new Promise<void>(resolve=>setImmediate(resolve));
+        }
+      } while(captured.more);
       const state=captured.state?JSON.parse(captured.state) as {phase?:string;reason?:string;failureReason?:string;fatal?:boolean}:undefined;
-      const rows=captured.journal.trim()?captured.journal.trim().split('\n').map(line=>JSON.parse(line) as ObservedRow):[];
-      for(const row of rows) {
-        if(row.schema!=='hima-oar-observation/1'||row.sessionKey!==p.sessionKey||row.generation!==p.generation||row.memberId!==p.memberId
-          ||!Number.isSafeInteger(row.seq)||row.seq<0||!row.streamGeneration)throw new Error('Native observation belongs to another member/session/generation.');
-        await record(p,'observation:'+row.streamGeneration+':'+row.seq,row);
-      }
+      const rows=[...(captured.evidence??[]) as ObservedRow[],...freshRows];
       if(state?.fatal||state?.phase==='failed')return {state:'failed',reason:state.failureReason??state.reason??'Original native runtime failed.',receipt:json(held)};
       const created=rows.find(row=>row.kind==='created');
       if(created) {
@@ -314,7 +334,15 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         return {state:'ready',receipt:json({nativeSession:result.nativeSession,streamGeneration:result.streamGeneration,inputId:p.inputId,receivedAt:received.time}),output};
       }
       return received?{state:'running',reason:'Original runtime received its input; retained native work is in progress.'}:{state:'unknown',reason:'No original runtime receive evidence yet; local OAR ACK is insufficient.'};
-    }catch(error){return {state:'unknown',reason:error instanceof Error?error.message:String(error)};}
+    }catch(error){
+      // A failed journal correctly refuses to serve a partial observation
+      // cursor. Its separate lease-bound fatal control fact still terminates
+      // business waiting; it does not claim durable rows or normal closure.
+      try {const fatal=await (await local(p)).fatalState?.(held);
+        if(fatal)return {state:'failed',reason:fatal.reason,receipt:json(held)};}
+      catch { /* An unavailable or mismatched control fact stays unknown. */ }
+      return {state:'unknown',reason:error instanceof Error?error.message:String(error)};
+    }
   }
   const observe=(p:OarPrepared):Promise<OarObservation>=>host(()=>observeHost(p));
   const physicalProof=(closed:LocalMemberClosure,held:LocalMemberLease):JsonValue|undefined=>closed.proof?json(closed.proof)
@@ -379,10 +407,10 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         await observe(p);held=await lease(p)??held;
         const intents=Object.values(await store.listExternalEffectFacts(p.identity,'oar:input-intent:')) as unknown as {id:string}[];
         let captured:Awaited<ReturnType<OarLocalMemberRuntime['read']>>|undefined;
-        try {captured=await (await local(p)).read(held);}catch {if(intents.length)return {closed:false,reason:'Directed native work is unobservable; explicit stop or original closure reconciliation is required.'};}
+        try {captured=await (await local(p)).read(held,{summaryOnly:true});}catch {if(intents.length)return {closed:false,reason:'Directed native work is unobservable; explicit stop or original closure reconciliation is required.'};}
         if(captured) {
           const state=captured.state?JSON.parse(captured.state) as {phase:string}:undefined;
-          const rows=captured.journal.trim()?captured.journal.trim().split('\n').map(line=>JSON.parse(line) as ObservedRow):[];
+          const rows=(captured.evidence??(captured.journal.trim()?captured.journal.trim().split('\n').map(line=>JSON.parse(line) as ObservedRow):[])) as ObservedRow[];
           if(state?.phase==='running'||intents.some(intent=>!rows.some(row=>row.kind==='terminal'&&(row.payload as {inputId?:string}).inputId===intent.id)))return {closed:false,reason:'Original native member still owns an active or unconfirmed directed input.'};
         }
       }
@@ -416,7 +444,7 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
           if(!closed.closed||!closed.proof)return {closure:{closed:false,reason:closed.reason??'Native yield physical closure is unproved.'},capture:{state:'unavailable',reason:'Original physical closure is unconfirmed.'}};
           proof=json(closed.proof);await record(p,'closed',proof);
         }
-        const retained=await (await local(p)).read(held);
+        const retained=await (await local(p)).read(held,{summaryOnly:true});
         const localState=retained.state?JSON.parse(retained.state) as {fatal?:boolean;phase?:string;failureReason?:string}:undefined;
         if(localState?.fatal||localState?.phase==='failed')
           throw new Error('Failed native parent cannot continue after yield: '+(localState.failureReason??'retained native failure'));
@@ -434,10 +462,10 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
     },
     async observeMessage(p,id,_input) {
       await observe(p);
-      const rows=await host(()=>store.listExternalEffectFacts(p.identity,'oar:observation:'));
+      const received=await host(()=>store.externalEffectReceivedObservation(p.identity,id)) as ObservedRow|undefined;
       const native=await fact(p,'native-session') as {nativeSession?:string;streamGeneration?:string}|undefined;
-      const received=Object.values(rows).map(row=>row as unknown as ObservedRow).find(row=>row.kind==='received'&&row.nativeSession===native?.nativeSession&&row.streamGeneration===native?.streamGeneration&&(row.payload as {inputId?:string})?.inputId===id);
-      return received?json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:id}):undefined;
+      return received&&received.nativeSession===native?.nativeSession&&received.streamGeneration===native?.streamGeneration
+        ?json({nativeReceiptId:received.nativeSession+':'+received.streamGeneration+':'+received.seq,receivedAt:received.time,sessionKey:p.sessionKey,generation:p.generation,inputId:id}):undefined;
     },
   };
   function continuationOptions(continuation:Awaited<ReturnType<RunStore['readTeamExecutionBinding']>>['continuation']) {
@@ -467,8 +495,7 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
         if(context.flow.tasks[context.taskId]?.memberId!==delivery.recipientMemberId)continue;
         const prepared=await store.effectFact(invocation.identity.effectId,'prepared') as unknown as OarPrepared|undefined;
         if(!prepared||prepared.schema!=='hima-oar-task/1'||!await permit(prepared,'message')||await fact(prepared,'closed')||!await lease(prepared))continue;
-        const rows=Object.values(await store.listExternalEffectFacts(prepared.identity,'oar:observation:'));
-        if(rows.some(row=>(row as unknown as ObservedRow).kind==='created'))return true;
+        if(await fact(prepared,'native-session'))return true;
       }
       return false;
     },

@@ -154,7 +154,10 @@
     "test/contract/oar-native-journal-ipc.test.ts",
     "test/contract/himateam-signals.host.test.ts",
     "test/contract/himateam-software.host.test.ts",
-    "test/contract/himateam-native-busy-barrier.local.test.ts"
+    "test/contract/himateam-native-busy-barrier.local.test.ts",
+    "test/contract/himateam-spec.host.test.ts",
+    "test/contract/himateam-memory-correction.host.test.ts",
+    "test/contract/himateam-backup.host.test.ts"
   ],
   "desktop": [
     "test/contract/agent-execution.desktop.test.ts",
@@ -181,7 +184,9 @@
     "test/contract/himateam-engine.desktop.test.ts",
     "test/contract/oar-model.desktop.test.ts",
     "test/contract/himateam-memory.desktop.test.ts",
-    "test/contract/himateam-control.desktop.test.ts"
+    "test/contract/himateam-control.desktop.test.ts",
+    "test/contract/himateam-spec.desktop.test.ts",
+    "test/contract/himateam-upgrade.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/resident-engineering-release.live.test.ts",
@@ -202,6 +207,8 @@
     "test/contract/himateam-collaboration.live.test.ts",
     "test/contract/himateam-software-github.live.test.ts",
     "test/contract/himateam-software-control.live.test.ts",
-    "test/contract/himateam-software.live.test.ts"
+    "test/contract/himateam-software.live.test.ts",
+    "test/contract/himateam-spec.live.test.ts",
+    "test/contract/himateam-backup-native.live.test.ts"
   ]
 }

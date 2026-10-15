@@ -61,7 +61,7 @@ interface OwnedService {
   stopGraceMs:number; origin?:string; apiKey?:string; environment?:NodeJS.ProcessEnv; root?:string; spec?:TeamRuntimeManifest['services'][number];
 }
 export interface TeamServiceConfiguration {databaseUrl:string; environment?:Record<string,string>;}
-export interface TeamServiceRuntimeOptions {home:string;runtimeDirectory?:string;recordReceipt:(receipt:TeamServiceReceipt)=>Promise<void>;configuration?:()=>Promise<TeamServiceConfiguration>;}
+export interface TeamServiceRuntimeOptions {home:string;runtimeDirectory?:string;recordReceipt:(receipt:TeamServiceReceipt)=>Promise<void>;configuration?:()=>Promise<TeamServiceConfiguration>;maintenanceConfiguration?:()=>Promise<Pick<TeamServiceConfiguration,'databaseUrl'>>;}
 export class TeamServiceRuntime {
   private readonly services=new Map<string,OwnedService>();
   private shuttingDown=false;
@@ -156,15 +156,39 @@ export class TeamServiceRuntime {
       owned.diagnostic={code:error instanceof CapabilityError?error.code:'service-start',message:error instanceof CapabilityError?error.message:'The owned service did not become ready. Check its installed capability, port and permissions.'};}
     return this.receipt(id,owned,'start');
   }
-  export(id:string,request:{cutId:string;destination:string}):Promise<TeamServiceReceipt>{
+  export(id:string,request:{cutId:string;destination:string;maintenance?:boolean}):Promise<TeamServiceReceipt>{
     if(this.shuttingDown)return Promise.reject(new Error('Host shutdown rejects new service exports.'));
     if(id==='engineering-engine')return this.engine.export(request);
     if(this.shuttingDown) return Promise.reject(new Error('Host shutdown rejects new service exports.'));
     const owned=this.services.get(id);
-    if(!owned || owned.stopped || owned.state!=='running' || !owned.child || owned.child.exitCode!==null || owned.child.signalCode!==null) return Promise.reject(new Error('Export requires a live owned service generation.'));
+    const maintenance=request.maintenance===true&&owned&&['unavailable','stopped'].includes(owned.state)&&!owned.child&&!this.groupPresent(owned);
+    const stoppedMaintenance=request.maintenance===true&&owned&&owned.state==='stopped'&&owned.child&&(owned.child.exitCode!==null||owned.child.signalCode!==null)&&!this.groupPresent(owned);
+    if(!owned || !maintenance&&!stoppedMaintenance&&(owned.stopped || owned.state!=='running' || !owned.child || owned.child.exitCode!==null || owned.child.signalCode!==null)) return Promise.reject(new Error('Export requires a live owned service generation.'));
     if(owned.export) return Promise.reject(new Error('An export cut is already in progress.'));
     if(!/^[A-Za-z0-9_-]{1,128}$/.test(request.cutId) || !relative.safeParse(request.destination).success) return Promise.reject(new Error('Invalid export cut or destination.'));
-    owned.export=this.exportLive(id,owned,request).finally(()=>{owned.export=undefined;});return owned.export;
+    owned.export=(async()=>{
+      if(maintenance||stoppedMaintenance)await this.prepareMaintenanceExport(id,owned);
+      return this.exportLive(id,owned,request);
+    })().finally(()=>{owned.export=undefined;});return owned.export;
+  }
+  /** Internal maintenance only: the original private PG is online under the Host read
+   * fence. Reuse its installed admin exporter without starting a memory/model worker.
+   * The public Host route does not accept this internal option. Ordinary export semantics stay. */
+  private async prepareMaintenanceExport(id:string,owned:OwnedService):Promise<void> {
+    if(!this.options.runtimeDirectory)throw new CapabilityError('missing-assets','The fixed Team runtime is required for offline service export.');
+    const manifest=await readTeamRuntimeManifest(this.options.runtimeDirectory);
+    const spec=manifest.services.find(service=>service.id===id);
+    if(!spec?.backupExecutable)throw new CapabilityError('missing-export','The fixed full Hindsight admin exporter is required.');
+    const configuration=await this.options.maintenanceConfiguration?.();
+    if(!configuration)throw new CapabilityError('missing-configuration','The original private service database configuration is required.');
+    const database=new URL(configuration.databaseUrl);
+    if(!['postgres:','postgresql:'].includes(database.protocol)||!['127.0.0.1','localhost'].includes(database.hostname)||database.pathname!=='/hima_hindsight')throw new CapabilityError('configuration','Maintenance exports only the original private Hindsight database.');
+    const root=await realpath(this.options.runtimeDirectory),home=path.join(this.options.home,'hima/team-services',id,owned.generation);
+    await mkdir(home,{recursive:true,mode:0o700});
+    if(this.shuttingDown||owned.state==='stopping')throw new Error('Shutdown interrupted maintenance export preparation.');
+    owned.child=undefined;owned.root=root;owned.spec=spec;owned.stopGraceMs=spec.stopGraceMs;owned.state='stopped';owned.stopped=true;owned.diagnostic=undefined;
+    owned.environment={PATH:path.join(root,'bin'),HOME:home,TMPDIR:home,HINDSIGHT_API_DATABASE_URL:configuration.databaseUrl,
+      HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1',PYTHON_DOTENV_DISABLED:'1',PYTHONNOUSERSITE:'1',PYTHONDONTWRITEBYTECODE:'1'};
   }
   private async exportLive(id:string,owned:OwnedService,request:{cutId:string;destination:string}):Promise<TeamServiceReceipt>{
     const directory=path.join(this.options.home,'hima/team-service-exports',owned.generation);await mkdir(directory,{recursive:true,mode:0o700});
@@ -177,8 +201,8 @@ export class TeamServiceRuntime {
     try {
       // Native CLI cold imports share the installed service's bounded operation budget.
       await new Promise<void>((resolve,reject)=>{const child=spawn(path.join(owned.root!,spec.backupExecutable!),[...(spec.backupArgv ?? []),'backup',file,'--schema','public'],{cwd:owned.root,env:owned.environment,stdio:'ignore',timeout:spec.timeoutMs,killSignal:'SIGKILL'});
-        child.once('error',()=>reject(new Error('The fixed Hindsight admin executable failed to start.')));child.once('close',code=>code===0?resolve():reject(new Error('Hindsight online backup failed; the service remains owned and running.')));});
-      if(owned.child!.exitCode!==null || owned.child!.signalCode!==null) throw new Error('Service exited before export cut was verified.');
+        child.once('error',()=>reject(new Error('The fixed Hindsight admin executable failed to start.')));child.once('close',code=>code===0?resolve():reject(new Error('Hindsight online backup failed; preserve the original service generation and export diagnostics.')));});
+      if(owned.child&&(owned.child.exitCode!==null || owned.child.signalCode!==null)) throw new Error('Service exited before export cut was verified.');
       const info=await lstat(file);if(!info.isFile() || !(await realpath(file)).startsWith(await realpath(directory)+path.sep)) throw new Error('Invalid owned export output.');
       const digest=createHash('sha256');for await(const chunk of createReadStream(file))digest.update(chunk);
       return await this.receipt(id,owned,'export',{export:{cutId:request.cutId,file,sha256:digest.digest('hex'),bytes:info.size}});

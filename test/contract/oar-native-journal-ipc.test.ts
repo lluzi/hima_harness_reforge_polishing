@@ -10,15 +10,341 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const observations = 3482;
-const snapshotText = (index: number) => String(index).padStart(5, '0') + 'x'.repeat(((Math.floor(index / 2) % 16) + 1) * 1700);
+const snapshotText = (index: number) => String(index).padStart(5, '0') + 'x'.repeat(64000);
 const reasoningText = (index: number) => `reasoning-${index}:` + 'r'.repeat(800);
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+
+test('actual IPC persists a compressible-but-large raw burst when sync is slower than individual frames', { timeout: 30000 }, async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-journal-batch-'));
+  const runner = path.join(root, 'runner.mjs'), originalOpen = fs.promises.open;
+  const count = 800;
+  fs.writeFileSync(runner, `
+import { randomBytes } from 'node:crypto';
+process.send({type:'ready'});
+process.on('message', message => {
+  if (message.type === 'config') process.send({type:'created',payload:{runtime:'pi',nativeSession:'batch-native'}});
+  if (message.type !== 'input') return;
+  process.send({type:'received',payload:{inputId:message.id}});
+  let n=0;
+  const timer=setInterval(() => {
+    process.send({type:'raw',payload:{index:n,kind:'frame',body:{text:randomBytes(24000).toString('base64')}}});
+    if (++n === ${count}) {clearInterval(timer);
+      process.send({type:'terminal',payload:{inputId:message.id,outcome:{kind:'completed'}}});
+      process.send({type:'finished',inputId:message.id,text:JSON.stringify({schemaVersion:'output/1',value:{count:n},artifacts:[],diagnostics:[]})});
+    }
+  },1);
+});
+
+setInterval(()=>{},1000);
+`);
+  // The real FileHandle still writes and fsyncs; only latency is controlled so
+  // the burst deterministically distinguishes 256 KiB from amortized batches.
+  fs.promises.open = (async (...args: Parameters<typeof fs.promises.open>) => {
+    const fd = await originalOpen(...args);
+    if (String(args[0]).endsWith('journal.jsonl')) {
+      const sync = fd.sync.bind(fd);
+      fd.sync = async () => { await pause(20); await sync(); };
+    }
+    return fd;
+  }) as typeof fs.promises.open;
+  const { OarLocalMemberRuntime, decodeOarRawObservationPayload } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const runtime = new OarLocalMemberRuntime({ home: root, nodeExecutable: process.execPath, runnerModule: runner,
+    assets: { oarModule: 'controlled-node-fixture', nodeExecutable: process.execPath,
+      opencodeCommand: 'fixture', opencodeVersion: 'fixture' } });
+  t.after(async () => { fs.promises.open = originalOpen; await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const lease = await runtime.stage({ prepared: { schema: 'hima-oar-task/1',
+    identity: { runId: 'burst-run', taskId: 'burst-task', effectId: 'burst-effect', inputSha256: 'a'.repeat(64),
+      packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' },
+    projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'fixture', generation: 1,
+    sessionKey: 'controlled-ipc-burst', inputId: 'initial', deadlineAt: new Date(Date.now() + 25000).toISOString(), prompt: 'burst' },
+    model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-key' }, outputSchemaVersion: 'output/1' }, []);
+  await runtime.start(lease);
+  const deadline = Date.now() + 20000;
+  let created = false;
+  while (Date.now() < deadline) {
+    if ((await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'created')) { created = true; break; }
+    await pause(20);
+  }
+  assert.ok(created);
+  await runtime.authorize(lease, { sessionKey: lease.sessionKey, generation: lease.generation,
+    nativeSession: 'batch-native', inputId: 'initial' });
+  let delivered: any;
+  while (Date.now() < deadline) {
+    delivered = await runtime.read(lease, { summaryOnly: true });
+    if (delivered.result) break;
+    await pause(50);
+  }
+  assert.ok(delivered?.result, 'every burst observation must be durable before terminal result');
+  assert.equal(JSON.parse(delivered.result).output.value.count, count);
+  assert.equal((await runtime.close(lease)).closed, true);
+  const journal = fs.readFileSync(path.join(lease.controlDirectory, 'journal.jsonl'), 'utf8');
+  const rows = journal.trim().split('\n').map(line => JSON.parse(line));
+  const raw = rows.filter((row: any) => row.kind === 'raw');
+  assert.equal(raw.length, count);
+  rows.forEach((row: any, index: number) => assert.equal(row.seq, index));
+  raw.forEach((row: any, index: number) => {
+    const payload = decodeOarRawObservationPayload(row.payload) as any;
+    assert.equal(payload.index, index);
+    assert.equal(Buffer.from(payload.body.text, 'base64').byteLength, 24000);
+  });
+});
+
+test('SDK raw producer waits for Host durable ACK while small text deltas continue', { timeout: 30000 }, async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-sdk-raw-credit-'));
+  const sdk = path.join(root, 'fake-oar.mjs'), originalOpen = fs.promises.open, count = 600;
+  fs.writeFileSync(sdk, `
+import { randomBytes } from 'node:crypto';
+export async function piSession(){
+  const raw=[],rawObservers=[],eventObservers=[];let timer;
+  const emit=(body,event)=>{const record={sessionId:'credit-native',agentPath:[],seq:raw.length,receivedAt:Date.now(),kind:'frame',body};
+    raw.push(record);for(const observer of rawObservers)observer(record);
+    if(event)for(const observer of eventObservers)observer({...event,sessionId:'credit-native',agentPath:[],seq:record.seq,receivedAt:record.receivedAt});};
+  return {id:'credit-native',records:()=>raw,rawEvents:(observer)=>{rawObservers.push(observer);return()=>{}},
+    events:(observer)=>{eventObservers.push(observer);return()=>{}},
+    async prompt(){let n=0;timer=setInterval(()=>{
+      emit({type:'message_update',text:randomBytes(24000).toString('base64')},{kind:'text_delta',text:'x'});
+      if(++n===${count}){clearInterval(timer);
+        emit({type:'tool_call_started'},{kind:'tool_call_started',tool:'fixture'});
+        emit({type:'message_update'}, {kind:'text_delta',text:JSON.stringify({schemaVersion:'output/1',value:{count:n},artifacts:[],diagnostics:[]})});
+        emit({type:'turn_ended'}, {kind:'turn_ended',outcome:{kind:'completed'}});
+      }
+    },1);return{kind:'accepted'};},async abort(){clearInterval(timer);return{kind:'accepted'}},async dispose(){clearInterval(timer)}};
+}
+`);
+  fs.promises.open = (async (...args: Parameters<typeof fs.promises.open>) => {
+    const fd = await originalOpen(...args);
+    if (String(args[0]).endsWith('journal.jsonl')) { const sync = fd.sync.bind(fd);
+      fd.sync = async () => { await pause(20); await sync(); }; }
+    return fd;
+  }) as typeof fs.promises.open;
+  const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const assets = { oarModule: sdk, nodeExecutable: process.execPath, opencodeCommand: '/usr/bin/false', opencodeVersion: 'fixture' };
+  const options = { home: root, nodeExecutable: process.execPath,
+    runnerModule: path.resolve('packages/harness/lib/oar-member-runner.js'), assets };
+  const runtime = new OarLocalMemberRuntime(options);
+  t.after(async () => { fs.promises.open = originalOpen; await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const lease = await runtime.stage({ prepared: { schema: 'hima-oar-task/1',
+    identity: { runId: 'credit-run', taskId: 'credit-task', effectId: 'credit-effect', inputSha256: 'a'.repeat(64),
+      packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' },
+    projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'fixture', generation: 1,
+    sessionKey: 'credit-member', inputId: 'initial', deadlineAt: new Date(Date.now() + 25000).toISOString(), prompt: 'credit' },
+    model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-key' },
+    outputSchemaVersion: 'output/1', assets }, []);
+  await runtime.start(lease);
+  const deadline = Date.now() + 20000;
+  let created = false;
+  while (Date.now() < deadline) {
+    if ((await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'created')) { created = true; break; }
+    await pause(20);
+  }
+  assert.ok(created);
+  await runtime.authorize(lease, { sessionKey: lease.sessionKey, generation: lease.generation,
+    nativeSession: 'credit-native', inputId: 'initial' });
+  let result: any;
+  while (Date.now() < deadline) {
+    result = await runtime.read(lease, { summaryOnly: true });
+    if (result.result) break;
+    await pause(50);
+  }
+  assert.ok(result?.result, 'native result waits for all original raw frames to reach Host durability');
+  assert.equal(JSON.parse(result.result).output.value.count, count);
+  assert.equal((await runtime.close(lease)).closed, true);
+  const rows = fs.readFileSync(path.join(lease.controlDirectory, 'journal.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(rows.filter((row: any) => row.kind === 'raw').length, count + 3);
+  assert.ok(rows.findIndex((row: any) => row.kind === 'terminal') > rows.findLastIndex((row: any) => row.kind === 'raw'));
+  const recovered = new OarLocalMemberRuntime(options);
+  assert.deepEqual(await recovered.recover(lease.sessionKey), lease);
+  assert.equal((await recovered.close(lease)).closed, true, 'A durable final cursor survives a fresh runtime');
+  const journalFile = path.join(lease.controlDirectory, 'journal.jsonl');
+  const retained = fs.readFileSync(journalFile, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  const final = retained.find((row: any) => row.kind === 'control' && row.payload?.action === 'raw_final');
+  assert.ok(final, 'The original final cursor was durably recorded');
+  const stateFile = path.join(lease.controlDirectory, 'state.json'), validState = fs.readFileSync(stateFile);
+  final.payload.lastSeq++;
+  fs.writeFileSync(journalFile, retained.map(row => JSON.stringify(row)).join('\n') + '\n');
+  const wrong = new OarLocalMemberRuntime(options);
+  assert.deepEqual(await wrong.recover(lease.sessionKey), lease);
+  assert.equal((await wrong.close(lease)).closed, false, 'A mismatched retained final cursor cannot prove closure');
+  fs.writeFileSync(stateFile, validState);
+  final.payload.lastSeq--;
+  final.payload.action = 'raw_missing';
+  fs.writeFileSync(journalFile, retained.map(row => JSON.stringify(row)).join('\n') + '\n');
+  const missing = new OarLocalMemberRuntime(options);
+  assert.deepEqual(await missing.recover(lease.sessionKey), lease);
+  assert.equal((await missing.close(lease)).closed, false, 'Fresh recovery must not turn a valid raw prefix into final closure');
+  await assert.rejects(missing.captureClosedContext(lease, 'missing-final-after-recover', { maxFiles: 8, maxBytes: 4096, maxFileBytes: 2048 }), /final cursor|retention|durab|clos/);
+});
+
+test('SDK raw credit respects Host pending-row bound while the first burst fsync is held', { timeout: 30000 }, async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-sdk-row-credit-'));
+  const sdk = path.join(root, 'fake-oar.mjs'), originalOpen = fs.promises.open, count = 5000;
+  fs.writeFileSync(sdk, `
+import fs from 'node:fs';import path from 'node:path';
+export async function piSession(_available,options){const records=[],rawObservers=[],eventObservers=[];let timer;
+  const emit=(body,event)=>{const row={sessionId:'row-native',agentPath:[],seq:records.length,receivedAt:Date.now(),kind:'frame',body};
+    records.push(row);for(const observer of rawObservers)observer(row);
+    if(event)for(const observer of eventObservers)observer({...event,sessionId:'row-native',agentPath:[],seq:row.seq,receivedAt:row.receivedAt});};
+  return{id:'row-native',records:()=>records,rawEvents:(observer)=>{rawObservers.push(observer);return()=>{}},
+    events:(observer)=>{eventObservers.push(observer);return()=>{}},
+    async prompt(){timer=setInterval(()=>{if(!fs.existsSync(path.join(options.cwd,'burst.flag')))return;clearInterval(timer);
+      for(let n=0;n<${count};n++)emit({type:'ping',n},{kind:'text_delta',text:'x'});
+      emit({type:'tool_call_started'},{kind:'tool_call_started',tool:'fixture'});
+      emit({type:'message_update'},{kind:'text_delta',text:JSON.stringify({schemaVersion:'output/1',value:{count:${count}},artifacts:[],diagnostics:[]})});
+      emit({type:'turn_ended'},{kind:'turn_ended',outcome:{kind:'completed'}});
+    },5);return{kind:'accepted'};},async abort(){clearInterval(timer);return{kind:'accepted'}},async dispose(){clearInterval(timer)}};
+}
+`);
+  let arm = false, gated = false, release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  fs.promises.open = (async (...args: Parameters<typeof fs.promises.open>) => {
+    const fd = await originalOpen(...args);
+    if (String(args[0]).endsWith('journal.jsonl')) { const sync = fd.sync.bind(fd);
+      fd.sync = async () => { if (arm && !gated) { gated = true; await gate; } await sync(); }; }
+    return fd;
+  }) as typeof fs.promises.open;
+  const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const assets = { oarModule: sdk, nodeExecutable: process.execPath, opencodeCommand: '/usr/bin/false', opencodeVersion: 'fixture' };
+  const runtime = new OarLocalMemberRuntime({ home: root, nodeExecutable: process.execPath,
+    runnerModule: path.resolve('packages/harness/lib/oar-member-runner.js'), assets });
+  t.after(async () => { release(); fs.promises.open = originalOpen; await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const lease = await runtime.stage({ prepared: { schema: 'hima-oar-task/1',
+    identity: { runId: 'row-run', taskId: 'row-task', effectId: 'row-effect', inputSha256: 'a'.repeat(64),
+      packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' },
+    projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'fixture', generation: 1,
+    sessionKey: 'row-credit', inputId: 'initial', deadlineAt: new Date(Date.now() + 25000).toISOString(), prompt: 'row credit' },
+    model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-key' },
+    outputSchemaVersion: 'output/1', assets }, []);
+  await runtime.start(lease);
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline && !(await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'created')) await pause(20);
+  await runtime.authorize(lease, { sessionKey: lease.sessionKey, generation: lease.generation, nativeSession: 'row-native', inputId: 'initial' });
+  while (Date.now() < deadline && !(await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'received')) await pause(20);
+  arm = true; fs.writeFileSync(path.join(lease.workDirectory, 'burst.flag'), 'go');
+  while (Date.now() < deadline && !gated) await pause(10);
+  assert.equal(gated, true, 'The real first burst fsync must be held before credit can return');
+  await pause(300); release();
+  let view: any;
+  while (Date.now() < deadline) { view = await runtime.read(lease, { summaryOnly: true }); if (view.result) break; await pause(50); }
+  assert.ok(view?.result, 'all 5000 native records survive the held ACK without overflowing rows');
+  assert.equal(JSON.parse(view.result).output.value.count, count);
+  assert.equal((await runtime.close(lease)).closed, true);
+  const journal = fs.readFileSync(path.join(lease.controlDirectory, 'journal.jsonl'), 'utf8');
+  const rows = journal.trim().split('\n').map(line => JSON.parse(line));
+  const raw = rows.filter((row: any) => row.kind === 'raw');
+  assert.equal(raw.length, count + 3);
+  assert.equal(rows.filter((row: any) => row.kind === 'event' && row.payload.kind === 'text_delta').length, count + 1);
+  raw.forEach((row: any, index: number) => assert.equal(row.payload.seq, index));
+});
+
+test('ordinary stop cannot certify complete closure while pre-stop SDK raw records await credit', { timeout: 20000 }, async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-sdk-stop-credit-'));
+  const sdk = path.join(root, 'fake-oar.mjs'), originalOpen = fs.promises.open, count = 400;
+  fs.writeFileSync(sdk, `
+import fs from 'node:fs';import path from 'node:path';import {randomBytes} from 'node:crypto';
+export async function piSession(_available,options){const records=[],observers=[];let timer;
+  return{id:'stop-credit-native',records:()=>records,rawEvents:(observer)=>{observers.push(observer);return()=>{}},
+    events:()=>()=>{},async prompt(){timer=setInterval(()=>{if(!fs.existsSync(path.join(options.cwd,'burst.flag')))return;
+      clearInterval(timer);for(let n=0;n<${count};n++){const row={sessionId:'stop-credit-native',agentPath:[],seq:n,
+        receivedAt:Date.now(),kind:'frame',body:{type:'message_update',text:randomBytes(24000).toString('base64')}};
+        records.push(row);for(const observer of observers)observer(row);}
+      fs.writeFileSync(path.join(options.cwd,'emitted.json'),JSON.stringify({count:records.length}));
+    },5);return{kind:'accepted'};},async abort(){clearInterval(timer);return{kind:'accepted'}},async dispose(){clearInterval(timer)}};
+}
+`);
+  fs.promises.open = (async (...args: Parameters<typeof fs.promises.open>) => {
+    const fd = await originalOpen(...args);
+    if (String(args[0]).endsWith('journal.jsonl')) { const sync = fd.sync.bind(fd);
+      fd.sync = async () => { await pause(100); await sync(); }; }
+    return fd;
+  }) as typeof fs.promises.open;
+  const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const assets = { oarModule: sdk, nodeExecutable: process.execPath, opencodeCommand: '/usr/bin/false', opencodeVersion: 'fixture' };
+  const runtime = new OarLocalMemberRuntime({ home: root, nodeExecutable: process.execPath,
+    runnerModule: path.resolve('packages/harness/lib/oar-member-runner.js'), assets });
+  t.after(async () => { fs.promises.open = originalOpen; await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const lease = await runtime.stage({ prepared: { schema: 'hima-oar-task/1',
+    identity: { runId: 'stop-run', taskId: 'stop-task', effectId: 'stop-effect', inputSha256: 'a'.repeat(64),
+      packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' },
+    projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'fixture', generation: 1,
+    sessionKey: 'stop-credit', inputId: 'initial', deadlineAt: new Date(Date.now() + 15000).toISOString(), prompt: 'stop' },
+    model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-key' },
+    outputSchemaVersion: 'output/1', assets }, []);
+  await runtime.start(lease);
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline && !(await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'created')) await pause(20);
+  await runtime.authorize(lease, { sessionKey: lease.sessionKey, generation: lease.generation,
+    nativeSession: 'stop-credit-native', inputId: 'initial' });
+  while (Date.now() < deadline && !(await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'received')) await pause(20);
+  fs.writeFileSync(path.join(lease.workDirectory, 'burst.flag'), 'go');
+  while (Date.now() < deadline && !fs.existsSync(path.join(lease.workDirectory, 'emitted.json'))) await pause(10);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(lease.workDirectory, 'emitted.json'), 'utf8')).count, count);
+  const closure = await runtime.close(lease);
+  assert.throws(() => process.kill(lease.pid!, 0), 'Original owned process is physically absent');
+  const rows = fs.readFileSync(path.join(lease.controlDirectory, 'journal.jsonl'), 'utf8').trim().split('\n')
+    .filter(Boolean).map(line => JSON.parse(line));
+  const raw = rows.filter((row: any) => row.kind === 'raw');
+  const final = rows.find((row: any) => row.kind === 'control' && row.payload?.action === 'raw_final');
+  assert.ok(raw.length <= count);
+  if (closure.closed) {
+    assert.equal(raw.length, count, 'Normal closure requires every pre-stop raw record');
+    assert.ok(final, 'Normal closure requires its final durable cursor');
+  } else {
+    assert.equal(closure.closed, false, 'Missing pre-stop raw facts or final cursor make combined closure unproved');
+    await assert.rejects(runtime.captureClosedContext(lease, 'no-missing-raw-checkpoint', { maxFiles: 8, maxBytes: 4096, maxFileBytes: 2048 }), /retention|durab|clos|final cursor/);
+  }
+});
+
+test('normalized event high water emits one raw failure and cannot keep admitting a synchronous tail', { timeout: 15000 }, async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-sdk-event-highwater-'));
+  const sdk = path.join(root, 'fake-oar.mjs');
+  fs.writeFileSync(sdk, `
+import fs from 'node:fs';import path from 'node:path';
+export async function piSession(_available,options){const records=[],rawObservers=[],eventObservers=[];
+  const originalSend=process.send.bind(process);let failures=0;
+  process.send=(message,...args)=>{if(message?.type==='raw_failure')failures++;return originalSend(message,...args);};
+  return{id:'highwater-native',records:()=>records,rawEvents:(observer)=>{rawObservers.push(observer);return()=>{}},
+    events:(observer)=>{eventObservers.push(observer);return()=>{}},async prompt(){
+      for(let n=0;n<9000;n++){const row={sessionId:'highwater-native',agentPath:[],seq:n,receivedAt:Date.now(),kind:'frame',body:{type:'ping'}};
+        records.push(row);for(const observer of rawObservers)observer(row);
+        for(const observer of eventObservers)observer({kind:'text_delta',text:'x',sessionId:'highwater-native',agentPath:[],seq:n,receivedAt:row.receivedAt});}
+      fs.writeFileSync(path.join(options.cwd,'highwater.json'),JSON.stringify({produced:records.length,failures}));
+      return{kind:'accepted'};},async abort(){return{kind:'accepted'}},async dispose(){}};
+}
+`);
+  const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const assets = { oarModule: sdk, nodeExecutable: process.execPath, opencodeCommand: '/usr/bin/false', opencodeVersion: 'fixture' };
+  const runtime = new OarLocalMemberRuntime({ home: root, nodeExecutable: process.execPath,
+    runnerModule: path.resolve('packages/harness/lib/oar-member-runner.js'), assets });
+  t.after(async () => { await runtime.stopAll(); fs.rmSync(root, { recursive: true, force: true }); });
+  const lease = await runtime.stage({ prepared: { schema: 'hima-oar-task/1',
+    identity: { runId: 'water-run', taskId: 'water-task', effectId: 'water-effect', inputSha256: 'a'.repeat(64),
+      packSha256: 'b'.repeat(64), irSha256: 'c'.repeat(64), applicationVersion: 'fixture', adapterVersion: 'fixture' },
+    projectId: 'project', memberId: 'member', runtime: 'pi', modelRef: 'fixture', generation: 1,
+    sessionKey: 'water-member', inputId: 'initial', deadlineAt: new Date(Date.now() + 10000).toISOString(), prompt: 'water' },
+    model: { provider: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-key' },
+    outputSchemaVersion: 'output/1', assets }, []);
+  await runtime.start(lease);
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline && !(await runtime.read(lease, { summaryOnly: true })).evidence.some((row: any) => row.kind === 'created')) await pause(20);
+  await runtime.authorize(lease, { sessionKey: lease.sessionKey, generation: lease.generation,
+    nativeSession: 'highwater-native', inputId: 'initial' });
+  const metricsFile = path.join(lease.workDirectory, 'highwater.json');
+  while (Date.now() < deadline && !fs.existsSync(metricsFile)) await pause(20);
+  assert.ok(fs.existsSync(metricsFile), 'The controlled SDK completed its synchronous tail');
+  const metrics = JSON.parse(fs.readFileSync(metricsFile, 'utf8'));
+  assert.equal(metrics.produced, 9000);
+  assert.equal(metrics.failures, 1, 'Once the bounded transfer fails it must not publish repeated failures');
+  const closure = await runtime.close(lease);
+  assert.equal(closure.closed, false);
+  assert.throws(() => process.kill(lease.pid!, 0));
+  await assert.rejects(runtime.captureClosedContext(lease, 'highwater-cannot-capture', { maxFiles: 8, maxBytes: 4096, maxFileBytes: 2048 }), /retention|durab|clos|cursor|bounded/);
+});
 
 test('actual Node IPC raw/reasoning flood stays responsive and retains every accepted row through physical close and recovery', { timeout: 45000 }, async t => {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'hima-journal-ipc-'));
   const runner = path.join(root, 'runner.mjs');
-  // Each raw row contains a full cumulative snapshot, including duplicates of
-  // earlier content. Its size cycles through <=28KiB; no frame is coalesced.
+  // Every raw row carries a repeated >32KiB cumulative snapshot, exercising
+  // lossless retention and fsync throughput under a bounded native flood.
   fs.writeFileSync(runner, `
 let config, timer, index = 0;
 const observations = ${observations};
@@ -50,7 +376,7 @@ process.on('message', message => {
 });
 setInterval(() => {}, 1000);
 `);
-  const { OarLocalMemberRuntime } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const { OarLocalMemberRuntime, decodeOarRawObservationPayload } = await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
   const assets = { oarModule: 'controlled-node-fixture', nodeExecutable: process.execPath,
     opencodeCommand: 'controlled-node-fixture', opencodeVersion: 'controlled-node-fixture' };
   const options = { home: root, nodeExecutable: process.execPath, runnerModule: runner, assets };
@@ -95,15 +421,35 @@ setInterval(() => {}, 1000);
   assert.throws(() => process.kill(lease.pid, 0), 'original managed process is physically absent');
   const closedView = await runtime.read(lease);
   const rows = closedView.journal.trim().split('\n').map((line: string) => JSON.parse(line));
+  let cursor = -1, streamGeneration: string | undefined;
+  const batches: string[] = [];
+  for (;;) {
+    const batch = await runtime.read(lease, { afterSeq: cursor, streamGeneration, maxRows: 256 });
+    const selected = batch.journal.trim().split('\n').filter(Boolean).map((line: string) => JSON.parse(line));
+    assert.ok(selected.length <= 256 && selected.length > 0, 'one bounded batch advances the original journal cursor');
+    selected.forEach((row: any, index: number) => assert.equal(row.seq, cursor + index + 1));
+    cursor = selected.at(-1).seq; streamGeneration = batch.streamGeneration;
+    batches.push(batch.journal);
+    if (!batch.more) break;
+  }
+  assert.equal(batches.join(''), closedView.journal, 'bounded polls retain every original journal byte and order');
+  const summary = await runtime.read(lease, { summaryOnly: true });
+  assert.equal(summary.journal, '');
+  assert.ok(summary.evidence.some((row: any) => row.kind === 'received')
+    && summary.evidence.some((row: any) => row.kind === 'terminal'), 'summary retains physical input and terminal evidence');
   rows.forEach((row: any, seq: number) => assert.equal(row.seq, seq));
   const observed = rows.filter((row: any) => row.kind === 'raw' || row.kind === 'event');
   assert.equal(observed.length, observations);
+  const encoded = observed.filter((row: any) => row.kind === 'raw' && row.payload?.schema === 'hima-oar-raw-gzip/1');
+  assert.ok(encoded.length > 0, 'large native frames retain a compressed, reconstructable original');
+  assert.throws(() => decodeOarRawObservationPayload({ ...encoded[0]!.payload, sha256: '0'.repeat(64) }), /differs/);
   let maxSdkToHostMs = 0;
   observed.forEach((row: any, index: number) => {
-    assert.equal(row.payload.index, index); assert.equal(row.kind, index % 2 ? 'event' : 'raw');
-    const text = index % 2 ? row.payload.text : row.payload.event.message.content[0].text;
+    const payload = row.kind === 'raw' ? decodeOarRawObservationPayload(row.payload) as any : row.payload;
+    assert.equal(payload.index, index); assert.equal(row.kind, index % 2 ? 'event' : 'raw');
+    const text = index % 2 ? payload.text : payload.event.message.content[0].text;
     assert.equal(hash(text), hash(index % 2 ? reasoningText(index) : snapshotText(index)), `exact payload hash at ${index}`);
-    maxSdkToHostMs = Math.max(maxSdkToHostMs, Date.parse(row.time) - Date.parse(row.payload.receivedAt));
+    maxSdkToHostMs = Math.max(maxSdkToHostMs, Date.parse(row.time) - Date.parse(payload.receivedAt));
   });
   const originalFinish = rows.findIndex((row: any) => row.kind === 'finished' && row.payload.inputId === 'original-input');
   const followupIntent = rows.findIndex((row: any) => row.kind === 'control' && row.payload.action === 'send_intent' && row.payload.inputId === 'busy-followup');
@@ -111,6 +457,9 @@ setInterval(() => {}, 1000);
   const recovered = new OarLocalMemberRuntime(options);
   assert.deepEqual(await recovered.recover(lease.sessionKey), lease);
   assert.equal((await recovered.read(lease)).journal, closedView.journal);
+  const recoveredBatch = await recovered.read(lease, { afterSeq: -1, maxRows: 256 });
+  assert.equal(recoveredBatch.more, true);
+  assert.equal(JSON.parse(recoveredBatch.journal.split('\n')[0]!).seq, 0);
   t.diagnostic(JSON.stringify({ observations: observed.length, journalRows: rows.length, journalBytes: Buffer.byteLength(closedView.journal),
     timerTicks, maxTimerDelayMs: Number(maxTimerDelayMs.toFixed(3)), maxSdkToHostMs, elapsedMs: Number((performance.now() - began).toFixed(3)), physicalClosed: closure.closed }));
   // A threshold violation falsifies responsiveness; Root retains the old-source
@@ -245,6 +594,9 @@ test('public executor close reaches owned cleanup despite stalled fsync and reta
 
 test('public executor close reconciles the original owned lease after known journal failure', { timeout: 10000 }, async t => {
   const f = await executorCleanupFixture(t,'error');
+  const observed = await f.executor.port.observe(f.prepared);
+  assert.equal(observed.state, 'failed', 'fatal local observation failure must terminate business waiting');
+  assert.match(observed.reason ?? '', /retention|durability/);
   let admitted = 0;
   const closure = await f.executor.port.close(f.prepared,undefined,async()=>{admitted++;return true;});
   assert.equal(admitted,1); assert.equal(closure.closed,false); assert.match(closure.reason??'',/retention|durability/);

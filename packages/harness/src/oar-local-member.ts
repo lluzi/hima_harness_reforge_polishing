@@ -1,3 +1,5 @@
+import { resolveRetainedMemberRoot } from './run-backup.js';
+export const retainedMemberRootProtocol = 'hima-native-original-roots/1';
 // Trusted local IO ownership only. DBOS/Host own admission and business progression.
 import * as fs from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
@@ -5,6 +7,7 @@ import { TextDecoder, isDeepStrictEqual } from 'node:util';
 import * as path from 'node:path';
 import os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { spawn, execFile, execFileSync, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { OarPrepared } from './oar-task-adapter.js';
@@ -109,12 +112,28 @@ const softwareSandboxProfile = (lease: LocalMemberLease, config: LocalMemberConf
 };
 type JournalState = {
     queue: JournalEntry[]; pendingBytes: number; pendingRows: number; ackedSeq: number;
-    ackedBytes: number; chunks: string[]; cached: string; cachedSeq: number; evidence: any[];
+    ackedBytes: number; rowOffsets: number[]; evidence: any[];
     lastAccepted?: Promise<void>; fd?: FileHandle; draining?: Promise<void>; error?: Error; closed?: boolean;
 };
-const journalQueueBytes = 8 * 1024 * 1024, journalQueueRows = 4096, journalBatchBytes = 256 * 1024;
+const journalQueueBytes = 8 * 1024 * 1024, journalQueueRows = 4096, journalBatchBytes = 4 * 1024 * 1024;
 const journalTotalBytes = 12 * 1024 * 1024;
 const cooperate = () => new Promise<void>(resolve => setImmediate(resolve));
+/** Reconstruct the redacted native frame exactly; small frames remain plain JSON. */
+export function decodeOarRawObservationPayload(payload: unknown): unknown {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+        || (payload as {schema?:unknown}).schema !== 'hima-oar-raw-gzip/1') return payload;
+    const frame = payload as {bytes?:unknown;sha256?:unknown;dataBase64?:unknown};
+    if (!Number.isSafeInteger(frame.bytes) || (frame.bytes as number) < 32768 || (frame.bytes as number) > journalQueueBytes
+        || typeof frame.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(frame.sha256)
+        || typeof frame.dataBase64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(frame.dataBase64))
+        throw Error('Invalid retained compressed native frame');
+    const compressed = Buffer.from(frame.dataBase64, 'base64');
+    if (compressed.toString('base64') !== frame.dataBase64) throw Error('Invalid retained compressed native frame encoding');
+    const bytes = gunzipSync(compressed, { maxOutputLength: journalQueueBytes });
+    if (bytes.length !== frame.bytes || createHash('sha256').update(bytes).digest('hex') !== frame.sha256)
+        throw Error('Retained compressed native frame differs from its original bytes');
+    return JSON.parse(bytes.toString('utf8'));
+}
 type Held = {
     lease: LocalMemberLease;
     config: LocalMemberConfiguration;
@@ -124,6 +143,9 @@ type Held = {
     journalState?: JournalState;
     streamGeneration: string;
     nativeSession?: string;
+    rawCreditProtocol?: boolean;
+    rawAckedSeq?: number;
+    rawFinalDurable?: boolean;
     authorized?: boolean;
     failureReason?: string;
     current?: {
@@ -414,6 +436,7 @@ export function assertLocalNativeSessionIdentity(continuity: LocalMemberContinui
 }
 export class OarLocalMemberRuntime {
     private held = new Map<string, Held>();
+    private restoredRoots = new Map<string,string>();
     private shuttingDown = false;
     constructor(private options: {
         home: string;
@@ -421,9 +444,21 @@ export class OarLocalMemberRuntime {
         runnerModule: string;
         assets: LocalMemberAssets;
     }) { }
-    private root(key: string) { return path.join(this.options.home, 'hima', 'oar-members', safe(key)); }
+    private root(key: string) { return this.restoredRoots.get(safe(key)) ?? path.join(this.options.home, 'hima', 'oar-members', safe(key)); }
     private get(lease: LocalMemberLease) { const h = this.held.get(lease.sessionKey); if (!h || h.lease.generation !== lease.generation || h.lease.memberId !== lease.memberId || h.lease.controlDirectory !== lease.controlDirectory || h.lease.workDirectory !== lease.workDirectory)
         throw Error('Unknown local member lease'); return h; }
+    /** Fatality is a separate local control fact. It can end business waiting
+     * when journal reads are fenced, but never certifies durable rows or close. */
+    async fatalState(lease: LocalMemberLease): Promise<{ reason: string } | undefined> {
+        this.get(lease);
+        const state = load(path.join(lease.controlDirectory, 'state.json'));
+        if (state.sessionKey !== lease.sessionKey || state.generation !== lease.generation
+            || state.memberId !== lease.memberId || state.controlDirectory !== lease.controlDirectory
+            || state.workDirectory !== lease.workDirectory) throw Error('Fatal state belongs to another member lease');
+        if (state.fatal !== true) return undefined;
+        if (typeof state.failureReason !== 'string' || !state.failureReason) throw Error('Fatal state has no failure reason');
+        return { reason: state.failureReason };
+    }
     private snapshot(h: Held) { return this.snapshotFromRows(h, table()); }
     private snapshotFromRows(h: Held, all: Row[]) {
         // Any authoritative snapshot supersedes an outstanding periodic sample,
@@ -445,7 +480,7 @@ export class OarLocalMemberRuntime {
     private state(h: Held, phase: string, extra: any = {}) { atomic(path.join(h.lease.controlDirectory, 'state.json'), { ...h.lease, nativeSession: h.nativeSession, streamGeneration: h.streamGeneration, phase, ...(h.journalState?.error ? { journalFailureReason: h.journalState.error.message } : {}), ...(h.failureReason ? { failureReason: h.failureReason, fatal: true } : {}), ...redact(extra, h.config.model.apiKey) }); }
     private writer(h: Held): JournalState {
         return h.journalState ??= { queue: [], pendingBytes: 0, pendingRows: 0, ackedSeq: -1,
-            ackedBytes: 0, chunks: [], cached: '', cachedSeq: -1, evidence: [] };
+            ackedBytes: 0, rowOffsets: [0], evidence: [] };
     }
     private retentionFailure(h: Held, reason: string): Error {
         const writer = this.writer(h);
@@ -462,10 +497,23 @@ export class OarLocalMemberRuntime {
         const writer = this.writer(h);
         if (writer.error) return Promise.reject(writer.error);
         if (writer.closed) return Promise.reject(this.retentionFailure(h, 'Member observation writer closed'));
+        let retainedPayload = redact(payload, h.config.model.apiKey);
+        if (kind === 'raw') {
+            const original = Buffer.from(JSON.stringify(retainedPayload));
+            if (original.length > journalQueueBytes)
+                return Promise.reject(this.retentionFailure(h, 'Member observation raw frame bound exceeded'));
+            if (original.length >= 32768) {
+                const compressed = gzipSync(original, { level: 1 });
+                if (compressed.length * 4 / 3 + 200 < original.length)
+                    retainedPayload = { schema: 'hima-oar-raw-gzip/1', bytes: original.length,
+                        sha256: createHash('sha256').update(original).digest('hex'), dataBase64: compressed.toString('base64') };
+            }
+        }
+        const nativeRawSeq = kind === 'raw' && object(payload) && Number.isSafeInteger(payload.seq) ? payload.seq as number : undefined;
         const row = { schema: 'hima-oar-observation/1', sessionKey: h.lease.sessionKey,
             generation: h.lease.generation, memberId: h.lease.memberId, nativeSession: h.nativeSession,
             streamGeneration: h.streamGeneration, seq: h.seq, time: new Date().toISOString(),
-            kind, payload: redact(payload, h.config.model.apiKey) };
+            kind, payload: retainedPayload, ...(nativeRawSeq === undefined ? {} : { nativeRawSeq }) };
         const bytes = Buffer.from(JSON.stringify(row) + '\n');
         if (h.config.softwareGithubIsolation && writer.ackedBytes + writer.pendingBytes + bytes.length > journalTotalBytes)
             return Promise.reject(this.retentionFailure(h, 'Member observation journal bound exceeded'));
@@ -499,9 +547,9 @@ export class OarLocalMemberRuntime {
                     offset += written.bytesWritten;
                 }
                 await writer.fd.sync();
-                writer.chunks.push(bytes.toString('utf8'));
                 writer.ackedBytes += length; writer.ackedSeq = batch[batch.length - 1]!.row.seq;
                 for (const entry of batch) {
+                    writer.rowOffsets.push(writer.rowOffsets.at(-1)! + entry.bytes.length);
                     if (['created', 'received', 'terminal', 'finished', 'control'].includes(entry.row.kind)) writer.evidence.push(JSON.parse(entry.bytes.toString('utf8')));
                     writer.pendingBytes -= entry.bytes.length; writer.pendingRows--; entry.resolve();
                 }
@@ -523,6 +571,26 @@ export class OarLocalMemberRuntime {
     }
     private retain(h: Held, kind: string, payload: unknown): void {
         void this.journal(h, kind, payload).catch(() => { });
+    }
+    private retainObservation(h: Held, kind: 'raw' | 'event', payload: unknown, ackSeq: unknown): void {
+        if (!Number.isSafeInteger(ackSeq) || (ackSeq as number) < 0 || !object(payload)
+            || payload.seq !== ackSeq) throw Error('Uncorrelated native raw cursor');
+        void this.journal(h, kind, payload).then(() => {
+            if (ackSeq !== (h.rawAckedSeq ?? -1) + 1) throw Error('Native raw durable ACK skipped an original cursor');
+            h.rawAckedSeq = ackSeq as number;
+            if (h.child?.connected) this.wire(h, { type: 'raw_ack', seq: ackSeq });
+            else throw Error('Native raw durable ACK has no original child');
+        }).catch(() => { this.retentionFailure(h, 'Native raw durable ACK could not reach its original child'); });
+    }
+    private retainRawFinal(h: Held, payload: unknown): void {
+        if (!h.rawCreditProtocol || !object(payload) || payload.state !== 'complete'
+            || !Number.isSafeInteger(payload.lastSeq) || payload.lastSeq < -1
+            || payload.ackedSeq !== payload.lastSeq || payload.lastSeq !== (h.rawAckedSeq ?? -1)) {
+            this.retentionFailure(h, 'Native raw final cursor is incomplete or differs from Host durability'); return;
+        }
+        void this.journal(h, 'control', { action: 'raw_final', lastSeq: payload.lastSeq, state: 'complete' })
+            .then(() => { h.rawFinalDurable = true; })
+            .catch(() => { /* Journal failure already fences normal closure. */ });
     }
     private async closeWriter(h: Held): Promise<void> {
         const writer = this.writer(h);
@@ -723,10 +791,17 @@ export class OarLocalMemberRuntime {
         }
     }
     private observe(h: Held, item: any) {
+        if (!object(item) || typeof item.type !== 'string') throw Error('Invalid member IPC');
+        const payload = item.payload;
+        if (item.type === 'raw_failure') {
+            this.retentionFailure(h, typeof item.reason === 'string' ? item.reason : 'Native raw observation was not transferred');
+            return;
+        }
+        if (item.type === 'raw_final') { this.retainRawFinal(h, item); return; }
         if (h.yieldRequestId) {
-            if (!object(item) || typeof item.type !== 'string' || !h.nativeSession)
+            if (!h.nativeSession)
                 throw Error('Invalid yielded member IPC');
-            const current = h.current, payload = item.payload;
+            const current = h.current;
             if (item.type === 'received') {
                 if (!current || payload?.inputId !== current.id || current.received)
                     throw Error('Uncorrelated input reception');
@@ -759,21 +834,32 @@ export class OarLocalMemberRuntime {
             if (['raw', 'event', 'control', 'error'].includes(item.type)) {
                 if (item.type === 'control' && payload?.action?.startsWith('yield') && payload.requestId !== h.yieldRequestId)
                     throw Error('Uncorrelated yield control');
-                this.retain(h, item.type, { ...payload, yieldRequestId: h.yieldRequestId });
+                if (['raw','event'].includes(item.type) && item.ackSeq !== undefined) this.retainObservation(h, item.type as 'raw'|'event', { ...payload, yieldRequestId: h.yieldRequestId }, item.ackSeq);
+                else this.retain(h, item.type, { ...payload, yieldRequestId: h.yieldRequestId });
                 return;
             }
             throw Error('Unknown yielded member observation');
         }
-        if (h.stopRequested || h.stopping) return;
-        if (!object(item) || typeof item.type !== 'string')
-            throw Error('Invalid member IPC');
-        const payload = item.payload, p = h.config.prepared;
+        // Business input remains fenced, but the original child may still be
+        // transferring records it produced before stop. Keep only that bounded
+        // observation tail and its durable ACKs until the final cursor arrives.
+        if (h.stopRequested || h.stopping) {
+            if (h.rawCreditProtocol && ['raw','event'].includes(item.type)) {
+                if (item.ackSeq !== undefined) this.retainObservation(h, item.type as 'raw'|'event', payload, item.ackSeq);
+                else this.retain(h, item.type, payload);
+            }
+            return;
+        }
+        const p = h.config.prepared;
         if (item.type === 'failure')
             throw Error(typeof item.reason === 'string' ? item.reason : 'Member failed');
         if (item.type === 'created') {
             if (h.nativeSession || payload?.runtime !== p.runtime || typeof payload.nativeSession !== 'string' || !payload.nativeSession)
                 throw Error('Invalid native identity');
+            if (payload.rawCreditProtocol !== undefined && payload.rawCreditProtocol !== 'hima-oar-raw-credit/1')
+                throw Error('Unsupported native raw credit protocol');
             h.nativeSession = payload.nativeSession;
+            h.rawCreditProtocol = payload.rawCreditProtocol === 'hima-oar-raw-credit/1';
             this.snapshot(h);
             this.retain(h, 'created', payload);
             this.state(h, 'running');
@@ -782,7 +868,8 @@ export class OarLocalMemberRuntime {
         if (!h.nativeSession)
             throw Error('Member observation before native identity');
         if (['raw', 'event', 'control', 'error'].includes(item.type)) {
-            this.retain(h, item.type, payload);
+            if (['raw','event'].includes(item.type) && item.ackSeq !== undefined) this.retainObservation(h, item.type as 'raw'|'event', payload, item.ackSeq);
+            else this.retain(h, item.type, payload);
             return;
         }
         const current = h.current;
@@ -938,7 +1025,7 @@ export class OarLocalMemberRuntime {
         if (this.shuttingDown || h.failureReason || this.writer(h).error || h.stopRequested || h.stopping)
             throw Error('Failed or stopping member rejects reply publication');
         atomic(path.join(lease.controlDirectory, 'replies', id + '.json'), JSON.parse(body)); }
-    async read(lease: LocalMemberLease) {
+    async read(lease: LocalMemberLease, options?: { afterSeq?: number; streamGeneration?: string; maxRows?: number; summaryOnly?: boolean }) {
         const h = this.get(lease);
         await this.journalFence(h);
         const writer = this.writer(h);
@@ -950,8 +1037,41 @@ export class OarLocalMemberRuntime {
                 return null;
             throw e;
         } };
-        if (writer.cachedSeq !== writer.ackedSeq) { writer.cached += writer.chunks.join(''); writer.chunks = []; writer.cachedSeq = writer.ackedSeq; }
-        const journal = writer.cached, rows = writer.evidence.slice();
+        const rows = writer.evidence.slice();
+        let start = 0, end = writer.ackedBytes, more = false;
+        if (options?.summaryOnly) end = 0;
+        else if (options?.afterSeq !== undefined) {
+            const cursor = options.streamGeneration === h.streamGeneration ? options.afterSeq : -1;
+            const maxRows = options.maxRows ?? 256;
+            if (!Number.isSafeInteger(cursor) || cursor < -1 || cursor > writer.ackedSeq
+                || !Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 1024)
+                throw Error('Invalid retained member observation cursor');
+            start = writer.rowOffsets[cursor + 1]!;
+            let last = cursor;
+            while (last < writer.ackedSeq && last - cursor < maxRows) {
+                const next = writer.rowOffsets[last + 2]!;
+                if (last > cursor && next - start > 1024 * 1024) break;
+                end = next; last++;
+            }
+            if (last === cursor) end = start;
+            more = last < writer.ackedSeq;
+        }
+        let journal = '';
+        if (end > start) {
+            const file = await fs.promises.open(path.join(lease.controlDirectory, 'journal.jsonl'), 'r');
+            try {
+                const stat = await file.stat();
+                if (!stat.isFile() || stat.size < end) throw Error('Retained member observation file is truncated');
+                const bytes = Buffer.alloc(end - start);
+                let copied = 0;
+                while (copied < bytes.length) {
+                    const read = await file.read(bytes, copied, bytes.length - copied, start + copied);
+                    if (!read.bytesRead) throw Error('Retained member observation short read');
+                    copied += read.bytesRead;
+                }
+                journal = bytes.toString('utf8');
+            } finally { await file.close(); }
+        }
         const result = this.validatedDelivery(h, await read('result.json'), rows);
         const names = (await fs.promises.readdir(path.join(lease.controlDirectory, 'native/requests'))).filter(n => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/i.test(n));
         if (names.length > 64)
@@ -981,7 +1101,7 @@ export class OarLocalMemberRuntime {
         }));
         const state = await read('state.json');
         if (writer.error) throw writer.error;
-        return { journal, result, state, requests };
+        return { journal, result, state, requests, evidence: rows, more, streamGeneration: h.streamGeneration };
     }
     async readArtifact(lease: LocalMemberLease, relativePath: string, offset = 0, limit = 65536) { this.get(lease); if (path.isAbsolute(relativePath) || relativePath.split(/[\\/]/).some(p => p === '..') || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 65536)
         throw Error('Invalid artifact range/path'); const root = fs.realpathSync(lease.workDirectory), target = fs.realpathSync(path.join(root, relativePath)); if (!target.startsWith(root + path.sep))
@@ -1062,6 +1182,10 @@ export class OarLocalMemberRuntime {
             if (intentDurable && h.child?.connected)
                 h.child.send(h.yieldRequestId ? { type: 'yield', requestId: h.yieldRequestId, reason: 'Host admitted yield' }
                     : { type: 'stop', reason: 'Host close' }, () => { });
+            if (h.rawCreditProtocol && intentDurable) {
+                while (!h.rawFinalDurable && !this.writer(h).error && Date.now() < began + 900) await sleep(25);
+                if (!h.rawFinalDurable) this.retentionFailure(h, 'Native raw final cursor was not durably transferred before stop');
+            }
             for (const signal of [undefined, 'SIGTERM', 'SIGKILL'] as const) {
                 if (signal && (group().length || alive().length)) {
                     if (!matching())
@@ -1125,6 +1249,7 @@ export class OarLocalMemberRuntime {
     }
     private assertClosedContext(h: Held): void {
         if (this.writer(h).error) throw Error('Native capture journal retention unavailable');
+        if (h.rawCreditProtocol && !h.rawFinalDurable) throw Error('Native capture requires the durable final raw cursor');
         const l = h.lease, state = load(path.join(l.controlDirectory, 'state.json'));
         const retained = load(path.join(this.root(l.sessionKey), 'lease.json')) as LocalMemberLease;
         const retainedConfig = load(path.join(l.controlDirectory, 'config.json')) as LocalMemberConfiguration;
@@ -1157,7 +1282,7 @@ export class OarLocalMemberRuntime {
         // Existing ownership lookup must remain usable by cleanup while IO is stalled
         // or failed. read/capture and cold recovery retain their durability checks.
         const current = this.held.get(sessionKey); if (current) return current.lease;
-        const root = this.root(sessionKey);
+        const root = await resolveRetainedMemberRoot({home:this.options.home,sessionKey});
         const read = async (file: string): Promise<string | undefined> => { try { return await fs.promises.readFile(file, 'utf8'); }
             catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; } };
         const original = await read(path.join(root, 'lease.json')); if (!original) return undefined;
@@ -1174,6 +1299,7 @@ export class OarLocalMemberRuntime {
             owned: retainedOwned ? JSON.parse(retainedOwned) : undefined, seq: 0, streamGeneration: '' };
         const writer = this.writer(h);
         let tail = '', bytesSinceYield = 0;
+        let retainedRawSeq = -1, retainedFinalSeq: number | undefined, invalidRawFinal = false;
         const filename = path.join(lease.controlDirectory, 'journal.jsonl');
         try {
             const stream = fs.createReadStream(filename, { highWaterMark: 65536 });
@@ -1183,7 +1309,7 @@ export class OarLocalMemberRuntime {
                 let text: string;
                 try { text = decoder.decode(chunk, { stream: true }); }
                 catch { throw Error('Invalid retained member journal UTF-8'); }
-                writer.chunks.push(text); writer.ackedBytes += chunk.length;
+                writer.ackedBytes += chunk.length;
                 if(config.softwareGithubIsolation&&writer.ackedBytes>journalTotalBytes)throw Error('Retained member observation journal bound exceeded');
                 tail += text; let end: number;
                 while ((end = tail.indexOf('\n')) >= 0) {
@@ -1198,9 +1324,26 @@ export class OarLocalMemberRuntime {
                     if (row.kind === 'created') {
                         if (h.nativeSession || typeof row.payload?.nativeSession !== 'string' || !row.payload.nativeSession) throw Error('Invalid retained native creation');
                         h.nativeSession = row.payload.nativeSession;
+                        if (row.payload.rawCreditProtocol !== undefined && row.payload.rawCreditProtocol !== 'hima-oar-raw-credit/1')
+                            throw Error('Invalid retained native raw credit protocol');
+                        h.rawCreditProtocol = row.payload.rawCreditProtocol === 'hima-oar-raw-credit/1';
                     }
                     if (h.nativeSession && row.nativeSession !== h.nativeSession) throw Error('Invalid retained native journal identity');
+                    if (h.rawCreditProtocol && row.kind === 'raw' && row.payload?.channel !== 'untrusted_stderr') {
+                        const raw = row.nativeRawSeq === undefined ? decodeOarRawObservationPayload(row.payload) : undefined;
+                        const nativeSeq = row.nativeRawSeq ?? (object(raw) ? raw.seq : undefined);
+                        if (!Number.isSafeInteger(nativeSeq) || nativeSeq !== retainedRawSeq + 1 || retainedFinalSeq !== undefined)
+                            invalidRawFinal = true;
+                        else retainedRawSeq = nativeSeq;
+                    }
+                    if (h.rawCreditProtocol && row.kind === 'control' && row.payload?.action === 'raw_final') {
+                        if (retainedFinalSeq !== undefined || row.payload.state !== 'complete'
+                            || !Number.isSafeInteger(row.payload.lastSeq) || row.payload.lastSeq !== retainedRawSeq)
+                            invalidRawFinal = true;
+                        else retainedFinalSeq = row.payload.lastSeq;
+                    }
                     if (['created', 'received', 'terminal', 'finished', 'control'].includes(row.kind)) writer.evidence.push(row);
+                    writer.rowOffsets.push(writer.rowOffsets.at(-1)! + Buffer.byteLength(line) + 1);
                     h.seq++; writer.ackedSeq = row.seq; bytesSinceYield += Buffer.byteLength(line);
                     if (bytesSinceYield >= journalBatchBytes) { bytesSinceYield = 0; await cooperate(); }
                 }
@@ -1209,15 +1352,20 @@ export class OarLocalMemberRuntime {
             let final: string;
             try { final = decoder.decode(); }
             catch { throw Error('Invalid retained member journal UTF-8'); }
-            writer.chunks.push(final); tail += final;
+            tail += final;
             if (tail) throw Error('Truncated retained member journal');
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
         if (!h.streamGeneration) h.streamGeneration = randomUUID();
-        writer.cached = writer.chunks.join(''); writer.chunks = []; writer.cachedSeq = writer.ackedSeq;
+        if (writer.rowOffsets.at(-1)! !== writer.ackedBytes) throw Error('Retained member journal byte offsets differ');
         const journalFailure = retainedState ? state.journalFailureReason : undefined;
         if (journalFailure) writer.error = Error(journalFailure);
+        if (h.rawCreditProtocol) {
+            h.rawAckedSeq = retainedRawSeq;
+            h.rawFinalDurable = !invalidRawFinal && retainedFinalSeq !== undefined && retainedFinalSeq === retainedRawSeq;
+            if (!h.rawFinalDurable) writer.error ??= Error('Native raw final cursor is absent or differs after cold recovery');
+        }
         let ordinaryStop = false, priorFailure = false, physicalYield = false;
         for (const row of writer.evidence) {
             if (row.kind === 'control' && row.payload?.action === 'stop' && !h.yieldRequestId) ordinaryStop = true;
@@ -1259,6 +1407,7 @@ export class OarLocalMemberRuntime {
             h.yieldAdmission = Promise.resolve();
         }
         if (ordinaryStop || priorFailure) h.stopRequested = true;
+        this.restoredRoots.set(sessionKey,root);
         this.held.set(sessionKey, h); if (lease.processGroup && lease.pid && lease.startIdentity) {
         try {
             const present = table().filter(r => r.group === lease.processGroup);

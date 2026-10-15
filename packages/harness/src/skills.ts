@@ -34,7 +34,7 @@ export const HIMA_SKILL_PROVIDER = 'hima';
 
 /** The pack pipeline stays ordered; the software team method is independent of that pipeline. */
 export const HIMA_PACK_SKILLS = ['hima-grill', 'hima-spec', 'hima-fabric', 'hima-test', 'hima-release'] as const;
-export const HIMA_SKILLS = [...HIMA_PACK_SKILLS, 'hima-team-software'] as const;
+export const HIMA_SKILLS = [...HIMA_PACK_SKILLS, 'hima-team-software', 'hima-team-spec'] as const;
 
 /** One stage's name. */
 export type HimaSkillName = (typeof HIMA_SKILLS)[number];
@@ -78,6 +78,7 @@ const DESCRIPTIONS: Readonly<Record<HimaSkillName, string>> = {
   'hima-test': 'Run the compiled pack on a real Site as a campaign marked a test run, and write the test record from what that run recorded, without which a pack is not releasable.',
   'hima-release': 'Make a tested pack a version somebody can install: seal the files it is made of with the hashes this harness computed, and the test record it rests on.',
   'hima-team-software': 'Develop an authorized GitHub Issue with a mixed Pi/OpenCode team, independent commit-bound review and a tested pull request.',
+  'hima-team-spec': 'Research conflicting documents and ideas with a mixed Pi/OpenCode team and deliver a sourced, implementable functional spec with explicit decisions and acceptance.',
 };
 
 /**

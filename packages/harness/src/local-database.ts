@@ -285,7 +285,16 @@ export async function resolveRetainedMaterialsDirectory(options: { home: string 
   await assertHomeExecutionAllowed(options);
   const home = await canonicalHome(options.home);
   const imported = path.join(home, 'hima/restore-lineage.json');
-  if (!(await exists(imported))) return path.join(home, 'hima/run-assets/dbos');
+  if (!(await exists(imported))) {
+    // A fresh Host can legitimately have no Run artifacts yet. Establish its
+    // original empty material root while this Home is live, so a later cold
+    // backup never has to invent the root after the Host and cluster stopped.
+    const hima = path.join(home, 'hima'), assets = path.join(hima, 'run-assets');
+    const root = path.join(assets, 'dbos');
+    for (const directory of [hima, assets, root]) await privateDirectory(directory);
+    if (await realpath(root) !== root) throw problem('the original retained material directory escapes its private Home');
+    return root;
+  }
   const receipt = JSON.parse(await privateFile(imported)) as { identity: string };
   const root = (await readDatabaseLineage(receipt.identity)).retainedMaterialsDir;
   const info = await lstat(root);

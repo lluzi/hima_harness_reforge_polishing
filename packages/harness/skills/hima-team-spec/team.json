@@ -1,0 +1,306 @@
+{
+  "schema": "hima-team-definition/1",
+  "title": "产品研究与功能规格",
+  "members": [
+    {
+      "id": "lead",
+      "role": "产品负责人 / 决策与交付",
+      "runtime": "pi",
+      "modelRef": "default",
+      "skills": [
+        "hima-team-spec"
+      ],
+      "instructions": "固定目标、受众、材料和验收；安排真实研究、反证和编辑委派，等待核验交接；记录业务决定、未决与否决。 使用已安装的 hima-team-spec 方法；Host 动作用 Hima MCP member_context 提交 action/request（Pi 中是 mcp__hima__member_context）。只消费 Host 材料、记忆和交接，不用 shell 查找工具或读取 control/native/journal/config。最终只回复一个 TaskToolOutput JSON 对象，不加说明或 Markdown 代码围栏。",
+      "toolRefs": [
+        "hima-member-context"
+      ],
+      "knowledgeRefs": []
+    },
+    {
+      "id": "researcher",
+      "role": "研究 / 来源与假设",
+      "runtime": "opencode",
+      "modelRef": "default",
+      "skills": [
+        "hima-team-spec"
+      ],
+      "instructions": "独立读取获准原件，逐项核对事实、假设、冲突和来源 locator；交付可核查研究，不代替人批准产品承诺。 使用已安装的 hima-team-spec 方法；Host 动作用 Hima MCP member_context 提交 action/request（Pi 中是 mcp__hima__member_context）。只消费 Host 材料、记忆和交接，不用 shell 查找工具或读取 control/native/journal/config。最终只回复一个 TaskToolOutput JSON 对象，不加说明或 Markdown 代码围栏。",
+      "toolRefs": [
+        "hima-member-context"
+      ],
+      "knowledgeRefs": []
+    },
+    {
+      "id": "challenger",
+      "role": "反证 / 可行性与边界",
+      "runtime": "pi",
+      "modelRef": "default",
+      "skills": [
+        "hima-team-spec"
+      ],
+      "instructions": "独立检验提案，提出最小反例、缺证据和否决理由；区分未知与负结果。 使用已安装的 hima-team-spec 方法；Host 动作用 Hima MCP member_context 提交 action/request（Pi 中是 mcp__hima__member_context）。只消费 Host 材料、记忆和交接，不用 shell 查找工具或读取 control/native/journal/config。最终只回复一个 TaskToolOutput JSON 对象，不加说明或 Markdown 代码围栏。",
+      "toolRefs": [
+        "hima-member-context"
+      ],
+      "knowledgeRefs": []
+    },
+    {
+      "id": "editor",
+      "role": "编辑 / 研发可用性",
+      "runtime": "opencode",
+      "modelRef": "default",
+      "skills": [
+        "hima-team-spec"
+      ],
+      "instructions": "用正常和异常情景走读规格，核对功能价值、用户行为、输入输出、接口、非目标和验收；退回歧义。 使用已安装的 hima-team-spec 方法；Host 动作用 Hima MCP member_context 提交 action/request（Pi 中是 mcp__hima__member_context）。只消费 Host 材料、记忆和交接，不用 shell 查找工具或读取 control/native/journal/config。最终只回复一个 TaskToolOutput JSON 对象，不加说明或 Markdown 代码围栏。",
+      "toolRefs": [
+        "hima-member-context"
+      ],
+      "knowledgeRefs": []
+    }
+  ],
+  "leaderMemberId": "lead",
+  "collaboration": "负责人明确分工，研究和反证先独立调查，再通过带来源的交接复核；编辑检查研发可用性。负责人在授权范围决定条件采用或否决，业务范围、权限与预算变化交人。Host/DBOS 执行并核验接续，普通讨论不唤醒全员。",
+  "delivery": {
+    "description": "可指导研发的功能规格、来源、事实与假设、冲突处置、反证、验收与残余；负结果或待决定可以诚实交付。",
+    "output": {
+      "version": "hima-functional-spec/1",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "audience": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "proceed",
+              "conditional",
+              "reject",
+              "insufficient-evidence"
+            ]
+          },
+          "functionalSpec": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "userBehavior": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputsOutputs": {
+                "type": "string",
+                "minLength": 1
+              },
+              "interfaces": {
+                "type": "string",
+                "minLength": 1
+              },
+              "exceptions": {
+                "type": "string",
+                "minLength": 1
+              },
+              "nonGoals": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "value",
+              "userBehavior",
+              "inputsOutputs",
+              "interfaces",
+              "exceptions",
+              "nonGoals"
+            ],
+            "additionalProperties": false
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stageId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "materialId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "location": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supports": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "stageId",
+                "materialId",
+                "sha256",
+                "version",
+                "location",
+                "supports"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "openQuestions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "acceptance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scenario": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "expected": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceRefs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "scenario",
+                "expected",
+                "sourceRefs"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "memoryRefs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "memoryId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "eventId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "memoryId",
+                "version",
+                "eventId",
+                "revision"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "remaining": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "claim": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceRefs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "claim",
+                "sourceRefs"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "goal",
+          "audience",
+          "decision",
+          "functionalSpec",
+          "sources",
+          "conflicts",
+          "assumptions",
+          "openQuestions",
+          "acceptance",
+          "memoryRefs",
+          "remaining",
+          "facts"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -1385,7 +1385,8 @@ export class RunStore {
       if(jsonDigest(row.acceptance.parentIdentity)!==jsonDigest(input.parentIdentity))mismatch('Team handoff parent');
       // Physical cleanup/capture remain recordable after stop; this does not authorize child work.
       if(row.closure_proof) {if(jsonDigest([row.saved_context,row.closure_proof])!==jsonDigest([input.context,input.closureProof]))mismatch('Team handoff');return;}
-      const facts=Object.fromEntries((await client.query<{phase:string;fact:JsonValue}>('SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1',[input.parentIdentity.effectId])).rows.map(f=>[f.phase,f.fact]));
+      const facts=Object.fromEntries((await client.query<{phase:string;fact:JsonValue}>(`SELECT phase,fact FROM hima.effect_facts
+        WHERE effect_id=$1 AND left(phase,length('native:oar:observation:'))<>'native:oar:observation:'`,[input.parentIdentity.effectId])).rows.map(f=>[f.phase,f.fact]));
       const proof=facts['native:oar:closed'] as {absent?:boolean;group?:number;observedAt?:string}|undefined;
       const lease=(await client.query<{released_at:string|null;proof:JsonValue|null}>('SELECT released_at,proof FROM hima.effect_leases WHERE effect_id=$1',[input.parentIdentity.effectId])).rows[0];
       if(!proof||proof.absent!==true||!Number.isSafeInteger(proof.group)||proof.group!<=0||!Number.isFinite(Date.parse(proof.observedAt??''))||!lease||jsonDigest(proof)!==jsonDigest(input.closureProof)||lease.released_at&&jsonDigest(lease.proof)!==jsonDigest(proof))throw new TeamError('hima/team-invalid','Handoff must match actual native closure and original physical lease.');
@@ -1670,7 +1671,11 @@ export class RunStore {
       await this.#assertFlowEffectCurrent(client,run,input.successorIdentity.effectId);
       const prepared=(await client.query<{fact:{identity:TaskIdentity;inputId:string;prompt:string;sessionKey:string;generation:number}}>("SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase='prepared'",[input.successorIdentity.effectId])).rows[0]?.fact;
       if(!prepared||jsonDigest(prepared.identity)!==jsonDigest(input.successorIdentity)||prepared.inputId!==input.hostInputId||memoryTextSha256(prepared.prompt)!==input.hostInputSha256)throw new TeamError('hima/team-conflict','Actual retained successor plan differs from the Host result-continuation input.');
-      const observations=(await this.#orderedExternalEffectFacts(client,input.successorIdentity,'oar:observation:')).map(row=>row.fact as unknown as {kind:string;nativeSession:string;streamGeneration:string;seq:number;time:string;payload?:{inputId?:string}});
+      const observations=(await client.query<{fact:{kind:string;nativeSession:string;streamGeneration:string;seq:number;time:string;payload?:{inputId?:string}}}>(`SELECT fact FROM hima.effect_facts
+        WHERE effect_id=$1 AND left(phase,length('native:oar:observation:'))='native:oar:observation:'
+          AND (fact->>'kind'='created' OR (fact->>'kind'='received' AND fact->'payload'->>'inputId'=$2))
+        ORDER BY (fact->>'seq')::bigint LIMIT 17`,[input.successorIdentity.effectId,input.hostInputId])).rows.map(row=>row.fact);
+      if(observations.length>16)throw new TeamError('hima/team-invalid','Native result input has ambiguous retained observations.');
       const native=(await client.query<{fact:{nativeSession:string;streamGeneration:string;sessionKey:string;generation:number}}>("SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase='native:oar:native-session'",[input.successorIdentity.effectId])).rows[0]?.fact;
       const born=observations.find(row=>row.kind==='created'&&row.nativeSession===native?.nativeSession&&row.streamGeneration===native?.streamGeneration);
       const received=observations.find(row=>row.kind==='received'&&row.payload?.inputId===input.hostInputId&&row.nativeSession===born?.nativeSession&&row.streamGeneration===born?.streamGeneration);
@@ -2411,7 +2416,7 @@ export class RunStore {
       }
       if(!await options.permit())throw new Error('Native callback is blocked by current Site Permit');
       if(admission)await client.query('UPDATE hima.effects SET admitted_at=COALESCE(admitted_at,clock_timestamp()) WHERE effect_id=$1',[identity.effectId]);
-      const rows=(await this.#orderedExternalEffectFacts(client,identity,'')).map(row=>[row.phase,row.fact] as const);
+      const rows=(await this.#orderedExternalEffectFacts(client,identity,'',true)).map(row=>[row.phase,row.fact] as const);
       const facts:Record<string,JsonValue>=Object.fromEntries(rows);
       return body(run,facts,async(phase,fact)=>{
         assertName(phase);taskJsonValue.parse(fact);
@@ -2548,6 +2553,20 @@ export class RunStore {
     const rows=(await this.#pool.query<{phase:string;fact:JsonValue}>('SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1 AND left(phase,length($2))=$2 ORDER BY phase',[identity.effectId,namespace])).rows;
     return Object.fromEntries(rows.map(row=>[row.phase.slice('native:'.length),row.fact]));
   }
+  /** Look up one retained native receive without transferring its raw observation
+   * history into the Host. The original fact remains the receipt authority. */
+  async externalEffectReceivedObservation(identity:TaskIdentity,inputId:string):Promise<JsonValue|undefined> {
+    taskIdentity.parse(identity);assertName(inputId);
+    const effect=await this.effect(identity.effectId);
+    if(!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('Native receipt effect');
+    const prefix='native:oar:observation:';
+    const rows=(await this.#pool.query<{fact:JsonValue}>(`SELECT fact FROM hima.effect_facts
+      WHERE effect_id=$1 AND left(phase,length($2))=$2
+        AND fact->>'kind'='received' AND fact->'payload'->>'inputId'=$3 LIMIT 2`,
+      [identity.effectId,prefix,inputId])).rows;
+    if(rows.length>1)throw new Error('Native input has ambiguous original receive observations.');
+    return rows[0]?.fact;
+  }
   /** Native Code/Knowledge reconstruction uses the application outbox's actual fact order.
    * call IDs name immutable writes; neither a session-local counter nor phase lexical order is
    * an ordering authority. Acknowledged projection rows remain authoritative and readable. */
@@ -2557,12 +2576,14 @@ export class RunStore {
     if(!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('Native receipt effect');
     return this.#orderedExternalEffectFacts(this.#pool,identity,prefix);
   }
-  async #orderedExternalEffectFacts(client:Pick<ClientBase,'query'>,identity:TaskIdentity,prefix:string):Promise<readonly {phase:string;fact:JsonValue;seq:number}[]> {
+  async #orderedExternalEffectFacts(client:Pick<ClientBase,'query'>,identity:TaskIdentity,prefix:string,omitOarObservations=false):Promise<readonly {phase:string;fact:JsonValue;seq:number}[]> {
     const namespace=`native:${prefix}`;
     const rows=(await client.query<{phase:string;fact:JsonValue;seq:number}>(`SELECT f.phase,f.fact,o.seq
       FROM hima.effect_facts f JOIN hima.outbox o ON o.kind='effect-fact'
         AND o.payload->'identity'->>'effectId'=f.effect_id AND o.payload->>'phase'=f.phase
-      WHERE f.effect_id=$1 AND left(f.phase,length($2))=$2 AND o.run_id=$3 ORDER BY o.seq`,[identity.effectId,namespace,identity.runId])).rows;
+      WHERE f.effect_id=$1 AND left(f.phase,length($2))=$2 AND o.run_id=$3
+        AND ($4::boolean=false OR left(f.phase,length('native:oar:observation:'))<>'native:oar:observation:')
+      ORDER BY o.seq`,[identity.effectId,namespace,identity.runId,omitOarObservations])).rows;
     return rows.map(row=>({...row,phase:row.phase.slice('native:'.length)}));
   }
   /** Reopened native child tool guards recover their original PG grant without a process-local
@@ -2584,13 +2605,15 @@ export class RunStore {
   async effectFact(effectId: string, phase: string): Promise<JsonValue | undefined> {
     return (await this.#pool.query<{fact:JsonValue}>('SELECT fact FROM hima.effect_facts WHERE effect_id=$1 AND phase=$2',[effectId,phase])).rows[0]?.fact;
   }
-  /** A workflow branches only from this datasource-receipted snapshot. Uncached reads are for
-   * effect admission/UI, never for skipping operations in a replayed workflow invocation. */
+  /** A workflow branches only from this datasource-receipted snapshot. Large OAR
+   * observation rows are audit evidence, not effect control phases; read them
+   * explicitly through listExternalEffectFacts when needed. */
   async effectSnapshot(identity:TaskIdentity):Promise<{facts:Record<string,JsonValue>;result:TaskResult|null;resourcesReleased:boolean}> {
     return this.transaction(async client=>{
       const effect=(await client.query<{identity:TaskIdentity}>('SELECT identity FROM hima.effects WHERE effect_id=$1',[identity.effectId])).rows[0];
       if(!effect||jsonDigest(effect.identity)!==jsonDigest(identity))mismatch('Snapshot effect');
-      const facts=(await client.query<{phase:string;fact:JsonValue}>('SELECT phase,fact FROM hima.effect_facts WHERE effect_id=$1',[identity.effectId])).rows;
+      const facts=(await client.query<{phase:string;fact:JsonValue}>(`SELECT phase,fact FROM hima.effect_facts
+        WHERE effect_id=$1 AND left(phase,length('native:oar:observation:'))<>'native:oar:observation:'`,[identity.effectId])).rows;
       const result=(await client.query<{result:TaskResult}>('SELECT result FROM hima.results WHERE effect_id=$1',[identity.effectId])).rows[0]?.result??null;
       const released=(await client.query<{released:boolean}>('SELECT released_at IS NOT NULL AS released FROM hima.effect_leases WHERE effect_id=$1',[identity.effectId])).rows[0]?.released??false;
       return {facts:Object.fromEntries(facts.map(row=>[row.phase,row.fact])),result,resourcesReleased:released};

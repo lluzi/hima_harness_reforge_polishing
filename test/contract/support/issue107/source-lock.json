@@ -1,0 +1,80 @@
+{
+  "schema": "hima-issue107-fixture-lock/1",
+  "origin": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-3dic-demo",
+  "manifestSha256": "aa2c6eee573152f0fd7bccbcfc16ff1dc6c4cc83e82ff8306fdcc20533e375d1",
+  "files": [
+    {
+      "path": "members/task1.md",
+      "sha256": "235b008c9a69362bdf189c0135a808ec04b29459d3b61d26e1054e74891ca330",
+      "bytes": 1448,
+      "documentId": "D3D-T1",
+      "version": "1.0",
+      "locators": [
+        "T1-01",
+        "T1-02"
+      ],
+      "visibility": "member-visible",
+      "releasePhases": [
+        "task1"
+      ]
+    },
+    {
+      "path": "members/document-a.md",
+      "sha256": "dcd258a9db816ea1c29b4b027ed1b450096310b08387487f0974c453e0b6e41c",
+      "bytes": 3794,
+      "documentId": "D3D-A",
+      "version": "0.8",
+      "locators": [
+        "A-00",
+        "A-01",
+        "A-02",
+        "A-03",
+        "A-04",
+        "A-05",
+        "A-06",
+        "A-07"
+      ],
+      "visibility": "member-visible",
+      "releasePhases": [
+        "task1"
+      ]
+    },
+    {
+      "path": "members/document-b.md",
+      "sha256": "490d5dee5a73bf90bc06a3c1a29242194af5edf3bb49b63d6d30ebddb2558ac0",
+      "bytes": 3372,
+      "documentId": "D3D-B",
+      "version": "0.9",
+      "locators": [
+        "B-00",
+        "B-01",
+        "B-02",
+        "B-03",
+        "B-04",
+        "B-05",
+        "B-06",
+        "B-07"
+      ],
+      "visibility": "member-visible",
+      "releasePhases": [
+        "task1"
+      ]
+    },
+    {
+      "path": "members/task2.md",
+      "sha256": "97902c605f0fe203e26b8f165a55c58887a7b16cf81d585fdbb78118edb76320",
+      "bytes": 1537,
+      "documentId": "D3D-T2",
+      "version": "1.0",
+      "locators": [
+        "T2-01",
+        "T2-02",
+        "T2-03"
+      ],
+      "visibility": "member-visible",
+      "releasePhases": [
+        "task2"
+      ]
+    }
+  ]
+}
