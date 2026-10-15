@@ -578,11 +578,28 @@ def _solve_point(point, ctx):
         # nothing to legalise: re-solving a clean base only moves shapes for no gain
         return {"ok": False, "name": name, "status": "already-clean", "binding": []}
 
-    for it in range(_MAX_PAIR_ITERS):
+    # A legalise point judges what it starts from first. Already clean after its operators and
+    # edits: keep it as it is (re-solving a clean layout only moves shapes, and once broke a
+    # derived enclosure rule the compactor does not model). Otherwise legalise around that
+    # layout's own markers, and never deliver a solve with more markers than it started with.
+    pre_marks = None
+    zones = ctx["zones"]
+    skip_solve = False
+    if objective == "legalise" and ctx.get("parsed") is not None:
+        p1, p3, pfold = _drc_markers(layout.snap(pre, case.grid_um), case, ctx["sitecaps"],
+                                     ctx["workspace"])
+        pre_marks = (p1 + p3, pfold)
+        if p1 == 0 and p3 == 0:
+            final, residual, info, skip_solve = pre, [], {"status": "optimal", "binding": []}, True
+        else:
+            zones = _zones(pfold)
+    last_total = None
+
+    for it in range(0 if skip_solve else _MAX_PAIR_ITERS):
         pair_iters = it + 1
         if objective == "legalise":
             lay, info = _compact_pitch_like(pre, case, table, "legalise", None,
-                                            pairs, ctx["zones"])
+                                            pairs, zones)
         elif objective == "min-pitch":
             lay, info = _compact_pitch_like(pre, case, table, "min-pitch", target,
                                             pairs, None, through=through)
@@ -606,6 +623,7 @@ def _solve_point(point, ctx):
         # lose a few nm of a distance the LP held exactly (snap keeps polygon indices)
         lay = layout.snap(lay, case.grid_um)
         c1, c3, folded = _drc_markers(lay, case, ctx["sitecaps"], ctx["workspace"])
+        last_total = c1 + c3
         if c1 == 0 and c3 == 0:
             residual = []
             break
@@ -635,6 +653,11 @@ def _solve_point(point, ctx):
         if not newp:
             break
         pairs.extend(newp)
+
+    if pre_marks is not None and last_total is not None and last_total > pre_marks[0]:
+        # the solve made it worse: deliver the starting layout and repair its own markers
+        final = pre
+        residual = markers.classify(pre_marks[1], table, ctx["base_marks"], ())
 
     # Finish the layout: clean, re-sync the outline copies, snap to grid; then repair what the
     # compactor left with verified bounded edits.

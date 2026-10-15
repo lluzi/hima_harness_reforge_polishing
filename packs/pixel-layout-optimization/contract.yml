@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.4.2
+version: 0.4.3
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
