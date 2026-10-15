@@ -15,7 +15,7 @@ import os
 
 from . import rounds
 
-__all__ = ["prior_runs", "pick"]
+__all__ = ["prior_runs", "pick", "history_of"]
 
 _MAX_RUNS = 6
 
@@ -78,6 +78,11 @@ def prior_runs(workspace, readiness, limit=_MAX_RUNS):
         found.append((mtime, d))
     found.sort(reverse=True)
     return [d for _, d in found[:limit]]
+
+
+def history_of(run_dir):
+    """One earlier Run's judged history rows."""
+    return _history(run_dir)
 
 
 def _same_outline(values, outline):

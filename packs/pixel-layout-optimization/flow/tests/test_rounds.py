@@ -108,6 +108,36 @@ class RepairOrdersTest(unittest.TestCase):
                          ["r02-fix-1"])
 
 
+    def test_a_near_miss_that_would_meet_more_targets_is_ordered_despite_a_higher_ratio(self):
+        # A live Run left a 7.13 % near-miss that met the anode target unrepaired because the best
+        # legal candidate (6.98 %) had a lower ratio but missed that target.
+        goal = _goal(values={"ratio_target_pct": 7.5, "anode_coupling_max_ff": 3.1})
+        hist = [self._row("legal", pixel_ratio_judged_pct=6.98, pixel_ct_anode_ff=3.19),
+                self._row("meets-all", pixel_ratio_judged_pct=7.13, pixel_ct_anode_ff=3.05,
+                          pixel_drc_authority_1x1=3, pixel_drc_authority_3x3=20),
+                self._row("misses-too", pixel_ratio_judged_pct=7.2, pixel_ct_anode_ff=3.3,
+                          pixel_drc_authority_1x1=1, pixel_drc_authority_3x3=9)]
+        self.assertEqual([o["candidate"] for o in rounds.repair_orders(hist, goal)],
+                         ["meets-all"])
+
+
+class GoalTargetsRankTest(unittest.TestCase):
+    def test_a_legal_candidate_meeting_every_target_is_the_best_and_meets_the_goal(self):
+        goal = _goal(values={"ratio_target_pct": 7.5, "anode_coupling_max_ff": 3.1})
+        hist = [{"id": "lower", "round": 1, "kind": "candidate", "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=6.98, pixel_ct_anode_ff=3.19)},
+                {"id": "meets", "round": 1, "kind": "candidate", "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=7.13, pixel_ct_anode_ff=3.05)}]
+        d = rounds.decide(1, goal, hist, None, None)
+        self.assertEqual(d["best"]["id"], "meets")
+        self.assertTrue(d["goalMet"])
+
+    def test_with_no_coupling_targets_the_lower_ratio_still_wins(self):
+        a = _legal_values(pixel_ratio_judged_pct=6.98, pixel_ct_anode_ff=3.19)
+        b = _legal_values(pixel_ratio_judged_pct=7.13, pixel_ct_anode_ff=3.05)
+        self.assertTrue(rounds.better(a, b, _goal(values={"ratio_target_pct": 7.5})))
+
+
 class RuleResultsTest(unittest.TestCase):
     def test_all_pass(self):
         res = rounds.rule_results(_legal_values(pixel_ct_anode_ff=1.0, pixel_ct_lines_ff=1.0),
@@ -232,6 +262,30 @@ class DecideTest(unittest.TestCase):
         d = rounds.decide(3, _goal(), hist, None, None)
         self.assertEqual(d["route"], "stop")
         self.assertEqual(d["stopReason"], "converged")
+
+    def test_a_pending_repair_keeps_a_stalled_run_going(self):
+        hist = [self._orig()]
+        for rnd in (1, 2, 3):
+            hist.append({"id": "r%d" % rnd, "round": rnd, "kind": "candidate",
+                         "exploratory": False, "legal": True,
+                         "values": _legal_values(pixel_ratio_judged_pct=11.0,
+                                                 pixel_outline_w_um=24.0, pixel_outline_h_um=44.0)})
+        hist.append({"id": "r3-near", "round": 2, "kind": "candidate", "exploratory": False,
+                     "legal": False,
+                     "values": _legal_values(pixel_ratio_judged_pct=10.0, pixel_outline_w_um=24.0,
+                                             pixel_outline_h_um=44.0, pixel_drc_authority_1x1=2,
+                                             pixel_drc_authority_3x3=18)})
+        d = rounds.decide(3, _goal(), hist, None, None)
+        self.assertEqual(d["route"], "continue")
+
+    def test_the_round_before_the_budget_ends_flags_the_next_as_final(self):
+        hist = [self._orig(),
+                {"id": "r1", "round": 1, "kind": "candidate", "exploratory": False, "legal": True,
+                 "values": _legal_values(pixel_ratio_judged_pct=11.0, pixel_outline_w_um=24.0,
+                                         pixel_outline_h_um=44.0)}]
+        self.assertFalse(rounds.decide(1, _goal(maxRounds=3), hist, None, None)["finalRound"])
+        self.assertTrue(rounds.decide(2, _goal(maxRounds=3), hist, None, None)["finalRound"])
+        self.assertFalse(rounds.decide(3, _goal(maxRounds=3), hist, None, None)["finalRound"])
 
     def test_lower_patience_reverts_to_single_round_stall(self):
         # A Project that explicitly asks for patience 1 gets the old single-round read back.

@@ -324,6 +324,17 @@ def judge_original(workspace, inputs):
     }, artifacts=[{"name": "history", "path": "state/history.jsonl"}])
 
 
+def _lever_ledger(workspace, readiness, history):
+    """The lever ledger for the round decision: this Run's judged moves and, on a warm start,
+    those of the earlier Runs of the same case and decks."""
+    from . import incumbents as inc_mod, ledger as ledger_mod
+    prior = []
+    if (readiness.get("goal") or {}).get("warmStart") == "prior-runs":
+        runs = inc_mod.prior_runs(workspace, readiness)
+        prior = ledger_mod.prior_histories(runs, inc_mod.history_of)
+    return ledger_mod.build(history, readiness["goal"], prior)
+
+
 def _import_incumbents(workspace, readiness, case, sitecaps):
     """Strategy ``warmStart: prior-runs``: copy the best candidates of earlier Runs on the same
     case and decks into this Run, re-measure their geometry, re-judge them with this Run's judge and
@@ -429,7 +440,7 @@ def learn_sensitivities(workspace, inputs):
         "best": ({"id": seed_best.get("id"), "values": seed_best.get("values", {}), "legal": True}
                  if seed_best else None),
         "front": [], "trustRadiusUm": 0.5, "predictedVsMeasured": [], "openMarkers": [],
-        "rules": {},
+        "rules": {}, "ledger": _lever_ledger(workspace, readiness, history_now),
     }
     _write_repair_orders(workspace, 1, history_now, readiness["goal"])
     core.check(seed_decision, "round-decision")
@@ -569,6 +580,7 @@ def decide_round(workspace, inputs):
     previous = _previous_decision(workspace)
 
     decision = rounds.decide(round_no, readiness["goal"], history, previous, card)
+    decision["ledger"] = _lever_ledger(workspace, readiness, history)
     core.check(decision, "round-decision")
     core.write_json(_state(workspace, "round-decision.json"), decision)
     orders = _write_repair_orders(workspace, round_no + 1, history, readiness["goal"])

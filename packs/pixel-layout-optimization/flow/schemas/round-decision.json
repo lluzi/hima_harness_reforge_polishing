@@ -33,6 +33,8 @@
   "nextLever": {"type": ["object", "null"]},
   "openMarkers": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
   "rules": {"type": "object"},
-  "history": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+  "history": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+  "finalRound": {"type": "boolean"},
+  "ledger": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
  }
 }

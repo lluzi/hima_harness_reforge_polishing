@@ -11,7 +11,7 @@ Three families:
   ``TASK_INPUT``, calls :func:`pixelopt.tasks.execute` and writes its
   ``{"schemaVersion","value","artifacts","diagnostics"}`` result to
   ``TASK_OUTPUT``.
-- resident subcommands (``card``, ``history``, ``show``, ``markers``,
+- resident subcommands (``card``, ``history``, ``ledger``, ``show``, ``markers``,
   ``try-edit``, ``plan-check``, ``repair-check``) — the engineering agent's permitted tools; the
   layout-touching ones (``markers``, ``try-edit``) forward to the numeric
   driver with an explicit ``--campaign`` root, the rest are stdlib-only.
@@ -75,6 +75,22 @@ def _cmd_history(workspace, args):
     if opts.last is not None:
         rows = rows[-opts.last:]
     print(json.dumps(rows, sort_keys=True, indent=1))
+
+
+def _cmd_ledger(workspace, args):
+    """The lever ledger of the last round decision: one line per lever, best measured first."""
+    path = os.path.join(workspace, "state", "round-decision.json")
+    decision = core.read_json(path)
+    for e in decision.get("ledger") or []:
+        print("%-70s %-9s n=%d legal=%d near-miss=%d dRatio(vs plain)=%s dRatio(vs base)=%s "
+              "dAnode=%s dScan=%s" % (e.get("lever"), e.get("objective"), e.get("n", 0),
+                                       e.get("legal", 0), e.get("nearMiss", 0),
+                                       e.get("bestDRatioPctVsPlain"), e.get("bestDRatioPctVsBase"),
+                                       e.get("bestDAnodeFfVsBase"), e.get("bestDScanFfVsBase")))
+        for x in e.get("examples") or []:
+            print("    %s %s round %s ratio %s legal %s params %s" % (
+                x.get("source"), x.get("id"), x.get("round"), x.get("ratioPct"), x.get("legal"),
+                json.dumps(x.get("params"), sort_keys=True)))
 
 
 def _cmd_show(workspace, args):
@@ -222,6 +238,7 @@ def _cmd_plan_round(workspace, args):
 _PRINTING = {
     "card": _cmd_card,
     "history": _cmd_history,
+    "ledger": _cmd_ledger,
     "show": _cmd_show,
     "plan-check": _cmd_plan_check,
     "plan-round": _cmd_plan_round,

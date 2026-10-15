@@ -21,10 +21,18 @@ python3 <flow>/pixel_cli.py <subcommand> <WORKSPACE> [options]
 `--campaign <identity.campaignWorkspace>` and only read there.
 
 **You work beside a repair engineer.** Each round a second resident takes the near-misses listed in
-`state/repair-orders.json` (candidates that fail only the authority deck with a few markers) and
-repairs them with bounded edits, in parallel with your plan. Do not spend your points repairing an
-ordered candidate; plan new moves from the best legal candidate, and use a repaired candidate as your
-base once the round decision names it best.
+`state/repair-orders.json` (candidates that fail only the authority deck with a few markers and would
+beat the best legal candidate once clean) and repairs them with bounded edits, in parallel with your
+plan. The split is the Run's speed: a live Run whose single resident spent four of eight rounds
+legalising its own near-misses found its second lever only in round 7. So:
+
+- **Markers are not your problem.** A point that lowers the ratio and comes back with up to four
+  single-cell markers is a good result: the next round's repair engineer clears it. Push levers hard.
+- **Spend no point on an ordered candidate.** When `nextLever.owner` is `repair`, it is on order;
+  plan new moves from the best legal candidate. A repaired candidate becomes your base once the
+  round decision names it best.
+- **The last round is different.** When `state/round-decision.json` has `finalRound: true`, no
+  round follows to repair what you leave: see section 4, step 4.
 
 ## 2. What you read
 
@@ -34,7 +42,11 @@ base once the round decision names it best.
   with gradient and bound, the binding pitch chain per axis, the floor.
 - `state/model.json`: the capacitance model and its leave-one-out error per net pair.
 - `state/round-decision.json`: the best legal candidate, the front, the trust radius, the last
-  round's predicted vs measured gains, the open markers, the stop reason if any.
+  round's predicted vs measured gains, the open markers, the stop reason if any, `finalRound`, and
+  the **lever ledger** (`ledger`): every kind of move judged so far (on a warm start, in earlier
+  Runs of this case too), with the best ratio change it measured against the plain point of the
+  same round and base, its anode and scan-line coupling changes, and how often it came back legal
+  or a near-miss. `ledger WORKSPACE` prints it one lever per line.
 - `state/history.jsonl`: every judged candidate (round, plan, operators, measured values).
 
 Read the history before you plan. Never repeat a hypothesis an earlier round closed.
@@ -45,6 +57,7 @@ Read the history before you plan. Never repeat a hypothesis an earlier round clo
 |---|---|
 | `card WORKSPACE` | Prints the card in a compact form. |
 | `history WORKSPACE [--last N]` | Prints the judged candidates, newest last. |
+| `ledger WORKSPACE` | Prints the lever ledger of the last round decision, best measured lever first. |
 | `show WORKSPACE --campaign CW CANDIDATE` | Prints one candidate's receipt values and their sources. |
 | `markers WORKSPACE --campaign CW CANDIDATE --out plan/round-NN/markers-CANDIDATE.json` | The candidate's authority-deck markers folded into one cell and classified, with proposed pair constraints and edits. |
 | `try-edit WORKSPACE --campaign CW CANDIDATE --ops OPS.json --out-dir plan/round-NN/preview-K` | Applies bounded edits to a copy and runs the authority deck on the single cell and the 3×3 tile. A preview: it is never credited and never judged. |
@@ -63,12 +76,19 @@ Run nothing else that touches the layout or the tools.
    `combined.edits`) at its own outline and objective; for the transmittance minimum, one
    `band-trim` of a wide supply band plus `min-ratio` at that outline. The Run does not converge
    while it is untried.
+   **Then read the ledger.** A lever with a measured gain (negative `bestDRatioPctVsPlain`) that
+   the best legal candidate does not carry yet is the next thing to stack on it. A lever measured
+   at about zero twice (inside `convergeBandPct`) is closed: do not try it again. Levers that
+   measured gains separately compose: stack them in one point instead of one per round.
 2. **Write the hypothesis** at the top of `plan/round-NN/plan.json` before anything else: what you
    expect to move and why (for example: "narrowing the storage-node link under the anode lowers
    storage-node-to-anode coupling with no scan-line load").
 3. **Choose the base**: `original`, `best`, or a candidate id from history (for a repair). Section 7
    says which, round by round, and holds plans to copy.
-4. **Choose front points** (1–6). Each is one solve:
+4. **Choose front points** (1–6). Each is one solve. In the final round (`finalRound: true`),
+   put at least half of them on moves the ledger shows judged legal before, and one `legalise`
+   point on the best near-miss with the edits `markers` verified: nothing after this round repairs.
+   Otherwise:
    - base not clean on the authority deck → one `legalise` point first;
    - `min-pitch` at the Goal's outline, to learn whether the outline is reachable;
    - `min-ratio` at the best reachable outline, under the Goal's limits;
@@ -141,22 +161,32 @@ best. A shield between the storage node and the scan line cuts the scan-line cou
 the storage node's shapes toward the anode; watch the anode coupling in the next round and aim a
 point at it (move the storage node's link away from under the anode, or shift the opening).
 
-**Fixed-outline recipe (proven on a real case, each step judged legal).** Start from the first
-clean candidate and keep every later point on the best *legal* one:
-1. Slim the storage node's source/drain strip with `band-trim` (net = storage node, layer = its SD
-   layer), in steps of about 1 um toward the layer's minimum width; the trim keeps every contact's
-   enclosure, so it stays legal. It lowers the anode and the scan-line couplings together.
-2. Add a supply plate on the middle gate layer between the storage node and the scan line
-   (`shield`, victim storage node, aggressor scan line); sweep `marginUm` (0.3, 1.0, 1.5) in one round
-   with per-point operators. The plate is trimmed to the deck, so it judges clean; the scan-line
-   load rises with its size.
-3. If transmittance sits just above the window, add a small bounded `add` edit on the anode layer
-   that extends the anode into a transparent area at the cell edge, far from the storage node (the
-   edit names the anode polygon index and a box at most 1.5 um deep).
-4. Then a `min-ratio` point from the best legal candidate: the solve holds the coupling limits. When
-   it leaves markers only in the 2x2/3x3 tiles, step back or repair them next round.
-A plate on the source/drain layer against the anode helps only where the storage node's strip has
-been slimmed enough to leave room at the layer's spacing.
+**Fixed-outline fast path (cold start).** Two levers carry most of the gain on a pixel of this
+kind, and a live Run found them six rounds apart. The lever ledger of that Run, from receipts:
+a supply plate on the middle gate layer between the storage node and the scan line cut the ratio
+by 1.8 points against the plain point (scan-line coupling by 1.4 fF); slimming the storage node's
+source/drain strip cut it by a further 0.4 point, with the anode coupling. Opening shifts measured
+nothing. Take both in round 1:
+
+1. **Round 1, from the original, six points:** `legalise`; a plain `min-ratio` (the ledger's
+   control); `min-ratio` with the plate at `marginUm` 1.0; and three `min-ratio` points stacking the
+   plate (`marginUm` 1.0 and 1.5) with a `band-trim` of the storage node on its SD layer at its
+   present width minus 0.5 µm and minus 1.0 µm (never under the layer's minimum width plus
+   0.25 µm). The plate also adds the opaque coverage that brings transmittance under the window's
+   maximum. Expect near-misses: the repair engineer takes them in round 2.
+2. **Round 2:** if a legal candidate exists, stack from it: the next `band-trim` step (0.25 µm
+   narrower) with the plate, and a plain `min-ratio`. If none is legal yet, base the points on the
+   best ordered near-miss (they inherit its markers, which the repair engineer's edits on the same
+   shapes clear) and add one `legalise` point on it as a hedge.
+3. **Round 3 on, from the best legal candidate:** a `min-ratio` point always (the coupling limits
+   hold the secondary targets); the strip slimmed in 0.25 µm steps down to its floor; when the
+   anode coupling misses its target, a supply plate on the SD layer between the storage node and
+   the anode only where the slimmed strip left room at the layer's spacing, and a bounded edit
+   that shrinks the storage node's via in place to the deck's minimum enclosure (DRC and LVS judge
+   it). When transmittance sits just above the window, a small bounded `add` on the anode layer
+   at the cell edge, far from the storage node.
+4. **Sweep in one round, never across rounds:** three plate sizes or three strip widths are three
+   per-point operator sets in one plan; the ledger then shows the trade-off at once.
 
 **Fixed outline (`outlineMode: fixed`).** The cell keeps its size: every point is `legalise` or
 `min-ratio` at the Goal outline (plan-check refuses `min-pitch` and other outlines). With the
@@ -186,7 +216,8 @@ commercial tools judged. Apply them unless the card or the history clearly says 
 1. **Legal first, better second.** The first legal candidate is the anchor. Every point that tries
    to improve the ratio or the outline starts from the best *legal* candidate (`"base": "best"`, or
    its id). A point started from an illegal base inherits its markers, and the ratio it reaches does
-   not count.
+   not count until they are repaired. The one exception is the fast path's round 2 with no legal
+   candidate yet: base on the best near-miss the repair engineer has on order.
 2. **One axis at a time.** Shrink the axis the card's pitch bound shows has room (usually the
    height) first, then the other axis from that legal, already shrunk candidate. Asking for both at
    once from the original leaves many markers.
@@ -215,7 +246,27 @@ commercial tools judged. Apply them unless the card or the history clearly says 
 Fill each `<...>` from the card, the Goal or the round decision; `plan-check` refuses a plan that
 still holds one.
 
-Round 1 (from the original):
+Fixed outline, round 1 (from the original; the fast path above):
+
+```json
+{"schema": "pixel.plan/1", "round": 1, "base": "original", "operators": [],
+ "hypothesis": "a supply plate between the storage node and the scan line and a slimmer storage-node strip lower the ratio together, and the plate brings transmittance into the window",
+ "frontPoints": [
+  {"name": "legal", "objective": "legalise"},
+  {"name": "ratio", "objective": "min-ratio"},
+  {"name": "shield-10", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>]},
+  {"name": "shield-10-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, present - 0.5>]},
+  {"name": "shield-15-trim-a", "objective": "min-ratio", "operators": [<plate, marginUm 1.5>, <band-trim storage node SD, present - 0.5>]},
+  {"name": "shield-10-trim-b", "objective": "min-ratio", "operators": [<plate, marginUm 1.0>, <band-trim storage node SD, present - 1.0>]}],
+ "pairConstraints": [], "edits": [], "expect": "ratio well under the original; near-misses for the repair engineer"}
+```
+
+where `<plate, marginUm M>` is `{"op": "shield", "net": "<supply net>", "layer": "<middle gate
+layer>", "over": {"victim": "<storage node>", "aggressor": "<scan line>"}, "marginUm": M}` and the
+band-trim is `{"op": "band-trim", "net": "<storage node>", "layer": "<its SD layer>", "widthUm":
+<width>}`.
+
+Target outline, round 1 (from the original):
 
 ```json
 {"schema": "pixel.plan/1", "round": 1, "base": "original", "operators": [],
@@ -225,7 +276,7 @@ Round 1 (from the original):
  "pairConstraints": [], "edits": [], "expect": "a clean candidate at the original size"}
 ```
 
-Round 2 (from the clean candidate):
+Target outline, round 2 (from the clean candidate):
 
 ```json
 {"schema": "pixel.plan/1", "round": 2, "base": "best", "operators": [],
@@ -235,7 +286,7 @@ Round 2 (from the clean candidate):
  "pairConstraints": [], "edits": [], "expect": "legal at the goal height; ratio below the original"}
 ```
 
-Round 3 (from the narrower legal candidate, transmittance at the window's minimum):
+Target outline, round 3 (from the narrower legal candidate, transmittance at the window's minimum):
 
 ```json
 {"schema": "pixel.plan/1", "round": 3, "base": "best",
@@ -245,7 +296,7 @@ Round 3 (from the narrower legal candidate, transmittance at the window's minimu
  "pairConstraints": [], "edits": [], "expect": "transmittance inside the window; ratio no worse"}
 ```
 
-Round 4 (width held at the card's x bound by an `eu:` chain):
+Target outline, round 4 (width held at the card's x bound by an `eu:` chain):
 
 ```json
 {"schema": "pixel.plan/1", "round": 4, "base": "best", "operators": [],
@@ -260,8 +311,8 @@ Round 4 (width held at the card's x bound by an `eu:` chain):
 
 0. **One fix away beats starting over.** A candidate that passes LVS, channels, capacitor, loads
    and couplings and misses only the transmittance window or a few DRC markers is worth more than
-   a new point from the old legal base: repair its markers with the verified edits, trim it
-   (minimum) or shrink it slightly (maximum) next round. The round decision names it as
+   a new point from the old legal base. Its markers are the repair engineer's (it is on order); a
+   transmittance miss is yours: trim it (minimum) or add opaque coverage (maximum) next round. The round decision names it as
    `nextLever`. (A live Run once stopped beside its best-ratio candidate, held back by one marker.)
 
 6. **Markers only in the 2x2 and 3x3 tiles** (the single cell is clean) sit across the cell

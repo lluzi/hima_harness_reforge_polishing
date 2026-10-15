@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.5.1 run contract
+# Pixel layout optimization 0.6.0 run contract
 
 ## Goal template
 
@@ -132,9 +132,9 @@ FPD tools hold `licences: {fpd: 1}`.
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
 | `repeat optimise-rounds` | `maxIterations: 6`, `budget: original-run`, carry `roundState` (initial `{round: 1}`, next `decide-round.nextRound`), stop when `decide-round.route` equals `stop` | — | One round per iteration: |
 | ↳ `plan-round` | resident, outsourced, `fpd: 1` | `ROUND`; the resolved Goal | The resident engineering agent reads the card, model, history and last decision, may preview a bounded edit on the authority deck (`try-edit`, never credited), and writes `state/round/plan.json` (`pixel.plan/1`). The Reader `pixel-plan` checks it. |
-| ↳ `repair-round` | resident, outsourced, `fpd: 1`, in parallel with `plan-round` | `ROUND`; `state/repair-orders.json` | The repair engineer turns the ordered near-misses (authority-DRC failures only, few single-cell markers, a ratio below the best legal one, never repaired before) into bounded-edit repairs previewed with `try-edit`, and writes `state/round/repair-plan.json` (`pixel.repair-plan/1`, at most three repairs). The Reader `pixel-repair-plan` checks it against the orders and the bounded-edit rules; an empty repairs list is valid. |
+| ↳ `repair-round` | resident, outsourced, `fpd: 1`, in parallel with `plan-round` | `ROUND`; `state/repair-orders.json` | The repair engineer turns the ordered near-misses (authority-DRC failures only, few single-cell markers, ranking above the best legal one once clean, never repaired before) into bounded-edit repairs previewed with `try-edit`, and writes `state/round/repair-plan.json` (`pixel.repair-plan/1`, at most three repairs). The Reader `pixel-repair-plan` checks it against the orders and the bounded-edit rules; an empty repairs list is valid. |
 | ↳ `solve-and-judge` | program, `fpd: 1` | Committed `plan-round` Reader value; `ROUND` | If the plan has errors, judges nothing and records why. Otherwise applies the plan's operators and edits, solves one LP per front point (alternating axes, metric rows, trust region from the last decision; a `legalise` point holds the full rule only where the base's own Argus markers lie), then, per point, runs the authority deck alone, turns each `exact-pair` marker into a pair constraint and re-solves, at most 6 times, before writing the candidate's GDS set. All candidates are then judged in full, in parallel. Appends every receipt to history. Output: the candidates with predicted and measured values. |
-| ↳ `decide-round` | program | Committed `solve-and-judge` output; `ROUND`; the resolved Goal | Compares predicted with measured gain (trust radius doubles at ≥ half the predicted gain, halves otherwise); refits the surrogate with the new extractions; updates the best legal candidate, the front and the trend chart; detects the endings; routes `continue` or `stop`. Writes `state/round-decision.json`, `state/trend.json`, `state/trend.svg`. |
+| ↳ `decide-round` | program | Committed `solve-and-judge` output; `ROUND`; the resolved Goal | Compares predicted with measured gain (trust radius doubles at ≥ half the predicted gain, halves otherwise); refits the surrogate with the new extractions; updates the best legal candidate, the front and the trend chart; detects the endings; routes `continue` or `stop`; flags `finalRound` when the next round is the budget's last; writes the lever ledger (every judged move grouped by its operators and objective, with its best measured ratio and coupling changes against its base and the same round's plain point, and its legal and near-miss counts; on a warm start, earlier Runs' moves too) into the decision. Writes `state/round-decision.json`, `state/repair-orders.json`, `state/trend.json`, `state/trend.svg`. |
 | `evaluate` | program, `fpd: 1`, `budget: closing` | Committed `decide-round` output | Re-judges the best candidate (and the front points the trade-off table shows) from its GDS in fresh directories; reads them with `pixel-receipt`; applies the rules; names the ending; for **Blocked**, writes the Decision Request with the trade-off table. Writes `state/evaluation.json`. |
 | `deliver` | program, `budget: closing` | Committed `evaluate` output | Rechecks every referenced sha256 and packages `delivery/`: `REPORT.md`, `trend.svg`, the best layout's GDS set, its receipts and tool reports, any declared schematic, the Decision Request, `history.jsonl` and `report.json`. |
 
@@ -262,13 +262,16 @@ committed history and the resolved Goal, and sets `route` (`continue`, `stop`), 
 uses.
 
 - **Best legal candidate.** Every hard-limit rule PASS. Ranked by: outline targets met (both before
-  one, one before none), then the judged ratio, then cell area.
-- **Goal met** when the best legal candidate passes `outline-width-met`, `outline-height-met` and
-  `ratio-met`.
+  one, one before none), then the other Goal targets missed (`ratio-met`, `anode-coupling-met`,
+  `scan-coupling-met`; fewer first), then the judged ratio (within `convergeBandPct` the lower
+  sum of the secondary couplings decides), then cell area.
+- **Goal met** when the best legal candidate passes every Goal rule (`outline-width-met`,
+  `outline-height-met`, `ratio-met` and the stated coupling targets).
 - **Converged** when the best legal candidate's judged ratio, at the best outline reached, improved
   by less than `convergeBandPct` over the last `convergePatienceRounds` consecutive rounds (default
   2; never checked before round `1 + convergePatienceRounds`, and never while a next lever - a
-  judged candidate one repair or transmittance fix from beating it - is still untried); the
+  judged candidate one repair or transmittance fix from beating it - is still untried, or while the
+  repair engineer has a near-miss on order); the
   limiting bound (the binding pitch chain from `map-design-space`, or the coupling floor of the
   frozen-transistor terms from the model) is recorded with it.
 - **Blocked** when, at a stop for convergence or the round limit, there is evidence that the unmet

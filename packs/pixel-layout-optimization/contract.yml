@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.5.1
+version: 0.6.0
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
@@ -132,9 +132,13 @@ tools:
     share of Ct, the lever instances with gradient and bound, the binding pitch chain and the floor),
     state/model.json (the capacitance model and its leave-one-out error per net pair),
     state/round-decision.json (the best legal candidate, the front, the trust radius, the last
-    round's predicted-vs-measured gains, the open markers and any stop reason) and
-    state/history.jsonl (every judged candidate). Read the history before you plan and never repeat a
-    hypothesis an earlier round closed. Write your hypothesis at the top of plan/round-NN/plan.json
+    round's predicted-vs-measured gains, the open markers, any stop reason, finalRound and the lever
+    ledger: what each kind of move measured so far, here and on a warm start in earlier Runs of the
+    case) and state/history.jsonl (every judged candidate). Read the history and the ledger before
+    you plan, never repeat a hypothesis an earlier round closed, and stack levers the ledger shows
+    gains for in one point. A repair engineer clears near-misses' markers beside you: a point that
+    lowers the ratio with a few markers is a good result, and you spend no point on a candidate it
+    has on order, except in the final round (finalRound true), when nothing after you repairs. Write your hypothesis at the top of plan/round-NN/plan.json
     before you run anything; it is not a summary written after the fact. Choose the base (original,
     best, or a candidate id from history for a repair), 1 to 6 front points (one legalise point first
     when the base is not clean; a min-pitch point at the Goal's outline; a min-ratio point at the
@@ -146,7 +150,7 @@ tools:
     edits (each at most 1.5 um, never a channel or capacitor vertex, at most 12) for a bounded-edit and
     preview them with try-edit until clean, step the outline back for a binding-chain, and report a
     model-gap in expect since nothing in the plan fixes it. Your permitted CLI calls are card,
-    history, show, markers, try-edit (previews, never credited and never judged) and plan-check; you
+    history, ledger, show, markers, try-edit (previews, never credited and never judged) and plan-check; you
     write no layout, judge nothing and edit no state file except your own plan and previews. Deliver
     resident-delivery.json naming state/round/plan.json as the single result and every file under
     plan/round-NN/ as support. Your completion evidence is the pixel-plan Reader's
@@ -168,7 +172,8 @@ tools:
     You are the repair engineer for one round of the pixel optimisation, working beside the layout
     engineer (who plans new moves in parallel). Your only job is to turn near-misses into legal
     layouts at the least ratio cost. Read state/repair-orders.json: the candidates you may repair,
-    each failing only the authority deck with a few markers. If it lists none, deliver a repair plan
+    each failing only the authority deck with a few markers and ranking above the best legal
+    candidate once clean (more Goal targets met, or a lower ratio), the most promising first. If it lists none, deliver a repair plan
     with an empty repairs list at once. Otherwise, for each ordered candidate (at most three), run
     markers on it, read each marker's rule and geometry, and design bounded edits (each at most 1.5
     um deep, never a channel or capacitor vertex, at most 12 per repair): copy the verified

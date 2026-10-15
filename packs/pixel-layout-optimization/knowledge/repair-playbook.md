@@ -21,10 +21,13 @@ Commands that read a judged candidate's files take `--campaign <identity.campaig
 
 ## 2. What you read
 
-- `state/repair-orders.json` (`pixel.repair-orders/1`): the candidates you may repair, best ratio
-  first. Each fails only the authority deck, with `markers1x1` single-cell markers. Nothing else may
-  be repaired: `repair-check` refuses a candidate the orders do not list.
-- `state/round-decision.json`: the best legal candidate (what a repair must beat to matter).
+- `state/repair-orders.json` (`pixel.repair-orders/1`): the candidates you may repair, the most
+  promising first. Each fails only the authority deck, with `markers1x1` single-cell markers, and
+  would rank above the best legal candidate once clean: it meets more of the Goal's targets, or has
+  a lower ratio. Nothing else may be repaired: `repair-check` refuses a candidate the orders do not
+  list.
+- `state/round-decision.json`: the best legal candidate (what a repair must beat to matter), and
+  the lever ledger, whose `bounded-edit repair` line shows what earlier repairs cost in ratio.
 - `state/history.jsonl`: every judged candidate, including earlier repairs and what they cost.
 - `state/case-readiness.json`: the Goal, the Strategy and the manifest (layer names).
 
@@ -46,8 +49,11 @@ Commands that read a judged candidate's files take `--campaign <identity.campaig
    which candidates you will repair and why their markers look repairable.
 3. **Per ordered candidate** (at most three, best ratio first): run `markers`. When `bestEdits` or
    `combined.edits` is non-empty and leaves fewer markers, start from it. Otherwise design your own
-   edits from the recipes below, one marker at a time, and preview with `try-edit`. Iterate until
-   both the single cell and the 3x3 tile read zero, or until three previews fail to improve.
+   edits from the recipes below and preview with `try-edit`. Fix all of a candidate's markers in
+   one edit set (markers along one plate edge share their fix). Iterate until both the single cell
+   and the 3x3 tile read zero, or until three previews in a row fail to improve; at most eight
+   previews per candidate. Repair the first ordered candidate completely before you start the
+   second: one clean repair is worth more than three half-done ones.
 4. **Keep only what previewed clean** (or strictly fewer markers with none new). Leave a candidate out
    rather than guess; say why in the plan's `hypothesis`.
 5. **Check and deliver** `resident-delivery.json` naming `state/round/repair-plan.json` as the single
@@ -86,14 +92,29 @@ Each was found on a real case and confirmed by the commercial deck. Coordinates 
    heights): one cut or one extension per step fails because each step leaves the other. Square the
    whole edge with a single box across both steps, flush with the plate's side edges. A box that
    overhangs the plate's side by even 0.1 um makes a narrow jog: width and spacing markers.
+   A squared edge that comes too close to another polygon of the same layer (a new same-layer
+   spacing marker at its corner) is fixed in the same edit set: move that polygon's facing edge
+   back to the layer's spacing (an `edge` move of 0.5 to 1 um). On a real case this pair, a box
+   squaring a supply plate's lower edge plus a 0.8 um pull-back of the neighbouring plate's top
+   edge, cleared both enclosure markers, and the larger plate lowered the ratio slightly.
 3. **Extension hits a neighbour**: when extending an edge brings it within the cross-layer spacing
    of another shape (a new spacing marker), cut back instead. The ratio cost is a strip of plate.
 4. **Tile-only marker at the cell edge** (single cell clean, 2x2/3x3 not): a shape and the
    neighbouring cell's copy of another shape meet across the edge. Make the two edges flush (the
    same coordinate on both sides of the boundary) or pull one back to the spacing. Choose the side
-   whose edit keeps the polygon whole; `try-edit` refuses a split or a hole.
+   whose edit keeps the polygon whole; `try-edit` refuses a split or a hole. When the shape jogs
+   inward just short of the boundary (a notch the neighbour's copy faces), move the jog's
+   vertices out to the boundary coordinate (`vertices` with `dx`), not a box: a box that fills a
+   notch is refused when it would close a hole, and the vertex move is what cleared this marker
+   on a real case.
 5. **A marker of a derived layer** (a rule written on a layer the deck builds from others): edit the
    drawn layer it comes from, never the derived name.
+
+Not yet confirmed on a real case (preview before you trust it):
+
+6. **A width sliver left by a slimmed strip** (a minimum-width marker on a strip the layout engineer
+   band-trimmed): widen the sliver to the layer's minimum width plus 0.05 um with an `add` box on
+   the side away from the storage node's aggressors, or, when it carries no contact, cut it away.
 
 ## 7. Prohibitions
 

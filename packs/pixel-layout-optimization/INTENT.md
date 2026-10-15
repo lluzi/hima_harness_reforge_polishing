@@ -154,7 +154,11 @@ Flow root: /data/eda/project/hima_harness/pixel-runs
       into legal layouts with bounded edits it previews against the authority deck. Neither grades
       anything; one judge and one round decision aggregate both.
     - With `warmStart: prior-runs`, a Run starts from the best candidates of earlier Runs on the
-      same case and decks, re-judged by its own judge first.
+      same case and decks, re-judged by its own judge first, and its lever ledger includes what
+      those Runs' moves measured.
+    - The layout engineer pushes levers and leaves markers; the repair engineer clears them. A
+      lever ledger in every round decision tells the layout engineer what each kind of move has
+      measured, so proven levers are stacked in one round instead of found one per round.
     - Program tasks do the solving, judging, deciding and delivering.
     - The agent never grades its own candidates.
 
