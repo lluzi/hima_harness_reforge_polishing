@@ -553,6 +553,21 @@ def _predict(model, lay, case):
 # One front point
 # --------------------------------------------------------------------------- #
 
+# A min-ratio solve must be predicted to beat its own start by this much (percentage points of the
+# judged ratio) to be delivered; otherwise the start is (see _solve_point).
+_MIN_PREDICTED_GAIN_PCT = 0.02
+
+
+def _predicted_ratio(ctx, lay):
+    """The model's judged-definition ratio for ``lay`` (percent), or None without a model."""
+    pred = _predict(ctx.get("model"), lay, ctx["case"])
+    if not pred:
+        return None
+    defn = ((ctx.get("readiness") or {}).get("goal") or {}).get("ratioDefinition") or "broad"
+    r = (pred.get("ratioPct") or {}).get(defn)
+    return float(r) if r is not None else None
+
+
 def _solve_point(point, ctx):
     name = point.get("name")
     objective = point.get("objective")
@@ -658,6 +673,24 @@ def _solve_point(point, ctx):
         # the solve made it worse: deliver the starting layout and repair its own markers
         final = pre
         residual = markers.classify(pre_marks[1], table, ctx["base_marks"], ())
+
+    if objective == "min-ratio" and final is not None:
+        # A ratio solve the model itself expects no gain from, against its own start under the same
+        # model (the model's bias cancels), only moves shapes: a live Run's min-ratio points from
+        # its best legal candidate predicted a 0.03-point loss and measured a 0.28-point one, the
+        # storage-node link pushed back under the anode. Deliver the start (base plus this point's
+        # operators) as drawn instead, unless it carries more markers than the solve left.
+        p_pre = _predicted_ratio(ctx, layout.snap(pre, case.grid_um))
+        p_new = _predicted_ratio(ctx, layout.snap(final, case.grid_um))
+        if p_pre is not None and p_new is not None and p_new > p_pre - _MIN_PREDICTED_GAIN_PCT:
+            s1, s3, sfold = _drc_markers(layout.snap(pre, case.grid_um), case, ctx["sitecaps"],
+                                         ctx["workspace"])
+            if last_total is None or s1 + s3 <= last_total:
+                final = pre
+                residual = (markers.classify(sfold, table, ctx["base_marks"], ())
+                            if s1 + s3 else [])
+                info = {"status": "kept-start", "binding": [],
+                        "predictedRatioPct": {"start": p_pre, "solved": p_new}}
 
     # Finish the layout: clean, re-sync the outline copies, snap to grid; then repair what the
     # compactor left with verified bounded edits.

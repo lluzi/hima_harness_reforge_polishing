@@ -56,7 +56,10 @@ Commands that read a judged candidate's files take `--campaign <identity.campaig
    second: one clean repair is worth more than three half-done ones.
 4. **Keep only what previewed clean** (or strictly fewer markers with none new). Leave a candidate out
    rather than guess; say why in the plan's `hypothesis`.
-5. **Check and deliver** `resident-delivery.json` naming `state/round/repair-plan.json` as the single
+5. **Least ratio cost.** Among edit sets that preview clean, deliver the one that removes the least
+   shielding plate or adds the least storage-node area; the ledger's `bounded-edit repair` line
+   shows what earlier repairs cost.
+6. **Check and deliver** `resident-delivery.json` naming `state/round/repair-plan.json` as the single
    `kind: result` artifact and every file under `repair/round-NN/` as `kind: support`.
 
 ## 5. The plan (`pixel.repair-plan/1`)
@@ -85,15 +88,21 @@ Each was found on a real case and confirmed by the commercial deck. Coordinates 
 `markers` boxes; polygon indices from the same output's proposals.
 
 1. **Enclosure sliver** (an upper-layer edge a few nm onto a lower-layer edge, the lower shape just
-   inside): cut the upper edge back over the marker's length until the lower edge sits outside it
-   by more than the two layers' spacing (rule + 0.15 um). Or extend the upper edge outward until it
-   encloses the lower edge by the full rule (+0.1 um). Preview both; keep the one that verifies.
+   inside): extend the upper edge outward until it encloses the lower edge by the full rule
+   (+0.1 um), or cut it back over the marker's length until the lower edge sits outside it by more
+   than the two layers' spacing (rule + 0.15 um). **When the upper shape is a supply plate (a
+   shield), try the extension first:** a cut removes shielding and the ratio pays for it (on a real
+   case a 1 um cut raised the ratio by a third of a point, from a candidate that met the Goal to
+   one that missed it), while an extension keeps it or lowers the ratio. An extension that lands
+   within the same layer's spacing of another polygon is not a dead end: pull that polygon's
+   facing edge back in the same edit set (recipe 2). Cut only when no extension verifies, and say
+   in `expect` what the cut costs.
 2. **Stepped plate edge** (two adjacent enclosure markers along one plate edge at different
    heights): one cut or one extension per step fails because each step leaves the other. Square the
    whole edge with a single box across both steps, flush with the plate's side edges. A box that
    overhangs the plate's side by even 0.1 um makes a narrow jog: width and spacing markers.
-   A squared edge that comes too close to another polygon of the same layer (a new same-layer
-   spacing marker at its corner) is fixed in the same edit set: move that polygon's facing edge
+   A squared or extended edge that comes too close to another polygon of the same layer (a new
+   same-layer spacing marker at its corner) is fixed in the same edit set: move that polygon's facing edge
    back to the layer's spacing (an `edge` move of 0.5 to 1 um). On a real case this pair, a box
    squaring a supply plate's lower edge plus a 0.8 um pull-back of the neighbouring plate's top
    edge, cleared both enclosure markers, and the larger plate lowered the ratio slightly.

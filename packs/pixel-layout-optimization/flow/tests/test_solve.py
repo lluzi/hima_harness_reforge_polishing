@@ -106,6 +106,29 @@ class SolveTest(unittest.TestCase):
         self.assertEqual(plain["operators"], [])
         self.assertEqual(shielded["operators"], [shield])
 
+    def test_a_ratio_solve_the_model_expects_no_gain_from_delivers_its_start(self):
+        # A min-ratio solve predicted no better than its own start only moves shapes: the start is
+        # delivered as drawn (a live Run's solves from its best legal candidate predicted a small
+        # loss and measured a large one).
+        from unittest import mock
+        from pixelopt import numcmd, solve, layout
+        from tests.test_numcmd import NumCmdTest
+        NumCmdTest._judge_original_and_record(self)
+        numcmd.cmd_fit(self.ws)
+        self._write_plan([{"name": "ratio", "objective": "min-ratio"}])
+        with mock.patch.object(solve, "_predicted_ratio", return_value=5.0), \
+                mock.patch.object(solve, "_drc_markers", return_value=(0, 0, [])):
+            res = numcmd.cmd_solve(self.ws, 4)
+        if res["failed"]:
+            self.skipTest("min-ratio does not solve on the synthetic case: %s" % res["failed"])
+        meta = _load(os.path.join(self.ws, "cands", "r04-ratio", "meta.json"))
+        self.assertEqual(meta["solve"]["status"], "kept-start")
+        lay = layout.load_gds(os.path.join(self.ws, "cands", "r04-ratio", "pixel.gds"), self.case,
+                              top=self.case.raw["candidateTopCell"])
+        w1, h1 = lay.pitch(self.case)
+        self.assertAlmostEqual(w1, self.outline[0], places=3)
+        self.assertAlmostEqual(h1, self.outline[1], places=3)
+
 
 if __name__ == "__main__":
     unittest.main()

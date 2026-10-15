@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: pixel-layout-optimization
-version: 0.6.1
+version: 0.6.2
 flow:
   kind: sequence
   id: pixel
