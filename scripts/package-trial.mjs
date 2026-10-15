@@ -911,12 +911,14 @@ if (args[0] === '--finalize-native-obligations') {
     cpSync(path.join(root, 'docs/operations/third-party-rights.md'), path.join(resource, 'third-party/RIGHTS.md'));
     if (!internalCandidate && !value('--source-materials')) fail('native release requires its fixed corresponding-source materials');
     if (process.platform === 'darwin') {
+    cpSync(path.join(root, 'packages/desktop/assets/icon.icns'), path.join(app, 'Contents/Resources/aix.icns'));
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
+      .replace(/<key>CFBundleIconFile<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleIconFile</key><string>aix.icns</string>')
       .replace(/<key>CFBundleExecutable<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleExecutable</key><string>HimaHarness</string>')
-      .replace(/<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleDisplayName</key><string>HimaHarness</string>')
+      .replace(/<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleDisplayName</key><string>Empyrean aiX Harness</string>')
       .replace(/<key>CFBundleIdentifier<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleIdentifier</key><string>com.hima.harness.trial</string>')
-      .replace(/<key>CFBundleName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleName</key><string>HimaHarness</string>')
+      .replace(/<key>CFBundleName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleName</key><string>Empyrean aiX Harness</string>')
       .replace(/<key>CFBundleShortVersionString<\/key>\s*<string>[^<]*<\/string>/, `<key>CFBundleShortVersionString</key><string>${macVersion}</string>`)
       .replace(/<key>CFBundleVersion<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleVersion</key><string>1</string>');
     writeFileSync(info, plist);

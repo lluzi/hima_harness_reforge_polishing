@@ -6,13 +6,22 @@ import type { ReactElement } from 'react';
 
 export type GlyphName =
   | 'check' | 'dot' | 'ring' | 'hourglass' | 'retry' | 'square' | 'bar' | 'diamond'
-  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit';
+  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit'
+  | 'project' | 'insight' | 'folder' | 'package';
 
 /** The three glyphs drawn as a solid shape rather than an outlined stroke. */
 const FILLED = new Set<GlyphName>(['check', 'dot', 'square']);
 
 function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
   switch (name) {
+    case 'project':
+      return <><rect x="2.5" y="2.5" width="4" height="4" rx="1" strokeWidth={1.4}/><rect x="9.5" y="9.5" width="4" height="4" rx="1" strokeWidth={1.4}/><path d="M6.5 4.5h5v5M4.5 6.5v5h5" strokeWidth={1.4} strokeLinecap="round"/></>;
+    case 'insight':
+      return <><path d="M2.5 2.5v11h11M5.5 10V7M8.5 10V4M11.5 10V6" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></>;
+    case 'folder':
+      return <path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 2H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1Z" strokeWidth={1.4} strokeLinejoin="round"/>;
+    case 'package':
+      return <><path d="m8 2 5.5 3v6L8 14l-5.5-3V5Zm-5.5 3L8 8l5.5-3M8 8v6M5.2 3.5 10.8 6.5" strokeWidth={1.4} strokeLinejoin="round"/></>;
     case 'check':
       return <path d="M6.4 12.2 2.8 8.6 4.2 7.2 6.4 9.4 11.8 4 13.2 5.4Z" />;
     case 'dot':

@@ -27,7 +27,9 @@ import { bundledPackIds } from './bundled-packs.js';
 import { startDriver, type DriverSession } from './driver.js';
 
 /** The product's name: the window title, the menu's application name, and what the dock says. */
-const APP_NAME = 'HimaHarness';
+const APP_NAME = 'Empyrean aiX Harness';
+/** A visual upgrade must not move the existing cookie jar, window state or user data. */
+const USER_DATA_DIRECTORY = 'HimaHarness';
 /** App-process authority for a global Host exit. Never sent into a web page. */
 const desktopExitToken = randomBytes(32).toString('hex');
 
@@ -179,7 +181,7 @@ app.setName(APP_NAME);
 const userDataOverride = process.env.HIMA_USER_DATA;
 app.setPath('userData', userDataOverride !== undefined && userDataOverride !== ''
   ? path.resolve(userDataOverride)
-  : path.join(app.getPath('appData'), APP_NAME));
+  : path.join(app.getPath('appData'), USER_DATA_DIRECTORY));
 
 /** Where the window was last time, so it opens where the person left it. */
 interface WindowBounds { width: number; height: number; x?: number; y?: number }
@@ -335,11 +337,17 @@ function localPage(name: string, title: string, bodyHtml: string): string {
     `<title>${title}</title>`,
     '<style>',
     ':root{color-scheme:light dark}',
-    'body{margin:0;padding:48px;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+    'body{margin:0;padding:48px;font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:light-dark(#f4f7fb,#0a1729);color:light-dark(#122b4a,#edf3fb);max-width:960px;margin-inline:auto}',
+    '.aix-start-brand{display:flex;align-items:center;gap:16px;margin:32px 0 40px;color:light-dark(#082f68,#b6cef0);font-size:20px;font-weight:600;letter-spacing:-.03em}',
+    '.aix-start-brand img{width:56px;height:56px;border-radius:12px}',
+    '.aix-start-tagline{font-size:24px;letter-spacing:-.03em;line-height:1.3;margin:0 0 32px;color:light-dark(#506580,#b1c2d8)}',
+    '.aix-start-tagline strong{color:light-dark(#082f68,#b6cef0)}',
     'h1{font-size:18px;font-weight:600;margin:0 0 12px}',
-    'p{margin:0 0 12px;opacity:.75}',
-    'pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(127,127,127,.12);padding:12px;border-radius:6px;overflow:auto;max-height:60vh}',
+    'p{margin:0 0 12px;color:light-dark(#506580,#b1c2d8)}',
+    'pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:light-dark(#e7effa,#192b43);padding:20px;border:1px solid light-dark(#d9e2ee,#293d57);border-radius:10px;overflow:auto;max-height:60vh}',
     '</style>',
+    `<header class="aix-start-brand"><img alt="" src="data:image/png;base64,${readFileSync(path.join(packageDir, 'assets/icon.png')).toString('base64')}"><span>${APP_NAME}</span></header>`,
+    '<div class="aix-start-tagline">Orch<strong>e</strong>str<strong>a</strong>t<strong>i</strong>ng the E<strong>x</strong>traordinary.</div>',
     bodyHtml,
     '',
   ].join('\n'));
@@ -569,7 +577,7 @@ async function start(): Promise<void> {
     title: APP_NAME,
     // A driver's window is shown once the page is up, and without taking focus; see the end of `start`.
     show: !(driver || placement.requested),
-    backgroundColor: '#111827',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a1729' : '#f4f7fb',
     icon: path.join(packageDir, 'assets/icon.png'),
     webPreferences: {
       partition: SESSION_PARTITION,
@@ -598,7 +606,7 @@ async function start(): Promise<void> {
   // Ordinary close hides this same window and preserves the Host. Explicit Quit still owns cleanup.
   win.on('closed', () => { app.quit(); });
 
-  await win.loadFile(localPage('starting.html', `${APP_NAME} — starting`, `<h1>Starting ${APP_NAME}…</h1><p>Booting the hima profile.</p>`));
+  await win.loadFile(localPage('starting.html', `${APP_NAME} — starting`, `<h1>Starting ${APP_NAME}…</h1><p>Preparing your engineering workspace.</p>`));
 
   // The home comes before the host, because a host has nothing to boot without it. `pnpm run desktop`
   // on a machine that has never run HimaHarness used to open a window containing dsh's own "profile
@@ -895,7 +903,10 @@ if (!driver && !app.requestSingleInstanceLock()) {
     const open = mainWindow;
     if (open) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
   });
-  app.whenReady().then(start).catch((err: unknown) => {
+  app.whenReady().then(() => {
+    app.dock?.setIcon(path.join(packageDir, 'assets/icon.png'));
+    return start();
+  }).catch((err: unknown) => {
     process.stderr.write(`hima-desktop: ${String(err)}\n`);
     app.exit(EXIT_FAILED);
   });

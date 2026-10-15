@@ -1,0 +1,25 @@
+{
+  "initial_review": "20261015-aixui-639635fb",
+  "receipt_status": "complete",
+  "findings": [
+    {
+      "number": 1,
+      "status": "closed",
+      "validator": "aixui_review_validator",
+      "verification": "Reproduced real served-bundle ReferenceError, same tests pass 2/2 after DOM guard; related Electron served-bundle case passes 1/1",
+      "new_defects": []
+    },
+    {
+      "number": 2,
+      "status": "closed",
+      "validator": "aixui_adversarial",
+      "verification": "ICNS resources and exact bytes verified; actual packager block stamps upstream Electron plist before signing; development Dock uses same PNG",
+      "limits": "No full signed release or live Finder/Dock verification",
+      "new_defects": []
+    }
+  ],
+  "testing_gap": {
+    "native_manual_theme": "closed via actual native Appearance Light/Dark controls against opposite OS media"
+  },
+  "remaining_gate": "Full local regression has concrete ATCS and DBOS failures; not merged"
+}

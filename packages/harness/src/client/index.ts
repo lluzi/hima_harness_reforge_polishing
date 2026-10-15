@@ -12,6 +12,8 @@ import { InsightAnalysisCard } from './InsightAnalysisCard.js';
 import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { AIX_NAME, AiXHeroBrand, AiXName, AiXSymbol } from './aix-brand.js';
+import { AIX_STYLE } from './aix-style.js';
 
 const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run', 'hima_context', 'hima_execute'] as const;
 const WORKBENCH_KIND = 'hima-workbench';
@@ -43,15 +45,6 @@ export interface ClientContext {
 
 export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'];
 export const name = 'hima-guide';
-
-/** Hima's own mark, composed through the shell's brand seats. */
-function HimaMark({ size = 24, className }: { size?: number; className?: string }): ReactElement {
-  return createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true, className },
-    createElement('path', { d: 'M4 5v14M20 5v14M4 12h16M4 5l5-3M15 22l5-3', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' }));
-}
-function HimaName(): ReactElement {
-  return createElement('span', { className: 'hima-brand' }, 'HimaHarness');
-}
 
 function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id: string): void }): ReactElement {
   const [error, setError] = useState<string>();
@@ -92,7 +85,7 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const { run, stale } = useOwnedRun(sessionId);
   const status = run?.status;
   const body = run === undefined
-    ? 'Hima Workspace'
+    ? 'aiX Workspace'
     : createElement('span', null, 'Project ·',
         createElement(Glyph, { name: run.goalState === 'unknown' ? 'circle' : run.goalState === 'not-met' ? 'square' : run.goalState === 'met' ? 'check' : status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
         ` ${run.goalState === undefined && status === 'running' ? (run.currentNode ?? 'running') : runStatusSaid(run)?.said ?? statusSaid(status)}`,
@@ -146,15 +139,30 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
       title: current === undefined ? 'Choose a workspace and session to open the project' : 'Project — beside the conversation',
       'aria-label': 'Open the project beside the conversation', 'data-hima-control': 'open-workbench',
       onClick: () => { try { open(wide); setError(undefined); } catch (failure) { setError((failure as Error).message); } },
-    }, createElement(HimaMark, { size: 18 }), wide ? 'Project' : null),
+    }, createElement(Glyph, { name: 'project', size: 18 }), wide ? 'Project' : null),
     error ? createElement('p', { role: 'alert' }, error) : null,
     wide && current === undefined ? createElement('p', null, 'Choose a workspace to begin') : null);
 }
 
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => {
+    // The registration contract also runs without a browser, like native plugin CSS loaders.
+    if (typeof document === 'undefined') return () => undefined;
+    const body = document.body;
+    const alreadyBranded = body.classList.contains('aix-shell');
+    const style = document.createElement('style');
+    style.dataset.aixTheme = 'true';
+    style.textContent = AIX_STYLE + HIMA_STYLE;
+    document.head.append(style);
+    body.classList.add('aix-shell');
+    return () => {
+      style.remove();
+      if (!alreadyBranded) body.classList.remove('aix-shell');
+    };
+  });
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Hima Workspace',
-    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Project and Data Insight beside the conversation, with source-linked evidence.' }],
+    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'aiX Workspace',
+    guide: [{ order: 0, title: () => 'aiX Workspace', description: () => 'Project and Data Insight beside the conversation, with source-linked evidence.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   // C19: `uiWorkspace` (the native folder picker) is resolved lazily, inside the callback itself,
@@ -184,17 +192,16 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({ openRun }),
   }, CampaignChip));
   ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'hima', order: 40, label: () => 'HimaHarness',
+    name: 'settings.section', id: 'hima', order: 40, label: () => AIX_NAME,
     inject: () => ({ pickFolder }),
   }, SettingsSection));
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'hima-workbench',
     inject: () => ({ open: (wide: boolean) => { openRun(); if (wide) ctx.layout.toggleSidebar(); } }),
   }, WorkbenchEntry));
-  for (const slot of ['sidebar.brand.mark', 'conversation.hero.brand.mark'] as const) {
-    ctx.slots.inject(slot, () => ctx.slots.register({ name: slot, priority: -10 }, HimaMark));
-  }
-  ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, HimaName));
+  ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark', priority: -10 }, AiXSymbol));
+  ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -10 }, AiXHeroBrand));
+  ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, AiXName));
   ctx.slots.inject('tool.call.toolview', () => {
     const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun, toolName: key }) }, HimaRunCard));
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));

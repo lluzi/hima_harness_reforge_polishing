@@ -5,41 +5,22 @@
 export const HIMA_STYLE = `
 /* HIMA CLIENT TOKENS BEGIN */
 .hima-root{
-  color-scheme:light dark;
-  --hima-font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+  color-scheme:inherit;
+  --hima-font-ui:var(--aix-font-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif);
   --hima-font-mono:"SF Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --hima-fs-display:20px; --hima-fs-title:16px; --hima-fs-body:14px; --hima-fs-label:13px; --hima-fs-eyebrow:12px;
-  --hima-lh-tight:1.25; --hima-lh-body:1.5; --hima-track:.06em;
-  --hima-sp-1:4px; --hima-sp-2:8px; --hima-sp-3:12px; --hima-sp-4:16px; --hima-sp-5:20px; --hima-sp-6:24px; --hima-sp-8:32px;
-  --hima-r-s:4px; --hima-r-m:8px; --hima-r-l:12px;
-  --hima-paper:var(--dsw-alias-background-primary,#fbfaf7);
-  --hima-soft:var(--dsw-alias-fill-secondary,#f3f1ec);
-  --hima-glass:#17161a; --hima-glass-ink:#d9d4c8; --hima-glass-line:#ffffff1f;
-  --hima-line:var(--dsw-alias-border-l2,#e3dfd6); --hima-line-strong:#00000029;
-  --hima-ink:var(--dsw-alias-label-primary,#232120); --hima-ink-2:var(--dsw-alias-label-secondary,#615c55); --hima-ink-3:var(--dsw-alias-label-tertiary,#8a847b);
-  --hima-on-solid:#ffffff;
-  --hima-good:var(--dsw-alias-state-success-primary,#2f7a45); --hima-live:#b8532f; --hima-warn:var(--dsw-alias-state-warn-primary,#8e620d);
-  --hima-bad:var(--dsw-alias-state-error-primary,#ad3f36); --hima-accent:#4f5fd8; --hima-neutral:#8a847b;
-  --hima-shadow:0 1px 2px rgba(20,18,15,.06),0 10px 28px rgba(20,18,15,.08);
+  --hima-fs-display:28px;--hima-fs-title:18px;--hima-fs-body:14px;--hima-fs-label:13px;--hima-fs-eyebrow:12px;
+  --hima-lh-tight:1.3;--hima-lh-body:1.55;--hima-track:.055em;
+  --hima-sp-1:4px;--hima-sp-2:8px;--hima-sp-3:12px;--hima-sp-4:16px;--hima-sp-5:20px;--hima-sp-6:24px;--hima-sp-8:32px;
+  --hima-r-s:6px;--hima-r-m:10px;--hima-r-l:14px;
+  --hima-paper:var(--aix-paper,#fff);--hima-soft:var(--aix-soft,#f4f7fb);
+  --hima-glass:var(--aix-code,#091a31);--hima-glass-ink:var(--aix-code-ink,#d9e6f5);--hima-glass-line:#b6cef026;
+  --hima-line:var(--aix-border,#d9e2ee);--hima-line-strong:var(--aix-border-strong,#b8c8dc);
+  --hima-ink:var(--aix-ink,#122b4a);--hima-ink-2:var(--aix-muted,#506580);--hima-ink-3:var(--aix-caption,#627791);
+  --hima-on-solid:var(--aix-on-brand,#fff);
+  --hima-good:var(--aix-success,#24754d);--hima-live:var(--aix-brand,#082f68);--hima-warn:var(--aix-warning,#916109);
+  --hima-bad:var(--aix-error,#b13c45);--hima-accent:var(--aix-brand,#082f68);--hima-neutral:var(--aix-caption,#627791);
+  --hima-shadow:0 2px 4px #04172f08,0 12px 32px #04172f12;
   color:var(--hima-ink);font-family:var(--hima-font-ui);font-size:var(--hima-fs-body);line-height:var(--hima-lh-body);font-variant-numeric:tabular-nums;
-}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .hima-root{
-  --hima-paper:var(--dsw-alias-background-primary,#1c1b1c);--hima-soft:var(--dsw-alias-fill-secondary,#252422);
-  --hima-line:var(--dsw-alias-border-l2,#3a3733);--hima-line-strong:#ffffff29;
-  --hima-ink:var(--dsw-alias-label-primary,#ece8e0);--hima-ink-2:var(--dsw-alias-label-secondary,#b5afa4);--hima-ink-3:var(--dsw-alias-label-tertiary,#8f8a80);
-  --hima-on-solid:#1c1b1c;
-  --hima-good:var(--dsw-alias-state-success-primary,#8fcb9c);--hima-live:#e59a7a;--hima-warn:var(--dsw-alias-state-warn-primary,#dcb45f);
-  --hima-bad:var(--dsw-alias-state-error-primary,#e38f87);--hima-accent:#a3abff;--hima-neutral:#8f8a80;
-  --hima-shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
-}}
-:root[data-theme="dark"] .hima-root{
-  --hima-paper:var(--dsw-alias-background-primary,#1c1b1c);--hima-soft:var(--dsw-alias-fill-secondary,#252422);
-  --hima-line:var(--dsw-alias-border-l2,#3a3733);--hima-line-strong:#ffffff29;
-  --hima-ink:var(--dsw-alias-label-primary,#ece8e0);--hima-ink-2:var(--dsw-alias-label-secondary,#b5afa4);--hima-ink-3:var(--dsw-alias-label-tertiary,#8f8a80);
-  --hima-on-solid:#1c1b1c;
-  --hima-good:var(--dsw-alias-state-success-primary,#8fcb9c);--hima-live:#e59a7a;--hima-warn:var(--dsw-alias-state-warn-primary,#dcb45f);
-  --hima-bad:var(--dsw-alias-state-error-primary,#e38f87);--hima-accent:#a3abff;--hima-neutral:#8f8a80;
-  --hima-shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
 }
 /* HIMA CLIENT TOKENS END */
 .hima-root *{box-sizing:border-box}
@@ -53,18 +34,18 @@ export const HIMA_STYLE = `
 .hima-node:focus-visible{outline:none}
 .hima-node:focus-visible>rect[data-hima-control]{outline:2px solid var(--hima-accent);outline-offset:2px}
 .hima-button,.hima-icon-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);min-height:32px;font-size:var(--hima-fs-body);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .08s ease}
-.hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft);border-color:var(--hima-line-strong);box-shadow:var(--hima-shadow);transform:translateY(-1px)}
+.hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft);border-color:var(--hima-line-strong);box-shadow:0 1px 3px #082f6810;transform:none}
 .hima-button:active,.hima-icon-button:active{transform:translateY(0);box-shadow:none;background:color-mix(in srgb,var(--hima-ink) 8%,var(--hima-soft))}
-.hima-button:disabled,.hima-icon-button:disabled{opacity:.5;cursor:default}
+.hima-button:disabled,.hima-icon-button:disabled{opacity:.5;cursor:default;background:var(--hima-paper);color:var(--hima-ink-2);border-color:var(--hima-line)}
 .hima-button:disabled:hover,.hima-icon-button:disabled:hover{background:var(--hima-paper);border-color:var(--hima-line);box-shadow:none;transform:none}
 .hima-studio-secondary{background:transparent;color:var(--hima-ink-2)}
 .hima-studio-secondary:hover{background:var(--hima-soft);color:var(--hima-ink)}
 .hima-icon-button{padding:var(--hima-sp-1) var(--hima-sp-2);border-color:transparent}
 .hima-icon-button:hover{transform:none}
-.hima-primary{background:var(--hima-ink);color:var(--hima-on-solid);border-color:var(--hima-ink);font-weight:600}
-.hima-primary:hover{background:var(--hima-ink-2);border-color:var(--hima-ink-2)}
+.hima-primary{background:var(--hima-accent);color:var(--hima-on-solid);border-color:var(--hima-accent);font-weight:600}
+.hima-primary:hover{background:var(--aix-brand-hover,var(--hima-ink-2));border-color:var(--aix-brand-hover,var(--hima-ink-2))}
 @media (prefers-reduced-motion: reduce){.hima-button,.hima-icon-button{transition:background .15s ease,color .15s ease}.hima-button:hover,.hima-icon-button:hover,.hima-button:active,.hima-icon-button:active{transform:none}}
-.hima-brand{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-title);letter-spacing:-.04em;font-weight:650}
+.hima-brand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;font-size:var(--hima-fs-title);line-height:1.2;font-weight:600;white-space:nowrap}
 .hima-entry button{display:flex;align-items:center;gap:var(--hima-sp-2);width:100%;min-height:36px;border:0;border-radius:var(--hima-r-m);padding:var(--hima-sp-2) var(--hima-sp-3);background:transparent;color:var(--hima-ink);font-size:var(--hima-fs-body);cursor:pointer}
 .hima-entry button:hover{background:var(--hima-soft)}
 .hima-entry button:disabled{opacity:.5;cursor:default}
@@ -116,17 +97,18 @@ export const HIMA_STYLE = `
 .hima-root svg{vertical-align:-0.15em;flex:none}
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-.hima-studio{position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
-.hima-studio-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-1) var(--hima-sp-4);min-height:40px;border-bottom:1px solid var(--hima-line);flex:none}
-.hima-studio-header select{flex:1 1 140px;min-width:0}
+.hima-studio{container:hima-studio / inline-size;position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
+.hima-studio-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-3) var(--hima-sp-4);min-height:56px;border-bottom:1px solid var(--hima-line);background:var(--hima-paper);flex:none}
+.hima-studio-header select{flex:1 1 140px;min-width:0;min-height:34px;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2)}
 .hima-studio-header-actions{display:flex;flex-wrap:wrap;min-width:0;gap:var(--hima-sp-2);margin-inline-start:auto}
-.hima-studio-modes{display:flex;align-items:center;gap:var(--hima-sp-1);flex:none}
-.hima-studio-modes button{appearance:none;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);padding:var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;white-space:nowrap}
-.hima-studio-modes button[aria-selected=true]{background:var(--hima-soft);color:var(--hima-ink);font-weight:650}
+.hima-studio-modes{display:flex;align-items:center;gap:var(--hima-sp-1);flex:none;padding:3px;border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-soft)}
+.hima-studio-modes button{display:inline-flex;align-items:center;gap:6px;appearance:none;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);padding:var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;white-space:nowrap}
+.hima-studio-modes button[aria-selected=true]{background:var(--hima-accent);color:var(--hima-on-solid);font-weight:600;box-shadow:0 1px 3px #082f6812}
 .hima-insight-preparation{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3)}
 .hima-insight-preparation h2{margin:0;font-size:var(--hima-fs-title);font-weight:650}
 .hima-insight-preparation p{margin:0;max-width:520px;font-size:var(--hima-fs-label);color:var(--hima-ink-2);line-height:var(--hima-lh-body)}
 .hima-workbench-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.hima-workbench-body>.hima-config{flex:none;overflow:visible}
 .hima-libinsight{flex:1;min-height:0;display:flex;flex-direction:column}.hima-libinsight[hidden]{display:none}
 .hima-libinsight-bar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--hima-sp-2) var(--hima-sp-3);padding:var(--hima-sp-1) var(--hima-sp-4);border-bottom:1px solid var(--hima-line)}
 .hima-libinsight-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:var(--hima-sp-1)}
@@ -136,8 +118,8 @@ export const HIMA_STYLE = `
 .hima-libinsight-note{padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3);font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-libinsight-note p{margin:0;max-width:640px}.hima-libinsight-note pre{white-space:pre-wrap;max-height:240px;overflow:auto}
 .hima-workbench-body>.hima-campaign{height:clamp(420px,70vh,680px);min-height:420px;flex:none}
-.hima-memory-panel,.hima-team-panel{margin:var(--hima-sp-3);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:grid;gap:var(--hima-sp-3)}
-.hima-memory-panel>header,.hima-team-panel>header,.hima-team-card>header,.hima-child-transcript article>header,.hima-child-context article>header{display:flex;justify-content:space-between;align-items:center;gap:var(--hima-sp-2)}
+.hima-memory-panel,.hima-team-panel{flex:none;min-width:0;grid-template-columns:minmax(0,1fr);margin:var(--hima-sp-3);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:grid;gap:var(--hima-sp-3)}
+.hima-memory-panel>header,.hima-team-panel>header,.hima-team-card>header,.hima-child-transcript article>header,.hima-child-context article>header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:var(--hima-sp-2)}
 .hima-memory-panel h3,.hima-memory-panel h4,.hima-memory-panel p,.hima-team-panel h3,.hima-team-panel p{margin:0}
 .hima-memory-panel ul{margin:0;padding-left:20px}.hima-memory-warning{color:var(--hima-warn)}
 .hima-memory-editor,.hima-memory-candidates,.hima-team-card{display:grid;gap:var(--hima-sp-2);border-top:1px solid var(--hima-line);padding-top:var(--hima-sp-3)}
@@ -180,16 +162,16 @@ export const HIMA_STYLE = `
    scale 1 is a CSS pixel, so the same --hima-fs-* steps that size the rest of the sheet size the
    canvas's own labels, chips and badges too. */
 .hima-campaign{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.hima-masthead{display:flex;align-items:flex-start;gap:var(--hima-sp-3);height:66px;box-sizing:border-box;padding:var(--hima-sp-3) var(--hima-sp-4) 0;border-bottom:1px solid var(--hima-line);flex:none}
+.hima-masthead{display:flex;flex-direction:column;align-items:stretch;gap:var(--hima-sp-2);min-height:80px;box-sizing:border-box;padding:var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-masthead-id{flex:1;min-width:0}
 .hima-masthead h2{margin:0;font-size:var(--hima-fs-title);font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hima-masthead-sub{margin:3px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-masthead-sub{margin:6px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2);font-variant-numeric:tabular-nums;line-height:1.6;overflow-wrap:anywhere}
 .hima-masthead-seal{font-weight:600;color:var(--hima-ink)}
 .hima-masthead-seal-running{color:var(--hima-live)}
 .hima-masthead-seal-waiting,.hima-masthead-seal-cancelled,.hima-masthead-seal-ended-converged{color:var(--hima-warn)}
 .hima-masthead-seal-ended-goal-met{color:var(--hima-good)}
 .hima-masthead-seal-ended-goal-not-met,.hima-masthead-seal-ended-budget-exhausted{color:var(--hima-bad)}
-.hima-masthead-owner{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);color:var(--hima-ink-2);flex:none;white-space:nowrap}
+.hima-masthead-owner{display:flex;align-items:center;justify-content:space-between;gap:var(--hima-sp-2);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2);flex:none;flex-wrap:wrap}
 .hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2);transition:color .15s ease,border-color .15s ease}
 .hima-campaign-views button:hover{color:var(--hima-ink);border-bottom-color:var(--hima-line-strong)}
@@ -227,7 +209,7 @@ export const HIMA_STYLE = `
 .hima-canvas-attention span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
 .hima-canvas-attention-waiting{color:var(--hima-warn);background:var(--hima-soft)}
 .hima-canvas-attention-fence{color:var(--hima-ink-2);background:var(--hima-soft)}
-.hima-canvas{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow:hidden}
+.hima-canvas{position:relative;flex:1;min-height:0;min-width:0;background-color:var(--hima-soft);background-image:radial-gradient(var(--hima-line) .75px,transparent .75px);background-size:20px 20px;overflow:hidden}
 .hima-canvas svg{display:block;cursor:grab;touch-action:none}
 .hima-canvas-stale{opacity:.6}
 /* C19: 13px (the --hima-fs-label step), not the 12px eyebrow floor — the legend is read
@@ -496,12 +478,13 @@ export const HIMA_STYLE = `
 .hima-config-header{padding-bottom:var(--hima-sp-3);margin-bottom:var(--hima-sp-2);border-bottom:1px solid var(--hima-line-strong)}
 .hima-config-header h2{margin:0;font-size:var(--hima-fs-title);font-weight:650;letter-spacing:-.01em}
 .hima-config-header-sub{margin:4px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-.hima-config>section{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px var(--hima-sp-4);padding:var(--hima-sp-3) 0;border-bottom:1px solid var(--hima-line);align-items:start}
-.hima-config-eyebrow{font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-ink-2);text-transform:uppercase;padding-top:6px}
+.hima-config>section{display:grid;grid-template-columns:124px minmax(0,1fr);gap:8px var(--hima-sp-5);padding:var(--hima-sp-5) 0;border-bottom:1px solid var(--hima-line);align-items:start}
+.hima-config-eyebrow{font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-accent);text-transform:uppercase;padding-top:6px}
 .hima-config>section>*{grid-column:2;min-width:0}
 .hima-config>section>.hima-config-eyebrow{grid-column:1}
 .hima-config-detail{margin:0;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-config select,.hima-config input,.hima-config textarea{border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:6px var(--hima-sp-2);font-size:var(--hima-fs-label);min-width:0}
+.hima-config select,.hima-config input,.hima-config textarea{max-width:100%}
 .hima-config textarea{min-height:48px;resize:vertical;width:100%}
 .hima-config-field-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-config-field-row+.hima-config-field-row{margin-top:6px}
@@ -595,4 +578,13 @@ export const HIMA_STYLE = `
 .hima-analysis-card-error{color:var(--hima-bad);white-space:pre-wrap;margin:0}
 .hima-analysis-card-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--hima-sp-1)}
 .hima-analysis-card-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--hima-sp-2);align-items:center}
+@container hima-studio (max-width:560px){
+  .hima-config>section{grid-template-columns:minmax(0,1fr)}
+  .hima-config>section>*,.hima-config>section>.hima-config-eyebrow{grid-column:1}
+  .hima-config-input-row{grid-template-columns:minmax(0,1fr)}
+  .hima-config-input-row>*{grid-column:1;min-width:0}
+  .hima-config-field-row>span:first-child{min-width:0}
+  .hima-fields{grid-template-columns:minmax(0,1fr)}
+  .hima-config-header-sub,.hima-config-detail,.hima-memory-panel p{overflow-wrap:anywhere}
+}
 `;

@@ -19,6 +19,8 @@
     }
   },
   "files": [
+    "assets/**",
+    "THIRD-PARTY-NOTICES.md",
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "presets/**",

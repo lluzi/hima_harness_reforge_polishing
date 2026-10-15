@@ -15,7 +15,7 @@ test('the token sheet states a scale of five steps and nothing below 12 px', () 
   assert.ok(begins >= 0 && ends > begins, 'the sheet opens with one delimited token block');
   const tokens = HIMA_STYLE.slice(begins, ends);
   const steps = Object.fromEntries([...tokens.matchAll(/--hima-fs-([a-z]+):\s*(\d+)px/g)].map((m) => [m[1], Number(m[2])]));
-  assert.deepEqual(steps, { display: 20, title: 16, body: 14, label: 13, eyebrow: 12 });
+  assert.deepEqual(steps, { display: 28, title: 18, body: 14, label: 13, eyebrow: 12 });
   for (const [declaration, size] of HIMA_STYLE.matchAll(/font-size:\s*([^;}]+)/g)) {
     assert.match(size!.trim(), /^var\(--hima-fs-[a-z]+\)$/, `every size is a step of the scale: ${declaration}`);
   }

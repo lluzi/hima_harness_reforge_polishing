@@ -903,7 +903,7 @@ export function ReportBlockRow({ block: entry }: { block: ReportBlock }): ReactE
 function FailureRow({ error }: { error: HimaFailure }): ReactElement {
   return (
     <div className="hima-block">
-      <div className="hima-run-card-error">HimaHarness could not read this run</div>
+      <div className="hima-run-card-error">aiX Harness could not read this run</div>
       <div className="hima-mono">{error.code}</div>
       <div className="hima-muted">{error.message}</div>
     </div>
@@ -1076,7 +1076,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
         // with none of the dark glass, state colours or sizes the sheet defines at all.
         <div className="hima-run-card hima-root">
           <style>{HIMA_STYLE}</style>
-          <div className="hima-run-card-error">this HimaHarness call failed</div>
+          <div className="hima-run-card-error">this aiX Harness call failed</div>
           <div className="hima-muted hima-mono">{said === '' ? 'the tool reported an error with no text' : said}</div>
         </div>
       );

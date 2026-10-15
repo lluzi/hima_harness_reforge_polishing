@@ -1,0 +1,303 @@
+{
+  "status": "complete",
+  "verdict": "Not ready",
+  "scope": {
+    "base": "969cf62b8ae9ac8468ee070ab64c94b497ec34bf",
+    "branch": "aixui",
+    "head_sha": "969cf62b8ae9ac8468ee070ab64c94b497ec34bf",
+    "pr_url": null,
+    "files_changed": 22
+  },
+  "intent": "Unify HUG-DBOS desktop and client presentation with the Empyrean aiX visual system: coherent navy/ice themes, native theme ownership, SVG iconography, branded empty/start/error views and usable configuration layouts. Preserve Run controls, permissions, storage locations, existing navigation and user WIP. Verify the exact GUI and its contracts rather than EDA or model business effectiveness.",
+  "intent_confidence": "explicit",
+  "reviewers": [
+    "correctness",
+    "project-standards",
+    "testing",
+    "maintainability",
+    "adversarial"
+  ],
+  "findings": [
+    {
+      "#": 1,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "packages/harness/src/client/index.ts:149 -- const body = document.body;",
+        "test/contract/view.test.ts:234 -- effect: (callback) => callback(),",
+        "test/contract/view.test.ts:214 -- new Function('window', source)({ __ModuleLoader__: { load: (r: unknown) => loaded.push(r as never) } });",
+        "test/contract/view-run.test.ts:464 -- effect: (callback) => callback(),",
+        "test/contract/window.test.ts:112 -- effect: (callback) => callback(),",
+        "The three test modules import node:test and execute the returned module factory using createRequire; none supplies a document. scripts/run-contract-tests.mjs only preloads the SSH guard for local tests, not a DOM. This is source inspection; no test command was run by this reviewer."
+      ],
+      "file": "packages/harness/src/client/index.ts",
+      "first_evidence": "packages/harness/src/client/index.ts:149 -- const body = document.body;",
+      "independent_reviewers": [
+        "testing"
+      ],
+      "line": 149,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "testing"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Update the three served-bundle registration harnesses to evaluate the bundle with an isolated document implementing the DOM operations used by apply (or an existing real DOM environment), retain effect cleanup callbacks, and run their existing registration assertions. Assert style/class installation and cleanup, including the already-branded case; keep production apply's browser behavior intact.",
+      "title": "Adapt bundle contract tests to the new DOM effect",
+      "why_it_matters": "Existing served-bundle contract tests now throw ReferenceError before checking any slot registrations. view.test.ts, view-run.test.ts and window.test.ts evaluate the real client bundle in Node and immediately execute effect callbacks without a document, so the newly unconditional DOM effect breaks the required regression suite. Providing an isolated DOM to those harnesses also lets them verify that unloading removes the injected style and preserves a pre-existing branding class.",
+      "validation_status": "confirmed",
+      "validation_reason": "When the served-bundle tests reach apply(), test/contract/view.test.ts:214-234, view-run.test.ts:451-464 and window.test.ts:99-112 evaluate the module in Node and immediately invoke effects without a document, so the DOM effect newly added at packages/harness/src/client/index.ts:148-160 throws ReferenceError before registration assertions; the build entry and callers establish reachability, while incidence was not measured by running the suite."
+    },
+    {
+      "#": 2,
+      "autofix_class": "manual",
+      "confidence": 75,
+      "evidence": [
+        "packages/desktop/src/main.ts:581 -- icon: path.join(packageDir, 'assets/icon.png'),",
+        "Trigger: build and install a supported macOS arm64 package using scripts/package-trial.mjs. Its lines 855 and 858 select Electron.app and execute cpSync(electronApp, app, { recursive: true, dereference: false, verbatimSymlinks: true }).",
+        "The actual installed Electron template at node_modules/.pnpm/electron@44.2.0/node_modules/electron/dist/Electron.app/Contents/Info.plist:9-10 contains <key>CFBundleIconFile</key> followed by <string>electron.icns</string>.",
+        "scripts/package-trial.mjs:914-922 rewrites executable, display name, identifier, name and versions, then writes the plist; it leaves CFBundleIconFile intact. The copied desktop package is staged under the app resource directory at lines 861-862, so its assets/icon.png does not replace Contents/Resources/electron.icns.",
+        "packages/desktop/scripts/make-icon.mjs:85-87 emits only assets/icon.png. Targeted searches of packages/desktop/src and scripts/package-trial.mjs find no dock.setIcon, ICNS generation/copy, or CFBundleIconFile override. The new startup page embeds the PNG at packages/desktop/src/main.ts:349, so the in-window and installed native identities visibly diverge.",
+        "docs/specs/aixui/spec.zh-CN.md:25 requires the desktop title, startup/error page and App icon to adopt the same brand; docs/product-definition.md lists macOS arm64 as a delivery target. This is the new branding's interaction with the existing packaging path, not a request to rename persistent identities."
+      ],
+      "file": "packages/desktop/src/main.ts",
+      "first_evidence": "packages/desktop/src/main.ts:581 -- icon: path.join(packageDir, 'assets/icon.png'),",
+      "independent_reviewers": [
+        "adversarial"
+      ],
+      "line": 581,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "adversarial"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Generate a macOS ICNS asset from the same aiX artwork, install it into the packaged app's Contents/Resources before signing, and set CFBundleIconFile to that asset in scripts/package-trial.mjs. Keep the existing executable, bundle identifier and storage identities. For development launches, set app.dock?.setIcon to the existing PNG after readiness if the Dock must also show the brand.",
+      "title": "Packaged macOS installs retain the Electron app icon",
+      "why_it_matters": "A macOS user installing the packaged aiX upgrade still sees the Electron icon in Finder and the app switcher, despite the new aiX icon inside the startup page. The new PNG reaches the BrowserWindow and HTML, but the macOS packaging path copies Electron.app unchanged and retains its CFBundleIconFile pointing to electron.icns. This misses the explicit requirement that the App icon use the new brand on a supported delivery platform.",
+      "validation_status": "confirmed",
+      "validation_reason": "For a macOS arm64 package built by scripts/package-trial.mjs, the new aiX App-icon requirement at docs/specs/aixui/spec.zh-CN.md:26 remains unmet: packaging copies Electron 44.2.0's Electron.app at lines 854-858 and preserves its CFBundleIconFile=electron.icns at lines 914-922, while the changed artwork only replaces assets/icon.png and no packaging or desktop code installs a branded native icon; this newly exposes the existing packaging limitation through the aiX branding change, and installed-package incidence was not measured."
+    }
+  ],
+  "actionable_findings": [
+    {
+      "#": 1,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "packages/harness/src/client/index.ts:149 -- const body = document.body;",
+        "test/contract/view.test.ts:234 -- effect: (callback) => callback(),",
+        "test/contract/view.test.ts:214 -- new Function('window', source)({ __ModuleLoader__: { load: (r: unknown) => loaded.push(r as never) } });",
+        "test/contract/view-run.test.ts:464 -- effect: (callback) => callback(),",
+        "test/contract/window.test.ts:112 -- effect: (callback) => callback(),",
+        "The three test modules import node:test and execute the returned module factory using createRequire; none supplies a document. scripts/run-contract-tests.mjs only preloads the SSH guard for local tests, not a DOM. This is source inspection; no test command was run by this reviewer."
+      ],
+      "file": "packages/harness/src/client/index.ts",
+      "first_evidence": "packages/harness/src/client/index.ts:149 -- const body = document.body;",
+      "independent_reviewers": [
+        "testing"
+      ],
+      "line": 149,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "testing"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Update the three served-bundle registration harnesses to evaluate the bundle with an isolated document implementing the DOM operations used by apply (or an existing real DOM environment), retain effect cleanup callbacks, and run their existing registration assertions. Assert style/class installation and cleanup, including the already-branded case; keep production apply's browser behavior intact.",
+      "title": "Adapt bundle contract tests to the new DOM effect",
+      "why_it_matters": "Existing served-bundle contract tests now throw ReferenceError before checking any slot registrations. view.test.ts, view-run.test.ts and window.test.ts evaluate the real client bundle in Node and immediately execute effect callbacks without a document, so the newly unconditional DOM effect breaks the required regression suite. Providing an isolated DOM to those harnesses also lets them verify that unloading removes the injected style and preserves a pre-existing branding class.",
+      "validation_status": "confirmed",
+      "validation_reason": "When the served-bundle tests reach apply(), test/contract/view.test.ts:214-234, view-run.test.ts:451-464 and window.test.ts:99-112 evaluate the module in Node and immediately invoke effects without a document, so the DOM effect newly added at packages/harness/src/client/index.ts:148-160 throws ReferenceError before registration assertions; the build entry and callers establish reachability, while incidence was not measured by running the suite."
+    },
+    {
+      "#": 2,
+      "autofix_class": "manual",
+      "confidence": 75,
+      "evidence": [
+        "packages/desktop/src/main.ts:581 -- icon: path.join(packageDir, 'assets/icon.png'),",
+        "Trigger: build and install a supported macOS arm64 package using scripts/package-trial.mjs. Its lines 855 and 858 select Electron.app and execute cpSync(electronApp, app, { recursive: true, dereference: false, verbatimSymlinks: true }).",
+        "The actual installed Electron template at node_modules/.pnpm/electron@44.2.0/node_modules/electron/dist/Electron.app/Contents/Info.plist:9-10 contains <key>CFBundleIconFile</key> followed by <string>electron.icns</string>.",
+        "scripts/package-trial.mjs:914-922 rewrites executable, display name, identifier, name and versions, then writes the plist; it leaves CFBundleIconFile intact. The copied desktop package is staged under the app resource directory at lines 861-862, so its assets/icon.png does not replace Contents/Resources/electron.icns.",
+        "packages/desktop/scripts/make-icon.mjs:85-87 emits only assets/icon.png. Targeted searches of packages/desktop/src and scripts/package-trial.mjs find no dock.setIcon, ICNS generation/copy, or CFBundleIconFile override. The new startup page embeds the PNG at packages/desktop/src/main.ts:349, so the in-window and installed native identities visibly diverge.",
+        "docs/specs/aixui/spec.zh-CN.md:25 requires the desktop title, startup/error page and App icon to adopt the same brand; docs/product-definition.md lists macOS arm64 as a delivery target. This is the new branding's interaction with the existing packaging path, not a request to rename persistent identities."
+      ],
+      "file": "packages/desktop/src/main.ts",
+      "first_evidence": "packages/desktop/src/main.ts:581 -- icon: path.join(packageDir, 'assets/icon.png'),",
+      "independent_reviewers": [
+        "adversarial"
+      ],
+      "line": 581,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "adversarial"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Generate a macOS ICNS asset from the same aiX artwork, install it into the packaged app's Contents/Resources before signing, and set CFBundleIconFile to that asset in scripts/package-trial.mjs. Keep the existing executable, bundle identifier and storage identities. For development launches, set app.dock?.setIcon to the existing PNG after readiness if the Dock must also show the brand.",
+      "title": "Packaged macOS installs retain the Electron app icon",
+      "why_it_matters": "A macOS user installing the packaged aiX upgrade still sees the Electron icon in Finder and the app switcher, despite the new aiX icon inside the startup page. The new PNG reaches the BrowserWindow and HTML, but the macOS packaging path copies Electron.app unchanged and retains its CFBundleIconFile pointing to electron.icns. This misses the explicit requirement that the App icon use the new brand on a supported delivery platform.",
+      "validation_status": "confirmed",
+      "validation_reason": "For a macOS arm64 package built by scripts/package-trial.mjs, the new aiX App-icon requirement at docs/specs/aixui/spec.zh-CN.md:26 remains unmet: packaging copies Electron 44.2.0's Electron.app at lines 854-858 and preserves its CFBundleIconFile=electron.icns at lines 914-922, while the changed artwork only replaces assets/icon.png and no packaging or desktop code installs a branded native icon; this newly exposes the existing packaging limitation through the aiX branding change, and installed-package incidence was not measured."
+    }
+  ],
+  "triage_groups": [],
+  "pre_existing_findings": [],
+  "requirements_completeness": {
+    "plan_path": "docs/specs/aixui/spec.zh-CN.md",
+    "plan_source": "explicit",
+    "requirements": [
+      {
+        "id": "R1",
+        "requirement": "\u540c\u4e00\u7a97\u53e3\u4e2d\u7684\u539f\u751f\u804a\u5929\u4e0e Project \u5177\u6709\u4e00\u81f4\u7684\u51b7\u8272\u8868\u9762\u3001\u54c1\u724c\u5f3a\u8c03\u3001\u8f93\u5165\u6846\u3001\u9009\u4e2d\u6001\u3001\u6587\u5b57\u548c\u56fe\u6807\u3002",
+        "status": "met",
+        "evidence": "aix-style.ts supplies shared shell palette aliases; workbench-style.ts consumes them; brand components and glyphs replace existing presentation seats. Real-window light/dark palette assertions appear in unified-workbench.test.ts."
+      },
+      {
+        "id": "R2",
+        "requirement": "\u660e/\u6697/\u8ddf\u968f\u7cfb\u7edf\u4f7f\u7528\u539f\u751f\u4e3b\u9898\u8bbe\u7f6e\uff0c\u624b\u52a8\u660e\u6697\u4e0d\u88ab\u7cfb\u7edf\u4e3b\u9898\u8986\u76d6\u3002",
+        "status": "partially addressed",
+        "evidence": "Implementation consumes native body[data-ds-dark-theme] and preserves native preference ownership. System-theme propagation is covered; manual Light under a dark system and manual Dark under a light system remain unverified. This is a test gap, not a demonstrated override defect."
+      },
+      {
+        "id": "R3",
+        "requirement": "\u542f\u52a8\u548c\u7a7a\u4f1a\u8bdd\u5c55\u793a\u65b0\u6807\u8bb0\u4e0e\u6807\u8bed\uff0c\u539f\u751f\u5de5\u4f5c\u533a\u3001\u6743\u9650\u548c\u8f93\u5165\u4ecd\u53ef\u4f7f\u7528\u3002",
+        "status": "met",
+        "evidence": "desktop/src/main.ts brands startup/error pages; aix-brand.tsx and client/index.ts replace the empty-session brand seat while retaining native workspace, permission and composer seats. The separate App icon boundary remains incomplete on macOS, as finding #2 records."
+      },
+      {
+        "id": "R4",
+        "requirement": "\u914d\u7f6e\u3001\u56fe\u3001\u7ed3\u679c\u3001\u62a5\u544a\u3001Data Insight\u3001Pack \u7ba1\u7406\u548c\u8bbe\u7f6e\u53ef\u6253\u5f00\u4e0e\u64cd\u4f5c\uff1b\u5207\u6362\u4e0d\u6e05\u7a7a\u8349\u7a3f\u6216\u6539\u53d8 owner\u3002",
+        "status": "met",
+        "evidence": "The diff retains existing control IDs, registrations, navigation handlers and ownership paths; configuration layout changes remain within the workbench styles. Three desktop workflows were reported passing by dispatch. This is diff coverage, not exhaustive acceptance of every screen."
+      },
+      {
+        "id": "R5",
+        "requirement": "\u684c\u9762\u548c\u7a84\u9762\u677f\u53ef\u7528\uff0c\u7126\u70b9/\u7981\u7528/hover \u4e0e\u9519\u8bef/\u8b66\u544a/\u672a\u77e5\u53ef\u533a\u5206\u3002",
+        "status": "met",
+        "evidence": "workbench-style.ts adds narrow-pane container rules and retains semantic status, focus, disabled and hover styling. unified-workbench.test.ts exercises a 1440px window and narrow configuration bounds."
+      },
+      {
+        "id": "R6",
+        "requirement": "\u4fdd\u7559\u539f\u7528\u6237\u6570\u636e\u76ee\u5f55\u3001\u4e1a\u52a1/\u5b58\u50a8\u8eab\u4efd\u53ca\u7528\u6237\u539f\u6709\u672a\u63d0\u4ea4\u5de5\u4f5c\u3002",
+        "status": "met",
+        "evidence": "desktop/src/main.ts separates display name from USER_DATA_DIRECTORY=HimaHarness; storage/API/environment identities are retained. Dispatch excluded the two pre-existing dirty test files and unrelated materials; this leaf made no project changes and did not independently repeat their byte comparison."
+      }
+    ],
+    "additional_plan_requirements": [
+      {
+        "requirement": "Desktop title, startup/error pages and App icon share the aiX brand (spec behavior boundary 7).",
+        "status": "partially addressed",
+        "finding_numbers": [
+          2
+        ],
+        "evidence": "Title, HTML and PNG artwork are changed; macOS packaging still references Electron electron.icns."
+      }
+    ],
+    "implementation_units": [],
+    "unrequested_behavior_rules": [],
+    "reverse_check": "No additional unrequested user/caller behavior rule was identified in the reviewed diff. Presentation, font embedding, glyphs and native branding changes serve the stated plan.",
+    "delivery_workflow": "Independent review and valid-finding fixes precede commit, push, SHA verification and merge; those planned steps are outside this pre-shipping review."
+  },
+  "learnings": [],
+  "agent_native_gaps": [],
+  "deployment_notes": [],
+  "residual_risks": [],
+  "testing_gaps": [
+    "Native preference ownership remains an uncovered acceptance scenario: test/contract/unified-workbench.test.ts:134-171 changes prefers-color-scheme through CDP and verifies the native dark attribute and palette, but never selects manual Light with a dark system or manual Dark with a light system. Exercise both combinations through native Appearance settings and verify shell, Project, and conversation draft retain the selected state, as required by docs/specs/aixui/spec.zh-CN.md:32. This is a verification gap; source inspection found no demonstrated preference-override defect. Corroborated by correctness, project-standards, and testing in separate contexts on the same model."
+  ],
+  "coverage": {
+    "depth": "full",
+    "reviewer_roster": [
+      {
+        "reviewer": "correctness",
+        "tier": "session",
+        "reason": "always-on"
+      },
+      {
+        "reviewer": "project-standards",
+        "tier": "mid",
+        "reason": "root AGENTS.md governs all scoped files"
+      },
+      {
+        "reviewer": "testing",
+        "tier": "mid",
+        "reason": "new desktop regressions and intentional presentation expectation changes"
+      },
+      {
+        "reviewer": "maintainability",
+        "tier": "mid",
+        "reason": "large executable UI delta across existing modules"
+      },
+      {
+        "reviewer": "adversarial",
+        "tier": "session",
+        "reason": "composition/lifecycle and visual identity across native shell and package"
+      }
+    ],
+    "notes": [
+      "Instruction-file fallback AGENTS.md governs all reviewed paths.",
+      "Two pre-existing task-effects dirty files were explicitly excluded; other untracked materials excluded as listed.",
+      "All five reviewer roles ran on gpt-6.1-sol/high under the repository model-policy override.",
+      "No project file mutations were permitted to reviewers.",
+      "Full local regression is running; three real desktop workflows and 56 focused local checks passed. Delivery/merge are later steps, not omissions in this pre-shipping code review.",
+      "Cross-model pass: not run under the active repository model allocation (native Codex review, external Claude review cancelled). The adversarial lens ran in a separate Codex context; it is not different-model corroboration.",
+      "Stage 5 retained two distinct concrete findings after source inspection; neither is a testing-only absence claim or a speculative advisory. The DOM effect breaks existing registration harnesses, while unchanged macOS packaging is newly relevant to the explicit App icon branding change.",
+      "Confidence suppression: 0 at anchor 50 and 0 at anchor 25. Malformed findings: 0; malformed reviewer returns: 0. first_evidence_backfilled: 0; 75/100 findings demoted for missing first_evidence: 0.",
+      "Mode-aware primary-to-soft-bucket demotions: 0. Three repeated native manual-theme test gaps were deduplicated into one testing gap. No residual risks or pre-existing findings were admitted.",
+      "Settled-decision suppression evaluated against the explicit plan: no settled decisions supplied and no preference conflicts found. No deletion-oriented findings or protected-artifact cleanup claims were present.",
+      "Validator batch completed within the collection bound: confirmed 2, rejected 0, unresolved 0, malformed 0, failed 0, shortcut-skipped 0. Both findings are confirmed by independent source inspection; neither runtime suite incidence nor installed-package incidence was measured by the validator.",
+      "Protected-subject classification: neither the Node test-harness DOM failure nor the macOS artwork packaging gap alleges one of the eight protected failure subjects; no reclassification or degraded blocker was required.",
+      "Requirements completeness describes corresponding work in the diff separately from acceptance evidence. Manual native preference overrides remain unverified, without a demonstrated implementation defect. The macOS App icon is an incomplete explicit branding requirement, already represented by finding #2.",
+      "Commit, push, remote SHA verification and merge are subsequent delivery steps after this review and any accepted fixes; their pending state is not an unimplemented UI requirement.",
+      "No local apply was authorized or performed. No cross-model peer job exists or requires cleanup. Learnings, agent-native and deployment-verification reviewers were not selected."
+    ],
+    "compound_packs": {
+      "roots": [],
+      "warnings": [],
+      "errors": []
+    },
+    "validation": {
+      "outcome": "verdicts",
+      "confirmed": 2,
+      "rejected": 0,
+      "unresolved": 0,
+      "malformed": 0,
+      "failed": 0,
+      "shortcut_skipped": 0,
+      "protected_subject_reclassifications": 0
+    },
+    "suppressed_by_confidence": {
+      "50": 0,
+      "25": 0
+    },
+    "malformed_findings": 0,
+    "malformed_returns": 0,
+    "first_evidence_backfilled": 0,
+    "missing_first_evidence_demotions": 0,
+    "mode_aware_demotions": 0,
+    "settled_preference_suppressed": 0,
+    "failed_reviewers": [],
+    "bound_exceeded": [],
+    "cross_model": {
+      "selected": false,
+      "target": null,
+      "route": null,
+      "preference_source": "instructions",
+      "outcome": "in-process-fallback",
+      "artifact": null,
+      "coverage": "Cross-model pass: not run under the active repository model allocation (native Codex review, external Claude review cancelled). The adversarial lens ran in a separate Codex context; it is not different-model corroboration."
+    }
+  },
+  "verdict_reasoning": "The explicit macOS App icon requirement is incomplete (#2), and the new DOM effect breaks existing served-bundle contract harnesses when they reach apply() (#1). Fix both, verify the affected contracts and installed macOS icon, and close the manual-theme acceptance gap before merging. The two findings remain P2; Not ready reflects incomplete explicit scope and verification, not a severity escalation.",
+  "fix_order": [
+    1,
+    2
+  ],
+  "artifact_path": "/tmp/compound-engineering-502/ce-code-review/20261015-aixui-639635fb",
+  "run_id": "20261015-aixui-639635fb"
+}

@@ -131,6 +131,65 @@ async function finish(d: BootedDriver, browser?: Inspector) {
   await d.dispose();
 }
 
+test('aiX branding uses the native theme and keeps configuration usable in a narrow pane', async t => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port,
+    window: { width: 1440, height: 960 }, theme: 'light', env: { HIMA_TEST_SILENT_AGENT: '1' } });
+  if (!d) { await home.h.dispose(); return; }
+  let browser: Inspector | undefined;
+  try {
+    browser = await inspectWindow(port);
+    await prepareSession(d, browser);
+    await fillStart(d, browser);
+    await browser.wait(`document.fonts.check('14px "aiX Manrope"')`);
+    assert.equal(await browser.evaluate(`document.body.innerText.includes('Into the Unknown')`), false,
+      'the branded empty-session lockup replaces the generic shell headline');
+    assert.equal(await browser.evaluate(`document.querySelector('.aix-tagline')?.textContent`), 'Orchestrating the Extraordinary.');
+    assert.ok(await browser.evaluate<number>(`document.querySelector('[data-hima-region="configuration"]').getBoundingClientRect().height`) >= 400,
+      'configuration stays usable above the memory panel instead of shrinking to its header');
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(255, 255, 255)');
+    assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#ffffff');
+    await capture(d, browser, 'aix-configuration-light');
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await browser.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(16, 29, 48)');
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#101d30');
+    await capture(d, browser, 'aix-configuration-dark');
+    // Select the actual native Appearance controls: a manual choice must override OS media.
+    await browser.mark('button[aria-haspopup="dialog"]', 'native-settings');
+    assert.ok((await d.click('native-settings')).ok);
+    await browser.wait(`document.querySelector('[role="dialog"]')?.textContent.includes('Appearance')`);
+    await browser.markText('[role="dialog"] button', 'Light', 'native-theme-light');
+    assert.ok((await d.click('native-theme-light')).ok);
+    await browser.wait(`!document.body.hasAttribute('data-ds-dark-theme')`);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#ffffff');
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(255, 255, 255)');
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await browser.markText('[role="dialog"] button', 'Dark', 'native-theme-dark');
+    assert.ok((await d.click('native-theme-dark')).ok);
+    await browser.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
+    assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#101d30');
+    assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(16, 29, 48)');
+    await capture(d, browser, 'aix-native-appearance');
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
+    await browser.wait(`!document.querySelector('[role="dialog"]')`);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    await browser.send('Emulation.setDeviceMetricsOverride', { width: 860, height: 900, deviceScaleFactor: 1, mobile: false });
+    assert.equal(await browser.evaluate(`document.documentElement.scrollWidth > innerWidth`), false);
+    assert.equal(await browser.evaluate(`(() => {const e=document.querySelector('[data-hima-region="configuration"]');return e.scrollWidth<=e.clientWidth+1;})()`), true,
+      'a narrow configuration pane does not require horizontal scrolling');
+    assert.equal(await browser.evaluate(`(() => {
+      const pane=document.querySelector('[data-hima-region="studio"]').getBoundingClientRect();
+      return [...document.querySelectorAll('.hima-studio-header button')].every(e=>{const r=e.getBoundingClientRect();return r.left>=pane.left-1&&r.right<=pane.right+1;});
+    })()`), true);
+    await capture(d, browser, 'aix-configuration-narrow');
+  } finally { await finish(d, browser); }
+});
+
 test('Guide keeps its conversation while Campaign and Data Insight remain peer modes', async t => {
   const home = await localHome(t, { sleepSeconds: 0 });
   if (!home) return;
@@ -322,7 +381,7 @@ test('conversation draft, native files and verified reports share one workspace 
     assert.equal(started.run.control?.guideSessionId, sessionId);
     assert.notEqual(started.run.control?.owner, sessionId, 'the Guide remains separate from the execution owner');
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true);
-    assert.equal(await browser.evaluate('document.body.innerText.includes(\'Hima Workspace\')'), true);
+    assert.equal(await browser.evaluate('document.body.innerText.includes(\'aiX Workspace\')'), true);
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);

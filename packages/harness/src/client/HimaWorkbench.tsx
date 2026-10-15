@@ -194,8 +194,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         replaced with an icon-only control that text could not still match. */}
     <header className='hima-studio-header'>
       <div className='hima-studio-modes' role='tablist' aria-label='Hima work mode'>
-        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>Project</button>
-        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>Data Insight</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}><Glyph name='project'/>Project</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}><Glyph name='insight'/>Data Insight</button>
       </div>
       {address.kind !== 'campaign' ? null : <select aria-label='Project on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
         <option value=''>Select a project</option>
@@ -213,8 +213,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             Slice D: `hima-studio-secondary` marks these as the row's non-essential actions (ported
             from `demo/andes-openc910`); the marker now reads in `workbench-style.ts` as a muted,
             fill-less button, so the row's primary actions stand out from these. */}
-        <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
-        <button className='hima-button hima-studio-secondary' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
+        <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'><Glyph name='folder'/>Files & code</button>
+        <button className='hima-button hima-studio-secondary' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}><Glyph name='package'/>Pack & assets</button>
       </div>
     </header>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}

@@ -1,4 +1,4 @@
-// The Campaign tab's one-line masthead (66 px): the Campaign's name, its status seal word, the node
+// The Campaign tab's responsive masthead: the Campaign's name, its status seal word, the node
 // it stands at, its generation, an elapsed figure that ticks once a second while the Run is running,
 // and where its Budget stands. A non-owner session sees who owns the Run and one way to reach them,
 // and no business control — Task 6 adds emergency Pause/Stop to the card footer and the Diagnostics

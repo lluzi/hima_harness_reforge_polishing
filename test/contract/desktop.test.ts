@@ -221,7 +221,7 @@ test('pnpm run desktop --site local on a machine that has never run it: the shel
     assert.ok(opened.ok, `open /hima/: ${JSON.stringify(opened)}`);
     assert.equal(opened.status, 200, `the workbench page answered ${String(opened.status)}`);
     assert.equal(opened.url, `${host.origin}/hima/`);
-    assert.equal(opened.title, 'HimaHarness', 'the window keeps its own title over the page');
+    assert.equal(opened.title, 'Empyrean aiX Harness', 'the window keeps its own title over the page');
 
     // The fence stands in driver mode: anything outside the host's origin is refused in its words.
     for (const outside of ['http://example.com/', 'file:///etc/hosts', `http://127.0.0.1:${String(Number(port) + 1)}/hima/`]) {
