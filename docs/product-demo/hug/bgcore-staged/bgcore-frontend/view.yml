@@ -1,0 +1,53 @@
+# Display only: how the Live tab draws a bgcore front-end Project as six stations. The sizing
+# engineer is the one AI station; the re-test on the written-back cell is the independent check, and
+# its back edge returns to sizing when a line still misses.
+title: "bgcore: IP package to sized schematic"
+stations:
+  - id: spec
+    label: IP package and spec
+    row: 0
+    about: Reads topology, interface and metrics, and fixes the spec sheet the checks judge against.
+    checklist:
+      - { label: Read the IP package and spec sheet, nodes: [read-spec] }
+  - id: schematic
+    label: Schematic
+    row: 1
+    about: Draws bgcore and its loop-probe variant from the IP package in the design tool.
+    checklist:
+      - { label: "Draw bgcore and bgcore_stb", nodes: [generate-schematic] }
+  - id: testbench
+    label: Testbenches
+    row: 1
+    about: Two testbenches with stimuli, all seven pins wired and the design variables declared.
+    checklist:
+      - { label: Build the testbenches, nodes: [build-testbench] }
+  - id: platform
+    label: Simulation platform
+    row: 2
+    about: Eight tests with the spec limits attached; the baseline runs at the default sizes.
+    checklist:
+      - { label: "8 tests, baseline at default sizes", nodes: [platform-baseline] }
+  - id: sizing
+    label: Sizing engineer
+    row: 3
+    about: AI agent that sizes 14 variables against the Goal, global search then local refinement.
+    checklist:
+      - { label: Size the circuit against the Goal, nodes: [size-circuit] }
+  - id: retest
+    label: Independent re-test
+    row: 4
+    about: Writes the best sizes back to the original cell, after your approval, and re-runs every line.
+    checklist:
+      - { label: Write back and re-test every line, nodes: [writeback-retest] }
+edges:
+  - { from: spec, to: schematic }
+  - { from: schematic, to: testbench }
+  - { from: testbench, to: platform }
+  - { from: platform, to: sizing, label: baseline }
+  - { from: sizing, to: retest, label: best sizes }
+  - { from: retest, to: sizing, label: line missed, back: true }
+metrics:
+  - { label: "VBG @3.3 V", node: size-circuit, path: [best, vbg33_mv], unit: mV }
+  - { label: TC, node: size-circuit, path: [best, tc_ppm], unit: ppm/°C, better: lower, goal: max_tc_ppm }
+  - { label: Phase margin, node: size-circuit, path: [best, pm_deg], unit: "°", better: higher, goal: min_pm_deg }
+  - { label: IQ, node: size-circuit, path: [best, iq_ua], unit: µA, better: lower, goal: max_iq_ua }

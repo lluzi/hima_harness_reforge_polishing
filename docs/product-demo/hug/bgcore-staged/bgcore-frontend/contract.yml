@@ -1,0 +1,143 @@
+id: bgcore-frontend
+version: 0.1.0
+title: bgcore bandgap front end, IP package to sized schematic
+status: development
+minimumHarnessVersion: 0.3.0
+budget:
+  timeBoxMs: 3600000
+  closingReserveMs: 300000
+  minimumGenerations: 1
+inputs:
+- name: ipPackage
+  description: "Site directory of the bgcore IP package (topology, interface, metrics)."
+- name: workspaceRoot
+  description: "Campaign-private output root allowed by the Site Permit."
+outputs:
+- name: retest
+  path: state/retest.json
+  reader: bgcore-retest
+  description: "The re-test of every spec line on the written-back cell."
+environment:
+  wrappers:
+  - python3
+workspace:
+  source: pack
+  copy:
+  - stage.py
+tools:
+- id: read-spec
+  file: flow/stage.py
+  description: "Read the IP package (topology, interface, metrics) and fix the spec sheet and test plan."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: generate-schematic
+  file: flow/stage.py
+  description: "Draw the bgcore schematic and its loop-probe (STB) variant from the IP package topology."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: build-testbench
+  file: flow/stage.py
+  description: "Build the two testbenches: stimuli, DUT pins and the design variables."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: platform-baseline
+  file: flow/stage.py
+  description: "Create the 8-test simulation platform with limits attached and run the baseline at default sizes."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: size-circuit
+  file: flow/stage.py
+  description: "Size the circuit against the Goal on the simulation platform."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - retest
+    knowledge:
+    - sizing.md
+    artifactPrefix: sizing
+    produces: retest
+- id: writeback-retest
+  file: flow/stage.py
+  description: "Write the best sizes back to the original cell and re-run every test as the independent check."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+rules:
+- lines-pass
+goal:
+  vbg_v:
+    type: number
+    unit: V
+    min: 1.0
+    max: 1.4
+    default: 1.2
+  max_iq_ua:
+    type: number
+    unit: uA
+    min: 0.5
+    max: 20
+    default: 3
+  max_tc_ppm:
+    type: number
+    unit: ppm/C
+    min: 1
+    max: 500
+    default: 100
+  min_pm_deg:
+    type: number
+    unit: deg
+    min: 30
+    max: 90
+    default: 60
+  min_psrr_db:
+    type: number
+    unit: dB
+    min: 0
+    max: 100
+    default: 40
+knowledge:
+- file: sizing.md
+  purpose: "How the sizing engineer works."

@@ -1,0 +1,6 @@
+id: lines-pass
+version: "1"
+title: Every spec line passes on the re-test
+requires: [{ type: bgcore_lines_failed }]
+subject: { type: bgcore_lines_failed }
+predicate: { op: eq, threshold: 0, unit: count }

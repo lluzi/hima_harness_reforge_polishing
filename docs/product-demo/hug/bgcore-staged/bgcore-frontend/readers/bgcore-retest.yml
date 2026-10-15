@@ -1,0 +1,7 @@
+id: bgcore-retest
+version: "1"
+file: tools/read-retest.py
+argv: [python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: bgcore.retest/1
+emits:
+  - bgcore_lines_failed

@@ -1,0 +1,42 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tasks.json",
+ "$defs": {
+  "read-spec-input": {
+   "type": "object"
+  },
+  "read-spec-output": {
+   "type": "object"
+  },
+  "generate-schematic-input": {
+   "type": "object"
+  },
+  "generate-schematic-output": {
+   "type": "object"
+  },
+  "build-testbench-input": {
+   "type": "object"
+  },
+  "build-testbench-output": {
+   "type": "object"
+  },
+  "platform-baseline-input": {
+   "type": "object"
+  },
+  "platform-baseline-output": {
+   "type": "object"
+  },
+  "size-circuit-input": {
+   "type": "object"
+  },
+  "size-circuit-output": {
+   "type": "object"
+  },
+  "writeback-retest-input": {
+   "type": "object"
+  },
+  "writeback-retest-output": {
+   "type": "object"
+  }
+ }
+}

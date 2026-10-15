@@ -1,0 +1,4 @@
+values:
+  bgcore_lines_failed:
+    unit: count
+    description: Spec lines that miss their limit on the re-test. (source measured)

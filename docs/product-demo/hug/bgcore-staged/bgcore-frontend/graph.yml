@@ -1,0 +1,37 @@
+schema: hima-flow/1
+id: bgcore-frontend
+version: 0.1.0
+flow:
+  kind: sequence
+  id: bgcore
+  steps:
+  - kind: task
+    id: read-spec
+    tool: read-spec
+    inputs: {IP_PACKAGE: {source: runInput, path: [ipPackage]}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/read-spec-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/read-spec-output'}}}
+  - kind: task
+    id: generate-schematic
+    tool: generate-schematic
+    inputs: {PREV: {source: committedOutput, taskId: read-spec, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/generate-schematic-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/generate-schematic-output'}}}
+  - kind: task
+    id: build-testbench
+    tool: build-testbench
+    inputs: {PREV: {source: committedOutput, taskId: generate-schematic, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/build-testbench-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/build-testbench-output'}}}
+  - kind: task
+    id: platform-baseline
+    tool: platform-baseline
+    inputs: {PREV: {source: committedOutput, taskId: build-testbench, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/platform-baseline-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/platform-baseline-output'}}}
+  - kind: task
+    id: size-circuit
+    tool: size-circuit
+    inputs: {PREV: {source: committedOutput, taskId: platform-baseline, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/size-circuit-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/size-circuit-output'}}}
+  - kind: task
+    id: writeback-retest
+    tool: writeback-retest
+    inputs: {PREV: {source: committedOutput, taskId: size-circuit, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/writeback-retest-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/writeback-retest-output'}}}
