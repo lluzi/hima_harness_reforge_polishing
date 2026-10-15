@@ -35,7 +35,8 @@
     "convergeBandPct": {"type": "number"},
     "maxRounds": {"type": "number"},
     "convergePatienceRounds": {"type": "number"},
-    "outlineMode": {"enum": ["target", "fixed"]}
+    "outlineMode": {"enum": ["target", "fixed"]},
+    "warmStart": {"enum": ["off", "prior-runs"]}
    }
   },
   "options": {

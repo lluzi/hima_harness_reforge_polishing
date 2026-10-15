@@ -1,0 +1,9 @@
+id: pixel-repair-plan
+version: "1"
+file: tools/read-pixel.py
+argv: [python3, '${READER}', repair-plan, '${REPORT}', '${OUT}', '${WORKSPACE}']
+reportKind: pixel.repair-plan/1
+emits:
+  - pixel_repair_plan_error_count
+  - pixel_repair_count
+  - pixel_repair_edit_count

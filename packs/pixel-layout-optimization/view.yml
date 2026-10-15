@@ -21,6 +21,11 @@ stations:
     about: AI agent that plans this round's edits to the pixel layout.
     checklist:
       - { label: Plan the round's edits, nodes: [plan-round] }
+  - id: repair
+    label: Repair engineer
+    about: AI agent that turns the last round's near-misses into legal layouts with small verified edits.
+    checklist:
+      - { label: Repair the near-misses, nodes: [repair-round] }
   - id: checks
     label: Checks
     about: Runs the candidate through DRC, LVS, extraction and transmittance, then judges it.
@@ -41,6 +46,8 @@ edges:
   - { from: case, to: design }
   - { from: design, to: engineer }
   - { from: engineer, to: checks, label: candidate }
+  - { from: repair, to: checks, label: repair }
+  - { from: decision, to: repair, label: near-misses, back: true }
   - { from: checks, to: decision, label: judged }
   - { from: decision, to: engineer, label: next round, back: true }
   - { from: decision, to: delivery }

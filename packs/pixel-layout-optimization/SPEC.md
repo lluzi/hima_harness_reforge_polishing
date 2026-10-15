@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.4.7 run contract
+# Pixel layout optimization 0.5.0 run contract
 
 ## Goal template
 
@@ -22,7 +22,7 @@ Pack change (`INTENT.md` Answers 7):
 The Goal is met only when **both** the outline and the ratio targets are met on Reader values, with
 every hard limit holding (`INTENT.md` Answers 5). Every other rule below is a hard limit.
 
-Eight Strategy knobs say how the Goal's quantities are read and how far the method may go:
+Nine Strategy knobs say how the Goal's quantities are read and how far the method may go:
 
 | Knob | Kind | Default | Meaning |
 |---|---|---|---|
@@ -33,6 +33,7 @@ Eight Strategy knobs say how the Goal's quantities are read and how far the meth
 | `convergeBandPct` | number, %-points, 0.001–1 | 0.02 | The Converged ending's band: how little the best judged ratio may improve over `convergePatienceRounds` consecutive rounds. |
 | `maxRounds` | number, rounds, 1–20 | 6 | The Round limit ending's round number. A Project that wants a longer or shorter optimisation sets this; `graph.yml`'s `repeat` block is bounded well above it so it is never the thing that cuts a Run short. |
 | `outlineMode` | choice `target`, `fixed` | `target` | `target`: the outline is a shrink target (an unstated outline takes the manifest's). `fixed`: the cell keeps its size; an unstated outline is the original's, and `plan-check` refuses a `min-pitch` point or any other outline, so the Run optimises the ratio inside the window at the original size. |
+| `warmStart` | choice `off`, `prior-runs` | `off` | `prior-runs`: `judge-original` imports the best legal candidates and the best near-misses of earlier Runs on the same case manifest and decks (from the same workspace root), re-measures and re-judges each with this Run's judge, and adds them to history as round-0 `incumbent` rows; round 1 starts from the best legal one of everything judged. A recorded verdict of another Run is never trusted. |
 | `convergePatienceRounds` | number, rounds, 1–10 | 2 | How many consecutive rounds of less-than-`convergeBandPct` improvement the Converged ending requires. A single stalled round is not enough evidence to stop a Run that was asked to explore for more rounds; this is also why Converged needs a candidate round at least `convergePatienceRounds` back to compare against. |
 
 Shaped by `end-honestly-in-more-than-one-way.md` (the targets and the band are what the endings
@@ -131,6 +132,7 @@ FPD tools hold `licences: {fpd: 1}`.
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
 | `repeat optimise-rounds` | `maxIterations: 6`, `budget: original-run`, carry `roundState` (initial `{round: 1}`, next `decide-round.nextRound`), stop when `decide-round.route` equals `stop` | — | One round per iteration: |
 | ↳ `plan-round` | resident, outsourced, `fpd: 1` | `ROUND`; the resolved Goal | The resident engineering agent reads the card, model, history and last decision, may preview a bounded edit on the authority deck (`try-edit`, never credited), and writes `state/round/plan.json` (`pixel.plan/1`). The Reader `pixel-plan` checks it. |
+| ↳ `repair-round` | resident, outsourced, `fpd: 1`, in parallel with `plan-round` | `ROUND`; `state/repair-orders.json` | The repair engineer turns the ordered near-misses (authority-DRC failures only, few single-cell markers, a ratio below the best legal one, never repaired before) into bounded-edit repairs previewed with `try-edit`, and writes `state/round/repair-plan.json` (`pixel.repair-plan/1`, at most three repairs). The Reader `pixel-repair-plan` checks it against the orders and the bounded-edit rules; an empty repairs list is valid. |
 | ↳ `solve-and-judge` | program, `fpd: 1` | Committed `plan-round` Reader value; `ROUND` | If the plan has errors, judges nothing and records why. Otherwise applies the plan's operators and edits, solves one LP per front point (alternating axes, metric rows, trust region from the last decision; a `legalise` point holds the full rule only where the base's own Argus markers lie), then, per point, runs the authority deck alone, turns each `exact-pair` marker into a pair constraint and re-solves, at most 6 times, before writing the candidate's GDS set. All candidates are then judged in full, in parallel. Appends every receipt to history. Output: the candidates with predicted and measured values. |
 | ↳ `decide-round` | program | Committed `solve-and-judge` output; `ROUND`; the resolved Goal | Compares predicted with measured gain (trust radius doubles at ≥ half the predicted gain, halves otherwise); refits the surrogate with the new extractions; updates the best legal candidate, the front and the trend chart; detects the endings; routes `continue` or `stop`. Writes `state/round-decision.json`, `state/trend.json`, `state/trend.svg`. |
 | `evaluate` | program, `fpd: 1`, `budget: closing` | Committed `decide-round` output | Re-judges the best candidate (and the front points the trade-off table shows) from its GDS in fresh directories; reads them with `pixel-receipt`; applies the rules; names the ending; for **Blocked**, writes the Decision Request with the trade-off table. Writes `state/evaluation.json`. |
@@ -201,6 +203,14 @@ re-verified by sha256. It never reads agent text. It emits:
 An extraction whose GDS import failed, or whose `RCEResult.sp` is missing or empty, gives `null`
 ratios and capacitances with `unknownReason`; a library that was not freshly made for the
 candidate is a receipt error (counterexample 1).
+
+**`pixel-repair-plan`** reads `state/round/repair-plan.json` and checks it against `pixel.repair-plan/1`,
+the current repair orders (only an ordered candidate, each once) and the ordinary bounded-edit rules
+of `pixel-plan`. It emits `pixel_repair_plan_error_count`, `pixel_repair_count` and
+`pixel_repair_edit_count` (counts). `solve-and-judge` applies each admitted repair as a one-point
+`legalise` plan on its candidate (kept as drawn when its edits leave it clean) and judges it with
+the layout engineer's candidates; the candidate is recorded as kind `repair` with its base.
+`decide-round` writes the next round's orders (`pixel.repair-orders/1`).
 
 **`pixel-plan`** reads `state/round/plan.json` and checks it against `pixel.plan/1`, the resolved
 Goal, `topologyMoves`, the manifest's layers and nets and the history's candidate ids. It emits

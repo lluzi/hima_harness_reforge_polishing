@@ -125,6 +125,48 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(errs)
 
 
+class RepairPlanTest(unittest.TestCase):
+    def _repair(self, **over):
+        p = {"schema": "pixel.repair-plan/1", "round": 2, "hypothesis": "square an edge",
+             "repairs": [{"candidate": "r01-a",
+                          "edits": [{"layer": "GateA", "polygon": 0, "op": "cut",
+                                     "box": [1.0, 1.0, 3.0, 1.6]}]}]}
+        p.update(over)
+        return p
+
+    def test_a_repair_of_an_ordered_candidate_with_bounded_edits_is_admitted(self):
+        self.assertEqual(plan.check_repair(self._repair(), _readiness(), ["r01-a"], ["r01-a"],
+                                           round=2), [])
+        pp = plan.as_point_plan(self._repair(), 0)
+        self.assertEqual((pp["base"], pp["frontPoints"][0]["objective"]), ("r01-a", "legalise"))
+        self.assertEqual(pp["edits"][0]["op"], "cut")
+
+    def test_an_unordered_candidate_or_an_unbounded_edit_is_refused(self):
+        errs = plan.check_repair(self._repair(), _readiness(), ["r01-b"], ["r01-a", "r01-b"], round=2)
+        self.assertTrue(any("do not list" in e for e in errs))
+        deep = self._repair(repairs=[{"candidate": "r01-a", "edits": [
+            {"layer": "GateA", "polygon": 0, "op": "cut", "box": [0.0, 0.0, 3.0, 3.0]}]}])
+        errs = plan.check_repair(deep, _readiness(), ["r01-a"], ["r01-a"], round=2)
+        self.assertTrue(any("bound" in e for e in errs))
+
+    def test_an_empty_repair_plan_is_valid(self):
+        self.assertEqual(plan.check_repair(self._repair(repairs=[]), _readiness(), [], [], round=2), [])
+
+    def test_the_reader_counts_errors_repairs_and_edits(self):
+        ws = tempfile.mkdtemp()
+        os.makedirs(os.path.join(ws, "state"))
+        core.write_json(os.path.join(ws, "state", "repair-orders.json"),
+                        {"schema": "pixel.repair-orders/1", "round": 2,
+                         "orders": [{"candidate": "r01-a"}]})
+        with open(os.path.join(ws, "state", "history.jsonl"), "w") as fh:
+            fh.write('{"id": "r01-a"}\n')
+        path = os.path.join(ws, "rp.json")
+        core.write_json(path, self._repair())
+        v = {r["type"]: r["value"] for r in plan.repair_reader_values(path, ws, _readiness())}
+        self.assertEqual(v, {"pixel_repair_plan_error_count": 0, "pixel_repair_count": 1,
+                             "pixel_repair_edit_count": 1})
+
+
 class ReaderValuesTest(unittest.TestCase):
     def test_counts(self):
         with tempfile.TemporaryDirectory() as ws:

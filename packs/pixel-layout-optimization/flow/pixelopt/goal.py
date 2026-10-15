@@ -1,4 +1,4 @@
-"""Resolve the nine Goal numbers and the eight Strategy knobs (stdlib only).
+"""Resolve the nine Goal numbers and the nine Strategy knobs (stdlib only).
 
 A Goal value of ``0`` means "take the manifest's target"; for the outline it
 falls back to the original cell when the manifest states none, the ratio target
@@ -19,6 +19,7 @@ _STRATEGY_DEFAULTS = {
     "maxRounds": 6,
     "convergePatienceRounds": 2,
     "outlineMode": "target",
+    "warmStart": "off",
 }
 
 
@@ -126,4 +127,5 @@ def resolve(goal, strategy, case, original):
         "maxRounds": max(1, int(round(_num(strat, "maxRounds", 6)))),
         "convergePatienceRounds": max(1, int(round(_num(strat, "convergePatienceRounds", 2)))),
         "outlineMode": outline_mode,
+        "warmStart": "prior-runs" if strat.get("warmStart") == "prior-runs" else "off",
     }

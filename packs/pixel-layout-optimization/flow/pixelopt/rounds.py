@@ -13,7 +13,7 @@ This module imports nothing outside the standard library.
 from __future__ import annotations
 
 __all__ = ["RULES", "HARD_RULES", "GOAL_RULES", "rule_results", "legal",
-           "rank_key", "better", "decide"]
+           "rank_key", "better", "decide", "repair_orders", "best_legal"]
 
 _INF = float("inf")
 
@@ -525,3 +525,53 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
         "nextLever": next_lever,
         "rules": rule_results(best.get("values", {}) if best else {}, goal_resolved),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Repair orders (the repair engineer's work list)
+# --------------------------------------------------------------------------- #
+
+# A near-miss the repair engineer may take: it fails only the authority deck, with at most this
+# many markers in the single cell (tiles follow from those), and it beats the best legal ratio.
+_MAX_ORDER_MARKERS = 4
+_MAX_ORDERS = 3
+
+
+def best_legal(history, goal_resolved):
+    """The best legal, non-exploratory candidate across ``history`` (or ``None``)."""
+    return _best_legal(history, goal_resolved)
+
+
+def repair_orders(history, goal_resolved, limit=_MAX_ORDERS):
+    """The near-misses worth a bounded-edit repair, best ratio first.
+
+    Each failed only authority-DRC rules with at most ``_MAX_ORDER_MARKERS`` single-cell markers,
+    has a judged ratio below the best legal one (or there is no legal one yet), was never the base
+    of a repair, and is not exploratory. Returns ``[{"candidate", "ratioPct", "fails",
+    "markers1x1", "markers3x3"}]``.
+    """
+    best = _best_legal(history, goal_resolved)
+    best_ratio = _num(_as_map(best.get("values", {})).get("pixel_ratio_judged_pct")) if best else None
+    repaired = {h.get("base") for h in history if h.get("kind") == "repair"}
+    picks = []
+    for h in history:
+        if h.get("exploratory") or h.get("kind") not in ("candidate", "incumbent", "repair"):
+            continue
+        if h.get("id") in repaired:
+            continue
+        vmap = _as_map(h.get("values", {}))
+        fails = _hard_failures(vmap, goal_resolved)
+        if not fails or any(f not in _DRC_RULES for f in fails):
+            continue
+        m1 = _num(vmap.get("pixel_drc_authority_1x1"))
+        m3 = _num(vmap.get("pixel_drc_authority_3x3"))
+        if m1 is None or m1 > _MAX_ORDER_MARKERS:
+            continue
+        ratio = _num(vmap.get("pixel_ratio_judged_pct"))
+        if ratio is None or (best_ratio is not None and ratio >= best_ratio - 1e-9):
+            continue
+        picks.append({"candidate": h.get("id"), "ratioPct": ratio, "fails": fails,
+                      "markers1x1": int(m1), "markers3x3": int(m3) if m3 is not None else None})
+    picks.sort(key=lambda p: p["ratioPct"])
+    return picks[:limit]
+

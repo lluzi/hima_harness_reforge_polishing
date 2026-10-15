@@ -95,6 +95,15 @@ values:
   pixel_undeclared_change_count:
     unit: count
     description: A capacitor outside tolerance with no declared change, a declared change beyond cst_ceiling_ff, or a channel change. (source geometry)
+  pixel_repair_plan_error_count:
+    unit: count
+    description: The repair engineer's plan's admissibility errors against its schema, the repair orders and the bounded-edit rules; 0 is the completion evidence. (source geometry)
+  pixel_repair_count:
+    unit: count
+    description: Repairs in the repair engineer's plan (one ordered candidate each). (source geometry)
+  pixel_repair_edit_count:
+    unit: count
+    description: Bounded edits across all repairs of the repair engineer's plan. (source geometry)
   pixel_plan_error_count:
     unit: count
     description: The resident plan's admissibility errors against the schema, the resolved Goal, the Strategy, the manifest and the history; 0 is the completion evidence. (source geometry)

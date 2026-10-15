@@ -20,6 +20,12 @@ python3 <flow>/pixel_cli.py <subcommand> <WORKSPACE> [options]
 `WORKSPACE` is always your private workspace. Commands that read a judged candidate's files take
 `--campaign <identity.campaignWorkspace>` and only read there.
 
+**You work beside a repair engineer.** Each round a second resident takes the near-misses listed in
+`state/repair-orders.json` (candidates that fail only the authority deck with a few markers) and
+repairs them with bounded edits, in parallel with your plan. Do not spend your points repairing an
+ordered candidate; plan new moves from the best legal candidate, and use a repaired candidate as your
+base once the round decision names it best.
+
 ## 2. What you read
 
 - `state/case-readiness.json`: the resolved Goal (each value with its source), the Strategy, the

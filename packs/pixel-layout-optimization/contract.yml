@@ -1,5 +1,5 @@
 id: pixel-layout-optimization
-version: 0.4.7
+version: 0.5.0
 title: OLED pixel layout optimization for a lower coupling ratio and a smaller cell
 status: development
 minimumHarnessVersion: 0.3.0
@@ -10,6 +10,10 @@ ontology:
     - delivered layout receipt
     roundPlan:
     - resident round plan
+    repairPlan:
+    - repair engineer plan
+    repairOrders:
+    - near-miss repair orders
 budget:
   timeBoxMs: 10800000
   closingReserveMs: 1200000
@@ -53,6 +57,18 @@ outputs:
   reader: pixel-plan
   description: The resident engineering agent's checked plan for the current round (pixel.plan/1),
     overwritten every round; its pixel_plan_error_count of 0 is the completion evidence.
+- name: repairOrders
+  path: state/repair-orders.json
+  description: The repair engineer's work list for the next round (pixel.repair-orders/1) - the
+    near-misses that fail only the authority deck with a few single-cell markers and beat the best
+    legal ratio, best first, each never repaired before; written by decide-round (and seeded by
+    learn-sensitivities from imported candidates).
+- name: repairPlan
+  path: state/round/repair-plan.json
+  reader: pixel-repair-plan
+  description: The repair engineer's checked plan for the current round (pixel.repair-plan/1) -
+    bounded edits per ordered candidate; its pixel_repair_plan_error_count of 0 is the completion
+    evidence. An empty repairs list is a valid plan when the orders are empty.
 - name: bestReceipt
   path: delivery/best/receipt.json
   reader: pixel-receipt
@@ -146,10 +162,42 @@ tools:
     knowledge: [plan-and-repair-playbook.md, pixel-design-space.md, optimisation-method.md, judge-protocol.md]
     artifactPrefix: plan
     produces: roundPlan
+- id: repair-round
+  file: flow/pixel_cli.py
+  description: >
+    You are the repair engineer for one round of the pixel optimisation, working beside the layout
+    engineer (who plans new moves in parallel). Your only job is to turn near-misses into legal
+    layouts at the least ratio cost. Read state/repair-orders.json: the candidates you may repair,
+    each failing only the authority deck with a few markers. If it lists none, deliver a repair plan
+    with an empty repairs list at once. Otherwise, for each ordered candidate (at most three), run
+    markers on it, read each marker's rule and geometry, and design bounded edits (each at most 1.5
+    um deep, never a channel or capacitor vertex, at most 12 per repair): copy the verified
+    bestEdits or combined.edits when markers offers them, else write your own after the recipes in
+    the repair playbook, and preview every edit set with try-edit until the single cell and the 3x3
+    tile are clean. Keep only repairs whose preview is clean or clearly better; leave a candidate out
+    rather than guess. You add no operators, solve nothing, choose no new base and judge nothing:
+    the program applies your edits and the commercial tools decide. Write your hypothesis first in
+    repair/round-NN/repair-plan.json, check it with repair-check, and deliver resident-delivery.json
+    naming state/round/repair-plan.json as the single result and every file under repair/round-NN/
+    as support. Report a marker pattern no bounded edit fixes in the repair's expect field; it is a
+    Pack defect. Your permitted CLI calls are history, show, markers, try-edit and repair-check. Your
+    completion evidence is the pixel-repair-plan Reader's pixel_repair_plan_error_count equal to 0.
+    Every round is a fresh session with no memory but the files you read.
+  inputs: [WORKSPACE, ROUND]
+  licences:
+    fpd: 1
+  argv: [python3, "${WORKSPACE}/flow/pixel_cli.py", repair-round, "${WORKSPACE}", "${ROUND}"]
+  outsourcing:
+    role: resident-engineering-agent
+    reads: [caseReadiness, roundDecision, repairOrders, history]
+    knowledge: [repair-playbook.md, judge-protocol.md]
+    artifactPrefix: repair
+    produces: repairPlan
 - id: solve-and-judge
   file: flow/pixel_cli.py
   description: If the plan has Reader errors, judge nothing and record why; otherwise apply the
-    plan's operators and edits, solve one LP per front point with the trust region from the last
+    plan's operators and edits (and, when the repair engineer's plan is admitted, each repair's
+    bounded edits on its ordered candidate as one legalise point), solve one LP per front point with the trust region from the last
     decision (a legalise point holds the full rule only where the base's own Argus markers lie), run
     the exact-pair loop per point, then judge every candidate in full in parallel and append every
     receipt to history.
@@ -219,6 +267,7 @@ strategy:
   maxRounds: {type: number, unit: rounds, min: 1, max: 20, default: 6}
   convergePatienceRounds: {type: number, unit: rounds, min: 1, max: 10, default: 2}
   outlineMode: {type: choice, options: [target, fixed], default: target}
+  warmStart: {type: choice, options: ["off", prior-runs], default: "off"}
 words:
   outline_w_um:
     label: Target cell width (x pitch)
@@ -266,7 +315,13 @@ words:
     unit: rounds
   outlineMode:
     label: Whether the outline is a shrink target or fixed at the original cell (fixed - every candidate keeps the original size)
+  warmStart:
+    label: Whether the Run starts from the best candidates of earlier Runs on the same case and decks (re-judged first)
 knowledge:
+- file: repair-playbook.md
+  purpose: The repair engineer's whole brief - marker classes, the recipes that cleared real
+    near-misses (enclosure cut or extend, squaring a stepped plate edge, flush band edges across the
+    cell edge, slivers), how to use markers and try-edit, and what never to do. For repair-round.
 - file: pixel-design-space.md
   purpose: What makes up Ct and Cs in a pixel of this kind, the coupling sites, the levers and what
     each costs, and the bounds. For plan-round choosing operators and front points.

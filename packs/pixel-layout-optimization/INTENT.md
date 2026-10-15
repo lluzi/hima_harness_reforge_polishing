@@ -148,9 +148,13 @@ Flow root: /data/eda/project/hima_harness/pixel-runs
     node's couplings to the anode and to the scan line are secondary objectives: among legal
     candidates whose ratios are within the converge band, the lower sum is the better one.
 11. **Who does what.**
-    - The resident engineering agent (OpenCode) reads a design-space card and writes a plan for each
-      round: which edits, which front points, which extra pair constraints. It repairs the last few
-      DRC markers with bounded edits.
+    - Two resident engineers (OpenCode) work each round in parallel. The layout engineer reads a
+      design-space card and writes a plan: which operators, which front points, which extra pair
+      constraints. The repair engineer takes the round decision's near-miss orders and turns them
+      into legal layouts with bounded edits it previews against the authority deck. Neither grades
+      anything; one judge and one round decision aggregate both.
+    - With `warmStart: prior-runs`, a Run starts from the best candidates of earlier Runs on the
+      same case and decks, re-judged by its own judge first.
     - Program tasks do the solving, judging, deciding and delivering.
     - The agent never grades its own candidates.
 

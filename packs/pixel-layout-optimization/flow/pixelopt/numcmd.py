@@ -598,15 +598,33 @@ def _predict(model, lay, case):
 # num-solve
 # --------------------------------------------------------------------------- #
 
-def cmd_solve(workspace, round_num):
+def cmd_solve(workspace, round_num, plan_path=None):
     from . import solve as _solve
     ctx = _load_ctx(workspace)
     ws = ctx.workspace
-    plan = core.read_json(_state_path(ws, "round", "plan.json"))
+    plan = core.read_json(plan_path or _state_path(ws, "round", "plan.json"))
     model = _read_json_opt(_state_path(ws, "model.json")) or {"pairs": {}}
     decision = _read_json_opt(_state_path(ws, "round-decision.json"))
     return _solve.drive(ws, round_num, ctx.case, ctx.sitecaps, ctx.readiness,
                         ctx.rules_state, model, plan, decision)
+
+
+def cmd_measure(workspace, cand):
+    """Re-measure a candidate's geometry record from its GDS against this Run's original (an
+    imported candidate of an earlier Run is judged on this Run's geometry, not the record it came
+    with); a declared change it carried is kept."""
+    ctx = _load_ctx(workspace)
+    case = ctx.case
+    ws = ctx.workspace
+    cdir = os.path.join(ws, "cands", cand)
+    lay = layout.load_gds(os.path.join(cdir, "pixel.gds"), case, top=_cand_top(case))
+    original = layout.load_gds(os.path.join(ws, "cands", "original", "pixel.gds"), case,
+                               top=_cand_top(case))
+    old = _read_json_opt(os.path.join(cdir, "geometry.json")) or {}
+    geom = geometry.measure(lay, case, original, ctx.parsed)
+    geom["declaredChanges"] = dict(old.get("declaredChanges") or {})
+    core.write_json(os.path.join(cdir, "geometry.json"), geom)
+    return {"candidate": cand, "outlineUm": geom.get("outlineUm")}
 
 
 # --------------------------------------------------------------------------- #
@@ -774,7 +792,9 @@ def main(argv):
         elif cmd == "num-fit":
             result = cmd_fit(rest[0])
         elif cmd == "num-solve":
-            result = cmd_solve(rest[0], int(rest[1]))
+            result = cmd_solve(rest[0], int(rest[1]), rest[2] if len(rest) > 2 else None)
+        elif cmd == "num-measure":
+            result = cmd_measure(rest[0], rest[1])
         elif cmd == "num-markers":
             result = cmd_markers(rest[0], rest[1], rest[2])
         elif cmd == "num-try-edit":

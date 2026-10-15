@@ -16,7 +16,7 @@ import os
 
 from . import core
 
-__all__ = ["check", "reader_values"]
+__all__ = ["check", "reader_values", "check_repair", "repair_reader_values", "repair_orders_ids"]
 
 _OPERATORS = ("shield", "cst-stretch", "opening-shift", "band-trim", "contact-move")
 
@@ -223,3 +223,70 @@ def reader_values(plan_path, workspace, readiness):
         {"type": "pixel_plan_edit_count", "unit": "count", "value": len(edits)},
         {"type": "pixel_plan_exploratory_points", "unit": "count", "value": exploratory},
     ]
+
+
+# --------------------------------------------------------------------------- #
+# The repair engineer's plan (pixel.repair-plan/1)
+# --------------------------------------------------------------------------- #
+
+def repair_orders_ids(workspace):
+    """Candidate ids the current repair orders name (``state/repair-orders.json``)."""
+    path = os.path.join(os.path.abspath(workspace), "state", "repair-orders.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        doc = core.read_json(path)
+    except core.PixelError:
+        return []
+    return [o.get("candidate") for o in doc.get("orders", []) or [] if o.get("candidate")]
+
+
+def as_point_plan(repair_plan, k):
+    """Repair ``k`` of a repair plan as an ordinary one-point ``pixel.plan/1``: its candidate is
+    the base, its edits the plan's bounded edits, and its one front point a ``legalise`` point
+    (kept as drawn when the edits leave it clean)."""
+    r = repair_plan["repairs"][k]
+    return {"schema": "pixel.plan/1", "round": repair_plan["round"],
+            "hypothesis": repair_plan.get("hypothesis", ""), "base": r["candidate"],
+            "operators": [], "pairConstraints": [], "edits": list(r["edits"]),
+            "frontPoints": [{"name": "fix-%d" % (k + 1), "objective": "legalise"}],
+            "expect": r.get("expect", "")}
+
+
+def check_repair(repair_plan, readiness, order_ids, history_ids, round=None):
+    """Errors of a repair plan: schema, round, each repair names an ordered candidate (once), and
+    each repair's edits pass the ordinary plan check as bounded edits on that candidate."""
+    errors = []
+    schema_errors = core.validate(repair_plan, core.load_schema("repair-plan"))
+    if schema_errors:
+        return ["schema: " + e for e in schema_errors]
+    if round is not None and repair_plan.get("round") != round:
+        errors.append("round %r does not match the current round %r"
+                      % (repair_plan.get("round"), round))
+    seen = set()
+    for k, r in enumerate(repair_plan.get("repairs", [])):
+        cand = r.get("candidate")
+        if cand not in set(order_ids or []):
+            errors.append("repair %d names %r, which the repair orders do not list" % (k + 1, cand))
+        if cand in seen:
+            errors.append("repair %d repeats candidate %r" % (k + 1, cand))
+        seen.add(cand)
+        for e in check(as_point_plan(repair_plan, k), readiness, history_ids,
+                       round=repair_plan.get("round")):
+            errors.append("repair %d: %s" % (k + 1, e))
+    return errors
+
+
+def repair_reader_values(path, workspace, readiness):
+    """The ``pixel-repair-plan`` Reader: error, repair and edit counts."""
+    doc = core.read_json(path)
+    errors = check_repair(doc, readiness, repair_orders_ids(workspace), _history_ids(workspace),
+                          round=doc.get("round") if isinstance(doc, dict) else None)
+    repairs = doc.get("repairs", []) if isinstance(doc, dict) else []
+    return [
+        {"type": "pixel_repair_plan_error_count", "unit": "count", "value": len(errors)},
+        {"type": "pixel_repair_count", "unit": "count", "value": len(repairs)},
+        {"type": "pixel_repair_edit_count", "unit": "count",
+         "value": sum(len(r.get("edits", [])) for r in repairs if isinstance(r, dict))},
+    ]
+

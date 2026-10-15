@@ -80,6 +80,34 @@ class SecondaryTargetTest(unittest.TestCase):
         self.assertTrue(rounds.legal(high, goal))
 
 
+class RepairOrdersTest(unittest.TestCase):
+    def _row(self, cid, kind="candidate", base=None, **vals):
+        return {"id": cid, "round": 1, "kind": kind, "base": base, "exploratory": False,
+                "values": _legal_values(**vals)}
+
+    def test_near_misses_better_than_the_best_legal_one_are_ordered_best_first(self):
+        hist = [self._row("legal", pixel_ratio_judged_pct=8.5),
+                self._row("near-a", pixel_ratio_judged_pct=8.0, pixel_drc_authority_1x1=2,
+                          pixel_drc_authority_3x3=18),
+                self._row("near-b", pixel_ratio_judged_pct=7.5, pixel_drc_authority_1x1=1,
+                          pixel_drc_authority_3x3=9),
+                self._row("worse", pixel_ratio_judged_pct=8.9, pixel_drc_authority_1x1=1),
+                self._row("many", pixel_ratio_judged_pct=7.0, pixel_drc_authority_1x1=9),
+                self._row("lvs", pixel_ratio_judged_pct=7.0, pixel_drc_authority_1x1=1,
+                          pixel_lvs_correct=0)]
+        orders = rounds.repair_orders(hist, _goal())
+        self.assertEqual([o["candidate"] for o in orders], ["near-b", "near-a"])
+        self.assertEqual(orders[0]["markers1x1"], 1)
+        self.assertEqual(orders[0]["fails"], ["drc-authority-1x1-clean", "drc-authority-3x3-clean"])
+
+    def test_a_candidate_already_repaired_is_not_ordered_again(self):
+        hist = [self._row("near", pixel_ratio_judged_pct=8.0, pixel_drc_authority_1x1=1),
+                self._row("r02-fix-1", kind="repair", base="near", pixel_ratio_judged_pct=8.1,
+                          pixel_drc_authority_1x1=1)]
+        self.assertEqual([o["candidate"] for o in rounds.repair_orders(hist, _goal())],
+                         ["r02-fix-1"])
+
+
 class RuleResultsTest(unittest.TestCase):
     def test_all_pass(self):
         res = rounds.rule_results(_legal_values(pixel_ct_anode_ff=1.0, pixel_ct_lines_ff=1.0),

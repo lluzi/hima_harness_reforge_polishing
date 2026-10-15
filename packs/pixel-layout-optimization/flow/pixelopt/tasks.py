@@ -194,7 +194,7 @@ def prepare_case(workspace, inputs):
     strategy_input = {k: inputs[k] for k in (
         "ratioDefinition", "transmittanceBasis", "extraCsOverlap",
         "topologyMoves", "convergeBandPct", "maxRounds",
-        "convergePatienceRounds", "outlineMode") if k in inputs}
+        "convergePatienceRounds", "outlineMode", "warmStart") if k in inputs}
     resolved = goal_mod.resolve(goal_input, strategy_input, case,
                                 {"outlineUm": outline})
 
@@ -314,11 +314,62 @@ def judge_original(workspace, inputs):
     entry["receiptSha256"] = _receipt_sha(workspace, "original")
     history_mod.append(workspace, entry)
 
+    imported = _import_incumbents(workspace, readiness, case, sitecaps)
+
     return _result({
         "originalValues": orig_map,
         "originalLegal": entry["legal"],
         "calibration": verdicts,
+        "incumbents": imported,
     }, artifacts=[{"name": "history", "path": "state/history.jsonl"}])
+
+
+def _import_incumbents(workspace, readiness, case, sitecaps):
+    """Strategy ``warmStart: prior-runs``: copy the best candidates of earlier Runs on the same
+    case and decks into this Run, re-measure their geometry, re-judge them with this Run's judge and
+    append them to history as round-0 ``incumbent`` rows (legal or not by *this* judge). Returns
+    ``[{"id", "from", "why", "legal"}]``; nothing when the Strategy is off or no Run qualifies."""
+    from . import incumbents as inc_mod
+    if (readiness.get("goal") or {}).get("warmStart") != "prior-runs":
+        return []
+    runs = inc_mod.prior_runs(workspace, readiness)
+    picks = inc_mod.pick(runs, readiness["goal"])
+    cands = []
+    out = []
+    for k, (run, cid, why) in enumerate(picks):
+        new_id = "inc-%d-%s" % (k + 1, cid)
+        dst = _cand_dir(workspace, new_id)
+        if os.path.exists(dst):
+            shutil.rmtree(dst)
+        os.makedirs(dst)
+        src = os.path.join(run, "cands", cid)
+        for name in ("pixel.gds", "pixel2x2.gds", "pixel3x3.gds", "geometry.json"):
+            if os.path.exists(os.path.join(src, name)):
+                shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
+        core.write_json(os.path.join(dst, "meta.json"), {
+            "id": new_id, "kind": "incumbent", "round": 0, "base": None, "frontPoint": None,
+            "exploratory": False, "operators": [], "edits": [], "declaredChanges": {},
+            "predicted": None, "solve": None,
+            "source": {"run": os.path.basename(run.rstrip(os.sep)), "candidate": cid, "why": why}})
+        try:
+            numeric.run(sitecaps, workspace, "num-measure", [new_id], _timeout(sitecaps, "rce"))
+        except PixelError:
+            shutil.rmtree(dst)
+            continue
+        cands.append({"id": new_id, "dir": dst})
+        out.append({"id": new_id, "from": "%s/%s" % (os.path.basename(run.rstrip(os.sep)), cid),
+                    "why": why})
+    if cands:
+        judge_mod.judge(cands, workspace, case, sitecaps, readiness, mode="full")
+    for item in out:
+        rows = receipt_mod.reader_values(
+            os.path.join(_cand_dir(workspace, item["id"]), "receipt.json"), workspace, readiness)
+        entry = _history_entry(item["id"], _meta_of(workspace, item["id"]), rows, readiness["goal"])
+        entry["receiptSha256"] = _receipt_sha(workspace, item["id"])
+        entry["source"] = item["from"]
+        history_mod.append(workspace, entry)
+        item["legal"] = entry["legal"]
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -369,12 +420,18 @@ def learn_sensitivities(workspace, inputs):
     # Host resolves every one of a resident task's declared reads before it starts; decide-round
     # writes the real decisions from round 1 on. This mirrors the sibling mage-script-placement
     # Pack's measure-incumbent round-0 seed.
+    # An imported legal candidate (warmStart) is the seed's best: round 1 starts from it.
+    history_now = history_mod.load(workspace)
+    seed_best = rounds.best_legal(history_now, readiness["goal"])
     seed_decision = {
         "schema": "pixel.round-decision/1", "round": 0, "route": "continue",
-        "nextRound": {"round": 1}, "stopReason": "", "goalMet": False, "best": None,
+        "nextRound": {"round": 1}, "stopReason": "", "goalMet": False,
+        "best": ({"id": seed_best.get("id"), "values": seed_best.get("values", {}), "legal": True}
+                 if seed_best else None),
         "front": [], "trustRadiusUm": 0.5, "predictedVsMeasured": [], "openMarkers": [],
         "rules": {},
     }
+    _write_repair_orders(workspace, 1, history_now, readiness["goal"])
     core.check(seed_decision, "round-decision")
     core.write_json(_state(workspace, "round-decision.json"), seed_decision)
 
@@ -383,7 +440,16 @@ def learn_sensitivities(workspace, inputs):
         "dropped": probes.get("dropped", []),
         "pairs": fit.get("pairs", {}),
     }, artifacts=[{"name": "surrogateModel", "path": "state/model.json"},
-                  {"name": "roundDecision", "path": "state/round-decision.json"}])
+                  {"name": "roundDecision", "path": "state/round-decision.json"},
+                  {"name": "repairOrders", "path": "state/repair-orders.json"}])
+
+
+def _write_repair_orders(workspace, round_no, history, goal_resolved):
+    """The repair engineer's work list for ``round_no`` (``pixel.repair-orders/1``)."""
+    orders = rounds.repair_orders(history, goal_resolved)
+    doc = {"schema": "pixel.repair-orders/1", "round": round_no, "orders": orders}
+    core.write_json(_state(workspace, "repair-orders.json"), doc)
+    return doc
 
 
 # --------------------------------------------------------------------------- #
@@ -399,18 +465,52 @@ def solve_and_judge(workspace, inputs):
     plan_path = _state(workspace, "round", "plan.json")
     plan_rows = plan_mod.reader_values(plan_path, workspace, readiness)
     plan_map, _ = _values_map(plan_rows)
-    if plan_map.get("pixel_plan_error_count", 1) != 0:
+    plan_ok = plan_map.get("pixel_plan_error_count", 1) == 0
+
+    # The repair engineer's plan for this round (absent, empty or refused: no repairs).
+    repair_path = _state(workspace, "round", "repair-plan.json")
+    repair_doc = None
+    if os.path.exists(repair_path):
+        rrows = plan_mod.repair_reader_values(repair_path, workspace, readiness)
+        rmap, _ = _values_map(rrows)
+        doc = core.read_json(repair_path)
+        if rmap.get("pixel_repair_plan_error_count", 1) == 0 and doc.get("round") == round_no:
+            repair_doc = doc
+
+    if not plan_ok and not (repair_doc and repair_doc.get("repairs")):
         return _result({
             "round": round_no,
             "judged": [],
             "skipped": True,
-            "reason": "plan has %s Reader errors; nothing judged"
+            "reason": "plan has %s Reader errors and no repair is admitted; nothing judged"
                       % plan_map.get("pixel_plan_error_count"),
         })
 
-    solved = numeric.run(sitecaps, workspace, "num-solve", [str(round_no)],
-                         _timeout(sitecaps, "rce"))
-    cand_ids = list(solved.get("candidates", []) or [])
+    cand_ids = []
+    failed = []
+    if plan_ok:
+        solved = numeric.run(sitecaps, workspace, "num-solve", [str(round_no)],
+                             _timeout(sitecaps, "rce"))
+        cand_ids.extend(solved.get("candidates", []) or [])
+        failed.extend(solved.get("failed", []) or [])
+    for k, rep_ in enumerate((repair_doc or {}).get("repairs", []) or []):
+        point_plan = plan_mod.as_point_plan(repair_doc, k)
+        ppath = _state(workspace, "round", "repair-%d.plan.json" % (k + 1))
+        core.write_json(ppath, point_plan)
+        try:
+            got = numeric.run(sitecaps, workspace, "num-solve", [str(round_no), ppath],
+                              _timeout(sitecaps, "rce"))
+        except PixelError as exc:
+            failed.append({"name": "fix-%d" % (k + 1), "status": exc.code, "binding": [exc.detail]})
+            continue
+        for cid in got.get("candidates", []) or []:
+            mpath = os.path.join(_cand_dir(workspace, cid), "meta.json")
+            meta = core.read_json(mpath)
+            meta["kind"] = "repair"
+            meta["repairOf"] = rep_["candidate"]
+            core.write_json(mpath, meta)
+            cand_ids.append(cid)
+        failed.extend(got.get("failed", []) or [])
     cands = [{"id": cid, "dir": _cand_dir(workspace, cid)} for cid in cand_ids]
     if cands:
         judge_mod.judge(cands, workspace, case, sitecaps, readiness, mode="full")
@@ -429,7 +529,7 @@ def solve_and_judge(workspace, inputs):
     return _result({
         "round": round_no,
         "judged": judged,
-        "failed": solved.get("failed", []),
+        "failed": failed,
         "skipped": False,
     }, artifacts=[{"name": "history", "path": "state/history.jsonl"}])
 
@@ -471,6 +571,7 @@ def decide_round(workspace, inputs):
     decision = rounds.decide(round_no, readiness["goal"], history, previous, card)
     core.check(decision, "round-decision")
     core.write_json(_state(workspace, "round-decision.json"), decision)
+    orders = _write_repair_orders(workspace, round_no + 1, history, readiness["goal"])
 
     # Refit the surrogate with the new extractions (best effort).
     try:
@@ -489,8 +590,10 @@ def decide_round(workspace, inputs):
         "stopReason": decision["stopReason"],
         "goalMet": decision["goalMet"],
         "best": decision["best"],
+        "repairOrders": len(orders["orders"]),
     }, artifacts=[{"name": "roundDecision", "path": "state/round-decision.json"},
-                  {"name": "history", "path": "state/history.jsonl"}])
+                  {"name": "history", "path": "state/history.jsonl"},
+                  {"name": "repairOrders", "path": "state/repair-orders.json"}])
 
 
 # --------------------------------------------------------------------------- #

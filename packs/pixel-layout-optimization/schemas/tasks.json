@@ -39,7 +39,7 @@
     "prepare-case-input": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["PIXEL_CASE_MANIFEST", "SITE_CAPABILITIES", "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct", "t_min_pct", "t_max_pct", "cst_ceiling_ff", "ratioDefinition", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct", "maxRounds", "convergePatienceRounds", "outlineMode"],
+      "required": ["PIXEL_CASE_MANIFEST", "SITE_CAPABILITIES", "outline_w_um", "outline_h_um", "ratio_target_pct", "load_allowance_pct", "t_min_pct", "t_max_pct", "cst_ceiling_ff", "ratioDefinition", "transmittanceBasis", "extraCsOverlap", "topologyMoves", "convergeBandPct", "maxRounds", "convergePatienceRounds", "outlineMode", "warmStart"],
       "properties": {
         "PIXEL_CASE_MANIFEST": {"type": "string", "minLength": 1},
         "SITE_CAPABILITIES": {"type": "string", "minLength": 1},
@@ -59,7 +59,8 @@
         "convergeBandPct": {"type": "number"},
         "maxRounds": {"type": "number"},
         "convergePatienceRounds": {"type": "number"},
-        "outlineMode": {"enum": ["target", "fixed"]}
+        "outlineMode": {"enum": ["target", "fixed"]},
+        "warmStart": {"enum": ["off", "prior-runs"]}
       }
     },
     "prepare-case-output": {
@@ -139,7 +140,8 @@
       "required": ["ROUND"],
       "properties": {
         "ROUND": {"type": "integer", "minimum": 1},
-        "PLAN": {"$ref": "#/$defs/resident-output"}
+        "PLAN": {"$ref": "#/$defs/resident-output"},
+        "REPAIR": {"$ref": "#/$defs/resident-output"}
       }
     },
     "solve-and-judge-output": {

@@ -47,6 +47,7 @@ _INPUT_STATE_PATHS = {
     "surrogateModel": "state/model.json",
     "roundDecision": "state/round-decision.json",
     "history": "state/history.jsonl",
+    "repairOrders": "state/repair-orders.json",
 }
 
 
@@ -132,13 +133,51 @@ def plan_round(native, task):
     _deliver(native, round_no)
 
 
+def repair_round(native, task):
+    """The repair engineer, following ``knowledge/repair-playbook.md`` with no model: the
+    synthetic case's candidates are clean, so the orders list nothing and the plan is the playbook's
+    empty repairs list, checked with ``repair-check`` and delivered like any result."""
+    campaign = Path(task["campaignWorkspace"])
+    cli = campaign / "flow" / "pixel_cli.py"
+    round_no = int(task["task"]["boundInputs"]["ROUND"])
+    _populate_state(native, task.get("inputs", []))
+    orders = json.loads((native / "state/repair-orders.json").read_text(encoding="utf-8"))
+    prefix = Path("repair") / ("round-%02d" % round_no)
+    (native / prefix).mkdir(parents=True, exist_ok=True)
+    src = prefix / "repair-plan.json"
+    (native / src).write_text(json.dumps({
+        "schema": "pixel.repair-plan/1", "round": round_no,
+        "hypothesis": "no near-miss to repair" if not orders.get("orders") else "orders seen, none previewed",
+        "repairs": []}), encoding="utf-8")
+    check = subprocess.run(
+        [sys.executable, str(cli), "repair-check", str(native),
+         "--plan", src.as_posix(), "--out", "state/round/repair-plan.json"],
+        cwd=str(native), capture_output=True, text=True, timeout=120)
+    if check.returncode != 0:
+        raise RuntimeError("repair-check failed (%d): %s\n%s"
+                           % (check.returncode, check.stderr, check.stdout))
+    artifacts = [{"path": "state/round/repair-plan.json",
+                  "sha256": sha(native / "state/round/repair-plan.json"), "kind": "result"}]
+    for path in sorted((native / prefix).rglob("*")):
+        if path.is_file():
+            artifacts.append({"path": path.relative_to(native).as_posix(),
+                              "sha256": sha(path), "kind": "support"})
+    (native / "resident-delivery.json").write_text(json.dumps({
+        "schema": "hima-resident-engineering-candidate/1", "outcome": "completed",
+        "summary": "round %d repair plan checked against the orders" % round_no,
+        "stopReason": "", "artifacts": artifacts}), encoding="utf-8")
+
+
 def handle_initial_prompt():
     native = Path.cwd()
     task = json.loads((native.parent / "task.json").read_text(encoding="utf-8"))
     tool_id = task["task"]["toolId"]
-    if tool_id != "plan-round":
+    if tool_id == "plan-round":
+        plan_round(native, task)
+    elif tool_id == "repair-round":
+        repair_round(native, task)
+    else:
         raise RuntimeError("unexpected toolId %r" % (tool_id,))
-    plan_round(native, task)
 
 
 def prompt(request_id, initial):
