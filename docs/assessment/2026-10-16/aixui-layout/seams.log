@@ -1,0 +1,2 @@
+$ node scripts/check-seams.mjs
+seams: every dsh-facing source file declares its seam

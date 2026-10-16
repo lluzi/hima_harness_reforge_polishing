@@ -55,7 +55,10 @@ body.aix-shell[data-ds-dark-theme]{
 .aix-shell button:has([data-slot="sidebar.brand.name"]) span:has([data-slot="sidebar.brand.mark"]):not(:has([data-slot="sidebar.brand.name"])){display:none}
 .aix-shell .hima-brand{flex-direction:row;align-items:baseline;flex-wrap:nowrap;gap:.625em;font-size:clamp(12px,calc((100cqw - 2px)/11.25),16px);line-height:1;flex:none}
 .aix-shell button:has([data-slot="sidebar.brand.name"]) span:has([data-slot="sidebar.brand.name"]){height:auto}
-.aix-hero-brand{display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-4);min-width:0;max-width:100%;padding:var(--hima-sp-2) 0;color:var(--aix-ink);font-family:var(--aix-font-ui)}
+.aix-hero-brand{container:aix-hero / inline-size;display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-4);min-width:0;width:100%;max-width:100%;padding:var(--hima-sp-2) 0;color:var(--aix-ink);font-family:var(--aix-font-ui)}
+.aix-hero-headline{display:flex;align-items:baseline;gap:clamp(8px,2cqw,16px);max-width:100%;white-space:nowrap}
+.aix-hero-headline>.aix-wordmark{font-size:clamp(24px,9cqw,64px)}
+.aix-hero-headline>.aix-tagline{font-size:clamp(12px,5cqw,28px);white-space:nowrap}
 .aix-hero-description{font-size:var(--hima-fs-label);font-weight:400;line-height:1.6;color:var(--aix-muted);letter-spacing:0}
 .aix-tagline{display:block;font-size:var(--hima-fs-display);font-weight:400;line-height:1.3;letter-spacing:-.04em;color:var(--aix-muted);white-space:normal;text-wrap:balance}
 .aix-tagline strong{color:var(--aix-brand);font-weight:700}

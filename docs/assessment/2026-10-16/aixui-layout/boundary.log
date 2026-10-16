@@ -1,0 +1,3 @@
+$ node scripts/check-boundary.mjs
+boundary: /Users/lluzi/code/hima_harness_reforge_polishing/packages/.DS_Store/src cannot be read (ENOTDIR), so this check cannot say what is in it
+[ELIFECYCLE] Command failed with exit code 1.

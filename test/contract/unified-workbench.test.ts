@@ -22,6 +22,26 @@ import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 const draft = 'UI validation draft — compare strategies and preserve each experiment’s evidence. Not sent to a model.';
 
+async function heroLineGeometry(browser: Inspector) {
+  return browser.evaluate<{sameRow: boolean; fits: boolean; width: number; contentWidth: number; fontSize: string}>(`(() => {
+    const hero=document.querySelector('.aix-hero-brand'), mark=hero.querySelector('.aix-wordmark').getBoundingClientRect(),
+      tagline=hero.querySelector('.aix-tagline'), box=tagline.getBoundingClientRect(), bounds=hero.getBoundingClientRect(), range=document.createRange();
+    range.selectNodeContents(tagline); const ink=range.getBoundingClientRect();
+    return {sameRow:box.left>=mark.right && box.top<mark.bottom && box.bottom>mark.top,
+      fits:ink.right<=bounds.right+1 && tagline.scrollWidth<=tagline.clientWidth+1,
+      width:bounds.width,contentWidth:ink.right-bounds.left,fontSize:getComputedStyle(tagline).fontSize};
+  })()`);
+}
+
+async function toolbarGeometry(browser: Inspector) {
+  return browser.evaluate<{singleRow: boolean; fits: boolean; heightRatio: number}>(`(() => {
+    const bar=document.querySelector('.hima-studio-header'), bounds=bar.getBoundingClientRect(), pane=bar.parentElement.getBoundingClientRect(),
+      controls=[...bar.querySelectorAll('button,select')].map(e=>e.getBoundingClientRect()), centres=controls.map(r=>r.top+r.height/2);
+    return {singleRow:Math.max(...centres)-Math.min(...centres)<3,
+      fits:controls.every(r=>r.left>=bounds.left && r.right<=bounds.right+1),heightRatio:bounds.height/pane.height};
+  })()`);
+}
+
 async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = false, beforeProject?: () => Promise<void>) {
   await d.open('/');
   await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
@@ -182,6 +202,9 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
       })()`), true, 'only the original English row is displayed, with its aspect ratio preserved');
       await window.evaluate('document.fonts.ready.then(()=>true)');
       sharedXPoints = await window.evaluate<string[]>(`[...document.querySelectorAll('.aix-symbol polygon')].slice(0,4).map(e=>e.getAttribute('points'))`);
+      const heroLayout = await heroLineGeometry(window);
+      await capture(d, window, 'hero-inline-light');
+      assert.ok(heroLayout.sameRow && heroLayout.fits, JSON.stringify(heroLayout));
       assert.equal(await window.evaluate(`document.querySelector('.aix-hero-brand .aix-wordmark')?.textContent`), 'ai');
       assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('.aix-hero-brand .aix-wordmark')).fontFamily.includes('aiX Urbanist')`), true);
       assert.equal(await window.evaluate(`document.fonts.check('500 64px "aiX Urbanist"')`), true);
@@ -247,6 +270,8 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
     assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(255, 255, 255)');
     assert.equal(await browser.evaluate(`getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim()`), '#ffffff');
     await capture(d, browser, 'aix-configuration-light');
+    const toolbar = await toolbarGeometry(browser);
+    assert.ok(toolbar.singleRow && toolbar.fits && toolbar.heightRatio<.25, JSON.stringify(toolbar));
     await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
     await browser.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
     assert.equal(await browser.evaluate(`getComputedStyle(document.querySelector('[data-hima-region="studio"]')).backgroundColor`), 'rgb(16, 29, 48)');
@@ -276,6 +301,7 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
     await browser.wait(`!document.querySelector('[role="dialog"]')`);
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 860, height: 900, deviceScaleFactor: 1, mobile: false });
+    await waitForConfigurationPaneSettled(browser, 0);
     assert.equal(await browser.evaluate(`document.documentElement.scrollWidth > innerWidth`), false);
     assert.equal(await browser.evaluate(`(() => {const e=document.querySelector('[data-hima-region="configuration"]');return e.scrollWidth<=e.clientWidth+1;})()`), true,
       'a narrow configuration pane does not require horizontal scrolling');
@@ -284,6 +310,13 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
       return [...document.querySelectorAll('.hima-studio-header button')].every(e=>{const r=e.getBoundingClientRect();return r.left>=pane.left-1&&r.right<=pane.right+1;});
     })()`), true);
     await capture(d, browser, 'aix-configuration-narrow');
+    const narrowToolbar = await toolbarGeometry(browser);
+    if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'toolbar-layout.json'), JSON.stringify({normal:toolbar,narrow:narrowToolbar}, null, 2));
+    assert.ok(narrowToolbar.singleRow && narrowToolbar.fits && narrowToolbar.heightRatio<.25, JSON.stringify(narrowToolbar));
+    const narrowHero = await heroLineGeometry(browser);
+    if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'hero-narrow.json'), JSON.stringify(narrowHero, null, 2));
+    assert.ok(narrowHero.sameRow && narrowHero.fits, JSON.stringify(narrowHero));
+    await capture(d, browser, 'hero-inline-narrow', '.aix-hero-brand');
     await browser.send('Emulation.clearDeviceMetricsOverride');
     await browser.send('Page.navigate', { url: pathToFileURL(startingPage).href });
     await browser.wait(`document.querySelector('.empyrean-start-wordmark img')?.complete`);
@@ -333,6 +366,38 @@ test('Guide keeps its conversation while Campaign and Data Insight remain peer m
     await fillStart(d, browser);
     assert.ok((await d.click('config-confirm')).ok);
     await browser.wait(`!!document.querySelector('[data-hima-region="studio"]').getAttribute('data-hima-state-run')`, 15_000);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`);
+    const measureLive = () => browser!.evaluate<{ fillsPane: boolean; visible: boolean; summaryRatio: number; liveHeight: number; campaignHeight: number }>(`(() => {
+      const campaign=document.querySelector('[data-hima-region="campaign"]'), bounds=campaign.getBoundingClientRect(),
+        pane=campaign.parentElement.getBoundingClientRect(), summary=campaign.querySelector('.hima-masthead').getBoundingClientRect(),
+        live=campaign.querySelector('.hima-campaign-content').getBoundingClientRect();
+      return {fillsPane:Math.abs(bounds.height-pane.height)<2,summaryRatio:summary.height/bounds.height,
+        visible:bounds.top>=pane.top-1 && live.bottom<=pane.bottom+1,
+        liveHeight:live.height,campaignHeight:bounds.height};
+    })()`);
+    const liveLayout = await measureLive();
+    const activeToolbar = await toolbarGeometry(browser);
+    assert.ok(activeToolbar.singleRow && activeToolbar.fits && activeToolbar.heightRatio<.25, JSON.stringify(activeToolbar));
+    if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'live-layout.json'), JSON.stringify(liveLayout, null, 2));
+    await capture(d, browser, 'live-space-light');
+    assert.ok(liveLayout.fillsPane && liveLayout.visible && liveLayout.summaryRatio<=0.255 && liveLayout.liveHeight>liveLayout.campaignHeight*.65, JSON.stringify(liveLayout));
+    await browser.send('Emulation.setDeviceMetricsOverride', { width: 860, height: 700, deviceScaleFactor: 1, mobile: false });
+    await browser.evaluate(`(() => {
+      const extra=document.createElement('span'); extra.id='layout-stress-metadata';
+      extra.textContent=' · Detailed engineering task metadata'.repeat(80);
+      document.querySelector('.hima-masthead-sub').append(extra);
+    })()`);
+    const narrowLayout = await measureLive();
+    const activeNarrowToolbar = await toolbarGeometry(browser);
+    assert.ok(activeNarrowToolbar.singleRow && activeNarrowToolbar.fits && activeNarrowToolbar.heightRatio<.25, JSON.stringify(activeNarrowToolbar));
+    if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'live-narrow-layout.json'), JSON.stringify({pane:narrowLayout,toolbar:activeNarrowToolbar}, null, 2));
+    assert.ok(narrowLayout.visible && narrowLayout.summaryRatio<=0.255 && narrowLayout.liveHeight>narrowLayout.campaignHeight*.65, JSON.stringify(narrowLayout));
+    await browser.evaluate(`document.querySelector('#layout-stress-metadata').remove()`);
+    await capture(d, browser, 'live-space-narrow');
+    await browser.send('Emulation.clearDeviceMetricsOverride');
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await browser.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
+    await capture(d, browser, 'live-space-dark');
     const runId = await currentRun(d);
     const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${guide}`)).json() as RunView;
     assert.equal(view.run.control?.guideSessionId, guide);

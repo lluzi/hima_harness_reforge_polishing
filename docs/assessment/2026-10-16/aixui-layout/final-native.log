@@ -1,0 +1,11 @@
+✔ aiX branding uses the native theme and keeps configuration usable in a narrow pane (28831.481625ms)
+✔ Guide keeps its conversation while Campaign and Data Insight remain peer modes (18493.743541ms)
+✔ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (17152.495375ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66426.037959
