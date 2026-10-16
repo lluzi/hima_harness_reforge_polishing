@@ -58,3 +58,14 @@ None recorded.
 - **Open.** The catalogue does not list each rule's settable parameters, so the Guide proposed settings the
   rules do not take (threshold, equivalence definition); the gaps list stops at its widest 12 items; spike
   items carry no per-point evidence.
+
+## 0.2.1 aiX page theme (2026-10-16)
+
+- **Change.** Presentation only: `page/insight-page.html` uses the aiX light palette (navy ink, brand-blue
+  selection and score bars, aiX greys and status colours) and names the aiX Harness chat. The data element,
+  the script's behaviour and the generated files are unchanged; the Host still allows the one script by its
+  hash, computed from the installed template.
+- **Code.** Pack tests 78/78; `libinsight-insight-template.test.ts` 11/11; `analysis-page.test.ts` 7/7;
+  `test/contract/libinsight-analyses.test.ts` 8/8.
+- **Packaged App.** Not yet run: next is the HUG rc3 App (tag `hug-rc3`) with this Pack installed into a fresh
+  kit, for the aiX Library Insight video (real data stays in `.hima-tmp/` and on the NAS).

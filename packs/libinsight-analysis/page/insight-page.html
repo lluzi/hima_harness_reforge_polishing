@@ -2,14 +2,14 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Library Insight</title>
 <style>
-:root{--ink:#1F2125;--text:#3C4048;--dim:#6B6F78;--faint:#9A9DA5;--line:#D3D6DB;--soft:#E8EAED;--paper:#F3F4F6;--white:#fff;--red:#B3261E;--redt:#FBEDEC;--grn:#2E7D4F;--grnt:#E7F3EC}
+:root{--ink:#122b4a;--text:#2c4566;--dim:#506580;--faint:#7f93ad;--line:#d9e2ee;--soft:#edf2f8;--paper:#f4f7fb;--white:#fff;--brand:#082f68;--brandt:#e7effa;--red:#b13c45;--redt:#fbeef0;--grn:#24754d;--grnt:#e6f3ec}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 Aptos,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
+body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 header{display:flex;align-items:baseline;gap:16px;padding:12px 20px;background:var(--white);border-bottom:1px solid var(--line)}
-header h1{margin:0;font-size:17px;color:var(--ink);font-weight:600}
+header h1{margin:0;font-size:17px;color:var(--brand);font-weight:700;letter-spacing:-.01em}
 header .meta{color:var(--dim);font-size:13px}
 main{display:grid;grid-template-columns:350px minmax(0,1fr) 380px;gap:12px;padding:12px;min-height:calc(100vh - 50px)}
-.col{background:var(--white);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-width:0}
+.col{background:var(--white);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-width:0}
 .colhead{padding:12px 16px 10px;border-bottom:1px solid var(--soft)}
 .colhead h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
 .colhead .sub{font-size:12px;color:var(--faint)}
@@ -24,11 +24,11 @@ main{display:grid;grid-template-columns:350px minmax(0,1fr) 380px;gap:12px;paddi
 .subs div{display:grid;grid-template-columns:80px 1fr 24px;align-items:center;gap:8px;font-size:12px}
 .subs div.ns{grid-template-columns:80px 1fr}
 .subs .nsv{color:var(--faint);font-size:11.5px}
-.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--text)}
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--brand)}
 .hint{font-size:11.5px;color:var(--faint);margin-top:6px}
 .rule{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--white);border-radius:8px;padding:9px 11px;margin:0 0 8px;cursor:pointer;font:inherit;color:var(--text)}
 .rule:hover{border-color:var(--faint)}
-.rule.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.rule.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);background:var(--brandt)}
 .rule .nm{font-family:Consolas,Menlo,monospace;font-size:12.5px;color:var(--ink);font-weight:600}
 .rule .sm{display:block;font-size:12px;color:var(--dim);margin-top:2px}
 .rule .rs{display:block;font-size:12px;color:var(--red);margin-top:3px}
@@ -40,14 +40,14 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}
 td,th{padding:5px 8px;border-bottom:1px solid var(--soft);text-align:left;vertical-align:top}
 th{font-size:11px;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 td.num,th.num{text-align:right;white-space:nowrap}
-tr.row{cursor:pointer}tr.row:hover{background:var(--paper)}tr.row.on{background:var(--soft)}
+tr.row{cursor:pointer}tr.row:hover{background:var(--paper)}tr.row.on{background:var(--brandt)}
 tr.row.on td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 tr.mark{background:var(--soft)}tr.mark td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .bad{color:var(--red);font-weight:600}.good{color:var(--grn);font-weight:600}
 .mono{font-family:Consolas,Menlo,monospace;font-size:12px}
-select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);max-width:100%}
 .pick{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;color:var(--dim);flex-wrap:wrap}
-svg text{font-family:Aptos,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 .legend{font-size:11.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap;margin-top:4px}
 .legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .focus{background:var(--redt);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--ink)}
@@ -59,11 +59,11 @@ svg text{font-family:Aptos,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
 ol.todo{margin:0;padding-left:18px}ol.todo li{margin:0 0 8px}
 ol.todo li b{display:block;font-size:11px;letter-spacing:.05em;color:var(--dim)}
 .fname{font-size:11.5px;color:var(--dim);margin:0 0 6px}
-pre.code{background:#F6F7F8;border:1px solid var(--soft);border-radius:8px;padding:10px;font:11.5px/1.5 Consolas,Menlo,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;margin:0;max-height:360px;overflow:auto}
+pre.code{background:var(--paper);border:1px solid var(--soft);border-radius:8px;padding:10px;font:11.5px/1.5 Consolas,Menlo,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;margin:0;max-height:360px;overflow:auto}
 pre.code .c{color:var(--faint)}
 .acts{display:flex;gap:6px}
-.btn{border:1px solid var(--text);background:var(--white);border-radius:6px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink)}
-.btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--white);border-radius:8px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink)}
+.btn.dark{background:var(--brand);color:#fff;border-color:var(--brand)}
 .row2{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .chartbox h4{margin:0 0 4px;font-size:12px;color:var(--dim);font-weight:600}
@@ -71,9 +71,9 @@ pre.code .c{color:var(--faint)}
 .card{background:var(--paper);border-radius:8px;padding:8px 10px;font-size:12.5px}
 .card b{display:block;font-size:18px;color:var(--ink)}
 .card.r b{color:var(--red)}
-.overlay{position:fixed;inset:0;background:rgba(31,33,37,.35);display:none;align-items:flex-start;justify-content:center;padding-top:80px;z-index:5}
+.overlay{position:fixed;inset:0;background:rgba(18,43,74,.32);display:none;align-items:flex-start;justify-content:center;padding-top:80px;z-index:5}
 .overlay.show{display:flex}
-.pop{background:#fff;border-radius:12px;width:520px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.2);padding:18px 20px}
+.pop{background:#fff;border-radius:12px;width:520px;max-width:92vw;box-shadow:0 12px 40px rgba(8,47,104,.18);padding:18px 20px}
 .pop h3{margin:0 0 2px;font-size:16px;color:var(--ink)}
 .pop .grp{margin:12px 0 0}
 .pop .grp h4{margin:0 0 4px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between}
@@ -95,7 +95,7 @@ pre.code .c{color:var(--faint)}
    <div class="score" id="score"><div class="big" id="overall"></div><div class="subs" id="subs"></div></div>
    <div class="hint">Click the score to see what lowered it.</div></div>
   <div class="sec"><h3><span>Rules checked</span><span id="nrules"></span></h3><div id="rules"></div>
-   <div class="from">New rules come from prompts in the Hima Harness chat: the pack names the rule and writes its script.</div></div>
+   <div class="from">New rules come from prompts in the aiX Harness chat: the pack names the rule and writes its script.</div></div>
   <div class="sec" id="overview"></div>
  </section>
  <section class="col">
@@ -113,7 +113,7 @@ pre.code .c{color:var(--faint)}
 "use strict";
 (function(){
 /* ---------------- pure helpers (no DOM) ---------------- */
-const RED="#B3261E",GRN="#2E7D4F",INK="#1F2125",TXT="#3C4048",DIM="#6B6F78",FAINT="#9A9DA5",LINE="#D3D6DB",SOFT="#E8EAED",BOXF="#DADDE2",CLSF="#F3C9C5";
+const RED="#b13c45",GRN="#24754d",INK="#122b4a",TXT="#2c4566",DIM="#506580",FAINT="#7f93ad",LINE="#d9e2ee",SOFT="#edf2f8",BOXF="#d5e0ee",CLSF="#f4cdd2",GREY="#8197b3";
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fin=v=>typeof v==="number"&&isFinite(v);
 const fx=(v,d)=>fin(v)?v.toFixed(d):"–";
@@ -282,7 +282,7 @@ function VMIN(){
  let b=T(0,12,`Extra slowdown vs inverter, ${num(R.hi)}→${num(R.lo)} V`,{fs:12,c:INK,w:600});
  b+=L(xs(0),top-4,xs(0),H-22,INK,1)+L(xs(watch),top-4,xs(watch),H-22,RED,1,"4 3");
  rows.forEach((r,i)=>{const y=top+rh*i+rh/2,on=ST.v===r.v;
-  b+=`<g class="vrow" data-v="${esc(r.v)}">`+Rc(0,y-rh/2+1,W,rh-2,on?"#F1F2F4":"#fff")+T(0,y+4,r.v,{c:on?INK:TXT,w:on?600:400});
+  b+=`<g class="vrow" data-v="${esc(r.v)}">`+Rc(0,y-rh/2+1,W,rh-2,on?"#e7effa":"#fff")+T(0,y+4,r.v,{c:on?INK:TXT,w:on?600:400});
   if(r.b)b+=L(xs(r.b.p5),y,xs(r.b.p95),y,FAINT,1)+Rc(xs(r.b.p25),y-6,xs(r.b.p75)-xs(r.b.p25),12,BOXF,`stroke="${FAINT}"`)+L(xs(r.b.p50),y-6,xs(r.b.p50),y+6,INK,1.5);
   (r.dots||[]).forEach((d,j)=>{if(fin(d))b+=C(xs(d),y+((j*7)%11)-5,2.2,RED,'fill-opacity=".7"')});
   b+=T(x1+6,y+4,String(r.n),{c:r.n?RED:FAINT,w:600})+"</g>";});
@@ -347,7 +347,7 @@ function GAPS(){
  s+=Rc(xs(lo.drive),tp,xs(hi.drive)-xs(lo.drive),bt-tp,RED,'fill-opacity=".07"');
  s+=T((xs(lo.drive)+xs(hi.drive))/2,tp+14,`no cell between ×${fx(lo.drive,1)} and ×${fx(hi.drive,1)}`,{a:"middle",c:RED,w:600,fs:11.5,halo:1});
  s+=`<path d="${line(cs.map(c=>[xs(c.drive),ys(c.area)]))}" fill="none" stroke="${LINE}" stroke-width="1"/>`;
- cs.forEach((c,i)=>{const k=i===it.i||i===it.i+1;s+=C(xs(c.drive),ys(c.area),k?6:4.5,k?RED:"#8E929A",`stroke="#fff" stroke-width="1.5"`);});
+ cs.forEach((c,i)=>{const k=i===it.i||i===it.i+1;s+=C(xs(c.drive),ys(c.area),k?6:4.5,k?RED:GREY,`stroke="#fff" stroke-width="1.5"`);});
  s+=C(xs(it.miss.drive),ys(it.miss.area),6,"#fff",`stroke="${GRN}" stroke-width="2" stroke-dasharray="3 2"`)+T(xs(it.miss.drive),ys(it.miss.area)-12,"missing size",{a:"middle",c:GRN,fs:11,halo:1});
  [lo,hi].forEach((c,j)=>{s+=T(xs(c.drive)+(j?8:-8),ys(c.area)+(j?-8:16),c.s,{a:j?"start":"end",c:INK,w:600,fs:11,halo:1});});
  s+=T((a+bx)/2,H-6,`every ${it.cls} cell in ${it.v}: drive strength (relative to the weakest) vs area (µm²)`,{a:"middle",fs:10.5});
@@ -355,7 +355,7 @@ function GAPS(){
  const rows=cs.map((c,i)=>{const k=i===it.i||i===it.i+1;return `<tr class="${k?"mark":""}"><td class="mono ${k?"bad":""}">${esc(c.s)}</td><td class="num">×${fx(c.drive,2)}</td><td class="num">${fx(c.area,2)}</td><td class="num">${g(c.leak)}</td><td class="num">${fx(c.d4,0)}</td><td class="num">${fx(c.d16,0)}</td></tr>`}).join("");
  const span=cs[cs.length-1].drive/cs[0].drive;
  $("mid").innerHTML=ruleSec()+`<div class="sec"><div class="pick">Function <select id="pk">${opts}</select></div>${svg(W,H,s)}
-  <div class="legend"><span><b style="background:#8E929A"></b>cells of this function</span><span><b style="background:${RED}"></b>the two cells either side of the gap</span><span style="color:${GRN}">◌ where a missing size would sit</span></div>
+  <div class="legend"><span><b style="background:${GREY}"></b>cells of this function</span><span><b style="background:${RED}"></b>the two cells either side of the gap</span><span style="color:${GRN}">◌ where a missing size would sit</span></div>
   <div class="cards"><div class="card r"><b>×${fx(it.ratio,2)}</b>drive jump ${esc(lo.s)} → ${esc(hi.s)}</div><div class="card r"><b>+${Math.max(0,it.pen_area).toFixed(0)}%</b>area paid by taking ${esc(hi.s)} instead of the missing size</div><div class="card r"><b>+${Math.max(0,it.weak).toFixed(0)}%</b>delay at 16× load if ${esc(lo.s)} is kept instead</div></div>
   <div class="hint">${it.vts>=nv?`The same gap is in all ${nv} VTs: a library design choice.`:`Gap in ${it.vts} of ${nv} VTs.`} ${cs.length} cells cover ×${span.toFixed(0)} of drive, but none between ×${fx(lo.drive,1)} and ×${fx(hi.drive,1)}.</div></div>
   <div class="sec"><h3>All ${esc(it.cls)} cells · ${esc(it.v)} · weakest first</h3><table><tr><th>Cell</th><th class="num">Drive</th><th class="num">Area <span style="text-transform:none">µm²</span></th><th class="num">Leakage</th><th class="num">4× load ps</th><th class="num">16× load ps</th></tr>${rows}</table></div>`;
