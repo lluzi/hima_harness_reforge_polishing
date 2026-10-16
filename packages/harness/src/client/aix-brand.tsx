@@ -32,8 +32,7 @@ export function AiXTagline(): ReactElement {
 /** The existing brand seat supplies the complete product lockup on the blank-session surface. */
 export function AiXHeroBrand(): ReactElement {
   return <span className="aix-hero-brand">
-    <AiXWordmark label={AIX_NAME} />
-    <AiXTagline />
+    <span className="aix-hero-headline"><AiXWordmark label={AIX_NAME} /><AiXTagline /></span>
     <span className="aix-hero-description">Expertise, composed around your engineering goals.</span>
   </span>;
 }

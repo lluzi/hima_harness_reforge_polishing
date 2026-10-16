@@ -1,0 +1,12 @@
+{
+  "normal": {
+    "singleRow": true,
+    "fits": true,
+    "heightRatio": 0.08460168393782383
+  },
+  "narrow": {
+    "singleRow": true,
+    "fits": true,
+    "heightRatio": 0.05850746268656717
+  }
+}

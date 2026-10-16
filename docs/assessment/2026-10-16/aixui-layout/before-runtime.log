@@ -1,0 +1,44 @@
+✖ aiX branding uses the native theme and keeps configuration usable in a narrow pane (7833.624958ms)
+✖ Guide keeps its conversation while Campaign and Data Insight remain peer modes (10864.349416ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19417.807084
+
+✖ failing tests:
+
+test at test/contract/unified-workbench.test.ts:160:1
+✖ aiX branding uses the native theme and keeps configuration usable in a narrow pane (7833.624958ms)
+  AssertionError [ERR_ASSERTION]: {"sameRow":false,"fits":true}
+      at file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:192:14
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async prepareSession (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:52:3)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:175:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/contract/unified-workbench.test.ts:319:1
+✖ Guide keeps its conversation while Campaign and Data Insight remain peer modes (10864.349416ms)
+  AssertionError [ERR_ASSERTION]: {"fillsPane":false,"summaryRatio":0.15486056499909262,"liveHeight":400.59375,"campaignHeight":516.59375}
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:354:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

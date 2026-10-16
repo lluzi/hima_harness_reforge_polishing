@@ -98,12 +98,14 @@ export const HIMA_STYLE = `
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .hima-studio{container:hima-studio / inline-size;position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
-.hima-studio-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-3) var(--hima-sp-4);min-height:56px;border-bottom:1px solid var(--hima-line);background:var(--hima-paper);flex:none}
-.hima-studio-header select{flex:1 1 140px;min-width:0;min-height:34px;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2)}
-.hima-studio-header-actions{display:flex;flex-wrap:wrap;min-width:0;gap:var(--hima-sp-2);margin-inline-start:auto}
+.hima-studio-header{display:flex;flex-wrap:nowrap;align-items:center;gap:var(--hima-sp-1);padding:6px var(--hima-sp-2);min-height:40px;border-bottom:1px solid var(--hima-line);background:var(--hima-paper);flex:none}
+.hima-studio-header select{flex:1 1 0;min-width:0;width:0;min-height:30px;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1)}
+.hima-studio-header-actions{display:flex;flex-wrap:nowrap;flex:none;gap:var(--hima-sp-1);margin-inline-start:auto}
+.hima-studio-header .hima-studio-tool{flex:none;width:30px;height:30px;min-height:30px;padding:6px;border:1px solid var(--hima-line)}
 .hima-studio-modes{display:flex;align-items:center;gap:var(--hima-sp-1);flex:none;padding:3px;border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-soft)}
 .hima-studio-modes button{display:inline-flex;align-items:center;gap:6px;appearance:none;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);padding:var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;white-space:nowrap}
 .hima-studio-modes button[aria-selected=true]{background:var(--hima-accent);color:var(--hima-on-solid);font-weight:600;box-shadow:0 1px 3px #082f6812}
+@container hima-studio (max-width:520px){.hima-studio-mode-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.hima-studio-modes button{gap:0;padding:6px}}
 .hima-insight-preparation{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3)}
 .hima-insight-preparation h2{margin:0;font-size:var(--hima-fs-title);font-weight:650}
 .hima-insight-preparation p{margin:0;max-width:520px;font-size:var(--hima-fs-label);color:var(--hima-ink-2);line-height:var(--hima-lh-body)}
@@ -117,7 +119,7 @@ export const HIMA_STYLE = `
 .hima-libinsight-frame{flex:1;min-height:0;width:100%;border:0;background:#fff}
 .hima-libinsight-note{padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3);font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-libinsight-note p{margin:0;max-width:640px}.hima-libinsight-note pre{white-space:pre-wrap;max-height:240px;overflow:auto}
-.hima-workbench-body>.hima-campaign{height:clamp(420px,70vh,680px);min-height:420px;flex:none}
+.hima-workbench-body>.hima-campaign{height:100%;min-height:0;flex:none}
 .hima-memory-panel,.hima-team-panel{flex:none;min-width:0;grid-template-columns:minmax(0,1fr);margin:var(--hima-sp-3);padding:var(--hima-sp-4);border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-paper);display:grid;gap:var(--hima-sp-3)}
 .hima-memory-panel>header,.hima-team-panel>header,.hima-team-card>header,.hima-child-transcript article>header,.hima-child-context article>header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:var(--hima-sp-2)}
 .hima-memory-panel h3,.hima-memory-panel h4,.hima-memory-panel p,.hima-team-panel h3,.hima-team-panel p{margin:0}
@@ -162,7 +164,7 @@ export const HIMA_STYLE = `
    scale 1 is a CSS pixel, so the same --hima-fs-* steps that size the rest of the sheet size the
    canvas's own labels, chips and badges too. */
 .hima-campaign{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.hima-masthead{display:flex;flex-direction:column;align-items:stretch;gap:var(--hima-sp-2);min-height:80px;box-sizing:border-box;padding:var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
+.hima-masthead{display:flex;flex-direction:column;align-items:stretch;gap:var(--hima-sp-2);min-height:0;max-height:25%;overflow:auto;box-sizing:border-box;padding:var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-masthead-id{flex:1;min-width:0}
 .hima-masthead h2{margin:0;font-size:var(--hima-fs-title);font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hima-masthead-sub{margin:6px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2);font-variant-numeric:tabular-nums;line-height:1.6;overflow-wrap:anywhere}

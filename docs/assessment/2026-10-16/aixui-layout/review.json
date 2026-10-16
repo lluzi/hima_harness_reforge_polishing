@@ -1,0 +1,16 @@
+{
+  "reviewer": "aixui_layout_review",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "status": "clear",
+  "findings": [],
+  "closed": [
+    {
+      "priority": "P2",
+      "issue": "Narrow Hero tagline clipped",
+      "resolution": "Single-row toolbar relaxes dock width; 860px actual Hero width324.23 versus text273.13. Full Extraordinary. visible in latest screenshots; Range/scrollWidth test covers original failure."
+    }
+  ],
+  "increment": "User 09:41 toolbar clarification: controls one row with accessible icon actions and original textContent/markers; measured height 5.9–9%.",
+  "limits": "Read-only targeted code and artifact review, no reviewer test execution. Primary verifies final tests."
+}

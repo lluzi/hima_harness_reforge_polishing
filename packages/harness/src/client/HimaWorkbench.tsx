@@ -181,40 +181,22 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         token actually resolved inside the whole Campaign tab body. Same hardening as the transcript
         receipt (`HimaRunCard.tsx`). */}
     <style>{HIMA_STYLE}</style>
-    {/* The masthead and the session-header chip (`CampaignChip`) now carry Campaign's identity, so
-        this header names no "Campaign workspace" heading of its own (Design bar) — one 40 px row:
-        the CAMPAIGN picker at the left, `Files & code`/`Pack & assets` at the right. A separate,
-        otherwise-empty band above this one for only those two buttons was Task 9's own design
-        review finding (a blank strip with nothing in it but two right-aligned buttons); merging
-        loses no control and no marker. Both controls keep their established names and text:
-        `studio-pack-owner` is a plain, always-present button rather than a tab-menu item, because
-        the pack-owner desktop test drives it with one click and no menu it would first have to
-        open, and `Files & code`'s own visible text is what `markText('button', 'Files & code', …)`
-        matches in the existing desktop suites — restyled compact (`.hima-icon-button`) here, never
-        replaced with an icon-only control that text could not still match. */}
     <header className='hima-studio-header'>
       <div className='hima-studio-modes' role='tablist' aria-label='Hima work mode'>
-        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}><Glyph name='project'/>Project</button>
-        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}><Glyph name='insight'/>Data Insight</button>
+        <button type='button' role='tab' title='Project' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}><Glyph name='project'/><span className='hima-studio-mode-label'>Project</span></button>
+        <button type='button' role='tab' title='Data Insight' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}><Glyph name='insight'/><span className='hima-studio-mode-label'>Data Insight</span></button>
       </div>
       {address.kind !== 'campaign' ? null : <select aria-label='Project on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
         <option value=''>Select a project</option>
         {selected && !list.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>}
-      {address.kind !== 'campaign' ? null : <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
-      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button hima-studio-secondary' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another project</button> : null}
-      {address.kind === 'campaign' && retainedReportRef ? <button className='hima-button hima-studio-secondary' data-hima-control='studio-open-retained-insight' onClick={() => chooseInsight({ kind: 'insight', reportRef: retainedReportRef })}>Open retained insight</button> : null}
+      {address.kind !== 'campaign' ? null : <button className='hima-icon-button hima-studio-tool' aria-label='Refresh Run data' title='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
+      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-icon-button hima-studio-tool' title='Start another project' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}><Glyph name='plus'/><span className='hima-visually-hidden'>Start another project</span></button> : null}
+      {address.kind === 'campaign' && retainedReportRef ? <button className='hima-icon-button hima-studio-tool' title='Open retained insight' data-hima-control='studio-open-retained-insight' onClick={() => chooseInsight({ kind: 'insight', reportRef: retainedReportRef })}><Glyph name='insight'/><span className='hima-visually-hidden'>Open retained insight</span></button> : null}
       <div className='hima-studio-header-actions'>
-        {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier
-            compacting pass reached for — both read as text-only actions inside a row that already
-            carries a select and an icon-only refresh control, and the missing border made them easy
-            to miss beside those. Same markers, same visible text.
-            Slice D: `hima-studio-secondary` marks these as the row's non-essential actions (ported
-            from `demo/andes-openc910`); the marker now reads in `workbench-style.ts` as a muted,
-            fill-less button, so the row's primary actions stand out from these. */}
-        <button className='hima-button hima-studio-secondary' onClick={openFiles} title='Open the native workspace files and code panel'><Glyph name='folder'/>Files & code</button>
-        <button className='hima-button hima-studio-secondary' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}><Glyph name='package'/>Pack & assets</button>
+        <button className='hima-icon-button hima-studio-tool' onClick={openFiles} title='Open the native workspace files and code panel'><Glyph name='folder'/><span className='hima-visually-hidden'>Files & code</span></button>
+        <button className='hima-icon-button hima-studio-tool' title='Pack & assets' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}><Glyph name='package'/><span className='hima-visually-hidden'>Pack & assets</span></button>
       </div>
     </header>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
@@ -233,13 +215,13 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         : address.kind === 'child'
           ? <ChildSessionPanel viewerSessionId={activeSessionId} parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} identityError={childCheck.key === childKey ? childCheck.error : undefined} retryIdentity={() => setChildRefresh(value => value + 1)} />
         : selected === undefined
-        ? <div className='hima-workbench-body'><ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
+        ? <div className='hima-workbench-body' key='configuration'><ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
             askGuide={askGuide} pickFolder={pickFolder}
             openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
             onBusy={setConfirming} refreshSignal={configRefresh}
             onStarted={(started) => { chooseCampaign({ kind: 'campaign', runId: started.run.id }); list.refresh(); }} />
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId)} sessionId={activeSessionId} draft={memoryDrafts[memoryScopeKey(activeSessionId)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId)]: draft }))}/></div>
-        : <div className='hima-workbench-body'><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
+        : <div className='hima-workbench-body' key={selected}><CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />
             <TeamPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} view={view} onChanged={() => { snapshot.refresh(); execution.refresh(); list.refresh(); }} onInspect={entry => setAddress({ kind: 'child', parentSessionId: entry.parentSessionId, childSessionId: entry.childSessionId })}/>
             <WorkMemoryPanel key={memoryScopeKey(activeSessionId, selected)} sessionId={activeSessionId} runId={selected} draft={memoryDrafts[memoryScopeKey(activeSessionId, selected)] ?? EMPTY_MEMORY_DRAFT} onDraft={draft => setMemoryDrafts(current => ({ ...current, [memoryScopeKey(activeSessionId, selected)]: draft }))}/></div>}
     {libInsightSeen ? <LibInsightAppPanel sessionId={activeSessionId} hidden={!showingLibInsight} pickFolder={pickFolder} onShowReports={() => setInsightSurface('reports')} /> : null}

@@ -7,13 +7,15 @@ import type { ReactElement } from 'react';
 export type GlyphName =
   | 'check' | 'dot' | 'ring' | 'hourglass' | 'retry' | 'square' | 'bar' | 'diamond'
   | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit'
-  | 'project' | 'insight' | 'folder' | 'package';
+  | 'project' | 'insight' | 'folder' | 'package' | 'plus';
 
 /** The three glyphs drawn as a solid shape rather than an outlined stroke. */
 const FILLED = new Set<GlyphName>(['check', 'dot', 'square']);
 
 function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
   switch (name) {
+    case 'plus':
+      return <path d="M8 3v10M3 8h10" strokeWidth={1.4} strokeLinecap="round"/>;
     case 'project':
       return <><rect x="2.5" y="2.5" width="4" height="4" rx="1" strokeWidth={1.4}/><rect x="9.5" y="9.5" width="4" height="4" rx="1" strokeWidth={1.4}/><path d="M6.5 4.5h5v5M4.5 6.5v5h5" strokeWidth={1.4} strokeLinecap="round"/></>;
     case 'insight':

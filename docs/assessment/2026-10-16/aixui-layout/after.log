@@ -1,0 +1,10 @@
+✔ aiX branding uses the native theme and keeps configuration usable in a narrow pane (11032.337291ms)
+✔ Guide keeps its conversation while Campaign and Data Insight remain peer modes (8010.784209ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19872.9705
