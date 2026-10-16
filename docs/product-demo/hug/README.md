@@ -1,6 +1,6 @@
 # HUG demo recordings: handoff
 
-Read this before any HUG take; it replaces chat history. Use the `himaharness-demo-video` skill for the
+Read this before any HUG take; it replaces chat history. Use the `aix-demo-video` skill for the
 recording and editing process itself. These notes are the HUG-specific inputs.
 
 ## The build (freeze; never patch between takes)
@@ -51,9 +51,12 @@ first take is the proof. If one misbehaves, revert that Site's `site.yml`/`permi
   shows the node graph if a take needs it.
 - **Wording:** "Project", not "Campaign", on screen and from the Guide.
 - **Chat flow:** greeting → "what can you do" → the designer's need → name the Pack, goal and budget.
-- **Recording:** app-only capture; record in Light. Panels are drawn from the take's own `state/` and
-  `reports/` at every milestone. Use the same cut lengths (15 s / 30 s / 1 min / 3 min / 6 min) with an
-  honest time-lapse badge.
+- **Recording:** app-only capture; record the App in **Dark**, so the App, the cards and the Keynote deck
+  share one aiX dark theme (#101d30).
+- **Edit:** every cut opens on a front card and closes on an end card with the result; data cards are
+  drawn from the take's own `state/` and `reports/` and cut in, opaque and full-frame, at every milestone.
+  Output is 16:9 (1920×1080). Ship all seven lengths (full / 12 min / 6 min / 3 min / 1 min / 30 s / 15 s)
+  with an honest time-lapse badge.
 - **Retakes:** a retake reuses the proven App and kit unchanged. Quit the App and stop the recorder when
   a take ends.
 - **Data:** real customer or foundry data never goes into git, issues or hosted pages.
