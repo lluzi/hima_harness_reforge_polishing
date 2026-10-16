@@ -309,8 +309,12 @@ export const TEAM_STYLE = `
 @keyframes hima-team-chip-flash{0%{color:var(--hima-ink)}26%{color:var(--hima-live)}100%{color:var(--hima-ink)}}
 /* Compact: the whole flow — every station, with the round loop — fits the Live pane at side-pane
    width without scrolling (2026-10-14 launch take, 1280x770 window). A finished or round-hidden
-   station folds to a slim row so the active station and the ones still ahead keep the room. */
-.hima-workbench-body>.hima-campaign:has([data-hima-region="campaign-team"]){height:100%;min-height:440px}
+   station folds to a slim row so the active station and the ones still ahead keep the room.
+   The aiX Project header (title, owner, tabs) takes ~240px of the pane, so the team keeps its own
+   height and the pane scrolls past the header instead of clipping the last stations (MAGE aiX take,
+   2026-10-16: 323px given, 453px needed). */
+.hima-workbench-body>.hima-campaign:has([data-hima-region="campaign-team"]){height:auto;min-height:440px}
+.hima-campaign:has([data-hima-region="campaign-team"]) .hima-team{flex:none;overflow:visible}
 .hima-team-top{padding:5px 12px;gap:5px 7px;font-size:12px;row-gap:4px}
 .hima-team-top strong{flex-basis:auto;font-size:13px;margin-right:4px;display:none}
 .hima-team-chip{padding:1px 8px;gap:4px}
