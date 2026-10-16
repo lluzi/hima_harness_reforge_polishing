@@ -1,0 +1,26 @@
+{
+  "reviewer": "aixui_adversarial",
+  "status": "clear",
+  "findings": [],
+  "scope": "Targeted continued branding review, not a repeated full review",
+  "checks": {
+    "build": "passed",
+    "typecheck": "passed",
+    "client_style": "3/3 passed",
+    "native_desktop": "1/1 passed, zero skipped",
+    "native_icon": "iconutil decoded valid ICNS 16\u20131024 px",
+    "seams": "passed",
+    "boundary": "passed"
+  },
+  "limits": "No full regression, signed release, product model, SSH or EDA run. Reviewer did not independently run tests.",
+  "state": "Uncommitted local aixui candidate; no push or merge",
+  "preexisting_WIP_sha256": "e0c7efe456b64e667973bde9293b114b62113ec6e449474f3a3bf296eff98d5c",
+  "source_sha256": {
+    "packages/harness/src/client/aix-symbol.ts": "da6a16d6af79d1076bcd64bacffd6cd7cdc2e9d32c4ccba3b8a5d8c30ae30f65",
+    "packages/harness/src/client/aix-style.ts": "8e4670c59026251cb027a89d4aab82945ad51a3141875fa66ee1644c43abc97f",
+    "packages/harness/src/client/aix-brand.tsx": "52bad51a85057424645c86779678f91ae28f77baf02ec1fe2658910fa91e651d",
+    "packages/harness/scripts/make-ui-font.mjs": "c89896e94c25c3e5f5279d57cebd46ff86d6d2ed17124194cc4cf2690ada4f50",
+    "packages/harness/assets/fonts/Urbanist.woff2": "da14af7a4148401d7e51019960a796ea4a9f87d1fe4eaa3e41363becd362b4c0",
+    "packages/desktop/scripts/make-icon.mjs": "2cdb1ba706b9ea96eafe18b502a650ebc0836f39fe01ce5b288a9685bba709be"
+  }
+}

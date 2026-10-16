@@ -1,0 +1,1227 @@
+{
+  "schemaVersion": "presentation-finalization.v1",
+  "finalSha256": "6a7c615ba4fdf0b7ec658a82a15a4c905e25a107271a77bc45ca3a7d9ce0bd66",
+  "byteCount": 4366097,
+  "packageIntegrity": {
+    "chart_count": 0,
+    "claim_boundary": "Structural package checks only; no slide text, notes, formulas, chart values, or native PowerPoint execution were inspected.",
+    "finding_count": 0,
+    "findings": [],
+    "notes_parts_skipped": 10,
+    "relationship_part_count": 30,
+    "slide_count": 10,
+    "status": "pass",
+    "exitCode": 0,
+    "findingCount": 0,
+    "warnings": []
+  },
+  "presentationLayout": {
+    "finding_count": 0,
+    "findings": [],
+    "font_policy": {
+      "checked_text_script_count": 260,
+      "native_font_rendering_verified": false,
+      "observed_font_families": [
+        "Manrope",
+        "Manrope SemiBold",
+        "Noto Sans SC",
+        "Noto Sans SC SemiBold"
+      ],
+      "observed_font_use_counts": {
+        "Manrope": 211,
+        "Manrope SemiBold": 6,
+        "Noto Sans SC": 20,
+        "Noto Sans SC SemiBold": 23
+      },
+      "passed": true,
+      "performed": true
+    },
+    "slide_count": 10,
+    "slide_size_in": [
+      13.3333,
+      7.5
+    ],
+    "warning_count": 133,
+    "warnings": [
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "16",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "17",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "20",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "20",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "21",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "21",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "22",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "22",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "23",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "24",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "24",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "25",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "25",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2279,
+        "right_object_id": "26",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "29",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "30",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "34",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "35",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "35",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "36",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "36",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "37",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "39",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "40",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "40",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "41",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "41",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2553,
+        "right_object_id": "42",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "43",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "44",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "44",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "45",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "45",
+        "overlap_height_in": 0.8078,
+        "overlap_width_in": 0.2165,
+        "right_object_id": "46",
+        "slide": 1
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "18",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "19",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "21",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "22",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "22",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "23",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "24",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "24",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "25",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "25",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "26",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "26",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "27",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "27",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.109,
+        "right_object_id": "28",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "31",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "32",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "36",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "37",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "38",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "39",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "40",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "41",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "41",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "42",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "42",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "43",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "43",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1221,
+        "right_object_id": "44",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "45",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "46",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "46",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "47",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "47",
+        "overlap_height_in": 0.3929,
+        "overlap_width_in": 0.1036,
+        "right_object_id": "48",
+        "slide": 2
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "20",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "22",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "23",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "24",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "24",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "25",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "25",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "26",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "26",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "27",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "27",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "28",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "28",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0599,
+        "right_object_id": "29",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "32",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "33",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "38",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "39",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "40",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "41",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "42",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "42",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "43",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "43",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "44",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "44",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0671,
+        "right_object_id": "45",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "46",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "47",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "47",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "48",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "48",
+        "overlap_height_in": 0.2162,
+        "overlap_width_in": 0.0569,
+        "right_object_id": "49",
+        "slide": 6
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "15",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "16",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "18",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "19",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "20",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "20",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "21",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "21",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "22",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "22",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "23",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "24",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "24",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2397,
+        "right_object_id": "25",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "28",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "29",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "33",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "34",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "34",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "35",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "35",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "36",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "38",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "39",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "40",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "40",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2685,
+        "right_object_id": "41",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "42",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "43",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "43",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "44",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "44",
+        "overlap_height_in": 0.8574,
+        "overlap_width_in": 0.2277,
+        "right_object_id": "45",
+        "slide": 7
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "10",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "11",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "13",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "14",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "14",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "15",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "15",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "16",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "16",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "17",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "17",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "18",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "18",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "19",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1575,
+        "right_object_id": "20",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "24",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "28",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "29",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "29",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "30",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "30",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "31",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "32",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "33",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "33",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "34",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "34",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "35",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "35",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1765,
+        "right_object_id": "36",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "38",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "39",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.5649,
+        "overlap_width_in": 0.1497,
+        "right_object_id": "40",
+        "slide": 8
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "10",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "11",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "13",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "14",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "14",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "15",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "15",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "16",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "16",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "17",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "17",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "18",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "18",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "19",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1883,
+        "right_object_id": "20",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "24",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "28",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "29",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "29",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "30",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "30",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "31",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "32",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "33",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "33",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "34",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "34",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "35",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "35",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.2109,
+        "right_object_id": "36",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "38",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "39",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.6695,
+        "overlap_width_in": 0.1789,
+        "right_object_id": "40",
+        "slide": 9
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "10",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "11",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "13",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "14",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "14",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "15",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "15",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "16",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "16",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "17",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "17",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "18",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "18",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "19",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "19",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1476,
+        "right_object_id": "20",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "23",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "24",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "28",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "29",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "29",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "30",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "30",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "31",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "32",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "33",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "33",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "34",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "34",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "35",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "35",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1653,
+        "right_object_id": "36",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "37",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "38",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "38",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "39",
+        "slide": 10
+      },
+      {
+        "kind": "substantial_text_frame_overlap",
+        "left_object_id": "39",
+        "overlap_height_in": 0.5451,
+        "overlap_width_in": 0.1402,
+        "right_object_id": "40",
+        "slide": 10
+      }
+    ],
+    "exitCode": 0,
+    "findingCount": 0,
+    "fontPolicy": {
+      "checked_text_script_count": 260,
+      "native_font_rendering_verified": false,
+      "observed_font_families": [
+        "Manrope",
+        "Manrope SemiBold",
+        "Noto Sans SC",
+        "Noto Sans SC SemiBold"
+      ],
+      "observed_font_use_counts": {
+        "Manrope": 211,
+        "Manrope SemiBold": 6,
+        "Noto Sans SC": 20,
+        "Noto Sans SC SemiBold": 23
+      },
+      "passed": true,
+      "performed": true
+    }
+  },
+  "fontSelection": {
+    "basis": "design",
+    "approvedFamilies": [
+      "Manrope",
+      "Manrope SemiBold",
+      "Urbanist Medium",
+      "Noto Sans SC",
+      "Noto Sans SC SemiBold"
+    ],
+    "scriptFonts": {},
+    "referenceSha256": null,
+    "referenceFontsVerifiedInEncodedText": false,
+    "checked_text_script_count": 260,
+    "native_font_rendering_verified": false,
+    "observed_font_families": [
+      "Manrope",
+      "Manrope SemiBold",
+      "Noto Sans SC",
+      "Noto Sans SC SemiBold"
+    ],
+    "observed_font_use_counts": {
+      "Manrope": 211,
+      "Manrope SemiBold": 6,
+      "Noto Sans SC": 20,
+      "Noto Sans SC SemiBold": 23
+    },
+    "passed": true,
+    "performed": true
+  },
+  "firstPartyImport": {
+    "performed": true,
+    "passed": true,
+    "slideCount": 10,
+    "sha256": "6a7c615ba4fdf0b7ec658a82a15a4c905e25a107271a77bc45ca3a7d9ce0bd66",
+    "runtimeNodeModules": "/Users/lluzi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules",
+    "nodeExecutable": "/Users/lluzi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+  },
+  "nativeTableArithmetic": {
+    "performed": true,
+    "checked_column_count": 0,
+    "checks": [],
+    "claim_boundary": "Displayed-value arithmetic with rounding tolerance; not source-data verification.",
+    "eligible_table_count": 0,
+    "finding_count": 0,
+    "findings": [],
+    "native_table_count": 0,
+    "passed": true,
+    "schema_version": "presentation-native-table-arithmetic.v1",
+    "skipped_tables": [],
+    "slide_count": 10,
+    "warning_count": 0,
+    "warnings": []
+  },
+  "nativeChartTitles": {
+    "performed": true,
+    "checks": [],
+    "finding_count": 0,
+    "findings": [],
+    "native_chart_count": 0,
+    "native_powerpoint_verified": false,
+    "passed": true,
+    "presentation_sha256": "6a7c615ba4fdf0b7ec658a82a15a4c905e25a107271a77bc45ca3a7d9ce0bd66",
+    "schema_version": "presentation-native-chart-titles.v1",
+    "slide_count": 10,
+    "source_text_emitted": false,
+    "unresolved_linked_title_count": 0
+  },
+  "sourceDerivedPolicyFlags": [
+    "--expected-slide-size-emu",
+    "12192000,6858000",
+    "--validate-bullet-geometry",
+    "--validate-heading-fit",
+    "--cover-role",
+    "none",
+    "--expected-slide-count",
+    "10",
+    "--approved-font-family",
+    "Manrope",
+    "--approved-font-family",
+    "Manrope SemiBold",
+    "--approved-font-family",
+    "Urbanist Medium",
+    "--approved-font-family",
+    "Noto Sans SC",
+    "--approved-font-family",
+    "Noto Sans SC SemiBold"
+  ],
+  "nativeChartValidation": {
+    "detectedOwnerSlides": [],
+    "detectedChartCount": 0,
+    "targetApplication": "portable",
+    "sourceChartOwnersExplicitlyDeclared": true,
+    "validatorRan": false,
+    "passed": true
+  }
+}

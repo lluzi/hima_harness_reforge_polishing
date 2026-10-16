@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "source": "https://en.wikipedia.org/wiki/File:Empyrean_Technology.png",
+  "asset_sha256": "c7a956f9123b92f98be2e9d67261cde034b91f3d93ddc61e483a5a824720ad56",
+  "source_png_unchanged": true,
+  "english_viewport": {
+    "x": 24,
+    "y": 0,
+    "width": 447,
+    "height": 88
+  },
+  "checks": {
+    "build": "passed",
+    "typecheck": "passed",
+    "seams": "passed",
+    "boundary": "passed",
+    "client_style": "3/3 passed",
+    "native_branding": "1/1 passed, 0 skipped",
+    "source_identity": "exact source bytes in actual client and startup",
+    "startup_identity": "same Urbanist font and polygon points as client"
+  },
+  "review": {
+    "reviewer": "aixui_adversarial",
+    "status": "clear",
+    "findings": [],
+    "scope": "targeted continued brand review, no repeated full review",
+    "limits": "reviewer did not independently run tests"
+  },
+  "existing_WIP_sha256": "e0c7efe456b64e667973bde9293b114b62113ec6e449474f3a3bf296eff98d5c",
+  "delivery": "Local uncommitted aixui candidate; no push or merge"
+}

@@ -1,0 +1,48 @@
+{
+  "reviewer": "aixui_adversarial",
+  "status": "clear",
+  "findings": [],
+  "checks": {
+    "build": "passed",
+    "typecheck": "passed",
+    "seams": "passed",
+    "boundary": "passed",
+    "style": "3/3 passed",
+    "native_desktop": "1/1 passed, 0 skipped"
+  },
+  "geometry": {
+    "sidebar": {
+      "singleRow": true,
+      "fits": true,
+      "baselineDelta": 0.001773183996029104,
+      "brandGap": 10,
+      "fontSize": "16px",
+      "rootHeight": 24,
+      "logoBottomOverflow": -1.337005615234375,
+      "productRightOverflow": -8.4765625
+    },
+    "compact": {
+      "singleRow": true,
+      "fits": true,
+      "baselineDelta": 0.0013299855318962273,
+      "brandGap": 7.5,
+      "fontSize": "12px",
+      "rootHeight": 24,
+      "logoBottomOverflow": -4.069160461425781,
+      "productRightOverflow": -25.359375
+    },
+    "startup": {
+      "singleRow": true,
+      "fits": true,
+      "baselineDelta": 0.0010611794211570214,
+      "brandGap": 15,
+      "fontSize": "24px",
+      "rootHeight": 40,
+      "logoBottomOverflow": -3.8805084228515625,
+      "productRightOverflow": 0
+    }
+  },
+  "original_WIP_sha256": "e0c7efe456b64e667973bde9293b114b62113ec6e449474f3a3bf296eff98d5c",
+  "scope": "Single-row continued brand increment; no full review or baseline business repair",
+  "delivery": "Uncommitted local aixui candidate, no push or merge"
+}

@@ -1,0 +1,4 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit

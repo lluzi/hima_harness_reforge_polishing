@@ -1,0 +1,24 @@
+{
+  "status": "clear",
+  "reviewer": "aixui_adversarial",
+  "findings": [],
+  "scope": "Bounded user-requested brand revision, not full review",
+  "desktop_final": {
+    "tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "local_style": {
+    "tests": 3,
+    "passed": 3
+  },
+  "source_sha256": {
+    "packages/harness/src/client/aix-brand.tsx": "06b8183454bf74b3964b057a130c8d8cb93a00009a2111d958455c80d76d9895",
+    "packages/harness/src/client/aix-style.ts": "408e7f8ea5bd9e7f82c601bd5342516f2f50200bc3b8f0fe8717c12838fb95f3",
+    "packages/harness/src/client/aix-symbol.ts": "047d8cbddac6c10e98272e8f381ed6475ef56401fe02d23a82d7dea5325ab9ec",
+    "packages/desktop/scripts/make-icon.mjs": "2cdb1ba706b9ea96eafe18b502a650ebc0836f39fe01ce5b288a9685bba709be",
+    "test/contract/unified-workbench.test.ts": "0cd35ea96fa446237109b06126d4ebf9dbb0f6a5adcf75e19b20e5816fb3416b"
+  },
+  "state": "Uncommitted local aixui candidate; no push or merge"
+}

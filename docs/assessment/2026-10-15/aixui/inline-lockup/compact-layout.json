@@ -1,0 +1,10 @@
+{
+  "singleRow": true,
+  "fits": true,
+  "baselineDelta": 0.0013299855318962273,
+  "brandGap": 7.5,
+  "fontSize": "12px",
+  "rootHeight": 24,
+  "logoBottomOverflow": -4.069160461425781,
+  "productRightOverflow": -25.359375
+}

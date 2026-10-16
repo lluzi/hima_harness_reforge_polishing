@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { appendFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { bootDriver, fillConfiguration, waitForConfigurationReady, type BootedDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
@@ -21,7 +22,7 @@ import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 const draft = 'UI validation draft — compare strategies and preserve each experiment’s evidence. Not sent to a model.';
 
-async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = false) {
+async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = false, beforeProject?: () => Promise<void>) {
   await d.open('/');
   await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
   await browser.markText('button', 'Continue', 'notice-continue');
@@ -48,6 +49,7 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.markText('button', 'New Session', 'native-new-session');
   assert.ok((await d.click('native-new-session')).ok);
   await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
+  await beforeProject?.();
   await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
   await browser.send('Input.insertText', { text: draft });
   assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
@@ -102,12 +104,36 @@ async function waitForConfigurationPaneSettled(browser: Inspector, minWidth = 50
   })()`, 10_000);
 }
 
-async function capture(d: BootedDriver, browser: Inspector, name: string) {
+async function capture(d: BootedDriver, browser: Inspector, name: string, selector?: string) {
   const out = process.env.HIMA_UI_ARTIFACTS;
   if (!out) return;
   await mkdir(out, { recursive: true });
   await browser.evaluate('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true)))))');
+  if (selector) {
+    const clip = await browser.evaluate<Record<string, number>>(`(() => {
+      const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return {x:Math.max(0,r.x-8),y:Math.max(0,r.y-8),width:r.width+16,height:r.height+16,scale:2};
+    })()`);
+    const png = await browser.send<{ data: string }>('Page.captureScreenshot', { format: 'png', clip });
+    await writeFile(path.join(out, `${name}.png`), Buffer.from(png.data, 'base64'));
+    return;
+  }
   const result = await d.screenshot(path.join(out, `${name}.png`)); assert.ok(result.ok);
+}
+
+async function inlineBrandGeometry(browser: Inspector, rootSelector: string, logoSelector: string, productSelector: string) {
+  return browser.evaluate<{ singleRow: boolean; fits: boolean; baselineDelta: number; brandGap: number; fontSize: string; rootHeight: number; logoBottomOverflow: number; productRightOverflow: number }>(`(() => {
+    const root=document.querySelector(${JSON.stringify(rootSelector)}), logo=root.querySelector(${JSON.stringify(logoSelector)});
+    const product=root.querySelector(${JSON.stringify(productSelector)}), wordmark=product.querySelector('.aix-wordmark,.aix-start-wordmark');
+    const letters=wordmark.firstElementChild, probe=document.createElement('span');
+    probe.style.cssText='display:inline-block;width:0;height:0'; letters.append(probe);
+    const baseline=probe.getBoundingClientRect().top; probe.remove();
+    const a=logo.getBoundingClientRect(), b=product.getBoundingClientRect(), r=root.getBoundingClientRect();
+    return {singleRow:a.right<b.left && Math.min(a.bottom,b.bottom)>Math.max(a.top,b.top),
+      fits:[a,b].every(e=>e.left>=r.left-0.5 && e.right<=r.right+0.5 && e.top>=r.top-0.5 && e.bottom<=r.bottom+0.5),
+      baselineDelta:a.top+a.height*70/88-baseline,brandGap:b.left-a.right,fontSize:getComputedStyle(wordmark).fontSize,
+      rootHeight:r.height,logoBottomOverflow:a.bottom-r.bottom,productRightOverflow:b.right-r.right};
+  })()`);
 }
 
 async function finish(d: BootedDriver, browser?: Inspector) {
@@ -141,7 +167,76 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
   let browser: Inspector | undefined;
   try {
     browser = await inspectWindow(port);
-    await prepareSession(d, browser);
+    const window = browser;
+    let sharedXPoints: string[] = [];
+    const companyLogoUrl = 'data:image/png;base64,' + (await readFile(path.join(repoRoot, 'packages/harness/assets/brand/empyrean.png'))).toString('base64');
+    const startingPage = path.join(d.home.home, 'electron-user-data/starting.html');
+    assert.ok((await readFile(startingPage, 'utf8')).includes(companyLogoUrl), 'the actual startup page embeds the same corporate artwork');
+    await prepareSession(d, browser, false, async () => {
+      await window.evaluate(`document.querySelector('.empyrean-wordmark img').decode().then(()=>true)`);
+      assert.equal(await window.evaluate(`document.querySelector('.empyrean-wordmark img').src`), companyLogoUrl);
+      assert.equal(await window.evaluate(`(() => {
+        const frame=document.querySelector('.empyrean-wordmark'), image=frame.querySelector('img');
+        return image.naturalWidth===490 && image.naturalHeight===203 && getComputedStyle(frame).overflow==='hidden'
+          && Math.abs(frame.clientHeight/frame.clientWidth-88/447)<0.01;
+      })()`), true, 'only the original English row is displayed, with its aspect ratio preserved');
+      await window.evaluate('document.fonts.ready.then(()=>true)');
+      sharedXPoints = await window.evaluate<string[]>(`[...document.querySelectorAll('.aix-symbol polygon')].slice(0,4).map(e=>e.getAttribute('points'))`);
+      assert.equal(await window.evaluate(`document.querySelector('.aix-hero-brand .aix-wordmark')?.textContent`), 'ai');
+      assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('.aix-hero-brand .aix-wordmark')).fontFamily.includes('aiX Urbanist')`), true);
+      assert.equal(await window.evaluate(`document.fonts.check('500 64px "aiX Urbanist"')`), true);
+      assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('.aix-hero-brand .aix-wordmark')).fontWeight`), '500');
+      const metrics = await window.evaluate<{ stem: number; xStroke: number; inkGap: number; baselineDelta: number }>(`(() => {
+        const mark=document.querySelector('.aix-hero-brand .aix-wordmark'), letters=mark.querySelector('span');
+        const style=getComputedStyle(mark), context=document.createElement('canvas').getContext('2d');
+        context.font='500 '+style.fontSize+' "aiX Urbanist"'; context.letterSpacing=style.letterSpacing;
+        const right=context.measureText('ai').actualBoundingBoxRight;
+        context.letterSpacing='0px'; const stem=context.measureText('ı');
+        const svg=mark.querySelector('svg'), box=svg.getBBox(), transform=svg.getScreenCTM();
+        const points=svg.querySelector('polygon').points;
+        const xStroke=Math.hypot(points[0].x-points[3].x,points[0].y-points[3].y)*transform.a;
+        const probe=document.createElement('span'); probe.style.cssText='display:inline-block;width:0;height:0';
+        letters.append(probe); const baseline=probe.getBoundingClientRect().top; probe.remove();
+        return {stem:stem.actualBoundingBoxLeft+stem.actualBoundingBoxRight, xStroke,
+          inkGap:transform.e+box.x*transform.a-letters.getBoundingClientRect().left-right,
+          baselineDelta:transform.f+(box.y+box.height)*transform.d-baseline};
+      })()`);
+      if (process.env.HIMA_UI_ARTIFACTS) {
+        await mkdir(process.env.HIMA_UI_ARTIFACTS, { recursive: true });
+        await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'wordmark-metrics.json'), JSON.stringify(metrics, null, 2));
+      }
+      assert.ok(Math.abs(metrics.xStroke-metrics.stem)<0.8, JSON.stringify(metrics));
+      assert.ok(Math.abs(metrics.inkGap-metrics.stem)<0.8, JSON.stringify(metrics));
+      assert.ok(Math.abs(metrics.baselineDelta)<0.8, JSON.stringify(metrics));
+      assert.equal(await window.evaluate(`(() => {
+        const symbols=[...document.querySelectorAll('.aix-symbol')];
+        return symbols.length>=3 && symbols.every(e=>e.innerHTML===symbols[0].innerHTML);
+      })()`), true, 'hero, sidebar wordmark and navigation use the same modular X');
+      const identity = 'button:has([data-slot="sidebar.brand.name"])';
+      assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('[data-slot="sidebar.brand.mark"]').closest('span')).display`), 'none',
+        'the expanded lockup has no duplicate leading X');
+      const sidebarLayout = await inlineBrandGeometry(window, identity, '.empyrean-wordmark', '.aix-brand-product');
+      assert.ok(sidebarLayout.singleRow && sidebarLayout.fits, JSON.stringify(sidebarLayout));
+      assert.ok(Math.abs(sidebarLayout.baselineDelta)<0.8, JSON.stringify(sidebarLayout));
+      if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'sidebar-layout.json'), JSON.stringify(sidebarLayout, null, 2));
+      await window.evaluate(`document.querySelector('${identity}').style.maxWidth='160px'`);
+      const compactLayout = await inlineBrandGeometry(window, identity, '.empyrean-wordmark', '.aix-brand-product');
+      if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'compact-layout.json'), JSON.stringify(compactLayout, null, 2));
+      assert.ok(compactLayout.singleRow && compactLayout.fits, JSON.stringify(compactLayout));
+      await capture(d, window, 'aix-lockup-compact', identity);
+      await window.evaluate(`document.querySelector('${identity}').style.maxWidth=''`);
+      assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('.aix-hero-brand .aix-wordmark')).color`), 'rgb(8, 47, 104)');
+      assert.equal(await window.evaluate(`[...document.querySelectorAll('.aix-symbol')].every(e=>getComputedStyle(e).color==='rgb(8, 47, 104)')`), true);
+      await capture(d, window, 'aix-lockup-light', identity);
+      await capture(d, window, 'aix-wordmark-light');
+      await window.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+      await window.wait(`document.body.hasAttribute('data-ds-dark-theme')`);
+      assert.equal(await window.evaluate(`getComputedStyle(document.querySelector('.aix-hero-brand .aix-wordmark')).color`), 'rgb(182, 206, 240)');
+      await capture(d, window, 'aix-lockup-dark', identity);
+      await capture(d, window, 'aix-wordmark-dark');
+      await window.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      await window.wait(`!document.body.hasAttribute('data-ds-dark-theme')`);
+    });
     await fillStart(d, browser);
     await browser.wait(`document.fonts.check('14px "aiX Manrope"')`);
     assert.equal(await browser.evaluate(`document.body.innerText.includes('Into the Unknown')`), false,
@@ -189,6 +284,27 @@ test('aiX branding uses the native theme and keeps configuration usable in a nar
       return [...document.querySelectorAll('.hima-studio-header button')].every(e=>{const r=e.getBoundingClientRect();return r.left>=pane.left-1&&r.right<=pane.right+1;});
     })()`), true);
     await capture(d, browser, 'aix-configuration-narrow');
+    await browser.send('Emulation.clearDeviceMetricsOverride');
+    await browser.send('Page.navigate', { url: pathToFileURL(startingPage).href });
+    await browser.wait(`document.querySelector('.empyrean-start-wordmark img')?.complete`);
+    assert.equal(await browser.evaluate(`document.querySelector('.empyrean-start-wordmark img').src`), companyLogoUrl);
+    await browser.evaluate('document.fonts.ready.then(()=>true)');
+    assert.equal(await browser.evaluate(`document.fonts.check('500 20px "aiX Urbanist"')`), true);
+    assert.deepEqual(await browser.evaluate(`[...document.querySelectorAll('.aix-start-wordmark polygon')].map(e=>e.getAttribute('points'))`), sharedXPoints,
+      'startup uses the same X and Urbanist face as the actual client');
+    assert.equal(await browser.evaluate(`document.querySelector('.aix-start-brand>img')`), null, 'startup has no duplicate leading app tile');
+    const startupLayout = await inlineBrandGeometry(browser, '.aix-start-brand', '.empyrean-start-wordmark', '.aix-start-product');
+    assert.ok(startupLayout.singleRow && startupLayout.fits, JSON.stringify(startupLayout));
+    assert.ok(Math.abs(startupLayout.baselineDelta)<0.8, JSON.stringify(startupLayout));
+    if (process.env.HIMA_UI_ARTIFACTS) await writeFile(path.join(process.env.HIMA_UI_ARTIFACTS, 'startup-layout.json'), JSON.stringify(startupLayout, null, 2));
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await capture(d, browser, 'aix-startup-lockup-light', '.aix-start-brand');
+    await capture(d, browser, 'aix-startup-light');
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await capture(d, browser, 'aix-startup-lockup-dark', '.aix-start-brand');
+    await capture(d, browser, 'aix-startup-dark');
+    assert.ok((await d.open('/')).ok);
+    await browser.wait(`document.body.classList.contains('aix-shell')`);
   } finally { await finish(d, browser); }
 });
 

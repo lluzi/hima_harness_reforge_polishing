@@ -90,3 +90,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## aiX startup branding
+
+The startup/error pages embed Urbanist, copyright 2021 The Urbanist Project Authors
+(https://github.com/coreyhu/Urbanist), under SIL OFL 1.1. Its license is retained at
+`assets/Urbanist-OFL.txt`. This is the same font used by the client wordmark.
+
+The Empyrean corporate mark is reproduced from the user-selected image at
+https://en.wikipedia.org/wiki/File:Empyrean_Technology.png. It is a corporate mark,
+not covered by the font license; rights remain with its owner. The original bitmap
+is unchanged at `assets/empyrean.png`; the header displays only its English row.

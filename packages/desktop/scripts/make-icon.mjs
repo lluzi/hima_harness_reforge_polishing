@@ -1,32 +1,30 @@
 // The window's icon, drawn here rather than downloaded: it is ours, it is reproducible, and it
 // borrows nobody's marks. `node scripts/make-icon.mjs` rewrites `assets/icon.png` byte for byte.
 //
-// A 512x512 RGBA PNG: deep navy, geometric aiX, and an ice-blue modular X arm. No dependency —
+// A 512x512 RGBA PNG: deep navy and the same modular X as the navigation. No dependency —
 // PNG and macOS ICNS are generated from the same artwork without native build dependencies.
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AIX_SYMBOL_POLYGONS } from '../../harness/src/client/aix-symbol.ts';
 
-// The same geometric aiX construction as the client wordmark, sampled at 2x for clean edges.
+// Node 24 reads the canonical drawing directly; no font rasterizer or copied glyph geometry.
 const ground = [0x08, 0x2f, 0x68];
 const ink = [0xff, 0xff, 0xff];
-const accent = [0xb6, 0xce, 0xf0];
-const distance = (x, y, a, b, c, d) => {
-  const vx=c-a, vy=d-b, t=Math.max(0,Math.min(1,((x-a)*vx+(y-b)*vy)/(vx*vx+vy*vy)));
-  return Math.hypot(x-a-t*vx,y-b-t*vy);
+const inside = (x, y, polygon) => {
+  let hit = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i], [xj, yj] = polygon[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
 };
 const paint = (x, y) => {
-  const cornerX=Math.max(224-x,0,x-800), cornerY=Math.max(224-y,0,y-800);
-  if (Math.hypot(cornerX,cornerY)>224) return [0,0,0,0];
-  const px=x-18, py=y+38;
-  const ring=Math.hypot(px-284,py-574);
-  const a=(ring>=67&&ring<=121)||distance(px,py,369,480,369,668)<=27;
-  const i=distance(px,py,471,508,471,668)<=27||Math.hypot(px-471,py-426)<=29;
-  const joint=Math.abs(px-684)+Math.abs(py-550)<50;
-  const cross=!joint&&(distance(px,py,574,426,794,674)<=30||distance(px,py,574,674,794,426)<=30);
-  if (a||i||cross) return [...(cross&&distance(px,py,684,550,794,426)<=30?accent:ink),255];
-  return [...ground,255];
+  const cornerX = Math.max(224 - x, 0, x - 800), cornerY = Math.max(224 - y, 0, y - 800);
+  if (Math.hypot(cornerX, cornerY) > 224) return [0, 0, 0, 0];
+  const sx = (x - 160) * 24 / 704, sy = (y - 160) * 24 / 704;
+  return [...(AIX_SYMBOL_POLYGONS.some(polygon => inside(sx, sy, polygon)) ? ink : ground), 255];
 };
 
 /** One PNG chunk: length, type, payload, CRC-32 of type+payload. */
@@ -99,4 +97,7 @@ const resources = [['icp4',16],['icp5',32],['icp6',64],['ic07',128],['ic08',256]
 const header = Buffer.alloc(8); header.write('icns');
 header.writeUInt32BE(8 + resources.reduce((total, resource) => total + resource.length, 0), 4);
 writeFileSync(out.replace(/\.png$/, '.icns'), Buffer.concat([header, ...resources]));
+const polygons = AIX_SYMBOL_POLYGONS.map(polygon => `<polygon points="${polygon.map(point => point.join(',')).join(' ')}"/>`).join('');
+writeFileSync(path.join(path.dirname(out), 'aix-symbol.svg'),
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${polygons}</svg>\n`);
 console.log(`icon: ${out} (${png.length} bytes)`);
