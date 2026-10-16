@@ -1,7 +1,7 @@
 # bgcore staged demo: a scripted conversation in the real App
 
-A demo take that replays a reference conversation in the packaged HimaHarness App (`hug-rc2`, HUG-DBOS
-`969cf62b`). The App, its chat rendering, its tools and the Project pane's station view are real.
+A demo take that replays a reference conversation in the packaged HimaHarness App (`hug-rc3`, HUG-DBOS
+`d95c55ff`, the aiX visual system, light appearance). The App, its chat rendering, its tools and the Project pane's station view are real.
 Two things are scripted:
 
 - **The Guide's model.** `stage.mjs` runs a local OpenAI-compatible stand-in for the DeepSeek API, and
@@ -46,3 +46,9 @@ work is: a Project that ended, and the next one beginning where it left off.
 `stage.mjs` serves every open Project to the pane, so the Run selector keeps the finished one. A beat
 names `project` to switch which one the pane shows. `mkscript.mjs` renders the readable script from
 the beats, so the script a person reads and the script the App plays cannot drift apart.
+
+## The Guide's `read` rows are real
+
+A scripted turn may declare tool calls, and the App executes them for real. Every file a turn reads
+must exist in the workspace the App opens, or the chat shows a red "cannot read … not found" row on
+camera. Keep the workspace beside the beats and restore it before a take.

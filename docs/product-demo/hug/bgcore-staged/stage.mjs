@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 const HERE = new URL('.', import.meta.url).pathname;
 const MOCK_PORT = Number(process.env.MOCK_PORT ?? 18431);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
-const APPCDP = process.env.APPCDP ?? '/Users/lluzi/.claude/skills/himaharness-demo-video/scripts/appcdp.mjs';
+const APPCDP = process.env.APPCDP ?? '/Users/lluzi/.claude/skills/aix-demo-video/scripts/appcdp.mjs';
 const beatsFile = process.argv[2];
 const serveOnly = process.argv.includes('--serve-only');
 const B = (await import(pathToFileURL(beatsFile).href)).default;

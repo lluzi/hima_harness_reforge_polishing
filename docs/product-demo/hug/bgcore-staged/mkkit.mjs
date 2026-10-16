@@ -1,10 +1,10 @@
-// Fresh kit for the staged bgcore take on app-rc2 (HUG-DBOS 969cf62b). No Site, no real model:
+// Fresh kit for the staged bgcore take on app-rc3 (HUG-DBOS d95c55ff, aiX UI). No Site, no real model:
 // DEEPSEEK_BASE_URL points at stage.mjs's stand-in. Never reuses a kit.  usage: node mkkit.mjs <name> [cdpPort]
 import { mkdir, appendFile, writeFile, symlink, access } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 const R = '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp';
-const app = `${R}/hug-release/app-rc2/HimaHarness.app`;
+const app = `${R}/hug-release/app-rc3/HimaHarness.app`;
 const name = process.argv[2]; const cdp = process.argv[3] ?? '9334';
 const kit = path.join(R, 'bgcore-rec/kits', name);
 try { await access(kit); throw new Error(`kit exists: ${kit}`); } catch (e) { if (e.code !== 'ENOENT') throw e; }
