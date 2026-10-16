@@ -295,4 +295,20 @@ try{
  }
 }catch(error){process.send?.({stage:'error',error:String(error),stack:(error as Error).stack});await host?.dispose().catch(()=>undefined);process.exitCode=1;}
 async function exists(at:string){try{await access(at);return true;}catch{return false;}}
-async function untilComplete(deps:any,runId:string){const until=Date.now()+20000;for(;;){const view=await readExecutionContext(deps,runId);if(view.durable.workflow?.status==='SUCCESS')return view;if(view.durable.workflow?.status==='ERROR')throw new Error(JSON.stringify({runId,state:view.durable.workflow.status,error:String(view.durable.workflow.error),tasks:view.durable.tasks.map((task:any)=>({taskId:task.identity.taskId,version:task.version,state:task.state})),revisionPreparation:view.durable.revisionPreparation&&{status:view.durable.revisionPreparation.status,error:String(view.durable.revisionPreparation.error)}}));if(Date.now()>until)throw new Error('Facade completion timeout: '+JSON.stringify({runId,status:view.run.status,tasks:view.durable.tasks.map((task:any)=>({taskId:task.identity.taskId,version:task.version,state:task.state})),revisionPreparation:view.durable.revisionPreparation&&{status:view.durable.revisionPreparation.status,error:String(view.durable.revisionPreparation.error)}}));await new Promise(resolve=>setTimeout(resolve,50));}}
+async function untilComplete(deps:any,runId:string){
+ const until=Date.now()+20000,{DBOS}=require('@dbos-inc/dbos-sdk'),{jsonDigest}=await load('run-store');
+ for(;;){
+  const run=await deps.durable.store.run(runId);
+  const status=await DBOS.getWorkflowStatus(`hima-flow:${jsonDigest([runId,run.revision])}`);
+  if(status?.status==='SUCCESS'||status?.status==='ERROR'||Date.now()>until){
+   const view=await readExecutionContext(deps,runId),current=await deps.durable.store.run(runId);
+   // Confirm the complete current projection; an older root cannot finish this revision.
+   if(current.revision===view.durable.run.revision){
+    if(view.durable.workflow?.status==='SUCCESS')return view;
+    if(view.durable.workflow?.status==='ERROR')throw new Error(JSON.stringify({runId,state:view.durable.workflow.status,error:String(view.durable.workflow.error),tasks:view.durable.tasks.map((task:any)=>({taskId:task.identity.taskId,version:task.version,state:task.state})),revisionPreparation:view.durable.revisionPreparation&&{status:view.durable.revisionPreparation.status,error:String(view.durable.revisionPreparation.error)}}));
+   }
+   if(Date.now()>until)throw new Error('Facade completion timeout: '+JSON.stringify({runId,status:view.run.status,tasks:view.durable.tasks.map((task:any)=>({taskId:task.identity.taskId,version:task.version,state:task.state})),revisionPreparation:view.durable.revisionPreparation&&{status:view.durable.revisionPreparation.status,error:String(view.durable.revisionPreparation.error)}}));
+  }
+  await new Promise(resolve=>setTimeout(resolve,50));
+ }
+}
