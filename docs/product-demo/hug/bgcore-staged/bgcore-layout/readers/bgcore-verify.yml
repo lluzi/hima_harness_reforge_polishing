@@ -1,0 +1,8 @@
+id: bgcore-verify
+version: "1"
+file: tools/read-verify.py
+argv: [python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: bgcore.verify/1
+emits:
+  - bgcore_drc_nonexempt
+  - bgcore_lvs_difference

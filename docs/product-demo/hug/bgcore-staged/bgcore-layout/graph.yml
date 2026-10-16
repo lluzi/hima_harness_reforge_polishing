@@ -1,0 +1,52 @@
+schema: hima-flow/1
+id: bgcore-layout
+version: 0.1.0
+flow:
+  kind: sequence
+  id: bgcorelayout
+  steps:
+  - kind: task
+    id: generate-layout
+    tool: generate-layout
+    inputs: {SIZED_CELL: {source: runInput, path: [sizedCell]}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/generate-layout-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/generate-layout-output'}}}
+  - kind: task
+    id: bind-devices
+    tool: bind-devices
+    inputs: {PREV: {source: committedOutput, taskId: generate-layout, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/bind-devices-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/bind-devices-output'}}}
+  - kind: task
+    id: group-devices
+    tool: group-devices
+    inputs: {PREV: {source: committedOutput, taskId: bind-devices, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/group-devices-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/group-devices-output'}}}
+  - kind: task
+    id: place-devices
+    tool: place-devices
+    inputs: {PREV: {source: committedOutput, taskId: group-devices, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/place-devices-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/place-devices-output'}}}
+  - kind: task
+    id: guard-ring
+    tool: guard-ring
+    inputs: {PREV: {source: committedOutput, taskId: place-devices, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/guard-ring-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/guard-ring-output'}}}
+  - kind: task
+    id: place-check
+    tool: place-check
+    inputs: {PREV: {source: committedOutput, taskId: guard-ring, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/place-check-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/place-check-output'}}}
+  - kind: task
+    id: route-nets
+    tool: route-nets
+    inputs: {PREV: {source: committedOutput, taskId: place-check, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/route-nets-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/route-nets-output'}}}
+  - kind: task
+    id: write-back
+    tool: write-back
+    inputs: {PREV: {source: committedOutput, taskId: route-nets, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/write-back-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/write-back-output'}}}
+  - kind: task
+    id: verify-drc-lvs
+    tool: verify-drc-lvs
+    inputs: {PREV: {source: committedOutput, taskId: write-back, path: []}}
+    contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/verify-drc-lvs-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/verify-drc-lvs-output'}}}

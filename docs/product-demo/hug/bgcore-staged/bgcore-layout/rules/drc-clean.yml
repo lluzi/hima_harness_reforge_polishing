@@ -1,0 +1,6 @@
+id: drc-clean
+version: "1"
+title: No DRC result outside the declared waiver list
+requires: [{ type: bgcore_drc_nonexempt }]
+subject: { type: bgcore_drc_nonexempt }
+predicate: { op: eq, threshold: 0, unit: count }

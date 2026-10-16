@@ -1,0 +1,192 @@
+id: bgcore-layout
+version: 0.1.0
+title: "bgcore layout: sized schematic to verified layout"
+status: development
+minimumHarnessVersion: 0.3.0
+budget:
+  timeBoxMs: 2700000
+  closingReserveMs: 300000
+  minimumGenerations: 1
+inputs:
+- name: sizedCell
+  description: "The sized bgcore cell the front-end Project delivered."
+- name: workspaceRoot
+  description: "Campaign-private output root allowed by the Site Permit."
+outputs:
+- name: verification
+  path: state/verification.json
+  reader: bgcore-verify
+  description: "The DRC and LVS read of the finished layout, with the waiver list."
+environment:
+  wrappers:
+  - python3
+workspace:
+  source: pack
+  copy:
+  - stage.py
+tools:
+- id: generate-layout
+  file: flow/stage.py
+  description: "Generate the first layout from the sized schematic in the design environment."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - verification
+    knowledge:
+    - layout.md
+    artifactPrefix: layout
+    produces: verification
+- id: bind-devices
+  file: flow/stage.py
+  description: "Read every device back from the layout and bind it to its schematic instance."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - verification
+    knowledge:
+    - layout.md
+    artifactPrefix: layout
+    produces: verification
+- id: group-devices
+  file: flow/stage.py
+  description: "Group the devices by circuit structure for the placer."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: place-devices
+  file: flow/stage.py
+  description: "Place the grouped devices."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - verification
+    knowledge:
+    - layout.md
+    artifactPrefix: layout
+    produces: verification
+- id: guard-ring
+  file: flow/stage.py
+  description: "Add the guard rings."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: place-check
+  file: flow/stage.py
+  description: "Self-check the placement rules; no violation may pass to routing."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: route-nets
+  file: flow/stage.py
+  description: "Route every net."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+  outsourcing:
+    role: resident-engineering-agent
+    reads:
+    - verification
+    knowledge:
+    - layout.md
+    artifactPrefix: layout
+    produces: verification
+- id: write-back
+  file: flow/stage.py
+  description: "Write the finished layout back into the design environment."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+- id: verify-drc-lvs
+  file: flow/stage.py
+  description: "Run DRC and LVS on the finished layout and report every result, waived ones listed separately."
+  inputs:
+  - WORKSPACE
+  - TASK_INPUT
+  - TASK_OUTPUT
+  argv:
+  - python3
+  - ${WORKSPACE}/flow/stage.py
+  - ${TASK_INPUT}
+  - ${TASK_OUTPUT}
+rules:
+- drc-clean
+- lvs-match
+goal:
+  max_place_violations:
+    type: number
+    unit: count
+    min: 0
+    max: 50
+    default: 0
+  max_drc_nonexempt:
+    type: number
+    unit: count
+    min: 0
+    max: 50
+    default: 0
+  max_lvs_diff:
+    type: number
+    unit: count
+    min: 0
+    max: 50
+    default: 0
+knowledge:
+- file: layout.md
+  purpose: "How the layout engineer draws the cell."

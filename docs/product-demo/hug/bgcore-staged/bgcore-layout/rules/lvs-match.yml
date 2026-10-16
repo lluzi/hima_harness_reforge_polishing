@@ -1,0 +1,6 @@
+id: lvs-match
+version: "1"
+title: LVS matches the schematic with no difference
+requires: [{ type: bgcore_lvs_difference }]
+subject: { type: bgcore_lvs_difference }
+predicate: { op: eq, threshold: 0, unit: count }

@@ -90,9 +90,18 @@ server.listen(MOCK_PORT, '127.0.0.1', () => log('model stand-in on', MOCK_PORT))
 if (serveOnly) { await new Promise(() => {}); }
 
 // ---------- 2. Project pane feeder over CDP ----------
-const pack = JSON.parse(readFileSync(`${HERE}/pack-loaded.json`, 'utf8'));
-const states = JSON.parse(readFileSync(`${HERE}/pane-states.json`, 'utf8'));
-const pane = { visible: false, state: null, status: 'running', revision: 1, startedAt: 0 };
+// One entry per Project the conversation opens. A beat names `project` to switch the pane to it; the
+// others stay in `/runs`, so the Run selector keeps them and a finished Project remains readable.
+const projects = new Map();
+for (const p of B.projects) {
+  projects.set(p.key, {
+    meta: p,
+    pack: JSON.parse(readFileSync(`${HERE}/${p.pack}`, 'utf8')),
+    states: JSON.parse(readFileSync(`${HERE}/${p.states}`, 'utf8')),
+    open: false, state: null, status: 'running', revision: 1, startedAt: 0,
+  });
+}
+let active = null;
 async function cdpConnect() {
   for (;;) {
     try {
@@ -110,26 +119,36 @@ async function cdpConnect() {
 const ws = await cdpConnect();
 let msgId = 0; const pend = new Map();
 const cdp = (method, params = {}) => new Promise((res) => { const i = ++msgId; pend.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
-function head(sessionId) {
+const openProjects = () => [...projects.values()].filter((p) => p.open);
+const byId = (id) => openProjects().find((p) => p.meta.id === id);
+function head(project, sessionId) {
+  const m = project.meta;
   return {
-    id: B.run.id, campaignId: B.run.campaignId, siteId: B.run.siteId, createdAt: B.run.createdAt, status: pane.status,
-    packId: pack.contract.id, goal: B.run.goal,
-    control: { mode: 'agent', owner: sessionId, epoch: 1, revision: pane.revision, paused: [], executions: {}, requests: {} },
-    meters: { elapsedMs: pane.startedAt ? Date.now() - pane.startedAt : 0 }, budget: { timeBoxMs: pack.contract.budget?.timeBoxMs ?? 3600000 },
+    id: m.id, campaignId: m.campaignId, siteId: m.siteId, createdAt: m.createdAt, status: project.status,
+    packId: project.pack.contract.id, goal: m.goal,
+    control: { mode: 'agent', owner: sessionId, epoch: 1, revision: project.revision, paused: [], executions: {}, requests: {} },
+    meters: { elapsedMs: project.startedAt ? Date.now() - project.startedAt : 0 },
+    budget: { timeBoxMs: project.pack.contract.budget?.timeBoxMs ?? 3600000 },
   };
 }
 function answer(url) {
   const u = new URL(url); const sessionId = u.searchParams.get('sessionId') ?? '';
   const p = u.pathname.replace(/^.*\/hima\/api/, '');
-  if (p === '/runs') return { runs: [head(sessionId)] };
-  if (p === `/runs/${B.run.id}`) return { run: head(sessionId), tasks: states[pane.state] ?? [], observations: [], refusals: [], verdicts: [], nodes: [], generations: [], jobs: [], blockers: [], cancels: [], resumes: [], decision: null, code: [], knowledge: [] };
-  if (p === `/runs/${B.run.id}/context`) return {
-    run: head(sessionId), nodes: [], budget: { phase: 'active', closingReserveMs: 0, attempts: 0, attemptLimitSpent: false },
-    available: [], executions: [], growths: [], revisions: [],
-    method: { id: pack.contract.id, version: pack.contract.version, digest: B.run.digest, dir: '/packs/' + pack.contract.id, contract: pack.contract, reference: pack.graph },
-  };
+  // Newest first, so the chip and the Run selector lead with the Project now running.
+  if (p === '/runs') return { runs: openProjects().reverse().map((x) => head(x, sessionId)) };
+  const run = p.match(/^\/runs\/([^/]+)(\/context)?$/);
+  if (run) {
+    const project = byId(run[1]);
+    if (project === undefined) return undefined;
+    if (run[2] === undefined) return { run: head(project, sessionId), tasks: project.states[project.state] ?? [], observations: [], refusals: [], verdicts: [], nodes: [], generations: [], jobs: [], blockers: [], cancels: [], resumes: [], decision: null, code: [], knowledge: [] };
+    return {
+      run: head(project, sessionId), nodes: [], budget: { phase: 'active', closingReserveMs: 0, attempts: 0, attemptLimitSpent: false },
+      available: [], executions: [], growths: [], revisions: [],
+      method: { id: project.pack.contract.id, version: project.pack.contract.version, digest: project.meta.digest, dir: '/packs/' + project.pack.contract.id, contract: project.pack.contract, reference: project.pack.graph },
+    };
+  }
   if (p.startsWith('/delegations')) return { delegations: [], asOf: now() };
-  if (p.startsWith('/memory')) return { kind: 'none', scope: { kind: 'campaign', workspaceRef: B.run.campaignId, runId: B.run.id } };
+  if (p.startsWith('/memory')) return { kind: 'none', scope: { kind: 'campaign', workspaceRef: active?.meta.campaignId ?? 'demo', runId: active?.meta.id ?? 'run' } };
   if (p.startsWith('/experience/candidates')) return { candidates: [] };
   return undefined;
 }
@@ -138,7 +157,7 @@ ws.onmessage = async (ev) => {
   if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
   if (m.method === 'Fetch.requestPaused') {
     const { requestId, request } = m.params;
-    const body = pane.visible ? answer(request.url) : undefined;
+    const body = openProjects().length > 0 ? answer(request.url) : undefined;
     if (body === undefined) return cdp('Fetch.continueRequest', { requestId });
     return cdp('Fetch.fulfillRequest', { requestId, responseCode: 200, responseHeaders: [{ name: 'content-type', value: 'application/json' }, { name: 'cache-control', value: 'no-store' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
   }
@@ -164,10 +183,15 @@ for (const beat of B.beats) {
   if (beat.label) log('beat', beat.label);
   if (beat.waitTurn !== undefined) await until(`turn:${beat.waitTurn}`);
   if (beat.sleep) await sleep(beat.sleep);
+  if (beat.project !== undefined) {
+    active = projects.get(beat.project);
+    if (active === undefined) { log('director: no such project', beat.project); process.exit(4); }
+  }
   if (beat.pane !== undefined) {
-    if (!pane.visible) { pane.visible = true; pane.startedAt = Date.now(); }
-    pane.state = beat.pane; pane.revision += 1; if (beat.status) pane.status = beat.status;
-    log('pane', beat.pane, pane.status);
+    if (active === undefined) { log('director: a pane beat before any project'); process.exit(4); }
+    if (!active.open) { active.open = true; active.startedAt = Date.now(); }
+    active.state = beat.pane; active.revision += 1; if (beat.status) active.status = beat.status;
+    log('pane', active.meta.key, beat.pane, active.status);
   }
   if (beat.emit) emit(beat.emit);
   if (beat.act) { const code = await act(beat.act); if (code !== 0) log('act exit', code); }

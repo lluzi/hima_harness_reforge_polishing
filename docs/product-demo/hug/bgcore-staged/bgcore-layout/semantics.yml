@@ -1,0 +1,7 @@
+values:
+  bgcore_drc_nonexempt:
+    unit: count
+    description: DRC results outside the declared waiver list. Waived results are reported separately and never subtracted from this. (source measured)
+  bgcore_lvs_difference:
+    unit: count
+    description: LVS differences between the layout and the schematic — ports, nets and devices together. (source measured)

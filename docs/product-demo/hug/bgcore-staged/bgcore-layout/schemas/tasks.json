@@ -1,0 +1,60 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tasks.json",
+ "$defs": {
+  "generate-layout-input": {
+   "type": "object"
+  },
+  "generate-layout-output": {
+   "type": "object"
+  },
+  "bind-devices-input": {
+   "type": "object"
+  },
+  "bind-devices-output": {
+   "type": "object"
+  },
+  "group-devices-input": {
+   "type": "object"
+  },
+  "group-devices-output": {
+   "type": "object"
+  },
+  "place-devices-input": {
+   "type": "object"
+  },
+  "place-devices-output": {
+   "type": "object"
+  },
+  "guard-ring-input": {
+   "type": "object"
+  },
+  "guard-ring-output": {
+   "type": "object"
+  },
+  "place-check-input": {
+   "type": "object"
+  },
+  "place-check-output": {
+   "type": "object"
+  },
+  "route-nets-input": {
+   "type": "object"
+  },
+  "route-nets-output": {
+   "type": "object"
+  },
+  "write-back-input": {
+   "type": "object"
+  },
+  "write-back-output": {
+   "type": "object"
+  },
+  "verify-drc-lvs-input": {
+   "type": "object"
+  },
+  "verify-drc-lvs-output": {
+   "type": "object"
+  }
+ }
+}

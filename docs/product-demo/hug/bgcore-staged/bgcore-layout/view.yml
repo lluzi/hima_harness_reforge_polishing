@@ -1,0 +1,45 @@
+# Display only: how the Live tab draws the layout Project as five stations — the same five stages the
+# flow runs, with each stage's own gate on its station. The gates are judged outside the agent: the
+# placement self-check, the routing write-back, and the independent DRC/LVS read.
+title: "bgcore layout: schematic to verified layout"
+stations:
+  - id: sdl
+    label: Initial layout
+    about: Reads the sized schematic, generates the first layout, then reads every device back and binds it to its schematic instance.
+    checklist:
+      - { label: Generate the layout from the schematic, nodes: [generate-layout] }
+      - { label: Read back and bind every device, nodes: [bind-devices] }
+  - id: group
+    label: Device grouping
+    about: Groups the devices by circuit structure so the placer keeps matched pairs and the ladder together.
+    checklist:
+      - { label: Group by circuit structure, nodes: [group-devices] }
+  - id: place
+    label: Placement and guard ring
+    about: Places the groups, adds the guard rings, then self-checks the placement rules. No violation may pass.
+    checklist:
+      - { label: Place the devices, nodes: [place-devices] }
+      - { label: Add the guard rings, nodes: [guard-ring] }
+      - { label: Self-check the placement rules, nodes: [place-check] }
+  - id: route
+    label: Routing and write-back
+    about: Routes every net, then writes the layout back into the design environment for you to open.
+    checklist:
+      - { label: Route every net, nodes: [route-nets] }
+      - { label: Write the layout back, nodes: [write-back] }
+  - id: verify
+    label: Independent verification
+    about: DRC and LVS on the finished layout, read by the Pack's Reader. Waived rules are listed, never folded into the count.
+    checklist:
+      - { label: "DRC and LVS, waivers listed", nodes: [verify-drc-lvs] }
+edges:
+  - { from: sdl, to: group, label: bound }
+  - { from: group, to: place, label: groups }
+  - { from: place, to: route, label: placed }
+  - { from: route, to: verify, label: written back }
+  - { from: verify, to: place, label: violation, back: true }
+metrics:
+  - { label: Devices bound, node: bind-devices, path: [bound, devices] }
+  - { label: Placement violations, node: place-check, path: [violations], unit: "", better: lower, goal: max_place_violations }
+  - { label: "DRC, non-waived", node: verify-drc-lvs, path: [drc, nonExempt], unit: "", better: lower, goal: max_drc_nonexempt }
+  - { label: LVS difference, node: verify-drc-lvs, path: [lvs, difference], unit: "", better: lower, goal: max_lvs_diff }
