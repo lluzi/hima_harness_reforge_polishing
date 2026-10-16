@@ -8,7 +8,9 @@ Campaign's `check-delivery`, and write the delivery candidate.
 
 LIA_DRY_CASE=clean delivers a valid result on the first prompt. LIA_DRY_CASE=repair first delivers
 a result whose code.main.sha256 is wrong; on the Reader-rejection message it reads the Reader's
-problems file, keeps its completed work, and delivers the corrected result.
+problems file, keeps its completed work, and delivers the corrected result. LIA_DRY_CASE=silent
+ends its first turn with no output and no delivery (a model that stops mid-task); on the Host's
+continuation message it does the analysis and delivers.
 """
 import hashlib
 import json
@@ -73,7 +75,9 @@ def prompt(request_id, text):
         case = os.environ["LIA_DRY_CASE"]
         initial = state["prompts"] == 1
         entry = {"initial": initial, "nodeId": task["nodeId"], "text": text[:400]}
-        if initial:
+        if initial and case == "silent":
+            entry["silent"] = True
+        elif initial:
             result = analyse(native, campaign)
             if case == "repair":
                 result["code"]["main"]["sha256"] = "0" * 64
@@ -81,6 +85,7 @@ def prompt(request_id, text):
             candidate(native, result["summary"])
         else:
             problems = campaign / "state/analysis-result.problems.txt"
+            entry["continued"] = "ended without the delivery" in text
             entry["readerRejected"] = "Reader rejected" in text
             entry["problems"] = problems.read_text() if problems.exists() else None
             result = analyse(native, campaign)

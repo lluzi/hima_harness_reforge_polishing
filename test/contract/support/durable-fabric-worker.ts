@@ -127,6 +127,9 @@ try{
      const ordinaryResult=await raw(ordinary,'ordinary-side-talk-shell');assert.equal(ordinaryResult.isError,false,JSON.stringify(ordinaryResult));assert.match(JSON.stringify(ordinaryResult),/facade-side-talk/);
      const role=async(agent:any)=>{const assembly=await host.ctx.systemPrompt.assemble({agent,scope:agent});return JSON.parse(assembly.contexts.find((item:any)=>item.name==='hima:inventory').text);};
      assert.equal((await role(owner)).role,'execution-owner');assert.equal((await role(owner)).source,'hima-postgresql');
+     // the owner's inventory names the Run's current state from the durable poll, not "preparing"
+     let assigned:any;for(let i=0;i<50&&!(assigned=(await role(owner)).assignments.find((item:any)=>item.runId===runId))?.status;i++)await new Promise(resolve=>setTimeout(resolve,200));
+     assert.equal(assigned?.status,'ended-goal-not-met',JSON.stringify(assigned));assert.deepEqual(assigned.running,[]);
 
      // A duplicate confirmed proposal still finds the original Run despite a changed installed method/default.
      await writeFile(path.join(packDir,'flow/produce.py'),'raise Exception("current installed method must never execute")\n');
