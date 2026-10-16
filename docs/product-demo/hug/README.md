@@ -10,6 +10,10 @@ recording and editing process itself. These notes are the HUG-specific inputs.
   test, and a fresh-Home launch showed the aiX lockup and home screen.
 - **Packs and Sites:** use the same tag. The packager already made the source snapshot for the kits:
   `.hima-tmp/hug-release/src-rc3`.
+- **Point every kit script at rc3.** Their defaults are older Apps:
+  - LibInsight / MAGE: `HIMA_DEMO_APP=$PWD/.hima-tmp/hug-release/app-rc3/HimaHarness.app`;
+  - PixelPack `mkkit.sh`: `APP=... SRC=.hima-tmp/hug-release/src-rc3`;
+  - ATCS / AndesCell `kit.mjs`: `"app"` in the kit spec.
 - **First launch in a new Home** shows the "Internal Testing Notice" (still worded "DeepSeek Harness")
   and the API-key prompt. Clear both while preparing the kit, not on camera.
 - **Older builds:** `app-rc1` (`hug-rc1`) and `app-rc2` (`hug-rc2`) have the pre-aiX UI. Don't mix
