@@ -15,7 +15,7 @@ import os
 
 from . import rounds
 
-__all__ = ["prior_runs", "pick", "history_of"]
+__all__ = ["prior_runs", "pick", "history_of", "delivered"]
 
 _MAX_RUNS = 6
 
@@ -81,8 +81,24 @@ def prior_runs(workspace, readiness, limit=_MAX_RUNS):
 
 
 def history_of(run_dir):
-    """One earlier Run's judged history rows."""
-    return _history(run_dir)
+    """One earlier Run's judged history rows; a row written before history carried the plan's
+    bounded edits takes them from its candidate's ``meta.json``."""
+    rows = _history(run_dir)
+    for r in rows:
+        if "edits" not in r:
+            meta = _read(os.path.join(run_dir, "cands", str(r.get("id")), "meta.json")) or {}
+            r["edits"] = meta.get("edits") or []
+    return rows
+
+
+def delivered(run_dir):
+    """The candidate id an earlier Run delivered as its best, or ``None``."""
+    for rel in (("delivery", "report.json"), ("state", "evaluation.json")):
+        doc = _read(os.path.join(run_dir, *rel)) or {}
+        cid = (doc.get("best") or {}).get("id")
+        if cid:
+            return str(cid)
+    return None
 
 
 def _same_outline(values, outline):
@@ -96,12 +112,14 @@ def _same_outline(values, outline):
 def pick(runs, goal_resolved, legal_k=2, near_k=2):
     """The candidates to import: ``[(run_dir, candidate_id, why)]``.
 
-    Up to ``legal_k`` best legal candidates (ranked by :func:`rounds.better` under this Goal) and up
+    First the winner each earlier Run delivered (``why: delivered``), whatever this Goal makes of
+    it: a harder Goal may rank another candidate above it, but the designer expects the new Run
+    to start where the last one ended. Then up to ``legal_k`` best legal candidates (ranked by :func:`rounds.better` under this Goal) and up
     to ``near_k`` best near-misses (authority-DRC failures only, few single-cell markers, ratio
     below the best legal one), across all ``runs``; a candidate whose GDS file is missing is
     skipped. Recorded values only choose; the re-judge decides.
     """
-    legal, near = [], []
+    legal, near, winners = [], [], []
     fixed = None
     if (goal_resolved or {}).get("outlineMode") == "fixed":
         gv = goal_resolved.get("values", {}) or {}
@@ -113,6 +131,10 @@ def pick(runs, goal_resolved, legal_k=2, near_k=2):
             # a fixed outline: a candidate of another size (an earlier shrink Run's) is no start
             rows = [r for r in rows if _same_outline(r.get("values", {}), fixed)]
         rows = [r for r in rows if os.path.exists(os.path.join(run, "cands", str(r.get("id")), "pixel.gds"))]
+        won = delivered(run)
+        win = next((r for r in rows if str(r.get("id")) == won), None)
+        if win is not None:
+            winners.append((run, win))
         for r in rows:
             if rounds.legal(r.get("values", {}), goal_resolved):
                 legal.append((run, r))
@@ -123,7 +145,7 @@ def pick(runs, goal_resolved, legal_k=2, near_k=2):
     for _ in range(legal_k):
         best = None
         for item in legal:
-            if item in chosen:
+            if item in chosen or item in winners:
                 continue
             if best is None or rounds.better(item[1].get("values", {}), best[1].get("values", {}),
                                              goal_resolved):
@@ -131,7 +153,8 @@ def pick(runs, goal_resolved, legal_k=2, near_k=2):
         if best is None:
             break
         chosen.append(best)
-    out = [(run, r.get("id"), "legal") for run, r in chosen]
+    out = [(run, r.get("id"), "delivered") for run, r in winners]
+    out += [(run, r.get("id"), "legal") for run, r in chosen]
     near.sort(key=lambda it: it[1].get("values", {}).get("pixel_ratio_judged_pct") or 1e9)
     seen = {(run, cid) for run, cid, _ in out}
     for run, r in near:

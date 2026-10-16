@@ -130,6 +130,7 @@ def _history_entry(cand_id, meta, rows, goal_resolved):
         "frontPoint": (meta or {}).get("frontPoint"),
         "exploratory": bool((meta or {}).get("exploratory")),
         "operators": (meta or {}).get("operators", []),
+        "edits": (meta or {}).get("edits", []),
         "values": vmap,
         "unknown": unknown,
         "receiptSha256": None,
@@ -378,6 +379,7 @@ def _import_incumbents(workspace, readiness, case, sitecaps):
         entry = _history_entry(item["id"], _meta_of(workspace, item["id"]), rows, readiness["goal"])
         entry["receiptSha256"] = _receipt_sha(workspace, item["id"])
         entry["source"] = item["from"]
+        entry["why"] = item["why"]
         history_mod.append(workspace, entry)
         item["legal"] = entry["legal"]
     return out
@@ -715,8 +717,14 @@ def evaluate(workspace, inputs):
                     "table shows the exploratory points and the limit each breaks",
         }
 
+    # today's flow: the original layout's judged values, one set from one receipt, so a readout
+    # never pairs today's ratio with a later candidate's couplings
+    orig = next((r for r in history if r.get("id") == "original"), None)
+    baseline = {"id": "original", "values": rounds._as_map(orig.get("values", {}))} if orig else None
+
     evaluation = {
         "schema": "pixel.evaluation/1",
+        "baseline": baseline,
         "ending": ending,
         "goalMet": bool(goal_met),
         "best": {"id": best.get("id"), "values": best_values, "legal": best_legal}
@@ -805,6 +813,7 @@ def deliver(workspace, inputs):
         "caseId": case.case_id,
         "ending": evaluation.get("ending"),
         "goalMet": evaluation.get("goalMet"),
+        "baseline": evaluation.get("baseline"),
         "best": best,
         "rules": evaluation.get("rules", {}),
         "unknowns": evaluation.get("unknowns", []),
@@ -824,6 +833,19 @@ def deliver(workspace, inputs):
     }, artifacts=[{"name": "finalReport", "path": "delivery/report.json"}])
 
 
+_REPORT_MEASURES = (("Ct/Cs (%)", "pixel_ratio_judged_pct"),
+                    ("C(N1,N4) (fF)", "pixel_ct_anode_ff"),
+                    ("C(N1,Gate) (fF)", "pixel_ct_lines_ff"),
+                    ("T (%)", "pixel_t_judged_pct"),
+                    ("Largest load increase (%)", "pixel_load_increase_max_pct"))
+
+
+def _fmt(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return "n/a" if v is None else str(v)
+    return "%.4g" % v if abs(v) < 1000 else "%.0f" % v
+
+
 def _write_report_md(path, report, readiness):
     lines = []
     lines.append("# Pixel layout optimization delivery")
@@ -834,6 +856,17 @@ def _write_report_md(path, report, readiness):
     best = report.get("best") or {}
     lines.append("- Best candidate: `%s` (legal: %s)"
                  % (best.get("id"), best.get("legal")))
+    base_vals = (report.get("baseline") or {}).get("values") or {}
+    best_vals = best.get("values") or {}
+    if base_vals or best_vals:
+        lines.append("")
+        lines.append("## Today's flow and the delivered layout")
+        lines.append("")
+        lines.append("| Measure | Today (original) | Delivered |")
+        lines.append("|---|---|---|")
+        for label, key in _REPORT_MEASURES:
+            lines.append("| %s | %s | %s |" % (label, _fmt(base_vals.get(key)),
+                                                _fmt(best_vals.get(key))))
     lines.append("")
     lines.append("## Judge rules")
     lines.append("")

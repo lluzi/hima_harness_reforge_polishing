@@ -55,6 +55,13 @@ legalising its own near-misses found its second lever only in round 7. So:
 
 Read the history before you plan. Never repeat a hypothesis an earlier round closed.
 
+**Warm start.** When the Strategy sets `warmStart: prior-runs`, history opens with round-0
+`incumbent` rows, re-judged under this Run's Goal; each names its earlier Run and candidate in
+`source` and why it came in `why`: `delivered` (the winner that Run delivered), `legal` (a best
+legal candidate under this Goal) or `near-miss` (a few authority-DRC markers short). Start round
+1 from the `delivered` incumbent and the ledger's best lever of the earlier Runs, even when a
+harder Goal ranks another incumbent above it: the delivered winner carries the move that won.
+
 ## 3. Commands you may run
 
 | Command | What it does |

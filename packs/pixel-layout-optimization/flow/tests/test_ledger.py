@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.p
 
 from pixelopt import ledger  # noqa: E402
 
-from test_rounds import _goal, _legal_values  # noqa: E402
+from tests.test_rounds import _goal, _legal_values  # noqa: E402
 
 _SHIELD = {"op": "shield", "net": "VS", "layer": "M2", "marginUm": 1.0,
            "over": {"victim": "S", "aggressor": "SC"}}
@@ -45,6 +45,17 @@ class LedgerTest(unittest.TestCase):
         repair = next(e for e in led if e["lever"] == "bounded-edit repair")
         self.assertAlmostEqual(repair["bestDRatioPctVsBase"], -0.05)
         self.assertEqual(repair["legal"], 1)
+
+    def test_a_plan_s_bounded_edits_are_part_of_its_lever(self):
+        hist = self._history()
+        ext = _row("r1-extend", 1, "original", pixel_ratio_judged_pct=7.1)
+        ext["edits"] = [{"layer": "M2", "polygon": 3, "op": "add", "box": [0, 0, 1, 1]},
+                        {"layer": "M2", "polygon": 4, "op": "add", "box": [1, 0, 2, 1]}]
+        led = ledger.build(hist + [ext], _goal())
+        self.assertEqual(led[0]["lever"], "edit add on M2")
+        self.assertAlmostEqual(led[0]["bestDRatioPctVsPlain"], -2.7)
+        self.assertNotIn("r1-extend", [x["id"] for e in led if e["lever"] == "no operator"
+                                       for x in e["examples"]])
 
     def test_an_earlier_run_s_moves_are_labelled_with_their_run(self):
         led = ledger.build([], _goal(), prior=[("run-a", self._history())])

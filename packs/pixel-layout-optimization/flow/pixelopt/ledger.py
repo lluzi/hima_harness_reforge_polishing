@@ -2,7 +2,8 @@
 
 A live Run found its two strongest levers six rounds apart because nothing told the resident what
 an earlier move had measured. The ledger groups every judged candidate by its lever (the
-discrete operators it carried, by kind, net, layer and role, plus its objective) and states, from
+discrete operators it carried, by kind, net, layer and role, and the plan's bounded edits, by
+kind and layer, plus its objective) and states, from
 receipts only, how far each moved the judged ratio and the storage node's couplings against its
 base and against the plain point of the same round and base, and how often it came back legal or
 a few markers short. The round decision carries it; on a warm start it also reads the earlier Runs
@@ -52,6 +53,12 @@ def _op_params(op):
     return out
 
 
+def _edit_name(edit):
+    """A plan's bounded edit by kind and layer: ``edit add on M2``, ``edit move on M1``."""
+    kind = edit.get("op") if edit.get("op") in ("add", "cut") else "move"
+    return "edit %s on %s" % (kind, edit.get("layer"))
+
+
 def signature(row):
     """``(lever, objective)`` of one history row; ``None`` for rows that are no move."""
     kind = row.get("kind")
@@ -60,7 +67,8 @@ def signature(row):
     if kind == "repair":
         return ("bounded-edit repair", "legalise")
     fp = row.get("frontPoint") or {}
-    names = sorted({_op_name(o) for o in (row.get("operators") or []) if isinstance(o, dict)})
+    names = sorted({_op_name(o) for o in (row.get("operators") or []) if isinstance(o, dict)}
+                   | {_edit_name(e) for e in (row.get("edits") or []) if isinstance(e, dict)})
     return (" + ".join(names) if names else "no operator", fp.get("objective") or "")
 
 

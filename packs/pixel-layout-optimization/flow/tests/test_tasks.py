@@ -78,6 +78,23 @@ class ReportMdTest(unittest.TestCase):
             self.assertIn("ratio-met", text)
             self.assertIn("pixel_pdl_symmetry_min", text)
 
+    def test_today_and_delivered_values_come_as_one_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "REPORT.md")
+            report = {"caseId": "c", "ending": "goal-met", "goalMet": True,
+                      "baseline": {"id": "original",
+                                   "values": {"pixel_ratio_judged_pct": 10.22,
+                                              "pixel_ct_anode_ff": 3.71}},
+                      "best": {"id": "r4", "legal": True,
+                               "values": {"pixel_ratio_judged_pct": 7.12,
+                                          "pixel_ct_anode_ff": 3.098}},
+                      "rules": {}, "unknowns": []}
+            tasks._write_report_md(path, report, {})
+            with open(path) as fh:
+                text = fh.read()
+            self.assertIn("| Ct/Cs (%) | 10.22 | 7.12 |", text)
+            self.assertIn("| C(N1,N4) (fF) | 3.71 | 3.098 |", text)
+
 
 if __name__ == "__main__":
     unittest.main()
