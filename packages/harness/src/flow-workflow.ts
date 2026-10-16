@@ -381,12 +381,30 @@ async function executeTask(runtime: DurableRuntime, input: TaskExecution, option
           if ('pending' in adapter) lastReason = adapter.reason.message;
           else if (!adapter.handoff) lastReason = 'Original adapter cannot prove physical Team handoff';
           else {
-            const handed = await taskEffectStep('hima.team.handoff-original', async () => {
-              if (!await adapter.permit(prepared, 'release')) return undefined;
-              return adapter.handoff!(prepared, { waitId: wait.waitId }, (id, value) =>
-                runtime.store.claimEffectCleanup(parent.identity, () => adapter.permit(prepared, 'release'),
-                  `handoff:${id}`, jsonDigest(value)));
-            });
+            let handed: Awaited<ReturnType<NonNullable<TaskEffectAdapter['handoff']>>> | undefined;
+            try {
+              handed = await taskEffectStep('hima.team.handoff-original', async () => {
+                if (!await adapter.permit(prepared, 'release')) return undefined;
+                return adapter.handoff!(prepared, { waitId: wait.waitId }, (id, value) =>
+                  runtime.store.claimEffectCleanup(parent.identity, () => adapter.permit(prepared, 'release'),
+                    `handoff:${id}`, jsonDigest(value)));
+              });
+            } catch (error) {
+              // A verified original native failure cannot become a successful
+              // handoff or strand the logical task behind its accepted wait.
+              // Other handoff errors retain their existing refusal semantics.
+              const observed = await taskEffectStep('hima.team.failed-handoff-reconcile', () =>
+                adapter.reconcile(prepared, snapshot.facts.submitted));
+              if (observed.state !== 'failed') throw error;
+              const settled = await executeTaskEffect(runtime.store, parentRequest, adapter);
+              if (settled.state !== 'failed' && settled.state !== 'waiting') throw error;
+              lastReason = settled.reason.message;
+              await runtime.store.flowState(context.runId, parent.identity.effectId, attempt * 3 + 2,
+                asJson({ state: settled.state, reason: lastReason, diagnostic: settled.reason }));
+              if (settled.state === 'failed') return outcome(context, 'failed', lastReason);
+              if (authority.at >= deadlineAt) return outcome(context, 'waiting', lastReason);
+              await waitForOriginalDeadline(attempt, authority.at, deadlineAt); continue;
+            }
             if (!handed) lastReason = 'Current Site Permit blocks original Team handoff';
             else if (!handed.closure.closed) lastReason = handed.closure.reason ?? 'Original physical closure remains unknown';
             else {

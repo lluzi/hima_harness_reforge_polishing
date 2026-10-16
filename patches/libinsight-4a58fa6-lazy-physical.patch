@@ -1,0 +1,216 @@
+--- a/app/server.py
++++ b/app/server.py
+@@ -177,8 +177,7 @@
+         cal = os.path.join(self.derived, "calibration.json")
+         self.calibration = _load_json(cal) if os.path.exists(cal) else None
+         # Physical (library-physical) results, when the physical stage ran for this Kit (T15); None otherwise.
+-        phys = os.path.join(self.derived, "physical.json")
+-        self.physical = _load_json(phys) if os.path.exists(phys) else None
++        self._physical_path = os.path.join(self.derived, "physical.json")
+         # R61: the Pin-access result is served in bounded pages, never as one payload. The compact per-master index
+         # (summary, ranked rows, single-master lookup) is built once per load and cached here; ``physical`` keeps
+         # the full records only so the index can return one master's detail on request.
+@@ -202,6 +201,10 @@
+         self._snapshot_fp = _identity_fingerprint(self.info.get("identity") or {})
+         self._source_verify: Dict[tuple, dict] = {}   # serve-time source re-verification (R6/R8), computed on demand
+         self.lock = threading.RLock()
++        self._physical_loaded = False
++        self._physical = None
++        self._physical_stamp = None
++        self.has_physical = self._physical_supplied()
+         self._shards: "OrderedDict[str, Sequence[dict]]" = OrderedDict()
+         self._summaries: "OrderedDict[str, dict]" = OrderedDict()
+         self._contexts: "OrderedDict[FileRef, object]" = OrderedDict()
+@@ -424,6 +427,76 @@
+             self._source_verify[key] = result
+         return result
+
++    @staticmethod
++    def _physical_file_stamp(stat):
++        return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
++
++    def _physical_supplied(self) -> bool:
++        """Read the normal producer's small leading fields, not its masters. Old layouts use the original reader."""
++        try:
++            f = open(self._physical_path)
++        except FileNotFoundError:
++            self._physical_loaded = True
++            return False
++        with f:
++            self._physical_stamp = self._physical_file_stamp(os.fstat(f.fileno()))
++            prefix = f.read(4096)
++            decoder = json.JSONDecoder()
++            pos = 0
++            def whitespace():
++                nonlocal pos
++                while pos < len(prefix) and prefix[pos] in " \t\r\n":
++                    pos += 1
++            try:
++                whitespace()
++                if prefix[pos:pos + 1] != "{":
++                    raise ValueError("not a producer object")
++                pos += 1
++                for expected in ("schema", "scope_kind", "supplied"):
++                    whitespace()
++                    key, pos = decoder.raw_decode(prefix, pos)
++                    if key != expected:
++                        raise ValueError("older field order")
++                    whitespace()
++                    if prefix[pos:pos + 1] != ":":
++                        raise ValueError("missing colon")
++                    pos += 1
++                    whitespace()
++                    value, pos = decoder.raw_decode(prefix, pos)
++                    whitespace()
++                    if expected == "supplied":
++                        if not isinstance(value, bool) or prefix[pos:pos + 1] not in (",", "}"):
++                            raise ValueError("not a complete supplied boolean")
++                        return value
++                    if not isinstance(value, str) or prefix[pos:pos + 1] != ",":
++                        raise ValueError("older header layout")
++                    pos += 1
++            except ValueError:
++                pass
++            f.seek(0)
++            self._physical = json.load(f)
++            self._physical_loaded = True
++            return self._physical is not None and bool(self._physical.get("supplied"))
++
++    @property
++    def physical(self) -> Optional[dict]:
++        with self.lock:
++            if not self._physical_loaded:
++                self._assert_derived_unchanged()
++                try:
++                    with open(self._physical_path) as f:
++                        if self._physical_file_stamp(os.fstat(f.fileno())) != self._physical_stamp:
++                            raise HttpError(409, "the physical result changed on disk; reload to see it")
++                        physical = json.load(f)
++                        if (self._physical_file_stamp(os.fstat(f.fileno())) != self._physical_stamp or
++                                self._physical_file_stamp(os.stat(self._physical_path)) != self._physical_stamp):
++                            raise HttpError(409, "the physical result changed on disk; reload to see it")
++                except FileNotFoundError:
++                    raise HttpError(409, "the physical result changed on disk; reload to see it")
++                self._physical = physical
++                self._physical_loaded = True
++            return self._physical
++
+     def physical_index(self) -> Optional[PhysicalIndex]:
+         """The compact Pin-access index over this Kit's physical result (R61), built once and cached, or None when
+         no physical result was produced. The VT of each master is taken from its mapped Variant (the manifest's
+@@ -1055,7 +1128,7 @@
+             out.append({"id": kd.kit.id, "kit": kd.kit.kit, "release": kd.kit.release, "primary_view": kd.kit.primary_view,
+                         "variants": i["kit"]["variants"], "corners": i["kit"]["corners"], "has_lens": bool(kd.kit.lens),
+                         "has_lvf": any(f.get("lvf") for f in i["files"]),
+-                        "has_physical": kd.physical is not None and bool(kd.physical.get("supplied")),
++                        "has_physical": kd.has_physical,
+                         "lens": kd.kit.lens, "run": i["run"], "expectations": i["expectations"],
+                         "calibration": self.calibration_summary(kd),
+                         "pattern_agreement": (kd.calibration or {}).get("pattern_agreement"),
+--- a/tests/test_physical_stage.py
++++ b/tests/test_physical_stage.py
+@@ -1007,3 +1007,104 @@
+     g = _get(app, "/api/physical/geometry", kit="lefonly", cell="CELLA")
+     assert g["candidates"] and any(c["legal"] for c in g["candidates"])
+     assert g["escape_cols"] == [] and g["breakdown"]["available"] is True
++
++
++# Development dependency regression: normal electrical startup must not parse physical masters.
++def test_normal_electrical_pages_defer_physical_and_first_pin_access_loads_once(tmp_path, monkeypatch):
++    from app import server
++    app, kit, out = _physical_mini_app(tmp_path)
++    reads = []
++    original = json.load
++    def counted(f, *args, **kwargs):
++        if str(getattr(f, "name", "")).endswith("physical.json"):
++            reads.append(f.name)
++        return original(f, *args, **kwargs)
++    monkeypatch.setattr(json, "load", counted)
++    app = App(app.config_path)
++    assert reads == [], "App startup must not parse the full physical payload"
++    assert _get(app, "/api/kits")[0]["has_physical"] is True
++    health = _get(app, "/api/health", kit="mini")
++    overall = _get(app, "/api/overall", kit="mini")
++    assert health["identity"] == overall["identity"]
++    assert reads == [], "default Health/Overall must not parse physical masters"
++    physical = _get(app, "/api/physical", kit="mini")
++    assert physical["supplied"] is True and physical["pin_access"]["total"] > 0
++    assert "masters" not in physical
++    _get(app, "/api/physical/rows", kit="mini")
++    _get(app, "/api/physical/master", kit="mini", cell=physical["rows"][0]["cell"])
++    assert len(reads) == 1
++
++
++def test_first_concurrent_physical_reads_share_one_payload_and_index(tmp_path, monkeypatch):
++    from concurrent.futures import ThreadPoolExecutor
++    app, out = _lef_only_app(tmp_path)
++    app = App(app.config_path)
++    kd = app.kit({"kit": "lefonly"})
++    reads = []
++    original = json.load
++    def counted(f, *args, **kwargs):
++        if str(getattr(f, "name", "")).endswith("physical.json"):
++            reads.append(f.name)
++        return original(f, *args, **kwargs)
++    monkeypatch.setattr(json, "load", counted)
++    with ThreadPoolExecutor(max_workers=4) as pool:
++        indexes = list(pool.map(lambda _: kd.physical_index(), range(8)))
++    assert all(index is indexes[0] for index in indexes)
++    assert len(reads) == 1, "concurrent first access must parse only one payload"
++    assert _get(app, "/api/physical/master", kit="lefonly", cell="CELLA")["master"]["pcell"] == {
++        "n": 9, "d": 16, "approx": 0.5625}
++
++
++@pytest.mark.parametrize("layout", ["false", "reordered", "nested", "long-header", "missing"])
++def test_physical_availability_preserves_real_false_old_layout_and_absence(tmp_path, layout):
++    app, out = _lef_only_app(tmp_path)
++    path = os.path.join(out, "physical.json")
++    with open(path) as f:
++        original = json.load(f)
++    if layout == "missing":
++        os.unlink(path)
++    else:
++        value = dict(original, supplied=False)
++        if layout == "reordered":
++            value = {"masters": value.pop("masters"), **value}
++        elif layout == "nested":
++            value = {"schema": value.pop("schema"), "scope_kind": value.pop("scope_kind"),
++                     "metadata": {"supplied": True}, **value}
++        elif layout == "long-header":
++            value["schema"] = "x" * 5000
++        with open(path, "w") as f:
++            json.dump(value, f)
++    app = App(app.config_path)
++    assert _get(app, "/api/kits")[0]["has_physical"] is False
++    assert _get(app, "/api/physical", kit="lefonly")["supplied"] is False
++
++
++def test_lazy_physical_corruption_and_replaced_snapshot_are_not_fabricated(tmp_path):
++    app, out = _lef_only_app(tmp_path)
++    path = os.path.join(out, "physical.json")
++    with open(path, "w") as f:
++        f.write('{"schema":"lib-insight-physical/1","scope_kind":"library-physical","supplied":true,"masters":[BROKEN]}')
++    app = App(app.config_path)
++    status, _, body = app.handle("GET", "/api/physical", {"kit": "lefonly"}, {})
++    assert status == 400 and b"JSONDecodeError" in body
++    # A new valid physical result after this App's snapshot must require reload, not mix snapshots.
++    replacement = path + ".replacement"
++    with open(replacement, "w") as f:
++        json.dump({"schema": "lib-insight-physical/1", "scope_kind": "library-physical",
++                   "supplied": False}, f)
++    os.replace(replacement, path)
++    status, _, body = app.handle("GET", "/api/physical", {"kit": "lefonly"}, {})
++    assert status == 409 and b"changed on disk" in body
++
++
++def test_first_lazy_physical_access_rejects_a_new_electrical_snapshot(tmp_path):
++    app, out = _lef_only_app(tmp_path)
++    app = App(app.config_path)
++    header = os.path.join(out, "findings", "_run.json")
++    with open(header) as f:
++        value = json.load(f)
++    value["identity"]["manifest_sha256"] = "different-electrical-run"
++    with open(header, "w") as f:
++        json.dump(value, f)
++    status, _, body = app.handle("GET", "/api/physical", {"kit": "lefonly"}, {})
++    assert status == 409 and b"derived result changed" in body

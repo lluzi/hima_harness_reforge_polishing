@@ -1,0 +1,19 @@
+--- a/dist/runtimes/pi/projection.js
++++ b/dist/runtimes/pi/projection.js
+@@ -154,6 +154,8 @@
+         // future addition).
+         case "message_start":
+             return { state, events: event.message.role === "user" ? [{ kind: "user_message", evidence: "conversation", input: typeof event.message.content === "string" ? event.message.content : event.message.content.filter((part) => part.type === "text").map((part) => part.text).join("") }] : [] };
++        case "auto_retry_end":
++            return { state: event.success === true ? { ...state, providerError: undefined } : state, events: [] };
+         case "agent_start":
+         case "agent_end":
+         case "turn_start":
+@@ -161,7 +163,6 @@
+         case "queue_update":
+         case "entry_appended":
+         case "session_info_changed":
+-        case "auto_retry_end":
+         case "summarization_retry_attempt_start":
+         case "summarization_retry_finished":
+             return { state, events: [] };

@@ -72,8 +72,8 @@ async function mcp(): Promise<void> {
           serverInfo: { name: 'hima-member-context', version: '1' } });
       } else if (rpc.method === 'ping') respond(rpc.id, {});
       else if (rpc.method === 'tools/list') respond(rpc.id, { tools: [{ name: 'member_context',
-        description: 'Request authorized task, message, material or GitHub context from Host. Actions include readTask, send-message, ask {requestId,recipientMemberIds,text,replyToMessageId?}, delegate {requestId,memberId,goal,input,output:{version,schema},dependsOn,deadlineAt}, ask-human {requestId,goal,input,output:{version,schema},dependsOn,deadlineAt}, wait {requestId,delegationIds}, and github {action:checkout|status|push-task-branch|open-pr}. The open-pr request includes testsCommit and reviewCommit equal to the remote head, plus tests, review and remaining text. GitHub writes use the human-opened task binding and Host-only credentials; member shell credentials are unavailable. Delegate/ask-human/wait require the current frozen leader grant. Delegation acceptance is nonblocking, not child success. Wait returns checked committed/closed results or yield-accepted; after yield do not send another engineering task or claim completion. Question replies never approve human requests. Actor, Run, effect, owner, epoch and revision are resolved by Host, never supplied in request.',
-        inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections','github'] }, request: { type: 'object' } },
+        description: 'Request authorized task, message, material or GitHub context from Host. Actions include readTask, send-message, ask {requestId,recipientMemberIds,text,replyToMessageId?}, delegate {requestId,memberId,goal,input,output:{version,schema},dependsOn,deadlineAt}, ask-human {requestId,goal,input,output:{version,schema},dependsOn,deadlineAt}, wait {requestId,delegationIds}, and github {action:checkout|status|push-task-branch|open-pr}. The open-pr request includes testsCommit and reviewCommit equal to the remote head, plus tests, review and remaining text. GitHub writes use the human-opened task binding and Host-only credentials; member shell credentials are unavailable. Delegate/ask-human/wait require the current frozen leader grant. Delegation acceptance is nonblocking, not child success. Wait returns checked committed/closed results or yield-accepted; after yield do not send another engineering task or claim completion. adopt-memory accepts {requestId,memoryId,expectedVersion,expectedRevision,supersedesEventId,action:adopted,reason,evidenceRefs,conditions}; it requires a separate declared adoption grant from a human-opened task. Members adopt only their own personal candidate experience; the frozen leader confirms shared Team methods. Human feedback, correction, disable and re-adoption remain human-only. Memory is advice and cannot change roles, permissions, human gates or acceptance. Question replies never approve human requests. Actor, Run, effect, owner, epoch and revision are resolved by Host, never supplied in request.',
+        inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','adopt-memory','memory-status','memory-corrections','github'] }, request: { type: 'object' } },
           required: ['action', 'request'], additionalProperties: false } }] });
       else if (rpc.method === 'tools/call') {
         const args = object(rpc.params?.arguments);
@@ -139,7 +139,7 @@ async function sdkRun(): Promise<void> {
     fail(error); failed = true; void stop('raw observation failure');
   };
   const drainRaw = () => {
-    if (!session || failed || !process.connected) return;
+    if (!session || rawTransferFailed || !process.connected) return;
     const records = session.records() as ObjectValue[];
     while (rawCursor < records.length) {
       const raw = records[rawCursor]!;
@@ -165,7 +165,7 @@ async function sdkRun(): Promise<void> {
   };
   const rawDrained = () => !session || (rawCursor >= (session.records() as ObjectValue[]).length && rawOutstanding.size === 0 && pendingEvents.size === 0);
   const waitRaw = async (until: number) => {
-    while (!rawDrained() && Date.now() < until && !failed) { scheduleRaw(); await sleep(10); }
+    while (!rawDrained() && Date.now() < until && !rawTransferFailed) { scheduleRaw(); await sleep(10); }
     return rawDrained();
   };
   const fail = (error: unknown) => {

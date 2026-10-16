@@ -1,0 +1,3227 @@
+{
+  "schema": "hima.himateam.functional-composition-qualification/1",
+  "state": "INCOMPLETE_FINAL_DELIVERY_PENDING",
+  "asOf": "2026-10-16T04:01:04.485Z",
+  "issue": 109,
+  "sourceBase": "d46d33708e437c1a80f03c96bc26fe9570d568f3",
+  "sourceCommit": "pending coherent commit; this report intentionally does not embed its own future commit SHA",
+  "scope": "macOS trusted-local development candidate; no packaging/Linux/release/EDA qualification",
+  "baseline": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-preflight/requirement-evidence-matrix.json",
+    "sha256": "e1d3da3b8279887bd6e6339365c4db3585e7c2234991e765b1da9c1abe8d9ff0",
+    "rowCount": 141,
+    "statusCounts": {
+      "deferred-110": 5,
+      "partial": 74,
+      "proven": 50,
+      "unknown": 11,
+      "missing": 1
+    },
+    "statusesPreserved": true,
+    "evidenceCatalog": {
+      "Q98": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-10-initial-frontier.md",
+        "sha256": "b013710cd38fbbf6fff9122a5343fde944512bb4764b842ddcc869b2c4a463f8",
+        "bytes": 20718,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "Q102": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-11-message-material-frontier.md",
+        "sha256": "64fb4d505daeff91e878b046bfdaee2a2483ea5689f856832c6bfedb214e5b71",
+        "bytes": 6027,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "Q101": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-13-trusted-native-oar.md",
+        "sha256": "1df99c1dab66479f92bff4896c8f6b8375fdf8c8bd9db8a52691149e3f62a9c2",
+        "bytes": 4407,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "Q104": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-13-hindsight-memory.md",
+        "sha256": "f9be7c5dc3c4b1f0c540b4c4a0e40817eb33bb397404720400e243c205844de7",
+        "bytes": 6823,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "Q105": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-13-collaboration-control.md",
+        "sha256": "5163361ef4adf7eedf0407f96f8bc372f79b7e85e429c9a5528dc5129fcc6af2",
+        "bytes": 20328,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "Q106": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-14-software-team.md",
+        "sha256": "f29066314c5e6f2d9686bd8403e46e00c598703981ecbae0bdbd4c954e1b826c",
+        "bytes": 5565,
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "E107I": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/coordinator-initial-spec-review.json",
+        "sha256": "dfb2860da21a257cc80382236be7058d6f4e3baf60db88500c831498560324c9",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E107M": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/coordinator-task2-memory-review.json",
+        "sha256": "db578253706ffb4bd7a4e6f2effa534925263dc56b701d7506d9a6f9f4cf3b12",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E107T": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/coordinator-task2-tool-surface-review.json",
+        "sha256": "3afc89fd235663532a9da5d0e0427af016697d512c299a72f86d6254339cca54",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E107P": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/live16-provenance-audit.json",
+        "sha256": "fc6487604b8b207fe7fabd6f0a97c010cd311904bf7d7ee1f47c2a50b704dad3",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E107R": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-final-unreviewed-review/review-result.json",
+        "sha256": "098b7e8babd83bce57470c81bf642bed0cca8dc0e8ba82ae7f0925c35f6f0e63",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E108A": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue108-integration/issue108-acceptance-map.md",
+        "sha256": "a50fd018e50bedb5edd67b2acdcb721d941d1753598df138456c448f816a492b",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E108D": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue108-integration/issue108-final-review-ready2.json",
+        "sha256": "02d2e5b98a18038071f5e927db679972b319b806971879a1e5aafd845782e612",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E108R": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue108-final-unreviewed-review/review-result.json",
+        "sha256": "783d66994049ae5850ed6597f3c7b6f0b576e6b899f9e8dbf0ac362bd140b8e6",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E108C": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue108-final-review-consumed.json",
+        "sha256": "2e30572a0faa9fe7e49182581b6ed049624b1101bfff9bbd4a62808ca13d440d",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E106Q": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/docs/specs/himateam/qualification/2026-10-14-software-team.md",
+        "sha256": "f29066314c5e6f2d9686bd8403e46e00c598703981ecbae0bdbd4c954e1b826c",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E106P": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-github-policy.host.test.ts",
+        "sha256": "bfb4ebaf47d230b890d278e77708368c24bd04788b3f3bba25d17d39e904cfaf",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "ET20": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/local-memory-bounded/native/integration-issue105-t20-replay-green-result.json",
+        "sha256": "0eeb5372766d9b33b639b2985dfaa770ce18bf9192de3ffc06839286ca3613ab",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "ET20S": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-recovery.host.test.ts",
+        "sha256": "0138f1daeb54b46ae026b019d3c7d2b30aef7fd4df854ba62544013143ed8977",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "EHAND": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-handoff.host.test.ts",
+        "sha256": "319a4db8801723742014ecfb81f80c2057eda86f08be19383e4eda9e095194fd",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "E105B": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/development-baton.json",
+        "sha256": "35aa511d5358f10b5a1449a37f1a4dfef1ebc4fe30077d30c37cb11a9be112a0",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "EPUSH": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/development-baton.json",
+        "sha256": "35aa511d5358f10b5a1449a37f1a4dfef1ebc4fe30077d30c37cb11a9be112a0",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "B1": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/live15/2026-10-15T17-41-27-622Z/task-1956fc92b0493e3003c8a456fea34d57f9f2da301632d5aa055d24b9e865a3f2-result.json",
+        "sha256": "7fbe4211eb1f11d5f806f42e6cdf7477fe8dfaaf8c7da45b1c508c73ee0a0544",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "B2": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/live16/2026-10-15T17-55-02-230Z/task2-result.json",
+        "sha256": "9e5e3d391909ec50d47ad83c27b5dd4c5c0fa43ecc0f41b78d6b093532b72601",
+        "evidenceKind": "prior evidence-index reference; earlier session read or source-only as indicated",
+        "resultIsNotTestExistence": true
+      },
+      "M107": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue107-integration/issue107-acceptance-map.md",
+        "sha256": "fddf46aa53f79a9f80fe299d8e2bfbd0bc57576deee09dc601bedad82dfe9e7a",
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "M108": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue108-integration/issue108-acceptance-map.md",
+        "sha256": "a50fd018e50bedb5edd67b2acdcb721d941d1753598df138456c448f816a492b",
+        "evidenceKind": "read qualification/acceptance report",
+        "resultIsNotTestExistence": true
+      },
+      "LEADER-STATIC": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-leader-adoption-gap.json",
+        "sha256": "f503689b83c629825ce558d9324488023f104ae3dc4948661a7ffaa69df8b4a6",
+        "kind": "coordinator-static-review",
+        "observedAt": "2026-10-15T20:45:52.343303+00:00",
+        "scope": "No dynamic reproduction; current scope/ADR checkpoint by I"
+      },
+      "GITHUB-REF": {
+        "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-github-reference-snapshot.json",
+        "sha256": "e6356cc5718510ed39390d019b87190350d131758078059ba951552ee110cecb",
+        "kind": "coordinator-read-only-reference-snapshot",
+        "observedAt": "2026-10-15T20:39:44.950903+00:00",
+        "scope": "PR2 OPEN at 2026-10-15T20:39:44Z; revalidate before live bridge; no unlock"
+      }
+    }
+  },
+  "identity": {
+    "applicationVersion": "hima-585dda4772cd4609ef34e45578051278cb6e2de4a060863a8940bb4601e332f6",
+    "desktopMainSha256": "d6a507561670c777d1b6a74d94301a9ad3e86b2da9ca475e8a566e4de1b0c42f",
+    "rendererSha256": "c08a5a6a2d2acb7fbfe41d75216b51dade78347c58616e2a6143b53bc9954982",
+    "native": {
+      "oar": {
+        "name": "@botiverse/oar",
+        "version": "0.46.0",
+        "metadata": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/node_modules/.pnpm/@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/package.json",
+        "metadataSha256": "528b81e2a8cac606dcb0de1af75fd790a06b6950ab2da16f9a62653034b6ff11",
+        "baseVersion": "0.46.0",
+        "qualification": "development-asset-hotfix-only",
+        "cohortId": "0.46.0+hima-pi-retry-f2e4d53d7e55",
+        "module": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/node_modules/.pnpm/@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/dist/index.js",
+        "entryRealpath": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/node_modules/.pnpm/@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/dist/index.js",
+        "patchSha256": "f2e4d53d7e5515163d5fcd5bef49878536fbdd4bf7dbb6dbc51d7c51e4d41469",
+        "projection": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/node_modules/.pnpm/@botiverse+oar@0.46.0_@aws-sdk+credential-provider-node@3.972.84_@smithy+signature-v4@5.7.4_ws@8.22.0_zod@4.6.5/node_modules/@botiverse/oar/dist/runtimes/pi/projection.js",
+        "projectionSha256": "2dbb2ea0e1722ba3f7d3858e7983f78d38c858990a0d4120c8222ca9871cbcb1",
+        "stageReceipt": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/hima-oar-pi-retry-hotfix.json"
+      },
+      "pi": {
+        "name": "@earendil-works/pi-coding-agent",
+        "version": "1.1.0",
+        "metadata": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-oar-hotfix/npm/node_modules/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.972.84_@smith_3aeae5589a09cd00ef25d765420348a1/node_modules/@earendil-works/pi-coding-agent/package.json",
+        "metadataSha256": "c662a36f8bc47843393a60dc8616a34dfcc8376e8fcc96dbc2f1020c60e38e2a"
+      },
+      "node": {
+        "version": "24.20.0",
+        "path": "/Users/lluzi/.local/node24/bin/node",
+        "sha256": "9d050fd455b56426e25d4d603c7c501cbb2630348e836cf221dcce748e90588a"
+      },
+      "opencode": {
+        "version": "1.18.6",
+        "path": "/Users/lluzi/.local/node/lib/node_modules/opencode-ai/bin/opencode.exe",
+        "sha256": "9220f579e24f5212803e1cf9c0ecb098e3d49fdb1dbfd503b756e8fa8f8238eb"
+      },
+      "model": {
+        "name": "DeepSeek 4.1 Flash",
+        "wireId": "deepseek-flash",
+        "requests": "unmeasured until actual runtime evidence",
+        "tokens": "unmeasured"
+      },
+      "dsh": {
+        "version": "0.2.0-rc.2",
+        "metadataSha256": "0a85203e3e907dd2e3bec34324a2494758ca6cdee234b07090a7c8df0b11acac"
+      },
+      "unselectedAssetManifestOpenCode": "1.18.34 in PG/Hindsight asset manifest is not the selected native CLI and is not claimed executed"
+    },
+    "libInsight": {
+      "originalCheckout": "4a58fa6f9d22179b7010becc53167c9d4c976bc7",
+      "packagedPin": "55e27bfaf4470f0f38010e8bfdaf8a284064f612",
+      "candidate": "4a58fa6+11b62 development patch;19fixtureGREEN/independent0P1P2, actualfull3KitHost2PASS758.516MiB, actualdefaultDesktop2PASS1482.344MiB+normalclose",
+      "serverSha256": "104daf533535c8fd325c17aea9b74a17f367f99d4a304c906863fb828d41ca58",
+      "patchSha256": "11b62ebf6041558bf92d419b2ce54d6110762459e2b3b825b168ad95f0ec523b",
+      "trackedDeliveryPatchSha256": "6621135c35571ea350d1aff409e4e134eaf57c94d82b93a3a5cdbc9d1a836a4e",
+      "qualifiedOriginalPatchSha256": "11b62ebf6041558bf92d419b2ce54d6110762459e2b3b825b168ad95f0ec523b",
+      "patchFormatEquivalence": "Tracked patch suppresses one blank context space only; fresh ordinaryBSDpatch reproduces all64 exact qualified sourcefiles, no product/runtime/dependency source change."
+    }
+  },
+  "evidence": {
+    "BASELINE": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-preflight/requirement-evidence-matrix.json",
+      "sha256": "e1d3da3b8279887bd6e6339365c4db3585e7c2234991e765b1da9c1abe8d9ff0",
+      "scope": "Immutable original141-row evidence matrix; counts and statuses are historical, not current candidate verdicts."
+    },
+    "RESIDUAL-AUDIT": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-final-audit-prep/final-residual-assessment.json",
+      "sha256": "61cc42fea99933f30de128a7af9b61634a134c4cfc41fc1e28fa7572d90b5fa2",
+      "scope": "34-family limited review of original74partial rows; pending entries are superseded only by explicit deltas below."
+    },
+    "RESIDUAL-DECISIONS": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-final-residual-disposition.json",
+      "sha256": "d856a0a58781563c7ec1bd5c435b47b1a5ad8f5babc00c2f26a67eded25abdb2",
+      "scope": "Coordinator disposition, no blanket promotion or unapproved deferral."
+    },
+    "BUSINESS3": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-integration/live-business3/business-2026-10-16T00-18-32-899Z/delivery-postvalidated.json",
+      "sha256": "eaace7966323ef2ce298a551deeede3d11dcf6ec3a1edbf14d8fe0f63a5aadd0",
+      "scope": "Same actual business3 postvalidation; original TAP1PASS1FAIL unchanged."
+    },
+    "BUSINESS3-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-business3-evidence-review/independent/remediation-review.json",
+      "sha256": "684777fd5f13a0c43c32d812ef486e88b71629299604412f8810d1f3c1c4e3b8",
+      "scope": "Exact binding validator remediation and independent same-run acceptance."
+    },
+    "GUIDE-CHAIN": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-guide-chain-closure-consumed.json",
+      "sha256": "e51b30b1e7f6ef4f1bd75b54ce16cb51ed748739ebcbd28d3352287e31baf841",
+      "scope": "Actual GUI7 one Chinese user turn, read-only PG integrity and GUI9 visible new configuration/normaldrain."
+    },
+    "GUIDE-SEMANTIC": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-gui7-semantic-review.json",
+      "sha256": "cc4113b21109294389456162adb267b7782aa0516dda318a848ae47c672fc611",
+      "scope": "Root read actual roles/skills/ref selection and final reply; GUI-R1 closed."
+    },
+    "RESIDENT": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-current-resident-regression-hint.json",
+      "sha256": "574b7cef0cef6f46c2bb2f170142b6a3742ca5ba855b4ab8b990507d734c241a",
+      "scope": "Exact push4 #228 controlled DSH child; not real provider or Resident Desktop."
+    },
+    "RESIDUAL-PROOFS": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-residual-evidence/report.json",
+      "sha256": "c1e45ae49586b72aeb7031c1465da8bf83752fe80618b9f7a442eae1a10ce78c",
+      "scope": "Exact push4 cases and source identity; service/Guide missing scenarios subsequently supplemented by release caller."
+    },
+    "RAW-TAIL-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-raw-tail-review/independent/review-result.json",
+      "sha256": "0e5680e6bb06a0e1ecc51e982b16129927c5b5c98c938f9a2ceb67bdef51a76f",
+      "scope": "Two guards and ordinary-failure raw tail; true transfer failures still fenced."
+    },
+    "WAIT-FAILURE-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-wait-failure-review/independent/review-result.json",
+      "sha256": "76152f38a8acc5e21dd72d4194728999eebdbc199bd23ce7ee5551faf5ad4280",
+      "scope": "Verified original-parent failure settlement only; no new child/native."
+    },
+    "SDK-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-sdk-hotfix-review/independent/review-result.json",
+      "sha256": "3d46cd7c8b4111fa84204b6abfd7945ff838c47da3fed5e391b5faea84b4b33d",
+      "scope": "Development OAR retry projection hotfix; not installed distribution qualification."
+    },
+    "RELEASE-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-residual-review/independent/review-result.json",
+      "sha256": "db3e41322aa798fdae8aec93907cb6373c161d1799c12dedcaa601ef0a06abc2",
+      "scope": "Controlled Guide operation/replay after service failure and while delegated work is busy; no real provider claim."
+    },
+    "RELEASE-SCENE": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-integration/release-residual1/residual-isolation.json",
+      "sha256": "f042a19b58f19948ec3f74a4a45f1a4f95ffbcbf84aa10cf9f66b537a62c15fb",
+      "scope": "Actual controlled public Guide startTask/replies, progress no broadcast and directed receive."
+    },
+    "INSIGHT-HOST1": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-insight-host1/qualification.json",
+      "sha256": "b0df91b69b14738b5c749fc63eef5be7e361dd70b268d52afb687df9a22fbea1",
+      "scope": "Actual full TSMC28 singleKit Host APIs, no GUI, 1686MiB tree; inadequate GUI headroom."
+    },
+    "INSIGHT-COST": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-insight-host1/cost-attribution.json",
+      "sha256": "2ec0e356c36dc717e59497483f8522bf755664929379135ac92316baf7531d3c",
+      "scope": "Same-run process samples; Python ~1319.84MiB stable ready, not observer JSON copy."
+    },
+    "PHYSICAL-LOAD": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-physical-json1/result.json",
+      "sha256": "04ed1f543c014845ca5c44acca0358b309ef605bbcf2b41acccc036816b417fa",
+      "scope": "One ordinary actual physical JSON load, source SHA and Darwin RSS; no Host/GUI"
+    },
+    "LIBINSIGHT-LEAF-REVIEW": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-libinsight-lazy/independent/review-result.json",
+      "sha256": "4a3a3c66fd7a673f9b9f6b1a54bcdd817f9f44a0e55085e00403e2e5523733d3",
+      "scope": "Independent two-file leaf delta/64source identity,0P1/P2, actual resource/GUI still separate"
+    },
+    "INSIGHT-HOST2": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-insight-host2/qualification.json",
+      "sha256": "7bc52b76f9b3f00c2f3bda9afbcf1d8b1bf81805c015124aad9e1eb30408cd6f",
+      "scope": "Actual full original3Kit default Health+Overall, all six run status null,11.678s/758.515625MiB/normalHoststop/PGabsent/exactown[]"
+    },
+    "INSIGHT-HOST2-CONSUMED": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-insight-host2-consumed.json",
+      "sha256": "87178d79d3687c5ea6a23727b72e18e7779b269118d23c78628b230b056b3be6",
+      "scope": "Coordinator independent cached-response/closure consumption"
+    },
+    "INSIGHT-DESKTOP2": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-insight-desktop2/qualification.json",
+      "sha256": "f4a9ae90355eae3fa5d024b61fadab7a223a5f6f946959e516295c54ae735a22",
+      "scope": "Actual full3Kit standard default embedded Health+Overall,1SVG216shapes,real3Kit options/TSMCdefault,Reports navigation,1PASS0FAIL1SKIP,1482.34375MiB/normalAppdrain/own0"
+    },
+    "INSIGHT-DESKTOP2-CONSUMED": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/coordination/issue109-insight-desktop2-consumed.json",
+      "sha256": "a55a9ed5e1ea0881642d820ad326cf5b76c94ddd1606f7e850076643fa063e65",
+      "scope": "Root actual screenshot/DOM/retained API and explicit normal closure consumption; screenshot only initial Health, Overall via same DOM"
+    },
+    "LIBINSIGHT-REPRODUCTION": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.scratch/himateam-issue97/issue109-libinsight-lazy/tracked-reproduction.json",
+      "sha256": "d6767f13922accd00cee553d551cd39917fd5187e14cb406d8f3e23ae4b391e7",
+      "scope": "Fresh offline fixed-base gitarchive+ordinarypatch reproduces same64source files; no service/model/Python execution"
+    },
+    "TEAM-SPEC-SKILL": {
+      "path": "packages/harness/skills/hima-team-spec/SKILL.md",
+      "sha256": "1bda0f75a2a5c780c48a5e7e286acd3f716bb7c0770056523fcdd3607ee8bc90",
+      "lines": [
+        28,
+        38
+      ],
+      "scope": "Existing ask-human proposal/permission-change human boundary; source instruction, not an executed role-reason dialogue."
+    },
+    "LIBINSIGHT-PATCH-FORMAT": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/.scratch/himateam-issue97/issue109-libinsight-lazy/patch-format-reproduction.json",
+      "sha256": "53187e51f62da55d67c46ec17f6c732302d7e38b9e0f27300de7c1d23b2935cc",
+      "scope": "Carrier-only onebyte suppressedblank normalization and fresh64file byteequivalence; no Python/Host/PG/GUI/model execution"
+    }
+  },
+  "rows": [
+    {
+      "id": "S01",
+      "baselineStatus": "deferred-110",
+      "baselineEvidenceRefs": [
+        "SPEC-PHASE"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "由规格L1–24阶段调整延期；不记已验证，不阻塞当前功能关单。",
+        "qualificationLimit": "Only spec phase-adjustment packaging/Linux/install/strong-isolation distribution scope; no functional gap hidden by #110.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S02",
+      "baselineStatus": "deferred-110",
+      "baselineEvidenceRefs": [
+        "SPEC-PHASE"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "由规格L1–24阶段调整延期；不记已验证，不阻塞当前功能关单。",
+        "qualificationLimit": "Only spec phase-adjustment packaging/Linux/install/strong-isolation distribution scope; no functional gap hidden by #110.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S03",
+      "baselineStatus": "deferred-110",
+      "baselineEvidenceRefs": [
+        "SPEC-PHASE"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "由规格L1–24阶段调整延期；不记已验证，不阻塞当前功能关单。",
+        "qualificationLimit": "Only spec phase-adjustment packaging/Linux/install/strong-isolation distribution scope; no functional gap hidden by #110.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S04",
+      "baselineStatus": "deferred-110",
+      "baselineEvidenceRefs": [
+        "SPEC-PHASE"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "由规格L1–24阶段调整延期；不记已验证，不阻塞当前功能关单。",
+        "qualificationLimit": "Only spec phase-adjustment packaging/Linux/install/strong-isolation distribution scope; no functional gap hidden by #110.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S05",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual default DeepSeek Pi/OpenCode plus independent runtime/modelRef/private-credential save/reload boundaries; Q101 and push4 member-model tests.",
+        "qualificationLimit": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "unmeasured": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 1
+    },
+    {
+      "id": "S06",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual default DeepSeek Pi/OpenCode plus independent runtime/modelRef/private-credential save/reload boundaries; Q101 and push4 member-model tests.",
+        "qualificationLimit": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "unmeasured": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 1
+    },
+    {
+      "id": "S07",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual default DeepSeek Pi/OpenCode plus independent runtime/modelRef/private-credential save/reload boundaries; Q101 and push4 member-model tests.",
+        "qualificationLimit": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "unmeasured": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 1
+    },
+    {
+      "id": "S08",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q101",
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "凭据与分享定义分离在该配置UI样本直接支持；不是备份无秘密承诺。",
+        "qualificationLimit": "2026-10-13可信本机Mac；OAR0.46.0/Pi1.1.0/OpenCode1.18.6；真实两runtime 1/1及假profile UI。非强隔离/不同真实模型均验证。 历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S09",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "GUIDE-SEMANTIC"
+        ],
+        "decision": "Bounded actual Chinese Guide read→human-selected refs→one new v1 unstarted Team→real same-Home UI/normal drain accepted.",
+        "qualificationLimit": "One user turn/five model steps. Original GUI7 TAPFAIL retained; read-only tool oracle rejected legitimate inspect action. Direct Clone uses saved definition and ignores unsaved draft. No new Team execution.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S10",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Existing definition evidence supplemented by actual new independent Team/v1/3roles/Pi-OpenCode-Pi/default models and selected refs visible in GUI9.",
+        "qualificationLimit": "No private memory/history copied; no new Task/native execution.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S11",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q101",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "限定可信本机两runtime及两种负责人，非所有模型/组件版本。",
+        "qualificationLimit": "2026-10-13可信本机Mac；OAR0.46.0/Pi1.1.0/OpenCode1.18.6；真实两runtime 1/1及假profile UI。非强隔离/不同真实模型均验证。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S12",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q101",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "限定可信本机两runtime及两种负责人，非所有模型/组件版本。",
+        "qualificationLimit": "2026-10-13可信本机Mac；OAR0.46.0/Pi1.1.0/OpenCode1.18.6；真实两runtime 1/1及假profile UI。非强隔离/不同真实模型均验证。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S13",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q104",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Existing definition evidence supplemented by actual new independent Team/v1/3roles/Pi-OpenCode-Pi/default models and selected refs visible in GUI9.",
+        "qualificationLimit": "No private memory/history copied; no new Task/native execution.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S14",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "限定历史定义持久/UI样本；非当前整个产品签收。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S15",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q104",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "同获准项目/Team与身份保存的已观察样本。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S16",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q101",
+        "Q104"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW"
+        ],
+        "decision": "Current controlled Host same-member saved runtime/modelRef change retains authorized adopted personal experience. Existing clone privacy evidence reused.",
+        "qualificationLimit": "This is not actual native execution across a model/runtime switch; arbitrary model combinations unmeasured.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S17",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107",
+        "E107M",
+        "E107P"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "公开goal合法自动召回先于主动查询；一主动查询失败后核验成功，不是首次盲查。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 见已读index对应回执；不把测试存在视为运行结果。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S18",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q104",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Existing definition evidence supplemented by actual new independent Team/v1/3roles/Pi-OpenCode-Pi/default models and selected refs visible in GUI9.",
+        "qualificationLimit": "No private memory/history copied; no new Task/native execution.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S19",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q104"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "GUIDE-SEMANTIC"
+        ],
+        "decision": "Bounded actual Chinese Guide read→human-selected refs→one new v1 unstarted Team→real same-Home UI/normal drain accepted.",
+        "qualificationLimit": "One user turn/five model steps. Original GUI7 TAPFAIL retained; read-only tool oracle rejected legitimate inspect action. Direct Clone uses saved definition and ignores unsaved draft. No new Team execution.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 2
+    },
+    {
+      "id": "S20",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "旧版本默认不暗改，显式应用边界有独立L3/Host证明；非a8新跑。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S21",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "旧版本默认不暗改，显式应用边界有独立L3/Host证明；非a8新跑。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S22",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "GUIDE-SEMANTIC"
+        ],
+        "decision": "Bounded actual Chinese Guide read→human-selected refs→one new v1 unstarted Team→real same-Home UI/normal drain accepted.",
+        "qualificationLimit": "One user turn/five model steps. Original GUI7 TAPFAIL retained; read-only tool oracle rejected legitimate inspect action. Direct Clone uses saved definition and ignores unsaved draft. No new Team execution.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S23",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S24",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体独立研究/试用Task场景。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S25",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #508-519 cover authentic Pack→saved Team→original exact-value/artifact downstream, original pause/Continue and post-exit explicit Team resume. #510 PASS log3755 resolves old receipt-not-read status.",
+        "qualificationLimit": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "unmeasured": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 3
+    },
+    {
+      "id": "S26",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #508-519 cover authentic Pack→saved Team→original exact-value/artifact downstream, original pause/Continue and post-exit explicit Team resume. #510 PASS log3755 resolves old receipt-not-read status.",
+        "qualificationLimit": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "unmeasured": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 3
+    },
+    {
+      "id": "S27",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #508-519 cover authentic Pack→saved Team→original exact-value/artifact downstream, original pause/Continue and post-exit explicit Team resume. #510 PASS log3755 resolves old receipt-not-read status.",
+        "qualificationLimit": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "unmeasured": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 3
+    },
+    {
+      "id": "S28",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RESIDENT"
+        ],
+        "decision": "Exact original push4 #228 controlled DSH child lifecycle/scope/restart evidence reused, source identity retained.",
+        "qualificationLimit": "No new real-provider Resident Desktop run; Team success is not substituted for Resident evidence.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S29",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "真实混编L4与Node/PG反例支持串行职责/交接。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S30",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "INSIGHT-HOST2",
+          "INSIGHT-DESKTOP2",
+          "INSIGHT-DESKTOP2-CONSUMED",
+          "RESIDENT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Guide/Team actualcurrentUI and standardfull3KitDataInsight defaultHealth+Overall/Reports/normalclose accepted; Campaign and singleResident reuse exact recorded controlledmechanisms/source identity.",
+        "qualificationLimit": "GUI9 original5PASS0FAIL4SKIP retained. StandardDataInsight separately1PASS0FAIL1SKIP(oldbusinesscase notadmitted). Campaign/Resident/customcard absentGUIinputs were not fabricated, optionalSKIP not wholeT24allpagesPASS. No model/EDA/Runstart in standardpage run.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "S31",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "S32",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体独立研究/试用Task场景。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S33",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "S34",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "S35",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体Host来源/两runtime消息样本，不外推所有投递故障。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S36",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体Host来源/两runtime消息样本，不外推所有投递故障。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S37",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Dynamic delegation freezes per-member input/output/dependencies/deadline and allows additional valid named member work; actual #105 native and Host child/successor examples.",
+        "qualificationLimit": "No independent receipt for every business-style return-to-research/reassignment conversation. Platform permission to choose within contract is supported; semantic quality of arbitrary assignments is not universal.",
+        "unmeasured": "No independent receipt for every business-style return-to-research/reassignment conversation. Platform permission to choose within contract is supported; semantic quality of arbitrary assignments is not universal.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 5
+    },
+    {
+      "id": "S38",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S39",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual #105 named-role discussion/calculator inputs, fixed output/deadline; Host wait/capacity/deadline and unknown-closure tests.",
+        "qualificationLimit": "No all-dialogue/no-progress conversation enumeration. Explicit participants and original absolute deadline are the implemented closure contract.",
+        "unmeasured": "No all-dialogue/no-progress conversation enumeration. Explicit participants and original absolute deadline are the implemented closure contract.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 6
+    },
+    {
+      "id": "S40",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual selected native file→upload→stage→sent-link→parser/read/remove/reopen path has Host and historical Electron receipts.",
+        "qualificationLimit": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "unmeasured": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 7
+    },
+    {
+      "id": "S41",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual selected native file→upload→stage→sent-link→parser/read/remove/reopen path has Host and historical Electron receipts.",
+        "qualificationLimit": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "unmeasured": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 7
+    },
+    {
+      "id": "S42",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "文件保存/解析/真实使用/采用分开；材料可复核样本成立。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S43",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "文件保存/解析/真实使用/采用分开；材料可复核样本成立。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S44",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "文件保存/解析/真实使用/采用分开；材料可复核样本成立。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S45",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "文件保存/解析/真实使用/采用分开；材料可复核样本成立。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S46",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #366 log2551: corrupt PDF=failed, scanned PDF/empty TXT=no-text, text-page PDF=partial, binary=unsupported, exact original SHA preserved. #619 log4636: GDS unsupported, invalid UTF8 TXT failed, empty TXT no-text, actual Markdown parsed/located/hash.",
+        "qualificationLimit": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "unmeasured": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 8
+    },
+    {
+      "id": "S47",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "GITHUB-REF"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 9
+    },
+    {
+      "id": "S48",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 10
+    },
+    {
+      "id": "S49",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q106"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S50",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q106"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "保留历史工作树/commit证据，不称当前重新开发。",
+        "qualificationLimit": "e7da时代软件业务；真实mixed8/control6支持，control8/9上游503未计PASS；当前PR状态unknown。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S51",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "GITHUB-REF"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 9
+    },
+    {
+      "id": "S52",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "E106P"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 11
+    },
+    {
+      "id": "S53",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S54",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S55",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S56",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S57",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual #107 live15 conditional spec retains nine conflicts and unknowns, contribution/source locators, independently reviewed E02/E04/E05 scope.",
+        "qualificationLimit": "No intentionally planted rejected proposal was run; honest conditional/negative delivery does not require forcing a model to fail.",
+        "unmeasured": "No intentionally planted rejected proposal was run; honest conditional/negative delivery does not require forcing a model to fail.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 12
+    },
+    {
+      "id": "S58",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107",
+        "E107M",
+        "E107P"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "公开goal合法自动召回先于主动查询；一主动查询失败后核验成功，不是首次盲查。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 见已读index对应回执；不把测试存在视为运行结果。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S59",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S60",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S61",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S62",
+      "baselineStatus": "missing",
+      "baselineEvidenceRefs": [
+        "LEADER-STATIC",
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW"
+        ],
+        "decision": "Former native adoption gap fixed in existing Host/store/grant/API/native/client modules; actual developer personal and frozen leader team adoption, sources/CAS/current tips verified.",
+        "qualificationLimit": "34 scoped lower-layer checks; human-opened frozen Task required. Feedback/correct/disable/re-adopt and authority/role/human-node/acceptance changes remain human-only. Three index operations pending, no new retrieval claim.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S63",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S64",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-PROOFS",
+          "TEAM-SPEC-SKILL"
+        ],
+        "decision": "Coordinator explicitly accepts original matrix cheapestGapEvidence minimum Host-control scope: frozen unknown-member/definition rejection, issued-member token denied admin401, authenticated human immutable v1/v2 save and Guide unable to apply the selected definition. Existing spec Skill can ask-human with a proposal and reserves permission changes for the human. Baseline unknown preserved; this is an explicit bounded acceptance decision, not default promotion of unknown to PASS.",
+        "exactReceipts": [
+          {
+            "testSource": {
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-delegation-compiler.test.ts",
+              "lines": [
+                119,
+                147
+              ]
+            },
+            "receipt": {
+              "line": 2719,
+              "text": "ok 390 - wrong definition/member/version/digest and invalid output schema cannot become frozen child work",
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/.scratch/himateam-issue97/local-memory-bounded/native/integration-issue107108-push4.log"
+            },
+            "assertionScope": "Unknown member absent is rejected; altered frozen definition/IR/digest is rejected before child work."
+          },
+          {
+            "testSource": {
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/team-source.host.test.ts",
+              "lines": [
+                47,
+                109
+              ]
+            },
+            "receipt": {
+              "line": 9056,
+              "text": "ok 1198 - Host-issued member access rejects forged scope, retired generation and revocation",
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/.scratch/himateam-issue97/local-memory-bounded/native/integration-issue107108-push4.log"
+            },
+            "assertionScope": "Wrong-member grant rejected, member bearer cannot authenticate admin Team route (401), forged scope/effect/generation/revocation rejected."
+          },
+          {
+            "testSource": {
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-definition.host.test.ts",
+              "lines": [
+                10,
+                39
+              ]
+            },
+            "receipt": {
+              "line": 2683,
+              "text": "ok 384 - authenticated project entry saves immutable Team versions and exports only definitions",
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/.scratch/himateam-issue97/local-memory-bounded/native/integration-issue107108-push4.log"
+            },
+            "assertionScope": "Authenticated human context saves immutable v1/v2, stale version rejected, project separation and anonymous admin rejection."
+          },
+          {
+            "testSource": {
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/test/contract/himateam-definition-handoff.host.test.ts",
+              "lines": [
+                181,
+                193
+              ]
+            },
+            "receipt": {
+              "line": 2621,
+              "text": "ok 377 - Guide, fake origin/operator, stale Run/stamps and conflicting replay cannot authorize selected definition",
+              "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/himateam-issue97/platform-integration/.scratch/himateam-issue97/local-memory-bounded/native/integration-issue107108-push4.log"
+            },
+            "assertionScope": "Guide cannot adopt selected saved definition; forged human/operator/Run/stamps cannot change original Run/native inputs."
+          }
+        ],
+        "qualificationLimit": "Actual new-role reason→human approval model dialogue was not exercised and is not claimed. No new role approval protocol introduced; existing frozen membership and human save/apply authority are the verified boundary.",
+        "authority": "Root explicit final-review remediation decision, based on original minimum Host control counterexample, 2026-10-16.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S65",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Q101 native peers/CLI pinned; runner calls existing native runtime, does not replace tools/Skills; prompt preserves compression/subagents. #99 DSH legacy compaction ABI/replay is a different layer.",
+        "qualificationLimit": "No inspected receipt proves a Pi/OpenCode native subagent launch or actual compaction occurred inside Team and continuity afterward. Availability/preservation source evidence is not demonstrated feature execution.",
+        "unmeasured": "No inspected receipt proves a Pi/OpenCode native subagent launch or actual compaction occurred inside Team and continuity afterward. Availability/preservation source evidence is not demonstrated feature execution.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 13
+    },
+    {
+      "id": "S66",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Task opening requires original absolute deadline/closure; grants and child deadlines cannot expand it; actual expiry/stop and unchanged deadline on resume/handoff tested.",
+        "qualificationLimit": "No universal cost/token budget dashboard/configured billing claimed. Current simple time budget is supported; exact optional budget UX outside deadline not independently read.",
+        "unmeasured": "No universal cost/token budget dashboard/configured billing claimed. Current simple time budget is supported; exact optional budget UX outside deadline not independently read.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 14
+    },
+    {
+      "id": "S67",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分项真实控制/纠正样本；不等于全部退出路径同cut通过。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S68",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "实际App正式响应及Host范围/冲突/重放/到期，普通消息不成为授权。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S69",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分项真实控制/纠正样本；不等于全部退出路径同cut通过。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S70",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 15
+    },
+    {
+      "id": "S71",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "单Pi同OS恢复及Team停止门样本；不是同session恢复。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S72",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "Q106",
+        "M108",
+        "GITHUB-REF"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Historical control6 actual Pi human pause→new Run→read supplement→Host state existing PR2; failed control8/9 retained. push4 #532/#533 explicit post-exit scope/definition, #519 Pack resume, #108 native3 held restore/newRun actual reads. Current business3 rechecks same head/PR2 state existing.",
+        "qualificationLimit": "Current business3 is not itself a paused/resumed run. Cannot claim same latest App executed every resume variant or same native session restored.",
+        "unmeasured": "Current business3 is not itself a paused/resumed run. Cannot claim same latest App executed every resume variant or same native session restored.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 16
+    },
+    {
+      "id": "S73",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "ET20",
+        "ET20S"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "WAIT-FAILURE-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Exact Host/PG controlled crash/signal/closure/continuation evidence reused, plus newly reproduced true original-parent failure closes without child/successor and returns failed FlowOutcome.",
+        "qualificationLimit": "External controlled executor is not native SDK crash injection. Historical #510 93s waiting cause remains unknown; later PASS is not proof of its repair.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 17
+    },
+    {
+      "id": "S74",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 18
+    },
+    {
+      "id": "S75",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 19
+    },
+    {
+      "id": "S76",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Exact push4 #206 real PG outage/worker Host fail-closed and original workflow identity restoration reused.",
+        "qualificationLimit": "Not every control-service failure, and no native/GUI operation claimed during PG outage.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S77",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "#99 actual old V3 native-prefix compatibility and push4 legacy/history/archive/Pack/Site retained tests; #108 /1 and same-OS /2 authority/material/source-loss qualification.",
+        "qualificationLimit": "Not all possible historical customer assets or crossOS installers. No claim that every old Run can be hot-migrated.",
+        "unmeasured": "Not all possible historical customer assets or crossOS installers. No claim that every old Run can be hot-migrated.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 20
+    },
+    {
+      "id": "S78",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "INSIGHT-HOST2",
+          "INSIGHT-DESKTOP2",
+          "INSIGHT-DESKTOP2-CONSUMED",
+          "RESIDENT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Guide/Team actualcurrentUI and standardfull3KitDataInsight defaultHealth+Overall/Reports/normalclose accepted; Campaign and singleResident reuse exact recorded controlledmechanisms/source identity.",
+        "qualificationLimit": "GUI9 original5PASS0FAIL4SKIP retained. StandardDataInsight separately1PASS0FAIL1SKIP(oldbusinesscase notadmitted). Campaign/Resident/customcard absentGUIinputs were not fabricated, optionalSKIP not wholeT24allpagesPASS. No model/EDA/Runstart in standardpage run.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 21
+    },
+    {
+      "id": "S79",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "M108"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "RESIDUAL-DECISIONS",
+          "BASELINE"
+        ],
+        "decision": "Distribution/install flow deferred only under explicit current specification phase adjustment; functional backup/restore remains separately scoped by #108.",
+        "qualificationLimit": "Never mark packaged install/Linux/strong isolation PASS.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 22
+    },
+    {
+      "id": "S80",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "M107",
+        "GITHUB-REF"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Current real mixed GitHub retained-head delivery and historical #107 actual source-driven spec/Chinese correction recall/use retained under their own component identities.",
+        "qualificationLimit": "Not two fresh L4 runs of one applicationVersion; original #107/#108 byte and CLI limits remain.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 23
+    },
+    {
+      "id": "S81",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "实际App正式响应及Host范围/冲突/重放/到期，普通消息不成为授权。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S82",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "实际App正式响应及Host范围/冲突/重放/到期，普通消息不成为授权。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S83",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "真实混编L4与Node/PG反例支持串行职责/交接。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S84",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "单Pi同OS恢复及Team停止门样本；不是同session恢复。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S85",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "S86",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "E106P"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 11
+    },
+    {
+      "id": "S87",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "S88",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "M108",
+        "E108R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "#108 accepted actual source-loss/held/explicit qualified new Run: two revisions, memory disabled tip, message links; manifests/export same-cut and failure rejection.",
+        "qualificationLimit": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "unmeasured": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 24
+    },
+    {
+      "id": "S89",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "S90",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #508-519 cover authentic Pack→saved Team→original exact-value/artifact downstream, original pause/Continue and post-exit explicit Team resume. #510 PASS log3755 resolves old receipt-not-read status.",
+        "qualificationLimit": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "unmeasured": "Ordinary managed Node IPC substitutes expensive native endpoint; does not claim EDA or all possible Pack business results. Final changed wait-failure seam has independent green1+adjacent5.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 3
+    },
+    {
+      "id": "S91",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "ET20",
+        "ET20S"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "WAIT-FAILURE-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Exact Host/PG controlled crash/signal/closure/continuation evidence reused, plus newly reproduced true original-parent failure closes without child/successor and returns failed FlowOutcome.",
+        "qualificationLimit": "External controlled executor is not native SDK crash injection. Historical #510 93s waiting cause remains unknown; later PASS is not proof of its repair.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 17
+    },
+    {
+      "id": "S92",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "D01",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "D02",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "D03",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "D04",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW"
+        ],
+        "decision": "Current controlled Host same-member saved runtime/modelRef change retains authorized adopted personal experience. Existing clone privacy evidence reused.",
+        "qualificationLimit": "This is not actual native execution across a model/runtime switch; arbitrary model combinations unmeasured.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 26
+    },
+    {
+      "id": "D05",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "GUIDE-SEMANTIC"
+        ],
+        "decision": "Bounded actual Chinese Guide read→human-selected refs→one new v1 unstarted Team→real same-Home UI/normal drain accepted.",
+        "qualificationLimit": "One user turn/five model steps. Original GUI7 TAPFAIL retained; read-only tool oracle rejected legitimate inspect action. Direct Clone uses saved definition and ignores unsaved draft. No new Team execution.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 27
+    },
+    {
+      "id": "D06",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体独立研究/试用Task场景。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "D07",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "D07 actual deadline/schema/child result+closure+capacity1 and allowed dependencies with source-bound Task identity.",
+        "qualificationLimit": "Not all possible investigations or debates have measured usefulness.",
+        "unmeasured": "Not all possible investigations or debates have measured usefulness.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 28
+    },
+    {
+      "id": "D08",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "D08 actual frozen grants/epochs/revocations/human-only gates, negative Host merge, old-generation late material/message/memory denial; #109 adoption separately authorized human-opened scope.",
+        "qualificationLimit": "No hostile same-UID isolation claim; actual strong sandbox outside current definition.",
+        "unmeasured": "No hostile same-UID isolation claim; actual strong sandbox outside current definition.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 29
+    },
+    {
+      "id": "D09",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Q101 native peers/CLI pinned; runner calls existing native runtime, does not replace tools/Skills; prompt preserves compression/subagents. #99 DSH legacy compaction ABI/replay is a different layer.",
+        "qualificationLimit": "No inspected receipt proves a Pi/OpenCode native subagent launch or actual compaction occurred inside Team and continuity afterward. Availability/preservation source evidence is not demonstrated feature execution.",
+        "unmeasured": "No inspected receipt proves a Pi/OpenCode native subagent launch or actual compaction occurred inside Team and continuity afterward. Availability/preservation source evidence is not demonstrated feature execution.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 13
+    },
+    {
+      "id": "D10",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "D11",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 30
+    },
+    {
+      "id": "D12",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 19
+    },
+    {
+      "id": "D13",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual selected native file→upload→stage→sent-link→parser/read/remove/reopen path has Host and historical Electron receipts.",
+        "qualificationLimit": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "unmeasured": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 7
+    },
+    {
+      "id": "D14",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #366 log2551: corrupt PDF=failed, scanned PDF/empty TXT=no-text, text-page PDF=partial, binary=unsupported, exact original SHA preserved. #619 log4636: GDS unsupported, invalid UTF8 TXT failed, empty TXT no-text, actual Markdown parsed/located/hash.",
+        "qualificationLimit": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "unmeasured": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 8
+    },
+    {
+      "id": "D15",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "D16",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "D17",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "LEADER-STATIC",
+        "Q105",
+        "Q98"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW"
+        ],
+        "decision": "Former native adoption gap fixed in existing Host/store/grant/API/native/client modules; actual developer personal and frozen leader team adoption, sources/CAS/current tips verified.",
+        "qualificationLimit": "34 scoped lower-layer checks; human-opened frozen Task required. Feedback/correct/disable/re-adopt and authority/role/human-node/acceptance changes remain human-only. Three index operations pending, no new retrieval claim.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 31
+    },
+    {
+      "id": "D18",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "E106P"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 11
+    },
+    {
+      "id": "D19",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "D20",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 15
+    },
+    {
+      "id": "D21",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "D22",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Task opening requires original absolute deadline/closure; grants and child deadlines cannot expand it; actual expiry/stop and unchanged deadline on resume/handoff tested.",
+        "qualificationLimit": "No universal cost/token budget dashboard/configured billing claimed. Current simple time budget is supported; exact optional budget UX outside deadline not independently read.",
+        "unmeasured": "No universal cost/token budget dashboard/configured billing claimed. Current simple time budget is supported; exact optional budget UX outside deadline not independently read.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 14
+    },
+    {
+      "id": "D23",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "M108",
+        "E108R",
+        "Q104"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "#108 accepted actual source-loss/held/explicit qualified new Run: two revisions, memory disabled tip, message links; manifests/export same-cut and failure rejection.",
+        "qualificationLimit": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "unmeasured": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 24
+    },
+    {
+      "id": "D24",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "INSIGHT-HOST2",
+          "INSIGHT-DESKTOP2",
+          "INSIGHT-DESKTOP2-CONSUMED",
+          "RESIDENT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Guide/Team actualcurrentUI and standardfull3KitDataInsight defaultHealth+Overall/Reports/normalclose accepted; Campaign and singleResident reuse exact recorded controlledmechanisms/source identity.",
+        "qualificationLimit": "GUI9 original5PASS0FAIL4SKIP retained. StandardDataInsight separately1PASS0FAIL1SKIP(oldbusinesscase notadmitted). Campaign/Resident/customcard absentGUIinputs were not fabricated, optionalSKIP not wholeT24allpagesPASS. No model/EDA/Runstart in standardpage run.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 21
+    },
+    {
+      "id": "D25",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "T01",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN",
+          "RESIDUAL-DECISIONS",
+          "INSIGHT-DESKTOP2-CONSUMED"
+        ],
+        "decision": "Aggregate responsibilities follow exact qualified Team/Pack/Resident/business children; no new controller introduced.",
+        "qualificationLimit": "Aggregates exact recorded children; no universal method effectiveness, all-history compatibility or actualnative subagent/compaction claim. Standard defaultDataInsight current child now accepted; final mandatoryhook/delivery still pending.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 25
+    },
+    {
+      "id": "T02",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "GUIDE-SEMANTIC"
+        ],
+        "decision": "Bounded actual Chinese Guide read→human-selected refs→one new v1 unstarted Team→real same-Home UI/normal drain accepted.",
+        "qualificationLimit": "One user turn/five model steps. Original GUI7 TAPFAIL retained; read-only tool oracle rejected legitimate inspect action. Direct Clone uses saved definition and ignores unsaved draft. No new Team execution.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 32
+    },
+    {
+      "id": "T03",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "旧版本默认不暗改，显式应用边界有独立L3/Host证明；非a8新跑。",
+        "qualificationLimit": "历史#98/#99定义及rc.2兼容样本；多个增量/失败并存，不代表a8全组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T04",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q101",
+        "Q104"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW"
+        ],
+        "decision": "Current controlled Host same-member saved runtime/modelRef change retains authorized adopted personal experience. Existing clone privacy evidence reused.",
+        "qualificationLimit": "This is not actual native execution across a model/runtime switch; arbitrary model combinations unmeasured.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 33
+    },
+    {
+      "id": "T05",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q101"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual default DeepSeek Pi/OpenCode plus independent runtime/modelRef/private-credential save/reload boundaries; Q101 and push4 member-model tests.",
+        "qualificationLimit": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "unmeasured": "Arbitrary self-hosted endpoint/model combinations not exercised; not required to enumerate all services.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 1
+    },
+    {
+      "id": "T06",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "具体Host来源/两runtime消息样本，不外推所有投递故障。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T07",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 34
+    },
+    {
+      "id": "T08",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 19
+    },
+    {
+      "id": "T09",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "Q105",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Actual current retained Task/member/source/control projection and sha-bound new configuration GUI9 supplement historical views.",
+        "qualificationLimit": "Observed current retained path only, not every missing-state navigation permutation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 4
+    },
+    {
+      "id": "T10",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Actual selected native file→upload→stage→sent-link→parser/read/remove/reopen path has Host and historical Electron receipts.",
+        "qualificationLimit": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "unmeasured": "Drag/paste and every retry gesture were not individually exercised. S40 offers selection OR drag; a proven select path is valid. T10 visibility must use planned current GUI/retained original statuses, not assume every gesture.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 7
+    },
+    {
+      "id": "T11",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "文件保存/解析/真实使用/采用分开；材料可复核样本成立。",
+        "qualificationLimit": "2026-10-11 #102/#103真实Host/PG、script receiver、Electron；非真实混编效果，后由#105/#107补组合。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 hima-ebfe5927…同OS/native3：单Pi source-loss/held/显式新Run重建；非安装/同session恢复。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T12",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q102",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "push4 #366 log2551: corrupt PDF=failed, scanned PDF/empty TXT=no-text, text-page PDF=partial, binary=unsupported, exact original SHA preserved. #619 log4636: GDS unsupported, invalid UTF8 TXT failed, empty TXT no-text, actual Markdown parsed/located/hash.",
+        "qualificationLimit": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "unmeasured": "OCR/rich formats not claimed supported. No per-format model replay required for honest unsupported/partial behavior.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 8
+    },
+    {
+      "id": "T13",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107",
+        "E107M",
+        "E107P"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "公开goal合法自动召回先于主动查询；一主动查询失败后核验成功，不是首次盲查。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 见已读index对应回执；不把测试存在视为运行结果。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T14",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "M107"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "固定组件/范围下观察；不会假设停用删除可抹除活动上下文。",
+        "qualificationLimit": "2026-10-13应用迁移5/Hindsight0.10.3/固定embedding/reranker/DeepSeek；中文及范围样本通过，非普遍质量。 业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T15",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106",
+        "E106P",
+        "GITHUB-REF"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 11
+    },
+    {
+      "id": "T16",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q106"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "BUSINESS3",
+          "BUSINESS3-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Same actual business3 five invocations, independent developer/reviewer workdirs, exact retained head and current final-lead successful open-pr request/reply accepted; existing Host valid-token merge rejection class reused.",
+        "qualificationLimit": "Original TAP1PASS1FAIL preserved. PR2 existing/head3ce544bc10186a69a7c8e2d6077988fc46a4c899; no fresh-code-development claim. Not each destructive action executed remotely; trusted-local API/grant boundary, not hostile same-UID isolation.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 10
+    },
+    {
+      "id": "T17",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "M107",
+        "E107I",
+        "E107R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "分开Task的真实交付；旧deadline/locator/role字面误拒绝未改写为PASS，非真实EDA。",
+        "qualificationLimit": "业务hima-e942f995…；分开Task复用真实贡献，代理v2/rev3；先公开goal自动召回再主动核验，非盲查/单次全绿。 见已读index对应回执；不把测试存在视为运行结果。 前次核对16项最终review hash匹配a8源码；限该review消费范围，不替代运行。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T18",
+      "baselineStatus": "proven",
+      "baselineEvidenceRefs": [
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "实际App正式响应及Host范围/冲突/重放/到期，普通消息不成为授权。",
+        "qualificationLimit": "从c052起点至#105多个明确增量；真实混编final12与App current、Host/PG/Node控制样本，非a8全部重跑。",
+        "unmeasured": null,
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T19",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "M108"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RAW-TAIL-REVIEW",
+          "WAIT-FAILURE-REVIEW",
+          "BUSINESS3",
+          "GUIDE-CHAIN"
+        ],
+        "decision": "Current ordinary failure raw-tail persistence, original fatal-after-wait failure settlement, actual native normal closure and GUI9 explicit normal App drain verified; historical exit/restore evidence retained.",
+        "qualificationLimit": "Original business1 emergency600s closure not normal; B2 normal shutdown/failed business retained. Current B3 is not new pause/resume or source-loss test.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 15
+    },
+    {
+      "id": "T20",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q105",
+        "ET20",
+        "ET20S"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "WAIT-FAILURE-REVIEW",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Exact Host/PG controlled crash/signal/closure/continuation evidence reused, plus newly reproduced true original-parent failure closes without child/successor and returns failed FlowOutcome.",
+        "qualificationLimit": "External controlled executor is not native SDK crash injection. Historical #510 93s waiting cause remains unknown; later PASS is not proof of its repair.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 17
+    },
+    {
+      "id": "T21",
+      "baselineStatus": "unknown",
+      "baselineEvidenceRefs": [
+        "Q104",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "RELEASE-REVIEW",
+          "RELEASE-SCENE",
+          "RESIDUAL-PROOFS"
+        ],
+        "decision": "Existing Host/public Guide startTask, actual controlled Guide replies after optional-service failure and during busy delegated work; ordinary progress has no unsolicited broadcast, directed ask reaches target.",
+        "qualificationLimit": "Controlled replay/provider and managed Node member endpoint; not extra real provider outage experiments or every progress variant.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T22",
+      "baselineStatus": "deferred-110",
+      "baselineEvidenceRefs": [
+        "SPEC-PHASE"
+      ],
+      "disposition": {
+        "kind": "authorized-deferral",
+        "evidenceRefs": [
+          "BASELINE"
+        ],
+        "decision": "由规格L1–24阶段调整延期；不记已验证，不阻塞当前功能关单。",
+        "qualificationLimit": "Only spec phase-adjustment packaging/Linux/install/strong-isolation distribution scope; no functional gap hidden by #110.",
+        "blocks109Closure": false
+      }
+    },
+    {
+      "id": "T23",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "M108",
+        "E108R"
+      ],
+      "disposition": {
+        "kind": "old-evidence-reuse",
+        "evidenceRefs": [
+          "BASELINE",
+          "RESIDUAL-AUDIT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "#108 accepted actual source-loss/held/explicit qualified new Run: two revisions, memory disabled tip, message links; manifests/export same-cut and failure rejection.",
+        "qualificationLimit": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "unmeasured": "No crossOS or every historical Home. Distribution/provisioning stays #110.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 24
+    },
+    {
+      "id": "T24",
+      "baselineStatus": "partial",
+      "baselineEvidenceRefs": [
+        "Q98",
+        "Q105"
+      ],
+      "disposition": {
+        "kind": "new-evidence",
+        "evidenceRefs": [
+          "GUIDE-CHAIN",
+          "INSIGHT-HOST2",
+          "INSIGHT-DESKTOP2",
+          "INSIGHT-DESKTOP2-CONSUMED",
+          "RESIDENT",
+          "RESIDUAL-DECISIONS"
+        ],
+        "decision": "Guide/Team actualcurrentUI and standardfull3KitDataInsight defaultHealth+Overall/Reports/normalclose accepted; Campaign and singleResident reuse exact recorded controlledmechanisms/source identity.",
+        "qualificationLimit": "GUI9 original5PASS0FAIL4SKIP retained. StandardDataInsight separately1PASS0FAIL1SKIP(oldbusinesscase notadmitted). Campaign/Resident/customcard absentGUIinputs were not fabricated, optionalSKIP not wholeT24allpagesPASS. No model/EDA/Runstart in standardpage run.",
+        "blocks109Closure": false
+      },
+      "residualAuditFamily": 21
+    }
+  ],
+  "closureGates": [
+    {
+      "id": "standard-data-insight",
+      "state": "PASS_BOUNDED_SCOPE",
+      "evidenceRefs": [
+        "LIBINSIGHT-LEAF-REVIEW",
+        "INSIGHT-HOST2",
+        "INSIGHT-HOST2-CONSUMED",
+        "INSIGHT-DESKTOP2",
+        "INSIGHT-DESKTOP2-CONSUMED",
+        "LIBINSIGHT-REPRODUCTION"
+      ],
+      "qualification": "Fulloriginal3Kit defaultHealth+Overall/realDOM1SVG216shapes+retainedidentity/normalclose under2GiB; screenshot captures initialHealth, not fullOverall map. ActualPin-access largepayload resource footprint unmeasured."
+    },
+    {
+      "id": "qualification-review",
+      "state": "PENDING",
+      "required": "Final141 dispositions and all remaining tracked delta independently reviewed; no unresolved required functional gap hidden by partial labels."
+    },
+    {
+      "id": "mandatory-hook",
+      "state": "PENDING",
+      "required": "Unmodified original pre-push/check:local on final coherent slice, PG+Node24+original HIMA_OAR_HOTFIX_SOURCE; exact PASS/FAIL/SKIP retained. Rebuilt runtime/main/client/SDK identity compare."
+    },
+    {
+      "id": "delivery",
+      "state": "PENDING",
+      "required": "One coherent commit immediately pushed, remote SHA matched, actual completion comment and #109 closed; parent97 decided by root."
+    }
+  ],
+  "nonBlockingUnmeasured": [
+    "S65/D09 actual native subagent/compaction occurrence not exercised; existing native feature path preserved.",
+    "S64 actual reason→human approval model dialogue unmeasured. Coordinator explicitly accepts existing exact Host control minimum (#390/#1198/#384/#377), source Skill ask-human boundary and preserves baseline unknown; no blanket PASS.",
+    "Arbitrary model endpoints, all transport faults, all historic customer assets, all navigation variants not universally claimed."
+  ],
+  "failuresPreserved": [
+    "business1 FAIL ordinarynative failure/raw-tail retention; emergency600s cleanup",
+    "business2 FAIL sticky OAR providerError projection and Host original-parent failure settlement; normalclose",
+    "business3 originalTAP1PASS1FAIL then independently accepted same-run postvalidation",
+    "GUI1-5 assertion/precondition failures; GUI3 transient psql timeout cause unknown",
+    "GUI6 FAIL_RESOURCE2131.390625MiB/own[]",
+    "GUI7 originalreadonlytool-oracle FAIL; same actual one-turn postvalidated",
+    "GUI8 directTextNode label validator FAIL; GUI9 actual5PASS0FAIL4SKIP",
+    "standardInsightDesktop1 OOPIF mainFrameTree oracle FAIL0PASS1FAIL1SKIP; explicitnormaldrain+1540.09375MiB/own[] retained; Desktop2 exactOOPIF same inspector1PASS0FAIL1SKIP accepted",
+    "Delivery63323 precommit cached whitespacecheck exit1 beforecommit/originalhook; patch carrier blankcontext normalized,64sourcefiles unchanged. No fulltest run had started."
+  ],
+  "publicFrontier": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/109#issuecomment-6207373913",
+  "distributionHold": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/110#issuecomment-6206004471",
+  "functionalScope": "Bounded current business3 same-run, Guide7+PG+GUI9 chain and actual standard full3Kit defaultDataInsight accepted; finalreview/hook/commit/push/remote remain"
+}

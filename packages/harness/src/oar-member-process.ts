@@ -54,7 +54,7 @@ export interface OarMemberProcessOptions {home:string;retainedMaterialsDir:strin
   localRuntime?:Pick<OarLocalMemberRuntime,'stage'|'start'|'read'|'authorize'|'reply'|'sendInput'|'readArtifact'|'close'|'captureClosedContext'|'stopAll'|'recover'> & Partial<Pick<OarLocalMemberRuntime,'admitAcceptedWait'|'fatalState'>>;
   runtimeAssets?:(runtime:'pi'|'opencode')=>Promise<LocalMemberAssets>;
   sharedDeepSeekModel:(readCredential:boolean)=>Promise<SharedDeepSeekFallback>;modelEnvironment?:()=>SharedDeepSeekEnvironment}
-const supportedMemberTools=new Set(['hima-member-context','hima-github-push','hima-github-pr']);
+const supportedMemberTools=new Set(['hima-member-context','hima-memory-adopt','hima-github-push','hima-github-pr']);
 async function memberSkillFiles(member:TeamDefinition['members'][number]):Promise<readonly {path:string;bytes:Uint8Array}[]> {
   const root=new URL('../skills/',import.meta.url),files:{path:string;bytes:Uint8Array}[]=[];
   async function walk(relative:string) {
@@ -353,13 +353,13 @@ export function createOarMemberExecutor(options:OarMemberProcessOptions) {
       await beforeStage();
       await host(async()=>{
         const continuity=await privateLocalMemberContinuity(p);
-        const snapshot=await store.run(p.identity.runId),definition=(snapshot.opening.data as unknown as {definition:TeamDefinition}).definition;
+        const snapshot=await store.run(p.identity.runId),opening=snapshot.opening.data as unknown as {definition:TeamDefinition;actor?:{kind:string}},definition=opening.definition;
         const member=definition.members.find(row=>row.id===p.memberId);
         if(!member)throw new Error('Frozen Team member is unavailable.');
         const source='source' in p.identity?p.identity.source:undefined;if(source?.kind!=='team')throw new Error('OAR member requires its exact independent Team source.');
         if(!await store.readTeamGrant(grantId(p)))await memberCallbacks.runInAsyncScope(()=>store.issueTeamGrant({grantId:grantId(p),actorId:p.memberId,projectId:p.projectId,teamId:source.team.teamId,
           taskId:source.taskId,memberId:p.memberId,runId:p.identity.runId,effectId:p.identity.effectId,generation:p.generation,
-          capabilities:['read-task','send-message','read-material','query-memory',...(definition.leaderMemberId===p.memberId?['delegate' as const]:[]),
+          capabilities:['read-task','send-message','read-material','query-memory',...(opening.actor?.kind==='human'&&member.toolRefs.includes('hima-memory-adopt')?['adopt-memory' as const]:[]),...(definition.leaderMemberId===p.memberId?['delegate' as const]:[]),
             ...(member.toolRefs.includes('hima-github-push')?['github-push' as const]:[]),
             ...(member.toolRefs.includes('hima-github-pr')?['github-pr' as const]:[])],expiresAt:p.deadlineAt,revokedAt:null}));
         const config=await model(p),bound=await fact(p,'model-binding'),digest=jsonDigest(config);

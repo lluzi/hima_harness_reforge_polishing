@@ -1,0 +1,364 @@
+{
+  "schema": "hima.libinsight-development-patch/1",
+  "baseCommit": "4a58fa6f9d22179b7010becc53167c9d4c976bc7",
+  "packagedPin": "55e27bfaf4470f0f38010e8bfdaf8a284064f612",
+  "qualification": "development dependency only; packaged pin unchanged, distribution #110 HOLD",
+  "sourceSelection": [
+    "app/",
+    "libinsight/",
+    "tests/__init__.py",
+    "tests/helpers.py",
+    "tests/fixtures.py",
+    "tests/test_server.py",
+    "tests/test_physical_stage.py"
+  ],
+  "patch": {
+    "path": "patches/libinsight-4a58fa6-lazy-physical.patch",
+    "sha256": "6621135c35571ea350d1aff409e4e134eaf57c94d82b93a3a5cdbc9d1a836a4e"
+  },
+  "changed": [
+    {
+      "path": "app/server.py",
+      "baseSha256": "5d5cf51de11fcc0161c0390af19f5c3f82b15f97ed6745b7868071903a11112f",
+      "sha256": "104daf533535c8fd325c17aea9b74a17f367f99d4a304c906863fb828d41ca58"
+    },
+    {
+      "path": "tests/test_physical_stage.py",
+      "baseSha256": "9255f25e7ab23b3da56f661b4a9671195804a5c30569986baab5ef9921a60e1f",
+      "sha256": "313dbccf26757dcf579dae6cafaafb0c5bfdba7d43a19270168e76edb83f1343"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "app/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "app/server.py",
+      "sha256": "104daf533535c8fd325c17aea9b74a17f367f99d4a304c906863fb828d41ca58",
+      "bytes": 160422
+    },
+    {
+      "path": "app/static/app.js",
+      "sha256": "17c65625668473bb1543e1b30f61518e361c34af794c3d9d5189ffae8cf9df5e",
+      "bytes": 179313
+    },
+    {
+      "path": "app/static/charts.js",
+      "sha256": "d0079093087a7d2518b8b2b75ed584f5ae9c1557f4b9b96caf60ef029c919341",
+      "bytes": 78641
+    },
+    {
+      "path": "app/static/index.html",
+      "sha256": "1a0e693303356e1dcb406c53923347ba41a3463fd1266c77f5debad6cbf6d019",
+      "bytes": 1795
+    },
+    {
+      "path": "app/static/physical.js",
+      "sha256": "216cbb370cadf290b61f13040409a29c6dd0101d4ca29f44d716a492ecb3cc8f",
+      "bytes": 59671
+    },
+    {
+      "path": "app/static/runs.js",
+      "sha256": "516023a575137fd791f8c296d60eb29aada4ecb916f3215bb11bed442e76af07",
+      "bytes": 6795
+    },
+    {
+      "path": "app/static/style.css",
+      "sha256": "45dedc7027bc254cc0ad69990f6853d74582202a538103790ceb37f1a62ef90e",
+      "bytes": 33767
+    },
+    {
+      "path": "app/static/ui.js",
+      "sha256": "0e4c85a759a8fc35114f4b34a95c16184401792f87d2e814e0a82b8cf1e96fa1",
+      "bytes": 4178
+    },
+    {
+      "path": "app/static/working_range.js",
+      "sha256": "292018ccb257128ead51879e0573e6174f21034f96a059184aad593f7affc325",
+      "bytes": 25250
+    },
+    {
+      "path": "app/working_range.py",
+      "sha256": "8627725b84c1caddc46063b7f4f511106a4afd81a0d25f1664877fdcce51f7b9",
+      "bytes": 13314
+    },
+    {
+      "path": "libinsight/__init__.py",
+      "sha256": "4bd4e07b9240ec46ffe70e3fcbe138be1587dab43b08e7d5ab3ff843c8d973c5",
+      "bytes": 132
+    },
+    {
+      "path": "libinsight/actions.py",
+      "sha256": "19e4508ef8e942c6dfc22c92bc377c9b007f9e0b3d43d9134d351da7c1bafe28",
+      "bytes": 5507
+    },
+    {
+      "path": "libinsight/address.py",
+      "sha256": "c1a4a51a17a96d8524ddebe4c193994d1e60ed94240d808dfafa1cf551e8667d",
+      "bytes": 3525
+    },
+    {
+      "path": "libinsight/attention.py",
+      "sha256": "36b97c425eeed791bbdc2a12d38dfff79797ef9366f4cc844773a9000afa55ff",
+      "bytes": 19460
+    },
+    {
+      "path": "libinsight/batch.py",
+      "sha256": "44012e275a16ad71de562254d2802d62e5e39cf8f7241289c18f11190273b759",
+      "bytes": 22455
+    },
+    {
+      "path": "libinsight/boolexpr.py",
+      "sha256": "27fcc605084c4eb76e151f7f0c6e0e16165fc8fdb9f5efb0f04e43532ba989da",
+      "bytes": 11322
+    },
+    {
+      "path": "libinsight/calibrate.py",
+      "sha256": "af0aae256bb431ad3447083cc5dc96fd0363ffc61bb2fcae48e5cb3d64c3643b",
+      "bytes": 22092
+    },
+    {
+      "path": "libinsight/candidates.py",
+      "sha256": "44c880a4cf13f0ba61cf50da3e17894fb2902f91bea73189a7650c811c3e7970",
+      "bytes": 14523
+    },
+    {
+      "path": "libinsight/classify.py",
+      "sha256": "636f727b40ffff24bf331d869af496d58414c8b3027e9291682ece5a3a17b95f",
+      "bytes": 24659
+    },
+    {
+      "path": "libinsight/envelope.py",
+      "sha256": "b5357922c59e4d7d1f5370b2416f2fb7171bbb2f3c3e49fdd36a0a57a728249d",
+      "bytes": 23110
+    },
+    {
+      "path": "libinsight/evidence.py",
+      "sha256": "f28b9078bf013f95005c156073a2286af69b36a5190c0ada3d4efcfb54d9410b",
+      "bytes": 70147
+    },
+    {
+      "path": "libinsight/expectations/__init__.py",
+      "sha256": "bcd2e7d219800a39ef432b5a75b970a185411f42f7e6558093280b51f80b05b5",
+      "bytes": 1931
+    },
+    {
+      "path": "libinsight/expectations/context.py",
+      "sha256": "f7b6d637afc73bf081e8c9832c0ba56a8cb3fce90c271dd429243dc22cc2e454",
+      "bytes": 11360
+    },
+    {
+      "path": "libinsight/expectations/kit.py",
+      "sha256": "10d48b73ec32ae3de4259d1f073ec5dbe940523e160540af1fde655e67506634",
+      "bytes": 29243
+    },
+    {
+      "path": "libinsight/expectations/leverage.py",
+      "sha256": "aadd21632460e5b391eb2aa423bb314724a65fb71e92cd237aef5c71574b3599",
+      "bytes": 21103
+    },
+    {
+      "path": "libinsight/expectations/semantic.py",
+      "sha256": "e8bc1029453f4c3dac246155b15feecff5335df83ce16662384c8b667f34d170",
+      "bytes": 27470
+    },
+    {
+      "path": "libinsight/expectations/specs.py",
+      "sha256": "180dcf75400d41da23406f957d524d1c596ea539ae243a156fdcc7b2f9271f0f",
+      "bytes": 5032
+    },
+    {
+      "path": "libinsight/expectations/tables.py",
+      "sha256": "f9f2b1135c8678373ba8e85aeddc8f766d580ce146ffa70dc89b163aa9ee6f72",
+      "bytes": 21261
+    },
+    {
+      "path": "libinsight/findings.py",
+      "sha256": "7836b6a02b88e774bd3fa6f062afc362c6cc1ececd71ed9179d3ba06fd5cff58",
+      "bytes": 19890
+    },
+    {
+      "path": "libinsight/heatmap.py",
+      "sha256": "7eb8aec7abd853c8d3967c8b1f1ae0e8db64a2a100b3f4d49aaadf85ce20a7c2",
+      "bytes": 13342
+    },
+    {
+      "path": "libinsight/identity.py",
+      "sha256": "a31da10464d56c570c0441c27e9d5da739b35e88eb11c77f290a9c53a10308cc",
+      "bytes": 10400
+    },
+    {
+      "path": "libinsight/jobs.py",
+      "sha256": "a876cee7ff1bdd18d71c7cad1a0471a6fe4d995d48b1d31c827c2ef19056ffa6",
+      "bytes": 10709
+    },
+    {
+      "path": "libinsight/judged.py",
+      "sha256": "0683c678e37069ee815aee989b702e55026c0e6707b23dad3e218644b89cb34d",
+      "bytes": 16360
+    },
+    {
+      "path": "libinsight/kit.py",
+      "sha256": "f7a2a05740aedd169399c610ef44c4f25673aee5ffdc00de7725964d261de5cd",
+      "bytes": 5299
+    },
+    {
+      "path": "libinsight/lens.py",
+      "sha256": "3890f799b1f988ec231805c34395cab0fc66034b9c46c1511a51b97ced16d105",
+      "bytes": 37984
+    },
+    {
+      "path": "libinsight/metrics.py",
+      "sha256": "259f081af07d2a0987822ab6513f761fa6524db7ba6bd3d0fc1ef64f6ddb3609",
+      "bytes": 26524
+    },
+    {
+      "path": "libinsight/model.py",
+      "sha256": "5759e318f1a86cbd4a2da3f53c42fe8f86eca41de1948975638eff7f3f023a89",
+      "bytes": 8879
+    },
+    {
+      "path": "libinsight/naming.py",
+      "sha256": "63225d713cbf5e8b89da5d1e0ad6918a100640e6caea79126a672dad85c154a2",
+      "bytes": 4669
+    },
+    {
+      "path": "libinsight/numerics.py",
+      "sha256": "492126d9f724427e402364e2a8ed30f9b14d22bb0215bebe095e8af55ebafcfa",
+      "bytes": 9760
+    },
+    {
+      "path": "libinsight/physical/__init__.py",
+      "sha256": "cacca0767126766a7639c5cf28f9e0ed8988e03f03989d388a3fe997252d0160",
+      "bytes": 412
+    },
+    {
+      "path": "libinsight/physical/access.py",
+      "sha256": "b249a886b08b22db11a56b8942b95f320ed1ca47f5a0b1055684df7d58db316b",
+      "bytes": 71583
+    },
+    {
+      "path": "libinsight/physical/context.py",
+      "sha256": "0775335b31cdca3a784bf1fd778ce2118f93fd20ac2d42f852d6cbd13b7cf418",
+      "bytes": 19865
+    },
+    {
+      "path": "libinsight/physical/environment.py",
+      "sha256": "88270b803769e47e529fc6f45370bcf546cd858eb8722728add17ce3bc50505c",
+      "bytes": 62240
+    },
+    {
+      "path": "libinsight/physical/escape.py",
+      "sha256": "268bb22f62cd2093d3be1c3eac329b22c6da175b63a993eed8535f837316c332",
+      "bytes": 22996
+    },
+    {
+      "path": "libinsight/physical/geometry.py",
+      "sha256": "3783048a4e39bec3b241937239e8841dfc10c7c3090e52a04e08a1ae45bc90e0",
+      "bytes": 17798
+    },
+    {
+      "path": "libinsight/physical/lef.py",
+      "sha256": "6b09af2d3e8bdc699cd4d544a9f971a2c87459c8be607e613e19dabf73fe4132",
+      "bytes": 27810
+    },
+    {
+      "path": "libinsight/physical/neighbours.py",
+      "sha256": "841ad87154125b93f99e76f6a7c4b013bdc9d7432c75b4c91b8605ddaf55bc73",
+      "bytes": 16199
+    },
+    {
+      "path": "libinsight/physical/probability.py",
+      "sha256": "94fe470011b2e765de36fd31083b9af4bb24ac79b533524933448923b1f8fb8e",
+      "bytes": 52789
+    },
+    {
+      "path": "libinsight/physical/profile.py",
+      "sha256": "d7f33172e8293a46b434c9e95c6750b148a306bb9c3de60cedaf79566e504941",
+      "bytes": 17020
+    },
+    {
+      "path": "libinsight/physical/rules.py",
+      "sha256": "7a43b8bce5ae2f2d1f2da1ec19e2d17ea1008064c4da956a518bd3d8fa8135a7",
+      "bytes": 27547
+    },
+    {
+      "path": "libinsight/physical/stage.py",
+      "sha256": "ed0899cb3b8a197d75d68d388f8ae8aff8d80e5f57c57976fb660e1affb37225",
+      "bytes": 52722
+    },
+    {
+      "path": "libinsight/physical/summary.py",
+      "sha256": "74660ee5d596e5840b67fc8c02b4227e0c185c37e9a78d4debcf5d163eaf2d5b",
+      "bytes": 21662
+    },
+    {
+      "path": "libinsight/policy.py",
+      "sha256": "63e62137e407242c9ade6ea05b543250f651291d4cd29ee99342bd60b4b2fe7a",
+      "bytes": 7218
+    },
+    {
+      "path": "libinsight/reference.py",
+      "sha256": "df559ad26b7ed35fbb150e6029d12c1c45f8197c96a88fca9ab803dd97075980",
+      "bytes": 6971
+    },
+    {
+      "path": "libinsight/settings.py",
+      "sha256": "3ac889b267a203a8d04ad4dcbc2d46092114d66d179c6d17ea09a694c6e4f7e3",
+      "bytes": 16597
+    },
+    {
+      "path": "libinsight/store.py",
+      "sha256": "cf79dbc280064d2f89049cf6a68c78d2785a5218e2b54632b06bdaa64d37c96e",
+      "bytes": 19368
+    },
+    {
+      "path": "libinsight/table.py",
+      "sha256": "c9317d08d74fb8f4cc3643e4fa2fa7b0842232be0d284c1e65c2248473580a65",
+      "bytes": 2299
+    },
+    {
+      "path": "libinsight/voltage.py",
+      "sha256": "f7adc8d8377bafc427d420db25cdd6c77915afcb0b95b68bb13e62d1b1f67a53",
+      "bytes": 35590
+    },
+    {
+      "path": "tests/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "tests/fixtures.py",
+      "sha256": "d252eb19b963b71ebab10b53759d4a1cb5860dbce6adcb7dede280fc233ef754",
+      "bytes": 13658
+    },
+    {
+      "path": "tests/helpers.py",
+      "sha256": "15e24290c4448567ffe866933462e616f9dd864aaaff5b995cd5d429f81cf003",
+      "bytes": 4061
+    },
+    {
+      "path": "tests/test_physical_stage.py",
+      "sha256": "313dbccf26757dcf579dae6cafaafb0c5bfdba7d43a19270168e76edb83f1343",
+      "bytes": 58768
+    },
+    {
+      "path": "tests/test_server.py",
+      "sha256": "3d671d6314914aa0787e7058a0f44b1d83c9c62b27e6aff74528f354199ae957",
+      "bytes": 81725
+    }
+  ],
+  "limits": [
+    "Normal producer header supplies metadata without full physical payload. Other layouts use existing full-reader fallback.",
+    "Malformed tail after a valid header may be detected only when physical is actually requested; availability is not payload integrity qualification.",
+    "No automatic Hima product loader/stager; explicit HIMA_LIBINSIGHT_ROOT selects qualified development source."
+  ],
+  "qualifiedOriginalPatchSha256": "11b62ebf6041558bf92d419b2ce54d6110762459e2b3b825b168ad95f0ec523b",
+  "formatEquivalence": {
+    "change": "Only original patch line27 single-space emptycontext→empty line; all64reproduced sourcefiles unchanged",
+    "reproducedSourceFiles": 64,
+    "sourceProof": "Original and normalized patch independently applied with ordinary BSD patch to fresh fixedbase archives"
+  }
+}

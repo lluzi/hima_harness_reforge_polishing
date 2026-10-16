@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { TeamError, type TeamDefinitionRef } from './team-contract.js';
+import { TeamError, type TeamDefinition, type TeamDefinitionRef } from './team-contract.js';
 import type { TaskRef, TeamMessageActor, TeamMessageSender } from './team-messages.js';
 import { retainExperience, reconcileRetention, recallExperience, type HindsightConnection } from './hindsight.js';
 
@@ -141,8 +141,20 @@ export async function proposeExperience(ports:TeamMemoryPorts,actor:TeamMessageA
   ports.track?.(dispatch);
   return view;
 }
+/** Scope/role policy for member adoption; authenticated grants and CAS remain Store-owned. */
+export function assertMemberMemoryAdoption(actor:TeamMessageActor,view:MemoryView|undefined,definition:TeamDefinition):void {
+  if(actor.kind!=='member')return;
+  // Adopted advice cannot alter definitions, permissions, human gates or acceptance.
+  if(!view||view.record.kind!=='experience'||view.record.createdBy.kind!=='member')
+    throw new TeamError('hima/not-authorized','Members may adopt only source-backed Agent candidate experience; human feedback requires the human.');
+  if(view.record.scope.kind==='member') {
+    if(view.record.scope.memberId!==actor.grant.memberId||view.record.createdBy.memberId!==actor.grant.memberId)
+      throw new TeamError('hima/not-authorized','A personal technique must belong to and be proposed by this member.');
+  } else if(definition.leaderMemberId!==actor.grant.memberId)
+    throw new TeamError('hima/not-authorized','Only the frozen Team leader may confirm shared methods within this Team scope.');
+}
 export async function changeExperienceAdoption(ports:TeamMemoryPorts,actor:TeamMessageActor,ref:TaskRef,input:unknown):Promise<MemoryView> {
-  if (actor.kind !== 'human') throw new TeamError('hima/not-authorized','Adoption requires an authenticated human.');
+  if (actor.kind !== 'human' && actor.kind !== 'member') throw new TeamError('hima/not-authorized','Adoption requires the authenticated human or a granted member.');
   return ports.store.changeAdoption(actor,ref,parseAdoptionRequest(input));
 }
 export async function correctExperience(ports:TeamMemoryPorts,actor:TeamMessageActor,ref:TaskRef,input:unknown):Promise<MemoryView> {

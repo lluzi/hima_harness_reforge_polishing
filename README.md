@@ -84,6 +84,45 @@ node packages/desktop/lib/hima-home.js \
 
 同屏工作区新增研究支路、回溯有效性、代码/输入/历史引用和 Pack 归档下钻。`Pack & assets` 支持 owner 审阅精确材料后升级、分享或迁移；默认分享只含方法，迁移资产与导入 Ledger 是分开的显式操作。Campaign 到期停止业务作业和新分析写入，原生对话仍可回答。
 
+HimaTeam 的成员若需要采用个人技巧或由负责人确认共享方法，在团队定义的该成员
+`toolRefs` 声明 `hima-memory-adopt`，并由人类从现有团队入口明确启动该冻结任务。
+Host 才会签发独立的 `adopt-memory` 能力，成员通过原生 `member_context` 的
+`propose-memory` / `adopt-memory` 操作保留来源和采用回执。查询权限不包含采用权限；
+Guide 创建或启动普通团队任务仍可查询、提议经验，但不能据此自行取得采用权。
+个人候选只限本人；共享方法按该任务冻结的负责人确认。反馈、纠正、撤销与重新采用
+仍由人类处理，经验不能改变角色、权限、人工决策或验收合同。
+
+固定 OAR 0.46.0 的 Pi 投影会把已成功自动重试前的错误带到最终状态。开发资产可通过
+`node scripts/stage-oar-pi-retry-hotfix.mjs ABS_RETAINED_NPM ABS_FRESH_TARGET` 离线复制并应用
+已固定 SHA 的补丁；两个路径均须为绝对路径，目标父目录须存在，目标本身须全新。
+将返回的 `module` 用作 `HIMA_OAR_MODULE`，同时保留回执中的基础版本、补丁和 projection
+SHA；包版本本身不能识别这个补丁。原 npm 资产保持原字节，未匹配的版本或内容会拒绝。
+纯验证使用 `HIMA_OAR_HOTFIX_SOURCE=ABS_RETAINED_NPM pnpm run test:local --files test/contract/oar-pi-retry-hotfix.test.ts`。
+这是开发资产补丁，不能据此宣称 Team 分发或安装资格。
+
+LibInsight 开发验收使用 `4a58fa6f9d22179b7010becc53167c9d4c976bc7` 的隔离源码副本，
+避免默认 Health 页面预先解析全部 physical payload。完整上游叶补丁及其 source/base/final
+SHA 清单位于 `patches/libinsight-4a58fa6-lazy-physical.{patch,json}`。离线复现使用已有
+LibInsight Git 对象和普通 archive/patch；原 checkout 和数据保持只读，不需要另一套 stager：
+
+```sh
+set -euo pipefail
+libinsight_candidate=$(mktemp -d "$PWD/.scratch/libinsight-qualified.XXXXXX")
+libinsight_patch="$PWD/patches/libinsight-4a58fa6-lazy-physical.patch"
+git -C /Users/lluzi/code/lib_insight archive 4a58fa6f9d22179b7010becc53167c9d4c976bc7 \
+  app/ libinsight/ tests/__init__.py tests/helpers.py tests/fixtures.py \
+  tests/test_server.py tests/test_physical_stage.py | tar -x -C "$libinsight_candidate"
+patch --batch -d "$libinsight_candidate" -p1 < "$libinsight_patch"
+shasum -a 256 "$libinsight_candidate/app/server.py" "$libinsight_candidate/tests/test_physical_stage.py"
+export HIMA_LIBINSIGHT_ROOT="$libinsight_candidate"
+```
+
+启动前将输出和相邻 JSON 的 final SHA 对照；数据仍通过 `HIMA_LIBINSIGHT_DATA` 指向含真实
+`app.json` 的目录。正常 producer 的 supplied header 有界读取，旧布局沿用原完整读取；
+大 payload 尾部损坏延至实际物理访问时报错，不能把 `has_physical` 当完整内容校验。
+此开发依赖已经单独做上游 fixture、真实三 Kit Host/API 和标准默认页面验收；
+`packages/desktop/libinsight.pin.json` 未改，安装包吸收仍属 #110 HOLD。
+
 ## 产品依据
 
 - [产品访谈与决定记录](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-interview.md)

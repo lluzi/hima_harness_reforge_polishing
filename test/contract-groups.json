@@ -61,6 +61,7 @@
     "test/contract/himateam-handoff.unit.test.ts",
     "test/contract/himateam-memory-panel.test.ts",
     "test/contract/himateam-memory.host.test.ts",
+    "test/contract/himateam-memory-adoption.host.test.ts",
     "test/contract/himateam-messages.host.test.ts",
     "test/contract/himateam-reopen.host.test.ts",
     "test/contract/himateam-stream.host.test.ts",
@@ -157,7 +158,9 @@
     "test/contract/himateam-native-busy-barrier.local.test.ts",
     "test/contract/himateam-spec.host.test.ts",
     "test/contract/himateam-memory-correction.host.test.ts",
-    "test/contract/himateam-backup.host.test.ts"
+    "test/contract/himateam-backup.host.test.ts",
+    "test/contract/himateam-release-contract.host.test.ts",
+    "test/contract/oar-pi-retry-hotfix.test.ts"
   ],
   "desktop": [
     "test/contract/agent-execution.desktop.test.ts",
@@ -186,7 +189,8 @@
     "test/contract/himateam-memory.desktop.test.ts",
     "test/contract/himateam-control.desktop.test.ts",
     "test/contract/himateam-spec.desktop.test.ts",
-    "test/contract/himateam-upgrade.desktop.test.ts"
+    "test/contract/himateam-upgrade.desktop.test.ts",
+    "test/contract/himateam-acceptance.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/resident-engineering-release.live.test.ts",
@@ -209,6 +213,7 @@
     "test/contract/himateam-software-control.live.test.ts",
     "test/contract/himateam-software.live.test.ts",
     "test/contract/himateam-spec.live.test.ts",
-    "test/contract/himateam-backup-native.live.test.ts"
+    "test/contract/himateam-backup-native.live.test.ts",
+    "test/contract/himateam-business.live.test.ts"
   ]
 }

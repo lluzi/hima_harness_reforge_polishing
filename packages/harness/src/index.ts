@@ -1157,7 +1157,7 @@ export default class Hima extends Service {
   }
   private async teamWorkspaceOperation(actor:TeamMessageActor,ref:TaskRef,action:string,raw:unknown,sessionId?:string):Promise<object> {
     if(['delegate','ask','ask-human','wait'].includes(action))return this.teamCollaborationOperation(actor,ref,action,raw);
-    const memoryAction=({'query-memory':'query','propose-memory':'propose','memory-status':'status','memory-corrections':'corrections'} as Record<string,string>)[action];
+    const memoryAction=({'query-memory':'query','propose-memory':'propose','adopt-memory':'adopt','memory-status':'status','memory-corrections':'corrections'} as Record<string,string>)[action];
     if(memoryAction)return this.teamMemoryOperation(actor,ref,memoryAction,raw);
     const store=this.durable.store.teamMessages();
     if(action==='read-task-artifact') {
@@ -1275,12 +1275,12 @@ export default class Hima extends Service {
   }
 
   async memberTeamContext(token:string,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','adopt-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
     const grant=await this.durable.store.resolveTeamGrant(token);
     return this.memberActorContext(grant,request);
   }
   private async memberActorContext(grant:import('./team-contract.js').ActorGrant,raw:unknown):Promise<object> {
-    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
+    const request=teamZ.strictObject({action:teamZ.enum(['readTask','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','adopt-memory','memory-status','memory-corrections','github']),request:teamZ.unknown().optional()}).parse(raw);
     if(request.action==='github') {
       const value=teamZ.discriminatedUnion('action',[
         teamZ.strictObject({action:teamZ.literal('checkout')}),teamZ.strictObject({action:teamZ.literal('status')}),
@@ -1299,7 +1299,7 @@ export default class Hima extends Service {
         throw new TeamError('hima/not-authorized','The current member work directory has no matching retained local lease.');
       return operateTeamGitHub(lease.workDirectory,binding,value,undefined,()=>this.durable.store.authorizeTeamGrant(grant,capability));
     }
-    await this.durable.store.authorizeTeamGrant(grant,['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='delegate'||request.action==='ask-human'||request.action==='wait'?'delegate':request.action==='send-message'||request.action==='ask'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
+    await this.durable.store.authorizeTeamGrant(grant,request.action==='adopt-memory'?'adopt-memory':['query-memory','propose-memory','memory-status','memory-corrections'].includes(request.action)?'query-memory':request.action==='delegate'||request.action==='ask-human'||request.action==='wait'?'delegate':request.action==='send-message'||request.action==='ask'?'send-message':request.action==='read-material'||request.action==='read-excerpt'?'read-material':'read-task');
     if(request.action!=='readTask')return this.teamWorkspaceOperation({kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},request.action,request.request);
     if(!grant.capabilities.includes('read-task'))throw new TeamError('hima/not-authorized','This member may not read the task.');
     const task=await this.durable.store.readTeamTask(grant.projectId,grant.teamId,grant.taskId);
@@ -1337,7 +1337,7 @@ export default class Hima extends Service {
     if(!this.ctx.get('agents')?.list().some(agent=>String(agent.id)===sessionId))throw new TeamError('hima/not-authorized','Choose a live project conversation.');
     const projectId=await sessionProject(this.ctx,sessionId,true);
     const actor:TeamDefinitionActor=origin==='human'?{kind:'human',actorId:await this.durable.store.operatorIdentity(),projectId}:{kind:'guide',actorId:sessionId,projectId};
-    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','listVersions','read','save','clone','export','startTask','listTasks','readTask','control','respond','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','memory-status','memory-corrections']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
+    const value=teamZ.strictObject({action:teamZ.enum(['context','list-models','configure-model','list','listVersions','read','save','clone','export','startTask','listTasks','readTask','control','respond','delegate','ask','ask-human','wait','send-message','read-messages','read-activity','read-pending-requests','read-member-work','reconcile-delivery','stage-attachment','list-materials','read-stage','remove-draft','read-material','read-excerpt','read-task-artifact','query-memory','propose-memory','adopt-memory','memory-status','memory-corrections']),teamId:teamZ.string().optional(),page:teamZ.unknown().optional(),memberId:teamZ.string().optional(),version:teamZ.number().int().positive().optional(),definition:teamZ.unknown().optional(),expectedVersion:teamZ.number().int().positive().nullable().optional(),title:teamZ.string().optional(),applyToRunning:teamZ.boolean().optional(),taskId:teamZ.string().optional(),request:teamZ.unknown().optional()}).parse(raw);
     if(['configure-model','save','clone','startTask'].includes(value.action))await this.waitForBusinessAdmission();
     if(!['context','list-models','configure-model','list','listVersions','read','save','clone','export','startTask','listTasks','readTask','control','respond'].includes(value.action)) {
       if(!value.teamId||!value.taskId)throw new TeamError('hima/team-invalid','Choose a team and task identity.');

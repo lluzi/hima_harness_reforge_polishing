@@ -1,4 +1,4 @@
-import { memoryBankId, memoryPayloadDigest, memoryTextSha256, publicRetentionView, parseFeedbackRequest, parseProposalRequest, parseAdoptionRequest, parseCorrectionRequest, type MemoryScope, type MemoryTarget, type MemorySource, type MemoryRecord, type MemoryEvent, type RetentionOperation, type MemoryView, type MemorySourceReader, type TeamMemoryStore, type FeedbackRequest, type AdoptionRequest, type CorrectionRequest } from './team-memory.js';
+import { assertMemberMemoryAdoption, memoryBankId, memoryPayloadDigest, memoryTextSha256, publicRetentionView, parseFeedbackRequest, parseProposalRequest, parseAdoptionRequest, parseCorrectionRequest, type MemoryScope, type MemoryTarget, type MemorySource, type MemoryRecord, type MemoryEvent, type RetentionOperation, type MemoryView, type MemorySourceReader, type TeamMemoryStore, type FeedbackRequest, type AdoptionRequest, type CorrectionRequest } from './team-memory.js';
 import { teamMessageDigest, type TaskRef, type TeamMessageActor, type TeamMessageStore, type TeamMessageEnvelope, type TeamMessageDelivery, type TeamReadPage } from './team-messages.js';
 import type { TeamAttachmentStore, PersistedAttachmentOriginal, StagedAttachment } from './team-attachments.js';
 import type { TeamServiceReceipt } from './team-service-runtime.js';
@@ -165,7 +165,7 @@ export class RunStore {
     this.#source = source;
   }
   /** Messaging/materials share the existing application transaction and control authority. */
-  private async workspaceAccess(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate'|'github-push'|'github-pr',writing=false) {
+  private async workspaceAccess(client:ClientBase,actor:TeamMessageActor,ref:TaskRef,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'adopt-memory'|'delegate'|'github-push'|'github-pr',writing=false) {
     if(writing)await this.#assertHostAdmission(client);
     else await client.query('SELECT singleton FROM hima.host_exit WHERE singleton=true FOR SHARE');
     const task=(await client.query<{task:Omit<TeamTaskView,'readiness'>}>('SELECT task FROM hima.team_tasks WHERE project_id=$1 AND team_id=$2 AND task_id=$3',[ref.projectId,ref.teamId,ref.taskId])).rows[0]?.task;
@@ -260,13 +260,14 @@ export class RunStore {
       if(!this.memoryVisible(actor,scope,ref))throw new TeamError('hima/not-authorized','Memory is private to another member.');return scope;
     };
     const mutate=async(actor:TeamMessageActor,ref:TaskRef,action:'feedback'|'proposed'|'adopted'|'disabled'|'re-adopted'|'corrected',request:FeedbackRequest|AdoptionRequest|CorrectionRequest):Promise<MemoryView>=>{
-      if(action!=='proposed'&&actor.kind!=='human')throw new TeamError('hima/not-authorized','This memory change requires the authenticated human.');
+      if(action!=='proposed'&&actor.kind!=='human'&&!(action==='adopted'&&actor.kind==='member'))throw new TeamError('hima/not-authorized','This memory change requires the authenticated human.');
+      const capability=action==='adopted'&&actor.kind==='member'?'adopt-memory':'query-memory';
       const sources='sources' in request?request.sources:[];
       const evidence='evidenceRefs' in request?request.evidenceRefs:[];
       // Replays are retained facts, not new adoption. Resolve auth/replay/CAS before reading
       // potentially unavailable historical bytes; the committing transaction rechecks them.
       const replay=await this.transaction(async client=>{
-        const access=await this.workspaceAccess(client,actor,ref,'query-memory',true);
+        const access=await this.workspaceAccess(client,actor,ref,capability,true);
         const prior='memoryId' in request?await this.memoryView(client,request.memoryId):undefined;
         const scope=prior?.record.scope??resolveScope(actor,ref,(request as FeedbackRequest).target,access.definition);
         if(!this.memoryVisible(actor,scope,ref))throw new TeamError('hima/not-authorized','Memory is outside this task scope.');
@@ -276,6 +277,7 @@ export class RunStore {
           if(retained.digest!==digest)throw new TeamError('hima/team-conflict','Memory request already names different content or authority.');
           return this.memoryView(client,retained.event.memoryId,retained.event);
         }
+        if(action==='adopted')assertMemberMemoryAdoption(actor,prior,access.definition);
         if(prior&&'expectedVersion' in request&&(prior.record.version!==request.expectedVersion||prior.tip.revision!==request.expectedRevision||prior.tip.eventId!==request.supersedesEventId))throw new TeamError('hima/team-conflict','Memory changed; read its current version before changing adoption.');
         return undefined;
       },'hima.preflightTeamMemory');
@@ -287,7 +289,7 @@ export class RunStore {
         await sourceReader.verify(actor,ref,dependencies);
       }
       return this.transaction(async client=>{
-        const access=await this.workspaceAccess(client,actor,ref,'query-memory',true);
+        const access=await this.workspaceAccess(client,actor,ref,capability,true);
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`memory-request:${ref.projectId}:${ref.teamId}:${request.requestId}`]);
         const priorRequest=(await client.query<{event:MemoryEvent;digest:string}>('SELECT event,digest FROM hima.team_memory_events WHERE project_id=$1 AND team_id=$2 AND request_id=$3',[ref.projectId,ref.teamId,request.requestId])).rows[0];
         let prior:MemoryView|undefined;
@@ -302,6 +304,7 @@ export class RunStore {
           if(priorRequest.digest!==digest)throw new TeamError('hima/team-conflict','Memory request already names different content or authority.');
           return this.memoryView(client,priorRequest.event.memoryId,priorRequest.event);
         }
+        if(action==='adopted')assertMemberMemoryAdoption(actor,prior,access.definition);
         if(prior&&'expectedVersion' in request&&(prior.record.version!==request.expectedVersion||prior.tip.revision!==request.expectedRevision||prior.tip.eventId!==request.supersedesEventId))throw new TeamError('hima/team-conflict','Memory changed; read its current version before changing adoption.');
         await this.verifyMemorySources(client,actor,ref,[...sources,...evidence]);
         if(prior&&['adopted','re-adopted'].includes(action))await this.verifyMemorySources(client,actor,ref,await this.memoryAdoptionSources(client,prior,action==='re-adopted'));
@@ -1693,6 +1696,10 @@ export class RunStore {
       const invocation=(await client.query<{invocation:FlowInvocationRecord}>('SELECT invocation FROM hima.flow_invocations WHERE effect_id=$1 AND run_id=$2',[grant.effectId,grant.runId])).rows[0]?.invocation;
       if(!invocation||(invocation.context as unknown as {flow:CompiledFlow}).flow.tasks[invocation.identity.taskId]?.memberId!==grant.memberId||grant.actorId!==grant.memberId||('source' in invocation.identity && jsonDigest(invocation.identity.source)!==jsonDigest(data.source))||(grant.capabilities.includes('delegate')&&data.definition?.leaderMemberId!==grant.memberId))throw new TeamError('hima/not-authorized','Grant must bind the exact Host member and invocation source.');
       const member=data.definition?.members.find(row=>row.id===grant.memberId);
+      if(grant.capabilities.includes('adopt-memory')&&data.actor?.kind!=='human')
+        throw new TeamError('hima/not-authorized','Memory adoption requires an authenticated human-opened Team task.');
+      if(grant.capabilities.includes('adopt-memory')&&!member?.toolRefs.includes('hima-memory-adopt'))
+        throw new TeamError('hima/not-authorized','Memory adoption capability must be declared by the frozen member role.');
       if((grant.capabilities.includes('github-push')&&!member?.toolRefs.includes('hima-github-push'))
         ||(grant.capabilities.includes('github-pr')&&(!member?.toolRefs.includes('hima-github-pr')||data.definition?.leaderMemberId!==grant.memberId)))
         throw new TeamError('hima/not-authorized','GitHub capability must be declared by the frozen member role.');
@@ -1729,7 +1736,7 @@ export class RunStore {
     const row=(await this.#pool.query<{grant_data:ActorGrant}>('SELECT grant_data FROM hima.task_actor_grants WHERE grant_id=$1',[grantId])).rows[0];
     return row?actorGrant.parse(row.grant_data):undefined;
   }
-  async authorizeTeamGrant(grant:ActorGrant,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'delegate'|'github-push'|'github-pr'):Promise<void> {
+  async authorizeTeamGrant(grant:ActorGrant,capability:'read-task'|'send-message'|'read-material'|'query-memory'|'adopt-memory'|'delegate'|'github-push'|'github-pr'):Promise<void> {
     await this.transaction(async client=>{await this.workspaceAccess(client,{kind:'member',grant},{projectId:grant.projectId,teamId:grant.teamId,taskId:grant.taskId},capability);},'hima.authorizeTeamGrant');
   }
   async resolveTeamGrant(token:string):Promise<ActorGrant> {

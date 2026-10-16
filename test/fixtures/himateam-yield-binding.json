@@ -1,0 +1,109 @@
+{
+  "provenance": "Shapes/values from original business3 cached readonly PG lease/native-session/yield-intent/closed facts and original Host wait reply; paths pseudonymized. Pure policy test data, not qualification evidence.",
+  "identity": {
+    "runId": "run-task-e94fd0aa1099f593e7c58f457c6401c98b6936143421edeff7124eba5a81d9f9",
+    "method": {
+      "id": "team-ac181fc9-131c-4d69-9ac0-43fd3d7c8bae",
+      "kind": "team",
+      "sha256": "113f86fcb81f4f8c242ddddb6fa0af986b66c706daa05a2340a9e310d397ecda",
+      "version": "1"
+    },
+    "source": {
+      "kind": "team",
+      "team": {
+        "sha256": "113f86fcb81f4f8c242ddddb6fa0af986b66c706daa05a2340a9e310d397ecda",
+        "teamId": "team-ac181fc9-131c-4d69-9ac0-43fd3d7c8bae",
+        "version": 1
+      },
+      "taskId": "task-e94fd0aa1099f593e7c58f457c6401c98b6936143421edeff7124eba5a81d9f9",
+      "projectId": "/fixture/workspace"
+    },
+    "taskId": "leader",
+    "effectId": "hima-effect:b331733c2af4516339f1f05b0fbd1efc68d8f7001d84960582a30efcc29a7346",
+    "irSha256": "e8315cfeab3e1b5d6a4a4c42dbdc157205ee198f499c43e54804730656ce46dc",
+    "inputSha256": "8c38f3bf39e88875d452649c2a3fd9f994b8a45f5570b8d55babc39f3ecf3b96",
+    "adapterVersion": "hima-task-effect/2",
+    "applicationVersion": "hima-585dda4772cd4609ef34e45578051278cb6e2de4a060863a8940bb4601e332f6"
+  },
+  "lease": {
+    "memberId": "lead",
+    "generation": 0,
+    "sessionKey": "hima-oar-fb284c26478f0e0aa0ddf109708a1fb6",
+    "workDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/work",
+    "controlDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/control"
+  },
+  "native": {
+    "runtime": "pi",
+    "generation": 0,
+    "sessionKey": "hima-oar-fb284c26478f0e0aa0ddf109708a1fb6",
+    "nativeSession": "01a14213-6b6c-73dc-9363-81656443fadb",
+    "workDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/work",
+    "controlDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/control",
+    "streamGeneration": "906d86d7-7e49-426c-9495-be0856a269cc"
+  },
+  "intent": {
+    "lease": {
+      "pid": 49675,
+      "memberId": "lead",
+      "generation": 0,
+      "sessionKey": "hima-oar-fb284c26478f0e0aa0ddf109708a1fb6",
+      "processGroup": 49675,
+      "startIdentity": "Thu Oct 15 17:18:47 2026",
+      "workDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/work",
+      "controlDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/control"
+    },
+    "native": {
+      "runtime": "pi",
+      "generation": 0,
+      "sessionKey": "hima-oar-fb284c26478f0e0aa0ddf109708a1fb6",
+      "nativeSession": "01a14213-6b6c-73dc-9363-81656443fadb",
+      "workDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/work",
+      "controlDirectory": "/fixture/home/hima/oar-members/hima-oar-fb284c26478f0e0aa0ddf109708a1fb6/control",
+      "streamGeneration": "906d86d7-7e49-426c-9495-be0856a269cc"
+    },
+    "waitId": "hima-fact:c5acda035a7af792d5afb7f9ae55753ce0c3039a6d4ec93ea9fbde4ac7b8bbcc",
+    "requestId": "issue1-wait-build",
+    "parentIdentity": {
+      "runId": "run-task-e94fd0aa1099f593e7c58f457c6401c98b6936143421edeff7124eba5a81d9f9",
+      "method": {
+        "id": "team-ac181fc9-131c-4d69-9ac0-43fd3d7c8bae",
+        "kind": "team",
+        "sha256": "113f86fcb81f4f8c242ddddb6fa0af986b66c706daa05a2340a9e310d397ecda",
+        "version": "1"
+      },
+      "source": {
+        "kind": "team",
+        "team": {
+          "sha256": "113f86fcb81f4f8c242ddddb6fa0af986b66c706daa05a2340a9e310d397ecda",
+          "teamId": "team-ac181fc9-131c-4d69-9ac0-43fd3d7c8bae",
+          "version": 1
+        },
+        "taskId": "task-e94fd0aa1099f593e7c58f457c6401c98b6936143421edeff7124eba5a81d9f9",
+        "projectId": "/fixture/workspace"
+      },
+      "taskId": "leader",
+      "effectId": "hima-effect:b331733c2af4516339f1f05b0fbd1efc68d8f7001d84960582a30efcc29a7346",
+      "irSha256": "e8315cfeab3e1b5d6a4a4c42dbdc157205ee198f499c43e54804730656ce46dc",
+      "inputSha256": "8c38f3bf39e88875d452649c2a3fd9f994b8a45f5570b8d55babc39f3ecf3b96",
+      "adapterVersion": "hima-task-effect/2",
+      "applicationVersion": "hima-585dda4772cd4609ef34e45578051278cb6e2de4a060863a8940bb4601e332f6"
+    }
+  },
+  "accepted": {
+    "ok": true,
+    "value": {
+      "state": "yield-accepted",
+      "waitId": "hima-fact:c5acda035a7af792d5afb7f9ae55753ce0c3039a6d4ec93ea9fbde4ac7b8bbcc"
+    }
+  },
+  "closed": {
+    "pids": [
+      49675,
+      49789
+    ],
+    "group": 49675,
+    "absent": true,
+    "observedAt": "2026-10-16T00:19:17.810Z"
+  },
+  "inputId": "hima-input-fb284c26478f0e0aa0ddf109708a1fb6"
+}

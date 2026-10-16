@@ -170,3 +170,23 @@ test('revocation or correction after absence proof suppresses resubmission',asyn
     assert.deepEqual(f.uuids,[]);assert.equal(retainRequests,0);assert.equal(f.operation.state,'unknown');
   }
 });
+
+// The same role/scope policy executes inside both Store authorization transactions.
+test('member adoption policy distinguishes personal authorship, frozen leadership and human feedback',()=>{
+  const f=fixture('candidate');f.view.record.kind='experience';
+  const definition={leaderMemberId:'leader'};
+  const member={kind:'member',grant:{memberId:'worker'}};
+  f.view.record.createdBy={kind:'member',actorId:'worker',memberId:'worker',runId:'run-a',effectId:'effect-a',generation:0};
+  f.view.record.scope={...f.view.record.scope,kind:'member',memberId:'worker'};
+  assert.doesNotThrow(()=>m.assertMemberMemoryAdoption(member,f.view,definition),'ordinary member can adopt their own technique');
+  assert.throws(()=>m.assertMemberMemoryAdoption({kind:'member',grant:{memberId:'leader'}},f.view,definition),/personal|member/,'leader cannot adopt a different member private technique');
+  f.view.record.scope={...f.view.record.scope,kind:'team',memberId:undefined};
+  assert.throws(()=>m.assertMemberMemoryAdoption(member,f.view,definition),/leader/);
+  assert.doesNotThrow(()=>m.assertMemberMemoryAdoption({kind:'member',grant:{memberId:'leader'}},f.view,definition));
+  f.view.record.scope.kind='project';
+  assert.throws(()=>m.assertMemberMemoryAdoption(member,f.view,definition),/leader/);
+  f.view.record.kind='feedback';
+  assert.throws(()=>m.assertMemberMemoryAdoption({kind:'member',grant:{memberId:'leader'}},f.view,definition),/human/);
+  f.view.record.kind='experience';f.view.record.createdBy={kind:'human',actorId:'operator'};
+  assert.throws(()=>m.assertMemberMemoryAdoption(member,f.view,definition),/human/);
+});

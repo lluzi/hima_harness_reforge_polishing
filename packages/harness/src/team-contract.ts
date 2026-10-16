@@ -28,7 +28,7 @@ export type TeamDefinitionRef = z.infer<typeof teamDefinitionRef>;
 export const actorGrant = z.strictObject({
   grantId: id, actorId: id, projectId: z.string().min(1), teamId: id, taskId: id, memberId: id,
   runId: id, effectId: z.string().min(1), generation: z.number().int().nonnegative(),
-  capabilities: z.array(z.enum(['read-task', 'send-message', 'read-material', 'query-memory', 'delegate', 'github-push', 'github-pr'])),
+  capabilities: z.array(z.enum(['read-task', 'send-message', 'read-material', 'query-memory', 'adopt-memory', 'delegate', 'github-push', 'github-pr'])),
   expiresAt: timestamp, revokedAt: timestamp.nullable(),
   revocationCause: z.enum(['yield', 'closed', 'operator']).optional(),
 });

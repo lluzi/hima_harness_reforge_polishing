@@ -648,3 +648,46 @@ test('cold journal recovery preserves exact valid UTF-8 across stream boundary a
     }
   }
 });
+
+// Retained business1 failed natively with Request timed out, then raw-final was
+// unconfirmed. Substitute only the SDK failure/tail; real runner, IPC and fsync remain.
+test('native business failure flushes abort/dispose raw tail without accepting a successful result', {timeout:15000},async t=>{
+  const root=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'hima-failed-raw-tail-'));
+  const sdk=path.join(root,'failed-sdk.mjs');
+  fs.writeFileSync(sdk,`
+export async function piSession(){
+ const raw=[],rawObservers=[],eventObservers=[];
+ const emit=(body,event)=>{const record={sessionId:'failed-tail-native',agentPath:[],seq:raw.length,receivedAt:Date.now(),kind:'frame',body};raw.push(record);for(const f of rawObservers)f(record);if(event)for(const f of eventObservers)f({...event,sessionId:'failed-tail-native',agentPath:[],seq:record.seq,receivedAt:record.receivedAt});};
+ return{id:'failed-tail-native',records:()=>raw,rawEvents:f=>{rawObservers.push(f);return()=>{}},events:f=>{eventObservers.push(f);return()=>{}},
+  async prompt(){setTimeout(()=>emit({type:'turn_ended'},{kind:'turn_ended',outcome:{kind:'failed',reason:'Request timed out.',failure:'unknown'}}),20);return{kind:'accepted'}},
+  async abort(){emit({type:'abort-tail',text:'original abort observation'});return{kind:'accepted'}},
+  async dispose(){emit({type:'dispose-tail',text:'original dispose observation'});}}
+}
+`);
+  const {OarLocalMemberRuntime}=await import(pathToFileURL(path.resolve('packages/harness/lib/oar-local-member.js')).href);
+  const assets={oarModule:sdk,nodeExecutable:process.execPath,opencodeCommand:'/usr/bin/false',opencodeVersion:'fixture'};
+  const runtime=new OarLocalMemberRuntime({home:root,nodeExecutable:process.execPath,runnerModule:path.resolve('packages/harness/lib/oar-member-runner.js'),assets});
+  t.after(async()=>{await runtime.stopAll();fs.rmSync(root,{recursive:true,force:true});});
+  const lease=await runtime.stage({prepared:{schema:'hima-oar-task/1',identity:{runId:'failed-tail-run',taskId:'failed-tail-task',effectId:'failed-tail-effect',inputSha256:'a'.repeat(64),packSha256:'b'.repeat(64),irSha256:'c'.repeat(64),applicationVersion:'fixture',adapterVersion:'fixture'},
+    projectId:'project',memberId:'member',runtime:'pi',modelRef:'fixture',generation:1,sessionKey:'failed-tail-member',inputId:'initial',deadlineAt:new Date(Date.now()+12000).toISOString(),prompt:'Fail with the native timeout and retain its observations'},
+    model:{provider:'fixture',model:'fixture',baseUrl:'http://fixture.invalid',apiKey:'fixture-only'},outputSchemaVersion:'output/1',assets},[]);
+  await runtime.start(lease);
+  const until=Date.now()+7000;
+  for(;;){const view=await runtime.read(lease,{summaryOnly:true});if(view.evidence.some((row:any)=>row.kind==='created'))break;assert.ok(Date.now()<until,'SDK creation');await pause(10);}
+  await runtime.authorize(lease,{sessionKey:lease.sessionKey,generation:lease.generation,nativeSession:'failed-tail-native',inputId:'initial'});
+  const stateFile=path.join(lease.controlDirectory,'state.json');
+  let state:any;
+  do{state=JSON.parse(fs.readFileSync(stateFile,'utf8'));if(['closed','unknown'].includes(state.phase))break;await pause(10);}while(Date.now()<until);
+  const closed=await runtime.close(lease);
+  assert.equal(closed.closed,true,'Ordinary failed business must not prevent durable observation/resource closure: '+closed.reason);
+  const rows=fs.readFileSync(path.join(lease.controlDirectory,'journal.jsonl'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+  const raw=rows.filter((row:any)=>row.kind==='raw'&&Number.isSafeInteger(row.payload?.seq));
+  assert.deepEqual(raw.map((row:any)=>row.payload.seq),[0,1,2]);
+  assert.deepEqual(raw.map((row:any)=>row.payload.body.type),['turn_ended','abort-tail','dispose-tail']);
+  const final=rows.find((row:any)=>row.kind==='control'&&row.payload?.action==='raw_final');assert.ok(final);assert.equal(final.payload.lastSeq,2);
+  assert.ok(rows.some((row:any)=>row.kind==='terminal'&&row.payload?.outcome?.kind==='failed'&&row.payload.outcome.reason==='Request timed out.'),'Original business failure remains explicit');
+  assert.equal(rows.some((row:any)=>row.kind==='finished'),false);
+  assert.equal((await runtime.read(lease,{summaryOnly:true})).result,null,'No failed business result is adopted');
+  const recovered=new OarLocalMemberRuntime({home:root,nodeExecutable:process.execPath,runnerModule:path.resolve('packages/harness/lib/oar-member-runner.js'),assets});
+  await recovered.recover(lease.sessionKey);assert.equal((await recovered.close(lease)).closed,true,'Cold read retains complete failed-turn observations and original physical absence');
+});

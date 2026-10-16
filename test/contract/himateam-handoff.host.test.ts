@@ -1080,5 +1080,19 @@ test('genuine accepted wait cannot continue a true pre-cleanup native fault',{ti
  const view=await f.runtime.read(f.parentLease);assert.match(JSON.parse(view.state!).failureReason,/Actual accepted-wait native fault/);
  const head=await f.store.readTeamEffectHead(f.parent.identity);assert.equal(head.state,'waiting');
  assert.equal((await f.store.flowInvocations(f.runId)).length,1,'failed parent never admits child or reconstructed successor');
- assert.equal((await f.store.effectResources(f.parent.identity.effectId))[0]!.released,false,'physical absence alone is not successful handoff');
+ await waitUntil('verified fatal parent becomes business failed without deadline intervention',async()=>{
+   const task=await f.readTask() as any;return task.execution.state==='failed'&&task.execution.resourceState==='closed'&&(await workflow.readFlow(f.service.durable,f.runId)).workflow?.status==='SUCCESS';
+ },3000,25);
+ const terminal=await f.readTask() as any;assert.match(terminal.execution.reason,/Actual accepted-wait native fault/);
+ const projected=await workflow.readFlow(f.service.durable,f.runId);
+ assert.equal(projected.workflow?.status,'SUCCESS','Durable workflow must return failed business outcome, not crash');
+ const handle=await workflow.startFlow(f.service.durable,await workflow.definitionForRevision(f.service.durable,f.runId));
+ const outcome=await handle.getResult() as unknown as {state:string;reason?:string};
+ assert.equal(outcome.state,'failed');assert.match(outcome.reason??'',/Actual accepted-wait native fault/);
+ const effect=await f.store.effectSnapshot(f.parent.identity);assert.equal(effect.result,null);
+ assert.match(String((effect.facts['terminal-failure'] as {reason:string}).reason),/Actual accepted-wait native fault/);
+ assert.equal((await f.store.effectResources(f.parent.identity.effectId))[0]!.released,true,'verified original physical failure closure releases capacity without successful handoff');
+ assert.equal((await f.store.flowInvocations(f.runId)).length,1,'failed parent remains unable to admit child or successor after terminal settlement');
+ const actualEvents=await f.events();assert.equal(actualEvents.filter(row=>row.kind==='created').length,1);
+ assert.equal(actualEvents.filter(row=>row.kind==='input').length,1,'failed settlement must not resubmit the original native input');
 });

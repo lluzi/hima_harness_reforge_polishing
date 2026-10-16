@@ -1,0 +1,81 @@
+// Real Host/private PG; unavailable models guarantee zero native/model execution.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import type { ActorGrant, MemoryView, MemorySourceReader } from '@hima/harness';
+import { specHost, cas, feedbackSource } from './support/issue107/host.ts';
+import { waitUntil } from './support/fabric.ts';
+import { teamFixture } from './support/himateam.ts';
+
+test('granted member adopts personal techniques and frozen leader adopts team methods through Host', {timeout:120_000}, async t => {
+  const f=await specHost();t.after(()=>f.dispose());
+  const saved=await f.operation({action:'save',expectedVersion:null,definition:{...teamFixture,members:teamFixture.members.map(member=>({...member,toolRefs:['hima-member-context','hima-memory-adopt']}))}});
+  const task=await f.start('adoption-authority-task',{},saved.teamId),store=f.host.ctx.hima.durable.store;
+  const base=await f.member(task,'adoption-query-only');
+  const issued=await store.issueTeamGrant({...base.issued.grant,grantId:'adoption-explicit',capabilities:['read-task','query-memory','adopt-memory'] as ActorGrant['capabilities']});
+  const call=(action:string,request:unknown)=>f.host.ctx.hima.memberTeamContext(issued.token,{action,request}) as Promise<any>;
+  const feedback=await f.memory(task,'feedback',{requestId:'adoption-source',target:{kind:'team'},text:'A review found missing source references.',reason:'Measured review feedback'}) as MemoryView;
+  const proposed=await call('propose-memory',{requestId:'personal-candidate',target:{kind:'member',memberId:'lead'},text:'Check source references before handing over my work.',reason:'Personal technique from feedback',sources:[feedbackSource(feedback)]}) as MemoryView;
+  const request={requestId:'personal-adoption',...cas(proposed),action:'adopted' as const,conditions:[],reason:'Verified on supplied review feedback',evidenceRefs:[feedbackSource(feedback)]};
+  const adopted=await call('adopt-memory',request) as MemoryView;
+  assert.equal(adopted.tip.state,'adopted');assert.equal(adopted.tip.actor.kind,'member');
+  assert.equal(adopted.tip.actor.actorId,'lead');assert.equal(adopted.tip.runId,task.currentRunId);
+  assert.equal((await call('adopt-memory',request) as MemoryView).tip.eventId,adopted.tip.eventId,'exact replay returns original receipt');
+  await assert.rejects(base.call({action:'adopt-memory',request}),/capability|grant|authoriz/i,'query permission never grants adoption');
+  await assert.rejects(call('adopt-memory',{...request,requestId:'stale-adopt'}),/changed|current version/i);
+  await assert.rejects(call('adopt-memory',{...request,requestId:'disable-by-member',...cas(adopted),action:'disabled'}),/human/i);
+  await assert.rejects(call('adopt-memory',{...request,requestId:'feedback-by-member',...cas(feedback)}),/experience|candidate|human/i,'human feedback is not a personal technique');
+  const corrected=await f.memory(task,'correct',{requestId:'human-replaces-personal',...cas(adopted),text:'Human replacement remains an unadopted fact.',reason:'Withdraw old personal advice',conditions:[],sources:[]}) as MemoryView;
+  assert.equal(corrected.record.kind,'feedback');
+  assert.equal((await call('adopt-memory',request) as MemoryView).tip.eventId,adopted.tip.eventId,'historical member replay survives human correction without reapplying');
+  assert.equal((await f.memory(task,'status',{page:{limit:20}})).records.find((view:MemoryView)=>view.record.memoryId===corrected.record.memoryId)?.tip.state,'candidate');
+  const shared=await call('propose-memory',{requestId:'team-method-candidate',target:{kind:'team'},text:'Each handoff includes checked source references.',reason:'Team method from review',sources:[feedbackSource(feedback)]}) as MemoryView;
+  const future=await f.operation({action:'save',teamId:saved.teamId,expectedVersion:1,definition:{...saved.definition,members:[...saved.definition.members,{...saved.definition.members[0],id:'future-lead'}],leaderMemberId:'future-lead'}});
+  assert.equal(future.version,2);assert.equal(task.team.version,1);
+  const sharedRequest={...request,requestId:'leader-team-method',...cas(shared)};
+  assert.equal((await call('adopt-memory',sharedRequest) as MemoryView).tip.state,'adopted');
+  const ref={projectId:task.projectId,teamId:saved.teamId,taskId:task.taskId};
+  const race=await call('propose-memory',{requestId:'source-race-candidate',target:{kind:'team'},text:'Recheck sources immediately before handoff.',reason:'Authority race fixture',sources:[feedbackSource(feedback)]}) as MemoryView;
+  const racedGrant=await store.issueTeamGrant({...issued.grant,grantId:'adoption-source-race'});
+  let revokedDuringVerification=false;
+  const sourceReader:MemorySourceReader={verify:async(actor,scope,sources)=>{
+    const verified=(await store.memorySources(actor,scope,sources)).map(row=>row.source);
+    if(sources.length){await store.revokeTeamGrant(racedGrant.grant.grantId);revokedDuringVerification=true;}
+    return verified;
+  }};
+  const memory=store.teamMemory(sourceReader);
+  const raceRequest={...request,requestId:'adoption-revoked-during-source',...cas(race),evidenceRefs:[]};
+  await assert.rejects(memory.changeAdoption({kind:'member',grant:{...issued.grant,generation:issued.grant.generation+1}},ref,{...raceRequest,requestId:'forged-generation'}),/capability/i);
+  await assert.rejects(memory.changeAdoption({kind:'member',grant:issued.grant},{...ref,projectId:'other-project'},raceRequest),/unavailable|project/i);
+  await assert.rejects(f.host.ctx.hima.workMemory(f.sessionId,{teamId:saved.teamId,taskId:task.taskId,action:'adopt',request:raceRequest},'model'),/human|granted member/i,'Guide cannot impersonate a member or human');
+  const expires=await store.issueTeamGrant({...issued.grant,grantId:'adoption-expiring',expiresAt:new Date(Date.now()+1000).toISOString()});
+  await waitUntil('adoption grant expiration',async()=>Date.now()>=Date.parse(expires.grant.expiresAt),2500,10);
+  await assert.rejects(f.host.ctx.hima.memberTeamContext(expires.token,{action:'adopt-memory',request:raceRequest}),/expired|revoked/i);
+  const noToolTask=await f.start('adoption-without-tool');
+  const noTool=await f.member(noToolTask,'adoption-undeclared-base');
+  await assert.rejects(store.issueTeamGrant({...noTool.issued.grant,grantId:'adoption-undeclared',capabilities:issued.grant.capabilities}),/declared|frozen member/i);
+  await assert.rejects(memory.changeAdoption({kind:'member',grant:racedGrant.grant},ref,raceRequest),/capability|revoked/i,'revocation while source verification is in flight fences final commit');
+  assert.equal(revokedDuringVerification,true);
+  assert.equal((await f.memory(task,'status',{page:{limit:20}})).records.find((view:MemoryView)=>view.record.memoryId===race.record.memoryId)?.tip.state,'candidate');
+  await store.revokeTeamGrant(issued.grant.grantId);
+  await assert.rejects(call('adopt-memory',request),/revoked|expired|capability/i);
+  const read=await f.memory(task,'status',{page:{limit:20}});
+  assert.equal(read.records.find((view:MemoryView)=>view.record.memoryId===shared.record.memoryId)?.tip.actor.actorId,'lead');
+});
+
+test('Guide-created adoption tool reference cannot mint adoption authority without a human-opened Task', {timeout:90_000}, async t=>{
+  const f=await specHost();t.after(()=>f.dispose());
+  const service=f.host.ctx.hima,store=service.durable.store;
+  const definition={...teamFixture,members:teamFixture.members.map(member=>({...member,toolRefs:['hima-member-context','hima-memory-adopt']}))};
+  const saved=await service.teamOperation(f.sessionId,{action:'save',expectedVersion:null,definition},'guide') as any;
+  const guideTask=await service.teamOperation(f.sessionId,{action:'startTask',teamId:saved.teamId,request:{requestId:'guide-self-grant-opening',teamId:saved.teamId,expectedVersion:1,goal:'Ordinary Guide Team work remains available.',input:{},deadlineAt:new Date(Date.now()+60_000).toISOString(),closure:'No model configured.'}},'guide') as any;
+  assert.equal(guideTask.readiness.ready,false);
+  await waitUntil('Guide task leader invocation',async()=>(await store.flowInvocations(guideTask.currentRunId)).length===1,10_000,25);
+  const reader=await f.member(guideTask,'guide-task-query-only');
+  assert.ok((await reader.call({action:'memory-status',request:{page:{limit:10}}})).records);
+  const capability=['read-task','query-memory','adopt-memory'] as ActorGrant['capabilities'];
+  await assert.rejects(store.issueTeamGrant({...reader.issued.grant,grantId:'guide-self-grant-denied',capabilities:capability}),/human.*open|human.*authoriz/i);
+  const task=await f.start('human-authorizes-same-definition',{},saved.teamId);
+  const humanReader=await f.member(task,'human-authorized-definition');
+  const granted=await store.issueTeamGrant({...humanReader.issued.grant,grantId:'human-authorized-adoption',capabilities:capability});
+  assert.ok(granted.grant.capabilities.includes('adopt-memory'));
+});
