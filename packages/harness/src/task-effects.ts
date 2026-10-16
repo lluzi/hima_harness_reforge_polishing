@@ -348,6 +348,7 @@ function decodeResident(value:JsonValue):{plan:EngineeringTaskPlan;job:JobIdenti
   const decode=(files:ResidentPrepared['plan']['knowledge'])=>files.map(file=>({...file,bytes:Buffer.from(file.bytes,'base64')}));
   return {plan:{...held.plan,knowledge:decode(held.plan.knowledge),methodFiles:decode(held.plan.methodFiles)},job:held.job,startId:held.startId};
 }
+const residentContinueLimit=3;
 /** Existing task-local native protocol with automatic collection/release. No owner completion
  * request is needed; Reader repair stays on this original native task and never restarts its ECO. */
 export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOptions):TaskEffectAdapter {
@@ -360,6 +361,19 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
     if(!await checkSite())throw new Error('Original engineering Site identity changed; reconcile under original Site before new requests');
     const sent=await writeEngineeringRequest(identity,held.plan.taskId,id,operation,payload);
     return waitEngineeringReceipt(identity.site,sent.taskDir,held.plan.taskId,id,sent.frame.sha256,operation.operation==='release'?12000:1000);
+  }
+  /** A turn that ended without a valid delivery (a model that stops with no output, or a delivery
+   * the wrapper refuses) would otherwise idle until the Run's time box. The same native session is
+   * asked once per ended turn to finish; the message id derives from the turn it follows, so a
+   * re-reconcile resends nothing, and the chain stops after `residentContinueLimit` asks. */
+  async function continueTurn(prepared:JsonValue,state:{detail?:unknown},problem:string):Promise<{state:'running'|'unknown';reason:string}> {
+    const after=String((state.detail as {completedRequestId?:unknown}|undefined)?.completedRequestId??'auto-start');
+    const asked=/^auto-continue-(\d+)-/.exec(after),n=asked?Number(asked[1])+1:1;
+    if(n>residentContinueLimit)return {state:'unknown',reason:`The engineering task ended ${residentContinueLimit+1} turns without a valid delivery (${problem}); an owner decision is needed`};
+    const text=`Your last turn ended without the delivery this task requires: ${problem}. Finish the task now in this same session: keep the work you have done, complete what is missing, write the delivery file with its artifacts, check it, and end your turn. Do not restart completed work.`.slice(0,7900);
+    const ack=await request(prepared,`auto-continue-${n}-${jsonDigest([after,problem]).slice(0,24)}`,{operation:'message',message:text});
+    if(ack?.status!=='accepted'&&ack?.status!=='completed')return {state:'unknown',reason:ack?.error??'The continuation of the ended turn has no confirmed acknowledgement'};
+    return {state:'running',reason:`The engineering turn ended without a valid delivery (${problem}); the same session was asked to finish (${n} of ${residentContinueLimit})`};
   }
   const adapter:TaskEffectAdapter={kind:'resident-engineering',version:taskEffectAdapterVersion,
     resources:{siteId:site.name,jobs:1,licences:{...options.identity.licences}},
@@ -399,10 +413,14 @@ export function residentEngineeringTaskAdapter(options:ResidentTaskAdapterOption
       if(state?.phase==='waiting') {
         // Snapshot is an idempotent same-task filesystem operation, not another native prompt.
         const candidate=pathsOf(identity.site).join(String(held.plan.envelope.workspace),held.plan.capability.delivery.candidate);
-        const read=await decideRead(identity.site,candidate,channelFor(identity.site));if(!read.ok)throw new Error(read.reason);
-        const bytes=await channelFor(identity.site).readFile(read.absPath);
+        const channel=channelFor(identity.site);
+        // A missing file cannot resolve for the read decision, so its absence is asked first.
+        if(await channel.absent(candidate))return continueTurn(prepared,state,`the delivery file ${held.plan.capability.delivery.candidate} does not exist`);
+        const read=await decideRead(identity.site,candidate,channel);if(!read.ok)throw new Error(read.reason);
+        const bytes=await channel.readFile(read.absPath);
         const digest=createHash('sha256').update(bytes).digest('hex');
         const ack=await request(prepared,`auto-delivery-${digest.slice(0,32)}`,{operation:'delivery'});
+        if(ack?.status==='rejected')return continueTurn(prepared,state,`the delivery check refused ${held.plan.capability.delivery.candidate}: ${ack.error??'no reason given'}`);
         if(ack?.status!=='completed')return {state:'unknown',reason:ack?.error??'Original native task delivery has no confirmed snapshot; repair/recollect the same task'};
       }
       if(state?.phase==='waiting'||state?.phase==='delivered'||state?.phase==='released'||state?.phase==='stopped') {

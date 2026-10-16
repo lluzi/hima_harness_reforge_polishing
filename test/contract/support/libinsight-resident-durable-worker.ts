@@ -15,7 +15,7 @@ import {repoRoot} from './dsh-home.ts';
 const require=createRequire(path.join(repoRoot,'packages/harness/package.json'));
 const {stringify}=require('yaml');
 const home=await realpath(process.argv[2]!),mode=process.argv[3]??'clean';
-const startedAt=Date.now(),packId='libinsight-analysis',requestId=mode==='repair'?'req-20261005130000-repair':'req-20261005130000-clean1';
+const startedAt=Date.now(),packId='libinsight-analysis',requestId=mode==='repair'?'req-20261005130000-repair':mode==='silent'?'req-20261005130000-silent':'req-20261005130000-clean1';
 const fixture=path.join(repoRoot,'test/fixtures/libinsight-resident-dry');
 const packTests=path.join(repoRoot,'packs',packId,'flow/tests');
 const packageDir=path.join(repoRoot,'packages/harness');
@@ -94,6 +94,10 @@ try {
   assert.equal(readerJobs,2,'one rejected and one accepted Reader');
   assert.equal(promptRows.length,2);assert.equal(promptRows[1].readerRejected,true);
   assert.match(String(promptRows[1].problems),/^REJECTED delivery [0-9a-f]{64}\n- code\.main\.sha256 0{64} is not sha256\(code\.main\.text\)/);
+ } else if(mode==='silent'){
+  // the first turn ended with no delivery; the Host asked the same session to finish, once
+  assert.equal(readerJobs,1);assert.equal(promptRows.length,2);
+  assert.equal(promptRows[0].silent,true);assert.equal(promptRows[1].continued,true);
  } else {assert.equal(readerJobs,1);assert.equal(promptRows.length,1);}
  const proof={ok:true,mode,runId,tasks:4,readerJobs,engineeringJobs,prompts:promptRows.length,admitted:target,goalState:view.run.goalState,productModelCalls:0,sshCalls:0,elapsedMs:Date.now()-startedAt};
  await writeFile(path.join(evidence,`${mode}-proof.json`),JSON.stringify(proof,null,2));

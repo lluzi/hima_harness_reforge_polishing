@@ -9,8 +9,9 @@ import {dbosHome,cleanDbosHome} from './support/dbos-process.ts';
 // L2: the libinsight-analysis Pack end to end through the public startRun with the per-Run
 // analysisRequest override, the real resident wrapper (sandbox none), the real Pack Reader and
 // tools, and an ACP stand-in that runs the Pack's verified example script. `repair` first delivers a
-// rejected result and repairs it after the same-task Reader-rejection message.
-for(const mode of ['clean','repair'])test(`libinsight-analysis durable route admits a Reader-accepted analysis (${mode})`,{timeout:150000},async(t)=>{
+// rejected result and repairs it after the same-task Reader-rejection message; `silent` ends its
+// first turn with no delivery and finishes after the Host's same-session continuation.
+for(const mode of ['clean','repair','silent'])test(`libinsight-analysis durable route admits a Reader-accepted analysis (${mode})`,{timeout:150000},async(t)=>{
  const home=await dbosHome();
  const child=spawn(process.execPath,[fileURLToPath(new URL('./support/libinsight-resident-durable-worker.ts',import.meta.url)),home,mode],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
  const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));
@@ -20,7 +21,7 @@ for(const mode of ['clean','repair'])test(`libinsight-analysis durable route adm
   const proof=await result;t.diagnostic(JSON.stringify(proof));
   assert.equal(proof.ok,true,JSON.stringify(proof,null,1)+'\n'+output.slice(-4000));
   assert.equal(proof.tasks,4);assert.equal(proof.engineeringJobs,1);assert.equal(proof.productModelCalls,0);assert.equal(proof.goalState,'met');
-  assert.equal(proof.readerJobs,mode==='repair'?2:1);assert.equal(proof.prompts,mode==='repair'?2:1);
+  assert.equal(proof.readerJobs,mode==='repair'?2:1);assert.equal(proof.prompts,mode==='clean'?1:2);
  }
  finally{if(child.exitCode===null){const term=setTimeout(()=>child.kill('SIGTERM'),10000),kill=setTimeout(()=>child.kill('SIGKILL'),15000);try{await exited;}finally{clearTimeout(term);clearTimeout(kill);}}await closeOwnedNative(home);await cleanDbosHome(home);}
 });
