@@ -32,25 +32,26 @@ shown as clean.
 
 ## 3. Run a rule
 
-First read `/data/eda/project/hima_harness/libinsight-runs/inputs/KITS.md` on the Site: for each
-kit it names the variants with their facts-file globs, the corners on file, the naming profile and
-the design inputs. Then, from your private workspace (`CW` is the Campaign workspace):
+First read the Site's `KITS.md`: it sits in the `inputs` folder among the prepared request's
+`readRoots` (for example `<…>/inputs/KITS.md`). For each kit it names the variants with their
+facts-file globs, the corners on file, the naming profile and the design inputs; pass that profile
+as `--naming` (shown as `<profile>` below). Then, from your private workspace (`CW` is the Campaign workspace):
 
 ```sh
 python3 $CW/flow/libinsight_cli.py insight-delivery --rule vmin_bottleneck -- \
     --facts 9T-SVT='<corpus>/<variant glob>*ssg*' --facts 9T-HVT='...' ... \
-    --hi 0.81 --lo 0.72 --temps=-40,125 --watch 5 --naming dnum \
+    --hi 0.81 --lo 0.72 --temps=-40,125 --watch 5 --naming <profile> \
     --netlist <inputs>/<cell netlists>.spi --library '<kit line>'
 
 python3 $CW/flow/libinsight_cli.py insight-delivery --rule size_coverage_gaps -- \
-    --facts <VARIANT>=<one corner file per variant> ... --naming dnum --library '<kit line>'
+    --facts <VARIANT>=<one corner file per variant> ... --naming <profile> --library '<kit line>'
 
 python3 $CW/flow/libinsight_cli.py insight-delivery --rule critical_path_faster_cells -- \
     --report <inputs>/<design>/<report>.tarpt.gz --netlist <inputs>/<design>/<netlist>.v \
-    --facts <VARIANT>=<the report's corner file> ... --naming dnum --library '<kit line>'
+    --facts <VARIANT>=<the report's corner file> ... --naming <profile> --library '<kit line>'
 
 python3 $CW/flow/libinsight_cli.py insight-delivery --rule table_spikes_kinks -- \
-    --facts <VARIANT>=<corner glob> ... --naming dnum --library '<kit line>'
+    --facts <VARIANT>=<corner glob> ... --naming <profile> --library '<kit line>'
 ```
 
 Write `--temps=` with `=`; its value starts with a minus sign. Each rule prints its headline, and

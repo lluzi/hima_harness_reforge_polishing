@@ -1,5 +1,5 @@
 id: libinsight-analysis
-version: 0.2.1
+version: 0.2.2
 title: LibInsight resident custom analysis and insight rules
 status: development
 minimumHarnessVersion: 0.3.0

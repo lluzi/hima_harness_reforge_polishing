@@ -69,3 +69,12 @@ None recorded.
   `test/contract/libinsight-analyses.test.ts` 8/8.
 - **Packaged App.** Not yet run: next is the HUG rc3 App (tag `hug-rc3`) with this Pack installed into a fresh
   kit, for the aiX Library Insight video (real data stays in `.hima-tmp/` and on the NAS).
+
+## 0.2.2 Site-neutral playbook (2026-10-16)
+
+- `knowledge/insight-playbook.md` no longer names one Site's `KITS.md` path or the `dnum` naming
+  profile: the analyst reads `KITS.md` from the `inputs` folder among the prepared request's
+  `readRoots` and passes the profile it names. Needed for a second Site whose library uses `generic`
+  cell names (drive `X<n>`, VT suffix `_HVT`/`_LVT`).
+- Rules unchanged. Pack tests 78/78; contract `libinsight-analyses.test.ts` 8/8. A dry run of the three
+  rules with `--naming generic` on that Site matched the original-name corpus (results stay on the Site).
