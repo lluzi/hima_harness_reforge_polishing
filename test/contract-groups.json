@@ -49,6 +49,8 @@
     "test/contract/generic-workspace.host.test.ts",
     "test/contract/growth.host.test.ts",
     "test/contract/growth.test.ts",
+    "test/contract/guide-artifact-rounds.host.test.ts",
+    "test/contract/guide-context-artifact.test.ts",
     "test/contract/guide-context.host.test.ts",
     "test/contract/guide-sessions.host.test.ts",
     "test/contract/himateam-attachments.host.test.ts",

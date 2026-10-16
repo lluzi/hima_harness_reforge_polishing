@@ -9,6 +9,7 @@ import { libraryInsightDocument, type LibraryInsightReportView } from './library
 import { readGenerationFeedback, type GenerationFeedbackReport } from './generation-feedback-report.js';
 import type { ReadExperienceResult } from './experience.js';
 import { readChildSessionView } from './guide-sessions.js';
+import { delegationInputSelected, resolveDelegationInput, selectDelegationInput, type DelegationInputWindow } from './delegation.js';
 
 const id = z.string().min(1).max(1024);
 export const targetAddress = z.discriminatedUnion('kind', [
@@ -17,9 +18,18 @@ export const targetAddress = z.discriminatedUnion('kind', [
     .refine(value => value.executionId !== undefined || value.generation !== undefined, 'a node address needs executionId or generation'),
   z.strictObject({ kind: z.literal('report'), reportRef: id, version: id, sha256: z.string().regex(/^[a-f0-9]{64}$/) }),
   z.strictObject({ kind: z.literal('child'), parentSessionId: id, childSessionId: id }),
-  z.strictObject({ kind: z.literal('task-artifact'), runId: id, effectId: id, name: id }),
+  z.strictObject({ kind: z.literal('task-artifact'), runId: id, effectId: id, name: id,
+    path: z.string().max(1024).refine(value => !value.startsWith('/') || !/~(?![01])/.test(value), 'invalid JSON pointer escape').optional(),
+    offset: z.number().int().nonnegative().safe().optional(), limit: z.number().int().positive().safe().optional() }),
 ]);
 export type TargetAddress = z.infer<typeof targetAddress>;
+type ArtifactTarget = Extract<TargetAddress, { kind: 'task-artifact' }>;
+type ArtifactContent = {
+  kind: 'selection'; path: string; window: DelegationInputWindow; value: unknown; nextRequest?: ArtifactTarget;
+} | {
+  kind: 'overview'; path: string; nodeType: 'object' | 'array'; fields: { path: string; nodeType: string }[];
+  window: DelegationInputWindow; nextRequest?: ArtifactTarget;
+};
 export class GuideContextError extends Error {
   constructor(readonly code: 'hima/invalid-view-address' | 'hima/not-authorized' | 'hima/not-found' | 'hima/context-stale', message: string) { super(message); }
 }
@@ -119,11 +129,70 @@ export async function readGuideContext(deps: GuideContextDeps, request: { sessio
     try { artifact = await deps.readTaskArtifact(target.runId, target.effectId, target.name); }
     catch (error) { throw new GuideContextError('hima/context-stale', `The original task artifact cannot be read: ${String(error).slice(0, 1000)}`); }
     if (artifact.kind !== 'file') throw new GuideContextError('hima/not-found', 'This task artifact is not a readable file.');
-    const text = artifact.text?.slice(0, 64 * 1024);
-    return { ...head, facts: { kind: 'task-artifact' as const, ref: artifact.ref,
-      ...(text === undefined ? {} : { text }), truncated: artifact.truncated || (artifact.text?.length ?? 0) > 64 * 1024 },
-      sources: [target.runId, target.effectId, artifact.ref.sha256 ?? artifact.ref.id],
-      missing: text === undefined ? ['Binary artifact: verified reference is available; use the App to open or download its bytes.'] : [] };
+    const base = { ...head, sources: [target.runId, target.effectId, artifact.ref.sha256 ?? artifact.ref.id],
+      missing: artifact.text === undefined ? ['Binary artifact: verified reference is available; use the App to open or download its bytes.'] : [] };
+    const facts = { kind: 'task-artifact' as const, ref: artifact.ref, truncated: artifact.truncated };
+    const fits = (answer: unknown) => Buffer.byteLength(JSON.stringify(answer), 'utf8') <= 40_000;
+    const refuse = (reason: string): never => { throw new GuideContextError('hima/invalid-view-address', `${reason} Use the original artifact reference to open or download its bytes.`); };
+    const checked = <T,>(answer: T): T => fits(answer) ? answer : refuse('The artifact reference or selected view exceeds the 40000-byte context budget.');
+    // The Reader classifies text and verifies the complete bytes; its text is only a preview.
+    // Select from that same verified material so fields/windows beyond the preview remain reachable.
+    const text = artifact.text === undefined ? undefined : Buffer.from(artifact.bytes).toString('utf8');
+    if (text === undefined) {
+      if (delegationInputSelected(target)) refuse('Binary artifacts have no text fields or windows.');
+      return checked({ ...base, facts });
+    }
+    const complete = { ...base, facts: { ...facts, text } };
+    if (!delegationInputSelected(target) && text.length <= 40_000 && fits(complete)) return complete;
+    const resolved = resolveDelegationInput(text, target);
+    if (!resolved.ok) return refuse(resolved.reason);
+    const selectedPath = resolved.path;
+    if (selectedPath.length > 1024) return refuse('The canonical field path cannot be expressed by this artifact selector.');
+    const address = (path: string, offset?: number): ArtifactTarget => ({ kind: 'task-artifact', runId: target.runId,
+      effectId: target.effectId, name: target.name, path, ...(offset === undefined ? {} : { offset }),
+      ...(target.limit === undefined ? {} : { limit: target.limit }) });
+    const answer = (content: ArtifactContent) => ({ ...base, facts: { ...facts, truncated: artifact.truncated || content.kind === 'overview'
+      || content.path !== '' || content.window.offset > 0 || content.window.next !== null, content } });
+    const selection = (value: unknown, window: DelegationInputWindow): ArtifactContent => ({ kind: 'selection', path: selectedPath, value, window,
+      ...(window.next === null ? {} : { nextRequest: address(selectedPath, window.next) }) });
+    const node = resolved.value;
+    const container = node !== null && typeof node === 'object';
+    // Default large JSON exposes field names, not a prefix whose first value may consume the view.
+    // Explicit selections retain the existing input reader's item/entry/character window semantics.
+    if (!container || delegationInputSelected(target)) {
+      const selected = selectDelegationInput(text, target, (value, window) => fits(answer(selection(value, window))));
+      if (!selected.ok) return refuse(selected.reason);
+      if (selected.window.returned > 0 || selected.window.next === null) return checked(answer(selection(selected.value, selected.window)));
+    }
+    if (!container) return refuse('No character fits in this artifact window.');
+    const array = Array.isArray(node) ? node : undefined;
+    const keys = array === undefined ? Object.keys(node) : undefined;
+    const total = array?.length ?? keys!.length;
+    const offset = target.offset ?? 0;
+    if (offset > total) return refuse(`offset ${offset} is beyond the ${total} entries at this path.`);
+    const overview = (count: number): Extract<ArtifactContent, { kind: 'overview' }> => {
+      const page = Array.from({ length: count }, (_, index) => {
+        const key = array === undefined ? keys![offset + index]! : String(offset + index);
+        const value = array === undefined ? (node as Record<string, unknown>)[key] : array[offset + index];
+        return { path: `${selectedPath}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`,
+          nodeType: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value };
+      });
+      const next = offset + count < total ? offset + count : null;
+      return { kind: 'overview', path: selectedPath, nodeType: Array.isArray(node) ? 'array' : 'object', fields: page,
+        window: { unit: 'entries', offset, limit: target.limit ?? null, returned: count, total, next },
+        ...(next !== null ? { nextRequest: address(selectedPath, next) } : page[0] ? { nextRequest: address(page[0].path) } : {}) };
+    };
+    // Every field needs at least this much JSON, even with empty strings. The output budget
+    // therefore bounds candidate page allocation independently of the original entry count.
+    const maxFields = Math.floor(40_000 / JSON.stringify({ path: '', nodeType: '' }).length);
+    let low = 0; let high = Math.min(target.limit ?? total - offset, total - offset, maxFields);
+    while (low < high) { const mid = Math.ceil((low + high) / 2); if (fits(answer(overview(mid)))) low = mid; else high = mid - 1; }
+    if (low === 0 && offset < total) return refuse('No field directory entry fits in this artifact view.');
+    const content = overview(low);
+    if (content.fields.some(field => field.path.length > 1024 || field.path === '/')) {
+      return refuse('A field path cannot be expressed by this artifact selector.');
+    }
+    return checked(answer(content));
   }
   const facts = await deps.executionContext(target.runId);
   if (target.kind === 'node') {

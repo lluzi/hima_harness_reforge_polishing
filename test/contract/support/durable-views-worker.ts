@@ -1,6 +1,7 @@
 // @hima-seam agent wrapped
 // Actual private-package Host, local PG and normal Pack facade; no product model requests.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile, readFile, access, realpath, cp, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,11 +26,28 @@ if(fresh){
   if(mode==='delivery-revision')script=script.replace("write_text('verified task delivery')","write_text('verified task delivery '+str(x['period']))");
   if(mode==='delivery-generated-rename')script=script.replace("'artifacts':[{'name':'delivery','path':'delivery.txt','mediaType':'text/plain'},{'name':'arbitrary-binary','path':'package.bin','mediaType':'application/octet-stream'}]","'artifacts':[]").replace("v={'strict':", "p.joinpath('hima-experience').symlink_to(p.parent.parent/'refused-report',target_is_directory=True)\nv={'strict':");
   if(mode==='exit-projection')script=script.replace("p=pathlib.Path(w)\n","p=pathlib.Path(w)\nif x['period']==7:sys.exit(7)\n");
+  if(mode==='guide-artifact-rounds')script=`import json,pathlib,sys,time
+i,o,w=sys.argv[1:4]
+x=json.loads(pathlib.Path(i).read_text())
+p=pathlib.Path(w)
+round=x['round']
+p.joinpath('program-calls').open('a').write(str(round)+'\\n')
+if round==2:
+    p.joinpath('round-b-started').write_text('2')
+    while not p.joinpath('round-b-release').exists(): time.sleep(0.025)
+document={'best':{'round':round,'detail':'中文"\\\\ detail '*10000},'nextRound':{'round':round+1}}
+artifact='round-'+str(round)+'.json'
+p.joinpath(artifact).write_text(json.dumps(document,ensure_ascii=False))
+value={'strict':x['strict'],'period':x['period'],'goalMet':round==2,'round':round+1,'route':'stop' if round==2 else 'again'}
+pathlib.Path(o).write_text(json.dumps({'schemaVersion':'1','value':value,'artifacts':[{'name':'round-result','path':artifact,'mediaType':'application/json'}],'diagnostics':[]}))
+`;
   await writeFile(path.join(packDir,'flow/produce.py'),script);
   await writeFile(path.join(packDir,'contract.yml'),stringify({id:'facade-fixture',version:'1',title:'Frozen normal facade method',inputs:[{name:'workspaceRoot'}],outputs:[],words:{periodNs:{label:'Period',unit:'ns'}},goal:{periodNs:{type:'number',unit:'ns',min:0.1,max:10,default:1}},strategy:{periodNs:{type:'number',unit:'ns',min:0.1,max:10,default:2}},tools:[{id:'produce',file:'flow/produce.py',inputs:['FLOW','TASK_INPUT','TASK_OUTPUT','WORKSPACE'],argv:['/usr/bin/python3','${FLOW}/produce.py','${TASK_INPUT}','${TASK_OUTPUT}','${WORKSPACE}']}],environment:{wrappers:['/usr/bin/python3']},workspace:{source:'pack',copy:['produce.py']}}));
-  const schema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties:{strict:{type:'boolean'},period:{type:'number'},target:{type:'number'}},required:['strict','period','target']}};
-  const output={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties:{strict:{type:'boolean'},period:{type:'number'},goalMet:{type:'boolean'}},required:['strict','period']}};
-  await writeFile(path.join(packDir,'graph.yml'),stringify({schema:'hima-flow/1',id:'facade-fixture',version:'1',flow:{kind:'task',id:'produce',tool:'produce',contract:{input:schema,output},inputs:{strict:{source:'literal',value:false},period:{source:'strategy',path:['periodNs']},target:{source:'goal',path:['periodNs']}}}}));
+  const schema={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties:{strict:{type:'boolean'},period:{type:'number'},target:{type:'number'},...(mode==='guide-artifact-rounds'?{round:{type:'integer'}}:{})},required:['strict','period','target',...(mode==='guide-artifact-rounds'?['round']:[])]}};
+  const output={version:'1',schema:{$schema:'https://json-schema.org/draft/2020-12/schema',type:'object',additionalProperties:false,properties:{strict:{type:'boolean'},period:{type:'number'},goalMet:{type:'boolean'},...(mode==='guide-artifact-rounds'?{round:{type:'integer'},route:{type:'string',enum:['again','stop']}}:{})},required:['strict','period',...(mode==='guide-artifact-rounds'?['round','route']:[])]}};
+  const task={kind:'task',id:'produce',tool:'produce',contract:{input:schema,output},inputs:{strict:{source:'literal',value:false},period:{source:'strategy',path:['periodNs']},target:{source:'goal',path:['periodNs']},...(mode==='guide-artifact-rounds'?{round:{source:'carry',path:['round']}}:{})}};
+  await writeFile(path.join(packDir,'graph.yml'),stringify({schema:'hima-flow/1',id:'facade-fixture',version:'1',flow:mode==='guide-artifact-rounds'
+    ?{kind:'repeat',id:'rounds',body:task,carry:{round:{initial:{source:'literal',value:1},next:{taskId:'produce',path:['round']}}},stop:{output:{taskId:'produce',path:['route']},equals:'stop'},maxIterations:2,budget:'original-run'}:task}));
   await writeFile(path.join(sitesDir,'local.permit.yml'),stringify({allowedReadRoots:[workspace,packDir],allowedWriteRoots:[workspace],allowedWrappers:['/usr/bin/python3','sh'],forbidden:['services','licences','network','deletions','downloads']}));
   await writeFile(path.join(sitesDir,'local.yml'),stringify({name:'local',kind:'local',workspaceRoot:workspace,permit:'./local.permit.yml',bindings:{workspaceRoot:workspace},capacity:{cores:2,memoryGiB:1,parallelJobs:2,licences:{}}}));
 }
@@ -44,7 +62,107 @@ try {
   const project=service.ledger.projectDurableFact.bind(service.ledger),historyBarrier=new Promise<void>(resolve=>{resumeHistory=resolve;});
   service.ledger.projectDurableFact=async(...args:any[])=>{await historyBarrier;return project(...args);};
   const dependencies={ledger:service.ledger,judge:service.judge,sitesDir,packsDir,host:host.ctx,durable:runtime,durableModelSelection:host.ctx.get('agentDefaultModel').currentSelection()};
-  if(mode==='exit-projection') {
+  if(mode==='guide-artifact-rounds') {
+    // Actual Host/PG, normal preparation, local command adapter and artifact reader. Only the
+    // external engineering program is a deterministic fixture; no model/SSH/EDA is involved.
+    const owner=await createRootAgent(host.ctx,workspace),guide=await createRootAgent(host.ctx,workspace);
+    assert.notEqual(String(owner.id),String(guide.id),'inspection uses a real separate Guide conversation');
+    const foreignPath=path.join(home,'foreign');await mkdir(foreignPath);const foreign=await createRootAgent(host.ctx,foreignPath);
+    const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
+    const waitFor=async(label:string,ready:()=>Promise<boolean>)=>{
+      for(let attempt=0;attempt<400;attempt++){if(await ready())return;await new Promise(resolve=>setTimeout(resolve,25));}
+      assert.fail(`Timed out waiting for ${label}`);
+    };
+    let call=0;
+    const tool=async(name:string,args:any,agent=guide)=>host.ctx.tools.execute({callId:`guide-rounds-${++call}`,name,arguments:args,agent,signal:AbortSignal.timeout(10000)});
+    const valueOf=(answer:any)=>{assert.notEqual(answer.isError,true,JSON.stringify(answer));return JSON.parse(answer.content.find((part:any)=>part.type==='text').text);};
+    const opened=await service.startRun({pack:'facade-fixture',site:'local',goal:{periodNs:1},strategy:{periodNs:2},ownerSessionId:String(owner.id),guideSessionId:String(guide.id)});
+    const runId=opened.run.id;
+    let taskRoot:string|undefined,released=false,receipt:any;
+    const releaseB=async()=>{if(taskRoot&&!released){
+      const marker=path.join(taskRoot,'round-b-release');await writeFile(marker+'.tmp','release');await rename(marker+'.tmp',marker);released=true;
+    }};
+    try {
+      await waitFor('normal preparation workspace',async()=>{taskRoot=(await runtime.store.run(runId)).opening.data.product.workspace;return !!taskRoot&&await exists(path.join(taskRoot,'round-b-started'));});
+      const status=async()=>valueOf(await tool('hima_status',{run:runId}));
+      let current:any,a:any,b:any;
+      await waitFor('A committed and resources released while B is actually running',async()=>{
+        current=await status();
+        a=current.tasks.find((task:any)=>task.iterations?.some((item:any)=>item.repeatId==='rounds'&&item.iteration===0)&&task.result);
+        b=current.tasks.find((task:any)=>task.iterations?.some((item:any)=>item.repeatId==='rounds'&&item.iteration===1)&&task.identity);
+        return !!a&&!!b&&!b.result&&!!await runtime.store.effectFact(b.identity.effectId,'submitted')&&(await runtime.store.effectSnapshot(a.identity)).resourcesReleased===true;
+      });
+      assert.equal(a.identity.runId,runId);assert.equal(b.identity.runId,runId);assert.notEqual(a.identity.effectId,b.identity.effectId);
+      const original=a.result.artifacts.find((artifact:any)=>artifact.name==='round-result');assert.ok(original);
+      // The strict Guide address is copied from status, with no job/session/fact-ID conversion.
+      const address=(artifact:any,selector:any={})=>({kind:'task-artifact',runId:artifact.runId,effectId:artifact.effectId,name:artifact.name,...selector});
+      assert.equal(original.runId,runId);assert.equal(original.effectId,a.identity.effectId);
+      const inspect=async(artifact:any,selector:any={})=>{
+        const view=valueOf(await tool('hima_inspect',{requestId:`read-${call}`,target:address(artifact,selector)}));
+        assert.ok(Buffer.byteLength(JSON.stringify(view),'utf8')<=40000,'complete public inspect JSON is bounded');
+        assert.equal(view.facts.ref.sha256,artifact.sha256);assert.equal(view.facts.ref.path,artifact.path);
+        assert.deepEqual(view.sources,[runId,artifact.effectId,artifact.sha256]);return view;
+      };
+      const boundary=async()=>{
+        const context=await service.readExecutionContext(runId),physical=await runtime.store.flowPhysicalFacts(runId);
+        return {control:context.run.control,commands:context.durable.controls,
+          dispatches:physical.effects.flatMap((effect:any)=>effect.dispatches.map((dispatch:any)=>({effectId:effect.identity.effectId,...dispatch})))};
+      };
+      const before=await boundary();
+      const overview=await inspect(original);assert.equal(overview.facts.content.kind,'overview');
+      assert.ok(overview.facts.content.fields.some((field:any)=>field.path==='/best'));
+      const next=valueOf(await tool('hima_inspect',{requestId:'follow-original-directory',target:overview.facts.content.nextRequest}));
+      assert.ok(Buffer.byteLength(JSON.stringify(next),'utf8')<=40000);assert.equal(next.facts.ref.sha256,original.sha256);
+      assert.equal((await inspect(original,{path:'/best/round'})).facts.content.value,1);
+      assert.equal((await inspect(original,{path:'/nextRound/round'})).facts.content.value,2);
+      for(const [agent,target] of [[foreign,address(original)],[guide,address(original,{effectId:'unrelated-effect'})],
+        [guide,address(original,{effectId:b.identity.effectId})],[guide,address(original,{name:'unknown'})]]) {
+        const denied=await tool('hima_inspect',{requestId:`negative-${call}`,target},agent);assert.equal(denied.isError,true,JSON.stringify(denied));
+      }
+      const originalFile=path.join(taskRoot!,original.path),originalBytes=await readFile(originalFile);
+      assert.equal(createHash('sha256').update(originalBytes).digest('hex'),original.sha256);
+      try {
+        await writeFile(originalFile,'changed original bytes');
+        const denied=await tool('hima_inspect',{requestId:'changed-original-hash',target:address(original,{path:'/best/round'})});
+        assert.equal(denied.isError,true,'changed source bytes cannot silently use current B or a replacement reference');
+        assert.match(JSON.stringify(denied),/hash|changed|SHA|digest|match/i);
+      } finally {await writeFile(originalFile,originalBytes);}
+      assert.deepEqual(await boundary(),before,'reads and refusals do not change owner/control/dispatch while B waits');
+      assert.equal((await inspect(original,{path:'/best/round'})).facts.content.value,1);
+      await releaseB();
+      await waitFor('both original effects committed and physically closed',async()=>{
+        current=await status();
+        const rounds=current.tasks.filter((task:any)=>task.taskId==='produce'&&task.result);
+        return rounds.length===2&&(await Promise.all(rounds.map(async(task:any)=>(await runtime.store.effectSnapshot(task.identity)).resourcesReleased))).every(Boolean);
+      });
+      b=current.tasks.find((task:any)=>task.iterations?.some((item:any)=>item.repeatId==='rounds'&&item.iteration===1)&&task.result);assert.ok(b);
+      const latest=b.result.artifacts.find((artifact:any)=>artifact.name==='round-result');assert.ok(latest);
+      assert.equal(latest.runId,runId);assert.equal(latest.effectId,b.identity.effectId);assert.notEqual(latest.sha256,original.sha256);
+      await waitFor('normal report/archive delivery',async()=> (await readers.readRunAssets(runId)).kind==='read');
+      const afterCommit=await boundary();
+      assert.equal((await inspect(original,{path:'/best/round'})).facts.content.value,1);
+      assert.equal((await inspect(latest,{path:'/best/round'})).facts.content.value,2);
+      assert.deepEqual(await boundary(),afterCommit,'post-commit Guide reads preserve owner/control/dispatch');
+      assert.equal(await readFile(path.join(taskRoot!,'program-calls'),'utf8'),'1\n2\n','each repeat command executes once');
+      receipt={ok:true,runId,aEffect:original.effectId,bEffect:latest.effectId,aSha:original.sha256,bSha:latest.sha256,
+        statusAddresses:true,aCommittedBRunning:true,bothAfterCommit:true,boundedInspect:true,wrongIdentityProjectAndHashDenied:true,readOnly:true,productModelCalls:0};
+    } finally {
+      try {await releaseB();} finally {
+      const stopped=await service.cancelRun(runId);
+      await waitFor('fixture Run resource closure',async()=> {
+        if(stopped.kind!=='ended')return (await service.readExecutionContext(runId)).run.stopState?.closed===true;
+        // Ordinary successful Runs have no cancellation stopState. Inspect actual resource leases;
+        // derived bookkeeping effects need no lease, and original Job sessions are checked below.
+        return (await runtime.store.flowPhysicalFacts(runId)).resources.every((resource:any)=>resource.released);
+      });
+      for(const effect of (await runtime.store.flowPhysicalFacts(runId)).effects) {
+        const submitted=await runtime.store.effectFact(effect.identity.effectId,'submitted');
+        if(submitted?.session)assert.equal(spawnSync('tmux',['has-session','-t',`=${submitted.session}`],{timeout:5000}).status,1,'actual original Job is absent before Host disposal');
+      }
+      }
+    }
+    process.send!(receipt);
+  } else if(mode==='exit-projection') {
     const owner=await createRootAgent(host.ctx,workspace);
     const {createDurableViewReaders}=await load('durable-views'),readers=createDurableViewReaders(dependencies);
     const url=host.ctx.connection.authenticatedUrl(`http://127.0.0.1:${host.ctx.webServer.port}`);

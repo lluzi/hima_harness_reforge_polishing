@@ -267,15 +267,9 @@ const pathSegments = (named: string): string[] | undefined => {
   return parts.some((part) => part === '') ? undefined : parts;
 };
 
-/**
- * One window of the node `path` names in an input's text (its JSON document; a text that is not JSON
- * has only the empty path): the items of an array, the entries of an object, the characters of a
- * string, or a scalar. `fits` says whether an answer carrying a candidate value and window stays inside
- * the reader's bounded view; the window returned is the longest from `offset`, up to `limit`, that
- * fits. A path that names nothing in the document, or a malformed window, is a refusal.
- */
-export function selectDelegationInput(text: string, request: DelegationInputSelection,
-  fits: (value: unknown, window: DelegationInputWindow) => boolean): { ok: true; value: unknown; window: DelegationInputWindow } | { ok: false; reason: string } {
+/** Resolve the input reader's existing selector and expose its canonical pointer for field discovery. */
+export function resolveDelegationInput(text: string, request: DelegationInputSelection):
+  { ok: true; value: unknown; path: string } | { ok: false; reason: string } {
   const named = request.path ?? '';
   if (typeof named !== 'string' || named.length > 1024) return { ok: false, reason: 'path must be a dotted field path or a JSON pointer of at most 1024 characters.' };
   const offset = request.offset ?? 0;
@@ -294,6 +288,22 @@ export function selectDelegationInput(text: string, request: DelegationInputSele
       node = (node as Record<string, unknown>)[segment];
     } else return { ok: false, reason: `path ${JSON.stringify(named)} does not exist in this input (no field ${at}).` };
   }
+  return { ok: true, value: node, path: segments.length === 0 ? '' : '/' + segments.map(segment => segment.replaceAll('~', '~0').replaceAll('/', '~1')).join('/') };
+}
+
+/**
+ * One window of the node `path` names in an input's text (its JSON document; a text that is not JSON
+ * has only the empty path): the items of an array, the entries of an object, the characters of a
+ * string, or a scalar. `fits` says whether an answer carrying a candidate value and window stays inside
+ * the reader's bounded view; the window returned is the longest from `offset`, up to `limit`, that
+ * fits. A path that names nothing in the document, or a malformed window, is a refusal.
+ */
+export function selectDelegationInput(text: string, request: DelegationInputSelection,
+  fits: (value: unknown, window: DelegationInputWindow) => boolean): { ok: true; value: unknown; window: DelegationInputWindow } | { ok: false; reason: string } {
+  const resolved = resolveDelegationInput(text, request);
+  if (!resolved.ok) return resolved;
+  const node = resolved.value;
+  const offset = request.offset ?? 0;
   const limit = request.limit ?? null;
   const windowOf = (unit: DelegationInputWindow['unit'], returned: number, total: number): DelegationInputWindow =>
     ({ unit, offset, limit, returned, total, next: offset + returned < total ? offset + returned : null });
