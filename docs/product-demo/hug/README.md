@@ -5,13 +5,17 @@ recording and editing process itself. These notes are the HUG-specific inputs.
 
 ## The build (freeze; never patch between takes)
 
-- **App:** `.hima-tmp/hug-release/app-rc1/HimaHarness.app`, packaged from tag `hug-rc1` (`04ef5d05`).
-  It passed the packager's verification and its relocated-Host smoke test.
-- **Packs and Sites:** use tag `hug-rc1.1`. It is `hug-rc1` plus a Site re-point and this note, with no
-  change under `packages/`, so the App above stays valid. Make a source snapshot for the kits:
-  `git worktree add --detach .hima-tmp/hug-release/src-rc1.1 hug-rc1.1`.
-- **If a take exposes a product bug:** fix it on `HUG-DBOS`, tag `hug-rc2`, repackage with
-  `.hima-tmp/hug-release/package.sh hug-rc2 rc2`, and re-record only the affected demo. Never patch a
+- **App:** `.hima-tmp/hug-release/app-rc3/HimaHarness.app`, packaged from tag `hug-rc3` (`d95c55ff`), the
+  aiX UI and brand v2 on HUG-DBOS. It passed the packager's verification and its relocated-Host smoke
+  test, and a fresh-Home launch showed the aiX lockup and home screen.
+- **Packs and Sites:** use the same tag. The packager already made the source snapshot for the kits:
+  `.hima-tmp/hug-release/src-rc3`.
+- **First launch in a new Home** shows the "Internal Testing Notice" (still worded "DeepSeek Harness")
+  and the API-key prompt. Clear both while preparing the kit, not on camera.
+- **Older builds:** `app-rc1` (`hug-rc1`) and `app-rc2` (`hug-rc2`) have the pre-aiX UI. Don't mix
+  them with rc3 takes in one video. Runs started on another build don't resume on rc3.
+- **If a take exposes a product bug:** fix it on `HUG-DBOS`, tag `hug-rc4`, repackage with
+  `.hima-tmp/hug-release/package.sh hug-rc4 rc4`, and re-record only the affected demo. Never patch a
   packaged App or inject CSS by hand.
 
 ## The five demos
