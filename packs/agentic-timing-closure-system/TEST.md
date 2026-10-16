@@ -57,3 +57,13 @@ AutoFix comparison, physical adoption/signoff or human final acceptance is claim
 Checkpoint/ECO/scripts/raw Timing/reproduction materials were opened and downloaded;
 normal Quit closed the recorded owned resources. Detailed four-verdict evidence remains at
 docs/assessment/dbos-atcs-migration/README.md and acceptance.json.
+
+## 0.4.12 aiX station-view labels (2026-10-16)
+
+- **Change.** Display only: the four top chips in `view.yml` are labelled "Setup at start", "Setup best",
+  "Hold at start" and "Hold best", so they fit the aiX App's side pane (450 px) in two lines instead of
+  three. Readers, types, picks and goals are unchanged; `flow/` and every task contract are untouched, so
+  the resident wrapper and its capability file stay valid.
+- **Check.** `scripts/preview-team-view.mjs --pack-dir …` on hug-rc3 loads and validates the view and
+  renders the four chips in two lines at 450 px.
+- **Packaged App.** Next: the hug-rc3 App with this Pack installed into a fresh kit for the aiX ATCS video.

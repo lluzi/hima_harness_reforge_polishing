@@ -31,10 +31,11 @@ edges:
   - { from: engineer, to: check, label: result }
   - { from: check, to: delivery, label: report }
 # Setup and hold violation counts, baseline (fixed at the common R1 start) against the best so far.
-# The "now" lines carry the Goal of zero remaining violations: the Goal's WNS targets are both 0, and
-# zero WNS is zero timing violations, so they supply the "0" target the chip designer expects.
+# The "best" chips carry the Goal of zero remaining violations: the Goal's WNS targets are both 0, and
+# zero WNS is zero timing violations, so they supply the "0" target the chip designer expects. Labels
+# stay short so the four chips fit the side pane in two lines (aiX UI, 2026-10-16).
 metrics:
-  - { label: Setup violations (start), reader: atcs-engineering-result, type: tc_engineering_before_setup_violation_count, pick: latest }
-  - { label: Setup violations (best), reader: atcs-engineering-result, type: tc_engineering_setup_violation_count, pick: best, better: lower, goal: target_setup_wns_ns }
-  - { label: Hold violations (start), reader: atcs-engineering-result, type: tc_engineering_before_hold_violation_count, pick: latest }
-  - { label: Hold violations (best), reader: atcs-engineering-result, type: tc_engineering_hold_violation_count, pick: best, better: lower, goal: target_hold_wns_ns }
+  - { label: Setup at start, reader: atcs-engineering-result, type: tc_engineering_before_setup_violation_count, pick: latest }
+  - { label: Setup best, reader: atcs-engineering-result, type: tc_engineering_setup_violation_count, pick: best, better: lower, goal: target_setup_wns_ns }
+  - { label: Hold at start, reader: atcs-engineering-result, type: tc_engineering_before_hold_violation_count, pick: latest }
+  - { label: Hold best, reader: atcs-engineering-result, type: tc_engineering_hold_violation_count, pick: best, better: lower, goal: target_hold_wns_ns }
