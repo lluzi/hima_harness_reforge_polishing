@@ -19,14 +19,17 @@ from shapely.geometry import Point, LineString, Polygon
 from shapely.ops import unary_union
 
 
-def _union(polys, layer, P0):
+def _union(polys, layer, P0, overhang=()):
     gs = [Polygon(p + [k * P0, 0]).buffer(0)
           for (n, i, p) in polys if n == layer for k in (-1, 0, 1)]
+    gs += [Polygon(polys[pi][2] + [k * P0, dy]).buffer(0)
+           for (pi, dy) in overhang if polys[pi][0] == layer for k in (-1, 0, 1)]
     return unary_union(gs) if gs else Polygon()
 
 
 def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
-             legalise=False, reach_extra=0.0, zone_fn=None, margin=0.0, skip_fn=None):
+             legalise=False, reach_extra=0.0, zone_fn=None, margin=0.0, skip_fn=None,
+             overhang=()):
     """Append vertex-to-edge distance rows via ``ge``; return the row count.
 
     A row that holds the full rule distance asks for ``margin`` more (the grid step): the written
@@ -38,9 +41,14 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
 
     A row ``skip_fn(kind, La, Lb, vertex->foot)`` marks is not written at all: a chamfer distance
     a through-chain pitch compacts past, left to the verified repairs (scanline rows still hold).
+
+    ``overhang`` lists ``(polygon index, dy)``: a polygon that overhangs the cell's edge across the
+    motion has a copy in the neighbouring cell, offset by ``dy`` and moving with the same
+    variables; its vertices and edges enter the rows too (a corner-to-corner spacing to that copy
+    once broke in the 2x2 tile).
     """
     layers = sorted(set(n for n, _, _ in polys))
-    U = {L: _union(polys, L, P0) for L in layers}
+    U = {L: _union(polys, L, P0, overhang) for L in layers}
 
     # rule table: (La, Lb) -> list of (kind, d1, d2)
     rules = {}
@@ -61,6 +69,14 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
             a, b = p[v], p[(v + 1) % N]
             if abs(a[1] - b[1]) > 1e-9:
                 edges.append((a[0], a[1], b[0], b[1], n, var(pi, v), pi))
+    for pi, dy in overhang:
+        n, i, p = polys[pi]
+        N = len(p)
+        for v in range(N):
+            verts.append((p[v][0], p[v][1] + dy, n, var(pi, v), (pi, dy)))
+            a, b = p[v], p[(v + 1) % N]
+            if abs(a[1] - b[1]) > 1e-9:
+                edges.append((a[0], a[1] + dy, b[0], b[1] + dy, n, var(pi, v), (pi, dy)))
 
     count = 0
     seen = set()
@@ -96,6 +112,8 @@ def generate(polys, var, P0, iP, width, space, xspace, enc, ge, tag,
                             continue
                         if pie == piv and k == 0 and kind != "same":
                             continue
+                        if (isinstance(pie, tuple) or isinstance(piv, tuple)) and je == jv:
+                            continue  # a shape and its neighbour copy on one variable: fixed
                         seg = LineString([(X0, y0), (X1, y1)])
                         dist = seg.distance(Point(vx, vy))
                         if dist < 1e-6 or dist > reach:

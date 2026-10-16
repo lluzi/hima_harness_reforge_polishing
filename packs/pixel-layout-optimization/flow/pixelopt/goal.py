@@ -1,4 +1,4 @@
-"""Resolve the seven Goal numbers and the seven Strategy knobs (stdlib only).
+"""Resolve the nine Goal numbers and the nine Strategy knobs (stdlib only).
 
 A Goal value of ``0`` means "take the manifest's target"; for the outline it
 falls back to the original cell when the manifest states none, the ratio target
@@ -18,6 +18,8 @@ _STRATEGY_DEFAULTS = {
     "convergeBandPct": 0.02,
     "maxRounds": 6,
     "convergePatienceRounds": 2,
+    "outlineMode": "target",
+    "warmStart": "off",
 }
 
 
@@ -45,7 +47,10 @@ def resolve(goal, strategy, case, original):
     sources = {}
 
     # -- outline (0 -> manifest target -> original) ------------------------- #
-    manifest_outline = targets.get("outlineUm")
+    # outlineMode "fixed": the cell keeps its size, so an unstated outline is the original's, not
+    # the manifest's shrink target, and plan-check holds every front point to it.
+    outline_mode = "fixed" if strat.get("outlineMode") == "fixed" else "target"
+    manifest_outline = targets.get("outlineUm") if outline_mode == "target" else None
     orig_outline = (original or {}).get("outlineUm")
     for idx, name in ((0, "outline_w_um"), (1, "outline_h_um")):
         g = _num(goal, name, 0)
@@ -102,6 +107,12 @@ def resolve(goal, strategy, case, original):
     values["cst_ceiling_ff"] = _num(goal, "cst_ceiling_ff", 0)
     sources["cst_ceiling_ff"] = "goal"
 
+    # -- secondary coupling targets (0 = none; a plain Goal value) ----------- #
+    for name in ("anode_coupling_max_ff", "scan_coupling_max_ff"):
+        g = _num(goal, name, 0)
+        values[name] = g if g > 0 else None
+        sources[name] = "goal" if g > 0 else "none"
+
     ratio_nets = (manifest.get("ratioDefinitions", {}) or {}).get(ratio_def, [])
 
     return {
@@ -115,4 +126,6 @@ def resolve(goal, strategy, case, original):
         "convergeBandPct": float(strat["convergeBandPct"]),
         "maxRounds": max(1, int(round(_num(strat, "maxRounds", 6)))),
         "convergePatienceRounds": max(1, int(round(_num(strat, "convergePatienceRounds", 2)))),
+        "outlineMode": outline_mode,
+        "warmStart": "prior-runs" if strat.get("warmStart") == "prior-runs" else "off",
     }

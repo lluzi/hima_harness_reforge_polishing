@@ -82,6 +82,8 @@ _METRICS = [
     ("load", "load rise / allowance", "pixel_load_increase_max_pct", "load_allowance_pct", True),
     ("t", "transmittance / edge", "pixel_t_judged_pct", None, False),
     ("drc_authority_3x3", "authority 3x3 markers", "pixel_drc_authority_3x3", None, True),
+    ("c_anode", "C(storage, anode) / original", "pixel_ct_anode_ff", "original", True),
+    ("c_lines", "C(storage, scan line) / original", "pixel_ct_lines_ff", "original", True),
 ]
 
 
@@ -98,6 +100,7 @@ def trend(history, goal):
     t_max = _num(gvalues.get("t_max_pct"))
 
     order = [row.get("id") for row in history]
+    originals = next((row for row in history if row.get("id") == "original"), None) or {}
     metrics = {}
     for key, label, type_, goal_key, lower in _METRICS:
         points = []
@@ -108,6 +111,9 @@ def trend(history, goal):
                 if key == "t":
                     edge = t_max if t_max else (t_min if t_min else None)
                     value = raw / edge if edge else raw
+                elif goal_key == "original":
+                    base = _value(originals, type_)
+                    value = raw / base if base else raw
                 elif goal_key is not None:
                     target = _num(gvalues.get(goal_key))
                     value = raw / target if target else raw
@@ -151,6 +157,8 @@ _COLORS = {
     "load": "#d62728",
     "t": "#9467bd",
     "drc_authority_3x3": "#8c564b",
+    "c_anode": "#17becf",
+    "c_lines": "#e377c2",
 }
 
 

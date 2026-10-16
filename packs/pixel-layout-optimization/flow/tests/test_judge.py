@@ -36,7 +36,8 @@ def make_readiness(case):
         "extraction": {k: ext[k]["sha256"] for k in _EXT_KEYS},
     }
     return {"goal": g, "manifest": case.raw, "options": ropts,
-            "original": {"loads": {"SC": 2.7, "AN": 8.85}, "cstDeviceFf": 12.0}}
+            "original": {"loads": {"SC": 2.7, "AN": 8.85}, "cstDeviceFf": 12.0,
+                         "floatingNets": 0}}
 
 
 def build_env(sidecar=None, geom=None):

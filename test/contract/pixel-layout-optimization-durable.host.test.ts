@@ -6,9 +6,10 @@ import {dbosHome,cleanDbosHome} from './support/dbos-process.ts';
 
 // Normal frozen pixel-layout-optimization Pack, actual Host/PG/resident wrapper/Reader; only the EDA
 // tools and the resident engineer ACP are stand-ins (test/fixtures/pixel-dry/{prepare.py,acp.py}).
-// Proves the whole hima-flow/1 graph, including the repeat of plan-round -> solve-and-judge ->
-// decide-round, runs its expected number of rounds on the real Host and durable runtime with zero
-// model calls, one resident engineering job and one pixel-plan Reader job per round, ending goal-met.
+// Proves the whole hima-flow/1 graph, including the repeat of (plan-round || repair-round) ->
+// solve-and-judge -> decide-round, runs its expected number of rounds on the real Host and durable
+// runtime with zero model calls, two resident engineering jobs (the layout and the repair engineer,
+// in one parallel block) and their two Reader jobs per round, ending goal-met.
 test('pixel-layout-optimization dry route runs the whole graph through the real Host',{timeout:1620000},async(t)=>{
  const home=await dbosHome();
  const child=spawn(process.execPath,[fileURLToPath(new URL('./support/pixel-dry-durable-worker.ts',import.meta.url)),home],{env:process.env,stdio:['ignore','pipe','pipe','ipc']});
@@ -22,9 +23,9 @@ test('pixel-layout-optimization dry route runs the whole graph through the real 
   assert.equal(proof.productModelCalls,0);
   assert.ok(proof.rounds>=1,JSON.stringify(proof));
   assert.equal(proof.readerJobs,proof.engineeringJobs,'one Reader job per resident task execution');
-  assert.equal(proof.engineeringJobs,proof.rounds,'one resident engineering job per round');
-  assert.equal(proof.readerJobs,proof.rounds,'one pixel-plan Reader job per round');
-  assert.equal(proof.tasks,6+proof.rounds*3,JSON.stringify(proof));
+  assert.equal(proof.engineeringJobs,2*proof.rounds,'two resident engineering jobs per round (layout + repair)');
+  assert.equal(proof.readerJobs,2*proof.rounds,'one pixel-plan and one pixel-repair-plan Reader job per round');
+  assert.equal(proof.tasks,6+proof.rounds*4,JSON.stringify(proof));
   assert.equal(proof.goalState,'met',JSON.stringify(proof));
   assert.equal(proof.ending,'goal-met',JSON.stringify(proof));
   assert.equal(proof.goalMet,true,JSON.stringify(proof));

@@ -17,8 +17,11 @@ emits:
   - pixel_ratio_narrow_pct
   - pixel_ratio_broad_pct
   - pixel_ct_judged_ff
+  - pixel_ct_anode_ff
+  - pixel_ct_lines_ff
   - pixel_ratio_judged_pct
   - pixel_coupling_over_limit_count
+  - pixel_floating_new_count
   - pixel_load_increase_max_pct
   - pixel_load_over_limit_count
   - pixel_outline_w_um

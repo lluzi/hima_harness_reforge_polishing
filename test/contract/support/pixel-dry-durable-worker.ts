@@ -68,7 +68,7 @@ try {
  // Generous targets with the transmittance window widened (t_max_pct 100), exactly as the Pack's own
  // route test does for its goal-met case: a clean legal candidate meets outline and ratio in round 1.
  const opening=await bounded<StartRunResult>('public startRun',service.startRun({pack:packId,site:'local',test:true,
-  goal:{outline_w_um:1000,outline_h_um:1000,ratio_target_pct:1000,load_allowance_pct:5,t_min_pct:0,t_max_pct:100,cst_ceiling_ff:0},
+  goal:{outline_w_um:1000,outline_h_um:1000,ratio_target_pct:1000,load_allowance_pct:5,t_min_pct:0,t_max_pct:100,cst_ceiling_ff:0,anode_coupling_max_ff:0,scan_coupling_max_ff:0},
   strategy:{ratioDefinition:'broad',transmittanceBasis:'tiled',extraCsOverlap:'count',topologyMoves:'off',convergeBandPct:0.02},
   ownerSessionId:String(owner.id),timeBoxMs:1800000}),15000);
  assert.ok(opening.kind==='ran'||opening.kind==='preparing',JSON.stringify(opening));runId=opening.run.id;assert.ok(runId);
@@ -83,8 +83,9 @@ try {
  const rounds=countById('decide-round');
  assert.ok(rounds>=1,`expected at least one round; got ${rounds}`);
  assert.equal(countById('plan-round'),rounds,'one plan-round per round');
+ assert.equal(countById('repair-round'),rounds,'one repair-round per round, in parallel with plan-round');
  assert.equal(countById('solve-and-judge'),rounds,'one solve-and-judge per round');
- const expectedTasks=6+rounds*3;
+ const expectedTasks=6+rounds*4;
  assert.equal(resultTasks.length,expectedTasks,`expected ${expectedTasks} task executions for ${rounds} round(s); got ${resultTasks.length}`);
  // Every resident plan-round's committed Reader observation must be clean: the pixel-plan Reader
  // fails closed, so a dry route that admits a plan must carry pixel_plan_error_count == 0 on every
@@ -95,15 +96,15 @@ try {
   if(typeof value==='string'){try{value=JSON.parse(value);}catch{value=undefined;}}
   const observations=Array.isArray(value?.observations)?value.observations:[];
   for(const observation of observations)for(const fact of (Array.isArray(observation?.values)?observation.values:[]))
-   if(fact?.type==='pixel_plan_error_count'){readerReadingsSeen+=1;if(fact.value!==0)dirtyReaders.push({taskId:task.taskId,value:fact.value});}
+   if(fact?.type==='pixel_plan_error_count'||fact?.type==='pixel_repair_plan_error_count'){readerReadingsSeen+=1;if(fact.value!==0)dirtyReaders.push({taskId:task.taskId,type:fact.type,value:fact.value});}
  }
- assert.ok(readerReadingsSeen>=rounds,`expected at least ${rounds} reader readings; saw ${readerReadingsSeen}`);
+ assert.ok(readerReadingsSeen>=2*rounds,`expected at least ${2*rounds} reader readings; saw ${readerReadingsSeen}`);
  assert.equal(dirtyReaders.length,0,`every pixel-plan reading must report error_count 0: ${JSON.stringify(dirtyReaders)}`);
  const records=await readers.readRunRecords(runId,'job'),launched=records.filter((record:any)=>record.event==='launched');
- const engineeringJobs=launched.filter((record:any)=>record.job.name==='engineering-plan-round').length;
- const readerJobs=launched.filter((record:any)=>record.job.name==='reader-pixel-plan').length;
- assert.equal(engineeringJobs,rounds,'one resident engineering job per round');
- assert.equal(readerJobs,rounds,'one pixel-plan Reader job per round');
+ const engineeringJobs=launched.filter((record:any)=>record.job.name==='engineering-plan-round'||record.job.name==='engineering-repair-round').length;
+ const readerJobs=launched.filter((record:any)=>record.job.name==='reader-pixel-plan'||record.job.name==='reader-pixel-repair-plan').length;
+ assert.equal(engineeringJobs,2*rounds,'two resident engineering jobs per round (layout + repair)');
+ assert.equal(readerJobs,2*rounds,'one pixel-plan and one pixel-repair-plan Reader job per round');
  const evaluateValue=resultTasks.find((task:any)=>task.taskId==='evaluate').result.value;
  const deliverValue=resultTasks.find((task:any)=>task.taskId==='deliver').result.value;
  assert.equal(evaluateValue.ending,'goal-met',JSON.stringify(evaluateValue));

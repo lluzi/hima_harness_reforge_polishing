@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: pixel-layout-optimization
-version: 0.2.0
+version: 0.6.5
 flow:
   kind: sequence
   id: pixel
@@ -18,6 +18,8 @@ flow:
       t_min_pct: {source: goal, path: [t_min_pct]}
       t_max_pct: {source: goal, path: [t_max_pct]}
       cst_ceiling_ff: {source: goal, path: [cst_ceiling_ff]}
+      anode_coupling_max_ff: {source: goal, path: [anode_coupling_max_ff]}
+      scan_coupling_max_ff: {source: goal, path: [scan_coupling_max_ff]}
       ratioDefinition: {source: strategy, path: [ratioDefinition]}
       transmittanceBasis: {source: strategy, path: [transmittanceBasis]}
       extraCsOverlap: {source: strategy, path: [extraCsOverlap]}
@@ -25,6 +27,8 @@ flow:
       convergeBandPct: {source: strategy, path: [convergeBandPct]}
       maxRounds: {source: strategy, path: [maxRounds]}
       convergePatienceRounds: {source: strategy, path: [convergePatienceRounds]}
+      outlineMode: {source: strategy, path: [outlineMode]}
+      warmStart: {source: strategy, path: [warmStart]}
     contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/prepare-case-output'}}}
   - kind: task
     id: judge-original
@@ -63,18 +67,37 @@ flow:
       kind: sequence
       id: round
       steps:
-      - kind: task
-        id: plan-round
-        tool: plan-round
-        inputs:
-          ROUND: {source: carry, path: [roundState, round]}
-        contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/plan-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+      # The layout engineer plans new moves while the repair engineer repairs the last round's
+      # near-misses; both deliveries are judged together by solve-and-judge.
+      - kind: parallel
+        id: engineers
+        results: {}
+        branches:
+          layout:
+            required: true
+            flow:
+              kind: task
+              id: plan-round
+              tool: plan-round
+              inputs:
+                ROUND: {source: carry, path: [roundState, round]}
+              contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/plan-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
+          repair:
+            required: true
+            flow:
+              kind: task
+              id: repair-round
+              tool: repair-round
+              inputs:
+                ROUND: {source: carry, path: [roundState, round]}
+              contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/plan-round-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/resident-output'}}}
       - kind: task
         id: solve-and-judge
         tool: solve-and-judge
         inputs:
           ROUND: {source: carry, path: [roundState, round]}
           PLAN: {source: committedOutput, taskId: plan-round, path: []}
+          REPAIR: {source: committedOutput, taskId: repair-round, path: []}
         contract: {input: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/solve-and-judge-input'}}, output: {version: '1', schema: {$schema: 'https://json-schema.org/draft/2020-12/schema', $ref: 'schemas/tasks.json#/$defs/solve-and-judge-output'}}}
       - kind: task
         id: decide-round

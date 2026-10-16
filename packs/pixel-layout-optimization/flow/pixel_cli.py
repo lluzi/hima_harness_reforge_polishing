@@ -11,8 +11,8 @@ Three families:
   ``TASK_INPUT``, calls :func:`pixelopt.tasks.execute` and writes its
   ``{"schemaVersion","value","artifacts","diagnostics"}`` result to
   ``TASK_OUTPUT``.
-- resident subcommands (``card``, ``history``, ``show``, ``markers``,
-  ``try-edit``, ``plan-check``) — the engineering agent's permitted tools; the
+- resident subcommands (``card``, ``history``, ``ledger``, ``show``, ``markers``,
+  ``try-edit``, ``plan-check``, ``repair-check``) — the engineering agent's permitted tools; the
   layout-touching ones (``markers``, ``try-edit``) forward to the numeric
   driver with an explicit ``--campaign`` root, the rest are stdlib-only.
 - ``num-*`` — the numeric subcommands, forwarded to
@@ -77,6 +77,22 @@ def _cmd_history(workspace, args):
     print(json.dumps(rows, sort_keys=True, indent=1))
 
 
+def _cmd_ledger(workspace, args):
+    """The lever ledger of the last round decision: one line per lever, best measured first."""
+    path = os.path.join(workspace, "state", "round-decision.json")
+    decision = core.read_json(path)
+    for e in decision.get("ledger") or []:
+        print("%-70s %-9s n=%d legal=%d near-miss=%d dRatio(vs plain)=%s dRatio(vs base)=%s "
+              "dAnode=%s dScan=%s" % (e.get("lever"), e.get("objective"), e.get("n", 0),
+                                       e.get("legal", 0), e.get("nearMiss", 0),
+                                       e.get("bestDRatioPctVsPlain"), e.get("bestDRatioPctVsBase"),
+                                       e.get("bestDAnodeFfVsBase"), e.get("bestDScanFfVsBase")))
+        for x in e.get("examples") or []:
+            print("    %s %s round %s ratio %s legal %s params %s" % (
+                x.get("source"), x.get("id"), x.get("round"), x.get("ratioPct"), x.get("legal"),
+                json.dumps(x.get("params"), sort_keys=True)))
+
+
 def _cmd_show(workspace, args):
     parser = argparse.ArgumentParser(prog="show")
     parser.add_argument("--campaign", required=True)
@@ -122,6 +138,55 @@ def _cmd_plan_check(workspace, args):
         # The checked copy is written so the Reader can name the errors, but the resident must see
         # a refusal: a plan with errors is judged by nothing.
         raise PixelError("bad-plan", "plan has %d error(s): %s" % (len(errors), "; ".join(errors)))
+
+
+def _cmd_repair_check(workspace, args):
+    """The repair engineer's ``plan-check``: check ``--plan`` against the repair orders, the
+    schema and the ordinary bounded-edit rules, and write the checked copy to ``--out``."""
+    parser = argparse.ArgumentParser(prog="repair-check")
+    parser.add_argument("--plan", required=True)
+    parser.add_argument("--out", default=os.path.join("state", "round", "repair-plan.json"))
+    parser.add_argument("--campaign", default=None)
+    opts = parser.parse_args(args)
+
+    doc = _read_json(opts.plan)
+    readiness = _readiness(workspace)
+    history_ids = list(plan_mod._history_ids(workspace))
+    order_ids = list(plan_mod.repair_orders_ids(workspace))
+    if opts.campaign:
+        history_ids += list(plan_mod._history_ids(opts.campaign))
+        order_ids += list(plan_mod.repair_orders_ids(opts.campaign))
+    schema_errors = core.validate(doc, core.load_schema("repair-plan"))
+    out_path = opts.out if os.path.isabs(opts.out) else os.path.join(workspace, opts.out)
+    if not schema_errors:
+        core.write_json(out_path, doc)
+    errors = plan_mod.check_repair(doc, readiness, order_ids, history_ids,
+                                   round=doc.get("round") if isinstance(doc, dict) else None)
+    print(json.dumps({"errors": errors, "errorCount": len(errors),
+                      "written": (not schema_errors), "out": opts.out}, sort_keys=True, indent=1))
+    if schema_errors:
+        raise PixelError("bad-plan", "repair plan is not schema-valid: " + "; ".join(schema_errors))
+    if errors:
+        raise PixelError("bad-plan", "repair plan has %d error(s): %s" % (len(errors), "; ".join(errors)))
+
+
+def _cmd_repair_round(workspace, args):
+    """Resident fallback for the outsourced ``repair-round`` task: check the repair plan the
+    resident delivered at ``state/round/repair-plan.json`` and emit a resident-output envelope with
+    its ``pixel-repair-plan`` Reader values. It never fabricates a repair."""
+    path = os.path.join(workspace, "state", "round", "repair-plan.json")
+    if not os.path.exists(path):
+        raise PixelError("bad-plan", "no repair plan delivered at state/round/repair-plan.json")
+    readiness = _readiness(workspace)
+    values = plan_mod.repair_reader_values(path, workspace, readiness)
+    vmap = {r["type"]: r["value"] for r in values}
+    ok = vmap.get("pixel_repair_plan_error_count") == 0
+    print(json.dumps({
+        "observations": [{"contentSha256": core.sha256_file(path), "values": values}],
+        "engineering": {"outcome": "completed" if ok else "blocked",
+                        "summary": "repair plan checked against the repair orders and the edit rules",
+                        "stopReason": "" if ok else "repair plan has Reader errors"},
+    }, sort_keys=True))
 
 
 def _cmd_markers(workspace, args):
@@ -173,9 +238,12 @@ def _cmd_plan_round(workspace, args):
 _PRINTING = {
     "card": _cmd_card,
     "history": _cmd_history,
+    "ledger": _cmd_ledger,
     "show": _cmd_show,
     "plan-check": _cmd_plan_check,
     "plan-round": _cmd_plan_round,
+    "repair-check": _cmd_repair_check,
+    "repair-round": _cmd_repair_round,
 }
 _NUM_FORWARD = {
     "markers": _cmd_markers,

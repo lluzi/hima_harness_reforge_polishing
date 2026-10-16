@@ -392,13 +392,23 @@ export const HIMA_PRODUCT_CONTEXT = [
 /** The most Pack chart files the inventory names per Pack. */
 const packChartInventoryLimit = 12;
 
+/** What the Host last read of one DBOS Run's view: enough for the prompt inventory to name its
+ * state and its running tasks without a database read during prompt assembly. */
+export interface DurableRunSummary {
+  readonly status?: import('./ledger.js').RunStatus; readonly running: readonly string[]; readonly owner: string;
+  readonly asOf: string;
+}
+
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
  * Run id or customer material is exposed. Read afresh for every prompt assembly. */
-export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string, visibleRuns?: readonly RunRecord[]): string {
+export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string, visibleRuns?: readonly RunRecord[], durable?: ReadonlyMap<string, DurableRunSummary>): string {
   const packs = installedPacks(packsDir);
   const sites = installedSites(sitesDir);
   const charts: string[] = [];
-  const active = (visibleRuns ?? ledger.runs()).filter((run) => !hasEnded(run.status)).slice(-5);
+  // A DBOS Run's Ledger projection carries no scheduler status; its summary comes from the Host's
+  // poll of the durable view, so a Run in round 2 never reads as "preparing" and an ended one leaves.
+  const statusOf = (run: RunRecord) => durable?.get(run.id)?.status ?? run.status;
+  const active = (visibleRuns ?? ledger.runs()).filter((run) => !hasEnded(statusOf(run))).slice(-5);
   const packLine = packs.length === 0
     ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
     : `Installed HimaPacks: ${packs.map((id) => {
@@ -419,7 +429,11 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
     : `Saved Sites: ${sites.join(', ')}.`;
   const campaignLine = active.length === 0
     ? 'Active Campaigns: none.'
-    : `Active Campaigns: ${active.map((run) => `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${run.status ?? 'preparing'}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`).join('; ')}.`;
+    : `Active Campaigns: ${active.map((run) => {
+      const summary = durable?.get(run.id);
+      if (summary) return `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${summary.status ?? 'running'}${summary.running.length === 0 ? '' : ` at ${summary.running.join(', ')}`} (as of ${summary.asOf}; hima_context has the full facts)`;
+      return `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${run.status ?? 'preparing'}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`;
+    }).join('; ')}.`;
   const chartLine = charts.length === 0 ? [] : [`Pack charts (show one with hima_chart {pack, file}): ${charts.join('; ')}.`];
   return [`HimaHarness: ${versionLine()}.`, packLine, ...chartLine, siteLine, campaignLine].join('\n');
 }
@@ -526,7 +540,10 @@ export default class Hima extends Service {
   private readonly factStop = new AbortController();
   private factProjection:Promise<void>=Promise.resolve();
   private factNotifications:Promise<void>=Promise.resolve();
+  private factSummaries:Promise<void>=Promise.resolve();
   private readonly notifiedSourceRevisions=new Map<string,number>();
+  private readonly durableSummaries=new Map<string,DurableRunSummary>();
+  private readonly summaryRevisions=new Map<string,number>();
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
   private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
@@ -622,7 +639,7 @@ export default class Hima extends Service {
       order: this.ctx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION') + 10,
       text: context => {
         const agent = (context as { agent?: import('@deepseek-ai/dsh-agent').Agent }).agent;
-        if (!agent) return himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir);
+        if (!agent) return himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, undefined, this.durableSummaries);
         const id = String(agent.id);
         const childPolicy=delegationRuntimePolicy(this.deps(),id);
         if(childPolicy)return JSON.stringify({role:childPolicy.effective.role,delegation:childPolicy,source:'Ledger delegation admission',note:'You are a bounded child, not the Campaign owner or Guide. Return candidate evidence; do not adopt results or change authority.'});
@@ -631,7 +648,7 @@ export default class Hima extends Service {
         const roleInstruction=role==='execution-owner'
           ? 'Role: Campaign owner. Coordinate the retained Pack method, children and tools for your Run; use current Ledger evidence and ask the person only for a genuine business decision or authority expansion. Show charts with hima_chart: a Run report chart hima_context names (hima_chart {runId, path}) or a Pack chart the inventory names (hima_chart {pack, file}), each with one sentence on what it shows; the chart is the evidence, so never type its numbers yourself. Call it a "Project" when you talk to the person — "Campaign" stays the internal word for tool names, ids and records.'
           : 'Role: HimaGuide. Help the person understand capabilities, prepare Pack/Site/inputs, arrange a separate execution conversation, and explain sourced results. Do not become a Run owner. When you explain a design or method, show the Pack charts that support it with hima_chart {pack, file} (the inventory names them) and a Run\'s own report charts with hima_chart {runId, path}, each with a one-line note, and never type a chart\'s numbers yourself. Call it a "Project" when you talk to the person — "Campaign" stays the internal word for tool names, ids and records.';
-        return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
+        return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked, this.durableSummaries),
           roleInstruction,
           'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
           JSON.stringify({ asOf: new Date().toISOString(), sessionId: id,
@@ -652,7 +669,7 @@ export default class Hima extends Service {
       this.pendingProgressNotifications.clear();
       this.factStop.abort();
       await this.reconciled?.catch(() => undefined);
-      await Promise.all([this.factProjection,this.factNotifications]);
+      await Promise.all([this.factProjection,this.factNotifications,this.factSummaries]);
         observersClosed = true;
       }
       await closeOwnedConsumers();
@@ -849,9 +866,15 @@ export default class Hima extends Service {
         const assignments = [...new Map([...owned, ...guided].map(run => [run.runId, run])).values()];
         const role = owned.some(run => run.owner === actor) ? 'execution-owner' : owned.length ? 'former-owner' : 'guide';
         const inventory = assembled.contexts.find(item => item.name === 'hima:inventory');
+        // Each assignment carries the Run's current state and running tasks, read by the durable
+        // poll; without them an agent repeats whatever an earlier tool result said ("preparing").
         if (inventory) inventory.text = JSON.stringify({ role, sessionId: actor, source: 'hima-postgresql',
-          assignments: assignments.map(run => ({ runId: run.runId, owner: run.owner, epoch: run.epoch,
-            revision: run.revision, hold: run.hold, cancelled: run.cancelled })),
+          assignments: assignments.map(run => {
+            const summary = this.durableSummaries.get(run.runId);
+            return { runId: run.runId, owner: run.owner, epoch: run.epoch,
+              revision: run.revision, hold: run.hold, cancelled: run.cancelled,
+              ...(summary ? { status: summary.status ?? 'running', running: summary.running, asOf: summary.asOf } : {}) };
+          }),
           note: role === 'execution-owner'
             ? 'Understand the goal, discuss business decisions and inspect current task evidence. The workflow advances automatically after verified results and resource closure; do not call begin/work/complete for mechanical progression.'
             : role === 'former-owner' ? 'Ownership has moved. You can explain retained evidence; a former assignment grants no current business execution authority.'
@@ -882,6 +905,7 @@ export default class Hima extends Service {
     this.releaseDurableAdapters();
     this.factProjection=this.observeDurableFacts('history',()=>this.projectDurableHistory());
     this.factNotifications=this.observeDurableFacts('notifications',()=>this.deliverDurableBoundaries());
+    this.factSummaries=this.observeDurableFacts('run summaries',()=>this.refreshDurableSummaries());
   }
 
   /** Persisted ancestry carries Campaign responsibility through raw descendants and reopening.
@@ -1246,6 +1270,20 @@ export default class Hima extends Service {
       const opening=(original.opening.data as unknown as {run:import('./ledger.js').RunRecord}).run;
       await this.ledger.projectDurableFact(fact,opening);
     });
+  }
+
+  /** Re-read a DBOS Run's view only when its source revision or owner moved; the prompt
+   * inventory reads the cached summary synchronously. */
+  private async refreshDurableSummaries():Promise<void> {
+    for(const original of await this.durable.store.runs()) {
+      if(this.factStop.signal.aborted)return;
+      const sourceRevision=await this.durable.store.sourceRevision(original.runId);
+      if(this.summaryRevisions.get(original.runId)===sourceRevision&&this.durableSummaries.get(original.runId)?.owner===original.owner)continue;
+      const view=await this.viewReaders().readRunView(original.runId);if(!view)continue;
+      const running=[...new Set((view.tasks??[]).filter(task=>task.current!==false&&task.projection.state==='running').map(task=>task.taskId))].slice(0,4);
+      this.durableSummaries.set(original.runId,{status:view.run.status,running,owner:original.owner,asOf:new Date().toISOString()});
+      this.summaryRevisions.set(original.runId,sourceRevision);
+    }
   }
 
   private async deliverDurableBoundaries():Promise<void> {

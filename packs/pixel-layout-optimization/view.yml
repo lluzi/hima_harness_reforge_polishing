@@ -16,11 +16,12 @@ stations:
     checklist:
       - { label: Map the design space, nodes: [map-design-space], rounds: first }
       - { label: Learn move sensitivities, nodes: [learn-sensitivities], rounds: first }
-  - id: engineer
-    label: Layout engineer
-    about: AI agent that plans this round's edits to the pixel layout.
-    checklist:
-      - { label: Plan the round's edits, nodes: [plan-round] }
+  - id: team
+    label: Engineering team
+    about: Two AI engineers work each round side by side. The layout engineer plans new moves; the repair engineer turns the last round's near-misses into legal layouts with small verified edits.
+    team:
+      - { node: plan-round, label: Layout engineer, role: plans new moves }
+      - { node: repair-round, label: Repair engineer, role: fixes near-misses }
   - id: checks
     label: Checks
     about: Runs the candidate through DRC, LVS, extraction and transmittance, then judges it.
@@ -39,12 +40,13 @@ stations:
       - { label: Deliver the result, nodes: [deliver] }
 edges:
   - { from: case, to: design }
-  - { from: design, to: engineer }
-  - { from: engineer, to: checks, label: candidate }
+  - { from: design, to: team }
+  - { from: team, to: checks, label: candidates and repairs }
   - { from: checks, to: decision, label: judged }
-  - { from: decision, to: engineer, label: next round, back: true }
+  - { from: decision, to: team, label: next round and near-misses, back: true }
   - { from: decision, to: delivery }
 metrics:
   - { label: Ct/Cs today, node: judge-original, path: [originalValues, pixel_ratio_judged_pct], unit: "%" }
-  - { label: Best Ct/Cs so far, node: decide-round, path: [best, values, pixel_ratio_judged_pct], unit: "%", better: lower, goal: ratio_target_pct }
-  - { label: Best transmittance, node: decide-round, path: [best, values, pixel_t_judged_pct], unit: "%" }
+  - { label: Best Ct/Cs, node: decide-round, path: [best, values, pixel_ratio_judged_pct], unit: "%", better: lower, goal: ratio_target_pct }
+  - { label: "Best C(N1,N4)", node: decide-round, path: [best, values, pixel_ct_anode_ff], unit: fF, better: lower, goal: anode_coupling_max_ff }
+  - { label: "Best C(N1,Gate)", node: decide-round, path: [best, values, pixel_ct_lines_ff], unit: fF, better: lower, goal: scan_coupling_max_ff }

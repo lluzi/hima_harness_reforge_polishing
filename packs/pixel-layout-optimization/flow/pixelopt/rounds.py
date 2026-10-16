@@ -13,14 +13,14 @@ This module imports nothing outside the standard library.
 from __future__ import annotations
 
 __all__ = ["RULES", "HARD_RULES", "GOAL_RULES", "rule_results", "legal",
-           "rank_key", "decide"]
+           "rank_key", "better", "decide", "repair_orders", "best_legal"]
 
 _INF = float("inf")
 
 # (rule id, subject value type, op, threshold, hard?, edge?)
 #   op "eq": threshold is a literal number.
 #   op "le"/"ge": threshold is a resolved-Goal value key.
-#   edge True: a transmittance rule, NOT_DECLARED when its Goal edge is None.
+#   edge True: a transmittance or secondary-coupling rule, NOT_DECLARED when its Goal value is None.
 RULES = [
     ("receipt-verified", "pixel_receipt_error_count", "eq", 0, True, False),
     ("drc-authority-1x1-clean", "pixel_drc_authority_1x1", "eq", 0, True, False),
@@ -31,12 +31,16 @@ RULES = [
     ("channels-unchanged", "pixel_channels_changed", "eq", 0, True, False),
     ("no-undeclared-change", "pixel_undeclared_change_count", "eq", 0, True, False),
     ("couplings-within-limit", "pixel_coupling_over_limit_count", "eq", 0, True, False),
+    ("no-new-floating-net", "pixel_floating_new_count", "eq", 0, True, False),
     ("loads-within-allowance", "pixel_load_over_limit_count", "eq", 0, True, False),
     ("transmittance-above-min", "pixel_t_judged_pct", "ge", "t_min_pct", True, True),
     ("transmittance-below-max", "pixel_t_judged_pct", "le", "t_max_pct", True, True),
     ("outline-width-met", "pixel_outline_w_um", "le", "outline_w_um", False, False),
     ("outline-height-met", "pixel_outline_h_um", "le", "outline_h_um", False, False),
     ("ratio-met", "pixel_ratio_judged_pct", "le", "ratio_target_pct", False, False),
+    # Secondary Goal targets: NOT_DECLARED (no bar to the Goal) when the Goal states none.
+    ("anode-coupling-met", "pixel_ct_anode_ff", "le", "anode_coupling_max_ff", False, True),
+    ("scan-coupling-met", "pixel_ct_lines_ff", "le", "scan_coupling_max_ff", False, True),
 ]
 HARD_RULES = tuple(r[0] for r in RULES if r[4])
 GOAL_RULES = tuple(r[0] for r in RULES if not r[4])
@@ -120,15 +124,61 @@ def _area(vmap):
     return w * h
 
 
+def _secondary(vmap):
+    """The storage node's coupling to the anode plus to the scan line(s), fF (inf when unread)."""
+    a = _num(vmap.get("pixel_ct_anode_ff"))
+    s = _num(vmap.get("pixel_ct_lines_ff"))
+    if a is None and s is None:
+        return _INF
+    return (a or 0.0) + (s or 0.0)
+
+
+# The Goal's own targets besides the outline: a candidate that meets more of them is the better
+# delivery whatever its ratio (a live Run ranked a 6.98 % candidate that missed the anode target
+# above a 7.13 % one that met every target, and left the second unrepaired).
+_TARGET_RULES = ("ratio-met", "anode-coupling-met", "scan-coupling-met")
+
+
+def _target_misses(vmap, goal_resolved):
+    results = rule_results(vmap, goal_resolved)
+    return sum(1 for rid in _TARGET_RULES if results[rid] == "FAIL")
+
+
 def rank_key(values, goal_resolved):
-    """Sort key (smaller is better): legal first, then outline targets met
-    (more first), then the judged ratio, then the cell area."""
+    """Sort key (smaller is better): legal first, then outline targets met (more first), then the
+    other Goal targets missed (fewer first), then the judged ratio, then the secondary couplings,
+    then the cell area. :func:`better` is the ordering the best legal candidate is chosen by: it
+    treats ratios inside the converge band as equal and lets the secondary couplings decide."""
     vmap = _as_map(values)
     gvalues = (goal_resolved or {}).get("values", {}) or {}
     is_legal = legal(vmap, goal_resolved)
     met = _outline_met(vmap, gvalues)
     ratio = _num(vmap.get("pixel_ratio_judged_pct"))
-    return (0 if is_legal else 1, -met, ratio if ratio is not None else _INF, _area(vmap))
+    return (0 if is_legal else 1, -met, _target_misses(vmap, goal_resolved),
+            ratio if ratio is not None else _INF, _secondary(vmap), _area(vmap))
+
+
+def better(a, b, goal_resolved):
+    """True when candidate values ``a`` rank above ``b``.
+
+    Meeting more of the Goal's targets wins first. Then the judged ratio, the main goal: a ratio
+    lower by more than ``convergeBandPct`` wins. Within the band the two are equally good on the
+    ratio, and the lower storage-node coupling to the anode plus the scan line wins, then the lower
+    ratio, then the smaller area.
+    """
+    ka, kb = rank_key(a, goal_resolved), rank_key(b, goal_resolved)
+    if ka[:3] != kb[:3]:
+        return ka[:3] < kb[:3]
+    band = _num((goal_resolved or {}).get("convergeBandPct")) or 0.02
+    ra, rb = ka[3], kb[3]
+    if ra != _INF and rb != _INF and abs(ra - rb) > band + 1e-12:
+        return ra < rb
+    if ra == _INF or rb == _INF:
+        if ra != rb:
+            return ra < rb
+    if abs(ka[4] - kb[4]) > 1e-9:
+        return ka[4] < kb[4]
+    return (ka[3], ka[5]) < (kb[3], kb[5])
 
 
 def _hard_failures(vmap, goal_resolved):
@@ -185,6 +235,17 @@ def _next_lever(history, goal_resolved, round_no, best_legal):
         return None
     ratio, cid, fails = pick
     actions = []
+    if all(f in _DRC_RULES for f in fails):
+        # Only markers: the repair engineer has it on order this round (repair_orders).
+        return {
+            "candidate": cid,
+            "fails": fails,
+            "ratioPct": ratio,
+            "action": "the repair engineer repairs its markers this round (state/repair-orders."
+                      "json); spend no point on it: stack your next lever on the best legal "
+                      "candidate",
+            "owner": "repair",
+        }
     if any(f in _DRC_RULES for f in fails):
         actions.append("base it at its own outline and objective and repair its markers: run "
                        "`markers` on it and copy `bestEdits` (or `combined.edits` when lower); "
@@ -193,13 +254,20 @@ def _next_lever(history, goal_resolved, round_no, best_legal):
         actions.append("base it and add a band-trim of a wide opaque supply band (no device), "
                        "then min-ratio at its outline")
     elif "transmittance-below-max" in fails:
-        actions.append("base it and shrink the cell slightly (min-pitch), or widen an opaque "
-                       "band that carries no device")
+        if (goal_resolved or {}).get("outlineMode") == "fixed":
+            actions.append("base it and add opaque coverage at its own outline (the Goal fixes "
+                           "the outline): a shield plate tied to a supply net over a storage-node "
+                           "coupling, which lowers the ratio too, or an add-box edit on an opaque "
+                           "layer of a net with no load limit")
+        else:
+            actions.append("base it and shrink the cell slightly (min-pitch), or widen an opaque "
+                           "band that carries no device")
     return {
         "candidate": cid,
         "fails": fails,
         "ratioPct": ratio,
         "action": "; then ".join(actions),
+        "owner": "layout",
     }
 
 
@@ -213,9 +281,8 @@ def _best_legal(history, goal_resolved):
         vmap = _as_map(row.get("values", {}))
         if not legal(vmap, goal_resolved):
             continue
-        key = rank_key(vmap, goal_resolved)
-        if best_key is None or key < best_key:
-            best, best_key = row, key
+        if best is None or better(vmap, best_key, goal_resolved):
+            best, best_key = row, vmap
     return best
 
 
@@ -276,7 +343,7 @@ def _goal_met(best, goal_resolved):
     if best is None:
         return False
     results = rule_results(best.get("values", {}), goal_resolved)
-    return all(results[rid] == "PASS" for rid in GOAL_RULES)
+    return all(results[rid] in ("PASS", "NOT_DECLARED") for rid in GOAL_RULES)
 
 
 def _blocked_evidence(history, goal_resolved, best, card):
@@ -438,6 +505,11 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
     next_lever = _next_lever(history, goal_resolved, round_no, best if best_is_legal else None)
     if next_lever is not None:
         converged = False
+    # A near-miss on the repair engineer's orders is a live lever too: the Run has not converged
+    # while a repair that would beat the best legal candidate is still to be tried.
+    pending_repairs = repair_orders(history, goal_resolved)
+    if pending_repairs:
+        converged = False
 
     at_limit = round_no >= max_rounds
     blocked = False
@@ -472,6 +544,8 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
         "round": round_no,
         "route": route,
         "nextRound": {"round": round_no + 1},
+        # The next round is the last the budget allows: its near-misses get no repair round.
+        "finalRound": route == "continue" and round_no + 1 >= max_rounds,
         "stopReason": reason,
         "goalMet": bool(goal_met),
         "best": best_doc,
@@ -482,3 +556,65 @@ def decide(round_no, goal_resolved, history, previous_decision=None, card=None):
         "nextLever": next_lever,
         "rules": rule_results(best.get("values", {}) if best else {}, goal_resolved),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Repair orders (the repair engineer's work list)
+# --------------------------------------------------------------------------- #
+
+# A near-miss the repair engineer may take: it fails only the authority deck, with at most this
+# many markers in the single cell (tiles follow from those), and it beats the best legal ratio.
+_MAX_ORDER_MARKERS = 4
+_MAX_ORDERS = 3
+
+
+def best_legal(history, goal_resolved):
+    """The best legal, non-exploratory candidate across ``history`` (or ``None``)."""
+    return _best_legal(history, goal_resolved)
+
+
+def _as_repaired(vmap):
+    """A near-miss's values as they would read once its authority markers were cleared."""
+    out = dict(vmap)
+    for tile in ("1x1", "2x2", "3x3"):
+        out["pixel_drc_authority_" + tile] = 0
+    return out
+
+
+def repair_orders(history, goal_resolved, limit=_MAX_ORDERS):
+    """The near-misses worth a bounded-edit repair, the most promising first.
+
+    Each failed only authority-DRC rules with at most ``_MAX_ORDER_MARKERS`` single-cell markers,
+    would rank above the best legal candidate once repaired (it meets more Goal targets, or has a
+    lower ratio; or there is no legal one yet), was never the base of a repair, and is not
+    exploratory. Returns ``[{"candidate", "ratioPct", "fails", "markers1x1", "markers3x3"}]``.
+    """
+    best = _best_legal(history, goal_resolved)
+    best_vals = _as_map(best.get("values", {})) if best else None
+    repaired = {h.get("base") for h in history if h.get("kind") == "repair"}
+    picks = []
+    for h in history:
+        if h.get("exploratory") or h.get("kind") not in ("candidate", "incumbent", "repair"):
+            continue
+        if h.get("id") in repaired:
+            continue
+        vmap = _as_map(h.get("values", {}))
+        fails = _hard_failures(vmap, goal_resolved)
+        if not fails or any(f not in _DRC_RULES for f in fails):
+            continue
+        m1 = _num(vmap.get("pixel_drc_authority_1x1"))
+        m3 = _num(vmap.get("pixel_drc_authority_3x3"))
+        if m1 is None or m1 > _MAX_ORDER_MARKERS:
+            continue
+        ratio = _num(vmap.get("pixel_ratio_judged_pct"))
+        if ratio is None:
+            continue
+        fixed = _as_repaired(vmap)
+        if best_vals is not None and not better(fixed, best_vals, goal_resolved):
+            continue
+        picks.append((rank_key(fixed, goal_resolved),
+                      {"candidate": h.get("id"), "ratioPct": ratio, "fails": fails,
+                       "markers1x1": int(m1), "markers3x3": int(m3) if m3 is not None else None}))
+    picks.sort(key=lambda p: p[0])
+    return [p[1] for p in picks[:limit]]
+

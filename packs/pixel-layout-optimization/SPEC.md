@@ -1,4 +1,4 @@
-# Pixel layout optimization 0.2.0 run contract
+# Pixel layout optimization 0.6.5 run contract
 
 ## Goal template
 
@@ -16,11 +16,13 @@ Pack change (`INTENT.md` Answers 7):
 | `t_min_pct` | % | 0 | Lower edge of the transmittance window. 0: the manifest's `targets.transmittancePct[0]`; if neither gives one, no lower edge. |
 | `t_max_pct` | % | 0 | Upper edge, the same way. |
 | `cst_ceiling_ff` | fF | 0 | 0: the storage capacitor stays inside its LVS tolerance (no declared change). Above 0: a `cst-stretch` may enlarge it up to this value, and only with the declared schematic `prepare-case` writes for it. |
+| `anode_coupling_max_ff` | fF | 0 | Secondary target for the storage node's coupling to the anode (`pixel_ct_anode_ff`). 0: no target. When stated, the Goal is met only when it is met too; the ratio still ranks first. |
+| `scan_coupling_max_ff` | fF | 0 | Secondary target for the storage node's coupling to the scan line (`pixel_ct_lines_ff`), the same way. |
 
 The Goal is met only when **both** the outline and the ratio targets are met on Reader values, with
 every hard limit holding (`INTENT.md` Answers 5). Every other rule below is a hard limit.
 
-Seven Strategy knobs say how the Goal's quantities are read and how far the method may go:
+Nine Strategy knobs say how the Goal's quantities are read and how far the method may go:
 
 | Knob | Kind | Default | Meaning |
 |---|---|---|---|
@@ -30,6 +32,8 @@ Seven Strategy knobs say how the Goal's quantities are read and how far the meth
 | `topologyMoves` | choice `off`, `allowed` | `off` | Whether a plan may move a contact or reorder lines. |
 | `convergeBandPct` | number, %-points, 0.001–1 | 0.02 | The Converged ending's band: how little the best judged ratio may improve over `convergePatienceRounds` consecutive rounds. |
 | `maxRounds` | number, rounds, 1–20 | 6 | The Round limit ending's round number. A Project that wants a longer or shorter optimisation sets this; `graph.yml`'s `repeat` block is bounded well above it so it is never the thing that cuts a Run short. |
+| `outlineMode` | choice `target`, `fixed` | `target` | `target`: the outline is a shrink target (an unstated outline takes the manifest's). `fixed`: the cell keeps its size; an unstated outline is the original's, and `plan-check` refuses a `min-pitch` point or any other outline, so the Run optimises the ratio inside the window at the original size. |
+| `warmStart` | choice `off`, `prior-runs` | `off` | `prior-runs`: `judge-original` imports the winner each earlier Run delivered, then the best legal candidates and the best near-misses of earlier Runs on the same case manifest and decks (from the same workspace root), re-measures and re-judges each with this Run's judge, and adds them to history as round-0 `incumbent` rows that name their `source` and `why` (`delivered`, `legal`, `near-miss`); round 1 starts from the best legal one of everything judged. A recorded verdict of another Run is never trusted. |
 | `convergePatienceRounds` | number, rounds, 1–10 | 2 | How many consecutive rounds of less-than-`convergeBandPct` improvement the Converged ending requires. A single stalled round is not enough evidence to stop a Run that was asked to explore for more rounds; this is also why Converged needs a candidate round at least `convergePatienceRounds` back to compare against. |
 
 Shaped by `end-honestly-in-more-than-one-way.md` (the targets and the band are what the endings
@@ -49,7 +53,11 @@ declares a change.
 **What a Run may change** (`INTENT.md` Answers 4): the positions of polygon edges that are not part
 of a channel or of the storage capacitor, on the manifest's `gridUm`; the two pitches; and the
 declared operators of a plan (`shield`, `cst-stretch`, `opening-shift`, `band-trim`, and
-`contact-move` only when `topologyMoves` is `allowed`). A bounded edit moves a vertex or an edge by
+`contact-move` only when `topologyMoves` is `allowed`), either for the whole plan or for one front
+point (a point's own operators follow the plan's on its own copy of the base; one that cannot apply
+fails only that point). A `shield` plate keeps the layer's spacing from every other net and contact
+and is tied to its own net; one that cannot be tied, or would surround another net's shape, is
+refused. A bounded edit moves a vertex or an edge by
 at most 1.5 µm (the designer-style repairs that cleaned the first real case moved up to 1.45 µm), never a vertex of a channel or of the storage capacitor, and is logged; a plan holds at
 most 12 of them. An original that is not clean on the authority deck is legalised first: the
 `legalise` front point solves the LP with every violated pair held at its full rule distance and
@@ -118,14 +126,15 @@ FPD tools hold `licences: {fpd: 1}`.
 
 | Task | Kind | Business input | Work and committed output |
 |---|---|---|---|
-| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the seven Goal values; the seven Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
+| `prepare-case` | program | Run `pixelCaseManifest`, `siteCapabilities`; the nine Goal values; the eight Strategy values | Verifies every manifest sha256; resolves each Goal value (`goal`, `manifest`, `original`) and refuses an unresolved ratio target; parses both decks into rule tables, listing the checks it cannot model; extracts the original's nets and freezes its channels and capacitor; checks the venv versions in the container. Writes `state/case-readiness.json`, `state/rules.json`, `state/original.json`. Output: resolved targets, digests, versions, unmodelled-rule list. |
 | `judge-original` | program, `fpd: 1` | Committed `prepare-case` output | Judges the original (the same judge as every candidate) and two mutants the Pack generates: one contact removed (LVS must fail) and one space shrunk below its rule (authority DRC must fail). A wrong verdict on a mutant, or an original that fails LVS, fails the task with repair information: the judge or the schematic is wrong, and nothing after it may be trusted. Writes history entry 0. Output: the original's receipt values and the calibration verdicts. |
 | `map-design-space` | program | Committed `judge-original` output | Attributes each coupling of the original to its coupling sites (victim shape, aggressor shape, layers, visible overlap, fringe bands); fits the surrogate on the receipts so far; solves the minimum-pitch LP per axis and names the binding chain from its duals; lists the lever instances with gradient and bound. Writes `state/card.json` (≤ 4 KB) and `state/card.svg`. |
 | `learn-sensitivities` | program, `fpd: 1` | Committed `map-design-space` output | Judges ±1-step probes on the top levers in parallel; refits the surrogate per net pair; records the leave-one-out error per term. Writes `state/model.json` and the probes to history. |
 | `repeat optimise-rounds` | `maxIterations: 6`, `budget: original-run`, carry `roundState` (initial `{round: 1}`, next `decide-round.nextRound`), stop when `decide-round.route` equals `stop` | — | One round per iteration: |
 | ↳ `plan-round` | resident, outsourced, `fpd: 1` | `ROUND`; the resolved Goal | The resident engineering agent reads the card, model, history and last decision, may preview a bounded edit on the authority deck (`try-edit`, never credited), and writes `state/round/plan.json` (`pixel.plan/1`). The Reader `pixel-plan` checks it. |
-| ↳ `solve-and-judge` | program, `fpd: 1` | Committed `plan-round` Reader value; `ROUND` | If the plan has errors, judges nothing and records why. Otherwise applies the plan's operators and edits, solves one LP per front point (alternating axes, metric rows, trust region from the last decision; a `legalise` point holds the full rule only where the base's own Argus markers lie), then, per point, runs the authority deck alone, turns each `exact-pair` marker into a pair constraint and re-solves, at most 6 times, before writing the candidate's GDS set. All candidates are then judged in full, in parallel. Appends every receipt to history. Output: the candidates with predicted and measured values. |
-| ↳ `decide-round` | program | Committed `solve-and-judge` output; `ROUND`; the resolved Goal | Compares predicted with measured gain (trust radius doubles at ≥ half the predicted gain, halves otherwise); refits the surrogate with the new extractions; updates the best legal candidate, the front and the trend chart; detects the endings; routes `continue` or `stop`. Writes `state/round-decision.json`, `state/trend.json`, `state/trend.svg`. |
+| ↳ `repair-round` | resident, outsourced, `fpd: 1`, in parallel with `plan-round` | `ROUND`; `state/repair-orders.json` | The repair engineer turns the ordered near-misses (authority-DRC failures only, few single-cell markers, ranking above the best legal one once clean, never repaired before) into bounded-edit repairs previewed with `try-edit`, and writes `state/round/repair-plan.json` (`pixel.repair-plan/1`, at most three repairs). The Reader `pixel-repair-plan` checks it against the orders and the bounded-edit rules; an empty repairs list is valid. |
+| ↳ `solve-and-judge` | program, `fpd: 1` | Committed `plan-round` Reader value; `ROUND` | If the plan has errors, judges nothing and records why. Otherwise applies the plan's operators and edits, solves one LP per front point (alternating axes, metric rows, trust region from the last decision; a `legalise` point holds the full rule only where the base's own Argus markers lie), then, per point, runs the authority deck alone, turns each `exact-pair` marker into a pair constraint and re-solves, at most 6 times, before writing the candidate's GDS set. A `min-ratio` point the model predicts no better than its own start (by less than 0.02 points, both under the same model) delivers the start as drawn (`status: kept-start`) unless the start carries more markers. All candidates are then judged in full, in parallel. Appends every receipt to history. Output: the candidates with predicted and measured values. |
+| ↳ `decide-round` | program | Committed `solve-and-judge` output; `ROUND`; the resolved Goal | Compares predicted with measured gain (trust radius doubles at ≥ half the predicted gain, halves otherwise); refits the surrogate with the new extractions; updates the best legal candidate, the front and the trend chart; detects the endings; routes `continue` or `stop`; flags `finalRound` when the next round is the budget's last; writes the lever ledger (every judged move grouped by its operators, its plan's bounded edits and its objective, with its best measured ratio and coupling changes against its base and the same round's plain point, and its legal and near-miss counts; on a warm start, earlier Runs' moves too) into the decision. Writes `state/round-decision.json`, `state/repair-orders.json`, `state/trend.json`, `state/trend.svg`. |
 | `evaluate` | program, `fpd: 1`, `budget: closing` | Committed `decide-round` output | Re-judges the best candidate (and the front points the trade-off table shows) from its GDS in fresh directories; reads them with `pixel-receipt`; applies the rules; names the ending; for **Blocked**, writes the Decision Request with the trade-off table. Writes `state/evaluation.json`. |
 | `deliver` | program, `budget: closing` | Committed `evaluate` output | Rechecks every referenced sha256 and packages `delivery/`: `REPORT.md`, `trend.svg`, the best layout's GDS set, its receipts and tool reports, any declared schematic, the Decision Request, `history.jsonl` and `report.json`. |
 
@@ -177,10 +186,12 @@ re-verified by sha256. It never reads agent text. It emits:
 | `pixel_ratio_narrow_pct`, `pixel_ratio_broad_pct` | % | Ct/Cs for each manifest definition, from the extracted net pairs. |
 | `pixel_ratio_judged_pct` | % | The one `ratioDefinition` names. |
 | `pixel_ct_judged_ff` | fF | Its Ct. |
+| `pixel_ct_anode_ff`, `pixel_ct_lines_ff` | fF | The storage node's coupling to the anode, and to the load-limited lines other than the anode (the scan line). Both are inside the broad Ct; they are secondary objectives: legal candidates whose judged ratios lie within `convergeBandPct` of each other rank by their sum. |
 | `pixel_cs_ff` | fF | Cs: extracted storage node to storage net, with `extraCsOverlap` applied. |
 | `pixel_cs_outside_marker_ff` | fF | The part of the extracted Cs outside the capacitor marker (estimated by the surrogate's overlap share, so marked `estimated` in the receipt). |
 | `pixel_cst_device_ff` | fF | Capacitor-marker area × the manifest coefficient (geometry). |
 | `pixel_coupling_over_limit_count` | count | Manifest `couplingLimits` pairs above their limit. |
+| `pixel_floating_new_count` | count | Unconnected extraction nodes (`RCE_UNCONN_*`) coupling at least 0.5 fF to the storage node or a load-limited line, beyond the original's own count: a plate on no net hides its coupling from every net-pair value. |
 | `pixel_load_increase_max_pct` | % | The largest rise of a `loadLimitedLines` total over the original's. |
 | `pixel_load_over_limit_count` | count | Lines whose rise exceeds `load_allowance_pct`. |
 | `pixel_t_tiled_pct`, `pixel_t_own_pct` | % | Transmittance on the 3×3 array's centre cell and on the own cell. |
@@ -192,6 +203,14 @@ re-verified by sha256. It never reads agent text. It emits:
 An extraction whose GDS import failed, or whose `RCEResult.sp` is missing or empty, gives `null`
 ratios and capacitances with `unknownReason`; a library that was not freshly made for the
 candidate is a receipt error (counterexample 1).
+
+**`pixel-repair-plan`** reads `state/round/repair-plan.json` and checks it against `pixel.repair-plan/1`,
+the current repair orders (only an ordered candidate, each once) and the ordinary bounded-edit rules
+of `pixel-plan`. It emits `pixel_repair_plan_error_count`, `pixel_repair_count` and
+`pixel_repair_edit_count` (counts). `solve-and-judge` applies each admitted repair as a one-point
+`legalise` plan on its candidate (kept as drawn when its edits leave it clean) and judges it with
+the layout engineer's candidates; the candidate is recorded as kind `repair` with its base.
+`decide-round` writes the next round's orders (`pixel.repair-orders/1`).
 
 **`pixel-plan`** reads `state/round/plan.json` and checks it against `pixel.plan/1`, the resolved
 Goal, `topologyMoves`, the manifest's layers and nets and the history's candidate ids. It emits
@@ -218,12 +237,15 @@ this Pack; the outline and ratio rules are the Goal, every other one is a hard l
 | `channels-unchanged` | `pixel_channels_changed` | = 0 |
 | `no-undeclared-change` | `pixel_undeclared_change_count` | = 0 |
 | `couplings-within-limit` | `pixel_coupling_over_limit_count` | = 0 |
+| `no-new-floating-net` | `pixel_floating_new_count` | = 0 |
 | `loads-within-allowance` | `pixel_load_over_limit_count` | = 0 |
 | `transmittance-above-min` | `pixel_t_judged_pct` | ≥ `t_min_pct` (only when a lower edge is resolved) |
 | `transmittance-below-max` | `pixel_t_judged_pct` | ≤ `t_max_pct` (only when an upper edge is resolved) |
 | `outline-width-met` | `pixel_outline_w_um` | ≤ `outline_w_um` (Goal) |
 | `outline-height-met` | `pixel_outline_h_um` | ≤ `outline_h_um` (Goal) |
 | `ratio-met` | `pixel_ratio_judged_pct` | ≤ `ratio_target_pct` (Goal) |
+| `anode-coupling-met` | `pixel_ct_anode_ff` | ≤ `anode_coupling_max_ff` (Goal; only when stated above 0) |
+| `scan-coupling-met` | `pixel_ct_lines_ff` | ≤ `scan_coupling_max_ff` (Goal; only when stated above 0) |
 
 A `null` subject gives `UNKNOWN`, which is never a PASS. A transmittance rule with no resolved edge
 is `NOT_DECLARED` and is reported, not counted. The reference deck's counts are reported and never
@@ -240,13 +262,16 @@ committed history and the resolved Goal, and sets `route` (`continue`, `stop`), 
 uses.
 
 - **Best legal candidate.** Every hard-limit rule PASS. Ranked by: outline targets met (both before
-  one, one before none), then the judged ratio, then cell area.
-- **Goal met** when the best legal candidate passes `outline-width-met`, `outline-height-met` and
-  `ratio-met`.
+  one, one before none), then the other Goal targets missed (`ratio-met`, `anode-coupling-met`,
+  `scan-coupling-met`; fewer first), then the judged ratio (within `convergeBandPct` the lower
+  sum of the secondary couplings decides), then cell area.
+- **Goal met** when the best legal candidate passes every Goal rule (`outline-width-met`,
+  `outline-height-met`, `ratio-met` and the stated coupling targets).
 - **Converged** when the best legal candidate's judged ratio, at the best outline reached, improved
   by less than `convergeBandPct` over the last `convergePatienceRounds` consecutive rounds (default
   2; never checked before round `1 + convergePatienceRounds`, and never while a next lever - a
-  judged candidate one repair or transmittance fix from beating it - is still untried); the
+  judged candidate one repair or transmittance fix from beating it - is still untried, or while the
+  repair engineer has a near-miss on order); the
   limiting bound (the binding pitch chain from `map-design-space`, or the coupling floor of the
   frozen-transistor terms from the model) is recorded with it.
 - **Blocked** when, at a stop for convergence or the round limit, there is evidence that the unmet

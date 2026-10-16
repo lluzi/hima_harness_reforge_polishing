@@ -32,8 +32,10 @@ import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 from shapely.geometry import Polygon
 
+from .core import PixelError
 from . import (attribution, compact, core, edits, geometry, judge, layout,
                markers, nets, operators, repair, reports)
 
@@ -178,6 +180,66 @@ def _drc_full(lay, case, sitecaps, workspace):
         return {"c1": c1, "c3": c3, "total": c1 + c3, "byRule": by_rule, "folded": folded}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+_PLATE_TRIM_ROUNDS = 3
+
+
+def _trim_plates(lay, plates, base_lay, case, table, sitecaps, workspace):
+    """Trim each new shield plate where the authority deck marks it, then re-open it to the
+    layer's width; up to ``_PLATE_TRIM_ROUNDS`` deck runs. Only the plate's own area (never a
+    shape the base already had) is cut, so the plate shrinks and the base is untouched. A plate
+    is the operator's guess at the rules; the deck decides (an enclosure or an angled width the
+    rule table cannot foresee)."""
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    widths = (table or {}).get("width", {}) or {}
+    for _ in range(_PLATE_TRIM_ROUNDS):
+        drc = _drc_full(_finish(lay, case), case, sitecaps, workspace)
+        folded = drc.get("folded") or []
+        if not folded:
+            break
+        changed = False
+        for layer, plate in plates:
+            own_before = base_lay.geom(layer)
+            fresh = plate.difference(own_before)
+            if fresh.is_empty:
+                continue
+            hits = []
+            for _rule, pts in folded:
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                b = box(min(xs), min(ys), max(xs), max(ys))
+                if b.intersects(fresh.buffer(0.05)):
+                    hits.append(b.buffer(0.5, join_style=2))
+            if not hits:
+                continue
+            cut = unary_union(hits).intersection(fresh)
+            w = float(widths.get(layer) or 0.0)
+            new_polys = []
+            for p in lay.polys.get(layer, []):
+                g = Polygon(p).buffer(0)
+                if g.is_empty or g.intersection(cut).area <= 1e-9:
+                    new_polys.append(p)
+                    continue
+                g2 = g.difference(cut)
+                if w > 0:
+                    keep = g2.intersection(own_before)
+                    opened = g2.buffer(-w / 2.0, join_style=2).buffer(w / 2.0, join_style=2)
+                    g2 = unary_union([opened, keep])
+                parts = [q for q in getattr(g2, "geoms", [g2]) if q.area > 1e-6]
+                for q in parts:
+                    # a fragment the cut separated from every base shape would float: drop it
+                    if not q.buffer(1e-6).intersects(own_before):
+                        continue
+                    if q.geom_type == "Polygon" and not list(q.interiors):
+                        new_polys.append(np.round(np.array(q.exterior.coords[:-1]), 4))
+                changed = True
+            lay = lay.copy()
+            lay.polys[layer] = new_polys
+        if not changed:
+            break
+    return lay
 
 
 def _finish(lay, case):
@@ -378,7 +440,15 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
         ratio_nets = goal.get("ratioNets") or []
         ct_pairs = [_pk(sn, a) for a in ratio_nets]
         cs_pair = _pk(sn, st)
-        allpairs = sorted(set(ct_pairs + [cs_pair]))
+        # The manifest's coupling limits ride along as rows: a live Run's every min-ratio point
+        # pushed the data line's coupling to the supply over its limit while lowering the ratio.
+        limits = []
+        for lim in case.raw.get("couplingLimits", []) or []:
+            pr = lim.get("pair", []) or []
+            if len(pr) == 2 and lim.get("maxFf") is not None \
+                    and _pk(pr[0], pr[1]) in ((model or {}).get("pairs") or {}):
+                limits.append((_pk(pr[0], pr[1]), float(lim["maxFf"])))
+        allpairs = sorted(set(ct_pairs + [cs_pair] + [k for k, _ in limits]))
         binding = []
         status = "optimal"
         if target and any(t is not None and abs(t - b) > 1e-6
@@ -412,6 +482,17 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
             def gsum(pairset, j):
                 return sum(grads.get(p, {}).get(j, 0.0) for p in pairset)
 
+            # Each limited pair may rise by at most half its predicted headroom (none when the
+            # model already predicts it at or over the limit): the model's error is a few tenths.
+            limit_rows = []
+            for key, max_ff in limits:
+                g = grads.get(key, {}) or {}
+                if not g:
+                    continue
+                headroom = max(0.0, max_ff - float(base_pred.get(key, max_ff)))
+                limit_rows.append({"name": "limit:%s" % key, "coef": dict(g), "const": 0.0,
+                                   "op": "le", "rhs": 0.5 * headroom})
+
             r_lo, r_hi = 0.0, (ct0 / cs0 if cs0 > 1e-9 else 100.0)
             best = None
             for _ in range(6):
@@ -421,6 +502,7 @@ def _compact_min_ratio(pre, case, table, target, pairs_acc, trust_radius,
                     coef[j] = gsum(ct_pairs, j) - r * gsum([cs_pair], j)
                 rows = [{"name": "ratio", "coef": coef,
                          "const": ct0 - r * cs0, "op": "le", "rhs": 0.0}]
+                rows += limit_rows
                 m2 = compact.build(L, case, table, pairs=tuple(pairs_acc),
                                    metric_rows=rows,
                                    trust={"radius": trust_radius, "vars": jvars})
@@ -471,6 +553,21 @@ def _predict(model, lay, case):
 # One front point
 # --------------------------------------------------------------------------- #
 
+# A min-ratio solve must be predicted to beat its own start by this much (percentage points of the
+# judged ratio) to be delivered; otherwise the start is (see _solve_point).
+_MIN_PREDICTED_GAIN_PCT = 0.02
+
+
+def _predicted_ratio(ctx, lay):
+    """The model's judged-definition ratio for ``lay`` (percent), or None without a model."""
+    pred = _predict(ctx.get("model"), lay, ctx["case"])
+    if not pred:
+        return None
+    defn = ((ctx.get("readiness") or {}).get("goal") or {}).get("ratioDefinition") or "broad"
+    r = (pred.get("ratioPct") or {}).get(defn)
+    return float(r) if r is not None else None
+
+
 def _solve_point(point, ctx):
     name = point.get("name")
     objective = point.get("objective")
@@ -496,11 +593,28 @@ def _solve_point(point, ctx):
         # nothing to legalise: re-solving a clean base only moves shapes for no gain
         return {"ok": False, "name": name, "status": "already-clean", "binding": []}
 
-    for it in range(_MAX_PAIR_ITERS):
+    # A legalise point judges what it starts from first. Already clean after its operators and
+    # edits: keep it as it is (re-solving a clean layout only moves shapes, and once broke a
+    # derived enclosure rule the compactor does not model). Otherwise legalise around that
+    # layout's own markers, and never deliver a solve with more markers than it started with.
+    pre_marks = None
+    zones = ctx["zones"]
+    skip_solve = False
+    if objective == "legalise" and ctx.get("parsed") is not None:
+        p1, p3, pfold = _drc_markers(layout.snap(pre, case.grid_um), case, ctx["sitecaps"],
+                                     ctx["workspace"])
+        pre_marks = (p1 + p3, pfold)
+        if p1 == 0 and p3 == 0:
+            final, residual, info, skip_solve = pre, [], {"status": "optimal", "binding": []}, True
+        else:
+            zones = _zones(pfold)
+    last_total = None
+
+    for it in range(0 if skip_solve else _MAX_PAIR_ITERS):
         pair_iters = it + 1
         if objective == "legalise":
             lay, info = _compact_pitch_like(pre, case, table, "legalise", None,
-                                            pairs, ctx["zones"])
+                                            pairs, zones)
         elif objective == "min-pitch":
             lay, info = _compact_pitch_like(pre, case, table, "min-pitch", target,
                                             pairs, None, through=through)
@@ -524,6 +638,7 @@ def _solve_point(point, ctx):
         # lose a few nm of a distance the LP held exactly (snap keeps polygon indices)
         lay = layout.snap(lay, case.grid_um)
         c1, c3, folded = _drc_markers(lay, case, ctx["sitecaps"], ctx["workspace"])
+        last_total = c1 + c3
         if c1 == 0 and c3 == 0:
             residual = []
             break
@@ -553,6 +668,29 @@ def _solve_point(point, ctx):
         if not newp:
             break
         pairs.extend(newp)
+
+    if pre_marks is not None and last_total is not None and last_total > pre_marks[0]:
+        # the solve made it worse: deliver the starting layout and repair its own markers
+        final = pre
+        residual = markers.classify(pre_marks[1], table, ctx["base_marks"], ())
+
+    if objective == "min-ratio" and final is not None:
+        # A ratio solve the model itself expects no gain from, against its own start under the same
+        # model (the model's bias cancels), only moves shapes: a live Run's min-ratio points from
+        # its best legal candidate predicted a 0.03-point loss and measured a 0.28-point one, the
+        # storage-node link pushed back under the anode. Deliver the start (base plus this point's
+        # operators) as drawn instead, unless it carries more markers than the solve left.
+        p_pre = _predicted_ratio(ctx, layout.snap(pre, case.grid_um))
+        p_new = _predicted_ratio(ctx, layout.snap(final, case.grid_um))
+        if p_pre is not None and p_new is not None and p_new > p_pre - _MIN_PREDICTED_GAIN_PCT:
+            s1, s3, sfold = _drc_markers(layout.snap(pre, case.grid_um), case, ctx["sitecaps"],
+                                         ctx["workspace"])
+            if last_total is None or s1 + s3 <= last_total:
+                final = pre
+                residual = (markers.classify(sfold, table, ctx["base_marks"], ())
+                            if s1 + s3 else [])
+                info = {"status": "kept-start", "binding": [],
+                        "predictedRatioPct": {"start": p_pre, "solved": p_new}}
 
     # Finish the layout: clean, re-sync the outline copies, snap to grid; then repair what the
     # compactor left with verified bounded edits.
@@ -584,7 +722,7 @@ def _solve_point(point, ctx):
         "base": ctx["base_id"],
         "frontPoint": point,
         "exploratory": bool(point.get("exploratory")),
-        "operators": ctx["plan"].get("operators", []),
+        "operators": ctx.get("operators", ctx["plan"].get("operators", [])),
         "edits": ctx["plan"].get("edits", []),
         "declaredChanges": dict(ctx["declared"]),
         "predicted": predicted,
@@ -639,17 +777,28 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
 
     # Operators, then bounded edits, then merge the top conductor.
     top_conductor = case.raw["connectivity"]["topConductor"]
-    nets_result = nets.extract(base_lay, case)
-    pre = base_lay
-    declared = {}
-    for op in plan.get("operators", []) or []:
-        pre, desc = operators.apply_operator(pre, op, case, nets_result,
-                                              table=table, topology_moves=topo)
-        declared.update(desc.get("declaredChanges", {}) or {})
-        nets_result = nets.extract(pre, case)
-    if plan.get("edits"):
-        pre, _log = edits.apply_edits(pre, plan["edits"], case)
-    pre = layout.merge_layers(pre, [top_conductor])
+
+    def prepare(ops):
+        lay = base_lay
+        nets_result = nets.extract(base_lay, case)
+        decl = {}
+        plates = []
+        for op in ops:
+            lay, desc = operators.apply_operator(lay, op, case, nets_result,
+                                                 table=table, topology_moves=topo)
+            decl.update(desc.get("declaredChanges", {}) or {})
+            if desc.get("shield", {}).get("plate"):
+                plates.append((desc["shield"]["layer"], Polygon(desc["shield"]["plate"]).buffer(0)))
+            nets_result = nets.extract(lay, case)
+        if plan.get("edits"):
+            lay, _log = edits.apply_edits(lay, plan["edits"], case)
+        lay = layout.merge_layers(lay, [top_conductor])
+        if plates and parsed is not None:
+            lay = _trim_plates(lay, plates, base_lay, case, table, sitecaps, workspace)
+        return lay, decl
+
+    plan_ops = list(plan.get("operators", []) or [])
+    pre, declared = prepare(plan_ops)
 
     base_marks = _folded_authority_markers(base_dir, case, base_lay)
     zones = _zones(base_marks)
@@ -671,11 +820,32 @@ def drive(workspace, round_num, case, sitecaps, readiness, rules_state, model, p
     }
 
     points = plan.get("frontPoints", []) or []
-    jobs = max(1, int(sitecaps.get("parallelJobs", 1) or 1))
+    # A point's own operators come after the plan's, on its own copy of the base: one round can
+    # try several discrete changes (a shield sweep at a fixed outline) instead of one per round.
+    # A point whose own operator cannot apply fails alone; the plan's operators still fail the plan.
+    contexts = []
     results = [None] * len(points)
-    if points:
-        with ThreadPoolExecutor(max_workers=min(jobs, len(points))) as pool:
-            futs = {pool.submit(_solve_point, p, ctx): i for i, p in enumerate(points)}
+    for i, p in enumerate(points):
+        own = list(p.get("operators", []) or [])
+        if not own:
+            contexts.append(ctx)
+            continue
+        try:
+            pre_p, decl_p = prepare(plan_ops + own)
+        except PixelError as exc:
+            contexts.append(None)
+            results[i] = {"ok": False, "name": p.get("name"), "status": "operator-refused",
+                          "binding": [str(exc)]}
+            continue
+        merged = dict(declared)
+        merged.update(decl_p)
+        contexts.append(dict(ctx, pre=pre_p, declared=merged, base_clean=False,
+                             operators=plan_ops + own))
+    jobs = max(1, int(sitecaps.get("parallelJobs", 1) or 1))
+    todo = [i for i in range(len(points)) if contexts[i] is not None]
+    if todo:
+        with ThreadPoolExecutor(max_workers=min(jobs, len(todo))) as pool:
+            futs = {pool.submit(_solve_point, points[i], contexts[i]): i for i in todo}
             for fut in futs:
                 results[futs[fut]] = fut.result()
 

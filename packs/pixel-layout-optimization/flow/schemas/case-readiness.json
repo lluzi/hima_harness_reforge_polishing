@@ -34,7 +34,9 @@
     "topologyMoves": {"enum": ["off", "allowed"]},
     "convergeBandPct": {"type": "number"},
     "maxRounds": {"type": "number"},
-    "convergePatienceRounds": {"type": "number"}
+    "convergePatienceRounds": {"type": "number"},
+    "outlineMode": {"enum": ["target", "fixed"]},
+    "warmStart": {"enum": ["off", "prior-runs"]}
    }
   },
   "options": {
@@ -64,6 +66,7 @@
     "outlineUm": {"type": "array", "items": {"type": ["number", "null"]}},
     "cstDeviceFf": {"type": ["number", "null"]},
     "loads": {"type": "object"},
+    "floatingNets": {"type": "number"},
     "tTiledPct": {"type": ["number", "null"]}
    }
   },

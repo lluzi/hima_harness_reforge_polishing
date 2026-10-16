@@ -1,0 +1,167 @@
+"""Candidates of earlier Runs on the same case, to start a new Run from (stdlib only).
+
+A Run with Strategy ``warmStart: prior-runs`` looks at the other Run workspaces under the same
+workspace root. Only a Run whose case readiness names the same case manifest digest and the same
+authority and reference deck digests counts: its candidates were drawn on the same cell under the
+same rules. From those Runs' histories it takes the best legal candidates and the best near-misses
+(authority-DRC failures only) under *this* Run's Goal; ``judge-original`` then re-judges every one
+with this Run's judge before any of them is trusted (a recorded verdict is not evidence under a
+newer judge).
+"""
+from __future__ import annotations
+
+import json
+import os
+
+from . import rounds
+
+__all__ = ["prior_runs", "pick", "history_of", "delivered"]
+
+_MAX_RUNS = 6
+
+
+def _read(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _history(run_dir):
+    rows = []
+    path = os.path.join(run_dir, "state", "history.jsonl")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        rows.append(json.loads(line))
+                    except ValueError:
+                        continue
+    except OSError:
+        pass
+    return rows
+
+
+def _same_case(a, b):
+    if not a or not b:
+        return False
+    if a.get("manifestSha256") != b.get("manifestSha256"):
+        return False
+    da = ((a.get("options") or {}).get("decks") or {})
+    db = ((b.get("options") or {}).get("decks") or {})
+    return da.get("authority") == db.get("authority") and da.get("reference") == db.get("reference")
+
+
+def prior_runs(workspace, readiness, limit=_MAX_RUNS):
+    """Sibling Run workspaces of the same case and decks, newest first."""
+    workspace = os.path.abspath(workspace)
+    root = os.path.dirname(workspace)
+    found = []
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return []
+    for name in names:
+        d = os.path.join(root, name)
+        if d == workspace or not os.path.isdir(d):
+            continue
+        other = _read(os.path.join(d, "state", "case-readiness.json"))
+        if not _same_case(readiness, other):
+            continue
+        try:
+            mtime = os.path.getmtime(os.path.join(d, "state", "history.jsonl"))
+        except OSError:
+            continue
+        found.append((mtime, d))
+    found.sort(reverse=True)
+    return [d for _, d in found[:limit]]
+
+
+def history_of(run_dir):
+    """One earlier Run's judged history rows; a row written before history carried the plan's
+    bounded edits takes them from its candidate's ``meta.json``."""
+    rows = _history(run_dir)
+    for r in rows:
+        if "edits" not in r:
+            meta = _read(os.path.join(run_dir, "cands", str(r.get("id")), "meta.json")) or {}
+            r["edits"] = meta.get("edits") or []
+    return rows
+
+
+def delivered(run_dir):
+    """The candidate id an earlier Run delivered as its best, or ``None``."""
+    for rel in (("delivery", "report.json"), ("state", "evaluation.json")):
+        doc = _read(os.path.join(run_dir, *rel)) or {}
+        cid = (doc.get("best") or {}).get("id")
+        if cid:
+            return str(cid)
+    return None
+
+
+def _same_outline(values, outline):
+    w, h = values.get("pixel_outline_w_um"), values.get("pixel_outline_h_um")
+    try:
+        return abs(float(w) - float(outline[0])) < 1e-3 and abs(float(h) - float(outline[1])) < 1e-3
+    except (TypeError, ValueError):
+        return False
+
+
+def pick(runs, goal_resolved, legal_k=2, near_k=2):
+    """The candidates to import: ``[(run_dir, candidate_id, why)]``.
+
+    First the winner each earlier Run delivered (``why: delivered``), whatever this Goal makes of
+    it: a harder Goal may rank another candidate above it, but the designer expects the new Run
+    to start where the last one ended. Then up to ``legal_k`` best legal candidates (ranked by :func:`rounds.better` under this Goal) and up
+    to ``near_k`` best near-misses (authority-DRC failures only, few single-cell markers, ratio
+    below the best legal one), across all ``runs``; a candidate whose GDS file is missing is
+    skipped. Recorded values only choose; the re-judge decides.
+    """
+    legal, near, winners = [], [], []
+    fixed = None
+    if (goal_resolved or {}).get("outlineMode") == "fixed":
+        gv = goal_resolved.get("values", {}) or {}
+        fixed = (gv.get("outline_w_um"), gv.get("outline_h_um"))
+    for run in runs:
+        rows = [r for r in _history(run)
+                if r.get("kind") in ("candidate", "incumbent", "repair") and not r.get("exploratory")]
+        if fixed:
+            # a fixed outline: a candidate of another size (an earlier shrink Run's) is no start
+            rows = [r for r in rows if _same_outline(r.get("values", {}), fixed)]
+        rows = [r for r in rows if os.path.exists(os.path.join(run, "cands", str(r.get("id")), "pixel.gds"))]
+        won = delivered(run)
+        win = next((r for r in rows if str(r.get("id")) == won), None)
+        if win is not None:
+            winners.append((run, win))
+        for r in rows:
+            if rounds.legal(r.get("values", {}), goal_resolved):
+                legal.append((run, r))
+        for o in rounds.repair_orders(rows, goal_resolved, limit=near_k):
+            r = next(x for x in rows if x.get("id") == o["candidate"])
+            near.append((run, r))
+    chosen = []
+    for _ in range(legal_k):
+        best = None
+        for item in legal:
+            if item in chosen or item in winners:
+                continue
+            if best is None or rounds.better(item[1].get("values", {}), best[1].get("values", {}),
+                                             goal_resolved):
+                best = item
+        if best is None:
+            break
+        chosen.append(best)
+    out = [(run, r.get("id"), "delivered") for run, r in winners]
+    out += [(run, r.get("id"), "legal") for run, r in chosen]
+    near.sort(key=lambda it: it[1].get("values", {}).get("pixel_ratio_judged_pct") or 1e9)
+    seen = {(run, cid) for run, cid, _ in out}
+    for run, r in near:
+        if len([o for o in out if o[2] == "near-miss"]) >= near_k:
+            break
+        if (run, r.get("id")) in seen:
+            continue
+        out.append((run, r.get("id"), "near-miss"))
+        seen.add((run, r.get("id")))
+    return out

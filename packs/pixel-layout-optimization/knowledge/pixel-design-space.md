@@ -43,7 +43,7 @@ cannot move the ratio much, however clean the move.
 |---|---|---|
 | Narrow or shorten a non-device conductor of the storage node | Less facing area | Rule minimum width; contact enclosure; often a small Cs loss |
 | Move apart | Less fringe | Area, and couplings elsewhere |
-| Cover the storage node with a plate on a fixed-potential net (`shield`) | Screens the aggressor | Coupling between the plate's net and the aggressor. Over the scan line this adds scan-line load that is typically several times the coupling it removes from the storage node: the load rule will usually refuse it |
+| Cover the storage node with a plate on a fixed-potential net (`shield`) | Screens the aggressor; a supply plate over the storage node also adds Cs | Coupling between the plate's net and the aggressor. Over the scan line this adds scan-line load that is typically several times the coupling it removes from the storage node: the load rule refuses it unless the Goal's allowance is wide. The plate must be tied to its net: a floating plate passes the coupling on in series and fails `no-new-floating-net` |
 | Stretch the storage capacitor (`cst-stretch`) | Larger Cs | Height; a declared schematic change; Ct rises slightly with the larger plate. Only with `cst_ceiling_ff` above 0 |
 | Move the emission opening (`opening-shift`) | Less anode over the storage node | PDL symmetry and emission area |
 | Trim an opaque band (`band-trim`) | Transmittance into its window | Line resistance and load; width rule |
@@ -69,5 +69,9 @@ hard limit is evidence for the trade-off table, never a result.
 
 - **A ratio bought with scan-line load.** A shield over the scan line lowers the ratio while the
   load it adds is invisible to DRC and LVS. The `loads-within-allowance` rule exists for this.
+- **A ratio bought with a floating plate.** A plate on no net seems to cut the storage node's
+  coupling to the scan line, but extraction reports it as an unconnected node that couples to
+  both, so the coupling still reaches the storage node in series and the scan line carries the
+  plate's load. No net-pair value shows it; the `no-new-floating-net` rule does.
 - **A ratio bought with an undeclared capacitor.** Enlarging the capacitor raises Cs, but with the
   schematic unchanged LVS fails on its capacitance tolerance, and the ratio must not be credited.

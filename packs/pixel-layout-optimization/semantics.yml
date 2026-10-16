@@ -41,12 +41,21 @@ values:
   pixel_ct_judged_ff:
     unit: ff
     description: Ct for the judged ratio definition. (source measured)
+  pixel_ct_anode_ff:
+    unit: ff
+    description: The storage node's extracted coupling to the anode net. (source measured)
+  pixel_ct_lines_ff:
+    unit: ff
+    description: The storage node's extracted coupling to the load-limited lines other than the anode (the scan line). (source measured)
   pixel_ratio_judged_pct:
     unit: pct
     description: Ct/Cs for the ratioDefinition the Strategy names; the judged ratio. (source measured)
   pixel_coupling_over_limit_count:
     unit: count
     description: Manifest couplingLimits pairs above their limit. (source measured)
+  pixel_floating_new_count:
+    unit: count
+    description: Unconnected extraction nodes coupling at least 0.5 fF to the storage node or a load-limited line, beyond the original's own count. (source measured)
   pixel_load_increase_max_pct:
     unit: pct
     description: The largest rise of a loadLimitedLines total over the original's. (source measured)
@@ -86,6 +95,15 @@ values:
   pixel_undeclared_change_count:
     unit: count
     description: A capacitor outside tolerance with no declared change, a declared change beyond cst_ceiling_ff, or a channel change. (source geometry)
+  pixel_repair_plan_error_count:
+    unit: count
+    description: The repair engineer's plan's admissibility errors against its schema, the repair orders and the bounded-edit rules; 0 is the completion evidence. (source geometry)
+  pixel_repair_count:
+    unit: count
+    description: Repairs in the repair engineer's plan (one ordered candidate each). (source geometry)
+  pixel_repair_edit_count:
+    unit: count
+    description: Bounded edits across all repairs of the repair engineer's plan. (source geometry)
   pixel_plan_error_count:
     unit: count
     description: The resident plan's admissibility errors against the schema, the resolved Goal, the Strategy, the manifest and the history; 0 is the completion evidence. (source geometry)

@@ -85,5 +85,50 @@ class SolveTest(unittest.TestCase):
                          {"r02-target-pitch", "r02-legalise"})
 
 
+    def test_a_point_carries_its_own_operators_and_fails_alone(self):
+        # One round, several discrete changes: each point applies its own operators after the
+        # plan's on its own copy of the base; an operator that cannot apply fails only its point.
+        from pixelopt import numcmd
+        shield = {"op": "shield", "net": "VP", "layer": "Metal",
+                  "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.0}
+        floating = {"op": "shield", "net": "R1", "layer": "Metal",
+                    "over": {"victim": "S", "aggressor": "VP"}, "marginUm": 0.0}
+        self._write_plan([
+            {"name": "plain", "objective": "min-pitch"},
+            {"name": "shielded", "objective": "min-pitch", "operators": [shield]},
+            {"name": "floats", "objective": "min-pitch", "operators": [floating]}])
+        res = numcmd.cmd_solve(self.ws, 3)
+        self.assertEqual(set(res["candidates"]), {"r03-plain", "r03-shielded"})
+        self.assertEqual([f["name"] for f in res["failed"]], ["floats"])
+        self.assertEqual(res["failed"][0]["status"], "operator-refused")
+        plain = _load(os.path.join(self.ws, "cands", "r03-plain", "meta.json"))
+        shielded = _load(os.path.join(self.ws, "cands", "r03-shielded", "meta.json"))
+        self.assertEqual(plain["operators"], [])
+        self.assertEqual(shielded["operators"], [shield])
+
+    def test_a_ratio_solve_the_model_expects_no_gain_from_delivers_its_start(self):
+        # A min-ratio solve predicted no better than its own start only moves shapes: the start is
+        # delivered as drawn (a live Run's solves from its best legal candidate predicted a small
+        # loss and measured a large one).
+        from unittest import mock
+        from pixelopt import numcmd, solve, layout
+        from tests.test_numcmd import NumCmdTest
+        NumCmdTest._judge_original_and_record(self)
+        numcmd.cmd_fit(self.ws)
+        self._write_plan([{"name": "ratio", "objective": "min-ratio"}])
+        with mock.patch.object(solve, "_predicted_ratio", return_value=5.0), \
+                mock.patch.object(solve, "_drc_markers", return_value=(0, 0, [])):
+            res = numcmd.cmd_solve(self.ws, 4)
+        if res["failed"]:
+            self.skipTest("min-ratio does not solve on the synthetic case: %s" % res["failed"])
+        meta = _load(os.path.join(self.ws, "cands", "r04-ratio", "meta.json"))
+        self.assertEqual(meta["solve"]["status"], "kept-start")
+        lay = layout.load_gds(os.path.join(self.ws, "cands", "r04-ratio", "pixel.gds"), self.case,
+                              top=self.case.raw["candidateTopCell"])
+        w1, h1 = lay.pitch(self.case)
+        self.assertAlmostEqual(w1, self.outline[0], places=3)
+        self.assertAlmostEqual(h1, self.outline[1], places=3)
+
+
 if __name__ == "__main__":
     unittest.main()

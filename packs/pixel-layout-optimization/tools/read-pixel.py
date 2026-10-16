@@ -45,7 +45,7 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if len(argv) != 4:
         return _fail("missing-input",
-                     "usage: read-pixel.py <receipt|plan> <report> <out> <workspace>")
+                     "usage: read-pixel.py <receipt|plan|repair-plan> <report> <out> <workspace>")
     kind, report_path, out_path, workspace = argv
 
     try:
@@ -67,6 +67,9 @@ def main(argv=None):
         elif kind == "plan":
             from pixelopt import plan
             values = plan.reader_values(report_path, workspace, readiness)
+        elif kind == "repair-plan":
+            from pixelopt import plan
+            values = plan.repair_reader_values(report_path, workspace, readiness)
         else:
             return _fail("missing-input", "unknown reader kind %r" % kind)
     except PixelError as exc:
