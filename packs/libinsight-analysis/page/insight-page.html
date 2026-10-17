@@ -8,7 +8,7 @@ body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 -apple-sy
 header{display:flex;align-items:baseline;gap:16px;padding:12px 20px;background:var(--white);border-bottom:1px solid var(--line)}
 header h1{margin:0;font-size:17px;color:var(--brand);font-weight:700;letter-spacing:-.01em}
 header .meta{color:var(--dim);font-size:13px}
-main{display:grid;grid-template-columns:350px minmax(0,1fr) 380px;gap:12px;padding:12px;min-height:calc(100vh - 50px)}
+main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px;min-height:calc(100vh - 50px)}
 .col{background:var(--white);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-width:0}
 .colhead{padding:12px 16px 10px;border-bottom:1px solid var(--soft)}
 .colhead h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
@@ -36,15 +36,16 @@ main{display:grid;grid-template-columns:350px minmax(0,1fr) 380px;gap:12px;paddi
 .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px;margin-bottom:12px}
 .kv span:nth-child(2n){font-weight:600;color:var(--ink);text-align:right}
 .ruletxt{font-size:13.5px;color:var(--ink);margin:0}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-td,th{padding:5px 8px;border-bottom:1px solid var(--soft);text-align:left;vertical-align:top}
-th{font-size:11px;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+td,th{padding:5px 4px;border-bottom:1px solid var(--soft);text-align:left;vertical-align:top;overflow-wrap:break-word}
+td.mono{overflow-wrap:anywhere}
+th{font-size:10.5px;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.03em;overflow-wrap:normal}
 td.num,th.num{text-align:right;white-space:nowrap}
 tr.row{cursor:pointer}tr.row:hover{background:var(--paper)}tr.row.on{background:var(--brandt)}
 tr.row.on td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 tr.mark{background:var(--soft)}tr.mark td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .bad{color:var(--red);font-weight:600}.good{color:var(--grn);font-weight:600}
-.mono{font-family:Consolas,Menlo,monospace;font-size:12px}
+.mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);max-width:100%}
 .pick{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;color:var(--dim);flex-wrap:wrap}
 svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
@@ -65,7 +66,7 @@ pre.code .c{color:var(--faint)}
 .btn{border:1px solid var(--line);background:var(--white);border-radius:8px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink)}
 .btn.dark{background:var(--brand);color:#fff;border-color:var(--brand)}
 .row2{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.two{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .chartbox h4{margin:0 0 4px;font-size:12px;color:var(--dim);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
 .card{background:var(--paper);border-radius:8px;padding:8px 10px;font-size:12.5px}
@@ -339,7 +340,7 @@ function GAPS(){
  if(!items.length){$("mid").innerHTML=ruleSec()+`<div class="sec">No gaps found.</div>`;$("right").innerHTML=impactSec()+todoSec()+fileSec("Script",roadmapGapsCsv(R));return;}
  const it=items[Math.min(ST.sel,items.length-1)],cs=it.cells,lo=cs[it.i],hi=cs[it.i+1];
  const opts=items.map((x,i)=>`<option value="${i}" ${x===it?"selected":""}>${esc(x.label)} · ×${fx(x.ratio,2)}</option>`).join("");
- const W=700,H=300,a=58,bx=W-20,tp=18,bt=H-44;
+ const W=400,H=260,a=50,bx=W-16,tp=18,bt=H-44;
  const dmin=Math.log(Math.min(...cs.map(c=>c.drive)))-0.15,dmax=Math.log(Math.max(...cs.map(c=>c.drive)))+0.15;
  const amax=Math.max(...cs.map(c=>c.area),it.miss.area)*1.1,xs=v=>a+(bx-a)*(Math.log(v)-dmin)/(dmax-dmin),ys=v=>bt-(bt-tp)*v/amax;
  let s="";for(let k=0;k<=4;k++){const v=amax*k/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,v.toFixed(1),{a:"end",fs:10});}
@@ -350,7 +351,7 @@ function GAPS(){
  cs.forEach((c,i)=>{const k=i===it.i||i===it.i+1;s+=C(xs(c.drive),ys(c.area),k?6:4.5,k?RED:GREY,`stroke="#fff" stroke-width="1.5"`);});
  s+=C(xs(it.miss.drive),ys(it.miss.area),6,"#fff",`stroke="${GRN}" stroke-width="2" stroke-dasharray="3 2"`)+T(xs(it.miss.drive),ys(it.miss.area)-12,"missing size",{a:"middle",c:GRN,fs:11,halo:1});
  [lo,hi].forEach((c,j)=>{s+=T(xs(c.drive)+(j?8:-8),ys(c.area)+(j?-8:16),c.s,{a:j?"start":"end",c:INK,w:600,fs:11,halo:1});});
- s+=T((a+bx)/2,H-6,`every ${it.cls} cell in ${it.v}: drive strength (relative to the weakest) vs area (µm²)`,{a:"middle",fs:10.5});
+ s+=T((a+bx)/2,H-6,`${it.cls} in ${it.v}: drive (× weakest) vs area µm²`,{a:"middle",fs:10.5});
  const g=v=>!fin(v)?"–":Math.abs(v)>=100?v.toFixed(0):v.toPrecision(3);
  const rows=cs.map((c,i)=>{const k=i===it.i||i===it.i+1;return `<tr class="${k?"mark":""}"><td class="mono ${k?"bad":""}">${esc(c.s)}</td><td class="num">×${fx(c.drive,2)}</td><td class="num">${fx(c.area,2)}</td><td class="num">${g(c.leak)}</td><td class="num">${fx(c.d4,0)}</td><td class="num">${fx(c.d16,0)}</td></tr>`}).join("");
  const span=cs[cs.length-1].drive/cs[0].drive;
@@ -378,7 +379,7 @@ function PATH(){
  const key=pi+":"+ST.stage,du=ST.du[key]||(ST.du[key]=[]);
  const isFast=e=>e.d<U.d*0.98,isSlow=e=>e.d>U.d*1.02;
  const srows=P.rows.map((r,i)=>{const gn=stageGain(r),m=(ST.du[pi+":"+i]||[]).length;return `<tr class="row ${i===ST.stage?"on":""}" data-s="${i}"><td class="mono" style="font-size:11px">${esc(r.inst)}</td><td class="mono">${esc(r.s)}</td><td>${esc(r.arc)}</td><td class="num">${fx(r.d,0)}</td><td class="num good">${gn>0.5?"−"+gn.toFixed(0):"–"}</td><td class="num bad">${m||""}</td></tr>`}).join("");
- const W=700,H=300,a=56,bx=W-20,tp=16,bt=H-42;
+ const W=400,H=260,a=50,bx=W-16,tp=16,bt=H-42;
  const amax=Math.max(...E.map(e=>e.a))*1.08||1,dmax=Math.max(...E.map(e=>e.d))*1.06,dmin=Math.min(...E.map(e=>e.d))*0.9;
  const dspan=(dmax-dmin)||1,xs=v=>a+(bx-a)*v/amax,ys=v=>bt-(bt-tp)*(v-dmin)/dspan;
  let s="";for(let k=0;k<=4;k++){const v=dmin+dspan*k/4;s+=L(a,ys(v),bx,ys(v),SOFT)+T(a-6,ys(v)+4,v.toFixed(0)+" ps",{a:"end",fs:10});}
@@ -395,7 +396,7 @@ function PATH(){
   s+="</g>";});
  const fast=E.filter(isFast).sort((p,q)=>p.d-q.d),slow=E.filter(isSlow);
  fast.slice(0,3).forEach(e=>s+=T(xs(e.a)+8,ys(e.d)+4,e.s,{c:GRN,fs:10.5,halo:1}));
- s+=T((a+bx)/2,H-6,`every ${S.cls} equivalent (${vts.map((v,i)=>v+" "+sym[SH[Math.min(3,i)]]).join(", ")}): area µm² vs delay ps at this stage`,{a:"middle",fs:10.5});
+ s+=T((a+bx)/2,H-6,`${S.cls} equivalents (${vts.map((v,i)=>v+" "+sym[SH[Math.min(3,i)]]).join(", ")}): area µm² vs delay ps`,{a:"middle",fs:10.5});
  const op=S.op||{},from=op.from==="fo4"?"FO4 fallback (4× own input cap)":"from the design (timing report or netlist)";
  $("mid").innerHTML=ruleSec()+`<div class="sec"><h3>Path ${pi+1} · slack ${fx(P.slack,0)} ps · ${esc(P.start)} → ${esc(P.end)}</h3><table><tr><th>Instance</th><th>Cell</th><th>Arc</th><th class="num">Delay ps</th><th class="num">Faster by</th><th class="num">Don't-use</th></tr>${srows}</table></div>
  ${E.length?`<div class="sec"><h3>${esc(S.s)} on ${esc(S.inst)} · equivalent cells</h3><div class="op">Judged at this stage's operating point: input slew <b>${fx(op.slew,1)} ps</b>, output load <b>${fx(op.load,2)} fF</b> · ${esc(from)}</div>${svg(W,H,s)}

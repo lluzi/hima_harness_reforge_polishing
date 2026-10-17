@@ -78,3 +78,13 @@ None recorded.
   cell names (drive `X<n>`, VT suffix `_HVT`/`_LVT`).
 - Rules unchanged. Pack tests 78/78; contract `libinsight-analyses.test.ts` 8/8. A dry run of the three
   rules with `--naming generic` on that Site matched the original-name corpus (results stay on the Site).
+
+## 0.2.3 page layout (2026-10-16)
+
+- The page's three columns split evenly, and every table fits its column: table cells wrap (monospace names
+  anywhere, words at word breaks), smaller table type. The two Vmin temperature charts stack instead of sitting
+  side by side, and the gaps and path charts are drawn at column width (400 px) so their labels stay readable;
+  their axis captions are shorter.
+- Checked in a browser at the App's page window (1184×688 CSS px) on all three rule pages: no column scrolls
+  sideways, no table or chart passes its column, no chart text leaves its chart. Pack tests 78/78; contract
+  `libinsight-analyses.test.ts` 8/8; `libinsight-insight-template.test.ts` and `analysis-page.test.ts` 18/18.

@@ -1,6 +1,6 @@
 schema: hima-flow/1
 id: libinsight-analysis
-version: 0.2.2
+version: 0.2.3
 flow:
   kind: sequence
   id: custom-analysis-route
